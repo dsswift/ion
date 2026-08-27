@@ -1,4 +1,5 @@
 /** Studio surface tab descriptors and persistence shapes. */
+import type { BrowserEmulationState } from './studio-browser-types'
 
 export const SINGLETON_ORDER = ['plan', 'diff', 'visualizer', 'status', 'files', 'gitpanel'] as const
 export type SingletonId = (typeof SINGLETON_ORDER)[number]
@@ -50,7 +51,28 @@ export interface DispatchTab {
   dispatchId: string
   title: string
 }
-export interface BrowserTab { kind: 'browser'; id: string; instanceId: string; url: string; title: string; mode: 'preview' | 'browse' }
+export type BrowserSessionMode = 'isolated' | 'shared'
+
+/** A browser tab's content origin and session-isolation policy. */
+export interface BrowserTab {
+  kind: 'browser'
+  id: string
+  instanceId: string
+  url: string
+  title: string
+  mode: 'preview' | 'browse'
+  /** Isolated tabs get a private in-memory browser session; shared tabs use the persistent Studio session. */
+  sessionMode: BrowserSessionMode
+  /**
+   * The device/viewport override this tab currently runs under, when any.
+   *
+   * Tab-local persisted state: the descriptor carries it so a restored or
+   * session-flipped guest returns on the same emulated viewport rather than
+   * silently reverting to a desktop layout mid-session. Absent means the
+   * responsive view — the guest fills the Surface area with no frame.
+   */
+  emulation?: BrowserEmulationState
+}
 export interface TerminalTab { kind: 'terminal'; id: string; instanceId: string; cwd: string; title: string }
 
 export type SurfaceTab = SingletonTab | FileTab | PreviewTab | NotificationTab | RuntimePanelTab | QuestionsTab | DispatchTab | BrowserTab | TerminalTab
@@ -59,6 +81,7 @@ export function previewTabId(filePath: string): string { return `preview:${fileP
 export function browserTabId(instanceId: string): string { return `browser:${instanceId}` }
 export function terminalTabId(instanceId: string): string { return `terminal:${instanceId}` }
 export function isSingleton(tab: SurfaceTab): tab is SingletonTab { return tab.kind === 'singleton' }
+export function isBrowserTab(tab: SurfaceTab): tab is BrowserTab { return tab.kind === 'browser' }
 export function isPinnableSingleton(tab: SurfaceTab): tab is SingletonTab & { id: PinnableSingletonId } {
   return tab.kind === 'singleton' && (PINNABLE_SINGLETON_IDS as readonly string[]).includes(tab.id)
 }
@@ -68,11 +91,33 @@ export interface SurfaceConversationPersisted {
   tabs: SurfaceTab[]
   activeTabId: string | null
   visible: boolean
+  /**
+   * The instanceId of this conversation's single Agent-linked browser tab,
+   * or null when it has none.
+   *
+   * A POINTER, not a per-descriptor flag: with one pointer per conversation,
+   * two tabs claiming the link is impossible by construction rather than by
+   * a rule someone has to enforce on every write. null is meaningful — it
+   * records that the operator closed the linked tab and no other tab was
+   * adopted in its place, so the next agent call creates a fresh one instead
+   * of hijacking a page the operator prepared for themselves.
+   */
+  agentBrowserInstanceId: string | null
 }
 
-/** Version 2 separates global core pins and the optional global notification from each conversation's surface state. */
+/**
+ * Version 3 adds each conversation's Agent-linked browser pointer.
+ *
+ * The version bump is what makes a deliberate null survive a restart. Read
+ * against a v2 record, `agentBrowserInstanceId: null` is indistinguishable
+ * from "this field did not exist yet", so a v2 reader must back-fill the
+ * first browser tab; a v3 reader must NOT. Without the bump, every restart
+ * would silently re-link a tab the operator had unlinked.
+ *
+ * Versions 2 and 1 are read only for migration.
+ */
 export interface SurfacePersisted {
-  version: 2
+  version: 3
   pinnedTabs: PinnableSingletonId[]
   /** A workspace-scoped notification stays open across every conversation until closed. */
   notification: NotificationTab | null

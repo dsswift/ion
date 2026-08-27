@@ -4,9 +4,8 @@
  *
  * Resolves current plan path first, then newest transcript plan path after
  * Implement clears current state. This preserves an implemented plan until a
- * newer plan replaces it. The implemented badge is read from the transcript's
- * implement divider, never inferred from a cleared path. Loads via fsReadFile
- * and live-updates through fsWatchFile/onFileChanged. Conversation switches
+ * newer plan replaces it. The implemented badge reads the transcript's durable
+ * implementation provenance. Loads via fsReadFile and live-updates through fsWatchFile/onFileChanged. Conversation switches
  * retarget automatically.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
@@ -41,12 +40,9 @@ export function PlanSurface(): React.JSX.Element {
     planInstance?.planFilePath ?? null,
   )
   const reserved = !!planInstance?.planFilePath && !planFileWritten
-  // Implementation is read from the transcript's implement divider, which the
-  // implement flow writes when the user approves. It is NOT inferred from a
-  // cleared instance.planFilePath: the implement flow clears that field last,
-  // so its absence looks like implementation, but so does every other path
-  // that nulls it — and the badge would then assert an implementation that
-  // never happened. See isPlanImplementedInMessages.
+  // Read positive implementation evidence from the transcript. Current history
+  // carries implementationPhase on the user turn. Older live transcripts can
+  // carry the renderer-only divider. Never infer completion from a missing path.
   const implemented = isPlanImplementedInMessages(planInstance?.messages ?? [], planFilePath)
   const [plan, setPlan] = useState<PlanState>({ kind: 'empty' })
   const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | null>(null)

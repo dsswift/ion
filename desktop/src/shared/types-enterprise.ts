@@ -87,6 +87,14 @@ export interface EnterprisePolicy {
    * policy (conversations kept indefinitely).
    */
   conversationRetentionDays?: number
+  newConversationDefaults?: {
+    baseDirectory?: string
+    profileName?: string
+    profileLocked?: boolean
+    engineProfileId?: string
+    locked?: boolean
+    projects?: Array<{ directory: string; name?: string; default?: boolean; profileName?: string; profileLocked?: boolean }>
+  }
   /**
    * Opaque client-config namespace. Desktop-specific constraints live under
    * customFields['ion-desktop'] by convention; the engine passes this
@@ -116,6 +124,8 @@ export interface IonDesktopPolicyFields {
     themeId: string
     locked?: boolean
   }
+  /** Managed declarative desktop automations. Never persisted to user files. */
+  automation?: import('./types-automation').EnterpriseAutomationPolicy
   /**
    * Enterprise active-UI enforcement (single-UI exclusivity). `ui` names
    * the conversation UI ('overlay' | 'studio'); `locked: true` enforces it

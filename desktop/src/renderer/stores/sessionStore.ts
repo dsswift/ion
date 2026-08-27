@@ -36,6 +36,7 @@ import { createEventSlice } from './slices/event-slice'
 import { reportAutoFixCompletion } from './slices/event-slice-auto-fix-lifecycle'
 import { createEngineSlice } from './slices/engine-slice'
 import { createImplementSlice } from './slices/implement-slice'
+import { createAutomationSlice } from './slices/automation-slice'
 import { setupPersistence } from './session-store-persistence'
 import { startAutoSettleSweep } from './auto-settle-sweep'
 import { usePreferencesStore } from '../preferences'
@@ -67,7 +68,7 @@ const initialState = {
   statusDrawerDispatchId: null,
   dispatchSplit: null,
   terminalOpenTabIds: new Set<string>(),
-  terminalActiveTabIds: new Set<string>(),
+  terminalActivities: new Map(),
   terminalPendingCommands: new Map<string, string>(),
   terminalPanes: new Map<string, TerminalPaneState>(),
   terminalTallTabId: null,
@@ -147,6 +148,7 @@ export const useSessionStore = create<State>((set, get) => {
     reportAutoFixCompletion: (tabId, evidence) => reportAutoFixCompletion(tabId, evidence, _get),
     ...createEngineSlice(_set, _get),
     ...createImplementSlice(_set, _get),
+    ...createAutomationSlice(_set, _get),
     markResourceRead: (resourceId: string) => {
       set((state) => {
         const updated = new Set(state.readResourceIds)

@@ -130,6 +130,7 @@ export function mapSessionMessage(
     slashModelAlias: m.slashModelAlias,
     slashModelEffective: m.slashModelEffective,
     implementationPhase: m.implementationPhase,
+    slashFrontmatter: m.slashFrontmatter,
     // Carried so a reloaded transcript labels a structured submission the
     // same way the live bubble did. Without this the label exists only until
     // the next reload, and the turn then reads as free text the operator

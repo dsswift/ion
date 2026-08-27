@@ -55,7 +55,7 @@ final class SnapshotTerminalInstanceGateTests: XCTestCase {
         let vm = SessionViewModel()
         let data = snapshotJSON(isTerminalOnlyJSON: isTerminalOnlyJSON, activeId: activeId)
         let event = try decoder.decode(RemoteEvent.self, from: data)
-        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
+        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
             XCTFail("Expected snapshot"); return vm
         }
         XCTAssertEqual(tabs[0].terminalInstances?.count, 2, "pre-condition: raw snapshot carries the instances")

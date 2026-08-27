@@ -35,6 +35,12 @@ beforeEach(() => {
     studioSetSetting: vi.fn().mockResolvedValue(true),
     studioGetSettings: vi.fn().mockResolvedValue({}),
     terminalDestroy: vi.fn().mockResolvedValue(undefined),
+    studioBrowserViewEnsure: vi.fn().mockResolvedValue(true),
+    studioBrowserViewBounds: vi.fn(),
+    studioBrowserViewNavigate: vi.fn().mockResolvedValue(true),
+    studioBrowserViewAction: vi.fn().mockResolvedValue(true),
+    studioBrowserViewClose: vi.fn().mockResolvedValue(true),
+    onStudioBrowserViewState: vi.fn(() => () => undefined),
   }
   useSurfaceStore.setState({ tabs: [], activeTabId: null, pinnedTabs: ['plan'], notification: null, conversations: {}, currentConversationId: 'tab-1', visible: false, hydrated: true, diffReveal: null })
 })
@@ -173,5 +179,51 @@ describe('file-open-router', () => {
 
     expect(runtimePanel(id)).toBeNull()
     expect(useSurfaceStore.getState().tabs.some((tab) => tab.id === id)).toBe(false)
+  })
+})
+
+describe('openUrl — clicked links', () => {
+  it('opens a NEW browser tab for every click', () => {
+    registerStudioFileRouter()
+    expect(surfaceRouter()!.openUrl!('https://example.test/one')).toBe(true)
+    expect(surfaceRouter()!.openUrl!('https://example.test/two')).toBe(true)
+
+    const browsers = useSurfaceStore.getState().tabs.filter((tab) => tab.kind === 'browser')
+    // A tab per click, deliberately: reusing one would destroy the page the
+    // previous link came from, which is the page the operator is comparing to.
+    expect(browsers).toHaveLength(2)
+    expect(browsers.map((tab) => (tab.kind === 'browser' ? tab.url : ''))).toEqual([
+      'https://example.test/one',
+      'https://example.test/two',
+    ])
+  })
+
+  it('uses browse mode so the page can load', () => {
+    registerStudioFileRouter()
+    surfaceRouter()!.openUrl!('https://example.test/docs')
+    const browser = useSurfaceStore.getState().tabs.find((tab) => tab.kind === 'browser')
+    // A preview tab carries the offline network shield, which would leave a
+    // link the operator explicitly opened unable to load.
+    expect(browser && browser.kind === 'browser' && browser.mode).toBe('browse')
+  })
+
+  it('reveals the surface and focuses the new tab', () => {
+    const reveal = vi.fn()
+    registerStudioFileRouter(reveal)
+    surfaceRouter()!.openUrl!('https://example.test/docs')
+    expect(reveal).toHaveBeenCalled()
+    const browser = useSurfaceStore.getState().tabs.find((tab) => tab.kind === 'browser')
+    expect(useSurfaceStore.getState().activeTabId).toBe(browser?.id)
+  })
+
+  it('links the first clicked link tab to the agent', () => {
+    // A clicked link is a normal browser tab, so the single-link rule applies
+    // to it unchanged: the conversation's first browser tab takes the link.
+    registerStudioFileRouter()
+    surfaceRouter()!.openUrl!('https://example.test/one')
+    surfaceRouter()!.openUrl!('https://example.test/two')
+    const conversation = useSurfaceStore.getState().conversations['tab-1']
+    const first = useSurfaceStore.getState().tabs.find((tab) => tab.kind === 'browser')
+    expect(conversation?.agentBrowserInstanceId).toBe(first && first.kind === 'browser' ? first.instanceId : null)
   })
 })

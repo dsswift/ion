@@ -5,7 +5,7 @@ import Foundation
 extension SessionViewModel {
 
     @MainActor
-    func handleSnapshot(snapshotTabs: [RemoteTabState], recentDirs: [String], groupMode: String?, groups: [RemoteTabGroup]?, preferredModel: String? = nil, engineDefaultModel: String? = nil, availableModels: [RemoteModelEntry]? = nil, worktreeStates: [RemoteWorktreeState]? = nil, settledTabs: [RemoteTabState]? = nil) {
+    func handleSnapshot(snapshotTabs: [RemoteTabState], recentDirs: [String], groupMode: String?, groups: [RemoteTabGroup]?, preferredModel: String? = nil, engineDefaultModel: String? = nil, availableModels: [RemoteModelEntry]? = nil, projects: [RemoteProject] = [], worktreeStates: [RemoteWorktreeState]? = nil, settledTabs: [RemoteTabState]? = nil) {
         DiagnosticLog.log("snapshot received", tag: "session.snapshot", fields: [
             "count": String(snapshotTabs.count),
             "max": String(recentDirs.count),
@@ -81,6 +81,7 @@ extension SessionViewModel {
         if !recentDirs.isEmpty {
             recentDirectories = recentDirs
         }
+        self.projects = projects
         // Update tab group mode and groups from desktop
         if let mode = groupMode {
             tabGroupMode = mode

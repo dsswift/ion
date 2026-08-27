@@ -286,6 +286,7 @@
     ],
     "user_turn_persisted": [
       "entryId",
+      "slashFrontmatter",
       "slashModelAlias",
       "slashModelEffective"
     ],
@@ -392,6 +393,7 @@
     "fields",
     "gateCwd",
     "gateKind",
+    "gateOrigin",
     "gateRequestId",
     "gateSiblingTools",
     "gateToolInput",
@@ -516,6 +518,7 @@
     "url",
     "usage",
     "userTurnEntryId",
+    "userTurnSlashFrontmatter",
     "userTurnSlashModelAlias",
     "userTurnSlashModelEffective"
   ],
@@ -590,6 +593,7 @@
       "parentConversationId",
       "pinned",
       "profileId",
+      "projectDirectory",
       "runRecovery",
       "sessionId",
       "systemHint",
@@ -773,6 +777,7 @@
       "role",
       "slashArgs",
       "slashCommand",
+      "slashFrontmatter",
       "slashModelAlias",
       "slashModelEffective",
       "slashSource",

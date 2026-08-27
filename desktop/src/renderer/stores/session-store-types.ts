@@ -91,7 +91,7 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
   /** Studio inline dispatch split subject (null = closed). Scoped to its opening conversation. */
   dispatchSplit: DispatchSplitSubject | null;
   terminalOpenTabIds: Set<string>;
-  terminalActiveTabIds: Set<string>;
+  terminalActivities: Map<string, import('../../shared/terminal-activity').TerminalActivity>;
   terminalPendingCommands: Map<string, string>;
   terminalPanes: Map<string, TerminalPaneState>;
   terminalTallTabId: string | null;
@@ -256,6 +256,10 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
     tabId: string,
     opts?: { clearContext?: boolean; unpin?: boolean },
   ) => Promise<void>;
+  /** Main-owned automation asks owner store to create/send an explicit tab. */
+  runAutomationCommand: (
+    action: import("../../shared/types-automation").AutomationAction,
+  ) => Promise<string | void>;
   /**
    * Dismiss a pending AskUserQuestion / ExitPlanMode card and tell the engine
    * the question is resolved, so it releases its retention and stops
@@ -384,7 +388,8 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
   toggleTerminal: (tabId: string) => void;
   runInTerminal: (tabId: string, cmd: string) => void;
   consumeTerminalPendingCommand: (key: string) => string | undefined;
-  createTerminalTab: (dir?: string) => Promise<string>;
+  /** `adoptTabId` is supplied only by boot restoration; see resumeSession. */
+  createTerminalTab: (dir?: string, adoptTabId?: string) => Promise<string>;
   addTerminalInstance: (tabId: string, kind: string, cwd?: string) => string;
   removeTerminalInstance: (tabId: string, instanceId: string) => void;
   selectTerminalInstance: (tabId: string, instanceId: string) => void;
@@ -453,12 +458,22 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
   }) => void;
   forkTab: (sourceTabId: string) => Promise<string | null>;
   forkFromMessage: (tabId: string, messageId: string) => Promise<string | null>;
+  /**
+   * Open a conversation in a tab.
+   *
+   * `adoptTabId` is the persisted tab id, supplied ONLY by boot restoration.
+   * Restoring under a fresh id orphans everything keyed by the old one — the
+   * Studio Surface stores browser and terminal tabs per conversation id, so a
+   * new id every launch means the panel comes back empty. The History Picker
+   * omits it, because opening a past conversation is a genuinely new tab.
+   */
   resumeSession: (
     sessionId: string,
     title?: string,
     projectPath?: string,
     customTitle?: string | null,
     encodedDir?: string | null,
+    adoptTabId?: string,
   ) => Promise<string>;
   resumeSessionWithChain: (
     sessionId: string,
@@ -514,6 +529,8 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
       source?: "remote" | "machine";
       resolveSlash?: boolean;
       requestId?: string;
+      /** Main-owned automation causation, forwarded to the engine for provenance. */
+      automationCausation?: import("../../shared/types-automation").AutomationCausation;
       /**
        * How this turn was authored, as an engine InjectionKind wire value
        * ('structured_answer' for a Guided Questions submission). When set to

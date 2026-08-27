@@ -31,6 +31,7 @@ struct Message: Codable, Identifiable, Sendable {
     var slashSource: String?
     var slashModelAlias: String?
     var slashModelEffective: String?
+    var slashFrontmatter: [String: AnyCodable]?
     /// Desktop-local reconciliation key (RC-9). On a `desktop_conversation_history`
     /// user row, the clientMsgId this device originally sent for that turn,
     /// annotated by the desktop from its clientMsgId↔entryId map. `submit` stamps
@@ -207,7 +208,7 @@ struct Message: Codable, Identifiable, Sendable {
         case id, role, content, toolName, toolInput, toolId, toolStatus
         case attachments, timestamp, source
         case isInternal = "internal"
-        case slashCommand, slashArgs, slashSource, slashModelAlias, slashModelEffective
+        case slashCommand, slashArgs, slashSource, slashModelAlias, slashModelEffective, slashFrontmatter
         case planFilePath, markerKind, markerMessageLength, markerMachineAuthored
         case injectionKind, implementationPhase, machineAuthored
         // clientMsgId: desktop-local reconciliation key on history user rows (RC-9).
@@ -295,6 +296,7 @@ extension Message {
         slashSource = try container.decodeIfPresent(String.self, forKey: .slashSource)
         slashModelAlias = try container.decodeIfPresent(String.self, forKey: .slashModelAlias)
         slashModelEffective = try container.decodeIfPresent(String.self, forKey: .slashModelEffective)
+        slashFrontmatter = try container.decodeIfPresent([String: AnyCodable].self, forKey: .slashFrontmatter)
 
         // planFilePath on plan-lifecycle divider system messages. The desktop
         // history mapper (engine-history.ts) carries it on the wire so a
@@ -347,7 +349,7 @@ extension Message {
     private enum EngineCodingKeys: String, CodingKey {
         case id, role, content, toolName, toolId, toolStatus, timestamp
         case isInternal = "internal"
-        case slashCommand, slashArgs, slashSource, slashModelAlias, slashModelEffective
+        case slashCommand, slashArgs, slashSource, slashModelAlias, slashModelEffective, slashFrontmatter
         case planFilePath
         case markerKind, markerMessageLength, markerMachineAuthored, markerPlanFilePath
         case injectionKind, implementationPhase, machineAuthored

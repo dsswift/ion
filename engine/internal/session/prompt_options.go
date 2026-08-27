@@ -190,6 +190,7 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		MaxTokens:                   s.config.MaxTokens,
 		Thinking:                    s.config.Thinking,
 		PlanMode:                    s.planMode,
+		TemporaryAutoFromPlan:       overrides != nil && overrides.TemporaryAutoFromPlan,
 		PlanModeTools:               s.planModeTools,
 		PlanFilePath:                s.planFilePath,
 		PlanModeAllowedBashCommands: s.planModeAllowedBashCommands,

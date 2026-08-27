@@ -22,6 +22,7 @@ export function makeEmptyTab(tabId: string): TabEntry {
     tabId,
     status: 'idle',
     activeRequestId: null,
+    automationCausation: undefined,
     conversationId: null,
     engineSessionStarted: false,
     lastActivityAt: Date.now(),
@@ -104,6 +105,7 @@ export function resetTabEntry(
   // saved conversation — the next start mints fresh. Clear the flag.
   tab.resumedSavedConversation = false
   tab.activeRequestId = null
+  tab.automationCausation = undefined
   tab.status = 'idle'         // Prevent stale events from the dying session
   tab.startedAt = 0           // from triggering task_complete synthesis
   // A full reset discards any pending proposal: clear the surfaced-proposal
@@ -144,6 +146,7 @@ export function restartTabEntry(
   // Clear ONLY the run/inflight state so the next prompt re-StartSessions.
   tab.engineSessionStarted = false
   tab.activeRequestId = null
+  tab.automationCausation = undefined
   tab.status = 'idle'         // Prevent stale events from the dying session
   tab.startedAt = 0           // from triggering task_complete synthesis
   // The restart cancels any in-flight dispatch, so its ordering markers no

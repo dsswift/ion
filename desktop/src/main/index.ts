@@ -16,10 +16,18 @@ import { migrateStudioSettings } from './settings-migration-studio'
 import { wireSessionPlaneEvents, wireEngineBridgeEvents, wireRemoteSessionPlaneForwarding, wireTabFocusHandler, wireMarkResourceReadHandler, wireDeleteResourceHandler, wireResourceGetHandler } from './event-wiring'
 import { registerAllIpc } from './ipc/register'
 import { setupAppLifecycle } from './app-lifecycle'
+import { wireAutomationRuntime } from './automation/runtime'
+import { engineBridge } from './state'
+import { wireToolGateResponder } from './tool-gate-responder'
 
 // Legacy atv* → studio* settings rename. MUST run before window creation and
 // IPC registration so every consumer only ever reads the new key names.
 migrateStudioSettings()
+
+// Wire the desktop responder after state initialization. Browser tool handlers
+// import Studio view code, so doing this from state.ts would re-enter state
+// before its constants finish initialization.
+wireToolGateResponder(engineBridge)
 
 wireSessionPlaneEvents()
 wireEngineBridgeEvents()
@@ -28,6 +36,7 @@ wireTabFocusHandler()
 wireMarkResourceReadHandler()
 wireDeleteResourceHandler()
 wireResourceGetHandler()
+wireAutomationRuntime()
 registerAllIpc()
 // The auto-updater is initialized inside setupAppLifecycle after the engine
 // bridge connects: enterprise policy (disableAutoUpdate, D-012) comes from

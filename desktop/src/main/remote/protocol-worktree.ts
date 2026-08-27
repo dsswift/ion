@@ -71,8 +71,8 @@ export interface RemoteWorktree {
   /**
    * The operator's workflow stage, or absent when none is set. Registry-scoped
    * on the desktop (it describes the worktree's lifecycle, not one bench pin),
-   * so it exists for unenrolled worktrees too. Vocabulary + the single
-   * automatic transition: shared/types-git.ts `WORK_STAGES`.
+   * so it exists for unenrolled worktrees too. Vocabulary:
+   * shared/types-git.ts `WORK_STAGES`.
    */
   stage?: WorkStage
   /**

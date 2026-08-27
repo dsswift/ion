@@ -38,10 +38,21 @@ export type { RemoteCommand } from './protocol-commands'
 
 // ─── Ion → iOS events ───
 
+export interface RemoteProject {
+  directory: string
+  displayName: string
+  isDefault: boolean
+  managed: boolean
+  profileAction: 'ask' | 'plain' | 'profile'
+  profileId?: string
+  profileSource?: string
+  hasOverride: boolean
+}
+
 export type RemoteEvent =
   | RemoteWorktreeEvent
   | RemoteQuestionsEvent
-  | { type: 'desktop_snapshot'; tabs: RemoteTabState[]; worktreeStates?: RemoteWorktreeState[]; settledTabs?: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; providerLabel: string; label: string; contextWindow: number; maxOutputTokens?: number; effectiveContextLimit?: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[]; modelKind?: string; isCustom?: boolean }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; producer?: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
+  | { type: 'desktop_snapshot'; tabs: RemoteTabState[]; projects?: RemoteProject[]; worktreeStates?: RemoteWorktreeState[]; settledTabs?: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; providerLabel: string; label: string; contextWindow: number; maxOutputTokens?: number; effectiveContextLimit?: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[]; modelKind?: string; isCustom?: boolean }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; producer?: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
   | { type: 'desktop_resource_content'; resourceId: string; kind: string; producer?: string; content: string }
   // `clientCmdId` echoes the id the iOS client attached to `desktop_create_tab`
   // / `desktop_create_terminal_tab` so the client's confirm-or-resend tracker
@@ -78,6 +89,10 @@ export type RemoteEvent =
       lastMessage?: string | null
       /** Message count of the active conversation instance. */
       messageCount?: number
+      /** Custom tab pill background, or null to clear it. */
+      pillColor?: string | null
+      /** Custom tab pill icon, or null to clear it. */
+      pillIcon?: string | null
     }
   | { type: 'desktop_text_chunk'; tabId: string; text: string }
   | { type: 'desktop_tool_call'; tabId: string; toolName: string; toolId: string }
@@ -110,6 +125,7 @@ export type RemoteEvent =
   | { type: 'desktop_background_task_stop_result'; requestId: string; taskId: string; status: string; error?: string }
   | { type: 'desktop_message_updated'; tabId: string; messageId: string; content?: string; toolStatus?: 'running' | 'completed' | 'error'; toolInput?: string }
   | { type: 'desktop_queue_update'; tabId: string; prompts: string[] }
+  | { type: 'desktop_terminal_activity'; key: string; tabId: string; instanceId: string; active: boolean; processLabel: string | null; applications: import('../../shared/terminal-activity').TerminalWebApplication[] }
   | { type: 'desktop_terminal_output'; tabId: string; instanceId: string; data: string }
   | { type: 'desktop_terminal_exit'; tabId: string; instanceId: string; exitCode: number }
   | { type: 'desktop_terminal_instance_added'; tabId: string; instance: TerminalInstanceInfo }
@@ -140,7 +156,7 @@ export type RemoteEvent =
   // engine→wire mapper). iOS re-keys its optimistic user row to this id so a
   // run that never reaches a message_end (cancel, mid-stream failure) still
   // leaves the row canonically keyed and history reloads dedup against it.
-  | { type: 'desktop_user_turn_persisted'; tabId: string; instanceId?: string | null; userTurnEntryId: string; userTurnSlashModelAlias?: string; userTurnSlashModelEffective?: string }
+  | { type: 'desktop_user_turn_persisted'; tabId: string; instanceId?: string | null; userTurnEntryId: string; userTurnSlashModelAlias?: string; userTurnSlashModelEffective?: string; userTurnSlashFrontmatter?: Record<string, unknown> }
   // `metadata` is an opaque pass-through hint map forwarded from the engine.
   // Carried verbatim across the relay to iOS so future iOS-side handlers
   // (e.g. dedup, render-style hints) can adopt the same conventions the

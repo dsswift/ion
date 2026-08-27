@@ -47,6 +47,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 
 - [APNs pusher](#term-apns-pusher)
 - [Agent](#term-agent)
+- [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
 - [Async delivery](#term-async-delivery)
 - [Attachment](#term-attachment)
 - [Backend](#term-backend)
@@ -110,6 +111,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Slash command](#term-slash-command)
 - [Status Drawer](#term-status-drawer)
 - [Studio](#term-studio-shell)
+- [Studio Browser Surface](#term-studio-browser-surface)
 - [Studio Center](#term-studio-center)
 - [Studio Left Dock](#term-studio-left-dock)
 - [Studio Surface](#term-studio-surface)
@@ -119,6 +121,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Tab Strip](#term-tab-strip)
 - [Telemetry](#term-telemetry)
 - [Terminal](#term-terminal)
+- [Terminal Activity](#term-terminal-activity)
 - [Tool](#term-tool)
 - [Transcript](#term-transcript)
 - [Transport](#term-transport)
@@ -126,6 +129,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Visualizer Canvas](#term-visualizer-canvas)
 - [Vocabulary registry](#term-vocabulary-registry)
 - [Wake notification](#term-wake-notification)
+- [Web Application](#term-web-application)
 - [Webhook](#term-webhook)
 - [Workspace](#term-workspace)
 - [Worktree](#term-worktree)
@@ -168,7 +172,7 @@ One continuous thread of user prompts and agent responses, held in a tree that s
 
 #### Engine profile {#term-engine-profile}
 
-A named set of extensions and defaults that a conversation loads at start. An empty profile means a conversation with no extensions.
+A named set of extensions and defaults that a conversation loads at start. A profile name is portable across machines; its profile ID is local to one machine. An empty profile means a conversation with no extensions.
 
 - **ID:** `engine-profile`
 - **Status:** `canonical`
@@ -434,7 +438,7 @@ A named set of daily or weekly Schedules whose latest catch-up policy selects on
 
 #### Telemetry {#term-telemetry}
 
-The structured trace and span record of engine work. It carries the identifiers that correlate one operation across surfaces.
+The versioned event stream that records engine work. Its compact file frames preserve the identity and correlation data needed to reconstruct each event.
 
 - **ID:** `telemetry`
 - **Status:** `canonical`
@@ -443,7 +447,7 @@ The structured trace and span record of engine work. It carries the identifiers 
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `engine` / `code` / `go`: `type SpanHandle struct` in `engine/internal/telemetry/telemetry.go`
+  - `engine` / `code` / `go`: `type Event = telemetryformat.Event` in `engine/internal/telemetry/telemetry.go`
 
 #### Webhook {#term-webhook}
 
@@ -933,7 +937,7 @@ A short list of actions that opens from a control or from a long press. It close
 
 #### New Conversation Picker {#term-new-conversation-picker}
 
-The single entry point that starts a conversation. It selects the project, the directory or branch, the workspace, and the engine profile.
+The single entry point that starts a conversation. Normal creation selects a Project and an Engine profile. Explicit worktree creation also selects a source branch.
 
 - **ID:** `new-conversation-picker`
 - **Status:** `canonical`
@@ -1014,6 +1018,20 @@ The region that opens beside a conversation to show its full status detail: the 
 - **Implementations:**
   - `desktop` / `ui` / `typescript`: `StatusDrawer` in `desktop/src/renderer/components/StatusDrawer.tsx`
   - `ios` / `ui` / `swift`: `struct StatusDrawerView` in `ios/IonRemote/Views/StatusDrawerView.swift`
+
+#### Studio Browser Surface {#term-studio-browser-surface}
+
+The Studio Surface tab that renders one browser document. Each descriptor belongs to one conversation and records its URL, content mode, and browser session mode. The renderer keeps every conversation's browser document mounted so its history and session stay available when the user changes conversations.
+
+- **ID:** `studio-browser-surface`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `browser surface`, `Studio browser`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `studio` / `ui` / `typescript`: `export function BrowserSurface` in `desktop/src/renderer/studio/surface/tabs/BrowserSurface.tsx`
+  - `desktop` / `code` / `typescript`: `export interface BrowserTab` in `desktop/src/shared/studio-surface-types.ts`
 
 #### Studio Center {#term-studio-center}
 
@@ -1154,6 +1172,21 @@ The Studio surface that draws the agent teams as a pixel-art office. Its scene g
 
 ### state
 
+#### Agent-linked Browser Tab {#term-agent-linked-browser-tab}
+
+The single Studio Browser Surface tab in a conversation that agent browser tools may drive. Each conversation records one browser instance as its link, or none. The first browser tab in a conversation takes the link and the user can move it to another browser tab. Closing the linked tab leaves the conversation with no link, so a page the user prepared is never adopted without an explicit choice.
+
+- **ID:** `agent-linked-browser-tab`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `agent browser link`, `linked browser tab`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `agentBrowserInstanceId` in `desktop/src/shared/studio-surface-types.ts`
+  - `studio` / `code` / `typescript`: `export function bindAgentBrowserActions` in `desktop/src/renderer/studio/surface/surface-agent-browser.ts`
+  - `desktop` / `code` / `typescript`: `export async function resolveBrowser` in `desktop/src/main/studio-playwright/runtime.ts`
+
 #### Conversation instance {#term-conversation-instance}
 
 One engine session that a conversation holds. A conversation can carry more than one instance. Clients show a bar to select the active instance.
@@ -1212,6 +1245,34 @@ The client-side row that holds one conversation and its instances, terminals, gr
 - **Implementations:**
   - `desktop` / `code` / `typescript`: `export interface TabState` in `desktop/src/shared/types-session.ts`
   - `ios` / `ui` / `swift`: `struct TabRowView` in `ios/IonRemote/Views/TabRowView.swift`
+
+#### Terminal Activity {#term-terminal-activity}
+
+A live process tree owned by one Terminal. Clients aggregate it to the owning Conversation and render it as background shell work.
+
+- **ID:** `terminal-activity`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `active shell`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `export interface TerminalActivity` in `desktop/src/shared/terminal-activity.ts`
+  - `ios` / `ui` / `swift`: `TerminalInstanceBar` in `ios/IonRemote/Views/TerminalInstanceBar.swift`
+
+#### Web Application {#term-web-application}
+
+A local HTML service whose listening process is owned by a Terminal. The Desktop confirms it with a bounded HTTP or HTTPS probe before clients show a Globe action.
+
+- **ID:** `web-application`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `local web app`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `discoverTerminalWebApplications` in `desktop/src/main/terminal-application-discovery.ts`
+  - `ios` / `ui` / `swift`: `InboxRowView` in `ios/IonRemote/Views/InboxRowView.swift`
 
 ### runtime-mechanic
 
@@ -1400,6 +1461,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Canonical name | Desktop symbol | Studio use | Overlay use | iOS symbol | Gaps |
 | --- | --- | --- | --- | --- | --- |
 | Agent | None | None | None | `AgentStatusDotStack` | Desktop, Studio, Overlay |
+| Agent-linked Browser Tab | `agentBrowserInstanceId`, `export async function resolveBrowser` | `agentBrowserInstanceId`, `export function bindAgentBrowserActions`, `export async function resolveBrowser` | `agentBrowserInstanceId`, `export async function resolveBrowser` | None | iOS |
 | Attachment | `export function AttachmentChips` | `export function AttachmentChips` | `export function AttachmentChips` | `struct AttachmentChipsView` | None |
 | Compaction | None | None | None | `CompactionRowView` | Desktop, Studio, Overlay |
 | Context | `export function ContextIndicator` | `export function ContextIndicator` | `export function ContextIndicator` | `ContextUsageRing` | None |
@@ -1437,6 +1499,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Resource | `ResourceViewer` | `ResourceViewer` | `ResourceViewer` | `Resource` | None |
 | Slash command | `SlashCommandMenu` | `SlashCommandMenu` | `SlashCommandMenu` | `struct SlashCommandMenu` | None |
 | Status Drawer | `StatusDrawer` | `StatusDrawer` | `StatusDrawer` | `struct StatusDrawerView` | None |
+| Studio Browser Surface | `export interface BrowserTab` | `export function BrowserSurface`, `export interface BrowserTab` | `export interface BrowserTab` | None | iOS |
 | Studio Center | None | `StudioCenter` | None | None | Overlay, iOS |
 | Studio Left Dock | None | `StudioLeftSidebar` | None | None | Overlay, iOS |
 | Studio | None | `StudioShell` | None | None | Overlay, iOS |
@@ -1446,8 +1509,10 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Tab | `export interface TabState` | `export interface TabState` | `export interface TabState` | `struct TabRowView` | None |
 | Tab Strip | `export function TabStrip` | `export function TabStrip`, `TabStrip` | `export function TabStrip` | `struct TabListView` | None |
 | Terminal | `export function TerminalPanel` | `export function TerminalPanel` | `export function TerminalPanel` | `ConversationTerminalView` | None |
+| Terminal Activity | `export interface TerminalActivity` | `export interface TerminalActivity` | `export interface TerminalActivity` | `TerminalInstanceBar` | None |
 | Transcript | `MessageBubble` | `MessageBubble` | `MessageBubble` | `struct Transcript` | None |
 | Visualizer Canvas | None | `VisualizerRoot` | None | None | Overlay, iOS |
+| Web Application | `discoverTerminalWebApplications` | `discoverTerminalWebApplications` | `discoverTerminalWebApplications` | `InboxRowView` | None |
 | Workspace | `WorkspaceStatusIndicator` | `WorkspaceStatusIndicator` | `WorkspaceStatusIndicator` | None | iOS |
 | Worktree | `export interface RemoteWorktree`, `WorktreeRow` | `export interface RemoteWorktree`, `WorktreeRow` | `export interface RemoteWorktree`, `WorktreeRow` | `struct WorktreeRowView` | None |
 
@@ -1462,11 +1527,15 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `Ion Studio` → [Studio](#term-studio-shell)
 - Alias: `LLM provider` → [Provider](#term-provider)
 - Alias: `SDK` → [Extension SDK](#term-extension-sdk)
+- Alias: `Studio browser` → [Studio Browser Surface](#term-studio-browser-surface)
 - Alias: `Studio shell` → [Studio](#term-studio-shell)
+- Alias: `active shell` → [Terminal Activity](#term-terminal-activity)
+- Alias: `agent browser link` → [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
 - Alias: `agent dispatch` → [Dispatch](#term-dispatch)
 - Alias: `assembled context` → [Context](#term-context)
 - Alias: `async trigger delivery` → [Async delivery](#term-async-delivery)
 - Alias: `bench` → [Integration bench](#term-integration-bench)
+- Alias: `browser surface` → [Studio Browser Surface](#term-studio-browser-surface)
 - Alias: `canonical event` → [Normalized event](#term-normalized-event)
 - Alias: `center pane` → [Studio Center](#term-studio-center)
 - Alias: `command` → [Slash command](#term-slash-command)
@@ -1504,6 +1573,8 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `left dock` → [Studio Left Dock](#term-studio-left-dock)
 - Alias: `left sidebar` → [Studio Left Dock](#term-studio-left-dock)
 - Alias: `lifecycle hook` → [Hook](#term-hook)
+- Alias: `linked browser tab` → [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
+- Alias: `local web app` → [Web Application](#term-web-application)
 - Alias: `message list` → [Transcript](#term-transcript)
 - Alias: `mirror mode` → [Mirror store](#term-mirror-store)
 - Alias: `modal` → [Dialog](#term-dialog)

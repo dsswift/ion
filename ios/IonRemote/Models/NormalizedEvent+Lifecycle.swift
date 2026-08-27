@@ -35,6 +35,7 @@ extension RemoteEvent {
             let updatedAtMs = try container.decodeIfPresent(Double.self, forKey: .remoteDisplayUpdatedAt)
             let updatedAt = updatedAtMs.map { Date(timeIntervalSince1970: $0 / 1000.0) }
             let resources = try container.decodeIfPresent([String: [[String: AnyCodable]]].self, forKey: .resources)
+            let projects = try container.decodeIfPresent([RemoteProject].self, forKey: .projects) ?? []
             // Worktree/bench state and settled-tab history, additive to the
             // core tab list. worktreeStates feeds SessionViewModel's
             // per-repo worktree cache (SessionViewModel+WorktreeCommands);
@@ -46,7 +47,7 @@ extension RemoteEvent {
             // matching the primary `tabs` decode above.
             let worktreeStates = try container.decodeIfPresent([RemoteWorktreeState].self, forKey: .worktreeStates)
             let settledTabs = try container.decodeIfPresent([SafeDecodable<RemoteTabState>].self, forKey: .settledTabs)?.compactMap(\.value)
-            return .snapshot(tabs: tabs, recentDirectories: recentDirs, tabGroupMode: tabGroupMode, tabGroups: tabGroups, preferredModel: preferredModel, engineDefaultModel: engineDefaultModel, availableModels: availableModels, customName: customName, customIcon: customIcon, remoteDisplayUpdatedAt: updatedAt, resources: resources, worktreeStates: worktreeStates, settledTabs: settledTabs)
+            return .snapshot(tabs: tabs, recentDirectories: recentDirs, tabGroupMode: tabGroupMode, tabGroups: tabGroups, preferredModel: preferredModel, engineDefaultModel: engineDefaultModel, availableModels: availableModels, customName: customName, customIcon: customIcon, remoteDisplayUpdatedAt: updatedAt, resources: resources, projects: projects, worktreeStates: worktreeStates, settledTabs: settledTabs)
 
         case .tabCreated:
             let tab = try container.decode(RemoteTabState.self, forKey: .tab)
@@ -78,7 +79,21 @@ extension RemoteEvent {
             let lastActivityAt = try container.decodeIfPresent(Double.self, forKey: .lastActivityAt)
             let lastMessage = try container.decodeIfPresent(String.self, forKey: .lastMessage)
             let messageCount = try container.decodeIfPresent(Int.self, forKey: .messageCount)
-            return .tabMeta(tabId: tabId, title: title, totalCostUsd: resolvedCost, groupId: groupId, convFingerprint: convFingerprint, lastActivityAt: lastActivityAt, lastMessage: lastMessage, messageCount: messageCount)
+            // Preserve omitted versus explicit-null fields: omitted metadata
+            // must not overwrite current customization, while JSON null clears it.
+            let pillColor: String??
+            if container.contains(.pillColor) {
+                pillColor = try container.decode(String?.self, forKey: .pillColor)
+            } else {
+                pillColor = Optional<Optional<String>>.none
+            }
+            let pillIcon: String??
+            if container.contains(.pillIcon) {
+                pillIcon = try container.decode(String?.self, forKey: .pillIcon)
+            } else {
+                pillIcon = Optional<Optional<String>>.none
+            }
+            return .tabMeta(tabId: tabId, title: title, totalCostUsd: resolvedCost, groupId: groupId, convFingerprint: convFingerprint, lastActivityAt: lastActivityAt, lastMessage: lastMessage, messageCount: messageCount, pillColor: pillColor, pillIcon: pillIcon)
 
         case .unpair:
             return .unpair
@@ -172,7 +187,7 @@ extension RemoteEvent {
     /// Encode lifecycle events. Returns `true` if the receiver was a lifecycle event.
     func encodeLifecycle(into container: inout KeyedEncodingContainer<CodingKeys>) throws -> Bool {
         switch self {
-        case .snapshot(let tabs, let recentDirectories, let tabGroupMode, let tabGroups, let preferredModel, let engineDefaultModel, let availableModels, let customName, let customIcon, let remoteDisplayUpdatedAt, let resources, let worktreeStates, let settledTabs):
+        case .snapshot(let tabs, let recentDirectories, let tabGroupMode, let tabGroups, let preferredModel, let engineDefaultModel, let availableModels, let customName, let customIcon, let remoteDisplayUpdatedAt, let resources, let projects, let worktreeStates, let settledTabs):
             try container.encode(TypeKey.snapshot, forKey: .type)
             try container.encode(tabs, forKey: .tabs)
             if !recentDirectories.isEmpty {
@@ -189,6 +204,7 @@ extension RemoteEvent {
                 try container.encode(remoteDisplayUpdatedAt.timeIntervalSince1970 * 1000.0, forKey: .remoteDisplayUpdatedAt)
             }
             try container.encodeIfPresent(resources, forKey: .resources)
+            try container.encode(projects, forKey: .projects)
             try container.encodeIfPresent(worktreeStates, forKey: .worktreeStates)
             try container.encodeIfPresent(settledTabs, forKey: .settledTabs)
             return true
@@ -213,7 +229,7 @@ extension RemoteEvent {
             }
             return true
 
-        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, let lastActivityAt, let lastMessage, let messageCount):
+        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, let lastActivityAt, let lastMessage, let messageCount, let pillColor, let pillIcon):
             try container.encode(TypeKey.tabMeta, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(title, forKey: .title)
@@ -226,6 +242,12 @@ extension RemoteEvent {
             try container.encodeIfPresent(lastActivityAt, forKey: .lastActivityAt)
             try container.encodeIfPresent(lastMessage, forKey: .lastMessage)
             try container.encodeIfPresent(messageCount, forKey: .messageCount)
+            if let pillColor {
+                try container.encode(pillColor, forKey: .pillColor)
+            }
+            if let pillIcon {
+                try container.encode(pillIcon, forKey: .pillIcon)
+            }
             return true
 
         case .error(let tabId, let message):

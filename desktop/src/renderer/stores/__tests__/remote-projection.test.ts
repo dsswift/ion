@@ -43,6 +43,7 @@ vi.mock('../../preferences', () => ({
 }))
 
 import { projectRemoteTabStates, projectResourceManifest } from '../remote-projection'
+import { resourceIdentity } from '../../../shared/resource-identity'
 import type { ProjectionStoreState } from '../remote-projection'
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -552,6 +553,20 @@ describe('projectResourceManifest', () => {
       { id: 'r1', kind: 'briefing', title: 'Morning', createdAt: '2025-01-01', read: true, conversationId: 'c1' },
       { id: 'r2', kind: 'briefing', title: '', createdAt: '2025-01-02', read: false, conversationId: undefined },
     ])
+  })
+
+
+  it('does not project a different kind with the same ID as read', () => {
+    const manifest = projectResourceManifest({
+      resources: {
+        briefing: [{ id: 'shared', kind: 'briefing', producer: 'alpha', createdAt: '2025-01-01' } as any],
+        alert: [{ id: 'shared', kind: 'alert', producer: 'beta', createdAt: '2025-01-01' } as any],
+      },
+      readResourceIds: new Set([resourceIdentity({ id: 'shared', kind: 'briefing', producer: 'alpha' })]),
+    })
+
+    expect(manifest.briefing[0].read).toBe(true)
+    expect(manifest.alert[0].read).toBe(false)
   })
 
   it('returns an empty manifest for empty resources', () => {

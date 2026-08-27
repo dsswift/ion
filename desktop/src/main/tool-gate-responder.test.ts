@@ -24,6 +24,23 @@ const toolsMock = vi.hoisted(() => ({
 }))
 vi.mock('./integration/bench-agent-tools', () => toolsMock)
 
+const studioToolsMock = vi.hoisted(() => ({
+  STUDIO_PLAYWRIGHT_TOOLS: [
+    {
+      name: 'browser_snapshot',
+      description: 'list Studio browsers',
+      inputSchema: { type: 'object' },
+      planModeSafe: true,
+      execute: vi.fn(async (): Promise<{ content: string; isError: boolean; images?: unknown[] }> => ({ content: 'snapshot', isError: false })),
+    },
+  ],
+}))
+vi.mock('./studio-playwright/tools', () => studioToolsMock)
+
+vi.mock('./settings-store', () => ({
+  readSettings: vi.fn(() => ({ activeUi: 'studio', studioPlaywrightEnabled: true })),
+}))
+
 vi.mock('./logger', () => ({
   log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(),
 }))
@@ -68,7 +85,7 @@ describe('toolGateSessionConfig', () => {
     expect(cfg.enabled).toBe(true)
     expect(cfg.tools).toEqual(GATED_TOOLS)
     expect(cfg.timeoutDecision).toBe('allow')
-    expect(cfg.clientTools?.map((t) => t.name)).toEqual(['BenchMemberFile', 'AskUserQuestions'])
+    expect(cfg.clientTools?.map((t) => t.name)).toEqual(['BenchMemberFile', 'browser_snapshot', 'AskUserQuestions'])
     expect(cfg.clientTools?.[0].planModeSafe).toBe(true)
     // The declaration must not carry the execute function — it crosses the wire.
     expect((cfg.clientTools?.[0] as unknown as Record<string, unknown>).execute).toBeUndefined()
@@ -144,9 +161,10 @@ describe('wireToolGateResponder — tool kind', () => {
     execute.mockReset()
   })
 
-  it('executes the matching client tool and returns its result', () => {
+  it('executes the matching client tool and returns its result', async () => {
     execute.mockReturnValue({ content: 'file body', isError: false })
     bridge.fire('tab-1', gateEvent({ gateKind: 'tool', gateToolName: 'BenchMemberFile', gateToolInput: { file: 'x' } }))
+    await Promise.resolve()
     expect(execute).toHaveBeenCalledWith({ file: 'x' }, '/b')
     expect(bridge.sent[0]).toMatchObject({
       cmd: 'tool_gate_response',
@@ -156,16 +174,83 @@ describe('wireToolGateResponder — tool kind', () => {
     })
   })
 
-  it('returns a tool error for an unknown tool name', () => {
+  it('returns a tool error for an unknown tool name', async () => {
     bridge.fire('tab-1', gateEvent({ gateKind: 'tool', gateToolName: 'NotATool' }))
+    await Promise.resolve()
     expect(bridge.sent[0]).toMatchObject({ gateIsError: true })
     expect(String(bridge.sent[0].gateContent)).toContain('NotATool')
   })
 
-  it('fails CLOSED (tool error) when the handler throws', () => {
+  it('fails CLOSED (tool error) when the handler throws', async () => {
     execute.mockImplementation(() => { throw new Error('git exploded') })
     bridge.fire('tab-1', gateEvent({ gateKind: 'tool', gateToolName: 'BenchMemberFile' }))
+    await Promise.resolve()
     expect(bridge.sent[0]).toMatchObject({ gateIsError: true })
     expect(String(bridge.sent[0].gateContent)).toContain('git exploded')
+  })
+})
+
+describe('wireToolGateResponder — browser tool context', () => {
+  let bridge: FakeBridge
+  const browserExecute = studioToolsMock.STUDIO_PLAYWRIGHT_TOOLS[0].execute
+  beforeEach(() => {
+    bridge = new FakeBridge()
+    wireToolGateResponder(bridge)
+    browserExecute.mockClear()
+    browserExecute.mockResolvedValue({ content: 'snapshot', isError: false })
+  })
+
+  it('injects the session key, cwd, and origin rather than trusting input', async () => {
+    // Ownership is the responder's to state. If it came from gateToolInput a
+    // model could name another conversation's browser.
+    bridge.fire('tab-7', gateEvent({
+      gateKind: 'tool',
+      gateToolName: 'browser_snapshot',
+      gateToolInput: { sessionKey: 'tab-999', origin: 'extension' },
+      gateCwd: '/repo',
+      gateOrigin: 'extension',
+    }))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(browserExecute).toHaveBeenCalledWith(
+      { sessionKey: 'tab-999', origin: 'extension' },
+      { sessionKey: 'tab-7', cwd: '/repo', origin: 'extension' },
+    )
+  })
+
+  it('defaults the origin to model when the engine omits it', async () => {
+    // An older engine does not send gateOrigin. Defaulting to the LESS
+    // privileged origin keeps the isolation rule safe by default.
+    bridge.fire('tab-1', gateEvent({ gateKind: 'tool', gateToolName: 'browser_snapshot', gateCwd: '/repo' }))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(browserExecute).toHaveBeenCalledWith({ file_path: '/b/x' }, expect.objectContaining({ origin: 'model' }))
+  })
+
+  it('forwards browser image results to the engine', async () => {
+    browserExecute.mockResolvedValue({
+      content: 'shot',
+      isError: false,
+      images: [{ media_type: 'image/png', data: 'AAAA' }],
+    })
+    bridge.fire('tab-1', gateEvent({ gateKind: 'tool', gateToolName: 'browser_snapshot' }))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(bridge.sent[0]).toMatchObject({
+      gateIsError: false,
+      gateImages: [{ media_type: 'image/png', data: 'AAAA' }],
+    })
+  })
+
+  it('advertises only tools it can execute', () => {
+    // A declared-but-unexecutable tool is discovered by the model only when it
+    // fails, so the two lists come from one computation.
+    const declared = toolGateSessionConfig().clientTools?.map((tool) => tool.name) ?? []
+    for (const name of declared) {
+      if (name === 'AskUserQuestions') continue
+      const executable = [...toolsMock.BENCH_CLIENT_TOOLS, ...studioToolsMock.STUDIO_PLAYWRIGHT_TOOLS]
+        .some((tool) => tool.name === name)
+      expect(executable).toBe(true)
+    }
   })
 })

@@ -36,6 +36,9 @@ type sessionAccessor struct {
 	// accessors not created on behalf of a tool call (hooks, commands, etc.),
 	// in which case the elicit wait is governed only by session lifecycle.
 	suspender types.DeadlineSuspender
+	// commandOverrides belongs to one registered command context. Only a
+	// ctx.sendPrompt call through this accessor can consume these options.
+	commandOverrides *PromptOverrides
 }
 
 func (a *sessionAccessor) SessionKey() string     { return a.key }
@@ -54,6 +57,19 @@ func (a *sessionAccessor) TraceID() string {
 func (a *sessionAccessor) ExtensionName() string    { return a.s.extensionName }
 func (a *sessionAccessor) ExtensionVersion() string { return a.s.extensionVersion }
 func (a *sessionAccessor) WorkingDirectory() string { return a.s.config.WorkingDirectory }
+
+// CallClientTool routes an extension SDK call to a declared client tool. The
+// boolean reports whether the tool belongs to the captured client runtime.
+func (a *sessionAccessor) CallClientTool(ctx context.Context, toolName string, input map[string]interface{}) (*types.ToolResult, bool) {
+	return a.m.callClientToolFromExtension(ctx, a.key, toolName, input)
+}
+
+// BuildClientToolRuntime captures the session client-tool declaration for a
+// dispatched child. The child has its own RunOptions filtering, but results
+// still return to this session's owning client.
+func (a *sessionAccessor) BuildClientToolRuntime(opts *types.RunOptions) {
+	a.m.buildClientToolRuntime(a.s, a.key, opts)
+}
 
 // CurrentModel reports the model of the run in flight, or the conversation's
 // last model when idle; empty when the session has never run. Model locking is
@@ -106,6 +122,13 @@ func (a *sessionAccessor) SendPromptDegradedSteer(text string, model string, bas
 
 func (a *sessionAccessor) sendPromptWithKindOpts(text string, model string, bashAllowlistAdditions []string, kind string, steerDegraded bool) error {
 	overrides := buildPromptOverrides(model, bashAllowlistAdditions, kind)
+	if a.commandOverrides != nil {
+		if overrides == nil {
+			overrides = &PromptOverrides{}
+		}
+		overrides.CommandContinuation = true
+		overrides = mergeCommandPromptOverrides(a.commandOverrides, overrides)
+	}
 	if steerDegraded {
 		// buildPromptOverrides returns nil when every field is a zero value; a
 		// degraded steer with no model and no kind still needs the carrier.

@@ -1,4 +1,4 @@
-# ATV Room Dressing Guide
+# Agent Team Visualizer Room Dressing Guide
 
 How the procedural office generator furnishes rooms. This guide defines the zone types, what belongs in each, and the placement rules that make generated rooms look intentional. Dressing templates ship as data in the theme pack (`dressing/*.json`, schema in [theme-pack-format.md](theme-pack-format.md)); this document is the design rationale those templates encode.
 

@@ -100,7 +100,7 @@ func (b *ApiBackend) performCompact(p performCompactParams) error {
 		if microOnly {
 			if err := conversation.CommitMicroCompaction(p.conv); err != nil {
 				b.emit(p.run, types.NormalizedEvent{Data: &types.CompactingEvent{Active: false, MessagesBefore: msgBefore, MessagesAfter: msgBefore, Strategy: p.trigger, MicroOnly: true}})
-				return fmt.Errorf("commit micro compaction: %w", err)
+				return err
 			}
 		} else {
 			recentFiles := compaction.ExtractRecentFiles(p.conv.Messages[cut.CutIndex:])
@@ -118,7 +118,7 @@ func (b *ApiBackend) performCompact(p performCompactParams) error {
 			}
 			if _, err := conversation.CommitCompaction(p.conv, cut, data, conversation.BuildCompactBoundaryMessage(meta)); err != nil {
 				b.emit(p.run, types.NormalizedEvent{Data: &types.CompactingEvent{Active: false, MessagesBefore: msgBefore, MessagesAfter: msgBefore, Strategy: p.trigger}})
-				return fmt.Errorf("commit compaction: %w", err)
+				return err
 			}
 		}
 	}

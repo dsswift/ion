@@ -1,17 +1,14 @@
 import { create } from 'zustand'
 import { useSessionStore } from '../../stores/sessionStore'
 import { editorDirForTab } from '../../stores/session-store-helpers'
-import { usePreferencesStore } from '../../preferences'
 import type { ResourceItem } from '../../../shared/types-engine'
 import {
   browserTabId,
   DISPATCH_SURFACE_ID,
-  fileTabId,
-  previewTabId,
+  isBrowserTab,
   terminalTabId,
   NOTIFICATION_SURFACE_ID,
   QUESTIONS_SURFACE_ID,
-  type FileTab,
   type NotificationTab,
   type LegacySurfacePersisted,
   type PinnableSingletonId,
@@ -19,6 +16,19 @@ import {
   type SurfaceConversationPersisted,
   type SurfaceTab,
 } from '../../../shared/studio-surface-types'
+import type { BrowserEmulationState, StudioBrowserTabInfo } from '../../../shared/studio-browser-types'
+import { bindAgentBrowserActions, pointerAfterOpen } from './surface-agent-browser'
+import { openFileTabIn, openPreviewTabIn } from './surface-file-tabs'
+import { applyConversationSelection, configureConversationSelection } from './surface-selection'
+import { configureSurfacePersist, flushSurfacePersist, scheduleSurfacePersist } from './surface-persist'
+
+export { flushSurfacePersist }
+
+/** Queue a debounced write of the surface state. */
+function schedulePersist(get: () => SurfaceState): void {
+  scheduleSurfacePersist(get)
+}
+import { createQuestionsSurfaceActions } from './surface-questions-actions'
 import {
   closeOthersTargets,
   closeToRightTargets,
@@ -31,12 +41,10 @@ import {
   emptySurfacePersisted,
   normalizePinnedTabs,
   parseSurfacePersisted,
-  serializeSurface,
 } from '../../../shared/studio-surface-persistence'
 import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 import { runtimePanel, unregisterRuntimePanel } from './runtime-panel-registry'
 
-const PERSIST_DEBOUNCE_MS = 300
 
 type ConversationMap = Record<string, SurfaceConversationPersisted>
 
@@ -78,7 +86,21 @@ export interface SurfaceState {
   openRuntimePanel(id: string, title: string): void
   updateRuntimePanelTitle(id: string, title: string): void
   removeRuntimePanel(id: string): void
-  openBrowserTab(url: string, mode: 'preview' | 'browse'): void
+  openBrowserTab(url: string, mode: 'preview' | 'browse', sessionMode?: 'isolated' | 'shared'): void
+  /** Move this conversation's agent browser link to an existing browser tab. */
+  linkAgentBrowser(instanceId: string): void
+  /**
+   * Return a conversation's agent-linked browser tab, creating one when absent.
+   *
+   * The conversation is always named by the caller and, in the tool path, comes
+   * from the engine session key rather than from anything an agent supplies. A
+   * background conversation is served exactly like the visible one.
+   */
+  ensureAgentBrowser(conversationId: string, url?: string): StudioBrowserTabInfo | null
+  /** Read a conversation's agent-linked browser tab without creating one. */
+  agentBrowser(conversationId: string): StudioBrowserTabInfo | null
+  /** Store (or clear with null) a browser tab's device emulation state. */
+  setBrowserEmulation(conversationId: string, instanceId: string, emulation: BrowserEmulationState | null): void
   openTerminalTab(cwd: string): void
   activateTab(id: string): void
   closeTab(id: string): void
@@ -86,7 +108,7 @@ export interface SurfaceState {
   closeToRight(id: string): void
   pinTab(id: PinnableSingletonId): void
   unpinTab(id: PinnableSingletonId): void
-  updateBrowserTab(id: string, patch: Partial<{ url: string; title: string; mode: 'preview' | 'browse' }>): void
+  updateBrowserTab(id: string, patch: Partial<{ url: string; title: string; mode: 'preview' | 'browse'; sessionMode: 'isolated' | 'shared' }>): void
   renameTerminalTab(id: string, title: string): void
   revealDiffFile(target: { filePath: string; staged: boolean }): void
   /** Synchronizer entry: a conversation gained an open guided workflow. */
@@ -95,7 +117,6 @@ export interface SurfaceState {
   retireQuestionsSurface(tabId: string): void
 }
 
-let persistTimer: ReturnType<typeof setTimeout> | null = null
 let hydrationPromise: Promise<void> | null = null
 
 export function resetSurfaceHydrationForTests(): void {
@@ -103,12 +124,8 @@ export function resetSurfaceHydrationForTests(): void {
   useSurfaceStore.setState({ hydrated: false })
 }
 
-function shouldRememberVisibility(): boolean {
-  return usePreferencesStore.getState().studioSurfaceSwitchMode === 'per-conversation'
-}
-
 function emptyConversation(): SurfaceConversationPersisted {
-  return { tabs: [], activeTabId: null, visible: false }
+  return { tabs: [], activeTabId: null, visible: false, agentBrowserInstanceId: null }
 }
 
 function visibleTabs(pinnedTabs: readonly PinnableSingletonId[], notification: NotificationTab | null, conversation: SurfaceConversationPersisted, hasQuestions = false): SurfaceTab[] {
@@ -117,7 +134,7 @@ function visibleTabs(pinnedTabs: readonly PinnableSingletonId[], notification: N
   // never place a needs-you surface leftmost. Window-transient — derived
   // from the coordinator state, never part of conversation.tabs.
   const forced: SurfaceTab[] = hasQuestions ? [{ kind: 'questions', id: QUESTIONS_SURFACE_ID }] : []
-  return [...forced, ...composeTabs(pinnedTabs, conversation.tabs), ...(notification ? [notification] : [])]
+  return [...forced, ...composeTabs(pinnedTabs, conversation.tabs, conversation.agentBrowserInstanceId), ...(notification ? [notification] : [])]
 }
 
 function globalTabIds(pinnedTabs: readonly PinnableSingletonId[], notification: NotificationTab | null): string[] {
@@ -125,11 +142,22 @@ function globalTabIds(pinnedTabs: readonly PinnableSingletonId[], notification: 
 }
 
 function normalizeConversation(pinnedTabs: readonly PinnableSingletonId[], notification: NotificationTab | null, conversation: SurfaceConversationPersisted, hasQuestions = false): SurfaceConversationPersisted {
-  const tabs = normalizeTabs(conversation.tabs.filter((tab) => !(tab.kind === 'singleton' && pinnedTabs.includes(tab.id as PinnableSingletonId))))
-  const composed = visibleTabs(pinnedTabs, notification, { ...conversation, tabs }, hasQuestions)
+  const tabs = normalizeTabs(
+    conversation.tabs.filter((tab) => !(tab.kind === 'singleton' && pinnedTabs.includes(tab.id as PinnableSingletonId))),
+    conversation.agentBrowserInstanceId,
+  )
+  // A pointer whose tab is gone is dropped here rather than carried as a
+  // dangling id: the strip would otherwise claim a link that nothing renders.
+  // Dropping is safe because closing the linked tab is exactly the case where
+  // the next agent call is supposed to create a fresh one.
+  const agentBrowserInstanceId = conversation.agentBrowserInstanceId && tabs.some((tab) => isBrowserTab(tab) && tab.instanceId === conversation.agentBrowserInstanceId)
+    ? conversation.agentBrowserInstanceId
+    : null
+  const composed = visibleTabs(pinnedTabs, notification, { ...conversation, tabs, agentBrowserInstanceId }, hasQuestions)
   return {
     tabs,
     visible: conversation.visible,
+    agentBrowserInstanceId,
     activeTabId: conversation.activeTabId && composed.some((tab) => tab.id === conversation.activeTabId)
       ? conversation.activeTabId
       : (composed[0]?.id ?? null),
@@ -142,20 +170,6 @@ function project(state: Pick<SurfaceState, 'pinnedTabs' | 'notification' | 'conv
   const current = normalizeConversation(state.pinnedTabs, state.notification, state.conversations[state.currentConversationId] ?? emptyConversation(), hasQuestions)
   const conversations = { ...state.conversations, [state.currentConversationId]: current }
   return { tabs: visibleTabs(state.pinnedTabs, state.notification, current, hasQuestions), activeTabId: current.activeTabId, conversations, visible: state.visible }
-}
-
-function schedulePersist(get: () => SurfaceState): void {
-  if (persistTimer) clearTimeout(persistTimer)
-  persistTimer = setTimeout(() => {
-    persistTimer = null
-    const state = get()
-    void window.ion.studioSetSetting('studioSurface', serializeSurface(state.pinnedTabs, state.notification, state.conversations))
-      .then((ok) => {
-        if (!ok) rWarn('studio.surface', 'surface persist rejected by validator', { conversation_count: Object.keys(state.conversations).length })
-        else rDebug('studio.surface', 'surface state persisted', { conversation_count: Object.keys(state.conversations).length, pinned_count: state.pinnedTabs.length })
-      })
-      .catch((err) => rWarn('studio.surface', 'surface persist failed', { error: String(err) }))
-  }, PERSIST_DEBOUNCE_MS)
 }
 
 function materializeFileBuffer(filePath: string, dir: string, tabId: string | undefined): string | null {
@@ -187,9 +201,17 @@ function materializeConversation(conversation: SurfaceConversationPersisted): Su
   return { ...conversation, tabs }
 }
 
-function teardown(tab: SurfaceTab): void {
+function teardown(tab: SurfaceTab, conversationId: string | null): void {
+  if (tab.kind === 'browser' && conversationId) {
+    // The body lives in main as a WebContentsView, so closing the descriptor
+    // is not enough — without this the guest keeps running, holding its
+    // session and painting over the shell.
+    void window.ion.studioBrowserViewClose(conversationId, tab.instanceId)
+      .catch((err) => rWarn('studio.surface', 'browser view close failed', { instance_id: tab.instanceId, error: String(err) }))
+    rDebug('studio.surface', 'browser tab closed, view destroyed', { instance_id: tab.instanceId })
+  }
   if (tab.kind === 'terminal') {
-    void window.ion.terminalDestroy?.(`studio:${tab.instanceId}`)
+    void window.ion.terminalDestroy?.(`${useSurfaceStore.getState().currentConversationId ?? 'studio'}:surface:${tab.instanceId}`)
     rDebug('studio.surface', 'terminal tab closed, pty destroyed', { instance_id: tab.instanceId })
   }
   if (tab.kind === 'runtime-panel') {
@@ -197,6 +219,31 @@ function teardown(tab: SurfaceTab): void {
     unregisterRuntimePanel(tab.id)
     entry?.close()
   }
+}
+
+/**
+ * Apply an update to a NAMED conversation, on screen or not.
+ *
+ * An agent acting in a background conversation must be able to open and drive
+ * its own browser tab without the operator switching to it. Writing only to
+ * the visible conversation would either refuse that work or, worse, apply it
+ * to whichever conversation the operator happens to be looking at.
+ *
+ * `project()` re-derives the visible strip, so an update to a background
+ * conversation changes its stored descriptors and leaves the rendered tab list
+ * untouched.
+ */
+export function updateConversationById(
+  set: (partial: Partial<SurfaceState>) => void,
+  get: () => SurfaceState,
+  conversationId: string,
+  update: (current: SurfaceConversationPersisted) => SurfaceConversationPersisted,
+): void {
+  const state = get()
+  const current = state.conversations[conversationId] ?? emptyConversation()
+  const conversations = { ...state.conversations, [conversationId]: normalizeConversation(state.pinnedTabs, state.notification, update(current)) }
+  set({ ...project({ ...state, conversations }), conversations })
+  schedulePersist(get)
 }
 
 function updateCurrent(set: (partial: Partial<SurfaceState>) => void, get: () => SurfaceState, update: (current: SurfaceConversationPersisted) => SurfaceConversationPersisted): void {
@@ -211,6 +258,15 @@ function updateCurrent(set: (partial: Partial<SurfaceState>) => void, get: () =>
   set({ ...project({ ...state, conversations, currentConversationId: id }), currentConversationId: id })
   schedulePersist(get)
 }
+
+// Selection lives in its own module (size cap); it composes over these two.
+// The flush needs the live store, which does not exist until create() runs.
+configureSurfacePersist(() => useSurfaceStore.getState())
+
+configureConversationSelection({
+  project: (state) => project(state as never) as never,
+  emptyConversation,
+})
 
 export const useSurfaceStore = create<SurfaceState>((set, get) => ({
   tabs: [],
@@ -232,6 +288,18 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
         const settings = await window.ion.studioGetSettings()
         const parsed = parseSurfacePersisted(settings?.studioSurface)
         const currentConversationId = useSessionStore.getState().activeTabId
+        // The restore side was entirely unlogged, so a tab that came back
+        // missing gave no way to tell whether it failed to persist, failed to
+        // parse, or was stored under a key this session never looks up.
+        const stored = parsed && 'conversations' in parsed ? parsed.conversations : {}
+        const mine = stored[currentConversationId ?? '']
+        rInfo('studio.surface', 'hydrating surface state', {
+          conversation_id: currentConversationId ?? 'none',
+          parsed: parsed !== null,
+          stored_conversations: Object.keys(stored).length,
+          my_record: mine ? `${mine.tabs.length} tabs${mine.visible ? ' +open' : ''}` : 'ABSENT',
+          my_tab_kinds: mine ? mine.tabs.map((tab: { kind: string }) => tab.kind).join(',') : '',
+        })
         if (!parsed) {
           const empty = emptySurfacePersisted()
           set({ ...project({ pinnedTabs: empty.pinnedTabs, notification: empty.notification, conversations: {}, currentConversationId, visible: false }), pinnedTabs: empty.pinnedTabs, notification: empty.notification, currentConversationId, hydrated: true })
@@ -241,14 +309,14 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
         if (parsed.version === 1) {
           const legacy = parsed as LegacySurfacePersisted
           const legacyVisible = settings?.studioLayout && typeof settings.studioLayout === 'object' && (settings.studioLayout as { surfaceVisible?: unknown }).surfaceVisible === true
-          const conversations = currentConversationId
-            ? { [currentConversationId]: { tabs: legacy.tabs, activeTabId: legacy.activeTabId, visible: legacyVisible } }
+          const conversations: Record<string, SurfaceConversationPersisted> = currentConversationId
+            ? { [currentConversationId]: { tabs: legacy.tabs, activeTabId: legacy.activeTabId, visible: legacyVisible, agentBrowserInstanceId: null } }
             : {}
           const pinnedTabs: PinnableSingletonId[] = ['plan']
           const local = currentConversationId ? conversations[currentConversationId]! : emptyConversation()
           for (const pin of pinnedTabs) local.tabs = local.tabs.filter((tab: SurfaceTab) => tab.id !== pin)
           if (currentConversationId) conversations[currentConversationId] = local
-          const state = { pinnedTabs, notification: null, conversations, currentConversationId, visible: shouldRememberVisibility() ? legacyVisible : false }
+          const state = { pinnedTabs, notification: null, conversations, currentConversationId, visible: legacyVisible }
           set({ ...project(state), pinnedTabs, currentConversationId, hydrated: true })
           rInfo('studio.surface', 'legacy surface migrated to conversation state', { tab_id: currentConversationId ?? '', tab_count: legacy.tabs.length })
           schedulePersist(get)
@@ -257,7 +325,10 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
         const conversations = Object.fromEntries(Object.entries(parsed.conversations).map(([id, conversation]) => [id, materializeConversation(conversation)]))
         const initial = { pinnedTabs: parsed.pinnedTabs, notification: parsed.notification, conversations, currentConversationId, visible: false }
         const current = currentConversationId ? conversations[currentConversationId] : null
-        initial.visible = shouldRememberVisibility() ? (current?.visible ?? false) : false
+        // Restoring the panel as the operator left it is correct in both
+        // modes: 'preserve' is about keeping it pinned across tab switches,
+        // not about discarding it across restarts.
+        initial.visible = current?.visible ?? false
         set({ ...project(initial), pinnedTabs: parsed.pinnedTabs, notification: parsed.notification, currentConversationId, hydrated: true })
         rDebug('studio.surface', 'surface hydrated', { conversation_count: Object.keys(conversations).length, pinned_count: parsed.pinnedTabs.length, tab_id: currentConversationId ?? '' })
       } catch (err) {
@@ -270,42 +341,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
     return hydrationPromise
   },
 
-  selectConversation: (currentConversationId) => {
-    const state = get()
-    const saved = currentConversationId ? state.conversations[currentConversationId]?.visible ?? false : false
-    let visible = shouldRememberVisibility() ? saved : state.visible
-
-    // Entering a conversation that owes the operator an answer ALWAYS lands on
-    // the Questions tab with the pane open, whatever the saved per-conversation
-    // focus or visibility mode said. A parked question is the one surface the
-    // run cannot continue without, and restoring "whatever was focused last
-    // time" hid it behind a Diff or Explorer tab — the operator then sees an
-    // idle conversation with no indication it is waiting on them.
-    //
-    // This is a re-entry default, not a lock: once here, they may switch to
-    // any other tab freely (nothing re-forces focus while they stay), and the
-    // next re-entry defaults to Questions again while the question is still
-    // outstanding.
-    const conversations = { ...state.conversations }
-    const owesAnswer = !!currentConversationId && state.questionsConversations.has(currentConversationId)
-    if (owesAnswer && currentConversationId) {
-      const current = conversations[currentConversationId] ?? emptyConversation()
-      conversations[currentConversationId] = { ...current, activeTabId: QUESTIONS_SURFACE_ID }
-      visible = true
-    }
-
-    set({
-      ...project({ ...state, conversations, currentConversationId, visible }),
-      currentConversationId,
-    })
-    rDebug('studio.surface', 'conversation selected', {
-      tab_id: currentConversationId ?? '',
-      active_surface_tab: currentConversationId ? (conversations[currentConversationId]?.activeTabId ?? '') : '',
-      visible,
-      mode: shouldRememberVisibility() ? 'per-conversation' : 'keep',
-      forced_questions: owesAnswer,
-    })
-  },
+  selectConversation: (currentConversationId) => applyConversationSelection(set, get, currentConversationId),
 
   setVisible: (visible) => {
     const state = get()
@@ -316,12 +352,15 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
       rDebug('studio.surface', 'canvas hide refused: questions workflow requires input', { tab_id: state.currentConversationId })
       return
     }
-    if (shouldRememberVisibility() && state.currentConversationId) {
+    // Recorded in BOTH modes. The mode decides how a tab SWITCH reads this
+    // (see surface-selection.ts), not whether the panel's state is ever
+    // written — and conflating the two meant 'preserve' always reopened the
+    // app with the panel closed, however the operator left it.
+    if (state.currentConversationId) {
       updateCurrent(set, get, (current) => ({ ...current, visible }))
       set({ visible })
     } else {
       set({ visible })
-      rDebug('studio.surface', 'live surface visibility changed without persistence', { visible, mode: 'keep' })
     }
   },
 
@@ -337,19 +376,13 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
   },
 
   openFileTab: (dir, tabId, filePath) => {
-    const id = fileTabId(filePath)
     const resolvedDir = materializeFileBuffer(filePath, dir, tabId)
     if (resolvedDir === null) return
-    updateCurrent(set, get, (current) => ({ ...current, tabs: current.tabs.some((tab) => tab.id === id) ? current.tabs : normalizeTabs([...current.tabs, { kind: 'file', id, filePath, dir: resolvedDir, tabId } as FileTab]), activeTabId: id }))
+    updateCurrent(set, get, (current) => openFileTabIn(current, filePath, resolvedDir, tabId))
   },
 
   openPreviewTab: (filePath, dataUrl) => {
-    const id = previewTabId(filePath)
-    updateCurrent(set, get, (current) => {
-      const old = current.tabs.find((tab) => tab.id === id)
-      const tabs = old?.kind === 'preview' ? current.tabs.map((tab) => tab.id === id ? { ...old, dataUrl: dataUrl ?? old.dataUrl } : tab) : normalizeTabs([...current.tabs, { kind: 'preview', id, filePath, dataUrl }])
-      return { ...current, tabs, activeTabId: id }
-    })
+    updateCurrent(set, get, (current) => openPreviewTabIn(current, filePath, dataUrl))
   },
 
   openResourceTab: (item) => {
@@ -409,11 +442,34 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
     updateCurrent(set, get, (current) => ({ ...current, tabs: current.tabs.filter((tab) => tab.id !== id), activeTabId: current.activeTabId === id ? nextActiveAfterClose(visibleTabs(get().pinnedTabs, get().notification, current), id) : current.activeTabId }))
   },
 
-  openBrowserTab: (url, mode) => {
+  openBrowserTab: (url, mode, sessionMode = 'shared') => {
     const instanceId = crypto.randomUUID()
     const id = browserTabId(instanceId)
-    updateCurrent(set, get, (current) => ({ ...current, tabs: normalizeTabs([...current.tabs, { kind: 'browser', id, instanceId, url, title: url, mode }]), activeTabId: id }))
+    updateCurrent(set, get, (current) => {
+      // The conversation's first browser tab becomes the agent's tab. Later
+      // tabs stay the operator's own — see surface-agent-browser.ts.
+      const agentBrowserInstanceId = pointerAfterOpen(current, instanceId)
+      return {
+        ...current,
+        tabs: normalizeTabs([
+          ...current.tabs,
+          { kind: 'browser', id, instanceId, url, title: url, mode, sessionMode },
+        ], agentBrowserInstanceId),
+        activeTabId: id,
+        agentBrowserInstanceId,
+      }
+    })
   },
+
+  ...bindAgentBrowserActions({
+    get: () => get(),
+    set,
+    fallbackConversationId: () => useSessionStore.getState().activeTabId,
+    updateConversation: (conversationId, update) => updateConversationById(set, get, conversationId, update),
+    normalize: (tabs, agentBrowserInstanceId) => normalizeTabs(tabs, agentBrowserInstanceId),
+    info: (message, fields) => rInfo('studio.surface', message, fields),
+    debug: (message, fields) => rDebug('studio.surface', message, fields),
+  }),
 
   openTerminalTab: (cwd) => {
     const instanceId = crypto.randomUUID()
@@ -465,22 +521,30 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
       rInfo('studio.surface', 'pinned surface tab closed', { surface_tab: id, tab_id: state.currentConversationId ?? '' })
       return
     }
-    teardown(tab)
+    if (tab.kind === 'terminal') {
+      const key = `${state.currentConversationId ?? 'studio'}:surface:${tab.instanceId}`
+      const activity = useSessionStore.getState().terminalActivities?.get(key)
+      if (activity?.active) {
+        rWarn('studio.surface', 'terminal tab close refused: terminal activity is running', { surface_tab: id, tab_id: state.currentConversationId ?? '', terminal_key: key })
+        return
+      }
+    }
+    teardown(tab, state.currentConversationId)
     updateCurrent(set, get, (current) => ({ ...current, tabs: current.tabs.filter((item) => item.id !== id), activeTabId: current.activeTabId === id ? nextActiveAfterClose(state.tabs, id) : current.activeTabId }))
   },
 
   closeOthers: (id) => {
     const state = get()
-    const targets = closeOthersTargets(state.tabs, id, [...globalTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID])
-    for (const tab of targets) teardown(tab)
+    const targets = closeOthersTargets(state.tabs, id, [...globalTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID]).filter((tab) => tab.kind !== 'terminal' || !useSessionStore.getState().terminalActivities?.get(`${state.currentConversationId ?? 'studio'}:surface:${tab.instanceId}`)?.active)
+    for (const tab of targets) teardown(tab, state.currentConversationId)
     const ids = new Set(targets.map((tab) => tab.id))
     updateCurrent(set, get, (current) => ({ ...current, tabs: current.tabs.filter((tab) => !ids.has(tab.id)), activeTabId: current.activeTabId && ids.has(current.activeTabId) ? id : current.activeTabId }))
   },
 
   closeToRight: (id) => {
     const state = get()
-    const targets = closeToRightTargets(state.tabs, id, [...globalTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID])
-    for (const tab of targets) teardown(tab)
+    const targets = closeToRightTargets(state.tabs, id, [...globalTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID]).filter((tab) => tab.kind !== 'terminal' || !useSessionStore.getState().terminalActivities?.get(`${state.currentConversationId ?? 'studio'}:surface:${tab.instanceId}`)?.active)
+    for (const tab of targets) teardown(tab, state.currentConversationId)
     const ids = new Set(targets.map((tab) => tab.id))
     updateCurrent(set, get, (current) => ({ ...current, tabs: current.tabs.filter((tab) => !ids.has(tab.id)), activeTabId: current.activeTabId && ids.has(current.activeTabId) ? id : current.activeTabId }))
   },
@@ -518,53 +582,11 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
     set((state) => ({ diffReveal: { filePath, staged, nonce: (state.diffReveal?.nonce ?? 0) + 1 } }))
   },
 
-  showQuestionsSurface: (tabId) => {
-    const state = get()
-    if (state.questionsConversations.has(tabId)) return
-    const questionsConversations = new Set(state.questionsConversations)
-    questionsConversations.add(tabId)
-    // Remember what was focused so completion can restore it (per
-    // conversation; only when Questions is about to steal focus).
-    const isCurrent = state.currentConversationId === tabId
-    const questionsPriorActive = isCurrent
-      ? { ...state.questionsPriorActive, [tabId]: state.activeTabId }
-      : state.questionsPriorActive
-    const conversations = { ...state.conversations }
-    if (isCurrent) {
-      const current = conversations[tabId] ?? emptyConversation()
-      conversations[tabId] = { ...current, activeTabId: QUESTIONS_SURFACE_ID }
-    }
-    const next = { ...state, questionsConversations, conversations }
-    set({
-      ...project(next),
-      questionsConversations,
-      questionsPriorActive,
-      // Open the pane: a guided wait hidden behind a closed canvas looks
-      // like a hang. Visibility is live-only (not persisted per the keep
-      // mode rules) — setVisible semantics preserved by direct set.
-      ...(isCurrent ? { visible: true } : {}),
-    })
-    rInfo('studio.surface', 'questions surface shown', { tab_id: tabId, focused: isCurrent })
-  },
-
-  retireQuestionsSurface: (tabId) => {
-    const state = get()
-    if (!state.questionsConversations.has(tabId)) return
-    const questionsConversations = new Set(state.questionsConversations)
-    questionsConversations.delete(tabId)
-    const prior = state.questionsPriorActive[tabId]
-    const questionsPriorActive = { ...state.questionsPriorActive }
-    delete questionsPriorActive[tabId]
-    const conversations = { ...state.conversations }
-    const current = conversations[tabId]
-    if (current && current.activeTabId === QUESTIONS_SURFACE_ID) {
-      // Restore the pre-Questions focus when still valid; otherwise the
-      // normal normalization fallback picks the first composed tab.
-      const composed = visibleTabs(state.pinnedTabs, state.notification, current, false)
-      const restored = prior && composed.some((tab) => tab.id === prior) ? prior : (composed[0]?.id ?? null)
-      conversations[tabId] = { ...current, activeTabId: restored }
-    }
-    set({ ...project({ ...state, questionsConversations, conversations }), questionsConversations, questionsPriorActive })
-    rInfo('studio.surface', 'questions surface retired', { tab_id: tabId, restored: prior ?? '' })
-  },
+  ...createQuestionsSurfaceActions({
+    get,
+    set,
+    project,
+    visibleTabs: (pinnedTabs, notification, conversation) => visibleTabs(pinnedTabs, notification, conversation),
+    emptyConversation,
+  }),
 }))

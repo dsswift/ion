@@ -76,6 +76,25 @@ export function broadcast(channel: string, ...args: unknown[]): void {
       // startTerminalOutputFlushing). Idempotent: early-returns if already running.
       startTerminalOutputFlushing()
     }
+  } else if (channel === IPC.TERMINAL_ACTIVITY) {
+    // Terminal Activity is main-process truth. The hidden Overlay owner and the
+    // Studio mirror both need the same transition; otherwise a long-lived
+    // process is visible only after switching presentations.
+    const activity = args[0] as import('../shared/terminal-activity').TerminalActivity
+    if (state.studioWindow && !state.studioWindow.isDestroyed()) {
+      state.studioWindow.webContents.send(channel, ...args)
+    }
+    if (state.remoteTransport && activity?.tabId) {
+      state.remoteTransport.send({
+        type: 'desktop_terminal_activity',
+        key: activity.key,
+        tabId: activity.tabId,
+        instanceId: activity.instanceId,
+        active: activity.active,
+        processLabel: activity.processLabel,
+        applications: activity.applications,
+      })
+    }
   } else if (channel === IPC.TERMINAL_EXIT) {
     if (state.studioWindow && !state.studioWindow.isDestroyed()) {
       state.studioWindow.webContents.send(channel, ...args)

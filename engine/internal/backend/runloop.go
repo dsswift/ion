@@ -61,6 +61,20 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	if provider == nil {
 		return
 	}
+	if opts.ResolvedSlashModelAlias != "" && opts.ResolvedSlashModelEffective != model {
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "slash command model fell back before persistence", map[string]any{
+			"model_alias":    opts.ResolvedSlashModelAlias,
+			"resolved_model": opts.ResolvedSlashModelEffective,
+			"serving_model":  model,
+			"run_id":         run.requestID,
+		})
+		// A selector badge means the command ran on that selector's resolved
+		// model. Once provider fallback selects a different model, retain only
+		// the actual serving model on the user turn; ModelFallbackEvent carries
+		// the requested selector and fallback relationship separately.
+		opts.ResolvedSlashModelAlias = ""
+		opts.ResolvedSlashModelEffective = model
+	}
 
 	// Image-generation models (ModelKind == "image") use a completely
 	// different API endpoint and have no conversation history, tools, or
@@ -160,6 +174,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			EntryID:             runUserEntryID,
 			SlashModelAlias:     opts.ResolvedSlashModelAlias,
 			SlashModelEffective: opts.ResolvedSlashModelEffective,
+			SlashFrontmatter:    opts.ResolvedSlashFrontmatter,
 		}})
 	}
 

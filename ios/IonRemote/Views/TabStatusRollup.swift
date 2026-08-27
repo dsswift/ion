@@ -15,12 +15,13 @@ import SwiftUI
 // `assets/design-system/status-cascade.json`. StatusCascadeParityTests asserts
 // this local declaration against that fixture.
 //
-// `bash-background` is reachable: the desktop projects
-// `backgroundShellCount` onto RemoteTabState, so a session holding for
-// background bash commands renders the pink dot here exactly as it does on the
-// desktop. `bash` (user-typed `!` bash) remains unreachable on iOS because the
-// wire does not carry `bashExecuting`. `unread` is desktop-derived and arrives
-// in each snapshot, so both clients can show the same completed-review state.
+// `bash-background` is reachable: the desktop projects both live terminal
+// activity (`hasRunningTerminal`) and engine background work
+// (`backgroundShellCount`) onto RemoteTabState, so either shell class renders
+// the pink dot here exactly as it does on the desktop. `bash` (user-typed `!`
+// bash) remains unreachable on iOS because the wire does not carry
+// `bashExecuting`. `unread` is desktop-derived and arrives in each snapshot,
+// so both clients can show the same completed-review state.
 //
 // iOS wire nuance vs. desktop: on the desktop, ExitPlanMode / AskUserQuestion
 // denials live on a separate `permissionDenied` field while `permissionQueue`
@@ -112,7 +113,9 @@ enum TabStatusRollup {
         if tab.status == .starting { return .init(priority: priorityStarting, state: .starting) }
         if tab.status == .waiting || tab.hasPendingWork == true { return .init(priority: priorityChildren, state: .children) }
         if tab.hasRunningChildren == true { return .init(priority: priorityChildren, state: .children) }
-        if (tab.backgroundShellCount ?? 0) > 0 { return .init(priority: priorityBashBackground, state: .bash) }
+        if tab.hasRunningTerminal == true || (tab.backgroundShellCount ?? 0) > 0 {
+            return .init(priority: priorityBashBackground, state: .bash)
+        }
         if planReady && (tab.status == .idle || tab.status == .completed) { return .init(priority: priorityPlanReady, state: .planReady) }
         if question && (tab.status == .idle || tab.status == .completed) { return .init(priority: priorityQuestion, state: .question) }
         if tab.unread == true { return .init(priority: priorityUnread, state: .unread) }

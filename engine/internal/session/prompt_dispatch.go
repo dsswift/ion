@@ -155,6 +155,12 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// which inner backend actually served it — to be treated as CLI-scoped and
 	// write plans to <project>/.ion/plans/.
 	opts := buildRunOptions(s, text, overrides)
+	m.inheritTemporaryAutoPlanWorkflow(s, key, &opts)
+	if s.temporaryAutoPlan != nil && s.temporaryAutoPlan.awaitingUser {
+		opts.TemporaryAutoFromPlan = true
+		s.temporaryAutoPlan.awaitingUser = false
+		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "temporary auto plan workflow resumed after user answer", map[string]any{"key": key, "plan_file": s.temporaryAutoPlan.planFile})
+	}
 
 	// An explicit send_prompt.model controls ordinary prompts. A resolved slash
 	// command with its own `model:` field overrides it below; command frontmatter
@@ -169,7 +175,13 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// it, matching the command-dispatch contract. Extension commands are NOT
 	// handled here — those route through SendCommand; this path owns the
 	// .md/skill/template resolution that was formerly a per-consumer fallback.
-	if overrides != nil && overrides.ResolveSlash {
+	if overrides != nil && overrides.ResolvedSlash != nil {
+		resolved := overrides.ResolvedSlash
+		if override, ok := m.fireSlashResolved(s, key, resolved); ok {
+			resolved.ExpandedBody = override
+		}
+		applyResolvedSlashToOpts(key, &opts, resolved)
+	} else if overrides != nil && overrides.ResolveSlash {
 		resolved, failedCmd := m.resolveSlashIntoOpts(s, key, &opts)
 		if !resolved {
 			s.clearRunIdentity()
@@ -256,6 +268,20 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// Detect plan mode reentry: plan mode is active, we already have a plan
 	// file path (preserved from a previous exit), and the session previously
 	// exited plan mode via ExitPlanMode.
+	if opts.TemporaryAutoFromPlan {
+		planFile := s.planFilePath
+		if s.temporaryAutoPlan != nil && s.temporaryAutoPlan.planFile != "" {
+			planFile = s.temporaryAutoPlan.planFile
+		}
+		m.beginTemporaryAutoPlanWorkflow(s, key, requestID, planFile)
+		opts.PlanMode = false
+		// This run is an auto-mode command within an already-active plan workflow;
+		// it must not offer a second EnterPlanMode handoff.
+		opts.ImplementationPhase = true
+		opts.PlanFilePath = s.planFilePath
+		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "temporary auto run configured", map[string]any{"key": key, "run_id": requestID, "plan_file": s.planFilePath})
+	}
+
 	planModeReentry := s.planMode && s.planFilePath != "" && s.hasExitedPlanMode
 	if planModeReentry {
 		opts.PlanModeReentry = true

@@ -17,7 +17,7 @@ import { IPC } from '../../shared/types'
 import { log as _log, warn as _warn } from '../logger'
 import { landAndRetireWorktree, syncWorktreeFromSource } from '../worktree/integrate'
 import { syncAllWorktrees } from '../worktree/sync-all'
-import { reattachWorktree } from '../worktree/relocate'
+import { reattachWorktree, discardWorktree } from '../worktree/relocate'
 import { appraiseBase } from '../worktree/base-staleness'
 import { lookupWorktreeRegistration } from '../worktree/inventory'
 import { getWorktreeInventory } from '../worktree/inventory-service'
@@ -65,6 +65,30 @@ export function registerWorktreeLifecycleIpc(): void {
       return result
     },
   )
+
+  ipcMain.handle(
+    IPC.GIT_WORKTREE_DISCARD,
+    async (_event, { repoPath, worktreePath, branchName, sourceBranch }: { repoPath: string; worktreePath: string; branchName: string; sourceBranch: string }) => {
+      log('discard request', {
+        repo_path: repoPath,
+        worktree_path: worktreePath,
+        branch: branchName,
+        source_branch: sourceBranch,
+      })
+      const result = await discardWorktree({ repoPath, worktreePath, branchName, sourceBranch })
+      if (!result.ok) {
+        warn('discard refused', { worktree_path: worktreePath, error: result.error ?? '' })
+      } else {
+        log('discard ok', {
+          worktree_path: worktreePath,
+          recovery_ref: result.recoveryRef ?? '',
+          pruned_benches: result.prunedBenchPaths?.length ?? 0,
+        })
+      }
+      return result
+    },
+  )
+
 
   ipcMain.handle(
     IPC.GIT_WORKTREE_SYNC,

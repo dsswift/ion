@@ -10,6 +10,7 @@ export const STUDIO_COMMANDS = [
   "tab.next",
   "tab.close",
   "tab.new",
+  "tab.newPicker",
   "tab.recentDirs",
   "panel.inbox",
   "panel.explorer",

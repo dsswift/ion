@@ -239,6 +239,12 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   // forwarding its pieces individually is what let the mirror's stale pin
   // state suppress the in-progress move.
   implementPlan: { minArgs: 1, maxArgs: 2, tabIdAt: 0 },
+  // Automation conversation command can create tabs, mutate grouping/pills,
+  // and submit. Only main's onAutomationCommand listener in the owner window
+  // ever invokes this (a mirror never receives that IPC event), but it is
+  // classified FORWARDED rather than omitted so a future call site cannot
+  // silently run it against stale mirror state.
+  runAutomationCommand: { minArgs: 1, maxArgs: 1 },
   // Card dismissal is a store clear PLUS an engine notify that releases the
   // engine's retention of the denial. Both must run in the owner window: a
   // mirror-local clear would leave the engine still re-publishing the denial,

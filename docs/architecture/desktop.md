@@ -19,6 +19,10 @@ Exactly one presentation is active at a time (`activeUi`). The Overlay renderer 
 
 These are presentations of one client, not two clients. The engine sees one Desktop consumer either way. Full architecture: [ADR-021](adr/021-studio-shell-mirror-store.md). Canonical names for the shared surfaces: [Ion Vocabulary](../vocabulary/index.md).
 
+## Studio Browser Surface
+
+The [Studio Browser Surface](../vocabulary/index.md#term-studio-browser-surface) is a Studio-only surface tab. It keeps a browser document mounted for each conversation so its history and session state survive conversation switches. Browser descriptors persist the URL, content mode, and session mode. Preview documents use the network shield by default. The main process owns partition policy and browser automation. See [ADR-030](adr/030-embedded-browser-surface.md).
+
 ## Process model
 
 ```

@@ -37,7 +37,7 @@ import { formatImplementDivider } from '../../../../../shared/clear-divider'
 
 const firstPath = '/plans/first.md'
 const secondPath = '/plans/second.md'
-/** The durable record the implement flow writes when the user approves. */
+/** Legacy live evidence written by the desktop when the user approves. */
 const firstImplementDivider = formatImplementDivider(new Date(), 'first')
 
 function pane(planFilePath: string | null, messages: Array<Record<string, unknown>>) {
@@ -107,7 +107,19 @@ describe('PlanSurface', () => {
     view.unmount()
   })
 
-  it('reports NOT implemented when the plan path cleared without an implement divider', async () => {
+  it('marks a reloaded plan implemented from durable implementation provenance', async () => {
+    sessionState.conversationPanes = new Map([['tab-1', pane(null, [
+      { role: 'system', content: '── Plan created', planFilePath: firstPath },
+      { role: 'user', content: 'Implement the following plan:\n\n# first plan', implementationPhase: true, timestamp: 123 },
+    ])]])
+    const view = render()
+    await act(async () => {})
+
+    expect(view.host.querySelector('[data-testid="plan-implementation-status"]')?.textContent).toContain('Implemented')
+    view.unmount()
+  })
+
+  it('reports NOT implemented when the plan path cleared without implementation evidence', async () => {
     // REGRESSION: `implemented` was derived as "a plan path is known from
     // history but instance.planFilePath is empty". The implement flow does
     // clear that field last, but so does every other path that nulls it, so

@@ -338,6 +338,9 @@ type RunOptions struct {
 	// consumer classifies the invocation (the same trivial check a client
 	// already does to drive its slash-command autocomplete) and sets this flag.
 	ResolveSlash bool `json:"resolveSlash,omitempty"`
+	// TemporaryAutoFromPlan is an in-process workflow marker. The session remains
+	// in plan mode while this one command run receives auto-mode tools.
+	TemporaryAutoFromPlan bool `json:"-"`
 
 	// ResolvedSlashCommand / ResolvedSlashArgs / ResolvedSlashSource carry the
 	// raw slash invocation after the session layer has resolved+expanded it.
@@ -364,6 +367,10 @@ type RunOptions struct {
 	// run after tier and provider resolution. Empty when no model was resolved.
 	// In-process run field.
 	ResolvedSlashModelEffective string `json:"-"`
+	// ResolvedSlashFrontmatter is complete parsed command frontmatter captured
+	// at resolution time. It is in-process only; persistence and typed events
+	// carry the durable provenance for history and live consumers.
+	ResolvedSlashFrontmatter map[string]any `json:"-"`
 
 	// PrePersistedUserEntryID identifies a user turn the session layer wrote with
 	// its active-run journal before backend dispatch. The API runloop reuses that

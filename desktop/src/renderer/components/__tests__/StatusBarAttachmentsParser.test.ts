@@ -316,8 +316,8 @@ describe('hasPlanFileBeenWritten', () => {
  * Plan Ready card: the same conversation kept its plan path while its card was
  * cleared by an unrelated lifecycle event.
  *
- * The implement divider is the durable record written at user approval, so it
- * is the evidence. Absence of a field is not evidence.
+ * The implementationPhase field is the durable engine record. A live implement
+ * divider is also positive evidence. Absence of a field is not evidence.
  */
 describe('isPlanImplementedInMessages', () => {
   const path = '/Users/x/.ion/plans/tidy-mixing-brook.md'
@@ -331,7 +331,25 @@ describe('isPlanImplementedInMessages', () => {
     expect(isPlanImplementedInMessages(messages, path)).toBe(true)
   })
 
-  it('is FALSE when the plan path was cleared but no implement divider exists', () => {
+  it('is true when a durable implementation turn follows that plan', () => {
+    const messages = [
+      { role: 'system', content: '── Plan created at 1:00 PM · tidy-mixing-brook ──', planFilePath: path },
+      { role: 'user', content: 'Implement the following plan:\n\n# Plan', implementationPhase: true },
+    ]
+    expect(isPlanImplementedInMessages(messages, path)).toBe(true)
+  })
+
+  it('does not use an older plan implementation for a newer plan', () => {
+    const newerPath = '/Users/x/.ion/plans/newer-plan.md'
+    const messages = [
+      { role: 'system', content: '── Plan created at 1:00 PM · tidy-mixing-brook ──', planFilePath: path },
+      { role: 'user', content: 'Implement the following plan:\n\n# Old', implementationPhase: true },
+      { role: 'system', content: '── Plan created at 2:00 PM · newer-plan ──', planFilePath: newerPath },
+    ]
+    expect(isPlanImplementedInMessages(messages, newerPath)).toBe(false)
+  })
+
+  it('is FALSE when the plan path was cleared but no implementation evidence exists', () => {
     // The exact false positive: history knows the plan, the instance field is
     // gone, and nothing was ever implemented.
     const messages = [

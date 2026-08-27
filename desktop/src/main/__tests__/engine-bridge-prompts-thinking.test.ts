@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildSendPromptMessage } from '../engine-bridge-prompts'
+import { buildSendCommandMessage, buildSendPromptMessage } from '../engine-bridge-prompts'
 
 /**
  * Wire-serialization tests for the per-prompt thinking effort.
@@ -44,5 +44,20 @@ describe('buildSendPromptMessage — thinking effort wire states', () => {
     expect(off.thinkingEffort).toBe('off')
     expect(absent.thinkingEffort).toBeUndefined()
     expect(off).not.toEqual(absent)
+  })
+})
+
+describe('buildSendCommandMessage — one-pass command options', () => {
+  it('carries run options on the first command request and omits duplicate text', () => {
+    const msg = buildSendCommandMessage({
+      key: 'tab-1', text: '/refresh-plan', model: 'standard', thinkingEffort: 'low',
+      planFilePath: '/plans/active.md', temporaryAutoFromPlan: true,
+    }, 'refresh-plan', '')
+    expect(msg).toMatchObject({
+      cmd: 'command', key: 'tab-1', command: 'refresh-plan', args: '',
+      model: 'standard', thinkingEffort: 'low', planFilePath: '/plans/active.md',
+      temporaryAutoFromPlan: true,
+    })
+    expect(msg.text).toBeUndefined()
   })
 })

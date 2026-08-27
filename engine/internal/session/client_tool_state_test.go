@@ -68,7 +68,7 @@ func TestClientTool_StateSnapshotLifecycle(t *testing.T) {
 		}
 		go func(reqID string) {
 			time.Sleep(5 * time.Millisecond)
-			mgr.HandleToolGateResponse(key, reqID, "", "", "answered", false)
+			mgr.HandleToolGateResponse(key, reqID, "", "", "answered", false, nil)
 		}(ev.GateRequestID)
 	})
 

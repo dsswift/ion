@@ -215,3 +215,53 @@ final class NewConversationRoutingTests: XCTestCase {
     }
 }
 
+
+extension NewConversationRoutingTests {
+    func testProjectProfileActionUsesDesktopProfile() {
+        let project = RemoteProject(
+            directory: "/project",
+            displayName: "Project",
+            isDefault: true,
+            managed: false,
+            profileAction: "profile",
+            profileId: "profile-1",
+            profileSource: "project",
+            hasOverride: true
+        )
+
+        XCTAssertEqual(
+            resolveNewConversationAction(for: project),
+            .profile(profileId: "profile-1")
+        )
+    }
+
+    func testProjectAskActionShowsPicker() {
+        let project = RemoteProject(
+            directory: "/project",
+            displayName: "Project",
+            isDefault: false,
+            managed: false,
+            profileAction: "ask",
+            profileId: nil,
+            profileSource: nil,
+            hasOverride: false
+        )
+
+        XCTAssertEqual(resolveNewConversationAction(for: project), .showPicker)
+    }
+
+    func testProjectWithMissingProfileUsesPicker() {
+        let project = RemoteProject(
+            directory: "/project",
+            displayName: "Project",
+            isDefault: false,
+            managed: true,
+            profileAction: "profile",
+            profileId: nil,
+            profileSource: "managed",
+            hasOverride: false
+        )
+
+        XCTAssertEqual(resolveNewConversationAction(for: project), .showPicker)
+    }
+}

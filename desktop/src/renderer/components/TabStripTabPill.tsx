@@ -7,6 +7,7 @@ import type { TabState } from '../../shared/types'
 import {
   waitingStateOfPane, isAnyEngineInstanceRunning, anyEngineInstanceHasRunningChildren,
   anyEngineInstanceHasRunningShells,
+  isAnyTerminalCommandRunning,
   formatRelativeShort, abbreviateProfileName, resolveTabModelFallback, getTabStatusColor,
 } from './TabStripShared'
 import { activeInstanceOfPane } from '../stores/conversation-instance'
@@ -114,7 +115,7 @@ export function TabPill({
   // the pink shell dot and the same close hard-block. Closing the tab kills
   // those shell processes, so an outstanding command blocks close exactly as a
   // running child does.
-  const anyInstanceHasRunningShells = anyEngineInstanceHasRunningShells(tab.id)
+  const anyInstanceHasRunningShells = anyEngineInstanceHasRunningShells(tab.id) || isAnyTerminalCommandRunning(tab.id)
   const _effectiveStatus = (anyInstanceRunning && !isRunning) ? 'running' as const : tab.status
   // Combined "must not close" predicate. Hard-blocks the X close
   // button below. Mirrors the action-layer guard in tab-slice.ts

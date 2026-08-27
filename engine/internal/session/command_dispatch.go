@@ -37,10 +37,8 @@ import (
 //     from the goroutine's panic-recovery backstop, so the exactly-one-result
 //     invariant holds even on panic. See dispatchCompact.
 //
-//   - Unknown commands (neither an extension command nor a built-in) emit
-//     CommandError="unknown_command" so consumers can route to whatever
-//     fallback they own (e.g. local `.md` template expansion). See the
-//     default arm in dispatchCommand for the canonical shape.
+//   - Command precedence is extension, built-in, markdown/skill, then final
+//     unknown_command. Consumers never need to retry the same invocation.
 //
 //   - Extension commands take priority over built-ins. An extension that
 //     registers a command named "clear" would shadow the engine's
@@ -52,7 +50,7 @@ import (
 // SendCommand is a thin wrapper that handles the session-not-found early
 // return; the real work is here so the file boundary tracks the logical
 // boundary (lookup vs. dispatch) rather than file-size pressure.
-func (m *Manager) dispatchCommand(s *engineSession, key, command, args string) {
+func (m *Manager) dispatchCommand(s *engineSession, key, command, args string, overrides *PromptOverrides) {
 	// Extension commands take precedence over built-ins. See the contract
 	// comment at the top of this file for the rationale.
 	if s.extGroup != nil && !s.extGroup.IsEmpty() {
@@ -75,8 +73,12 @@ func (m *Manager) dispatchCommand(s *engineSession, key, command, args string) {
 				Source:  "extension",
 			}
 			m.mu.Unlock()
-			ctx := m.newExtContext(s, key)
+			ctx := m.newCommandExtContext(s, key, overrides)
 			err := cmd.Execute(args, ctx)
+			// Do not clear pendingCommandOverrides here. A subprocess command can
+			// return its RPC result before the host's send_prompt notification goroutine
+			// runs. The explicit CommandContinuation marker consumes it; an unrelated
+			// prompt discards it at the SendPrompt boundary.
 			m.emitCommandResult(key, command, err)
 			return
 		}
@@ -93,12 +95,31 @@ func (m *Manager) dispatchCommand(s *engineSession, key, command, args string) {
 	case "export":
 		m.dispatchExport(s, key, args)
 	default:
-		// Unknown command — neither an extension command nor a built-in.
-		// Emit an engine_command_result with CommandError populated so
-		// consumers can route to whatever fallback they own. This
-		// replaces the silent log-only behavior the engine carried
-		// before commit b002a1cb, which left in-flight conversations
-		// hanging when a slash-command name didn't resolve.
+		// Registered commands and built-ins did not match. Resolve markdown
+		// commands and skills here, inside the engine, rather than returning an
+		// intermediate unknown_command and asking the client to submit the same
+		// invocation again with a leading slash.
+		resolved, found := resolveSlashCommand(command, args, s.config.WorkingDirectory, s.config.ClaudeCompat)
+		if found {
+			resolvedOverrides := clonePromptOverrides(overrides)
+			if resolvedOverrides == nil {
+				resolvedOverrides = &PromptOverrides{}
+			}
+			resolvedOverrides.ResolvedSlash = resolved
+			utils.LogWithFields(utils.LevelInfo, "session.slash", "command dispatcher resolved markdown command", map[string]any{
+				"key": key, "command": command, "source": resolved.Source,
+			})
+			go func() {
+				if err := m.SendPrompt(key, resolved.ExpandedBody, resolvedOverrides); err != nil {
+					utils.LogWithFields(utils.LevelError, "session.slash", "resolved command prompt failed", map[string]any{"key": key, "command": command, "error": err.Error()})
+					m.emitCommandResult(key, command, err)
+					return
+				}
+				m.emitCommandResult(key, command, nil)
+			}()
+			return
+		}
+
 		utils.LogWithFields(utils.LevelInfo, "session", "sendcommand: unknown command", map[string]any{"key": key, "command": command, "count": len(args)})
 		m.emit(key, types.EngineEvent{
 			Type:         "engine_command_result",

@@ -21,6 +21,7 @@ import { getRemoteTabStates } from "../remote/snapshot";
 import { processIncomingPrompt } from "../prompt-pipeline";
 import { isValidProjectPath } from "../ipc-validation";
 import { parseSlash } from "../slash-parse";
+import { getAutomationRuntime } from "../automation/runtime";
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log("main", msg, fields);
@@ -35,7 +36,7 @@ function warn(msg: string, fields?: Record<string, unknown>): void {
  * retried prompt is a slash invocation.
  *
  * Fresh prompts route through processIncomingPrompt, which dispatches the
- * slash as an extension command and (on unknown_command) re-submits with
+ * slash through the engine-owned command resolution chain and
  * resolveSlash=true. Retried prompts skip the full pipeline because the user
  * has already made the routing decision once — but if the original prompt
  * was a slash, the engine still needs to be told to resolve + expand it
@@ -262,6 +263,29 @@ export function registerSessionIpc(): void {
         log("prompt", { tab_id: tabId, request_id: requestId });
       }
 
+      if (!tabId) throw new Error("No tabId provided — prompt rejected");
+      if (!requestId)
+        throw new Error("No requestId provided — prompt rejected");
+
+      const slash = parseSlash(options.prompt);
+      const promptPayload = {
+        tabId,
+        requestId,
+        deliveryId: options.deliveryId ?? requestId,
+        prompt: options.prompt,
+        promptLength: options.prompt.length,
+        source: options.source ?? "desktop",
+        projectPath: options.projectPath,
+        worktreePath: options.projectPath,
+        permissionMode:
+          typeof sessionPlane.getTabStatus === "function"
+            ? (sessionPlane.getTabStatus(tabId)?.permissionMode ?? "")
+            : "",
+        isSlash: !!slash,
+        slashCommand: slash?.command ?? "",
+        slashArgs: slash?.args ?? "",
+      };
+
       if (!sessionPlane.hasTab(tabId)) {
         log("prompt: tab not found, auto-registering", { tab_id: tabId });
         sessionPlane.ensureTab(tabId);
@@ -302,19 +326,29 @@ export function registerSessionIpc(): void {
           projectPath: options.projectPath,
           runOptions: options,
           // Forward the engine-resolve-slash flag from RunOptions onto the
-          // pipeline. When set (the iOS slash re-submit bounced back through the
+          // pipeline. When set (the iOS legacy direct-prompt slash path bounced back through the
           // renderer, or a retry of a slash prompt), the pipeline skips the
           // extension-command dispatch and submits the raw `/command args`
           // straight to the engine with resolveSlash=true — re-dispatching would
           // loop (the text is still a slash). See processIncomingPrompt.
           resolveSlash: options.resolveSlash,
         });
+        await getAutomationRuntime().trigger(
+          { type: "prompt:submitted", payload: promptPayload },
+          options.automationCausation,
+        );
+        if (slash) {
+          await getAutomationRuntime().trigger(
+            { type: "conversation:slash", payload: promptPayload },
+            options.automationCausation,
+          );
+        }
         if (remoteDelivery) {
           state.remoteTransport?.sendToDevice(remoteDelivery.deviceId, {
-            type: "desktop_prompt_result",
             tabId: remoteDelivery.tabId,
             clientMsgId: requestId,
             status: "accepted",
+            type: "desktop_prompt_result",
           });
         }
       } catch (err: unknown) {
@@ -443,9 +477,10 @@ export function registerSessionIpc(): void {
   });
 
   // Renderer fires TAB_META_CHANGED whenever a tab field (title, customTitle,
-  // groupId) changes. The main process pushes a lightweight desktop_tab_meta
-  // delta to iOS immediately instead of waiting for the next 5 s snapshot poll.
-  // Payload: { tabId, title?, runCostUsd?, totalCostUsd?, groupId? }
+  // groupId, pillColor, or pillIcon) changes. The main process pushes a
+  // lightweight desktop_tab_meta delta to iOS immediately instead of waiting
+  // for the next 5 s snapshot poll. Null pill values explicitly clear an
+  // existing customization; absent values leave it unchanged.
   ipcMain.on(
     IPC.TAB_META_CHANGED,
     (
@@ -456,10 +491,20 @@ export function registerSessionIpc(): void {
         runCostUsd?: number;
         totalCostUsd?: number;
         groupId?: string | null;
+        pillColor?: string | null;
+        pillIcon?: string | null;
       },
     ) => {
       if (!state.remoteTransport) return;
-      const { tabId, title, runCostUsd, totalCostUsd, groupId } = payload;
+      const {
+        tabId,
+        title,
+        runCostUsd,
+        totalCostUsd,
+        groupId,
+        pillColor,
+        pillIcon,
+      } = payload;
       const delta: Record<string, unknown> = {
         type: "desktop_tab_meta",
         tabId,
@@ -473,11 +518,15 @@ export function registerSessionIpc(): void {
         delta.totalCostUsd = totalCostUsd;
       }
       if (groupId !== undefined) delta.groupId = groupId;
+      if (pillColor !== undefined) delta.pillColor = pillColor;
+      if (pillIcon !== undefined) delta.pillIcon = pillIcon;
       log("tab_meta_changed: pushing desktop_tab_meta", {
         tab_id: tabId,
         title: title ?? "-",
         cost: runCostUsd ?? totalCostUsd ?? "-",
         group: groupId ?? "-",
+        pill_color: pillColor ?? "-",
+        pill_icon: pillIcon ?? "-",
       });
       state.remoteTransport.send(delta as any);
     },

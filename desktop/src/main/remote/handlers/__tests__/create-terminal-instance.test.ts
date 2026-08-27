@@ -30,6 +30,8 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 const mocks = vi.hoisted(() => ({
   terminalCreate: vi.fn(),
   send: vi.fn(),
+  broadcast: vi.fn(),
+  openExternal: vi.fn(),
   logLines: [] as Array<{ msg: string; fields?: Record<string, unknown> }>,
 }))
 
@@ -101,11 +103,16 @@ function evaluateInRenderer(source: string): Promise<unknown> {
   return Promise.resolve(fn(globalsShim))
 }
 
+vi.mock('electron', () => ({ shell: { openExternal: (...args: unknown[]) => mocks.openExternal(...args) } }))
+vi.mock('../../../settings-store', () => ({ readSettings: vi.fn(() => ({})) }))
+vi.mock('../../../surface-launch', () => ({ resolveSurfacePlan: vi.fn(() => ({ activeUi: 'overlay' })) }))
+
 vi.mock('../../../state', () => ({
   state: {
     mainWindow: { webContents: { executeJavaScript: (src: string) => evaluateInRenderer(src) } },
     remoteTransport: { send: (...a: any[]) => mocks.send(...a), sendToDevice: vi.fn() },
   },
+  enterprisePolicyCache: { policy: null },
   terminalScrollback: new Map<string, string>(),
 }))
 
@@ -118,21 +125,32 @@ vi.mock('../../../logger', () => ({
   error: vi.fn(),
 }))
 
-vi.mock('../../../broadcast', () => ({ broadcast: vi.fn() }))
+vi.mock('../../../broadcast', () => ({ broadcast: (...args: unknown[]) => mocks.broadcast(...args) }))
 
 vi.mock('../../../terminal-manager-instance', () => ({
   terminalManager: {
     create: (...a: any[]) => mocks.terminalCreate(...a),
+    activitySnapshot: vi.fn(() => [{
+      key: 'tab-a:inst-1', tabId: 'tab-a', instanceId: 'inst-1', active: true,
+      processLabel: 'vite', processIds: [1], applications: [{
+        id: 'native:1:5173', kind: 'web', url: 'http://localhost:5173', port: 5173,
+        pid: 1, processName: 'node', source: 'native',
+      }],
+    }]),
     write: vi.fn(), resize: vi.fn(), destroy: vi.fn(),
   },
 }))
 
 import { state } from '../../../state'
-import { createTerminalInstanceOnTab, handleTerminalAddInstance } from '../terminal'
+import { resolveSurfacePlan } from '../../../surface-launch'
+import { createTerminalInstanceOnTab, handleOpenTerminalApplication, handleTerminalAddInstance } from '../terminal'
 
 beforeEach(() => {
   mocks.terminalCreate.mockReset()
   mocks.send.mockReset()
+  mocks.broadcast.mockReset()
+  mocks.openExternal.mockReset()
+  vi.mocked(resolveSurfacePlan).mockReturnValue({ activeUi: 'overlay' } as never)
   mocks.logLines.length = 0
   fakeStore = makeFakeStore({
     tabs: [
@@ -239,6 +257,31 @@ describe('createTerminalInstanceOnTab', () => {
   })
 })
 
+describe('handleOpenTerminalApplication', () => {
+  const command = { type: 'desktop_open_terminal_application', tabId: 'tab-a', url: 'http://localhost:5173' } as const
+
+  it('routes a verified application to Studio through IPC', async () => {
+    vi.mocked(resolveSurfacePlan).mockReturnValue({ activeUi: 'studio' } as never)
+
+    await handleOpenTerminalApplication(command)
+
+    expect(mocks.broadcast).toHaveBeenCalledWith('studio:focus-tab', 'tab-a')
+    expect(mocks.broadcast).toHaveBeenCalledWith('studio:open-web-application', {
+      tabId: command.tabId,
+      url: command.url,
+    })
+    expect(mocks.openExternal).not.toHaveBeenCalled()
+  })
+
+  it('opens a verified application externally from Overlay', async () => {
+    mocks.openExternal.mockResolvedValue('')
+
+    await handleOpenTerminalApplication(command)
+
+    expect(mocks.openExternal).toHaveBeenCalledWith(command.url)
+    expect(mocks.broadcast).not.toHaveBeenCalled()
+  })
+})
 describe('handleTerminalAddInstance (iOS command)', () => {
   it('echoes the created instance back to the device', async () => {
     await handleTerminalAddInstance({ type: 'desktop_terminal_add_instance', tabId: 'tab-a' } as any)

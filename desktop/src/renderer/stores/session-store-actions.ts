@@ -31,7 +31,7 @@ export interface StoreActions extends EngineSubmitActions {
    * The single plan-approval → implementation pipeline (implement-slice.ts):
    * optional unpin, denial-card dismissal, implement divider, per-tab mode
    * flip to 'auto', model split switch, in-progress auto-move, plan read,
-   * prompt submit. Owner-executed everywhere — the ATV mirror forwards it.
+   * prompt submit. Owner-executed everywhere — the Studio mirror forwards it.
    */
   implementPlan: (
     tabId: string,
@@ -102,7 +102,8 @@ export interface StoreActions extends EngineSubmitActions {
   toggleTerminal: (tabId: string) => void;
   runInTerminal: (tabId: string, cmd: string) => void;
   consumeTerminalPendingCommand: (key: string) => string | undefined;
-  createTerminalTab: (dir?: string) => Promise<string>;
+  /** `adoptTabId` is supplied only by boot restoration; see resumeSession. */
+  createTerminalTab: (dir?: string, adoptTabId?: string) => Promise<string>;
   addTerminalInstance: (tabId: string, kind: string, cwd?: string) => string;
   removeTerminalInstance: (tabId: string, instanceId: string) => void;
   selectTerminalInstance: (tabId: string, instanceId: string) => void;
@@ -168,12 +169,22 @@ export interface StoreActions extends EngineSubmitActions {
   forkTab: (sourceTabId: string) => Promise<string | null>;
   rewindToMessage: (tabId: string, messageId: string) => void;
   forkFromMessage: (tabId: string, messageId: string) => Promise<string | null>;
+  /**
+   * Open a conversation in a tab.
+   *
+   * `adoptTabId` is the persisted tab id, supplied ONLY by boot restoration.
+   * Restoring under a fresh id orphans everything keyed by the old one — the
+   * Studio Surface stores browser and terminal tabs per conversation id, so a
+   * new id every launch means the panel comes back empty. The History Picker
+   * omits it, because opening a past conversation is a genuinely new tab.
+   */
   resumeSession: (
     sessionId: string,
     title?: string,
     projectPath?: string,
     customTitle?: string | null,
     encodedDir?: string | null,
+    adoptTabId?: string,
   ) => Promise<string>;
   resumeSessionWithChain: (
     sessionId: string,

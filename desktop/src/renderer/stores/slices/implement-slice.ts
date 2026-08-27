@@ -222,6 +222,16 @@ export function createImplementSlice(set: StoreSet, get: StoreGet): Partial<Stat
         ? `Implement the following plan:\n\n${planContent}`
         : 'Implement the plan.'
       rInfo('implement', 'submitting implement prompt', { tab_id: tabId.slice(0, 8), prompt_len: implementPrompt.length })
+      void window.ion.triggerPlanImplemented({
+        tabId,
+        worktreePath: tab0.worktree?.worktreePath ?? '',
+        repoPath: tab0.worktree?.repoPath ?? '',
+        branchName: tab0.worktree?.branchName ?? '',
+        sourceBranch: tab0.worktree?.sourceBranch ?? '',
+        planFilePath: planFilePath ?? '',
+        clearContext,
+        source: 'renderer',
+      }).catch((err) => rWarn('implement', 'plan implemented automation trigger failed', { tab_id: tabId.slice(0, 8), error: String(err) }))
       get().submit(tabId, implementPrompt, { implementationPhase: true })
     },
   }

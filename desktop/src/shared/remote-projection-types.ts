@@ -83,6 +83,9 @@ export interface ProjectedTerminalInstance {
   kind: string
   readOnly: boolean
   cwd: string
+  isRunning?: boolean
+  processLabel?: string
+  applications?: import('./terminal-activity').TerminalWebApplication[]
 }
 
 /**
@@ -119,6 +122,8 @@ export interface ProjectedRendererTab {
   activeConversationInstanceId?: string | null
   terminalInstances?: ProjectedTerminalInstance[]
   activeTerminalInstanceId?: string | null
+  hasRunningTerminal?: boolean
+  terminalApplications?: import('./terminal-activity').TerminalWebApplication[]
   groupId: string | null
   modelOverride: string | null
   groupPinned: boolean

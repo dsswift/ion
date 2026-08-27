@@ -1,6 +1,6 @@
-import type { Message } from '../../shared/types'
-import type { PersistedConversationInstance } from '../../shared/types-persistence'
-import { isExtensionErrorMessage } from './serialize-conversation-pane'
+import type { Message } from "../../shared/types";
+import type { PersistedConversationInstance } from "../../shared/types-persistence";
+import { isExtensionErrorMessage } from "./serialize-conversation-pane";
 
 /**
  * Filter persisted rows that must not rehydrate: extension-error system
@@ -9,16 +9,21 @@ import { isExtensionErrorMessage } from './serialize-conversation-pane'
  * suppress-later path never collapsed them). Shared by the restore path and
  * the lazy external-content load so both drop the same rows.
  */
-const LEGACY_BOOTSTRAP_PREFIX = 'Session bootstrapped:'
+const LEGACY_BOOTSTRAP_PREFIX = "Session bootstrapped:";
 export function filterRestorablePersistedMessages(
-  saved: NonNullable<PersistedConversationInstance['messages']>,
-): NonNullable<PersistedConversationInstance['messages']> {
+  saved: NonNullable<PersistedConversationInstance["messages"]>,
+): NonNullable<PersistedConversationInstance["messages"]> {
   return saved.filter((m) => {
-    if (isExtensionErrorMessage({ role: m.role || '', content: m.content || '' })) return false
+    if (
+      isExtensionErrorMessage({ role: m.role || "", content: m.content || "" })
+    )
+      return false;
     const isLegacyBootstrap =
-      m.role === 'harness' && (m.content || '').startsWith(LEGACY_BOOTSTRAP_PREFIX) && !m.dedupKey
-    return !isLegacyBootstrap
-  })
+      m.role === "harness" &&
+      (m.content || "").startsWith(LEGACY_BOOTSTRAP_PREFIX) &&
+      !m.dedupKey;
+    return !isLegacyBootstrap;
+  });
 }
 
 /**
@@ -29,16 +34,16 @@ export function filterRestorablePersistedMessages(
  * the eager and lazy paths.
  */
 export function mapPersistedMessages(
-  saved: NonNullable<PersistedConversationInstance['messages']>,
+  saved: NonNullable<PersistedConversationInstance["messages"]>,
 ): Message[] {
   return saved.map((m) => ({
     id: crypto.randomUUID(),
-    role: m.role as Message['role'],
-    content: m.content || '',
+    role: m.role as Message["role"],
+    content: m.content || "",
     toolName: m.toolName,
     toolId: m.toolId,
     toolInput: m.toolInput,
-    toolStatus: m.toolStatus as Message['toolStatus'],
+    toolStatus: m.toolStatus as Message["toolStatus"],
     timestamp: m.timestamp,
     dedupKey: m.dedupKey,
     // planFilePath keeps plan-lifecycle divider rows clickable after restart.
@@ -49,6 +54,7 @@ export function mapPersistedMessages(
     slashModelAlias: m.slashModelAlias,
     slashModelEffective: m.slashModelEffective,
     implementationPhase: m.implementationPhase,
+    slashFrontmatter: m.slashFrontmatter,
     // How the turn was authored. The desktop's own content file is what a
     // conversation is rebuilt from on restart, so a field missing HERE is
     // missing from the transcript forever after — which is how a Guided
@@ -60,6 +66,6 @@ export function mapPersistedMessages(
     // Seal restored assistant messages so incoming engine_text_delta events
     // do not append to historical content. Historical messages are
     // definitionally complete; the engine writes a new bubble next turn.
-    ...(m.role === 'assistant' ? { sealed: true } : {}),
-  }))
+    ...(m.role === "assistant" ? { sealed: true } : {}),
+  }));
 }

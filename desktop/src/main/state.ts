@@ -7,8 +7,8 @@ import type { RemoteWorktreeState } from "./remote/protocol-worktree";
 import { EngineBridge } from "./engine-bridge";
 import { EngineControlPlane } from "./engine-control-plane";
 import { wireEarlyStopPolicy } from "./early-stop-policy";
-import { wireToolGateResponder } from "./tool-gate-responder";
 import { PairingManager } from "./remote/pairing";
+import { setStudioBrowserWindowResolver } from './studio-browser-window-resolver';
 import { RelayDiscovery } from "./remote/discovery";
 
 export const DEBUG_MODE = process.env.Ion_DEBUG === "1";
@@ -34,13 +34,6 @@ wireEarlyStopPolicy(
   engineBridge,
 );
 
-// Wire the tool-gate responder: the desktop's half of the engine's client
-// tool gate. Answers engine_tool_gate_request events — bench containment
-// policy (allow/deny) and the three bench client tools (attribution,
-// member-file, resolution-history). The engine keeps the generic worktree
-// isolation; the bench rules belong to the client that owns the bench.
-// See desktop/src/main/tool-gate-responder.ts.
-wireToolGateResponder(engineBridge);
 export const pairingManager = new PairingManager();
 export const relayDiscovery = new RelayDiscovery();
 
@@ -117,6 +110,8 @@ export const state: MutableState = {
   remoteWorktreeStates: new Map(),
 };
 
+setStudioBrowserWindowResolver(() => state.studioWindow);
+
 /**
  * Cached model list from engine, populated by LIST_MODELS IPC and included in
  * remote snapshots.
@@ -180,7 +175,7 @@ export const enterprisePolicyCache = {
  *            stale (mid-session registration race). Dispatch anyway; the
  *            engine resolves the live table at dispatch time and emits
  *            engine_command_result with CommandError='unknown_command' if it
- *            disclaims the name. The pipeline falls through to `.md`
+ *            resolves the name through its complete command precedence chain, including `.md`
  *            expansion on that signal."
  *
  * Snapshot semantics: every event REPLACES the prior entry for the key. An

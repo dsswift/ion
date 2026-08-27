@@ -174,6 +174,12 @@ extension DiagnosticLog {
         case .requestTerminalSnapshot(let tabId):
             log("CMD: requestTerminalSnapshot tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
 
+        case .openTerminalApplication(let tabId, let url):
+            log("open terminal application command", tag: "ipc", level: .info, fields: [
+                "tab_id": tabId,
+                "url": url,
+            ])
+
         case .requestAgentState(let tabId, let instanceId):
             log("CMD: requestAgentState tabId=\(tabId.prefix(8)) inst=\(instanceId?.prefix(8) ?? "nil")", tag: "ipc", level: .info)
         case .requestContextBreakdown(let tabId):

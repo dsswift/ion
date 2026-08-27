@@ -105,6 +105,57 @@ final class NormalizedEventTerminalTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testDecodeTerminalActivityAndApplyParentRollup() throws {
+        let json = """
+        {"type":"desktop_terminal_activity","tabId":"t1","instanceId":"inst1","active":true,
+        "processLabel":"vite","applications":[{"id":"native:42:5173","kind":"web",
+        "url":"http://localhost:5173","port":5173,"pid":42,"processName":"node","source":"native"}]}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        guard case let .terminalActivity(tabId, instanceId, active, processLabel, applications) = event else {
+            return XCTFail("Expected terminalActivity, got \(event)")
+        }
+        XCTAssertEqual(tabId, "t1")
+        XCTAssertEqual(instanceId, "inst1")
+        XCTAssertTrue(active)
+        XCTAssertEqual(processLabel, "vite")
+        XCTAssertEqual(applications.first?.url, "http://localhost:5173")
+
+        let tabJSON = """
+        {"id":"t1","title":"Conversation","status":"idle","workingDirectory":"/tmp",
+        "permissionMode":"auto","permissionQueue":[],"terminalInstances":[{"id":"inst1",
+        "label":"Shell","kind":"user","readOnly":false,"cwd":"/tmp"}]}
+        """.data(using: .utf8)!
+        let viewModel = SessionViewModel()
+        viewModel.tabs = [try decoder.decode(RemoteTabState.self, from: tabJSON)]
+        viewModel.terminalInstances["t1"] = viewModel.tabs[0].terminalInstances
+        viewModel.handleEvent(event)
+
+        XCTAssertEqual(viewModel.tabs[0].hasRunningTerminal, true)
+        XCTAssertEqual(viewModel.tabs[0].resolvedTerminalApplications.first?.port, 5173)
+        XCTAssertEqual(viewModel.terminalInstances["t1"]?.first?.processLabel, "vite")
+        XCTAssertEqual(TabStatusRollup.classify(viewModel.tabs[0]).state, .bash)
+    }
+
+    func testTerminalActivityRoundTripSupportsIdleWithoutApplications() throws {
+        let original = RemoteEvent.terminalActivity(
+            tabId: "t1", instanceId: "inst1", active: false,
+            processLabel: nil, applications: []
+        )
+        let data = try encoder.encode(original)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        XCTAssertEqual(object?["type"] as? String, "desktop_terminal_activity")
+
+        guard case let .terminalActivity(_, _, active, processLabel, applications) =
+            try decoder.decode(RemoteEvent.self, from: data) else {
+            return XCTFail("Expected terminalActivity")
+        }
+        XCTAssertFalse(active)
+        XCTAssertNil(processLabel)
+        XCTAssertTrue(applications.isEmpty)
+    }
+
     // MARK: - Round-trip terminal events
 
     func testRoundTripTerminalOutput() throws {
@@ -243,17 +294,36 @@ final class NormalizedEventTerminalTests: XCTestCase {
         }
     }
 
+    func testEncodeOpenTerminalApplication() throws {
+        let cmd = RemoteCommand.openTerminalApplication(
+            tabId: "t1", url: "http://localhost:5173"
+        )
+        let data = try encoder.encode(cmd)
+        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        XCTAssertEqual(json["type"] as? String, "desktop_open_terminal_application")
+        XCTAssertEqual(json["tabId"] as? String, "t1")
+        XCTAssertEqual(json["url"] as? String, "http://localhost:5173")
+
+        guard case let .openTerminalApplication(tabId, url) = try decoder.decode(RemoteCommand.self, from: data) else {
+            return XCTFail("Expected openTerminalApplication")
+        }
+        XCTAssertEqual(tabId, "t1")
+        XCTAssertEqual(url, "http://localhost:5173")
+    }
+
     // MARK: - RemoteTabState terminal fields
 
     func testDecodeRemoteTabStateWithTerminalFields() throws {
         let json = """
-        {"id":"t1","title":"Terminal","customTitle":null,"status":"idle","workingDirectory":"/tmp","permissionMode":"auto","permissionQueue":[],"lastMessage":null,"contextTokens":null,"isTerminalOnly":true,"terminalInstances":[{"id":"i1","label":"zsh","kind":"user","readOnly":false,"cwd":"/tmp"}],"activeTerminalInstanceId":"i1"}
+        {"id":"t1","title":"Terminal","customTitle":null,"status":"idle","workingDirectory":"/tmp","permissionMode":"auto","permissionQueue":[],"lastMessage":null,"contextTokens":null,"isTerminalOnly":true,"hasRunningTerminal":true,"terminalInstances":[{"id":"i1","label":"zsh","kind":"user","readOnly":false,"cwd":"/tmp","applications":[{"id":"native:42:5173","kind":"web","url":"http://localhost:5173","port":5173,"pid":42,"processName":"node","source":"native"}]}],"activeTerminalInstanceId":"i1"}
         """.data(using: .utf8)!
         let tab = try decoder.decode(RemoteTabState.self, from: json)
         XCTAssertEqual(tab.isTerminalOnly, true)
         XCTAssertEqual(tab.terminalInstances?.count, 1)
         XCTAssertEqual(tab.terminalInstances?[0].id, "i1")
         XCTAssertEqual(tab.activeTerminalInstanceId, "i1")
+        XCTAssertEqual(tab.hasRunningTerminal, true)
+        XCTAssertEqual(tab.resolvedTerminalApplications.first?.url, "http://localhost:5173")
     }
 
     func testDecodeRemoteTabStateWithoutTerminalFields() throws {

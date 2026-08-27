@@ -348,7 +348,9 @@ A notification message from the engine.
 
 #### engine_error
 
-An error from the engine. Carries structured classification when the source error provides it (e.g., provider errors include HTTP status and retry timing). All fields except `type` and `message` are optional -- clients that only read `message` continue to work unchanged.
+An error signal from the engine. It carries structured classification when the source error provides it (for example, provider errors include HTTP status and retry timing). All fields except `type` and `message` are optional -- clients that only read `message` continue to work unchanged.
+
+`engine_error` is not a run-lifecycle transition. The engine can emit it for an internal retry step and continue the active run. Consumers must use `engine_status`, `engine_dead`, and completion events to determine whether a run is active or terminal.
 
 | Field           | Type    | Description                                    |
 |-----------------|---------|------------------------------------------------|
@@ -562,6 +564,7 @@ Two kinds, distinguished by `gateKind`:
 | `gateToolInput` | object | Tool input parameters                                           |
 | `gateCwd`       | string | Working directory the tool call would execute in                |
 | `gateSiblingTools` | string[] | Names of the other tool calls in the same model turn (turn-mates run concurrently), so a policy can evaluate turn isolation |
+| `gateOrigin`    | string | Who asked: `"model"` for the normal tool loop, `"extension"` for an extension's `ctx.callTool()`. Absent means `"model"`. A client that trusts harness code more than an LLM reads this — for example, to let extension code relax an isolation setting that a model may only tighten. |
 | `gateHumanWait` | boolean | Tool kind only. Historical: current engines never set it — a human-wait tool parks the run (retained `PermissionDenial` + idle session) instead of emitting a gate request. Retained so events from older engines still decode. |
 
 #### engine_client_tool_state

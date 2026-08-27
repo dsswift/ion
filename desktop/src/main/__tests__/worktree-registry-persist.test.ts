@@ -26,7 +26,7 @@ import {
   setWorktreeStage,
   setWorktreeBase,
   unregisterWorktree,
-  advanceWorktreeStageOnPinChange,
+  migrateWorktreeStageOnPinAdvance,
   lookupWorktreeTitle,
   lookupWorktreeLandedAt,
   lookupWorktreeStage,
@@ -143,23 +143,23 @@ describe('setWorktreeStage', () => {
   })
 })
 
-describe('advanceWorktreeStageOnPinChange', () => {
-  it('auto-transitions bug -> test', () => {
+describe('migrateWorktreeStageOnPinAdvance', () => {
+  it('migrates legacy bug stage to test', () => {
     registerWorktree({ ...REG_ARGS, worktreePath: '/wt/i' })
     setWorktreeStage('/wt/i', 'bug')
-    expect(advanceWorktreeStageOnPinChange('/wt/i')).toBe(true)
+    expect(migrateWorktreeStageOnPinAdvance('/wt/i')).toBe(true)
     expect(lookupWorktreeStage('/wt/i')).toBe('test')
   })
 
-  it('no-ops for a stage without onPinAdvance', () => {
+  it('keeps non-bug stages unchanged', () => {
     registerWorktree({ ...REG_ARGS, worktreePath: '/wt/j' })
     setWorktreeStage('/wt/j', 'build')
-    expect(advanceWorktreeStageOnPinChange('/wt/j')).toBe(true)
+    expect(migrateWorktreeStageOnPinAdvance('/wt/j')).toBe(true)
     expect(lookupWorktreeStage('/wt/j')).toBe('build')
   })
 
   it('returns true when no entry or no stage', () => {
-    expect(advanceWorktreeStageOnPinChange('/wt/none')).toBe(true)
+    expect(migrateWorktreeStageOnPinAdvance('/wt/none')).toBe(true)
   })
 })
 

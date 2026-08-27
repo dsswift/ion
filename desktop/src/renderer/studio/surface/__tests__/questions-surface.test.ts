@@ -30,6 +30,12 @@ beforeEach(() => {
     studioSetSetting,
     studioGetSettings: vi.fn().mockResolvedValue(null),
     terminalDestroy: vi.fn().mockResolvedValue(undefined),
+    studioBrowserViewEnsure: vi.fn().mockResolvedValue(true),
+    studioBrowserViewBounds: vi.fn(),
+    studioBrowserViewNavigate: vi.fn().mockResolvedValue(true),
+    studioBrowserViewAction: vi.fn().mockResolvedValue(true),
+    studioBrowserViewClose: vi.fn().mockResolvedValue(true),
+    onStudioBrowserViewState: vi.fn(() => () => undefined),
   }
   resetSurfaceHydrationForTests()
   useSurfaceStore.setState({

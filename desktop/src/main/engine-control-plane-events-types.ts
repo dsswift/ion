@@ -7,11 +7,14 @@
 // './engine-control-plane-events'` sites continue to resolve unchanged.
 import type { EngineBridge } from './engine-bridge'
 import type { TabStatus } from '../shared/types'
+import type { AutomationCausation } from '../shared/types-automation'
 
 export interface TabEntry {
   tabId: string
   status: TabStatus
   activeRequestId: string | null
+  /** Causation inherited by the active automation-started run until terminal status. */
+  automationCausation?: AutomationCausation
   conversationId: string | null
   engineSessionStarted: boolean
   lastActivityAt: number
@@ -20,8 +23,7 @@ export interface TabEntry {
    * Number of prompts submitted since the last freshness checkpoint.
    *
    * A "checkpoint" is any event that semantically restores the tab to
-   * "fresh blank session" status for the purpose of the slash-command
-   * plan→auto auto-switch guard (`isFirstPromptForTab` in slash-classify.ts).
+   * "fresh blank session" status for the purpose of the slash-command lifecycle.
    * Two events advance this checkpoint:
    *
    *   1. `resetTabSession` — full session reset (stops the engine session,
@@ -56,7 +58,7 @@ export interface TabEntry {
    * Without this flag the guard cannot tell A from B — both have
    * `promptCountSinceCheckpoint === 0` and `runOptionsSessionId` set.
    * With the flag: A has `clearedSinceLastPrompt === true`, so the guard
-   * returns "fresh" and the plan→auto switch fires. B has the flag
+   * identifies a fresh conversation. B has the flag
    * `false` (never set after a restore), so the guard returns "not fresh".
    */
   clearedSinceLastPrompt: boolean
@@ -78,9 +80,7 @@ export interface TabEntry {
    *      `tab.conversationId`. The renderer then sends that minted id as
    *      `runOptions.sessionId`, so to the freshness guard it looks
    *      IDENTICAL to scenario B (count 0 + sessionId set) — yet it is
-   *      genuinely fresh. The `isFirstPromptForTab` guard must treat C as
-   *      fresh (so a first-prompt slash command flips plan→auto) while
-   *      still treating B as resumed.
+   *      genuinely fresh. The session keeps this distinction for restore and freshness behavior.
    *
    * The guard therefore keys "resumed ⇒ not fresh" off THIS flag, not off
    * the mere presence of `runOptionsSessionId` (which is set in both B and

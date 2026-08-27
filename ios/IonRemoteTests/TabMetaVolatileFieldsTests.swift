@@ -15,6 +15,12 @@ import XCTest
 /// Red on unfixed code: the decode test fails to find the new fields (enum
 /// case lacked them), and the heal test never fires loadConversation because
 /// handleTabMeta neither stored the fingerprint nor ran the reconcile.
+///
+/// pillColor/pillIcon coverage (below, "Pill color / icon" section) pins the
+/// same additive/no-clobber contract for the desktop's
+/// `desktop_set_pill_color` / `desktop_set_pill_icon` acks, which flow back
+/// through this same delta so the tab row picks them up without a full
+/// snapshot reship.
 @MainActor
 final class TabMetaVolatileFieldsTests: XCTestCase {
     private let decoder = JSONDecoder()
@@ -26,7 +32,7 @@ final class TabMetaVolatileFieldsTests: XCTestCase {
         {"type":"desktop_tab_meta","tabId":"t1","convFingerprint":"a1:5,a2:8","lastActivityAt":1700000000123,"lastMessage":"latest reply","messageCount":7}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .tabMeta(let tabId, let title, let cost, let groupId, let fp, let activity, let lastMessage, let count) = event {
+        if case .tabMeta(let tabId, let title, let cost, let groupId, let fp, let activity, let lastMessage, let count, let pillColor, let pillIcon) = event {
             XCTAssertEqual(tabId, "t1")
             XCTAssertNil(title)
             XCTAssertNil(cost)
@@ -35,6 +41,8 @@ final class TabMetaVolatileFieldsTests: XCTestCase {
             XCTAssertEqual(activity, 1_700_000_000_123)
             XCTAssertEqual(lastMessage, "latest reply")
             XCTAssertEqual(count, 7)
+            XCTAssertNil(pillColor)
+            XCTAssertNil(pillIcon)
         } else {
             XCTFail("Expected tabMeta, got \(event)")
         }
@@ -47,13 +55,15 @@ final class TabMetaVolatileFieldsTests: XCTestCase {
         {"type":"desktop_tab_meta","tabId":"t1","totalCostUsd":0.42}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .tabMeta(let tabId, _, let cost, _, let fp, let activity, let lastMessage, let count) = event {
+        if case .tabMeta(let tabId, _, let cost, _, let fp, let activity, let lastMessage, let count, let pillColor, let pillIcon) = event {
             XCTAssertEqual(tabId, "t1")
             XCTAssertEqual(cost, 0.42)
             XCTAssertNil(fp)
             XCTAssertNil(activity)
             XCTAssertNil(lastMessage)
             XCTAssertNil(count)
+            XCTAssertNil(pillColor)
+            XCTAssertNil(pillIcon)
         } else {
             XCTFail("Expected tabMeta, got \(event)")
         }
@@ -62,15 +72,47 @@ final class TabMetaVolatileFieldsTests: XCTestCase {
     /// Round-trip: encode carries the volatile fields so the diagnostic /
     /// fixture paths that re-encode events preserve them.
     func testEncodeDecodeRoundTripVolatileFields() throws {
-        let original = RemoteEvent.tabMeta(tabId: "t9", title: nil, totalCostUsd: nil, groupId: nil, convFingerprint: "x1:2", lastActivityAt: 42, lastMessage: "hi", messageCount: 3)
+        let original = RemoteEvent.tabMeta(tabId: "t9", title: nil, totalCostUsd: nil, groupId: nil, convFingerprint: "x1:2", lastActivityAt: 42, lastMessage: "hi", messageCount: 3, pillColor: nil, pillIcon: nil)
         let data = try JSONEncoder().encode(original)
         let decoded = try decoder.decode(RemoteEvent.self, from: data)
-        if case .tabMeta(let tabId, _, _, _, let fp, let activity, let lastMessage, let count) = decoded {
+        if case .tabMeta(let tabId, _, _, _, let fp, let activity, let lastMessage, let count, _, _) = decoded {
             XCTAssertEqual(tabId, "t9")
             XCTAssertEqual(fp, "x1:2")
             XCTAssertEqual(activity, 42)
             XCTAssertEqual(lastMessage, "hi")
             XCTAssertEqual(count, 3)
+        } else {
+            XCTFail("Expected tabMeta, got \(decoded)")
+        }
+    }
+
+    // MARK: - Pill color / icon (decode)
+
+    /// desktop_tab_meta carrying pillColor/pillIcon must decode both fields.
+    /// Additive — absent on legacy (cost-only) tab_meta deltas.
+    func testDecodeTabMetaWithPillFields() throws {
+        let json = """
+        {"type":"desktop_tab_meta","tabId":"t1","pillColor":"#f08c4a","pillIcon":"diamond"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .tabMeta(let tabId, _, _, _, _, _, _, _, let pillColor, let pillIcon) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(pillColor, "#f08c4a")
+            XCTAssertEqual(pillIcon, "diamond")
+        } else {
+            XCTFail("Expected tabMeta, got \(event)")
+        }
+    }
+
+    /// Round-trip: encode/decode preserves pillColor and pillIcon.
+    func testEncodeDecodeRoundTripPillFields() throws {
+        let original = RemoteEvent.tabMeta(tabId: "t9", title: nil, totalCostUsd: nil, groupId: nil, convFingerprint: nil, lastActivityAt: nil, lastMessage: nil, messageCount: nil, pillColor: "#4ece78", pillIcon: "star")
+        let data = try JSONEncoder().encode(original)
+        let decoded = try decoder.decode(RemoteEvent.self, from: data)
+        if case .tabMeta(let tabId, _, _, _, _, _, _, _, let pillColor, let pillIcon) = decoded {
+            XCTAssertEqual(tabId, "t9")
+            XCTAssertEqual(pillColor, "#4ece78")
+            XCTAssertEqual(pillIcon, "star")
         } else {
             XCTFail("Expected tabMeta, got \(decoded)")
         }
@@ -118,6 +160,49 @@ final class TabMetaVolatileFieldsTests: XCTestCase {
         XCTAssertEqual(vm.tabs[0].runCostUsd, 0.5)
         XCTAssertEqual(vm.tabs[0].totalCostUsd, 0.5)
         XCTAssertEqual(vm.tabs[0].convFingerprint, "keep-me", "absent volatile fields must not clobber existing state")
+    }
+
+    /// handleTabMeta must merge a fresh pillColor/pillIcon into tab state.
+    func testHandleTabMetaMergesPillFieldsIntoTabState() {
+        let vm = SessionViewModel()
+        vm.tabs = [makeTab(id: "t1")]
+
+        vm.handleTabMeta(tabId: "t1", title: nil, totalCostUsd: nil, groupId: nil, pillColor: "#ef5350", pillIcon: "heart")
+
+        let tab = vm.tabs[0]
+        XCTAssertEqual(tab.pillColor, "#ef5350")
+        XCTAssertEqual(tab.pillIcon, "heart")
+    }
+
+    /// A delta that omits pill fields (nil) must not clobber an existing
+    /// pillColor/pillIcon set by a prior delta — same "absent means no
+    /// change" contract as groupId/title above.
+    func testHandleTabMetaOmittedPillFieldsDoNotClobberExisting() {
+        let vm = SessionViewModel()
+        var tab = makeTab(id: "t1")
+        tab.pillColor = "#f08c4a"
+        tab.pillIcon = "diamond"
+        vm.tabs = [tab]
+
+        vm.handleTabMeta(tabId: "t1", title: nil, totalCostUsd: 0.5, groupId: nil)
+
+        XCTAssertEqual(vm.tabs[0].pillColor, "#f08c4a", "absent pillColor must not clobber existing state")
+        XCTAssertEqual(vm.tabs[0].pillIcon, "diamond", "absent pillIcon must not clobber existing state")
+    }
+
+    /// Explicit JSON null must clear customization rather than being treated as
+    /// an omitted delta field.
+    func testHandleTabMetaExplicitNullPillFieldsClearExisting() {
+        let vm = SessionViewModel()
+        var tab = makeTab(id: "t1")
+        tab.pillColor = "#f08c4a"
+        tab.pillIcon = "diamond"
+        vm.tabs = [tab]
+
+        vm.handleTabMeta(tabId: "t1", title: nil, totalCostUsd: nil, groupId: nil, pillColor: .some(nil), pillIcon: .some(nil))
+
+        XCTAssertNil(vm.tabs[0].pillColor)
+        XCTAssertNil(vm.tabs[0].pillIcon)
     }
 
     // MARK: - Heal trigger

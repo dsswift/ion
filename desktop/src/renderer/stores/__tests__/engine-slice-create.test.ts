@@ -69,6 +69,10 @@ vi.mock('../session-store-helpers', () => ({
 
 // ─── Mock preferences ─────────────────────────────────────────────────────────
 const mockPrefs = {
+  // createConversationTab reads this to resolve a default project directory;
+  // without it Object.keys() throws and every case in this file fails before
+  // reaching its assertion.
+  projects: {} as Record<string, unknown>,
   engineProfiles: [] as any[],
   tabGroupMode: 'none' as string,
   tabGroups: [] as any[],

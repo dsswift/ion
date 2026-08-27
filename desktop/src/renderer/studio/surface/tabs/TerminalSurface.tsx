@@ -1,6 +1,6 @@
 /**
  * TerminalSurface — a `terminal:` surface tab body: a pure ATTACH client
- * over a main-owned pty in the `studio:` namespace (D2).
+ * over a main-owned pty keyed by its owning Conversation.
  *
  * Lifecycle contract:
  *   - mount → TERMINAL_ATTACH {restartIfNotRunning:true}: write the history
@@ -12,8 +12,8 @@
  *   - pty exit → exited banner + press-any-key respawn (restartIfNotRunning)
  *   - dead cwd → visible fallback notice (respawned in ~)
  *
- * The `studio:${instanceId}` key namespace is immune to conversation-tab
- * cleanup (destroyByPrefix('tabId:')).
+ * The `<conversationId>:surface:<instanceId>` namespace preserves exact parent
+ * ownership while remaining distinct from conversation-panel Terminal keys.
  */
 import React, { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
@@ -23,7 +23,7 @@ import { useColors } from '../../../theme'
 import { rDebug, rWarn } from '../../../rendererLogger'
 import '@xterm/xterm/css/xterm.css'
 
-export function TerminalSurface({ instanceId, cwd }: { instanceId: string; cwd: string }): React.JSX.Element {
+export function TerminalSurface({ tabId, instanceId, cwd }: { tabId: string; instanceId: string; cwd: string }): React.JSX.Element {
   const colors = useColors()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
@@ -33,7 +33,7 @@ export function TerminalSurface({ instanceId, cwd }: { instanceId: string; cwd: 
   const uiZoom = usePreferencesStore((s) => s.uiZoom)
   const [exited, setExited] = useState<number | null>(null)
   const [cwdNotice, setCwdNotice] = useState(false)
-  const key = `studio:${instanceId}`
+  const key = `${tabId}:surface:${instanceId}`
 
   useEffect(() => {
     const container = containerRef.current

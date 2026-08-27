@@ -92,7 +92,7 @@ export function injectDiskResourcesIfEmpty(kind: string, subId: string, key: str
         // Merge read state from item.read flags.
         var newReadIds = new Set(s.readResourceIds);
         for (var i = 0; i < items.length; i++) {
-          if (items[i].read) newReadIds.add(items[i].id);
+          if (items[i].read) newReadIds.add(JSON.stringify([items[i].kind, items[i].id]));
         }
         store.setState({ resources: newResources, resourceSubscriptions: newSubs, readResourceIds: newReadIds });
         return 'injected:' + items.length;

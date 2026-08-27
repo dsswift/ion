@@ -4,8 +4,8 @@ import SwiftUI
 /// `──`-prefixed rows: session-start, plan-created, plan-updated,
 /// implementing, steer-applied, cleared).
 ///
-/// For a "Plan created" / "Plan updated" divider that carries a `planFilePath`
-/// AND has an `onTapPlan` handler, the slug portion (the text after ` · `) is
+/// For a plan-lifecycle divider that carries a `planFilePath` AND has an
+/// `onTapPlan` handler, the slug portion (the text after ` · `) is
 /// rendered as a tappable link that calls `onTapPlan(planFilePath)` — the
 /// conversation view opens the plan preview from there. Every other divider
 /// (including a plan divider with no path/handler) renders as plain tertiary
@@ -27,7 +27,9 @@ struct PlanDividerLabel: View {
         guard let path = message.planFilePath, !path.isEmpty,
               onTapPlan != nil else { return nil }
         let content = message.content
-        guard content.hasPrefix("── Plan created") || content.hasPrefix("── Plan updated") else { return nil }
+        guard content.hasPrefix("── Plan created") ||
+                content.hasPrefix("── Plan updated") ||
+                content.hasPrefix("── Implementing plan") else { return nil }
         // Split on the ` · ` separator: prefix · slug<suffix>. The slug runs
         // from after the separator to the trailing ` ──`. Mirrors the desktop
         // split in SystemMessage.tsx.

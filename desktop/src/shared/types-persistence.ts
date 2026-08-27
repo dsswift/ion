@@ -1,5 +1,11 @@
-import type { TerminalInstance, WorktreeInfo, Attachment, FileAttachment, ThinkingEffort } from './types-session'
-import type { ConversationRef } from './types-engine'
+import type {
+  TerminalInstance,
+  WorktreeInfo,
+  Attachment,
+  FileAttachment,
+  ThinkingEffort,
+} from "./types-session";
+import type { ConversationRef } from "./types-engine";
 
 // ─── Schema version constants ───
 
@@ -8,7 +14,7 @@ import type { ConversationRef } from './types-engine'
  * Canonical definition — imported from here by both `main/tab-migration-split`
  * (re-exported for backwards compat) and renderer code.
  */
-export const SPLIT_SCHEMA_VERSION = 3
+export const SPLIT_SCHEMA_VERSION = 3;
 
 /**
  * Schema version after the externalize migration (thin manifest + per-tab
@@ -17,7 +23,7 @@ export const SPLIT_SCHEMA_VERSION = 3
  * renderer code. The renderer stamps this version on every save, so the
  * migration's idempotency guard fires correctly on the next startup.
  */
-export const EXTERNALIZE_SCHEMA_VERSION = 4
+export const EXTERNALIZE_SCHEMA_VERSION = 4;
 
 // ─── Persisted Tab State ───
 
@@ -36,7 +42,7 @@ export const EXTERNALIZE_SCHEMA_VERSION = 4
  *  - `unknown`    — migration backfill for pre-ledger `conversationIds[]` chains
  *                   whose original cut reason was not recorded.
  */
-export type SessionCutReason = 'clear' | 'compaction' | 'fork' | 'unknown'
+export type SessionCutReason = "clear" | "compaction" | "fork" | "unknown";
 
 /**
  * One entry in a tab's session ledger: a single engine conversation file that
@@ -47,14 +53,14 @@ export type SessionCutReason = 'clear' | 'compaction' | 'fork' | 'unknown'
  */
 export interface SessionLedgerEntry {
   /** The engine conversation id (a `~/.ion/conversations/<id>.*` file). */
-  id: string
+  id: string;
   /** Why this session was cut from its predecessor. */
-  reason: SessionCutReason
+  reason: SessionCutReason;
   /** Unix ms when the entry was appended. */
-  createdAt: number
+  createdAt: number;
   /** The id this session descends from (the prior current id), when known.
    *  Mirrors the engine's on-disk `parentId` so the chain is navigable. */
-  parentId?: string
+  parentId?: string;
 }
 
 /**
@@ -72,8 +78,8 @@ export interface SessionLedgerEntry {
  * inputs to the migration; current persistence writes only `conversationPane`.
  */
 export interface PersistedConversationInstance {
-  id: string
-  label: string
+  id: string;
+  label: string;
   /**
    * Schema v4: true when this instance's scrollback lives in an external
    * content file (`~/.ion/tab-content/<tabId>.json`) instead of inline
@@ -83,21 +89,40 @@ export interface PersistedConversationInstance {
    * to lazy-load the content file. Absent/false means the instance is
    * count-only (every row reloads from the engine conversation store).
    */
-  hasExternalContent?: boolean
+  hasExternalContent?: boolean;
   /** Scrollback. Plain tabs persist message content here too (the old shape
    *  persisted only a count for plain tabs and full messages for engine tabs;
    *  the unified shape persists messages uniformly, gated by size as before). */
-  messages?: Array<{ role: string; content: string; toolName?: string; toolId?: string; toolInput?: string; toolStatus?: string; timestamp: number; dedupKey?: string; planFilePath?: string; slashCommand?: string; slashArgs?: string; slashSource?: string; slashModelAlias?: string; slashModelEffective?: string; implementationPhase?: boolean; injectionKind?: string; attachments?: Attachment[] }>
+  messages?: Array<{
+    role: string;
+    content: string;
+    toolName?: string;
+    toolId?: string;
+    toolInput?: string;
+    toolStatus?: string;
+    timestamp: number;
+    dedupKey?: string;
+    planFilePath?: string;
+    slashCommand?: string;
+    slashArgs?: string;
+    slashSource?: string;
+    slashModelAlias?: string;
+    slashModelEffective?: string;
+    implementationPhase?: boolean;
+    injectionKind?: string;
+    slashFrontmatter?: Record<string, unknown>;
+    attachments?: Attachment[];
+  }>;
   /** Blank-tab / lazy-load proxy when messages are omitted. */
-  messageCount?: number
-  modelOverride?: string | null
+  messageCount?: number;
+  modelOverride?: string | null;
   /**
    * Origin of modelOverride. Absent means legacy provenance is unknown, never
    * proof of an explicit user choice. New writes preserve both origins.
    */
-  modelOverrideSource?: 'user' | 'automatic'
-  sessionModel?: string | null
-  permissionMode?: 'auto' | 'plan'
+  modelOverrideSource?: "user" | "automatic";
+  sessionModel?: string | null;
+  permissionMode?: "auto" | "plan";
   /**
    * Per-conversation extended-thinking effort. Omitted when `'off'` (the
    * default), mirroring the `permissionMode !== 'auto'` conditional-write
@@ -109,32 +134,51 @@ export interface PersistedConversationInstance {
    * restart, and a conversation deliberately left on `high` could not survive
    * a restart either.
    */
-  thinkingEffort?: ThinkingEffort
-  permissionDenied?: { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null
+  thinkingEffort?: ThinkingEffort;
+  permissionDenied?: {
+    tools: Array<{
+      toolName: string;
+      toolUseId: string;
+      toolInput?: Record<string, unknown>;
+    }>;
+  } | null;
   /**
    * @deprecated Pre-ledger session chain. Read on load and migrated into
    * `sessions[]` (reason `unknown`). Still WRITTEN alongside `sessions` for one
    * release so a downgrade keeps resuming; new readers should prefer
    * `currentSessionId` / `sessions`.
    */
-  conversationIds?: string[]
+  conversationIds?: string[];
   /**
    * The tab's session ledger: every engine conversation it has owned, oldest
    * first, newest last. The newest entry's id == `currentSessionId`. Only a
    * checkpoint cut appends; restart never does. Absent on legacy files (the
    * loader derives it from `conversationIds`).
    */
-  sessions?: SessionLedgerEntry[]
+  sessions?: SessionLedgerEntry[];
   /**
    * The live engine session id the tab resumes on restart. The newest ledger
    * entry's id. Persisted explicitly so restore resolves the resume target
    * without walking the ledger and so a restart provably cannot append.
    */
-  currentSessionId?: string
-  draftInput?: string
-  agentStates?: Array<{ name: string; id?: string; status: string; metadata?: Record<string, any> }>
-  dispatchTelemetry?: Array<{ dispatchId: string; dispatchAgent: string; dispatchSessionId: string; dispatchModel: string; dispatchTask: string; dispatchDepth: number; dispatchParentId: string }>
-  planFilePath?: string | null
+  currentSessionId?: string;
+  draftInput?: string;
+  agentStates?: Array<{
+    name: string;
+    id?: string;
+    status: string;
+    metadata?: Record<string, any>;
+  }>;
+  dispatchTelemetry?: Array<{
+    dispatchId: string;
+    dispatchAgent: string;
+    dispatchSessionId: string;
+    dispatchModel: string;
+    dispatchTask: string;
+    dispatchDepth: number;
+    dispatchParentId: string;
+  }>;
+  planFilePath?: string | null;
   /**
    * Context-window occupancy in tokens, and the window the engine computed
    * against, carried from the instance's `statusFields`.
@@ -146,14 +190,14 @@ export interface PersistedConversationInstance {
    * and a persisted copy would be stale by construction. The engine's
    * session-start seed overwrites both within one status event.
    */
-  contextTokens?: number
-  contextWindow?: number
+  contextTokens?: number;
+  contextWindow?: number;
 }
 
 /** Unified persisted pane: the instances for a tab + which is active. */
 export interface PersistedConversationPane {
-  instances: PersistedConversationInstance[]
-  activeInstanceId: string | null
+  instances: PersistedConversationInstance[];
+  activeInstanceId: string | null;
 }
 
 export interface PersistedTab {
@@ -170,43 +214,49 @@ export interface PersistedTab {
    * across every restart. Optional for back-compat — legacy files have no `id`;
    * the loader mints one on first restore and persists it from then on.
    */
-  id?: string
-  conversationId: string | null
-  historicalSessionIds?: string[]
-  lastKnownSessionId?: string
-  title: string
-  customTitle: string | null
-  workingDirectory: string
-  hasChosenDirectory: boolean
-  additionalDirs: string[]
+  id?: string;
+  conversationId: string | null;
+  historicalSessionIds?: string[];
+  lastKnownSessionId?: string;
+  title: string;
+  customTitle: string | null;
+  workingDirectory: string;
+  hasChosenDirectory: boolean;
+  additionalDirs: string[];
   /**
    * @deprecated Legacy tab-level permission mode field. Written by persistence
    * before WI-002; read by restoration paths as a fallback when the persisted
    * conversation instance has no `permissionMode`. New persistence no longer
    * writes this field — the mode lives on `PersistedConversationInstance`.
    */
-  permissionMode?: 'auto' | 'plan'
-  permissionDenied?: { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null
-  planFilePath?: string | null
-  bashResults?: Array<{ command: string; stdout: string; stderr: string }>
-  pillColor?: string | null
-  pillIcon?: string | null
-  modelOverride?: string | null
-  forkedFromSessionId?: string | null
-  worktree?: WorktreeInfo | null
+  permissionMode?: "auto" | "plan";
+  permissionDenied?: {
+    tools: Array<{
+      toolName: string;
+      toolUseId: string;
+      toolInput?: Record<string, unknown>;
+    }>;
+  } | null;
+  planFilePath?: string | null;
+  bashResults?: Array<{ command: string; stdout: string; stderr: string }>;
+  pillColor?: string | null;
+  pillIcon?: string | null;
+  modelOverride?: string | null;
+  forkedFromSessionId?: string | null;
+  worktree?: WorktreeInfo | null;
   /** Durable host identity for the conversation's execution environment. */
-  executionHost?: string | null
-  executionMachineId?: string | null
-  groupId?: string | null
+  executionHost?: string | null;
+  executionMachineId?: string | null;
+  groupId?: string | null;
   /** When true, suppresses auto-group movement for this tab. Default false on load for back-compat. */
-  groupPinned?: boolean
-  contextTokens?: number | null
+  groupPinned?: boolean;
+  contextTokens?: number | null;
   /** Persisted contextWindow denominator (from context_breakdown event) so the
    *  status-bar percent is correct after reload without requiring a new run. */
-  contextWindow?: number | null
-  queuedPrompts?: string[]
+  contextWindow?: number | null;
+  queuedPrompts?: string[];
   /** Unsent text typed into the input bar; restored on relaunch. Absent when empty. */
-  draftInput?: string
+  draftInput?: string;
   /**
    * Staged-but-unsent attachments (the input bar's tray). Persisted alongside
    * `draftInput` — before this field the text survived a restart and the images
@@ -215,38 +265,59 @@ export interface PersistedTab {
    * bytes are re-read from `path` at send time, so the omission is lossless.
    * Absent when the tray is empty.
    */
-  attachments?: FileAttachment[]
+  attachments?: FileAttachment[];
   /** Latest completed-run metadata. Optional for files written before run footers. */
-  lastResult?: import('./types-session').RunResult | null
+  lastResult?: import("./types-session").RunResult | null;
   /** Per-engine-instance unsent input text, keyed by `instanceId`. Only non-empty values. */
-  engineDrafts?: Record<string, string>
-  isTerminalOnly?: boolean
+  engineDrafts?: Record<string, string>;
+  isTerminalOnly?: boolean;
   /** Input-locked conversation (auto-generated conflict fix). See TabState.inputLocked. */
-  inputLocked?: boolean
+  inputLocked?: boolean;
   /** Why input is locked. `settled` is a cold Inbox history record. */
-  inputLockReason?: 'automated-workflow' | 'landed-worktree' | 'settled'
+  inputLockReason?: "automated-workflow" | "landed-worktree" | "settled";
   /** Explicit tab lifecycle role. See TabState.tabRole. Absent = null (default). */
-  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis'
+  tabRole?:
+    "bench-conversation" | "conflict-auto-fix" | "verification-analysis";
   /**
    * Unified conversation state for this tab (the post-migration shape). When
    * present, the loader reads conversation instances from here and IGNORES the
    * legacy flat fields / `engine*` maps below. Written by current persistence;
    * populated for legacy files by `tab-migration-unify.ts`.
    */
-  conversationPane?: PersistedConversationPane
+  conversationPane?: PersistedConversationPane;
   /**
    * True when the conversation hosts an engine extension. Written by current
    * persistence. The legacy `isEngine` key (below) is still READ by the loader
    * for on-disk back-compat with tabs.json files written before the rename.
    */
-  hasEngineExtension?: boolean
+  hasEngineExtension?: boolean;
   /** @deprecated Legacy on-disk key for `hasEngineExtension`. Read-only — the
    *  loader/migration accepts it; persistence writes `hasEngineExtension`. */
-  isEngine?: boolean
-  engineProfileId?: string | null
-  engineInstances?: ConversationRef[]
-  engineMessages?: Record<string, Array<{ role: string; content: string; toolName?: string; toolId?: string; toolInput?: string; toolStatus?: string; timestamp: number; dedupKey?: string }>>
-  engineAgentStates?: Record<string, Array<{ name: string; id?: string; status: string; metadata?: Record<string, any> }>>
+  isEngine?: boolean;
+  engineProfileId?: string | null;
+  engineInstances?: ConversationRef[];
+  engineMessages?: Record<
+    string,
+    Array<{
+      role: string;
+      content: string;
+      toolName?: string;
+      toolId?: string;
+      toolInput?: string;
+      toolStatus?: string;
+      timestamp: number;
+      dedupKey?: string;
+    }>
+  >;
+  engineAgentStates?: Record<
+    string,
+    Array<{
+      name: string;
+      id?: string;
+      status: string;
+      metadata?: Record<string, any>;
+    }>
+  >;
   /**
    * Most recent engine conversation ID per engine instance, keyed by
    * `instanceId`. Used on restoration to resume the engine session
@@ -264,7 +335,7 @@ export interface PersistedTab {
    * the hook needs to know which conversation file to read to recover
    * a pending AskUserQuestion / ExitPlanMode card after a restart.
    */
-  engineSessionIds?: Record<string, string>
+  engineSessionIds?: Record<string, string>;
   /**
    * Per-engine-instance AskUserQuestion / ExitPlanMode denials, keyed by
    * `instanceId`. Mirrors the runtime `enginePermissionDenied` map (which
@@ -272,68 +343,77 @@ export interface PersistedTab {
    * with a non-null pending denial appear here. Restored on relaunch so
    * a crash mid-question doesn't lose the card.
    */
-  engineDenials?: Record<string, { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> }>
+  engineDenials?: Record<
+    string,
+    {
+      tools: Array<{
+        toolName: string;
+        toolUseId: string;
+        toolInput?: Record<string, unknown>;
+      }>;
+    }
+  >;
   /** Per-engine-instance model override, keyed by `instanceId`. Restored on
    *  relaunch so the engine session resumes with the same model the user had
    *  selected (instead of falling back to the hardcoded default). */
-  engineModelOverrides?: Record<string, string>
+  engineModelOverrides?: Record<string, string>;
   /**
    * Per-engine-instance permission mode, keyed by `instanceId`.
    * Restored on relaunch so each subtab resumes with the correct
    * plan/auto mode independently. Follows the same shape as
    * `engineDenials` and `engineModelOverrides`.
    */
-  enginePermissionModes?: Record<string, 'auto' | 'plan'>
+  enginePermissionModes?: Record<string, "auto" | "plan">;
   /** Per-engine-instance forked conversation ID chain, keyed by `instanceId`.
    *  Set after rewind so the next prompt can inject prior-conversation context.
    *  Persisted so the rewind state survives app restart. */
-  engineForkedFromConversationIds?: Record<string, string[]>
-  terminalInstances?: TerminalInstance[]
-  terminalBuffers?: Record<string, string>
+  engineForkedFromConversationIds?: Record<string, string[]>;
+  terminalInstances?: TerminalInstance[];
+  terminalBuffers?: Record<string, string>;
   /** Wall-clock ms of the most recent engine event for this tab. Persisted so
    *  the tab strip can show relative activity ("2m") across app restarts. */
-  lastEventAt?: number | null
+  lastEventAt?: number | null;
   /** Non-message renderer activity, retained for diagnostics only. */
-  lastActivityAt?: number | null
+  lastActivityAt?: number | null;
   /** Last persisted or live real user/assistant message, used by inbox. */
-  lastMessageAt?: number | null
+  lastMessageAt?: number | null;
   /** Last running→idle transition; restored verbatim, never re-stamped. */
-  idleSince?: number | null
+  idleSince?: number | null;
   /** Immutable creation timestamp used by stable inbox sorting. */
-  createdAt?: number
+  createdAt?: number;
   /** Newest failure timestamp for snooze raised-hand detection. */
-  lastFailureAt?: number | null
+  lastFailureAt?: number | null;
   /** Inbox pin state and fractional presentation order. */
-  pinnedAt?: number | null
-  pinOrderKey?: string | null
+  pinnedAt?: number | null;
+  pinOrderKey?: string | null;
   /** Last task_complete timestamp. */
-  lastCompletionAt?: number | null
-  settledOverride?: 'settled' | 'active' | 'auto' | null
-  settledAt?: number | null
-  snoozedUntil?: number | null
-  snoozedAt?: number | null
-  lastVisitedAt?: number | null
-  manualUnread?: boolean
+  lastCompletionAt?: number | null;
+  settledOverride?: "settled" | "active" | "auto" | null;
+  settledAt?: number | null;
+  snoozedUntil?: number | null;
+  snoozedAt?: number | null;
+  lastVisitedAt?: number | null;
+  manualUnread?: boolean;
   /** Short single-line preview of the last visible message (~80 chars). */
-  lastMessagePreview?: string | null
+  lastMessagePreview?: string | null;
   /** Persisted message count for blank-tab detection when messages are lazily loaded. */
-  messageCount?: number
+  messageCount?: number;
 }
 
 export interface PersistedEditorFile {
-  filePath: string | null
-  fileName: string
-  content: string
-  savedContent: string
-  isDirty: boolean
-  isReadOnly: boolean
-  isPreview: boolean
+  filePath: string | null;
+  fileName: string;
+  content: string;
+  savedContent: string;
+  isDirty: boolean;
+  isReadOnly: boolean;
+  isPreview: boolean;
 }
 
 export interface PersistedEditorState {
   /** Index of the active file in the files array (replaces activeFileId since IDs are regenerated) */
-  activeFileIndex: number
-  files: PersistedEditorFile[]
+  activeFileIndex: number;
+  files: PersistedEditorFile[];
 }
 
 export interface PersistedTabState {
@@ -346,27 +426,27 @@ export interface PersistedTabState {
    * reload from disk (`tab-migration-externalize.ts`). The loader runs the
    * migrations in order at the LOAD_TABS chokepoint.
    */
-  schemaVersion?: number
-  activeSessionId: string | null
+  schemaVersion?: number;
+  activeSessionId: string | null;
   /** Index of active tab in the tabs array (handles sessionless tabs) */
-  activeTabIndex?: number | null
-  tabs: PersistedTab[]
+  activeTabIndex?: number | null;
+  tabs: PersistedTab[];
   /** Recoverable conversation records removed from the active workspace by Close. */
-  settledHistory?: PersistedTab[]
+  settledHistory?: PersistedTab[];
   /** Per-directory editor state. Key = working directory path */
-  editorStates?: Record<string, PersistedEditorState>
+  editorStates?: Record<string, PersistedEditorState>;
   /** Whether the conversation view was expanded */
-  isExpanded?: boolean
+  isExpanded?: boolean;
   /** Directories that had the file editor open */
-  editorOpenDirs?: string[]
+  editorOpenDirs?: string[];
   /** @deprecated Indices into tabs array for tabs that had the file editor open */
-  editorOpenSessionIds?: number[]
+  editorOpenSessionIds?: number[];
   /** Global file editor window position and size */
-  editorGeometry?: { x: number; y: number; w: number; h: number }
+  editorGeometry?: { x: number; y: number; w: number; h: number };
   /** Global plan preview window position and size */
-  planGeometry?: { x: number; y: number; w: number; h: number }
+  planGeometry?: { x: number; y: number; w: number; h: number };
   /** Global agent detail popup position and size */
-  agentDetailGeometry?: { x: number; y: number; w: number; h: number }
+  agentDetailGeometry?: { x: number; y: number; w: number; h: number };
 }
 
 /**
@@ -377,9 +457,9 @@ export interface PersistedTabState {
  */
 export interface ExternalInstanceContent {
   /** The durable tab id this content belongs to (also the file name). */
-  tabId: string
+  tabId: string;
   /** The persisted instance id the messages were stripped from. */
-  instanceId: string
-  schemaVersion: number
-  messages: NonNullable<PersistedConversationInstance['messages']>
+  instanceId: string;
+  schemaVersion: number;
+  messages: NonNullable<PersistedConversationInstance["messages"]>;
 }

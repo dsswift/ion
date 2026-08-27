@@ -268,21 +268,9 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
       return true
 
     case 'error':
-      logTabStatusPatch(tabId, ctx.tab.status, 'failed', 'event.task-failed')
-      ctx.updated.status = 'failed'
-      ctx.updated.lastActivityAt = Date.now()
-      ctx.updated.lastFailureAt = Date.now()
-      ctx.updated.idleSince = Date.now()
-      ctx.updated.activeRequestId = null
-      ctx.updated.currentActivity = ''
-      ctx.permissionQueue = []
-      ctx.elicitationQueue = []
-      ctx.instPatch.permissionDenied = null
-      ctx.instTouched = true
-      // Fail any steer bubble that the engine never drained.
-      ctx.messages = ctx.messages.map((m) =>
-        m.steerPending ? { ...m, steerPending: undefined, steerFailed: true } : m,
-      )
+      // engine_error is an error signal, not a lifecycle transition. A run can
+      // report a failed internal retry and continue with tools or text, so only
+      // terminal lifecycle events may clear its state or fail a pending steer.
       ctx.messages = [
         ...ctx.messages,
         { id: nextMsgId(), role: 'system', content: `Error: ${event.message}`, timestamp: Date.now() },

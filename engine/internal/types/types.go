@@ -43,6 +43,10 @@ type EngineConfig struct {
 	ProfileID        string          `json:"profileId"`
 	Extensions       []string        `json:"extensions"`
 	WorkingDirectory string          `json:"workingDirectory"`
+	// ProjectDirectory identifies the source Project that supplies project-level
+	// policy when WorkingDirectory is a worktree. Empty preserves the historical
+	// working-directory lookup.
+	ProjectDirectory string          `json:"projectDirectory,omitempty"`
 	SessionID        string          `json:"sessionId,omitempty"`
 	Model            string          `json:"model,omitempty"`
 	MaxTokens        int             `json:"maxTokens,omitempty"`
@@ -594,6 +598,9 @@ type SessionMessage struct {
 	SlashSource         string `json:"slashSource,omitempty"`
 	SlashModelAlias     string `json:"slashModelAlias,omitempty"`
 	SlashModelEffective string `json:"slashModelEffective,omitempty"`
+	// SlashFrontmatter is complete command frontmatter preserved with this
+	// invocation. It includes keys only an extension understands.
+	SlashFrontmatter map[string]any `json:"slashFrontmatter,omitempty"`
 
 	// ImplementationPhase records that this user turn began the implementation
 	// half of a plan-then-implement flow. It is copied from the durable

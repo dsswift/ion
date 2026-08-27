@@ -79,3 +79,24 @@ func resolveNewConversationAction(
     // State 3: show the extended picker (plain + profiles).
     return .showPicker
 }
+
+/// Resolve the profile choice for a desktop-owned project.
+///
+/// `profileAction` comes from the desktop snapshot. Unknown values use the
+/// picker, so a newer desktop never causes iOS to create the wrong kind of
+/// conversation.
+func resolveNewConversationAction(for project: RemoteProject) -> NewConversationAction {
+    switch project.profileAction {
+    case "plain":
+        return .plain
+    case "profile":
+        guard let profileId = project.profileId, !profileId.isEmpty else {
+            return .showPicker
+        }
+        return .profile(profileId: profileId)
+    case "ask":
+        return .showPicker
+    default:
+        return .showPicker
+    }
+}

@@ -192,7 +192,7 @@ export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State
       set({ terminalPanes: panes })
     },
 
-    createTerminalTab: async (dir?: string) => {
+    createTerminalTab: async (dir?: string, adoptTabId?: string) => {
       const homeDir = get().staticInfo?.homePath || '~'
       const defaultBase = usePreferencesStore.getState().defaultBaseDirectory
       const startDir = dir || defaultBase || homeDir
@@ -204,7 +204,10 @@ export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State
         throw new Error('This worktree has already landed and is sealed for review. Retire it when review is complete.')
       }
 
-      const existingBlank = get().tabs.find((t) => isReusableBlankTerminalTab(t, startDir))
+      // Restore supplies the persisted id, and must never fold into an
+      // existing blank terminal: that would merge two distinct tabs and drop
+      // whatever is keyed by the id being restored.
+      const existingBlank = adoptTabId ? undefined : get().tabs.find((t) => isReusableBlankTerminalTab(t, startDir))
       if (existingBlank) {
         const tallTerm = usePreferencesStore.getState().defaultTallTerminal
         set({
@@ -222,6 +225,10 @@ export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State
 
       const tab: TabState = {
         ...makeLocalTab(),
+        // Adopt the persisted id on restore so per-conversation state keyed by
+        // it (Studio Surface descriptors, saved terminal buffers) still
+        // resolves after a restart.
+        ...(adoptTabId ? { id: adoptTabId } : {}),
         title: 'New Terminal',
         isTerminalOnly: true,
         workingDirectory: startDir,

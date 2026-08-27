@@ -724,17 +724,18 @@ final class ContractSyncTests: XCTestCase {
   /// forwarded via the desktop's generic engine→wire mapper.
   func testEngineUserTurnPersistedDecode() throws {
     let json = """
-      {"type":"desktop_user_turn_persisted","tabId":"t1","userTurnEntryId":"entry-77","userTurnSlashModelAlias":"Premium","userTurnSlashModelEffective":"claude-opus-4"}
+      {"type":"desktop_user_turn_persisted","tabId":"t1","userTurnEntryId":"entry-77","userTurnSlashModelAlias":"Premium","userTurnSlashModelEffective":"claude-opus-4","userTurnSlashFrontmatter":{"extension-key":"durable"}}
       """.data(using: .utf8)!
     let event = try decoder.decode(RemoteEvent.self, from: json)
     if case .engineUserTurnPersisted(
-      let tabId, let instanceId, let entryId, let alias, let effective) = event
+      let tabId, let instanceId, let entryId, let alias, let effective, let frontmatter) = event
     {
       XCTAssertEqual(tabId, "t1")
       XCTAssertNil(instanceId)
       XCTAssertEqual(entryId, "entry-77")
       XCTAssertEqual(alias, "Premium")
       XCTAssertEqual(effective, "claude-opus-4")
+      XCTAssertEqual(frontmatter?["extension-key"]?.value as? String, "durable")
     } else {
       XCTFail("Expected engineUserTurnPersisted")
     }
@@ -870,7 +871,7 @@ final class ContractSyncTests: XCTestCase {
     let swiftHandled: Set<String> = [
       // Decoded by Message (Codable + engineJSON paths).
       "attachments", "content", "id", "internal", "role",
-      "slashArgs", "slashCommand", "slashModelAlias",
+      "slashArgs", "slashCommand", "slashFrontmatter", "slashModelAlias",
       "slashModelEffective", "slashSource",
       "timestamp", "toolId", "toolInput", "toolName",
       // Decoded by Message(engineJSON:) (markerKind + markerPlanFilePath

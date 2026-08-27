@@ -85,6 +85,7 @@ vi.mock('../state', () => {
     },
     sessionPlane: {
       submitPrompt: (...args: any[]) => mocks.submitPromptMock(...args),
+      ensureSession: vi.fn().mockResolvedValue({ ok: true }),
       setPermissionMode: (...args: any[]) => mocks.setPermissionModeMock(...args),
       getTabStatus: (...args: any[]) => mocks.getTabStatusMock(...args),
       notifyConversationCleared: (...args: any[]) => mocks.notifyConversationClearedMock(...args),
@@ -134,9 +135,9 @@ beforeEach(() => {
   mocks.bridgeListeners.clear()
   _resetAwaitersForTests()
   // Default: engine returns unknown_command for /clear (no session exists).
-  mocks.sendCommandMock.mockImplementation((key: string, command: string) => {
+  mocks.sendCommandMock.mockImplementation((promptArgs: { key: string }, command: string) => {
     setTimeout(
-      () => emitBridgeEvent(key, { type: 'engine_command_result', command, commandError: 'unknown_command', message: 'unknown command: clear' }),
+      () => emitBridgeEvent(promptArgs.key, { type: 'engine_command_result', command, commandError: 'unknown_command', message: 'unknown command: clear' }),
       0,
     )
   })

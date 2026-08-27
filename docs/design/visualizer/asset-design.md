@@ -1,4 +1,4 @@
-# ATV Asset Design: "Ion Works"
+# Agent Team Visualizer Asset Design: "Ion Works"
 
 Design authority for every visual asset in the Agent Team Visualizer's shipped theme pack. Sprite production does not begin on any asset until its spec in this document is complete. Every generated asset is reviewed against its "expected look" line before it enters the pack.
 

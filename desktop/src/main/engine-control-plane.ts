@@ -179,7 +179,7 @@ export class EngineControlPlane extends EventEmitter {
     }
     tab.conversationId = conversationId
     // A caller-supplied id means we are resuming a SAVED conversation, not a
-    // fresh mint. Mark it so the slash plan→auto freshness guard treats the
+    // fresh mint. Mark it so the saved-conversation freshness logic treats the
     // next prompt as resumed (scenario B), not fresh (scenario C). See the
     // resumedSavedConversation doc in engine-control-plane-events.ts.
     tab.resumedSavedConversation = true
@@ -256,7 +256,7 @@ export class EngineControlPlane extends EventEmitter {
     if (opts.conversationId && !tab.conversationId) {
       tab.conversationId = opts.conversationId
       // Caller supplied the id → resuming a saved conversation (scenario B).
-      // Mark it so the slash plan→auto freshness guard treats this as resumed,
+      // Mark it so the session restore logic treats this as resumed,
       // not as a fresh mint. See resumedSavedConversation in
       // engine-control-plane-events.ts.
       tab.resumedSavedConversation = true
@@ -313,8 +313,8 @@ export class EngineControlPlane extends EventEmitter {
       tab.conversationId = result.conversationId
       // Deliberately do NOT set tab.resumedSavedConversation here: this is an
       // engine-MINTED id for a brand-new session (scenario C), not a resume.
-      // Leaving the flag false keeps a first-prompt slash command fresh so it
-      // flips plan→auto. See resumedSavedConversation in
+      // Leaving the flag false keeps the new session distinct from a saved resume.
+      // See resumedSavedConversation in
       // engine-control-plane-events.ts.
       log('ensure_session: captured minted conversationId', { tab_id: tabId, conversation_id: result.conversationId })
     }
@@ -342,6 +342,7 @@ export class EngineControlPlane extends EventEmitter {
     // engine-control-plane-idle-ordering.ts.
     Object.assign(tab, dispatchOrderingBaseline(tab.lastObservedRunEpoch))
     log('submit_prompt: ordering baseline', { tab_id: tabId, request_id: requestId, dispatch_run_epoch: tab.dispatchRunEpoch ?? -1 })
+    tab.automationCausation = options.automationCausation
     tab.lastActivityAt = Date.now()
     tab.startedAt = Date.now()
     tab.toolCallCount = 0

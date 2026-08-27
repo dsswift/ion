@@ -59,6 +59,9 @@ type UserTurnPersistedEvent struct {
 	// SlashModelEffective is the concrete model selected to start this run.
 	// It can be present without SlashModelAlias after provider fallback.
 	SlashModelEffective string `json:"slashModelEffective,omitempty"`
+	// SlashFrontmatter is complete command frontmatter captured at invocation.
+	// Empty for non-slash turns and extension commands without a template.
+	SlashFrontmatter map[string]any `json:"slashFrontmatter,omitempty"`
 }
 
 func (UserTurnPersistedEvent) eventType() string { return EventUserTurnPersisted }

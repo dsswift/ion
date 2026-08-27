@@ -42,8 +42,8 @@ struct WorktreeRowView: View {
     /// Verification evidence for this replayed member. The desktop identifies
     /// suspects in its projection; iOS renders that fact and opens analysis.
     var verificationFailure: RemoteBenchVerification?
-    /// Retire this worktree (appraised on the desktop; refusals carry the
-    /// reason). Absent on hosts that do not offer lifecycle verbs.
+    /// Discard this worktree without merging it into its source branch. The
+    /// desktop appraises and preserves recoverable work before removal.
     var onRetire: (() -> Void)?
     /// The live auto-fix resolver for THIS worktree's directory, when one is
     /// running. While set, the conflict chip flashes and its tap focuses the
@@ -557,16 +557,13 @@ struct WorktreeRowView: View {
                     }
                 }
             }
-            // Retire: the explicit removal verb. Destructive styling; the
-            // desktop appraises and refuses when work would be lost
-            // (refusedDirty), and the op result words a refusal differently
-            // from a failure. Disabled mid-operation because the appraisal
-            // fields are conservative defaults then.
+            // Discard removes the worktree without merging it. The desktop
+            // appraises and preserves recoverable work before removal.
             if let onRetire {
                 Button(role: .destructive) {
                     onRetire()
                 } label: {
-                    Label("Retire worktree", systemImage: "trash")
+                    Label("Discard worktree", systemImage: "trash")
                 }
                 .disabled(worktree.operationState != nil)
             }

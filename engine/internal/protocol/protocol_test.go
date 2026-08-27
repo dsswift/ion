@@ -70,6 +70,11 @@ func TestParseClientCommand_ValidCommands(t *testing.T) {
 			cmd:  "tool_gate_response",
 		},
 		{
+			name: "tool_gate_response with image result",
+			line: `{"cmd":"tool_gate_response","key":"s1","gateRequestId":"tool-gate-1-3","gateImages":[{"media_type":"image/png","data":"cG5nLWJ5dGVz"}]}`,
+			cmd:  "tool_gate_response",
+		},
+		{
 			name: "command",
 			line: `{"cmd":"command","key":"s1","command":"status","args":"--verbose"}`,
 			cmd:  "command",
@@ -400,6 +405,17 @@ func TestParseClientCommand_FieldValues(t *testing.T) {
 	}
 	if result.Config.WorkingDirectory != "/home/user" {
 		t.Errorf("config.workingDirectory = %q, want %q", result.Config.WorkingDirectory, "/home/user")
+	}
+}
+
+func TestParseClientCommand_ResolveNewConversationDefaults(t *testing.T) {
+	single := ParseClientCommand(`{"cmd":"resolve_new_conversation_defaults","path":"/project","requestId":"one"}`)
+	if single == nil || single.Path != "/project" || single.Paths != nil {
+		t.Fatalf("single resolver command = %+v", single)
+	}
+	batch := ParseClientCommand(`{"cmd":"resolve_new_conversation_defaults","paths":["/one","/two"],"requestId":"batch"}`)
+	if batch == nil || len(batch.Paths) != 2 || batch.Paths[0] != "/one" || batch.Paths[1] != "/two" {
+		t.Fatalf("batch resolver command = %+v", batch)
 	}
 }
 

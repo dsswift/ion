@@ -53,6 +53,7 @@ export interface WorktreeMenuActions {
   onMoveInBench(toIndex: number): void;
   onSync(): void;
   onLandAndRetire(): void;
+  onRequestDiscardWorktree(): void;
   onReveal(): void;
   onReprovision(): void;
   onRequestDiscardRecordings(): void;
@@ -276,6 +277,14 @@ export function buildWorktreeMenuEntries(
   ]);
 
   appendGroup(entries, "destructive", [
+    {
+      type: "action",
+      id: "discard-worktree",
+      label: "Discard worktree…",
+      icon: <Trash size={12} color={colors.dangerFg} />,
+      keepsMenuOpen: true,
+      run: actions.onRequestDiscardWorktree,
+    },
     ...(enrolled
       ? [
           {

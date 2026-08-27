@@ -25,7 +25,8 @@ export function FileExplorerTreeRow({
   selected: boolean
   isGitIgnored?: boolean
   onToggle: () => void
-  onClick: () => void
+  /** Receives the click so ⇧/⌥ modifiers reach the open-intent rules. */
+  onClick: (event: React.MouseEvent) => void
   onContextMenu: (e: React.MouseEvent) => void
   colors: ReturnType<typeof useColors>
 }) {
@@ -35,7 +36,7 @@ export function FileExplorerTreeRow({
 
   return (
     <div
-      onClick={entry.isDirectory ? onToggle : onClick}
+      onClick={entry.isDirectory ? () => onToggle() : onClick}
       onContextMenu={onContextMenu}
       {...handlers}
       style={{

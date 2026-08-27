@@ -58,6 +58,8 @@ import {
   clearResourceSubscriptions,
   subscribeToResourceKinds,
   subscribeToGlobalResourceKinds,
+  markReadPersisted,
+  isResourceRead,
 } from '../event-wiring-resources'
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -116,6 +118,16 @@ describe('event-wiring-resources — session key tracking for reconnect', () => 
       .filter((c: any[]) => c[0] === 'resource_subscribe')
       .map((c: any[]) => (c[1] as { key: string }).key)
     expect(keys).toContain('tab5:inst5')
+  })
+})
+
+
+describe('event-wiring-resources — persisted read identity', () => {
+  it('keeps same-ID resources in different kinds separate', () => {
+    markReadPersisted('briefing', 'shared-id')
+
+    expect(isResourceRead('briefing', 'shared-id')).toBe(true)
+    expect(isResourceRead('alert', 'shared-id')).toBe(false)
   })
 })
 

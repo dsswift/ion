@@ -18,34 +18,58 @@
  * than guessed. A wrong source branch would make "land" merge into the wrong
  * place, which is far worse than asking. Callers surface a picker instead.
  */
-import { existsSync, mkdirSync, readFileSync } from 'fs'
-import { homedir } from 'os'
-import { join } from 'path'
-import { atomicWriteFileSync } from '../utils/atomicWrite'
-import { log as _log, warn as _warn } from '../logger'
-import { invalidateWorktreeInventoryCache } from './inventory-cache'
-import { workStageDescriptor, type WorkStage } from '../../shared/types-git'
+import { existsSync, mkdirSync, readFileSync } from "fs";
+import { homedir } from "os";
+import { join } from "path";
+import { atomicWriteFileSync } from "../utils/atomicWrite";
+import { log as _log, warn as _warn } from "../logger";
+import { invalidateWorktreeInventoryCache } from "./inventory-cache";
+import { triggerWorktreeStageChange } from "./stage-change-trigger";
+import { type WorkStage } from "../../shared/types-git";
 
-const TAG = 'worktree.registry'
-function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
-function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
+const TAG = "worktree.registry";
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log(TAG, msg, fields);
+}
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn(TAG, msg, fields);
+}
 
-export type RegistryWriter = (path: string, data: string) => void
+export type RegistryWriter = (path: string, data: string) => void;
 
-let _writer: RegistryWriter = (path, data) => atomicWriteFileSync(path, data, 0o644)
+export type WorktreeStageMutationSource =
+  | { kind: "operator" }
+  | {
+      kind: "automation";
+      automationId: string;
+      causationRootId: string;
+      causation?: import("../../shared/types-automation").AutomationCausation;
+      onlyIfStage?: WorkStage;
+    };
 
-export function setRegistryWriter(w: RegistryWriter): void { _writer = w }
-export function resetRegistryWriter(): void { _writer = (p, d) => atomicWriteFileSync(p, d, 0o644) }
+let _writer: RegistryWriter = (path, data) =>
+  atomicWriteFileSync(path, data, 0o644);
+
+export function setRegistryWriter(w: RegistryWriter): void {
+  _writer = w;
+}
+export function resetRegistryWriter(): void {
+  _writer = (p, d) => atomicWriteFileSync(p, d, 0o644);
+}
 
 // Resolved lazily, not captured at module load: a frozen path is unobservable
 // and would make a test that redirects HOME write to the real ~/.ion.
-function ionDir(): string { return join(homedir(), '.ion') }
-export function worktreeRegistryFile(): string { return join(ionDir(), 'worktree-registry.json') }
+function ionDir(): string {
+  return join(homedir(), ".ion");
+}
+export function worktreeRegistryFile(): string {
+  return join(ionDir(), "worktree-registry.json");
+}
 
-interface RegistryEntry {
-  worktreePath: string
-  repoPath: string
-  branchName: string
+export interface RegistryEntry {
+  worktreePath: string;
+  repoPath: string;
+  branchName: string;
   /**
    * The branch this worktree was cut from — not recoverable from git.
    *
@@ -55,7 +79,7 @@ interface RegistryEntry {
    * `land` merge into the wrong place, which is exactly what the unknown-source
    * path exists to prevent.
    */
-  sourceBranch: string | null
+  sourceBranch: string | null;
   /**
    * The source-branch commit this worktree is currently based on — written at
    * creation and advanced after every successful sync.
@@ -76,7 +100,7 @@ interface RegistryEntry {
    * written before this existed — sync falls back to the plain rebase and
    * backfills on its first success. Absent means "unknown", never a guess.
    */
-  baseSha?: string
+  baseSha?: string;
   /**
    * Human-readable description of what this worktree is FOR.
    *
@@ -90,8 +114,8 @@ interface RegistryEntry {
    * `wt/ion-03e81090`, a commit sha — is a machine string that tells the
    * operator nothing about the work, which is what this field fixes.
    */
-  title?: string
-  createdAt: number
+  title?: string;
+  createdAt: number;
   /**
    * When this worktree's commits were landed into its source branch.
    *
@@ -113,55 +137,65 @@ interface RegistryEntry {
    * band. A worktree landed before this field existed reads as active until it
    * is retired; that degrades honestly, where inferring would not.
    */
-  landedAt?: number
+  landedAt?: number;
   /**
    * The operator's workflow stage for this worktree, or absent when none has
-   * been set. The vocabulary and its one automatic transition (`bug` → `test`
-   * on a bench pin advance) live in shared/types-git.ts (`WORK_STAGES`).
+   * been set. The vocabulary lives in shared/types-git.ts (`WORK_STAGES`).
    *
    * Registry-scoped rather than bench-scoped on purpose: `plan` happens before
    * any enrollment exists, and the stage describes the worktree's lifecycle —
    * so it must survive enrollment, disenrollment, and pin advances, which a
    * field on the bench member record could not.
    */
-  stage?: WorkStage
+  stage?: WorkStage;
 }
 
 interface RegistryFile {
-  version: 1
-  entries: RegistryEntry[]
+  version: 1;
+  entries: RegistryEntry[];
 }
 
-function loadRegistry(): RegistryEntry[] {
-  const file = worktreeRegistryFile()
-  if (!existsSync(file)) return []
+export function loadRegistry(): RegistryEntry[] {
+  const file = worktreeRegistryFile();
+  if (!existsSync(file)) return [];
   try {
-    const parsed = JSON.parse(readFileSync(file, 'utf-8')) as Partial<RegistryFile>
+    const parsed = JSON.parse(
+      readFileSync(file, "utf-8"),
+    ) as Partial<RegistryFile>;
     return Array.isArray(parsed.entries)
-      ? parsed.entries.filter((e): e is RegistryEntry =>
-        // sourceBranch may legitimately be null: a hand-created worktree that
-        // has been titled is registered with an unknown source rather than a
-        // guessed one. Requiring a string here would silently drop those
-        // entries on the next read, losing the title.
-        !!e && typeof e.worktreePath === 'string'
-        && (typeof e.sourceBranch === 'string' || e.sourceBranch === null))
-      : []
+      ? parsed.entries.filter(
+          (e): e is RegistryEntry =>
+            // sourceBranch may legitimately be null: a hand-created worktree that
+            // has been titled is registered with an unknown source rather than a
+            // guessed one. Requiring a string here would silently drop those
+            // entries on the next read, losing the title.
+            !!e &&
+            typeof e.worktreePath === "string" &&
+            (typeof e.sourceBranch === "string" || e.sourceBranch === null),
+        )
+      : [];
   } catch (err) {
-    warn('registry unreadable, treating as empty', { path: file, error: String(err) })
-    return []
+    warn("registry unreadable, treating as empty", {
+      path: file,
+      error: String(err),
+    });
+    return [];
   }
 }
 
-function saveRegistry(entries: RegistryEntry[]): boolean {
+export function saveRegistry(entries: RegistryEntry[]): boolean {
   try {
-    const dir = ionDir()
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-    const payload: RegistryFile = { version: 1, entries }
-    _writer(worktreeRegistryFile(), JSON.stringify(payload, null, 2))
-    return true
+    const dir = ionDir();
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    const payload: RegistryFile = { version: 1, entries };
+    _writer(worktreeRegistryFile(), JSON.stringify(payload, null, 2));
+    return true;
   } catch (err) {
-    warn('failed to save worktree registry', { path: worktreeRegistryFile(), error: String(err) })
-    return false
+    warn("failed to save worktree registry", {
+      path: worktreeRegistryFile(),
+      error: String(err),
+    });
+    return false;
   }
 }
 
@@ -183,22 +217,26 @@ function saveRegistry(entries: RegistryEntry[]): boolean {
  * already carries.
  */
 export function registerWorktree(args: {
-  worktreePath: string
-  repoPath: string
-  branchName: string
-  sourceBranch: string
-  title?: string
+  worktreePath: string;
+  repoPath: string;
+  branchName: string;
+  sourceBranch: string;
+  title?: string;
   /**
    * The source-branch tip the worktree was cut from, resolved by the creation
    * path (which is the only code positioned to know it). Optional so callers
    * that genuinely cannot resolve it register without one — sync then uses the
    * plain-rebase fallback and backfills on its first success.
    */
-  baseSha?: string
+  baseSha?: string;
 }): boolean {
-  const previous = loadRegistry().find((e) => e.worktreePath === args.worktreePath)
-  const entries = loadRegistry().filter((e) => e.worktreePath !== args.worktreePath)
-  const seeded = args.title?.trim() || undefined
+  const previous = loadRegistry().find(
+    (e) => e.worktreePath === args.worktreePath,
+  );
+  const entries = loadRegistry().filter(
+    (e) => e.worktreePath !== args.worktreePath,
+  );
+  const seeded = args.title?.trim() || undefined;
   // `landedAt` and `stage` are carried across a re-registration: the same
   // directory being re-registered has not un-landed its history, and the
   // operator's workflow marker is still where they left it. `baseSha` prefers
@@ -214,20 +252,20 @@ export function registerWorktree(args: {
     landedAt: previous?.landedAt,
     stage: previous?.stage,
     createdAt: Date.now(),
-  })
-  const saved = saveRegistry(entries)
+  });
+  const saved = saveRegistry(entries);
   if (saved) {
-    invalidateWorktreeInventoryCache('worktree registered')
-    log('registered worktree', {
+    invalidateWorktreeInventoryCache("worktree registered");
+    log("registered worktree", {
       worktree_path: args.worktreePath,
       branch: args.branchName,
       source_branch: args.sourceBranch,
-      base_sha: (args.baseSha ?? previous?.baseSha ?? '').slice(0, 7),
-      retained_title: previous?.title ?? '',
-      seeded_title: previous?.title ? '' : (seeded ?? ''),
-    })
+      base_sha: (args.baseSha ?? previous?.baseSha ?? "").slice(0, 7),
+      retained_title: previous?.title ?? "",
+      seeded_title: previous?.title ? "" : (seeded ?? ""),
+    });
   }
-  return saved
+  return saved;
 }
 
 /**
@@ -243,25 +281,31 @@ export function registerWorktree(args: {
  * failure mode the registry's null-source rule exists to prevent.
  */
 export function markWorktreeLanded(worktreePath: string): boolean {
-  const entries = loadRegistry()
-  const existing = entries.find((e) => e.worktreePath === worktreePath)
+  const entries = loadRegistry();
+  const existing = entries.find((e) => e.worktreePath === worktreePath);
   if (!existing) {
-    warn('cannot mark landed, no registry entry', { worktree_path: worktreePath })
-    return false
+    warn("cannot mark landed, no registry entry", {
+      worktree_path: worktreePath,
+    });
+    return false;
   }
   if (existing.landedAt) {
-    log('worktree already marked landed', {
-      worktree_path: worktreePath, landed_at: existing.landedAt,
-    })
-    return true
+    log("worktree already marked landed", {
+      worktree_path: worktreePath,
+      landed_at: existing.landedAt,
+    });
+    return true;
   }
-  existing.landedAt = Date.now()
-  const saved = saveRegistry(entries)
+  existing.landedAt = Date.now();
+  const saved = saveRegistry(entries);
   if (saved) {
-    invalidateWorktreeInventoryCache('worktree landed')
-    log('worktree marked landed', { worktree_path: worktreePath, landed_at: existing.landedAt })
+    invalidateWorktreeInventoryCache("worktree landed");
+    log("worktree marked landed", {
+      worktree_path: worktreePath,
+      landed_at: existing.landedAt,
+    });
   }
-  return saved
+  return saved;
 }
 
 /**
@@ -283,44 +327,43 @@ export function setWorktreeTitle(
   title: string,
   fallback?: { repoPath?: string; branchName?: string },
 ): boolean {
-  const entries = loadRegistry()
-  const existing = entries.find((e) => e.worktreePath === worktreePath)
+  const entries = loadRegistry();
+  const existing = entries.find((e) => e.worktreePath === worktreePath);
   if (existing) {
-    const previous = existing.title
-    existing.title = title
-    const saved = saveRegistry(entries)
+    const previous = existing.title;
+    existing.title = title;
+    const saved = saveRegistry(entries);
     if (saved) {
-      invalidateWorktreeInventoryCache('worktree titled')
-      log('worktree title set', { worktree_path: worktreePath, title, replaced: previous ?? '' })
+      invalidateWorktreeInventoryCache("worktree titled");
+      log("worktree title set", {
+        worktree_path: worktreePath,
+        title,
+        replaced: previous ?? "",
+      });
     }
-    return saved
+    return saved;
   }
 
   entries.push({
     worktreePath,
-    repoPath: fallback?.repoPath ?? '',
-    branchName: fallback?.branchName ?? '',
+    repoPath: fallback?.repoPath ?? "",
+    branchName: fallback?.branchName ?? "",
     // Unknown, and deliberately not guessed. See the field comment.
     sourceBranch: null,
     title,
     createdAt: Date.now(),
-  })
-  const saved = saveRegistry(entries)
+  });
+  const saved = saveRegistry(entries);
   if (saved) {
-    invalidateWorktreeInventoryCache('worktree titled')
-    log('worktree title set on a new registry entry', {
+    invalidateWorktreeInventoryCache("worktree titled");
+    log("worktree title set on a new registry entry", {
       worktree_path: worktreePath,
       title,
-      repo_path: fallback?.repoPath ?? '',
-      source_branch: 'unknown',
-    })
+      repo_path: fallback?.repoPath ?? "",
+      source_branch: "unknown",
+    });
   }
-  return saved
-}
-
-/** A worktree's recorded title, or null when it has never been named. */
-export function lookupWorktreeTitle(worktreePath: string): string | null {
-  return loadRegistry().find((e) => e.worktreePath === worktreePath)?.title ?? null
+  return saved;
 }
 
 /**
@@ -336,141 +379,128 @@ export function setWorktreeStage(
   worktreePath: string,
   stage: WorkStage | null,
   fallback?: { repoPath?: string; branchName?: string },
+  source: WorktreeStageMutationSource = { kind: "operator" },
 ): boolean {
-  const entries = loadRegistry()
-  const existing = entries.find((e) => e.worktreePath === worktreePath)
+  const entries = loadRegistry();
+  const existing = entries.find((e) => e.worktreePath === worktreePath);
   if (existing) {
-    const previous = existing.stage
-    existing.stage = stage ?? undefined
-    const saved = saveRegistry(entries)
-    if (saved) {
-      invalidateWorktreeInventoryCache('worktree stage set')
-      log('worktree stage set', {
-        worktree_path: worktreePath,
-        stage: stage ?? 'none',
-        replaced: previous ?? 'none',
-      })
+    const previous = existing.stage;
+    if (
+      source.kind === "automation" &&
+      source.onlyIfStage !== undefined &&
+      previous !== source.onlyIfStage
+    ) {
+      log(
+        "automation stage mutation skipped: current stage does not match guard",
+        {
+          worktree_path: worktreePath,
+          automation_id: source.automationId,
+          expected_stage: source.onlyIfStage,
+          current_stage: previous ?? "none",
+        },
+      );
+      return true;
     }
-    return saved
+    existing.stage = stage ?? undefined;
+    const saved = saveRegistry(entries);
+    if (saved) {
+      invalidateWorktreeInventoryCache("worktree stage set");
+      log("worktree stage set", {
+        worktree_path: worktreePath,
+        stage: stage ?? "none",
+        replaced: previous ?? "none",
+        mutation_source: source.kind,
+        automation_id:
+          source.kind === "automation" ? source.automationId : undefined,
+        causation_root_id:
+          source.kind === "automation" ? source.causationRootId : undefined,
+      });
+      if (previous !== stage) {
+        triggerWorktreeStageChange({
+          worktreePath,
+          previousStage: previous,
+          stage: stage ?? undefined,
+          source: source.kind,
+          automationId:
+            source.kind === "automation" ? source.automationId : undefined,
+          causation:
+            source.kind === "automation" ? source.causation : undefined,
+        });
+      }
+    }
+    return saved;
   }
 
   if (!stage) {
-    log('stage clear skipped: no registry entry', { worktree_path: worktreePath })
-    return true
+    log("stage clear skipped: no registry entry", {
+      worktree_path: worktreePath,
+    });
+    return true;
   }
 
   entries.push({
     worktreePath,
-    repoPath: fallback?.repoPath ?? '',
-    branchName: fallback?.branchName ?? '',
+    repoPath: fallback?.repoPath ?? "",
+    branchName: fallback?.branchName ?? "",
     // Unknown, and deliberately not guessed. See the sourceBranch field comment.
     sourceBranch: null,
     stage,
     createdAt: Date.now(),
-  })
-  const saved = saveRegistry(entries)
+  });
+  const saved = saveRegistry(entries);
   if (saved) {
-    invalidateWorktreeInventoryCache('worktree stage set')
-    log('worktree stage set on a new registry entry', {
+    invalidateWorktreeInventoryCache("worktree stage set");
+    log("worktree stage set on a new registry entry", {
       worktree_path: worktreePath,
       stage,
-      repo_path: fallback?.repoPath ?? '',
-      source_branch: 'unknown',
-    })
+      repo_path: fallback?.repoPath ?? "",
+      source_branch: "unknown",
+      mutation_source: source.kind,
+      automation_id:
+        source.kind === "automation" ? source.automationId : undefined,
+      causation_root_id:
+        source.kind === "automation" ? source.causationRootId : undefined,
+    });
+    triggerWorktreeStageChange({
+      worktreePath,
+      stage,
+      source: source.kind,
+      automationId:
+        source.kind === "automation" ? source.automationId : undefined,
+      causation: source.kind === "automation" ? source.causation : undefined,
+    });
   }
-  return saved
+  return saved;
 }
 
 /**
- * Apply the stage vocabulary's automatic pin-advance transition: a worktree
- * marked `bug` moves to `test` when new content of its own reaches the bench.
+ * Legacy fallback for installations without an automation runtime.
  *
- * Called from the bench's two pin-advance sites (updateMember / updateAllStale
- * in integration/bench-ops.ts), and only when the pin ACTUALLY moved —
- * re-pinning identical content keeps the flag, because the bug is still in
- * there. The transition is data-driven off `WORK_STAGES[].onPinAdvance`, so a
- * future stage with its own advance behaviour needs no new call site.
- *
- * A worktree with no registry entry, no stage, or a stage with no advance rule
- * is a logged no-op.
+ * Earlier desktop builds made the workflow decision directly in bench code:
+ * `bug` became `test` whenever a member pin changed. Pin advancement is now a
+ * semantic automation event. The trigger adapter calls this migration only
+ * while no runtime has registered to handle that event, preserving existing
+ * operator behavior during rollout without making it part of `WorkStage`.
  */
-export function advanceWorktreeStageOnPinChange(worktreePath: string): boolean {
-  const entries = loadRegistry()
-  const existing = entries.find((e) => e.worktreePath === worktreePath)
-  if (!existing?.stage) return true
-  const next = workStageDescriptor(existing.stage)?.onPinAdvance
-  if (!next) return true
-  const previous = existing.stage
-  existing.stage = next
-  const saved = saveRegistry(entries)
+export function migrateWorktreeStageOnPinAdvance(
+  worktreePath: string,
+): boolean {
+  const entries = loadRegistry();
+  const existing = entries.find((e) => e.worktreePath === worktreePath);
+  if (existing?.stage !== "bug") return true;
+  existing.stage = "test";
+  const saved = saveRegistry(entries);
   if (saved) {
-    invalidateWorktreeInventoryCache('worktree stage auto-advanced')
-    log('worktree stage auto-advanced on pin change', {
+    invalidateWorktreeInventoryCache(
+      "worktree stage migration after pin advance",
+    );
+    log("worktree stage migrated after pin advance", {
       worktree_path: worktreePath,
-      from: previous,
-      to: next,
-    })
+      from: "bug",
+      to: "test",
+    });
   }
-  return saved
-}
-
-/** A worktree's recorded workflow stage, or null when none is set. */
-export function lookupWorktreeStage(worktreePath: string): WorkStage | null {
-  const raw = loadRegistry().find((e) => e.worktreePath === worktreePath)?.stage
-  // Filtered through the descriptor table so a hand-edited or future-version
-  // value degrades to "no stage" instead of leaking an unknown string to
-  // every renderer.
-  return workStageDescriptor(raw)?.id ?? null
-}
-
-/** When this worktree's work landed, or null when it has not (or Ion has no record). */
-export function lookupWorktreeLandedAt(worktreePath: string): number | null {
-  return loadRegistry().find((e) => e.worktreePath === worktreePath)?.landedAt ?? null
-}
-
-/**
- * The full registration for a worktree, or null when Ion has no record.
- *
- * Callers that must decide "is this directory a worktree Ion manages, and which
- * repo does it belong to" read this rather than inferring from the path shape —
- * a path can look like a worktree without being one.
- */
-export function lookupWorktreeRegistration(worktreePath: string): {
-  repoPath: string
-  branchName: string
-  sourceBranch: string | null
-  title: string | null
-  landedAt?: number
-} | null {
-  const entry = loadRegistry().find((e) => e.worktreePath === worktreePath)
-  if (!entry) return null
-  return {
-    repoPath: entry.repoPath,
-    branchName: entry.branchName,
-    sourceBranch: entry.sourceBranch,
-    title: entry.title ?? null,
-    landedAt: entry.landedAt,
-  }
-}
-
-/** Drop a worktree's registry entry (after a retire). */
-export function unregisterWorktree(worktreePath: string): boolean {
-  const before = loadRegistry()
-  const after = before.filter((e) => e.worktreePath !== worktreePath)
-  if (after.length !== before.length) {
-    const saved = saveRegistry(after)
-    if (saved) {
-      invalidateWorktreeInventoryCache('worktree unregistered')
-      log('unregistered worktree', { worktree_path: worktreePath })
-    }
-    return saved
-  }
-  return true
-}
-
-/** Look up a worktree's recorded source branch, or null when unknown. */
-export function lookupSourceBranch(worktreePath: string): string | null {
-  return loadRegistry().find((e) => e.worktreePath === worktreePath)?.sourceBranch ?? null
+  return saved;
 }
 
 /**
@@ -516,43 +546,13 @@ export function registeredRepoPaths(): string[] {
   return [...seen]
 }
 
-/**
- * The source-branch commit this worktree is based on, or null when the record
- * predates base tracking (or Ion has no record). See the `baseSha` field
- * comment for why this is stored rather than derived.
- */
-export function lookupWorktreeBase(worktreePath: string): string | null {
-  return loadRegistry().find((e) => e.worktreePath === worktreePath)?.baseSha ?? null
-}
-
-/**
- * Advance a worktree's recorded base after a successful sync.
- *
- * Called only from the sync path (worktree/integrate.ts), which is the only
- * code that witnesses the transition — after `git rebase --onto <source>` the
- * worktree is based on the tip the sync captured, and recording anything else
- * (or nothing) would send the NEXT sync through the imprecise fallback.
- *
- * A worktree with no registry entry is not created here, for the same reason
- * `markWorktreeLanded` refuses to: inventing an entry with a fabricated
- * `sourceBranch` is the failure mode the registry's null-source rule prevents.
- */
-export function setWorktreeBase(worktreePath: string, baseSha: string): boolean {
-  const entries = loadRegistry()
-  const existing = entries.find((e) => e.worktreePath === worktreePath)
-  if (!existing) {
-    warn('cannot record base, no registry entry', { worktree_path: worktreePath })
-    return false
-  }
-  const previous = existing.baseSha
-  existing.baseSha = baseSha
-  const saved = saveRegistry(entries)
-  if (saved) {
-    log('worktree base advanced', {
-      worktree_path: worktreePath,
-      base_sha: baseSha.slice(0, 7),
-      previous: (previous ?? '').slice(0, 7),
-    })
-  }
-  return saved
-}
+export {
+  lookupSourceBranch,
+  lookupWorktreeBase,
+  lookupWorktreeLandedAt,
+  lookupWorktreeRegistration,
+  lookupWorktreeStage,
+  lookupWorktreeTitle,
+  setWorktreeBase,
+  unregisterWorktree,
+} from "./registry-helpers";

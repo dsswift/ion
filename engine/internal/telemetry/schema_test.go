@@ -19,9 +19,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dsswift/ion/engine/internal/filelock"
 	"github.com/dsswift/ion/engine/internal/types"
 )
+
+// stampSchemaCheckpointWithVersion simulates a writer at a supplied schema.
+func stampSchemaCheckpointWithVersion(t *testing.T, filePath string, version int, engineVersion string) {
+	t.Helper()
+	stampSchemaCheckpointAt(filePath, version, engineVersion)
+}
 
 // ---------------------------------------------------------------------------
 // Test 1: downgrade — sidecar untouched, file untouched, event emitted
@@ -46,7 +51,7 @@ func TestCheckpoint_Downgrade_NoRotation(t *testing.T) {
 	if err := writeSidecar(sidecarPath(telFile), sc); err != nil {
 		t.Fatalf("write sidecar: %v", err)
 	}
-	const origContent = "{\"name\":\"live.v3.event\"}\n"
+	const origContent = "{\"name\":\"live.v3.event\",\"ts\":\"2026-01-01T00:00:00Z\",\"schema\":3,\"component\":\"engine\",\"payload\":{}}\n"
 	if err := os.WriteFile(telFile, []byte(origContent), 0o644); err != nil {
 		t.Fatalf("write telFile: %v", err)
 	}
@@ -83,7 +88,7 @@ func TestCheckpoint_Downgrade_NoRotation(t *testing.T) {
 	}
 
 	// 4. A schema_writer_changed event must have been appended.
-	if !strings.Contains(string(content), "telemetry.schema_writer_changed") {
+	if _, found := telemetryEventByName(mustReadTelemetryFile(t, telFile), "telemetry.schema_writer_changed"); !found {
 		t.Error("schema_writer_changed event not found in file after downgrade")
 	}
 }
@@ -107,7 +112,7 @@ func TestCheckpoint_Upgrade_RaisesSidecar(t *testing.T) {
 	if err := writeSidecar(sidecarPath(telFile), sc); err != nil {
 		t.Fatalf("write sidecar: %v", err)
 	}
-	if err := os.WriteFile(telFile, []byte("{\"name\":\"v2.event\"}\n"), 0o644); err != nil {
+	if err := os.WriteFile(telFile, []byte("{\"name\":\"v2.event\",\"ts\":\"2026-01-01T00:00:00Z\",\"schema\":3,\"component\":\"engine\",\"payload\":{}}\n"), 0o644); err != nil {
 		t.Fatalf("write telFile: %v", err)
 	}
 
@@ -133,7 +138,7 @@ func TestCheckpoint_Upgrade_RaisesSidecar(t *testing.T) {
 
 	// 3. schema_writer_changed appended.
 	content, _ := os.ReadFile(telFile)
-	if !strings.Contains(string(content), "telemetry.schema_writer_changed") {
+	if _, found := telemetryEventByName(mustReadTelemetryFile(t, telFile), "telemetry.schema_writer_changed"); !found {
 		t.Error("schema_writer_changed event not found after upgrade")
 	}
 
@@ -158,7 +163,7 @@ func TestCheckpoint_Match_NoOp(t *testing.T) {
 	if err := writeSidecar(sidecarPath(telFile), sc); err != nil {
 		t.Fatalf("write sidecar: %v", err)
 	}
-	const origContent = "{\"name\":\"live.event\"}\n"
+	const origContent = "{\"name\":\"live.event\",\"ts\":\"2026-01-01T00:00:00Z\",\"schema\":3,\"component\":\"engine\",\"payload\":{}}\n"
 	if err := os.WriteFile(telFile, []byte(origContent), 0o644); err != nil {
 		t.Fatalf("write telFile: %v", err)
 	}
@@ -304,7 +309,7 @@ func TestCheckpoint_OldKeySidecar_MigratesCleanly(t *testing.T) {
 	if err := os.WriteFile(sidecarPath(telFile), []byte(oldSidecarJSON), 0o644); err != nil {
 		t.Fatalf("write old sidecar: %v", err)
 	}
-	if err := os.WriteFile(telFile, []byte("{\"name\":\"old.event\"}\n"), 0o644); err != nil {
+	if err := os.WriteFile(telFile, []byte("{\"name\":\"old.event\",\"ts\":\"2026-01-01T00:00:00Z\",\"schema\":3,\"component\":\"engine\",\"payload\":{}}\n"), 0o644); err != nil {
 		t.Fatalf("write telFile: %v", err)
 	}
 
@@ -357,7 +362,7 @@ func TestCheckpoint_Idempotency_SyncOnce(t *testing.T) {
 	if err := writeSidecar(sidecarPath(telFile), sc); err != nil {
 		t.Fatalf("write sidecar: %v", err)
 	}
-	if err := os.WriteFile(telFile, []byte("{\"name\":\"old\"}\n"), 0o644); err != nil {
+	if err := os.WriteFile(telFile, []byte("{\"name\":\"old\",\"ts\":\"2026-01-01T00:00:00Z\",\"schema\":3,\"component\":\"engine\",\"payload\":{}}\n"), 0o644); err != nil {
 		t.Fatalf("write telFile: %v", err)
 	}
 
@@ -378,88 +383,3 @@ func TestCheckpoint_Idempotency_SyncOnce(t *testing.T) {
 		t.Errorf("schema_writer_changed count = %d, want 1 (sync.Once must fire checkpoint exactly once)", count)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Helper: bypass sync.Once for per-test isolation
-// ---------------------------------------------------------------------------
-
-// stampSchemaCheckpointWithVersion calls the internal stampSchemaCheckpoint
-// body with an overridden current schema version. This is needed because
-// TelemetrySchemaVersion is a package-level const and tests need to simulate
-// different writer versions across checkpoint calls.
-//
-// It works by temporarily patching the package-level checkpointOnce (already
-// reset by the caller), then calling the body function directly.
-func stampSchemaCheckpointWithVersion(t *testing.T, filePath string, version int, engineVersion string) {
-	t.Helper()
-	// Swap TelemetrySchemaVersion conceptually: we call the internal body
-	// with the version injected. Since we cannot override the const, we
-	// use a test-only shim that runs stampSchemaCheckpointAt.
-	stampSchemaCheckpointAt(filePath, version, engineVersion)
-}
-
-// stampSchemaCheckpointAt is the parameterised version of stampSchemaCheckpoint
-// used exclusively by tests to inject arbitrary writer versions.
-// It mirrors stampSchemaCheckpoint's logic exactly but treats `currentVersion`
-// as the writer's schema version instead of the package-level const.
-func stampSchemaCheckpointAt(filePath string, currentVersion int, engineVersion string) {
-	lock, err := filelock.Acquire(filePath)
-	if err != nil {
-		return
-	}
-	defer func() { _ = lock.Release() }()
-
-	scPath := sidecarPath(filePath)
-
-	fileSize := int64(0)
-	if info, err := os.Stat(filePath); err == nil {
-		fileSize = info.Size()
-	}
-
-	sidecar, sidecarOk := readSidecar(scPath)
-
-	switch {
-	case !sidecarOk && fileSize == 0:
-		sc := schemaSidecar{HighestSchemaSeen: currentVersion, StampedAt: time.Now().UnixMilli(), EngineVersion: engineVersion}
-		_ = writeSidecar(scPath, sc)
-
-	case !sidecarOk && fileSize > 0:
-		sc := schemaSidecar{HighestSchemaSeen: currentVersion, StampedAt: time.Now().UnixMilli(), EngineVersion: engineVersion}
-		_ = writeSidecar(scPath, sc)
-		emitSchemaWriterChangedAt(filePath, 1, currentVersion, engineVersion)
-
-	case sidecar.HighestSchemaSeen == currentVersion:
-		// match — no-op
-
-	case currentVersion > sidecar.HighestSchemaSeen:
-		prev := sidecar.HighestSchemaSeen
-		sidecar.HighestSchemaSeen = currentVersion
-		sidecar.StampedAt = time.Now().UnixMilli()
-		sidecar.EngineVersion = engineVersion
-		_ = writeSidecar(scPath, sidecar)
-		emitSchemaWriterChangedAt(filePath, prev, currentVersion, engineVersion)
-
-	default:
-		// downgrade — sidecar unchanged, event appended
-		emitSchemaWriterChangedAt(filePath, sidecar.HighestSchemaSeen, currentVersion, engineVersion)
-	}
-}
-
-// emitSchemaWriterChangedAt is the version-parameterised variant of
-// emitSchemaWriterChanged used by test helpers.
-func emitSchemaWriterChangedAt(filePath string, prevSchema, currentSchema int, engineVersion string) {
-	event := Event{
-		Ts:            time.Now().UTC().Format("2006-01-02T15:04:05.999999999Z"),
-		Name:          "telemetry.schema_writer_changed",
-		SchemaVersion: currentSchema,
-		Payload: map[string]any{
-			"previous_schema_version": prevSchema,
-			"current_schema_version":  currentSchema,
-			"engine_version":          engineVersion,
-		},
-	}
-	_ = flushToFile([]Event{event}, filePath, rotationPolicy{})
-}
-
-// filelock import needed by stampSchemaCheckpointAt.
-var _ = filelock.Acquire

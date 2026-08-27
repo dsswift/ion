@@ -11,6 +11,16 @@ export interface ContentRouter {
   openPlan?(dir: string, tabId: string, filePath: string): void
   openImage(filePath: string, dataUrl?: string): void
   openHtml(filePath: string): void
+  /**
+   * Open a web URL in a NEW Studio browser tab.
+   *
+   * Returns false when the URL is not something the embedded browser should
+   * take (a mailto:, a custom scheme, an unparseable href), so the caller falls
+   * back to the operating system. Studio implements this; the Overlay does not
+   * register a router at all, so its links keep going to the default browser.
+   */
+  openUrl?(url: string): boolean
+  openWebApplication?(tabId: string, url: string): void
   openGitDiff(target: { repoDir: string; filePath: string; staged: boolean }): boolean
   openResource?(item: ResourceItem): void
   openStatus?(): void

@@ -41,7 +41,8 @@ import {
   attemptRendererRecovery,
   resetRendererCrashGuard,
 } from "./renderer-crash-guard";
-import { installWebviewPolicy } from "./webview-policy";
+import { destroyAllBrowserViews, reapplyBrowserViewBounds } from "./studio-browser-views";
+import { setStudioBrowserWindowResolver } from "./ipc/studio-browser";
 import {
   STUDIO_TITLE_BAR_HEIGHT,
   STUDIO_TRAFFIC_LIGHT_POSITION,
@@ -50,6 +51,8 @@ import {
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log("studio", msg, fields);
 }
+
+setStudioBrowserWindowResolver(() => state.studioWindow);
 
 const STUDIO_DEFAULT_WIDTH = 960;
 const STUDIO_DEFAULT_HEIGHT = 640;
@@ -440,14 +443,9 @@ export function openStudioWindow(source = "unknown", reveal = true): void {
       sandbox: true,
       webSecurity: true,
       allowRunningInsecureContent: false,
-      // Studio-only: the browser surface tabs render through <webview>.
-      // Every attach is forced through installWebviewPolicy (hard floor on
-      // webPreferences, scheme allowlist, no popups, D6 preview offline).
-      webviewTag: true,
     },
   });
   state.studioWindow = win;
-  installWebviewPolicy(win.webContents);
 
   // Same renderer console forwarding as the main window, tagged [studio] so log
   // lines from the two renderers are distinguishable in desktop.jsonl.
@@ -523,7 +521,15 @@ export function openStudioWindow(source = "unknown", reveal = true): void {
   // live so Studio → Overlay switching preserves latest windowed/maximized state.
   win.on("close", () => flushStudioBounds(win, "before close"));
 
+  // A view is positioned in window coordinates and does not reflow with the
+  // page, so a window resize has to re-apply the last bounds the renderer
+  // measured or the browser body detaches from its hole.
+  win.on("resize", () => reapplyBrowserViewBounds(win));
+
   win.on("closed", () => {
+    // Browser views are children of this window; releasing them here keeps a
+    // closed Studio from leaving orphaned guests holding sessions open.
+    destroyAllBrowserViews();
     markDeepLinkConfirmationUnavailable("studio", "window closed");
     if (state.studioWindow === win) {
       state.studioWindow = null;

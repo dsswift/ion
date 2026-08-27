@@ -154,6 +154,8 @@ export interface RemoteTabState {
   activeConversationInstanceId?: string | null
   terminalInstances?: TerminalInstanceInfo[]
   activeTerminalInstanceId?: string | null
+  hasRunningTerminal?: boolean
+  terminalApplications?: import('../../shared/terminal-activity').TerminalWebApplication[]
   groupId?: string | null
   /** When true, auto-group movement is suppressed for this tab. */
   groupPinned?: boolean
@@ -247,6 +249,9 @@ export interface TerminalInstanceInfo {
   kind: string    // 'user' | 'commit' | 'cli' | 'tool:*'
   readOnly: boolean
   cwd: string
+  isRunning?: boolean
+  processLabel?: string
+  applications?: import('../../shared/terminal-activity').TerminalWebApplication[]
 }
 
 // ─── Wire-friendly message types for conversation sync ───
@@ -270,6 +275,7 @@ export interface RemoteMessage {
   slashSource?: string
   slashModelAlias?: string
   slashModelEffective?: string
+  slashFrontmatter?: Record<string, unknown>
   /** Plan path on plan-lifecycle divider system messages (Plan created / Plan
    * updated / Implementing plan). Lets iOS render the divider's slug as a
    * clickable link to the plan preview after a history reload. Omitted on

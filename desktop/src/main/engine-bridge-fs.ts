@@ -2,6 +2,7 @@ import { IS_REMOTE } from './engine-bridge'
 import { engineBridge } from './state'
 import { log } from './logger'
 import type { EngineDirListing, EngineHostInfo, NewConversationDefaultsPolicy } from '../shared/types'
+import type { ResolvedNewConversationDefaults } from '../shared/types-engine'
 import type { EnterprisePolicy } from '../shared/types-engine'
 
 /** Returns the bridge singleton.
@@ -105,10 +106,34 @@ export async function getEnterprisePolicy(): Promise<EnterprisePolicy | null> {
   return null
 }
 
+export async function resolveNewConversationDefaults(path: string): Promise<ResolvedNewConversationDefaults | null> {
+  const result = await bridge().request<ResolvedNewConversationDefaults>('resolve_new_conversation_defaults', { path })
+  if (!result.ok || !result.data) {
+    log('engine-bridge-fs', 'resolveNewConversationDefaults failed', { path, error: result.error ?? 'unknown' })
+    return null
+  }
+  log('engine-bridge-fs', 'resolveNewConversationDefaults resolved', { path, profile_id: result.data.profileId ?? '', profile_name: result.data.profileName ?? '', locked: result.data.profileLocked === true })
+  return result.data
+}
+
+export async function resolveNewConversationDefaultsBatch(paths: string[]): Promise<ResolvedNewConversationDefaults[]> {
+  if (paths.length === 0) return []
+  const result = await bridge().request<{ defaults?: ResolvedNewConversationDefaults[] }>('resolve_new_conversation_defaults', { paths })
+  if (!result.ok || !Array.isArray(result.data?.defaults)) {
+    log('engine-bridge-fs', 'resolveNewConversationDefaultsBatch failed', { count: paths.length, error: result.error ?? 'unknown' })
+    return []
+  }
+  return result.data.defaults
+}
+
+export async function getEnterpriseManagedProjects(): Promise<NonNullable<NewConversationDefaultsPolicy['projects']>> {
+  const result = await bridge().request<EnterprisePolicyResponse>('get_enterprise_policy')
+  const projects = result.ok ? result.data?.newConversationDefaults?.projects : undefined
+  return Array.isArray(projects) ? projects : []
+}
+
 /**
- * Fetch the enterprise new-tab policy from the engine. The engine reads this
- * from MDM/system-level config (macOS defaults, Linux drop-in JSON, etc.) and
- * projects it here so the desktop can enforce the locked new-tab behavior
+ * Fetch the enterprise new-conversation policy so the desktop can enforce the locked route
  * without parsing OS-specific sources itself.
  *
  * Returns null when no enterprise config is present or when the engine has

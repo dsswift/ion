@@ -302,6 +302,10 @@ describe('loadPersistedSettings — Studio surface switch mode validation', () =
   it.each(['preserve', 'invalid', true, null])('uses preserve for %s', async (value) => {
     expect((await hydrate(value)).studioSurfaceSwitchMode).toBe('preserve')
   })
+
+  it('defaults the browser preview network shield to enabled', async () => {
+    expect((await hydrate('preserve')).browserPreviewNetworkShield).toBe(true)
+  })
 })
 
 

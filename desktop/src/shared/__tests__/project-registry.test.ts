@@ -1,103 +1,55 @@
-/**
- * Project registry (G1): normalize/sanitize, recency ordering with
- * basename disambiguation, auto-populate semantics (rate-limited bump,
- * identity short-circuit), manual add/remove round-trip.
- */
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
-  normalizeProjectDir,
-  sanitizeProjectRegistry,
+  defaultProject,
+  effectiveProjects,
   isManagedWorkspacePath,
+  migrateProjectRegistry,
+  normalizeProjectDir,
   orderedProjects,
-  registerProjectUse,
+  sanitizeProjectRegistry,
   type ProjectRegistry,
 } from '../project-registry'
 
-describe('sanitizeProjectRegistry', () => {
-  it('malformed disk → {}', () => {
-    expect(sanitizeProjectRegistry(null)).toEqual({})
-    expect(sanitizeProjectRegistry('junk')).toEqual({})
-    expect(sanitizeProjectRegistry([])).toEqual({})
-  })
-
-  it('filters relative keys and non-object values; defaults fields', () => {
-    const out = sanitizeProjectRegistry({
-      '/a': { addedManually: true, lastUsedAt: 5, name: 'Alpha' },
-      'rel': { addedManually: true, lastUsedAt: 5 },
-      '/b': 'nope',
-      '/c': { lastUsedAt: 'NaN' },
-      '/Users/test/.ion/worktrees/ion-old': { addedManually: false, lastUsedAt: 99 },
-    })
-    expect(out).toEqual({
-      '/a': { addedManually: true, lastUsedAt: 5, name: 'Alpha' },
-      '/c': { addedManually: false, lastUsedAt: 0 },
+describe('controlled Project registry', () => {
+  it('sanitizes profile overrides and retains one default Project', () => {
+    expect(sanitizeProjectRegistry({
+      '/alpha': { addedManually: true, lastUsedAt: 2, isDefault: true, profileOverride: { kind: 'profile', profileId: 'dev' } },
+      '/beta': { addedManually: true, lastUsedAt: 1, isDefault: true, profileOverride: { kind: 'plain' } },
+      '/bad': { addedManually: true, lastUsedAt: 0, profileOverride: { kind: 'profile' } },
+    })).toEqual({
+      '/alpha': { addedManually: true, lastUsedAt: 2, isDefault: true, profileOverride: { kind: 'profile', profileId: 'dev' } },
+      '/beta': { addedManually: true, lastUsedAt: 1, isDefault: false, profileOverride: { kind: 'plain' } },
+      '/bad': { addedManually: true, lastUsedAt: 0 },
     })
   })
-})
 
-describe('orderedProjects', () => {
-  it('orders by lastUsedAt desc and disambiguates duplicate basenames', () => {
+  it('orders alphabetically and disambiguates duplicate names', () => {
     const registry: ProjectRegistry = {
-      '/client-a/api': { addedManually: false, lastUsedAt: 100 },
-      '/client-b/api': { addedManually: false, lastUsedAt: 300 },
-      '/solo/web': { addedManually: false, lastUsedAt: 200 },
+      '/zeta/api': { addedManually: true, lastUsedAt: 100 },
+      '/alpha/api': { addedManually: true, lastUsedAt: 1 },
+      '/beta/web': { addedManually: true, lastUsedAt: 2 },
     }
-    const out = orderedProjects(registry)
-    expect(out.map((p) => p.dir)).toEqual(['/client-b/api', '/solo/web', '/client-a/api'])
-    expect(out[0].displayName).toBe('api (client-b)')
-    expect(out[2].displayName).toBe('api (client-a)')
-    expect(out[1].displayName).toBe('web')
+    expect(orderedProjects(registry).map((item) => item.displayName)).toEqual(['api (alpha)', 'api (zeta)', 'web'])
   })
 
-  it('excludes Ion-managed worktrees and integration benches from project roots', () => {
-    const registry: ProjectRegistry = {
-      '/source/ion': { addedManually: false, lastUsedAt: 1 },
-      '/Users/test/.ion/worktrees/ion-feature': { addedManually: false, lastUsedAt: 3 },
-      '/Users/test/.ion/integration/ion-main': { addedManually: false, lastUsedAt: 2 },
-    }
-    expect(orderedProjects(registry).map((project) => project.dir)).toEqual(['/source/ion'])
+  it('migrates the legacy default directory, resets profile defaults, and excludes managed paths', () => {
+    expect(migrateProjectRegistry({
+      '/repo': { addedManually: false, lastUsedAt: 3, profileOverride: { kind: 'profile', profileId: 'old' } },
+      '/Users/dev/.ion/worktrees/task': { addedManually: true, lastUsedAt: 2 },
+    }, '/default')).toEqual({
+      '/repo': { addedManually: false, lastUsedAt: 3, isDefault: false },
+      '/default': { addedManually: true, lastUsedAt: 0, isDefault: true },
+    })
   })
 
-  it('name override wins over basename', () => {
-    const out = orderedProjects({ '/x/y': { name: 'My Project', addedManually: true, lastUsedAt: 1 } })
-    expect(out[0].displayName).toBe('My Project')
-  })
-})
-
-describe('registerProjectUse', () => {
-  it('creates absent entries as auto-populated', () => {
-    const next = registerProjectUse({}, '/repo/', 1000)
-    expect(next).toEqual({ '/repo': { addedManually: false, lastUsedAt: 1000 } })
+  it('merges immutable managed Projects and lets their default win', () => {
+    const projects = effectiveProjects({ '/user': { addedManually: true, lastUsedAt: 0, isDefault: true } }, [{ directory: '/managed', name: 'Managed', isDefault: true, profileAction: 'profile', profileId: 'corp', profileSource: 'enterprise' }])
+    expect(projects.map((item) => item.displayName)).toEqual(['Managed', 'user'])
+    expect(defaultProject({ '/user': { addedManually: true, lastUsedAt: 0, isDefault: true } }, [{ directory: '/managed', isDefault: true }])?.dir).toBe('/managed')
   })
 
-  it('bumps recency but rate-limits to once per minute (identity short-circuit)', () => {
-    const base: ProjectRegistry = { '/repo': { addedManually: true, lastUsedAt: 1000 } }
-    // Within the window: SAME reference back (no settings churn at boot).
-    expect(registerProjectUse(base, '/repo', 1000 + 30_000)).toBe(base)
-    // Past the window: new object, bumped, manual flag preserved.
-    const bumped = registerProjectUse(base, '/repo', 1000 + 120_000)
-    expect(bumped).not.toBe(base)
-    expect(bumped['/repo']).toEqual({ addedManually: true, lastUsedAt: 1000 + 120_000 })
-  })
-
-  it('relative dirs are refused (same reference)', () => {
-    const base: ProjectRegistry = {}
-    expect(registerProjectUse(base, 'not-absolute', 1)).toBe(base)
-    expect(registerProjectUse(base, '~', 1)).toBe(base)
-  })
-})
-
-describe('isManagedWorkspacePath', () => {
-  it('recognizes generated worktree and integration roots only', () => {
-    expect(isManagedWorkspacePath('/Users/test/.ion/worktrees/ion-a')).toBe(true)
-    expect(isManagedWorkspacePath('/Users/test/.ion/integration/ion-main')).toBe(true)
-    expect(isManagedWorkspacePath('/Users/test/projects/.ion-example')).toBe(false)
-  })
-})
-
-describe('normalizeProjectDir', () => {
-  it('strips trailing slashes, keeps root', () => {
+  it('normalizes paths and refuses generated workspace paths', () => {
     expect(normalizeProjectDir('/a/b//')).toBe('/a/b')
-    expect(normalizeProjectDir('/')).toBe('/')
+    expect(isManagedWorkspacePath('/Users/dev/.ion/integration/test')).toBe(true)
   })
 })

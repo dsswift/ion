@@ -40,66 +40,48 @@ extension TabListView {
         UserDefaults.standard.set(Array(collapsedGroupIds), forKey: "collapsedGroupIds")
     }
 
-    /// Handle "New Conversation" via the smart routing state machine.
-    /// Mirrors `resolveNewConversationAction` from desktop's
-    /// new-conversation-routing.ts. All conversation creation paths
-    /// (toolbar +, sheet row, group header context menu) funnel here.
+    /// Create a conversation from a desktop-owned project.
     ///
-    /// Enterprise-locked state (State 0): `enterpriseNewConversationPolicy` is now
-    /// populated from `desktop_settings_snapshot.newConversationPolicy` (#256).
-    /// When the desktop projects a locked policy, iOS enforces it here.
-    func requestNewConversation(directory: String?, pinToGroupId: String?, useWorktree: Bool? = nil, sourceBranch: String? = nil) {
-        // Convert RemoteNewConversationPolicy -> NewConversationDefaultsPolicy for the pure router.
-        let policy: NewConversationDefaultsPolicy? = viewModel.enterpriseNewConversationPolicy.map {
-            NewConversationDefaultsPolicy(locked: $0.locked, baseDirectory: $0.baseDirectory, profileId: $0.engineProfileId)
-        }
-        let action = resolveNewConversationAction(
-            profiles: viewModel.engineProfiles,
-            defaultId: viewModel.defaultEngineProfileId,
-            enterprisePolicy: policy
-        )
-        DiagnosticLog.log("new conv action", tag: "view.tablist", fields: [
-            "reason": String(describing: action),
-            "path": directory?.prefix(40).description ?? "nil",
-            "status": pinToGroupId ?? "nil"
+    /// The project action is authoritative. iOS does not apply a local default
+    /// directory or profile preference before it sends the create command.
+    func requestNewConversation(project: RemoteProject, pinToGroupId: String?, useWorktree: Bool? = nil, sourceBranch: String? = nil) {
+        let action = resolveNewConversationAction(for: project)
+        DiagnosticLog.log("new conversation project action", tag: "view.tablist", fields: [
+            "directory": project.directory,
+            "action": project.profileAction,
+            "managed": String(project.managed)
         ])
         switch action {
         case .plain:
-            viewModel.createTab(workingDirectory: directory, pinToGroupId: pinToGroupId, useWorktree: useWorktree, sourceBranch: sourceBranch)
+            viewModel.createTab(workingDirectory: project.directory, pinToGroupId: pinToGroupId, useWorktree: useWorktree, sourceBranch: sourceBranch)
         case .profile(let profileId):
-            viewModel.createTab(workingDirectory: directory, pinToGroupId: pinToGroupId, profileId: profileId, useWorktree: useWorktree, sourceBranch: sourceBranch)
+            viewModel.createTab(workingDirectory: project.directory, pinToGroupId: pinToGroupId, profileId: profileId, useWorktree: useWorktree, sourceBranch: sourceBranch)
         case .showPicker:
-            conversationPickerDirectory = directory
+            conversationPickerProject = project
             conversationPickerPinToGroupId = pinToGroupId
             conversationPickerUseWorktree = useWorktree
             conversationPickerSourceBranch = sourceBranch
-        case .locked(let mandatedDir, let profileId):
-            // Enterprise-locked: use mandated dir, ignore caller's directory.
-            let dir = mandatedDir.isEmpty ? directory : mandatedDir
-            if profileId.isEmpty {
-                viewModel.createTab(workingDirectory: dir, useWorktree: useWorktree, sourceBranch: sourceBranch)
-            } else {
-                viewModel.createTab(workingDirectory: dir, profileId: profileId, useWorktree: useWorktree, sourceBranch: sourceBranch)
-            }
+        case .locked:
+            // Project actions are desktop-resolved. This branch cannot occur.
+            return
         }
     }
 
-    /// Ordered list of directories: default base directory first, then recent directories (deduplicated).
-    var allDirectories: [(label: String, fullPath: String)] {
-        var seen = Set<String>()
-        var result: [(label: String, fullPath: String)] = []
-
-        if let base = viewModel.defaultBaseDirectory, !base.isEmpty {
-            seen.insert(base)
-            result.append((label: directoryLabel(base), fullPath: base))
+    /// Lookup bridge for group and inbox entry points that still identify a
+    /// project by directory. They never synthesize a local directory default.
+    func requestNewConversation(directory: String, pinToGroupId: String?) {
+        guard let project = viewModel.projects.first(where: { $0.directory == directory }) else {
+            DiagnosticLog.log("new conversation project unavailable", tag: "view.tablist", level: .warn, fields: [
+                "directory": directory
+            ])
+            return
         }
+        requestNewConversation(project: project, pinToGroupId: pinToGroupId)
+    }
 
-        for dir in viewModel.recentDirectories where !seen.contains(dir) {
-            seen.insert(dir)
-            result.append((label: directoryLabel(dir), fullPath: dir))
-        }
-
-        return result
+    /// The default desktop project, if the snapshot names one.
+    var defaultProject: RemoteProject? {
+        viewModel.projects.first(where: \.isDefault)
     }
 
     func directoryLabel(_ path: String) -> String {

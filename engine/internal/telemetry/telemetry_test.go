@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/telemetryformat"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -45,13 +46,44 @@ func TestCollectorEventAndFlush(t *testing.T) {
 		t.Fatalf("Flush: %v", err)
 	}
 
-	data, err := os.ReadFile(fp)
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
+	if _, err := os.Stat(fp); err != nil {
+		t.Fatalf("stat telemetry file: %v", err)
 	}
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	if len(lines) != 2 {
-		t.Errorf("expected 2 lines, got %d", len(lines))
+	events := mustReadTelemetryFile(t, fp)
+	if len(events) != 2 {
+		t.Errorf("expected 2 events, got %d", len(events))
+	}
+}
+
+func TestFlushToFileWritesV4FrameWithoutMutatingEvents(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "telemetry.jsonl")
+	event := Event{
+		Name:    "test.frame",
+		Ts:      "2026-01-01T00:00:00Z",
+		Payload: map[string]any{},
+	}
+	if err := flushToFile([]Event{event}, path, rotationPolicy{}); err != nil {
+		t.Fatalf("flushToFile: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read telemetry file: %v", err)
+	}
+	var frame telemetryformat.Frame
+	if err := json.Unmarshal(data, &frame); err != nil {
+		t.Fatalf("decode physical frame: %v", err)
+	}
+	if frame.Schema != telemetryformat.FrameVersion || frame.Record != "telemetry.frame" {
+		t.Fatalf("physical record = %+v, want v4 telemetry frame", frame)
+	}
+	if event.SchemaVersion != 0 || event.Component != "" || event.Payload == nil {
+		t.Fatalf("flushToFile mutated caller event: %+v", event)
+	}
+
+	events := mustReadTelemetryFile(t, path)
+	if len(events) != 1 || events[0].SchemaVersion != TelemetrySchemaVersion || events[0].Component != "engine" {
+		t.Fatalf("decoded normalized event = %+v", events)
 	}
 }
 
@@ -83,400 +115,16 @@ func TestBatchFlush(t *testing.T) {
 	c.Event("e1", nil, nil)
 	c.Event("e2", nil, nil) // Should trigger auto-flush.
 
-	data, err := os.ReadFile(fp)
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
+	if _, err := os.Stat(fp); err != nil {
+		t.Fatalf("stat telemetry file: %v", err)
 	}
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	if len(lines) < 2 {
-		t.Errorf("expected at least 2 lines after batch flush, got %d", len(lines))
+	events := mustReadTelemetryFile(t, fp)
+	if len(events) < 2 {
+		t.Errorf("expected at least 2 events after batch flush, got %d", len(events))
 	}
 }
 
 // --- New tests ported from TS ---
-
-func TestNewOtelBridge_Defaults(t *testing.T) {
-	bridge := NewOtelBridge(OtelConfig{
-		Endpoint: "http://localhost:4318",
-	})
-	defer bridge.Close()
-
-	if bridge.config.ServiceName != "ion-engine" {
-		t.Errorf("ServiceName = %q, want ion-engine", bridge.config.ServiceName)
-	}
-	if bridge.config.BatchSize != 100 {
-		t.Errorf("BatchSize = %d, want 100", bridge.config.BatchSize)
-	}
-	if bridge.config.FlushInterval != 10*time.Second {
-		t.Errorf("FlushInterval = %v, want 10s", bridge.config.FlushInterval)
-	}
-}
-
-func TestNewOtelBridge_CustomServiceName(t *testing.T) {
-	bridge := NewOtelBridge(OtelConfig{
-		Endpoint:    "http://localhost:4318",
-		ServiceName: "my-custom-service",
-	})
-	defer bridge.Close()
-
-	if bridge.config.ServiceName != "my-custom-service" {
-		t.Errorf("ServiceName = %q, want my-custom-service", bridge.config.ServiceName)
-	}
-}
-
-func TestOtelBridge_RecordEvent(t *testing.T) {
-	bridge := NewOtelBridge(OtelConfig{
-		Endpoint:  "http://localhost:4318",
-		BatchSize: 1000, // Don't auto-flush.
-	})
-	defer bridge.Close()
-
-	event := Event{
-		Name:    "test.event",
-		Ts:      time.Now().UTC().Format(time.RFC3339Nano),
-		Payload: map[string]any{"key": "val"},
-		Context: map[string]any{"session": "s1"},
-	}
-	bridge.RecordEvent(event)
-
-	bridge.mu.Lock()
-	count := len(bridge.spans)
-	bridge.mu.Unlock()
-
-	if count != 1 {
-		t.Fatalf("expected 1 span, got %d", count)
-	}
-
-	bridge.mu.Lock()
-	span := bridge.spans[0]
-	bridge.mu.Unlock()
-
-	if span.Name != "test.event" {
-		t.Errorf("span.Name = %q, want test.event", span.Name)
-	}
-	if span.Attributes["key"] != "val" {
-		t.Errorf("expected attribute key=val")
-	}
-	if span.Attributes["ctx.session"] != "s1" {
-		t.Errorf("expected context attribute ctx.session=s1")
-	}
-}
-
-// TestCollectorEventCarriesRunTraceToOTLP pins the full event path: run
-// correlation enters Collector.Event through ctx["trace_id"], is mirrored to
-// Event.TraceID, and arrives on the OTLP span unchanged. Before the fix,
-// Context held the right value but Event.TraceID stayed empty, so RecordEvent
-// minted a fresh unrelated trace per telemetry event.
-func TestCollectorEventCarriesRunTraceToOTLP(t *testing.T) {
-	bridge := NewOtelBridge(OtelConfig{Endpoint: "http://localhost:4318", BatchSize: 1000})
-	defer bridge.Close()
-
-	collector := NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
-	collector.SetOtelBridge(bridge)
-	const traceID = "4bf92f3577b34da6a3ce929d0e0e4736"
-	collector.Event("run.complete", map[string]any{"cost": 1}, map[string]any{
-		"session_id": "session-1",
-		"run_id":     "run-1",
-		"trace_id":   traceID,
-	})
-
-	events := collector.BufferedEvents()
-	if len(events) != 1 {
-		t.Fatalf("Collector.Event buffered %d events, want 1", len(events))
-	}
-	if got := events[0].TraceID; got != traceID {
-		t.Errorf("Event.TraceID = %q, want run trace %q", got, traceID)
-	}
-	if got := events[0].Context["trace_id"]; got != traceID {
-		t.Errorf("Event.Context trace_id = %v, want %q", got, traceID)
-	}
-
-	bridge.mu.Lock()
-	if len(bridge.spans) != 1 {
-		bridge.mu.Unlock()
-		t.Fatalf("OTLP bridge recorded %d spans, want 1", len(bridge.spans))
-	}
-	span := bridge.spans[0]
-	bridge.mu.Unlock()
-	if got := span.TraceID; got != traceID {
-		t.Errorf("OTLP span TraceID = %q, want run trace %q", got, traceID)
-	}
-}
-
-// TestSpanHandleCarriesRunTraceToOTLP pins the timed-span path used by
-// llm.call and tool.execute. StartSpanCtx stores trace_id in the correlation
-// map; End must preserve it when it forwards timing to RecordSpan. Before the
-// fix End passed only payload attributes, so every timed span forked into a
-// random trace despite its JSONL event carrying the run trace.
-func TestSpanHandleCarriesRunTraceToOTLP(t *testing.T) {
-	bridge := NewOtelBridge(OtelConfig{Endpoint: "http://localhost:4318", BatchSize: 1000})
-	defer bridge.Close()
-
-	collector := NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
-	collector.SetOtelBridge(bridge)
-	const traceID = "4bf92f3577b34da6a3ce929d0e0e4736"
-	collector.StartSpanCtx("tool.execute", map[string]any{"tool": "Read"}, map[string]any{
-		"session_id": "session-1",
-		"run_id":     "run-1",
-		"trace_id":   traceID,
-	}).End(nil)
-
-	bridge.mu.Lock()
-	if len(bridge.spans) != 2 {
-		bridge.mu.Unlock()
-		t.Fatalf("OTLP bridge recorded %d spans, want 2 (telemetry event + timed span)", len(bridge.spans))
-	}
-	spans := append([]otlpSpan(nil), bridge.spans...)
-	bridge.mu.Unlock()
-	for _, span := range spans {
-		if got := span.TraceID; got != traceID {
-			t.Errorf("OTLP timed span TraceID = %q, want run trace %q", got, traceID)
-		}
-	}
-}
-
-func TestOtelBridge_RecordEvent_ErrorStatus(t *testing.T) {
-	bridge := NewOtelBridge(OtelConfig{
-		Endpoint:  "http://localhost:4318",
-		BatchSize: 1000,
-	})
-	defer bridge.Close()
-
-	event := Event{
-		Name:    ErrorEvent,
-		Ts:      time.Now().UTC().Format(time.RFC3339Nano),
-		Payload: map[string]any{"error": "something broke"},
-	}
-	bridge.RecordEvent(event)
-
-	bridge.mu.Lock()
-	span := bridge.spans[0]
-	bridge.mu.Unlock()
-
-	if span.Status == nil {
-		t.Fatal("expected status on error event")
-	}
-	if span.Status.Code != 2 {
-		t.Errorf("status.Code = %d, want 2 (error)", span.Status.Code)
-	}
-	if span.Status.Message != "something broke" {
-		t.Errorf("status.Message = %q, want 'something broke'", span.Status.Message)
-	}
-}
-
-func TestOtelBridge_RecordSpan(t *testing.T) {
-	bridge := NewOtelBridge(OtelConfig{
-		Endpoint:  "http://localhost:4318",
-		BatchSize: 1000,
-	})
-	defer bridge.Close()
-
-	startMs := time.Now().Add(-100 * time.Millisecond).UnixMilli()
-	endMs := time.Now().UnixMilli()
-
-	bridge.RecordSpan("test.span", startMs, endMs, map[string]any{"tool": "bash"}, nil)
-
-	bridge.mu.Lock()
-	count := len(bridge.spans)
-	span := bridge.spans[0]
-	bridge.mu.Unlock()
-
-	if count != 1 {
-		t.Fatalf("expected 1 span, got %d", count)
-	}
-	if span.Name != "test.span" {
-		t.Errorf("span.Name = %q", span.Name)
-	}
-	if span.StartTime != startMs*1_000_000 {
-		t.Errorf("StartTime = %d, want %d", span.StartTime, startMs*1_000_000)
-	}
-	if span.EndTime != endMs*1_000_000 {
-		t.Errorf("EndTime = %d, want %d", span.EndTime, endMs*1_000_000)
-	}
-	if span.Attributes["tool"] != "bash" {
-		t.Errorf("expected attribute tool=bash")
-	}
-}
-
-func TestOtelBridge_FlushEmpty(t *testing.T) {
-	bridge := NewOtelBridge(OtelConfig{
-		Endpoint:  "http://localhost:4318",
-		BatchSize: 1000,
-	})
-	defer bridge.Close()
-
-	// Flushing with no spans should be a no-op.
-	if err := bridge.Flush(); err != nil {
-		t.Errorf("Flush empty: %v", err)
-	}
-}
-
-func TestOtelBridge_Close(t *testing.T) {
-	bridge := NewOtelBridge(OtelConfig{
-		Endpoint:  "http://localhost:4318",
-		BatchSize: 1000,
-	})
-
-	// Close should not panic.
-	err := bridge.Close()
-	if err != nil {
-		// Error is expected since localhost:4318 isn't running.
-		// That's fine, we just verify Close doesn't panic.
-		_ = err
-	}
-}
-
-func TestGenTraceID(t *testing.T) {
-	id1 := genTraceID()
-	id2 := genTraceID()
-
-	if len(id1) != 32 {
-		t.Errorf("traceID length = %d, want 32 hex chars", len(id1))
-	}
-	if id1 == id2 {
-		t.Error("two trace IDs should be different")
-	}
-}
-
-func TestGenSpanID(t *testing.T) {
-	id1 := genSpanID()
-	id2 := genSpanID()
-
-	if len(id1) != 16 {
-		t.Errorf("spanID length = %d, want 16 hex chars", len(id1))
-	}
-	if id1 == id2 {
-		t.Error("two span IDs should be different")
-	}
-}
-
-func TestOtelBridge_OTLPFormat(t *testing.T) {
-	// Use a test HTTP server to capture the OTLP payload.
-	var received []byte
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		received, _ = io.ReadAll(r.Body)
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	bridge := NewOtelBridge(OtelConfig{
-		Endpoint:    server.URL,
-		ServiceName: "test-svc",
-		BatchSize:   1000,
-	})
-	defer bridge.Close()
-
-	bridge.RecordEvent(Event{
-		Name:    SessionStart,
-		Ts:      time.Now().UTC().Format(time.RFC3339Nano),
-		Payload: map[string]any{"sessionId": "s1"},
-	})
-
-	if err := bridge.Flush(); err != nil {
-		t.Fatalf("Flush: %v", err)
-	}
-
-	if len(received) == 0 {
-		t.Fatal("expected OTLP payload to be sent")
-	}
-
-	var payload otlpExportRequest
-	if err := json.Unmarshal(received, &payload); err != nil {
-		t.Fatalf("unmarshal OTLP payload: %v", err)
-	}
-
-	if len(payload.ResourceSpans) != 1 {
-		t.Fatalf("expected 1 resourceSpan, got %d", len(payload.ResourceSpans))
-	}
-	rs := payload.ResourceSpans[0]
-	if len(rs.Resource.Attributes) == 0 {
-		t.Fatal("expected resource attributes")
-	}
-	if rs.Resource.Attributes[0].Key != "service.name" {
-		t.Errorf("expected service.name attribute, got %q", rs.Resource.Attributes[0].Key)
-	}
-	if rs.Resource.Attributes[0].Value.StringValue != "test-svc" {
-		t.Errorf("service.name = %q, want test-svc", rs.Resource.Attributes[0].Value.StringValue)
-	}
-	if len(rs.ScopeSpans) != 1 || len(rs.ScopeSpans[0].Spans) != 1 {
-		t.Fatal("expected 1 scope span with 1 span")
-	}
-	span := rs.ScopeSpans[0].Spans[0]
-	if span.Name != SessionStart {
-		t.Errorf("span.Name = %q, want %q", span.Name, SessionStart)
-	}
-}
-
-func TestOtelBridge_CustomHeaders(t *testing.T) {
-	var gotHeaders http.Header
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotHeaders = r.Header
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	bridge := NewOtelBridge(OtelConfig{
-		Endpoint: server.URL,
-		Headers:  map[string]string{"X-Api-Key": "secret-123"},
-	})
-	defer bridge.Close()
-
-	bridge.RecordEvent(Event{Name: "test", Ts: time.Now().UTC().Format(time.RFC3339Nano)})
-	bridge.Flush()
-
-	if gotHeaders.Get("X-Api-Key") != "secret-123" {
-		t.Errorf("expected X-Api-Key header, got %q", gotHeaders.Get("X-Api-Key"))
-	}
-}
-
-func TestCollector_SetOtelBridge(t *testing.T) {
-	bridge := NewOtelBridge(OtelConfig{
-		Endpoint:  "http://localhost:4318",
-		BatchSize: 1000,
-	})
-	defer bridge.Close()
-
-	c := NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
-	c.SetOtelBridge(bridge)
-
-	c.Event("bridge.test", map[string]any{"x": 1}, nil)
-
-	// Verify the event was forwarded to the bridge.
-	bridge.mu.Lock()
-	count := len(bridge.spans)
-	bridge.mu.Unlock()
-
-	if count != 1 {
-		t.Errorf("expected 1 span in bridge, got %d", count)
-	}
-}
-
-func TestOtelBridge_BatchFlush(t *testing.T) {
-	flushCount := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		flushCount++
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	bridge := NewOtelBridge(OtelConfig{
-		Endpoint:  server.URL,
-		BatchSize: 3,
-	})
-	defer bridge.Close()
-
-	// Record 3 events -- should trigger auto-flush at batch size.
-	for i := 0; i < 3; i++ {
-		bridge.RecordEvent(Event{Name: "e", Ts: time.Now().UTC().Format(time.RFC3339Nano)})
-	}
-
-	// Give a moment for the flush to complete.
-	time.Sleep(50 * time.Millisecond)
-
-	if flushCount < 1 {
-		t.Errorf("expected at least 1 flush from batch, got %d", flushCount)
-	}
-}
 
 func TestEventNameConstants(t *testing.T) {
 	// Verify all event name constants are non-empty and distinct.

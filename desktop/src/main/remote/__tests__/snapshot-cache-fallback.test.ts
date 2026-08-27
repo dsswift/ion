@@ -19,7 +19,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const { mockIsResourceRead, mockGetHealth } = vi.hoisted(() => ({
-  mockIsResourceRead: vi.fn((_id: string) => false),
+  mockIsResourceRead: vi.fn((_resourceId: string, _producer?: string, _kind?: string) => false),
   mockGetHealth: vi.fn((): { tabs: Array<{ tabId: string; status: string; conversationId: string | null; lastActivityAt?: number }> } => ({ tabs: [] })),
 }))
 
@@ -43,7 +43,7 @@ vi.mock('../../settings-store', () => ({
 }))
 
 vi.mock('../../event-wiring-resources', () => ({
-  isResourceRead: (id: string) => mockIsResourceRead(id),
+  isResourceRead: (resourceId: string, producer?: string, kind?: string) => mockIsResourceRead(resourceId, producer, kind),
 }))
 
 import { getRemoteTabStates, refreshRendererSnapshotCache, RENDERER_CACHE_MAX_AGE_MS, _setPollRendererTabStatesForTest } from '../snapshot'
@@ -176,7 +176,7 @@ describe('getRemoteTabStates — renderer-push cache + legacy-poll fallback', ()
       resourceManifest: cachedManifest,
       receivedAt: Date.now(),
     }
-    mockIsResourceRead.mockImplementation((id: string) => id === 'r1')
+    mockIsResourceRead.mockImplementation((resourceId: string) => resourceId === 'r1')
     const { resourceManifest } = await getRemoteTabStates()
     // Served manifest carries the persisted read state…
     expect(resourceManifest.briefing[0].read).toBe(true)

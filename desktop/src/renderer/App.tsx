@@ -41,7 +41,6 @@ import { usePreferencesStore } from './preferences'
 import { useUpdateEvents } from './hooks/useUpdateEvents'
 import { setupModelSync } from './stores/model-store'
 import { initActiveTabNotifier } from './lib/active-tab-notifier'
-import { initProjectRegistryNotifier } from './lib/project-registry-notifier'
 import { initRemoteProjectionPush } from './stores/remote-projection-push'
 import { rError } from './rendererLogger'
 import { resolveOverlayBodyHeights } from './overlay-body-height'
@@ -71,13 +70,6 @@ export default function App() {
   // first paint after a window open mid-workflow).
   useEffect(() => {
     return hydrateQuestions()
-  }, [])
-
-  // Project-registry auto-populate (G1): every conversation tab's base dir
-  // registers; the active tab bumps recency. Owner window only — App.tsx
-  // never mounts in the Studio mirror.
-  useEffect(() => {
-    return initProjectRegistryNotifier()
   }, [])
 
   // Push the remote tab-state projection to the main process on store change
@@ -270,7 +262,7 @@ export default function App() {
         open={paletteOpen}
         onOpenChange={setPaletteOpen}
         actions={[
-          { id: 'act:studio', label: 'Open Visualizer', keywords: 'studio office agents', section: 'Actions', run: () => window.ion.studioOpen() },
+          { id: 'act:studio', label: 'Open Ion Studio', keywords: 'studio office agents', section: 'Actions', run: () => window.ion.studioOpen() },
         ]}
       />
       <div className="flex flex-col h-full overflow-hidden" style={{ background: 'transparent' }}>

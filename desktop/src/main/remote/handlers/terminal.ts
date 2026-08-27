@@ -1,6 +1,9 @@
+import { shell } from 'electron'
+import { readSettings } from '../../settings-store'
+import { resolveSurfacePlan } from '../../surface-launch'
 import { IPC } from '../../../shared/types'
 import { log as _log } from '../../logger'
-import { state, terminalScrollback } from '../../state'
+import { state, terminalScrollback, enterprisePolicyCache } from '../../state'
 import { broadcast } from '../../broadcast'
 import { terminalManager } from '../../terminal-manager-instance'
 import type { RemoteCommand } from '../protocol'
@@ -103,6 +106,30 @@ export async function createTerminalInstanceOnTab(
   terminalManager.create(`${tabId}:${result.id}`, result.cwd || '~')
   log('terminal_add_instance created', { tabId, instanceId: result.id, label: result.label })
   return result
+}
+
+export async function handleOpenTerminalApplication(cmd: Extract<RemoteCommand, { type: 'desktop_open_terminal_application' }>): Promise<void> {
+  const activity = terminalManager.activitySnapshot().find((item) =>
+    item.tabId === cmd.tabId && item.applications.some((application) => application.url === cmd.url),
+  )
+  if (!activity) {
+    log('open_terminal_application refused: application is no longer owned', { tabId: cmd.tabId, url: cmd.url })
+    return
+  }
+  const application = activity.applications.find((item) => item.url === cmd.url)
+  if (!application) return
+  try {
+    if (resolveSurfacePlan(readSettings(), enterprisePolicyCache.policy).activeUi === 'studio') {
+      broadcast(IPC.STUDIO_FOCUS_TAB, cmd.tabId)
+      broadcast(IPC.STUDIO_OPEN_WEB_APPLICATION, { tabId: cmd.tabId, url: application.url })
+      log('open_terminal_application routed to studio', { tabId: cmd.tabId, instanceId: activity.instanceId, url: application.url })
+    } else {
+      await shell.openExternal(application.url)
+      log('open_terminal_application opened externally', { tabId: cmd.tabId, instanceId: activity.instanceId, url: application.url })
+    }
+  } catch (err) {
+    log('open_terminal_application failed', { tabId: cmd.tabId, url: application.url, error: String(err) })
+  }
 }
 
 export async function handleTerminalAddInstance(cmd: Extract<RemoteCommand, { type: 'desktop_terminal_add_instance' }>): Promise<void> {

@@ -111,6 +111,9 @@ enum RemoteCommand: Codable, Sendable {
   case terminalRemoveInstance(tabId: String, instanceId: String)
   case terminalSelectInstance(tabId: String, instanceId: String)
   case requestTerminalSnapshot(tabId: String)
+  /// Ask the desktop to open a terminal-owned web application in its native
+  /// content surface. iOS sends intent because the URL targets the desktop host.
+  case openTerminalApplication(tabId: String, url: String)
 
   /// Ask the desktop to re-send one tab's agent roster.
   ///
@@ -391,6 +394,7 @@ enum RemoteCommand: Codable, Sendable {
     case terminalRemoveInstance = "desktop_terminal_remove_instance"
     case terminalSelectInstance = "desktop_terminal_select_instance"
     case requestTerminalSnapshot = "desktop_request_terminal_snapshot"
+    case openTerminalApplication = "desktop_open_terminal_application"
     case requestAgentState = "desktop_request_agent_state"
     case requestContextBreakdown = "desktop_request_context_breakdown"
     case renameTab = "desktop_rename_tab"
@@ -486,7 +490,7 @@ enum RemoteCommand: Codable, Sendable {
   enum CodingKeys: String, CodingKey {
     case scope, dispatchId, taskId
     case type
-    case workingDirectory, tabId, text, questionId, optionId, mode, before, origin
+    case workingDirectory, tabId, text, questionId, optionId, mode, before, origin, url
     case instanceId, data, cols, rows, customTitle, label, messageId, clientMsgId
     case dialogId, value, profileId, model, groupId
     // `pinToGroupId` is the distinct wire-level key for the optional

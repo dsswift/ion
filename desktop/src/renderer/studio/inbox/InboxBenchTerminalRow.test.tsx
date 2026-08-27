@@ -13,7 +13,7 @@ const closeTab = vi.fn()
 const state = {
   activeTabId: 'outside',
   tabs: [] as TabState[],
-  terminalActiveTabIds: new Set<string>(),
+  terminalActivities: new Set<string>(),
   pinTab,
   unpinTab,
   selectTab,

@@ -287,6 +287,82 @@ parallel scoped agents needs them and would build them identically — see
 [ADR-025](../architecture/adr/025-client-tool-gate.md) for the ownership split
 between generic worktree mechanism (engine) and the bench product (desktop).
 
+### Studio browser tools
+
+Ion's desktop provides browser tools over the same path when Ion Studio is the
+active interface and the `studioPlaywrightEnabled` preference is on. They drive
+the visible Chromium tab in the conversation's Studio Surface panel, so the
+operator watches every action as it happens. They are desktop surface, not
+engine tools.
+
+The names and argument names follow the Playwright MCP server, so existing
+agent knowledge keeps working. Ion narrows one thing and adds three.
+
+**Navigation and lifecycle.** `browser_navigate` (`url`),
+`browser_navigate_back`, `browser_navigate_forward`, `browser_reload`,
+`browser_close`, `browser_tabs` (`action`, `index?`, `url?`, `sessionMode?`).
+
+**Interaction.** `browser_click` (`element?`, `target`, `doubleClick?`,
+`button?`, `modifiers?`), `browser_hover`, `browser_type` (`text`, `submit?`,
+`slowly?`), `browser_select_option` (`values`), `browser_check`,
+`browser_uncheck`, `browser_drag` (`startTarget`, `endTarget`),
+`browser_press_key` (`key`), `browser_fill_form` (`fields`),
+`browser_file_upload` (`paths?`), `browser_handle_dialog` (`accept`,
+`promptText?`), `browser_wait_for` (`time?`, `text?`, `textGone?`).
+
+Two of these have a required order, because the browser will not wait for a
+second tool call. `browser_file_upload` needs the file chooser already open, so
+click the upload control first; its paths resolve inside the conversation
+working directory and a path outside it is refused. `browser_handle_dialog`
+works the other way round: a JavaScript dialog blocks the page until it is
+answered, so the answer is armed BEFORE the click that opens the dialog, not
+after. Arming it is what stops the dialog being auto-dismissed.
+
+**Inspection.** `browser_snapshot` (`target?`, `depth?`, `boxes?`,
+`filename?`) returns an accessibility snapshot with `[ref=eN]` references that
+other tools accept as a `target`. `browser_find` (`text?` or `regex?`) searches
+that snapshot. `browser_evaluate` (`function`, `target?`, `filename?`) runs
+JavaScript in the page sandbox, which is how an agent measures layout.
+`browser_take_screenshot` (`element?`, `target?`, `type?`, `fullPage?`,
+`scale?`, `clip?`, `filename?`) captures the viewport, the whole page, one
+element, or an explicit region.
+
+**Viewport.** `browser_resize` (`width`, `height`) sets an exact CSS pixel
+viewport on the visible tab. `browser_emulate` applies a device preset by name
+(`device`) or explicit `width`, `height`, `deviceScaleFactor`, `isMobile`,
+`hasTouch`, `userAgent`, `locale`, `timezoneId`, `orientation`, `colorScheme`,
+`reducedMotion`, `forcedColors`, `geolocation`, `offline`, and
+`javaScriptEnabled`, and clears everything with `reset`.
+
+**Scrolling.** `browser_scroll` takes one mode per call: a relative `deltaX`
+and `deltaY`, an absolute `x` and `y`, or an element `target` with `block`,
+`inline`, and `behavior`. `browser_mouse_wheel` (`deltaX`, `deltaY`) is the
+familiar name for the relative mode.
+
+**Diagnostics.** `browser_console_messages` (`level`, `all?`, `filename?`)
+returns console output and uncaught page errors. `browser_network_requests`
+(`static?`, `filter?`, `all?`, `filename?`) lists recorded requests with stable
+1-based indices. `browser_network_request` (`index`, `part?`, `filename?`)
+shows one recorded request in full; it inspects what the page already sent and
+never issues a new request. `browser_network_state_set` (`state`) takes the tab
+offline or back online.
+
+Two behaviors differ from a general-purpose browser server:
+
+- **No ownership arguments.** No tool accepts a conversation, tab, or browser
+  argument. Each conversation exposes exactly one Agent-linked browser tab, and
+  the desktop resolves it from the calling session. A model cannot reach another
+  conversation's browser or the operator's other tabs. The operator moves the
+  link from the Studio tab strip.
+- **No `browser_run_code_unsafe`.** Upstream it evaluates JavaScript in the
+  Playwright server process, which for Ion is the desktop main process.
+  `browser_evaluate` covers the page sandbox instead.
+
+Every `filename` is resolved inside the conversation working directory;
+traversal and symlink escapes are refused. Screenshots return an image result
+when no filename is given. See
+[ADR-030](../architecture/adr/030-embedded-browser-surface.md).
+
 ## Optional Tools
 
 These tools are not registered by default. Call `RegisterTaskTools()` from harness code to enable them. See [Task Tools](task-tools.md) for details.

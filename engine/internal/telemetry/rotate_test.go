@@ -1,7 +1,6 @@
 package telemetry
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -181,17 +180,13 @@ func TestRotationPreservesWholeLines(t *testing.T) {
 	}
 
 	for _, p := range []string{path, path + ".1", path + ".2"} {
-		data, err := os.ReadFile(p)
-		if err != nil {
+		if _, err := os.Stat(p); err != nil {
 			continue
 		}
-		for _, line := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
-			var e Event
-			if err := json.Unmarshal([]byte(line), &e); err != nil {
-				t.Fatalf("%s: invalid JSONL line: %v", p, err)
-			}
-			if e.Name != "test.rotate" {
-				t.Fatalf("%s: unexpected event name %q", p, e.Name)
+		events := mustReadTelemetryFile(t, p)
+		for _, event := range events {
+			if event.Name != "test.rotate" {
+				t.Fatalf("%s: unexpected event name %q", p, event.Name)
 			}
 		}
 	}

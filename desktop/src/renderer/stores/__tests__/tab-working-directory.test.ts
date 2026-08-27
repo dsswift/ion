@@ -45,8 +45,9 @@ const mockIon = {
     ok: true,
     worktree: { worktreePath: WORKTREE, branchName: 'wt/abc', sourceBranch: branch, repoPath: dir },
   })),
-  gitWorktreeRetire: vi.fn(async () => ({ ok: true, workingDirectory: REPO, prunedBenchPaths: [] })),
   gitWorktreeLandAndRetire: vi.fn(async () => ({ ok: true, workingDirectory: REPO, prunedBenchPaths: [] })),
+  gitWorktreeDiscard: vi.fn(async () => ({ ok: true, workingDirectory: REPO, prunedBenchPaths: [] })),
+  gitWorktreeRegistration: vi.fn(async () => ({ registration: { sourceBranch: 'main' } })),
   gitWorktreeRetirePreview: vi.fn(async () => ({ prunedBenchPaths: [] as string[] })),
   gitWorktreeInventory: vi.fn(async () => ({ worktrees: [] })),
   relocateTabSession: vi.fn(async () => ({ ok: true, conversationId: 'conv-1' })),
@@ -194,7 +195,7 @@ describe('retireWorktree', () => {
   })
 
   it('closes nothing when the retire is refused', async () => {
-    mockIon.gitWorktreeLandAndRetire.mockResolvedValueOnce({ ok: false, error: 'unlanded work' } as any)
+    mockIon.gitWorktreeDiscard.mockResolvedValueOnce({ ok: false, error: 'unlanded work' } as any)
     const { state } = buildHarness([liveTab({ workingDirectory: WORKTREE })])
 
     const res = await state.retireWorktree(REPO, WORKTREE, 'wt/abc')

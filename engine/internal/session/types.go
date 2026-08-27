@@ -481,6 +481,9 @@ type engineSession struct {
 	// SendPrompt so it applies exactly once.
 	pendingSlashInvocation *conversation.SlashInvocation
 
+	// temporaryAutoPlan is non-nil while a plan-mode command is temporarily using auto-mode tools.
+	temporaryAutoPlan *temporaryAutoPlanWorkflow
+
 	// outstandingBackgroundTasks tracks background bash commands started with
 	// notify_on_complete that have not yet reported a terminal state. Keyed by
 	// task ID. SESSION-scoped, not run-scoped, and that is the whole point: a

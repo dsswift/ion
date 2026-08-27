@@ -41,12 +41,26 @@ Start a new engine session.
 | `pinned`           | boolean  | no       | Exempt this session from the orphaned-session reaper |
 | `clientWorkspaceContext` | object | no    | Client-supplied workspace context for the session. Overridden per-prompt by `send_prompt.clientWorkspaceContext`. Fields: `kind` (string), `cwd` (string), `bench` (object, structured bench facts), `data` (object, generic consumer data), `text` (string, prose for system prompt). |
 | `toolGate`         | object   | no       | Opt-in client tool gate: `{enabled, tools?, timeoutMs?, timeoutDecision?, clientTools?, clientToolTimeoutMs?}`. `clientTools` declares tools the client executes over the wire — the third tool provision path beside MCP servers and extensions. Each entry is `{name, description?, inputSchema?, planModeSafe?, humanWait?}`; `humanWait: true` marks the tool as an intentional HUMAN wait: on the engine-owned (API) backend the call PARKS the run — the request is retained as a `PermissionDenial` (re-published on every idle status snapshot), the run terminates, the session goes idle, and the user's answer arrives as the next `send_prompt`. Delegated-CLI backends exclude human-wait tools from their transports (the model uses the `AskUserQuestion` sentinel there). Machine tools (`humanWait` absent/false) keep the blocking wire round-trip bounded by `clientToolTimeoutMs`. On an idempotent re-`start_session` the declaration is REPLACED wholesale (nil clears); an in-flight run keeps the runtime it captured at dispatch, and the next run uses the new declaration. See [tool_gate_response](#tool_gate_response). |
+| `profileId` / `extensions` | string / string[] | no | When the resolved `newConversationDefaults.profileLocked` policy is true, the engine ignores these supplied profile values and applies the locked profile. A configured locked profile that is unavailable on the host refuses the start. |
 
 ```json
 {"cmd":"start_session","key":"abc-123","config":{"profileId":"default","extensions":["~/.ion/extensions/my-ext"],"workingDirectory":"/home/user/project"},"requestId":"r1"}
 ```
 
 **Response:** `ServerResult` with `ok: true` on success.
+
+---
+
+### resolve_new_conversation_defaults
+
+Resolve global, project, and enterprise new-conversation defaults without creating a session. Send `path` for one directory or `paths` for an ordered batch. An empty request resolves only global defaults. See [engine.json](../configuration/engine-json.md#newconversationdefaults).
+
+```json
+{"cmd":"resolve_new_conversation_defaults","path":"/work/repository","requestId":"r-defaults"}
+{"cmd":"resolve_new_conversation_defaults","paths":["/work/one","/work/two"],"requestId":"r-defaults-batch"}
+```
+
+The single result data is one resolved record. The batch result data is `{ "defaults": [...] }` in request order.
 
 ---
 
@@ -83,7 +97,8 @@ Send a user message to an active session.
 | `compactSummaryEnabled`     | boolean  | no       | Whether LLM-based summarization is used during compaction for this prompt. |
 | `compactMemoryEnabled`      | boolean  | no       | Whether the background session memory summarizer is active for this prompt. |
 | `clientWorkspaceContext`    | object   | no       | Per-prompt workspace context override. Takes precedence over the session-level `EngineConfig.clientWorkspaceContext`. Fields: `kind` (string), `cwd` (string), `bench` (object, structured bench facts), `data` (object, generic consumer data), `text` (string, prose for system prompt). The engine routes `bench` to `PromptContext.Bench` and `data` to `PromptContext.Client` for hook payloads. |
-| `resolveSlash`              | boolean  | no       | When `true`, signals that `text` is a slash-command invocation (`/name args`) the engine should resolve and expand rather than treat as plain content. The engine looks the command up across the conventional roots in precedence order — `{workingDir}/.ion/commands`, `~/.ion/commands`, `{workingDir}/.ion/skills/<name>/SKILL.md`, `~/.ion/skills/<name>/SKILL.md`, then (only when Claude compatibility is enabled) `{workingDir}/.claude/commands`, `~/.claude/commands`, `~/.claude/skills/<name>/SKILL.md` — substitutes `$ARGUMENTS`, feeds the **expanded** body to the model (SKILL.md bodies are prefixed with their base directory so relative companion files resolve), and persists the **raw** invocation as the displayed user turn. A non-empty command-frontmatter `model:` field is authoritative for that invocation: the engine resolves its tier before enterprise policy and provider availability checks, rather than using `send_prompt.model` or conversation state. Enterprise policy can reject the resolved model. A provider-unavailable model follows the typed fallback path. Default `false`; existing clients sending `/`-prefixed content as ordinary text are unaffected because they do not set this flag. |
+| `resolveSlash`              | boolean  | no       | Backward-compatible direct-prompt command resolution. New clients should use `command`, which runs the complete command precedence chain in one request. When `true`, the engine resolves `text` as `/name args`, expands the template, feeds the expanded body to the model, and persists the raw invocation. Ordinary `/`-leading content remains unchanged when this field is absent. |
+| `temporaryAutoFromPlan` | boolean | no | Runs one command with auto-mode tools while preserving the session Plan mode and plan file. A real user question pauses this workflow. A final successful completion emits the existing synthesized plan-approval proposal. Errors, cancellation, unresolved commands, and hook suppression preserve Plan mode without proposing approval. |
 
 ```json
 {"cmd":"send_prompt","key":"abc-123","text":"List all files in the current directory","requestId":"r2"}
@@ -447,7 +462,14 @@ Respond to a dialog prompt from the engine. Fire-and-forget.
 
 ### command
 
-Send a slash command to the session's extension harness. Fire-and-forget.
+Send a slash command through the engine's single resolution chain. The engine
+checks registered extension commands, built-ins, markdown commands, and skills
+in precedence order. It returns `unknown_command` only when none match.
+
+The command request also accepts the run options documented for `send_prompt`
+(such as `model`, `appendSystemPrompt`, `planFilePath`, attachments, thinking,
+and `temporaryAutoFromPlan`). These options apply when the resolved command
+starts a model run; pure built-ins ignore fields they do not use.
 
 | Field     | Type        | Required | Description                        |
 |-----------|-------------|----------|------------------------------------|
@@ -455,6 +477,8 @@ Send a slash command to the session's extension harness. Fire-and-forget.
 | `key`     | string      | yes      | Session key                        |
 | `command` | string      | yes      | The command name (without slash)   |
 | `args`    | string      | no       | Command arguments as a string      |
+| `temporaryAutoFromPlan` | boolean | no | Use auto-mode tools for this command while preserving an active Plan workflow. |
+| Other run options | see `send_prompt` | no | Forwarded unchanged if the resolved command starts a model run. |
 
 ```json
 {"cmd":"command","key":"abc-123","command":"clear","args":""}
@@ -499,6 +523,7 @@ The blocked call waits until this response arrives or the session's declared tim
 | `gateReason`    | string                 | no       | Policy kind: model-facing message a deny carries into the tool result  |
 | `gateContent`   | string                 | no       | Tool kind: the executed tool's result text                             |
 | `gateIsError`   | boolean                | no       | Tool kind: marks `gateContent` as a failure result                     |
+| `gateImages`    | array                  | no       | Tool kind: images the tool produced, each `{media_type, data}` with base64 `data`. The engine saves them through its normal tool-image pipeline and attaches them to the tool result, so a client tool can answer with a screenshot instead of text alone. Additive: a text-only client stays byte-compatible. |
 
 ```json
 {"cmd":"tool_gate_response","key":"abc-123","gateRequestId":"tool-gate-1730000000000-1","gateDecision":"deny","gateReason":"Refused: this path is frozen during release week."}
@@ -506,6 +531,12 @@ The blocked call waits until this response arrives or the session's declared tim
 
 ```json
 {"cmd":"tool_gate_response","key":"abc-123","gateRequestId":"tool-gate-1730000000000-2","gateContent":"contents of src/x.go at pinned sha 89abcde","gateIsError":false}
+```
+
+An image result. `data` is base64 and is elided here:
+
+```json
+{"cmd":"tool_gate_response","key":"abc-123","gateRequestId":"tool-gate-1730000000000-3","gateContent":"Captured 24101 bytes as png.","gateIsError":false,"gateImages":[{"media_type":"image/png","data":"iVBORw0KGgo..."}]}
 ```
 
 ---

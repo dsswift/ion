@@ -306,15 +306,35 @@ export function createWorktreeInventorySlice(
         bench_paths: benchPaths.length,
       });
 
-      const result = await window.ion.gitWorktreeLandAndRetire({
-        repoPath,
-        worktreePath,
-        worktreeBranch: branchName,
-        branchName,
-        // A legacy landed record selects backend cleanup-only mode, so this is
-        // never used to integrate the branch again.
-        sourceBranch: (get().worktreeInventory.get(repoPath) ?? []).find((entry) => entry.worktreePath === worktreePath)?.sourceBranch ?? '',
-      });
+      const inventoryEntry = (get().worktreeInventory.get(repoPath) ?? [])
+        .find((entry) => entry.worktreePath === worktreePath)
+      let sourceBranch = inventoryEntry?.sourceBranch
+      if (!sourceBranch && !inventoryEntry?.landedAt) {
+        const registration = await window.ion.gitWorktreeRegistration(worktreePath)
+        sourceBranch = registration.registration?.sourceBranch
+      }
+      if (!inventoryEntry?.landedAt && !sourceBranch) {
+        const error = 'Ion does not know what branch this worktree came from.'
+        rWarn('worktree.inventory', 'discard refused because source branch is missing', { worktree_path: worktreePath })
+        await get().refreshWorktreeInventory(repoPath)
+        return { ok: false, error }
+      }
+      const result = inventoryEntry?.landedAt
+        ? await window.ion.gitWorktreeLandAndRetire({
+            repoPath,
+            worktreePath,
+            worktreeBranch: branchName,
+            branchName,
+            // A landed record makes the backend run cleanup only, so source is
+            // not read and may be unknown on legacy records.
+            sourceBranch: sourceBranch ?? '',
+          })
+        : await window.ion.gitWorktreeDiscard({
+            repoPath,
+            worktreePath,
+            branchName,
+            sourceBranch: sourceBranch!,
+          })
 
       if (!result.ok) {
         rWarn("worktree.inventory", "retire refused; nothing closed", {
@@ -355,11 +375,22 @@ export function createWorktreeInventorySlice(
 
       let retired = 0;
       for (const entry of landed) {
-        const result = await get().retireWorktree(
+        const result = await window.ion.gitWorktreeLandAndRetire({
           repoPath,
-          entry.worktreePath,
-          entry.branchName,
-        );
+          worktreePath: entry.worktreePath,
+          worktreeBranch: entry.branchName,
+          branchName: entry.branchName,
+          sourceBranch: entry.sourceBranch ?? '',
+        })
+        if (result.ok) {
+          await closeOccupants(
+            set,
+            get,
+            [entry.worktreePath, ...(result.prunedBenchPaths ?? [])],
+            result.workingDirectory,
+          )
+          await get().refreshWorktreeInventory(repoPath)
+        };
         if (!result.ok) {
           return {
             ok: false,

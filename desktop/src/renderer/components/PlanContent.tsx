@@ -14,6 +14,7 @@ import remarkGfm from 'remark-gfm'
 import { useColors } from '../theme'
 import { useNavigableText, NavigableLink, NavigableCode, remarkNavigableLinks } from '../hooks/useNavigableLinks'
 import { rError } from '../rendererLogger'
+import type { FileClickModifiers } from '../lib/open-file-intent'
 
 const REMARK_PLUGINS = [remarkGfm, remarkNavigableLinks]
 
@@ -21,8 +22,8 @@ export const PlanContent = React.memo(function PlanContent({ content }: { conten
   const colors = useColors()
   const { onOpenFile, onOpenUrl } = useNavigableText()
   const handleOpenFile = useCallback(
-    (path: string) => {
-      void onOpenFile(path).catch((err) => rError('plan-content', 'open file failed', { error: String(err) }))
+    (path: string, event?: FileClickModifiers) => {
+      void onOpenFile(path, event).catch((err) => rError('plan-content', 'open file failed', { error: String(err) }))
     },
     [onOpenFile],
   )

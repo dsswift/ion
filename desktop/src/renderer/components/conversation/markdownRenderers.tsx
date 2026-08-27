@@ -18,6 +18,8 @@ import type { ColorPalette } from '../../theme-tokens'
 import { NavigableLink, NavigableCode, readNavigableKind } from '../../hooks/useNavigableLinks'
 import { CodeBlock } from './CodeBlock'
 import { rWarn } from '../../rendererLogger'
+import type { FileClickModifiers } from '../../lib/open-file-intent'
+import { openClickedLink } from '../../lib/open-link'
 
 // ─── Table scroll wrapper with fade edges ───
 
@@ -200,8 +202,10 @@ export function FaviconLink({
       type="button"
       className="underline decoration-dotted underline-offset-2 cursor-pointer"
       style={{ color: colors.accent }}
-      onClick={() => {
-        if (href) void window.ion.openExternal(String(href)).catch((err) => rWarn('conversation', 'open link failed', { error: String(err) }))
+      onClick={(event) => {
+        // ⌘-click routes into the Surface browser; a plain click keeps going to
+        // the operator's default browser. See lib/open-link.ts.
+        if (href) openClickedLink(String(href), event, 'conversation')
       }}
     >
       {host && (
@@ -228,7 +232,7 @@ export function FaviconLink({
 
 export interface MarkdownComponentsOptions {
   colors: ColorPalette
-  onOpenFile: (path: string) => void
+  onOpenFile: (path: string, event?: FileClickModifiers) => void
   onOpenUrl: (url: string) => void
   variant: 'assistant' | 'user'
 }

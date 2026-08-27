@@ -82,9 +82,10 @@ type EngineEvent struct {
 	// their optimistic user row to this id so history loads dedup against it
 	// even when the run never reaches a message_end (cancel, mid-stream
 	// failure). Never carries content. See types.UserTurnPersistedEvent.
-	UserTurnEntryID             string `json:"userTurnEntryId,omitempty"`
-	UserTurnSlashModelAlias     string `json:"userTurnSlashModelAlias,omitempty"`
-	UserTurnSlashModelEffective string `json:"userTurnSlashModelEffective,omitempty"`
+	UserTurnEntryID             string         `json:"userTurnEntryId,omitempty"`
+	UserTurnSlashModelAlias     string         `json:"userTurnSlashModelAlias,omitempty"`
+	UserTurnSlashModelEffective string         `json:"userTurnSlashModelEffective,omitempty"`
+	UserTurnSlashFrontmatter    map[string]any `json:"userTurnSlashFrontmatter,omitempty"`
 
 	// engine_tool_start
 	ToolName string `json:"toolName,omitempty"`
@@ -276,6 +277,7 @@ type EngineEvent struct {
 	// allow/deny) and "tool" (a client-declared tool call — answer with
 	// gateContent/gateIsError). Empty means "policy" for compatibility.
 	GateKind      string         `json:"gateKind,omitempty"`
+	GateOrigin    string         `json:"gateOrigin,omitempty"`
 	GateToolName  string         `json:"gateToolName,omitempty"`
 	GateToolInput map[string]any `json:"gateToolInput,omitempty"`
 	// GateCwd is the working directory the tool call would execute in — the

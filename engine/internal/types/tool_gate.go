@@ -110,6 +110,14 @@ func (ct ClientToolDef) LlmToolDef() LlmToolDef {
 	}
 }
 
+// GateOrigin identifies whether a client-tool call began at a model tool call
+// or an extension SDK call. It is an additive routing fact; clients can apply
+// separate policy without inferring origin from tool names.
+const (
+	GateOriginModel     = "model"
+	GateOriginExtension = "extension"
+)
+
 // ClientToolCallState is one pending MACHINE client-tool call as carried on
 // the engine_client_tool_state snapshot (human-wait tools park the run
 // instead of pending — their retained question rides PermissionDenials).

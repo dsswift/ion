@@ -63,6 +63,25 @@ final class MarkerReloadDecodeGroupingTests: XCTestCase {
         XCTAssertNil(legacy.implementationPhase)
     }
 
+    func testImplementationPhaseMaterializesPlanDivider() throws {
+        let plan = try decodeStandard(
+            #"{"id":"p1","role":"system","content":"── Plan created at 1:00 PM · plan-slug ──","timestamp":1000,"planFilePath":"/test/plan-slug.md"}"#
+        )
+        let implementation = try decodeStandard(
+            #"{"id":"m1","role":"user","content":"Implement the plan.","timestamp":2000,"implementationPhase":true}"#
+        )
+
+        let items = groupConversationItems([plan, implementation])
+        XCTAssertEqual(items.count, 3)
+        guard case .system(let divider) = items[1] else {
+            return XCTFail("implementation provenance must add a system divider")
+        }
+        XCTAssertTrue(divider.content.hasPrefix("── Implementing plan at "), divider.content)
+        XCTAssertTrue(divider.content.contains("plan-slug"), divider.content)
+        XCTAssertEqual(divider.planFilePath, "/test/plan-slug.md")
+        XCTAssertEqual(divider.timestamp, implementation.timestamp)
+    }
+
     // MARK: - Compaction
 
     func testCompactionRowDecodesAndGroups() throws {

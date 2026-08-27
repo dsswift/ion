@@ -13,23 +13,54 @@
  * "assemble" safe to press at any time — it re-merges exactly what was already
  * integrated and cannot pull in a half-finished change.
  */
-import { runGit } from '../git-runner'
 import { log as _log, warn as _warn } from '../logger'
 import {
-  loadWorkspaces, saveWorkspaces, findWorkspace, makeWorkspace, makeMember, workspacesForRepo,
+  loadWorkspaces,
+  saveWorkspaces,
+  findWorkspace,
+  makeWorkspace,
+  makeMember,
+  workspacesForRepo,
 } from './bench-store'
 import { assembleBench } from './bench-assemble'
-import { prepareVerificationDiagnostic } from './bench-verification-diagnostic'
-import { forgetRecordingsForBranches } from './bench-recording-recovery'
 import { dryRunCollision } from './bench-dry-run'
 import { captureContribution, contributedTreeHash } from './bench-snapshot'
-import { isInsideBench } from './bench-guard'
-import { advanceWorktreeStageOnPinChange, lookupWorktreeLandedAt } from '../worktree/registry'
-import type { IntegrationWorkspace, BenchAssembleResult, PinState } from '../../shared/types'
+import { lookupWorktreeLandedAt } from '../worktree/registry'
+import { triggerWorktreePinAdvance } from '../worktree/pin-advance-trigger'
+import { triggerBenchAutomation } from './bench-automation-trigger'
+import type { IntegrationWorkspace, BenchAssembleResult, PinState, WorktreePinAdvance } from '../../shared/types'
 
 const TAG = 'bench.ops'
-function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
-function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log(TAG, msg, fields)
+}
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn(TAG, msg, fields)
+}
+
+/** Create integration fact for automation before replacing a member's pin. */
+function pinAdvanceEvent(
+  repoPath: string,
+  sourceBranch: string,
+  member: {
+    worktreePath: string
+    branchName: string
+    pinnedSha: string
+    pinnedTreeHash: string
+  },
+  contribution: { sha: string; treeHash: string },
+): WorktreePinAdvance {
+  return {
+    repoPath,
+    sourceBranch,
+    worktreePath: member.worktreePath,
+    branchName: member.branchName,
+    previousPinnedSha: member.pinnedSha,
+    pinnedSha: contribution.sha,
+    previousPinnedTreeHash: member.pinnedTreeHash,
+    pinnedTreeHash: contribution.treeHash,
+  }
+}
 
 /** Persist one workspace back into the stored list. */
 function persist(ws: IntegrationWorkspace): void {
@@ -58,7 +89,11 @@ export function ensureWorkspace(repoPath: string, sourceBranch: string): Integra
   const ws = makeWorkspace(repoPath, sourceBranch)
   all.push(ws)
   saveWorkspaces(all)
-  log('workspace created', { repo_path: repoPath, source_branch: sourceBranch, bench_path: ws.benchPath })
+  log('workspace created', {
+    repo_path: repoPath,
+    source_branch: sourceBranch,
+    bench_path: ws.benchPath,
+  })
   return ws
 }
 
@@ -76,12 +111,20 @@ export async function addMember(
   branchName: string,
 ): Promise<{ ok: boolean; error?: string; workspace?: IntegrationWorkspace }> {
   if (lookupWorktreeLandedAt(worktreePath) != null) {
-    warn('add member refused: worktree already landed', { worktree_path: worktreePath })
-    return { ok: false, error: 'This worktree has already landed and cannot join an integration bench.' }
+    warn('add member refused: worktree already landed', {
+      worktree_path: worktreePath,
+    })
+    return {
+      ok: false,
+      error: 'This worktree has already landed and cannot join an integration bench.',
+    }
   }
   const ws = ensureWorkspace(repoPath, sourceBranch)
   if (ws.members.some((m) => m.worktreePath === worktreePath)) {
-    return { ok: false, error: 'This worktree is already a member of the bench.' }
+    return {
+      ok: false,
+      error: 'This worktree is already a member of the bench.',
+    }
   }
   try {
     const contribution = await captureContribution(worktreePath, sourceBranch, branchName)
@@ -101,9 +144,18 @@ export async function addMember(
       source_branch: sourceBranch,
       pin: member.pin,
     })
+    await triggerBenchAutomation('bench:member-added', {
+      repoPath,
+      sourceBranch,
+      worktreePath,
+      branchName,
+    })
     return { ok: true, workspace: next }
   } catch (err) {
-    warn('add member failed', { worktree_path: worktreePath, error: String(err) })
+    warn('add member failed', {
+      worktree_path: worktreePath,
+      error: String(err),
+    })
     return { ok: false, error: `Could not read that worktree: ${String(err)}` }
   }
 }
@@ -116,9 +168,16 @@ export function removeMember(
 ): IntegrationWorkspace | null {
   const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
   if (!ws) return null
-  const next = { ...ws, members: ws.members.filter((m) => m.worktreePath !== worktreePath) }
+  const next = {
+    ...ws,
+    members: ws.members.filter((m) => m.worktreePath !== worktreePath),
+  }
   persist(next)
-  log('member removed', { worktree_path: worktreePath, source_branch: sourceBranch })
+  log('member removed', {
+    worktree_path: worktreePath,
+    source_branch: sourceBranch,
+  })
+  void triggerBenchAutomation('bench:member-removed', { repoPath, sourceBranch, worktreePath })
   return next
 }
 
@@ -157,7 +216,10 @@ export function predictPrunedBenches(worktreePath: string): string[] {
   const paths = loadWorkspaces()
     .filter((ws) => wouldPruneBench(ws, worktreePath))
     .map((ws) => ws.benchPath)
-  log('pruned-bench prediction', { worktree_path: worktreePath, pruned: paths.length })
+  log('pruned-bench prediction', {
+    worktree_path: worktreePath,
+    pruned: paths.length,
+  })
   return paths
 }
 
@@ -178,7 +240,10 @@ export function predictPrunedBenches(worktreePath: string): string[] {
  * Searches every workspace rather than one `(repo, branch)` pair, because a
  * worktree's registry entry may already be gone by the time this runs.
  */
-export function disenrollWorktree(worktreePath: string): { removedFrom: number; prunedBenches: string[] } {
+export function disenrollWorktree(worktreePath: string): {
+  removedFrom: number
+  prunedBenches: string[]
+} {
   const all = loadWorkspaces()
   const prunedBenches: string[] = []
   let removedFrom = 0
@@ -236,7 +301,10 @@ export function setMemberOrder(
   if (!ws) return null
   const from = ws.members.findIndex((m) => m.worktreePath === worktreePath)
   if (from < 0) {
-    warn('reorder skipped: not a member', { worktree_path: worktreePath, source_branch: sourceBranch })
+    warn('reorder skipped: not a member', {
+      worktree_path: worktreePath,
+      source_branch: sourceBranch,
+    })
     return null
   }
   const to = Math.max(0, Math.min(ws.members.length - 1, toIndex))
@@ -248,7 +316,10 @@ export function setMemberOrder(
   const next = { ...ws, members }
   persist(next)
   log('member order changed', {
-    worktree_path: worktreePath, source_branch: sourceBranch, from_index: from, to_index: to,
+    worktree_path: worktreePath,
+    source_branch: sourceBranch,
+    from_index: from,
+    to_index: to,
   })
   return next
 }
@@ -256,18 +327,19 @@ export function setMemberOrder(
 /**
  * True when advancing to `contribution` would change what the pin holds.
  *
- * Gates the stage auto-transition: a `bug` stage belongs to the content that
- * was tested, so it survives an assembly or an Update that re-pins the
- * identical content (the bug is still in there), and moves to `test` the
- * moment the content actually changes. See `advanceWorktreeStageOnPinChange`.
+ * Compare prior and new pinned content. A changed pin emits a semantic
+ * automation trigger after successful assembly; re-pinning identical content
+ * does not claim new content became integrated.
  */
 function pinChanged(
   member: IntegrationWorkspace['members'][number],
   contribution: { sha: string; treeHash: string; baseSha: string },
 ): boolean {
-  return member.pinnedSha !== contribution.sha ||
+  return (
+    member.pinnedSha !== contribution.sha ||
     member.pinnedTreeHash !== contribution.treeHash ||
     member.pinnedBaseSha !== contribution.baseSha
+  )
 }
 
 /**
@@ -292,40 +364,42 @@ export async function updateMember(
   try {
     contribution = await captureContribution(worktreePath, sourceBranch, member.branchName)
   } catch (err) {
-    warn('update member failed to read contribution', { worktree_path: worktreePath, error: String(err) })
+    warn('update member failed to read contribution', {
+      worktree_path: worktreePath,
+      error: String(err),
+    })
     return { ok: false, error: `Could not read that worktree: ${String(err)}` }
   }
 
   // Warn-early dry-run: predicted collision rides the result as a warning;
   // the update itself always proceeds.
   const warning = await dryRunCollision(ws, {
-    worktreePath, branchName: member.branchName, sha: contribution.sha,
+    worktreePath,
+    branchName: member.branchName,
+    sha: contribution.sha,
   })
 
   const advanced = pinChanged(member, contribution)
   const next: IntegrationWorkspace = {
     ...ws,
-    members: ws.members.map((m) => (m.worktreePath === worktreePath
-      ? {
-        ...m,
-        pinnedSha: contribution.sha,
-        pinnedTreeHash: contribution.treeHash,
-        pinnedBaseSha: contribution.baseSha,
-        currentTreeHash: contribution.treeHash,
-        // The pin now matches the branch by construction, whatever it was
-        // before. An empty contribution stays empty.
-        pin: (contribution.baseSha !== '' && contribution.baseSha === contribution.sha
-          ? 'empty'
-          : 'current') as PinState,
-      }
-      : m)),
+    members: ws.members.map((m) =>
+      m.worktreePath === worktreePath
+        ? {
+            ...m,
+            pinnedSha: contribution.sha,
+            pinnedTreeHash: contribution.treeHash,
+            pinnedBaseSha: contribution.baseSha,
+            currentTreeHash: contribution.treeHash,
+            // The pin now matches the branch by construction, whatever it was
+            // before. An empty contribution stays empty.
+            pin: (contribution.baseSha !== '' && contribution.baseSha === contribution.sha
+              ? 'empty'
+              : 'current') as PinState,
+          }
+        : m,
+    ),
   }
-  // A `bug` stage describes the content that was tested, so new content moves
-  // it to `test` (retest the fix); re-pinning identical content keeps it. The
-  // rule lives in the registry beside the stage itself.
-  if (advanced && !advanceWorktreeStageOnPinChange(worktreePath)) {
-    warn('pin advanced but stage auto-advance persist failed', { worktree_path: worktreePath })
-  }
+  const advance = advanced ? pinAdvanceEvent(repoPath, sourceBranch, member, contribution) : null
   log('member pin advanced', {
     branch: member.branchName,
     sha: contribution.sha.slice(0, 7),
@@ -334,6 +408,7 @@ export async function updateMember(
     collision_predicted: !!warning,
   })
   const result = await assembleAndPersist(next)
+  if (result.ok && advance) await triggerWorktreePinAdvance(advance)
   return warning ? { ...result, warning } : result
 }
 
@@ -348,6 +423,7 @@ export async function updateAllStale(
   const members = [...ws.members]
   let advanced = 0
   const warnings: string[] = []
+  const advances: WorktreePinAdvance[] = []
   for (let i = 0; i < members.length; i++) {
     const m = members[i]
     const current = await contributedTreeHash(m)
@@ -356,7 +432,9 @@ export async function updateAllStale(
       const contribution = await captureContribution(m.worktreePath, sourceBranch, m.branchName)
       const moved = pinChanged(m, contribution)
       const warning = await dryRunCollision(ws, {
-        worktreePath: m.worktreePath, branchName: m.branchName, sha: contribution.sha,
+        worktreePath: m.worktreePath,
+        branchName: m.branchName,
+        sha: contribution.sha,
       })
       if (warning) warnings.push(warning)
       members[i] = {
@@ -369,26 +447,29 @@ export async function updateAllStale(
           ? 'empty'
           : 'current') as PinState,
       }
-      // Same rule as updateMember: new content moves a `bug` stage to `test`;
-      // identical content re-pinned keeps it.
-      if (moved && !advanceWorktreeStageOnPinChange(m.worktreePath)) {
-        warn('pin advanced but stage auto-advance persist failed', { worktree_path: m.worktreePath })
-      }
+      if (moved) advances.push(pinAdvanceEvent(repoPath, sourceBranch, m, contribution))
       advanced++
     } catch (err) {
-      warn('update-all skipped a member', { branch: m.branchName, error: String(err) })
+      warn('update-all skipped a member', {
+        branch: m.branchName,
+        error: String(err),
+      })
     }
   }
-  log('update all stale', { source_branch: sourceBranch, advanced, collisions_predicted: warnings.length })
+  log('update all stale', {
+    source_branch: sourceBranch,
+    advanced,
+    collisions_predicted: warnings.length,
+  })
   const result = await assembleAndPersist({ ...ws, members })
+  if (result.ok) {
+    for (const advance of advances) await triggerWorktreePinAdvance(advance)
+  }
   return warnings.length > 0 ? { ...result, warning: warnings.join(' ') } : result
 }
 
 /** Assemble from existing pins. Changes no pin. */
-export async function assembleWorkspace(
-  repoPath: string,
-  sourceBranch: string,
-): Promise<BenchAssembleResult> {
+export async function assembleWorkspace(repoPath: string, sourceBranch: string): Promise<BenchAssembleResult> {
   const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
   if (!ws) return { ok: false, error: 'No integration workspace for this branch.' }
   return assembleAndPersist(ws)
@@ -405,10 +486,7 @@ export async function assembleWorkspace(
  * one axis and `merge` belongs to assembly, so evaluation does not clobber a
  * merge outcome it has nothing to say about.
  */
-export async function refreshStaleness(
-  repoPath: string,
-  sourceBranch: string,
-): Promise<IntegrationWorkspace | null> {
+export async function refreshStaleness(repoPath: string, sourceBranch: string): Promise<IntegrationWorkspace | null> {
   const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
   if (!ws) return null
 
@@ -428,9 +506,8 @@ export async function refreshStaleness(
     // Painting it `current` would claim content the bench does not hold: there
     // is no merge behind that sha.
     const emptyPin = m.pinnedBaseSha !== '' && m.pinnedBaseSha === m.pinnedSha
-    const pin: PinState = emptyPin && current === m.pinnedTreeHash
-      ? 'empty'
-      : current !== m.pinnedTreeHash ? 'behind' : 'current'
+    const pin: PinState =
+      emptyPin && current === m.pinnedTreeHash ? 'empty' : current !== m.pinnedTreeHash ? 'behind' : 'current'
     if (pin !== m.pin || current !== m.currentTreeHash) moved++
     members.push({ ...m, currentTreeHash: current, pin })
   }
@@ -459,85 +536,10 @@ async function assembleAndPersist(ws: IntegrationWorkspace): Promise<BenchAssemb
   return result
 }
 
-/**
- * Materialise the bench-verification analysis diagnostic and persist the
- * evidence, so the bar's "diagnosticTreeAt" state and the analysis
- * conversation agree with what is on disk.
- *
- * Refuses (does not persist anything) when the bench state has moved since
- * the failure being diagnosed — see prepareVerificationDiagnostic's own doc
- * for why that is the correct response rather than describing a stale tree.
- */
-export async function prepareVerificationAnalysis(
-  repoPath: string,
-  sourceBranch: string,
-): Promise<{ ok: boolean; benchPath?: string; error?: string }> {
-  const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
-  if (!ws) return { ok: false, error: 'No integration workspace for this branch.' }
-  const result = await prepareVerificationDiagnostic(repoPath, sourceBranch, ws)
-  if (!result.ok || !result.workspace) return { ok: false, error: result.error }
-  persist(result.workspace)
-  return { ok: true, benchPath: ws.benchPath }
-}
-
-/**
- * General member-recording recovery: forget the recordings for named members,
- * then run a normal assembly and persist its outcome. Both the verification
- * dialog and a selected worktree row invoke this same precise recovery.
- */
-export async function discardMemberRecordingsAndReassemble(
-  repoPath: string,
-  sourceBranch: string,
-  branchNames: string[],
-): Promise<BenchAssembleResult & { forgottenCount?: number; branchesWithNothingToForget?: string[] }> {
-  const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
-  if (!ws) return { ok: false, error: 'No integration workspace for this branch.' }
-
-  const forgotten = await forgetRecordingsForBranches(ws, branchNames)
-  if (!forgotten.ok) {
-    warn('discard-member-recordings: forget failed', {
-      repo_path: repoPath, source_branch: sourceBranch, branches: branchNames, error: forgotten.error,
-    })
-    return { ok: false, error: forgotten.error }
-  }
-  log('discard-member-recordings: forgot recordings, reassembling', {
-    repo_path: repoPath,
-    source_branch: sourceBranch,
-    branches: branchNames,
-    forgotten_paths: forgotten.forgottenPaths.length,
-    nothing_to_forget: forgotten.branchesWithNothingToForget,
-  })
-  const result = await assembleAndPersist(ws)
-  return {
-    ...result,
-    forgottenCount: forgotten.forgottenPaths.length,
-    branchesWithNothingToForget: forgotten.branchesWithNothingToForget,
-  }
-}
-
-/** Resolve the bench worktree path for a repo/branch, if a workspace exists. */
-export function benchPathFor(repoPath: string, sourceBranch: string): string | null {
-  return findWorkspace(loadWorkspaces(), repoPath, sourceBranch)?.benchPath ?? null
-}
-
-/**
- * True when `path` is a bench directory for any known workspace.
- *
- * Delegates to `bench-guard.isInsideBench` so the main process has exactly ONE
- * definition of bench containment. This used to be `w.benchPath === path`,
- * which missed every SUBDIRECTORY of a bench — a caller asking about
- * `<bench>/desktop/src` was told it was not a bench.
- */
-export function isBenchDirectory(path: string): boolean {
-  return isInsideBench(path)
-}
-
-/** Current source-branch tip, for showing how far the bench base has drifted. */
-export async function sourceBranchTip(repoPath: string, sourceBranch: string): Promise<string> {
-  try {
-    return (await runGit(repoPath, ['rev-parse', sourceBranch])).trim()
-  } catch (err) {
-    warn('could not read source branch tip', { repo_path: repoPath, source_branch: sourceBranch, error: String(err) })
-    return ''
-  }
-}
+export {
+  prepareVerificationAnalysis,
+  discardMemberRecordingsAndReassemble,
+  benchPathFor,
+  isBenchDirectory,
+  sourceBranchTip,
+} from './bench-ops-diagnostics'

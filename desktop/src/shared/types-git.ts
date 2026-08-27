@@ -193,9 +193,9 @@ export interface WorktreeMoveResult {
   /** Populated on re-attach: the freshly created worktree. */
   worktree?: WorktreeInfo
   /**
-   * Populated when a forced retire preserved uncommitted work: the full ref
-   * name in the parent repo (`refs/ion/recovery/...`) holding a snapshot commit.
-   * Absent when the worktree was clean, so there was nothing to preserve.
+   * Populated when removal preserved work before deletion. The full ref name in
+   * the parent repo points at the saved content: forced retire uses
+   * `refs/ion/recovery/...`; explicit discard uses `refs/ion/discarded/...`.
    *
    * Surfaced to the operator rather than only logged: a ref they cannot see is
    * indistinguishable from work that was silently destroyed.
@@ -249,19 +249,14 @@ export type GitOperationState = 'rebasing' | 'merging' | 'cherry-picking'
  * Where a worktree is in the operator's own workflow.
  *
  * A curated, fixed vocabulary — deliberately not configurable. The engine of
- * this feature is "one optional marker per worktree, plus one automatic
- * transition", and any subset of the stages is a complete workflow: a
+ * this feature is "one optional marker per worktree", and any subset of the
+ * stages is a complete workflow: a
  * two-state operator uses only `bug` and `verified`, a full-pipeline operator
  * walks all seven. No ordering is enforced and no verb is gated on a stage;
  * the marker is a note to the operator, not a state machine the app acts on
- * (with the single exception below).
- *
- * The one automatic transition: `bug` moves to `test` when the worktree's
- * bench pin advances (new content was integrated). "There is an issue to fix"
- * becomes "the fix is in, retest it" at exactly the moment the new content
- * lands in the bench — which is the moment the old flag stops being true.
- * Every other stage survives a pin advance: `verified` is a statement about
- * the feature, not the pin, so only the operator moves it.
+ * without acting on it. Automation observes semantic lifecycle hooks instead
+ * of stage-specific rules, so operators and automation can choose their own
+ * response to new content reaching a bench.
  */
 export type WorkStage = 'plan' | 'build' | 'test' | 'bug' | 'verified' | 'merge' | 'ready'
 
@@ -271,8 +266,6 @@ export interface WorkStageDescriptor {
   label: string
   /** What selecting this stage MEANS, for tooltips and menus. */
   hint: string
-  /** Stage to auto-move to when the worktree's bench pin advances. */
-  onPinAdvance?: WorkStage
 }
 
 /**
@@ -283,16 +276,27 @@ export const WORK_STAGES: readonly WorkStageDescriptor[] = [
   { id: 'plan', label: 'Planning', hint: 'Planning work is happening here' },
   { id: 'build', label: 'Building', hint: 'Implementation in progress' },
   { id: 'test', label: 'Needs testing', hint: 'Look at this again after the next build' },
-  {
-    id: 'bug', label: 'Issue found', hint: 'A problem was found and needs fixing',
-    // The fix arriving in the bench is what makes "issue open" stale and
-    // "retest" true, so the transition rides the pin advance.
-    onPinAdvance: 'test',
-  },
+  { id: 'bug', label: 'Issue found', hint: 'A problem was found and needs fixing' },
   { id: 'verified', label: 'Verified', hint: 'Tested and working' },
   { id: 'merge', label: 'Merge checks', hint: 'Alignment, squash, and pre-merge checks' },
   { id: 'ready', label: 'Ready to land', hint: 'All checks done — land when ready' },
 ] as const
+
+/**
+ * Content newly integrated into a bench. This is a fact about integration, not
+ * a workflow decision: automation decides whether to retest, notify, or make
+ * no stage change.
+ */
+export interface WorktreePinAdvance {
+  repoPath: string
+  sourceBranch: string
+  worktreePath: string
+  branchName: string
+  previousPinnedSha: string
+  pinnedSha: string
+  previousPinnedTreeHash: string
+  pinnedTreeHash: string
+}
 
 /** Descriptor lookup. Returns undefined for an unknown value from an older record. */
 export function workStageDescriptor(stage: string | undefined): WorkStageDescriptor | undefined {
@@ -366,7 +370,7 @@ export interface WorktreeInventoryEntry {
    * The operator's workflow stage for this worktree, or absent when none is
    * set. Recorded in the worktree registry — it describes the worktree's
    * lifecycle, not one bench pin — so it exists for unenrolled worktrees too.
-   * See `WorkStage` for the vocabulary and the one automatic transition.
+   * See `WorkStage` for the vocabulary.
    */
   stage?: WorkStage
   /**

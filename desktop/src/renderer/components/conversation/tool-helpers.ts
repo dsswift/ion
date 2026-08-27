@@ -1,4 +1,5 @@
 import type { Message } from "../../../shared/types";
+import { materializePlanImplementationDividers } from "../../../shared/plan-implementation";
 import { mergeThinkingMessages } from "./thinking-block-helpers";
 
 // ─── Types ───
@@ -138,9 +139,10 @@ export function groupMessages(
   opts?: GroupOptions,
 ): GroupedItem[] {
   const includeUser = opts?.includeUser ?? true;
+  const visibleMessages = materializePlanImplementationDividers(messages);
 
   if (opts?.unifiedTurnView) {
-    return groupMessagesUnified(messages, includeUser);
+    return groupMessagesUnified(visibleMessages, includeUser);
   }
 
   const result: GroupedItem[] = [];
@@ -156,7 +158,7 @@ export function groupMessages(
     }
   };
 
-  for (const msg of messages) {
+  for (const msg of visibleMessages) {
     if (msg.role === "tool") {
       toolBuf.push(msg);
     } else if (msg.role === "thinking") {

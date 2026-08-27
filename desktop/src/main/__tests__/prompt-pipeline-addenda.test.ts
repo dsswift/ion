@@ -96,6 +96,7 @@ vi.mock('../state', () => {
     },
     sessionPlane: {
       submitPrompt: (...args: any[]) => mocks.submitPromptMock(...args),
+      ensureSession: vi.fn().mockResolvedValue({ ok: true }),
       setPermissionMode: (...args: any[]) => mocks.setPermissionModeMock(...args),
       getTabStatus: (...args: any[]) => mocks.getTabStatusMock(...args),
       notifyConversationCleared: vi.fn(),

@@ -78,6 +78,11 @@ type MessageData struct {
 	// an explicit per-prompt model override wins over slash frontmatter. Empty
 	// when no model was resolved.
 	SlashModelEffective string `json:"slashModelEffective,omitempty"`
+	// SlashFrontmatter is complete parsed command frontmatter at invocation time.
+	// It preserves engine-known and extension-defined keys so history reloads
+	// retain same command provenance available during resolution. Empty for
+	// ordinary prompts and extension commands without template frontmatter.
+	SlashFrontmatter map[string]any `json:"slashFrontmatter,omitempty"`
 
 	// ImplementationPhase records that this user turn began the implementation
 	// half of a plan-then-implement flow. It is durable provenance only: the

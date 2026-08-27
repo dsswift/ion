@@ -163,91 +163,89 @@ with LogQL `| json | session_id = "..."`. Promoting them to labels would create 
 ## Telemetry event fields (`telemetry.jsonl`)
 
 Ion emits a separate telemetry stream to `~/.ion/telemetry.jsonl` when telemetry
-is enabled. Telemetry lines are NDJSON with a **different schema** from the operational
-log — each line is a structured event with top-level metadata and a `payload` object.
+is enabled. Schema v4 stores one compact frame per JSONL line. A frame interns
+shared identity and correlation data, then carries one or more event records.
+The telemetry forwarder expands each frame before it sends events to Alloy.
 
-### Top-level telemetry fields
+### Schema v4 compact frame
 
-All telemetry events carry these top-level fields. The current schema version is **v3**
-(v2 = the unified snake_case contract; v3 added the additive attribution fields `event_id` and the
-populated-capable `user` carrier — v2 consumers decode v3 lines unchanged):
+A v4 line has this shape:
 
 | Field | Type | Notes |
 |---|---|---|
-| `name` | string | Event kind, e.g. `run.complete`, `llm.call`. The `payload.kind` field was removed in schema v2. |
-| `ts` | string | RFC3339Nano UTC string (R1). Replaces the old int64 `timestamp` field from schema v1. |
-| `schema` | int | Schema version integer (R4). Currently `3`. Self-describing for central sinks. |
-| `component` | string | Always `"engine"` (R3). Surface discriminator. |
-| `install_id` | string | Anonymous per-install UUID (R5). Minted once at `~/.ion/install_id`. Stable across sessions. |
-| `host` | string | Machine hostname (R19). For admin display and fleet segmentation. |
-| `version` | string | Engine build version string (R21). Which binary emitted this event. |
-| `event_id` | string | Per-event unique ID, 16 hex chars (R22, schema v3). For downstream dedup during retry storms. Empty on the `telemetry.schema_writer_changed` sentinel. |
-| `user` | string | Omit-when-absent (R20). Populated via the OIDC identity seam (`SetUserIdentity`) whenever a user is signed in; restamped live on sign-in/sign-out. Absent on installs with no signed-in identity. |
-| `payload` | object | Event-specific fields (all snake_case). |
-| `context` | object | Correlation context: `session_id`, `conversation_id`, `run_id`. Extension attribution fields `extension` and `extension_version` are additive within this object — see § "Extension attribution" below. |
-| `trace_id` | string | W3C trace-context trace-id, 32 lowercase hex chars. Scoped to one run — see § "Correlation-ID vocabulary". Omit when no run is in flight. |
+| `record` | string | Always `"telemetry.frame"`. Identifies a compact frame. |
+| `schema` | int | Always `4`. |
+| `identities` | array | Interned source identities. Each entry has `component`, `install_id`, `host`, `version`, and optional `user`. |
+| `contexts` | array | Interned optional correlation objects. Each entry has `context` and optional `trace_id`. |
+| `events` | array | Event records. `i` indexes `identities`; optional `c` indexes `contexts`. |
 
-> **Dashboard consumers.** The identity fields power the audience packs: **Ion Fleet** aggregates by `host`, `install_id`, and `version` (hosts reporting, installs per host, version drift); **Ion Users** aggregates by `user` (spend, runs, tool failures, trust posture), coalescing lines without an identity into an "unassigned" bucket. `host` and `user` are not Alloy-promoted, so those dashboards parse with `| json` — see `docs/observability/dashboards/src/queries-fleet.ts`.
+Each event record contains `i`, optional `c`, `name`, `ts`, optional `event_id`,
+and `payload`. The expanded event is the same public telemetry event shape that
+schemas v1-v3 used: combine the indexed identity and context with the event
+record, then set its `schema` to `4`.
+
+The compact file format is a storage format, not a dashboard contract. The
+telemetry forwarder decodes v1-v4 lines and posts expanded events to Alloy. It
+keeps the `service="ion-telemetry"`, `service_name="ion-telemetry"`, and `kind`
+labels, plus the structured metadata names that the dashboards use. Existing
+dashboard queries therefore do not change.
+
+### Expanded telemetry event fields
+
+After expansion, every event has these fields:
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string | Event kind, such as `run.complete` or `llm.call`. `payload.kind` is not used. |
+| `ts` | string | RFC3339Nano UTC string. |
+| `schema` | int | Schema version. Expanded v4 frame events report `4`. |
+| `component` | string | Source component, normally `"engine"`. |
+| `install_id` | string | Anonymous per-install UUID. |
+| `host` | string | Machine hostname. |
+| `version` | string | Engine build version string. |
+| `event_id` | string | Per-event unique ID for downstream deduplication. |
+| `user` | string | Omit when no authenticated identity exists. |
+| `payload` | object | Event-specific fields, all snake_case. |
+| `context` | object | Correlation context: `session_id`, `conversation_id`, and `run_id`; it can also contain extension attribution. |
+| `trace_id` | string | W3C trace-context trace ID. Omit when no run is in flight. |
 
 ### `run.complete` payload fields (all snake_case)
 
 | Payload key | Type | Notes |
 |---|---|---|
 | `model` | string | Model ID of the most recent turn. |
-| `run_cost_usd` | float | Per-run cost in USD (cache-aware). Canonical cost field for dashboard queries. |
-| `aggregate_cost_usd` | float | Full conversation cost (this run + all descendant dispatches via dispatch tree walk). |
-| `dispatch_depth` | int | Always 0 at manager-level emission (root session). |
-| `duration_ms` | int | Wall-clock duration of the run in milliseconds. |
-| `num_turns` | int | Number of LLM turns in the run. |
+| `run_cost_usd` | float | Per-run cost in USD. Canonical cost field for dashboard queries. |
+| `aggregate_cost_usd` | float | Full conversation cost, including descendant dispatches. |
+| `dispatch_depth` | int | Root run is `0`. |
+| `duration_ms` | int | Wall-clock duration. |
+| `num_turns` | int | Number of LLM turns. |
 | `input_tokens` | int | Provider-reported input tokens. |
 | `output_tokens` | int | Provider-reported output tokens. |
 | `cache_read_input_tokens` | int | Tokens served from prompt cache. |
-| `cache_creation_input_tokens` | int | Tokens written into the prompt cache. |
+| `cache_creation_input_tokens` | int | Tokens written into prompt cache. |
 
-**Dashboard recipe:** use `payload_run_cost_usd` (mapped from `payload.run_cost_usd` by Alloy) for all cost panels:
-```logql
-sum(sum_over_time({kind="run.complete"} | json | unwrap payload_run_cost_usd [24h]))
-```
+### Extension attribution
 
-### Extension attribution (additive, schema v3+)
+`context.extension` and `context.extension_version` are optional fields. Alloy
+exposes them as `context_extension` and `context_extension_version` structured
+metadata, not labels. Old expanded events without these fields remain valid.
 
-`context.extension` and `context.extension_version` are additive fields within the `context` object. They are the first exercised additive evolution of the telemetry context under ADR-019: no schema version bump, omit-when-absent in both directions, backward-compatible with all existing consumers.
+### Schema versioning and rotation
 
-| Context key | Type | Notes |
-|---|---|---|
-| `extension` | string | Hosting extension's friendly name (e.g. `"ion-dev"`). Present only on events emitted by extension-hosted sessions. Absent on direct API runs and all pre-attribution log lines. |
-| `extension_version` | string | Extension's manifest version (e.g. `"1.2.3"`), read from `extension.json` at host load time. Absent when the manifest carries no `version` field or is not present. |
+The engine writes `~/.ion/telemetry.schema.json` next to `telemetry.jsonl`. Its
+`highestSchemaSeen` value is a monotonic high-water mark. A writer upgrade or
+downgrade appends a `telemetry.schema_writer_changed` event. Version transitions
+never rotate, archive, or remove telemetry data.
 
-These fields appear on `run.complete`, `cache.savings`, `llm.call`, and `dispatch.agent` events. Old lines without these fields are valid schema v3 events — they simply group as "unattributed" in the Ion Extensions dashboard.
+Size rotation is separate. When the configured file size cap is reached, the
+live file is renamed to `.1`, older archives shift to `.2`, `.3`, and so on, and
+the oldest archive beyond `maxFiles` is removed. A collector must read the live
+file before its configured archive window expires. The local reference stack
+forwards the live file only; it does not automatically replay `.1` archives.
 
-Alloy promotes them as structured metadata under the names `context_extension` and `context_extension_version` (NOT stream labels — unbounded cardinality). LogQL panels reference them with `| context_extension = "..."`.
-
-**Extension version source:** the version comes from `extension.json` → `Manifest.Version` at host load time, not from the extension's runtime broadcast. The manifest is the build-time constant; it never changes after the extension is loaded. Extension authors add the field to their `extension.json`:
-```json
-{ "name": "my-extension", "version": "1.2.0" }
-```
-
-### Schema versioning (version-forward, append-only)
-
-The engine writes a `~/.ion/telemetry.schema.json` sidecar alongside `telemetry.jsonl`.
-The sidecar contains `{"highestSchemaSeen": ..., "stampedAt": ..., "engineVersion": "..."}` where
-`highestSchemaSeen` is the **maximum schema version ever written to the file** — a monotonic
-high-water mark that is only raised, never lowered.
-
-On startup, the engine runs `stampSchemaCheckpoint`:
-- **Version match:** no action.
-- **Upgrade (current > highest):** raise `highestSchemaSeen`, append a `telemetry.schema_writer_changed` event.
-- **Downgrade (current < highest):** do NOT touch the sidecar or file; append a `telemetry.schema_writer_changed` event so the transition is observable.
-- **Fresh install:** write the sidecar at the current version; no event.
-
-Files are **never renamed, archived, or truncated** on version transitions. Each line self-describes its
-schema via the top-level `schema` field. The Alloy pipeline and Grafana dashboards handle multi-schema
-files by filtering on `schema_version` in `structured_metadata`.
-
-Legacy sidecars from the old rotate-on-mismatch design (key `schemaVersion`) are read transparently and
-migrated on the next startup. See ADR-019 § "Superseded mechanisms" for the rationale.
-
-See `docs/observability/cost-model.md` for the full cost model reference.
+Legacy v1-v3 expanded lines remain readable by the telemetry forwarder. This
+allows one file to contain older expanded events and v4 compact frames during an
+upgrade.
 
 ---
 
@@ -343,7 +341,7 @@ without schema changes.
 ### Telemetry schema versioning
 
 The telemetry stream (`telemetry.jsonl`) carries its own versioned schema separate from the operational log
-schema. The current version is **schema v3** (`TelemetrySchemaVersion` in
-`engine/internal/telemetry/schema.go` is authoritative). The `schema` top-level field in every telemetry event
-self-identifies the version. The `~/.ion/telemetry.schema.json` sidecar's `highestSchemaSeen` field records
-the maximum version ever written to the file. See the "Schema versioning" section above and ADR-019.
+schema. The current file format is **schema v4** (`TelemetrySchemaVersion` in
+`engine/internal/telemetry/schema.go` is authoritative). A v4 line is a compact frame, and its expanded events
+report schema `4`. The `~/.ion/telemetry.schema.json` sidecar's `highestSchemaSeen` field records
+the maximum version ever written to the file. See the "Schema versioning and rotation" section above and ADR-019.

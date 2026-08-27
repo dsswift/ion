@@ -43,7 +43,8 @@ export function isPreviewZoomTarget(): boolean {
 }
 
 /**
- * Handle a Cmd+T / Cmd+Shift+T keystroke.
+ * Handle a new-conversation shortcut. `forceProfilePicker` bypasses saved
+ * Project defaults but never an enterprise lock.
  *
  * Every invocation opens the shared project-first NewConversationPicker. The
  * picker then applies workspace and profile policy in one consistent flow.
@@ -60,10 +61,11 @@ export function handleNewConversationShortcut(
   dir: string,
   label: string,
   dispatchFn: (e: Event) => void = (e) => window.dispatchEvent(e),
+  forceProfilePicker = false,
 ): void {
   const s = useSessionStore.getState()
-  rDebug('shortcuts', 'opening unified new conversation picker', { label, suggested_dir: dir, active_tab_id: s.activeTabId ? s.activeTabId.slice(0, 8) : '' })
-  dispatchFn(new CustomEvent('ion:open-new-conversation-picker'))
+  rDebug('shortcuts', 'opening unified new conversation picker', { label, suggested_dir: dir, force_profile_picker: forceProfilePicker, active_tab_id: s.activeTabId ? s.activeTabId.slice(0, 8) : '' })
+  dispatchFn(new CustomEvent('ion:open-new-conversation-picker', { detail: forceProfilePicker ? { forceProfilePicker: true } : null }))
 }
 
 /**
@@ -136,11 +138,15 @@ export function useKeyboardShortcuts(togglePalette: () => void = () => {}): void
         window.dispatchEvent(new CustomEvent('ion:close-group-pickers'))
         const state = useSessionStore.getState()
         const tab = state.tabs.find((candidate) => candidate.id === state.activeTabId)
-        handleNewConversationShortcut(tab?.workingDirectory || usePreferencesStore.getState().defaultBaseDirectory || '', 'Cmd+Shift+T')
+        handleNewConversationShortcut(tab?.workingDirectory || '', 'Cmd+Shift+T')
       },
       'tab.new': () => {
         window.dispatchEvent(new CustomEvent('ion:close-group-pickers'))
-        handleNewConversationShortcut(usePreferencesStore.getState().defaultBaseDirectory || '', 'Cmd+T')
+        handleNewConversationShortcut('', 'Cmd+T')
+      },
+      'tab.newPicker': () => {
+        window.dispatchEvent(new CustomEvent('ion:close-group-pickers'))
+        handleNewConversationShortcut('', 'Cmd+Opt+T', undefined, true)
       },
       'tab.recentDirs': () => { window.dispatchEvent(new CustomEvent('ion:open-recent-dirs')) },
       'layout.tall': toggleTallView,

@@ -28,6 +28,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { log as _log } from './logger'
 import { shipTailedToEgress, type EgressRecord } from './log-egress'
+import { expandTelemetryRecord, isTelemetryFrame } from './telemetry-frame'
 import {
   loadCursors,
   saveCursors,
@@ -120,7 +121,14 @@ function processChunk(chunk: string, remainder: string): string {
       // Malformed line — skip without logging (would cause recursive egress noise).
       continue
     }
-    _shipFn(rec)
+    try {
+      const records = isTelemetryFrame(rec) ? expandTelemetryRecord(rec) : [rec]
+      for (const expanded of records) _shipFn(expanded)
+    } catch (error) {
+      log('tailer: telemetry frame expansion failed', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 
   return newRemainder

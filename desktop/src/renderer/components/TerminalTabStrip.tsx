@@ -1,7 +1,9 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
-import { Plus, X, LockSimple, LockSimpleOpen, ArrowsOutSimple, ArrowsInSimple, ArrowsOut, ArrowsIn } from '@phosphor-icons/react'
+import { Plus, X, Globe, Terminal, LockSimple, LockSimpleOpen, ArrowsOutSimple, ArrowsInSimple, ArrowsOut, ArrowsIn } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
+import { Tooltip } from './git/Tooltip'
+import { contentRouter } from '../lib/file-open-router'
 import type { TerminalInstance } from '../../shared/types'
 
 interface Props {
@@ -13,6 +15,7 @@ export function TerminalTabStrip({ tabId }: Props) {
   const pane = useSessionStore((s) => s.terminalPanes.get(tabId))
   const terminalTallTabId = useSessionStore((s) => s.terminalTallTabId)
   const terminalBigScreenTabId = useSessionStore((s) => s.terminalBigScreenTabId)
+  const terminalActivities = useSessionStore((s) => s.terminalActivities)
   const {
     addTerminalInstance,
     removeTerminalInstance,
@@ -64,6 +67,7 @@ export function TerminalTabStrip({ tabId }: Props) {
 
   const renderTab = (inst: TerminalInstance) => {
     const isActive = inst.id === activeId
+    const activity = terminalActivities.get(`${tabId}:${inst.id}`)
     return (
       <div
         key={inst.id}
@@ -107,7 +111,24 @@ export function TerminalTabStrip({ tabId }: Props) {
             }}
           />
         ) : (
-          <span>{inst.label}</span>
+          <>
+            <span>{inst.label}</span>
+            {activity?.active && (
+              <Tooltip text={activity.applications[0]
+                ? `${activity.processLabel ?? 'Web application'} — ${activity.applications[0].url}`
+                : `${activity.processLabel ?? 'Terminal command'} is running`}>
+                {activity.applications[0] ? (
+                  <button data-ion-ui aria-label={`Open ${activity.applications[0].url}`} onClick={(event) => {
+                    event.stopPropagation()
+                    const app = activity.applications[0]
+                    const router = contentRouter()
+                    if (router?.openWebApplication) router.openWebApplication(tabId, app.url)
+                    else void window.ion.openExternal(app.url)
+                  }} style={{ border: 'none', background: 'transparent', color: colors.statusBash, display: 'inline-flex', cursor: 'pointer', padding: 0 }}><Globe size={11} /></button>
+                ) : <Terminal size={11} weight="fill" color={colors.statusBash} aria-label="Running terminal command" />}
+              </Tooltip>
+            )}
+          </>
         )}
         {/* Read-only toggle */}
         <button

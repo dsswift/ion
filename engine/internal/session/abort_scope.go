@@ -97,6 +97,11 @@ func (m *Manager) SendAbortScoped(key string, scope AbortScope) {
 		return
 	}
 	rid := s.requestID
+	if s.temporaryAutoPlan != nil {
+		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "temporary auto plan workflow cleared by abort", map[string]any{"key": key, "run_id": s.temporaryAutoPlan.runID, "abort_scope": string(scope)})
+		s.temporaryAutoPlan = nil
+	}
+	s.pendingSlashInvocation = nil
 	// Discard any prompts queued behind the in-flight run. Pressing Stop
 	// means "abandon the pending work", so prompts the user queued *before*
 	// the abort must not be resurrected when the cancelled run unwinds and

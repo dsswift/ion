@@ -41,6 +41,25 @@ export function registerStudioFileRouter(revealSurface: () => void = () => {}): 
       revealSurface()
       useSurfaceStore.getState().openBrowserTab(`file://${filePath}`, 'preview')
     },
+    openUrl: (url) => {
+      // A NEW tab per click, deliberately. Reusing one tab would make each
+      // ⌘-click destroy the page from the previous one, and following a few
+      // links out of a transcript is exactly when the operator wants to keep
+      // the earlier pages around to compare.
+      //
+      // 'browse' mode, not 'preview': a preview tab carries the offline
+      // network shield, which would leave a link the operator explicitly
+      // opened unable to load.
+      revealSurface()
+      useSurfaceStore.getState().openBrowserTab(url, 'browse')
+      rDebug('studio.surface', 'opened clicked link in browser tab', { host: hostOf(url) })
+      return true
+    },
+    openWebApplication: (tabId, url) => {
+      revealSurface()
+      useSessionStore.getState().selectTab(tabId)
+      useSurfaceStore.getState().openBrowserTab(url, 'browse')
+    },
     openGitDiff: ({ repoDir, filePath, staged }) => {
       const session = useSessionStore.getState()
       const activeDirectory = session.tabs.find((tab) => tab.id === session.activeTabId)?.workingDirectory
@@ -102,4 +121,13 @@ export function registerStudioFileRouter(revealSurface: () => void = () => {}): 
       rDebug('studio.runtime-panel', 'released routed panel', { panel_id: id })
     },
   })
+}
+
+/** Host only: a full URL in a log line can carry tokens in its query. */
+function hostOf(raw: string): string {
+  try {
+    return new URL(raw).host
+  } catch {
+    return ''
+  }
 }

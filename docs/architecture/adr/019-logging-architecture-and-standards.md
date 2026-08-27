@@ -2,7 +2,6 @@
 
 **Status:** Accepted (retroactive — documents shipped behavior)  
 **Date:** 2026-07-06  
-**Authors:** Josh Sprague
 
 **Supersession note (2026-07-07):** The `rotate-on-mismatch` and `auto-wipe`
 mechanisms described in the original R18a/R18b rationale below are superseded by
@@ -39,7 +38,7 @@ vocabulary, tag convention) that now apply across all five surfaces.
 
 ## Decision
 
-### 1. The R1–R21 unified log contract (telemetry stream, schema v2)
+### 1. The unified log contract and schema v4 compact frames
 
 The contract is a numbered requirement set (R1–R21) from the implementation
 plan that shipped in commit `7d6319ed` and its companions. The R-numbers
@@ -53,7 +52,7 @@ contract is the test matrix, not the plan numbering.
 |---|---|---|
 | R1 | `ts` is an RFC3339Nano UTC string (replaces the old int64 `timestamp`) | Event-time indexing in Loki with nanosecond precision; human-readable in raw files; one timestamp format across operational and telemetry streams |
 | R3 | `component` is stamped on every event (`"engine"`) | Surface discriminator when multiple emitters feed one central sink |
-| R4 | `schema` is a version integer on every event (currently `2`) | Self-describing lines: central sinks and the auto-wipe utility can distinguish schema generations without out-of-band metadata |
+| R4 | `schema` identifies the telemetry format (v4 uses compact frames) | Self-describing lines: central sinks and a decoder can distinguish schema generations without out-of-band metadata |
 | R5 | `install_id` is a stable anonymous per-install UUID (minted once at `~/.ion/install_id`) | Exact fleet counts (installs, active installs) without any PII |
 | R7 | All payload keys are snake_case (`run_cost_usd`, `duration_ms`, `num_turns`, `input_tokens`, …); legacy camelCase keys are forbidden | One casing convention for LogQL queries and Alloy `structured_metadata` mapping; no dual-key drift |
 | R9 | Span-end attributes are snake_case (`stop_reason`, `duration_ms`) | Spans feed the same pipeline as events; same casing rule applies |
@@ -162,9 +161,9 @@ The two streams have distinct jobs and neither absorbs the other:
 - **Operational log** (this ADR's levels/message/metadata standards):
   diagnostic JSONL per surface. Answers "what did the code do on this
   machine?" Unversioned but additive-only schema
-  (`docs/observability/log-schema.md`); rotation is truncate-in-place.
+  (`docs/observability/log-schema.md`); size rotation uses `.1`, `.2`, and later archives.
 - **Telemetry stream** (the R1–R21 contract): versioned event stream
-  (`schema` int, sidecar, checkpoint rotation) designed for central sinks
+  (`schema` int, sidecar, compact-frame storage) designed for central sinks
   and fleet aggregation. Answers "what is happening across installs?"
 
 Both streams use snake_case throughout and share the correlation vocabulary
@@ -180,6 +179,23 @@ join pivots between them.
   emitter call sites for interpolated messages and non-canonical keys, and
   are normatively stated in `docs/observability/log-schema.md` and the
   logging policy in the root `AGENTS.md`.
+
+### Schema v4 migration
+
+Schema v4 changes the local telemetry file from one expanded event per line to
+one compact frame per line. A frame has `record: "telemetry.frame"`, `schema: 4`,
+identity and context tables, and event records that reference those tables. The
+format removes repeated envelope data without changing the expanded event
+contract.
+
+The telemetry forwarder is the compatibility boundary. It decodes legacy v1-v3
+expanded lines and v4 frames, then posts expanded events to Alloy through
+`loki.source.api`. Alloy keeps the existing `service`, `service_name`, and `kind`
+labels plus the same structured metadata. Grafana dashboards therefore require
+no query change.
+
+Schema transitions remain append-only. Size rotation is independent and uses
+`.1`, `.2`, and later archives. The local stack forwards the live file only.
 
 ## Consequences
 
@@ -214,8 +230,7 @@ join pivots between them.
 ### Option A: Merge operational and telemetry streams into one file
 
 One stream, one schema. Rejected: the streams have different consumers
-(local diagnostics vs central sinks), different retention (truncate-in-place
-vs checkpoint/archive/re-ingest), and different volume profiles. Merging
+(local diagnostics vs central sinks), different storage formats and rotation behavior, and different volume profiles. Merging
 forces central sinks to ingest TRACE noise and forces local diagnostics
 through schema-version rotation.
 
@@ -334,26 +349,17 @@ on both sides.
 
 
 
-### rotate-on-mismatch (removed 2026-07-07)
+### rotate-on-mismatch (removed)
 
-The original R4 implementation called `rotateFile()` when the on-disk sidecar's
-`schemaVersion` differed from the current engine version. This renamed
-`telemetry.jsonl` to `telemetry.jsonl.<ts>.v<N>.bak` and started a fresh empty
-file. The intent was to keep the active file's lines homogeneous for Alloy queries.
+The prior implementation renamed `telemetry.jsonl` when its schema sidecar did
+not match the current writer. It was removed because a downgraded writer could
+remove valid data. The replacement is append-only schema transition handling:
+each record identifies its schema, the sidecar records the highest seen schema,
+and `telemetry.schema_writer_changed` records a writer transition.
 
-**Why it was removed:** On 2025-07-06 a v2/v3 ping-pong between two branches
-caused four rotations that deleted ~$323 of run-cost history. A downgraded
-writer never signals intent to overwrite; rotation on any version mismatch
-(including downgrade) is destructive and wrong. The correct model is
-**append-only, version-forward**: files are never renamed or truncated; each
-line self-describes its schema via the top-level `schema` field; the sidecar
-tracks the highest-ever-seen schema as a monotonic high-water mark; and a
-`telemetry.schema_writer_changed` event is emitted on any writer transition
-(upgrade or downgrade) so the change is observable in Loki.
-
-**Replacement:** `engine/internal/telemetry/schema.go` `stampSchemaCheckpoint`.
-The sidecar key changed from `schemaVersion` to `highestSchemaSeen`; the old
-key is read as a fallback so existing sidecars migrate transparently.
+Schema v4 does not change this policy. It changes only the on-disk encoding from
+expanded event lines to compact frames. Size rotation remains a separate policy
+and uses `.1`, `.2`, and later archives.
 
 ### auto-wipe observability gate (removed 2026-07-07)
 

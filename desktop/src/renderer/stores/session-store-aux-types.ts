@@ -40,7 +40,7 @@ export interface GitConflictAlert {
 
 /**
  * The sync-all pipeline's live state — what the progress banner, the confirm
- * gate, and the ATV mirror render. One object because the phases are a strict
+ * gate, and the Studio mirror render. One object because the phases are a strict
  * sequence; see stores/slices/worktree-pipeline-slice.ts for the machine.
  */
 export interface WorktreePipelineState {

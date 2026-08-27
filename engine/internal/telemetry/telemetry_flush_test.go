@@ -1,7 +1,6 @@
 package telemetry
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -48,13 +47,9 @@ func TestCollectorFlushesOnInterval(t *testing.T) {
 	for time.Now().Before(deadline) {
 		data, err := os.ReadFile(fp)
 		if err == nil && len(data) > 0 {
-			// File has content — parse and verify it is our event.
-			var evt Event
-			if jsonErr := json.Unmarshal(data, &evt); jsonErr != nil {
-				t.Fatalf("event on disk is not valid JSON: %v\nraw: %s", jsonErr, data)
-			}
-			if evt.Name != RunComplete {
-				t.Errorf("expected event name %q, got %q", RunComplete, evt.Name)
+			events := mustReadTelemetryFile(t, fp)
+			if _, found := telemetryEventByName(events, RunComplete); !found {
+				t.Errorf("expected event name %q in decoded frames", RunComplete)
 			}
 			return // SUCCESS
 		}
@@ -102,12 +97,9 @@ func TestCollectorCloseFlushesRemainder(t *testing.T) {
 		t.Fatal("file is empty after Close() — final drain did not flush buffered event")
 	}
 
-	var evt Event
-	if err := json.Unmarshal(data, &evt); err != nil {
-		t.Fatalf("event on disk is not valid JSON after Close: %v\nraw: %s", err, data)
-	}
-	if evt.Name != LlmCall {
-		t.Errorf("expected event name %q, got %q", LlmCall, evt.Name)
+	events := mustReadTelemetryFile(t, fp)
+	if _, found := telemetryEventByName(events, LlmCall); !found {
+		t.Errorf("expected event name %q in decoded frames", LlmCall)
 	}
 
 	// Second Close() must be a no-op (idempotent), not panic or deadlock.

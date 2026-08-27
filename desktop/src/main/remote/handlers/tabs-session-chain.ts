@@ -13,24 +13,24 @@
  * renderer — supplies the messages.
  */
 
-import { existsSync, readFileSync } from 'fs'
-import { log as _log } from '../../logger'
-import { state } from '../../state'
-import { TABS_FILE } from '../../settings-store'
-import type { Message } from '../../../shared/types'
-import type { RemoteMessage } from '../protocol-remote-tab'
+import { existsSync, readFileSync } from "fs";
+import { log as _log } from "../../logger";
+import { state } from "../../state";
+import { TABS_FILE } from "../../settings-store";
+import type { Message } from "../../../shared/types";
+import type { RemoteMessage } from "../protocol-remote-tab";
 
 function log(msg: string, fields?: Record<string, unknown>): void {
-  _log('main', msg, fields)
+  _log("main", msg, fields);
 }
 
 export interface TabSessionChain {
   /** Engine session ids to load, in chain order (historical first). */
-  sessionIds: string[]
+  sessionIds: string[];
   /** Renderer-reported runtime tab status ('running' | 'connecting' | ...). */
-  tabStatus?: string
+  tabStatus?: string;
   /** The tab's current conversation id (last element of the chain). */
-  conversationId: string | null
+  conversationId: string | null;
 }
 
 /**
@@ -38,22 +38,29 @@ export interface TabSessionChain {
  * tracks status and any not-yet-persisted chain growth), persisted tabs file
  * as the fallback when the renderer is unavailable.
  */
-export async function resolveTabSessionChain(tabId: string): Promise<TabSessionChain | null> {
-  const fromRenderer = await chainFromRenderer(tabId)
-  if (fromRenderer) return fromRenderer
+export async function resolveTabSessionChain(
+  tabId: string,
+): Promise<TabSessionChain | null> {
+  const fromRenderer = await chainFromRenderer(tabId);
+  if (fromRenderer) return fromRenderer;
 
-  const fromDisk = chainFromPersistedTabs(tabId)
+  const fromDisk = chainFromPersistedTabs(tabId);
   if (fromDisk) {
-    log('load_conversation: session chain resolved from persisted tabs', { tab_id: tabId, sessions: fromDisk.sessionIds.length })
-    return fromDisk
+    log("load_conversation: session chain resolved from persisted tabs", {
+      tab_id: tabId,
+      sessions: fromDisk.sessionIds.length,
+    });
+    return fromDisk;
   }
-  return null
+  return null;
 }
 
 /** Metadata-only renderer query: three scalars, no message content. */
-async function chainFromRenderer(tabId: string): Promise<TabSessionChain | null> {
-  if (!state.mainWindow) return null
-  const escaped = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+async function chainFromRenderer(
+  tabId: string,
+): Promise<TabSessionChain | null> {
+  if (!state.mainWindow) return null;
+  const escaped = tabId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   try {
     const meta = await state.mainWindow.webContents.executeJavaScript(`
       (function() {
@@ -69,33 +76,43 @@ async function chainFromRenderer(tabId: string): Promise<TabSessionChain | null>
           };
         } catch (e) { return null; }
       })()
-    `)
-    if (!meta) return null
-    const ids: string[] = [...(meta.historicalSessionIds || [])]
-    if (meta.conversationId) ids.push(meta.conversationId)
-    if (ids.length === 0) return null
-    return { sessionIds: ids, tabStatus: meta.status || undefined, conversationId: meta.conversationId }
+    `);
+    if (!meta) return null;
+    const ids: string[] = [...(meta.historicalSessionIds || [])];
+    if (meta.conversationId) ids.push(meta.conversationId);
+    if (ids.length === 0) return null;
+    return {
+      sessionIds: ids,
+      tabStatus: meta.status || undefined,
+      conversationId: meta.conversationId,
+    };
   } catch (err) {
-    log('load_conversation: renderer metadata query failed', { tab_id: tabId, error: (err as Error).message })
-    return null
+    log("load_conversation: renderer metadata query failed", {
+      tab_id: tabId,
+      error: (err as Error).message,
+    });
+    return null;
   }
 }
 
 /** Fallback: the persisted tabs file carries the same chain metadata. */
 function chainFromPersistedTabs(tabId: string): TabSessionChain | null {
   try {
-    if (!existsSync(TABS_FILE)) return null
-    const data = JSON.parse(readFileSync(TABS_FILE, 'utf-8'))
-    const tabs: any[] = Array.isArray(data?.tabs) ? data.tabs : []
-    const tab = tabs.find((t) => t?.id === tabId)
-    if (!tab) return null
-    const ids: string[] = [...(tab.historicalSessionIds || [])]
-    if (tab.conversationId) ids.push(tab.conversationId)
-    if (ids.length === 0) return null
-    return { sessionIds: ids, conversationId: tab.conversationId || null }
+    if (!existsSync(TABS_FILE)) return null;
+    const data = JSON.parse(readFileSync(TABS_FILE, "utf-8"));
+    const tabs: any[] = Array.isArray(data?.tabs) ? data.tabs : [];
+    const tab = tabs.find((t) => t?.id === tabId);
+    if (!tab) return null;
+    const ids: string[] = [...(tab.historicalSessionIds || [])];
+    if (tab.conversationId) ids.push(tab.conversationId);
+    if (ids.length === 0) return null;
+    return { sessionIds: ids, conversationId: tab.conversationId || null };
   } catch (err) {
-    log('load_conversation: persisted tabs read failed', { tab_id: tabId, error: (err as Error).message })
-    return null
+    log("load_conversation: persisted tabs read failed", {
+      tab_id: tabId,
+      error: (err as Error).message,
+    });
+    return null;
   }
 }
 
@@ -109,19 +126,19 @@ function chainFromPersistedTabs(tabId: string): TabSessionChain | null {
  * mid-turn and iOS paginates the remainder via hasMore — a bounded frame
  * beats a whole turn.
  */
-export const MAX_PAGE_MESSAGES = 80
+export const MAX_PAGE_MESSAGES = 80;
 
 /** Default page size for `desktop_load_conversation`. */
-export const PAGE_SIZE = 10
+export const PAGE_SIZE = 10;
 
 /** Maximum content chars carried per tool row over the wire. */
-const TOOL_CONTENT_CAP = 2048
+const TOOL_CONTENT_CAP = 2048;
 
 export interface HistoryPage {
-  page: Message[]
-  hasMore: boolean
-  cursor?: string
-  total: number
+  page: Message[];
+  hasMore: boolean;
+  cursor?: string;
+  total: number;
 }
 
 /**
@@ -134,37 +151,53 @@ export interface HistoryPage {
  * (give up turn alignment past the ceiling), and truncate oversized tool
  * content.
  */
-export function paginateHistory(all: readonly Message[], before?: string, pageSize: number = PAGE_SIZE): HistoryPage {
-  const total = all.length
-  let endIdx = total
-  let startIdx = Math.max(0, total - pageSize)
+export function paginateHistory(
+  all: readonly Message[],
+  before?: string,
+  pageSize: number = PAGE_SIZE,
+): HistoryPage {
+  const total = all.length;
+  let endIdx = total;
+  let startIdx = Math.max(0, total - pageSize);
 
   if (before) {
-    const cursorIdx = all.findIndex((m) => m.id === before)
+    const cursorIdx = all.findIndex((m) => m.id === before);
     if (cursorIdx > 0) {
-      endIdx = cursorIdx
-      startIdx = Math.max(0, endIdx - pageSize)
+      endIdx = cursorIdx;
+      startIdx = Math.max(0, endIdx - pageSize);
     }
   }
 
   // Snap backward to a turn boundary (user message) to avoid partial turns.
-  while (startIdx > 0 && all[startIdx] && all[startIdx].role !== 'user') {
-    startIdx--
+  while (startIdx > 0 && all[startIdx] && all[startIdx].role !== "user") {
+    startIdx--;
   }
 
   if (endIdx - startIdx > MAX_PAGE_MESSAGES) {
-    startIdx = endIdx - MAX_PAGE_MESSAGES
+    startIdx = endIdx - MAX_PAGE_MESSAGES;
   }
 
   const page = all.slice(startIdx, endIdx).map((m) => {
-    if (m.role === 'tool' && typeof m.content === 'string' && m.content.length > TOOL_CONTENT_CAP) {
-      return { ...m, content: m.content.substring(0, TOOL_CONTENT_CAP) + '\n... [truncated]' }
+    if (
+      m.role === "tool" &&
+      typeof m.content === "string" &&
+      m.content.length > TOOL_CONTENT_CAP
+    ) {
+      return {
+        ...m,
+        content: m.content.substring(0, TOOL_CONTENT_CAP) + "\n... [truncated]",
+      };
     }
-    return m
-  })
+    return m;
+  });
 
-  const hasMore = startIdx > 0
-  return { page, hasMore, cursor: hasMore && page.length > 0 ? page[0].id : undefined, total }
+  const hasMore = startIdx > 0;
+  return {
+    page,
+    hasMore,
+    cursor: hasMore && page.length > 0 ? page[0].id : undefined,
+    total,
+  };
 }
 
 /**
@@ -176,8 +209,10 @@ export function paginateHistory(all: readonly Message[], before?: string, pageSi
 export function toRemoteMessage(m: Message): RemoteMessage {
   return {
     id: m.id,
-    role: (m.role === 'user' || m.role === 'assistant' || m.role === 'tool' ? m.role : 'system') as RemoteMessage['role'],
-    content: m.content || '',
+    role: (m.role === "user" || m.role === "assistant" || m.role === "tool"
+      ? m.role
+      : "system") as RemoteMessage["role"],
+    content: m.content || "",
     toolName: m.toolName,
     toolInput: m.toolInput,
     toolId: m.toolId,
@@ -189,17 +224,22 @@ export function toRemoteMessage(m: Message): RemoteMessage {
     slashModelAlias: m.slashModelAlias,
     slashModelEffective: m.slashModelEffective,
     implementationPhase: m.implementationPhase,
+    slashFrontmatter: m.slashFrontmatter,
     planFilePath: m.planFilePath,
     backgroundTaskId: m.backgroundTaskId,
     backgroundWork: m.backgroundWork,
     attachments: (m.attachments || []).map((a) => ({
       id: a.id,
-      type: (a.type === 'image' || a.type === 'file' || a.type === 'plan' ? a.type : 'file') as 'image' | 'file' | 'plan',
+      type: (a.type === "image" || a.type === "file" || a.type === "plan"
+        ? a.type
+        : "file") as "image" | "file" | "plan",
       name: a.name,
-      path: a.path ?? '',
-      ...(a.type === 'image' && a.contentHash ? { contentHash: a.contentHash } : {}),
+      path: a.path ?? "",
+      ...(a.type === "image" && a.contentHash
+        ? { contentHash: a.contentHash }
+        : {}),
     })),
-  }
+  };
 }
 
 /**
@@ -208,24 +248,27 @@ export function toRemoteMessage(m: Message): RemoteMessage {
  * ~/.ion/plans/*.md before falling back to nothing. Replaces the old
  * renderer-scrape IIFE — the engine rows carry the same information.
  */
-export function planPathFromHistory(all: readonly Message[]): string | undefined {
+export function planPathFromHistory(
+  all: readonly Message[],
+): string | undefined {
   for (let i = all.length - 1; i >= 0; i--) {
-    const m = all[i]
-    if (m.role === 'tool' && m.toolName === 'Write' && m.toolInput) {
+    const m = all[i];
+    if (m.role === "tool" && m.toolName === "Write" && m.toolInput) {
       try {
-        const input = JSON.parse(m.toolInput)
-        const fp = input.file_path
-        if (typeof fp === 'string' && /\/\.ion\/plans\/[^/]+\.md$/.test(fp)) return fp
+        const input = JSON.parse(m.toolInput);
+        const fp = input.file_path;
+        if (typeof fp === "string" && /\/\.ion\/plans\/[^/]+\.md$/.test(fp))
+          return fp;
       } catch {
         // Not JSON tool input — skip.
       }
     }
   }
-  return undefined
+  return undefined;
 }
 
 /** Where an ExitPlanMode row's plan path came from, or that there was none. */
-export type PlanPathSource = 'tool_input' | 'history_write' | 'none'
+export type PlanPathSource = "tool_input" | "history_write" | "none";
 
 /**
  * Resolve the plan path for an ExitPlanMode row, reporting which source
@@ -252,7 +295,13 @@ export function resolvePlanPath(
   // An empty string is treated as absent, not as a path: it would otherwise
   // reach readFile and throw a confusing error instead of taking the honest
   // "no path" branch.
-  const fromInput = typeof inputPath === 'string' && inputPath.length > 0 ? inputPath : undefined
-  const planPath = fromInput ?? planPathFromHistory(all)
-  return { planPath, pathSource: fromInput ? 'tool_input' : planPath ? 'history_write' : 'none' }
+  const fromInput =
+    typeof inputPath === "string" && inputPath.length > 0
+      ? inputPath
+      : undefined;
+  const planPath = fromInput ?? planPathFromHistory(all);
+  return {
+    planPath,
+    pathSource: fromInput ? "tool_input" : planPath ? "history_write" : "none",
+  };
 }

@@ -168,6 +168,33 @@ describe('image echo suppression', () => {
   })
 })
 
+describe('groupMessages — plan implementation divider', () => {
+  it('materializes the missing divider before a persisted implementation turn', () => {
+    const messages = [
+      msg('system', '── Plan created at 1:00 PM · plan ──', {
+        id: 'plan-created',
+        timestamp: 1000,
+        planFilePath: '/plans/plan.md',
+      }),
+      msg('user', 'Implement the plan.', {
+        id: 'implementation',
+        timestamp: 2000,
+        implementationPhase: true,
+      }),
+    ]
+
+    const result = groupMessages(messages)
+    expect(result.map((item) => item.kind)).toEqual(['system', 'system', 'user'])
+    expect(result[1]).toMatchObject({
+      kind: 'system',
+      message: {
+        id: 'implementation:implementation-divider',
+        planFilePath: '/plans/plan.md',
+      },
+    })
+  })
+})
+
 // ─── groupMessages unified turn view ───
 
 function msg(role: 'user' | 'assistant' | 'tool' | 'system', content = '', extra: Partial<Message> = {}): Message {

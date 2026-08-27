@@ -1,36 +1,23 @@
 // log_egress_tailer.go — engine-side tailer for non-engine log sources.
-//
-// The shipping-responsibility matrix (LoggingConfig.EgressShipSources) can
-// assign the engine sources beyond its own records: the desktop's
-// desktop.jsonl, the iOS diagnostic log, and the telemetry file. This
-// tailer is the engine counterpart of the desktop's log-egress-tailer.ts —
-// it polls each assigned file, parses appended JSONL lines into egress
-// records, and feeds them through the active forwarder (which authenticates
-// each flush via the operator token provider).
-//
-// Cursor semantics: offsets persist in ~/.ion/.engine-egress-tailer-cursors.json
-// so an engine restart neither re-ships history nor drops in-between lines.
-// A file first seen with no cursor starts at EOF (no historical backfill).
-// A file smaller than its cursor was truncated or rotated in place; the
-// cursor resets to zero so the fresh content ships from the top.
 package utils
 
 import (
-	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dsswift/ion/engine/internal/filetail"
 )
 
 // egressTailerPollInterval matches the desktop tailer's 2 s cadence.
 const egressTailerPollInterval = 2 * time.Second
 
 // egressTailSourceFiles maps matrix source names to the ~/.ion file each
-// tails. "engine" is absent by design: the engine's own records ship
-// in-process through EgressForwarder.ship, never via file tailing.
+// tails. "engine" is absent by design: engine records ship in-process.
 func egressTailSourceFiles(home string) map[string]string {
 	ionDir := filepath.Join(home, ".ion")
 	return map[string]string{
@@ -46,17 +33,16 @@ type EgressTailer struct {
 	cursorPath string
 	fwd        *EgressForwarder
 
-	mu      sync.Mutex
-	cursors map[string]int64 // path -> byte offset
-
+	mu       sync.Mutex
+	tailers  map[string]*filetail.Follower // path -> held-FD follower
+	cursors  map[string]filetail.Cursor    // path -> durable cursor
 	stopCh   chan struct{}
 	doneCh   chan struct{}
 	stopOnce sync.Once
 }
 
-// StartEgressTailer starts a tailer for the non-engine sources in the
-// resolved matrix. Returns nil when no tailed sources are assigned or the
-// forwarder is nil (no egress configured). Call Stop on shutdown.
+// StartEgressTailer starts a tailer for non-engine sources assigned to the
+// engine. First-seen files start at EOF to avoid historical backfill.
 func StartEgressTailer(sources []string, fwd *EgressForwarder) *EgressTailer {
 	if fwd == nil {
 		return nil
@@ -68,9 +54,9 @@ func StartEgressTailer(sources []string, fwd *EgressForwarder) *EgressTailer {
 	}
 	available := egressTailSourceFiles(home)
 	files := make(map[string]string)
-	for _, s := range sources {
-		if path, ok := available[s]; ok {
-			files[s] = path
+	for _, source := range sources {
+		if path, ok := available[source]; ok {
+			files[source] = path
 		}
 	}
 	if len(files) == 0 {
@@ -81,35 +67,24 @@ func StartEgressTailer(sources []string, fwd *EgressForwarder) *EgressTailer {
 		files:      files,
 		cursorPath: filepath.Join(home, ".ion", ".engine-egress-tailer-cursors.json"),
 		fwd:        fwd,
-		cursors:    make(map[string]int64),
+		tailers:    make(map[string]*filetail.Follower),
+		cursors:    make(map[string]filetail.Cursor),
 		stopCh:     make(chan struct{}),
 		doneCh:     make(chan struct{}),
 	}
 	t.loadCursors()
 
-	// First-seen files (no persisted cursor) start at EOF: shipping a
-	// file's entire history on first assignment would flood the sink.
-	for _, path := range files {
-		if _, ok := t.cursors[path]; !ok {
-			if info, statErr := os.Stat(path); statErr == nil {
-				t.cursors[path] = info.Size()
-			} else {
-				t.cursors[path] = 0
-			}
-		}
-	}
-
 	names := make([]string, 0, len(files))
-	for s := range files {
-		names = append(names, s)
+	for source := range files {
+		names = append(names, source)
 	}
 	LogWithFields(LevelInfo, "log_egress_tailer", "tailer started", map[string]any{"status": names})
-
 	go t.loop()
 	return t
 }
 
-// Stop halts polling and persists cursors. Idempotent.
+// Stop halts polling, drains complete lines, and persists cursors. It is safe
+// to call more than once.
 func (t *EgressTailer) Stop() {
 	if t == nil {
 		return
@@ -122,125 +97,107 @@ func (t *EgressTailer) Stop() {
 
 func (t *EgressTailer) loop() {
 	defer close(t.doneCh)
+	defer t.closeFollowers()
 	ticker := time.NewTicker(egressTailerPollInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			for source, path := range t.files {
-				t.pollFile(source, path)
-			}
+			t.pollAll()
 		case <-t.stopCh:
-			// Final poll so shutdown doesn't strand lines written since the
-			// last tick, then persist cursors.
-			for source, path := range t.files {
-				t.pollFile(source, path)
-			}
+			t.pollAll()
 			t.saveCursors()
 			return
 		}
 	}
 }
 
-// pollFile ships lines appended to path since the last cursor position.
+func (t *EgressTailer) pollAll() {
+	for source, path := range t.files {
+		t.pollFile(source, path)
+	}
+}
+
+// pollFile drains one source. An absent path is normal: for example, no iOS
+// device may have written its diagnostic log yet.
 func (t *EgressTailer) pollFile(source, path string) {
-	info, err := os.Stat(path)
+	follower := t.follower(path)
+	before := follower.Cursor()
+	err := follower.Poll(func(line []byte) error {
+		return t.handleLine(source, line)
+	})
 	if err != nil {
-		return // absent file: nothing to ship (e.g. no iOS device paired)
+		if !errors.Is(err, os.ErrNotExist) {
+			Error("log_egress_tailer", "file poll failed: "+err.Error())
+		}
+		return
 	}
-
+	after := follower.Cursor()
+	if after == before {
+		return
+	}
 	t.mu.Lock()
-	offset := t.cursors[path]
+	t.cursors[path] = after
 	t.mu.Unlock()
+	t.saveCursors()
+}
 
-	if info.Size() < offset {
-		// Truncated or rotated in place: restart from the top so the fresh
-		// content ships. Matches the desktop tailer's truncate handling.
-		LogWithFields(LevelInfo, "log_egress_tailer", "file shrank; cursor reset", map[string]any{"path": path, "count": int(info.Size())})
-		offset = 0
-	}
-	if info.Size() == offset {
-		return
-	}
-
-	f, err := os.Open(path)
-	if err != nil {
-		Error("log_egress_tailer", "open failed: "+err.Error())
-		return
-	}
-	defer func() { _ = f.Close() }() //nolint:errcheck // resource close
-
-	if _, err := f.Seek(offset, 0); err != nil {
-		Error("log_egress_tailer", "seek failed: "+err.Error())
-		return
-	}
-
-	data := make([]byte, info.Size()-offset)
-	n, err := f.Read(data)
-	if err != nil && n == 0 {
-		return
-	}
-	data = data[:n]
-
-	// Ship only complete lines; a partially-written trailing line stays
-	// un-consumed for the next poll.
-	consumed := 0
-	shipped := 0
-	for {
-		nl := bytes.IndexByte(data[consumed:], '\n')
-		if nl < 0 {
-			break
-		}
-		line := strings.TrimSpace(string(data[consumed : consumed+nl]))
-		consumed += nl + 1
-		if line == "" {
-			continue
-		}
-		var rec egressRecord
-		if err := json.Unmarshal([]byte(line), &rec); err != nil {
-			// Non-canonical line: ship it losslessly as the message body
-			// rather than dropping it silently.
-			rec = egressRecord{
-				Ts:        time.Now().UTC().Format(time.RFC3339Nano),
-				Level:     "INFO",
-				Msg:       line,
-				Component: source,
-				Tag:       "tailer_raw",
-			}
-		} else if isTelemetryEventRecord(rec) {
-			// Telemetry event ({name, payload, ...}): the parsed carrier fields
-			// (Name/Payload/Context/Schema/InstallID/Version/Host/EventID) now
-			// hold the full envelope, so the OTLP exporter maps them to the
-			// file-tail-parity attribute set (kind/service/payload/context) and
-			// emits the verbatim event JSON as the body. Leave Msg empty —
-			// stuffing the raw line into Msg is the operational-wrapper bug that
-			// made the remote ion_otlp_unwrap pipeline unable to recognize
-			// telemetry.
-		} else if rec.Msg == "" {
-			// Valid JSON, not a telemetry event, but no "msg" field. Ship the raw
-			// line as the body so the downstream OTLP exporter has non-empty
-			// content and the record is not silently discarded as an empty log
-			// line. The stream labels (component, level) are still populated from
-			// the parsed struct.
-			rec.Msg = line
-		}
-		if rec.Component == "" {
-			rec.Component = source
-		}
-		if rec.User == "" {
-			rec.User = resolvedEgressUser()
-		}
-		t.fwd.shipTailed(rec)
-		shipped++
-	}
-
+func (t *EgressTailer) follower(path string) *filetail.Follower {
 	t.mu.Lock()
-	t.cursors[path] = offset + int64(consumed)
-	t.mu.Unlock()
+	defer t.mu.Unlock()
+	if follower := t.tailers[path]; follower != nil {
+		return follower
+	}
+	if t.tailers == nil {
+		t.tailers = make(map[string]*filetail.Follower)
+	}
+	follower := filetail.New(path, filetail.Options{
+		Start:  filetail.StartAtEnd,
+		Cursor: t.cursors[path],
+	})
+	t.tailers[path] = follower
+	return follower
+}
 
-	if shipped > 0 {
-		LogWithFields(LevelDebug, "log_egress_tailer", "lines shipped", map[string]any{"path": path, "count": shipped})
-		t.saveCursors()
+// handleLine is the narrow source-to-egress seam. Later integrations can
+// replace this conversion without changing file cursor acknowledgement.
+func (t *EgressTailer) handleLine(source string, raw []byte) error {
+	line := strings.TrimSpace(string(raw))
+	if line == "" {
+		return nil
+	}
+	var rec egressRecord
+	if err := json.Unmarshal([]byte(line), &rec); err != nil {
+		rec = egressRecord{
+			Ts:        time.Now().UTC().Format(time.RFC3339Nano),
+			Level:     "INFO",
+			Msg:       line,
+			Component: source,
+			Tag:       "tailer_raw",
+		}
+	} else if !isTelemetryEventRecord(rec) && rec.Msg == "" {
+		rec.Msg = line
+	}
+	if rec.Component == "" {
+		rec.Component = source
+	}
+	if rec.User == "" {
+		rec.User = resolvedEgressUser()
+	}
+	// shipTailed has accepted the record when it returns. Only then does the
+	// filetail follower advance its durable cursor.
+	t.fwd.shipTailed(rec)
+	return nil
+}
+
+func (t *EgressTailer) closeFollowers() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for path, follower := range t.tailers {
+		if err := follower.Close(); err != nil {
+			Error("log_egress_tailer", "file close failed: "+err.Error())
+		}
+		delete(t.tailers, path)
 	}
 }
 
@@ -249,13 +206,27 @@ func (t *EgressTailer) loadCursors() {
 	if err != nil {
 		return
 	}
-	var cursors map[string]int64
-	if err := json.Unmarshal(data, &cursors); err != nil {
+	var cursors map[string]filetail.Cursor
+	if err := json.Unmarshal(data, &cursors); err == nil {
+		t.mu.Lock()
+		t.cursors = cursors
+		t.mu.Unlock()
+		return
+	}
+
+	// Versions before filetail stored path -> byte offset. Keep those cursors
+	// useful, while allowing the follower to bind them to the next inode.
+	var legacy map[string]int64
+	if err := json.Unmarshal(data, &legacy); err != nil {
 		LogWithFields(LevelInfo, "log_egress_tailer", "cursor file unreadable; starting fresh", map[string]any{"error": err.Error()})
 		return
 	}
+	migrated := make(map[string]filetail.Cursor, len(legacy))
+	for path, offset := range legacy {
+		migrated[path] = filetail.Cursor{Offset: offset, Initialized: true}
+	}
 	t.mu.Lock()
-	t.cursors = cursors
+	t.cursors = migrated
 	t.mu.Unlock()
 }
 
@@ -264,6 +235,7 @@ func (t *EgressTailer) saveCursors() {
 	data, err := json.Marshal(t.cursors)
 	t.mu.Unlock()
 	if err != nil {
+		Error("log_egress_tailer", "cursor marshal failed: "+err.Error())
 		return
 	}
 	if err := AtomicWriteFile(t.cursorPath, data, 0o600); err != nil {

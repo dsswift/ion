@@ -1,23 +1,15 @@
 import React from 'react'
-import { FolderOpen, Trash } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { usePreferencesStore } from '../../preferences'
 import { SettingToggle } from './SettingToggle'
 import { SettingSection } from './SettingSection'
 import { SettingHeading } from './SettingHeading'
-import { deriveProfileOptions, resolveSelectedProfileOption } from './default-profile-options'
 import { InterfacePicker } from './InterfacePicker'
-import { rError } from '../../rendererLogger'
 
 export function GeneralCategory() {
   const colors = useColors()
-  const defaultBaseDirectory = usePreferencesStore((s) => s.defaultBaseDirectory)
-  const setDefaultBaseDirectory = usePreferencesStore((s) => s.setDefaultBaseDirectory)
   const defaultPermissionMode = usePreferencesStore((s) => s.defaultPermissionMode)
   const setDefaultPermissionMode = usePreferencesStore((s) => s.setDefaultPermissionMode)
-  const engineProfiles = usePreferencesStore((s) => s.engineProfiles)
-  const defaultEngineProfileId = usePreferencesStore((s) => s.defaultEngineProfileId)
-  const setDefaultEngineProfileId = usePreferencesStore((s) => s.setDefaultEngineProfileId)
   const bashCommandEntry = usePreferencesStore((s) => s.bashCommandEntry)
   const setBashCommandEntry = usePreferencesStore((s) => s.setBashCommandEntry)
   const allowSettingsEdits = usePreferencesStore((s) => s.allowSettingsEdits)
@@ -36,81 +28,16 @@ export function GeneralCategory() {
   const setAiGeneratedTitles = usePreferencesStore((s) => s.setAiGeneratedTitles)
   const studioSurfaceSwitchMode = usePreferencesStore((s) => s.studioSurfaceSwitchMode)
   const setStudioSurfaceSwitchMode = usePreferencesStore((s) => s.setStudioSurfaceSwitchMode)
-
-  const handleBrowse = async () => {
-    const dir = await window.ion.selectDirectory()
-    if (dir) setDefaultBaseDirectory(dir)
-  }
+  const browserPreviewNetworkShield = usePreferencesStore((s) => s.browserPreviewNetworkShield)
+  const studioPlaywrightEnabled = usePreferencesStore((s) => s.studioPlaywrightEnabled)
+  const setStudioPlaywrightEnabled = usePreferencesStore((s) => s.setStudioPlaywrightEnabled)
+  const setBrowserPreviewNetworkShield = usePreferencesStore((s) => s.setBrowserPreviewNetworkShield)
 
   return (
     <>
-      <SettingHeading first>Workspace</SettingHeading>
+      <SettingHeading first>General</SettingHeading>
 
       <InterfacePicker />
-
-      <SettingSection
-        label="Default Directory"
-        description="New tabs will open in this directory. When empty, defaults to your home directory."
-      >
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', minWidth: 0 }}>
-          <div
-            style={{
-              flex: '1 1 240px',
-              minWidth: 0,
-              background: colors.surfacePrimary,
-              border: `1px solid ${colors.containerBorder}`,
-              borderRadius: 8,
-              padding: '8px 12px',
-              color: defaultBaseDirectory ? colors.textPrimary : colors.textTertiary,
-              fontSize: 13,
-              fontFamily: 'monospace',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {defaultBaseDirectory || '~/'}
-          </div>
-          <button
-            onClick={() => { void handleBrowse().catch((err) => rError('settings', 'browse failed', { error: String(err) })) }}
-            title="Browse..."
-            style={{
-              background: colors.surfacePrimary,
-              border: `1px solid ${colors.containerBorder}`,
-              borderRadius: 8,
-              padding: '8px 10px',
-              cursor: 'pointer',
-              color: colors.textSecondary,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              fontSize: 12,
-              fontWeight: 500,
-            }}
-          >
-            <FolderOpen size={15} />
-            Browse
-          </button>
-          {defaultBaseDirectory && (
-            <button
-              onClick={() => setDefaultBaseDirectory('')}
-              title="Reset to home directory"
-              style={{
-                background: colors.surfacePrimary,
-                border: `1px solid ${colors.containerBorder}`,
-                borderRadius: 8,
-                padding: '8px 10px',
-                cursor: 'pointer',
-                color: colors.textTertiary,
-                display: 'flex',
-                alignItems: 'center',
-              }}
-            >
-              <Trash size={15} />
-            </button>
-          )}
-        </div>
-      </SettingSection>
 
       <SettingSection
         label="Default Permission Mode"
@@ -148,35 +75,6 @@ export function GeneralCategory() {
             </button>
           ))}
         </div>
-      </SettingSection>
-
-      <SettingSection
-        label="Default Engine Profile for New Conversations"
-        description="Profile applied when opening a new conversation. Choose a profile to load its extensions automatically."
-      >
-        <select
-          value={resolveSelectedProfileOption(defaultEngineProfileId, engineProfiles)}
-          onChange={(e) => setDefaultEngineProfileId(e.target.value)}
-          style={{
-            width: '100%',
-            background: colors.surfacePrimary,
-            border: `1px solid ${colors.containerBorder}`,
-            borderRadius: 8,
-            padding: '8px 12px',
-            color: colors.textPrimary,
-            fontSize: 13,
-            outline: 'none',
-            cursor: 'pointer',
-            appearance: 'none',
-            WebkitAppearance: 'none',
-          }}
-        >
-          {deriveProfileOptions(engineProfiles).map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
       </SettingSection>
 
       <SettingHeading>Behavior</SettingHeading>
@@ -220,6 +118,20 @@ export function GeneralCategory() {
           ))}
         </div>
       </SettingSection>
+
+      <SettingToggle
+        label="Browser Preview Network Shield"
+        description="Block network requests from browser previews until you allow them in that preview."
+        checked={browserPreviewNetworkShield}
+        onChange={setBrowserPreviewNetworkShield}
+      />
+
+      <SettingToggle
+        label="Built-in Playwright browser tools"
+        description="Agents in Studio can operate the Chromium tabs in their conversation's Surface panel. Turning this off removes the tools without closing tabs or signing you out."
+        checked={studioPlaywrightEnabled}
+        onChange={setStudioPlaywrightEnabled}
+      />
 
       <SettingToggle
         label="Bash Command Entry"

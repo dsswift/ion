@@ -105,7 +105,7 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		}()
 		var overrides *session.PromptOverrides
 		resolvedExts := cmd.ResolveExtensions()
-		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.ThinkingEffort != "" || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || len(cmd.BashAllowlistAdditionsForThisPrompt) > 0 || len(cmd.McpAllowlistAdditionsForThisPrompt) > 0 || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil || cmd.ResolveSlash || cmd.ClientWorkspaceContext != nil || cmd.DeliveryId != "" || cmd.InjectionKind != "" {
+		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.ThinkingEffort != "" || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || len(cmd.BashAllowlistAdditionsForThisPrompt) > 0 || len(cmd.McpAllowlistAdditionsForThisPrompt) > 0 || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil || cmd.ResolveSlash || cmd.TemporaryAutoFromPlan || cmd.ClientWorkspaceContext != nil || cmd.DeliveryId != "" || cmd.InjectionKind != "" {
 			overrides = &session.PromptOverrides{
 				Model:                    cmd.Model,
 				MaxTurns:                 cmd.MaxTurns,
@@ -201,8 +201,9 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.manager.SendDialogResponse(cmd.Key, cmd.DialogID, cmd.Value)
 
 	case "command":
-		// Fire-and-forget: no response sent (matches TS behavior).
-		s.manager.SendCommand(cmd.Key, cmd.Command, cmd.Args)
+		// One engine-owned resolution chain: registered extension, built-in,
+		// markdown/skill, then a final unknown_command result.
+		s.manager.SendCommandWithOverrides(cmd.Key, cmd.Command, cmd.Args, promptOverridesFromCommand(cmd))
 
 	case "stop_session":
 		err := s.manager.StopSession(cmd.Key)
@@ -329,7 +330,15 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		// (tool kind). The tool loop has its own bounded timeout with a
 		// client-declared fallback, so a missing or late response is
 		// non-fatal — it is logged and dropped.
-		s.manager.HandleToolGateResponse(cmd.Key, cmd.GateRequestID, cmd.GateDecision, cmd.GateReason, cmd.GateContent, cmd.GateIsError)
+		s.manager.HandleToolGateResponse(
+			cmd.Key,
+			cmd.GateRequestID,
+			cmd.GateDecision,
+			cmd.GateReason,
+			cmd.GateContent,
+			cmd.GateIsError,
+			cmd.GateImages,
+		)
 
 	case "elicitation_response":
 		// Fire-and-forget: no response sent. Resolves a pending elicitation
@@ -659,6 +668,9 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 
 	case "resource_get":
 		s.dispatchResourceGet(conn, cmd)
+
+	case "resolve_new_conversation_defaults":
+		s.dispatchResolveNewConversationDefaults(conn, cmd)
 
 	case "get_enterprise_policy":
 		// Full enterprise policy passthrough (D-004). The engine is the

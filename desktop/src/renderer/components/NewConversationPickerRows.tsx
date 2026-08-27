@@ -2,11 +2,11 @@ import React from 'react'
 import { Folder, FolderOpen, FolderSimple, GitBranch, Plus } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import type { EngineDirListing, EngineProfile, WorktreeInventoryEntry } from '../../shared/types'
-import type { ProjectDisplayEntry } from '../../shared/project-registry'
+import type { EffectiveProjectEntry } from '../../shared/project-registry'
 
-export function ProjectRows({ projects, highlighted, colors, onHover, onChoose }: { projects: readonly ProjectDisplayEntry[]; highlighted: number; colors: ReturnType<typeof useColors>; onHover(index: number): void; onChoose(path: string): void }): React.JSX.Element {
+export function ProjectRows({ projects, highlighted, colors, onHover, onChoose }: { projects: readonly EffectiveProjectEntry[]; highlighted: number; colors: ReturnType<typeof useColors>; onHover(index: number): void; onChoose(path: string): void }): React.JSX.Element {
   if (projects.length === 0) return <PickerMessage colors={colors} message="No loaded projects match this search." />
-  return <><PickerSection colors={colors} label="Loaded projects" />{projects.map((project, index) => <PickerRow key={project.dir} active={index === highlighted} colors={colors} icon={<Folder size={16} />} title={project.displayName} detail={project.dir} onMouseEnter={() => onHover(index)} onClick={() => onChoose(project.dir)} />)}</>
+  return <><PickerSection colors={colors} label="Projects" />{projects.map((project, index) => <PickerRow key={project.dir} active={index === highlighted} colors={colors} icon={<Folder size={16} />} title={project.displayName} detail={project.managed ? `Managed · ${project.dir}` : project.dir} onMouseEnter={() => onHover(index)} onClick={() => onChoose(project.dir)} />)}</>
 }
 
 export function DirectoryRows({ loading, error, listing, names, selectedDirectory, highlighted, colors, onHover, onChooseDirectory, onChooseEntry }: { loading: boolean; error: string | null; listing: EngineDirListing | null; names: string[]; selectedDirectory: string | null; highlighted: number; colors: ReturnType<typeof useColors>; onHover(index: number): void; onChooseDirectory(): void; onChooseEntry(name: string): void }): React.JSX.Element {

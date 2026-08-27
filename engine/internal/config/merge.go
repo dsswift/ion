@@ -358,6 +358,14 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		})
 	}
 
+	// Enterprise new-conversation defaults are a sealed policy block. A
+	// non-nil enterprise block replaces the global/project default before any
+	// session resolves it; ProfileLocked is then enforced at start_session.
+	if enterprise.NewConversationDefaults != nil {
+		copy := *enterprise.NewConversationDefaults
+		result.NewConversationDefaults = &copy
+	}
+
 	// Store enterprise config for runtime access
 	result.Enterprise = enterprise
 

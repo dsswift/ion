@@ -66,6 +66,15 @@ export interface DispatchTelemetryEntry {
 // existing `from './types-engine'` import keeps resolving unchanged.
 export type { ResourceItem, ResourceDelta, ResourceFilter, NotifyOpts } from './types-resource'
 
+export interface ResolvedNewConversationDefaults {
+  path: string
+  baseDirectory?: string
+  profileName?: string
+  profileId?: string
+  extensions?: string[]
+  profileLocked?: boolean
+}
+
 export interface EngineProfile {
   id: string
   name: string
@@ -124,6 +133,8 @@ export interface EngineConfig {
   profileId: string
   extensions: string[]
   workingDirectory: string
+  /** Source Project policy root. Needed when workingDirectory is a worktree. */
+  projectDirectory?: string
   sessionId?: string
   model?: string
   maxTokens?: number

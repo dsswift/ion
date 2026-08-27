@@ -56,6 +56,7 @@ vi.mock('../state', () => ({
   },
   sessionPlane: {
     submitPrompt: (...args: any[]) => mocks.submitPromptMock(...args),
+      ensureSession: vi.fn().mockResolvedValue({ ok: true }),
     setPermissionMode: (...args: any[]) => mocks.setPermissionModeMock(...args),
     getTabStatus: (...args: any[]) => mocks.getTabStatusMock(...args),
     notifyConversationCleared: (...args: any[]) => mocks.notifyConversationClearedMock(...args),
@@ -110,8 +111,8 @@ beforeEach(() => {
   mocks.bridgeListeners.clear()
   _resetAwaitersForTests()
   // Default: extension command succeeds
-  mocks.sendCommandMock.mockImplementation((key: string, command: string) => {
-    setTimeout(() => emitBridgeEvent(key, {
+  mocks.sendCommandMock.mockImplementation((promptArgs: { key: string }, command: string) => {
+    setTimeout(() => emitBridgeEvent(promptArgs.key, {
       type: 'engine_command_result', command, commandError: '',
       message: `command executed: ${command}`,
     }), 0)

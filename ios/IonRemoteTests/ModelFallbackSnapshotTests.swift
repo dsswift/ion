@@ -42,7 +42,7 @@ final class ModelFallbackSnapshotTests: XCTestCase {
         {"type":"desktop_snapshot","tabs":[\(sampleTabWithFallback(requestedModel: "standard", fallbackModel: "claude-sonnet-4-6"))]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
+        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
             XCTFail("Expected snapshot, got \(event)")
             return
         }
@@ -64,7 +64,7 @@ final class ModelFallbackSnapshotTests: XCTestCase {
         {"type":"desktop_snapshot","tabs":[{"id":"t1","title":"Tab","customTitle":null,"status":"idle","workingDirectory":"/tmp","permissionMode":"auto","permissionQueue":[],"lastMessage":null,"contextTokens":null,"conversationInstances":[{"id":"inst1","label":"Main"}],"activeConversationInstanceId":"inst1"}]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
+        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
             XCTFail("Expected snapshot, got \(event)")
             return
         }

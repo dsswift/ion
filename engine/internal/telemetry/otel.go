@@ -1,87 +1,61 @@
 package telemetry
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/utils"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/sdk/resource"
+	traceSDK "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
+)
+
+const (
+	otlpProtocolHTTPProtobuf = "http/protobuf"
+	otlpProtocolGRPC         = "grpc"
 )
 
 // OtelConfig configures the OpenTelemetry bridge.
 type OtelConfig struct {
-	Endpoint      string            `json:"endpoint"`       // OTLP HTTP endpoint
-	Headers       map[string]string `json:"headers"`        // Auth headers
-	ServiceName   string            `json:"service_name"`   // Default: "ion-engine"
-	BatchSize     int               `json:"batch_size"`     // Default: 100
-	FlushInterval time.Duration     `json:"flush_interval"` // Default: 10s
+	Endpoint           string            `json:"endpoint"`
+	Protocol           string            `json:"protocol"`
+	Headers            map[string]string `json:"headers"`
+	ServiceName        string            `json:"service_name"`
+	ResourceAttributes map[string]string `json:"resource_attributes"`
+	BatchSize          int               `json:"batch_size"`
+	FlushInterval      time.Duration     `json:"flush_interval"`
 }
 
-// OtelBridge converts Ion events to OTLP and exports them.
+// OtelBridge converts Ion events to OTLP spans and exports them through the
+// OpenTelemetry SDK. NewOtelBridge preserves the established bridge API while
+// the SDK owns OTLP protobuf encoding and transport-specific batching.
 type OtelBridge struct {
-	config OtelConfig
-	mu     sync.Mutex
-	spans  []otlpSpan
-	client *http.Client
-	done   chan struct{}
+	config         OtelConfig
+	provider       *traceSDK.TracerProvider
+	initErr        error
+	flushDone      chan struct{}
+	closeOnce      sync.Once
+	flushCloseOnce sync.Once
 }
 
-// otlpSpan is a simplified OTLP span for export.
-type otlpSpan struct {
-	TraceID    string         `json:"trace_id"`
-	SpanID     string         `json:"span_id"`
-	Name       string         `json:"name"`
-	StartTime  int64          `json:"startTimeUnixNano"`
-	EndTime    int64          `json:"endTimeUnixNano"`
-	Attributes map[string]any `json:"attributes"`
-	Status     *otlpStatus    `json:"status,omitempty"`
-}
-
-type otlpStatus struct {
-	Code    int    `json:"code"` // 0=unset, 1=ok, 2=error
-	Message string `json:"message,omitempty"`
-}
-
-// OTLP export envelope types (simplified).
-type otlpExportRequest struct {
-	ResourceSpans []otlpResourceSpan `json:"resourceSpans"`
-}
-
-type otlpResourceSpan struct {
-	Resource   otlpResource    `json:"resource"`
-	ScopeSpans []otlpScopeSpan `json:"scopeSpans"`
-}
-
-type otlpResource struct {
-	Attributes []otlpAttribute `json:"attributes"`
-}
-
-type otlpScopeSpan struct {
-	Scope otlpScope  `json:"scope"`
-	Spans []otlpSpan `json:"spans"`
-}
-
-type otlpScope struct {
-	Name string `json:"name"`
-}
-
-type otlpAttribute struct {
-	Key   string        `json:"key"`
-	Value otlpAttrValue `json:"value"`
-}
-
-type otlpAttrValue struct {
-	StringValue string `json:"stringValue,omitempty"`
-}
-
-// NewOtelBridge creates a bridge and starts the background flush goroutine.
+// NewOtelBridge creates a bridge with an OTLP gRPC or HTTP/protobuf exporter.
+// Invalid configuration is retained as a Flush error because this established
+// constructor cannot return an error.
 func NewOtelBridge(config OtelConfig) *OtelBridge {
 	if config.ServiceName == "" {
 		config.ServiceName = "ion-engine"
+	}
+	if config.Protocol == "" {
+		config.Protocol = otlpProtocolHTTPProtobuf
 	}
 	if config.BatchSize <= 0 {
 		config.BatchSize = 100
@@ -90,199 +64,238 @@ func NewOtelBridge(config OtelConfig) *OtelBridge {
 		config.FlushInterval = 10 * time.Second
 	}
 
-	b := &OtelBridge{
-		config: config,
-		spans:  make([]otlpSpan, 0, config.BatchSize),
-		client: &http.Client{Timeout: 10 * time.Second},
-		done:   make(chan struct{}),
+	bridge := &OtelBridge{
+		config:    config,
+		flushDone: make(chan struct{}),
 	}
 
-	go b.flushLoop()
-	return b
-}
-
-// resolveTraceID picks the trace ID for a span. Precedence:
-//  1. an explicit trace ID stamped on the event/caller (eventTraceID) — the
-//     normal path, since the session layer mints a trace ID per run and stamps
-//     it on every event emitted during that run,
-//  2. a freshly generated trace ID for an event that carries none (an emission
-//     with no run in flight).
-//
-// A per-session trace-ID registry used to sit between these two. It was
-// removed with the move to run-scoped tracing: nothing ever populated it (its
-// only setter had no caller in the tree), and reconstructing one trace per
-// session is the exact behaviour run scoping replaced.
-func (b *OtelBridge) resolveTraceID(eventTraceID string) string {
-	if eventTraceID != "" {
-		return eventTraceID
+	exporter, err := newOTLPExporter(context.Background(), config)
+	if err != nil {
+		bridge.initErr = err
+		return bridge
 	}
-	return genTraceID()
+
+	bridge.provider = traceSDK.NewTracerProvider(
+		traceSDK.WithResource(otelResource(config)),
+		traceSDK.WithBatcher(
+			exporter,
+			traceSDK.WithMaxExportBatchSize(config.BatchSize),
+			traceSDK.WithBatchTimeout(config.FlushInterval),
+		),
+	)
+	return bridge
 }
 
-func (b *OtelBridge) flushLoop() {
-	ticker := time.NewTicker(b.config.FlushInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			b.Flush() //nolint:errcheck // best-effort flush on teardown
-		case <-b.done:
-			return
+func newOTLPExporter(ctx context.Context, config OtelConfig) (*otlptrace.Exporter, error) {
+	switch config.Protocol {
+	case otlpProtocolHTTPProtobuf:
+		endpoint, insecure, err := httpTracesEndpoint(config.Endpoint)
+		if err != nil {
+			return nil, err
 		}
+		opts := []otlptracehttp.Option{
+			otlptracehttp.WithEndpointURL(endpoint),
+			otlptracehttp.WithHeaders(config.Headers),
+		}
+		if insecure {
+			opts = append(opts, otlptracehttp.WithInsecure())
+		}
+		exporter, err := otlptracehttp.New(ctx, opts...)
+		if err != nil {
+			return nil, fmt.Errorf("create OTLP HTTP/protobuf exporter: %w", err)
+		}
+		return exporter, nil
+	case otlpProtocolGRPC:
+		endpoint, insecure, err := grpcEndpoint(config.Endpoint)
+		if err != nil {
+			return nil, err
+		}
+		opts := []otlptracegrpc.Option{
+			otlptracegrpc.WithEndpoint(endpoint),
+			otlptracegrpc.WithHeaders(config.Headers),
+		}
+		if insecure {
+			opts = append(opts, otlptracegrpc.WithInsecure())
+		}
+		exporter, err := otlptracegrpc.New(ctx, opts...)
+		if err != nil {
+			return nil, fmt.Errorf("create OTLP gRPC exporter: %w", err)
+		}
+		return exporter, nil
+	default:
+		return nil, fmt.Errorf("unsupported OTLP protocol %q: use %q or %q", config.Protocol, otlpProtocolGRPC, otlpProtocolHTTPProtobuf)
 	}
 }
 
-// RecordEvent converts an Ion telemetry Event to an OTLP span and buffers it.
+func httpTracesEndpoint(rawEndpoint string) (string, bool, error) {
+	endpoint, err := url.Parse(rawEndpoint)
+	if err != nil || endpoint.Scheme == "" || endpoint.Host == "" {
+		return "", false, fmt.Errorf("invalid OTLP HTTP/protobuf endpoint %q", rawEndpoint)
+	}
+	if endpoint.Scheme != "http" && endpoint.Scheme != "https" {
+		return "", false, fmt.Errorf("invalid OTLP HTTP/protobuf endpoint scheme %q", endpoint.Scheme)
+	}
+	if endpoint.Path == "" || endpoint.Path == "/" {
+		endpoint.Path = "/v1/traces"
+	}
+	return endpoint.String(), endpoint.Scheme == "http", nil
+}
+
+func grpcEndpoint(rawEndpoint string) (string, bool, error) {
+	if !strings.Contains(rawEndpoint, "://") {
+		if rawEndpoint == "" || strings.Contains(rawEndpoint, "/") {
+			return "", false, fmt.Errorf("invalid OTLP gRPC endpoint %q", rawEndpoint)
+		}
+		return rawEndpoint, true, nil
+	}
+
+	endpoint, err := url.Parse(rawEndpoint)
+	if err != nil || endpoint.Host == "" || endpoint.Path != "" && endpoint.Path != "/" {
+		return "", false, fmt.Errorf("invalid OTLP gRPC endpoint %q", rawEndpoint)
+	}
+	if endpoint.Scheme != "http" && endpoint.Scheme != "https" {
+		return "", false, fmt.Errorf("invalid OTLP gRPC endpoint scheme %q", endpoint.Scheme)
+	}
+	return endpoint.Host, endpoint.Scheme == "http", nil
+}
+
+func otelResource(config OtelConfig) *resource.Resource {
+	attrs := make([]attribute.KeyValue, 0, len(config.ResourceAttributes)+1)
+	for key, value := range config.ResourceAttributes {
+		attrs = append(attrs, attribute.String(key, value))
+	}
+	attrs = append(attrs, attribute.String("service.name", config.ServiceName))
+	return resource.NewWithAttributes("", attrs...)
+}
+
+// RecordEvent converts an Ion telemetry Event to an OTLP span.
 func (b *OtelBridge) RecordEvent(event Event) {
-	// Parse the RFC3339Nano ts string to nanoseconds for the OTLP span.
-	// Falls back to current time when the field is absent or unparseable.
-	var tsNs int64
-	if event.Ts != "" {
-		if t, err := time.Parse(time.RFC3339Nano, event.Ts); err == nil {
-			tsNs = t.UnixNano()
-		}
-	}
-	if tsNs == 0 {
-		tsNs = time.Now().UnixNano()
-	}
-	ts := tsNs
+	timestamp := eventTime(event.Ts)
 	attrs := make(map[string]any, len(event.Payload)+len(event.Context))
-	for k, v := range event.Payload {
-		attrs[k] = v
+	for key, value := range event.Payload {
+		attrs[key] = value
 	}
-	for k, v := range event.Context {
-		attrs["ctx."+k] = v
-	}
-
-	var status *otlpStatus
-	if errMsg, ok := event.Payload["error"].(string); ok && errMsg != "" {
-		status = &otlpStatus{Code: 2, Message: errMsg}
+	for key, value := range event.Context {
+		attrs["ctx."+key] = value
 	}
 
-	// Prefer the trace ID the emitter stamped on the event. The session layer
-	// mints one per run and stamps every event emitted during that run, so
-	// spans belonging to one run share a trace without the bridge tracking
-	// anything itself.
-	span := otlpSpan{
-		TraceID:    b.resolveTraceID(event.TraceID),
-		SpanID:     genSpanID(),
-		Name:       event.Name,
-		StartTime:  ts,
-		EndTime:    ts,
-		Attributes: attrs,
-		Status:     status,
-	}
-
-	b.mu.Lock()
-	b.spans = append(b.spans, span)
-	shouldFlush := len(b.spans) >= b.config.BatchSize
-	b.mu.Unlock()
-
-	if shouldFlush {
-		b.Flush() //nolint:errcheck // best-effort flush on teardown
-	}
+	b.recordSpan(event.Name, timestamp, timestamp, attrs, event.TraceID, errorMessage(event.Payload))
 }
 
 // RecordSpan records a timed span directly. The attrs map becomes span
-// attributes; ctx carries correlation separately, matching StartSpanCtx. When
-// ctx carries a valid run trace_id the span joins that trace, otherwise it gets
-// its own independent trace.
+// attributes; ctx carries correlation separately, matching StartSpanCtx.
 func (b *OtelBridge) RecordSpan(name string, startMs, endMs int64, attrs, ctx map[string]any) {
-	eventTraceID := traceIDFromCorrelationContext(ctx)
-	span := otlpSpan{
-		TraceID:    b.resolveTraceID(eventTraceID),
-		SpanID:     genSpanID(),
-		Name:       name,
-		StartTime:  startMs * 1_000_000,
-		EndTime:    endMs * 1_000_000,
-		Attributes: attrs,
-	}
-
-	b.mu.Lock()
-	b.spans = append(b.spans, span)
-	shouldFlush := len(b.spans) >= b.config.BatchSize
-	b.mu.Unlock()
-
-	if shouldFlush {
-		b.Flush() //nolint:errcheck // best-effort flush on teardown
-	}
+	b.recordSpan(
+		name,
+		time.UnixMilli(startMs),
+		time.UnixMilli(endMs),
+		attrs,
+		traceIDFromCorrelationContext(ctx),
+		"",
+	)
 }
 
-// Flush exports buffered spans to the OTLP endpoint via POST.
+func (b *OtelBridge) recordSpan(name string, start, end time.Time, attrs map[string]any, traceID, errMessage string) {
+	if b.provider == nil {
+		return
+	}
+
+	ctx := context.Background()
+	if parent, ok := otelParentContext(traceID); ok {
+		ctx = trace.ContextWithRemoteSpanContext(ctx, parent)
+	}
+	_, span := b.provider.Tracer("ion-engine").Start(ctx, name, trace.WithTimestamp(start))
+	span.SetAttributes(otelAttributes(attrs)...)
+	if errMessage != "" {
+		span.SetStatus(codes.Error, errMessage)
+	}
+	span.End(trace.WithTimestamp(end))
+}
+
+func otelParentContext(traceID string) (trace.SpanContext, bool) {
+	traceIDValue, err := trace.TraceIDFromHex(traceID)
+	if err != nil || !traceIDValue.IsValid() {
+		return trace.SpanContext{}, false
+	}
+	spanIDValue, err := trace.SpanIDFromHex(genSpanID())
+	if err != nil {
+		return trace.SpanContext{}, false
+	}
+	return trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    traceIDValue,
+		SpanID:     spanIDValue,
+		TraceFlags: trace.FlagsSampled,
+		Remote:     true,
+	}), true
+}
+
+func otelAttributes(values map[string]any) []attribute.KeyValue {
+	attrs := make([]attribute.KeyValue, 0, len(values))
+	for key, value := range values {
+		switch typed := value.(type) {
+		case string:
+			attrs = append(attrs, attribute.String(key, typed))
+		case bool:
+			attrs = append(attrs, attribute.Bool(key, typed))
+		case int:
+			attrs = append(attrs, attribute.Int(key, typed))
+		case int64:
+			attrs = append(attrs, attribute.Int64(key, typed))
+		case float64:
+			attrs = append(attrs, attribute.Float64(key, typed))
+		case []string:
+			attrs = append(attrs, attribute.StringSlice(key, typed))
+		default:
+			attrs = append(attrs, attribute.String(key, fmt.Sprint(typed)))
+		}
+	}
+	return attrs
+}
+
+func eventTime(raw string) time.Time {
+	if timestamp, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		return timestamp
+	}
+	return time.Now()
+}
+
+func errorMessage(payload map[string]any) string {
+	if errMessage, ok := payload["error"].(string); ok {
+		return errMessage
+	}
+	return ""
+}
+
+// Flush exports all buffered OTLP spans.
 func (b *OtelBridge) Flush() error {
-	b.mu.Lock()
-	if len(b.spans) == 0 {
-		b.mu.Unlock()
+	if b.initErr != nil {
+		return b.initErr
+	}
+	if b.provider == nil {
 		return nil
 	}
-	spans := make([]otlpSpan, len(b.spans))
-	copy(spans, b.spans)
-	b.spans = b.spans[:0]
-	b.mu.Unlock()
-
-	payload := otlpExportRequest{
-		ResourceSpans: []otlpResourceSpan{{
-			Resource: otlpResource{
-				Attributes: []otlpAttribute{{
-					Key:   "service.name",
-					Value: otlpAttrValue{StringValue: b.config.ServiceName},
-				}},
-			},
-			ScopeSpans: []otlpScopeSpan{{
-				Scope: otlpScope{Name: b.config.ServiceName},
-				Spans: spans,
-			}},
-		}},
-	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("otel marshal: %w", err)
-	}
-
-	endpoint := b.config.Endpoint + "/v1/traces"
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("otel request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	for k, v := range b.config.Headers {
-		req.Header.Set(k, v)
-	}
-
-	resp, err := b.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("otel export: %w", err)
-	}
-	if err := resp.Body.Close(); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "telemetry.otel", "export response body close failed", map[string]any{"error": err.Error()})
-	}
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("otel export returned status %d", resp.StatusCode)
+	if err := b.provider.ForceFlush(context.Background()); err != nil {
+		return fmt.Errorf("flush OTLP spans: %w", err)
 	}
 	return nil
 }
 
-// Close flushes remaining spans and stops the background goroutine.
+// Close stops the bridge and exports any remaining spans. It is safe to call
+// multiple times.
 func (b *OtelBridge) Close() error {
-	close(b.done)
-	return b.Flush()
+	var closeErr error
+	b.closeOnce.Do(func() {
+		if b.provider != nil {
+			if err := b.provider.Shutdown(context.Background()); err != nil {
+				closeErr = fmt.Errorf("shutdown OTLP bridge: %w", err)
+			}
+		}
+		b.flushCloseOnce.Do(func() { close(b.flushDone) })
+	})
+	return closeErr
 }
 
-// genTraceID generates a 16-byte W3C trace-context compliant trace ID.
-// Delegates to utils.NewTraceID so the crypto/rand failure path produces a
-// spec-valid non-zero value (W3C §3.2.2.3 requires consumers to reject an
-// all-zero trace-id) and logs the entropy failure, rather than silently
-// discarding the error and emitting zeros.
-func genTraceID() string {
-	return utils.NewTraceID()
-}
-
-// genSpanID generates an 8-byte random hex span ID. Delegates to
-// utils.RandomID for the same reason genTraceID delegates: an all-zero
-// span-id is invalid under W3C §3.2.2.4, and a discarded rand error is a
-// silent failure.
+// genSpanID generates an 8-byte random hex span ID.
 func genSpanID() string {
 	return utils.RandomID()
 }

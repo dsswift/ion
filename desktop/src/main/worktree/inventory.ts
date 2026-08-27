@@ -49,7 +49,6 @@ export {
   setWorktreeTitle,
   lookupWorktreeTitle,
   setWorktreeStage,
-  advanceWorktreeStageOnPinChange,
   lookupWorktreeStage,
   lookupWorktreeLandedAt,
   lookupWorktreeRegistration,

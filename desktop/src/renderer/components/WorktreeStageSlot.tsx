@@ -10,20 +10,21 @@
  * verdict lived on the bench member, so unenrolled worktrees had nowhere to
  * hold a marker at all.
  *
- * ── Why it lives on line 2, in the gutter's column ──────────────────────────
+ * ── Why it lives on the secondary line ──────────────────────────────────────
  * A stage is not a state the row DISCOVERS, it is one the operator RECORDS, so
- * it needs a control that is always present and always clickable. The line-1
+ * it needs a control that is always present and always clickable. The primary
  * state slot cannot provide that: it holds one indicator chosen by severity,
  * and an operator marker loses that contest to nearly everything (a conflict,
- * failed provisioning, a behind pin, a moved base). Line 2 already reserves
- * the full gutter width and left it empty, so the control costs no row height.
+ * failed provisioning, a behind pin, a moved base). The secondary line gives
+ * the selector a stable place without adding row height. A list row can align
+ * it in a fixed gutter; a group header can keep it at the trailing edge.
  *
  * ── Interaction ─────────────────────────────────────────────────────────────
  * The chip shows the current stage's glyph (or a dashed circle when unset) and
- * opens a one-row strip of all seven stages. One click sets any stage; clicking
- * the active stage clears it — so any jump, forward or backward, is at most two
- * clicks, and the highest-frequency backward jump (`bug` → `test`) is free: the
- * bench moves it automatically when the pin advances.
+ * opens a one-row strip of all stages. One click sets any stage; clicking the
+ * active stage clears it — so any jump, forward or backward, is at most two
+ * clicks. Bench pin advances are semantic automation events; they do not
+ * prescribe a stage transition.
  */
 import React, { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'

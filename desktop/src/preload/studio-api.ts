@@ -8,6 +8,8 @@
  */
 import { ipcRenderer, webUtils } from 'electron'
 import { IPC } from '../shared/types'
+import type { BrowserSessionMode } from '../shared/studio-surface-types'
+import type { StudioBrowserCommandEnvelope, StudioBrowserCommandResult } from '../shared/studio-browser-types'
 import type { StudioGetStateResult, StudioHistoryReplace, StudioRawPackBundle, StudioSettings, StudioTabListEntry, StudioTabState, StudioThemeListEntry, StudioUserMessageEcho, StudioWorktreeSnapshot } from '../shared/types-studio'
 
 export interface StudioApi {
@@ -30,6 +32,56 @@ export interface StudioApi {
   studioSetSetting(key: string, value: unknown): Promise<boolean>
   /** D6: lift the offline block for one browser preview partition. */
   studioPreviewAllowNetwork(partition: string): Promise<boolean>
+  /**
+   * Create (or reuse) the main-process browser view for a tab.
+   *
+   * The body is a WebContentsView rather than a <webview> element because
+   * Playwright cannot attach to a `webview` CDP target. The renderer therefore
+   * gets no element back — it measures geometry and calls the bounds channel.
+   */
+  studioBrowserViewEnsure(conversationId: string, instanceId: string, url: string, partition: string): Promise<boolean>
+  /** Position the view over the area the renderer measured for its body. */
+  studioBrowserViewBounds(conversationId: string, instanceId: string, bounds: { x: number; y: number; width: number; height: number }, visible: boolean): void
+  studioBrowserViewNavigate(conversationId: string, instanceId: string, url: string): Promise<boolean>
+  studioBrowserViewAction(conversationId: string, instanceId: string, action: 'back' | 'forward' | 'reload'): Promise<boolean>
+  studioBrowserViewClose(conversationId: string, instanceId: string): Promise<boolean>
+  /**
+   * Where the on-screen popovers are, in window coordinates.
+   *
+   * Browser guests are main-process views that paint above all page content, so
+   * a DOM popover cannot be stacked over one. Main shrinks the view out from
+   * under these rectangles rather than hiding it, which would blank the whole
+   * page behind a small menu.
+   */
+  studioBrowserPopoverRects(rects: Array<{ x: number; y: number; width: number; height: number }>): void
+  /** The guest navigated or retitled itself; used to drive the URL bar. */
+  onStudioBrowserViewState(callback: (state: {
+    conversationId: string
+    instanceId: string
+    url: string
+    title: string
+    canGoBack: boolean
+    canGoForward: boolean
+  }) => void): () => void
+  /**
+   * Receive correlated browser commands from main (ensure/close/reveal/status
+   * /emulate). The handler MUST answer exactly once through
+   * `studioBrowserCommandResult` with the same callId, or main resolves the
+   * command as a timeout refusal.
+   */
+  onStudioBrowserCommand(callback: (envelope: StudioBrowserCommandEnvelope) => void): () => void
+  /** Answer one browser command. */
+  studioBrowserCommandResult(result: StudioBrowserCommandResult): void
+  /**
+   * A link the operator cmd-clicked inside a Surface browser guest. Chromium
+   * reports it as a new-tab disposition, which the webview policy denies as a
+   * popup, so main forwards it here to become a real Surface tab.
+   */
+  onStudioBrowserOpenUrl(callback: (url: string) => void): () => void
+  /** Set the browser session policy for one Surface tab. */
+  studioBrowserSetSessionMode(instanceId: string, mode: BrowserSessionMode): Promise<boolean>
+  /** Enable or restore the network shield for one isolated browser tab. */
+  studioBrowserSetNetworkShield(instanceId: string, enabled: boolean): Promise<boolean>
   /**
    * Active-tab pushes from main: fires on every tab switch in the main
    * renderer (and once on Studio open) with the tab's cached state snapshot and
@@ -124,6 +176,35 @@ export const studioApi: StudioApi = {
   studioGetSettings: () => ipcRenderer.invoke(IPC.STUDIO_GET_SETTINGS),
   studioSetSetting: (key, value) => ipcRenderer.invoke(IPC.STUDIO_SET_SETTING, key, value),
   studioPreviewAllowNetwork: (partition) => ipcRenderer.invoke(IPC.STUDIO_PREVIEW_ALLOW_NETWORK, partition),
+  studioBrowserViewEnsure: (conversationId, instanceId, url, partition) =>
+    ipcRenderer.invoke(IPC.STUDIO_BROWSER_VIEW_ENSURE, conversationId, instanceId, url, partition),
+  studioBrowserViewBounds: (conversationId, instanceId, bounds, visible) =>
+    ipcRenderer.send(IPC.STUDIO_BROWSER_VIEW_BOUNDS, conversationId, instanceId, bounds, visible),
+  studioBrowserViewNavigate: (conversationId, instanceId, url) =>
+    ipcRenderer.invoke(IPC.STUDIO_BROWSER_VIEW_NAVIGATE, conversationId, instanceId, url),
+  studioBrowserViewAction: (conversationId, instanceId, action) =>
+    ipcRenderer.invoke(IPC.STUDIO_BROWSER_VIEW_ACTION, conversationId, instanceId, action),
+  studioBrowserViewClose: (conversationId, instanceId) =>
+    ipcRenderer.invoke(IPC.STUDIO_BROWSER_VIEW_CLOSE, conversationId, instanceId),
+  studioBrowserPopoverRects: (rects) => ipcRenderer.send(IPC.STUDIO_BROWSER_POPOVER_RECTS, rects),
+  onStudioBrowserViewState: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, s: Parameters<typeof callback>[0]) => callback(s)
+    ipcRenderer.on(IPC.STUDIO_BROWSER_VIEW_STATE, handler)
+    return () => ipcRenderer.removeListener(IPC.STUDIO_BROWSER_VIEW_STATE, handler)
+  },
+  onStudioBrowserCommand: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, envelope: StudioBrowserCommandEnvelope) => callback(envelope)
+    ipcRenderer.on(IPC.STUDIO_BROWSER_COMMAND, handler)
+    return () => ipcRenderer.removeListener(IPC.STUDIO_BROWSER_COMMAND, handler)
+  },
+  studioBrowserCommandResult: (result) => ipcRenderer.send(IPC.STUDIO_BROWSER_COMMAND_RESULT, result),
+  onStudioBrowserOpenUrl: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, url: string) => callback(url)
+    ipcRenderer.on(IPC.STUDIO_BROWSER_OPEN_URL, handler)
+    return () => ipcRenderer.removeListener(IPC.STUDIO_BROWSER_OPEN_URL, handler)
+  },
+  studioBrowserSetSessionMode: (instanceId, mode) => ipcRenderer.invoke(IPC.STUDIO_BROWSER_SET_SESSION_MODE, instanceId, mode),
+  studioBrowserSetNetworkShield: (instanceId, enabled) => ipcRenderer.invoke(IPC.STUDIO_BROWSER_SET_NETWORK_SHIELD, instanceId, enabled),
   onStudioActiveTab: (callback) => {
     const handler = (_e: Electron.IpcRendererEvent, tabId: string, state: StudioTabState, profileId: string | null) =>
       callback(tabId, state, profileId ?? null)

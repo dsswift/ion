@@ -92,11 +92,12 @@ describe('WorkspaceStatusIndicator.globalRunningTier', () => {
     expect(globalRunningTier([makeTab('t1', 'connecting')])).toBe('idle')
   })
 
-  it('returns running when a terminal command executes', () => {
+  it('returns waiting when a terminal command executes', () => {
     terminalCommandIds.add('terminal-tab')
-    expect(globalRunningTier([makeTab('terminal-tab', 'idle', { isTerminalOnly: true })], terminalCommandIds)).toBe('running')
+    expect(globalRunningTier([makeTab('terminal-tab', 'idle', { isTerminalOnly: true })], terminalCommandIds)).toBe('waiting')
     const counts = computeStatusCounts([makeTab('terminal-tab', 'idle', { isTerminalOnly: true })], terminalCommandIds)
-    expect(counts.runningTabs.map((tab) => tab.id)).toEqual(['terminal-tab'])
+    expect(counts.waitingShellTabs.map((tab) => tab.id)).toEqual(['terminal-tab'])
+    expect(counts.runningTabs).toEqual([])
   })
 
   it('does not treat an idle terminal prompt as workspace work', () => {

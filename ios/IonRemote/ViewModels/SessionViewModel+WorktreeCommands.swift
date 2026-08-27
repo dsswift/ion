@@ -255,13 +255,11 @@ extension SessionViewModel {
         send(.worktreeRetireLanded(repoPath: repoPath), intent: .userInitiated)
     }
 
-    /// Retire ONE worktree. The desktop appraises what would be lost and can
-    /// refuse (`refusedDirty`) — the op result words a refusal differently
-    /// from a failure, and any conversation still living there is relocated
-    /// by the desktop before removal.
+    /// Discard ONE worktree without merging it into its source branch. The
+    /// desktop appraises and preserves recoverable work before removal.
     func retireWorktree(_ worktree: RemoteWorktree, repoPath: String) {
         worktreeBusyPath = worktree.worktreePath
-        DiagnosticLog.log("retire requested", tag: "worktree",
+        DiagnosticLog.log("discard requested", tag: "worktree",
                           fields: ["worktree_path": worktree.worktreePath])
         send(.worktreeRetire(repoPath: repoPath,
                              worktreePath: worktree.worktreePath,

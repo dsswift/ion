@@ -8,7 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dsswift/ion/engine/internal/filelock"
+	"github.com/dsswift/ion/engine/internal/durablefile"
+	"github.com/dsswift/ion/engine/internal/telemetryformat"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -18,7 +19,9 @@ import (
 // v3 = additive attribution fields: per-event unique ID (event_id, R22) and
 //
 //	user identity carrier (user, R20 wired to auth context seam).
-const TelemetrySchemaVersion = 3
+//
+// v4 = self-contained compact frames with interned identity and correlation tables.
+const TelemetrySchemaVersion = 4
 
 // sidecarPath returns the path for the telemetry schema sidecar file.
 // Lives alongside the telemetry file in the same directory.
@@ -93,7 +96,7 @@ func writeSidecar(path string, s schemaSidecar) error {
 // checkpointOnce ensures stampSchemaCheckpoint runs exactly once per process
 // regardless of how many NewCollector calls arrive (server.go and
 // start_session.go both call NewCollector). The sync.Once is the primary
-// gate; the filelock guard below protects against two engine processes.
+// gate; the durable file transaction protects against two engine processes.
 var checkpointOnce sync.Once
 
 // checkpointAndRotate is the public entrypoint — name kept for call-site
@@ -119,19 +122,21 @@ func checkpointAndRotate(filePath, engineVersion string) {
 // No file is ever renamed, archived, or truncated by this function.
 // Files are append-only streams of self-describing (per-line "schema") lines.
 func stampSchemaCheckpoint(filePath, engineVersion string) {
-	// Acquire advisory filelock to block a concurrent second engine process.
-	lockPath := filePath
-	lock, err := filelock.Acquire(lockPath)
-	if err != nil {
-		utils.LogWithFields(utils.LevelInfo, "telemetry", "checkpoint lock held by another process skipping", map[string]any{"error": err.Error()})
-		return
-	}
-	defer func() {
-		if err := lock.Release(); err != nil {
-			utils.LogWithFields(utils.LevelInfo, "telemetry", "checkpoint lock release failed", map[string]any{"error": err.Error()})
-		}
-	}()
+	stampSchemaCheckpointAt(filePath, TelemetrySchemaVersion, engineVersion)
+}
 
+// stampSchemaCheckpointAt serializes the sidecar update and its transition
+// sentinel in one telemetry-file transaction. It is parameterized so tests can
+// safely simulate an older writer without duplicating checkpoint behavior.
+func stampSchemaCheckpointAt(filePath string, currentVersion int, engineVersion string) {
+	if err := durablefile.Transaction(filePath, 5*time.Second, func(absPath string) error {
+		return stampSchemaCheckpointLocked(absPath, currentVersion, engineVersion)
+	}); err != nil {
+		utils.LogWithFields(utils.LevelInfo, "telemetry", "checkpoint transaction failed", map[string]any{"path": filePath, "error": err.Error()})
+	}
+}
+
+func stampSchemaCheckpointLocked(filePath string, currentVersion int, engineVersion string) error {
 	scPath := sidecarPath(filePath)
 
 	// Determine telemetry file size (absent counts as 0).
@@ -140,94 +145,64 @@ func stampSchemaCheckpoint(filePath, engineVersion string) {
 		fileSize = info.Size()
 	}
 
-	sidecar, sidecarOk := readSidecar(scPath)
-
+	sidecar, sidecarOK := readSidecar(scPath)
 	switch {
-	case !sidecarOk && fileSize == 0:
-		// Case 2: fresh install — no prior data.
-		sc := schemaSidecar{
-			HighestSchemaSeen: TelemetrySchemaVersion,
-			StampedAt:         time.Now().UnixMilli(),
-			EngineVersion:     engineVersion,
+	case !sidecarOK && fileSize == 0:
+		sidecar = schemaSidecar{HighestSchemaSeen: currentVersion, StampedAt: time.Now().UnixMilli(), EngineVersion: engineVersion}
+		if err := writeSidecar(scPath, sidecar); err != nil {
+			return fmt.Errorf("checkpoint write fresh sidecar: %w", err)
 		}
-		if err := writeSidecar(scPath, sc); err != nil {
-			utils.LogWithFields(utils.LevelError, "telemetry", "checkpoint write fresh sidecar failed", map[string]any{"error": err.Error()})
-			return
-		}
-		utils.LogWithFields(utils.LevelInfo, "telemetry", "checkpoint fresh install sidecar written", map[string]any{"schema": TelemetrySchemaVersion, "version": engineVersion})
+		utils.LogWithFields(utils.LevelInfo, "telemetry", "checkpoint fresh install sidecar written", map[string]any{"schema": currentVersion, "version": engineVersion})
+		return nil
 
-	case !sidecarOk && fileSize > 0:
-		// Case 3: file exists but no sidecar — legacy pre-sidecar data (treat
-		// as highestSeen=1 so the high-water mark is set and the writer_changed
-		// event is emitted once on this upgrade path).
+	case !sidecarOK && fileSize > 0:
 		utils.LogWithFields(utils.LevelInfo, "telemetry", "checkpoint sidecar absent treating file as legacy v1", map[string]any{"size": fileSize})
-		// Write a sidecar at current version and emit the writer_changed event.
-		sc := schemaSidecar{
-			HighestSchemaSeen: TelemetrySchemaVersion,
-			StampedAt:         time.Now().UnixMilli(),
-			EngineVersion:     engineVersion,
+		sidecar = schemaSidecar{HighestSchemaSeen: currentVersion, StampedAt: time.Now().UnixMilli(), EngineVersion: engineVersion}
+		if err := writeSidecar(scPath, sidecar); err != nil {
+			return fmt.Errorf("checkpoint write legacy sidecar: %w", err)
 		}
-		if err := writeSidecar(scPath, sc); err != nil {
-			utils.LogWithFields(utils.LevelError, "telemetry", "checkpoint write sidecar for legacy file failed", map[string]any{"error": err.Error()})
-			return
-		}
-		emitSchemaWriterChanged(filePath, 1, TelemetrySchemaVersion, engineVersion)
+		return emitSchemaWriterChangedLocked(filePath, 1, currentVersion, engineVersion)
 
-	case sidecar.HighestSchemaSeen == TelemetrySchemaVersion:
-		// Case 4: current writer matches highest seen — no-op.
-		utils.LogWithFields(utils.LevelInfo, "telemetry", "checkpoint schema current no action needed", map[string]any{"schema": TelemetrySchemaVersion})
+	case sidecar.HighestSchemaSeen == currentVersion:
+		utils.LogWithFields(utils.LevelInfo, "telemetry", "checkpoint schema current no action needed", map[string]any{"schema": currentVersion})
+		return nil
 
-	case TelemetrySchemaVersion > sidecar.HighestSchemaSeen:
-		// Case 5: upgrade — raise the high-water mark.
-		prev := sidecar.HighestSchemaSeen
-		sidecar.HighestSchemaSeen = TelemetrySchemaVersion
+	case currentVersion > sidecar.HighestSchemaSeen:
+		previous := sidecar.HighestSchemaSeen
+		sidecar.HighestSchemaSeen = currentVersion
 		sidecar.StampedAt = time.Now().UnixMilli()
 		sidecar.EngineVersion = engineVersion
 		if err := writeSidecar(scPath, sidecar); err != nil {
-			utils.LogWithFields(utils.LevelError, "telemetry", "checkpoint raise sidecar failed", map[string]any{"error": err.Error()})
-			return
+			return fmt.Errorf("checkpoint raise sidecar: %w", err)
 		}
-		utils.LogWithFields(utils.LevelInfo, "telemetry", "checkpoint schema upgraded sidecar raised", map[string]any{
-			"previous": prev, "current": TelemetrySchemaVersion, "version": engineVersion,
-		})
-		emitSchemaWriterChanged(filePath, prev, TelemetrySchemaVersion, engineVersion)
+		utils.LogWithFields(utils.LevelInfo, "telemetry", "checkpoint schema upgraded sidecar raised", map[string]any{"previous": previous, "current": currentVersion, "version": engineVersion})
+		return emitSchemaWriterChangedLocked(filePath, previous, currentVersion, engineVersion)
 
 	default:
-		// Case 6: downgrade — do NOT touch sidecar, do NOT touch file.
-		// The file is an append-only stream; the downgraded writer appends
-		// lower-schema lines and the sidecar high-water mark stays at its
-		// maximum. Emit writer_changed so dashboards can see the transition.
-		utils.LogWithFields(utils.LevelInfo, "telemetry", "checkpoint downgraded writer appending lower schema lines sidecar unchanged", map[string]any{
-			"current_writer": TelemetrySchemaVersion,
-			"highest_seen":   sidecar.HighestSchemaSeen,
-			"version":        engineVersion,
-		})
-		emitSchemaWriterChanged(filePath, sidecar.HighestSchemaSeen, TelemetrySchemaVersion, engineVersion)
+		utils.LogWithFields(utils.LevelInfo, "telemetry", "checkpoint downgraded writer appending lower schema lines sidecar unchanged", map[string]any{"current_writer": currentVersion, "highest_seen": sidecar.HighestSchemaSeen, "version": engineVersion})
+		return emitSchemaWriterChangedLocked(filePath, sidecar.HighestSchemaSeen, currentVersion, engineVersion)
 	}
 }
 
-// emitSchemaWriterChanged writes a telemetry.schema_writer_changed sentinel
-// line to the telemetry file so version transitions are observable in Grafana
-// on both upgrade and downgrade paths. It uses flushToFile directly so the
-// event is the first (or only) new line on the upgrade path and appends cleanly
-// on the downgrade path.
-func emitSchemaWriterChanged(filePath string, prevSchema, currentSchema int, engineVersion string) {
+// emitSchemaWriterChangedLocked appends one frame while its caller owns the
+// telemetry-file transaction. It must not acquire a second transaction lock.
+func emitSchemaWriterChangedLocked(filePath string, previousSchema, currentSchema int, engineVersion string) error {
 	event := Event{
-		Ts:            time.Now().UTC().Format("2006-01-02T15:04:05.999999999Z"),
+		Ts:            time.Now().UTC().Format(time.RFC3339Nano),
 		Name:          "telemetry.schema_writer_changed",
-		SchemaVersion: TelemetrySchemaVersion,
+		SchemaVersion: currentSchema,
+		Component:     "engine",
 		Payload: map[string]any{
-			"previous_schema_version": prevSchema,
+			"previous_schema_version": previousSchema,
 			"current_schema_version":  currentSchema,
 			"engine_version":          engineVersion,
 		},
 	}
-	// No rotation on this write: the checkpoint runs before the collector's
-	// config is consulted, and a sentinel line must not be the thing that
-	// archives the file. The first real flush bounds it.
-	if err := flushToFile([]Event{event}, filePath, rotationPolicy{}); err != nil {
-		utils.LogWithFields(utils.LevelError, "telemetry", "checkpoint emit schema writer changed event failed", map[string]any{"error": err.Error()})
+	line, err := telemetryformat.EncodeCompactLine([]Event{event})
+	if err != nil {
+		return fmt.Errorf("checkpoint encode schema writer changed event: %w", err)
 	}
+	return appendFrameLocked(line, filePath, rotationPolicy{})
 }
 
 // resetCheckpointOnce resets the package-level sync.Once for tests.

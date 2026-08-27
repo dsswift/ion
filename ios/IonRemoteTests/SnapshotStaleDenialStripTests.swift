@@ -53,7 +53,7 @@ final class SnapshotStaleDenialStripTests: XCTestCase {
         let vm = SessionViewModel()
         let data = snapshotJSON(status: status, questionId: questionId, toolName: toolName)
         let event = try decoder.decode(RemoteEvent.self, from: data)
-        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
+        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
             XCTFail("Expected snapshot"); return []
         }
         XCTAssertEqual(tabs[0].permissionQueue.count, 1, "pre-condition: raw snapshot has the entry")

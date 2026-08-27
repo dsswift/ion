@@ -48,6 +48,7 @@ vi.mock('../state', () => ({
   deviceFocusMap: new Map(),
   terminalScrollback: new Map(),
   modelCache: { models: [] as any[] },
+  enterprisePolicyCache: { policy: null },
 }))
 
 vi.mock('../logger', () => ({

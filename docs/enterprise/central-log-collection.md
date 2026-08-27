@@ -92,7 +92,7 @@ responsibility split; subsections give the detail.
 |---|---|---|
 | Engine (workstation, headless, CI, Docker) | `logging.egressTargets` + `telemetry.targets` — ships itself | Endpoint config (sealed via enterprise layer) |
 | Extensions | Ride the engine's egress (`component=extension` lines in the engine stream) | Nothing extra |
-| Desktop app | `logging.egressTargets` — its own `desktop.jsonl` lines ship directly through the same forwarder, and it tails `engine.jsonl` / `ios-diagnostic-logs.jsonl` / `telemetry.jsonl` into that forwarder | Endpoint config (sealed via enterprise layer) |
+| Desktop app | `logging.egressTargets` — its own `desktop.jsonl` lines ship directly; it tails `engine.jsonl` and `ios-diagnostic-logs.jsonl` | Endpoint config (sealed via enterprise layer) |
 | iOS | Ships to its paired desktop (periodic diagnostic-log pull) | Covered by the desktop's tailer |
 | Relay | Canonical JSONL file (`RELAY_LOG_FILE`) | Volume mount + sidecar tailer |
 
@@ -161,7 +161,7 @@ volumes:
 The tailer config is the same shape as the reference stack's
 [`alloy-config.alloy`](../observability/alloy-config.alloy) with the write target pointed at
 the organizational endpoint instead of the local Loki. Rotation is tailer-safe by design:
-every Ion surface rotates by truncate-in-place, which preserves the inode a tailer holds open.
+Ion files rotate by rename. A tailer must support `.1` archive handoff or ship the live file before the configured archive window expires.
 
 ### Desktop — the workstation collection point
 
@@ -175,13 +175,12 @@ log files accumulate under `~/.ion` (`engine.jsonl`, `desktop.jsonl`,
 
 - ships its **own** `desktop.jsonl` lines directly on the logger's write path (every desktop main-
   and renderer-process line is buffered off the hot path and flushed to the endpoint), and
-- **tails** `engine.jsonl` (engine + extension lines), `ios-diagnostic-logs.jsonl` (the peered iOS
-  device's logs), and `telemetry.jsonl` into the same forwarder, so those files ship through the
-  identical egress config.
+- **tails** `engine.jsonl` (engine + extension lines) and `ios-diagnostic-logs.jsonl` (the peered iOS
+  device's logs) into the same forwarder. Telemetry uses its own file target or direct telemetry egress.
 
-So a managed workstation needs **no separate file tailer**: point the sealed `logging.egressTargets`
-at the ingestion endpoint and every surface on the machine (engine, extensions, desktop, peered iOS,
-telemetry) ships from that one config, with the user unable to disable it.
+So a managed workstation needs **no separate operational-log file tailer**: point sealed
+`logging.egressTargets` at the ingestion endpoint and the engine, extensions, desktop, and peered
+iOS ship from that config. Telemetry ships through `telemetry.targets` or the telemetry forwarder.
 
 **Who ships what is a configurable matrix.** The default above (desktop ships everything)
 is one arrangement, not the only one. `logging.egressShipSources` assigns the engine's
@@ -595,7 +594,7 @@ ingestion infrastructure → fleet auditability.**
    telemetry contract tests) keep it true. Nothing downstream is worth building until the
    lines themselves are trustworthy.
 2. **Enterprise OIDC authentication populates the user-identity carrier (done).** The
-   telemetry envelope reserved a `user` field (schema v3, alongside `event_id`) so identity
+   telemetry format carries an optional `user` field in its expanded event shape so identity
    could attach later *without a schema break* — and it now does. The **engine owns the
    OIDC identity**: `auth.identityProvider` + `auth.oauth.<provider>` in `engine.json`
    configure the app registration; the engine runs the PKCE login (a UI consumer only opens

@@ -64,7 +64,7 @@ vi.mock("../state", () => ({
   engineBridge: { stopByPrefix: vi.fn() },
   activeAssistantMessages: { delete: vi.fn() },
   DEBUG_MODE: false,
-}));
+}))
 
 vi.mock("../studio-window-manager", () => ({
   notifyStudioUserMessageEcho: (...args: any[]) => mocks.studioEcho(...args),

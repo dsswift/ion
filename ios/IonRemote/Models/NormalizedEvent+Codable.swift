@@ -30,7 +30,7 @@ extension RemoteEvent: Codable {
         // TransportManager+Receive.swift catches these two error types separately
         // so only the second triggers an error log + resync.
         let rawType = try container.decode(String.self, forKey: .type)
-        guard let type = TypeKey(rawValue: rawType) else {
+        guard let type = TypeKey(rawValue: rawType), type != .lanSecretUnusable else {
             throw RemoteEventDecodeError.unknownType(rawType)
         }
 

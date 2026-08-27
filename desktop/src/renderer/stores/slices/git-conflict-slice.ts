@@ -23,7 +23,7 @@
  * truth stays visible until the conflict is actually resolved.
  *
  * ── AI Assisted ─────────────────────────────────────────────────────────────
- * `openConflictAssist` is ONE store action (ATV multi-step rule): create a
+ * `openConflictAssist` is ONE store action (Studio multi-step rule): create a
  * FRESH conversation in the conflicted directory, then submit the fixed
  * prompt. Always a new tab — commandeering an existing conversation would
  * interrupt it and let its context sway the fix. A component handler chaining

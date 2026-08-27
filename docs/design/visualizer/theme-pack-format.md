@@ -1,17 +1,17 @@
-# ATV Theme Pack Format
+# Agent Team Visualizer Theme Pack Format
 
-The Agent Team Visualizer renders its office from a **theme pack**: a self-contained directory of sprites, manifests, and dressing templates. Nothing in ATV code enumerates characters, pets, furniture, floors, or walls; the pools are whatever the active pack's manifests declare. This document is the authoring contract for pack creators.
+The Agent Team Visualizer renders its office from a **theme pack**: a self-contained directory of sprites, manifests, and dressing templates. Nothing in Visualizer code enumerates characters, pets, furniture, floors, or walls; the pools are whatever the active pack's manifests declare. This document is the authoring contract for pack creators.
 
 ## Locations and discovery
 
 | Location | Role |
 |---|---|
-| `desktop/resources/atv/themes/<pack-id>/` | Packs shipped with Ion desktop |
-| `~/.ion/atv/themes/<pack-id>/` | User-installed packs |
+| `desktop/resources/studio/themes/<pack-id>/` | Packs shipped with Ion desktop |
+| `~/.ion/studio/themes/<pack-id>/` | User-installed packs |
 
-ATV scans both roots at startup. Every directory containing a valid `theme.json` is a candidate pack. Invalid entries (schema violations, missing files, sprite dimension mismatches) are logged and skipped per asset; a pack only fails to load when it yields no usable base set. The shipped theme loads through the same public loader path as a user pack; there is no special-casing.
+Studio scans both roots at startup. Every directory containing a valid `theme.json` is a candidate pack. Invalid entries (schema violations, missing files, sprite dimension mismatches) are logged and skipped per asset; a pack only fails to load when it yields no usable base set. The shipped theme loads through the same public loader path as a user pack; there is no special-casing.
 
-The active theme is chosen in desktop settings (default `ion-works`) and in the ATV toolbar's theme picker.
+The active theme is chosen in desktop settings (default `ion-works`) and in the Studio Visualizer controls.
 
 ## Directory layout
 

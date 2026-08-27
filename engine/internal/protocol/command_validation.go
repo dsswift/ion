@@ -140,7 +140,7 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key")
 	case "migrate_conversation":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "text") && hasNonEmptyString(raw, "message")
-	case "list_models", "list_model_tiers", "oidc_begin_login", "oidc_logout", "oidc_identity", "oidc_token", "refresh_models", "get_host_info", "list_directory", "discover_slash_commands", "delete_stored_sessions", "get_enterprise_policy", "plugin_list", "mcp_list":
+	case "list_models", "list_model_tiers", "oidc_begin_login", "oidc_logout", "oidc_identity", "oidc_token", "refresh_models", "get_host_info", "list_directory", "discover_slash_commands", "delete_stored_sessions", "get_enterprise_policy", "resolve_new_conversation_defaults", "plugin_list", "mcp_list":
 		return true
 	case "delete_stored_conversations":
 		return hasArray(raw, "sessionIds")

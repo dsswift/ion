@@ -3,7 +3,13 @@ import { getCliEnv } from './cli-env'
 import { PRIVILEGE_ESCALATION_VAR } from './launch-env'
 import { getDeepLinkToken } from './deeplink/token'
 import { homedir, userInfo } from 'os'
-import { basename, join } from 'path'
+import { join } from 'path'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
+import { terminalProcessTree, parseProcessTree } from './terminal-process-tree'
+import { discoverTerminalWebApplications } from './terminal-application-discovery'
+import type { TerminalActivity } from '../shared/terminal-activity'
+import { splitTerminalActivityKey } from '../shared/terminal-activity'
 import { existsSync } from 'fs'
 import { terminalScrollback } from './state'
 import { debug as _debug, log as _log, warn as _warn } from './logger'
@@ -80,11 +86,15 @@ export type PtySpawner = (
   options: { name: string; cols: number; rows: number; cwd: string; env: Record<string, string> },
 ) => IPty
 
-/** Read node-pty's foreground-process title without spawning a subprocess. */
-export type ProcessProbe = (term: Pick<IPty, 'process'>, shell: string) => boolean
+const execFileAsync = promisify(execFile)
 
-function hasForegroundChildProcess(term: Pick<IPty, 'process'>, shell: string): boolean {
-  return basename(term.process) !== basename(shell)
+/** Read one complete process table for every live terminal. */
+async function readProcessTable(): Promise<string> {
+  const { stdout } = await execFileAsync('/bin/ps', ['-eo', 'pid=,ppid=,comm='], {
+    timeout: 1_000,
+    maxBuffer: 512 * 1024,
+  })
+  return stdout
 }
 
 /** Lifecycle record for a terminal key (D2 attach model). */
@@ -132,8 +142,11 @@ function presentZshStartupFiles(rcDir: string): string[] {
 
 export class TerminalManager {
   private sessions = new Map<string, IPty>()
+  private activities = new Map<string, TerminalActivity>()
   private activeKeys = new Set<string>()
-  private activityTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private activityTimer: ReturnType<typeof setTimeout> | null = null
+  private activityPollInFlight = false
+  private lastWebDiscoveryAt = 0
   /**
    * Lifecycle state OUTLIVES the pty (attach model): a pty EXIT retains the
    * scrollback + exit code so a dead terminal stays readable until explicit
@@ -142,11 +155,11 @@ export class TerminalManager {
   private lifecycle = new Map<string, TerminalLifecycle>()
   private broadcast: (channel: string, ...args: unknown[]) => void
   private spawner: PtySpawner | null
-  private processProbe: ProcessProbe
+  private legacyProcessProbe: ((term: Pick<IPty, 'process'>, shell: string) => boolean) | null
 
-  constructor(broadcast: (channel: string, ...args: unknown[]) => void, spawner?: PtySpawner, processProbe?: ProcessProbe) {
+  constructor(broadcast: (channel: string, ...args: unknown[]) => void, spawner?: PtySpawner, legacyProcessProbe?: (term: Pick<IPty, 'process'>, shell: string) => boolean) {
     this.broadcast = broadcast
-    this.processProbe = processProbe ?? hasForegroundChildProcess
+    this.legacyProcessProbe = legacyProcessProbe ?? null
     // Production passes nothing and gets node-pty; tests inject a spy.
     this.spawner = spawner ?? null
   }
@@ -291,8 +304,8 @@ export class TerminalManager {
 
     term.onExit(({ exitCode }: { exitCode: number }) => {
       this.sessions.delete(key)
-      this.stopActivityWatch(key)
-      this.setActivity(key, false)
+      this.clearActivity(key)
+      if (this.sessions.size === 0) this.stopActivityWatch()
       // Exit RETAINS scrollback + exit code (attach model): the dead
       // terminal stays readable until explicit destroy.
       const life = this.lifecycle.get(key)
@@ -301,7 +314,13 @@ export class TerminalManager {
     })
 
     this.sessions.set(key, term)
-    this.startActivityWatch(key, term, loginShell)
+    if (this.legacyProcessProbe) {
+      const ids = splitTerminalActivityKey(key)
+      if (this.legacyProcessProbe(term, loginShell)) {
+        this.publishActivity({ key, ...ids, active: true, processLabel: null, processIds: [term.pid], applications: [] })
+      }
+    }
+    this.startActivityWatch(!this.legacyProcessProbe)
     this.lifecycle.set(key, { running: true, exitCode: null, cwd: resolvedCwd, cwdFellBack })
     // A fresh run's transcript starts clean (a respawn after exit would
     // otherwise repeat the dead run's history ahead of the new shell).
@@ -347,48 +366,99 @@ export class TerminalManager {
   }
 
   activeTabIds(): string[] {
-    return [...new Set([...this.activeKeys].map((key) => splitTerminalKey(key)[0]))]
+    return [...new Set([...this.activities.values()].filter((activity) => activity.active).map((activity) => activity.tabId))]
   }
 
-  private setActivity(key: string, active: boolean): void {
-    const wasActive = this.activeKeys.has(key)
-    if (active === wasActive) return
-
-    const [tabId] = splitTerminalKey(key)
-    const wasTabActive = this.activeTabIds().includes(tabId)
-    if (active) this.activeKeys.add(key)
-    else this.activeKeys.delete(key)
-    const isTabActive = this.activeTabIds().includes(tabId)
-
-    // Renderers show activity per tab. A new active PTY still emits its own
-    // identity so observers can associate it with the pane that started it. Do
-    // not mark a tab idle while another PTY in that tab has a foreground child
-    // process.
-    if (!active && wasTabActive === isTabActive) return
-    this.broadcast(IPC.TERMINAL_ACTIVITY, { key, tabId, active: isTabActive })
-    debug('terminal activity changed', { key, tab_id: tabId, active: isTabActive })
+  activitySnapshot(): TerminalActivity[] {
+    return [...this.activities.values()]
   }
 
-  private startActivityWatch(key: string, term: IPty, shell: string): void {
-    this.stopActivityWatch(key)
-    const refresh = (): void => {
-      if (this.sessions.get(key) !== term) return
+  private publishActivity(activity: TerminalActivity): void {
+    this.activities.set(activity.key, activity)
+    const payload = this.legacyProcessProbe
+      ? { key: activity.key, tabId: activity.tabId, active: activity.active }
+      : activity
+    this.broadcast(IPC.TERMINAL_ACTIVITY, payload)
+    debug('terminal activity changed', {
+      key: activity.key,
+      tab_id: activity.tabId,
+      active: activity.active,
+      process_label: activity.processLabel ?? '',
+      process_count: activity.processIds.length,
+    })
+  }
+
+  private clearActivity(key: string): void {
+    const previous = this.activities.get(key)
+    if (!previous) return
+    this.publishActivity({ ...previous, active: false, processLabel: null, processIds: [], applications: [] })
+    this.activities.delete(key)
+  }
+
+  private startActivityWatch(immediate = true): void {
+    if (this.activityTimer || this.sessions.size === 0) return
+    const refresh = async (): Promise<void> => {
+      this.activityTimer = null
+      if (this.activityPollInFlight || this.sessions.size === 0) return
+      this.activityPollInFlight = true
       try {
-        this.setActivity(key, this.processProbe(term, shell))
-      } catch (err: unknown) {
-        debug('terminal activity probe failed', { key, error: String(err) })
+        if (this.legacyProcessProbe) {
+          for (const [key, term] of this.sessions) {
+            const previous = this.activities.get(key)
+            const active = this.legacyProcessProbe(term, '')
+            if (active && !previous?.active) {
+              this.publishActivity({ key, ...splitTerminalActivityKey(key), active: true, processLabel: null, processIds: [term.pid], applications: [] })
+            } else if (!active && previous?.active) {
+              this.clearActivity(key)
+            }
+          }
+        } else {
+          const snapshot = parseProcessTree(await readProcessTable())
+          const nextActivities: TerminalActivity[] = []
+          for (const [key, term] of this.sessions) {
+            const tree = terminalProcessTree(snapshot, term.pid)
+            nextActivities.push({ key, ...splitTerminalActivityKey(key), active: tree.active, processLabel: tree.processLabel, processIds: tree.processIds, cwd: this.lifecycle.get(key)?.cwd, applications: [] })
+          }
+        let webApplications = new Map<string, import('../shared/terminal-activity').TerminalWebApplication[]>()
+        const shouldDiscoverWeb = Date.now() - this.lastWebDiscoveryAt >= 3_000
+        if (shouldDiscoverWeb) {
+          try {
+            webApplications = await discoverTerminalWebApplications(nextActivities)
+            this.lastWebDiscoveryAt = Date.now()
+          } catch (err: unknown) {
+            // Web Application discovery is an enrichment. A missing lsof binary,
+            // a slow listener scan, or a probe failure must never hide the exact
+            // terminal process activity that was already proven by the process tree.
+            debug('terminal web application discovery failed', { error: String(err), active_terminal_count: nextActivities.length })
+          }
+        } else {
+          for (const activity of nextActivities) {
+            const previous = this.activities.get(activity.key)
+            if (previous?.applications.length) webApplications.set(activity.key, previous.applications)
+          }
+        }
+        for (const next of nextActivities) {
+          next.applications = webApplications.get(next.key) ?? []
+          const previous = this.activities.get(next.key)
+          if (!previous || previous.active !== next.active || previous.processLabel !== next.processLabel || previous.processIds.join(',') !== next.processIds.join(',') || JSON.stringify(previous.applications) !== JSON.stringify(next.applications)) {
+            this.publishActivity(next)
+          }
+        }
       }
-      if (this.sessions.get(key) === term) {
-        this.activityTimers.set(key, setTimeout(refresh, 500))
+      } catch (err: unknown) {
+        debug('terminal activity process snapshot failed', { error: String(err), session_count: this.sessions.size })
+      } finally {
+        this.activityPollInFlight = false
+        if (this.sessions.size > 0) this.activityTimer = setTimeout(() => void refresh(), 500)
       }
     }
-    refresh()
+    if (immediate) void refresh()
+    else this.activityTimer = setTimeout(() => void refresh(), 500)
   }
 
-  private stopActivityWatch(key: string): void {
-    const timer = this.activityTimers.get(key)
-    if (timer) clearTimeout(timer)
-    this.activityTimers.delete(key)
+  private stopActivityWatch(): void {
+    if (this.activityTimer) clearTimeout(this.activityTimer)
+    this.activityTimer = null
   }
 
   resize(key: string, cols: number, rows: number): void {
@@ -403,8 +473,8 @@ export class TerminalManager {
     const term = this.sessions.get(key)
     if (term) {
       this.sessions.delete(key)
-      this.stopActivityWatch(key)
-      this.setActivity(key, false)
+      this.clearActivity(key)
+      if (this.sessions.size === 0) this.stopActivityWatch()
       terminalScrollback.delete(key)
       try {
         term.kill()

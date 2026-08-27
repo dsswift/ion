@@ -30,6 +30,7 @@ import { registerThemesIpc } from "./themes";
 import { registerFaviconIpc } from "./favicon";
 import { registerWorktreeOverlapIpc } from "./worktree-overlap";
 import { registerDeepLinkIpc } from "./deeplink";
+import { registerAutomationIpc } from "./automation";
 import { registerStartupIpc } from "./startup";
 import { wireQuestions } from "../questions/questions-wiring";
 import { engineBridge } from "../state";
@@ -72,4 +73,5 @@ export function registerAllIpc(): void {
   registerFaviconIpc();
   registerWorktreeOverlapIpc();
   registerDeepLinkIpc();
+  registerAutomationIpc();
 }

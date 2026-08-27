@@ -28,6 +28,7 @@ vi.mock('os', async () => {
 const handlers = new Map<string, (event: unknown, args: unknown) => Promise<unknown>>()
 
 vi.mock('electron', () => ({
+  app: { commandLine: { appendSwitch: vi.fn() }, getPath: vi.fn(() => '/tmp') },
   ipcMain: {
     handle: (channel: string, fn: (event: unknown, args: unknown) => Promise<unknown>) => {
       handlers.set(channel, fn)

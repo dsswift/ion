@@ -1,6 +1,6 @@
-# ATV Agent Frontmatter Vocabulary
+# Agent Team Visualizer Frontmatter Vocabulary
 
-Agents can declare their Agent Team Visualizer presence directly in their `.md` frontmatter. The engine preserves every unrecognized frontmatter key in the discovered agent's metadata map; a harness that publishes agent state forwards the `atv-*` subset (plus `parentAgent`) onto its agent-state metadata, and the ATV interprets them. The engine itself has no opinion on any of these keys.
+Agents can declare their Agent Team Visualizer presence directly in their `.md` frontmatter. The engine preserves every unrecognized frontmatter key in the discovered agent's metadata map; a harness that publishes agent state forwards the permanent `atv-*` subset (plus `parentAgent`) onto its agent-state metadata, and the Visualizer surface inside Studio interprets them. The engine itself has no opinion on any of these keys.
 
 ## Resolution cascade
 

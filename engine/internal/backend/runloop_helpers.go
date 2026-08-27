@@ -342,6 +342,7 @@ func appendInboundUserEntry(conv *conversation.Conversation, opts *types.RunOpti
 			Source:         opts.ResolvedSlashSource,
 			ModelAlias:     opts.ResolvedSlashModelAlias,
 			ModelEffective: opts.ResolvedSlashModelEffective,
+			Frontmatter:    opts.ResolvedSlashFrontmatter,
 		})
 	case len(opts.Attachments) > 0:
 		entry = conversation.AddUserMessage(conv, buildUserContentBlocks(opts.Prompt, opts.Attachments))

@@ -334,7 +334,8 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
             if (
               m.id !== event.entryId ||
               (event.slashModelAlias && m.slashModelAlias !== event.slashModelAlias) ||
-              (event.slashModelEffective && m.slashModelEffective !== event.slashModelEffective)
+              (event.slashModelEffective && m.slashModelEffective !== event.slashModelEffective) ||
+              (event.slashFrontmatter && m.slashFrontmatter !== event.slashFrontmatter)
             ) {
               ctx.messages = [
                 ...ctx.messages.slice(0, i),
@@ -343,6 +344,7 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
                   id: event.entryId,
                   ...(event.slashModelAlias ? { slashModelAlias: event.slashModelAlias } : {}),
                   ...(event.slashModelEffective ? { slashModelEffective: event.slashModelEffective } : {}),
+                  ...(event.slashFrontmatter ? { slashFrontmatter: event.slashFrontmatter } : {}),
                 },
                 ...ctx.messages.slice(i + 1),
               ]

@@ -98,6 +98,10 @@ type ClientCommand struct {
 	GateReason    string `json:"gateReason,omitempty"`
 	GateContent   string `json:"gateContent,omitempty"`
 	GateIsError   bool   `json:"gateIsError,omitempty"`
+	// GateImages carries optional image results for a client-declared tool.
+	// It uses the same base64 attachment shape as send_prompt. The engine
+	// converts it to ToolResult.Images before the result reaches the provider.
+	GateImages []types.ImageAttachment `json:"gateImages,omitempty"`
 
 	// oidc_begin_login: which grant flow to start. "pkce" (default when
 	// empty) runs the interactive authorization-code + PKCE flow — the
@@ -153,8 +157,12 @@ type ClientCommand struct {
 	// list_directory: absolute path to enumerate on the engine's host.
 	// Empty or "~" resolves to the engine user's home directory. ShowHidden
 	// includes dotfiles in the result.
-	Path       string `json:"path,omitempty"`
-	ShowHidden bool   `json:"showHidden,omitempty"`
+	Path string `json:"path,omitempty"`
+	// Paths is the batch form of resolve_new_conversation_defaults. It is
+	// additive: Path remains the single-directory form and older clients are
+	// unaffected.
+	Paths      []string `json:"paths,omitempty"`
+	ShowHidden bool     `json:"showHidden,omitempty"`
 
 	// send_prompt: pre-encoded attachments (images, PDF documents) to
 	// attach to the user message as native image/document content blocks.
@@ -272,6 +280,11 @@ type ClientCommand struct {
 	// leading slash on its own; the client classifies the invocation (the same
 	// trivial check it already does to drive slash-command autocomplete).
 	ResolveSlash bool `json:"resolveSlash,omitempty"`
+
+	// TemporaryAutoFromPlan runs this command with auto-mode tools while preserving
+	// the session's active planning workflow and plan file. On successful terminal
+	// completion, the engine surfaces the existing plan approval proposal.
+	TemporaryAutoFromPlan bool `json:"temporaryAutoFromPlan,omitempty"`
 
 	// ClientWorkspaceContext is a per-prompt client-supplied workspace
 	// descriptor that overrides both the session-level EngineConfig value
@@ -548,6 +561,11 @@ var validCommands = map[string]bool{
 	// { newConversationDefaults } in the result data (null when no enterprise
 	// config / no section is present).
 	"get_enterprise_policy": true,
+	// resolve_new_conversation_defaults resolves portable global, project, and
+	// enterprise defaults for Path or Paths without starting a session.
+	"resolve_new_conversation_defaults": true,
+	// resolve_new_conversation_defaults accepts either one path or a batch.
+	// Both fields are optional: no path resolves only global defaults.
 	// get_context_breakdown: on-demand context breakdown outside of an active
 	// run. Reconstructs the full assembly pipeline (system prompt + tools +
 	// conversation messages) for the given session key and emits

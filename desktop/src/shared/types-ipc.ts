@@ -1,3 +1,5 @@
+import { STUDIO_BROWSER_IPC } from './types-ipc-browser'
+
 // ─── IPC Channel Names ───
 
 export const IPC = {
@@ -115,6 +117,7 @@ export const IPC = {
   // Enterprise policy
   GET_ENTERPRISE_POLICY: "ion:get-enterprise-policy",
   GET_ENTERPRISE_POLICY_FULL: "ion:get-enterprise-policy-full",
+  RESOLVE_NEW_CONVERSATION_DEFAULTS: "ion:resolve-new-conversation-defaults",
 
   // Theme packs (custom color themes; main scans disk, renderer registers)
   THEMES_LIST_CUSTOM: "ion:themes-list-custom",
@@ -172,7 +175,9 @@ export const IPC = {
 
   // Git worktree operations
   GIT_WORKTREE_ADD: "ion:git-worktree-add",
-  GIT_WORKTREE_REMOVE: "ion:git-worktree-remove",
+  // Explicit destructive lifecycle operation. It appraises and preserves work
+  // before removing the checkout and branch without integrating into source.
+  GIT_WORKTREE_DISCARD: "ion:git-worktree-discard",
   GIT_WORKTREE_LIST: "ion:git-worktree-list",
   GIT_WORKTREE_STATUS: "ion:git-worktree-status",
   GIT_WORKTREE_MERGE: "ion:git-worktree-merge",
@@ -212,6 +217,18 @@ export const IPC = {
   // Set or clear the operator's workflow stage on a worktree (registry-scoped;
   // see shared/types-git.ts WorkStage).
   GIT_WORKTREE_SET_STAGE: "ion:git-worktree-set-stage",
+  // Durable main-process automations. No renderer executes automation code.
+  AUTOMATION_LIST: "ion:automation-list",
+  AUTOMATION_SAVE: "ion:automation-save",
+  AUTOMATION_HISTORY: "ion:automation-history",
+  AUTOMATION_PLAN_IMPLEMENTED: "ion:automation-plan-implemented",
+  AUTOMATION_PROJECT_IDS: "ion:automation-project-ids",
+  AUTOMATION_PROJECT_ENABLED: "ion:automation-project-enabled",
+  AUTOMATION_EVENT: "ion:automation-event",
+  // Main forwards validated declarative actions to owner renderer only.
+  AUTOMATION_COMMAND: "ion:automation-command",
+  // Owner renderer acknowledges success or failure for each command.
+  AUTOMATION_COMMAND_RESULT: "ion:automation-command-result",
   // Re-run provisioning for a worktree whose dependency state the operator
   // believes is wrong. Same code path as creation.
   GIT_WORKTREE_REPROVISION: "ion:git-worktree-reprovision",
@@ -271,6 +288,7 @@ export const IPC = {
 
   // Terminal PTY
   TERMINAL_ACTIVE_TABS: "ion:terminal-active-tabs",
+  TERMINAL_ACTIVITY_SNAPSHOT: "ion:terminal-activity-snapshot",
   TERMINAL_ACTIVITY: "ion:terminal-activity",
   TERMINAL_CREATE: "ion:terminal-create",
   TERMINAL_DATA: "ion:terminal-data",
@@ -282,9 +300,7 @@ export const IPC = {
   // Attach protocol (D2): history snapshot + lifecycle state in one call,
   // with optional respawn-on-demand for dead terminals.
   TERMINAL_ATTACH: "ion:terminal-attach",
-  // Studio browser preview: lift the offline block for one preview
-  // partition (explicit per-tab confirm — D6).
-  STUDIO_PREVIEW_ALLOW_NETWORK: "studio:preview-allow-network",
+  ...STUDIO_BROWSER_IPC,
   BENCH_DISCARD_MEMBER_RECORDINGS: "ion:bench-discard-member-recordings",
   WORKTREE_OVERLAP_OPEN: "ion:worktree-overlap-open",
   WORKTREE_OVERLAP_CONTEXT: "ion:worktree-overlap-context",
@@ -466,6 +482,9 @@ export const IPC = {
   STUDIO_SET_SETTING: "studio:set-setting",
   STUDIO_LIST_TABS: "studio:list-tabs",
   STUDIO_FOCUS_TAB: "studio:focus-tab",
+  // Main → Studio: open a terminal-owned Web Application in the owning
+  // Conversation's Studio Surface after main validated its live ownership.
+  STUDIO_OPEN_WEB_APPLICATION: "studio:open-web-application",
   STUDIO_FOCUS_AGENT: "studio:focus-agent",
   STUDIO_LIST_THEMES: "studio:list-themes",
   STUDIO_READ_THEME_BUNDLE: "studio:read-theme-bundle",

@@ -27,6 +27,7 @@ import { useColors } from "../theme";
 import { usePreferencesStore } from "../preferences";
 import { rDebug, rInfo } from "../rendererLogger";
 import { contentRouter } from "../lib/file-open-router";
+import { IPC } from "../../shared/types";
 import { getDispatches, meta, mostRecentDispatch } from "../components/agent-panel-helpers";
 import { toggleActivePermissionMode } from "../shortcuts/shared-command-handlers";
 import { handleNewConversationShortcut, isEditorZoomTarget, isPreviewZoomTarget } from "../hooks/useKeyboardShortcuts"
@@ -46,12 +47,15 @@ import { StudioLeftSidebar } from "./StudioLeftSidebar";
 import { StudioTitleBar } from "./StudioTitleBar";
 import { StudioCenter } from "./StudioCenter";
 import { StudioSurface } from "./StudioSurface";
+import { StudioBrowserHost } from "./surface/SurfacePanel";
 import { useStudioLayout } from "./layout/useStudioLayout";
 import { revealDockView } from "./layout/dock-view-reveal";
 import type { StudioSidebarView } from "../../shared/types-studio";
 import { useStudioBootstrap } from "./useStudioBootstrap";
 import { useCommandShortcuts } from "./keymap/useStudioKeymap";
 import { useSurfaceStore } from "./surface/surface-store";
+import { useSurfacePersistOnUnload } from "./surface/surface-persist";
+import { useStudioBrowserCommands } from "./surface/studio-browser-commands";
 import { canvasTabHandlers } from "./surface/canvas-tab-handlers";
 import { initSurfaceConversationSync } from "./surface/surface-conversation-sync";
 import { initQuestionsSurfaceSync } from "./surface/questions-surface-sync";
@@ -111,6 +115,21 @@ export function StudioShell(): React.JSX.Element {
   useEffect(() => initQuestionsSurfaceSync(), []);
 
   const { layout, hydrated, patch } = useStudioLayout();
+  useEffect(() => {
+    const openWebApplication = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
+      if (!payload || typeof payload !== 'object') return
+      const { tabId, url } = payload as { tabId?: unknown; url?: unknown }
+      if (typeof tabId !== 'string' || typeof url !== 'string') return
+      const router = contentRouter()
+      if (!router?.openWebApplication) {
+        rDebug('studio', 'web application request ignored: router unavailable', { tab_id: tabId, url })
+        return
+      }
+      router.openWebApplication(tabId, url)
+    }
+    window.ion.on(IPC.STUDIO_OPEN_WEB_APPLICATION, openWebApplication)
+    return () => window.ion.off(IPC.STUDIO_OPEN_WEB_APPLICATION, openWebApplication)
+  }, [])
   const surfaceVisible = useSurfaceStore((s) => s.visible);
   const startupReady = useStudioBootstrap(hydrated);
   const closeIntent = useSessionStore((s) => s.closeIntent);
@@ -124,6 +143,13 @@ export function StudioShell(): React.JSX.Element {
   // way. Flipping INTO inbox mode defaults the dock view to the inbox once;
   // the user can still switch to Explorer/Git afterwards (Explorer/Git are
   // also available as surface tabs so the inbox can stay pinned — R8).
+  // Main drives browser tab creation, closing, reveal, and emulation through a
+  // correlated command channel, answered exactly once per command.
+  useStudioBrowserCommands();
+
+  // Surface state is written on a debounce, which a quit can outrun.
+  useSurfacePersistOnUnload();
+
   const conversationNav = usePreferencesStore((s) => s.conversationNav);
   const windowWidth = useWindowWidth();
   const prevNavRef = useRef(conversationNav);
@@ -228,6 +254,9 @@ export function StudioShell(): React.JSX.Element {
       "tab.recentDirs": () => window.dispatchEvent(new CustomEvent("ion:open-recent-dirs")),
       "tab.new": () => {
         handleNewConversationShortcut("", "Cmd+T");
+      },
+      "tab.newPicker": () => {
+        handleNewConversationShortcut("", "Cmd+Opt+T", undefined, true);
       },
       "terminal.addShell": () => {
         const state = useSessionStore.getState();
@@ -510,6 +539,9 @@ export function StudioShell(): React.JSX.Element {
               patch({ terminalHeight: h });
             }}
           />}
+          {/* Browser guests live outside the gated column: a closed Surface
+              must still let a background agent drive its own tab. */}
+          <StudioBrowserHost />
           {showSurface && (
             <StudioSurface
               onFocusCapture={() => { setLastFocusedColumn("surface"); setNarrowPane("surface") }}

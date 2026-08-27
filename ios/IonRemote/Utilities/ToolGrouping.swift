@@ -125,6 +125,56 @@ func filterPriorUserContentHashAttachments(_ messages: [Message]) -> [Message] {
     return visible
 }
 
+// MARK: - Plan implementation boundary
+
+private func isImplementationDivider(_ message: Message) -> Bool {
+    message.role == .system && message.content.hasPrefix("── Implementing plan")
+}
+
+private func planPath(at timestamp: Double, in messages: [Message]) -> String? {
+    messages
+        .filter { ($0.timestamp ?? 0) <= timestamp && $0.planFilePath?.isEmpty == false }
+        .max { ($0.timestamp ?? 0) < ($1.timestamp ?? 0) }?
+        .planFilePath
+}
+
+/// Materialize the plan implementation divider from the durable user-turn flag.
+/// Older live clients can already supply this renderer-only divider, so keep it
+/// and do not add a duplicate. This matches the Desktop grouping behavior.
+func materializePlanImplementationDividers(_ messages: [Message]) -> [Message] {
+    var result: [Message] = []
+    var hasDividerInTurn = false
+
+    for message in messages {
+        if message.role == .user, message.implementationPhase == true, !hasDividerInTurn {
+            let timestamp = message.timestamp ?? Date().timeIntervalSince1970 * 1000
+            let path = planPath(at: timestamp, in: messages)
+            let slug = path.map { URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent }
+            let formatter = DateFormatter()
+            formatter.dateStyle = .none
+            formatter.timeStyle = .short
+            let time = formatter.string(from: Date(timeIntervalSince1970: timestamp / 1000))
+            let suffix = slug.flatMap { $0.isEmpty ? nil : " · \($0)" } ?? ""
+            var divider = Message(
+                id: "\(message.id):implementation-divider",
+                role: .system,
+                content: "── Implementing plan at \(time)\(suffix) ──",
+                timestamp: timestamp
+            )
+            divider.planFilePath = path
+            result.append(divider)
+        }
+
+        result.append(message)
+        if message.role == .user {
+            hasDividerInTurn = false
+        } else if isImplementationDivider(message) {
+            hasDividerInTurn = true
+        }
+    }
+    return result
+}
+
 // MARK: - Grouping
 
 /// Buffer-and-flush: accumulate consecutive `.tool` messages, flush them as a
@@ -134,7 +184,9 @@ func filterPriorUserContentHashAttachments(_ messages: [Message]) -> [Message] {
 /// user boundaries into `.agentTurn` items (mirroring the desktop's
 /// turn-grouping algorithm).
 func groupConversationItems(_ messages: [Message], unifiedTurnView: Bool = false) -> [ConversationItem] {
-    let displayMessages = filterPriorUserContentHashAttachments(messages)
+    let displayMessages = materializePlanImplementationDividers(
+        filterPriorUserContentHashAttachments(messages)
+    )
     if unifiedTurnView {
         return groupConversationItemsUnified(displayMessages)
     }

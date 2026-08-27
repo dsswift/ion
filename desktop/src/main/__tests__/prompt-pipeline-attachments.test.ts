@@ -30,7 +30,7 @@ const mocks = vi.hoisted(() => {
   const clearConversationFileMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(undefined) ?? function () { return Promise.resolve() }
   // getTabStatusMock: default fresh tab (no conversationId, no prompts since
   // checkpoint). Attachment tests exercise the non-slash desktop path so
-  // isFirstPromptForTab is not the focus, but the mock must exist so the
+  // freshness is not the focus, but the mock must exist so the
   // pipeline's freshness guard doesn't throw.
   const getTabStatusMock = (globalThis as any).vi?.fn?.()?.mockReturnValue?.({ conversationId: null, promptCountSinceCheckpoint: 0 }) ?? function () { return { conversationId: null, promptCountSinceCheckpoint: 0 } }
   const notifyConversationClearedMock = (globalThis as any).vi?.fn?.() ?? function () {}
@@ -84,6 +84,7 @@ vi.mock('../state', () => {
     },
     sessionPlane: {
       submitPrompt: (...args: any[]) => mocks.submitPromptMock(...args),
+      ensureSession: vi.fn().mockResolvedValue({ ok: true }),
       setPermissionMode: (...args: any[]) => mocks.setPermissionModeMock(...args),
       getTabStatus: (...args: any[]) => mocks.getTabStatusMock(...args),
       notifyConversationCleared: (...args: any[]) => mocks.notifyConversationClearedMock(...args),
@@ -141,8 +142,8 @@ beforeEach(() => {
   mocks.notifyConversationClearedMock.mockReset()
   mocks.bridgeListeners.clear()
   _resetAwaitersForTests()
-  mocks.sendCommandMock.mockImplementation((key: string, command: string, _args: string) => {
-    setTimeout(() => emitBridgeEvent(key, { type: 'engine_command_result', command, commandError: '', message: `command executed: ${command}` }), 0)
+  mocks.sendCommandMock.mockImplementation((promptArgs: { key: string }, command: string, _args: string) => {
+    setTimeout(() => emitBridgeEvent(promptArgs.key, { type: 'engine_command_result', command, commandError: '', message: `command executed: ${command}` }), 0)
   })
 })
 
@@ -173,6 +174,20 @@ describe('processIncomingPrompt — rawAttachments encoding', () => {
     // Bytes merged onto the wire field the bridge forwards to the engine.
     expect(submitted.imageAttachments).toHaveLength(1)
     expect(submitted.imageAttachments[0].mediaType).toBe('application/pdf')
+  })
+
+  it('slash command carries encoded attachments on its single command request', async () => {
+    const opts = { prompt: '/review', projectPath: '/proj' } as any
+    await processIncomingPrompt({
+      tabId: 'tab-1', text: '/review', reqId: 'req-slash-att', source: 'desktop',
+      hasExtensions: false, projectPath: '/proj', runOptions: opts,
+      attachments: [{ type: 'file', name: 'report.pdf', path: '/Users/someone/report.pdf' }],
+    })
+    expect(mocks.sendCommandMock).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'tab-1', imageAttachments: expect.any(Array) }),
+      'review', '',
+    )
+    expect(mocks.submitPromptMock).not.toHaveBeenCalled()
   })
 
   it('desktop prompt without attachments leaves runOptions untouched', async () => {

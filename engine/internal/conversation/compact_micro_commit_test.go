@@ -67,3 +67,66 @@ func TestCommitMicroCompactionPersistsContentWithoutBoundary(t *testing.T) {
 		t.Fatal("persisted micro compaction did not retain cleared tool-result sentinel")
 	}
 }
+
+func TestCommitMicroCompactionPreservesHardCompactionBoundary(t *testing.T) {
+	dir := t.TempDir()
+	conv := CreateConversation("hard-then-micro", "", "model")
+	AddUserMessage(conv, "old prompt")
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "old answer"}}, types.LlmUsage{})
+	AddUserMessage(conv, "retained prompt")
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "tool_use", ID: "tool", Name: "Read", Input: map[string]any{}}}, types.LlmUsage{})
+	isError := false
+	AddToolResults(conv, []ToolResultEntry{{ToolUseID: "tool", Content: strings.Repeat("large output ", 40), IsError: isError}})
+	AddUserMessage(conv, "recent prompt")
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "recent answer"}}, types.LlmUsage{})
+
+	if _, err := CommitCompaction(conv, TokenBudgetCut{CutIndex: 2, Dropped: 2}, CompactionData{}, BuildCompactBoundaryMessage(CompactMeta{})); err != nil {
+		t.Fatalf("CommitCompaction: %v", err)
+	}
+	if !IsCompactBoundary(conv.Messages[0]) {
+		t.Fatal("hard compaction did not add a boundary to active context")
+	}
+	if cleared := MicroCompact(conv, 1); cleared != 1 {
+		t.Fatalf("MicroCompact cleared %d blocks, want 1", cleared)
+	}
+	if err := CommitMicroCompaction(conv); err != nil {
+		t.Fatalf("CommitMicroCompaction after hard compaction: %v", err)
+	}
+	if err := Save(conv, dir); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	reloaded, err := Load(conv.ID, dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(reloaded.Messages) == 0 || !IsCompactBoundary(reloaded.Messages[0]) {
+		t.Fatal("reloaded conversation lost its hard-compaction boundary")
+	}
+	foundCleared := false
+	for _, message := range reloaded.Messages {
+		for _, block := range contentToBlockSlice(message.Content) {
+			foundCleared = foundCleared || block.Content == ClearedToolResultSentinel
+		}
+	}
+	if !foundCleared {
+		t.Fatal("reloaded conversation lost micro-compacted tool output")
+	}
+}
+
+func TestCommitMicroCompactionRejectsMessageUsingCompactionEntryID(t *testing.T) {
+	conv := CreateConversation("micro-identity", "", "model")
+	AddUserMessage(conv, "old prompt")
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "old answer"}}, types.LlmUsage{})
+	AddUserMessage(conv, "retained prompt")
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "retained answer"}}, types.LlmUsage{})
+
+	if _, err := CommitCompaction(conv, TokenBudgetCut{CutIndex: 2, Dropped: 2}, CompactionData{}, BuildCompactBoundaryMessage(CompactMeta{})); err != nil {
+		t.Fatalf("CommitCompaction: %v", err)
+	}
+	conv.Messages[1].EntryID = conv.Messages[0].EntryID
+
+	err := CommitMicroCompaction(conv)
+	if err == nil || !strings.Contains(err.Error(), "message entry") || !strings.Contains(err.Error(), "want message") {
+		t.Fatalf("CommitMicroCompaction error = %v, want regular-message identity rejection", err)
+	}
+}

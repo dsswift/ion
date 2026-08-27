@@ -1,6 +1,6 @@
 import { IPC } from '../../shared/types'
 import { log as _log, warn as _warn, error as _error } from '../logger'
-import { state, modelCache, deviceFocusMap, engineBridge } from '../state'
+import { state, modelCache, deviceFocusMap, engineBridge, enterprisePolicyCache } from '../state'
 import { broadcast, startTerminalOutputFlushing, stopTerminalOutputFlushing } from '../broadcast'
 import { readSettings, writeSettings } from '../settings-store'
 import { RemoteTransport } from './transport'
@@ -13,6 +13,7 @@ import { getRemoteTabStates } from './snapshot'
 import { startGitWatcherBridge, stopGitWatcherBridge } from './git-watcher-bridge'
 import { focusState } from '../git/focus-state'
 import { recentLocalDirectories } from '../../shared/recent-directories'
+import { effectiveProjects } from '../../shared/project-registry'
 import { probeRelayAuthConfig, composeOidcScope } from './relay-auth'
 import {
   clearResolvedRelayAuth,
@@ -268,9 +269,21 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
         const peerRecentDirs = recentLocalDirectories(persistedPeerRecentDirs)
         const tabGroupMode = peerSettings.tabGroupMode || 'off'
         const tabGroups = Array.isArray(peerSettings.tabGroups) ? peerSettings.tabGroups.map((g: any) => ({ id: g.id, label: g.label, isDefault: g.isDefault, order: g.order })) : []
+        const managedProjects = enterprisePolicyCache.policy?.newConversationDefaults?.projects ?? []
+        const projects = effectiveProjects(peerSettings.projects ?? {}, managedProjects.map((managed) => ({ directory: managed.directory, name: managed.name, isDefault: managed.default, profileAction: managed.profileName ? 'profile' : 'ask', profileSource: managed.profileName ? 'enterprise-project' : undefined }))).map((project) => ({
+          directory: project.dir,
+          displayName: project.displayName,
+          isDefault: project.managed ? managedProjects.some((managed) => managed.directory === project.dir && managed.default === true) : project.entry.isDefault === true,
+          managed: project.managed,
+          profileAction: project.profileAction,
+          ...(project.profileId ? { profileId: project.profileId } : {}),
+          ...(project.profileSource ? { profileSource: project.profileSource } : {}),
+          hasOverride: project.entry.profileOverride !== undefined,
+        }))
         state.remoteTransport?.send({
           type: 'desktop_snapshot',
           tabs,
+          projects,
           recentDirectories: peerRecentDirs,
           tabGroupMode,
           tabGroups,

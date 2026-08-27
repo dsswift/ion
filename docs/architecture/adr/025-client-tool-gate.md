@@ -53,6 +53,18 @@ the declared fallback. `gateKind` selects the exchange:
   `gateContent`/`gateIsError`. Client tools join the session's tool list
   beside MCP and extension tools — the third tool provision path.
 
+A tool answer may also carry `gateImages`: base64 `{media_type, data}` entries
+the engine routes through its normal tool-image pipeline. Without it a client
+tool could only describe what it saw, which is not enough for a screenshot
+tool. The field is additive, so a text-only client is unaffected.
+
+Every request carries `gateOrigin`: `model` for the normal tool loop, or
+`extension` when the call came from an extension's `ctx.callTool()`. The engine
+attaches no meaning to it. It exists because a client policy may reasonably
+trust harness code more than an LLM — the desktop's browser tools let extension
+code lift an isolation setting that a model may only tighten. Absent means
+`model`, which is the less privileged reading.
+
 ### The engine owns the mechanism and no policy
 
 The engine suspends the call, transports the question, bounds the wait, and
