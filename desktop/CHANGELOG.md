@@ -10,6 +10,23 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.89.0](https://github.com/dsswift/ion/compare/desktop-v1.88.0...desktop-v1.89.0) (2026-08-27)
+
+### Features
+
+* **desktop:** project active polls ([2d1406b](https://github.com/dsswift/ion/commit/2d1406baf37a14c285b4898e00c904e71bcde7aa))
+
+### Bug Fixes
+
+* **desktop:** renew relay sockets after wake ([9dcaf69](https://github.com/dsswift/ion/commit/9dcaf69e840a15adce4e8f2b3dce3710b8a56a60))
+* **desktop:** confirm mobile relay upgrades ([458697a](https://github.com/dsswift/ion/commit/458697a7e4d292b429cefbd8d06b222f589cff13))
+* **desktop:** align resource snapshots across clients ([9c07e18](https://github.com/dsswift/ion/commit/9c07e188e840c8ec95d021fa5e83a38568820a5f))
+* **desktop:** pin single-commit squash input ([085b914](https://github.com/dsswift/ion/commit/085b914cbe99258937b16198a359c104667aa7eb))
+* **desktop:** preserve guided questions payloads ([8ace51e](https://github.com/dsswift/ion/commit/8ace51ecc5a67365e1331aaf4e27b5e9c53c8f35))
+* **desktop:** hide question card instructions ([fc3ed89](https://github.com/dsswift/ion/commit/fc3ed89268a5d0fdae2840004a453e4b9b3d1f19))
+* **desktop:** compare dispatch wire fields between the two sdks ([e5560e4](https://github.com/dsswift/ion/commit/e5560e4af6ce2eb654934d228990cde7f0c7b348))
+* **desktop:** align snapshot cache test with catalog ([27087f3](https://github.com/dsswift/ion/commit/27087f3eb308d79253a78dfad6563e6ce37736d0))
+
 ## [1.88.0](https://github.com/dsswift/ion/compare/desktop-v1.87.1...desktop-v1.88.0) (2026-08-27)
 
 ### Features

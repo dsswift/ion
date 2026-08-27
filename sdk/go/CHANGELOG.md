@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.8](https://github.com/dsswift/ion/compare/sdk/go-v0.1.7...sdk/go-v0.1.8) (2026-08-27)
+
+### Features
+
+* **sdk:** expose dispatch tool count and work expectation ([7af10a0](https://github.com/dsswift/ion/commit/7af10a04da1b4533ba4916548b71b1219fe4431a))
+
 ## [0.1.7](https://github.com/dsswift/ion/compare/sdk/go-v0.1.6...sdk/go-v0.1.7) (2026-08-25)
 
 ### Features

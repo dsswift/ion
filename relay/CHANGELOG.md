@@ -10,6 +10,16 @@ clients to Ion Engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.8.0](https://github.com/dsswift/ion/compare/relay-v1.7.3...relay-v1.8.0) (2026-08-27)
+
+### Features
+
+* **relay:** classify authentication failures safely ([20be6c0](https://github.com/dsswift/ion/commit/20be6c0557dc5838aae017fa608ab003fc8aaa12))
+
+### Bug Fixes
+
+* **relay:** confirm mobile relay upgrades ([f3c8c21](https://github.com/dsswift/ion/commit/f3c8c21fa9246ca8fdc3c6b44b096227c3f3260f))
+
 ## [1.7.3](https://github.com/dsswift/ion/compare/relay-v1.7.2...relay-v1.7.3) (2026-08-23)
 
 ### Bug Fixes

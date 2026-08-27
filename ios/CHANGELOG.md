@@ -10,6 +10,21 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.70.0](https://github.com/dsswift/ion/compare/ios-v1.69.0...ios-v1.70.0) (2026-08-27)
+
+### Features
+
+* **ios:** mirror active polls ([32f811b](https://github.com/dsswift/ion/commit/32f811bb4a602f89499cec45d1b85596f17bf228))
+
+### Bug Fixes
+
+* **ios:** compress outbound relay payloads ([9ee2601](https://github.com/dsswift/ion/commit/9ee26012ec956f9d3c312d659b369b812810084c))
+* **ios:** confirm mobile relay upgrades ([36cad4a](https://github.com/dsswift/ion/commit/36cad4a161c6429b3d71413f5902d10746406d9f))
+* **ios:** align resource snapshots across clients ([3b215dd](https://github.com/dsswift/ion/commit/3b215dd82c91560c4b14d14a0dc62da0b60ea858))
+* **ios:** reassemble guided questions payloads ([96de595](https://github.com/dsswift/ion/commit/96de59525cffd8c365149a9b4cc815a4f452f4f5))
+* **ios:** render structured answers ([97ab146](https://github.com/dsswift/ion/commit/97ab146b81fdb1ceb3ecaade373866da9604d3fd))
+* **ios:** account for snapshot-projected poll events ([4a6e726](https://github.com/dsswift/ion/commit/4a6e7266108d143d47701a316ee84412f507b813))
+
 ## [1.69.0](https://github.com/dsswift/ion/compare/ios-v1.68.1...ios-v1.69.0) (2026-08-27)
 
 ### Features

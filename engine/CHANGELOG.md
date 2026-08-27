@@ -13,6 +13,23 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.78.0](https://github.com/dsswift/ion/compare/engine-v1.77.0...engine-v1.78.0) (2026-08-27)
+
+### Features
+
+* **engine:** add evidenced poll workflow ([eb0cdbe](https://github.com/dsswift/ion/commit/eb0cdbec5a0c5d9ce1a4e1f3ad3e316f33b3371a))
+
+### Bug Fixes
+
+* **engine:** support forced oidc token refresh ([d4d9d9d](https://github.com/dsswift/ion/commit/d4d9d9dc60f907d5f18207184a04cce8adc42168))
+* **engine:** align resource snapshots across clients ([b1c5049](https://github.com/dsswift/ion/commit/b1c5049ab143738e934f75529279eecef15cfbff))
+* **engine:** validate client tool input ([916f5f1](https://github.com/dsswift/ion/commit/916f5f11345dc85191da605f661fee34c4763486))
+* **engine:** preserve client prompt options ([2700a73](https://github.com/dsswift/ion/commit/2700a738be8c1df29786f552e8029e13e373c580))
+* **engine:** report dispatch tool count and gate declared work ([c373cb4](https://github.com/dsswift/ion/commit/c373cb427577613b38711c99dde49f9a602409de))
+* **engine:** pin context budget against production file sizes ([a0db589](https://github.com/dsswift/ion/commit/a0db589363e0b50d76e88f90a5f5ba247d8a1756))
+* **engine:** mirror dispatch result fields in the typescript sdk ([a60a380](https://github.com/dsswift/ion/commit/a60a380a1839dd987c48db9ef7373df85fa690ad))
+* **engine:** mirror dispatch result fields in the typescript sdk ([50d3798](https://github.com/dsswift/ion/commit/50d37988432bff2a7495a256d43ee73e89984bc8))
+
 ## [1.77.0](https://github.com/dsswift/ion/compare/engine-v1.76.0...engine-v1.77.0) (2026-08-27)
 
 ### Features
