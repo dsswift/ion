@@ -122,6 +122,11 @@ type ClientCommand struct {
 	// provider's configured default audience.
 	OidcAudience string `json:"oidcAudience,omitempty"`
 
+	// oidc_token: bypass a fresh cached or base-grant access token and use
+	// the provider refresh grant. Providers without the optional refresh
+	// capability retain their normal token behavior.
+	OidcForceRefresh bool `json:"oidcForceRefresh,omitempty"`
+
 	// mcp_add / mcp_remove / mcp_login / mcp_logout: which configured MCP
 	// server the command applies to. Matches the key under engine.json's
 	// mcpServers map.

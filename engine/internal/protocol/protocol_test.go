@@ -980,6 +980,16 @@ func TestParseClientCommand_OidcBeginLoginDefaultFlow(t *testing.T) {
 	}
 }
 
+func TestParseClientCommand_OidcTokenForceRefresh(t *testing.T) {
+	cmd := ParseClientCommand(`{"cmd":"oidc_token","oidcScope":"api://example/read","oidcForceRefresh":true}`)
+	if cmd == nil {
+		t.Fatal("expected valid oidc_token command")
+	}
+	if !cmd.OidcForceRefresh {
+		t.Fatal("oidcForceRefresh did not decode")
+	}
+}
+
 func TestParseClientCommand_OidcLogoutAndIdentity(t *testing.T) {
 	for _, name := range []string{"oidc_logout", "oidc_identity"} {
 		raw := `{"cmd":"` + name + `","requestId":"r-x"}`

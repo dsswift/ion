@@ -428,6 +428,38 @@ func TestIdentityManager_GetToken_BaseScopeFromStoredGrant(t *testing.T) {
 	}
 }
 
+// TestIdentityManager_ForceRefreshBypassesFreshTokens asserts an explicit
+// refresh does not return a fresh base-grant token.
+func TestIdentityManager_ForceRefreshBypassesFreshTokens(t *testing.T) {
+	var calls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "forced-at", "token_type": "Bearer", "expires_in": 3600,
+		})
+	}))
+	defer server.Close()
+
+	m := testIdentityManager(t, server.URL)
+	seedGrant(t, m, &TokenResponse{
+		AccessToken: "base-at", RefreshToken: "rt-1", Scope: "openid profile offline_access", ExpiresAt: time.Now().Add(time.Hour),
+	})
+
+	if token, err := m.GetToken(context.Background(), ""); err != nil || token != "base-at" {
+		t.Fatalf("GetToken() = %q, %v; want fresh base token", token, err)
+	}
+	token, _, err := m.ForceRefreshTokenWithAudienceExpiry(context.Background(), "", "")
+	if err != nil {
+		t.Fatalf("ForceRefreshTokenWithAudienceExpiry: %v", err)
+	}
+	if token != "forced-at" {
+		t.Errorf("forced token = %q, want forced-at", token)
+	}
+	if calls.Load() != 1 {
+		t.Errorf("refresh calls = %d, want 1", calls.Load())
+	}
+}
+
 // TestIdentityManager_GetToken_RefreshesExpired asserts an expired base
 // grant triggers the refresh grant instead of returning the stale token.
 func TestIdentityManager_GetToken_RefreshesExpired(t *testing.T) {

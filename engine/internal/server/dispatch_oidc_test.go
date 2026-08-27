@@ -315,6 +315,42 @@ func TestDispatchOidc_TokenMint(t *testing.T) {
 	}
 }
 
+func TestDispatchOidc_TokenForceRefresh(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	var calls int
+	mint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "forced-at", "token_type": "Bearer", "expires_in": 3600,
+		})
+	}))
+	defer mint.Close()
+
+	srv := newShortPathTestServer(t, newMockBackend())
+	im := auth.NewIdentityManager("entra", types.OAuthConfig{ClientID: "client-1", TokenURL: mint.URL}, 0)
+	srv.SetIdentityManager(im)
+	if err := im.CompleteLogin(&auth.TokenResponse{
+		AccessToken: "base-at", RefreshToken: "rt-1", ExpiresAt: time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("seed grant: %v", err)
+	}
+
+	conn := dialServer(t, srv)
+	t.Cleanup(func() { conn.Close() })
+	sendJSON(t, conn, map[string]interface{}{
+		"cmd": "oidc_token", "requestId": "req-force", "oidcForceRefresh": true,
+	})
+
+	lines := readLines(t, conn, 1, 3*time.Second)
+	if !strings.Contains(strings.Join(lines, "\n"), "forced-at") {
+		t.Fatalf("oidc_token force-refresh result missing forced token: %v", lines)
+	}
+	if calls != 1 {
+		t.Fatalf("refresh calls = %d, want 1", calls)
+	}
+}
+
 func TestDispatchOidc_Logout(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
