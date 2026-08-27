@@ -142,6 +142,12 @@ func (b *ApiBackend) executeTools(
 			// emit without correlation.
 			defer installAmbientLogging(gCtx)()
 
+			// Validate client-declared tool input before any engine policy,
+			// hook, parking, or client routing can act on the call.
+			if b.validateClientToolCall(run, block, results, i) {
+				return nil
+			}
+
 			// Permission check (Step 3)
 			if permEng != nil {
 				// Classify first so the tier flows into the permission engine

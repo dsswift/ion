@@ -264,6 +264,40 @@ func TestStartSession_ReplacesToolGateDeclaration(t *testing.T) {
 	}
 }
 
+func TestClientTool_InvalidInputNeverRoutesOrBecomesPending(t *testing.T) {
+	key, runID := "ct-invalid-input", "run-invalid-input"
+	mgr, _ := clientToolTestManager(t, key, runID)
+	s := mgr.sessions[key]
+	s.config.ToolGate = &types.ToolGateConfig{
+		Enabled: true,
+		ClientTools: []types.ClientToolDef{{
+			Name: "SearchCatalog",
+			InputSchema: map[string]any{
+				"type":       "object",
+				"required":   []any{"query"},
+				"properties": map[string]any{"query": map[string]any{"type": "string"}},
+			},
+		}},
+	}
+
+	ec := newEventCollector(mgr)
+	var runCfg backend.RunConfig
+	wireClientToolsForTest(mgr, s, key, &runCfg)
+	result, err := runCfg.McpToolRouter(context.Background(), "SearchCatalog", map[string]interface{}{"query": 42})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil || !result.IsError || !strings.Contains(result.Content, "Invalid input") {
+		t.Fatalf("invalid input must return a normal tool error, got %+v", result)
+	}
+	if got := len(ec.byType("engine_tool_gate_request")); got != 0 {
+		t.Fatalf("invalid input must not route to the client, got %d requests", got)
+	}
+	if got := len(ec.byType("engine_client_tool_state")); got != 0 {
+		t.Fatalf("invalid input must not become pending, got %d state events", got)
+	}
+}
+
 // TestStatusFields_PendingClientToolIsPendingWork pins the HasPendingWork
 // inclusion: an open machine client-tool call is accepted work, so a status
 // snapshot must not read as terminal while one is pending.

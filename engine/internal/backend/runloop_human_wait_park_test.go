@@ -201,6 +201,155 @@ func TestExecuteTools_HumanWaitRefusesSiblingCalls(t *testing.T) {
 	}
 }
 
+func requiredStringSchema(field string) map[string]any {
+	return map[string]any{
+		"type":       "object",
+		"required":   []any{field},
+		"properties": map[string]any{field: map[string]any{"type": "string"}},
+	}
+}
+
+func TestExecuteTools_InvalidMachineClientToolNeverRoutes(t *testing.T) {
+	b := NewApiBackend()
+	b.OnNormalized(func(_ string, _ types.NormalizedEvent) {})
+	telem := &mockTelemetry{}
+	var routerCalls atomic.Int32
+	run := &activeRun{
+		requestID: "test-invalid-machine",
+		cfg: &RunConfig{
+			Telemetry: telem,
+			ClientToolInputValidators: map[string]func(map[string]interface{}) error{
+				"SearchCatalog": CompileClientToolInputValidator(requiredStringSchema("query")),
+			},
+			McpToolRouter: func(_ context.Context, _ string, _ map[string]interface{}) (*types.ToolResult, error) {
+				routerCalls.Add(1)
+				return &types.ToolResult{Content: "should never run"}, nil
+			},
+		},
+	}
+	blocks := []types.LlmContentBlock{{Name: "SearchCatalog", ID: "tu-invalid", Input: map[string]interface{}{"query": 42}}}
+	results, err := b.executeTools(context.Background(), run, blocks, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if routerCalls.Load() != 0 {
+		t.Fatal("invalid machine client tool input reached client routing")
+	}
+	if len(results) != 1 || !results[0].IsError || !strings.Contains(results[0].Content, "Invalid input") {
+		t.Fatalf("invalid input must return a normal tool error, got %+v", results)
+	}
+	failures := telem.eventsByName("tool.failure")
+	if !failureCategories(telem)["input_validation"] {
+		t.Error("expected tool.failure telemetry with category input_validation")
+	}
+	if len(failures) != 1 {
+		t.Fatalf("expected one tool.failure event, got %d", len(failures))
+	}
+	preview, _ := failures[0].Payload["error_preview"].(string)
+	if len(preview) == 0 || len(preview) > clientToolValidationDiagnosticLimit {
+		t.Fatalf("validation diagnostic must be present and bounded, length=%d", len(preview))
+	}
+}
+
+func TestExecuteTools_InvalidHumanWaitDoesNotParkOrRefuseSibling(t *testing.T) {
+	b := NewApiBackend()
+	b.OnNormalized(func(_ string, _ types.NormalizedEvent) {})
+	var siblingCalls atomic.Int32
+	run := &activeRun{
+		requestID: "test-invalid-human-wait",
+		cfg: &RunConfig{
+			HumanWaitClientTools: map[string]bool{"AskUserQuestions": true},
+			ClientToolInputValidators: map[string]func(map[string]interface{}) error{
+				"AskUserQuestions": CompileClientToolInputValidator(requiredStringSchema("title")),
+				"BenchMemberFile":  CompileClientToolInputValidator(nil),
+			},
+			McpToolRouter: func(_ context.Context, name string, _ map[string]interface{}) (*types.ToolResult, error) {
+				if name == "BenchMemberFile" {
+					siblingCalls.Add(1)
+				}
+				return &types.ToolResult{Content: "sibling completed"}, nil
+			},
+		},
+	}
+	blocks := []types.LlmContentBlock{
+		{Name: "AskUserQuestions", ID: "tu-invalid-question", Input: map[string]interface{}{"title": 42}},
+		{Name: "BenchMemberFile", ID: "tu-sibling", Input: map[string]interface{}{}},
+	}
+	results, err := b.executeTools(context.Background(), run, blocks, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if siblingCalls.Load() != 1 {
+		t.Fatalf("valid sibling must remain active, calls=%d", siblingCalls.Load())
+	}
+	run.mu.Lock()
+	parked := run.parkedHumanWait
+	denials := len(run.permissionDenials)
+	run.mu.Unlock()
+	if parked || denials != 0 {
+		t.Fatalf("invalid human-wait call must not park: parked=%v denials=%d", parked, denials)
+	}
+	if !results[0].IsError || results[1].IsError || results[1].Content != "sibling completed" {
+		t.Fatalf("unexpected results: %+v", results)
+	}
+}
+
+func TestExecuteTools_ValidHumanWaitDoesNotSuppressInvalidSiblingError(t *testing.T) {
+	b := NewApiBackend()
+	b.OnNormalized(func(_ string, _ types.NormalizedEvent) {})
+	run := &activeRun{
+		requestID: "test-valid-human-invalid-sibling",
+		cfg: &RunConfig{
+			HumanWaitClientTools: map[string]bool{"AskUserQuestions": true},
+			ClientToolInputValidators: map[string]func(map[string]interface{}) error{
+				"AskUserQuestions": CompileClientToolInputValidator(requiredStringSchema("title")),
+				"SearchCatalog":    CompileClientToolInputValidator(requiredStringSchema("query")),
+			},
+		},
+	}
+	blocks := []types.LlmContentBlock{
+		{Name: "AskUserQuestions", ID: "tu-question", Input: map[string]interface{}{"title": "Choose"}},
+		{Name: "SearchCatalog", ID: "tu-invalid-sibling", Input: map[string]interface{}{"query": 42}},
+	}
+	results, err := b.executeTools(context.Background(), run, blocks, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[0].IsError || !results[1].IsError || !strings.Contains(results[1].Content, "Invalid input") {
+		t.Fatalf("valid wait must park while invalid sibling keeps validation error: %+v", results)
+	}
+}
+
+func TestExecuteTools_ValidLargeHumanWaitStillParks(t *testing.T) {
+	b := NewApiBackend()
+	b.OnNormalized(func(_ string, _ types.NormalizedEvent) {})
+	largeTitle := strings.Repeat("x", 256*1024)
+	run := &activeRun{
+		requestID: "test-large-human-wait",
+		cfg: &RunConfig{
+			HumanWaitClientTools: map[string]bool{"AskUserQuestions": true},
+			ClientToolInputValidators: map[string]func(map[string]interface{}) error{
+				"AskUserQuestions": CompileClientToolInputValidator(requiredStringSchema("title")),
+			},
+		},
+	}
+	blocks := []types.LlmContentBlock{{Name: "AskUserQuestions", ID: "tu-large", Input: map[string]interface{}{"title": largeTitle}}}
+	results, err := b.executeTools(context.Background(), run, blocks, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	run.mu.Lock()
+	parked := run.parkedHumanWait
+	denials := append([]types.PermissionDenial(nil), run.permissionDenials...)
+	run.mu.Unlock()
+	if !parked || len(denials) != 1 {
+		t.Fatalf("valid large call must park unchanged: parked=%v denials=%d", parked, len(denials))
+	}
+	if denials[0].ToolInput["title"] != largeTitle || results[0].IsError {
+		t.Fatal("valid large input was rejected or changed")
+	}
+}
+
 // TestExecuteTools_HumanWaitAloneStillParks guards the boundary: the
 // pre-scan must not change the ordinary single-call case.
 func TestExecuteTools_HumanWaitAloneStillParks(t *testing.T) {

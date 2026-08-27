@@ -369,6 +369,10 @@ type RunConfig struct {
 	// change is an internal refactor.
 	McpConnections []*mcp.Connection
 	McpToolRouter  func(ctx context.Context, name string, input map[string]interface{}) (*types.ToolResult, error)
+	// ClientToolInputValidators validates every client-declared tool call before
+	// machine routing or human-wait parking. A missing entry means the tool was
+	// not declared by the client. Validators are compiled once per run.
+	ClientToolInputValidators map[string]func(map[string]interface{}) error
 	// HumanWaitClientTools names the client-declared tools (ClientToolDef.
 	// HumanWait) whose invocation PARKS the run instead of blocking a tool
 	// call: the loop records a PermissionDenial carrying the tool's full

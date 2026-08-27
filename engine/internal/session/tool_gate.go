@@ -172,6 +172,7 @@ func (m *Manager) wireClientTools(key string, opts *types.RunOptions, runCfg *ba
 	}
 
 	clientToolNames := make(map[string]bool, len(opts.ClientTools))
+	runCfg.ClientToolInputValidators = make(map[string]func(map[string]interface{}) error, len(opts.ClientTools))
 	for _, ct := range opts.ClientTools {
 		if existing[ct.Name] {
 			utils.LogWithFields(utils.LevelWarn, "session.toolgate", "client tool shadows an existing external tool; skipped", map[string]any{
@@ -183,6 +184,7 @@ func (m *Manager) wireClientTools(key string, opts *types.RunOptions, runCfg *ba
 		// execution-policy flag that must never leak into the provider schema.
 		runCfg.ExternalTools = append(runCfg.ExternalTools, ct.LlmToolDef())
 		clientToolNames[ct.Name] = true
+		runCfg.ClientToolInputValidators[ct.Name] = backend.CompileClientToolInputValidator(ct.InputSchema)
 		if ct.HumanWait {
 			if runCfg.HumanWaitClientTools == nil {
 				runCfg.HumanWaitClientTools = make(map[string]bool)
