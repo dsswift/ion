@@ -118,7 +118,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   gitPanelRepoSectionsCollapsed: saved.gitPanelRepoSectionsCollapsed,
   inboxAutoSettleDays: saved.inboxAutoSettleDays,
   inboxAutoSettleOnMerge: saved.inboxAutoSettleOnMerge,
-  conversationNav: saved.conversationNav,
+  studioTabStripVisible: saved.studioTabStripVisible,
   projectSettingsVersion: saved.projectSettingsVersion,
   projects: saved.projects,
   excludedResourceKinds: saved.excludedResourceKinds,

@@ -56,7 +56,7 @@ export function isPersistedSettled(tab: {
  * Compute the clipboard payload for "Copy session id" against a tab and its
  * active conversation instance, or null when no id is available yet.
  *
- * Pure derivation shared between SettingsPopover's handler and its tests. For an
+ * Pure derivation shared by the conversation context-menu handlers and tests. For an
  * extension-hosted tab the payload is every conversation id the instance knows
  * (historical `conversationIds` plus the live `statusFields.sessionId`), one per
  * line; for a plain tab it is the single tab-level id. Returning null is the
@@ -67,19 +67,40 @@ export function isPersistedSettled(tab: {
  * a real id on a fresh tab — the regression this guards against was an empty
  * payload immediately after tab creation, before any prompt ran.
  */
+export interface SessionIdentityTab {
+  engineProfileId?: string | null
+  historicalSessionIds?: readonly string[]
+  conversationId?: string | null
+  lastKnownSessionId?: string | null
+  sessionIds?: readonly string[]
+}
+
+export interface SessionIdentityInstance {
+  conversationIds?: readonly string[]
+  statusFields?: { sessionId?: string | null } | null
+}
+
+/** Merge every known durable and live session id in historical-to-current order. */
+export function orderedSessionIds(
+  tab: SessionIdentityTab,
+  activeInstance?: SessionIdentityInstance | null,
+): string[] {
+  const ordered = [
+    ...(tab.sessionIds ?? []),
+    ...(tab.historicalSessionIds ?? []),
+    ...(activeInstance?.conversationIds ?? []),
+    tab.lastKnownSessionId,
+    tab.conversationId,
+    activeInstance?.statusFields?.sessionId,
+  ]
+  const seen = new Set<string>()
+  return ordered.filter((id): id is string => typeof id === 'string' && id.length > 0 && !seen.has(id) && !!seen.add(id))
+}
+
 export function computeSessionIdCopyPayload(
-  tab: { engineProfileId: string | null; conversationId?: string | null; lastKnownSessionId?: string | null },
-  activeInstance: { conversationIds: string[]; statusFields?: { sessionId?: string | null } | null } | null,
+  tab: SessionIdentityTab,
+  activeInstance: SessionIdentityInstance | null,
 ): string | null {
-  if (tabHasExtensions(tab)) {
-    if (!activeInstance) return null
-    const ids = activeInstance.conversationIds
-    const current = activeInstance.statusFields?.sessionId
-    const allIds = current && !ids.includes(current) ? [...ids, current] : ids
-    if (allIds.length === 0) return null
-    return allIds.join('\n')
-  }
-  const sessionId = tab.conversationId || tab.lastKnownSessionId
-  if (!sessionId) return null
-  return sessionId
+  const ids = orderedSessionIds(tab, activeInstance)
+  return ids.length > 0 ? ids.join('\n') : null
 }

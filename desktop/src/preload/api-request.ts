@@ -235,6 +235,8 @@ export const requestApi = {
     ipcRenderer.invoke(IPC.DELETE_STORED_CONVERSATIONS, sessionIds),
   loadChainHistory: (sessionIds: string[]) =>
     ipcRenderer.invoke(IPC.LOAD_CHAIN_HISTORY, sessionIds),
+  loadConversationTranscript: (tabId: string) =>
+    ipcRenderer.invoke(IPC.LOAD_CONVERSATION_TRANSCRIPT, tabId),
 
   // ─── Conversation backup ───
   conversationExportPreview: (scope) => ipcRenderer.invoke(IPC.CONVERSATION_EXPORT_PREVIEW, { scope }),

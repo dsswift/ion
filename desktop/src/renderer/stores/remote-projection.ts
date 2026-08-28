@@ -30,7 +30,7 @@ import type {
 } from '../../shared/remote-projection-types'
 import type { TabState, TerminalPaneState, ConversationPane, ResourceItem } from '../../shared/types'
 import { resourceIdentity } from '../../shared/resource-identity'
-import { tabHasExtensions } from '../../shared/tab-predicates'
+import { orderedSessionIds, tabHasExtensions } from '../../shared/tab-predicates'
 import { settlingIsPermanent } from '../../shared/worktree-conversations'
 import { effectiveRunningChildrenCount, waitingStateOfPane } from '../components/TabStripShared'
 import { activeQuestionsCount } from './questions-store'
@@ -427,6 +427,7 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
     backgroundShellCount: backgroundShellCount > 0 ? backgroundShellCount : undefined,
     hasPendingWork: hasPendingWork || undefined,
     conversationId: t.conversationId || null,
+    sessionIds: orderedSessionIds(t, activeInst),
     lastMessageContent: lastMsg,
     // The remote activity clock must include run completion. A tool-only tail
     // can finish after the last user/assistant message, and both iOS and the

@@ -113,6 +113,7 @@ export const IPC = {
 
   // Batch conversation loading (all sessions in a chain in one roundtrip)
   LOAD_CHAIN_HISTORY: "ion:load-chain-history",
+  LOAD_CONVERSATION_TRANSCRIPT: "ion:load-conversation-transcript",
 
   // Enterprise policy
   GET_ENTERPRISE_POLICY: "ion:get-enterprise-policy",

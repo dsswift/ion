@@ -1,118 +1,80 @@
-/**
- * tabs-session-chain.ts
- *
- * Session-chain resolution + pure pagination for `desktop_load_conversation`.
- *
- * iOS history is served from the ENGINE (`load_session_history` over the
- * daemon socket) — the same source the overlay and Studio hydrate from — so all
- * clients render one canonical transcript. The renderer is consulted only for
- * tab METADATA (conversation id, historical session ids, runtime status);
- * no message content ever crosses the renderer seam. When the renderer is
- * unavailable (desktop restart, window closed), the persisted tabs file
- * supplies the same metadata, and the engine daemon — which outlives the
- * renderer — supplies the messages.
- */
+import { existsSync, readFileSync } from 'fs'
+import { state } from '../../state'
+import { TABS_FILE } from '../../settings-store'
+import { log as _log } from '../../logger'
+import { orderedSessionIds, type SessionIdentityInstance, type SessionIdentityTab } from '../../../shared/tab-predicates'
+import type { Message } from '../../../shared/types'
+import type { RemoteMessage } from '../protocol-remote-tab'
 
-import { existsSync, readFileSync } from "fs";
-import { log as _log } from "../../logger";
-import { state } from "../../state";
-import { TABS_FILE } from "../../settings-store";
-import type { Message } from "../../../shared/types";
-import type { RemoteMessage } from "../protocol-remote-tab";
-
-function log(msg: string, fields?: Record<string, unknown>): void {
-  _log("main", msg, fields);
+function log(message: string, fields?: Record<string, unknown>): void {
+  _log('main', message, fields)
 }
 
 export interface TabSessionChain {
-  /** Engine session ids to load, in chain order (historical first). */
-  sessionIds: string[];
-  /** Renderer-reported runtime tab status ('running' | 'connecting' | ...). */
-  tabStatus?: string;
-  /** The tab's current conversation id (last element of the chain). */
-  conversationId: string | null;
+  sessionIds: string[]
+  tabStatus?: string
+  conversationId: string | null
+  source: 'renderer_cache' | 'persisted_active' | 'persisted_settled'
 }
 
-/**
- * Resolve the session-id chain for a tab: live renderer metadata first (it
- * tracks status and any not-yet-persisted chain growth), persisted tabs file
- * as the fallback when the renderer is unavailable.
- */
-export async function resolveTabSessionChain(
-  tabId: string,
-): Promise<TabSessionChain | null> {
-  const fromRenderer = await chainFromRenderer(tabId);
-  if (fromRenderer) return fromRenderer;
-
-  const fromDisk = chainFromPersistedTabs(tabId);
-  if (fromDisk) {
-    log("load_conversation: session chain resolved from persisted tabs", {
-      tab_id: tabId,
-      sessions: fromDisk.sessionIds.length,
-    });
-    return fromDisk;
-  }
-  return null;
-}
-
-/** Metadata-only renderer query: three scalars, no message content. */
-async function chainFromRenderer(
-  tabId: string,
-): Promise<TabSessionChain | null> {
-  if (!state.mainWindow) return null;
-  const escaped = tabId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-  try {
-    const meta = await state.mainWindow.webContents.executeJavaScript(`
-      (function() {
-        try {
-          var store = window.__Ion_SESSION_STORE__;
-          if (!store) return null;
-          var tab = store.getState().tabs.find(function(t) { return t.id === '${escaped}'; });
-          if (!tab) return null;
-          return {
-            conversationId: tab.conversationId || null,
-            historicalSessionIds: tab.historicalSessionIds || [],
-            status: tab.status || null,
-          };
-        } catch (e) { return null; }
-      })()
-    `);
-    if (!meta) return null;
-    const ids: string[] = [...(meta.historicalSessionIds || [])];
-    if (meta.conversationId) ids.push(meta.conversationId);
-    if (ids.length === 0) return null;
-    return {
-      sessionIds: ids,
-      tabStatus: meta.status || undefined,
-      conversationId: meta.conversationId,
-    };
-  } catch (err) {
-    log("load_conversation: renderer metadata query failed", {
-      tab_id: tabId,
-      error: (err as Error).message,
-    });
-    return null;
+interface PersistedRecord extends SessionIdentityTab {
+  id?: string
+  status?: string
+  conversationPane?: {
+    activeInstanceId?: string | null
+    instances?: Array<SessionIdentityInstance & { id?: string; currentSessionId?: string; sessions?: Array<{ id?: string }> }>
   }
 }
 
-/** Fallback: the persisted tabs file carries the same chain metadata. */
-function chainFromPersistedTabs(tabId: string): TabSessionChain | null {
+function activePersistedInstance(tab: PersistedRecord): SessionIdentityInstance | null {
+  const instances = tab.conversationPane?.instances ?? []
+  const activeId = tab.conversationPane?.activeInstanceId
+  const instance = instances.find((candidate) => candidate.id === activeId) ?? instances[0]
+  if (!instance) return null
+  return {
+    conversationIds: [
+      ...(instance.sessions ?? []).map((entry) => entry.id).filter((id): id is string => typeof id === 'string'),
+      ...(instance.conversationIds ?? []),
+      ...(instance.currentSessionId ? [instance.currentSessionId] : []),
+    ],
+    statusFields: instance.statusFields,
+  }
+}
+
+function fromRecord(tab: PersistedRecord, source: TabSessionChain['source']): TabSessionChain | null {
+  const sessionIds = orderedSessionIds(tab, activePersistedInstance(tab))
+  if (sessionIds.length === 0) return null
+  return {
+    sessionIds,
+    tabStatus: typeof tab.status === 'string' ? tab.status : undefined,
+    conversationId: tab.conversationId ?? sessionIds.at(-1) ?? null,
+    source,
+  }
+}
+
+export async function resolveTabSessionChain(tabId: string): Promise<TabSessionChain | null> {
+  const cached = state.rendererSnapshotCache?.tabs.find((tab) => tab.id === tabId)
+  if (cached) {
+    const sessionIds = orderedSessionIds(cached)
+    if (sessionIds.length > 0) {
+      log('load_conversation: session chain resolved', { tab_id: tabId, source: 'renderer_cache', sessions: sessionIds.length })
+      return { sessionIds, tabStatus: cached.status, conversationId: cached.conversationId ?? sessionIds.at(-1) ?? null, source: 'renderer_cache' }
+    }
+  }
+
   try {
-    if (!existsSync(TABS_FILE)) return null;
-    const data = JSON.parse(readFileSync(TABS_FILE, "utf-8"));
-    const tabs: any[] = Array.isArray(data?.tabs) ? data.tabs : [];
-    const tab = tabs.find((t) => t?.id === tabId);
-    if (!tab) return null;
-    const ids: string[] = [...(tab.historicalSessionIds || [])];
-    if (tab.conversationId) ids.push(tab.conversationId);
-    if (ids.length === 0) return null;
-    return { sessionIds: ids, conversationId: tab.conversationId || null };
-  } catch (err) {
-    log("load_conversation: persisted tabs read failed", {
-      tab_id: tabId,
-      error: (err as Error).message,
-    });
-    return null;
+    if (!existsSync(TABS_FILE)) return null
+    const data = JSON.parse(readFileSync(TABS_FILE, 'utf-8')) as { tabs?: PersistedRecord[]; settledHistory?: PersistedRecord[] } | PersistedRecord[]
+    const active = Array.isArray(data) ? data : (Array.isArray(data.tabs) ? data.tabs : [])
+    const settled = Array.isArray(data) ? [] : (Array.isArray(data.settledHistory) ? data.settledHistory : [])
+    const record = active.find((tab) => tab.id === tabId)
+    const source: TabSessionChain['source'] = record ? 'persisted_active' : 'persisted_settled'
+    const chain = fromRecord(record ?? settled.find((tab) => tab.id === tabId) ?? {}, source)
+    if (chain) log('load_conversation: session chain resolved', { tab_id: tabId, source, sessions: chain.sessionIds.length })
+    return chain
+  } catch (error) {
+    log('load_conversation: persisted tabs read failed', { tab_id: tabId, error: String(error) })
+    return null
   }
 }
 

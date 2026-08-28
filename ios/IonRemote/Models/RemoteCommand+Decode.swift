@@ -129,6 +129,11 @@ extension RemoteCommand {
             self = .tabReorderPin(assignments: try container.decode([PinOrderAssignment].self, forKey: .assignments))
         case .tabRegenerateTitle:
             self = .tabRegenerateTitle(tabId: try container.decode(String.self, forKey: .tabId))
+        case .requestTranscript:
+            self = .requestTranscript(
+                tabId: try container.decode(String.self, forKey: .tabId),
+                requestId: try container.decode(String.self, forKey: .requestId)
+            )
         case .reviewSettledTab:
             self = .reviewSettledTab(tabId: try container.decode(String.self, forKey: .tabId))
 

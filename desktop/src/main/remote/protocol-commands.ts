@@ -133,6 +133,7 @@ export type RemoteCommand =
   // misses engine instances.
   | { type: "desktop_reset_engine_session"; tabId: string; instanceId: string }
   | { type: "desktop_load_conversation"; tabId: string; before?: string }
+  | { type: "desktop_request_transcript"; tabId: string; requestId: string }
   // desktop_request_resend: iOS detected a forward seq gap; asks the desktop to
   // replay missing wire frames [fromSeq,toSeq] from its retransmit buffer (see
   // retransmit-buffer.ts). Makes the fire-and-forget wire self-healing for the

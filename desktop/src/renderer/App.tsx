@@ -344,7 +344,7 @@ export default function App() {
             {tabsReady && (<>
             {/* Tab strip — always mounted */}
             <div>
-              <TabStrip />
+              <TabStrip presentation="overlay" />
             </div>
 
             {/* Unified conversation view for EVERY non-terminal tab — plain

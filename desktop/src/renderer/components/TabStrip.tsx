@@ -5,14 +5,11 @@ import {
 } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 
-import { SettingsPopover } from './SettingsPopover'
 import { NotificationsBell } from './NotificationsPanel'
-import { StudioLauncherButton } from './StudioLauncherButton'
+import { OpenSettingsButton } from './OpenSettingsButton'
 import { BranchPickerDialog } from './BranchPickerDialog'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
-import { NewConversationPicker } from './NewConversationPicker'
-import type { NewConversationPickerTarget } from './new-conversation-picker-target'
 import { useTabGroups } from '../hooks/useTabGroups'
 import type { TabState } from '../../shared/types'
 import { useManualReorder } from '../hooks/useManualReorder'
@@ -29,7 +26,9 @@ import { WorkspaceStatusIndicator } from './WorkspaceStatusIndicator'
 import { useRenameTabWorktree } from '../hooks/useRenameTabWorktree'
 import { rError } from '../rendererLogger'
 
-export function TabStrip() {
+export type TabStripPresentation = 'overlay' | 'studio'
+
+export function TabStrip({ presentation = 'overlay' }: { presentation?: TabStripPresentation }) {
   const tabs = useSessionStore((s) => s.tabs)
   // No conversationPanes subscription here on purpose: each pill subscribes to
   // its OWN pane (TabStripTabPill), so instance changes re-render exactly the
@@ -56,7 +55,6 @@ export function TabStrip() {
   const [dirMenuTabId, setDirMenuTabId] = useState<string | null>(null)
   const [dirMenuAnchor, setDirMenuAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [dirPickerState, setDirPickerState] = useState<{ anchor: { x: number; y: number; bottom: number }; mode: 'terminal' } | null>(null)
-  const [convPicker, setConvPicker] = useState<{ key: number; target: NewConversationPickerTarget | null } | null>(null)
   const [tabMenuId, setTabMenuId] = useState<string | null>(null)
   const renameWithWorktree = useRenameTabWorktree()
   const [tabMenuAnchor, setTabMenuAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
@@ -107,25 +105,6 @@ export function TabStrip() {
     const id = dirMenuTabId || tabMenuId
     if (id) checkWorktreeUncommitted(tabs.find((t) => t.id === id))
   }, [dirMenuTabId, tabMenuId, tabs])
-
-  // Global commands use the project-first flow by default. A scoped command can
-  // supply a known workspace and start at the final conversation-type step.
-  useEffect(() => {
-    const handler = (event: Event) => {
-      const target = (event as CustomEvent<NewConversationPickerTarget>).detail
-      setConvPicker({ key: Date.now(), target: target ?? null })
-    }
-    window.addEventListener('ion:open-new-conversation-picker', handler)
-    return () => window.removeEventListener('ion:open-new-conversation-picker', handler)
-  }, [])
-
-  // The former recent-directory command now opens that same flow. Directory
-  // search is built into it, so a separate conversation popover is unnecessary.
-  useEffect(() => {
-    const handler = () => setConvPicker({ key: Date.now(), target: null })
-    window.addEventListener('ion:open-recent-dirs', handler)
-    return () => window.removeEventListener('ion:open-recent-dirs', handler)
-  }, [])
 
   // Auto-scroll the active tab into view when it changes
   useEffect(() => {
@@ -218,7 +197,7 @@ export function TabStrip() {
       onOpenColorPicker={(tabId, anchor) => { setColorPickerTabId(tabId); setColorPickerAnchor(anchor) }}
       onCloseColorPicker={() => setColorPickerTabId(null)}
       onOpenDirMenu={(tabId, anchor) => { setDirMenuTabId(tabId); setDirMenuAnchor(anchor) }}
-      onCreateTabInDir={() => setConvPicker({ key: Date.now(), target: null })}
+      onCreateTabInDir={() => window.dispatchEvent(new CustomEvent('ion:open-new-conversation-picker'))}
       dirMenuTabId={dirMenuTabId}
       onOpenTabMenu={(tabId, anchor) => { setTabMenuId(tabId); setTabMenuAnchor(anchor) }}
       tabRefs={tabRefs}
@@ -237,7 +216,7 @@ export function TabStrip() {
           yellow=background-agents, gray=idle). Placed LEFT of the tab strip so
           it's always visible even when the strip is full. Click opens a popover
           with per-status tab counts. See WorkspaceStatusIndicator.tsx. */}
-      <WorkspaceStatusIndicator />
+      {presentation === 'overlay' && <WorkspaceStatusIndicator />}
 
       {/* Scrollable tabs area — clipped by master card edge */}
       <div className="relative min-w-0 flex-1">
@@ -335,7 +314,7 @@ export function TabStrip() {
               dirName={dirName}
               tabId={menuTab.id}
               tabGroupId={menuTab.groupId || undefined}
-              onCreateTab={() => setConvPicker({ key: Date.now(), target: null })}
+              onCreateTab={() => window.dispatchEvent(new CustomEvent('ion:open-new-conversation-picker'))}
               onForkTab={menuTab.conversationId ? () => { void useSessionStore.getState().forkTab(menuTab.id).catch((err) => rError('tabs', 'fork tab failed', { error: String(err) })) } : undefined}
               onFinishWork={menuTab.worktree ? () => { void useSessionStore.getState().finishWorktreeTab(menuTab.id).catch((err) => rError('tabs', 'finish worktree failed', { error: String(err) })) } : undefined}
               finishWorkDisabled={menuTab.worktree ? (worktreeUncommittedMap.has(menuTab.id) ? worktreeUncommittedMap.get(menuTab.id)! : 'checking') : undefined}
@@ -360,16 +339,6 @@ export function TabStrip() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {convPicker && (
-          <NewConversationPicker
-            key={`new-conversation-picker-${convPicker.key}`}
-            {...(convPicker.target ?? {})}
-            onClose={() => setConvPicker(null)}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
         {tabMenuId && (() => {
           const menuTab = tabs.find((t) => t.id === tabMenuId)
           if (!menuTab) return null
@@ -381,7 +350,7 @@ export function TabStrip() {
               onRename={() => { setTabMenuId(null); setEditingTabId(menuTab.id) }}
               onRenameWithWorktree={() => { setTabMenuId(null); renameWithWorktree.requestRename(menuTab) }}
               onForkTab={menuTab.conversationId ? () => { void useSessionStore.getState().forkTab(menuTab.id).catch((err) => rError('tabs', 'fork tab failed', { error: String(err) })) } : undefined}
-              onNewTabInDir={() => setConvPicker({ key: Date.now(), target: null })}
+              onNewTabInDir={() => window.dispatchEvent(new CustomEvent('ion:open-new-conversation-picker'))}
               onFinishWork={() => {
                 void useSessionStore.getState().finishWorktreeTab(menuTab.id).catch((err) => rError('tabs', 'finish worktree failed', { error: String(err) }))
               }}
@@ -410,13 +379,13 @@ export function TabStrip() {
         )
       })()}
 
-      {/* Pinned action buttons — always visible on the right */}
-      <div className="flex items-center gap-0.5 flex-shrink-0 ml-1 pr-2">
+      {presentation === 'overlay' && (
+        <div className="flex items-center gap-0.5 flex-shrink-0 ml-1 pr-2">
         <button
           ref={plusButtonRef}
           onClick={() => {
             window.dispatchEvent(new CustomEvent('ion:close-group-pickers'))
-            setConvPicker({ key: Date.now(), target: null })
+            window.dispatchEvent(new CustomEvent('ion:open-new-conversation-picker'))
           }}
           className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full ion-focusable"
           style={{
@@ -451,12 +420,10 @@ export function TabStrip() {
           <Terminal size={14} />
         </button>
 
-        {/* <HistoryPicker /> */}
-        <StudioLauncherButton />
         <NotificationsBell />
-
-        <SettingsPopover />
+        <OpenSettingsButton />
       </div>
+      )}
     </div>
   )
 }

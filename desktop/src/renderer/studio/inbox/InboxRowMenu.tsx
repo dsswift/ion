@@ -20,6 +20,7 @@ import { classifyInbox, type InboxTabView } from '../../../shared/inbox-classify
 import type { TabState } from '../../../shared/types'
 import { scrollableMenuStyle } from '../../menu-viewport'
 import { useConvertToWorktreeGate } from '../../components/useConvertToWorktreeGate'
+import { copyConversationSessionIds, copyConversationTranscript } from '../../copy-conversation'
 
 function MenuButton({ label, onSelect, disabled = false, icon, danger = false }: { label: string; onSelect: () => void; disabled?: boolean; icon?: React.ReactNode; danger?: boolean }): React.JSX.Element {
   const colors = useColors()
@@ -198,7 +199,8 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onClose }
       )}
       <MenuButton label="Copy path" onSelect={() => exec(() => { void navigator.clipboard.writeText(tab.workingDirectory).catch((error) => rWarn('inbox', 'copy path failed', { error: String(error) })) })} />
       {tab.worktree?.branchName && <MenuButton label="Copy branch" onSelect={() => exec(() => { void navigator.clipboard.writeText(tab.worktree!.branchName).catch((error) => rWarn('inbox', 'copy branch failed', { error: String(error) })) })} />}
-      <MenuButton label="Copy conversation ID" onSelect={() => exec(() => { void navigator.clipboard.writeText(tab.conversationId ?? tab.id).catch((error) => rWarn('inbox', 'copy conversation ID failed', { error: String(error) })) })} />
+      {!tab.isTerminalOnly && <MenuButton label="Copy transcript" onSelect={() => exec(() => { void copyConversationTranscript(tab.id) })} />}
+      {!tab.isTerminalOnly && <MenuButton label="Copy session ID" disabled={!tab.conversationId && !tab.lastKnownSessionId && tab.historicalSessionIds.length === 0} onSelect={() => exec(() => { void copyConversationSessionIds(tab) })} />}
       <MenuButton
         label="Delete conversation…"
         icon={<Trash size={14} weight="bold" />}

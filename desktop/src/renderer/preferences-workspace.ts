@@ -50,7 +50,7 @@ export function createWorkspaceFolderActions(set: Set, get: Get): Pick<Preferenc
   }
 }
 
-export function createInboxPreferenceActions(set: Set, get: Get): Pick<PreferencesState, 'setInboxAutoSettleDays' | 'setInboxAutoSettleOnMerge' | 'setConversationNav' | 'setGitWatcherIgnoredDirectories'> {
+export function createInboxPreferenceActions(set: Set, get: Get): Pick<PreferencesState, 'setInboxAutoSettleDays' | 'setInboxAutoSettleOnMerge' | 'setStudioTabStripVisible' | 'setGitWatcherIgnoredDirectories'> {
   return {
     setGitWatcherIgnoredDirectories: (dirs) => {
       set({ gitWatcherIgnoredDirectories: dirs })
@@ -64,8 +64,8 @@ export function createInboxPreferenceActions(set: Set, get: Get): Pick<Preferenc
       set({ inboxAutoSettleOnMerge: enabled })
       saveSettings(getAllSettings(get))
     },
-    setConversationNav: (nav) => {
-      set({ conversationNav: nav })
+    setStudioTabStripVisible: (visible) => {
+      set({ studioTabStripVisible: visible })
       saveSettings(getAllSettings(get))
     },
   }

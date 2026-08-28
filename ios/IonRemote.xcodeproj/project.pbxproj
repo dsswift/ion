@@ -7,6 +7,13 @@
 	objects = {
 
 		GITBRANCHTEST0000002 /* GitBranchesWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = GITBRANCHTEST0000001 /* GitBranchesWireTests.swift */; };
+		TRNSCONNST000000000002 /* SessionConnectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRNSCONNST000000000001 /* SessionConnectionState.swift */; };
+		TRNSCOORD000000000002 /* TranscriptCopyCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRNSCOORD000000000001 /* TranscriptCopyCoordinator.swift */; };
+		TRNSVMEXT000000000002 /* SessionViewModel+TranscriptCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRNSVMEXT000000000001 /* SessionViewModel+TranscriptCopy.swift */; };
+		TRNSCLIPV000000000002 /* ConversationClipboardActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRNSCLIPV000000000001 /* ConversationClipboardActions.swift */; };
+		TRNSWIRET000000000002 /* TranscriptWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRNSWIRET000000000001 /* TranscriptWireTests.swift */; };
+		TRNSCOORT000000000002 /* TranscriptCopyCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRNSCOORT000000000001 /* TranscriptCopyCoordinatorTests.swift */; };
+		TRNSCLIPT000000000002 /* ConversationClipboardActionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRNSCLIPT000000000001 /* ConversationClipboardActionsTests.swift */; };
 		GITBRANCHRESP00000002 /* GitBranchesResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = GITBRANCHRESP00000001 /* GitBranchesResponse.swift */; };
 		A1B2C3D4E5F60001000001AA /* IonRemoteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000002AA /* IonRemoteApp.swift */; };
 		A1B2C3D4E5F60001000003AA /* NormalizedEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000004AA /* NormalizedEvent.swift */; };
@@ -1034,6 +1041,13 @@
 		B1B2C3D4E5F60001CC000012 /* RemoteTabGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTabGroup.swift; sourceTree = "<group>"; };
 		B1B2C3D4E5F60001CC000014 /* NormalizedEvent+Codable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Codable.swift"; sourceTree = "<group>"; };
 		B1B2C3D4E5F60001CC000010 /* SessionViewModelTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModelTypes.swift; sourceTree = "<group>"; };
+		TRNSCONNST000000000001 /* SessionConnectionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionConnectionState.swift; sourceTree = "<group>"; };
+		TRNSCOORD000000000001 /* TranscriptCopyCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptCopyCoordinator.swift; sourceTree = "<group>"; };
+		TRNSVMEXT000000000001 /* SessionViewModel+TranscriptCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+TranscriptCopy.swift"; sourceTree = "<group>"; };
+		TRNSCLIPV000000000001 /* ConversationClipboardActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationClipboardActions.swift; sourceTree = "<group>"; };
+		TRNSWIRET000000000001 /* TranscriptWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptWireTests.swift; sourceTree = "<group>"; };
+		TRNSCOORT000000000001 /* TranscriptCopyCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptCopyCoordinatorTests.swift; sourceTree = "<group>"; };
+		TRNSCLIPT000000000001 /* ConversationClipboardActionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationClipboardActionsTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001F10001AA /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
 		THEMEDARK00000000000001 /* IonDarkTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonDarkTheme.swift; sourceTree = "<group>"; };
 		THEMELIGHT0000000000001 /* IonLightTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonLightTheme.swift; sourceTree = "<group>"; };
@@ -1325,6 +1339,7 @@
 				QUESTNS060000000000FR01 /* QuestionsWizardView.swift */,
 				QUESTNS050000000000FR01 /* QuestionsCardView.swift */,
 				A1B2C3D4E5F60001009E00AA /* TabRowContextMenu.swift */,
+				TRNSCLIPV000000000001 /* ConversationClipboardActions.swift */,
 				A1B2C3D4E5F600010000FDAA /* TabRowView.swift */,
 				A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */,
 				A1B2C3D4E5F60001008000AA /* ConversationAttachmentsSheet.swift */,
@@ -1440,6 +1455,9 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F60001000022AA /* SessionViewModel.swift */,
+				TRNSCONNST000000000001 /* SessionConnectionState.swift */,
+				TRNSCOORD000000000001 /* TranscriptCopyCoordinator.swift */,
+				TRNSVMEXT000000000001 /* SessionViewModel+TranscriptCopy.swift */,
 				DACCESSVM0000000000001 /* SessionViewModel+DesktopAccess.swift */,
 				MTOIDCPEER000000000001 /* SessionViewModel+PeerStatus.swift */,
 				B1B2C3D4E5F60001CC000010 /* SessionViewModelTypes.swift */,
@@ -1605,6 +1623,9 @@
 				A1B2C3D4E5F6ACDC0001AC04 /* AgentDispatchStopResolverTests.swift */,
 				E11C17CA0001F00013AB0001 /* ElicitationCodecTests.swift */,
 				RTSDECODE000000000002 /* RemoteTabStateDecodeTests.swift */,
+				TRNSWIRET000000000001 /* TranscriptWireTests.swift */,
+				TRNSCOORT000000000001 /* TranscriptCopyCoordinatorTests.swift */,
+				TRNSCLIPT000000000001 /* ConversationClipboardActionsTests.swift */,
 				PRJCTSNAPTEST000000001 /* ProjectSnapshotTests.swift */,
 				C0DE0000000000000000000A /* InboxNavigatorTests.swift */,
 				B3NCHTERMTST000000000001 /* InboxBenchTerminalTests.swift */,
@@ -2051,6 +2072,10 @@
 				A1B2C3D4E5F60001009309AA /* SettingsModelsView.swift in Sources */,
 				A1B2C3D4E5F6000100930BAA /* SettingsVoiceView.swift in Sources */,
 				A1B2C3D4E5F60001000021AA /* SessionViewModel.swift in Sources */,
+				TRNSCONNST000000000002 /* SessionConnectionState.swift in Sources */,
+				TRNSCOORD000000000002 /* TranscriptCopyCoordinator.swift in Sources */,
+				TRNSVMEXT000000000002 /* SessionViewModel+TranscriptCopy.swift in Sources */,
+				TRNSCLIPV000000000002 /* ConversationClipboardActions.swift in Sources */,
 				DRAFT0000000000000000002 /* SessionViewModel+Drafts.swift in Sources */,
 			A1B2C3D4E5F60001000200AA /* SessionViewModel+Lifecycle.swift in Sources */,
 				700180B7333F5A03BE7F8C16 /* SessionViewModel+DeviceManagement.swift in Sources */,
@@ -2407,6 +2432,9 @@
 				A1B2C3D4E5F6ACDC0001AC03 /* AgentDispatchStopResolverTests.swift in Sources */,
 				E11C17CA0001F00012AB0001 /* ElicitationCodecTests.swift in Sources */,
 				RTSDECODE000000000001 /* RemoteTabStateDecodeTests.swift in Sources */,
+				TRNSWIRET000000000002 /* TranscriptWireTests.swift in Sources */,
+				TRNSCOORT000000000002 /* TranscriptCopyCoordinatorTests.swift in Sources */,
+				TRNSCLIPT000000000002 /* ConversationClipboardActionsTests.swift in Sources */,
 				PRJCTSNAPTEST000000002 /* ProjectSnapshotTests.swift in Sources */,
 				C0DE00000000000000000009 /* InboxNavigatorTests.swift in Sources */,
 				B3NCHTERMTST000000000002 /* InboxBenchTerminalTests.swift in Sources */,

@@ -8,9 +8,10 @@ import {
 import { MAX_PLAINTEXT_BYTES } from '../transport-send'
 
 describe('lossless remote payload fragmentation', () => {
-  it('fragments only authoritative Questions-bearing event types', () => {
+  it('fragments only authoritative large event types', () => {
     expect(shouldFragmentPayload('desktop_questions_state', MAX_PLAINTEXT_BYTES + 1, MAX_PLAINTEXT_BYTES)).toBe(true)
     expect(shouldFragmentPayload('desktop_snapshot', MAX_PLAINTEXT_BYTES + 1, MAX_PLAINTEXT_BYTES)).toBe(true)
+    expect(shouldFragmentPayload('desktop_transcript', MAX_PLAINTEXT_BYTES + 1, MAX_PLAINTEXT_BYTES)).toBe(true)
     expect(shouldFragmentPayload('desktop_status', MAX_PLAINTEXT_BYTES + 1, MAX_PLAINTEXT_BYTES)).toBe(false)
   })
 

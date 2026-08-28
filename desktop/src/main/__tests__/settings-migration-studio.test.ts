@@ -210,6 +210,25 @@ describe("migrateStudioSettings", () => {
     expect("atvLayout" in s).toBe(false);
   });
 
+  it("migrates retired conversation navigation to independent tab-strip visibility", () => {
+    readSettingsMock.mockReturnValue({ conversationNav: "inbox" });
+    migrateStudioSettings();
+    expect(written()).toMatchObject({ studioTabStripVisible: false });
+    expect(written()).not.toHaveProperty("conversationNav");
+
+    writeSettingsMock.mockReset();
+    readSettingsMock.mockReturnValue({ conversationNav: "tabs" });
+    migrateStudioSettings();
+    expect(written()).toMatchObject({ studioTabStripVisible: true });
+  });
+
+  it("keeps an explicit tab-strip setting while deleting conversationNav", () => {
+    readSettingsMock.mockReturnValue({ conversationNav: "inbox", studioTabStripVisible: true });
+    migrateStudioSettings();
+    expect(written()).toMatchObject({ studioTabStripVisible: true });
+    expect(written()).not.toHaveProperty("conversationNav");
+  });
+
   it("second run after migration is a no-op", () => {
     readSettingsMock.mockReturnValue({
       atvTheme: "ion-works",

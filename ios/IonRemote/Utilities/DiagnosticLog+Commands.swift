@@ -147,6 +147,11 @@ extension DiagnosticLog {
             log("CMD: tabReorderPin assignmentCount=\(assignments.count)", tag: "ipc", level: .info)
         case .tabRegenerateTitle(let tabId):
             log("CMD: tabRegenerateTitle tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .requestTranscript(let tabId, let requestId):
+            log("transcript requested", tag: "ipc", fields: [
+                "tab_id": tabId,
+                "request_id": requestId,
+            ])
         case .reviewSettledTab(let tabId):
             log("CMD: reviewSettledTab tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
 

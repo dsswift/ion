@@ -5,7 +5,8 @@
  * native, while this renderer-owned surface provides matching themed chrome.
  * Drag only empty title-bar space. Every actionable child opts out.
  */
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
+import { AnimatePresence } from "framer-motion";
 import {
   CaretRight,
   FolderSimple,
@@ -23,6 +24,10 @@ import { ShortcutHint } from "../shortcuts/ShortcutHint";
 import { useRevealedShortcuts } from "../shortcuts/useShortcutHints";
 import { useStudioWindowChrome } from "./chrome/useStudioWindowChrome";
 import { UpdateButton } from "../components/UpdateButton";
+import { NotificationsBell } from "../components/NotificationsPanel";
+import { DirectoryPicker } from "../components/TabStripDirectoryPicker";
+import { zoomRect } from "../viewport-zoom";
+import { rDebug, rError } from "../rendererLogger";
 
 const STUDIO_BRAND = "Ion Studio";
 
@@ -41,9 +46,9 @@ export interface StudioTitleBarPanes {
   leftSidebarWidth: number;
   terminalVisible: boolean;
   surfaceVisible: boolean;
-  onToggleSidebar: () => void;
-  onToggleTerminal: () => void;
-  onToggleSurface: () => void;
+  onToggleSidebar: (event?: React.MouseEvent<HTMLButtonElement>) => void;
+  onToggleTerminal: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onToggleSurface: (event?: React.MouseEvent<HTMLButtonElement>) => void;
 }
 
 export function StudioTitleBar({
@@ -61,6 +66,46 @@ export function StudioTitleBar({
   // while its own chord's modifiers are held, so ⌘ reveals the sidebar and
   // canvas toggles while ⌃ reveals the terminal toggle.
   const revealed = useRevealedShortcuts("studio", PANE_COMMANDS);
+  const [terminalPickerAnchor, setTerminalPickerAnchor] = useState<{ x: number; y: number; bottom: number } | null>(null);
+  const terminalPickerGestureUntil = React.useRef(0);
+
+  const openTerminalPicker = (button: HTMLButtonElement): void => {
+    const rect = zoomRect(button.getBoundingClientRect());
+    setTerminalPickerAnchor({ x: rect.left, y: rect.top, bottom: rect.bottom });
+    rDebug("studio.terminal", "terminal directory picker opened", { source: "title_bar" });
+  };
+
+  const handleTerminalMouseDown = (event: React.MouseEvent<HTMLButtonElement>): void => {
+    if (!event.ctrlKey || !event.altKey) return;
+    // macOS converts Control-click into a context click and can strip ctrlKey
+    // before React receives the final click. Capture the real gesture here.
+    event.preventDefault();
+    event.stopPropagation();
+    terminalPickerGestureUntil.current = event.timeStamp + 1000;
+    openTerminalPicker(event.currentTarget);
+  };
+
+  const handleTerminalClick = (event: React.MouseEvent<HTMLButtonElement>): void => {
+    if (event.timeStamp <= terminalPickerGestureUntil.current) {
+      terminalPickerGestureUntil.current = 0;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (event.ctrlKey && event.altKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      openTerminalPicker(event.currentTarget);
+      return;
+    }
+    panes.onToggleTerminal(event);
+  };
+
+  const handleTerminalContextMenu = (event: React.MouseEvent<HTMLButtonElement>): void => {
+    if (event.timeStamp > terminalPickerGestureUntil.current && !(event.ctrlKey && event.altKey)) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
   const projectLabel = useMemo(() => {
     const directory = tab?.workingDirectory;
@@ -163,11 +208,16 @@ export function StudioTitleBar({
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
         <UpdateButton />
+        <div data-drag-region="no-drag" style={{ WebkitAppRegion: "no-drag" }}>
+          <NotificationsBell />
+        </div>
         <PaneToggle
           label="Toggle terminal"
           chord={revealed.get(TERMINAL_COMMAND)}
           active={panes.terminalVisible}
-          onClick={panes.onToggleTerminal}
+          onClick={handleTerminalClick}
+          onMouseDown={handleTerminalMouseDown}
+          onContextMenu={handleTerminalContextMenu}
           icon={<TerminalIcon size={13} />}
         />
         <PaneToggle
@@ -178,6 +228,23 @@ export function StudioTitleBar({
           icon={<SquareSplitHorizontal size={13} />}
         />
       </div>
+      <AnimatePresence>
+        {terminalPickerAnchor && (
+          <DirectoryPicker
+            anchor={terminalPickerAnchor}
+            onSelectDir={(directory) => {
+              usePreferencesStore.getState().addRecentBaseDirectory(directory);
+              void useSessionStore.getState().createTerminalTab(directory)
+                .then(() => {
+                  rDebug("studio.terminal", "terminal tab created", { directory });
+                  setTerminalPickerAnchor(null);
+                })
+                .catch((error) => rError("studio.terminal", "terminal tab creation failed", { directory, error: String(error) }));
+            }}
+            onClose={() => setTerminalPickerAnchor(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -187,13 +254,17 @@ function PaneToggle({
   chord,
   active,
   onClick,
+  onMouseDown,
+  onContextMenu,
   icon,
 }: {
   label: string;
   /** The live chord, present only while its own modifiers are held. */
   chord?: string;
   active: boolean;
-  onClick: () => void;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onMouseDown?: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onContextMenu?: (event: React.MouseEvent<HTMLButtonElement>) => void;
   icon: React.ReactNode;
 }): React.JSX.Element {
   const colors = useColors();
@@ -203,6 +274,8 @@ function PaneToggle({
     <Tooltip text={chord ? `${label} (${chord})` : label}>
       <button
         onClick={onClick}
+        onMouseDown={onMouseDown}
+        onContextMenu={onContextMenu}
         aria-label={label}
         aria-keyshortcuts={chord}
         data-drag-region="no-drag"

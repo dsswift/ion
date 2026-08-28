@@ -117,6 +117,7 @@ export type RemoteEvent =
   // on THIS field — never on `cursor`, which is populated on every page that
   // has more history and therefore cannot distinguish the two.
   | { type: 'desktop_conversation_history'; tabId: string; messages: RemoteMessage[]; hasMore: boolean; cursor?: string; before?: string | null }
+  | { type: 'desktop_transcript'; tabId: string; requestId: string; transcript: string; error?: string }
   | { type: 'desktop_message_added'; tabId: string; message: RemoteMessage }
   | { type: 'desktop_background_work_delivered'; tabId: string; instanceId?: string | null; message: RemoteMessage }
   | { type: 'desktop_background_task_started'; tabId: string; instanceId?: string | null; task: import('../../shared/types-engine').BackgroundTaskState }

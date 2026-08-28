@@ -276,6 +276,10 @@ extension RemoteCommand {
         case .tabRegenerateTitle(let tabId):
             try container.encode(TypeKey.tabRegenerateTitle, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
+        case .requestTranscript(let tabId, let requestId):
+            try container.encode(TypeKey.requestTranscript, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(requestId, forKey: .requestId)
         case .reviewSettledTab(let tabId):
             try container.encode(TypeKey.reviewSettledTab, forKey: .type)
             try container.encode(tabId, forKey: .tabId)

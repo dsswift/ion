@@ -27,7 +27,9 @@ vi.mock("../../theme", () => ({
   }),
 }));
 vi.mock("../../components/git/Tooltip", () => ({ Tooltip: ({ children }: { children: React.ReactNode }) => children }));
-vi.mock("../../rendererLogger", () => ({ rError: vi.fn(), rWarn: vi.fn() }));
+vi.mock("../../components/NotificationsPanel", () => ({ NotificationsBell: () => <button aria-label="Notifications" /> }));
+vi.mock("../../components/TabStripDirectoryPicker", () => ({ DirectoryPicker: () => <div data-testid="directory-picker" /> }));
+vi.mock("../../rendererLogger", () => ({ rDebug: vi.fn(), rError: vi.fn(), rWarn: vi.fn() }));
 
 Object.defineProperty(window, "ion", {
   value: {
@@ -67,25 +69,36 @@ describe("StudioTitleBar native chrome", () => {
     expect(titleBar.style.paddingLeft).toBe("90px");
     expect(host.textContent).toContain("Ion Studio");
     const controls = host.querySelectorAll("button");
-    expect(controls).toHaveLength(4);
+    expect(controls).toHaveLength(5);
     const buttons = Array.from(controls);
     // The accessible name is the action alone. The chord is not baked into it:
     // it is resolved live from the keymap and exposed via aria-keyshortcuts,
     // so a rebind cannot leave a stale glyph in the label.
     expect(buttons[0].getAttribute("aria-label")).toBe("Toggle sidebar");
-    expect(buttons[2].getAttribute("aria-label")).toBe("Toggle terminal");
-    expect(buttons[3].getAttribute("aria-label")).toBe("Toggle canvas panel");
+    expect(buttons[3].getAttribute("aria-label")).toBe("Toggle terminal");
+    expect(buttons[4].getAttribute("aria-label")).toBe("Toggle canvas panel");
     expect((host.querySelector('[data-testid="studio-title-bar-center"]') as HTMLDivElement).style.flex).toBe("1 1 0%");
     await act(async () => chromeListener?.({ fullScreen: true }));
     expect(titleBar.style.paddingLeft).toBe("12px");
 
     await act(async () => {
       buttons[0].click();
-      buttons[2].click();
       buttons[3].click();
+      buttons[4].click();
     });
     expect(paneCallbacks.onToggleSidebar).toHaveBeenCalledOnce();
     expect(paneCallbacks.onToggleTerminal).toHaveBeenCalledOnce();
     expect(paneCallbacks.onToggleSurface).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      // macOS turns Control-click into a context click and can strip ctrlKey
+      // from the final click. Reproduce the native sequence: modified mousedown,
+      // contextmenu, then an unmodified synthetic click.
+      buttons[3].dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, ctrlKey: true, altKey: true }));
+      buttons[3].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, ctrlKey: true, altKey: true }));
+      buttons[3].dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, altKey: true }));
+    });
+    expect(paneCallbacks.onToggleTerminal).toHaveBeenCalledOnce();
+    expect(host.querySelector('[data-testid="directory-picker"]')).not.toBeNull();
   });
 });

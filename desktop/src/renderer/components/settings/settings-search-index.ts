@@ -62,6 +62,7 @@ const SEARCH_INDEX: SearchEntry[] = [
   { categoryId: 'appearance', label: 'Terminal Font Size', keywords: 'terminal font size pixels text' },
 
   // Tabs & Panels
+  { categoryId: 'tabs', label: 'Show Tab Strip in Ion Studio', keywords: 'studio tab strip show hide visibility conversation groups' },
   { categoryId: 'tabs', label: 'Auto-expand on Switch', keywords: 'expand tab switch automatic conversation' },
   { categoryId: 'tabs', label: 'Tab Groups', keywords: 'tab groups off auto manual directory organize' },
   { categoryId: 'tabs', label: 'Auto-move Tabs by Mode', keywords: 'auto move tabs mode planning progress done group' },

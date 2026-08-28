@@ -16,6 +16,8 @@ import { GitPanel } from "../components/GitPanel";
 import { InboxSidebar } from "./inbox/InboxSidebar";
 import { useColors } from "../theme";
 import { GIT_PANEL_WIDTH } from "../components/panelGeometry";
+import { WorkspaceStatusIndicator } from "../components/WorkspaceStatusIndicator";
+import { OpenSettingsButton } from "../components/OpenSettingsButton";
 import { ShortcutHint } from "../shortcuts/ShortcutHint";
 import { useShortcutHint } from "../shortcuts/useShortcutHints";
 import type {
@@ -79,6 +81,7 @@ export function StudioLeftSidebar(
           flexShrink: 0,
         }}
       >
+        <WorkspaceStatusIndicator />
         {VIEWS.map((v) => (
           <DockViewTab
             key={v.id}
@@ -88,20 +91,9 @@ export function StudioLeftSidebar(
             onSelect={() => props.onSelectView(v.id)}
           />
         ))}
-        <button
-          onClick={props.onClose}
-          style={{
-            marginLeft: "auto",
-            border: "none",
-            background: "transparent",
-            color: colors.textTertiary,
-            cursor: "pointer",
-            fontSize: 14,
-          }}
-          aria-label="Close sidebar"
-        >
-          ×
-        </button>
+        <div style={{ marginLeft: "auto" }}>
+          <OpenSettingsButton />
+        </div>
       </div>
       <div
         style={{

@@ -9,16 +9,18 @@
 
 import { describe, it, expect, vi } from 'vitest'
 
+const mockState = vi.hoisted(() => ({ rendererSnapshotCache: null as null | { tabs: Array<Record<string, unknown>> } }))
+
 vi.mock('electron', () => ({
   app: { get isPackaged() { return false } },
   safeStorage: { isEncryptionAvailable: () => false },
   ipcMain: { on: vi.fn(), handle: vi.fn(), removeHandler: vi.fn() },
 }))
 vi.mock('../../../logger', () => ({ log: vi.fn() }))
-vi.mock('../../../state', () => ({ state: {} }))
+vi.mock('../../../state', () => ({ state: mockState }))
 vi.mock('../../../settings-store', () => ({ TABS_FILE: '/tmp/ion-nonexistent/tabs.json' }))
 
-import { paginateHistory, planPathFromHistory, resolvePlanPath, toRemoteMessage, MAX_PAGE_MESSAGES } from '../tabs-session-chain'
+import { paginateHistory, planPathFromHistory, resolvePlanPath, resolveTabSessionChain, toRemoteMessage, MAX_PAGE_MESSAGES } from '../tabs-session-chain'
 import type { Message } from '../../../../shared/types'
 
 function msg(id: string, role: Message['role'], extra: Partial<Message> = {}): Message {
@@ -34,6 +36,18 @@ function turns(n: number): Message[] {
   }
   return out
 }
+
+describe('resolveTabSessionChain', () => {
+  it('uses the renderer snapshot cache with canonical dedupe', async () => {
+    mockState.rendererSnapshotCache = {
+      tabs: [{ id: 'tab-live', status: 'running', conversationId: 'current', sessionIds: ['old', 'current', 'current'] }],
+    }
+    await expect(resolveTabSessionChain('tab-live')).resolves.toEqual({
+      sessionIds: ['old', 'current'], tabStatus: 'running', conversationId: 'current', source: 'renderer_cache',
+    })
+    mockState.rendererSnapshotCache = null
+  })
+})
 
 describe('paginateHistory', () => {
   it('serves the last page snapped to a user turn, with a cursor', () => {

@@ -249,6 +249,7 @@ describe('CRITICAL_TYPES contract', () => {
     'desktop_terminal_snapshot',
     // Fragmented losslessly before the size gate. No lossy degrader is needed.
     'desktop_questions_state',
+    'desktop_transcript',
     'desktop_payload_chunk',
   ])
 

@@ -81,6 +81,7 @@ export const CRITICAL_TYPES = new Set([
   // gate, so request content and array order are never sacrificed to fit one
   // physical frame.
   'desktop_questions_state',
+  'desktop_transcript',
   'desktop_payload_chunk',
 ])
 
@@ -135,6 +136,7 @@ const BULK_TYPES = new Set([
   'desktop_snapshot',
   'desktop_terminal_snapshot',
   'desktop_conversation_history',
+  'desktop_transcript',
   'desktop_agent_conversation_history',
   'desktop_settings_snapshot',
   'desktop_plan_content',

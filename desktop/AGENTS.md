@@ -196,7 +196,7 @@ If a Go struct gained a field you don't have, the test says `"Go-only: [fieldNam
 
 ## Notifications panel
 
-The TabStrip contains a bell icon for global notifications (workspace-scoped resources). The NotificationsPanel popover shows briefing resources sorted newest-first with read/unread tracking. When the user reads a briefing, the desktop sends a `mark_read` delta through the engine so iOS reflects the same state.
+The Overlay Tab Strip contains a bell icon for global notifications (workspace-scoped resources). Ion Studio places the same bell in its title bar. The NotificationsPanel popover shows briefing resources sorted newest-first with read/unread tracking. When the user reads a briefing, the desktop sends a `mark_read` delta through the engine so iOS reflects the same state.
 
 Session-scoped resources appear in the per-conversation attachments panel (ConversationAttachmentsSheet on iOS, equivalent on desktop).
 

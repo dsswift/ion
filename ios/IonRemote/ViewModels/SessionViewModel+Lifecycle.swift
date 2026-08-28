@@ -427,6 +427,9 @@ extension SessionViewModel {
         clearPendingOnConnected()
         clearPendingEssential()
         cancelPendingBenchConversation(reason: "session disconnect")
+        Task { @MainActor [weak self] in
+            self?.cancelTranscriptCopy()
+        }
         tearDownTransport()
         wipeTransientState()
     }

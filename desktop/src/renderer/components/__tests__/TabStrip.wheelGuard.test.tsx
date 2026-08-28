@@ -112,9 +112,6 @@ vi.mock('../HistoryPicker', () => ({
   HistoryPicker: () => null,
 }))
 
-vi.mock('../SettingsPopover', () => ({
-  SettingsPopover: () => null,
-}))
 
 vi.mock('../NotificationsPanel', () => ({
   NotificationsBell: () => null,

@@ -98,6 +98,7 @@ enum RemoteCommand: Codable, Sendable {
   case tabReorderPin(assignments: [PinOrderAssignment])
   case tabRegenerateTitle(tabId: String)
   /// Materialize a cold settled-history record as a temporary review tab.
+  case requestTranscript(tabId: String, requestId: String)
   case reviewSettledTab(tabId: String)
   case loadConversation(tabId: String, before: String?)
   /// Ask the desktop to replay wire frames [fromSeq, toSeq] after iOS detected
@@ -385,6 +386,7 @@ enum RemoteCommand: Codable, Sendable {
     case tabUnpin = "desktop_tab_unpin"
     case tabReorderPin = "desktop_tab_reorder_pin"
     case tabRegenerateTitle = "desktop_tab_regenerate_title"
+    case requestTranscript = "desktop_request_transcript"
     case reviewSettledTab = "desktop_review_settled_tab"
     case loadConversation = "desktop_load_conversation"
     case requestResend = "desktop_request_resend"

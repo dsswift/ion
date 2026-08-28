@@ -53,6 +53,14 @@ extension DiagnosticLog {
         case .permissionResolved(let tabId, let qId):
             log("EVENT: permissionResolved tabId=\(tabId.prefix(8)) qId=\(qId.prefix(8))", tag: "session", level: .info)
 
+        case .transcript(let tabId, let requestId, let transcript, let error):
+            log("transcript response received", tag: "session", level: error == nil ? .info : .error, fields: [
+                "tab_id": tabId,
+                "request_id": requestId,
+                "length": String(transcript.count),
+                "error": error ?? "",
+            ])
+
         case .conversationHistory(let tabId, let msgs, let hasMore, _, let before):
             log("EVENT: conversationHistory tabId=\(tabId.prefix(8)) msgs=\(msgs.count) hasMore=\(hasMore) before=\(before?.prefix(8) ?? "nil")", tag: "session", level: .info)
 

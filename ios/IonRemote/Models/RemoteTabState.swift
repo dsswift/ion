@@ -74,6 +74,9 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     /// When true, auto-group movement is suppressed for this tab. Nil/absent decodes as false.
     var groupPinned: Bool?
     var modelOverride: String?
+    /// Canonical engine session chain in historical-to-current order. Optional
+    /// for compatibility with desktops that predate transcript clipboard support.
+    var sessionIds: [String]? = nil
     /// The current conversation/session ID for this tab. CLI tabs populate
     /// this directly; engine tabs use `StatusFields.sessionId` instead.
     var conversationId: String?

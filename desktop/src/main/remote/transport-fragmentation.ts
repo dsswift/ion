@@ -4,7 +4,7 @@ import type { PayloadChunkEnvelope } from './protocol'
 /** Raw bytes per chunk. Base64 + JSON stays below the 6 MiB plaintext gate. */
 export const PAYLOAD_CHUNK_BYTES = 3 * 1024 * 1024
 
-const FRAGMENTED_TYPES = new Set(['desktop_questions_state', 'desktop_snapshot'])
+const FRAGMENTED_TYPES = new Set(['desktop_questions_state', 'desktop_snapshot', 'desktop_transcript'])
 
 export interface FragmentedPayload {
   chunks: PayloadChunkEnvelope[]

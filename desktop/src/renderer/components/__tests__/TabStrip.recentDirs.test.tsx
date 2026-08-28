@@ -84,9 +84,6 @@ vi.mock('../HistoryPicker', () => ({
   HistoryPicker: () => null,
 }))
 
-vi.mock('../SettingsPopover', () => ({
-  SettingsPopover: () => null,
-}))
 
 vi.mock('../NotificationsPanel', () => ({
   NotificationsBell: () => null,
@@ -230,9 +227,9 @@ vi.mock('../../preferences', () => ({
 
 // ─── Test ──────────────────────────────────────────────────────────────────────
 
-import { TabStrip } from '../TabStrip'
+import { NewConversationPickerHost } from '../NewConversationPickerHost'
 
-describe('TabStrip ion:open-recent-dirs bridge', () => {
+describe('NewConversationPickerHost event bridge', () => {
   let container: HTMLDivElement
   let root: ReturnType<typeof createRoot>
 
@@ -242,7 +239,7 @@ describe('TabStrip ion:open-recent-dirs bridge', () => {
     document.body.appendChild(container)
     act(() => {
       root = createRoot(container)
-      root.render(React.createElement(TabStrip))
+      root.render(React.createElement(NewConversationPickerHost))
     })
   })
 

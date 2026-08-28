@@ -70,6 +70,8 @@ import { CommandPalette } from "../components/CommandPalette";
 import { DeepLinkConfirmDialog } from "../components/DeepLinkConfirmDialog";
 import { CloseTabConfirmDialog } from "../components/CloseTabConfirmDialog";
 import { SettingsDialog } from "../components/SettingsDialog";
+import { NewConversationPickerHost } from "../components/NewConversationPickerHost";
+import { useTrayMenuListeners } from "../hooks/useTrayMenuListeners";
 import { UpdateDialog } from "../components/UpdateDialog";
 import { useUpdateEvents } from "../hooks/useUpdateEvents";
 import type { PaletteEntry } from "../components/command-palette-rank";
@@ -107,6 +109,7 @@ export function StudioShell(): React.JSX.Element {
   // full listener set, but only the channels main forwards to this window
   // (normalized events, tab status, errors, settings) ever fire here.
   useEngineEvents();
+  useTrayMenuListeners();
   useResourceBootstrap();
   useEffect(() => initSurfaceConversationSync(), []);
   // Guided Questions: hydrate the window-local cache, then keep the transient
@@ -138,11 +141,6 @@ export function StudioShell(): React.JSX.Element {
   const terminalVisible = useSessionStore((s) =>
     s.terminalOpenTabIds.has(s.activeTabId),
   );
-  // Inbox navigation mode (per-device): TabStrip hidden; the inbox dock is
-  // the conversation switcher (forced visible). Overlay unaffected either
-  // way. Flipping INTO inbox mode defaults the dock view to the inbox once;
-  // the user can still switch to Explorer/Git afterwards (Explorer/Git are
-  // also available as surface tabs so the inbox can stay pinned — R8).
   // Main drives browser tab creation, closing, reveal, and emulation through a
   // correlated command channel, answered exactly once per command.
   useStudioBrowserCommands();
@@ -150,16 +148,8 @@ export function StudioShell(): React.JSX.Element {
   // Surface state is written on a debounce, which a quit can outrun.
   useSurfacePersistOnUnload();
 
-  const conversationNav = usePreferencesStore((s) => s.conversationNav);
+  const studioTabStripVisible = usePreferencesStore((s) => s.studioTabStripVisible);
   const windowWidth = useWindowWidth();
-  const prevNavRef = useRef(conversationNav);
-  useEffect(() => {
-    if (prevNavRef.current !== conversationNav) {
-      prevNavRef.current = conversationNav;
-      if (conversationNav === "inbox")
-        patch({ leftSidebarVisible: true, leftSidebarView: "inbox" });
-    }
-  }, [conversationNav, patch]);
 
   // Live pane sizes during a drag (React state only; committed to the
   // layout — and thereby disk — once per gesture).
@@ -173,7 +163,7 @@ export function StudioShell(): React.JSX.Element {
   const [narrowPane, setNarrowPane] = useState<"left" | "center" | "surface">("center");
   const [paletteOpen, setPaletteOpen] = useState(false);
 
-  const requestedLeftVisible = layout.leftSidebarVisible || conversationNav === "inbox";
+  const requestedLeftVisible = layout.leftSidebarVisible;
   const responsive = resolveStudioResponsiveLayout({
     width: windowWidth,
     leftRequested: requestedLeftVisible,
@@ -499,16 +489,18 @@ export function StudioShell(): React.JSX.Element {
               if (responsive.mode === "narrow" && requestedLeftVisible) setNarrowPane("left");
               else patch({ leftSidebarVisible: !layout.leftSidebarVisible });
             },
-            onToggleTerminal: toggleActiveTerminal,
+            onToggleTerminal: () => toggleActiveTerminal(),
             onToggleSurface: () => {
               if (responsive.mode === "narrow" && surfaceVisible) setNarrowPane("surface");
               else useSurfaceStore.getState().toggleVisible();
             },
           }}
         />
-        <div style={{ display: conversationNav === "tabs" ? "block" : "none", flexShrink: 0 }}>
-          <TabStrip />
-        </div>
+        {studioTabStripVisible && (
+          <div style={{ flexShrink: 0 }}>
+            <TabStrip presentation="studio" />
+          </div>
+        )}
         <div
           style={{
             flex: 1,
@@ -571,6 +563,7 @@ export function StudioShell(): React.JSX.Element {
             </div>
           )}
         </div>
+        <NewConversationPickerHost />
         {settingsOpen && (
           <SettingsDialog
             initialTab={settingsInitialTab}

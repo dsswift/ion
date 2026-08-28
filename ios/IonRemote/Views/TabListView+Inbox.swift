@@ -533,11 +533,9 @@ extension TabListView {
                         viewModel.convertConversationToWorktree(tabId: tab.id)
                     }
                 }
+                ConversationClipboardActions(tab: tab)
                 Button("Copy working path") { UIPasteboard.general.string = tab.workingDirectory }
                 if let branch = branch { Button("Copy worktree branch") { UIPasteboard.general.string = branch } }
-                if let conversationId = tab.conversationId, !conversationId.isEmpty {
-                    Button("Copy conversation ID") { UIPasteboard.general.string = conversationId }
-                }
                 Button(role: .destructive) {
                     DiagnosticLog.log("conversation delete confirmation opened", tag: "inbox", level: .info, fields: ["tab_id": tab.id])
                     pendingInboxDeleteTab = tab

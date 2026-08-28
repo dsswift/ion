@@ -88,6 +88,7 @@ import { handleWorktreeCommand } from './handlers/worktree'
 import { handleQuestionsRemoteCommand } from '../questions/questions-wiring'
 import { handleReportMobileAuth } from './handlers/mobile-auth'
 import { handleStopBackgroundTask } from './handlers/background-tasks'
+import { handleRequestTranscript } from './handlers/conversation-transcript'
 import type { RemoteCommand } from './protocol'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -133,6 +134,7 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'desktop_reset_tab_session': sessionPlane.resetTabSession(cmd.tabId); break
     case 'desktop_reset_engine_session': await handleResetEngineSession(cmd); break
     case 'desktop_load_conversation': await handleLoadConversation(cmd, deviceId); break
+    case 'desktop_request_transcript': await handleRequestTranscript(cmd, deviceId); break
     case 'desktop_request_resend':
       // iOS detected a forward seq gap — replay the missing frames from the
       // retransmit buffer (or answer desktop_resend_unavailable). Synchronous.

@@ -350,6 +350,7 @@ export interface IonCoreApi {
   ): Promise<{ messages: any[]; total: number; hasMore: boolean }>;
   deleteStoredConversations(sessionIds: string[]): Promise<{ deleted: number }>;
   loadChainHistory(sessionIds: string[]): Promise<SessionLoadMessage[]>;
+  loadConversationTranscript(tabId: string): Promise<string>;
 
   // ─── Conversation backup (export/restore zip archives) ───
   conversationExportPreview(scope: "currently-open" | "all"): Promise<{

@@ -79,10 +79,9 @@ export const SETTINGS_DEFAULTS = {
   // files itself. 0 = off. Projectable (user preference, group 'tabs').
   inboxAutoSettleDays: 0,
   inboxAutoSettleOnMerge: true,
-  // Studio conversation navigation: 'tabs' keeps the TabStrip; 'inbox'
-  // hides Studio's TabStrip and defaults the left dock to the inbox view.
-  // Per-device (iOS has its own switcher) — never projectable.
-  conversationNav: 'tabs',
+  // Studio can hide its conversation Tab Strip without changing the selected
+  // left-dock view. The Overlay always keeps its compact Tab Strip.
+  studioTabStripVisible: true,
   // Project registry (G1): known base dirs, auto-populated from
   // conversation tabs + manual adds. Machine-local paths — never
   // projectable (iOS derives chips from tab workingDirectory).
