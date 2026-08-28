@@ -60,7 +60,7 @@ export function WorktreePipelinePanel({
   /** The active bench's source branch, when one exists — enables phase 4. */
   sourceBranch: string | null
   entries: readonly WorktreeInventoryEntry[]
-  /** Header hosts render their own persistent Sync All button. */
+  /** Header hosts render their own Sync All button when source updates exist. */
   showAction?: boolean
 }): React.JSX.Element | null {
   const colors = useColors()

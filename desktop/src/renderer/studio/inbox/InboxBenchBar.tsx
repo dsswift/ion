@@ -1,5 +1,5 @@
 import React from 'react'
-import { ArrowsClockwise, CaretDown, CaretRight, CircleNotch, DotsThree, Terminal } from '@phosphor-icons/react'
+import { ArrowsClockwise, CaretDown, CaretRight, CircleNotch, DotsThree, Hammer, Terminal } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { Tooltip } from '../../components/git/Tooltip'
 import type { DirConversation } from '../../../shared/worktree-conversations'
@@ -17,6 +17,7 @@ export function InboxBenchBar({
   onMenu,
   statusRow,
   onSyncAll,
+  showSyncAll,
   statusText,
   onAssemble,
   assembling,
@@ -32,6 +33,8 @@ export function InboxBenchBar({
   /** The workspace-wide sync/pipeline state, rendered in header row two. */
   statusRow?: React.ReactNode
   onSyncAll(): void
+  /** True when at least one worktree offers its source-sync action. */
+  showSyncAll: boolean
   /** Stable bench state when no pipeline banner is active. */
   statusText: string
   /** Assemble from the current pins. Same verb as the "..." menu's "Assemble / Update Bench". */
@@ -53,13 +56,15 @@ export function InboxBenchBar({
       <button aria-label="Toggle bench" onClick={(event) => { event.stopPropagation(); onToggle() }} style={buttonStyle(colors)}>{expanded ? <CaretDown size={12} /> : <CaretRight size={12} />}</button>
       <Tooltip text={assembling ? 'Assembling the bench from its pins…' : 'Assemble the bench from the current pins'}>
         <button
-          aria-label="Assemble bench"
+          aria-label={assembling ? 'Building bench' : 'Assemble bench'}
           data-testid={`inbox-bench-assemble-${workspace.sourceBranch}`}
           onClick={(event) => { event.stopPropagation(); onAssemble() }}
           disabled={assembling}
-          style={{ ...buttonStyle(colors), color: colors.warningFg, cursor: assembling ? 'default' : 'pointer' }}
+          style={{ ...buttonStyle(colors), alignItems: 'center', gap: 4, color: assembling ? colors.infoFg : colors.textTertiary, cursor: assembling ? 'default' : 'pointer', fontSize: 10 }}
         >
-          {assembling ? <CircleNotch size={13} className="animate-spin" /> : <ArrowsClockwise size={13} />}
+          {assembling
+            ? <><CircleNotch data-testid="inbox-bench-build-spinner" size={13} className="animate-spin" />Building…</>
+            : <Hammer data-testid="inbox-bench-build-icon" size={13} />}
         </button>
       </Tooltip>
       <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Bench · {workspace.sourceBranch}</span>
@@ -76,7 +81,17 @@ export function InboxBenchBar({
       ><DotsThree size={14} weight="bold" /></button>
     </div>
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }} onClick={(event) => event.stopPropagation()}>
-      <button aria-label="Sync all worktrees" onClick={onSyncAll} style={{ ...buttonStyle(colors), border: `1px solid ${colors.accent}`, borderRadius: 3, padding: '2px 7px', color: colors.accent, fontSize: 10 }}>Sync All</button>
+      {showSyncAll && (
+        <button
+          aria-label="Sync all worktrees"
+          data-testid="inbox-bench-sync-all"
+          onClick={onSyncAll}
+          style={{ ...buttonStyle(colors), alignItems: 'center', gap: 4, border: `1px solid ${colors.warningFg}`, borderRadius: 3, padding: '2px 7px', color: colors.warningFg, fontSize: 10 }}
+        >
+          <ArrowsClockwise data-testid="inbox-bench-sync-icon" size={10} />
+          Sync All
+        </button>
+      )}
       <span data-testid={`inbox-bench-status-${workspace.sourceBranch}`} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: colors.textTertiary, fontSize: 10 }}>{statusText}</span>
       {statusRow}
     </div>
