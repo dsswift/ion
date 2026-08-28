@@ -368,6 +368,8 @@ The registry uses four domains: `engine`, `harness-sdk`, `clients`, `relay`. Des
 
 The Desktop is ONE client with two presentations: the Overlay glass and the Ion Studio shell (`desktop/src/renderer/studio/`). Exactly one presentation is active at a time, and the Overlay renderer is the session-store owner in both modes. Same parity obligation as Desktop ↔ iOS: a feature that exists in both presentations must be the same in both. Full architecture: [ADR-021](docs/architecture/adr/021-studio-shell-mirror-store.md).
 
+Important: Ion Studio is slated to supersede and replace the Overlay in its entirety one day. We should develop as if Ion Studio is the primary surface and the overlay is the system that is being phased out of existence. All features should be developed to work Ion Studio first and to update the Overlay as a consequence to ensuring that the Studio works.
+
 - **Reuse is the parity system.** A shared surface is ONE component reading the same store, mounted in both presentations (the Studio shell runs the session store in mirror mode). Never build a bespoke Studio widget for something the Overlay already has a component for; bespoke is only for canvas-coupled surfaces (marquee, inspector, control bar).
 - **New store action** → classify it in `desktop/src/shared/studio-mirror-actions.ts` (forwarded vs mirror-local, with justification); the mirror-parity test fails otherwise.
 - **New main-process event push** → route through `broadcast()`; `make check-studio-parity` (CI) fails direct `webContents.send` outside the owner-only allowlist.
