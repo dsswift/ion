@@ -90,9 +90,9 @@ describe('syncAllWorktrees — the bulk pass classifies every row', () => {
     writeFileSync(join(stale.path, 'shared.txt'), 'line1\nline2\nSTALE EDIT\n')
     git(stale.path, 'add', '-A')
     git(stale.path, 'commit', '-m', 'stale: edit line3')
-    // dirty: uncommitted work.
-    const dirty = makeWorktree('dirty')
-    writeFileSync(join(dirty.path, 'shared.txt'), 'line1\nline2\nUNCOMMITTED\n')
+    // stale dirty: source sync is required, but local work blocks the rebase.
+    const dirtyStale = makeWorktree('dirty-stale')
+    writeFileSync(join(dirtyStale.path, 'shared.txt'), 'line1\nline2\nUNCOMMITTED\n')
     // conflicted: committed edit that collides with the upstream move.
     const conflicted = makeWorktree('conflicted')
     writeFileSync(join(conflicted.path, 'upstream.txt'), 'CONFLICT EDIT\nu2\nu3\n')
@@ -107,6 +107,7 @@ describe('syncAllWorktrees — the bulk pass classifies every row', () => {
     // move still needs sync — its tree changes — which is why this row is
     // created last.)
     const current = makeWorktree('current')
+    writeFileSync(join(current.path, 'local.txt'), 'local uncommitted work\n')
 
     const result = await syncAllWorktreesUnqueued(repo)
     expect(result.ok).toBe(true)
@@ -114,14 +115,15 @@ describe('syncAllWorktrees — the bulk pass classifies every row', () => {
     const byPath = new Map(result.outcomes.map((o) => [o.worktreePath, o]))
     expect(byPath.get(current.path)?.outcome).toBe('skipped-clean')
     expect(byPath.get(stale.path)?.outcome).toBe('synced')
-    expect(byPath.get(dirty.path)?.outcome).toBe('skipped-dirty')
+    expect(byPath.get(dirtyStale.path)?.outcome).toBe('skipped-dirty')
     expect(byPath.get(conflicted.path)?.outcome).toBe('conflicted')
     expect(byPath.get(conflicted.path)?.conflictedPaths).toEqual(['upstream.txt'])
 
     // The dirty tree was never touched.
-    expect(readFileSync(join(dirty.path, 'shared.txt'), 'utf-8')).toContain('UNCOMMITTED')
+    expect(readFileSync(join(current.path, 'local.txt'), 'utf-8')).toBe('local uncommitted work\n')
+    expect(readFileSync(join(dirtyStale.path, 'shared.txt'), 'utf-8')).toContain('UNCOMMITTED')
     expect(result.summary).toMatchObject({
-      synced: 1, conflicted: 1, skippedDirty: 1, failed: 0,
+      synced: 1, conflicted: 1, skippedDirty: 1, skippedClean: 1, failed: 0,
     })
     // Leave no rebase running for teardown.
     git(conflicted.path, 'rebase', '--abort')

@@ -22,9 +22,10 @@
  *   - mid-rebase already → attempt replay-completion only (a recording made
  *     since it got stuck may cover it); never start a second operation.
  *   - needsSync, clean   → the full sync verb (precise base + rerere).
- *   - dirty              → typed skip. Never touched — the single-row verb
+ *   - needsSync, dirty   → typed skip. Never touched — the single-row verb
  *     refuses dirty trees and the bulk verb must not be more aggressive.
- *   - already current    → typed skip, so the summary accounts for every row.
+ *   - already current    → typed skip even when dirty, because no sync was
+ *     required; dirtiness is not a failed or skipped operation by itself.
  *
  * The pass never opens conversations or spends tokens: AI escalation is the
  * renderer pipeline's phase 2, gated behind operator confirmation. This
@@ -108,14 +109,18 @@ export async function syncAllWorktreesUnqueued(repoPath: string): Promise<SyncAl
       continue
     }
 
-    if (entry.isDirty) {
-      // Same rule as the single-row verb: uncommitted work is never touched.
-      outcomes.push({ ...base, outcome: 'skipped-dirty' })
+    // Dirtiness blocks a sync only when the source branch actually moved. A
+    // current worktree with local edits needs no rebase, so report it as current
+    // instead of implying that required work was skipped.
+    if (!entry.needsSync) {
+      outcomes.push({ ...base, outcome: 'skipped-clean' })
       continue
     }
 
-    if (!entry.needsSync) {
-      outcomes.push({ ...base, outcome: 'skipped-clean' })
+    if (entry.isDirty) {
+      // Same rule as the single-row verb: a stale worktree with uncommitted work
+      // is never touched.
+      outcomes.push({ ...base, outcome: 'skipped-dirty' })
       continue
     }
 
