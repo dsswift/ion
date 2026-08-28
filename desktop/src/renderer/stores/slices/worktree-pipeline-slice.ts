@@ -86,9 +86,14 @@ export function createWorktreePipelineSlice(set: StoreSet, get: StoreGet): Parti
         const result = await get().benchUpdateAll(p.repoPath, p.sourceBranch)
         if (!result.ok) {
           rWarn('worktree.pipeline', 'bench update-all failed', { error: result.error ?? '' })
+          patch({ phase: 'failed', summary: `Source sync: ${summarizeSync(p)} · Bench build failed: ${result.error ?? 'unknown error'}` })
+          return
         }
+        patch({ benchMemberCount: result.workspace?.members.length ?? bench.members.length })
       } catch (err) {
         rWarn('worktree.pipeline', 'bench update-all threw', { error: String(err) })
+        patch({ phase: 'failed', summary: `Source sync: ${summarizeSync(p)} · Bench build failed: ${String(err)}` })
+        return
       }
     } else {
       rDebug('worktree.pipeline', 'no bench for branch, skipping assembly phase', {
@@ -108,21 +113,30 @@ export function createWorktreePipelineSlice(set: StoreSet, get: StoreGet): Parti
     })
   }
 
-  /** One human sentence for the banner and the logs. */
-  function summarize(p: WorktreePipelineState, ending: 'completed' | 'cancelled'): string {
+  /** The source-sync result without any bench-build claim. */
+  function summarizeSync(p: WorktreePipelineState): string {
     const s = p.lastSummary
     const parts: string[] = []
     if (s) {
       if (s.synced > 0) parts.push(`${s.synced} synced`)
       if (s.replayed > 0) parts.push(`${s.replayed} completed by replay`)
-      if (s.skippedDirty > 0) parts.push(`${s.skippedDirty} skipped (dirty)`)
+      if (s.skippedDirty > 0) parts.push(`${s.skippedDirty} blocked by uncommitted changes`)
       if (s.skippedUnknownSource > 0) parts.push(`${s.skippedUnknownSource} skipped (unknown source)`)
       if (s.failed > 0) parts.push(`${s.failed} failed`)
     }
     if (p.resolvedByAi > 0) parts.push(`${p.resolvedByAi} resolved by AI`)
     if (p.needsManual.length > 0) parts.push(`${p.needsManual.length} need manual resolution`)
-    const body = parts.length > 0 ? parts.join(', ') : 'all worktrees already current'
-    return ending === 'cancelled' ? `Cancelled — ${body}` : body.charAt(0).toUpperCase() + body.slice(1)
+    return parts.length > 0 ? parts.join(', ') : 'all worktrees already current'
+  }
+
+  /** One human sentence for the banner and the logs. */
+  function summarize(p: WorktreePipelineState, ending: 'completed' | 'cancelled'): string {
+    const sync = summarizeSync(p)
+    if (ending === 'cancelled') return `Cancelled — Source sync: ${sync}`
+    const sourceSummary = `Source sync: ${sync}`
+    return p.benchMemberCount === undefined
+      ? sourceSummary
+      : `${sourceSummary} · Bench built with ${p.benchMemberCount} member${p.benchMemberCount === 1 ? '' : 's'}`
   }
 
   /**
