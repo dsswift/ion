@@ -63,6 +63,14 @@ resolve_connected_devices() {
   list_usb_devices_from_ios_deploy
 }
 
+print_no_connected_device_error() {
+  echo "✗ No connected iOS device found."
+  echo "  No active CoreDevice tunnel or USB connection is available."
+  echo "  If a paired device is on Wi-Fi, allow local network access in any active"
+  echo "  VPN, firewall, or packet filter, then retry."
+  echo "  Or connect the device via USB."
+}
+
 # Build destination for xcodebuild from tunnel availability.
 build_destination_for_device() {
   local tunnel_ok="$1"

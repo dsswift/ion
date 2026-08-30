@@ -29,6 +29,32 @@ cat > "$STALE_JSON" <<'JSON'
 }
 JSON
 
+NETWORK_JSON="$TMP_DIR/network.json"
+cat > "$NETWORK_JSON" <<'JSON'
+{
+  "result": {
+    "devices": [
+      {
+        "identifier": "00000000-0000000000000002",
+        "hardwareProperties": {"reality": "physical", "deviceType": "iPhone"},
+        "deviceProperties": {"name": "Network Phone"},
+        "connectionProperties": {
+          "tunnelState": "disconnected",
+          "transportType": "localNetwork"
+        }
+      }
+    ]
+  }
+}
+JSON
+
+network_device=$(parse_active_devices_from_devicectl_json "$NETWORK_JSON")
+expected_network='no|00000000-0000000000000002|Network Phone|iPhone|coredevice'
+if [[ "$network_device" != "$expected_network" ]]; then
+  echo "paired Wi-Fi device was not accepted for a CoreDevice install attempt" >&2
+  exit 1
+fi
+
 mkdir -p "$TMP_DIR/bin"
 cat > "$TMP_DIR/bin/ios-deploy" <<'SH'
 #!/usr/bin/env bash
@@ -64,6 +90,14 @@ export IOS_DEPLOY_FIXTURE="$NO_DEVICE_OUTPUT"
 
 if [[ -n "$(resolve_connected_devices "$STALE_JSON")" ]]; then
   echo "stale pairings were accepted without a connected USB device" >&2
+  exit 1
+fi
+
+network_error=$(print_no_connected_device_error)
+if [[ "$network_error" != *"CoreDevice tunnel"* ]] \
+  || [[ "$network_error" != *"VPN,"* ]] \
+  || [[ "$network_error" != *"local network access"* ]]; then
+  echo "unavailable Wi-Fi connection did not produce an actionable error" >&2
   exit 1
 fi
 

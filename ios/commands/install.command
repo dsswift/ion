@@ -200,9 +200,7 @@ detect_device() {
       return
     fi
 
-    echo "✗ No connected iOS device found."
-    echo "  Paired devices exist but none have an active tunnel or USB connection."
-    echo "  Connect an iPhone or iPad via USB cable."
+    print_no_connected_device_error
     exit 1
   else
     rm -f "$tmp"
@@ -218,8 +216,7 @@ detect_device() {
     | head -1)
 
   if [[ -z "$line" ]]; then
-    echo "✗ No connected iOS device found."
-    echo "  Connect an iPhone or iPad via USB or ensure Wi-Fi pairing is active."
+    print_no_connected_device_error
     exit 1
   fi
 
