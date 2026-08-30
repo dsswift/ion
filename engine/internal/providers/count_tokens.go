@@ -53,10 +53,16 @@ func (p *anthropicProvider) CountTokens(ctx context.Context, req CountTokensRequ
 	if len(req.Tools) > 0 {
 		tools := make([]map[string]any, 0, len(req.Tools))
 		for _, t := range req.Tools {
+			inputSchema, adapted := anthropicToolInputSchema(t.InputSchema)
+			if adapted {
+				utils.LogWithFields(utils.LevelInfo, "anthropic", "adapted count tokens tool input schema for provider", map[string]any{
+					"tool": t.Name,
+				})
+			}
 			tools = append(tools, map[string]any{
 				"name":         t.Name,
 				"description":  t.Description,
-				"input_schema": t.InputSchema,
+				"input_schema": inputSchema,
 			})
 		}
 		body["tools"] = tools

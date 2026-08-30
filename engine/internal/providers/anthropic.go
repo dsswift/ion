@@ -264,13 +264,22 @@ func (p *anthropicProvider) buildRequestBody(opts types.LlmStreamOptions) map[st
 	// Format messages
 	body["messages"] = p.formatMessages(opts.Messages)
 
-	// Tools (client-side + server-side)
+	// Tools (client-side + server-side). Anthropic accepts JSON Schema
+	// conditionals, but refuses oneOf/allOf/anyOf as direct input_schema
+	// keywords. Adapt only that provider-specific root shape and preserve the
+	// generic schema used for local validation and every other provider.
 	var allTools []map[string]any
 	for _, t := range opts.Tools {
+		inputSchema, adapted := anthropicToolInputSchema(t.InputSchema)
+		if adapted {
+			utils.LogWithFields(utils.LevelInfo, "anthropic", "adapted tool input schema for provider", map[string]any{
+				"tool": t.Name,
+			})
+		}
 		allTools = append(allTools, map[string]any{
 			"name":         t.Name,
 			"description":  t.Description,
-			"input_schema": t.InputSchema,
+			"input_schema": inputSchema,
 		})
 	}
 	allTools = append(allTools, opts.ServerTools...)

@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -47,6 +48,44 @@ func TestCountTokens_AnthropicMarshal(t *testing.T) {
 	}
 	if count != 42 {
 		t.Fatalf("expected count 42, got %d", count)
+	}
+}
+
+func TestCountTokens_AnthropicAdaptsToolSchema(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Tools []struct {
+				InputSchema map[string]any `json:"input_schema"`
+			} `json:"tools"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if len(body.Tools) != 1 {
+			t.Fatalf("tools = %d, want 1", len(body.Tools))
+		}
+		if _, ok := body.Tools[0].InputSchema["allOf"]; ok {
+			t.Fatalf("count request contains root allOf: %#v", body.Tools[0].InputSchema)
+		}
+		if _, ok := body.Tools[0].InputSchema["then"].(map[string]any)["allOf"]; !ok {
+			t.Fatalf("count request lost allOf: %#v", body.Tools[0].InputSchema)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"input_tokens":42}`))
+	}))
+	defer srv.Close()
+
+	p := NewAnthropicProvider(&ProviderOptions{APIKey: "test", BaseURL: srv.URL})
+	_, err := p.CountTokens(context.Background(), CountTokensRequest{
+		Model:    "claude-sonnet-4-6",
+		Messages: []types.LlmMessage{{Role: "user", Content: "hello"}},
+		Tools: []types.LlmToolDef{{
+			Name:        "ConditionalTool",
+			InputSchema: map[string]any{"type": "object", "allOf": []any{map[string]any{"required": []any{"value"}}}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
