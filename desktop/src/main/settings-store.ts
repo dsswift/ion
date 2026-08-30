@@ -25,6 +25,20 @@ export const SETTINGS_FILE = join(SETTINGS_DIR, "settings.json");
 export const ENGINE_CONFIG_FILE = join(SETTINGS_DIR, "engine.json");
 
 export const SETTINGS_DEFAULTS = {
+  /**
+   * Minimum desktop log level written to ~/.ion/desktop.jsonl.
+   *
+   * DEBUG by default: this is a development machine, and the packaged build
+   * has no DevTools, so `desktop.jsonl` is the only channel for diagnosing a
+   * renderer or main-process problem. INFO-only logging repeatedly cost a
+   * whole debugging round — an rDebug line placed to explain a scroll or
+   * measurement decision was filtered out, so its absence looked like the
+   * code path had not run. Verbose-but-present beats terse-and-blind.
+   *
+   * TRACE is available for per-frame diagnostics but is not the default: it is
+   * loud enough to rotate the window that holds the evidence.
+   */
+  logLevel: "DEBUG",
   selectedTheme: "ion-dark",
   soundEnabled: true,
   expandedUI: false,
