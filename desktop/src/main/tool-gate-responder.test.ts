@@ -37,9 +37,33 @@ const studioToolsMock = vi.hoisted(() => ({
 }))
 vi.mock('./studio-playwright/tools', () => studioToolsMock)
 
-vi.mock('./settings-store', () => ({
+const chartToolMock = vi.hoisted(() => ({
+  RENDER_CHART_TOOL: {
+    name: 'RenderChart',
+    description: 'render a chart on ONE chart with null gaps and update support',
+    inputSchema: { type: 'object' },
+    planModeSafe: true,
+  },
+  RENDER_CHART_TOOL_NAME: 'RenderChart',
+  executeRenderChart: vi.fn(),
+}))
+vi.mock('./studio-chart-tool', () => chartToolMock)
+
+const chartPublishMock = vi.hoisted(() => ({
+  publishChartResource: vi.fn(async () => undefined),
+  publishChartResourceRemoval: vi.fn(async () => undefined),
+}))
+vi.mock('./chart-resource-publish', () => chartPublishMock)
+
+// The session registry now rides on the bridge the responder is wired to,
+// which is what keeps `./state` (and the live EngineBridge it constructs at
+// import time) out of this module's import graph.
+const activeSessions = new Map<string, { conversationId?: string }>()
+
+const settingsMock = vi.hoisted(() => ({
   readSettings: vi.fn(() => ({ activeUi: 'studio', studioPlaywrightEnabled: true })),
 }))
+vi.mock('./settings-store', () => settingsMock)
 
 vi.mock('./logger', () => ({
   log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(),
@@ -56,6 +80,8 @@ import type { EngineEvent } from '../shared/types'
 class FakeBridge implements GateBridge {
   listener: ((key: string, event: EngineEvent) => void) | null = null
   sent: Array<Record<string, unknown>> = []
+  activeSessions = activeSessions
+  request = vi.fn(async () => ({ ok: true }))
   on(_event: 'event', listener: (key: string, event: EngineEvent) => void): unknown {
     this.listener = listener
     return this
@@ -85,7 +111,7 @@ describe('toolGateSessionConfig', () => {
     expect(cfg.enabled).toBe(true)
     expect(cfg.tools).toEqual(GATED_TOOLS)
     expect(cfg.timeoutDecision).toBe('allow')
-    expect(cfg.clientTools?.map((t) => t.name)).toEqual(['BenchMemberFile', 'browser_snapshot', 'AskUserQuestions'])
+    expect(cfg.clientTools?.map((t) => t.name)).toEqual(['BenchMemberFile', 'browser_snapshot', 'RenderChart', 'AskUserQuestions'])
     expect(cfg.clientTools?.[0].planModeSafe).toBe(true)
     // The declaration must not carry the execute function — it crosses the wire.
     expect((cfg.clientTools?.[0] as unknown as Record<string, unknown>).execute).toBeUndefined()
@@ -249,8 +275,105 @@ describe('wireToolGateResponder — browser tool context', () => {
     for (const name of declared) {
       if (name === 'AskUserQuestions') continue
       const executable = [...toolsMock.BENCH_CLIENT_TOOLS, ...studioToolsMock.STUDIO_PLAYWRIGHT_TOOLS]
-        .some((tool) => tool.name === name)
+        .some((tool) => tool.name === name) || name === chartToolMock.RENDER_CHART_TOOL_NAME
       expect(executable).toBe(true)
     }
+  })
+})
+
+describe('wireToolGateResponder — chart tool', () => {
+  let bridge: FakeBridge
+  beforeEach(() => {
+    bridge = new FakeBridge()
+    wireToolGateResponder(bridge)
+    chartToolMock.executeRenderChart.mockReset()
+    chartPublishMock.publishChartResource.mockClear()
+    activeSessions.clear()
+    settingsMock.readSettings.mockReturnValue({ activeUi: 'studio', studioPlaywrightEnabled: true })
+  })
+
+  it('executes RenderChart with the conversation the session owns', async () => {
+    // A chart belongs to a conversation, so ownership is resolved from the
+    // bridge's session registry — never from the model's arguments.
+    activeSessions.set('tab-7', { conversationId: 'conv-abc' })
+    chartToolMock.executeRenderChart.mockReturnValue({ content: 'Chart rendered.', isError: false })
+
+    bridge.fire('tab-7', gateEvent({
+      gateKind: 'tool',
+      gateToolName: 'RenderChart',
+      gateToolInput: { schemaVersion: 1, conversationId: 'conv-SPOOFED' },
+      gateRequestId: 'tool-gate-chart-1',
+    }))
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(chartToolMock.executeRenderChart).toHaveBeenCalledWith(
+      { schemaVersion: 1, conversationId: 'conv-SPOOFED' },
+      { sessionKey: 'tab-7', conversationId: 'conv-abc', toolCallId: 'tool-gate-chart-1' },
+    )
+    expect(bridge.sent[0]).toMatchObject({
+      cmd: 'tool_gate_response',
+      gateRequestId: 'tool-gate-chart-1',
+      gateContent: 'Chart rendered.',
+      gateIsError: false,
+    })
+  })
+
+  it('publishes the resource only after a successful commit', async () => {
+    const record = { chartId: 'c1', conversationId: 'conv-abc' }
+    chartToolMock.executeRenderChart.mockReturnValue({
+      content: 'ok', isError: false, publish: { op: 'create', record },
+    })
+    bridge.fire('tab-1', gateEvent({ gateKind: 'tool', gateToolName: 'RenderChart' }))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(chartPublishMock.publishChartResource).toHaveBeenCalledWith(bridge, 'tab-1', 'create', record)
+  })
+
+  it('does not publish when the tool refused the input', async () => {
+    // A refusal leaves no record, so announcing one would show a card that
+    // vanishes on restart.
+    chartToolMock.executeRenderChart.mockReturnValue({ content: 'Chart rejected: bad', isError: true })
+    bridge.fire('tab-1', gateEvent({ gateKind: 'tool', gateToolName: 'RenderChart' }))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(chartPublishMock.publishChartResource).not.toHaveBeenCalled()
+    expect(bridge.sent[0]).toMatchObject({ gateIsError: true })
+  })
+
+  it('refuses RenderChart when the Overlay is the active presentation', async () => {
+    // Previously saved charts still render in the Overlay; creating a NEW one
+    // is Studio-only, and the responder must agree with the declaration.
+    settingsMock.readSettings.mockReturnValue({ activeUi: 'overlay', studioPlaywrightEnabled: true })
+    bridge.fire('tab-1', gateEvent({ gateKind: 'tool', gateToolName: 'RenderChart' }))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(chartToolMock.executeRenderChart).not.toHaveBeenCalled()
+    expect(bridge.sent[0]).toMatchObject({ gateIsError: true })
+    expect(String(bridge.sent[0].gateContent)).toContain('not provided by this desktop')
+  })
+
+  it('omits RenderChart from the declaration outside Studio', () => {
+    settingsMock.readSettings.mockReturnValue({ activeUi: 'overlay', studioPlaywrightEnabled: true })
+    const names = toolGateSessionConfig().clientTools?.map((t) => t.name) ?? []
+    expect(names).not.toContain('RenderChart')
+    expect(names).toContain('AskUserQuestions')
+  })
+
+  it('declares RenderChart even when browser tools are disabled', () => {
+    // A chart is not a browser artifact: the Playwright setting must not gate it.
+    settingsMock.readSettings.mockReturnValue({ activeUi: 'studio', studioPlaywrightEnabled: false })
+    const names = toolGateSessionConfig().clientTools?.map((t) => t.name) ?? []
+    expect(names).toContain('RenderChart')
+    expect(names).not.toContain('browser_snapshot')
+  })
+
+  it('fails CLOSED when the chart executor throws', async () => {
+    chartToolMock.executeRenderChart.mockImplementation(() => { throw new Error('disk exploded') })
+    bridge.fire('tab-1', gateEvent({ gateKind: 'tool', gateToolName: 'RenderChart' }))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(bridge.sent[0]).toMatchObject({ gateIsError: true })
+    expect(String(bridge.sent[0].gateContent)).toContain('disk exploded')
   })
 })

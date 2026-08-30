@@ -6,7 +6,7 @@ import { broadcast } from './broadcast'
 import { shouldStreamThinkingToRemote } from './settings-store'
 import { formatClearDivider } from '../shared/clear-divider'
 import { tabIdFromKey } from '../shared/session-key'
-import { subscribeToResourceKinds, subscribeToGlobalResourceKinds, clearResourceSubscriptions, markReadPersisted, resubscribeSessionResourceKinds, handleResourceItemEvent } from './event-wiring-resources'
+import { subscribeToResourceKinds, subscribeToGlobalResourceKinds, clearResourceSubscriptions, markReadPersisted, resubscribeSessionResourceKinds, handleResourceItemEvent, ensureSessionResourceSubscription } from './event-wiring-resources'
 import { handleInterceptEvent } from './event-wiring-intercept'
 import { resourceCatalog } from './resource-catalog'
 import { accumulateTextDelta, flushKeyDeltas, dropKeyDeltas } from './event-wiring-text-delta-batcher'
@@ -156,6 +156,14 @@ export function wireEngineBridgeEvents(): void {
       // declared its resource kinds, so the broker is ready to serve
       // subscription requests. Idempotent: subscribeToResourceKinds
       // skips kinds already subscribed for this session key.
+      //
+      // NOT the only trigger. This event only fires for a session that
+      // actually loaded an extension, so a plain conversation never reached
+      // it and never subscribed — which made every desktop-produced
+      // session-scoped resource (a chart) publish into a broker with no
+      // subscriber. `ensureSessionResourceSubscription` below covers the
+      // general case; this call stays because it is the earliest point a
+      // extension-hosted session is known to be ready.
       subscribeToResourceKinds(key).catch((err) => {
         log('resource_subscribe: error', { key, error: String(err) })
       })
@@ -324,6 +332,11 @@ export function wireEngineBridgeEvents(): void {
       const [k0, k1] = key.split(':')
       recordStatusFields(k0, k1 || null, event.fields)
     }
+    // Every live session subscribes to its own resource broker, whether or
+    // not it hosts an extension. `engine_status` is the seam because it fires
+    // for every session; `engine_command_registry` does not, and relying on
+    // it alone left plain conversations with no subscription at all.
+    ensureSessionResourceSubscription(key)
     if (event.type === 'engine_working_message') {
       const [k0, k1] = key.split(':')
       // '' is meaningful: it is how a stale banner is cleared.

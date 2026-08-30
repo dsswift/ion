@@ -27,12 +27,49 @@ export function useScrollFollow(deps: unknown[]) {
   const contentRef = useRef<HTMLDivElement>(null)
   const isNearBottomRef = useRef(true)
   const touchYRef = useRef<number | null>(null)
+  /**
+   * Set while a deliberate navigation (a chart jump, a search hit) owns the
+   * viewport. Tail-following is suppressed for its duration.
+   *
+   * A boolean flag alone is not enough: `pauseFollowing` clears
+   * `isNearBottomRef`, but the navigation's own scroll then fires
+   * `handleScroll`, which re-marks "near bottom" whenever the target happens
+   * to sit within the tail threshold — and charts are usually the newest rows
+   * in a conversation. The jump therefore scrolled and was immediately yanked
+   * back to the tail, which is exactly what "clicking the row does nothing"
+   * looked like. The lock survives those events and is released once the
+   * viewport settles.
+   */
+  const navigationLockRef = useRef(0)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
 
   const followTail = useCallback(() => {
+    if (navigationLockRef.current > 0) return
     if (isNearBottomRef.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
+  }, [])
+
+  /**
+   * Take the viewport for a deliberate navigation.
+   *
+   * Returns nothing: the lock clears itself after the scroll settles, so a
+   * caller cannot leak it. Repeated calls extend the window rather than
+   * nesting, which matches a user clicking two chart rows in quick
+   * succession.
+   */
+  const beginNavigation = useCallback(() => {
+    navigationLockRef.current += 1
+    isNearBottomRef.current = false
+    setShowScrollBtn(true)
+    // Two frames: one for the virtualizer to apply its scroll, one for the
+    // measurement pass that follows it. A timer rather than a single frame
+    // because `scrollToIndex` on a dynamically-measured list can re-scroll
+    // after its first correction.
+    window.setTimeout(() => {
+      navigationLockRef.current = Math.max(0, navigationLockRef.current - 1)
+      rTrace('conversation.scroll', 'navigation lock released')
+    }, 250)
   }, [])
 
   const pauseFollowing = useCallback(() => {
@@ -74,6 +111,9 @@ export function useScrollFollow(deps: unknown[]) {
 
   const handleScroll = useCallback(() => {
     if (!scrollRef.current) return
+    // A navigation owns the viewport: neither resume tailing nor correct back
+    // to the tail, whatever position the scroll landed on.
+    if (navigationLockRef.current > 0) return
     const el = scrollRef.current
     const threshold = 80
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
@@ -149,6 +189,7 @@ export function useScrollFollow(deps: unknown[]) {
     handlePointerMove,
     handleKeyDown,
     pauseFollowing,
+    beginNavigation,
     scrollToBottom,
   }
 }

@@ -10,7 +10,7 @@ import { readClaudeCompat } from '../../settings-store'
 import { autoPullDiagnosticLogs } from './diagnostics'
 import { sendSync } from './tabs-sync'
 import { evaluateRemoteCloseGuard, formatRemoteCloseGuardRefusal } from './tabs-close-guard'
-import { resolveTabSessionChain, paginateHistory, resolvePlanPath, toRemoteMessage } from './tabs-session-chain'
+import { resolveTabSessionChain, paginateHistory, resolvePlanPath, toRemoteMessage, PAGE_SIZE, BULK_PAGE_MESSAGES } from './tabs-session-chain'
 import { mapSessionHistory } from '../../../shared/session-message-mapper'
 import { decideLoad, recordLoadResponse } from './load-conversation-gate'
 import { resolveDiscoveryWorkingDir } from '../../ipc-validation'
@@ -313,7 +313,14 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
     let fallbackSeq = 0
     const all = mapSessionHistory(history, () => `hist-${cmd.tabId}-${fallbackSeq++}`)
 
-    const { page, hasMore, cursor, total } = paginateHistory(all, cmd.before)
+    // Clamp a client-requested page size into [PAGE_SIZE, BULK_PAGE_MESSAGES].
+    // A client cannot ask for a frame the transport would refuse, and cannot
+    // ask for less than the default either — a smaller page would only add
+    // round trips.
+    const requested = typeof cmd.pageSize === 'number' && Number.isFinite(cmd.pageSize)
+      ? Math.min(Math.max(Math.floor(cmd.pageSize), PAGE_SIZE), BULK_PAGE_MESSAGES)
+      : PAGE_SIZE
+    const { page, hasMore, cursor, total } = paginateHistory(all, cmd.before, requested)
     log('load_conversation', { tab_id: cmd.tabId, total, page: page.length, has_more: hasMore, sessions: chain.sessionIds.length })
 
     const msgs = await Promise.all(page.map(toRemoteMessage).map(async (m) => {

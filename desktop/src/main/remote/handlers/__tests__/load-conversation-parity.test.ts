@@ -78,6 +78,25 @@ vi.mock('../../../settings-store', () => ({
   TABS_FILE: '/tmp/ion-parity-test/tabs.json',
 }))
 vi.mock('../../snapshot', () => ({ getRemoteTabStates: vi.fn(async () => []) }))
+// The handler resolves a tab's session chain before asking the engine for
+// history. These tests predate that seam: they only stubbed the renderer
+// scrape, so the chain resolved to null and the handler returned an empty
+// transcript before reaching a single assertion. Driving the resolver from the
+// same fixture keeps one source of truth for what the tab looks like.
+const chainHolder = vi.hoisted(() => ({ current: null as null | {
+  sessionIds: string[]
+  tabStatus: string
+  conversationId: string | null
+  source: string
+} }))
+vi.mock('../tabs-session-chain', async (importOriginal) => ({
+  // Only the chain lookup is stubbed. `paginateHistory`, `resolvePlanPath`,
+  // and `toRemoteMessage` are the real implementations — replacing the whole
+  // module would silently drop them and every assertion downstream of
+  // pagination would read an empty page.
+  ...(await importOriginal<typeof import('../tabs-session-chain')>()),
+  resolveTabSessionChain: vi.fn(async () => chainHolder.current),
+}))
 vi.mock('./diagnostics', () => ({ autoPullDiagnosticLogs: vi.fn() }))
 vi.mock('./tabs-sync', () => ({ broadcastSync: vi.fn(), sendSync: vi.fn() }))
 vi.mock('../../../ipc-validation', () => ({ resolveDiscoveryWorkingDir: vi.fn() }))
@@ -88,7 +107,20 @@ vi.mock('./tabs-prompt', () => ({ handlePrompt: vi.fn(), handleCancel: vi.fn() }
 import { handleLoadConversation } from '../tabs'
 
 /** Renderer metadata result (the only renderer query the handler makes). */
+/**
+ * What `resolveTabSessionChain` returns for the tab under test. Set by
+ * `tabMeta`, so a test declares the tab once and both seams agree.
+ */
 function tabMeta(opts: { status?: string; conversationId?: string; historical?: string[] } = {}) {
+  const conversationId = opts.conversationId ?? 'conv-main'
+  chainHolder.current = {
+    // Historical sessions first, current last — the order the handler asks
+    // the engine for, and the order the assertions expect.
+    sessionIds: [...(opts.historical ?? []), conversationId],
+    tabStatus: opts.status ?? 'idle',
+    conversationId,
+    source: 'renderer_cache',
+  }
   return {
     conversationId: opts.conversationId ?? 'conv-main',
     historicalSessionIds: opts.historical ?? [],
@@ -127,6 +159,7 @@ describe('handleLoadConversation — engine-sourced history', () => {
     executeJsMock.mockReset()
     loadChainHistoryMock.mockReset()
     mainWindowAvailable = true
+    chainHolder.current = null
   })
 
   it('serves history from the engine with canonical row ids', async () => {

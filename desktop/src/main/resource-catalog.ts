@@ -46,6 +46,16 @@ function retainLoadedContent(previous: ResourceItem | undefined, incoming: Resou
   return { ...incoming, content: previous.content }
 }
 
+/**
+ * Kinds the DESKTOP produces and persists itself.
+ *
+ * These are not engine state: the desktop writes them to disk and seeds them
+ * into the catalog before the engine is connected, so an engine reconnect
+ * cannot make them stale and must not delete them. Every other kind is served
+ * by a producing extension and is correctly dropped on reconnect.
+ */
+const DESKTOP_OWNED_KINDS = new Set<string>(['chart'])
+
 export class ResourceCatalog {
   private readonly resources = new Map<string, ResourceItem[]>()
   private readonly snapshots = new Map<string, Map<string, ResourceItem[]>>()
@@ -170,10 +180,44 @@ export class ResourceCatalog {
     return manifest
   }
 
+  /**
+   * Drop engine-sourced state on reconnect.
+   *
+   * ── Why some kinds survive ──────────────────────────────────────────────
+   * This exists because a reconnect invalidates everything the ENGINE told
+   * us: subscription ids are stale and snapshots must be re-served by their
+   * producing extension. It is not a general reset.
+   *
+   * A DESKTOP-owned kind is different. The desktop is the producer for
+   * `chart`, it persists charts to disk itself, and it seeds them into this
+   * catalog at startup — before the engine is even connected. Clearing them
+   * on connect deleted state the engine never supplied and will never resend,
+   * so the attachments panel went empty and stayed empty: hydration ran at
+   * 10:28:58, `catalog cleared` fired at 10:29:03, and every read afterwards
+   * saw zero charts.
+   *
+   * So the clear is scoped to what it is actually for. Desktop-owned kinds
+   * are retained because no reconnect can make a local file stale.
+   */
   clear(): void {
-    this.resources.clear()
-    this.snapshots.clear()
-    log('resource_catalog', 'catalog cleared')
+    let dropped = 0
+    for (const kind of [...this.resources.keys()]) {
+      if (DESKTOP_OWNED_KINDS.has(kind)) continue
+      this.resources.delete(kind)
+      dropped += 1
+    }
+    for (const [source, byKind] of [...this.snapshots]) {
+      for (const kind of [...byKind.keys()]) {
+        if (!DESKTOP_OWNED_KINDS.has(kind)) byKind.delete(kind)
+      }
+      if (byKind.size === 0) this.snapshots.delete(source)
+    }
+
+    log('resource_catalog', 'catalog cleared', {
+      dropped_kinds: dropped,
+      retained_kinds: [...this.resources.keys()].join(','),
+      retained_items: [...this.resources.values()].reduce((n, items) => n + items.length, 0),
+    })
   }
 }
 

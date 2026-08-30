@@ -93,6 +93,21 @@ export const MAX_PAGE_MESSAGES = 80;
 /** Default page size for `desktop_load_conversation`. */
 export const PAGE_SIZE = 10;
 
+/**
+ * Ceiling for an explicitly requested BULK page.
+ *
+ * Sized against the transport, not guessed: the relay caps a frame at 12 MB
+ * (`relay/relay.go` MaxMessageSize) and a measured transcript averages ~1.3 KB
+ * per row after the tool-content cap below, so 2000 rows is ~2.6 MB — comfortably
+ * inside one frame with headroom for an atypically heavy conversation.
+ *
+ * This exists because the default page (10 rows, turn-snapped) is tuned for
+ * first paint, and a client that needs the WHOLE conversation — to scroll back
+ * without stutter, or to jump to a row in older history — would otherwise pay
+ * hundreds of round trips and hundreds of transcript rebuilds to get it.
+ */
+export const BULK_PAGE_MESSAGES = 2000;
+
 /** Maximum content chars carried per tool row over the wire. */
 const TOOL_CONTENT_CAP = 2048;
 
@@ -135,8 +150,12 @@ export function paginateHistory(
     startIdx--;
   }
 
-  if (endIdx - startIdx > MAX_PAGE_MESSAGES) {
-    startIdx = endIdx - MAX_PAGE_MESSAGES;
+  // The per-page ceiling follows the REQUESTED size: a default page stays
+  // bounded at MAX_PAGE_MESSAGES so a turn-snap cannot balloon it, while an
+  // explicit bulk request is allowed its larger window.
+  const ceiling = pageSize > PAGE_SIZE ? BULK_PAGE_MESSAGES : MAX_PAGE_MESSAGES;
+  if (endIdx - startIdx > ceiling) {
+    startIdx = endIdx - ceiling;
   }
 
   const page = all.slice(startIdx, endIdx).map((m) => {

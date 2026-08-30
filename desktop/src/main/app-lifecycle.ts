@@ -3,6 +3,8 @@ import { existsSync, writeFileSync } from 'fs'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { log as _log, error as _error, initLoggerMachineIdentity } from './logger'
+import { applyConfiguredLogLevel } from './log-level'
+import { hydrateChartCatalogFromDisk } from './chart-restore'
 import { loadMachineIdentity } from './machine-identity'
 import { state, SPACES_DEBUG, engineBridge, enterprisePolicyCache } from './state'
 import { createWindow, installContentSecurityPolicy, snapshotWindowState, showWindow } from './window-manager'
@@ -255,6 +257,19 @@ export function setupAppLifecycle(): void {
   // absent. loadMachineIdentity resolves quickly on all platforms; the host name
   // is always available and ioreg/plutil are fast on modern macOS.
   loadMachineIdentity().then(initLoggerMachineIdentity).catch(() => { /* non-fatal */ })
+
+  // Apply the operator's log level before the app does any real work, so a
+  // DEBUG-level decision made during startup is actually recorded. The
+  // packaged build has no DevTools, which makes desktop.jsonl the only
+  // diagnostic channel — a filtered-out line reads as "the code never ran".
+  applyConfiguredLogLevel()
+
+  // Seed the resource catalog with persisted charts BEFORE any renderer can
+  // read it. Charts are files on disk keyed by conversation id, so this needs
+  // no session and no engine — and doing it here is what makes the attachments
+  // panel correct on first paint instead of minutes later, when the session
+  // finally subscribes.
+  hydrateChartCatalogFromDisk()
 
   app.whenReady().then(async () => {
     createStartupWindow()

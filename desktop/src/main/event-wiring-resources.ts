@@ -15,6 +15,7 @@ import { IPC } from '../shared/types'
 import { resourceIdentity } from '../shared/resource-identity'
 import { log as _log } from './logger'
 import { engineBridge, state } from './state'
+import { restoreConversationCharts } from './chart-restore'
 import { atomicWriteFileSync } from './utils/atomicWrite'
 import { broadcast } from './broadcast'
 import { resourceCatalog } from './resource-catalog'
@@ -39,6 +40,7 @@ const activeSessionKeys = new Set<string>()
 export function recordActiveSessionKey(key: string): void {
   activeSessionKeys.add(key)
 }
+
 
 /** Re-subscribe to per-session resource kinds for all known active session keys.
  *  Called after clearResourceSubscriptions() on engine reconnect to recover
@@ -150,9 +152,47 @@ export async function subscribeToResourceKinds(key: string): Promise<void> {
     // Track this key so it can be resubscribed on engine reconnect.
     recordActiveSessionKey(key)
     log('resource_subscribe: ok', { key, kind, sub_id: result.data.subscriptionId })
+    // Charts are producer-owned: the engine stores no content, so nothing
+    // re-announces a persisted chart after a desktop restart. Republish this
+    // conversation's charts now that a subscriber exists, or every chart drawn
+    // before the restart stays on disk and invisible on every surface.
+    //
+    // Guarded because restoration is strictly additive: a bridge without a
+    // session registry (or a session whose conversation is not yet resolved)
+    // must still get its subscription, which is the load-bearing part.
+    const conversationId = engineBridge.activeSessions?.get(key)?.conversationId ?? ''
+    if (conversationId) {
+      void restoreConversationCharts(engineBridge, key, conversationId).catch((err: unknown) => {
+        log('chart restore: error', { key, error: String(err) })
+      })
+    }
   } else {
     log('resource_subscribe: failed', { key, kind, error: result.error ?? 'no data' })
   }
+}
+
+/**
+ * Ensure a live session has a resource subscription, from any event.
+ *
+ * THE GAP THIS CLOSES: the only subscribe trigger used to be
+ * `engine_command_registry`, which the engine emits solely for a session that
+ * loaded an extension. A plain conversation therefore never subscribed to its
+ * own session broker, so anything the DESKTOP published into that broker — a
+ * Chart Output, whose item is conversation-scoped and so routes to the session
+ * broker — was delivered to zero subscribers. The chart persisted to disk and
+ * drew in the transcript, while the attachments panel stayed empty.
+ *
+ * Safe to call on every event: the dedup map in `subscribeToResourceKinds`
+ * makes a repeat a no-op, and the fire-and-forget shape keeps the event
+ * handler synchronous. A failure is logged, never thrown, because a
+ * subscription error must not break status handling for the session.
+ */
+export function ensureSessionResourceSubscription(key: string): void {
+  if (!key) return
+  if (resourceSubscriptionIds.has(`${key}:${WILDCARD_RESOURCE_KIND}`)) return
+  void subscribeToResourceKinds(key).catch((err) => {
+    log('resource_subscribe: ensure error', { key, error: String(err) })
+  })
 }
 
 export async function subscribeToGlobalResourceKinds(): Promise<void> {

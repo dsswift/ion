@@ -12,7 +12,8 @@ import { useColors } from "../../theme";
 import { usePreferencesStore } from "../../preferences";
 import { ToolIcon } from "./ToolIcon";
 import { ToolRow } from "./ToolRow";
-import { ToolImagesStrip } from "./ToolImagesStrip";
+import { ToolVisualOutputs } from "./ToolVisualOutputs";
+import type { ChartRenderIndex } from "./chart-revisions";
 import {
   activeToolProgress,
   getToolDescription,
@@ -24,6 +25,10 @@ import type { Message } from "../../../shared/types";
 interface ToolGroupProps {
   tools: Message[];
   skipMotion?: boolean;
+  /** Full conversation list; chart revision state is derived from it. */
+  /** Per-row chart render state, derived once by the transcript. */
+  chartRenders?: ChartRenderIndex;
+  tabId?: string;
   /**
    * When true, the group is hosted inside AgentTurnGroup, which already owns
    * the "Used N tools" collapse header, the expand/collapse state, and the
@@ -38,6 +43,8 @@ export const ToolGroup = React.memo(function ToolGroup({
   tools,
   skipMotion,
   embedded,
+  chartRenders,
+  tabId,
 }: ToolGroupProps) {
   const hasRunning = tools.some((t) => t.toolStatus === "running");
   const hasUserExecuted = tools.some((t) => t.userExecuted);
@@ -147,8 +154,10 @@ export const ToolGroup = React.memo(function ToolGroup({
             })}
           </div>
         </div>
-        {/* Tool images: always visible, outside the collapsible text rows. */}
-        <ToolImagesStrip tools={tools} />
+        {/* Visual deliverables: always visible, outside the collapsible text
+            rows. `owned={!embedded}` is the duplicate-render guard — inside a
+            unified turn the AgentTurnGroup already painted these. */}
+        <ToolVisualOutputs tools={tools} chartRenders={chartRenders} tabId={tabId} owned={!embedded} />
       </div>
     );
 
@@ -267,8 +276,8 @@ export const ToolGroup = React.memo(function ToolGroup({
     return (
       <div className="py-0.5">
         {inner}
-        {/* Tool images stay visible even while the tool text is collapsed. */}
-        <ToolImagesStrip tools={tools} />
+        {/* Visual deliverables stay visible even while the tool text is collapsed. */}
+        <ToolVisualOutputs tools={tools} chartRenders={chartRenders} tabId={tabId} owned={!embedded} />
       </div>
     );
 
@@ -281,8 +290,8 @@ export const ToolGroup = React.memo(function ToolGroup({
       className="py-0.5"
     >
       {inner}
-      {/* Tool images stay visible even while the tool text is collapsed. */}
-      <ToolImagesStrip tools={tools} />
+      {/* Visual deliverables stay visible even while the tool text is collapsed. */}
+      <ToolVisualOutputs tools={tools} chartRenders={chartRenders} tabId={tabId} owned={!embedded} />
     </motion.div>
   );
 });

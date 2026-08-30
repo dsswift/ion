@@ -26,8 +26,15 @@ vi.mock('../ToolRow', () => ({
   ToolRow: () => null,
 }))
 
-vi.mock('../ToolImagesStrip', () => ({
-  ToolImagesStrip: () => null,
+// The visual-output seam is mocked to a marker that RECORDS its ownership
+// prop. That is what lets these tests prove exactly one owner paints a group's
+// deliverables — the guard against the duplicate render that existed while
+// AgentTurnGroup and its embedded ToolGroup both hoisted images.
+vi.mock('../ToolVisualOutputs', () => ({
+  ToolVisualOutputs: ({ owned = true }: { owned?: boolean }) =>
+    (owned
+      ? React.createElement('div', { 'data-testid': 'visual-outputs' })
+      : null),
 }))
 
 vi.mock('../ToolIcon', () => ({

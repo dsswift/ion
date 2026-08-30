@@ -205,6 +205,46 @@ export interface IonCoreApi {
     audioBase64: string,
   ): Promise<{ error: string | null; transcript: string | null }>;
   getDiagnostics(): Promise<any>;
+  /**
+   * Copy PNG bytes to the OS clipboard. Resolves false on any refusal (wrong
+   * type, oversize, bad signature, undecodable) so the caller can tell the
+   * user rather than leaving them to discover an empty paste.
+   */
+  copyPngToClipboard(png: ArrayBuffer): Promise<boolean>;
+  /** Ask the conversation transcript to scroll to a chart's newest card. */
+  requestChartJump(request: {
+    tabId: string;
+    chartId: string;
+    messageId: string;
+  }): void;
+  /** Transcript side: chart-jump requests arriving from any surface. */
+  onChartJump(
+    callback: (request: { tabId: string; chartId: string; messageId: string }) => void,
+  ): () => void;
+  /**
+   * Rebuild a conversation's durable chart index from the rows its ACTIVE
+   * BRANCH can see, after a rewind or a fork adopting its own conversation.
+   *
+   * `rows` carries each completed RenderChart row's input AND its committed
+   * result text: the chart id lives in the result, never in the row id, so a
+   * rebuild without it would reconcile the wrong charts.
+   */
+  reconcileCharts(request: {
+    tabId: string;
+    conversationId: string;
+    rows: Array<{
+      toolMessageId: string;
+      toolInput: string;
+      resultText: string;
+      index: number;
+    }>;
+  }): void;
+  /**
+   * Main announces the resource catalog changed outside a live delta (e.g.
+   * persisted charts republished on session subscribe). Consumers re-read the
+   * catalog rather than waiting for the next producer action.
+   */
+  onResourceCatalogChanged(callback: () => void): () => void;
   respondPermission(
     tabId: string,
     questionId: string,

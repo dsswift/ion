@@ -1,4 +1,5 @@
 import { STUDIO_BROWSER_IPC } from './types-ipc-browser'
+import { SYSTEM_IPC } from './types-ipc-system'
 
 // ─── IPC Channel Names ───
 
@@ -26,7 +27,6 @@ export const IPC = {
   TAKE_SCREENSHOT: "ion:take-screenshot",
   TRANSCRIBE_AUDIO: "ion:transcribe-audio",
   PASTE_IMAGE: "ion:paste-image",
-  GET_DIAGNOSTICS: "ion:get-diagnostics",
   RESPOND_PERMISSION: "ion:respond-permission",
   RESPOND_ELICITATION: "ion:respond-elicitation",
   APPROVE_DENIED_TOOLS: "ion:approve-denied-tools",
@@ -285,7 +285,6 @@ export const IPC = {
   FS_FILE_CHANGED: "ion:fs-file-changed",
 
   // Fonts
-  LIST_FONTS: "ion:list-fonts",
 
   // Terminal PTY
   TERMINAL_ACTIVE_TABS: "ion:terminal-active-tabs",
@@ -302,6 +301,8 @@ export const IPC = {
   // with optional respawn-on-demand for dead terminals.
   TERMINAL_ATTACH: "ion:terminal-attach",
   ...STUDIO_BROWSER_IPC,
+  // System/OS facilities: fonts, diagnostics, clipboard, chart navigation.
+  ...SYSTEM_IPC,
   BENCH_DISCARD_MEMBER_RECORDINGS: "ion:bench-discard-member-recordings",
   WORKTREE_OVERLAP_OPEN: "ion:worktree-overlap-open",
   WORKTREE_OVERLAP_CONTEXT: "ion:worktree-overlap-context",
@@ -404,6 +405,8 @@ export const IPC = {
   GET_PERSISTED_RESOURCES: "ion:get-persisted-resources",
   DELETE_RESOURCE: "ion:delete-resource",
   RESOURCE_GET: "ion:resource-get",
+  /** Main → renderer: catalog changed outside a live delta (see chart-restore). */
+  RESOURCE_CATALOG_CHANGED: "ion:resource-catalog-changed",
 
   // Model & provider management
   LIST_MODELS: "ion:list-models",

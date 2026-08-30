@@ -16,6 +16,7 @@ import {
   buildManualCompactionNoOpNotice,
 } from "../../../shared/compaction-marker";
 import { captureSessionInitId } from "./session-init-capture";
+import { maybeReconcileForkedCharts } from "./fork-chart-reconcile";
 import {
   activeInstance,
   commitInstance,
@@ -1067,6 +1068,18 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
         };
       });
       maybeApplyPlanModeGroupMove(tabId, event.type, get); // post-commit: re-evaluate group after plan-mode event
+      // Post-commit: a fork adopting its own durable conversation id.
+      //
+      // A fork copies its source's active-branch messages, chart rows included,
+      // but is born with conversationId: null — a conversation-scoped chart
+      // resource has no broker to route to until the engine mints an id. This
+      // is the one place every conversation kind learns that id, so the fork's
+      // pending marker is drained here and the copied rows are reconciled once
+      // against the new conversation. Reads the COMMITTED state so the rows are
+      // the ones every surface is about to show.
+      if (event.type === "session_init") {
+        maybeReconcileForkedCharts(tabId, get);
+      }
       // Post-commit: auto-fix lifecycle. Decides close-vs-retain from the
       // committed store plus the pre-clear evidence the reducer captured.
       if (autoFixEvidence) {
