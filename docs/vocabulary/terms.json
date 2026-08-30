@@ -258,6 +258,113 @@
       ]
     },
     {
+      "id": "chart-index-reconciliation",
+      "term": "Chart index reconciliation",
+      "definition": "Rebuilding a conversation's stored Chart Output records from the tool rows its active branch can see, then publishing only the records that changed. A rewind or a fork changes which revisions a branch contains, so the stored index is re-derived from that branch and each chart is created, updated, or removed to match. Chart identity comes from each row's committed tool result, never from the transcript row id.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "chart index rebuild"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function rebuildFromHistory",
+          "path": "desktop/src/main/chart-resource-store.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export async function reconcileConversationCharts",
+          "path": "desktop/src/main/chart-reconcile.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function reconcileChartsForBranch",
+          "path": "desktop/src/renderer/lib/chart-reconcile-request.ts"
+        }
+      ],
+      "notes": "Desktop-owned. The Desktop is the producer for the chart resource kind, so it rebuilds the records and fans the deltas; iOS and the Studio mirror receive them through the generic resource broker."
+    },
+    {
+      "id": "chart-output",
+      "term": "Chart Output",
+      "definition": "A chart the agent renders in a conversation from data it already holds. The model supplies a strict, versioned Ion chart spec through the RenderChart client tool and each client draws it natively, so the values are structured data rather than an inferred image. One tool call renders one chart, which may carry several datasets. A chart keeps a stable identity across updates: a later call that names the chart id replaces its spec and adds a revision, and the conversation's immutable tool rows are the revision history.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "chart",
+        "RenderChart"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface ChartSpec",
+          "path": "desktop/src/shared/chart-schema.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function parseChartToolInput",
+          "path": "desktop/src/shared/chart-parse.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function executeRenderChart",
+          "path": "desktop/src/main/studio-chart-tool.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "ChartOutputCard",
+          "path": "desktop/src/renderer/components/conversation/ChartOutputCard.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "struct ChartSpec",
+          "path": "ios/IonRemote/Models/ChartSpec.swift"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "ChartCardView",
+          "path": "ios/IonRemote/Views/ChartCardView.swift"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "enum ChartTranscript",
+          "path": "ios/IonRemote/Models/ChartTranscript.swift"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "ChartTranscriptCard",
+          "path": "ios/IonRemote/Views/ChartTranscriptCard.swift"
+        }
+      ]
+    },
+    {
       "id": "client-command",
       "term": "Client command",
       "definition": "One inbound NDJSON message from a consumer to the engine. The command field selects which other fields apply.",
@@ -454,6 +561,29 @@
           "path": "desktop/src/main/remote/protocol-remote-tab.ts"
         }
       ]
+    },
+    {
+      "id": "conversation-backfill",
+      "term": "Conversation backfill",
+      "definition": "Background retrieval of a conversation's older history pages after the newest page has rendered. The client shows the newest page immediately, then walks the page chain from newest to oldest until the transcript is complete, so scrolling back and jumping to an older row never wait on a round trip. The chain is sequential because each page carries the cursor for the next.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "history prefetch",
+        "history backfill"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "final class ConversationBackfill",
+          "path": "ios/IonRemote/ViewModels/ConversationBackfill.swift"
+        }
+      ],
+      "notes": "iOS only today. The Desktop keeps its own pagination and has not adopted prefetch; revisit if the Desktop shows the same scroll-back stutter."
     },
     {
       "id": "conversation-instance",
