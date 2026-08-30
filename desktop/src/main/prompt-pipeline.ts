@@ -91,7 +91,7 @@ import { IPC } from '../shared/types'
  * Defined inline because the protocol union (`src/main/remote/protocol.ts`)
  * declares it anonymously per-message; we extract the shape for clarity.
  */
-type PipelineAttachment = { type: 'image' | 'file'; name: string; path: string }
+type PipelineAttachment = { type: 'image' | 'file'; name: string; path: string; contentHash?: string }
 import { log as _log } from './logger'
 import { sessionPlane } from './state'
 import { broadcast } from './broadcast'
@@ -145,6 +145,8 @@ export interface IncomingPrompt {
   echoToIos?: boolean
   /** File / image attachments. Empty array if none. */
   attachments?: PipelineAttachment[]
+  /** Prompt text after attachment markers are rewritten for model dispatch. */
+  attachmentPreparedText?: string
   /** Image attachments already base64-encoded (from the renderer path) — pass-through. */
   imageAttachments?: ImageAttachmentPayload[]
   /** Client-supplied or generated correlation id, used as the message_added id. */
@@ -362,16 +364,25 @@ function prepareAttachmentsForDispatch(p: IncomingPrompt): void {
   const attachments = p.attachments ?? []
   if (attachments.length === 0) return
   const sourceText = p.runOptions?.prompt ?? p.text
-  const { encoded, rewrittenText } = encodeAttachments(sourceText, attachments, { isRemote: IS_REMOTE })
+  const missingMarkers = attachments
+    .map((attachment) => `[Attached ${attachment.type}: ${attachment.path}]`)
+    .filter((marker) => !sourceText.includes(marker))
+  const textWithMarkers = missingMarkers.length > 0
+    ? `${missingMarkers.join('\n')}\n\n${sourceText}`
+    : sourceText
+  const { encoded, rewrittenText } = encodeAttachments(textWithMarkers, attachments, { isRemote: IS_REMOTE })
+  p.attachmentPreparedText = rewrittenText
   p.imageAttachments = [...(p.imageAttachments ?? []), ...encoded]
   if (p.runOptions) {
     p.runOptions.prompt = rewrittenText
     p.runOptions.imageAttachments = [...(p.runOptions.imageAttachments ?? []), ...encoded]
   }
-  // The attachment payload is now encoded. Clear raw paths so the ordinary
-  // prompt branch cannot encode them again after command classification.
-  p.attachments = []
-  log('pipeline: attachments prepared before routing', { tab_id: p.tabId, raw: attachments.length, encoded: encoded.length })
+  log('pipeline: attachments prepared before routing', {
+    tab_id: p.tabId,
+    source: p.source,
+    raw: attachments.length,
+    encoded: encoded.length,
+  })
 }
 
 async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
@@ -388,7 +399,7 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
     if (p.hasExtensions) {
       broadcast(IPC.REMOTE_ENGINE_PROMPT, {
         tabId: p.tabId,
-        text: p.text,
+        text: p.attachmentPreparedText ?? p.text,
         displayText: p.displayText,
         echoToIos: p.echoToIos,
         reqId: p.reqId,
@@ -412,22 +423,22 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
       })
       return
     }
-    let fullPrompt = p.text
     const attachments = p.attachments || []
-    if (attachments.length > 0) {
-      const ctx = attachments.map((a) => `[Attached ${a.type}: ${a.path}]`).join('\n')
-      fullPrompt = `${ctx}\n\n${fullPrompt}`
-    }
-    const { encoded, rewrittenText } = encodeAttachments(fullPrompt, attachments, { isRemote: IS_REMOTE })
-    log('pipeline: submit prompt via remote_user_message', { tab_id: p.tabId, text_len: rewrittenText.length, encoded_images: encoded.length })
+    const preparedText = p.attachmentPreparedText ?? p.text
+    log('pipeline: submit prompt via remote_user_message', {
+      tab_id: p.tabId,
+      text_len: preparedText.length,
+      raw_attachments: attachments.length,
+      encoded_images: p.imageAttachments?.length ?? 0,
+    })
     broadcast(IPC.REMOTE_USER_MESSAGE, {
       tabId: p.tabId,
       requestId: p.reqId,
-      prompt: rewrittenText,
+      prompt: preparedText,
       displayText: p.displayText,
       echoToIos: p.echoToIos,
       timestamp: Date.now(),
-      imageAttachments: encoded.length > 0 ? encoded : undefined,
+      imageAttachments: p.imageAttachments && p.imageAttachments.length > 0 ? p.imageAttachments : undefined,
       // Forward raw attachments so the renderer's submitRemotePrompt can
       // populate the optimistic user message's attachments field. Without
       // this, InlineMessageImages renders nothing on the desktop for an
@@ -457,19 +468,16 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
     log('pipeline: WARNING desktop-source prompt missing runOptions', { tab_id: p.tabId })
     return
   }
-  // Desktop composer attachments: the renderer prepended [Attached ...]
-  // markers into runOptions.prompt and passed the raw paths through
-  // (rawAttachments -> p.attachments). Encode them here -- identical
-  // treatment to the remote branch above -- so PDFs/images reach the
-  // engine as wire bytes instead of client-local path markers.
+  // Attachment preparation above is the single encoding pass for every route.
+  // It records rewritten model text and carries encoded bytes in
+  // p.imageAttachments while retaining raw metadata for the renderer preview.
   const desktopAttachments = p.attachments || []
   if (desktopAttachments.length > 0) {
-    const { encoded, rewrittenText } = encodeAttachments(p.runOptions.prompt, desktopAttachments, { isRemote: IS_REMOTE })
-    p.runOptions.prompt = rewrittenText
-    if (encoded.length > 0) {
-      p.runOptions.imageAttachments = [...(p.runOptions.imageAttachments || []), ...encoded]
-    }
-    log('pipeline: desktop attachments encoded', { tab_id: p.tabId, raw: desktopAttachments.length, encoded: encoded.length })
+    log('pipeline: desktop attachments ready', {
+      tab_id: p.tabId,
+      raw: desktopAttachments.length,
+      encoded: p.runOptions.imageAttachments?.length ?? 0,
+    })
   }
   if (!p.runOptions.enterPlanModeDescription) {
     p.runOptions.enterPlanModeDescription = ENTER_PLAN_MODE_DESCRIPTION

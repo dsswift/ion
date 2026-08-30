@@ -190,6 +190,68 @@ describe('processIncomingPrompt — rawAttachments encoding', () => {
     expect(mocks.submitPromptMock).not.toHaveBeenCalled()
   })
 
+  it('remote iOS image keeps encoded bytes and raw preview metadata through renderer routing', async () => {
+    await processIncomingPrompt({
+      tabId: 'tab-remote',
+      text: 'what is in this image?',
+      reqId: 'req-remote-image',
+      source: 'remote',
+      hasExtensions: false,
+      attachments: [{
+        type: 'image',
+        name: 'photo.jpeg',
+        path: '/tmp/photo.jpeg',
+        contentHash: 'hash-1',
+      }],
+    })
+
+    expect(mocks.broadcastMock).toHaveBeenCalledTimes(1)
+    expect(mocks.broadcastMock).toHaveBeenCalledWith(
+      expect.stringMatching(/remote-user-message/i),
+      expect.objectContaining({
+        tabId: 'tab-remote',
+        prompt: expect.stringContaining('[Attachment: rewritten]'),
+        imageAttachments: [
+          expect.objectContaining({
+            mediaType: 'image/jpeg',
+            data: 'QkFTRTY0',
+            path: '/tmp/photo.jpeg',
+          }),
+        ],
+        attachments: [{
+          type: 'image',
+          name: 'photo.jpeg',
+          path: '/tmp/photo.jpeg',
+          contentHash: 'hash-1',
+        }],
+      }),
+    )
+  })
+
+  it('remote extension image keeps encoded bytes and raw preview metadata through renderer routing', async () => {
+    await processIncomingPrompt({
+      tabId: 'tab-engine',
+      text: 'inspect this',
+      reqId: 'req-engine-image',
+      source: 'remote',
+      hasExtensions: true,
+      instanceId: 'main',
+      attachments: [{ type: 'image', name: 'photo.jpeg', path: '/tmp/photo.jpeg' }],
+    })
+
+    expect(mocks.broadcastMock).toHaveBeenCalledTimes(1)
+    expect(mocks.broadcastMock).toHaveBeenCalledWith(
+      expect.stringMatching(/remote-engine-prompt/i),
+      expect.objectContaining({
+        text: expect.stringContaining('[Attachment: rewritten]'),
+        imageAttachments: [expect.objectContaining({ path: '/tmp/photo.jpeg' })],
+        attachments: [
+          { type: 'image', name: 'photo.jpeg', path: '/tmp/photo.jpeg' },
+        ],
+      }),
+    )
+  })
+
   it('desktop prompt without attachments leaves runOptions untouched', async () => {
     const opts = { prompt: 'plain', projectPath: '/proj' } as any
     await processIncomingPrompt({
