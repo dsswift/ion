@@ -126,3 +126,9 @@ graphify-out/
 
 # Editor/tool-local settings dropped by AI coding tools (e.g. grok CLI).
 .grok/
+
+# Ion command workbench — local exploration/spec artifacts, never committed.
+# Written by /explore, /spec, /implement, and /review; they are working state
+# for the current change, not durable project source. The durable outputs are
+# the tracker item and the commits.
+.workbench/
