@@ -103,7 +103,8 @@ extension RemoteCommand {
         case .loadConversation:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let before = try container.decodeIfPresent(String.self, forKey: .before)
-            self = .loadConversation(tabId: tabId, before: before)
+            let pageSize = try container.decodeIfPresent(Int.self, forKey: .pageSize)
+            self = .loadConversation(tabId: tabId, before: before, pageSize: pageSize)
 
         // Inbox actions: iOS only ever ENCODES these; the decode cases keep
         // the TypeKey switch exhaustive and support round-trip tests.

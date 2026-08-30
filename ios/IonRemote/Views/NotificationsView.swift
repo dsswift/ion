@@ -206,6 +206,17 @@ struct ResourceDetailView: View {
         resourceStore.items[item.kind]?.first(where: { $0.compositeId == item.compositeId }) ?? item
     }
     private var title: String { item.title ?? item.metadata["agentName"] ?? item.kind }
+
+    /// The decoded chart, when this resource is one.
+    ///
+    /// Decoded from the LIVE item so a chart updated while the sheet is open
+    /// redraws at the new revision instead of holding the reading the user
+    /// opened with. A malformed payload yields nil and falls through to the
+    /// markdown path, which shows the raw content rather than nothing at all.
+    private var chartContent: ChartResourceContent? {
+        guard liveItem.kind == ChartResourceKind.name else { return nil }
+        return ChartResourceContent.decode(from: liveItem.content)
+    }
     private var formattedTime: String {
         guard let date = ISO8601DateFormatter().date(from: item.createdAt) else { return "" }
         return date.formatted(date: .omitted, time: .shortened)
@@ -216,9 +227,19 @@ struct ResourceDetailView: View {
             ScrollView {
                 Group {
                     if !liveItem.content.isEmpty {
-                        MarkdownContentView(blocks: MarkdownFormatter.parse(liveItem.content))
-                            .padding(IonTheme.lg)
-                            .onAppear { loadingContent = false }
+                        // A chart resource carries a JSON spec, not prose.
+                        // Rendering it as markdown would show the user raw
+                        // JSON, so the chart kind gets its native renderer and
+                        // every other kind keeps the markdown path.
+                        if let chart = chartContent {
+                            ChartCardView(content: chart)
+                                .padding(IonTheme.lg)
+                                .onAppear { loadingContent = false }
+                        } else {
+                            MarkdownContentView(blocks: MarkdownFormatter.parse(liveItem.content))
+                                .padding(IonTheme.lg)
+                                .onAppear { loadingContent = false }
+                        }
                     } else if contentFailed {
                         HStack(spacing: IonTheme.sm) {
                             Image(systemName: "exclamationmark.circle")

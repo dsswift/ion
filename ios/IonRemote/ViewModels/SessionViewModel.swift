@@ -48,6 +48,10 @@ final class SessionViewModel {
     var conversationHasMore: [String: Bool] = [:]
     var conversationCursor: [String: String] = [:]
     var conversationLoadFailed: Set<String> = []
+    /// Drives background backfill of older history pages so scrolling back and
+    /// jumping to an older row never wait on a round trip. See
+    /// ConversationBackfill for why this is not scroll-driven.
+    let conversationBackfill = ConversationBackfill()
     /// Per-tab debounce clock for the snapshot staleness reconcile. When the
     /// desktop snapshot's authoritative last-activity timestamp is newer than
     /// the newest local message (dropped live deltas — e.g. a LAN↔relay

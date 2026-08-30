@@ -46,6 +46,11 @@ struct ChatCollectionView<Payload, RowContent: View>: UIViewControllerRepresenta
     /// Monotonically increasing counter. Incrementing forces a scroll-to-bottom
     /// regardless of `isNearBottom` (used by the STB button and submit actions).
     var forceScrollCounter: Int = 0
+    /// A jump request: the row id to scroll to, paired with a monotonically
+    /// increasing tick. The tick is what makes a repeat jump to the SAME row
+    /// fire again — an id alone would compare equal and be ignored, so tapping
+    /// the same chart twice would do nothing the second time.
+    var jumpRequest: (id: String, chartId: String?, tick: Int)?
     let spacing: CGFloat
     let horizontalInset: CGFloat
     /// RC-15: fired when the user scrolls within a threshold of the TOP, so the
@@ -68,6 +73,7 @@ struct ChatCollectionView<Payload, RowContent: View>: UIViewControllerRepresenta
         }
         vc.onReachedTop = onReachedTop
         context.coordinator.lastForceScroll = forceScrollCounter
+        context.coordinator.lastJumpTick = jumpRequest?.tick ?? 0
         return vc
     }
 
@@ -86,12 +92,35 @@ struct ChatCollectionView<Payload, RowContent: View>: UIViewControllerRepresenta
         // its own live geometry, because this binding's value is one async hop
         // stale and would re-open the yank-to-bottom window.
         vc.applySnapshot(items: items, forceScroll: forceScroll)
+
+        // Jump AFTER the snapshot apply: the target row may have arrived in
+        // this very update (a backfilled page), so resolving it beforehand
+        // would miss.
+        if let request = jumpRequest, request.tick != context.coordinator.lastJumpTick {
+            context.coordinator.lastJumpTick = request.tick
+            // The apply above may have tailed and queued a settle loop; the
+            // jump bumps the scroll generation, which invalidates it. Without
+            // that, dismissing the attachments sheet re-ran this method,
+            // tailed to the bottom, and the queued pin undid the jump on the
+            // next main-queue turn — the scroll happened and nothing moved.
+            // Non-animated: the convergence loop re-places the row as the
+            // layout measures, and an in-flight animation would be chasing an
+            // offset that is already stale.
+            let landed = vc.scrollToRow(id: request.id, chartId: request.chartId, animated: false)
+            DiagnosticLog.log(
+                landed ? "transcript jump landed" : "transcript jump target not local",
+                tag: "view.transcript",
+                level: landed ? .info : .warn,
+                fields: ["row_id": String(request.id.prefix(12))]
+            )
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     final class Coordinator {
         var lastForceScroll = 0
+        var lastJumpTick = 0
     }
 }
 
@@ -106,7 +135,15 @@ final class ChatCollectionVC<Payload, RowContent: View>:
 {
     var rowContent: (Payload) -> RowContent
 
-    private var collectionView: UICollectionView!
+    /// Internal rather than private: scroll positioning lives in
+    /// ChatCollectionScrolling (extracted for the file-size cap) and operates
+    /// directly on this view's geometry.
+    var collectionView: UICollectionView!
+    /// Bumped whenever a deliberate navigation claims the viewport. A queued
+    /// tail-pin carries the generation it started under and exits when this no
+    /// longer matches, so a scroll-to-bottom scheduled by an apply cannot undo
+    /// a jump issued moments later in the same update pass.
+    var scrollGeneration: UInt64 = 0
     private var dataSource: UICollectionViewDiffableDataSource<ChatSection, ChatItem<Payload>>!
     private var nearBottom = true
     var onNearBottomChanged: ((Bool) -> Void)?
@@ -239,6 +276,26 @@ final class ChatCollectionVC<Payload, RowContent: View>:
         }
         uniqueItems.reverse()
 
+        // A PURE PREPEND: every row the data source already held is still
+        // present, in order, at the END of the incoming list. That is exactly
+        // what background history backfill produces — older rows arriving
+        // behind the operator — and it must not be mistaken for the operator
+        // having scrolled up.
+        let previousIds = dataSource.snapshot().itemIdentifiers.map { $0.id }
+        let isHistoryPrepend: Bool = {
+            guard !previousIds.isEmpty, uniqueItems.count > previousIds.count else { return false }
+            let tail = uniqueItems.suffix(previousIds.count).map { $0.id }
+            return tail == previousIds
+        }()
+
+        // A LARGE insert is what needs post-apply settling: enough new rows
+        // that self-sizing resolves them across many frames rather than one.
+        // The threshold is deliberately low — the settle loop is a no-op when
+        // the size is already stable, so over-triggering is cheap and
+        // under-triggering is the visible bug.
+        let insertedCount = uniqueItems.count - previousIds.count
+        let isLargeInsert = insertedCount >= 50
+
         // Decide tailing from LIVE geometry, before the apply changes it. The
         // previous implementation read the round-tripped `isNearBottom` binding,
         // which lags one async hop behind the user's scroll: any apply landing
@@ -247,7 +304,8 @@ final class ChatCollectionVC<Payload, RowContent: View>:
             nearBottom: computeNearBottom(),
             isUserInteracting: isUserInteracting,
             isInitial: isInitial,
-            forceScroll: forceScroll
+            forceScroll: forceScroll,
+            isHistoryPrepend: isHistoryPrepend
         )
 
         // Capture the reading position BEFORE the apply. Only meaningful when
@@ -284,13 +342,31 @@ final class ChatCollectionVC<Payload, RowContent: View>:
             "count": String(uniqueItems.count),
             "max": String(plan.changedIds.count),
             "status": String(tailing),
-            "reason": anchor == nil ? "no-anchor" : "anchored"
+            "reason": anchor == nil ? "no-anchor" : "anchored",
+            "prepend": String(isHistoryPrepend)
         ])
 
         dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
             guard let self else { return }
             if tailing {
                 self.scrollToBottom(animated: false)
+                // A LARGE insert measures over many frames, so the two-pass
+                // convergence in scrollToBottom is not enough on its own: each
+                // self-sizing resolution grows contentSize beneath the viewport
+                // and drags it off the bottom after the apply has "finished".
+                //
+                // This fires on the initial load (which now carries the whole
+                // conversation) and on any bulk prepend. A small streaming
+                // apply skips it — the guard below exits on the first frame
+                // when the size is already stable, so the cost is one frame.
+                if isLargeInsert {
+                    DiagnosticLog.log("chat scroll holding bottom", tag: "view.chatscroll", fields: [
+                        "inserted": String(insertedCount),
+                        "total": String(uniqueItems.count),
+                        "initial": String(isInitial)
+                    ])
+                    self.holdBottomWhileSettling()
+                }
             } else if let anchor {
                 self.restoreAnchor(anchor)
             } else {
@@ -375,49 +451,15 @@ final class ChatCollectionVC<Payload, RowContent: View>:
 
     /// Index path of an item id in the CURRENT data source, or nil if the id is
     /// no longer present.
-    private func currentIndexPath(forItemId id: String) -> IndexPath? {
+    ///
+    /// Internal rather than private: the scroll positioning lives in
+    /// ChatCollectionScrolling (extracted for the file-size cap) and resolves
+    /// every target through this one lookup, so both files agree on what "this
+    /// row" means.
+    func currentIndexPath(forItemId id: String) -> IndexPath? {
         let identifiers = dataSource.snapshot().itemIdentifiers
         guard let idx = identifiers.firstIndex(where: { $0.id == id }) else { return nil }
         return IndexPath(item: idx, section: 0)
-    }
-
-    // MARK: - Scroll
-
-    func scrollToBottom(animated: Bool) {
-        // Resolve any pending self-sizing from reconfigured cells so
-        // contentSize reflects the streamed content before we compute the
-        // target offset. The previous implementation used
-        // `scrollToItem(at:.bottom)`, which consults the layout's stale
-        // estimated frame for the last item — during streaming (reconfigure-
-        // only snapshots, no structural diff) that frame already appeared
-        // fully visible, so the call was a no-op and the view stalled at the
-        // old bottom until a user-initiated scroll forced re-measurement.
-        let sizeBefore = collectionView.contentSize.height
-        collectionView.layoutIfNeeded()
-        let bottom = max(
-            collectionView.contentSize.height - collectionView.bounds.height
-                + collectionView.adjustedContentInset.bottom,
-            -collectionView.adjustedContentInset.top
-        )
-        collectionView.setContentOffset(CGPoint(x: 0, y: bottom), animated: animated)
-        guard !animated else { return }
-        // Second pass: the offset change may bring unmeasured cells on
-        // screen, growing contentSize again. Re-resolve and snap once more
-        // so a single scrollToBottom converges on the true bottom.
-        collectionView.layoutIfNeeded()
-        let newBottom = max(
-            collectionView.contentSize.height - collectionView.bounds.height
-                + collectionView.adjustedContentInset.bottom,
-            -collectionView.adjustedContentInset.top
-        )
-        if abs(newBottom - bottom) > 1 {
-            DiagnosticLog.trace("chat scroll second-pass correction", tag: "view.chatscroll", fields: [
-                "count": String(format: "%.1f", newBottom - bottom),
-                "reason": String(format: "%.1f", sizeBefore),
-                "status": String(format: "%.1f", collectionView.contentSize.height)
-            ])
-            collectionView.setContentOffset(CGPoint(x: 0, y: newBottom), animated: false)
-        }
     }
 
     // MARK: - UIScrollViewDelegate

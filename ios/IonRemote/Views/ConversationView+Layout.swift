@@ -179,6 +179,7 @@ extension ConversationView {
                 activeBackgroundTasks: activeBackgroundTasks,
                 isNearBottom: $isNearBottom,
                 forceScrollCounter: forceScrollCounter,
+                jumpRequest: transcriptJumpRequest,
                 onTapPlan: { path in
                     selectedPlanPath = IdentifiablePath(path: path)
                 },

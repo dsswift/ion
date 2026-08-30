@@ -14,6 +14,12 @@ struct AgentTurnRow: View {
     let thinking: Message?
     var activeBackgroundTasks: [BackgroundTaskState] = []
     var tabId: String? = nil
+    /// Per-row chart render state, derived once by the transcript. A unified
+    /// turn groups its tool rows here rather than in EngineToolGroupRow, so
+    /// without this a chart rendered inside a turn had no path to the screen
+    /// at all — which is why charts were invisible on iOS while the desktop,
+    /// which renders visual output in BOTH group kinds, showed them.
+    var chartRenders: [String: ChartTranscript.RowRender] = [:]
 
     @State private var isExpanded = false
     @Environment(\.appTheme) private var theme
@@ -29,6 +35,9 @@ struct AgentTurnRow: View {
     }
 
     var body: some View {
+        // Named space so a chart card can report its offset WITHIN this row.
+        // A global frame would be stale the moment the list scrolls; an offset
+        // from the row's top edge stays true wherever the row sits.
         VStack(alignment: .leading, spacing: 4) {
             // Thinking block — rendered above assistant text when present.
             if let thinking {
@@ -88,11 +97,29 @@ struct AgentTurnRow: View {
                 .clipShape(RoundedRectangle(cornerRadius: IonRadius.control))
             }
 
+            // Chart cards sit OUTSIDE the disclosure: a chart is a deliverable
+            // the operator asked for, not execution detail, so collapsing the
+            // turn's tool list must never hide it. Mirrors the desktop, where
+            // visual output is rendered outside the tool-row disclosure for
+            // the same reason.
+            ForEach(chartCards, id: \.id) { entry in
+                ChartTranscriptCard(render: entry.render)
+            }
+
             ActiveBackgroundSummary(
                 tools: tools,
                 activeTasks: activeBackgroundTasks,
                 tabId: tabId
             )
+        }
+        .coordinateSpace(name: ChartAnchorKey.rowSpace)
+    }
+
+    /// Chart cards this turn owns, in row order.
+    private var chartCards: [(id: String, render: ChartTranscript.RowRender)] {
+        tools.compactMap { tool in
+            guard let render = chartRenders[tool.id] else { return nil }
+            return (id: tool.id, render: render)
         }
     }
 

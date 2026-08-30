@@ -155,8 +155,15 @@ extension DiagnosticLog {
         case .reviewSettledTab(let tabId):
             log("CMD: reviewSettledTab tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
 
-        case .loadConversation(let tabId, let before):
-            log("CMD: loadConversation tabId=\(tabId.prefix(8)) before=\(before?.prefix(8) ?? "nil")", tag: "ipc", level: .info)
+        case .loadConversation(let tabId, let before, let pageSize):
+            // page_size distinguishes a first-paint page from a bulk backfill
+            // request, which is the difference between two round trips and
+            // two hundred.
+            log(
+                "CMD: loadConversation tabId=\(tabId.prefix(8)) before=\(before?.prefix(8) ?? "nil") pageSize=\(pageSize.map(String.init) ?? "default")",
+                tag: "ipc",
+                level: .info
+            )
 
         case .requestResend(let fromSeq, let toSeq):
             log("CMD: requestResend [\(fromSeq),\(toSeq)]", tag: "ipc", level: .info)

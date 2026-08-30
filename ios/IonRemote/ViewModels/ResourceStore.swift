@@ -34,7 +34,26 @@ struct ResourceItem: Identifiable, Codable, Equatable {
         updatedAt = dict["updatedAt"]?.value as? String
         read = dict["read"]?.value as? Bool ?? false
         if let meta = dict["metadata"]?.value as? [String: AnyCodable] {
-            metadata = meta.compactMapValues { $0.value as? String }
+            // Metadata is `map[string]interface{}` on the engine side, so a
+            // producer may send numbers and booleans as well as strings.
+            // Keeping only `as? String` silently DROPPED those keys — a chart
+            // publishing `chartRevision: 3` arrived with no revision at all.
+            // Every JSON scalar is normalized to its string form instead, so a
+            // numeric key survives the trip and a consumer parses it back.
+            metadata = meta.compactMapValues { entry -> String? in
+                switch entry.value {
+                case let text as String: return text
+                case let flag as Bool: return flag ? "true" : "false"
+                case let whole as Int: return String(whole)
+                case let real as Double:
+                    // A whole double renders without a spurious ".0", so a
+                    // count sent as 3.0 reads as "3" like the sender meant.
+                    return real == real.rounded() && abs(real) < 1e15
+                        ? String(Int(real))
+                        : String(real)
+                default: return nil
+                }
+            }
         } else {
             metadata = [:]
         }
@@ -351,13 +370,36 @@ final class ResourceStore {
         return Set(arr)
     }
 
+    /// Restore the persisted cache.
+    ///
+    /// An ABSENT file is the normal first-launch state and is not an error, so
+    /// it returns empty quietly. A file that exists but will not decode is a
+    /// different fact — the cache is corrupt and the user silently loses every
+    /// stored resource — so that path is logged.
     private func loadItems() -> [String: [ResourceItem]] {
-        guard let data = try? Data(contentsOf: storage.itemsFileURL) else { return [:] }
-        return (try? JSONDecoder().decode([String: [ResourceItem]].self, from: data)) ?? [:]
+        guard FileManager.default.fileExists(atPath: storage.itemsFileURL.path) else { return [:] }
+        do {
+            let data = try Data(contentsOf: storage.itemsFileURL)
+            return try JSONDecoder().decode([String: [ResourceItem]].self, from: data)
+        } catch {
+            DiagnosticLog.log("resource store load items failed", tag: "resource.store", level: .error, fields: [
+                "error": error.localizedDescription
+            ])
+            return [:]
+        }
     }
 
     private func deletePersistedItems() {
-        try? FileManager.default.removeItem(at: storage.itemsFileURL)
+        do {
+            try FileManager.default.removeItem(at: storage.itemsFileURL)
+        } catch CocoaError.fileNoSuchFile {
+            // Nothing persisted yet. Deleting an absent cache is the intended
+            // end state, not a failure.
+        } catch {
+            DiagnosticLog.log("resource store delete items failed", tag: "resource.store", level: .warn, fields: [
+                "error": error.localizedDescription
+            ])
+        }
     }
 
     private func deletePersistedReadIds() {

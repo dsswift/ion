@@ -29,6 +29,28 @@ extension ConversationView {
             }
         }
 
+        /// Every message id this row renders.
+        ///
+        /// A row's `id` is a GROUP identity (`at-<anchor>`, `tg-<anchor>`), so
+        /// a member message — a chart's tool row inside a unified turn — is
+        /// never its own data-source row. A jump that looks up a bare message
+        /// id therefore finds nothing, which is exactly why tapping a chart in
+        /// the attachments panel resolved the right row and then went nowhere.
+        ///
+        /// Mirrors the desktop's `findRowIndexForMessage`, which was
+        /// generalized from "the row with this id" to "the row that CONTAINS
+        /// this id" for the same reason.
+        var containedMessageIds: [String] {
+            switch self {
+            case .single(let msg, _): return [msg.id]
+            case .toolGroup(let msgs): return msgs.map(\.id)
+            case .compaction(let msg): return [msg.id]
+            case .thinking(let msg): return [msg.id]
+            case .agentTurn(let tools, let assistants, _, let thinking):
+                return tools.map(\.id) + assistants.map(\.id) + (thinking.map { [$0.id] } ?? [])
+            }
+        }
+
         /// Hash of everything a row actually renders, used by ChatCollectionVC
         /// to reconfigure ONLY the rows whose content moved.
         ///

@@ -20,6 +20,25 @@ struct ConversationView: View {
     @State var selectedFilePath: IdentifiablePath?
     @State var isNearBottom = true
     @State var forceScrollCounter = 0
+    /// The transcript row a chart-attachment tap asked to scroll to, with a
+    /// tick so tapping the same chart twice jumps twice. Nil until a tap.
+    @State var transcriptJumpRequest: (id: String, chartId: String?, tick: Int)?
+    /// Monotonic source for the tick above.
+    @State var transcriptJumpTick = 0
+
+    /// Ask the transcript to scroll to a row.
+    ///
+    /// A method rather than an inline closure at the call site: this view's
+    /// body is large enough that an extra capturing closure pushed SwiftUI's
+    /// type-checker past its budget.
+    ///
+    /// The tick is what makes a repeat jump to the same row fire again — an id
+    /// alone would compare equal to the previous request and be ignored, so
+    /// tapping the same chart twice would do nothing the second time.
+    func requestTranscriptJump(to rowId: String, chartId: String? = nil) {
+        transcriptJumpTick += 1
+        transcriptJumpRequest = (id: rowId, chartId: chartId, tick: transcriptJumpTick)
+    }
     @State var showFileExplorer = false
     @State var showGitPane = false
     @State var showTerminal = false

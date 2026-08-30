@@ -175,6 +175,17 @@
 		A1B2C3D4E5F600010000FC01 /* MarkdownFormatter+Helpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000FD01 /* MarkdownFormatter+Helpers.swift */; };
 		A1B2C3D4E5F600010000F8AA /* PlanFullScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000F9AA /* PlanFullScreenView.swift */; };
 		A1B2C3D4E5F600010000FAAA /* MarkdownContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000FBAA /* MarkdownContentView.swift */; };
+		CHRTCARD000000000000002 /* ChartCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHRTCARD000000000000001 /* ChartCardView.swift */; };
+		CHRTTCRD000000000000002 /* ChartTranscriptCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHRTTCRD000000000000001 /* ChartTranscriptCard.swift */; };
+		CHRTANCH000000000000002 /* ChartAnchorKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHRTANCH000000000000001 /* ChartAnchorKey.swift */; };
+		CHRTPLOT000000000000002 /* ChartPlotView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHRTPLOT000000000000001 /* ChartPlotView.swift */; };
+		CHRTCART000000000000002 /* ChartCartesianPlotView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHRTCART000000000000001 /* ChartCartesianPlotView.swift */; };
+		CHRTSER0000000000000002 /* ChartSeriesShapeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHRTSER0000000000000001 /* ChartSeriesShapeView.swift */; };
+		CHRTLGF0000000000000002 /* ChartLegendFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHRTLGF0000000000000001 /* ChartLegendFlow.swift */; };
+		CHRTPAL0000000000000002 /* ChartPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHRTPAL0000000000000001 /* ChartPalette.swift */; };
+		CHRTMATH000000000000002 /* ChartMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHRTMATH000000000000001 /* ChartMath.swift */; };
+		CHRTSPEC000000000000002 /* ChartSpec.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHRTSPEC000000000000001 /* ChartSpec.swift */; };
+		CHRTTRAN000000000000002 /* ChartTranscript.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHRTTRAN000000000000001 /* ChartTranscript.swift */; };
 		A1B2C3D4E5F600010000FCAA /* TabRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000FDAA /* TabRowView.swift */; };
 		DRAFT0000000000000000002 /* SessionViewModel+Drafts.swift in Sources */ = {isa = PBXBuildFile; fileRef = DRAFT0000000000000000001 /* SessionViewModel+Drafts.swift */; };
 		A1B2C3D4E5F60001000200AA /* SessionViewModel+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */; };
@@ -184,6 +195,8 @@
 		A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */; };
 		PAIRREPAIRTEST000000001 /* PairingRepairTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PAIRREPAIRTEST000000002 /* PairingRepairTests.swift */; };
 		A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */; };
+		SVMCONVLD00000000000002 /* SessionViewModel+ConversationLoading.swift in Sources */ = {isa = PBXBuildFile; fileRef = SVMCONVLD00000000000001 /* SessionViewModel+ConversationLoading.swift */; };
+		CONVBKFL000000000000002 /* ConversationBackfill.swift in Sources */ = {isa = PBXBuildFile; fileRef = CONVBKFL000000000000001 /* ConversationBackfill.swift */; };
 		FE11AA22BC33DD44EE55FF06 /* SessionViewModel+InboxCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE11AA22BC33DD44EE55FF05 /* SessionViewModel+InboxCommands.swift */; };
 		A1B2C3D4E5F60001000204FE /* SessionViewModel+ConversationLoadGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000205FE /* SessionViewModel+ConversationLoadGate.swift */; };
 		A1B2C3D4E5F6000100049A03 /* SessionViewModel+WorktreeCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A03 /* SessionViewModel+WorktreeCommands.swift */; };
@@ -234,6 +247,7 @@
 		CONVHISTR000000000000001 /* ConversationHistoryReplaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CONVHISTR000000000000002 /* ConversationHistoryReplaceTests.swift */; };
 		CHATANCHT00000000000001 /* ChatScrollAnchoringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHATANCHT00000000000002 /* ChatScrollAnchoringTests.swift */; };
 		GRPITEMHSH0000000000001 /* GroupedItemContentHashTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = GRPITEMHSH0000000000002 /* GroupedItemContentHashTests.swift */; };
+		GRPCONTID00000000000001 /* GroupedItemContainedIdsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = GRPCONTID00000000000002 /* GroupedItemContainedIdsTests.swift */; };
 		GRPPARITY000000000000001 /* GroupingParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = GRPPARITY000000000000002 /* GroupingParityTests.swift */; };
 		MSGIDMAP0000000000000004 /* DispatchSnapshotIdMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MSGIDMAP0000000000000003 /* DispatchSnapshotIdMappingTests.swift */; };
 		DISPINVAL000000000000007 /* SessionViewModel+DispatchCacheInvalidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = DISPINVAL000000000000008 /* SessionViewModel+DispatchCacheInvalidation.swift */; };
@@ -384,6 +398,7 @@
 		A1B2C3D4E5F6000100400FDE /* ConversationContextStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100400EDE /* ConversationContextStrip.swift */; };
 		A1B2C3D4E5F60001004011AA /* ConversationTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */; };
 		A1B2C3D4E5F60001005001AA /* ChatCollectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005002AA /* ChatCollectionView.swift */; };
+		CHATSCRL000000000000002 /* ChatCollectionScrolling.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHATSCRL000000000000001 /* ChatCollectionScrolling.swift */; };
 		A1B2C3D4E5F60001005100AA /* VoiceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005101AA /* VoiceService.swift */; };
 		A1B2C3D4E5F60001005102AA /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */; };
 		MOBINSTID000000000000001 /* MobileInstallationIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = MOBINSTID000000000000002 /* MobileInstallationIdentity.swift */; };
@@ -403,6 +418,7 @@
 		A1B2C3D4E5F600010053E2AA /* MessageImageAttachmentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010053E3AA /* MessageImageAttachmentsTests.swift */; };
 		A1B2C3D4E5F60001005304AA /* RemoteImageFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005305AA /* RemoteImageFetcher.swift */; };
 		A1B2C3D4E5F60001005306AA /* RemoteCommand+Encode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005307AA /* RemoteCommand+Encode.swift */; };
+		RCCODKEY000000000000002 /* RemoteCommand+CodingKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = RCCODKEY000000000000001 /* RemoteCommand+CodingKeys.swift */; };
 		A1B2C3D4E5F60001005308AA /* SessionViewModel+TabEventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005309AA /* SessionViewModel+TabEventHandlers.swift */; };
 		A1B2C3D4E5F60001006000AA /* ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001006001AA /* ToastView.swift */; };
 		A1B2C3D4E5F60001007001AA /* CrashReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001007002AA /* CrashReporter.swift */; };
@@ -539,6 +555,11 @@
 		AGPNK0000000000000001 /* AgentPanelNameKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGPNK0000000000000002 /* AgentPanelNameKeyTests.swift */; };
 		AGDAT00000000000000001 /* AgentDispatchAttributionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGDAT00000000000000002 /* AgentDispatchAttributionTests.swift */; };
 		AGDMT00000000000000001 /* AgentDotModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGDMT00000000000000002 /* AgentDotModelTests.swift */; };
+		RESMETAT00000000000001 /* ResourceMetadataDecodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RESMETAT00000000000002 /* ResourceMetadataDecodeTests.swift */; };
+		CHRTSPECT00000000000001 /* ChartSpecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHRTSPECT00000000000002 /* ChartSpecTests.swift */; };
+		CHRTTRNT000000000000001 /* ChartTranscriptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHRTTRNT000000000000002 /* ChartTranscriptTests.swift */; };
+		CHRTPLTT000000000000001 /* ChartPlotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHRTPLTT000000000000002 /* ChartPlotTests.swift */; };
+		CONVBKFT000000000000001 /* ConversationBackfillTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CONVBKFT000000000000002 /* ConversationBackfillTests.swift */; };
 		AGPCST000000000000001 /* AgentPanelCollapseStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGPCST000000000000002 /* AgentPanelCollapseStateTests.swift */; };
 		APDRTS000000000000001 /* AgentPanelDefaultResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = APDRTS000000000000002 /* AgentPanelDefaultResolverTests.swift */; };
 		DSPPOPUP000000000001 /* DispatchPopupInitialLoadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DSPPOPUP000000000002 /* DispatchPopupInitialLoadTests.swift */; };
@@ -742,6 +763,17 @@
 		A1B2C3D4E5F600010000FD01 /* MarkdownFormatter+Helpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MarkdownFormatter+Helpers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000F9AA /* PlanFullScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanFullScreenView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000FBAA /* MarkdownContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownContentView.swift; sourceTree = "<group>"; };
+		CHRTCARD000000000000001 /* ChartCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartCardView.swift; sourceTree = "<group>"; };
+		CHRTTCRD000000000000001 /* ChartTranscriptCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartTranscriptCard.swift; sourceTree = "<group>"; };
+		CHRTANCH000000000000001 /* ChartAnchorKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartAnchorKey.swift; sourceTree = "<group>"; };
+		CHRTPLOT000000000000001 /* ChartPlotView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartPlotView.swift; sourceTree = "<group>"; };
+		CHRTCART000000000000001 /* ChartCartesianPlotView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartCartesianPlotView.swift; sourceTree = "<group>"; };
+		CHRTSER0000000000000001 /* ChartSeriesShapeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartSeriesShapeView.swift; sourceTree = "<group>"; };
+		CHRTLGF0000000000000001 /* ChartLegendFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartLegendFlow.swift; sourceTree = "<group>"; };
+		CHRTPAL0000000000000001 /* ChartPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartPalette.swift; sourceTree = "<group>"; };
+		CHRTMATH000000000000001 /* ChartMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartMath.swift; sourceTree = "<group>"; };
+		CHRTSPEC000000000000001 /* ChartSpec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartSpec.swift; sourceTree = "<group>"; };
+		CHRTTRAN000000000000001 /* ChartTranscript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartTranscript.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010000FDAA /* TabRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabRowView.swift; sourceTree = "<group>"; };
 		DRAFT0000000000000000001 /* SessionViewModel+Drafts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Drafts.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Lifecycle.swift"; sourceTree = "<group>"; };
@@ -751,6 +783,8 @@
 		A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Pairing.swift"; sourceTree = "<group>"; };
 		PAIRREPAIRTEST000000002 /* PairingRepairTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingRepairTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Commands.swift"; sourceTree = "<group>"; };
+		SVMCONVLD00000000000001 /* SessionViewModel+ConversationLoading.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ConversationLoading.swift"; sourceTree = "<group>"; };
+		CONVBKFL000000000000001 /* ConversationBackfill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationBackfill.swift; sourceTree = "<group>"; };
 		FE11AA22BC33DD44EE55FF05 /* SessionViewModel+InboxCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+InboxCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000205FE /* SessionViewModel+ConversationLoadGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ConversationLoadGate.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100039A03 /* SessionViewModel+WorktreeCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+WorktreeCommands.swift"; sourceTree = "<group>"; };
@@ -801,6 +835,7 @@
 		CONVHISTR000000000000002 /* ConversationHistoryReplaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationHistoryReplaceTests.swift; sourceTree = "<group>"; };
 		CHATANCHT00000000000002 /* ChatScrollAnchoringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatScrollAnchoringTests.swift; sourceTree = "<group>"; };
 		GRPITEMHSH0000000000002 /* GroupedItemContentHashTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupedItemContentHashTests.swift; sourceTree = "<group>"; };
+		GRPCONTID00000000000002 /* GroupedItemContainedIdsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupedItemContainedIdsTests.swift; sourceTree = "<group>"; };
 		GRPPARITY000000000000002 /* GroupingParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupingParityTests.swift; sourceTree = "<group>"; };
 		MSGIDMAP0000000000000003 /* DispatchSnapshotIdMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchSnapshotIdMappingTests.swift; sourceTree = "<group>"; };
 		DISPINVAL000000000000008 /* SessionViewModel+DispatchCacheInvalidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+DispatchCacheInvalidation.swift"; sourceTree = "<group>"; };
@@ -942,6 +977,7 @@
 		A1B2C3D4E5F6000100400EDE /* ConversationContextStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationContextStrip.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationTerminalView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005002AA /* ChatCollectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatCollectionView.swift; sourceTree = "<group>"; };
+		CHATSCRL000000000000001 /* ChatCollectionScrolling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatCollectionScrolling.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005101AA /* VoiceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceService.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 		MOBINSTID000000000000002 /* MobileInstallationIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileInstallationIdentity.swift; sourceTree = "<group>"; };
@@ -961,6 +997,7 @@
 		A1B2C3D4E5F600010053E3AA /* MessageImageAttachmentsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageImageAttachmentsTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005305AA /* RemoteImageFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteImageFetcher.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005307AA /* RemoteCommand+Encode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+Encode.swift"; sourceTree = "<group>"; };
+		RCCODKEY000000000000001 /* RemoteCommand+CodingKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+CodingKeys.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005309AA /* SessionViewModel+TabEventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+TabEventHandlers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001006001AA /* ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001007002AA /* CrashReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReporter.swift; sourceTree = "<group>"; };
@@ -1113,6 +1150,11 @@
 		AGPNK0000000000000002 /* AgentPanelNameKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPanelNameKeyTests.swift; sourceTree = "<group>"; };
 		AGDAT00000000000000002 /* AgentDispatchAttributionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDispatchAttributionTests.swift; sourceTree = "<group>"; };
 		AGDMT00000000000000002 /* AgentDotModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDotModelTests.swift; sourceTree = "<group>"; };
+		RESMETAT00000000000002 /* ResourceMetadataDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceMetadataDecodeTests.swift; sourceTree = "<group>"; };
+		CHRTSPECT00000000000002 /* ChartSpecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartSpecTests.swift; sourceTree = "<group>"; };
+		CHRTTRNT000000000000002 /* ChartTranscriptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartTranscriptTests.swift; sourceTree = "<group>"; };
+		CHRTPLTT000000000000002 /* ChartPlotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartPlotTests.swift; sourceTree = "<group>"; };
+		CONVBKFT000000000000002 /* ConversationBackfillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationBackfillTests.swift; sourceTree = "<group>"; };
 		AGPCST000000000000002 /* AgentPanelCollapseStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPanelCollapseStateTests.swift; sourceTree = "<group>"; };
 		APDRTS000000000000002 /* AgentPanelDefaultResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPanelDefaultResolverTests.swift; sourceTree = "<group>"; };
 		DSPPOPUP000000000002 /* DispatchPopupInitialLoadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchPopupInitialLoadTests.swift; sourceTree = "<group>"; };
@@ -1215,6 +1257,8 @@
 				A1B2C3D4E5F60001E50007AA /* EngineEventSupport.swift */,
 				F2A1B3C4D5E60718293A4B5D /* TaskCompletionReason.swift */,
 				AGDOT00000000000000002 /* AgentDotModel.swift */,
+				CHRTSPEC000000000000001 /* ChartSpec.swift */,
+				CHRTTRAN000000000000001 /* ChartTranscript.swift */,
 				CTXBDPAY0000000000002 /* ContextBreakdownPayload.swift */,
 				A1B2C3D4E5F60001D70007AA /* DesktopSettingsModel.swift */,
 				A1B2C3D4E5F6000100039A01 /* WorktreeTypes.swift */,
@@ -1233,6 +1277,7 @@
 				B1B2C3D4E5F60001CC000008 /* TabStatus.swift */,
 				A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */,
 				A1B2C3D4E5F60001005307AA /* RemoteCommand+Encode.swift */,
+				RCCODKEY000000000000001 /* RemoteCommand+CodingKeys.swift */,
 				A1B2C3D4E5F60001FF0020AA /* RemoteCommand+Decode.swift */,
 				A1B2C3D4E5F60001FF0020AB /* RemoteCommand+DecodeWorktree.swift */,
 				ESSNKY00000000000000002 /* RemoteCommand+EssentialKey.swift */,
@@ -1347,6 +1392,7 @@
 				A1B2C3D4E5F600010080F1AA /* PlanDividerLabel.swift */,
 				MODALSHEETBND0000000001 /* ModalSheetBoundary.swift */,
 				A1B2C3D4E5F60001005002AA /* ChatCollectionView.swift */,
+				CHATSCRL000000000000001 /* ChatCollectionScrolling.swift */,
 				A1B2C3D4E5F6000100400CAA /* ConversationView+Attachments.swift */,
 				CVPRES000000000000000008 /* ConversationView+Presentation.swift */,
 				CVLAYOUT0000000000002 /* ConversationView+Layout.swift */,
@@ -1426,6 +1472,13 @@
 				A1B2C3D4E5F60001002001AA /* IonTheme.swift */,
 				IONRAD000000000000002 /* IonRadius.swift */,
 				IONSPACE0000000000002 /* IonSpace.swift */,
+				CHRTCARD000000000000001 /* ChartCardView.swift */,
+				CHRTTCRD000000000000001 /* ChartTranscriptCard.swift */,
+				CHRTANCH000000000000001 /* ChartAnchorKey.swift */,
+				CHRTPLOT000000000000001 /* ChartPlotView.swift */,
+				CHRTCART000000000000001 /* ChartCartesianPlotView.swift */,
+				CHRTSER0000000000000001 /* ChartSeriesShapeView.swift */,
+				CHRTLGF0000000000000001 /* ChartLegendFlow.swift */,
 				IONTYPE00000000000002 /* IonType.swift */,
 				A1B2C3D4E5F60001003001AA /* EngineToolGroupRow.swift */,
 				A1B2C3D4E5F60001003005AA /* AgentTurnRow.swift */,
@@ -1470,6 +1523,8 @@
 				A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */,
 				A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */,
 				A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */,
+				SVMCONVLD00000000000001 /* SessionViewModel+ConversationLoading.swift */,
+				CONVBKFL000000000000001 /* ConversationBackfill.swift */,
 				FE11AA22BC33DD44EE55FF05 /* SessionViewModel+InboxCommands.swift */,
 				A1B2C3D4E5F60001000205FE /* SessionViewModel+ConversationLoadGate.swift */,
 				A1B2C3D4E5F6000100039A03 /* SessionViewModel+WorktreeCommands.swift */,
@@ -1594,6 +1649,7 @@
 				CONVHISTR000000000000002 /* ConversationHistoryReplaceTests.swift */,
 				CHATANCHT00000000000002 /* ChatScrollAnchoringTests.swift */,
 				GRPITEMHSH0000000000002 /* GroupedItemContentHashTests.swift */,
+				GRPCONTID00000000000002 /* GroupedItemContainedIdsTests.swift */,
 				GRPPARITY000000000000002 /* GroupingParityTests.swift */,
 				BGWORKTEST0000000000002 /* BackgroundWorkTests.swift */,
 				MSGIDMAP0000000000000003 /* DispatchSnapshotIdMappingTests.swift */,
@@ -1719,6 +1775,11 @@
 				AGPNK0000000000000002 /* AgentPanelNameKeyTests.swift */,
 				AGDAT00000000000000002 /* AgentDispatchAttributionTests.swift */,
 				AGDMT00000000000000002 /* AgentDotModelTests.swift */,
+				RESMETAT00000000000002 /* ResourceMetadataDecodeTests.swift */,
+				CHRTSPECT00000000000002 /* ChartSpecTests.swift */,
+				CHRTTRNT000000000000002 /* ChartTranscriptTests.swift */,
+				CHRTPLTT000000000000002 /* ChartPlotTests.swift */,
+				CONVBKFT000000000000002 /* ConversationBackfillTests.swift */,
 				AGPCST000000000000002 /* AgentPanelCollapseStateTests.swift */,
 				APDRTS000000000000002 /* AgentPanelDefaultResolverTests.swift */,
 				DSPPOPUP000000000002 /* DispatchPopupInitialLoadTests.swift */,
@@ -1830,6 +1891,8 @@
 				HRNSBDG0000000000000002 /* EngineHarnessBadge.swift */,
 				NEWCONVRT000000000000002 /* NewConversationRouting.swift */,
 				AGDUR0000000000000002 /* AgentDuration.swift */,
+				CHRTPAL0000000000000001 /* ChartPalette.swift */,
+				CHRTMATH000000000000001 /* ChartMath.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -1979,6 +2042,7 @@
 				PRJCTMODEL000000000002 /* RemoteProject.swift in Sources */,
 				A1B2C3D4E5F60001000007AA /* RemoteCommand.swift in Sources */,
 				A1B2C3D4E5F60001005306AA /* RemoteCommand+Encode.swift in Sources */,
+				RCCODKEY000000000000002 /* RemoteCommand+CodingKeys.swift in Sources */,
 				A1B2C3D4E5F60001FF0021AA /* RemoteCommand+Decode.swift in Sources */,
 				A1B2C3D4E5F60001FF0021AB /* RemoteCommand+DecodeWorktree.swift in Sources */,
 				A1B2C3D4E5F60001000009AA /* PairedDevice.swift in Sources */,
@@ -2052,6 +2116,7 @@
 				A1B2C3D4E5F600010080F0AA /* PlanDividerLabel.swift in Sources */,
 				MODALSHEETBND0000000002 /* ModalSheetBoundary.swift in Sources */,
 				A1B2C3D4E5F60001005001AA /* ChatCollectionView.swift in Sources */,
+				CHATSCRL000000000000002 /* ChatCollectionScrolling.swift in Sources */,
 				A1B2C3D4E5F6000100400DAA /* ConversationView+Attachments.swift in Sources */,
 				CVPRES000000000000000007 /* ConversationView+Presentation.swift in Sources */,
 				CVLAYOUT0000000000001 /* ConversationView+Layout.swift in Sources */,
@@ -2084,6 +2149,8 @@
 				A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */,
 				A1B2C3D4E5F60001009201AA /* SessionViewModel+RemoteDisplay.swift in Sources */,
 				A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */,
+				SVMCONVLD00000000000002 /* SessionViewModel+ConversationLoading.swift in Sources */,
+				CONVBKFL000000000000002 /* ConversationBackfill.swift in Sources */,
 				FE11AA22BC33DD44EE55FF06 /* SessionViewModel+InboxCommands.swift in Sources */,
 				A1B2C3D4E5F60001000204FE /* SessionViewModel+ConversationLoadGate.swift in Sources */,
 				A1B2C3D4E5F6000100049A03 /* SessionViewModel+WorktreeCommands.swift in Sources */,
@@ -2233,6 +2300,17 @@
 				A1B2C3D4E5F60001FF0011AA /* FrontmatterSplitter.swift in Sources */,
 				A1B2C3D4E5F600010000F8AA /* PlanFullScreenView.swift in Sources */,
 				A1B2C3D4E5F600010000FAAA /* MarkdownContentView.swift in Sources */,
+				CHRTCARD000000000000002 /* ChartCardView.swift in Sources */,
+				CHRTTCRD000000000000002 /* ChartTranscriptCard.swift in Sources */,
+				CHRTANCH000000000000002 /* ChartAnchorKey.swift in Sources */,
+				CHRTPLOT000000000000002 /* ChartPlotView.swift in Sources */,
+				CHRTCART000000000000002 /* ChartCartesianPlotView.swift in Sources */,
+				CHRTSER0000000000000002 /* ChartSeriesShapeView.swift in Sources */,
+				CHRTLGF0000000000000002 /* ChartLegendFlow.swift in Sources */,
+				CHRTPAL0000000000000002 /* ChartPalette.swift in Sources */,
+				CHRTMATH000000000000002 /* ChartMath.swift in Sources */,
+				CHRTSPEC000000000000002 /* ChartSpec.swift in Sources */,
+				CHRTTRAN000000000000002 /* ChartTranscript.swift in Sources */,
 				A1B2C3D4E5F60001000501AA /* ConnectionQuality.swift in Sources */,
 				A1B2C3D4E5F60001000503AA /* ConnectionQualityView.swift in Sources */,
 				CONNHLTH00000000000002 /* ConnectionHealth.swift in Sources */,
@@ -2397,6 +2475,7 @@
 				CONVHISTR000000000000001 /* ConversationHistoryReplaceTests.swift in Sources */,
 				CHATANCHT00000000000001 /* ChatScrollAnchoringTests.swift in Sources */,
 				GRPITEMHSH0000000000001 /* GroupedItemContentHashTests.swift in Sources */,
+				GRPCONTID00000000000001 /* GroupedItemContainedIdsTests.swift in Sources */,
 				GRPPARITY000000000000001 /* GroupingParityTests.swift in Sources */,
 				BGWORKTEST0000000000001 /* BackgroundWorkTests.swift in Sources */,
 				MSGIDMAP0000000000000004 /* DispatchSnapshotIdMappingTests.swift in Sources */,
@@ -2528,6 +2607,11 @@
 				AGPNK0000000000000001 /* AgentPanelNameKeyTests.swift in Sources */,
 				AGDAT00000000000000001 /* AgentDispatchAttributionTests.swift in Sources */,
 				AGDMT00000000000000001 /* AgentDotModelTests.swift in Sources */,
+				RESMETAT00000000000001 /* ResourceMetadataDecodeTests.swift in Sources */,
+				CHRTSPECT00000000000001 /* ChartSpecTests.swift in Sources */,
+				CHRTTRNT000000000000001 /* ChartTranscriptTests.swift in Sources */,
+				CHRTPLTT000000000000001 /* ChartPlotTests.swift in Sources */,
+				CONVBKFT000000000000001 /* ConversationBackfillTests.swift in Sources */,
 				AGPCST000000000000001 /* AgentPanelCollapseStateTests.swift in Sources */,
 				APDRTS000000000000001 /* AgentPanelDefaultResolverTests.swift in Sources */,
 				DSPPOPUP000000000001 /* DispatchPopupInitialLoadTests.swift in Sources */,
