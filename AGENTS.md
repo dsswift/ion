@@ -156,7 +156,20 @@ Hooks are managed by husky and install themselves: root `package.json` has `"pre
 
 ## Quality gates (run while developing)
 
-These are the gates to run **during normal development** — they are cheap, fast, and scoped to the work in front of you. Run them as you iterate. Do **not** run the heavy gates listed in the next subsection while developing.
+These are the gates to run **during normal development**. They are cheap, fast, and scoped to the work in front of you. Use the cadence below. Do **not** run the heavy gates listed in the next subsection while developing.
+
+### Validation cadence — never after every file edit
+
+Validation happens at meaningful checkpoints, not after each `Edit` or `Write` call.
+
+1. Make a logical batch of related edits first. Format the changed files once when that batch is complete.
+2. During implementation, run only the narrowest test that can disprove the behavior you just changed. Do not run typecheck, lint, file-size checks, or a broad package test after each file edit.
+3. If a gate fails, fix the cause and rerun that failed gate. Do not rerun gates that already passed unless the fix could affect them.
+4. When the implementation is stable, run each required development-time gate once. Run independent gates in parallel when possible.
+5. After the final gate set passes, rerun a gate only when a later code change could invalidate its result. Documentation-only edits do not invalidate code gates.
+6. Before commit, review the diff and working tree once. Do not use repeated omnibus gate commands as a progress check.
+
+A successful `npm run typecheck`, lint, package test, or file-size check is reusable evidence until a relevant code change invalidates it. Repeating the same successful command without such a change is not additional verification.
 
 | Gate | Command |
 |------|---------|
@@ -200,7 +213,7 @@ The following gates are **slow** — Docker container spin-up, full-network vuln
   1. Do work on the current feature branch, commit locally.
   2. When an external PR lands on `main` that your branch depends on or should incorporate: merge it on GitHub (`gh pr merge <number> --merge`), then `git checkout main && git pull` to sync local `main`, then `git checkout <feature-branch> && git rebase main` to rebase the feature branch onto the updated `main`.
   3. Open a PR from the feature branch into `main` (`gh pr create`). Never push directly to `main`.
-- CI must pass on the PR before merge. Run the development-time quality gates as you iterate (see "Quality gates (run while developing)"); the heavy gates are run once by `/create-pr` before pushing — do not run them yourself during development.
+- CI must pass on the PR before merge. Follow the development-time validation cadence above; the heavy gates are run once by `/create-pr` before pushing — do not run them yourself during development.
 
 ## Commits
 

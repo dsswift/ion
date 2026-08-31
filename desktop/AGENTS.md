@@ -221,7 +221,7 @@ The Ion Studio window (`src/renderer/studio/`) runs the session store in MIRROR 
 
 ## Done criteria
 
-While developing, run only the **scoped** gates — see root [`AGENTS.md`](../AGENTS.md) § "Quality gates (run while developing)". The full `npm test` suite and `npm audit` are heavy gates that run at PR time (CI is authoritative; `/create-pr` runs the Linux parity subset, which includes the full desktop test run, before pushing); do not run them mid-development.
+While developing, follow the root [`AGENTS.md`](../AGENTS.md) § "Validation cadence — never after every file edit". Run a focused test after a logical batch when it can disprove the changed behavior. Run typecheck, lint, file-size checks, and the required scoped tests once when the implementation is stable. Do not rerun a successful gate unless later code changes could invalidate it. The full `npm test` suite and `npm audit` are heavy gates that run at PR time (CI is authoritative; `/create-pr` runs the Linux parity subset, which includes the full desktop test run, before pushing); do not run them mid-development.
 
 1. `npm run typecheck` passes.
 2. `npm run lint` passes with zero errors when touching renderer/ code. This enforces `react-hooks/rules-of-hooks`, `react-hooks/exhaustive-deps`, `react/no-unstable-nested-components`, and `no-console` — the structural gate against React error #185.
