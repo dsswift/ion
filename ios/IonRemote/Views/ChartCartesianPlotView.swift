@@ -205,7 +205,7 @@ struct ChartCartesianPlotView: View {
                             .foregroundStyle(theme.textTertiary)
                             .lineLimit(1)
                             .padding(.horizontal, IonSpace.hairlineGap)
-                            .padding(.top, 1)
+                            .padding(.top, 1) // design-geometry: sub-hairline inset keeps the band label inside a one-point-high band
                     }
                 }
                 .frame(width: size.width, height: height, alignment: .topLeading)
@@ -244,7 +244,7 @@ struct ChartCartesianPlotView: View {
                             .foregroundStyle(theme.textSecondary)
                             .lineLimit(1)
                             .padding(.horizontal, IonSpace.hairlineGap)
-                            .padding(.vertical, 1)
+                            .padding(.vertical, 1) // design-geometry: sub-hairline inset keeps the reference label chip compact beside its one-point rule
                             .background(
                                 RoundedRectangle(cornerRadius: IonRadius.control / 2, style: .continuous)
                                     .fill(theme.surfaceSecondary),
