@@ -1,5 +1,5 @@
-import type { ResourceItem, ResourceDelta } from '../../../shared/types-engine'
-import { resourceIdentity } from '../../../shared/resource-identity'
+import type { ResourceItem, ResourceDelta } from "../../../shared/types-engine";
+import { resourceIdentity } from "../../../shared/resource-identity";
 
 /**
  * Per-tab resource collections. Keyed by resource kind, each value is
@@ -10,24 +10,27 @@ import { resourceIdentity } from '../../../shared/resource-identity'
  */
 export interface ResourceState {
   /** Resources keyed by kind. Each kind maps to its item collection. */
-  resources: Record<string, ResourceItem[]>
+  resources: Record<string, ResourceItem[]>;
   /** Active subscription IDs keyed by kind. */
-  resourceSubscriptions: Record<string, string>
-  /** IDs of resources the user has opened/viewed. Client-local read tracking. */
-  readResourceIds: Set<string>
+  resourceSubscriptions: Record<string, string>;
+  /** Resource identities known to have been read on any client. Read state is monotonic. */
+  readResourceIds: Set<string>;
 }
 
 export const initialResourceState: ResourceState = {
   resources: {},
   resourceSubscriptions: {},
   readResourceIds: new Set<string>(),
-}
+};
 
 /** Mark a resource as read. Returns updated state. */
-export function markResourceRead(state: ResourceState, resourceId: string): ResourceState {
-  const updated = new Set(state.readResourceIds)
-  updated.add(resourceId)
-  return { ...state, readResourceIds: updated }
+export function markResourceRead(
+  state: ResourceState,
+  resourceId: string,
+): ResourceState {
+  const updated = new Set(state.readResourceIds);
+  updated.add(resourceId);
+  return { ...state, readResourceIds: updated };
 }
 
 /**
@@ -39,11 +42,14 @@ export function markResourceRead(state: ResourceState, resourceId: string): Reso
  * other subscribers like iOS) is handled by the caller, not here; this helper
  * only owns the local read-state set.
  */
-export function markResourcesRead(state: ResourceState, ids: string[]): ResourceState {
-  if (ids.length === 0) return state
-  const updated = new Set(state.readResourceIds)
-  for (const id of ids) updated.add(id)
-  return { ...state, readResourceIds: updated }
+export function markResourcesRead(
+  state: ResourceState,
+  ids: string[],
+): ResourceState {
+  if (ids.length === 0) return state;
+  const updated = new Set(state.readResourceIds);
+  for (const id of ids) updated.add(id);
+  return { ...state, readResourceIds: updated };
 }
 
 /** Apply a snapshot: replace the entire collection for this kind.
@@ -63,54 +69,58 @@ export function applyResourceSnapshot(
   items: ResourceItem[],
   resourceProducers?: string[],
 ): ResourceState {
-  const existing = state.resources[kind] ?? []
-  let covered: Set<string> | null
+  const existing = state.resources[kind] ?? [];
+  let covered: Set<string> | null;
   if (resourceProducers !== undefined) {
-    covered = new Set(resourceProducers)
+    covered = new Set(resourceProducers);
   } else if (items.some((item) => !!item.producer)) {
-    covered = new Set(items.map((item) => item.producer).filter(Boolean) as string[])
+    covered = new Set(
+      items.map((item) => item.producer).filter(Boolean) as string[],
+    );
   } else if (items.length > 0) {
-    covered = null
+    covered = null;
   } else {
-    covered = new Set()
+    covered = new Set();
   }
-  const retained = covered === null
-    ? []
-    : existing.filter((item) => !item.producer || !covered.has(item.producer))
-  let merged = [...retained, ...items]
+  const retained =
+    covered === null
+      ? []
+      : existing.filter(
+          (item) => !item.producer || !covered.has(item.producer),
+        );
+  let merged = [...retained, ...items];
 
   // Normalize: deduplicate by producer + ID so same-kind producers can use
   // the same item ID without overwriting one another. Producerless items retain
   // their historic raw-ID identity for compatibility.
-  const seen = new Set<string>()
-  const normalized: ResourceItem[] = []
+  const seen = new Set<string>();
+  const normalized: ResourceItem[] = [];
   for (let i = merged.length - 1; i >= 0; i--) {
-    const identity = resourceIdentity(merged[i])
+    const identity = resourceIdentity(merged[i]);
     if (!seen.has(identity)) {
-      seen.add(identity)
-      normalized.push(merged[i])
+      seen.add(identity);
+      normalized.push(merged[i]);
     }
   }
-  normalized.reverse()
-  merged = normalized
+  normalized.reverse();
+  merged = normalized;
 
-  // Snapshot read state is authoritative only for the producers this snapshot
-  // covers. Preserve read state owned by retained producers.
-  const readResourceIds = new Set(state.readResourceIds)
-  const affected = covered === null
-    ? merged
-    : merged.filter((item) => !!item.producer && covered.has(item.producer))
+  // Read state is monotonic: once any client reports an item read, a later
+  // producer snapshot cannot make that same notification unread again. Snapshot
+  // flags add remote reads; they never remove persisted or locally observed reads.
+  const readResourceIds = new Set(state.readResourceIds);
   const legacyReadIds = new Set(
-    affected
-      .filter((item) => resourceIdentity(item) !== item.id && state.readResourceIds.has(item.id))
+    merged
+      .filter((item) => !!item.producer && state.readResourceIds.has(item.id))
       .map((item) => item.id),
-  )
-  for (const item of affected) {
-    readResourceIds.delete(resourceIdentity(item))
-    if (legacyReadIds.has(item.id)) readResourceIds.delete(item.id)
+  );
+  for (const item of merged) {
+    const identity = resourceIdentity(item);
+    if (item.read || legacyReadIds.has(item.id)) readResourceIds.add(identity);
   }
-  for (const item of affected) {
-    if (item.read || legacyReadIds.has(item.id)) readResourceIds.add(resourceIdentity(item))
+  for (const legacyId of legacyReadIds) {
+    if (!merged.some((item) => !item.producer && item.id === legacyId))
+      readResourceIds.delete(legacyId);
   }
 
   return {
@@ -118,7 +128,7 @@ export function applyResourceSnapshot(
     resources: { ...state.resources, [kind]: merged },
     resourceSubscriptions: { ...state.resourceSubscriptions, [kind]: subId },
     readResourceIds,
-  }
+  };
 }
 
 /** Apply a delta: create, update, delete, or mark_read a single item. */
@@ -127,40 +137,51 @@ export function applyResourceDelta(
   kind: string,
   delta: ResourceDelta,
 ): ResourceState {
-  const current = state.resources[kind] ?? []
-  let updated: ResourceItem[]
+  const current = state.resources[kind] ?? [];
+  let updated: ResourceItem[];
 
   switch (delta.op) {
-    case 'create': {
-      const existingIdx = current.findIndex((item) => resourceIdentity(item) === resourceIdentity(delta.item))
-      updated = existingIdx >= 0
-        ? current.map((item, i) => (i === existingIdx ? delta.item : item))
-        : [...current, delta.item]
-      break
+    case "create": {
+      const existingIdx = current.findIndex(
+        (item) => resourceIdentity(item) === resourceIdentity(delta.item),
+      );
+      updated =
+        existingIdx >= 0
+          ? current.map((item, i) => (i === existingIdx ? delta.item : item))
+          : [...current, delta.item];
+      break;
     }
-    case 'update':
-      updated = current.map((item) => (resourceIdentity(item) === resourceIdentity(delta.item) ? delta.item : item))
-      break
-    case 'delete':
-      updated = current.filter((item) => resourceIdentity(item) !== resourceIdentity(delta.item))
-      break
-    case 'mark_read':
+    case "update":
       updated = current.map((item) =>
-        resourceIdentity(item) === resourceIdentity(delta.item) ? { ...item, read: true } : item,
-      )
-      break
+        resourceIdentity(item) === resourceIdentity(delta.item)
+          ? delta.item
+          : item,
+      );
+      break;
+    case "delete":
+      updated = current.filter(
+        (item) => resourceIdentity(item) !== resourceIdentity(delta.item),
+      );
+      break;
+    case "mark_read":
+      updated = current.map((item) =>
+        resourceIdentity(item) === resourceIdentity(delta.item)
+          ? { ...item, read: true }
+          : item,
+      );
+      break;
     default:
-      updated = current
+      updated = current;
   }
 
   const readResourceIds =
-    delta.op === 'mark_read'
+    delta.op === "mark_read"
       ? new Set([...state.readResourceIds, resourceIdentity(delta.item)])
-      : state.readResourceIds
+      : state.readResourceIds;
 
   return {
     ...state,
     resources: { ...state.resources, [kind]: updated },
     readResourceIds,
-  }
+  };
 }

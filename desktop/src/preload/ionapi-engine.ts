@@ -116,6 +116,7 @@ export interface IonEngineApi {
     Array<{
       id: string;
       kind: string;
+      producer?: string;
       title?: string;
       content: string;
       createdAt: string;
@@ -140,7 +141,7 @@ export interface IonEngineApi {
   resourceGet(
     kind: string,
     id: string,
-    opts?: { sessionKey?: string; global?: boolean },
+    opts?: { sessionKey?: string; global?: boolean; producer?: string },
   ): Promise<void>;
   onEngineEvent(
     callback: (key: string, event: EngineEvent) => void,
