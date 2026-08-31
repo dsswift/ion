@@ -776,20 +776,21 @@ Tear down an active resource subscription.
 
 ### resource_publish
 
-Publish a resource operation from the client. Routes to the global broker when `resourceItem.conversationId` is empty, to the session broker otherwise. Uses `PublishDirect` — no registered producer is required.
+Publish a resource operation from the client. Set `resourceGlobal: true` for a workspace-scoped resource; no session key is required in that mode. Otherwise, `key` selects the session broker. Uses `PublishDirect` — no registered producer is required.
 
 | Field          | Type                    | Required | Description                                                                      |
 |----------------|-------------------------|----------|----------------------------------------------------------------------------------|
 | `cmd`          | `"resource_publish"`    | yes      | Command discriminator                                                            |
-| `key`          | string                  | yes      | Session key                                                                      |
-| `resourceKind` | string                  | no       | Resource kind (informational; the kind is carried on `resourceItem`)             |
+| `key`          | string                  | conditional | Session key for a session-scoped publish; omit or use `""` with `resourceGlobal` |
+| `resourceKind` | string                  | yes      | Resource kind                                                                    |
+| `resourceGlobal` | boolean               | no       | `true` to publish to the workspace broker; otherwise publish to `key`'s session broker |
 | `resourceOp`   | string                  | yes      | Operation: one of `"create"`, `"update"`, `"delete"`, `"mark_read"`              |
-| `resourceItem` | ResourceItem object     | no       | The resource item to publish. Its nested `producer` value is ignored. |
+| `resourceItem` | ResourceItem object     | yes      | The resource item to publish. Its nested `producer` value is ignored. |
 | `resourceProducer` | string              | no       | Trusted producer selector for a client action on an existing producer-owned item. |
 | `requestId`    | string                  | no       | Correlates with ServerResult                                                     |
 
 ```json
-{"cmd":"resource_publish","key":"abc-123","resourceOp":"update","resourceItem":{"id":"item-1","conversationId":"conv-1"},"requestId":"r22"}
+{"cmd":"resource_publish","key":"","resourceGlobal":true,"resourceKind":"briefing","resourceOp":"mark_read","resourceProducer":"producer-a","resourceItem":{"id":"item-1","kind":"briefing"},"requestId":"r22"}
 ```
 
 **Response:** `ServerResult` with `ok: true`.
