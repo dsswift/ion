@@ -10,6 +10,19 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.71.0](https://github.com/dsswift/ion/compare/ios-v1.70.0...ios-v1.71.0) (2026-08-31)
+
+### Features
+
+* **desktop:** make Studio tab strip optional ([03de737](https://github.com/dsswift/ion/commit/03de7377c9ff97ccffdc5ba57b7e079525f16468))
+* **ios:** render native charts in conversations ([057bfdd](https://github.com/dsswift/ion/commit/057bfddcac002b67a928b9ba8e800acc55c0a5ed))
+
+### Bug Fixes
+
+* **ios:** detect USB device fallback ([32db1c8](https://github.com/dsswift/ion/commit/32db1c842b4d5e96539d69636594ecd2e83cecc8))
+* **ios:** explain blocked Wi-Fi device access ([7e061b6](https://github.com/dsswift/ion/commit/7e061b6931016f6c728d197324abec0a004a1b79))
+* **ios:** explain chart micro spacing ([dbc74c6](https://github.com/dsswift/ion/commit/dbc74c6460213bf431d518d63efe0ff60ae242a4))
+
 ## [1.70.0](https://github.com/dsswift/ion/compare/ios-v1.69.0...ios-v1.70.0) (2026-08-27)
 
 ### Features

@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.78.1](https://github.com/dsswift/ion/compare/engine-v1.78.0...engine-v1.78.1) (2026-08-31)
+
+### Bug Fixes
+
+* **engine:** adapt tool schemas for Anthropic ([2b5a184](https://github.com/dsswift/ion/commit/2b5a18406ab8a7b8f9d4025881710cf9be10f622))
+
 ## [1.78.0](https://github.com/dsswift/ion/compare/engine-v1.77.0...engine-v1.78.0) (2026-08-27)
 
 ### Features

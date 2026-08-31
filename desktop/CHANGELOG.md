@@ -10,6 +10,22 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.90.0](https://github.com/dsswift/ion/compare/desktop-v1.89.0...desktop-v1.90.0) (2026-08-31)
+
+### Features
+
+* **desktop:** make Studio tab strip optional ([03de737](https://github.com/dsswift/ion/commit/03de7377c9ff97ccffdc5ba57b7e079525f16468))
+* **desktop:** apply a configurable log level ([cd0dda6](https://github.com/dsswift/ion/commit/cd0dda6f5db9b809849c8169b00baa9fefd973ee))
+* **desktop:** render native charts in Studio conversations ([369a147](https://github.com/dsswift/ion/commit/369a1472fa365c8293a209035359db2337d65509))
+
+### Bug Fixes
+
+* **desktop:** clarify bench sync controls ([0993965](https://github.com/dsswift/ion/commit/0993965964118292bd890388056faeb04d65fb72))
+* **desktop:** distinguish bench build progress ([6e00f84](https://github.com/dsswift/ion/commit/6e00f84970894042fb091fe2e8e8270cec3f55dd))
+* **desktop:** clarify pipeline outcomes ([6651c5b](https://github.com/dsswift/ion/commit/6651c5b6c4618075dbf2834e7bab8583ccb528da))
+* **desktop:** preserve remote image payloads ([4398307](https://github.com/dsswift/ion/commit/439830734657a5f7bb2d983944ce7f643adaeaa3))
+* **desktop:** align remote attachment test ([62ed6e3](https://github.com/dsswift/ion/commit/62ed6e3522979ec1188c6ba15e415b5bb1f37987))
+
 ## [1.89.0](https://github.com/dsswift/ion/compare/desktop-v1.88.0...desktop-v1.89.0) (2026-08-27)
 
 ### Features
