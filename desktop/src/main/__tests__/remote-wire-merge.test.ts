@@ -23,7 +23,6 @@ const mocks = vi.hoisted(() => ({
   readSettingsMock: vi.fn().mockReturnValue({ defaultBaseDirectory: '/home/test' }),
   getRemoteTabStatesMock: vi.fn().mockResolvedValue({ tabs: [] }),
   refreshRendererCacheMock: vi.fn().mockResolvedValue({ tabs: [], resourceManifest: {} }),
-  encodeAttachmentsMock: vi.fn().mockReturnValue({ encoded: [], rewrittenText: '' }),
   getVoiceSystemPromptMock: vi.fn().mockReturnValue(undefined),
 }))
 
@@ -98,10 +97,6 @@ vi.mock('../prompt-pipeline', () => ({
 
 vi.mock('../ipc-validation', () => ({
   resolveDiscoveryWorkingDir: vi.fn().mockReturnValue('/home/test'),
-}))
-
-vi.mock('../remote/attachment-encoder', () => ({
-  encodeAttachments: (...args: any[]) => mocks.encodeAttachmentsMock(...args),
 }))
 
 // Mock engine.ts so tabs.ts can import getVoiceSystemPrompt without
@@ -352,7 +347,6 @@ describe('handlePrompt', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.executeJsMock.mockResolvedValue(null)
-    mocks.encodeAttachmentsMock.mockReturnValue({ encoded: [], rewrittenText: 'hello engine' })
     mocks.processIncomingPromptMock.mockResolvedValue(undefined)
   })
 
@@ -469,18 +463,18 @@ describe('handlePrompt', () => {
     expect(args.instanceId).toBe('new-inst')
   })
 
-  it('calls encodeAttachments on engine path', async () => {
+  it('passes raw attachments to the unified pipeline on engine path', async () => {
     mocks.executeJsMock.mockResolvedValue('inst-enc')
-    mocks.encodeAttachmentsMock.mockReturnValue({ encoded: [], rewrittenText: 'rewritten' })
+    const attachments = [{ type: 'file' as const, name: 'foo.txt', path: '/tmp/foo.txt' }]
 
     await handlePrompt(
-      { type: 'desktop_prompt', tabId: 'tab-7', text: 'hi', instanceId: 'inst-enc', attachments: [{ type: 'file', name: 'foo.txt', path: '/tmp/foo.txt' }] },
+      { type: 'desktop_prompt', tabId: 'tab-7', text: 'hi', instanceId: 'inst-enc', attachments },
       DEVICE_ID,
     )
 
-    expect(mocks.encodeAttachmentsMock).toHaveBeenCalledOnce()
     const args = mocks.processIncomingPromptMock.mock.calls[0][0]
-    expect(args.text).toBe('rewritten')
+    expect(args.text).toBe('hi')
+    expect(args.attachments).toEqual(attachments)
   })
 })
 
