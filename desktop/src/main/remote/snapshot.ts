@@ -22,7 +22,7 @@
 import { existsSync, readFileSync } from 'fs'
 import { state, sessionPlane, lastMessagePreview } from '../state'
 import { TABS_FILE, readSettings } from '../settings-store'
-import { isResourceRead } from '../event-wiring-resources'
+import { filterDeletedResources, isResourceRead } from '../event-wiring-resources'
 import { log, debug, warn } from '../logger'
 import type { RemoteTabState } from './protocol'
 import type { TabStatus } from '../../shared/types'
@@ -128,7 +128,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
   }
 
   const rendererTabs = rendererResult.tabs
-  const resourceManifest: ResourceManifest = applyPersistedReadState(resourceCatalog.manifest(isResourceRead))
+  const resourceManifest: ResourceManifest = applyPersistedResourceState(resourceCatalog.manifest(isResourceRead))
 
 
   if (rendererTabs.length > 0) {
@@ -178,14 +178,14 @@ function mergeMainTerminalActivity(tabs: RemoteTabState[]): void {
 }
 
 /**
- * Copy-on-write projection of the main-process persisted read state onto the
- * manifest. Returns a new manifest object; the input (possibly the shared
- * cache entry) is never mutated.
+ * Copy-on-write projection of the main-process persisted read state and delete
+ * tombstones onto the manifest. Returns a new manifest object; the input
+ * (possibly the shared cache entry) is never mutated.
  */
-function applyPersistedReadState(manifest: ResourceManifest): ResourceManifest {
+function applyPersistedResourceState(manifest: ResourceManifest): ResourceManifest {
   const out: ResourceManifest = {}
   for (const kind of Object.keys(manifest)) {
-    out[kind] = manifest[kind].map((item) =>
+    out[kind] = filterDeletedResources(manifest[kind]).map((item) =>
       !item.read && isResourceRead(item.id, item.producer, item.kind) ? { ...item, read: true } : item,
     )
   }

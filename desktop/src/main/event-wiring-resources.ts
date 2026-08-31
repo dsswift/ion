@@ -5,24 +5,21 @@
 //   - Per-session resource subscriptions (wildcard — every kind)
 //   - Global resource subscriptions (wildcard — every workspace kind)
 //   - Tab focus publishing (desktop.focus resource on tab switch)
-//   - Read-state persistence to disk (~/.ion/resource-read-state.json)
+//   - Read-state and deletion-tombstone persistence under ~/.ion
 
-import { existsSync, readFileSync, mkdirSync } from 'fs'
-import { join } from 'path'
-import { homedir } from 'os'
-import { ipcMain } from 'electron'
-import { IPC } from '../shared/types'
-import { resourceIdentity } from '../shared/resource-identity'
-import { log as _log } from './logger'
-import { engineBridge, state } from './state'
-import { restoreConversationCharts } from './chart-restore'
-import { atomicWriteFileSync } from './utils/atomicWrite'
-import { broadcast } from './broadcast'
-import { resourceCatalog } from './resource-catalog'
-import { notifyStudioActiveTab } from './studio-window-manager'
+import { ipcMain } from "electron";
+import { IPC } from "../shared/types";
+import type { NormalizedEvent } from "../shared/types";
+import { tabIdFromKey } from "../shared/session-key";
+import { log as _log } from "./logger";
+import { engineBridge, state } from "./state";
+import { broadcast } from "./broadcast";
+import { resourceCatalog } from "./resource-catalog";
+import { notifyStudioActiveTab } from "./studio-window-manager";
+import { restoreConversationCharts } from "./chart-restore";
 
 function log(msg: string, fields?: Record<string, unknown>): void {
-  _log('main', msg, fields)
+  _log("main", msg, fields);
 }
 
 // ── Active session key tracking ────────────────────────────────────────────
@@ -33,80 +30,133 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 // resubscribeSessionResourceKinds() can re-establish per-session subscriptions
 // for all active sessions without waiting for engine_command_registry (which
 // only fires on initial session creation, not on reconnect).
-const activeSessionKeys = new Set<string>()
+const activeSessionKeys = new Set<string>();
 
 /** Register a session key as active. Called after a successful per-session
  *  resource subscription so the key survives reconnect cycles. */
 export function recordActiveSessionKey(key: string): void {
-  activeSessionKeys.add(key)
+  activeSessionKeys.add(key);
 }
-
 
 /** Re-subscribe to per-session resource kinds for all known active session keys.
  *  Called after clearResourceSubscriptions() on engine reconnect to recover
  *  subscriptions that would otherwise wait for engine_command_registry. */
 export async function resubscribeSessionResourceKinds(): Promise<void> {
   if (activeSessionKeys.size === 0) {
-    log('resource_subscribe: no active session keys to resubscribe')
-    return
+    log("resource_subscribe: no active session keys to resubscribe");
+    return;
   }
-  log('resource_subscribe: resubscribing after reconnect', { count: activeSessionKeys.size })
-  const keys = Array.from(activeSessionKeys)
+  log("resource_subscribe: resubscribing after reconnect", {
+    count: activeSessionKeys.size,
+  });
+  const keys = Array.from(activeSessionKeys);
   await Promise.allSettled(
     keys.map((key) =>
       subscribeToResourceKinds(key).catch((err) => {
-        log('resource_subscribe: resubscribe error', { key, error: String(err) })
+        log("resource_subscribe: resubscribe error", {
+          key,
+          error: String(err),
+        });
       }),
     ),
-  )
+  );
 }
 
-// ── Read-state persistence ────────────────────────────────────────────────
-//
-// The desktop persists which resource IDs the user has read to disk so
-// read state survives app restarts. The engine has no concept of read/unread.
-// This is purely a client-side rendering concern.
+// ── Resource-state persistence ──────────────────────────────────────────────
 
-const READ_STATE_PATH = join(homedir(), '.ion', 'resource-read-state.json')
+export {
+  isResourceRead,
+  markReadPersisted,
+  isResourceDeleted,
+  markDeletedPersisted,
+  filterDeletedResources,
+  projectPersistedResourceState,
+} from "./event-wiring-resource-state";
+import {
+  isResourceRead,
+  markReadPersisted,
+  isResourceDeleted,
+  markDeletedPersisted,
+  projectPersistedResourceState,
+  getPersistedReadIds,
+} from "./event-wiring-resource-state";
 
-/** IDs the user has read. Loaded from disk on module init, written on every change. */
-const persistedReadIds: Set<string> = new Set<string>()
-
-// Load from disk on startup
-try {
-  if (existsSync(READ_STATE_PATH)) {
-    const data = JSON.parse(readFileSync(READ_STATE_PATH, 'utf-8'))
-    if (Array.isArray(data)) {
-      for (const id of data) persistedReadIds.add(id)
-      log('resource_read_state: loaded from disk', { count: persistedReadIds.size })
+export function handleResourceEngineEvent(
+  key: string,
+  event: any,
+  broadcastNormalized: (tabId: string, event: NormalizedEvent) => void,
+): void {
+  if (event.type === "engine_resource_snapshot") {
+    const items = projectPersistedResourceState(event.resourceItems ?? []);
+    log("resource_snapshot", {
+      key,
+      kind: event.resourceKind,
+      sub_id: event.resourceSubId,
+      items: items.length,
+    });
+    resourceCatalog.applySnapshot(
+      key,
+      event.resourceKind,
+      items,
+      event.resourceProducers,
+    );
+    broadcastNormalized(tabIdFromKey(key), {
+      type: "resource_snapshot",
+      resourceKind: event.resourceKind,
+      resourceSubId: event.resourceSubId,
+      resourceItems: items,
+      resourceProducers: event.resourceProducers,
+    });
+    return;
+  }
+  if (event.type === "engine_resource_delta") {
+    const d = event.resourceDelta;
+    log("resource_delta", {
+      key,
+      kind: event.resourceKind,
+      op: d?.op,
+      id: d?.item?.id?.slice(-8),
+      conv_id: d?.item?.conversationId ?? "global",
+    });
+    if (!d) return;
+    const deleted = isResourceDeleted(d.item.id, d.item.producer, d.item.kind);
+    if (deleted && d.op !== "delete") {
+      log("resource_delta: ignored for deleted resource", {
+        kind: event.resourceKind,
+        op: d.op,
+        id: d.item.id,
+        producer: d.item.producer ?? "",
+      });
+      return;
     }
+    if (d.op === "mark_read")
+      markReadPersisted(d.item.id, d.item.producer, d.item.kind);
+    if (d.op === "delete")
+      markDeletedPersisted(d.item.id, d.item.producer, d.item.kind);
+    resourceCatalog.applyDelta(event.resourceKind, d);
+    broadcastNormalized(tabIdFromKey(key), {
+      type: "resource_delta",
+      resourceKind: event.resourceKind,
+      resourceDelta: d,
+    });
+    return;
   }
-  } catch (err) {
-    log('resource_read_state: load failed; starting empty', { error: String(err) })
-  }
-
-function persistReadState(): void {
-  try {
-    mkdirSync(join(homedir(), '.ion'), { recursive: true })
-    atomicWriteFileSync(READ_STATE_PATH, JSON.stringify([...persistedReadIds]), 0o600)
-    log('resource_read_state: persisted', { count: persistedReadIds.size })
-  } catch (err) {
-    log('resource_read_state: persist failed', { error: String(err), count: persistedReadIds.size })
+  if (event.type === "engine_resource_item") {
+    log("resource_item", {
+      key,
+      kind: event.resourceKind,
+      id: event.resourceItem?.id?.slice(-8),
+    });
+    if (event.resourceItem)
+      resourceCatalog.applyFullItem(event.resourceKind, event.resourceItem);
+    handleResourceItemEvent(
+      tabIdFromKey(key),
+      event.resourceKind,
+      event.resourceItem,
+    );
   }
 }
 
-/** Mark a resource as read and persist to disk. */
-export function markReadPersisted(resourceId: string, producer?: string, kind?: string): void {
-  persistedReadIds.add(resourceIdentity({ id: resourceId, producer, kind }))
-  persistReadState()
-}
-
-/** Check whether a resource identity has been read. Used by the snapshot builder. */
-export function isResourceRead(resourceId: string, producer?: string, kind?: string): boolean {
-  return persistedReadIds.has(resourceIdentity({ id: resourceId, producer, kind }))
-}
-
-// ── Resource subscription ──────────────────────────────────────────────────
 //
 // The desktop subscribes to EVERY resource kind generically using the engine's
 // wildcard sentinel ("*"). It never enumerates kinds — any kind any extension
@@ -120,98 +170,91 @@ export function isResourceRead(resourceId: string, producer?: string, kind?: str
 //     attachments panel; always subscribed, never filtered.
 //   - workspace/global resources (conversationId empty) → the global tray;
 //     subject to the user's excludedResourceKinds blocklist at render time.
-const WILDCARD_RESOURCE_KIND = '*'
+const WILDCARD_RESOURCE_KIND = "*";
 
 // Active subscriptions keyed by `${sessionKey}:${kind}` → subscriptionId.
 // Prevents double-subscribing when engine_command_registry fires more than
 // once for the same session (e.g. after extension respawn).
-const resourceSubscriptionIds = new Map<string, string>()
+const resourceSubscriptionIds = new Map<string, string>();
 
 /** Clear subscription tracking on engine reconnect. Old subscription IDs
  *  are stale after a reconnect (the engine assigned new ones). Without
  *  clearing, subscribeToResourceKinds skips every kind because the dedup
  *  map still holds entries from the dead connection. */
 export function clearResourceSubscriptions(): void {
-  resourceSubscriptionIds.clear()
+  resourceSubscriptionIds.clear();
 }
 
 export async function subscribeToResourceKinds(key: string): Promise<void> {
-  const kind = WILDCARD_RESOURCE_KIND
-  const subKey = `${key}:${kind}`
+  const kind = WILDCARD_RESOURCE_KIND;
+  const subKey = `${key}:${kind}`;
   if (resourceSubscriptionIds.has(subKey)) {
-    log('resource_subscribe: already subscribed', { key })
-    return
+    log("resource_subscribe: already subscribed", { key });
+    return;
   }
-  log('resource_subscribe: wildcard', { key, kind })
+  log("resource_subscribe: wildcard", { key, kind });
   const result = await engineBridge.request<{ subscriptionId: string }>(
-    'resource_subscribe',
+    "resource_subscribe",
     { key, resourceKind: kind },
-  )
+  );
   if (result.ok && result.data?.subscriptionId) {
-    resourceSubscriptionIds.set(subKey, result.data.subscriptionId)
+    resourceSubscriptionIds.set(subKey, result.data.subscriptionId);
     // Track this key so it can be resubscribed on engine reconnect.
-    recordActiveSessionKey(key)
-    log('resource_subscribe: ok', { key, kind, sub_id: result.data.subscriptionId })
-    // Charts are producer-owned: the engine stores no content, so nothing
-    // re-announces a persisted chart after a desktop restart. Republish this
-    // conversation's charts now that a subscriber exists, or every chart drawn
-    // before the restart stays on disk and invisible on every surface.
-    //
-    // Guarded because restoration is strictly additive: a bridge without a
-    // session registry (or a session whose conversation is not yet resolved)
-    // must still get its subscription, which is the load-bearing part.
-    const conversationId = engineBridge.activeSessions?.get(key)?.conversationId ?? ''
+    recordActiveSessionKey(key);
+    log("resource_subscribe: ok", {
+      key,
+      kind,
+      sub_id: result.data.subscriptionId,
+    });
+    const conversationId =
+      engineBridge.activeSessions?.get(key)?.conversationId ?? "";
     if (conversationId) {
-      void restoreConversationCharts(engineBridge, key, conversationId).catch((err: unknown) => {
-        log('chart restore: error', { key, error: String(err) })
-      })
+      void restoreConversationCharts(engineBridge, key, conversationId).catch(
+        (err: unknown) => {
+          log("chart restore: error", { key, error: String(err) });
+        },
+      );
     }
   } else {
-    log('resource_subscribe: failed', { key, kind, error: result.error ?? 'no data' })
+    log("resource_subscribe: failed", {
+      key,
+      kind,
+      error: result.error ?? "no data",
+    });
   }
 }
 
-/**
- * Ensure a live session has a resource subscription, from any event.
- *
- * THE GAP THIS CLOSES: the only subscribe trigger used to be
- * `engine_command_registry`, which the engine emits solely for a session that
- * loaded an extension. A plain conversation therefore never subscribed to its
- * own session broker, so anything the DESKTOP published into that broker — a
- * Chart Output, whose item is conversation-scoped and so routes to the session
- * broker — was delivered to zero subscribers. The chart persisted to disk and
- * drew in the transcript, while the attachments panel stayed empty.
- *
- * Safe to call on every event: the dedup map in `subscribeToResourceKinds`
- * makes a repeat a no-op, and the fire-and-forget shape keeps the event
- * handler synchronous. A failure is logged, never thrown, because a
- * subscription error must not break status handling for the session.
- */
 export function ensureSessionResourceSubscription(key: string): void {
-  if (!key) return
-  if (resourceSubscriptionIds.has(`${key}:${WILDCARD_RESOURCE_KIND}`)) return
-  void subscribeToResourceKinds(key).catch((err) => {
-    log('resource_subscribe: ensure error', { key, error: String(err) })
-  })
+  if (!key || resourceSubscriptionIds.has(`${key}:${WILDCARD_RESOURCE_KIND}`))
+    return;
+  void subscribeToResourceKinds(key).catch((err: unknown) => {
+    log("resource_subscribe: ensure error", { key, error: String(err) });
+  });
 }
 
 export async function subscribeToGlobalResourceKinds(): Promise<void> {
-  const kind = WILDCARD_RESOURCE_KIND
-  const subKey = `global:${kind}`
+  const kind = WILDCARD_RESOURCE_KIND;
+  const subKey = `global:${kind}`;
   if (resourceSubscriptionIds.has(subKey)) {
-    log('resource_subscribe_global: already subscribed')
-    return
+    log("resource_subscribe_global: already subscribed");
+    return;
   }
-  log('resource_subscribe_global: wildcard', { kind })
+  log("resource_subscribe_global: wildcard", { kind });
   const result = await engineBridge.request<{ subscriptionId: string }>(
-    'resource_subscribe',
-    { key: '', resourceKind: kind, resourceGlobal: true },
-  )
+    "resource_subscribe",
+    { key: "", resourceKind: kind, resourceGlobal: true },
+  );
   if (result.ok && result.data?.subscriptionId) {
-    resourceSubscriptionIds.set(subKey, result.data.subscriptionId)
-    log('resource_subscribe_global: ok', { kind, sub_id: result.data.subscriptionId })
+    resourceSubscriptionIds.set(subKey, result.data.subscriptionId);
+    log("resource_subscribe_global: ok", {
+      kind,
+      sub_id: result.data.subscriptionId,
+    });
   } else {
-    log('resource_subscribe_global: failed', { kind, error: result.error ?? 'no data' })
+    log("resource_subscribe_global: failed", {
+      kind,
+      error: result.error ?? "no data",
+    });
   }
 }
 
@@ -223,42 +266,53 @@ export async function subscribeToGlobalResourceKinds(): Promise<void> {
 // command. Extensions subscribe to this resource to know which session
 // the user is currently viewing.
 
-const focusResourceId = `focus-${Date.now()}`
+const focusResourceId = `focus-${Date.now()}`;
 
 function publishTabFocus(tabId: string): void {
-  const sessionKey = tabId
-  log('desktop_focus: publishing', { tab_id: tabId, session_key: sessionKey })
+  const sessionKey = tabId;
+  log("desktop_focus: publishing", { tab_id: tabId, session_key: sessionKey });
 
-  engineBridge.request('resource_publish', {
-    key: '',
-    resourceKind: 'desktop.focus',
-    resourceGlobal: true,
-    resourceOp: 'update',
-    resourceItem: {
-      id: focusResourceId,
-      kind: 'desktop.focus',
-      content: JSON.stringify({ focusedSessionKey: sessionKey, focusedTabId: tabId }),
-      createdAt: new Date().toISOString(),
-    },
-  }).catch((err: unknown) => {
-    log('desktop_focus: publish failed', { error: String(err) })
-  })
+  engineBridge
+    .request("resource_publish", {
+      key: "",
+      resourceKind: "desktop.focus",
+      resourceGlobal: true,
+      resourceOp: "update",
+      resourceItem: {
+        id: focusResourceId,
+        kind: "desktop.focus",
+        content: JSON.stringify({
+          focusedSessionKey: sessionKey,
+          focusedTabId: tabId,
+        }),
+        createdAt: new Date().toISOString(),
+      },
+    })
+    .catch((err: unknown) => {
+      log("desktop_focus: publish failed", { error: String(err) });
+    });
 }
 
 export function wireTabFocusHandler(): void {
   ipcMain.on(
     IPC.NOTIFY_TAB_FOCUS,
-    (_event: Electron.IpcMainEvent, { tabId, engineProfileId }: { tabId: string; engineProfileId?: string | null }) => {
-      publishTabFocus(tabId)
+    (
+      _event: Electron.IpcMainEvent,
+      {
+        tabId,
+        engineProfileId,
+      }: { tabId: string; engineProfileId?: string | null },
+    ) => {
+      publishTabFocus(tabId);
       // The Ion Studio tracks the active tab through this same
       // notification: record it so an Studio window opened later targets the
       // right tab, and push it (with cached state) to a live Studio window.
       // engineProfileId scopes the Studio window office seed per extension.
-      state.studioActiveTabId = tabId
-      state.studioActiveProfileId = engineProfileId ?? null
-      notifyStudioActiveTab(tabId)
+      state.studioActiveTabId = tabId;
+      state.studioActiveProfileId = engineProfileId ?? null;
+      notifyStudioActiveTab(tabId);
     },
-  )
+  );
 }
 
 // ── Mark-read publishing ────────────────────────────────────────────────────
@@ -268,36 +322,79 @@ export function wireTabFocusHandler(): void {
 // mark_read delta back to the engine so all other subscribers (e.g. iOS)
 // see the item as read.
 
-export async function publishResourceMarkRead(kind: string, resourceId: string, producer?: string): Promise<void> {
-  log('resource_mark_read', { kind, resource_id: resourceId, producer: producer ?? '' })
-  await engineBridge.request('resource_publish', {
-    key: '',
+export async function publishResourceMarkRead(
+  kind: string,
+  resourceId: string,
+  producer?: string,
+): Promise<void> {
+  log("resource_mark_read", {
+    kind,
+    resource_id: resourceId,
+    producer: producer ?? "",
+  });
+  const result = await engineBridge.request("resource_publish", {
+    key: "",
     resourceKind: kind,
     resourceGlobal: true,
-    resourceOp: 'mark_read',
+    resourceOp: "mark_read",
     resourceProducer: producer,
-    resourceItem: { id: resourceId, kind, content: '', createdAt: '' },
-  }).catch((err: unknown) => {
-    log('resource_mark_read: failed', { kind, resource_id: resourceId, error: String(err) })
-  })
+    resourceItem: { id: resourceId, kind, content: "", createdAt: "" },
+  });
+  if (!result.ok) {
+    const message =
+      result.error ?? "engine rejected resource mark-read publish";
+    log("resource_mark_read: failed", {
+      kind,
+      resource_id: resourceId,
+      producer: producer ?? "",
+      error: message,
+    });
+    throw new Error(message);
+  }
+  log("resource_mark_read: published", {
+    kind,
+    resource_id: resourceId,
+    producer: producer ?? "",
+  });
 }
 
 export function wireMarkResourceReadHandler(): void {
-  ipcMain.on(IPC.MARK_RESOURCE_READ, (_event: Electron.IpcMainEvent, { kind, resourceId, producer }: { kind: string; resourceId: string; producer?: string }) => {
-    markReadPersisted(resourceId, producer, kind)
-    publishResourceMarkRead(kind, resourceId, producer).catch((err) => {
-      log('resource_mark_read: publish failed', { kind, resource_id: resourceId, producer: producer ?? '', error: String(err) })
-    })
-  })
+  ipcMain.on(
+    IPC.MARK_RESOURCE_READ,
+    (
+      _event: Electron.IpcMainEvent,
+      {
+        kind,
+        resourceId,
+        producer,
+      }: { kind: string; resourceId: string; producer?: string },
+    ) => {
+      markReadPersisted(resourceId, producer, kind);
+      publishResourceMarkRead(kind, resourceId, producer).catch((err) => {
+        log("resource_mark_read: publish failed", {
+          kind,
+          resource_id: resourceId,
+          producer: producer ?? "",
+          error: String(err),
+        });
+      });
+    },
+  );
   ipcMain.handle(IPC.GET_READ_RESOURCE_IDS, () => {
-    return [...persistedReadIds]
-  })
+    return getPersistedReadIds();
+  });
   ipcMain.handle(IPC.GET_PERSISTED_RESOURCES, () => {
-    const items = resourceCatalog.bootstrapItems(isResourceRead)
-    const globalCount = items.filter((item) => !item.conversationId).length
-    log('resource_catalog_bootstrap', { total: items.length, global: globalCount, scoped: items.length - globalCount })
-    return items
-  })
+    const items = projectPersistedResourceState(
+      resourceCatalog.bootstrapItems(isResourceRead),
+    );
+    const globalCount = items.filter((item) => !item.conversationId).length;
+    log("resource_catalog_bootstrap", {
+      total: items.length,
+      global: globalCount,
+      scoped: items.length - globalCount,
+    });
+    return items;
+  });
 }
 
 // ── Delete resource publishing ──────────────────────────────────────────────
@@ -307,26 +404,63 @@ export function wireMarkResourceReadHandler(): void {
 // delete op back to the engine so all other subscribers (e.g. iOS) remove
 // the item.
 
-export async function publishResourceDelete(kind: string, resourceId: string, producer?: string): Promise<void> {
-  log('resource_delete', { kind, resource_id: resourceId, producer: producer ?? '' })
-  await engineBridge.request('resource_publish', {
-    key: '',
+export async function publishResourceDelete(
+  kind: string,
+  resourceId: string,
+  producer?: string,
+): Promise<void> {
+  log("resource_delete", {
+    kind,
+    resource_id: resourceId,
+    producer: producer ?? "",
+  });
+  const result = await engineBridge.request("resource_publish", {
+    key: "",
     resourceKind: kind,
     resourceGlobal: true,
-    resourceOp: 'delete',
+    resourceOp: "delete",
     resourceProducer: producer,
-    resourceItem: { id: resourceId, kind, content: '', createdAt: '' },
-  }).catch((err: unknown) => {
-    log('resource_delete: failed', { kind, resource_id: resourceId, error: String(err) })
-  })
+    resourceItem: { id: resourceId, kind, content: "", createdAt: "" },
+  });
+  if (!result.ok) {
+    const message = result.error ?? "engine rejected resource delete publish";
+    log("resource_delete: failed", {
+      kind,
+      resource_id: resourceId,
+      producer: producer ?? "",
+      error: message,
+    });
+    throw new Error(message);
+  }
+  log("resource_delete: published", {
+    kind,
+    resource_id: resourceId,
+    producer: producer ?? "",
+  });
 }
 
 export function wireDeleteResourceHandler(): void {
-  ipcMain.on(IPC.DELETE_RESOURCE, (_event: Electron.IpcMainEvent, { kind, resourceId, producer }: { kind: string; resourceId: string; producer?: string }) => {
-    publishResourceDelete(kind, resourceId, producer).catch((err) => {
-      log('resource_delete: publish failed', { kind, resource_id: resourceId, producer: producer ?? '', error: String(err) })
-    })
-  })
+  ipcMain.on(
+    IPC.DELETE_RESOURCE,
+    (
+      _event: Electron.IpcMainEvent,
+      {
+        kind,
+        resourceId,
+        producer,
+      }: { kind: string; resourceId: string; producer?: string },
+    ) => {
+      markDeletedPersisted(resourceId, producer, kind);
+      publishResourceDelete(kind, resourceId, producer).catch((err) => {
+        log("resource_delete: publish failed", {
+          kind,
+          resource_id: resourceId,
+          producer: producer ?? "",
+          error: String(err),
+        });
+      });
+    },
+  );
 }
 
 // ── resource_get: lazy fetch of a single item's full content ───────────────
@@ -345,46 +479,65 @@ export async function resourceGet(
   id: string,
   opts: { sessionKey?: string; global?: boolean; producer?: string } = {},
 ): Promise<void> {
-  const key = opts.sessionKey ?? ''
-  const resourceGlobal = opts.global ?? true
-  log('resource_get', { kind, id: id.slice(-8), global: resourceGlobal })
-  await engineBridge.request('resource_get', {
-    key,
-    resourceKind: kind,
-    resourceId: id,
-    resourceProducer: opts.producer,
-    resourceGlobal,
-  }).catch((err: unknown) => {
-    log('resource_get: failed', { kind, id: id.slice(-8), error: String(err) })
-  })
+  const key = opts.sessionKey ?? "";
+  const resourceGlobal = opts.global ?? true;
+  log("resource_get", { kind, id: id.slice(-8), global: resourceGlobal });
+  await engineBridge
+    .request("resource_get", {
+      key,
+      resourceKind: kind,
+      resourceId: id,
+      resourceProducer: opts.producer,
+      resourceGlobal,
+    })
+    .catch((err: unknown) => {
+      log("resource_get: failed", {
+        kind,
+        id: id.slice(-8),
+        error: String(err),
+      });
+    });
 }
 
 export function wireResourceGetHandler(): void {
   ipcMain.handle(
     IPC.RESOURCE_GET,
-    async (_event: Electron.IpcMainInvokeEvent, { kind, id, producer, sessionKey, global: isGlobal }: {
-      kind: string
-      id: string
-      producer?: string
-      sessionKey?: string
-      global?: boolean
-    }) => {
-      await resourceGet(kind, id, { sessionKey, global: isGlobal, producer })
+    async (
+      _event: Electron.IpcMainInvokeEvent,
+      {
+        kind,
+        id,
+        producer,
+        sessionKey,
+        global: isGlobal,
+      }: {
+        kind: string;
+        id: string;
+        producer?: string;
+        sessionKey?: string;
+        global?: boolean;
+      },
+    ) => {
+      await resourceGet(kind, id, { sessionKey, global: isGlobal, producer });
     },
-  )
+  );
 }
 
 // ── handleResourceItemEvent ────────────────────────────────────────────────
 // Broadcasts a resource_item NormalizedEvent to the renderer. Called from
 // event-wiring.ts when engine_resource_item arrives — extracted here to keep
 // event-wiring.ts under the 600-line cap.
-export function handleResourceItemEvent(tabId: string, resourceKind: string, resourceItem: import('../shared/types-engine').ResourceItem | undefined): void {
+export function handleResourceItemEvent(
+  tabId: string,
+  resourceKind: string,
+  resourceItem: import("../shared/types-engine").ResourceItem | undefined,
+): void {
   if (!resourceItem) {
-    return
+    return;
   }
-  broadcast('ion:normalized-event', tabId, {
-    type: 'resource_item' as const,
+  broadcast("ion:normalized-event", tabId, {
+    type: "resource_item" as const,
     resourceKind,
     resourceItem,
-  })
+  });
 }

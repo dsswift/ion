@@ -53,10 +53,14 @@ vi.mock('../settings-store', () => ({ shouldStreamThinkingToRemote: vi.fn(() => 
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 vi.mock('../../shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
 vi.mock('../event-wiring-resources', () => ({
+  handleResourceEngineEvent: vi.fn(),
   subscribeToResourceKinds: vi.fn(() => Promise.resolve()),
   subscribeToGlobalResourceKinds: vi.fn(() => Promise.resolve()),
   clearResourceSubscriptions: vi.fn(),
   markReadPersisted: vi.fn(),
+  markDeletedPersisted: vi.fn(),
+  isResourceDeleted: vi.fn(() => false),
+  projectPersistedResourceState: vi.fn((items: unknown[]) => items),
   resubscribeSessionResourceKinds: vi.fn(() => Promise.resolve()),
   wireTabFocusHandler: vi.fn(),
   wireMarkResourceReadHandler: vi.fn(),

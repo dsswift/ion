@@ -1,15 +1,11 @@
-import { log as _log, debug as _debug } from '../../logger'
+import { log as _log } from '../../logger'
 import { resourceCatalog } from '../../resource-catalog'
 import { state } from '../../state'
-import { markReadPersisted, publishResourceMarkRead, publishResourceDelete } from '../../event-wiring-resources'
+import { markDeletedPersisted, markReadPersisted, publishResourceMarkRead, publishResourceDelete } from '../../event-wiring-resources'
 import type { RemoteCommand } from '../protocol'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
-}
-
-function debug(msg: string, fields?: Record<string, unknown>): void {
-  _debug('main', msg, fields)
 }
 
 /**
@@ -58,33 +54,11 @@ export async function handleMarkResourceRead(
   const { kind, resourceId, producer } = cmd
   log('mark_resource_read', { kind, resource_id: resourceId.slice(0, 12), producer: producer ?? '' })
   markReadPersisted(resourceId, producer, kind)
+  // The engine delta is the single live update path. The event bridge broadcasts
+  // it to both the hidden owner renderer and the Studio mirror, then forwards it
+  // to every paired device. Do not mutate one renderer directly here.
   await publishResourceMarkRead(kind, resourceId, producer)
-
-  // Also update the renderer's in-memory readResourceIds so the next
-  // snapshot poll includes the read state without waiting for an engine
-  // round-trip.
-  try {
-    const safeId = JSON.stringify(resourceId)
-    const safeKind = JSON.stringify(kind)
-    const safeProducer = JSON.stringify(producer)
-    await state.mainWindow?.webContents.executeJavaScript(`
-      (function() {
-        try {
-          var store = window.__Ion_SESSION_STORE__;
-          if (!store) return;
-          store.setState(function(prev) {
-            var updated = new Set(prev.readResourceIds);
-            updated.add(${safeProducer} ? ${safeKind}.length + ':' + ${safeKind} + ':' + ${safeProducer}.length + ':' + ${safeProducer} + ':' + ${safeId} : ${safeId});
-            return { readResourceIds: updated };
-          });
-        } catch(e) {}
-      })()
-    `)
-  } catch (err) {
-    // Renderer store sync is non-fatal but must not be silent: a failure
-    // diverges the desktop tray from engine truth.
-    debug("resources: renderer store sync failed", { error: String(err) })
-  }
+  log('mark_resource_read: synchronized', { kind, resource_id: resourceId.slice(0, 12), producer: producer ?? '' })
 }
 
 /**
@@ -105,27 +79,9 @@ export async function handleDeleteResource(
 ): Promise<void> {
   const { kind, resourceId, producer } = cmd
   log('delete_resource', { kind, resource_id: resourceId.slice(0, 12), producer: producer ?? '' })
+  markDeletedPersisted(resourceId, producer, kind)
+  // The engine delta removes the item from the owner renderer, Studio mirror,
+  // and all paired devices through the same event stream.
   await publishResourceDelete(kind, resourceId, producer)
-
-  // Remove from the renderer's in-memory store directly so the desktop
-  // notification tray updates without waiting for the engine delta round-trip.
-  try {
-    const safeKind = JSON.stringify(kind)
-    const safeId = JSON.stringify(resourceId)
-    const safeProducer = JSON.stringify(producer)
-    await state.mainWindow?.webContents.executeJavaScript(`
-      (function() {
-        try {
-          var store = window.__Ion_SESSION_STORE__;
-          if (!store) return;
-          var s = store.getState();
-          if (s.deleteResource) { s.deleteResource(${safeKind}, ${safeId}, ${safeProducer}); }
-        } catch(e) {}
-      })()
-    `)
-  } catch (err) {
-    // Renderer store sync is non-fatal but must not be silent: a failure
-    // diverges the desktop tray from engine truth.
-    debug("resources: renderer store sync failed", { error: String(err) })
-  }
+  log('delete_resource: synchronized', { kind, resource_id: resourceId.slice(0, 12), producer: producer ?? '' })
 }

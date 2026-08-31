@@ -55,7 +55,11 @@ vi.mock('../../settings-store', () => ({
   get TABS_FILE() { return mockTabsFile.path },
   readSettings: () => mockReadSettings(),
 }))
-vi.mock('../../event-wiring-resources', () => ({ isResourceRead: () => false }))
+vi.mock('../../event-wiring-resources', () => ({
+  handleResourceEngineEvent: vi.fn(),
+  filterDeletedResources: <T>(items: T[]) => items,
+  isResourceRead: () => false,
+}))
 
 import { getRemoteTabStates, _setPollRendererTabStatesForTest } from '../snapshot'
 import { state } from '../../state'

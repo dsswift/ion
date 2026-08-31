@@ -20,37 +20,57 @@
  *   - clearResourceSubscriptions does NOT clear tracked session keys (keys survive reconnect)
  */
 
-import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { vi, describe, it, expect, beforeEach } from "vitest";
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
-const { mockRequest } = vi.hoisted(() => {
-  const mockRequest = vi.fn().mockResolvedValue({ ok: true, data: { subscriptionId: 'sub-mock-1' } })
-  return { mockRequest }
-})
+const { mockRequest, mockAtomicWrite } = vi.hoisted(() => {
+  const mockRequest = vi
+    .fn()
+    .mockResolvedValue({ ok: true, data: { subscriptionId: "sub-mock-1" } });
+  return { mockRequest, mockAtomicWrite: vi.fn() };
+});
 
 // Mock the engineBridge.request to avoid real RPC calls
-vi.mock('../state', () => ({
+vi.mock("../state", () => ({
   enterprisePolicyCache: { policy: null },
   state: { mainWindow: null },
   engineBridge: {
     request: mockRequest,
     on: vi.fn(),
   },
-}))
+}));
 
-vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
+vi.mock("../logger", () => ({
+  log: vi.fn(),
+  debug: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}));
+vi.mock("../utils/atomicWrite", () => ({
+  atomicWriteFileSync: mockAtomicWrite,
+}));
 
-vi.mock('fs', () => ({
+vi.mock("fs", () => ({
   existsSync: vi.fn().mockReturnValue(false),
   readFileSync: vi.fn(),
   writeFileSync: vi.fn(),
   readdirSync: vi.fn().mockReturnValue([]),
   mkdirSync: vi.fn(),
-}))
+}));
 
-vi.mock('os', () => ({ homedir: () => '/test-home', hostname: () => 'test-host' }))
-vi.mock('electron', () => ({ app: {}, session: { fromPartition: () => ({ webRequest: { onBeforeRequest: () => {} } }) }, globalShortcut: { register: () => true, unregisterAll: () => {} }, ipcMain: { on: vi.fn(), handle: vi.fn() } }))
+vi.mock("os", () => ({
+  homedir: () => "/test-home",
+  hostname: () => "test-host",
+}));
+vi.mock("electron", () => ({
+  app: {},
+  session: {
+    fromPartition: () => ({ webRequest: { onBeforeRequest: () => {} } }),
+  },
+  globalShortcut: { register: () => true, unregisterAll: () => {} },
+  ipcMain: { on: vi.fn(), handle: vi.fn() },
+}));
 
 import {
   recordActiveSessionKey,
@@ -59,113 +79,198 @@ import {
   subscribeToResourceKinds,
   subscribeToGlobalResourceKinds,
   markReadPersisted,
+  markDeletedPersisted,
   isResourceRead,
-} from '../event-wiring-resources'
+  isResourceDeleted,
+  projectPersistedResourceState,
+  publishResourceMarkRead,
+  publishResourceDelete,
+} from "../event-wiring-resources";
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
-describe('event-wiring-resources — session key tracking for reconnect', () => {
+describe("event-wiring-resources — session key tracking for reconnect", () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-  })
+    vi.clearAllMocks();
+  });
 
-  it('resubscribeSessionResourceKinds is a no-op when no keys are tracked', async () => {
+  it("resubscribeSessionResourceKinds is a no-op when no keys are tracked", async () => {
     // No keys registered — function returns without calling engineBridge.request
-    await resubscribeSessionResourceKinds()
-    expect(mockRequest).not.toHaveBeenCalled()
-  })
+    await resubscribeSessionResourceKinds();
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
 
-  it('resubscribeSessionResourceKinds calls subscribeToResourceKinds for each tracked key', async () => {
-    recordActiveSessionKey('tab1:inst1')
-    recordActiveSessionKey('tab2:inst2')
+  it("resubscribeSessionResourceKinds calls subscribeToResourceKinds for each tracked key", async () => {
+    recordActiveSessionKey("tab1:inst1");
+    recordActiveSessionKey("tab2:inst2");
 
-    await resubscribeSessionResourceKinds()
+    await resubscribeSessionResourceKinds();
 
     // subscribeToResourceKinds calls engineBridge.request('resource_subscribe', ...)
     // for each key. Two keys = at least 2 request calls.
-    expect(mockRequest.mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(mockRequest.mock.calls.length).toBeGreaterThanOrEqual(2);
 
     const keys = mockRequest.mock.calls
-      .filter((c: any[]) => c[0] === 'resource_subscribe')
-      .map((c: any[]) => (c[1] as { key: string }).key)
-    expect(keys).toContain('tab1:inst1')
-    expect(keys).toContain('tab2:inst2')
-  })
+      .filter((c: any[]) => c[0] === "resource_subscribe")
+      .map((c: any[]) => (c[1] as { key: string }).key);
+    expect(keys).toContain("tab1:inst1");
+    expect(keys).toContain("tab2:inst2");
+  });
 
-  it('continues resubscribing remaining keys after a per-key error', async () => {
-    recordActiveSessionKey('tab3:inst3')
-    recordActiveSessionKey('tab4:inst4')
+  it("continues resubscribing remaining keys after a per-key error", async () => {
+    recordActiveSessionKey("tab3:inst3");
+    recordActiveSessionKey("tab4:inst4");
 
     // First resource_subscribe call throws
     mockRequest
-      .mockRejectedValueOnce(new Error('rpc timeout'))
-      .mockResolvedValue({ ok: true, data: { subscriptionId: 'sub-x' } })
+      .mockRejectedValueOnce(new Error("rpc timeout"))
+      .mockResolvedValue({ ok: true, data: { subscriptionId: "sub-x" } });
 
     // Should not throw
-    await expect(resubscribeSessionResourceKinds()).resolves.toBeUndefined()
-  })
+    await expect(resubscribeSessionResourceKinds()).resolves.toBeUndefined();
+  });
 
-  it('clearResourceSubscriptions does not remove tracked session keys', async () => {
-    recordActiveSessionKey('tab5:inst5')
+  it("clearResourceSubscriptions does not remove tracked session keys", async () => {
+    recordActiveSessionKey("tab5:inst5");
 
-    clearResourceSubscriptions()
+    clearResourceSubscriptions();
 
     // After clearing subscription IDs, the session key must survive
     // so it can be resubscribed on reconnect.
-    await resubscribeSessionResourceKinds()
+    await resubscribeSessionResourceKinds();
 
     const keys = mockRequest.mock.calls
-      .filter((c: any[]) => c[0] === 'resource_subscribe')
-      .map((c: any[]) => (c[1] as { key: string }).key)
-    expect(keys).toContain('tab5:inst5')
-  })
-})
+      .filter((c: any[]) => c[0] === "resource_subscribe")
+      .map((c: any[]) => (c[1] as { key: string }).key);
+    expect(keys).toContain("tab5:inst5");
+  });
+});
 
+describe("event-wiring-resources — persisted read identity", () => {
+  it("keeps same-ID resources in different kinds separate", () => {
+    markReadPersisted("briefing", "shared-id");
 
-describe('event-wiring-resources — persisted read identity', () => {
-  it('keeps same-ID resources in different kinds separate', () => {
-    markReadPersisted('briefing', 'shared-id')
+    expect(isResourceRead("briefing", "shared-id")).toBe(true);
+    expect(isResourceRead("alert", "shared-id")).toBe(false);
+  });
 
-    expect(isResourceRead('briefing', 'shared-id')).toBe(true)
-    expect(isResourceRead('alert', 'shared-id')).toBe(false)
-  })
-})
+  it("writes producer-qualified identities for new reads", () => {
+    markReadPersisted("qualified-id", "producer-a", "briefing");
 
-describe('event-wiring-resources — wildcard subscription (kind-agnostic)', () => {
+    const serialized = mockAtomicWrite.mock.calls.at(-1)?.[1] as string;
+    const identities = JSON.parse(serialized) as string[];
+    expect(identities).toContain("8:briefing:10:producer-a:qualified-id");
+    expect(identities).not.toContain("qualified-id");
+  });
+
+  it("filters deleted resource identities from persisted snapshots", () => {
+    markDeletedPersisted("deleted-id", "producer-a", "briefing");
+    const items = [
+      {
+        id: "deleted-id",
+        kind: "briefing",
+        producer: "producer-a",
+        content: "",
+        createdAt: "",
+      },
+      {
+        id: "kept-id",
+        kind: "briefing",
+        producer: "producer-a",
+        content: "",
+        createdAt: "",
+      },
+    ];
+
+    expect(isResourceDeleted("deleted-id", "producer-a", "briefing")).toBe(
+      true,
+    );
+    expect(projectPersistedResourceState(items).map((item) => item.id)).toEqual(
+      ["kept-id"],
+    );
+  });
+
+  it("recognizes legacy raw IDs for producer-qualified resources", () => {
+    markReadPersisted("legacy-id");
+
+    expect(isResourceRead("legacy-id", "producer-a", "briefing")).toBe(true);
+  });
+});
+
+describe("event-wiring-resources — mutation publish results", () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    clearResourceSubscriptions()
-  })
+    vi.clearAllMocks();
+    mockRequest.mockResolvedValue({ ok: true });
+  });
+
+  it("rejects a mark-read publish that the engine refuses", async () => {
+    mockRequest.mockResolvedValueOnce({ ok: false, error: "invalid command" });
+
+    await expect(
+      publishResourceMarkRead("briefing", "item-1", "producer-a"),
+    ).rejects.toThrow("invalid command");
+  });
+
+  it("rejects a delete publish that the engine refuses", async () => {
+    mockRequest.mockResolvedValueOnce({ ok: false, error: "invalid command" });
+
+    await expect(
+      publishResourceDelete("briefing", "item-1", "producer-a"),
+    ).rejects.toThrow("invalid command");
+  });
+});
+
+describe("event-wiring-resources — wildcard subscription (kind-agnostic)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRequest.mockResolvedValue({
+      ok: true,
+      data: { subscriptionId: "sub-mock-1" },
+    });
+    clearResourceSubscriptions();
+  });
 
   it('subscribeToResourceKinds issues a single wildcard ("*") per-session subscription', async () => {
-    await subscribeToResourceKinds('tabW:instW')
+    await subscribeToResourceKinds("tabW:instW");
 
-    const subs = mockRequest.mock.calls.filter((c: any[]) => c[0] === 'resource_subscribe')
+    const subs = mockRequest.mock.calls.filter(
+      (c: any[]) => c[0] === "resource_subscribe",
+    );
     // Exactly one subscribe — not a per-kind loop. It uses the wildcard kind.
-    expect(subs).toHaveLength(1)
-    const payload = subs[0][1] as { key: string; resourceKind: string; resourceGlobal?: boolean }
-    expect(payload.key).toBe('tabW:instW')
-    expect(payload.resourceKind).toBe('*')
-    expect(payload.resourceGlobal).toBeUndefined()
-  })
+    expect(subs).toHaveLength(1);
+    const payload = subs[0][1] as {
+      key: string;
+      resourceKind: string;
+      resourceGlobal?: boolean;
+    };
+    expect(payload.key).toBe("tabW:instW");
+    expect(payload.resourceKind).toBe("*");
+    expect(payload.resourceGlobal).toBeUndefined();
+  });
 
   it('does not hardcode any concrete kind (no "briefing") in the subscription', async () => {
-    await subscribeToResourceKinds('tabW2:instW2')
+    await subscribeToResourceKinds("tabW2:instW2");
     const payloads = mockRequest.mock.calls
-      .filter((c: any[]) => c[0] === 'resource_subscribe')
-      .map((c: any[]) => (c[1] as { resourceKind: string }).resourceKind)
-    expect(payloads).not.toContain('briefing')
-    expect(payloads).toEqual(['*'])
-  })
+      .filter((c: any[]) => c[0] === "resource_subscribe")
+      .map((c: any[]) => (c[1] as { resourceKind: string }).resourceKind);
+    expect(payloads).not.toContain("briefing");
+    expect(payloads).toEqual(["*"]);
+  });
 
-  it('subscribeToGlobalResourceKinds issues a single global wildcard subscription', async () => {
-    await subscribeToGlobalResourceKinds()
+  it("subscribeToGlobalResourceKinds issues a single global wildcard subscription", async () => {
+    await subscribeToGlobalResourceKinds();
 
-    const subs = mockRequest.mock.calls.filter((c: any[]) => c[0] === 'resource_subscribe')
-    expect(subs).toHaveLength(1)
-    const payload = subs[0][1] as { key: string; resourceKind: string; resourceGlobal?: boolean }
-    expect(payload.resourceKind).toBe('*')
-    expect(payload.resourceGlobal).toBe(true)
-    expect(payload.key).toBe('')
-  })
-})
+    const subs = mockRequest.mock.calls.filter(
+      (c: any[]) => c[0] === "resource_subscribe",
+    );
+    expect(subs).toHaveLength(1);
+    const payload = subs[0][1] as {
+      key: string;
+      resourceKind: string;
+      resourceGlobal?: boolean;
+    };
+    expect(payload.resourceKind).toBe("*");
+    expect(payload.resourceGlobal).toBe(true);
+    expect(payload.key).toBe("");
+  });
+});
