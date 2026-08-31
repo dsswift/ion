@@ -184,6 +184,8 @@ export interface RemoteTabState {
   hasPendingWork?: boolean
   /** The current conversation/session ID for this tab. Engine tabs use StatusFields.sessionId instead. */
   conversationId?: string | null
+  /** Complete canonical engine session chain, oldest to newest. */
+  sessionIds?: string[]
   /**
    * Unix ms timestamp of the last GENUINE activity (user message, turn
    * start, completion — never reconnect/heartbeat). The snapshot sort key.

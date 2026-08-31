@@ -45,18 +45,46 @@ vi.mock('../TodoListPanel', () => ({ TodoListPanel: () => null }))
 vi.mock('../ConversationSearch', () => ({ ConversationSearch: () => null }))
 vi.mock('../hooks/useConversationSearch', () => ({ useConversationSearch: () => [{}, {}] }))
 vi.mock('../hooks/useClearPermissionDenied', () => ({ useClearPermissionDenied: () => vi.fn() }))
+// One STABLE object, not a fresh literal per call: the real hook returns
+// stable refs, and a new `scrollRef` identity on every render would re-run
+// every effect that depends on it (the chart-jump subscription among them).
+const scrollFollow = vi.hoisted(() => ({
+  scrollRef: { current: null as HTMLElement | null }, contentRef: { current: null },
+  isNearBottomRef: { current: true }, showScrollBtn: false,
+  handleScroll: vi.fn(), handleWheel: vi.fn(), handleTouchStart: vi.fn(), handleTouchMove: vi.fn(),
+  handlePointerMove: vi.fn(), handleKeyDown: vi.fn(), pauseFollowing: vi.fn(),
+  // The chart jump takes the viewport through this, not pauseFollowing.
+  beginNavigation: vi.fn(),
+  scrollToBottom: vi.fn(),
+}))
 vi.mock('../conversation/useScrollFollow', () => ({
-  useScrollFollow: () => ({
-    scrollRef: { current: null }, contentRef: { current: null },
-    isNearBottomRef: { current: true }, showScrollBtn: false,
-    handleScroll: vi.fn(), handleWheel: vi.fn(), handleTouchStart: vi.fn(), handleTouchMove: vi.fn(),
-    handlePointerMove: vi.fn(), handleKeyDown: vi.fn(), pauseFollowing: vi.fn(),
-    scrollToBottom: vi.fn(),
-  }),
+  useScrollFollow: () => scrollFollow,
 }))
 vi.mock('../conversation/TimelineMinimap', () => ({ TimelineMinimap: () => null }))
 vi.mock('../conversation/TimelineMinimap.logic', () => ({ deriveTimelineMinimapItems: () => [] }))
-vi.mock('../conversation/TranscriptRows', () => ({ TranscriptRows: () => <div>Transcript rows</div> }))
+// One derived timeline whose anchor deliberately differs from any gate id.
+vi.mock('../conversation/chart-revisions', () => ({
+  deriveChartTimelines: () => ([{
+    chartId: 'chart-derived',
+    title: 'Derived',
+    currentMessageId: 'toolu_derived_row',
+    revisions: [{ messageId: 'toolu_derived_row', spec: {}, revision: 1 }],
+  }]),
+}))
+
+// Captures what the transcript is asked to jump to. Installed by the mocked
+// TranscriptRows through the same ref the real component populates.
+const virtualJump = vi.hoisted(() => ({ fn: null as ((id: string) => boolean) | null }))
+vi.mock('../conversation/TranscriptRows', () => ({
+  TranscriptRows: ({ virtualMessageJumpRef }: {
+    virtualMessageJumpRef?: { current: ((id: string) => boolean) | null }
+  }) => {
+    if (virtualMessageJumpRef) {
+      virtualMessageJumpRef.current = (id: string) => virtualJump.fn?.(id) ?? false
+    }
+    return <div>Transcript rows</div>
+  },
+}))
 vi.mock('../conversation/ScrollToBottomButton', () => ({ ScrollToBottomButton: () => null }))
 vi.mock('../conversation', () => ({
   groupMessages: () => [], suppressUserImageEchoes: (messages: unknown[]) => messages,
@@ -66,6 +94,18 @@ vi.mock('../conversation', () => ({
 }))
 
 import { ConversationView } from '../ConversationView'
+
+// ConversationView subscribes to chart-jump requests at mount. The preload
+// bridge is absent in jsdom, so the stub both keeps the mount working and
+// captures the handler, which is what the chart-jump tests below drive.
+const chartJumpHandlers: Array<(req: { tabId: string; chartId: string; messageId: string }) => void> = []
+const unsubscribeChartJump = vi.fn()
+;(window as unknown as { ion: Record<string, unknown> }).ion = {
+  onChartJump: (cb: (req: { tabId: string; chartId: string; messageId: string }) => void) => {
+    chartJumpHandlers.push(cb)
+    return unsubscribeChartJump
+  },
+}
 
 function setConversation(
   status: string,
@@ -197,6 +237,102 @@ describe('ConversationView agent panel wiring', () => {
   it('forwards its own tabId to AgentPanel', () => {
     const { root } = renderConversation()
     expect(agentPanelProps.at(-1)?.tabId).toBe('tab-1')
+    act(() => { root.unmount() })
+  })
+})
+
+/**
+ * Chart-jump routing.
+ *
+ * A jump is broadcast to every conversation, because main knows the target tab
+ * but not which renderer owns it. Each transcript must therefore ignore a
+ * request addressed to a different tab — otherwise every open conversation
+ * would scroll at once when a chart row is clicked in one of them.
+ */
+describe('ConversationView chart jump', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    chartJumpHandlers.length = 0
+    scrollFollow.scrollRef.current = null
+    setConversation('idle', 0)
+  })
+  afterEach(() => { document.body.replaceChildren() })
+
+  it('subscribes on mount and unsubscribes on unmount', () => {
+    const { root } = renderConversation()
+    expect(chartJumpHandlers).toHaveLength(1)
+    act(() => { root.unmount() })
+    expect(unsubscribeChartJump).toHaveBeenCalled()
+  })
+
+  it('scrolls to the chart anchor when the request names this tab', () => {
+    const { container, root } = renderConversation()
+    scrollFollow.scrollRef.current = container
+    const anchor = document.createElement('div')
+    anchor.setAttribute('data-chart-id', 'chart-1')
+    const scrollIntoView = vi.fn()
+    anchor.scrollIntoView = scrollIntoView
+    container.appendChild(anchor)
+
+    act(() => {
+      chartJumpHandlers[0]({ tabId: 'tab-1', chartId: 'chart-1', messageId: 'msg-1' })
+    })
+    // 'start', not 'center': the virtual path anchors the card near the top
+    // of the viewport, and both presentations must land the same way.
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' })
+    act(() => { root.unmount() })
+  })
+
+  it('prefers the derived anchor over the id the resource carries', () => {
+    // A chart record stores the tool-GATE id it was minted from, while a
+    // transcript row is keyed by the engine's tool-USE id. Jumping on the
+    // stored value found no row, so the transcript never moved. The virtual
+    // jump must therefore be asked for the DERIVED anchor.
+    const { root } = renderConversation()
+    const attempted: string[] = []
+    virtualJump.fn = (id: string) => { attempted.push(id); return true }
+
+    act(() => {
+      chartJumpHandlers[0]({
+        tabId: 'tab-1',
+        chartId: 'chart-derived',
+        messageId: 'tool-gate-999-1',
+      })
+    })
+
+    // With a timeline present, the stored gate id must NOT be what is tried.
+    expect(attempted).toEqual(['toolu_derived_row'])
+    act(() => { root.unmount() })
+  })
+
+  it('falls back to the carried id when no timeline is derived', () => {
+    // A chart the current branch cannot see has no derived anchor; the stored
+    // id is then the only thing to try, rather than giving up silently.
+    const { root } = renderConversation()
+    const attempted: string[] = []
+    virtualJump.fn = (id: string) => { attempted.push(id); return true }
+
+    act(() => {
+      chartJumpHandlers[0]({ tabId: 'tab-1', chartId: 'unknown-chart', messageId: 'tool-gate-777-1' })
+    })
+
+    expect(attempted).toEqual(['tool-gate-777-1'])
+    act(() => { root.unmount() })
+  })
+
+  it('ignores a request addressed to another tab', () => {
+    const { container, root } = renderConversation()
+    scrollFollow.scrollRef.current = container
+    const anchor = document.createElement('div')
+    anchor.setAttribute('data-chart-id', 'chart-1')
+    const scrollIntoView = vi.fn()
+    anchor.scrollIntoView = scrollIntoView
+    container.appendChild(anchor)
+
+    act(() => {
+      chartJumpHandlers[0]({ tabId: 'tab-OTHER', chartId: 'chart-1', messageId: 'msg-1' })
+    })
+    expect(scrollIntoView).not.toHaveBeenCalled()
     act(() => { root.unmount() })
   })
 })

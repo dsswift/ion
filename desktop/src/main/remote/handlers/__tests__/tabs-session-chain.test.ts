@@ -9,16 +9,18 @@
 
 import { describe, it, expect, vi } from 'vitest'
 
+const mockState = vi.hoisted(() => ({ rendererSnapshotCache: null as null | { tabs: Array<Record<string, unknown>> } }))
+
 vi.mock('electron', () => ({
   app: { get isPackaged() { return false } },
   safeStorage: { isEncryptionAvailable: () => false },
   ipcMain: { on: vi.fn(), handle: vi.fn(), removeHandler: vi.fn() },
 }))
 vi.mock('../../../logger', () => ({ log: vi.fn() }))
-vi.mock('../../../state', () => ({ state: {} }))
+vi.mock('../../../state', () => ({ state: mockState }))
 vi.mock('../../../settings-store', () => ({ TABS_FILE: '/tmp/ion-nonexistent/tabs.json' }))
 
-import { paginateHistory, planPathFromHistory, resolvePlanPath, toRemoteMessage, MAX_PAGE_MESSAGES } from '../tabs-session-chain'
+import { paginateHistory, planPathFromHistory, resolvePlanPath, resolveTabSessionChain, toRemoteMessage, MAX_PAGE_MESSAGES, BULK_PAGE_MESSAGES } from '../tabs-session-chain'
 import type { Message } from '../../../../shared/types'
 
 function msg(id: string, role: Message['role'], extra: Partial<Message> = {}): Message {
@@ -34,6 +36,18 @@ function turns(n: number): Message[] {
   }
   return out
 }
+
+describe('resolveTabSessionChain', () => {
+  it('uses the renderer snapshot cache with canonical dedupe', async () => {
+    mockState.rendererSnapshotCache = {
+      tabs: [{ id: 'tab-live', status: 'running', conversationId: 'current', sessionIds: ['old', 'current', 'current'] }],
+    }
+    await expect(resolveTabSessionChain('tab-live')).resolves.toEqual({
+      sessionIds: ['old', 'current'], tabStatus: 'running', conversationId: 'current', source: 'renderer_cache',
+    })
+    mockState.rendererSnapshotCache = null
+  })
+})
 
 describe('paginateHistory', () => {
   it('serves the last page snapped to a user turn, with a cursor', () => {
@@ -187,5 +201,92 @@ describe('resolvePlanPath', () => {
     // toolInput is parsed JSON from the wire, so the field is unknown until
     // checked; a number must not be handed to readFile.
     expect(resolvePlanPath(42, [])).toEqual({ planPath: undefined, pathSource: 'none' })
+  })
+})
+
+/**
+ * Bulk pagination.
+ *
+ * THE DEFECT THIS EXISTS FOR: the default page is 10 rows, snapped to a turn
+ * boundary. That is right for first paint and badly wrong for loading a whole
+ * conversation — a measured 1993-row transcript took ~200 round trips at that
+ * size, and every response rebuilt the client's transcript, producing seconds
+ * of continuous flicker.
+ *
+ * A measured transcript averages ~1.3 KB per row on the wire after the
+ * tool-content cap, and the relay caps a frame at 12 MB, so the remainder of a
+ * real conversation fits in ONE bulk page. A client that needs the whole
+ * transcript asks for one instead of walking.
+ */
+describe('paginateHistory — bulk pages', () => {
+  function transcript(count: number): Message[] {
+    return Array.from({ length: count }, (_, i) => ({
+      id: `m${i}`,
+      // Alternate so turn-snapping has real boundaries to find.
+      role: i % 4 === 0 ? 'user' : 'assistant',
+      content: `row ${i}`,
+      timestamp: 1000 + i,
+    })) as Message[]
+  }
+
+  it('returns the small default page when no size is requested', () => {
+    // First paint must stay fast; this is the behavior every existing caller
+    // relies on.
+    const { page, hasMore } = paginateHistory(transcript(500))
+    expect(page.length).toBeLessThanOrEqual(MAX_PAGE_MESSAGES)
+    expect(page.length).toBeLessThan(50)
+    expect(hasMore).toBe(true)
+  })
+
+  it('returns far more rows when a bulk size is requested', () => {
+    const { page } = paginateHistory(transcript(1993), undefined, BULK_PAGE_MESSAGES)
+    expect(page.length).toBe(1993)
+  })
+
+  it('completes a real-sized conversation in one bulk page', () => {
+    // 1993 rows is the measured size of the conversation that exposed the
+    // defect. One request, not two hundred.
+    const { hasMore } = paginateHistory(transcript(1993), undefined, BULK_PAGE_MESSAGES)
+    expect(hasMore).toBe(false)
+  })
+
+  it('caps a bulk page at BULK_PAGE_MESSAGES and reports more', () => {
+    // A conversation larger than one frame's worth still paginates — the
+    // client loops, but in single-digit iterations.
+    const { page, hasMore, cursor } = paginateHistory(
+      transcript(BULK_PAGE_MESSAGES + 500),
+      undefined,
+      BULK_PAGE_MESSAGES,
+    )
+    expect(page.length).toBe(BULK_PAGE_MESSAGES)
+    expect(hasMore).toBe(true)
+    expect(cursor).toBeDefined()
+  })
+
+  it('walks the remainder from the bulk cursor', () => {
+    const all = transcript(BULK_PAGE_MESSAGES + 500)
+    const first = paginateHistory(all, undefined, BULK_PAGE_MESSAGES)
+    const second = paginateHistory(all, first.cursor, BULK_PAGE_MESSAGES)
+
+    expect(second.hasMore).toBe(false)
+    // The two pages together cover the transcript with no gap: the second
+    // page ends exactly where the first begins.
+    expect(second.page[second.page.length - 1]!.id).toBe(
+      all[all.findIndex((m) => m.id === first.cursor) - 1]!.id,
+    )
+  })
+
+  it('keeps the default page bounded even when a turn snap would overshoot', () => {
+    // A long assistant run with no user boundary must not turn a default page
+    // into an unbounded one.
+    const all = Array.from({ length: 400 }, (_, i) => ({
+      id: `m${i}`,
+      role: i === 0 ? 'user' : 'assistant',
+      content: `row ${i}`,
+      timestamp: 1000 + i,
+    })) as Message[]
+
+    const { page } = paginateHistory(all)
+    expect(page.length).toBeLessThanOrEqual(MAX_PAGE_MESSAGES)
   })
 })

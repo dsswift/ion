@@ -49,6 +49,11 @@ struct EngineToolGroupRow: View {
     let tools: [Message]
     var activeBackgroundTasks: [BackgroundTaskState] = []
     var tabId: String? = nil
+    /// Per-row chart render state, derived once by the transcript from the
+    /// whole conversation. A chart's current revision usually lives in a
+    /// different turn than the row being drawn, so the answer cannot be
+    /// computed from this group's rows alone.
+    var chartRenders: [String: ChartTranscript.RowRender] = [:]
     @Environment(\.appTheme) private var theme
     @State private var isExpanded = false
 
@@ -68,7 +73,23 @@ struct EngineToolGroupRow: View {
         !hasRunningTool && completedTools.count > 3
     }
 
+    /// Chart cards this group owns, in row order.
+    ///
+    /// Rendered OUTSIDE the collapsible run: a chart is a deliverable the
+    /// operator asked for, not execution detail, so collapsing four tool calls
+    /// must never hide it. This mirrors the desktop, where visual outputs sit
+    /// outside the tool-row disclosure for the same reason.
+    private var chartCards: [(id: String, render: ChartTranscript.RowRender)] {
+        tools.compactMap { tool in
+            guard let render = chartRenders[tool.id] else { return nil }
+            return (id: tool.id, render: render)
+        }
+    }
+
     var body: some View {
+        // Named space so a chart card can report its offset WITHIN this row.
+        // A global frame would be stale the moment the list scrolls; an offset
+        // from the row's top edge stays true wherever the row sits.
         VStack(alignment: .leading, spacing: IonSpace.hairlineGap) {
             if collapses && !isExpanded {
                 Button { isExpanded = true } label: {
@@ -90,12 +111,17 @@ struct EngineToolGroupRow: View {
                 }
             }
 
+            ForEach(chartCards, id: \.id) { entry in
+                ChartTranscriptCard(render: entry.render)
+            }
+
             ActiveBackgroundSummary(
                 tools: tools,
                 activeTasks: activeBackgroundTasks,
                 tabId: tabId
             )
         }
+        .coordinateSpace(name: ChartAnchorKey.rowSpace)
     }
 }
 

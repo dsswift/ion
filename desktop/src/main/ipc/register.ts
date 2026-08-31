@@ -1,6 +1,7 @@
 import { registerWindowIpc } from "./window";
 import { registerSessionIpc } from "./session";
 import { registerEngineIpc } from "./engine";
+import { registerChartReconcileIpc } from "./chart-reconcile-ipc";
 import { registerBashIpc } from "./bash";
 import { registerTerminalIpc } from "./terminal";
 import { registerPermissionsIpc } from "./permissions";
@@ -44,6 +45,7 @@ export function registerAllIpc(): void {
   registerWindowIpc();
   registerSessionIpc();
   registerEngineIpc();
+  registerChartReconcileIpc();
   registerBashIpc();
   registerTerminalIpc();
   registerPermissionsIpc();

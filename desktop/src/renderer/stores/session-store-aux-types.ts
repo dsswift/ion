@@ -69,6 +69,8 @@ export interface WorktreePipelineState {
   /** Set by cancel; the machine stops between steps and finishes with a cancelled summary. */
   cancelled: boolean;
   startedAt: number;
+  /** Member count in the bench built after source sync. */
+  benchMemberCount?: number;
   /** Terminal sentence for the banner, set when phase reaches done/failed. */
   summary?: string;
 }

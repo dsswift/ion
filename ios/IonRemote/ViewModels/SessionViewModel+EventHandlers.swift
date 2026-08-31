@@ -13,6 +13,7 @@ extension SessionViewModel {
             handleRelayConfig(relayUrl: relayUrl, relayApiKey: relayApiKey, authMode: authMode, relayOidcIssuer: relayOidcIssuer, relayOidcAudience: relayOidcAudience, relayOidcRequiredScope: relayOidcRequiredScope, relayOidcClientId: relayOidcClientId)
 
         case .transportReconnecting:
+            cancelTranscriptCopy()
             if connectionState == .connected {
                 connectionState = .reconnecting
                 markActiveDesktopTransientlyDisconnected(source: "transport_reconnecting")
@@ -31,6 +32,7 @@ extension SessionViewModel {
             break
 
         case .peerDisconnected:
+            cancelTranscriptCopy()
             // Don't tear down the transport — the relay auto-reconnects and
             // startRelayStateObservation re-sends sync when the peer returns.
             if connectionState == .connected || connectionState == .connecting {
@@ -120,6 +122,9 @@ extension SessionViewModel {
             if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
                 tabs[idx].permissionQueue.removeAll { $0.questionId == questionId }
             }
+
+        case .transcript(let tabId, let requestId, let transcript, let error):
+            handleTranscript(tabId: tabId, requestId: requestId, transcript: transcript, error: error)
 
         case .conversationHistory(let tabId, let newMessages, let hasMore, let cursor, let before):
             handleConversationHistory(tabId: tabId, newMessages: newMessages, hasMore: hasMore, cursor: cursor, before: before)

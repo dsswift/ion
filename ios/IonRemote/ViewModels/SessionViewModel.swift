@@ -1,76 +1,6 @@
 import Foundation
-import SwiftUI
 import CryptoKit
 import Observation
-
-enum PairingError: Error, LocalizedError {
-    case invalidResponse
-    case rejected(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidResponse: return "Invalid pairing response"
-        case .rejected(let reason): return "Pairing rejected: \(reason)"
-        }
-    }
-}
-
-// MARK: - ConnectionState
-
-/// UI-level connection state for displaying transport status in views.
-enum ConnectionState: String, Sendable {
-    case disconnected
-    case connecting
-    case connected
-    case reconnecting
-
-    var label: String {
-        switch self {
-        case .disconnected: "Disconnected"
-        case .connecting: "Connecting"
-        case .connected: "Connected"
-        case .reconnecting: "Reconnecting"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .disconnected: .red
-        case .connecting: .yellow
-        case .connected: .green
-        case .reconnecting: .orange
-        }
-    }
-}
-
-// MARK: - PairingState
-
-enum PairingState: Sendable {
-    case idle
-    case discovering
-    case connecting(hostName: String)
-    case exchangingKeys
-    case configuringRelay
-    case paired
-    case failed(Error)
-
-    var isIdle: Bool {
-        if case .idle = self { return true }
-        return false
-    }
-
-    var isFailed: Bool {
-        if case .failed = self { return true }
-        return false
-    }
-
-    var isConnecting: Bool {
-        switch self {
-        case .connecting, .exchangingKeys, .configuringRelay: return true
-        default: return false
-        }
-    }
-}
 
 // MARK: - SessionViewModel
 
@@ -118,6 +48,10 @@ final class SessionViewModel {
     var conversationHasMore: [String: Bool] = [:]
     var conversationCursor: [String: String] = [:]
     var conversationLoadFailed: Set<String> = []
+    /// Drives background backfill of older history pages so scrolling back and
+    /// jumping to an older row never wait on a round trip. See
+    /// ConversationBackfill for why this is not scroll-driven.
+    let conversationBackfill = ConversationBackfill()
     /// Per-tab debounce clock for the snapshot staleness reconcile. When the
     /// desktop snapshot's authoritative last-activity timestamp is newer than
     /// the newest local message (dropped live deltas — e.g. a LAN↔relay
@@ -283,6 +217,9 @@ final class SessionViewModel {
     /// observes this property and presents the share sheet whenever it
     /// flips non-nil; the dismissal sets it back to nil.
     var pendingExport: PendingExport? = nil
+
+    /// Coordinates the latest transcript clipboard request and its timeout.
+    let transcriptCopyCoordinator = TranscriptCopyCoordinator()
 
     // MARK: - Toast Messages
     var toastMessages: [ToastMessage] = []

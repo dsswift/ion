@@ -18,6 +18,7 @@ import {
   loadEngineConversationMessages,
   parseSessionMeta,
 } from '../session-meta'
+import { loadConversationTranscript } from '../conversation-transcript'
 import {
   loadSessionLabels,
   readClaudeCompat,
@@ -356,6 +357,14 @@ export function registerSessionsListIpc(): void {
       log('delete_stored_conversations: error', { count: sessionIds.length, error: String(err) })
       throw err
     }
+  })
+
+  ipcMain.handle(IPC.LOAD_CONVERSATION_TRANSCRIPT, async (_e, tabId: string) => {
+    if (typeof tabId !== 'string' || tabId.length === 0 || tabId.length > 256) {
+      log('load_conversation_transcript: rejected invalid tab id')
+      throw new Error('invalid tab ID')
+    }
+    return loadConversationTranscript(tabId)
   })
 
   ipcMain.handle(IPC.LOAD_CHAIN_HISTORY, async (_e, sessionIds: string[]) => {

@@ -8,7 +8,7 @@ import { settledRecordCanRestore } from '../settled-worktree'
 import { benchTerminalTitle, isBenchDirectory, pickDirTerminal } from '../../../shared/worktree-conversations'
 import { autoSettleBlocked, effectiveSettled, type InboxTabView } from '../../../shared/inbox-classify'
 import { liveBackgroundShellCount } from '../../../shared/background-shell-counts'
-import { isPersistedSettled } from '../../../shared/tab-predicates'
+import { isPersistedSettled, orderedSessionIds } from '../../../shared/tab-predicates'
 import { evaluateSessionBusyGuard, formatSessionBusyRefusal } from './session-busy-guard'
 import { activeQuestionsCount } from '../questions-store'
 
@@ -136,7 +136,20 @@ export function createInboxSlice(set: StoreSet, get: StoreGet): Partial<State> {
       rWarn('inbox', 'settle rejected because engine session did not stop', { tab_id: tabId.slice(0, 8), provenance, error: String(error) })
       return
     }
-    const settledRecord = { ...input.tab, settledOverride: provenance, settledAt: Date.now(), pinnedAt: null, pinOrderKey: null, inputLocked: true, inputLockReason: 'settled' as const }
+    const instance = activeInstance(get().conversationPanes, tabId)
+    const sessionIds = orderedSessionIds(input.tab, instance)
+    const settledRecord = {
+      ...input.tab,
+      historicalSessionIds: sessionIds.slice(0, -1),
+      conversationId: input.tab.conversationId ?? sessionIds.at(-1) ?? null,
+      lastKnownSessionId: sessionIds.at(-1) ?? input.tab.lastKnownSessionId,
+      settledOverride: provenance,
+      settledAt: Date.now(),
+      pinnedAt: null,
+      pinOrderKey: null,
+      inputLocked: true,
+      inputLockReason: 'settled' as const,
+    }
     let nextTabId: string | null = null
     set((state) => {
       const tabs = state.tabs.filter((tab) => tab.id !== tabId)

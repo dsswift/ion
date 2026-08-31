@@ -14,11 +14,14 @@ import { PlanViewer } from './PlanViewer'
 import { ImageViewer } from './ImageViewer'
 import { ResourceViewer } from './ResourceViewer'
 import { parseAttachmentsFromMessages, type MsgLike } from './StatusBarAttachmentsParser'
+import { AttachmentRow } from './StatusBarAttachmentsRow'
+import { ChartsSection } from './StatusBarAttachmentsCharts'
 import { activeInstance } from '../stores/conversation-instance'
 import type { ResourceItem } from '../../shared/types-engine'
 import { resourceIdentity } from '../../shared/resource-identity'
 import { surfaceRouter, contentRouter } from '../lib/file-open-router'
-import { rWarn, rError } from '../rendererLogger'
+import { rInfo, rWarn, rError } from '../rendererLogger'
+import { CHART_RESOURCE_KIND, parseChartResourceItem } from './chart-attachment'
 
 /* ─── Extension sets for icon picking ─── */
 
@@ -48,38 +51,6 @@ function fileIcon(name: string, size: number) {
   if (CODE_EXTS.has(ext)) return <FileCode size={size} />
   if (TEXT_EXTS.has(ext)) return <FileText size={size} />
   return <File size={size} />
-}
-
-/** One clickable row in the attachments popover (plan / file / resource).
- * A separate component so each row owns its own useInteractiveState hook
- * (rules-of-hooks: no hooks inside the section map loops). `hoverBg` keeps
- * each section's tint (plans green, files surface, resources purple-neutral);
- * pressed uses the standard surfacePressed layer. */
-function AttachmentRow({ colors, hoverBg, color, onClick, children }: {
-  colors: ReturnType<typeof useColors>
-  hoverBg: string
-  color: string
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  const { hover, pressed, handlers } = useInteractiveState()
-  return (
-    <button
-      onClick={onClick}
-      {...handlers}
-      className="flex items-center gap-2 w-full text-left ion-focusable"
-      style={{
-        padding: '4px 12px',
-        fontSize: 11,
-        color,
-        cursor: 'pointer',
-        background: pressed ? colors.surfacePressed : hover ? hoverBg : 'transparent',
-        border: 'none',
-      }}
-    >
-      {children}
-    </button>
-  )
 }
 
 /* ─── Component ─── */
@@ -165,10 +136,47 @@ export function AttachmentsButton() {
   const convResources: ResourceItem[] = useMemo(
     () =>
       tabConvId
-        ? Object.values(resources).flat().filter((r) => r.conversationId === tabConvId)
+        ? Object.values(resources).flat().filter(
+          (r) => r.conversationId === tabConvId && r.kind !== CHART_RESOURCE_KIND,
+        )
         : EMPTY_RESOURCES,
     [resources, tabConvId],
   )
+
+  // Charts get their own section rather than joining the generic Resources
+  // list, because their row does something different: it navigates the
+  // transcript to the chart's newest card instead of opening a text viewer.
+  // One row per chart, never one per revision — the whole point of a named
+  // chart is that it stays a single entry however often it is refreshed.
+  const charts = useMemo(
+    () =>
+      (tabConvId
+        ? Object.values(resources).flat().filter(
+          (r) => r.conversationId === tabConvId && r.kind === CHART_RESOURCE_KIND,
+        )
+        : []
+      )
+        .map((item) => parseChartResourceItem(item))
+        .filter((entry): entry is NonNullable<typeof entry> => entry !== null),
+    [resources, tabConvId],
+  )
+
+  // Evidence for the panel's own view of the data. Three rounds were spent
+  // guessing which link was broken — main published, the store folded, the
+  // parser accepted — because nothing reported what the PANEL held. These
+  // counts distinguish "no chart items in the store", "items present but
+  // scoped to another conversation", and "items scoped correctly but
+  // rejected by the parser" from one line.
+  useEffect(() => {
+    const allCharts = Object.values(resources).flat().filter((r) => r.kind === CHART_RESOURCE_KIND)
+    rInfo('attachments', 'chart section resolved', {
+      tab_conv_id: tabConvId ?? '',
+      chart_items_in_store: allCharts.length,
+      chart_items_for_this_conv: allCharts.filter((r) => r.conversationId === tabConvId).length,
+      chart_rows_rendered: charts.length,
+      sample_conv_ids: [...new Set(allCharts.map((r) => r.conversationId ?? 'none'))].slice(0, 3),
+    })
+  }, [resources, tabConvId, charts])
 
   const attachments = useMemo(
     () => parseAttachmentsFromMessages(messages, planFilePath),
@@ -265,7 +273,7 @@ export function AttachmentsButton() {
 
   /* ─── Render ─── */
 
-  const count = attachments.length + convResources.length
+  const count = attachments.length + convResources.length + charts.length
 
   return (
     <>
@@ -446,8 +454,20 @@ export function AttachmentsButton() {
                 </div>
               )}
 
+              {/* Charts section — one row per named chart. Clicking navigates
+                  to the chart's current card rather than opening a viewer. */}
+              <ChartsSection
+                charts={charts}
+                colors={colors}
+                showDivider={plans.length > 0 || files.length > 0}
+                collapsed={collapsedSections.has('charts')}
+                onToggle={() => toggleSection('charts')}
+                onDismiss={() => setOpen(false)}
+                activeTabId={activeTabId}
+              />
+
               {/* Separator before conversation-scoped resources */}
-              {(plans.length > 0 || files.length > 0) && convResources.length > 0 && (
+              {(plans.length > 0 || files.length > 0 || charts.length > 0) && convResources.length > 0 && (
                 <div
                   style={{
                     height: 1,

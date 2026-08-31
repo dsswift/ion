@@ -341,13 +341,18 @@ extension Message {
         // Codable init. Without this the images are dropped on reload.
         attachments = try container.decodeIfPresent([MessageAttachment].self, forKey: .attachments)
 
-        // Engine messages don't carry these fields
-        toolInput = nil
+        // The engine DOES carry toolInput on history rows
+        // (`types.Message.ToolInput`, json `toolInput`). It was dropped here
+        // under a comment claiming otherwise, which silently removed the only
+        // field a client needs to reconstruct what a tool was asked to do —
+        // and left charts, which are derived entirely from a RenderChart
+        // row's input, unrenderable on the agent-history path.
+        toolInput = try container.decodeIfPresent(String.self, forKey: .toolInput)
         source = nil
     }
 
     private enum EngineCodingKeys: String, CodingKey {
-        case id, role, content, toolName, toolId, toolStatus, timestamp
+        case id, role, content, toolName, toolInput, toolId, toolStatus, timestamp
         case isInternal = "internal"
         case slashCommand, slashArgs, slashSource, slashModelAlias, slashModelEffective, slashFrontmatter
         case planFilePath

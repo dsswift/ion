@@ -20,6 +20,10 @@ vi.mock('electron', () => ({
   nativeImage: { createFromPath: vi.fn(), createFromBuffer: vi.fn() },
 }))
 
+const testMocks = vi.hoisted(() => ({
+  processIncomingPrompt: vi.fn<(prompt: any) => Promise<void>>(async () => {}),
+}))
+
 const sent: any[] = []
 const sendMock = vi.fn((event: any) => { sent.push(event) })
 const executeJsMock = vi.fn(async () => null)
@@ -37,10 +41,7 @@ vi.mock('../../../state', () => ({
   engineBridge: {},
 }))
 vi.mock('../../../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), trace: vi.fn() }))
-vi.mock('../../../prompt-pipeline', () => ({ processIncomingPrompt: vi.fn(async () => {}) }))
-vi.mock('../../attachment-encoder', () => ({
-  encodeAttachments: vi.fn((text: string) => ({ encoded: [], rewrittenText: text })),
-}))
+vi.mock('../../../prompt-pipeline', () => ({ processIncomingPrompt: testMocks.processIncomingPrompt }))
 vi.mock('../../../engine-bridge', () => ({ IS_REMOTE: false }))
 vi.mock('./engine', () => ({ getVoiceSystemPrompt: vi.fn(() => undefined) }))
 vi.mock('../../../engine-control-plane-interrupt', () => ({ performUnifiedInterrupt: vi.fn() }))
@@ -50,6 +51,7 @@ import { handlePrompt } from '../tabs-prompt'
 beforeEach(() => {
   sent.length = 0
   sendMock.mockClear()
+  testMocks.processIncomingPrompt.mockClear()
 })
 
 describe('handlePrompt CLI-branch user echo (no instanceId)', () => {
@@ -136,6 +138,38 @@ describe('handlePrompt CLI-branch user echo (no instanceId)', () => {
     // own execution window (>= before, <= after).
     expect(echo.message.timestamp).toBeGreaterThanOrEqual(before)
     expect(echo.message.timestamp).toBeLessThanOrEqual(after)
+  })
+
+  it('passes engine attachments raw to the unified pipeline for one encoding pass', async () => {
+    executeJsMock.mockResolvedValue(null)
+    await handlePrompt({
+      type: 'desktop_prompt',
+      tabId: 'tab-engine-image',
+      text: 'inspect this image',
+      clientMsgId: 'client-msg-engine-image',
+      instanceId: 'main',
+      attachments: [
+        {
+          type: 'image',
+          name: 'photo.jpeg',
+          path: '/tmp/ion-remote-engine.jpeg',
+          contentHash: 'hash-1',
+        },
+      ],
+    } as any, 'device-1')
+
+    expect(testMocks.processIncomingPrompt).toHaveBeenCalledTimes(1)
+    const routedPrompt = testMocks.processIncomingPrompt.mock.calls[0][0]
+    expect(routedPrompt).toEqual(expect.objectContaining({
+      text: 'inspect this image',
+      attachments: [{
+        type: 'image',
+        name: 'photo.jpeg',
+        path: '/tmp/ion-remote-engine.jpeg',
+        contentHash: 'hash-1',
+      }],
+    }))
+    expect(routedPrompt).not.toHaveProperty('imageAttachments')
   })
 
   it('imposes no fixed startup delay on the engine branch (RC-2)', async () => {

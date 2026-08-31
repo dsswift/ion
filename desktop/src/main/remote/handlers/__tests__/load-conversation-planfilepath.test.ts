@@ -66,6 +66,22 @@ vi.mock('../../../settings-store', () => ({
   TABS_FILE: '/tmp/ion-planfilepath-test/tabs.json',
 }))
 vi.mock('../../snapshot', () => ({ getRemoteTabStates: vi.fn(async () => []) }))
+// The handler resolves a tab's session chain before requesting history. This
+// suite predates that seam and only stubbed the renderer scrape, so the chain
+// resolved to null and the handler returned an empty transcript before any
+// plan-marker mapping ran. Only the lookup is stubbed; the rest of the module
+// stays real so pagination and message mapping behave as they do in
+// production.
+const chainHolder = vi.hoisted(() => ({ current: null as null | {
+  sessionIds: string[]
+  tabStatus: string
+  conversationId: string | null
+  source: string
+} }))
+vi.mock('../tabs-session-chain', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../tabs-session-chain')>()),
+  resolveTabSessionChain: vi.fn(async () => chainHolder.current),
+}))
 vi.mock('./diagnostics', () => ({ autoPullDiagnosticLogs: vi.fn() }))
 vi.mock('./tabs-sync', () => ({ broadcastSync: vi.fn(), sendSync: vi.fn() }))
 vi.mock('../../../ipc-validation', () => ({ resolveDiscoveryWorkingDir: vi.fn() }))
@@ -74,6 +90,12 @@ vi.mock('./tabs-prompt', () => ({ handlePrompt: vi.fn(), handleCancel: vi.fn() }
 import { handleLoadConversation } from '../tabs'
 
 function tabMeta() {
+  chainHolder.current = {
+    sessionIds: ['conv-plan'],
+    tabStatus: 'idle',
+    conversationId: 'conv-plan',
+    source: 'renderer_cache',
+  }
   return { conversationId: 'conv-plan', historicalSessionIds: [], status: 'idle' }
 }
 

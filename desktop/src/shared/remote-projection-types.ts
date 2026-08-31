@@ -134,6 +134,8 @@ export interface ProjectedRendererTab {
   /** Exact engine status signal: background/delivery work still blocks settle. */
   hasPendingWork?: boolean
   conversationId: string | null
+  /** Complete canonical engine session chain, oldest to newest. */
+  sessionIds?: string[]
   lastMessageContent: string | null
   /**
    * DERIVED conversation activity key: newest transcript row, persisted

@@ -34,6 +34,7 @@ import { getMachineIdentity } from '../machine-identity'
 import { questionsCoordinator } from '../questions/questions-wiring'
 import { resourceCatalog } from '../resource-catalog'
 import { terminalManager } from '../terminal-manager-instance'
+import { orderedSessionIds } from '../../shared/tab-predicates'
 
 // Re-export so existing `import type { ResourceManifest } from './snapshot'`
 // consumers keep working; the type's home is shared/remote-projection-types.ts
@@ -380,6 +381,18 @@ function coldStartSnapshot(): RemoteTabSnapshot {
         lastRunDurationMs: typeof t.lastResult?.durationMs === 'number' ? t.lastResult.durationMs : undefined,
         lastRunReason: t.lastResult?.reason,
         modelOverride: coldMain?.modelOverride ?? null,
+        conversationId: typeof t.conversationId === 'string' ? t.conversationId : null,
+        sessionIds: orderedSessionIds({
+          historicalSessionIds: Array.isArray(t.historicalSessionIds) ? t.historicalSessionIds.filter((id: unknown): id is string => typeof id === 'string') : [],
+          conversationId: typeof t.conversationId === 'string' ? t.conversationId : null,
+          lastKnownSessionId: typeof t.lastKnownSessionId === 'string' ? t.lastKnownSessionId : null,
+        }, coldMain ? {
+          conversationIds: [
+            ...(Array.isArray(coldMain.conversationIds) ? coldMain.conversationIds : []),
+            ...(Array.isArray(coldMain.sessions) ? coldMain.sessions.map((entry: { id?: unknown }) => entry.id).filter((id: unknown): id is string => typeof id === 'string') : []),
+            ...(typeof coldMain.currentSessionId === 'string' ? [coldMain.currentSessionId] : []),
+          ],
+        } : null),
         // Prefer persisted completion-aware activity. Health covers live engine
         // events, while the persisted clocks survive a desktop restart.
         lastActivityAt: Math.max(

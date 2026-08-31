@@ -13,6 +13,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=ios/commands/xcodebuild-output.sh
 source "$SCRIPT_DIR/xcodebuild-output.sh"
+# shellcheck source=ios/commands/install-device-detection.sh
+source "$SCRIPT_DIR/install-device-detection.sh"
 
 BUILD_LOG=""
 cleanup_build_log() {
@@ -125,8 +127,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Detect device ──
-# Populates: DEVICE_ID, TUNNEL_OK, INSTALL_ALL, ALL_DEVICES
+# Populates: DEVICE_ID, DEVICE_ID_KIND, TUNNEL_OK, INSTALL_ALL, ALL_DEVICES
 TUNNEL_OK=false
+DEVICE_ID_KIND=coredevice
 INSTALL_ALL=false
 ALL_DEVICES=""
 
@@ -141,32 +144,7 @@ detect_device() {
   if [[ -s "$tmp" ]]; then
     # Collect physical iOS devices with an active connection (wired or network)
     local devices
-    devices=$(python3 -c "
-import json
-data = json.load(open('$tmp'))
-results = []
-for d in data.get('result', {}).get('devices', []):
-    hw = d.get('hardwareProperties', {})
-    if hw.get('reality') != 'physical':
-        continue
-    dtype = hw.get('deviceType', '')
-    if dtype not in ('iPhone', 'iPad'):
-        continue
-    conn = d.get('connectionProperties', {})
-    tunnel = conn.get('tunnelState', 'unavailable')
-    transport = conn.get('transportType', '')
-    # Keep devices with an active tunnel, or a known transport (wired/localNetwork).
-    # Devices with no transportType and no tunnel are stale pairings.
-    if tunnel != 'connected' and transport == '':
-        continue
-    props = d.get('deviceProperties', {})
-    udid = d.get('identifier', '')
-    name = props.get('name', hw.get('marketingName', dtype))
-    ok = 'yes' if tunnel == 'connected' else 'no'
-    results.append(f'{ok}|{udid}|{name}|{dtype}')
-for r in results:
-    print(r)
-" 2>/dev/null || true)
+    devices=$(resolve_connected_devices "$tmp" 2>/dev/null || true)
     rm -f "$tmp"
 
     if [[ -n "$devices" ]]; then
@@ -203,6 +181,7 @@ for r in results:
 
       TUNNEL_OK=$( [[ "$(echo "$devices" | cut -d'|' -f1)" == "yes" ]] && echo true || echo false )
       DEVICE_ID=$(echo "$devices" | cut -d'|' -f2)
+      DEVICE_ID_KIND=$(echo "$devices" | cut -d'|' -f5)
       local name dtype
       name=$(echo "$devices" | cut -d'|' -f3)
       dtype=$(echo "$devices" | cut -d'|' -f4)
@@ -213,16 +192,15 @@ for r in results:
       fi
       if $TUNNEL_OK; then
         echo "  Tunnel: available ✓"
+      elif [[ "$DEVICE_ID_KIND" == "legacy" ]]; then
+        echo "  Tunnel: unavailable (using ios-deploy USB fallback)"
       else
         echo "  Tunnel: unavailable (will use ios-deploy fallback)"
       fi
       return
     fi
 
-    # devicectl worked but no active device found — don't fall through
-    echo "✗ No connected iOS device found."
-    echo "  Paired devices exist but none have an active tunnel or USB connection."
-    echo "  Connect an iPhone or iPad via USB cable."
+    print_no_connected_device_error
     exit 1
   else
     rm -f "$tmp"
@@ -238,8 +216,7 @@ for r in results:
     | head -1)
 
   if [[ -z "$line" ]]; then
-    echo "✗ No connected iOS device found."
-    echo "  Connect an iPhone or iPad via USB or ensure Wi-Fi pairing is active."
+    print_no_connected_device_error
     exit 1
   fi
 
@@ -375,13 +352,32 @@ try_devicectl_install() {
   return 1
 }
 
-# Install to a single device. Args: $1=device_id
+# Install with ios-deploy using a legacy UDID that USB discovery confirmed.
+install_with_ios_deploy() {
+  local install_id="$1"
+  echo "  Using ios-deploy (device: $install_id, ${IOS_DEPLOY_TIMEOUT}s timeout)..."
+  local rc=0
+  run_with_timeout "$IOS_DEPLOY_TIMEOUT" ios-deploy --id "$install_id" --bundle "$APP_PATH" --no-wifi 2>&1 || rc=$?
+  if (( rc == 124 )); then
+    echo "  ✗ ios-deploy timed out after ${IOS_DEPLOY_TIMEOUT}s. Device may be locked or unresponsive."
+    return 1
+  fi
+  return $rc
+}
+
+# Install to a single device. Args: $1=device_id, $2=optional ID kind.
 # On a locked device, the DDI cannot mount — pause and ask the operator to
 # unlock, then try once more. Falls back to ios-deploy only for non-lock
 # devicectl failures, with a hard timeout so a stuck "Waiting for iOS device
 # to be connected" cannot hang the build.
 install_to_device() {
   local dev_id="$1"
+  local id_kind="${2:-coredevice}"
+
+  if [[ "$id_kind" == "legacy" ]]; then
+    install_with_ios_deploy "$dev_id"
+    return $?
+  fi
 
   echo "  Using devicectl (device: $dev_id)..."
   local rc=0
@@ -423,15 +419,7 @@ install_to_device() {
     legacy_id=$(idevice_id -l 2>/dev/null | head -1)
   fi
   local install_id="${legacy_id:-$dev_id}"
-
-  echo "  Using ios-deploy (device: $install_id, ${IOS_DEPLOY_TIMEOUT}s timeout)..."
-  local rc=0
-  run_with_timeout "$IOS_DEPLOY_TIMEOUT" ios-deploy --id "$install_id" --bundle "$APP_PATH" --no-wifi 2>&1 || rc=$?
-  if (( rc == 124 )); then
-    echo "  ✗ ios-deploy timed out after ${IOS_DEPLOY_TIMEOUT}s. Device may be locked or unresponsive."
-    return 1
-  fi
-  return $rc
+  install_with_ios_deploy "$install_id"
 }
 
 if $INSTALL_ALL; then
@@ -439,12 +427,13 @@ if $INSTALL_ALL; then
     local_id=$(echo "$dev" | cut -d'|' -f2)
     local_name=$(echo "$dev" | cut -d'|' -f3)
     local_type=$(echo "$dev" | cut -d'|' -f4)
+    local_kind=$(echo "$dev" | cut -d'|' -f5)
     echo
     echo "  → $local_name ($local_type)"
-    install_to_device "$local_id"
+    install_to_device "$local_id" "$local_kind"
   done <<< "$ALL_DEVICES"
 else
-  install_to_device "$DEVICE_ID"
+  install_to_device "$DEVICE_ID" "$DEVICE_ID_KIND"
 fi
 
 echo

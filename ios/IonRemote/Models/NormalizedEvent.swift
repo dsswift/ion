@@ -47,6 +47,7 @@ enum RemoteEvent: Sendable {
     /// branching on the response cursor made every heal response take the
     /// prepend branch and append a duplicate page (interlaced transcripts).
     case conversationHistory(tabId: String, messages: [Message], hasMore: Bool, cursor: String?, before: String?)
+    case transcript(tabId: String, requestId: String, transcript: String, error: String?)
     case messageAdded(tabId: String, message: Message)
     case messageUpdated(tabId: String, messageId: String, content: String?, toolStatus: ToolStatus?, toolInput: String?)
     case queueUpdate(tabId: String, prompts: [String])
@@ -611,6 +612,7 @@ enum RemoteEvent: Sendable {
         case permissionRequest = "desktop_permission_request"
         case permissionResolved = "desktop_permission_resolved"
         case conversationHistory = "desktop_conversation_history"
+        case transcript = "desktop_transcript"
         case messageAdded = "desktop_message_added"
         case messageUpdated = "desktop_message_updated"
         case queueUpdate = "desktop_queue_update"
@@ -773,7 +775,7 @@ enum RemoteEvent: Sendable {
         // desktop's poll tick when they change so the full snapshot need not
         // re-ship per streamed delta. Names mirror RemoteTabState.
         case convFingerprint, lastActivityAt, lastMessage, messageCount
-        case content, isError, result, costUsd, durationMs, reason, backgroundTaskId
+        case content, transcript, isError, result, costUsd, durationMs, reason, backgroundTaskId
         case task, taskId, requestId, notifyOnComplete, startedAt, elapsedMs, outputPath, tail
         case stoppedBackgroundTaskIds, scope, cancelledRunId, recalledDispatchIds, killedAgentProcessCount
         // desktop_tab_meta pill customization fields: pushed by the desktop

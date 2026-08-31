@@ -212,3 +212,72 @@ final class ChatScrollAnchoringTests: XCTestCase {
         )
     }
 }
+
+/// History-prepend tailing.
+///
+/// A prepend is not navigation: rows appear BEHIND the operator, so the newest
+/// turn must stay on screen rather than the view holding a row that has since
+/// moved into the middle of the transcript.
+///
+/// The initial load now carries the whole conversation, so this path is
+/// reached only by a transcript larger than one bulk page. It still matters
+/// there: without it, paging the remainder would leave the viewport anchored
+/// to a row that is no longer where the operator left it.
+final class HistoryPrependTailingTests: XCTestCase {
+
+    func testTailsThroughAHistoryPrependAtTheBottom() {
+        // The exact opening sequence: first page tailed, then backfill lands.
+        XCTAssertTrue(shouldAutoTail(
+            nearBottom: true,
+            isUserInteracting: false,
+            isInitial: false,
+            forceScroll: false,
+            isHistoryPrepend: true
+        ))
+    }
+
+    func testDoesNotTailAPrependWhenTheOperatorScrolledBack() {
+        // Reading history when a backfill page lands: hold position. Yanking
+        // to the bottom here would be the opposite defect.
+        XCTAssertFalse(shouldAutoTail(
+            nearBottom: false,
+            isUserInteracting: false,
+            isInitial: false,
+            forceScroll: false,
+            isHistoryPrepend: true
+        ))
+    }
+
+    func testPrependTailsEvenMidGesture() {
+        // A prepend is not a competing scroll: the rows landed behind the
+        // operator, so holding the bottom does not fight their gesture.
+        XCTAssertTrue(shouldAutoTail(
+            nearBottom: true,
+            isUserInteracting: true,
+            isInitial: false,
+            forceScroll: false,
+            isHistoryPrepend: true
+        ))
+    }
+
+    func testOrdinaryApplyStillRespectsAnInteractingUser() {
+        // The prepend exemption must not leak into normal streaming applies.
+        XCTAssertFalse(shouldAutoTail(
+            nearBottom: true,
+            isUserInteracting: true,
+            isInitial: false,
+            forceScroll: false,
+            isHistoryPrepend: false
+        ))
+    }
+
+    func testDefaultsToTheExistingBehaviorWhenNotAPrepend() {
+        // Callers that never pass the flag keep the prior semantics exactly.
+        XCTAssertTrue(shouldAutoTail(
+            nearBottom: true, isUserInteracting: false, isInitial: false, forceScroll: false
+        ))
+        XCTAssertFalse(shouldAutoTail(
+            nearBottom: false, isUserInteracting: false, isInitial: false, forceScroll: false
+        ))
+    }
+}

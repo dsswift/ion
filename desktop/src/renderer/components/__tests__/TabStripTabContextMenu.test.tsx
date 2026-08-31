@@ -21,6 +21,8 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
 
 const mocks = vi.hoisted(() => ({
   convertToWorktree: vi.fn().mockResolvedValue(undefined),
+  copyTranscript: vi.fn().mockResolvedValue(true),
+  copySessionIds: vi.fn().mockResolvedValue(true),
   rWarn: vi.fn(),
 }))
 let portalTarget: HTMLDivElement
@@ -34,6 +36,7 @@ vi.mock('@phosphor-icons/react', () => ({
   Plus: () => null, GitFork: () => null, FolderOpen: () => null, GitBranch: () => null,
   CheckCircle: () => null, CaretDown: () => null, Rows: () => null, PencilSimple: () => null,
   ArrowRight: () => null, ArrowsInSimple: () => null, PushPin: () => null, PushPinSlash: () => null,
+  ClipboardText: () => null, Hash: () => null,
   Diamond: () => null, Square: () => null, StarFour: () => null, Triangle: () => null,
   Heart: () => null, Hexagon: () => null, Lightning: () => null, Terminal: () => null,
   DeviceMobile: () => null, Monitor: () => null, Gear: () => null,
@@ -89,6 +92,10 @@ vi.mock('../../rendererLogger', () => ({
   rInfo: vi.fn(),
   rError: vi.fn(),
   rWarn: mocks.rWarn,
+}))
+vi.mock('../../copy-conversation', () => ({
+  copyConversationTranscript: mocks.copyTranscript,
+  copyConversationSessionIds: mocks.copySessionIds,
 }))
 
 import { TabContextMenu } from '../TabStripTabContextMenu'
@@ -161,6 +168,20 @@ beforeEach(() => {
 
 afterEach(() => {
   document.body.replaceChildren()
+})
+
+describe('TabContextMenu conversation copy', () => {
+  it('copies the right-clicked tab without selecting another tab', async () => {
+    const onClose = vi.fn()
+    const { container, root } = renderMenu({ conversationId: 'session-target', historicalSessionIds: [] }, { onClose })
+    await settle()
+    const transcript = [...portalTarget.querySelectorAll('button')].find((button) => button.textContent === 'Copy transcript')!
+    act(() => transcript.click())
+    expect(mocks.copyTranscript).toHaveBeenCalledWith('tab-1')
+    expect(onClose).toHaveBeenCalled()
+    act(() => root.unmount())
+    container.remove()
+  })
 })
 
 describe('TabContextMenu convert to worktree', () => {

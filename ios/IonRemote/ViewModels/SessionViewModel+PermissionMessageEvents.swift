@@ -105,6 +105,12 @@ extension SessionViewModel {
         conversationHasMore[tabId] = hasMore
         conversationCursor[tabId] = cursor
 
+        // A wholesale replace invalidates any chain in flight: the pages it was
+        // walking described a transcript that has just been superseded.
+        if before == nil {
+            conversationBackfill.reset(tabId: tabId)
+        }
+
         // Deduplicate incoming by message ID, keeping last occurrence (most
         // recent version).
         //
@@ -283,6 +289,31 @@ extension SessionViewModel {
             "conversation_id": before?.prefix(8).description ?? "nil",
             "status": tailSummary
         ])
+
+        // Finish the conversation when it did not fit in one page.
+        //
+        // The initial load now asks for a bulk page, so a typical conversation
+        // arrives complete and this is a no-op (hasMore is false). It still
+        // matters for a transcript larger than BULK_PAGE_MESSAGES: without it
+        // a jump to a row beyond the first page would have nothing local to
+        // scroll to.
+        //
+        // Runs after the merge above so the cursor and loading flags are
+        // settled, and re-enters on each page's arrival until complete.
+        conversationBackfill.advance(
+            tabId: tabId,
+            hasMore: conversationHasMore[tabId] ?? false,
+            cursor: conversationCursor[tabId],
+            isLoading: loadingConversation.contains(tabId)
+        ) { [weak self] (cursor: String, pageSize: Int) in
+            guard let self else { return }
+            self.loadingConversation.insert(tabId)
+            self.send(
+                .loadConversation(tabId: tabId, before: cursor, pageSize: pageSize),
+                intent: .automaticEssential
+            )
+            self.startLoadTimer(tabId: tabId)
+        }
     }
 
     @MainActor

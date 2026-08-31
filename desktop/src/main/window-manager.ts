@@ -289,6 +289,32 @@ export function createWindow(showOnReady = true): void {
   }
 }
 
+export function showActiveUiSettings(): void {
+  const plan = resolveSurfacePlan(readSettings(), enterprisePolicyCache.policy)
+  if (plan.activeUi === 'overlay') {
+    showWindow('tray settings')
+    if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+      state.mainWindow.webContents.send(IPC.SHOW_SETTINGS)
+    }
+    log('tray settings routed', { active_ui: 'overlay' })
+    return
+  }
+
+  const existing = state.studioWindow
+  if (existing && !existing.isDestroyed()) {
+    openStudioWindow('tray settings')
+    existing.webContents.send(IPC.SHOW_SETTINGS)
+    log('tray settings routed', { active_ui: 'studio', opened: false })
+    return
+  }
+  openStudioWindow('tray settings')
+  const created = state.studioWindow
+  created?.webContents.once('did-finish-load', () => {
+    if (!created.isDestroyed()) created.webContents.send(IPC.SHOW_SETTINGS)
+  })
+  log('tray settings routed', { active_ui: 'studio', opened: true })
+}
+
 export function createTray(): void {
   const trayIconPath = join(__dirname, '../../resources/trayTemplate.png')
   const trayIcon = nativeImage.createFromPath(trayIconPath)
@@ -308,12 +334,7 @@ export function createTray(): void {
         ? [{ label: 'Show Ion Studio', accelerator: 'Alt+Space', click: () => openStudioWindow('tray menu') }]
         : []),
       { type: 'separator' },
-      { label: 'Settings...', click: () => {
-        showWindow('tray settings')
-        if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-          state.mainWindow.webContents.send(IPC.SHOW_SETTINGS)
-        }
-      } },
+      { label: 'Settings...', click: showActiveUiSettings },
       { type: 'separator' },
       // Force-restart the persistent engine daemon so it re-reads engine.json.
       // The engine reads its config once at process start; a config change needs

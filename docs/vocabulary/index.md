@@ -53,6 +53,8 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Backend](#term-backend)
 - [Branch](#term-branch)
 - [Channel](#term-channel)
+- [Chart Output](#term-chart-output)
+- [Chart index reconciliation](#term-chart-index-reconciliation)
 - [Client command](#term-client-command)
 - [Compaction](#term-compaction)
 - [Configuration](#term-configuration)
@@ -62,6 +64,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Conversation Status Bar](#term-conversation-status-bar)
 - [Conversation Timeline Minimap](#term-conversation-timeline-minimap)
 - [Conversation View](#term-conversation-view)
+- [Conversation backfill](#term-conversation-backfill)
 - [Conversation instance](#term-conversation-instance)
 - [Conversation persistence](#term-conversation-persistence)
 - [Conversation status](#term-conversation-status)
@@ -743,6 +746,26 @@ A file or image that a user adds to a conversation, or that a tool result carrie
   - `desktop` / `ui` / `typescript`: `export function AttachmentChips` in `desktop/src/renderer/components/AttachmentChips.tsx`
   - `ios` / `ui` / `swift`: `struct AttachmentChipsView` in `ios/IonRemote/Views/AttachmentChipsView.swift`
 
+#### Chart Output {#term-chart-output}
+
+A chart the agent renders in a conversation from data it already holds. The model supplies a strict, versioned Ion chart spec through the RenderChart client tool and each client draws it natively, so the values are structured data rather than an inferred image. One tool call renders one chart, which may carry several datasets. A chart keeps a stable identity across updates: a later call that names the chart id replaces its spec and adds a revision, and the conversation's immutable tool rows are the revision history.
+
+- **ID:** `chart-output`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `chart`, `RenderChart`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `export interface ChartSpec` in `desktop/src/shared/chart-schema.ts`
+  - `desktop` / `code` / `typescript`: `export function parseChartToolInput` in `desktop/src/shared/chart-parse.ts`
+  - `desktop` / `code` / `typescript`: `export function executeRenderChart` in `desktop/src/main/studio-chart-tool.ts`
+  - `desktop` / `ui` / `typescript`: `ChartOutputCard` in `desktop/src/renderer/components/conversation/ChartOutputCard.tsx`
+  - `ios` / `code` / `swift`: `struct ChartSpec` in `ios/IonRemote/Models/ChartSpec.swift`
+  - `ios` / `ui` / `swift`: `ChartCardView` in `ios/IonRemote/Views/ChartCardView.swift`
+  - `ios` / `code` / `swift`: `enum ChartTranscript` in `ios/IonRemote/Models/ChartTranscript.swift`
+  - `ios` / `ui` / `swift`: `ChartTranscriptCard` in `ios/IonRemote/Views/ChartTranscriptCard.swift`
+
 #### Desktop {#term-desktop-client}
 
 One client application built on Electron. It owns the session store, persists conversations, answers snapshot polls, and hosts both client presentations.
@@ -1291,6 +1314,36 @@ A local HTML service whose listening process is owned by a Terminal. The Desktop
 
 ### runtime-mechanic
 
+#### Chart index reconciliation {#term-chart-index-reconciliation}
+
+Rebuilding a conversation's stored Chart Output records from the tool rows its active branch can see, then publishing only the records that changed. A rewind or a fork changes which revisions a branch contains, so the stored index is re-derived from that branch and each chart is created, updated, or removed to match. Chart identity comes from each row's committed tool result, never from the transcript row id.
+
+- **ID:** `chart-index-reconciliation`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `chart index rebuild`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `export function rebuildFromHistory` in `desktop/src/main/chart-resource-store.ts`
+  - `desktop` / `code` / `typescript`: `export async function reconcileConversationCharts` in `desktop/src/main/chart-reconcile.ts`
+  - `desktop` / `code` / `typescript`: `export function reconcileChartsForBranch` in `desktop/src/renderer/lib/chart-reconcile-request.ts`
+- **Notes:** Desktop-owned. The Desktop is the producer for the chart resource kind, so it rebuilds the records and fans the deltas; iOS and the Studio mirror receive them through the generic resource broker.
+
+#### Conversation backfill {#term-conversation-backfill}
+
+Background retrieval of a conversation's older history pages after the newest page has rendered. The client shows the newest page immediately, then walks the page chain from newest to oldest until the transcript is complete, so scrolling back and jumping to an older row never wait on a round trip. The chain is sequential because each page carries the cursor for the next.
+
+- **ID:** `conversation-backfill`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `history prefetch`, `history backfill`
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `ios` / `code` / `swift`: `final class ConversationBackfill` in `ios/IonRemote/ViewModels/ConversationBackfill.swift`
+- **Notes:** iOS only today. The Desktop keeps its own pagination and has not adopted prefetch; revisit if the Desktop shows the same scroll-back stutter.
+
 #### Mirror store {#term-mirror-store}
 
 The Studio presentation's copy of the session store. It reads the same event stream, forwards owner-only mutations, and never persists.
@@ -1478,9 +1531,12 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Agent | None | None | None | `AgentStatusDotStack` | Desktop, Studio, Overlay |
 | Agent-linked Browser Tab | `agentBrowserInstanceId`, `export async function resolveBrowser` | `agentBrowserInstanceId`, `export function bindAgentBrowserActions`, `export async function resolveBrowser` | `agentBrowserInstanceId`, `export async function resolveBrowser` | None | iOS |
 | Attachment | `export function AttachmentChips` | `export function AttachmentChips` | `export function AttachmentChips` | `struct AttachmentChipsView` | None |
+| Chart index reconciliation | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | None | iOS |
+| Chart Output | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `struct ChartSpec`, `ChartCardView`, `enum ChartTranscript`, `ChartTranscriptCard` | None |
 | Compaction | None | None | None | `CompactionRowView` | Desktop, Studio, Overlay |
 | Context | `export function ContextIndicator` | `export function ContextIndicator` | `export function ContextIndicator` | `ContextUsageRing` | None |
 | Conversation | `export interface RemoteTabState` | `export interface RemoteTabState` | `export interface RemoteTabState` | None | iOS |
+| Conversation backfill | None | None | None | `final class ConversationBackfill` | Desktop, Studio, Overlay |
 | Conversation instance | `export interface ProjectedConversationInstance` | `export interface ProjectedConversationInstance` | `export interface ProjectedConversationInstance` | `struct EngineInstanceBar` | None |
 | Conversation status | `StatusDot` | `StatusDot` | `StatusDot` | `TabStatusRollup` | None |
 | Conversation Status Bar | `export function ComposerControls` | `export function ComposerControls` | `export function ComposerControls` | `struct ConversationStatusBar` | None |
@@ -1541,6 +1597,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `Ion SDK` → [Extension SDK](#term-extension-sdk)
 - Alias: `Ion Studio` → [Studio](#term-studio-shell)
 - Alias: `LLM provider` → [Provider](#term-provider)
+- Alias: `RenderChart` → [Chart Output](#term-chart-output)
 - Alias: `SDK` → [Extension SDK](#term-extension-sdk)
 - Alias: `Studio browser` → [Studio Browser Surface](#term-studio-browser-surface)
 - Alias: `Studio shell` → [Studio](#term-studio-shell)
@@ -1553,6 +1610,8 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `browser surface` → [Studio Browser Surface](#term-studio-browser-surface)
 - Alias: `canonical event` → [Normalized event](#term-normalized-event)
 - Alias: `center pane` → [Studio Center](#term-studio-center)
+- Alias: `chart` → [Chart Output](#term-chart-output)
+- Alias: `chart index rebuild` → [Chart index reconciliation](#term-chart-index-reconciliation)
 - Alias: `command` → [Slash command](#term-slash-command)
 - Alias: `command envelope` → [Client command](#term-client-command)
 - Alias: `composer` → [Input Bar](#term-input-bar)
@@ -1578,6 +1637,8 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `glass` → [Overlay](#term-overlay)
 - Alias: `grouped catch-up` → [Schedule catch-up group](#term-schedule-catch-up-group)
 - Alias: `harness layer` → [Harness](#term-harness)
+- Alias: `history backfill` → [Conversation backfill](#term-conversation-backfill)
+- Alias: `history prefetch` → [Conversation backfill](#term-conversation-backfill)
 - Alias: `hub` → [Relay hub](#term-relay-hub)
 - Alias: `iOS client` → [iOS](#term-ios-client)
 - Alias: `inbound webhook` → [Webhook](#term-webhook)

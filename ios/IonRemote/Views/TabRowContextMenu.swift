@@ -10,22 +10,6 @@ struct TabRowContextMenu: ViewModifier {
     @Binding var renameText: String
     @Environment(SessionViewModel.self) private var viewModel
 
-    /// Merges live `statusFields.sessionId` with historical `conversationIds`
-    /// for the active engine instance. Returns all IDs (historical first,
-    /// live appended if not already present). Matches the desktop
-    /// SettingsPopover merge logic.
-    private var engineSessionIds: [String] {
-        guard tab.hasEngineExtension == true else { return [] }
-        let instanceId = viewModel.activeEngineInstance[tab.id]
-        let inst = viewModel.engineInstance(tabId: tab.id, instanceId: instanceId)
-        let liveId = inst?.statusFields?.sessionId
-        var ids = inst?.conversationIds ?? []
-        if let current = liveId, !ids.contains(current) {
-            ids.append(current)
-        }
-        return ids
-    }
-
     /// The worktree this tab is running in, when it is one. Resolved from the
     /// desktop's projection rather than inferred from the path.
     private var worktreeForTab: (state: RemoteWorktreeState, worktree: RemoteWorktree)? {
@@ -85,23 +69,8 @@ struct TabRowContextMenu: ViewModifier {
             }
 
             // -- Clipboard actions --
-            if tab.hasEngineExtension == true {
-                if !engineSessionIds.isEmpty {
-                    Button {
-                        UIPasteboard.general.string = engineSessionIds.joined(separator: "\n")
-                        viewModel.showToast(ToastMessage(style: .success, title: "Session ID copied"))
-                    } label: {
-                        Label("Copy Session ID", systemImage: "doc.on.doc")
-                    }
-                    Divider()
-                }
-            } else if let conversationId = tab.conversationId, !conversationId.isEmpty {
-                Button {
-                    UIPasteboard.general.string = conversationId
-                    viewModel.showToast(ToastMessage(style: .success, title: "Session ID copied"))
-                } label: {
-                    Label("Copy Session ID", systemImage: "doc.on.doc")
-                }
+            ConversationClipboardActions(tab: tab)
+            if tab.isTerminalOnly != true {
                 Divider()
             }
 

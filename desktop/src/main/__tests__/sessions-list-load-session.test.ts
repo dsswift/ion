@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { handlers, sessionMeta, plane } = vi.hoisted(() => ({
+const { handlers, sessionMeta, plane, loadConversationTranscript } = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
   sessionMeta: {
     conversationExists: vi.fn(() => false),
@@ -16,6 +16,7 @@ const { handlers, sessionMeta, plane } = vi.hoisted(() => ({
   plane: {
     loadSessionHistory: vi.fn(async (): Promise<unknown[]> => []),
   },
+  loadConversationTranscript: vi.fn(),
 }))
 
 vi.mock('electron', () => ({
@@ -24,6 +25,7 @@ vi.mock('electron', () => ({
     on: vi.fn(),
   },
 }))
+vi.mock('../conversation-transcript', () => ({ loadConversationTranscript }))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 vi.mock('../state', () => ({ sessionPlane: plane, engineBridge: {} }))
 vi.mock('../session-meta', () => ({
@@ -58,8 +60,32 @@ async function loadSession(sessionId: string): Promise<unknown> {
   return handler({}, { sessionId, projectPath: '/proj', encodedDir: '-proj' })
 }
 
+async function loadTranscript(tabId: unknown): Promise<unknown> {
+  const handler = handlers.get(IPC.LOAD_CONVERSATION_TRANSCRIPT)
+  if (!handler) throw new Error('no LOAD_CONVERSATION_TRANSCRIPT handler')
+  return handler({}, tabId)
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
+})
+
+describe('LOAD_CONVERSATION_TRANSCRIPT', () => {
+  it('returns the canonical main-process result', async () => {
+    loadConversationTranscript.mockResolvedValue('[user]: hello')
+    await expect(loadTranscript('tab-1')).resolves.toEqual('[user]: hello')
+    expect(loadConversationTranscript).toHaveBeenCalledWith('tab-1')
+  })
+
+  it('rejects an invalid target before loading', async () => {
+    await expect(loadTranscript('')).rejects.toThrow('invalid tab ID')
+    expect(loadConversationTranscript).not.toHaveBeenCalled()
+  })
+
+  it('propagates the engine-backed service failure', async () => {
+    loadConversationTranscript.mockRejectedValue(new Error('engine unavailable'))
+    await expect(loadTranscript('tab-1')).rejects.toThrow('engine unavailable')
+  })
 })
 
 describe('LOAD_SESSION store selection', () => {

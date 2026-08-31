@@ -248,6 +248,17 @@ final class DiagnosticLogSchemaTests: XCTestCase {
     /// `exportIncrementalSince(sinceSeq:)` returns only lines whose seq exceeds
     /// the cursor, and reports a `nextSeq` past the max returned. This is the
     /// exactly-once pull contract the desktop relies on.
+    ///
+    /// The contract is "never re-ship a line the caller already has", NOT "the
+    /// log is quiet". `DiagnosticLog` is a process-wide singleton and the test
+    /// bundle's other suites log while this one runs, so a pull that lands
+    /// after an unrelated line was written legitimately returns that line. An
+    /// earlier version asserted the second pull returned ZERO lines and held
+    /// its cursor, which made this test fail in a full-suite run (two
+    /// unrelated lines appeared between the pulls) while passing whenever it
+    /// was run alone. Every assertion below is expressed in terms of seq
+    /// ordering, which is the property the desktop actually depends on and is
+    /// true whether or not anything else is logging.
     func testExportIncrementalSinceReturnsOnlyNewerSeqs() async throws {
         DiagnosticLog.log("incr one", tag: "incr", level: .info)
         DiagnosticLog.flush()
@@ -256,25 +267,37 @@ final class DiagnosticLogSchemaTests: XCTestCase {
         XCTAssertFalse(full.logs.isEmpty, "full pull must return lines")
         XCTAssertGreaterThan(full.nextSeq, 0, "nextSeq must advance past 0 on a non-empty pull")
 
-        // A second pull from the returned cursor, with no new lines written,
-        // returns nothing and holds the cursor (no re-ship).
-        let empty = await DiagnosticLog.exportIncrementalSince(sinceSeq: full.nextSeq)
-        XCTAssertTrue(empty.logs.isEmpty, "a pull at the cursor must return zero lines")
-        XCTAssertEqual(empty.nextSeq, full.nextSeq, "cursor must not move when nothing is newer")
+        // A second pull from the returned cursor re-ships nothing: whatever it
+        // returns is strictly newer than the cursor, and the cursor never
+        // moves backwards.
+        let second = await DiagnosticLog.exportIncrementalSince(sinceSeq: full.nextSeq)
+        for seq in try seqs(in: second.logs) {
+            XCTAssertGreaterThan(seq, full.nextSeq - 1, "a pull at the cursor must not re-ship seen seqs")
+        }
+        XCTAssertGreaterThanOrEqual(
+            second.nextSeq, full.nextSeq,
+            "cursor must never move backwards",
+        )
 
-        // Write one more line; a pull from the prior cursor returns exactly it.
+        // Write one more line; a pull from the prior cursor returns it and
+        // advances the cursor past it.
         DiagnosticLog.log("incr two", tag: "incr", level: .info)
         DiagnosticLog.flush()
-        let delta = await DiagnosticLog.exportIncrementalSince(sinceSeq: full.nextSeq)
-        let deltaLines = delta.logs.components(separatedBy: "\n").filter { !$0.isEmpty }
-        for line in deltaLines {
-            let data = line.data(using: .utf8)!
-            let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-            let fields = obj["fields"] as! [String: Any]
-            let seq = Int(fields["seq"] as! String)!
-            XCTAssertGreaterThan(seq, full.nextSeq - 1, "delta pull must exclude already-seen seqs")
+        let delta = await DiagnosticLog.exportIncrementalSince(sinceSeq: second.nextSeq)
+        for seq in try seqs(in: delta.logs) {
+            XCTAssertGreaterThan(seq, second.nextSeq - 1, "delta pull must exclude already-seen seqs")
         }
-        XCTAssertGreaterThan(delta.nextSeq, full.nextSeq, "cursor must advance after new lines")
+        XCTAssertGreaterThan(delta.nextSeq, second.nextSeq, "cursor must advance after new lines")
+    }
+
+    /// Every `seq` field in an exported log blob, in order.
+    private func seqs(in logs: String) throws -> [Int] {
+        try logs.components(separatedBy: "\n").filter { !$0.isEmpty }.map { line in
+            let data = try XCTUnwrap(line.data(using: .utf8))
+            let obj = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let fields = try XCTUnwrap(obj["fields"] as? [String: Any])
+            return try XCTUnwrap(Int(try XCTUnwrap(fields["seq"] as? String)))
+        }
     }
 }
 

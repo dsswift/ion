@@ -63,14 +63,16 @@ vi.mock('../../rendererLogger', () => ({
 
 vi.mock('../../components/WorktreePipelinePanel', () => ({ WorktreePipelinePanel: () => null }))
 vi.mock('./InboxBenchBar', () => ({
-  InboxBenchBar: ({ workspace, onAssemble, assembling }: {
+  InboxBenchBar: ({ workspace, onAssemble, assembling, showSyncAll }: {
     workspace: { sourceBranch: string }
     onAssemble(): void
     assembling: boolean
+    showSyncAll: boolean
   }) => (
     <button
       data-testid={`inbox-bench-assemble-${workspace.sourceBranch}`}
       data-assembling={String(assembling)}
+      data-show-sync-all={String(showSyncAll)}
       onClick={onAssemble}
     >assemble</button>
   ),
@@ -544,11 +546,13 @@ describe('InboxNavigatorGroups bench assemble button', () => {
   })
 
   it('dispatches benchUpdateAll for this repo and branch when clicked', async () => {
+    state.worktreeInventory = new Map([['/repo', [{ ...worktree, needsSync: true }]]])
     const root = createRoot(container)
     await act(async () => { root.render(<Harness project={benchProject()} />) })
 
     const button = container.querySelector<HTMLButtonElement>(`[data-testid="inbox-bench-assemble-${workspace.sourceBranch}"]`)!
     expect(button.dataset.assembling).toBe('false')
+    expect(button.dataset.showSyncAll).toBe('true')
     await act(async () => { button.click() })
 
     expect(benchUpdateAll).toHaveBeenCalledWith('/repo', 'main')

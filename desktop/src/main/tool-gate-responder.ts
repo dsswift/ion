@@ -38,6 +38,8 @@ import { evaluateToolGate } from './integration/bench-tool-policy'
 import { BENCH_CLIENT_TOOLS } from './integration/bench-agent-tools'
 import { ASK_USER_QUESTIONS_TOOL } from './questions/questions-tool-decl'
 import { STUDIO_PLAYWRIGHT_TOOLS } from './studio-playwright/tools'
+import { RENDER_CHART_TOOL, RENDER_CHART_TOOL_NAME, executeRenderChart } from './studio-chart-tool'
+import { publishChartResource, type ChartPublishBridge } from './chart-resource-publish'
 import { log as _log, warn as _warn, error as _error } from './logger'
 import { readSettings } from './settings-store'
 
@@ -72,12 +74,19 @@ export const GATED_TOOLS = ['Write', 'Edit', 'NotebookEdit', 'Bash', 'ion_scaffo
  * conversation runs), and the policy itself resolves the workspace fresh per
  * call. The engine's fast path keeps non-matching tools free, and the policy
  * returns allow immediately for a cwd with no bench involvement.
+ *
+ * Studio-only tools (the browser set and RenderChart) are included only while
+ * the Studio presentation is active, because both produce output that only the
+ * Studio surface can host. Availability is re-asserted on change through
+ * studio-client-tool-sync rather than restarting sessions.
  */
 export function toolGateSessionConfig(): ToolGateConfig {
   const settings = readSettings()
-  const browserTools = settings.activeUi === 'studio' && settings.studioPlaywrightEnabled !== false
+  const studioActive = settings.activeUi === 'studio'
+  const browserTools = studioActive && settings.studioPlaywrightEnabled !== false
     ? STUDIO_PLAYWRIGHT_TOOLS
     : []
+  const chartTools = studioActive ? [RENDER_CHART_TOOL] : []
   return {
     enabled: true,
     tools: GATED_TOOLS,
@@ -96,16 +105,26 @@ export function toolGateSessionConfig(): ToolGateConfig {
         inputSchema: t.inputSchema,
         planModeSafe: t.planModeSafe,
       })),
+      ...chartTools,
       ASK_USER_QUESTIONS_TOOL,
     ],
     clientToolTimeoutMs: 30000,
   }
 }
 
-/** Minimal bridge surface the responder needs (testability seam). */
-export interface GateBridge {
+/**
+ * Minimal bridge surface the responder needs (testability seam).
+ *
+ * `request` and `activeSessions` are here rather than imported from `./state`
+ * so this module stays free of that module's construction side effects: the
+ * control plane imports this file for `toolGateSessionConfig` alone, and must
+ * not pull a live engine bridge into its import graph.
+ */
+export interface GateBridge extends ChartPublishBridge {
   on(event: 'event', listener: (key: string, event: EngineEvent) => void): unknown
   sendRaw(payload: Record<string, unknown>): void
+  /** Session registry; a chart's owning conversation is read from here. */
+  activeSessions: Map<string, { conversationId?: string }>
 }
 
 /**
@@ -140,7 +159,8 @@ export function wireToolGateResponder(bridge: GateBridge): void {
   })
   log('tool-gate responder wired', {
     gated_tools: GATED_TOOLS,
-    client_tools: [...BENCH_CLIENT_TOOLS, ...STUDIO_PLAYWRIGHT_TOOLS].map((t) => t.name).concat(ASK_USER_QUESTIONS_TOOL.name),
+    client_tools: [...BENCH_CLIENT_TOOLS, ...STUDIO_PLAYWRIGHT_TOOLS].map((t) => t.name)
+      .concat(RENDER_CHART_TOOL_NAME, ASK_USER_QUESTIONS_TOOL.name),
   })
 }
 
@@ -195,34 +215,55 @@ async function respondToolCall(
   started: number,
 ): Promise<void> {
   const settings = readSettings()
-  const browserTool = settings.activeUi === 'studio' && settings.studioPlaywrightEnabled !== false
+  const studioActive = settings.activeUi === 'studio'
+  const browserTool = studioActive && settings.studioPlaywrightEnabled !== false
     ? STUDIO_PLAYWRIGHT_TOOLS.find((candidate) => candidate.name === req.gateToolName)
     : undefined
   const benchTool = BENCH_CLIENT_TOOLS.find((candidate) => candidate.name === req.gateToolName)
+  const isChartTool = studioActive && req.gateToolName === RENDER_CHART_TOOL_NAME
   let content: string
   let isError: boolean
   let images: unknown[] | undefined
-  if (!benchTool && !browserTool) {
+  if (!benchTool && !browserTool && !isChartTool) {
     content = `client tool ${req.gateToolName} is not provided by this desktop`
     isError = true
     warn('client tool request for unknown tool', { key, tool: req.gateToolName })
   } else {
     try {
-      // The two families take different execution inputs and that difference
-      // is meaningful: a bench tool needs only the cwd, while a browser tool
-      // must be told WHICH conversation is calling and whether the caller is
-      // the model or trusted extension code. Ownership and origin are supplied
-      // here, never accepted from the model's arguments.
-      const result = benchTool
-        ? await benchTool.execute((req.gateToolInput ?? {}) as Record<string, unknown>, req.gateCwd ?? '')
-        : await browserTool!.execute((req.gateToolInput ?? {}) as Record<string, unknown>, {
-          sessionKey: key,
-          cwd: req.gateCwd ?? '',
-          origin: req.gateOrigin === 'extension' ? 'extension' : 'model',
-        })
-      content = result.content
-      isError = result.isError
-      images = 'images' in result && Array.isArray(result.images) ? result.images : undefined
+      if (isChartTool) {
+        // A chart belongs to a conversation, not to a tab: the durable
+        // conversation id is what survives a tab close and a restart, so the
+        // record is keyed on it. Ownership is read from the bridge's session
+        // registry, never from the model's arguments.
+        const conversationId = bridge.activeSessions.get(key)?.conversationId ?? ''
+        const result = executeRenderChart(
+          (req.gateToolInput ?? {}) as Record<string, unknown>,
+          { sessionKey: key, conversationId, toolCallId: req.gateRequestId },
+        )
+        content = result.content
+        isError = result.isError
+        // Publish only after the store committed to disk, so no subscriber is
+        // told about a chart a restart could not restore.
+        if (result.publish) {
+          await publishChartResource(bridge, key, result.publish.op, result.publish.record)
+        }
+      } else {
+        // The two remaining families take different execution inputs and that
+        // difference is meaningful: a bench tool needs only the cwd, while a
+        // browser tool must be told WHICH conversation is calling and whether
+        // the caller is the model or trusted extension code. Ownership and
+        // origin are supplied here, never accepted from the model's arguments.
+        const result = benchTool
+          ? await benchTool.execute((req.gateToolInput ?? {}) as Record<string, unknown>, req.gateCwd ?? '')
+          : await browserTool!.execute((req.gateToolInput ?? {}) as Record<string, unknown>, {
+            sessionKey: key,
+            cwd: req.gateCwd ?? '',
+            origin: req.gateOrigin === 'extension' ? 'extension' : 'model',
+          })
+        content = result.content
+        isError = result.isError
+        images = 'images' in result && Array.isArray(result.images) ? result.images : undefined
+      }
     } catch (err) {
       // Fail CLOSED for tools: the model must read the failure, not a
       // fabricated empty success.

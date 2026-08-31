@@ -264,6 +264,7 @@ export function InboxNavigatorGroups({
         );
         const terminal = pickDirTerminal(tabs, workspace.benchPath);
         const entries = inventory.get(project.key) ?? [];
+        const showSyncAll = entries.some((entry) => entry.needsSync && entry.landedAt == null);
         const available =
           useSessionStore.getState().benchWorkspaces.get(project.key) ?? [];
         // Any bench-mutating operation for THIS repo+branch still running --
@@ -345,6 +346,7 @@ export function InboxNavigatorGroups({
                   }),
                 );
             }}
+            showSyncAll={showSyncAll}
             onAssemble={() => runAssemble(project.key, workspace.sourceBranch)}
             assembling={assembling}
             statusText={statusText}

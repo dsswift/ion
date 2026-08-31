@@ -3,6 +3,7 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, nextMsgId } from '../session-store-helpers'
 import { makeMainPane, activeInstance, effectivePermissionMode, effectiveThinkingEffort } from '../conversation-instance'
 import { buildRestoredDenied } from './resume-slice-restore-denied'
+import { markForkPendingChartReconcile } from './fork-chart-reconcile'
 import { stageableAttachments } from '../../../shared/staged-attachments'
 import { rInfo } from '../../rendererLogger'
 
@@ -98,6 +99,11 @@ export function createForkSlice(set: StoreSet, get: StoreGet): Partial<State> {
           isExpanded: true,
         }))
         window.ion.setPermissionMode(tabId, forkMode, 'tab_create')
+        // The copied scrollback carries the source's chart rows, but this tab
+        // has no durable conversation id yet — a conversation-scoped publish
+        // has nowhere to route. The marker is drained by the session_init
+        // reducer once the engine mints one.
+        markForkPendingChartReconcile(tab.id)
         return tabId
       } catch {
         return null
@@ -167,6 +173,9 @@ export function createForkSlice(set: StoreSet, get: StoreGet): Partial<State> {
           isExpanded: true,
         }))
         window.ion.setPermissionMode(newTabId, forkMode, 'tab_create')
+        // Same handoff as forkTab: the copied prefix may carry chart rows, and
+        // this tab's durable conversation id does not exist yet.
+        markForkPendingChartReconcile(tab.id)
         return newTabId
       } catch {
         return null

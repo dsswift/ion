@@ -36,12 +36,30 @@ import Foundation
 ///   - forceScroll: an explicit request (prompt submit, scroll-to-bottom
 ///     button, post-reconnect reload). Overrides position, but the caller
 ///     still owns the decision to set it.
+///   - isHistoryPrepend: this apply only added rows ABOVE the existing ones
+///     (background history backfill). The viewport must stay where it is
+///     relative to the BOTTOM, because the operator has not navigated — rows
+///     appeared behind them.
 func shouldAutoTail(
     nearBottom: Bool,
     isUserInteracting: Bool,
     isInitial: Bool,
-    forceScroll: Bool
+    forceScroll: Bool,
+    isHistoryPrepend: Bool = false
 ) -> Bool {
+    // A pure history prepend must not be treated as "the user scrolled up".
+    //
+    // THE BUG THIS FIXES: opening a conversation applied the small first page
+    // (isInitial, tails to the bottom — correct), then backfill prepended
+    // ~2000 rows above it. That apply is not initial and no longer reads as
+    // near-bottom, so the anchor path held the row that had been at the top —
+    // which, after the prepend, sits in the MIDDLE of the transcript. The
+    // conversation opened halfway down.
+    //
+    // Tailing through the prepend keeps the newest turn on screen, which is
+    // where a freshly opened conversation belongs and where the operator
+    // already was.
+    if isHistoryPrepend && nearBottom { return true }
     // An explicit request wins over position, but never over nothing: both of
     // these are set by a deliberate caller action, not inferred.
     if isInitial || forceScroll { return true }

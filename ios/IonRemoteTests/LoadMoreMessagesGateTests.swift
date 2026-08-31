@@ -31,7 +31,7 @@ final class LoadMoreMessagesGateTests: XCTestCase {
         let entry = vm.pendingEssentialQueue.first { $0.key == "loadConversation:t" }
         XCTAssertNotNil(entry, "loadMoreMessages must issue a load when hasMore + cursor are set")
         // The command must carry the stored cursor (before:), not nil.
-        if case .loadConversation(_, let before)? = entry?.command {
+        if case .loadConversation(_, let before, _)? = entry?.command {
             XCTAssertEqual(before, "cursor-older", "the older-page load must carry the stored cursor")
         } else {
             XCTFail("queued command must be a loadConversation")

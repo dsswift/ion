@@ -276,13 +276,18 @@ extension RemoteCommand {
         case .tabRegenerateTitle(let tabId):
             try container.encode(TypeKey.tabRegenerateTitle, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
+        case .requestTranscript(let tabId, let requestId):
+            try container.encode(TypeKey.requestTranscript, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(requestId, forKey: .requestId)
         case .reviewSettledTab(let tabId):
             try container.encode(TypeKey.reviewSettledTab, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
-        case .loadConversation(let tabId, let before):
+        case .loadConversation(let tabId, let before, let pageSize):
             try container.encode(TypeKey.loadConversation, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(before, forKey: .before)
+            try container.encodeIfPresent(pageSize, forKey: .pageSize)
         case .requestResend(let fromSeq, let toSeq):
             try container.encode(TypeKey.requestResend, forKey: .type)
             try container.encode(fromSeq, forKey: .fromSeq)

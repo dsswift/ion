@@ -6,6 +6,10 @@ import SwiftUI
 /// Merges the desktop-provided cache (complete history) with message-extracted
 /// attachments (for real-time updates). Used by `ConversationStatusBar` for the badge.
 func countConversationAttachments(_ messages: [Message], desktopCache: [TabAttachmentEntry]?) -> Int {
+    // The pattern is a compile-time literal, so construction can only fail if
+    // this source line is edited into an invalid regex — a build-time mistake,
+    // not a runtime condition an operator could act on. The fallback returns
+    // the desktop cache count, which is the authoritative number anyway.
     guard let regex = try? NSRegularExpression(
         pattern: #"^\[Attached (image|file|plan): (.+)\]$"#,
         options: []
@@ -57,13 +61,15 @@ private struct ExtractedAttachment: Identifiable, Hashable {
     }
 
     /// SF Symbol name for this attachment. Resource attachments are
-    /// kind-agnostic: any extension-declared kind renders with a generic
-    /// document glyph rather than a per-kind hardcoded icon.
+    /// kind-agnostic with one exception: a chart gets a chart glyph, because
+    /// its row opens a rendered chart rather than a document and a generic
+    /// document icon would misdescribe what the tap does. Every other
+    /// extension-declared kind keeps the generic glyph.
     var iconName: String {
         switch type {
         case .plan:     return "doc.text"
         case .image:    return "photo"
-        case .resource: return "doc.richtext"
+        case .resource: return resourceKind == ChartResourceKind.name ? "chart.xyaxis.line" : "doc.richtext"
         case .file:     return "doc"
         }
     }
@@ -91,6 +97,9 @@ struct ConversationAttachmentsSheet: View {
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.dismiss) private var dismiss
     let tabId: String
+    /// Asks the host conversation to scroll to a transcript row. Set by the
+    /// presenting view; nil in contexts with no transcript to scroll.
+    var onJumpToRow: ((String, String?) -> Void)?
 
     @State private var selectedPlanPath: IdentifiablePath?
     @State private var selectedFilePath: IdentifiablePath?
@@ -263,7 +272,11 @@ struct ConversationAttachmentsSheet: View {
                         attachmentRow(attachment)
                             .onTapGesture {
                                 Haptic.light()
-                                openResource(attachment)
+                                if attachment.resourceKind == ChartResourceKind.name {
+                                    jumpToChart(attachment)
+                                } else {
+                                    openResource(attachment)
+                                }
                             }
                     }
                 } header: {
@@ -306,6 +319,43 @@ struct ConversationAttachmentsSheet: View {
                 .foregroundStyle(.quaternary)
         }
         .contentShape(Rectangle())
+    }
+
+    // MARK: - Chart Tap
+
+    /// Jump to a chart's card in the transcript, matching the desktop.
+    ///
+    /// A chart is not a document: its card lives in the conversation, carries
+    /// its own controls, and reading it in a separate sheet loses that context.
+    /// So a chart row navigates rather than presenting a viewer — which is also
+    /// what the desktop does, and the two clients should not diverge on what a
+    /// tap means.
+    ///
+    /// The target row comes from the SAME derivation the transcript renders
+    /// from, so the id is guaranteed to be one the transcript can resolve. The
+    /// chart's stored `toolMessageId` is deliberately not used: it holds the
+    /// tool-GATE id, while a transcript row is keyed by the engine's tool-USE
+    /// id, and those never match.
+    private func jumpToChart(_ attachment: ExtractedAttachment) {
+        guard let chartId = attachment.resourceId else { return }
+        let timelines = ChartTranscript.timelines(from: viewModel.conversationMessages(tabId))
+        guard let timeline = timelines.first(where: { $0.chartId == chartId }) else {
+            // The chart exists as a resource but no row for it is local yet.
+            // Background backfill normally prevents this; log it rather than
+            // dismissing to nowhere, so the miss is visible.
+            DiagnosticLog.log("chart jump target not in transcript", tag: "view.attachments", level: .warn, fields: [
+                "chart_id": String(chartId.prefix(16)),
+                "timelines": String(timelines.count),
+            ])
+            return
+        }
+        DiagnosticLog.log("chart jump requested", tag: "view.attachments", fields: [
+            "chart_id": String(chartId.prefix(16)),
+            "row_id": String(timeline.currentMessageId.prefix(12)),
+            "revisions": String(timeline.revisions.count),
+        ])
+        onJumpToRow?(timeline.currentMessageId, chartId)
+        dismiss()
     }
 
     // MARK: - Resource Tap
@@ -368,6 +418,7 @@ struct ConversationAttachmentsSheet: View {
     /// at the first non-marker line to avoid false positives from example text
     /// in plan documents or user prose that matches the marker format.
     private func extractAttachments(from messages: [Message]) -> [ExtractedAttachment] {
+        // Compile-time literal pattern, as above: no runtime failure mode.
         guard let regex = try? NSRegularExpression(
             pattern: #"^\[Attached (image|file|plan): (.+)\]$"#,
             options: []

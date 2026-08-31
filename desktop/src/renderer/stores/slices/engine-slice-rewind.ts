@@ -50,6 +50,7 @@
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { lastPendingCardTool } from '../../../shared/pending-card'
 import { stageableAttachments } from '../../../shared/staged-attachments'
+import { reconcileChartsForBranch } from '../../lib/chart-reconcile-request'
 import { rDebug, rInfo, rWarn, rError } from '../../rendererLogger'
 
 /**
@@ -251,6 +252,15 @@ export function createEngineRewindActions(set: StoreSet, get: StoreGet): Partial
             : t
         ),
       }))
+
+      // Bring the durable chart index back onto this branch BEFORE the history
+      // broadcast. A rewind past a chart revision leaves the persisted record
+      // and the attachments row naming a revision this branch abandoned, while
+      // the transcript (derived live from the visible messages) correctly shows
+      // the older card — the panel then offers a jump to a revision the
+      // operator cannot reach. Reconciling here, inside the confirmed-success
+      // branch, means a REFUSED rewind never touches the index.
+      reconcileChartsForBranch(tabId, tab.conversationId, rewoundMessages)
 
       // Broadcast the SAME committed truncation to every connected surface.
       // engineBroadcastHistory (main process) reads this store's now-truncated

@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import {
   Plus, GitFork, FolderOpen, GitBranch, CheckCircle, CaretDown, Rows,
-  PencilSimple, ArrowRight, ArrowsInSimple, PushPin, PushPinSlash,
+  PencilSimple, ArrowRight, ArrowsInSimple, PushPin, PushPinSlash, ClipboardText, Hash,
 } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
@@ -19,6 +19,8 @@ import { ConfirmDialog } from './git/ConfirmDialog'
 import { useConvertToWorktreeGate } from './useConvertToWorktreeGate'
 import { rDebug, rInfo, rError } from '../rendererLogger'
 import { scrollableMenuStyle } from '../menu-viewport'
+import { copyConversationSessionIds, copyConversationTranscript } from '../copy-conversation'
+import { activeInstance } from '../stores/conversation-instance'
 
 interface TabContextMenuProps {
   anchor: { x: number; y: number }
@@ -97,6 +99,8 @@ export function TabContextMenu({
   // Visibility, enablement, and label for the convert row. Both refusal
   // reasons (tab busy, checkout dirty) are composed inside the hook.
   const convert = useConvertToWorktreeGate(tab)
+  const targetInstance = activeInstance(useSessionStore((state) => state.conversationPanes), tab.id)
+  const hasSessionIdentity = !!(tab.conversationId || tab.lastKnownSessionId || tab.historicalSessionIds?.length || targetInstance?.conversationIds?.length || targetInstance?.statusFields?.sessionId)
 
   useEffect(() => {
     if (showNewGroupInput) newGroupInputRef.current?.focus()
@@ -215,6 +219,18 @@ export function TabContextMenu({
           <CheckCircle size={14} color={finishWorkDisabled ? colors.textTertiary : colors.worktreeGreen} />
           <span>{finishWorkDisabled === 'checking' ? 'Finish work (checking...)' : finishWorkDisabled ? 'Finish work (uncommitted changes)' : 'Finish work'}</span>
         </ContextMenuItem>
+      )}
+      {!tab.isTerminalOnly && (
+        <>
+          <ContextMenuItem onClick={() => { void copyConversationTranscript(tab.id); onClose() }}>
+            <ClipboardText size={14} color={colors.textSecondary} />
+            <span>Copy transcript</span>
+          </ContextMenuItem>
+          <ContextMenuItem disabled={!hasSessionIdentity} onClick={() => { void copyConversationSessionIds(tab, targetInstance); onClose() }}>
+            <Hash size={14} color={hasSessionIdentity ? colors.textSecondary : colors.textTertiary} />
+            <span>Copy session ID</span>
+          </ContextMenuItem>
+        </>
       )}
       {tabGroupMode === 'manual' && (
         <>

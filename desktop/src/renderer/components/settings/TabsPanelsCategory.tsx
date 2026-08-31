@@ -11,6 +11,8 @@ import type { TabGroupMode, TabGroup } from '../../../shared/types'
 
 export function TabsPanelsCategory() {
   const colors = useColors()
+  const studioTabStripVisible = usePreferencesStore((s) => s.studioTabStripVisible)
+  const setStudioTabStripVisible = usePreferencesStore((s) => s.setStudioTabStripVisible)
   const expandOnTabSwitch = usePreferencesStore((s) => s.expandOnTabSwitch)
   const setExpandOnTabSwitch = usePreferencesStore((s) => s.setExpandOnTabSwitch)
   const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
@@ -146,6 +148,13 @@ export function TabsPanelsCategory() {
   return (
     <>
       <SettingHeading first>Tabs</SettingHeading>
+
+      <SettingToggle
+        label="Show Tab Strip in Ion Studio"
+        description="Show conversation and group tabs at the top of Ion Studio. The Overlay is not affected."
+        checked={studioTabStripVisible}
+        onChange={setStudioTabStripVisible}
+      />
 
       <SettingToggle
         label="Auto-expand on Switch"

@@ -41,10 +41,26 @@ export function broadcast(channel: string, ...args: unknown[]): void {
       maybeBeacon(event)
     }
   } else if (
-    (channel === 'ion:tab-status-change' || channel === 'ion:enriched-error' || channel === 'ion:settings-changed' || channel === 'ion:themes-changed' || channel === 'ion:engine-reconnected' || channel === IPC.QUESTIONS_STATE || channel === IPC.DEEPLINK_CONFIRM_REQUEST || channel === IPC.DEEPLINK_CONFIRM_SETTLED || channel === IPC.UPDATE_DOWNLOADED || channel === IPC.UPDATE_PROGRESS || channel === IPC.UPDATE_STAGED || channel === IPC.UPDATE_ERROR) &&
+    (channel === 'ion:tab-status-change' || channel === 'ion:enriched-error' || channel === 'ion:settings-changed' || channel === 'ion:themes-changed' || channel === 'ion:engine-reconnected' || channel === IPC.QUESTIONS_STATE || channel === IPC.DEEPLINK_CONFIRM_REQUEST || channel === IPC.DEEPLINK_CONFIRM_SETTLED || channel === IPC.UPDATE_DOWNLOADED || channel === IPC.UPDATE_PROGRESS || channel === IPC.UPDATE_STAGED || channel === IPC.UPDATE_ERROR || channel === IPC.CHART_JUMP || channel === IPC.RESOURCE_CATALOG_CHANGED) &&
     state.studioWindow &&
     !state.studioWindow.isDestroyed()
   ) {
+    // A chart jump is a request to move THE conversation transcript, and the
+    // transcript is a shared surface: the same ConversationView is mounted in
+    // the Overlay and in Studio Center. Whichever presentation is active owns
+    // the viewport the operator is looking at, so the request must reach both
+    // — the handler already ignores a request whose tabId is not its own.
+    //
+    // Without this forward the request reached only the Overlay. In Studio the
+    // Overlay renderer is still alive but HIDDEN, so it scrolled its own
+    // offscreen transcript and logged a successful, converged jump while the
+    // window the operator was actually using never moved.
+    //
+    // The resource catalog backs the attachments panel, which is a shared
+    // surface mounted in both presentations. A restore announcement that
+    // reached only the Overlay would leave the Studio panel waiting for a
+    // later producer action — the same defect this channel was added to fix.
+    //
     // Status transitions, enriched errors, settings changes, theme-pack
     // updates, engine-reconnected signals, Questions state, and update
     // signals feed the mirror store's reducers exactly as they feed the

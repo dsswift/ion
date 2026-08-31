@@ -40,6 +40,30 @@ export const systemApi = {
     return () => ipcRenderer.removeListener(IPC.FS_FILE_CHANGED, handler)
   },
 
+  // ─── OS facilities ───
+  copyPngToClipboard: (png: ArrayBuffer) => ipcRenderer.invoke(IPC.COPY_PNG_TO_CLIPBOARD, png),
+  requestChartJump: (request: { tabId: string; chartId: string; messageId: string }) =>
+    ipcRenderer.send(IPC.CHART_JUMP, request),
+  reconcileCharts: (request: {
+    tabId: string
+    conversationId: string
+    rows: Array<{ toolMessageId: string; toolInput: string; resultText: string; index: number }>
+  }) => ipcRenderer.send(IPC.CHART_RECONCILE, request),
+  onChartJump: (callback: (request: { tabId: string; chartId: string; messageId: string }) => void) => {
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      request: { tabId: string; chartId: string; messageId: string },
+    ) => callback(request)
+    ipcRenderer.on(IPC.CHART_JUMP, handler)
+    return () => ipcRenderer.removeListener(IPC.CHART_JUMP, handler)
+  },
+  /** Main announces that the resource catalog changed outside a live delta. */
+  onResourceCatalogChanged: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on(IPC.RESOURCE_CATALOG_CHANGED, handler)
+    return () => ipcRenderer.removeListener(IPC.RESOURCE_CATALOG_CHANGED, handler)
+  },
+
   // ─── Engine operations ───
   engineStart: (key, config) => ipcRenderer.invoke(IPC.ENGINE_START, { key, config }),
   engineSetPlanMode: (key, enabled, planFilePath) => ipcRenderer.send('ion:engine-set-plan-mode', key, enabled, planFilePath),

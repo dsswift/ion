@@ -3,8 +3,6 @@ import { resolveEngineModel } from "../../resolve-engine-model";
 import { state, sessionPlane, engineBridge } from "../../state";
 import { processIncomingPrompt } from "../../prompt-pipeline";
 import { echoUserTurn } from "../../user-turn-echo";
-import { encodeAttachments } from "../attachment-encoder";
-import { IS_REMOTE } from "../../engine-bridge";
 import { getVoiceSystemPrompt } from "./engine";
 import {
   performUnifiedInterrupt,
@@ -182,8 +180,8 @@ export async function handlePrompt(
       // real readiness barrier is the awaited ensureSession downstream.
     }
 
-    // Image-attachment encoding for engine tabs (engine bridge takes
-    // already-encoded ImageAttachmentPayload[]).
+    // Attachment encoding is owned by processIncomingPrompt. Keep the raw text
+    // and raw metadata together until that single routing-aware encoding pass.
     let fullText = cmd.text;
     const attachments = cmd.attachments || [];
     if (attachments.length > 0) {
@@ -192,11 +190,6 @@ export async function handlePrompt(
         .join("\n");
       fullText = `${ctx}\n\n${fullText}`;
     }
-    const { encoded, rewrittenText } = encodeAttachments(
-      fullText,
-      attachments,
-      { isRemote: IS_REMOTE },
-    );
     const voicePrompt = getVoiceSystemPrompt(deviceId);
     // Reuse the iOS-supplied clientMsgId as the engine request id so the
     // user-message echo (below) carries this exact id back to iOS. iOS reconciles
@@ -293,9 +286,8 @@ export async function handlePrompt(
     registerRemotePromptDelivery(engineReqId, deviceId, cmd.tabId);
     await processIncomingPrompt({
       tabId: cmd.tabId,
-      text: rewrittenText,
+      text: cmd.text,
       attachments,
-      imageAttachments: encoded.length > 0 ? encoded : undefined,
       reqId: engineReqId,
       source: "remote",
       hasExtensions: true,

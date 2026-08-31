@@ -128,9 +128,10 @@ export interface LandResult {
  *                     so it is never silently equated.
  * - `conflicted`    — a genuine conflict stands; the worktree is mid-rebase
  *                     and the resolution surfaces (dialog / AI assist) apply.
- * - `skipped-dirty` — uncommitted work; never touched, same rule as the
- *                     single-row verb.
- * - `skipped-clean` — nothing to do: already current or already landed.
+ * - `skipped-dirty` — source sync was required, but uncommitted work blocked it;
+ *                     never touched, same rule as the single-row verb.
+ * - `skipped-clean` — nothing to do: already current or already landed. A dirty
+ *                     but current worktree belongs here because no sync was required.
  * - `skipped-unknown-source` — source branch unknown; sync is unanswerable.
  * - `failed`        — the machinery failed for a reason that is not a
  *                     conflict (unreadable status, git error).

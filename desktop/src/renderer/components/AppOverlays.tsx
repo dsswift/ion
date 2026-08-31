@@ -1,6 +1,7 @@
 import React from 'react'
 import { UpdateDialog } from './UpdateDialog'
 import { RemoteDirectoryPicker } from './RemoteDirectoryPicker'
+import { NewConversationPickerHost } from './NewConversationPickerHost'
 import { DeepLinkConfirmDialog } from './DeepLinkConfirmDialog'
 
 /**
@@ -29,6 +30,7 @@ export function AppOverlays(): React.JSX.Element {
       <DeepLinkConfirmDialog />
       <UpdateDialog />
       <RemoteDirectoryPicker />
+      <NewConversationPickerHost />
     </>
   )
 }

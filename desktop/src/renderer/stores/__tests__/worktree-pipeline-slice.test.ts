@@ -275,6 +275,38 @@ describe('the assembly phase', () => {
     expect(h.pipeline()?.phase).toBe('done')
   })
 
+  it('labels source sync and the completed bench build as separate outcomes', async () => {
+    const h = harness({
+      syncAllResults: [syncAllResult([outcome('/wt/a', 'synced'), outcome('/wt/b', 'skipped-clean')])],
+      hasBench: true,
+    })
+    h.benchUpdateAll.mockResolvedValueOnce({
+      ok: true,
+      workspace: {
+        repoPath: REPO, sourceBranch: BRANCH, benchPath: '/bench', benchBranch: 'ion/bench/josh',
+        members: [{ worktreePath: '/wt/a' }, { worktreePath: '/wt/b' }, { worktreePath: '/wt/c' }],
+        baseSha: '', lastBuiltAt: 1,
+      },
+    })
+
+    await h.start()
+
+    expect(h.pipeline()?.summary).toBe('Source sync: 1 synced · Bench built with 3 members')
+  })
+
+  it('reports a failed bench build instead of presenting the sync result as full success', async () => {
+    const h = harness({
+      syncAllResults: [syncAllResult([outcome('/wt/a', 'synced')])],
+      hasBench: true,
+    })
+    h.benchUpdateAll.mockResolvedValueOnce({ ok: false, error: 'verification failed' })
+
+    await h.start()
+
+    expect(h.pipeline()?.phase).toBe('failed')
+    expect(h.pipeline()?.summary).toBe('Source sync: 1 synced · Bench build failed: verification failed')
+  })
+
   it('skips assembly when no bench exists', async () => {
     const h = harness({ syncAllResults: [syncAllResult([outcome('/wt/a', 'synced')])] })
     await h.start()

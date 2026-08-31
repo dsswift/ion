@@ -164,6 +164,10 @@ export interface StudioSettings {
   studioLayout: StudioLayout;
   /** Conversation-keyed surface state plus global core-tab pins. */
   studioSurface: unknown;
+  /** Whether Studio shows its conversation Tab Strip. */
+  studioTabStripVisible: boolean;
+  /** Whether Studio exposes client-side Playwright browser tools. */
+  studioPlaywrightEnabled: boolean;
   /**
    * Read-only, derived from surfacePolicy: false when the enterprise/operator
    * policy disables the Studio window surface (launchers hide themselves).

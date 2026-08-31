@@ -5,6 +5,7 @@ import { warn as _warn } from '../logger'
 import { lookupWorktreeRegistration } from '../worktree/inventory'
 import { projectRendererTab } from './snapshot-project'
 import { settlingIsPermanent } from '../../shared/worktree-conversations'
+import { orderedSessionIds } from '../../shared/tab-predicates'
 import type { RemoteTabState } from './protocol'
 
 /**
@@ -51,6 +52,11 @@ export function settledTabsSnapshot(): RemoteTabState[] {
           hasEngineExtension: tab.hasEngineExtension === true,
           engineProfileId: typeof tab.engineProfileId === 'string' ? tab.engineProfileId : null,
           conversationId: typeof tab.conversationId === 'string' ? tab.conversationId : null,
+          sessionIds: orderedSessionIds({
+            historicalSessionIds: Array.isArray(tab.historicalSessionIds) ? tab.historicalSessionIds.filter((id): id is string => typeof id === 'string') : [],
+            conversationId: typeof tab.conversationId === 'string' ? tab.conversationId : null,
+            lastKnownSessionId: typeof tab.lastKnownSessionId === 'string' ? tab.lastKnownSessionId : null,
+          }),
           lastActivityTs: typeof tab.lastMessageAt === 'number' ? tab.lastMessageAt : 0,
           createdAt: typeof tab.createdAt === 'number' ? tab.createdAt : undefined,
           // Settled records keep their worktree identity so the settled shelf

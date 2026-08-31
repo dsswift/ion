@@ -403,7 +403,17 @@ extension SessionViewModel {
             currentlyLoading: loadingConversation,
         )
         for tabId in resendTargets {
-            send(.loadConversation(tabId: tabId, before: conversationCursor[tabId]), intent: .automaticEssential)
+            // Same bulk size as the initial load: a resend that fell back to
+            // the small page would re-introduce the prepend this design exists
+            // to avoid.
+            send(
+                .loadConversation(
+                    tabId: tabId,
+                    before: conversationCursor[tabId],
+                    pageSize: ConversationBackfill.bulkPageSize
+                ),
+                intent: .automaticEssential
+            )
         }
 
         // Cache layout for the active device so reconnects restore it.

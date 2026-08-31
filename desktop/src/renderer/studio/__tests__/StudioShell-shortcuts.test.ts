@@ -33,8 +33,10 @@ describe("StudioShell shortcut wiring", () => {
     expect(source).not.toContain("openFilePicker");
   });
 
-  it("keeps TabStrip mounted in inbox mode so new and recent-directory shortcuts retain picker hosts", () => {
-    expect(source).toContain('display: conversationNav === "tabs" ? "block" : "none"');
+  it("mounts the picker host independently from optional Studio tabs", () => {
+    expect(source).toContain('studioTabStripVisible && (');
+    expect(source).toContain('<TabStrip presentation="studio" />');
+    expect(source).toContain('<NewConversationPickerHost />');
   });
 
   it("maps numbered defaults to Inbox, Explorer, Git, and canvas", () => {

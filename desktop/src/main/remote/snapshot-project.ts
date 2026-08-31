@@ -54,6 +54,7 @@ export interface RendererTabInput {
   backgroundShellCount?: number
   hasPendingWork?: boolean
   conversationId?: string | null
+  sessionIds?: string[]
   lastActivityTs?: number
   idleSince?: number | null
   createdAt?: number
@@ -158,6 +159,7 @@ export function projectRendererTab(
     backgroundShellCount: t.backgroundShellCount || undefined,
     hasPendingWork: t.hasPendingWork || undefined,
     conversationId: t.conversationId || undefined,
+    sessionIds: t.sessionIds && t.sessionIds.length > 0 ? t.sessionIds : undefined,
     lastActivityAt: t.lastActivityTs || undefined,
     idleSince: t.idleSince || undefined,
     createdAt: t.createdAt || undefined,

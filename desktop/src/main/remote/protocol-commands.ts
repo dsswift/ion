@@ -132,7 +132,20 @@ export type RemoteCommand =
   // `desktop_reset_tab_session` only addresses the CLI session plane and silently
   // misses engine instances.
   | { type: "desktop_reset_engine_session"; tabId: string; instanceId: string }
-  | { type: "desktop_load_conversation"; tabId: string; before?: string }
+  | {
+      type: "desktop_load_conversation";
+      tabId: string;
+      before?: string;
+      /**
+       * Rows to return in this page. Omitted means the small default, which
+       * keeps first paint fast. A client walking a long conversation asks for
+       * a BULK page instead: at the default size a 2000-row transcript costs
+       * ~200 round trips, and every response re-renders the client's
+       * transcript. Clamped server-side to BULK_PAGE_MESSAGES.
+       */
+      pageSize?: number;
+    }
+  | { type: "desktop_request_transcript"; tabId: string; requestId: string }
   // desktop_request_resend: iOS detected a forward seq gap; asks the desktop to
   // replay missing wire frames [fromSeq,toSeq] from its retransmit buffer (see
   // retransmit-buffer.ts). Makes the fire-and-forget wire self-healing for the

@@ -90,7 +90,25 @@ function installResizeObserverStub(): void {
   }
 }
 
+// jsdom does not implement CSS.escape. Any component that builds an attribute
+// selector from a runtime value (e.g. the chart-jump lookup by data-chart-id)
+// calls it, so a jsdom test would throw where Electron's Chromium is fine. The
+// stub follows the CSSOM serialization rule closely enough for selector use:
+// escape anything outside [A-Za-z0-9_-] and any leading digit.
+function installCssEscapeStub(): void {
+  const g = globalThis as unknown as { CSS?: { escape?: (value: string) => string } }
+  if (typeof g.CSS?.escape === 'function') return
+  const escape = (value: string): string =>
+    String(value).replace(/[^a-zA-Z0-9_-]/g, (ch) => `\\${ch}`).replace(/^(\d)/, '\\3$1 ')
+  if (g.CSS) {
+    g.CSS.escape = escape
+    return
+  }
+  g.CSS = { escape }
+}
+
 installTestHome()
 installLocalStorageShim()
 installScrollIntoViewStub()
 installResizeObserverStub()
+installCssEscapeStub()

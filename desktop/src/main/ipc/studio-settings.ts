@@ -39,6 +39,7 @@ export const STUDIO_SETTING_KEYS = new Set([
   "studioLayout",
   "studioSurface",
   "studioPlaywrightEnabled",
+  "studioTabStripVisible",
 ]);
 
 function log(message: string, fields?: Record<string, unknown>): void {
@@ -87,7 +88,8 @@ export function registerStudioSettingsIpc(): void {
         key === "studioHeat" ||
         key === "studioBeacon" ||
         key === "studioSound" ||
-        key === "studioPlaywrightEnabled"
+        key === "studioPlaywrightEnabled" ||
+        key === "studioTabStripVisible"
       ) {
         if (typeof value !== "boolean") return false;
       } else if (key === "studioZoom") {

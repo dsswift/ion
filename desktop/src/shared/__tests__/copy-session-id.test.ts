@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { computeSessionIdCopyPayload } from '../tab-predicates'
+import { computeSessionIdCopyPayload, orderedSessionIds } from '../tab-predicates'
 
 describe('computeSessionIdCopyPayload — fresh-tab regression', () => {
   it('plain tab: returns the engine-minted id captured at creation', () => {
@@ -51,6 +51,19 @@ describe('computeSessionIdCopyPayload — fresh-tab regression', () => {
     const tab = { engineProfileId: 'profile-1' }
     const inst = { conversationIds: ['conv-old'], statusFields: { sessionId: 'conv-live' } }
     expect(computeSessionIdCopyPayload(tab, inst)).toBe('conv-old\nconv-live')
+  })
+
+  it('keeps the full chain in historical-to-current order and removes duplicates', () => {
+    expect(orderedSessionIds(
+      {
+        engineProfileId: 'profile-1',
+        sessionIds: ['oldest'],
+        historicalSessionIds: ['oldest', 'older'],
+        lastKnownSessionId: 'previous',
+        conversationId: 'current',
+      },
+      { conversationIds: ['older', 'ledger'], statusFields: { sessionId: 'live' } },
+    )).toEqual(['oldest', 'older', 'ledger', 'previous', 'current', 'live'])
   })
 
   it('extension tab: does not duplicate the live id when already in conversationIds', () => {

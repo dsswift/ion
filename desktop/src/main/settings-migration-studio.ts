@@ -217,6 +217,19 @@ export function migrateStudioSettings(): boolean {
     changed = true;
   }
 
+  // The old navigation choice coupled Inbox selection to Tab Strip visibility.
+  // Preserve only the visibility intent, then remove the retired key.
+  if ("conversationNav" in settings) {
+    if (!("studioTabStripVisible" in settings)) {
+      settings.studioTabStripVisible = settings.conversationNav !== "inbox";
+      applied.push(`conversationNav(${String(settings.conversationNav)})→studioTabStripVisible(${String(settings.studioTabStripVisible)})`);
+    } else {
+      applied.push("conversationNav dropped (studioTabStripVisible present)");
+    }
+    delete settings.conversationNav;
+    changed = true;
+  }
+
   if (!changed) return false;
 
   try {

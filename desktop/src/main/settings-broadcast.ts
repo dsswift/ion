@@ -30,7 +30,7 @@
 import { log as _log } from './logger'
 import { state, enterprisePolicyCache } from './state'
 import { broadcast } from './broadcast'
-import { handleSettingsChangeForBrowserTools } from './studio-browser-tool-sync'
+import { handleSettingsChangeForClientTools } from './studio-client-tool-sync'
 import { writeSettings } from './settings-store'
 import { writePlanBashAllowlist } from './plan-bash-allowlist-store'
 import { ENGINE_CONFIG_BACKED_KEYS } from './projectable-settings-data'
@@ -192,11 +192,12 @@ export function persistAndBroadcastSettings(
 
   if (activeUiChanged) applyActiveUiSwitch()
 
-  // Browser-tool availability depends on activeUi and studioPlaywrightEnabled,
-  // and the engine learns a session's tool list at start_session. Funnelling
-  // the resync here means BOTH write surfaces (renderer SAVE_SETTINGS and the
-  // Studio setting channel) converge on one implementation.
-  handleSettingsChangeForBrowserTools(next as Record<string, unknown>, prev)
+  // Studio-only client-tool availability depends on activeUi (charts and the
+  // browser set) and studioPlaywrightEnabled (browser set only), and the engine
+  // learns a session's tool list at start_session. Funnelling the resync here
+  // means BOTH write surfaces (renderer SAVE_SETTINGS and the Studio setting
+  // channel) converge on one implementation.
+  handleSettingsChangeForClientTools(next as Record<string, unknown>, prev)
 
   // Cross-window prefs sync (mirror-store architecture): every changed key
   // is pushed as ion:settings-changed so BOTH renderer preference stores

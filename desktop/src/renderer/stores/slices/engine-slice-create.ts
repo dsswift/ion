@@ -306,7 +306,7 @@ function _onEngineStartError(
  * start_session result (see engine/internal/session/start_session.go and the
  * desktop bridge in engine-bridge-start-session.ts). That id is available before
  * any run emits session_init/engine_status, so recording it here makes "Copy
- * session id" (SettingsPopover, the status-bar Open-with picker) work on a fresh
+ * session ID" controls work on a fresh
  * tab — without it those affordances have nothing to copy until the first prompt.
  *
  * Idempotent and additive: writes the tab-level conversationId/lastKnownSessionId

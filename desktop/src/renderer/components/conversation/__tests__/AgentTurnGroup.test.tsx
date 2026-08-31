@@ -51,8 +51,15 @@ vi.mock('../ToolGroup', () => ({
 
 vi.mock('../BackgroundWorkGroup', () => ({ BackgroundWorkGroup: () => null }))
 
-vi.mock('../ToolImagesStrip', () => ({
-  ToolImagesStrip: () => null,
+// The visual-output seam is mocked to a marker that RECORDS its ownership
+// prop. That is what lets these tests prove exactly one owner paints a group's
+// deliverables — the guard against the duplicate render that existed while
+// AgentTurnGroup and its embedded ToolGroup both hoisted images.
+vi.mock('../ToolVisualOutputs', () => ({
+  ToolVisualOutputs: ({ owned = true }: { owned?: boolean }) =>
+    (owned
+      ? React.createElement('div', { 'data-testid': 'visual-outputs' })
+      : null),
 }))
 
 vi.mock('../CopyButton', () => ({
@@ -241,5 +248,35 @@ describe('AgentTurnGroup — activity header three-state status', () => {
     const header = el.querySelector('[data-ion-ui]')
     expect(header).not.toBeNull()
     expect(header!.textContent).not.toContain('failed')
+  })
+})
+
+describe('AgentTurnGroup — visual output ownership', () => {
+  it('paints deliverables while the tool panel is collapsed', () => {
+    // A chart or image behind a collapsed "Used N tools" is, for the user,
+    // simply missing (#224).
+    const el = renderGroup({
+      tools: [toolMsg('t1', 'completed')],
+      assistantMessages: [],
+      isActive: false,
+      skipMotion: true,
+    })
+    expect(el.querySelectorAll('[data-testid="visual-outputs"]')).toHaveLength(1)
+  })
+
+  it('renders deliverables exactly once after the panel is expanded', () => {
+    // Regression: the turn container and its embedded ToolGroup both hoisted
+    // visual output, so expanding a unified turn painted every image twice.
+    const el = renderGroup({
+      tools: [toolMsg('t1', 'completed')],
+      assistantMessages: [],
+      isActive: false,
+      skipMotion: true,
+    })
+    const header = el.querySelector('[data-ion-ui]') as HTMLElement
+    act(() => { header.click() })
+
+    expect(el.querySelector('[data-testid="tool-group"]')).not.toBeNull()
+    expect(el.querySelectorAll('[data-testid="visual-outputs"]')).toHaveLength(1)
   })
 })

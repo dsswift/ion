@@ -153,7 +153,7 @@ extension ConversationView {
                 .environment(viewModel)
             }
             .sheet(isPresented: $showAttachments) {
-                ConversationAttachmentsSheet(tabId: tabId)
+                ConversationAttachmentsSheet(tabId: tabId, onJumpToRow: requestTranscriptJump)
                     .environment(viewModel)
             }
             .onChange(of: viewModel.pendingUploadResults) { _, results in

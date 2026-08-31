@@ -10,6 +10,12 @@ import SwiftUI
 
 struct Transcript: View {
     let messages: [Message]
+    /// Chart render state for every chart-bearing row, derived ONCE per
+    /// message change. Derived here rather than inside a row because a chart's
+    /// current revision usually lives in a later turn than the row drawing it.
+    private var chartRenders: [String: ChartTranscript.RowRender] {
+        ChartTranscript.rowRenders(from: messages)
+    }
     let unifiedTurnView: Bool
     /// Pinned-last-prompt bar text. Same treatment as ConversationView
     /// headerSection (the "> prompt" bar).
@@ -37,6 +43,9 @@ struct Transcript: View {
     var activeBackgroundTasks: [BackgroundTaskState] = []
     @Binding var isNearBottom: Bool
     var forceScrollCounter: Int
+    /// A row to scroll to, with a tick so a repeat jump to the same row fires
+    /// again. Set by the attachments panel when the operator taps a chart.
+    var jumpRequest: (id: String, chartId: String?, tick: Int)?
     /// Optional plan-tap handler. When non-nil, plan-lifecycle divider
     /// slug links become tappable.
     var onTapPlan: ((String) -> Void)?
@@ -130,6 +139,24 @@ struct Transcript: View {
         }
     }
 
+    /// Translate a jump request's MESSAGE id into the data-source row that
+    /// renders it.
+    ///
+    /// The collection view is keyed by group identity, so a chart's tool row
+    /// inside a unified turn has no row of its own. Resolving here — where the
+    /// grouping is already computed — keeps the collection view unaware of how
+    /// rows are grouped, which is not its concern.
+    ///
+    /// Falls through to the raw id when no group claims it: a row that IS its
+    /// own item (a plain message) is already the correct target.
+    private var resolvedJumpRequest: (id: String, chartId: String?, tick: Int)? {
+        guard let request = jumpRequest else { return nil }
+        for item in groupedMessages where item.containedMessageIds.contains(request.id) {
+            return (id: item.id, chartId: request.chartId, tick: request.tick)
+        }
+        return request
+    }
+
     private var chatItems: [ChatItem<Item>] {
         var items = groupedMessages.map {
             ChatItem(id: $0.id, contentHash: $0.contentHash, payload: Item.message($0))
@@ -166,10 +193,14 @@ struct Transcript: View {
             }
 
             ZStack(alignment: .bottom) {
+                // Chart cards report their position through a preference; the
+                // registry hands it to the UIKit scroll code, which has no
+                // other way to find a SwiftUI subview inside a hosting cell.
                 ChatCollectionView(
                     items: chatItems,
                     isNearBottom: $isNearBottom,
                     forceScrollCounter: forceScrollCounter + localForceScroll,
+                    jumpRequest: resolvedJumpRequest,
                     spacing: 8,
                     horizontalInset: 12,
                     onReachedTop: onReachedTop
@@ -202,7 +233,8 @@ struct Transcript: View {
                                 EngineToolGroupRow(
                                     tools: tools,
                                     activeBackgroundTasks: activeBackgroundTasks,
-                                    tabId: tabId
+                                    tabId: tabId,
+                                    chartRenders: chartRenders
                                 )
                             case .compaction(let msg):
                                 CompactionRowView(message: msg)
@@ -215,13 +247,19 @@ struct Transcript: View {
                                     isActive: isActive,
                                     thinking: thinking,
                                     activeBackgroundTasks: activeBackgroundTasks,
-                                    tabId: tabId
+                                    tabId: tabId,
+                                    chartRenders: chartRenders
                                 )
                             }
                         case .runDuration(let durationMs, let reason):
                             RunDurationRow(durationMs: durationMs, reason: reason)
                         }
                     }
+                }
+                .onPreferenceChange(ChartAnchorKey.self) { frames in
+                    // Cards report as they lay out; the scroll code reads the
+                    // latest report when a jump needs to refine its target.
+                    ChartAnchorRegistry.shared.record(frames)
                 }
 
                 if !isNearBottom {

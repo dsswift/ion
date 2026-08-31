@@ -15,6 +15,9 @@ struct InboxSettledHistorySheet: View {
                     InboxRowView(tab: tab)
                 }
                 .buttonStyle(.plain)
+                .contextMenu {
+                    ConversationClipboardActions(tab: tab)
+                }
             }
             .navigationTitle("Settled History")
             .navigationBarTitleDisplayMode(.inline)

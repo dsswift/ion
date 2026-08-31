@@ -129,18 +129,21 @@ let broadcastSpy: ReturnType<typeof vi.fn>
 let rewindSpy: ReturnType<typeof vi.fn>
 let stopSpy: ReturnType<typeof vi.fn>
 let startSpy: ReturnType<typeof vi.fn>
+let reconcileSpy: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   broadcastSpy = vi.fn(async () => {})
   rewindSpy = vi.fn(async () => ({ ok: true }))
   stopSpy = vi.fn(async () => {})
   startSpy = vi.fn(async () => ({ ok: true }))
+  reconcileSpy = vi.fn()
   ;(globalThis as any).window = {
     ion: {
       engineStop: stopSpy,
       engineStart: startSpy,
       engineBroadcastHistory: broadcastSpy,
       engineRewind: rewindSpy,
+      reconcileCharts: reconcileSpy,
     },
   }
 })
@@ -375,5 +378,76 @@ describe('rewindEngineInstance — planFilePath restoration after rewind', () =>
     await slice.rewindEngineInstance('tab1', 'inst1', 'e-1')
     const inst = state.conversationPanes.get('tab1')!.instances[0]
     expect(inst.planFilePath).toBeNull()
+  })
+})
+
+/**
+ * Chart-index reconciliation after a confirmed rewind.
+ *
+ * THE BUG THIS EXISTS FOR: the durable chart index is rebuildable from the
+ * branch's tool rows, but nothing rebuilt it. A rewind past a chart revision
+ * left the persisted record and the attachments row naming a revision the
+ * branch had abandoned, while the transcript — derived live from the visible
+ * messages — correctly showed the older card. The panel then offered a jump to
+ * a revision the operator could not reach.
+ *
+ * These assertions fail with the reconcile call removed from the rewind's
+ * success branch.
+ */
+describe('rewindEngineInstance — chart index reconciliation', () => {
+  const CHART_RESULT_1 = 'Chart rendered in the conversation. id: tool-gate-1787864702164461001-1 · title: "Series" · line · 1 series · 2 points.'
+  const CHART_RESULT_2 = 'Chart updated to revision 2. id: tool-gate-1787864702164461001-1 · title: "Series" · line · 1 series · 2 points.'
+  const CHART_INPUT = '{"schemaVersion":1,"kind":"line","title":"Series","labels":["A","B"],"datasets":[{"label":"S","data":[1,2]}]}'
+
+  // A create, then a later turn whose update the rewind will discard.
+  const CHART_BRANCH = [
+    { id: 'e-0', role: 'user', content: 'chart it', timestamp: 1 },
+    { id: 'toolu_01', role: 'tool', content: CHART_RESULT_1, timestamp: 2, toolName: 'RenderChart', toolInput: CHART_INPUT, toolStatus: 'completed' } as any,
+    { id: 'e-1', role: 'user', content: 'revise it', timestamp: 3 },
+    { id: 'toolu_02', role: 'tool', content: CHART_RESULT_2, timestamp: 4, toolName: 'RenderChart', toolInput: CHART_INPUT, toolStatus: 'completed' } as any,
+  ]
+
+  it('reconciles with only the chart rows the rewound branch still contains', async () => {
+    const { state, slice } = buildHarness(CHART_BRANCH)
+    state.tabs[0].conversationId = 'conv-abc'
+
+    await slice.rewindEngineInstance('tab1', 'inst1', 'e-1')
+
+    expect(reconcileSpy).toHaveBeenCalledTimes(1)
+    const request = reconcileSpy.mock.calls[0][0] as {
+      tabId: string; conversationId: string
+      rows: Array<{ toolMessageId: string; resultText: string }>
+    }
+    expect(request.tabId).toBe('tab1')
+    expect(request.conversationId).toBe('conv-abc')
+    // The discarded revision's row must NOT travel: it is exactly the record
+    // that would otherwise stay "current" on every surface.
+    expect(request.rows.map((row) => row.toolMessageId)).toEqual(['toolu_01'])
+    // Identity rides in the result text, never the row id.
+    expect(request.rows[0].resultText).toBe(CHART_RESULT_1)
+  })
+
+  it('does NOT reconcile when the engine refuses the rewind', async () => {
+    // A refused rewind leaves the engine tree untouched, so rebuilding the
+    // index from a truncation that never happened would delete live records.
+    rewindSpy.mockResolvedValueOnce({ ok: false, error: 'unknown entry' })
+    const { state, slice } = buildHarness(CHART_BRANCH)
+    state.tabs[0].conversationId = 'conv-abc'
+
+    const result = await slice.rewindEngineInstance('tab1', 'inst1', 'e-1')
+
+    expect(result.ok).toBe(false)
+    expect(reconcileSpy).not.toHaveBeenCalled()
+  })
+
+  it('skips reconciliation for a conversation with no durable id', async () => {
+    // Nothing to scope a chart resource to yet; the fork path re-runs this
+    // once the engine mints an id.
+    const { state, slice } = buildHarness(CHART_BRANCH)
+    state.tabs[0].conversationId = null
+
+    await slice.rewindEngineInstance('tab1', 'inst1', 'e-1')
+
+    expect(reconcileSpy).not.toHaveBeenCalled()
   })
 })

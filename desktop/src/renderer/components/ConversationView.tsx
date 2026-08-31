@@ -19,7 +19,8 @@ import { ScrollToBottomButton } from './conversation/ScrollToBottomButton'
 import { TranscriptRows } from './conversation/TranscriptRows'
 import { TimelineMinimap } from './conversation/TimelineMinimap'
 import { deriveTimelineMinimapItems } from './conversation/TimelineMinimap.logic'
-import { rDebug, rInfo, rError } from '../rendererLogger'
+import { rDebug, rInfo, rWarn, rError } from '../rendererLogger'
+import { deriveChartTimelines, type ChartTimeline } from './conversation/chart-revisions'
 import {
   groupMessages, suppressUserImageEchoes,
   MessageActions, InterruptButton,
@@ -134,11 +135,19 @@ export function ConversationView({ tabId }: ConversationViewProps) {
     handlePointerMove,
     handleKeyDown,
     pauseFollowing,
+    beginNavigation,
     scrollToBottom,
   } = useScrollFollow([
     messages.length, agentStates.length, isRunning,
   ])
-  const virtualMessageJumpRef = useRef<((messageId: string) => boolean) | null>(null)
+  const virtualMessageJumpRef = useRef<((messageId: string, chartId?: string) => boolean) | null>(null)
+  /**
+   * Latest derived chart timelines, for resolving a jump's real anchor.
+   *
+   * A ref rather than a dependency so the subscription below is installed once
+   * per tab instead of being torn down and re-added on every message change.
+   */
+  const chartTimelinesRef = useRef<ChartTimeline[]>([])
 
   // Conversation search, scoped to scrollRef.
   const searchTrigger = `${messages.length}:${messages[messages.length - 1]?.content?.length ?? 0}`
@@ -149,6 +158,57 @@ export function ConversationView({ tabId }: ConversationViewProps) {
     window.dispatchEvent(new CustomEvent('ion:search-close'))
   }, [tabId])
 
+  // Chart navigation. The attachments panel and a moved marker both ask main
+  // to route a jump; the transcript that owns the target conversation performs
+  // it. Following is paused first, or the scroll-follow effect would drag the
+  // view straight back to the tail the user just navigated away from.
+  useEffect(() => {
+    return window.ion.onChartJump(({ tabId: targetTab, chartId, messageId }) => {
+      if (targetTab !== tabId) return
+      // Take the viewport for this navigation. `pauseFollowing` alone was not
+      // enough: the virtualizer's scroll fires handleScroll, and a chart is
+      // usually among the NEWEST rows, so the landing position fell inside the
+      // tail threshold and tail-following immediately snapped the view back to
+      // the bottom. That is why the click appeared to do nothing while the log
+      // reported a successful jump.
+      beginNavigation()
+      // The anchor is resolved from LIVE derivation, not from the id the
+      // resource carries. A chart record stores the tool-GATE request id it
+      // was minted from, while a transcript row is keyed by the engine's
+      // tool-USE id — different id spaces. Jumping on the stored value found
+      // no row, so the virtual jump silently no-opped and the transcript
+      // never moved. The derived timeline knows the row id that is actually
+      // in the DOM; the stored id is only a fallback for a chart the current
+      // branch cannot see.
+      const timeline = chartTimelinesRef.current.find((t) => t.chartId === chartId)
+      const anchorId = timeline?.currentMessageId ?? messageId
+      // The chart id goes with the row id: the row locates the TURN, the
+      // chart element locates the card inside it. A turn can be several
+      // screens tall with the chart at its very end, so row-start alone left
+      // the operator looking at the top of the turn.
+      if (virtualMessageJumpRef.current?.(anchorId, chartId)) {
+        rInfo('conversation.chart', 'jumped to chart (virtual row)', {
+          tab_id: tabId.slice(0, 8), chart_id: chartId, anchor_id: anchorId.slice(0, 12),
+        })
+        return
+      }
+      const anchorEl = scrollRef.current?.querySelector(`[data-chart-id="${CSS.escape(chartId)}"]`)
+      if (anchorEl) {
+        // Non-virtual transcript: the card is already mounted, so the browser
+        // can place it directly. 'start' matches the virtual path's anchoring
+        // rather than centring, so both presentations land the same way.
+        anchorEl.scrollIntoView({ block: 'start' })
+        rInfo('conversation.chart', 'jumped to chart (mounted row)', {
+          tab_id: tabId.slice(0, 8), chart_id: chartId,
+        })
+        return
+      }
+      rWarn('conversation.chart', 'chart jump target not found', {
+        tab_id: tabId.slice(0, 8), chart_id: chartId, message_id: messageId.slice(0, 12),
+      })
+    })
+  }, [tabId, beginNavigation, scrollRef, chartTimelinesRef])
+
   const handleRetry = useCallback(() => {
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
     if (lastUserMsg) submit(tabId, lastUserMsg.content)
@@ -158,6 +218,9 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   // TranscriptRows, so a streaming chunk re-renders only the affected row;
   // the rest of the transcript (and its markdown parses) are skipped.
   const visibleMessages = useMemo(() => suppressUserImageEchoes(messages), [messages])
+  // Kept current for the chart-jump handler; the transcript derives its own
+  // copy for rendering, and both read the same pure function.
+  chartTimelinesRef.current = useMemo(() => deriveChartTimelines(visibleMessages), [visibleMessages])
   const grouped = useMemo(() => groupMessages(visibleMessages, { includeUser: true, unifiedTurnView }), [visibleMessages, unifiedTurnView])
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(visibleMessages), [visibleMessages])
 
@@ -304,7 +367,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
             {messages.length === 0 && !isRunning && <EmptyState />}
 
             {/* Grouped conversation messages via shared TranscriptRows */}
-            <TranscriptRows grouped={grouped} actions={renderActions} scrollRef={scrollRef} forceFullRender={searchState.active} tabId={tabId} activeBackgroundTasks={activeBackgroundTasks} virtualMessageJumpRef={virtualMessageJumpRef} />
+            <TranscriptRows grouped={grouped} actions={renderActions} scrollRef={scrollRef} forceFullRender={searchState.active} tabId={tabId} activeBackgroundTasks={activeBackgroundTasks} virtualMessageJumpRef={virtualMessageJumpRef} messages={visibleMessages} />
 
             {!isRunning && messages.length > 0 && lastResult && (
               <RunDurationFooter durationMs={lastResult.durationMs} reason={lastResult.reason} />

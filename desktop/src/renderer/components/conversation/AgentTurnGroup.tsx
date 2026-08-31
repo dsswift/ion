@@ -11,7 +11,8 @@ import {
 import { useColors } from "../../theme";
 import { usePreferencesStore } from "../../preferences";
 import { ToolGroup } from "./ToolGroup";
-import { ToolImagesStrip } from "./ToolImagesStrip";
+import { ToolVisualOutputs } from "./ToolVisualOutputs";
+import type { ChartRenderIndex } from "./chart-revisions";
 import { AssistantMessage } from "./AssistantMessage";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { CopyButton } from "./CopyButton";
@@ -36,6 +37,9 @@ interface AgentTurnGroupProps {
   skipMotion?: boolean;
   tabId?: string;
   activeBackgroundTasks?: BackgroundTaskState[];
+  /** Full conversation list; chart revision state is derived from it. */
+  /** Per-row chart render state, derived once by the transcript. */
+  chartRenders?: ChartRenderIndex;
 }
 
 export const AgentTurnGroup = React.memo(function AgentTurnGroup({
@@ -46,6 +50,7 @@ export const AgentTurnGroup = React.memo(function AgentTurnGroup({
   skipMotion,
   tabId,
   activeBackgroundTasks = [],
+  chartRenders,
 }: AgentTurnGroupProps) {
   const colors = useColors();
   const _expandToolResults = usePreferencesStore((s) => s.expandToolResults);
@@ -178,13 +183,17 @@ export const AgentTurnGroup = React.memo(function AgentTurnGroup({
       {/* Collapsible activity panel — rendered below assistant text */}
       {activityHeader}
 
-      {/* Tool images: always visible, hoisted OUT of the collapsible tool
-          panel below. A tool-generated image (icon, logo, screenshot, diagram)
-          is a visual deliverable, not collapsible tool text, so it must paint
-          whether or not the user expands "Used N tools". Without this the
-          #224 conversation's 20 images stayed buried behind the collapsed
-          panel and never rendered. See ToolImagesStrip. */}
-      <ToolImagesStrip tools={tools} />
+      {/* Visual deliverables: always visible, hoisted OUT of the collapsible
+          tool panel below. A tool-generated image (icon, logo, screenshot,
+          diagram) or a Chart Output is the answer itself, not collapsible tool
+          text, so it must paint whether or not the user expands "Used N
+          tools". Without this the #224 conversation's 20 images stayed buried
+          behind the collapsed panel and never rendered.
+
+          This turn container is the sole OWNER for its rows: the embedded
+          ToolGroup below receives owned={false}, which is what stops every
+          deliverable rendering twice once the panel is expanded. */}
+      <ToolVisualOutputs tools={tools} chartRenders={chartRenders} tabId={tabId} />
 
       <AnimatePresence initial={false}>
         {expanded && (
@@ -200,7 +209,7 @@ export const AgentTurnGroup = React.memo(function AgentTurnGroup({
               className="ml-1 pl-3 mb-1"
               style={{ borderLeft: `1px solid ${colors.timelineLine}` }}
             >
-              <ToolGroup tools={tools} skipMotion embedded />
+              <ToolGroup tools={tools} skipMotion embedded chartRenders={chartRenders} tabId={tabId} />
             </div>
           </motion.div>
         )}
