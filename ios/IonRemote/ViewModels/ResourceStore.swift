@@ -146,10 +146,9 @@ final class ResourceStore {
 
     /// Replace the entire collection for a kind (snapshot semantics).
     ///
-    /// The desktop snapshot is authoritative for both items and read state.
-    /// Items are replaced entirely; read state for items in this kind is
-    /// replaced from the snapshot's `read` flags. Read IDs for other kinds
-    /// are preserved so cross-kind state isn't lost.
+    /// The desktop snapshot is authoritative for the item collection. Read state
+    /// is monotonic across clients: a snapshot can add a read identity, but it
+    /// cannot make an item unread after any client has read it.
     func applySnapshot(kind: String, rawItems: [[String: AnyCodable]], producers: [String]? = nil, complete: Bool = true) {
         let parsed = rawItems.map { ResourceItem(from: $0) }
         let globalCount = parsed.filter { $0.conversationId == nil || $0.conversationId?.isEmpty == true }.count
@@ -214,23 +213,18 @@ final class ResourceStore {
             "retained": String(retained.count),
             "final": String(deduped.count)
         ])
-        // Snapshot read state is authoritative only for producers covered by
-        // this snapshot. Preserve read state owned by retained producers.
-        let affectedItems = covered.map { coveredSet in
-            deduped.filter { !$0.producer.isEmpty && coveredSet.contains($0.producer) }
-        } ?? deduped
-        let kindItemIds = Set(affectedItems.map(\.compositeId))
-        let legacyReadIds = Set(affectedItems.compactMap { item in
-            item.producer.isEmpty || !readIds.contains(item.id) ? nil : item.id
+        // Read state is monotonic across clients. A desktop snapshot can add
+        // identities read elsewhere, but an unread producer record cannot undo
+        // a read already persisted or observed by this client.
+        let legacyReadIds = Set(deduped.compactMap { item in
+            !item.producer.isEmpty && readIds.contains(item.id) ? item.id : nil
         })
-        let finalReadById = Dictionary(
-            parsed.map { ($0.compositeId, $0.read) },
-            uniquingKeysWith: { _, new in new }
-        )
-        let snapshotReadIds = Set(affectedItems.compactMap { item in
-            finalReadById[item.compositeId] == true || legacyReadIds.contains(item.id) ? item.compositeId : nil
+        let snapshotReadIds = Set(deduped.compactMap { item in
+            item.read || legacyReadIds.contains(item.id) ? item.compositeId : nil
         })
-        readIds = readIds.filter { !kindItemIds.contains($0) && !legacyReadIds.contains($0) }.union(snapshotReadIds)
+        readIds.formUnion(snapshotReadIds)
+        let producerlessIds = Set(deduped.filter(\.producer.isEmpty).map(\.id))
+        readIds.subtract(legacyReadIds.subtracting(producerlessIds))
         saveItems()
         saveReadIds()
     }

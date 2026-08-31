@@ -103,6 +103,25 @@ final class ResourceStoreDeltaTests: XCTestCase {
         XCTAssertFalse(store.readIds.contains("a"))
     }
 
+    func testSnapshotPreservesReadIdentityWhenLaterSnapshotSaysUnread() {
+        let store = makeStore()
+        store.wipe()
+        store.applySnapshot(kind: "briefing", rawItems: [
+            makeRawItem(id: "read-on-device", producer: "producer-a", read: true),
+        ])
+        store.applySnapshot(
+            kind: "briefing",
+            rawItems: [makeRawItem(id: "read-on-device", producer: "producer-a", read: false)],
+            producers: ["producer-a"],
+            complete: false
+        )
+
+        XCTAssertTrue(store.readIds.contains(ResourceItem.compositeId(
+            kind: "briefing", producer: "producer-a", id: "read-on-device"
+        )))
+        XCTAssertFalse(store.readIds.contains("read-on-device"))
+    }
+
     func testSnapshotPreservesOrderAfterDedup() {
         let store = makeStore()
         store.wipe()
