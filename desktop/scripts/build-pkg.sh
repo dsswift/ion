@@ -24,11 +24,9 @@
 #   (or the full make desktop, though that also installs+relaunches).
 #
 # Signing/notarization: the .app is already signed by electron-builder's mac
-# pipeline (hardenedRuntime + entitlements). pkgbuild here produces an
-# unsigned installer wrapper; to distribute via MDM, sign it with:
-#     productsign --sign "Developer ID Installer: <team>" in.pkg out.pkg
-# and notarize with `xcrun notarytool submit`. Signing identity selection is
-# the operator's gitops (out of scope for this script).
+# pipeline (hardenedRuntime + entitlements). This script produces the unsigned
+# installer input. Release CI must pass it through sign-release-pkg.sh before
+# upload. Local builds remain unsigned and are for development only.
 #
 # Sanity check after building (documented, not run here — it can prompt):
 #     installer -pkg release/Ion-<version>.pkg -target / -dumplog -verbose

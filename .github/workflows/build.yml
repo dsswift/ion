@@ -373,18 +373,15 @@ jobs:
           rm -f "$APP_CERT_FILE"
 
           # Developer ID Installer cert — signs the .pkg (productsign). This is a
-          # DISTINCT cert type from the Application cert above. Optional: when the
-          # secret is absent the .pkg is built unsigned and the packaging step
-          # warns (it is not usable for MDM push until the secret is added).
-          if [ -n "$APPLE_INSTALLER_CERT_BASE64" ]; then
-            INST_CERT_FILE=$(mktemp /tmp/instcert.XXXXXX.p12)
-            echo "$APPLE_INSTALLER_CERT_BASE64" | base64 --decode > "$INST_CERT_FILE"
-            security import "$INST_CERT_FILE" -k "$KEYCHAIN" -P "$APPLE_INSTALLER_CERT_PASSWORD" \
-              -T /usr/bin/productsign -T /usr/bin/security
-            rm -f "$INST_CERT_FILE"
-          else
-            echo "APPLE_INSTALLER_CERT_BASE64 not set — .pkg will be built unsigned"
-          fi
+          # DISTINCT cert type from the Application cert above. A release package
+          # must never be uploaded without this certificate.
+          [ -n "$APPLE_INSTALLER_CERT_BASE64" ] || { echo "ERROR: APPLE_INSTALLER_CERT_BASE64 is required"; exit 1; }
+          [ -n "$APPLE_INSTALLER_CERT_PASSWORD" ] || { echo "ERROR: APPLE_INSTALLER_CERT_PASSWORD is required"; exit 1; }
+          INST_CERT_FILE=$(mktemp /tmp/instcert.XXXXXX.p12)
+          echo "$APPLE_INSTALLER_CERT_BASE64" | base64 --decode > "$INST_CERT_FILE"
+          security import "$INST_CERT_FILE" -k "$KEYCHAIN" -P "$APPLE_INSTALLER_CERT_PASSWORD" \
+            -T /usr/bin/productsign -T /usr/bin/security
+          rm -f "$INST_CERT_FILE"
 
           security set-key-partition-list -S apple-tool:,apple:,codesign:,productsign: \
             -s -k "$KEYCHAIN_PASS" "$KEYCHAIN"
@@ -397,7 +394,8 @@ jobs:
           # string). find-identity with no policy filter lists both.
           IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/' | sed 's/^Developer ID Application: //')
           echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
-          INSTALLER_IDENTITY=$(security find-identity -v "$KEYCHAIN" | grep "Developer ID Installer" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          INSTALLER_IDENTITY=$(security find-identity -v "$KEYCHAIN" | grep "Developer ID Installer" | head -1 | sed 's/.*"\(.*\)".*/\1/' || true)
+          [ -n "$INSTALLER_IDENTITY" ] || { echo "ERROR: imported certificate has no Developer ID Installer identity"; exit 1; }
           echo "APPLE_INSTALLER_IDENTITY=$INSTALLER_IDENTITY" >> "$GITHUB_ENV"
 
       - name: Build and package
@@ -429,29 +427,7 @@ jobs:
           done
           [ -n "$PKG" ] || { echo "ERROR: no .pkg produced by build-pkg.sh"; exit 1; }
 
-          if [ -n "$APPLE_INSTALLER_IDENTITY" ]; then
-            SIGNED="${PKG%.pkg}-signed.pkg"
-            productsign --sign "$APPLE_INSTALLER_IDENTITY" "$PKG" "$SIGNED"
-            mv -f "$SIGNED" "$PKG"
-            echo "signed pkg with: $APPLE_INSTALLER_IDENTITY"
-
-            # Notarize + staple the installer (reuses the app-notarization creds).
-            # The enclosed .app is already notarized by the notarize.js afterSign
-            # hook; this notarizes the installer wrapper itself.
-            if [ -n "$APPLE_API_KEY" ] && [ -n "$APPLE_API_KEY_ID" ] && [ -n "$APPLE_API_ISSUER" ]; then
-              KEYFILE=$(mktemp /tmp/apikey.XXXXXX.p8)
-              echo "$APPLE_API_KEY" | base64 --decode > "$KEYFILE"
-              xcrun notarytool submit "$PKG" --key "$KEYFILE" --key-id "$APPLE_API_KEY_ID" \
-                --issuer "$APPLE_API_ISSUER" --wait --timeout 15m
-              xcrun stapler staple "$PKG"
-              rm -f "$KEYFILE"
-              echo "notarized + stapled: $PKG"
-            else
-              echo "APPLE_API_* not set — pkg signed but NOT notarized"
-            fi
-          else
-            echo "APPLE_INSTALLER_IDENTITY not set — pkg is UNSIGNED (not usable for MDM push until APPLE_INSTALLER_CERT_BASE64 is added)"
-          fi
+          bash scripts/sign-release-pkg.sh "$PKG"
 
           APP="release/mac-universal/Ion.app"
           [ -d "$APP" ] || { echo "ERROR: no universal Ion.app produced"; exit 1; }

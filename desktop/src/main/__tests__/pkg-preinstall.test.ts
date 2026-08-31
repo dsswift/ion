@@ -3,15 +3,19 @@
 // `make desktop` coordinates the graceful quit outside Installer; manual and
 // MDM package installs remain safe when they start while Ion is live.
 import { describe, it, expect } from 'vitest'
-import { readFileSync, statSync, constants } from 'node:fs'
+import { readFileSync, statSync, constants, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { accessSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { spawnSync } from 'node:child_process'
 
 // __dirname is src/main/__tests__; the scripts dir is at the desktop root.
 const scriptsDir = join(__dirname, '..', '..', '..', 'scripts')
 const preinstallPath = join(scriptsDir, 'pkg-scripts', 'preinstall')
 const postinstallPath = join(scriptsDir, 'pkg-scripts', 'postinstall')
 const buildPkgPath = join(scriptsDir, 'build-pkg.sh')
+const signReleasePkgPath = join(scriptsDir, 'sign-release-pkg.sh')
+const workflowPath = join(__dirname, '..', '..', '..', '..', '.github', 'workflows', 'build.yml')
 
 describe('pkg preinstall script', () => {
   it('exists', () => {
@@ -52,6 +56,43 @@ describe('pkg postinstall script', () => {
     expect(body).toContain('Do not let the launched app')
     expect(body).toContain('no graphical user is active; leaving Ion closed')
     expect(body).toContain('exit 0')
+  })
+})
+
+describe('release package trust checks', () => {
+  it('refuses to sign a release package without an Installer identity', () => {
+    const temporaryPath = mkdtempSync(join(tmpdir(), 'ion-release-signing-'))
+    const packagePath = join(temporaryPath, 'Ion.pkg')
+    writeFileSync(packagePath, '')
+
+    try {
+      const result = spawnSync('bash', [signReleasePkgPath, packagePath], {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH ?? '' },
+      })
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toContain('APPLE_INSTALLER_IDENTITY is required')
+    } finally {
+      rmSync(temporaryPath, { recursive: true, force: true })
+    }
+  })
+
+  it('makes signing, notarization, and Gatekeeper acceptance release blockers', () => {
+    const workflow = readFileSync(workflowPath, 'utf8')
+    const signer = readFileSync(signReleasePkgPath, 'utf8')
+
+    expect(workflow).toContain('ERROR: APPLE_INSTALLER_CERT_BASE64 is required')
+    expect(workflow).toContain('ERROR: APPLE_INSTALLER_CERT_PASSWORD is required')
+    expect(workflow).toContain('ERROR: imported certificate has no Developer ID Installer identity')
+    expect(workflow).toContain('bash scripts/sign-release-pkg.sh "$PKG"')
+    expect(workflow).not.toContain('.pkg will be built unsigned')
+    expect(workflow).not.toContain('pkg is UNSIGNED')
+
+    expect(signer).toContain('productsign --sign "$APPLE_INSTALLER_IDENTITY"')
+    expect(signer).toContain('xcrun notarytool submit "$PKG_PATH"')
+    expect(signer).toContain('xcrun stapler validate "$PKG_PATH"')
+    expect(signer).toContain('pkgutil --check-signature "$PKG_PATH"')
+    expect(signer).toContain('spctl -a -vvv -t install "$PKG_PATH"')
   })
 })
 
