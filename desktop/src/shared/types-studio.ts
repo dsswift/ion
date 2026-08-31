@@ -120,6 +120,9 @@ export interface StudioUserMessageEcho {
 export interface StudioHistoryReplace {
   tabId: string;
   instanceId: string | null;
+  /** A fork may deliver history before the owner tab snapshot. When present,
+   * the mirror queues this payload until that tab and pane arrive. */
+  queueUntilTabExists?: boolean;
   messages: Array<{
     id: string;
     role: string;

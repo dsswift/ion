@@ -43,6 +43,7 @@ type ClientCommand struct {
 	Prefix             string   `json:"prefix,omitempty"`
 	MessageIndex       *int     `json:"messageIndex,omitempty"`
 	UserTurnIndex      *int     `json:"userTurnIndex,omitempty"`
+	NewKey             string   `json:"newKey,omitempty"`
 	Enabled            *bool    `json:"enabled,omitempty"`
 	AllowedTools       []string `json:"allowedTools,omitempty"`
 	EntryID            string   `json:"entryId,omitempty"`

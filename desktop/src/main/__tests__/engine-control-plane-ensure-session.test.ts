@@ -21,6 +21,7 @@ vi.mock('electron', () => ({
 
 const mockBridge = {
   startSession: vi.fn().mockResolvedValue({ ok: true }),
+  forkSession: vi.fn().mockResolvedValue({ ok: true, newKey: 'fork-tab', conversationId: 'fork-conversation' }),
   // The real bridge retains the last EngineConfig per session key; submitPrompt's
   // cwd reconciler reads it to decide whether the prompt's directory diverges
   // from the started one. Undefined here means "no recorded config", which the
@@ -84,8 +85,55 @@ describe('EngineControlPlane.ensureSession', () => {
     vi.clearAllMocks()
     uuidCounter = 0
     mockBridge.startSession.mockResolvedValue({ ok: true })
+    mockBridge.forkSession.mockResolvedValue({ ok: true, newKey: 'fork-tab', conversationId: 'fork-conversation' })
     mockBridge.sendPrompt.mockResolvedValue({ ok: true })
     cp = new EngineControlPlane(new (EngineBridge as any)())
+  })
+
+  it('adopts the durable engine identity for a forked tab before first prompt', async () => {
+    const sourceTabId = cp.createTab()
+    const forkTabId = cp.createTab()
+    mockBridge.startSession.mockResolvedValueOnce({ ok: true, conversationId: 'source-conversation' })
+    await cp.ensureSession(sourceTabId, { workingDirectory: '/w' })
+
+    const result = await cp.forkSession(sourceTabId, forkTabId, { messageIndex: 7 })
+
+    expect(result).toEqual({ ok: true, conversationId: 'fork-conversation' })
+    expect(mockBridge.forkSession).toHaveBeenCalledWith(sourceTabId, forkTabId, { messageIndex: 7 })
+    expect(cp.getTabStatus(forkTabId)).toMatchObject({
+      conversationId: 'fork-conversation',
+      engineSessionStarted: true,
+      resumedSavedConversation: false,
+    })
+    expect(mockBridge.updateSessionConversationId).toHaveBeenCalledWith(forkTabId, 'fork-conversation')
+  })
+
+  it('does not publish a fork identity when the engine rejects the operation', async () => {
+    const sourceTabId = cp.createTab()
+    const forkTabId = cp.createTab()
+    mockBridge.startSession.mockResolvedValueOnce({ ok: true, conversationId: 'source-conversation' })
+    await cp.ensureSession(sourceTabId, { workingDirectory: '/w' })
+    mockBridge.forkSession.mockResolvedValueOnce({ ok: false, error: 'fork failed' })
+
+    const result = await cp.forkSession(sourceTabId, forkTabId, { messageIndex: 1 })
+
+    expect(result).toEqual({ ok: false, error: 'fork failed' })
+    expect(cp.getTabStatus(forkTabId)?.conversationId).toBeNull()
+    expect(cp.getTabStatus(forkTabId)?.engineSessionStarted).toBe(false)
+  })
+
+  it('does not publish a fork identity when the engine omits conversationId', async () => {
+    const sourceTabId = cp.createTab()
+    const forkTabId = cp.createTab()
+    mockBridge.startSession.mockResolvedValueOnce({ ok: true, conversationId: 'source-conversation' })
+    await cp.ensureSession(sourceTabId, { workingDirectory: '/w' })
+    mockBridge.forkSession.mockResolvedValueOnce({ ok: true, newKey: forkTabId })
+
+    const result = await cp.forkSession(sourceTabId, forkTabId, { messageIndex: 1 })
+
+    expect(result).toEqual({ ok: false, error: 'Fork did not return a conversation ID' })
+    expect(cp.getTabStatus(forkTabId)?.conversationId).toBeNull()
+    expect(cp.getTabStatus(forkTabId)?.engineSessionStarted).toBe(false)
   })
 
   it('starts the session injecting the conversationId as sessionId', async () => {

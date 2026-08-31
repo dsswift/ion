@@ -307,6 +307,9 @@ describe('forkFromMessage — attachment restaging', () => {
     ;(globalThis as any).window = {
       ion: {
         createTab: vi.fn(async () => ({ tabId: 'tab2' })),
+        engineFork: vi.fn(async () => ({ ok: true, newKey: 'tab2', conversationId: 'conv-2' })),
+        engineBroadcastHistory: vi.fn(async () => undefined),
+        reconcileCharts: vi.fn(),
         setPermissionMode: vi.fn(),
       },
     }

@@ -105,6 +105,32 @@ export async function loadChainHistory(bridge: EngineBridge, sessionIds: string[
   return result.data || []
 }
 
+export async function forkSession(
+  bridge: EngineBridge,
+  key: string,
+  newKey: string,
+  target: { messageIndex: number; entryId?: string; userTurnIndex?: number },
+): Promise<{ ok: boolean; error?: string; newKey?: string; conversationId?: string }> {
+  await bridge.connect()
+  const messageIndex = target.messageIndex
+  log('fork_session', {
+    key,
+    new_key: newKey,
+    entry_id: target.entryId ?? '',
+    user_turn_index: target.userTurnIndex ?? -1,
+    message_index: messageIndex,
+  })
+  const result = await bridge._sendWithData<{ newKey?: string; conversationId?: string }>({
+    cmd: 'fork_session',
+    key,
+    newKey,
+    messageIndex,
+    ...(target.entryId ? { entryId: target.entryId } : {}),
+    ...(typeof target.userTurnIndex === 'number' ? { userTurnIndex: target.userTurnIndex } : {}),
+  })
+  return { ok: result.ok, error: result.error, newKey: result.data?.newKey, conversationId: result.data?.conversationId }
+}
+
 export async function branchSessionBefore(bridge: EngineBridge, key: string, entryId: string): Promise<void> {
   // Tree-native rewind: the engine moves the conversation leaf to the PARENT of
   // the given entry, so the next prompt replaces that entry on the active path

@@ -244,12 +244,7 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		}
 
 	case "fork_session":
-		idx := 0
-		if cmd.MessageIndex != nil {
-			idx = *cmd.MessageIndex
-		}
-		newKey, err := s.manager.ForkSession(cmd.Key, idx)
-		s.sendForkResult(conn, cmd, err, newKey)
+		s.dispatchForkSession(conn, cmd)
 
 	case "set_plan_mode":
 		enabled := cmd.Enabled != nil && *cmd.Enabled

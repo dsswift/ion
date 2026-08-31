@@ -188,11 +188,14 @@ func TestForkConversationV2(t *testing.T) {
 	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "r2"}}, types.LlmUsage{InputTokens: 1, OutputTokens: 1})
 
 	result := ForkConversation(conv, 1)
-	if result != conv {
-		t.Error("v2 fork should return same conversation")
+	if result == conv {
+		t.Error("v2 fork must return an independent conversation")
 	}
-	if len(conv.Messages) != 2 {
-		t.Errorf("expected 2 messages after fork at index 1, got %d", len(conv.Messages))
+	if len(result.Messages) != 2 {
+		t.Errorf("expected 2 messages in fork at index 1, got %d", len(result.Messages))
+	}
+	if len(conv.Messages) != 4 {
+		t.Errorf("source conversation was mutated: got %d messages", len(conv.Messages))
 	}
 }
 
@@ -415,11 +418,23 @@ func TestForkConversation_V2_PreservesEntries(t *testing.T) {
 	}
 
 	entriesBefore := len(conv.Entries)
-	ForkConversation(conv, 3)
+	forked := ForkConversation(conv, 3)
 
-	// All entries preserved (append-only tree)
+	// The source remains complete and the fork gets its own copied path.
 	if len(conv.Entries) != entriesBefore {
-		t.Fatalf("expected %d entries preserved, got %d", entriesBefore, len(conv.Entries))
+		t.Fatalf("expected %d source entries preserved, got %d", entriesBefore, len(conv.Entries))
+	}
+	if forked == conv {
+		t.Fatal("fork must be an independent conversation")
+	}
+	if forked.ID == conv.ID {
+		t.Fatal("fork must have a distinct conversation ID")
+	}
+	if forked.ParentID != conv.ID {
+		t.Fatalf("fork parent = %q, want %q", forked.ParentID, conv.ID)
+	}
+	if len(forked.Entries) != 4 {
+		t.Fatalf("expected 4 entries in fork, got %d", len(forked.Entries))
 	}
 }
 
@@ -430,9 +445,12 @@ func TestForkConversation_V2_AtIndex0(t *testing.T) {
 		AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: fmt.Sprintf("reply %d", i)}}, types.LlmUsage{InputTokens: 1, OutputTokens: 1})
 	}
 
-	ForkConversation(conv, 0)
-	if len(conv.Messages) != 1 {
-		t.Fatalf("expected 1 message after fork at 0, got %d", len(conv.Messages))
+	forked := ForkConversation(conv, 0)
+	if len(forked.Messages) != 1 {
+		t.Fatalf("expected 1 message in fork at 0, got %d", len(forked.Messages))
+	}
+	if len(conv.Messages) != 6 {
+		t.Fatalf("source conversation was mutated, got %d messages", len(conv.Messages))
 	}
 }
 
@@ -442,13 +460,13 @@ func TestForkConversation_V2_PreservesSystemAndModel(t *testing.T) {
 	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "ok"}}, types.LlmUsage{InputTokens: 1, OutputTokens: 1})
 	AddUserMessage(conv, "more")
 
-	ForkConversation(conv, 1)
+	forked := ForkConversation(conv, 1)
 
-	if conv.System != "be helpful" {
-		t.Errorf("System = %q", conv.System)
+	if forked.System != "be helpful" {
+		t.Errorf("System = %q", forked.System)
 	}
-	if conv.Model != "claude-opus-4-20250514" {
-		t.Errorf("Model = %q", conv.Model)
+	if forked.Model != "claude-opus-4-20250514" {
+		t.Errorf("Model = %q", forked.Model)
 	}
 }
 
@@ -460,16 +478,58 @@ func TestForkConversation_V2_NewMessagesCreateSibling(t *testing.T) {
 	}
 
 	entriesBefore := len(conv.Entries)
-	ForkConversation(conv, 1) // Branch at message index 1
+	forked := ForkConversation(conv, 1)
 
-	// Add new message creating sibling branch
-	AddUserMessage(conv, "branched message")
-	if len(conv.Entries) != entriesBefore+1 {
-		t.Fatalf("expected %d entries after adding branch msg, got %d", entriesBefore+1, len(conv.Entries))
+	// Each conversation can now advance without changing the other.
+	AddUserMessage(forked, "branched message")
+	if len(forked.Entries) != 3 {
+		t.Fatalf("expected 3 fork entries after append, got %d", len(forked.Entries))
+	}
+	if len(conv.Entries) != entriesBefore {
+		t.Fatalf("source changed from %d to %d entries", entriesBefore, len(conv.Entries))
 	}
 }
 
-// --- DiscoverContextFiles ---
+func TestForkConversationBefore_ExactUserTurn(t *testing.T) {
+	conv := CreateConversation("fork-before", "system", "test-model")
+	AddUserMessage(conv, "first")
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "answer"}}, types.LlmUsage{})
+	target := AddUserMessage(conv, "second")
+	sourceEntries := len(conv.Entries)
+
+	forked, err := ForkConversationBefore(conv, target.ID)
+	if err != nil {
+		t.Fatalf("ForkConversationBefore: %v", err)
+	}
+	if len(forked.Messages) != 2 || len(forked.Entries) != 2 {
+		t.Fatalf("fork prefix = (%d messages, %d entries), want (2, 2)", len(forked.Messages), len(forked.Entries))
+	}
+	if len(conv.Entries) != sourceEntries || len(conv.Messages) != 3 {
+		t.Fatalf("source mutated = (%d messages, %d entries)", len(conv.Messages), len(conv.Entries))
+	}
+	AddUserMessage(forked, "replacement")
+	if len(conv.Entries) != sourceEntries {
+		t.Fatal("advancing fork mutated source entries")
+	}
+}
+
+func TestForkConversationBefore_RejectsInvalidTarget(t *testing.T) {
+	conv := CreateConversation("fork-before-invalid", "", "test-model")
+	root := AddUserMessage(conv, "first")
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "answer"}}, types.LlmUsage{})
+	foreignUser := AddUserMessage(conv, "foreign branch")
+	if _, err := Branch(conv, root.ID); err != nil {
+		t.Fatalf("Branch: %v", err)
+	}
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "current assistant"}}, types.LlmUsage{})
+	currentAssistantID := conv.Entries[len(conv.Entries)-1].ID
+
+	for _, entryID := range []string{"missing-entry", foreignUser.ID, currentAssistantID} {
+		if _, err := ForkConversationBefore(conv, entryID); err == nil {
+			t.Fatalf("target %q unexpectedly accepted", entryID)
+		}
+	}
+}
 
 func TestSaveLoadJSONL_PreservesMetadata(t *testing.T) {
 	dir := t.TempDir()

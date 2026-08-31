@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -163,9 +164,199 @@ func TestForkSession_NoConversation(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// BranchSession tests (unit-level)
-// ---------------------------------------------------------------------------
+func TestForkSessionToKey_CreatesIndependentDurableConversation(t *testing.T) {
+	mgr := NewManager(newMockBackend())
+	const sourceKey = "fork-source"
+	if _, err := mgr.StartSession(sourceKey, defaultConfig()); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	mgr.mu.RLock()
+	sourceID := mgr.sessions[sourceKey].conversationID
+	mgr.mu.RUnlock()
+
+	source := conversation.CreateConversation(sourceID, "system", "test-model")
+	conversation.AddUserMessage(source, "first")
+	conversation.AddAssistantMessage(source, []types.LlmContentBlock{{Type: "text", Text: "answer"}}, types.LlmUsage{})
+	conversation.AddUserMessage(source, "second")
+	if err := conversation.Save(source, ""); err != nil {
+		t.Fatalf("save source: %v", err)
+	}
+
+	newKey, forkID, err := mgr.ForkSessionToKey(sourceKey, "fork-target", 1)
+	if err != nil {
+		t.Fatalf("ForkSessionToKey: %v", err)
+	}
+	if newKey != "fork-target" || forkID == "" || forkID == sourceID {
+		t.Fatalf("fork identity = (%q, %q), source = %q", newKey, forkID, sourceID)
+	}
+	forked, err := conversation.Load(forkID, "")
+	if err != nil {
+		t.Fatalf("load fork: %v", err)
+	}
+	if len(forked.Messages) != 2 {
+		t.Fatalf("fork messages = %d, want 2", len(forked.Messages))
+	}
+	loadedSource, err := conversation.Load(sourceID, "")
+	if err != nil {
+		t.Fatalf("reload source: %v", err)
+	}
+	if len(loadedSource.Messages) != 3 {
+		t.Fatalf("source messages = %d, want 3", len(loadedSource.Messages))
+	}
+	mgr.mu.RLock()
+	created := mgr.sessions[newKey]
+	mgr.mu.RUnlock()
+	if created == nil || created.conversationID != forkID {
+		t.Fatalf("forked live session missing or bound to wrong conversation")
+	}
+}
+
+func TestForkSessionBeforeUserTurn_ExactAndOrdinalTargets(t *testing.T) {
+	mgr := NewManager(newMockBackend())
+	defer mgr.Shutdown()
+	if _, err := mgr.StartSession("fork-before-source", defaultConfig()); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	mgr.mu.RLock()
+	sourceID := mgr.sessions["fork-before-source"].conversationID
+	mgr.mu.RUnlock()
+	source := conversation.CreateConversation(sourceID, "system", "test-model")
+	conversation.AddUserMessage(source, "first")
+	conversation.AddAssistantMessage(source, []types.LlmContentBlock{{Type: "text", Text: "answer"}}, types.LlmUsage{})
+	target := conversation.AddUserMessage(source, "second")
+	if err := conversation.Save(source, ""); err != nil {
+		t.Fatalf("save source: %v", err)
+	}
+
+	for _, test := range []struct {
+		name    string
+		key     string
+		entryID string
+		ordinal int
+	}{
+		{name: "exact", key: "fork-before-exact", entryID: target.ID, ordinal: 99},
+		{name: "ordinal", key: "fork-before-ordinal", ordinal: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, forkID, err := mgr.ForkSessionBeforeUserTurn("fork-before-source", test.key, test.entryID, test.ordinal)
+			if err != nil {
+				t.Fatalf("ForkSessionBeforeUserTurn: %v", err)
+			}
+			forked, err := conversation.Load(forkID, "")
+			if err != nil {
+				t.Fatalf("load fork: %v", err)
+			}
+			if len(forked.Messages) != 2 {
+				t.Fatalf("fork messages = %d, want 2", len(forked.Messages))
+			}
+		})
+	}
+}
+
+func TestForkSessionBeforeUserTurn_RejectsInvalidTargetWithoutArtifacts(t *testing.T) {
+	mgr := NewManager(newMockBackend())
+	defer mgr.Shutdown()
+	if _, err := mgr.StartSession("fork-invalid-source", defaultConfig()); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	mgr.mu.RLock()
+	sourceID := mgr.sessions["fork-invalid-source"].conversationID
+	mgr.mu.RUnlock()
+	source := conversation.CreateConversation(sourceID, "system", "test-model")
+	conversation.AddUserMessage(source, "first")
+	conversation.AddAssistantMessage(source, []types.LlmContentBlock{{Type: "text", Text: "answer"}}, types.LlmUsage{})
+	assistantID := source.Entries[1].ID
+	if err := conversation.Save(source, ""); err != nil {
+		t.Fatalf("save source: %v", err)
+	}
+	before, err := conversation.ListStored("", 100000)
+	if err != nil {
+		t.Fatalf("list before: %v", err)
+	}
+
+	for i, entryID := range []string{"stale-entry", assistantID} {
+		key := fmt.Sprintf("fork-invalid-%d", i)
+		if _, _, err := mgr.ForkSessionBeforeUserTurn("fork-invalid-source", key, entryID, 0); err == nil {
+			t.Fatalf("target %q unexpectedly accepted", entryID)
+		}
+		mgr.mu.RLock()
+		_, exists := mgr.sessions[key]
+		_, reserved := mgr.forkReservations[key]
+		mgr.mu.RUnlock()
+		if exists || reserved {
+			t.Fatalf("rejected target retained session=%t reservation=%t", exists, reserved)
+		}
+	}
+	after, err := conversation.ListStored("", 100000)
+	if err != nil {
+		t.Fatalf("list after: %v", err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("rejected targets changed stored conversations: before=%d after=%d", len(before), len(after))
+	}
+}
+
+func TestForkSessionToKey_ConcurrentReservationPreventsOrphan(t *testing.T) {
+	mgr := NewManager(newMockBackend())
+	defer mgr.Shutdown()
+	for _, key := range []string{"fork-race-a", "fork-race-b"} {
+		if _, err := mgr.StartSession(key, defaultConfig()); err != nil {
+			t.Fatalf("StartSession(%s): %v", key, err)
+		}
+		mgr.mu.RLock()
+		sourceID := mgr.sessions[key].conversationID
+		mgr.mu.RUnlock()
+		source := conversation.CreateConversation(sourceID, "system", "test-model")
+		conversation.AddUserMessage(source, key)
+		if err := conversation.Save(source, ""); err != nil {
+			t.Fatalf("save source: %v", err)
+		}
+	}
+	before, err := conversation.ListStored("", 100000)
+	if err != nil {
+		t.Fatalf("list before: %v", err)
+	}
+
+	type result struct {
+		id  string
+		err error
+	}
+	start := make(chan struct{})
+	results := make(chan result, 2)
+	for _, sourceKey := range []string{"fork-race-a", "fork-race-b"} {
+		go func(key string) {
+			<-start
+			_, id, err := mgr.ForkSessionToKey(key, "fork-race-target", 0)
+			results <- result{id: id, err: err}
+		}(sourceKey)
+	}
+	close(start)
+	first, second := <-results, <-results
+	successes := 0
+	for _, got := range []result{first, second} {
+		if got.err == nil {
+			successes++
+		} else if !strings.Contains(got.err.Error(), "already exists") {
+			t.Fatalf("losing fork error = %v", got.err)
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("successful forks = %d, want 1", successes)
+	}
+	after, err := conversation.ListStored("", 100000)
+	if err != nil {
+		t.Fatalf("list after: %v", err)
+	}
+	if len(after) != len(before)+1 {
+		t.Fatalf("stored conversations grew by %d, want 1", len(after)-len(before))
+	}
+	mgr.mu.RLock()
+	_, reserved := mgr.forkReservations["fork-race-target"]
+	mgr.mu.RUnlock()
+	if reserved {
+		t.Fatal("successful fork left a reservation behind")
+	}
+}
 
 func TestBranchSession_UnknownSession(t *testing.T) {
 	mb := newMockBackend()

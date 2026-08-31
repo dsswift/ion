@@ -337,6 +337,13 @@ export class EngineBridge extends EventEmitter {
   }
 
   // Tree-native rewind RPCs. Bodies live in engine-bridge-conversations.ts.
+  async forkSession(
+    key: string,
+    newKey: string,
+    target: { messageIndex: number; entryId?: string; userTurnIndex?: number },
+  ): Promise<{ ok: boolean; error?: string; newKey?: string; conversationId?: string }> {
+    return conv.forkSession(this, key, newKey, target);
+  }
   async branchSessionBefore(key: string, entryId: string): Promise<void> {
     return conv.branchSessionBefore(this, key, entryId);
   }

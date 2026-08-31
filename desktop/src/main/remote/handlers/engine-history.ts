@@ -136,7 +136,11 @@ export async function readEngineHistoryFromStore(
  * (no paired iOS device) must still see the rewind converge. Only the iOS
  * send is gated on state.remoteTransport.
  */
-export async function broadcastEngineHistory(tabId: string, instanceId: string | null): Promise<void> {
+export async function broadcastEngineHistory(
+  tabId: string,
+  instanceId: string | null,
+  opts: { queueUntilTabExists?: boolean } = {},
+): Promise<void> {
   if (!state.mainWindow) {
     log('broadcast_engine_history: no main window, skipping', { tab_id: tabId, instance_id: instanceId || '' })
     return
@@ -146,7 +150,7 @@ export async function broadcastEngineHistory(tabId: string, instanceId: string |
     log('broadcast_engine_history', { tab_id: tabId, count: messages.length })
     // Studio mirror: replace the pane instance's messages wholesale,
     // regardless of whether an iOS device is paired.
-    notifyStudioHistoryReplace({ tabId, instanceId: resolvedInstanceId, messages })
+    notifyStudioHistoryReplace({ tabId, instanceId: resolvedInstanceId, messages, ...opts })
     if (!state.remoteTransport) {
       log('broadcast_engine_history: no remote transport, skipping iOS send', { tab_id: tabId, instance_id: instanceId || '' })
       return

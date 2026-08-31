@@ -23,6 +23,9 @@ type ServerResult struct {
 	Data      any    `json:"data,omitempty"`
 	// NewKey is set only for fork_session responses (top-level, not wrapped in data).
 	NewKey string `json:"newKey,omitempty"`
+	// ConversationID identifies the durable independent conversation created by
+	// fork_session. Additive so older consumers that only read newKey still work.
+	ConversationID string `json:"conversationId,omitempty"`
 }
 
 // SessionInfo is one entry in the session list response.

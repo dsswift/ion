@@ -17,10 +17,11 @@ import (
 // Manager orchestrates multiple engine sessions, routing prompts to the
 // backend and forwarding events to connected clients.
 type Manager struct {
-	mu       sync.RWMutex
-	sessions map[string]*engineSession
-	backend  backend.RunBackend
-	config   *types.EngineRuntimeConfig
+	mu               sync.RWMutex
+	sessions         map[string]*engineSession
+	forkReservations map[string]*forkReservation
+	backend          backend.RunBackend
+	config           *types.EngineRuntimeConfig
 
 	// runKeyBindings maps an active run's requestID -> its session key,
 	// independent of engineSession.requestID. It exists because event routing
@@ -181,6 +182,7 @@ const DefaultSessionStatusHeartbeatInterval = 30 * time.Second
 func NewManager(b backend.RunBackend) *Manager {
 	m := &Manager{
 		sessions:          make(map[string]*engineSession),
+		forkReservations:  make(map[string]*forkReservation),
 		runKeyBindings:    make(map[string]string),
 		backend:           b,
 		watchers:          newWatcherPool(),

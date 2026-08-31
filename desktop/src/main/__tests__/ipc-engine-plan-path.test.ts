@@ -34,13 +34,14 @@ vi.mock("electron", () => ({
 const mocks = vi.hoisted(() => ({
   sendSetPlanMode: vi.fn(),
   setPermissionMode: vi.fn(),
+  forkSession: vi.fn(),
 }));
 
 vi.mock("../state", () => ({
   enterprisePolicyCache: { policy: null },
   state: { remoteTransport: null },
   engineBridge: { sendSetPlanMode: mocks.sendSetPlanMode },
-  sessionPlane: { setPermissionMode: mocks.setPermissionMode },
+  sessionPlane: { setPermissionMode: mocks.setPermissionMode, forkSession: mocks.forkSession },
 }));
 
 vi.mock("../logger", () => ({ log: vi.fn() }));
@@ -122,6 +123,21 @@ describe("ipc/engine planFilePath validation", () => {
         undefined,
         undefined,
       );
+    });
+  });
+
+  describe("ENGINE_FORK handler", () => {
+    it("routes the durable fork through the session plane", async () => {
+      const payload = {
+        key: "source-tab", newKey: "fork-tab", messageIndex: 4,
+        entryId: "entry-5", userTurnIndex: 2,
+      };
+      mocks.forkSession.mockResolvedValue({ ok: true, conversationId: "fork-conversation" });
+
+      const result = await handlers.get(IPC.ENGINE_FORK)!(null, payload);
+
+      expect(mocks.forkSession).toHaveBeenCalledWith("source-tab", "fork-tab", payload);
+      expect(result).toEqual({ ok: true, conversationId: "fork-conversation" });
     });
   });
 

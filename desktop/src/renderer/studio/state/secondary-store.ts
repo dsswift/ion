@@ -27,6 +27,7 @@ let worktreeReady = false
 let resolveWorktreeSync: (() => void) | null = null
 
 const pendingUserMessageEchoes = new Map<string, StudioUserMessageEcho[]>()
+const pendingHistoryReplacements = new Map<string, StudioHistoryReplace>()
 let pendingActiveTabId: string | null = null
 
 function hasMirrorTab(tabId: string): boolean {
@@ -152,6 +153,7 @@ export function hydrateTabsFromSync(snapshot: unknown): void {
     tabsReady: true,
   }))
   drainActiveTab()
+  drainHistoryReplacements()
   drainUserMessageEchoes()
   rDebug('studio.mirror', 'tabs hydrated from owner sync', { tab_count: tabs.length })
 }
@@ -305,12 +307,27 @@ export function applyHistoryReplace(payload: StudioHistoryReplace): boolean {
       attachments: m.attachments as Message['attachments'],
     }))
     const instances = pane.instances.slice()
-    instances[idx] = { ...instances[idx], messages, messageCount: messages.length }
+    instances[idx] = {
+      ...instances[idx],
+      messages,
+      messageCount: messages.length,
+      historyHydrated: true,
+      historyHydrationFailed: false,
+    }
     const conversationPanes = new Map(current.conversationPanes)
     conversationPanes.set(payload.tabId, { ...pane, instances })
     return { conversationPanes }
   })
   return true
+}
+
+/** Apply fork history once the owner snapshot has created the mirror pane. */
+function drainHistoryReplacements(): void {
+  for (const [tabId, payload] of pendingHistoryReplacements) {
+    if (!applyHistoryReplace(payload)) continue
+    pendingHistoryReplacements.delete(tabId)
+    rDebug('studio.mirror', 'queued history replacement applied after owner sync', { tab_id: tabId })
+  }
 }
 
 /**
@@ -329,7 +346,12 @@ export function initHistoryReplace(): () => void {
       Array.isArray(payload.messages)
     ) {
       if (!applyHistoryReplace(payload)) {
-        rWarn('studio.mirror', 'history replace arrived before mirror tab existed, dropped', { tab_id: payload.tabId })
+        if (payload.queueUntilTabExists) {
+          pendingHistoryReplacements.set(payload.tabId, payload)
+          rDebug('studio.mirror', 'history replacement queued until owner sync', { tab_id: payload.tabId })
+        } else {
+          rWarn('studio.mirror', 'history replace arrived before mirror tab existed, dropped', { tab_id: payload.tabId })
+        }
       }
     } else {
       rWarn('studio.mirror', 'history replace malformed, ignored', { tab_id: String(payload?.tabId ?? '') })

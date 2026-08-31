@@ -104,7 +104,8 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 	case "command":
 		return hasNonEmptyString(raw, "key") && hasString(raw, "command")
 	case "fork_session":
-		return hasNonEmptyString(raw, "key") && hasNumber(raw, "messageIndex")
+		return hasNonEmptyString(raw, "key") && (hasNumber(raw, "messageIndex") ||
+			(hasNonEmptyString(raw, "newKey") && (hasNonEmptyString(raw, "entryId") || hasNumber(raw, "userTurnIndex"))))
 	case "set_plan_mode":
 		return hasNonEmptyString(raw, "key") && hasBool(raw, "enabled")
 	case "branch":

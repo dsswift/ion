@@ -120,7 +120,11 @@ func TestParseClientCommand_ValidCommands(t *testing.T) {
 			cmd:  "fork_session",
 		},
 		{
-			name: "set_plan_mode enabled",
+			name: "fork_session with caller key and exact turn",
+			line: `{"cmd":"fork_session","key":"s1","newKey":"fork-tab","messageIndex":0,"entryId":"entry-1","userTurnIndex":2}`,
+			cmd:  "fork_session",
+		},
+		{
 			line: `{"cmd":"set_plan_mode","key":"s1","enabled":true}`,
 			cmd:  "set_plan_mode",
 		},
@@ -437,6 +441,20 @@ func TestParseClientCommand_ForkSessionValues(t *testing.T) {
 	}
 	if result.MessageIndex == nil || *result.MessageIndex != 7 {
 		t.Errorf("messageIndex = %v, want 7", result.MessageIndex)
+	}
+}
+
+func TestParseClientCommand_ForkSessionAdditiveFields(t *testing.T) {
+	line := `{"cmd":"fork_session","key":"source","newKey":"fork-tab","messageIndex":3,"entryId":"entry-7","userTurnIndex":2,"requestId":"r3"}`
+	result := ParseClientCommand(line)
+	if result == nil {
+		t.Fatal("expected valid fork_session")
+	}
+	if result.NewKey != "fork-tab" || result.EntryID != "entry-7" {
+		t.Fatalf("fork identity = (%q, %q)", result.NewKey, result.EntryID)
+	}
+	if result.UserTurnIndex == nil || *result.UserTurnIndex != 2 {
+		t.Fatalf("userTurnIndex = %v", result.UserTurnIndex)
 	}
 }
 

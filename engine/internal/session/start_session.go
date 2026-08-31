@@ -28,8 +28,18 @@ type StartSessionResult struct {
 	ConversationID string `json:"conversationId,omitempty"`
 }
 
-// StartSession creates a new session with the given config.
-func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSessionResult, error) {
+// startSession owns the common initialization path. A fork supplies its
+// reservation and inherited state so the target becomes visible atomically and
+// session_start hooks observe the inherited state from their first instruction.
+func (m *Manager) startSession(
+	key string,
+	config types.EngineConfig,
+	reservation *forkReservation,
+	initial *forkInitialState,
+) (*StartSessionResult, error) {
+	if reservation != nil {
+		defer func() { m.releaseForkKey(key, reservation) }()
+	}
 	var err error
 	config, err = ionconfig.ApplyNewConversationDefaults(config)
 	if err != nil {
@@ -38,6 +48,22 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	}
 	utils.LogWithFields(utils.LevelInfo, "session", "startsession", map[string]any{"key": key, "working_directory": config.WorkingDirectory, "count": len(config.Extensions)})
 	m.mu.Lock()
+
+	if reservation == nil {
+		if reservedBy, reserved := m.forkReservations[key]; reserved {
+			m.mu.Unlock()
+			utils.LogWithFields(utils.LevelWarn, "session", "startsession: key reserved by fork", map[string]any{
+				"key": key, "source_key": reservedBy.sourceKey,
+			})
+			return nil, sessionKeyExistsError(key)
+		}
+	} else if m.forkReservations[key] != reservation {
+		m.mu.Unlock()
+		utils.LogWithFields(utils.LevelError, "session.fork", "fork session: reservation lost before startup", map[string]any{
+			"source_key": reservation.sourceKey, "new_key": key,
+		})
+		return nil, fmt.Errorf("fork reservation for session %q was lost", key)
+	}
 
 	if s, exists := m.sessions[key]; exists {
 		convID := s.conversationID
@@ -145,6 +171,14 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		dispatchRegistry: extcontext.NewDispatchRegistry(),
 		resourceBroker:   resource.NewBroker(),
 	}
+	if initial != nil {
+		s.planMode = initial.planMode
+		s.planModeTools = append([]string(nil), initial.planModeTools...)
+		s.planModeAllowedBashCommands = append([]string(nil), initial.planModeAllowedBashCommands...)
+		s.planModeAllowedMcpTools = append([]string(nil), initial.planModeAllowedMcpTools...)
+		s.planFilePath = initial.planFilePath
+		s.hasExitedPlanMode = initial.hasExitedPlanMode
+	}
 	s.rootDispatchCompletions = loadRootDispatchOutbox(convID)
 	if len(s.rootDispatchCompletions) > 0 {
 		utils.LogWithFields(utils.LevelInfo, "session.dispatch_delivery", "root dispatch outbox rehydrated", map[string]any{"session_id": key, "conversation_id": convID, "count": len(s.rootDispatchCompletions)})
@@ -194,6 +228,9 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	m.wirePermissionDecisionTelemetry(s)
 
 	m.sessions[key] = s
+	if reservation != nil {
+		delete(m.forkReservations, key)
+	}
 
 	m.mu.Unlock()
 

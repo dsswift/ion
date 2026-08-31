@@ -3,87 +3,172 @@ package session
 import (
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
-	"github.com/dsswift/ion/engine/internal/session/pending"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// ForkSession forks the session's conversation at the given message index.
+// ForkSession preserves the original index-addressed API for in-process callers.
+// A generated session key keeps the published fork_session behavior unchanged.
 func (m *Manager) ForkSession(key string, messageIndex int) (string, error) {
-	m.mu.Lock()
+	newKey, _, err := m.ForkSessionToKey(key, "", messageIndex)
+	return newKey, err
+}
+
+// ForkSessionToKey creates an independent conversation at the requested message
+// index and registers it under caller-owned newKey when one is supplied.
+func (m *Manager) ForkSessionToKey(key, newKey string, messageIndex int) (string, string, error) {
+	return m.forkSession(key, newKey, messageIndex, func(conv *conversation.Conversation) (*conversation.Conversation, error) {
+		return conversation.ForkConversation(conv, messageIndex), nil
+	})
+}
+
+// ForkSessionBeforeUserTurn creates an independent conversation ending just
+// before the selected user turn. entryID is preferred because it is exact;
+// userTurnIndex remains the fallback for clients with an optimistic row id.
+func (m *Manager) ForkSessionBeforeUserTurn(key, newKey, entryID string, userTurnIndex int) (string, string, error) {
+	return m.forkSession(key, newKey, userTurnIndex, func(conv *conversation.Conversation) (*conversation.Conversation, error) {
+		if entryID != "" {
+			return conversation.ForkConversationBefore(conv, entryID)
+		}
+		resolved, found := conversation.UserMessageEntryID(conv, userTurnIndex)
+		if !found {
+			return nil, fmt.Errorf("fork: user turn %d out of range for session %q", userTurnIndex, key)
+		}
+		return conversation.ForkConversationBefore(conv, resolved)
+	})
+}
+
+func (m *Manager) forkSession(
+	key, requestedNewKey string,
+	messageIndex int,
+	fork func(*conversation.Conversation) (*conversation.Conversation, error),
+) (string, string, error) {
+	m.mu.RLock()
 	s, ok := m.sessions[key]
 	if !ok {
-		m.mu.Unlock()
-		return "", fmt.Errorf("session %q not found", key)
+		m.mu.RUnlock()
+		err := fmt.Errorf("session %q not found", key)
+		logForkFailure("source session missing", key, requestedNewKey, "", "", err)
+		return "", "", err
 	}
-
 	if s.conversationID == "" {
-		m.mu.Unlock()
-		return "", fmt.Errorf("session %q has no conversation", key)
+		m.mu.RUnlock()
+		err := fmt.Errorf("session %q has no conversation", key)
+		logForkFailure("source conversation missing", key, requestedNewKey, "", "", err)
+		return "", "", err
 	}
-
+	conversationID := s.conversationID
+	config := s.config
 	extGroup := s.extGroup
-	m.mu.Unlock()
+	initial := &forkInitialState{
+		planMode:                    s.planMode,
+		planModeTools:               append([]string(nil), s.planModeTools...),
+		planModeAllowedBashCommands: append([]string(nil), s.planModeAllowedBashCommands...),
+		planModeAllowedMcpTools:     append([]string(nil), s.planModeAllowedMcpTools...),
+		planFilePath:                s.planFilePath,
+		hasExitedPlanMode:           s.hasExitedPlanMode,
+	}
+	m.mu.RUnlock()
 
-	// Fire session_before_fork hook -- cancellable.
+	newKey, reservation, err := m.reserveForkKey(key, requestedNewKey)
+	if err != nil {
+		logForkFailure("target key unavailable", key, requestedNewKey, conversationID, "", err)
+		return "", "", err
+	}
+	releaseReservation := true
+	defer func() {
+		if releaseReservation && m.releaseForkKey(newKey, reservation) {
+			utils.LogWithFields(utils.LevelInfo, "session.fork", "fork session: reservation released", map[string]any{
+				"source_key": key, "new_key": newKey, "source_conversation_id": conversationID,
+			})
+		}
+	}()
+
 	if extGroup != nil && !extGroup.IsEmpty() {
 		ctx := m.newExtContext(s, key)
-		newKey := fmt.Sprintf("%s-fork-%d", key, time.Now().UnixMilli())
-		cancel, err := extGroup.FireSessionBeforeFork(ctx, extension.ForkInfo{
+		cancel, hookErr := extGroup.FireSessionBeforeFork(ctx, extension.ForkInfo{
 			SourceSessionKey: key,
 			NewSessionKey:    newKey,
 			ForkMessageIndex: messageIndex,
 		})
-		if err != nil {
-			return "", fmt.Errorf("session_before_fork hook error: %w", err)
+		if hookErr != nil {
+			err = fmt.Errorf("session_before_fork hook error: %w", hookErr)
+			logForkFailure("before hook failed", key, newKey, conversationID, "", err)
+			return "", "", err
 		}
 		if cancel {
-			return "", fmt.Errorf("fork cancelled by session_before_fork hook")
+			err = fmt.Errorf("fork cancelled by session_before_fork hook")
+			logForkFailure("before hook cancelled", key, newKey, conversationID, "", err)
+			return "", "", err
 		}
+		utils.LogWithFields(utils.LevelInfo, "session.fork", "fork session: before hook allowed", map[string]any{
+			"source_key": key, "new_key": newKey, "source_conversation_id": conversationID,
+		})
 	}
 
-	m.mu.Lock()
-	s, ok = m.sessions[key]
-	if !ok {
-		m.mu.Unlock()
-		return "", fmt.Errorf("session %q not found", key)
-	}
-
-	conv, err := conversation.Load(s.conversationID, "")
+	conv, err := conversation.Load(conversationID, "")
 	if err != nil {
-		m.mu.Unlock()
 		if errors.Is(err, conversation.ErrNotFound) {
-			return "", fmt.Errorf("session %q has no conversation", key)
+			err = fmt.Errorf("session %q has no conversation", key)
+		} else {
+			err = fmt.Errorf("failed to load conversation: %w", err)
 		}
-		return "", fmt.Errorf("failed to load conversation: %w", err)
+		logForkFailure("source load failed", key, newKey, conversationID, "", err)
+		return "", "", err
 	}
-
-	forked := conversation.ForkConversation(conv, messageIndex)
-
-	newKey := fmt.Sprintf("%s-fork-%d", key, time.Now().UnixMilli())
-	newSession := &engineSession{
-		key:            newKey,
-		config:         s.config,
-		conversationID: forked.ID,
-		agents:         m.newAgentRegistry(),
-		agentEmitter:   &agentEmitter{},
-		childPIDs:      make(map[int]struct{}),
-		pending:        pending.New(),
-		planMode:       s.planMode,
-		planModeTools:  s.planModeTools,
+	forked, err := fork(conv)
+	if err != nil {
+		logForkFailure("target rejected", key, newKey, conversationID, "", err)
+		return "", "", err
 	}
-	m.sessions[newKey] = newSession
-	m.mu.Unlock()
-
 	if err := conversation.Save(forked, ""); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "session", "failed to save forked conversation", map[string]any{"error": err.Error()})
+		wrapped := fmt.Errorf("failed to save forked conversation: %w", err)
+		logForkFailure("save failed", key, newKey, conversationID, forked.ID, wrapped)
+		return "", "", wrapped
 	}
 
-	// Fire session_fork hook after the fork succeeds.
+	config.SessionID = forked.ID
+	config.ForceNewConversation = false
+	started, err := m.startSession(newKey, config, reservation, initial)
+	if err != nil {
+		// startSession removes the reservation only after it installs the live
+		// session. If a later startup phase fails, stop that partial session before
+		// deleting the newly-saved conversation.
+		m.mu.RLock()
+		_, installed := m.sessions[newKey]
+		m.mu.RUnlock()
+		if installed {
+			if stopErr := m.StopSession(newKey); stopErr != nil {
+				utils.LogWithFields(utils.LevelError, "session.fork", "fork session: partial session cleanup failed", map[string]any{
+					"source_key": key, "new_key": newKey, "source_conversation_id": conversationID,
+					"conversation_id": forked.ID, "error": stopErr.Error(),
+				})
+			}
+		}
+		if _, cleanupErr := conversation.DeleteStoredExact("", []string{forked.ID}, nil); cleanupErr != nil {
+			utils.LogWithFields(utils.LevelError, "session.fork", "fork session: startup cleanup failed", map[string]any{
+				"source_key": key, "new_key": newKey, "source_conversation_id": conversationID,
+				"conversation_id": forked.ID, "error": cleanupErr.Error(),
+			})
+		}
+		wrapped := fmt.Errorf("failed to start forked session: %w", err)
+		logForkFailure("target startup failed", key, newKey, conversationID, forked.ID, wrapped)
+		return "", "", wrapped
+	}
+	if started.Existed {
+		err = fmt.Errorf("session %q already exists", newKey)
+		logForkFailure("target unexpectedly existed", key, newKey, conversationID, forked.ID, err)
+		return "", "", err
+	}
+	releaseReservation = false
+
+	utils.LogWithFields(utils.LevelInfo, "session.fork", "fork session: created", map[string]any{
+		"source_key": key, "new_key": newKey, "source_conversation_id": conversationID,
+		"conversation_id": forked.ID, "message_index": messageIndex, "message_count": len(forked.Messages),
+	})
 	if extGroup != nil && !extGroup.IsEmpty() {
 		ctx := m.newExtContext(s, key)
 		extGroup.FireSessionFork(ctx, extension.ForkInfo{ //nolint:errcheck // errors logged internally by fireVoid/s.fire
@@ -92,8 +177,14 @@ func (m *Manager) ForkSession(key string, messageIndex int) (string, error) {
 			ForkMessageIndex: messageIndex,
 		})
 	}
+	return newKey, forked.ID, nil
+}
 
-	return newKey, nil
+func logForkFailure(outcome, sourceKey, targetKey, sourceConversationID, targetConversationID string, err error) {
+	utils.LogWithFields(utils.LevelError, "session.fork", "fork session: "+outcome, map[string]any{
+		"source_key": sourceKey, "new_key": targetKey, "source_conversation_id": sourceConversationID,
+		"conversation_id": targetConversationID, "error": err.Error(),
+	})
 }
 
 // BranchSession branches the conversation tree at the given entry ID.
