@@ -164,7 +164,13 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 	case "resource_unsubscribe":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "resourceSubId")
 	case "resource_publish":
-		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "resourceOp")
+		if !hasNonEmptyString(raw, "resourceKind") || !hasNonEmptyString(raw, "resourceOp") {
+			return false
+		}
+		if hasTrueBool(raw, "resourceGlobal") {
+			return true
+		}
+		return hasNonEmptyString(raw, "key")
 	case "resource_get":
 		if !hasNonEmptyString(raw, "resourceKind") || !hasNonEmptyString(raw, "resourceId") {
 			return false

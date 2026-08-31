@@ -1108,8 +1108,30 @@ func TestParseClientCommand_ResourceGetScoping(t *testing.T) {
 	}
 }
 
+func TestParseClientCommand_ResourcePublishScoping(t *testing.T) {
+	tests := []struct {
+		name  string
+		line  string
+		valid bool
+	}{
+		{"session publish includes key", `{"cmd":"resource_publish","key":"s1","resourceKind":"briefing","resourceOp":"mark_read"}`, true},
+		{"global publish needs no key", `{"cmd":"resource_publish","resourceGlobal":true,"resourceKind":"briefing","resourceOp":"mark_read"}`, true},
+		{"session publish rejects missing key", `{"cmd":"resource_publish","resourceKind":"briefing","resourceOp":"mark_read"}`, false},
+		{"global publish rejects missing kind", `{"cmd":"resource_publish","resourceGlobal":true,"resourceOp":"mark_read"}`, false},
+		{"global publish rejects missing op", `{"cmd":"resource_publish","resourceGlobal":true,"resourceKind":"briefing"}`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ParseClientCommand(tt.line)
+			if (got != nil) != tt.valid {
+				t.Fatalf("ParseClientCommand(%s) = %v, want valid=%t", tt.line, got, tt.valid)
+			}
+		})
+	}
+}
+
 func TestParseClientCommand_ResourcePublishValid(t *testing.T) {
-	raw := `{"cmd":"resource_publish","key":"s1","resourceOp":"upsert"}`
+	raw := `{"cmd":"resource_publish","key":"s1","resourceKind":"briefing","resourceOp":"upsert"}`
 	cmd := ParseClientCommand(raw)
 	if cmd == nil {
 		t.Fatal("expected non-nil result for valid resource_publish")
@@ -1126,7 +1148,7 @@ func TestParseClientCommand_ResourcePublishValid(t *testing.T) {
 }
 
 func TestParseClientCommand_ResourcePublishMissingResourceOp(t *testing.T) {
-	raw := `{"cmd":"resource_publish","key":"s1"}`
+	raw := `{"cmd":"resource_publish","key":"s1","resourceKind":"briefing"}`
 	cmd := ParseClientCommand(raw)
 	if cmd != nil {
 		t.Errorf("expected nil for resource_publish missing resourceOp, got %+v", cmd)
