@@ -444,7 +444,7 @@ The desktop is the primary client. The iOS app is a thin client connected via We
 
 - When a resource is published, the engine broadcasts the delta to all subscribers (desktop + iOS).
 - When a user reads a resource on either device, the client sends a `resource_publish` with `op: 'mark_read'`. The engine fans the delta to all subscribers. Both devices update their read state.
-- The engine does not track read state. Clients send the mark_read delta; the engine routes it. Producer extensions persist read state if they choose to.
+- Desktop persists read identities and deletion tombstones as the client source of truth. Clients send `mark_read` and `delete` deltas through the engine; the engine fans each delta to all subscribers. Desktop snapshots carry the persisted result to reconnecting devices.
 
 ### Producer-owned persistence
 
