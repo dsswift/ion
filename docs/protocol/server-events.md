@@ -1094,6 +1094,20 @@ A live run-loop checkpoint drained a steer message into the conversation before 
 | `steerKind` | string | Optional injection classification. Empty for a user-authored steer. |
 | `steerMachineAuthored` | boolean | Engine-derived classification for the steer source. |
 
+#### engine_steer_interrupted_stream
+
+A steer arrived while the model was streaming assistant text, and the engine ended that provider call early so the steer applies on the next turn instead of after the model finishes composing. Governed by `steering.interruptStream` in `engine.json` (default on).
+
+This event reports the **scheduling decision**, not the delivery: `engine_steer_injected` still follows when the steer reaches the conversation. It exists so a consumer never has to infer why an assistant message ended short. Nothing the model produced is discarded — the completed assistant blocks are preserved and persisted — so a client renders the shortened message as an intentional early stop rather than as a truncation or a stream error.
+
+Only emitted when the stream was at an interruptible point: text in progress, with no `tool_use` block started. A tool call in flight must be answered by a `tool_result`, so the engine never cuts a stream mid-tool; those steers land at the post-tool-results checkpoint instead.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_steer_interrupted_stream"` | Event type |
+| `steerInterruptBlocksKept` | integer | Assistant content blocks completed before the interrupt and preserved into history. Omitted when zero. |
+| `steerQueuedCount` | integer | Steer messages buffered at interrupt time. Above 1 explains a following turn that consumes several instructions at once. Omitted when zero. |
+
 
 #### engine_intercept
 

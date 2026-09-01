@@ -210,6 +210,20 @@ When the engine receives a model name, it resolves the provider in this order:
 
 If you pass a tier name (such as `fast`), `ResolveTier` runs first. It checks your `tiers` map and substitutes the resolved model name before the provider lookup runs.
 
+### Where tier names resolve
+
+Tier resolution runs at three seams, so a tier name is usable everywhere a model name is:
+
+| Seam | Covers |
+|------|--------|
+| Root prompt options | A conversation's own model, including a slash command's frontmatter model |
+| Agent tool spawner | An LLM-authored `Agent({ model })` request, after the provider lock |
+| Shared dispatch | Every dispatched child: the `Agent` tool, an extension's `ctx.dispatchAgent`, and the `Poll` driver |
+
+The shared dispatch seam resolves last and is idempotent — a caller that already resolved its tier passes a concrete model identifier, which is not a configured tier name and passes through unchanged.
+
+Provider locking is not applied at the dispatch seam. A tier is operator configuration, so its configured provider is always allowed. A raw model identifier authored by an LLM is locked to the parent session's provider by the caller that knows the request's origin.
+
 ## See also
 
 * [engine.json Reference](engine-json.md) for the rest of the engine configuration schema.

@@ -879,6 +879,34 @@
       ]
     },
     {
+      "id": "dispatch-alias",
+      "term": "Dispatch Alias",
+      "definition": "A consumer-supplied identifier registered as an alternate name for a dispatch's engine identifier, so a steer or recall addressed with the consumer's own key resolves to the real dispatch. It exists because a harness usually keys its local state before the engine answers with its identifier. An alias is dropped when its dispatch ends, so a reused key never resolves to a finished dispatch.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "client dispatch id"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (r *DispatchRegistry) RegisterAlias",
+          "path": "engine/internal/session/extcontext/dispatch_registry.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "ClientDispatchID string",
+          "path": "sdk/go/context_dispatch.go"
+        }
+      ]
+    },
+    {
       "id": "dispatch-split-pane",
       "term": "Dispatch Split Pane",
       "definition": "The Studio region that splits the center pane so a dispatched agent's own transcript shows beside the parent conversation.",
@@ -2171,6 +2199,91 @@
           "language": "swift",
           "symbol": "struct StatusDrawerView",
           "path": "ios/IonRemote/Views/StatusDrawerView.swift"
+        }
+      ]
+    },
+    {
+      "id": "steer",
+      "term": "Steer",
+      "definition": "One instruction delivered into a run that is already in flight. The engine buffers it and injects it at the next turn boundary, because a provider request already sent cannot have a message added to it. An operator typing into a running turn and a harness bubbling a completion into that turn both arrive as steers, distinguished by their injection kind.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "steer message",
+        "mid-turn steer"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type steerMessage struct",
+          "path": "engine/internal/backend/runloop_steer.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "type SteerInjectedEvent struct",
+          "path": "engine/internal/types/normalized_event_run_signals.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (c *Context) SteerDispatch",
+          "path": "sdk/go/context_dispatch_methods.go"
+        }
+      ]
+    },
+    {
+      "id": "steer-drain-checkpoint",
+      "term": "Steer Drain Checkpoint",
+      "definition": "One point in the agent loop where the engine empties the run's steer buffer into the conversation: the top of each loop iteration, immediately after tool results are saved, and before an end_turn completes. Every buffered steer drains at the first checkpoint reached, in arrival order.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "drain checkpoint"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (b *ApiBackend) drainSteer",
+          "path": "engine/internal/backend/runloop_steer.go"
+        }
+      ]
+    },
+    {
+      "id": "steer-stream-interrupt",
+      "term": "Steer Stream Interrupt",
+      "definition": "The engine ending a provider call early because a steer arrived while the model was streaming assistant text, so the steer applies on the next turn rather than after the model finishes composing. The completed assistant blocks are preserved. Governed by steering.interruptStream and reported by the engine_steer_interrupted_stream event. Never applies during tool execution, where the provider protocol obliges the turn to answer every tool call.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "stream interrupt"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "type SteerInterruptedStreamEvent struct",
+          "path": "engine/internal/types/normalized_event_run_signals.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type SteeringConfig struct",
+          "path": "engine/internal/types/config_steering.go"
         }
       ]
     },

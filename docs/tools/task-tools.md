@@ -164,6 +164,27 @@ Note that `task_created` / `task_completed` are **turn** lifecycle hooks (`TaskI
 
 Use `Poll` for work that needs judgment, such as a deployment rollout, pull-request checks, or another agent's edits. Do not use a bare `sleep` as a timer. `interval_ms`, `deadline_ms`, and `max_attempts` can narrow work but are capped by the engine `poll` configuration.
 
+### Cost, and when not to poll
+
+Each attempt is one child inference, so `Poll` is the expensive way to wait. Use it only when a verdict needs judgment.
+
+Do not use `Poll` to wait for a background `Bash` command. `run_in_background` with `notify_on_complete` already waits for free: the engine parks the session and wakes it with the result. Do not use `Poll` for `Agent` or dispatch completion either — those results are delivered automatically.
+
+The engine gives the child the **complete** output of `check_command` on every attempt, and never truncates it. This is deliberate: a truncated view would make the engine decide which part of the evidence matters, and a judge that cannot see the middle of a log cannot judge it. The cost is the caller's to manage — a `check_command` that prints a large log pays for that log on every attempt, so print what the verdict needs rather than everything available.
+
+### Poll child model
+
+The poll child does not inherit the conversation's model. Judging pre-gathered evidence against a fixed verdict vocabulary is mechanical work, and inheriting would price it at whatever the conversation happens to run on — a premium-model conversation would silently buy premium-model polling.
+
+Resolution order:
+
+1. `model` on the `Poll` call.
+2. `poll.model` in `engine.json`.
+3. The first configured tier of `fast`, then `standard`, in `~/.ion/models.json`.
+4. `defaultModel` in `engine.json`.
+
+Every rung is operator configuration. Omit `model` on the call and let the tier chain select.
+
 ## Background bash completion
 
 `Bash({ run_in_background: true, notify_on_complete: true })` starts a shell command the session will be told about when it finishes, rather than one the model has to poll with `TaskGet`.
