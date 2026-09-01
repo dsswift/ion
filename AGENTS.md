@@ -677,7 +677,7 @@ You are not breaking functionality by correcting a comment, a doc, or a test; yo
 
 ### The boundary (so this never becomes a tangent)
 
-- **Do not go hunting.** This rule fires on what you *encounter in the path of the work*, not on a codebase-wide audit you launch to find problems. No speculative sweeps.
+- **Fix what you encounter; do not audit what you do not.** This rule fires on defects in the path of the work, not on a codebase-wide hunt for them. Diagnosis is not auditing: instrumenting a whole pipeline to answer a reported symptom *is* the path of the work, and belongs in the first commit rather than the seventh.
 - **Roll it into the current plan.** When you find it, add it to the plan you are executing. Do not defer it to a "future PR", an issue, or a `TODO` — deferral is the forbidden anti-pattern (see "## Aspirational comments" and the "## Scope" rule in the user's global rules).
 - **Commit separately when unrelated.** The fix does not have to address the same issue you are working on. A stale comment found while implementing feature X is committed as its own `fix` / `chore` / `docs` commit at a clean scope seam, before or after the main work — it does not have to be entangled with feature X's commit.
 
