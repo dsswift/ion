@@ -9,6 +9,8 @@
 // async-trigger, resource, and client-observation variants live in
 // types-engine-event-async.ts (EngineEventAsync) to keep this file under the
 // 600-line cap; EngineEvent includes that union unchanged via `| EngineEventAsync`.
+// The steer/injection variants live in types-engine-event-injection.ts
+// (EngineEventInjection) for the same reason, included via `| EngineEventInjection`.
 import type {
   AgentStateUpdate,
   BackgroundTaskState,
@@ -18,6 +20,8 @@ import type {
 } from "./types-engine";
 import type { ClientToolCallState } from "./types-tool-gate";
 import type { EngineEventAsync } from "./types-engine-event-async";
+import type { EngineEventInjection } from "./types-engine-event-injection";
+import type { EngineEventLifecycle } from "./types-engine-event-lifecycle";
 /**
  * One stage transition of a delegated-CLI login (codex/grok/cursor). Payload of
  * the engine_provider_login event; mirrors Go ProviderLoginUpdate.
@@ -379,51 +383,7 @@ export type EngineEvent =
       toolName: string;
       toolElapsed: number;
     }
-  // Mid-turn steer-drain confirmation. Engine emits this after the
-  // runloop drainSteer helper captures a steer message (queued via the
-  // steer channel) and injects it into the conversation as a user turn
-  // before the next LLM call. `steerMessageLength` is the character
-  // count; the body is not echoed back over the wire because it is
-  // already part of the conversation. `steerClientMessageId` echoes the
-  // client's steer_agent correlation id when supplied and this was a
-  // genuine client-originated steer (never present for a machine-to-machine
-  // injection). `steerEntryId` is the durable conversation-tree entry id
-  // the steer text was persisted under, present only for a genuine
-  // client-originated steer -- the exact target for a later
-  // engine_rewind command. See
-  // engine/internal/types/normalized_event.go (SteerInjectedEvent).
-  | {
-      type: "engine_steer_injected";
-      steerMessageLength: number;
-      steerClientMessageId?: string;
-      steerEntryId?: string;
-      steerKind?: string;
-      steerMachineAuthored?: boolean;
-    }
-  // No owning run was live, so ctx.steerSelf delivered a fresh prompt instead.
-  | {
-      type: "engine_steer_degraded";
-      steerDegradedMessageLength: number;
-      steerKind?: string;
-      steerMachineAuthored?: boolean;
-    }
-  | {
-      type: "engine_agent_state_clamped";
-      clampedAgentName?: string;
-      clampedScope?: string;
-      clampedKeys?: string[];
-      clampedDroppedKeys?: string[];
-      clampedOriginalBytes?: number;
-      clampedBytes?: number;
-      clampedLimitBytes?: number;
-    }
-  | {
-      type: "engine_prompt_injected";
-      injectedPrompt: string;
-      injectedPromptOrigin?: string;
-      injectedPromptKind?: string;
-      injectedPromptMachineAuthored?: boolean;
-    }
+  | EngineEventInjection
   // engine_run_stalled — advisory event emitted by the run-progress watchdog
   // when a run records no forward progress for longer than the configured
   // RunStall threshold. The authoritative completion signal is the follow-up
@@ -577,23 +537,5 @@ export type EngineEvent =
       thinkingElapsedSeconds?: number;
       thinkingRedacted?: boolean;
     }
-  | {
-      type: "engine_extension_died";
-      extensionName: string;
-      exitCode: number | null;
-      signal: string | null;
-      stderrTail?: string[];
-    }
-  | {
-      type: "engine_extension_respawned";
-      extensionName: string;
-      attemptNumber: number;
-    }
-  | { type: "engine_events_dropped"; count: number }
-  | {
-      type: "engine_extension_dead_permanent";
-      extensionName: string;
-      attemptNumber: number;
-      stderrTail?: string[];
-    }
+  | EngineEventLifecycle
   | EngineEventAsync;

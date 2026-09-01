@@ -95,6 +95,7 @@ export const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
     "messageLength",
   ],
   steer_degraded: ["messageLength"],
+  steer_interrupted_stream: ["blocksKept", "queuedSteers"],
   agent_state_clamped: [
     "agentName",
     "scope",

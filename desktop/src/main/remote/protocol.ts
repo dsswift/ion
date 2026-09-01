@@ -178,6 +178,12 @@ export type RemoteEvent =
   | { type: 'desktop_steer_injected'; tabId: string; instanceId?: string | null; steerMessageLength: number; steerClientMessageId?: string; steerEntryId?: string; steerKind?: string; steerMachineAuthored?: boolean }
   // No owning run was live, so ctx.steerSelf delivered a fresh prompt instead.
   | { type: 'desktop_steer_degraded'; tabId: string; instanceId?: string | null; steerDegradedMessageLength: number; steerKind?: string; steerMachineAuthored?: boolean }
+  // A steer arrived mid-stream and the engine ended that provider call early so
+  // the steer applies on the next turn. Scheduling notice, not delivery:
+  // desktop_steer_injected still follows. steerInterruptBlocksKept counts the
+  // assistant blocks preserved, so a short message reads as an intentional
+  // early stop rather than a truncation.
+  | { type: 'desktop_steer_interrupted_stream'; tabId: string; instanceId?: string | null; steerInterruptBlocksKept?: number; steerQueuedCount?: number }
   // desktop_prompt_injected: forwarded verbatim from engine_prompt_injected
   // by the generic engine-event forwarder in event-wiring.ts (engineToWireType
   // strips the engine_ prefix). An extension injected a prompt via

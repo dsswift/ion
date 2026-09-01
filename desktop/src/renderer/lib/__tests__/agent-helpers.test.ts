@@ -130,3 +130,73 @@ describe('getStatusDot', () => {
     })
   })
 })
+
+/**
+ * Roster visibility default.
+ *
+ * A row whose metadata omits `visibility` used to fall through to 'ephemeral',
+ * which drops it the instant its run stops. A dispatched child was therefore
+ * gone from its parent's drill-down before an operator could open it, so a
+ * completed dispatch always looked as though it had dispatched nothing.
+ *
+ * Observed live: a poll-check child appeared in seven consecutive agent-state
+ * snapshots, every one status=running and correctly attributed to its parent,
+ * and no snapshot after the dispatch completed carried it at all.
+ *
+ * The default is now 'sticky', mirroring the engine
+ * (extcontext.resolveDispatchVisibility). Ephemeral is opt-in.
+ */
+describe('agent visibility default', () => {
+  const agent = (status: string, metadata?: Record<string, unknown>) =>
+    ({ name: 'poll-check', status, metadata }) as never
+
+  it('defaults the visibility field to sticky', () => {
+    expect(lib.DEFAULT_AGENT_VISIBILITY).toBe('sticky')
+  })
+
+  /**
+   * A metadata-less row is NOT a dispatch. Every real dispatch row is stamped
+   * `visibility: sticky` + `invited: true` by the engine (three sites in
+   * dispatch_agent.go / dispatch_rehydrate.go), so the case below is an
+   * extension-roster row or malformed data.
+   *
+   * `invited` remains the existing "this sticky agent has been activated"
+   * signal, so an un-invited row keeps its previous lifetime — visible while
+   * running, gone afterwards. Making bare rows persist forever would change
+   * behavior well beyond dispatches, which is not what this default is for.
+   */
+  it('leaves an un-invited bare row on its previous lifetime', () => {
+    expect(lib.isAgentVisible(agent('running'))).toBe(true)
+    expect(lib.isAgentVisible(agent('done'))).toBe(false)
+  })
+
+  it('keeps a completed dispatched child visible under its parent', () => {
+    const child = agent('done', {
+      visibility: 'sticky',
+      invited: true,
+      dispatchParentId: 'dispatch-agent-1',
+      dispatchDepth: 2,
+    })
+    expect(lib.isAgentVisible(child)).toBe(true)
+    expect(lib.childAgentsOf([child], 'dispatch-agent-1')).toHaveLength(1)
+  })
+
+  it('still honours an explicit ephemeral request', () => {
+    expect(lib.isAgentVisible(agent('running', { visibility: 'ephemeral' }))).toBe(true)
+    expect(lib.isAgentVisible(agent('done', { visibility: 'ephemeral' }))).toBe(false)
+  })
+
+  /**
+   * The regression arm. `sticky` normally requires `invited`, so naively
+   * flipping the default would HIDE a bare running row that used to be visible
+   * via the ephemeral fallback — a regression dressed as a fix.
+   */
+  it('does not hide a running row that lacks an invited flag', () => {
+    expect(lib.isAgentVisible(agent('running'))).toBe(true)
+    expect(lib.isAgentVisible(agent('running', { visibility: 'sticky' }))).toBe(true)
+  })
+
+  it('keeps always-visible rows visible regardless of status', () => {
+    expect(lib.isAgentVisible(agent('done', { visibility: 'always' }))).toBe(true)
+  })
+})

@@ -141,6 +141,17 @@ export type NormalizedEvent =
       kind?: string;
       machineAuthored?: boolean;
     }
+  // A steer arrived while the model was streaming text and the engine ended
+  // that provider call early so the steer applies on the next turn. This is the
+  // scheduling decision, not the delivery -- `steer_injected` still follows.
+  // blocksKept counts the assistant content blocks preserved (nothing the model
+  // produced is discarded), so a consumer renders the shortened message as an
+  // intentional early stop rather than a truncation or an error.
+  | {
+      type: "steer_interrupted_stream";
+      blocksKept?: number;
+      queuedSteers?: number;
+    }
   // The engine bounded an agent-state metadata payload that exceeded its
   // configured limits. Carries key names and byte counts only -- never the
   // offending content, which is by definition the multi-megabyte value that

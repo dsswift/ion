@@ -341,6 +341,7 @@ export function handleEngineEvent(
     case "engine_session_work_stopped":
     case "engine_steer_injected":
     case "engine_steer_degraded":
+    case "engine_steer_interrupted_stream":
     case "engine_prompt_injected":
       handleStreamSignalEvent(ctx, tabId, tab, event);
       break;
