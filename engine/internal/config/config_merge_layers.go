@@ -192,7 +192,7 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 		dst.Poll = src.Poll
 	}
 
-	// LogLevel: project-level overrides global
+	// LogLevel: a higher layer's value replaces a lower one.
 	if src.LogLevel != "" {
 		dst.LogLevel = src.LogLevel
 	}

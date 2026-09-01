@@ -5,38 +5,22 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// logAgentSnapshotNesting records the nesting attribution of every agent in an
-// emitted snapshot: the exact fields a client uses to decide whether a row is
-// root-level or nested under a parent dispatch.
+// logAgentSnapshotNesting describes the nesting attribution of each
+// dispatch-attributed agent in an emitted snapshot: the fields a consumer needs
+// to decide whether a row is root-level or nested under a parent dispatch.
 //
-// This exists because the snapshot emission was a diagnostic blind spot.
-// `agent_snapshot_emitted` logged only a COUNT, and `dispatchParentId` -- the
-// single field the desktop groups children by (agent-helpers.ts childAgentsOf)
-// -- was never logged anywhere in the engine. So when an operator reported that
-// a dispatch's drill-down showed no child agents, the question "does the
-// nesting data reach the client at all, or does the client drop it?" could not
-// be answered from logs. It was answered by guessing, wrongly, three times.
+// It exists because the emission logged only a count. A payload that is emitted
+// but never described is indistinguishable from one that was never emitted, so
+// "did the nesting data reach the consumer, or did the consumer drop it?" was
+// unanswerable from logs alone.
 //
-// The engine is headless: a payload that is emitted but never described is
-// indistinguishable from one that was never emitted. Per the repository's
-// logging policy that is a defect on its own, independent of whether the
-// underlying behavior turns out to be correct.
+// Emitted at INFO. DEBUG is below the level a consumer install runs at, which
+// would make this invisible in the situation it exists for. Volume is bounded
+// by describing only dispatch-attributed rows: an unattributed roster row adds
+// nothing to a nesting question and would repeat on every heartbeat tick.
 //
-// Level choice is load-bearing, and the first attempt got it wrong. Per-agent
-// detail was written at DEBUG "because this is a high-frequency path" -- but the
-// engine's default level is INFO and the level gate runs BEFORE the log sink,
-// so those lines would never have reached an operator's engine.jsonl. The
-// instrumentation would have been invisible in exactly the situation it exists
-// for: diagnosing a live nesting complaint without asking the operator to
-// reconfigure and reproduce.
-//
-// So the per-agent line is INFO, but it is emitted ONLY for an agent that
-// carries nesting attribution (or should and does not). A root-level roster
-// entry adds nothing to a nesting question and would be pure volume on every
-// heartbeat tick; a nested entry appears only when a dispatch dispatches, which
-// is rare. The aggregate summary is INFO always, and WARN when a nested agent
-// arrives with no parent id, because that is the shape that makes a child
-// render at the root instead of under its parent.
+// A nested row (depth > 1) with no parent id cannot be grouped under anything,
+// so it warns -- that is the shape that renders a child at the root.
 func logAgentSnapshotNesting(key, reason string, snapshot []types.AgentStateUpdate) {
 	if len(snapshot) == 0 {
 		return

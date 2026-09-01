@@ -131,8 +131,10 @@ Community **partitioning** is offline; community **naming** is not. `--no-label`
 `make bootstrap` is the one command a fresh clone needs:
 
 ```bash
-make bootstrap    # npm install (husky hooks) + CLAUDE.md symlinks + graph build
+make bootstrap    # npm install (husky hooks) + CLAUDE.md symlinks + engine DEBUG + graph build
 ```
+
+Bootstrap also sets `logLevel: debug` in the global `~/.ion/engine.json`. Whoever runs it is developing Ion, so that engine is their dev build and DEBUG is the level it needs; a consumer install stays on `info`. The write preserves every other key, refuses rather than guesses when the file does not parse, and needs an engine restart to take effect.
 
 Until it runs, no hook fires — git looks in an empty `.git/hooks`, because `core.hooksPath` is per-clone state that git never clones. Bootstrap is idempotent, and it skips the graph build when one already exists.
 
@@ -565,6 +567,8 @@ Logs are structured JSONL (one JSON object per line). Every line has a canonical
 ### Check Logs First
 
 Check the logs before investigating any issue. All files are JSONL — use `jq` to filter rather than reading them raw.
+
+**Confirm the effective level before you trust a log or pick one to write at.** `logLevel` in `~/.ion/engine.json` is read once at daemon start, from the global config only — a project `.ion/engine.json` cannot raise it, and an edit needs an engine restart. A clone bootstrapped with `make bootstrap` runs `debug`; a consumer install runs `info`. When the level would discard what you are about to write, or hide what you are about to read, say so and offer to fix it — do not silently demote a diagnostic to a level nobody receives.
 
 **Filter one conversation** (all surfaces, all log lines for a conversation ID):
 ```bash

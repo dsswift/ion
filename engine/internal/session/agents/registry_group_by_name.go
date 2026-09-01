@@ -13,37 +13,20 @@ import (
 )
 
 // groupByName merges entries into one AgentStateUpdate per (agent name, parent
-// dispatch). This is a projection-only operation: it builds new entries from
-// copies, never mutating the source slice or aliasing its metadata maps.
+// dispatch). Projection-only: it builds new entries from copies, never mutating
+// the source slice or aliasing its metadata maps.
 //
-// The key is name PLUS dispatchParentId, not name alone. Name alone collapsed
-// every dispatch sharing an agent name -- across every parent and every depth --
-// into a single representative row carrying a single dispatchParentId. A
-// consumer that groups children by that field (the desktop's childAgentsOf)
-// could therefore only ever match ONE parent: every other parent's drill-down
-// showed no children at all.
+// The key is name plus dispatchParentId. Name alone collapsed every dispatch
+// sharing an agent name into one row carrying one dispatchParentId, so a
+// consumer keying on that field could resolve only a single parent. Same name
+// under the same parent still collapses -- that is the duplicate-row case this
+// projection exists to prevent.
 //
-// Observed live: two "poll-check" dispatches under different parents produced
-// one emitted row, and the representative flipped from one parent to the other
-// mid-run as the representative rule reranked them (a running row beat an
-// errored one). The child did not
-// disappear -- the single collapsed row stopped pointing at the parent being
-// viewed.
-//
-// Same name under the SAME parent still collapses, which is the duplicate-row
-// case this projection exists to prevent (an orchestrator dispatching one agent
-// name several times). Different parents are genuinely different work and stay
-// distinct rows.
-//
-// For each name group:
-//   - dispatches[] arrays from every entry's metadata are merged (order
-//     preserved), then bounded to the most recent maxDispatchEntries with a
-//     dispatchesTotal stamp (see capDispatches) — the merged history is a
-//     monotonic append re-serialized on every emission, so it is bounded at
-//     the projection, while the ID-keyed store keeps every record.
-//   - The most-active status wins (running > error > done > cancelled).
-//   - The most-recently-active entry's top-level metadata (task, model,
-//     displayName, lastWork) is used as the representative.
+// Per group:
+//   - dispatches[] from every entry is merged (order preserved), then bounded
+//     to maxDispatchEntries with a dispatchesTotal stamp (see capDispatches).
+//     The ID-keyed store keeps every record; only this projection is bounded.
+//   - The representative is chosen by representativeBeats.
 func groupByName(states []types.AgentStateUpdate, maxDispatchEntries int) []types.AgentStateUpdate {
 	if len(states) == 0 {
 		return nil
