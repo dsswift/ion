@@ -54,6 +54,22 @@ const (
 	defaultPollMaxActivePerSession       = 4
 )
 
+// PollModelTierPreference is the ordered tier chain a poll child selects from
+// when no operator model is configured. It is a package-level default so both
+// the driver and its tests read one list.
+//
+// The order is deliberate and the omission of the parent model is the point. A
+// poll child judges pre-gathered evidence against an explicit verdict
+// vocabulary — mechanical work with unambiguous instructions. Inheriting the
+// parent model makes that judgment cost whatever the conversation happens to
+// run on, so a premium-model conversation silently buys premium-model polling.
+// Falling back to the engine default instead keeps the ceiling bounded by
+// operator configuration rather than by conversation state.
+//
+// A tier that is not configured is skipped, so an operator who defines neither
+// tier lands on EngineConfig.DefaultModel with no error.
+var PollModelTierPreference = []string{"fast", "standard"}
+
 func PollDefaults() PollConfig {
 	return PollConfig{
 		MinIntervalMs:       defaultPollMinIntervalMs,

@@ -13,6 +13,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/session/extcontext"
 	"github.com/dsswift/ion/engine/internal/telemetry"
+	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 	"github.com/dsswift/ion/engine/internal/workspaces"
@@ -332,8 +333,13 @@ func (a *sessionAccessor) DispatchRegistry() *extcontext.DispatchRegistry {
 }
 
 // RegisterOutstandingBackgroundTask records a notifying Bash task against this
-// dispatch's owning session. The dispatch path discovers this optional seam so
+// dispatch's owning session. The dispatch path discovers this optional seam
+// (by type assertion, in dispatch_agent.go beside BackgroundTaskOwner) so
 // lightweight test accessors need not carry session task bookkeeping.
+//
+// The set is the owning session's, not the child's: a dispatch may complete
+// while its background command still runs, and the session is what parks on
+// the remaining work and wakes per completion (ADR-023 § 2).
 func (a *sessionAccessor) RegisterOutstandingBackgroundTask(taskID, command string) {
 	a.m.registerOutstandingBackgroundTask(a.key, taskID, command)
 }
@@ -341,6 +347,29 @@ func (a *sessionAccessor) RegisterOutstandingBackgroundTask(taskID, command stri
 // OutstandingBackgroundTaskIDs returns this owning session's live task set.
 func (a *sessionAccessor) OutstandingBackgroundTaskIDs() []string {
 	return a.m.OutstandingBackgroundTaskIDs(a.key)
+}
+
+// StartPoll starts a session-owned poll on behalf of a dispatched child, so the
+// Poll tool works inside a dispatch exactly as it does at the root.
+//
+// No model is threaded through. A poll child judges pre-gathered evidence and
+// resolves its model from operator configuration only (request, then poll
+// config, then the fast/standard tier chain). Passing the dispatched agent's
+// model would reintroduce inheritance one level down: an expensive specialist
+// would silently buy expensive polling.
+//
+// The poll is stored on the owning session (so session teardown stops its
+// timer) but ATTRIBUTED to the dispatch that started it via owner. Only that
+// dispatch parks on it. Parking every run in the session on every poll is what
+// made Poll deadlock itself: Poll resolves its intent by dispatching a
+// poll-check child, and that child parked on the poll it was sent to resolve.
+func (a *sessionAccessor) StartPoll(ctx context.Context, owner string, request tools.PollRequest, cwd string) (string, error) {
+	return a.m.startPoll(a.s, a.key, owner, request, cwd)
+}
+
+// OutstandingPollIDs returns the live polls started by one owner dispatch.
+func (a *sessionAccessor) OutstandingPollIDs(owner string) []string {
+	return a.m.OutstandingPollIDsFor(a.key, owner)
 }
 
 func (a *sessionAccessor) EngineConfig() *types.EngineRuntimeConfig { return a.m.config }

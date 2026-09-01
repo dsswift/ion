@@ -170,6 +170,17 @@ type EngineEvent struct {
 	// SteerMessageLength: no run-loop steer channel drained this message.
 	SteerDegradedMessageLength int `json:"steerDegradedMessageLength,omitempty"`
 
+	// engine_steer_interrupted_stream — the engine ended a provider call early
+	// because a steer arrived while the model was streaming text, so the steer
+	// applies on the next turn instead of after the model finishes composing.
+	// BlocksKept reports how many completed assistant blocks were preserved
+	// (nothing is discarded); SteerQueuedCount reports how many steers were
+	// buffered at that moment. Together they let a consumer explain a short
+	// assistant message as an intentional early stop rather than a truncation
+	// or an error. See SteerInterruptedStreamEvent.
+	SteerInterruptBlocksKept int `json:"steerInterruptBlocksKept,omitempty"`
+	SteerQueuedCount         int `json:"steerQueuedCount,omitempty"`
+
 	// engine_agent_state_clamped — the engine bounded an agent-state metadata
 	// payload that exceeded the configured limits. Carries key names and byte
 	// counts only; the offending content is never echoed, because it is by

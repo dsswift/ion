@@ -309,6 +309,10 @@ type EngineRuntimeConfig struct {
 	// continuation nudge. Pointer so engine.json can fully omit the block
 	// and inherit the built-in defaults. See types.EarlyStopDefaults().
 	EarlyStopContinue *EarlyStopContinueConfig `json:"earlyStopContinue,omitempty"`
+	// Steering configures how a steer message reaches a run that is already
+	// in flight. Pointer so engine.json can omit the block and inherit the
+	// built-in defaults. See types.SteeringDefaults().
+	Steering *SteeringConfig `json:"steering,omitempty"`
 	// Thinking is the engine-wide DEFAULT extended-thinking configuration —
 	// the lowest layer of a three-layer precedence chain:
 	//

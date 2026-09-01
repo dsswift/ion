@@ -114,6 +114,10 @@ func (m *Manager) publishAgentSnapshot(key, reason string, force bool, snapshot 
 	utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted", map[string]any{
 		"key": key, "count": len(snapshot), "reason": reason, "force": force,
 	})
+	// Describe the payload, not just its size. A count alone cannot answer
+	// "did the nesting attribution reach the client?", which is the question
+	// an operator asks when a dispatch's drill-down shows no children.
+	logAgentSnapshotNesting(key, reason, snapshot)
 	m.emit(key, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
 }
 

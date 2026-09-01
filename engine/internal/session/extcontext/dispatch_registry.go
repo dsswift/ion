@@ -2,6 +2,7 @@ package extcontext
 
 import (
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,6 +67,7 @@ type DispatchStateEntry struct {
 type DispatchWaitingOn struct {
 	TaskIDs          []string `json:"taskIds,omitempty"`
 	ChildDispatchIDs []string `json:"childDispatchIds,omitempty"`
+	PollIDs          []string `json:"pollIds,omitempty"`
 }
 
 // DispatchRegistry is a thread-safe registry of active background dispatches,
@@ -98,6 +100,29 @@ type DispatchRegistry struct {
 	dispatches         map[string]*activeDispatch
 	totalRegistrations int // total lifetime RegisterWithID calls (audit/test)
 	recallObserver     func([]RecalledDispatch)
+
+	// aliases maps a consumer-supplied dispatch identifier to the engine's
+	// canonical dispatch ID. It exists because the engine is not the only
+	// party that mints an identifier for a dispatch: a harness commonly
+	// creates its own local key for a dispatch the instant it asks for one,
+	// keys its own state by that key, and then hands that key back to the
+	// engine when it wants to steer. The engine's canonical ID is minted
+	// independently (dispatch_agent.go), so the two never match and the steer
+	// misses a dispatch that is demonstrably alive.
+	//
+	// That miss is silent in the worst way: SteerByID answers not_found, which
+	// is indistinguishable from "the dispatch already finished". A harness
+	// cannot tell a wrong-namespace ID from a completed dispatch, so it has no
+	// signal telling it to correct anything, and every steer aimed at that
+	// dispatch is dropped for the dispatch's whole life.
+	//
+	// The alias is registered by the dispatch path from
+	// DispatchAgentOptions.ClientDispatchID, so resolution is exact rather
+	// than heuristic — the engine records the identity the consumer told it
+	// about instead of guessing which live dispatch a stale ID meant. Cleared
+	// with the entry in Deregister, so an alias never outlives its dispatch
+	// and can never resolve to a later, unrelated one.
+	aliases map[string]string
 
 	// settledTasks holds background-task results that arrived before any
 	// dispatch had armed a wait on them, so the arming prune in
@@ -181,6 +206,17 @@ type activeDispatch struct {
 	// by registry mu.
 	PendingTasks map[string]struct{}
 
+	// PendingPolls is the Poll half of this dispatch's wait set. A dispatched
+	// agent that calls Poll and then parks is waiting on an inference-driven
+	// verdict, which is neither a child dispatch nor a shell process.
+	//
+	// Without this set a poll-parked dispatch recorded an EMPTY wait set, so
+	// nothing could ever signal its revive channel: the poll returned its
+	// verdict to the root session while the dispatch that started it blocked
+	// until the 30-minute park backstop fired, reporting "waiting on []".
+	// Protected by registry mu.
+	PendingPolls map[string]struct{}
+
 	// StartedAt is the wall-clock time when the dispatch was registered.
 	// Used by Snapshot to compute ElapsedMs without per-entry timers.
 	StartedAt time.Time
@@ -226,6 +262,11 @@ type activeDispatch struct {
 	// by runChild on revive (DrainTaskResults). See dispatch_task_revive.go.
 	CompletedTaskResults []TaskResultRecord
 
+	// CompletedPollResults accumulates the verdicts of polls this dispatch
+	// awaited, drained by runChild on revive (DrainPollResults) so the resume
+	// prompt tells the agent what its poll decided.
+	CompletedPollResults []PollResultRecord
+
 	// reserved marks an entry that was created by Reserve before the full
 	// dispatch bookkeeping (cancel, child, childRunID) was known. A reserved
 	// entry is a real member of ActiveIDs/ActiveNames — its whole purpose is to
@@ -251,6 +292,76 @@ func NewDispatchRegistry() *DispatchRegistry {
 	return &DispatchRegistry{
 		dispatches:   make(map[string]*activeDispatch),
 		settledTasks: make(map[string]TaskResultRecord),
+		aliases:      make(map[string]string),
+	}
+}
+
+// RegisterAlias records a consumer-supplied identifier as an alternate name for
+// a dispatch's canonical engine ID, so a steer/recall addressed with the
+// consumer's own key resolves to the real dispatch instead of missing it.
+//
+// Registering an alias is always additive and never rebinds: an alias that
+// already points somewhere is left alone (logged at WARN, since two dispatches
+// claiming one consumer key means the consumer's keys are not unique and the
+// engine must not silently pick a winner). An alias equal to the canonical ID
+// is a no-op — the direct lookup already covers it, and storing it would leave
+// a self-referential entry to reason about.
+func (r *DispatchRegistry) RegisterAlias(alias, canonicalID string) {
+	if alias == "" || canonicalID == "" || alias == canonicalID {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.aliases == nil {
+		r.aliases = make(map[string]string)
+	}
+	if existing, ok := r.aliases[alias]; ok {
+		if existing != canonicalID {
+			utils.LogWithFields(utils.LevelWarn, "session.extcontext.dispatch_registry", "registeralias: alias already bound to a different dispatch, keeping the original", map[string]any{
+				"alias": alias, "run_id": existing, "rejected_run_id": canonicalID,
+			})
+		}
+		return
+	}
+	r.aliases[alias] = canonicalID
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "registeralias: consumer dispatch id aliased to canonical id", map[string]any{
+		"alias": alias, "run_id": canonicalID, "max": len(r.aliases),
+	})
+}
+
+// resolveIDLocked maps any accepted dispatch identifier to a live canonical ID.
+// A direct hit always wins over an alias, so the engine's own ID space can
+// never be shadowed by a consumer key. Returns the resolved ID and whether it
+// names a live entry; the second return distinguishes "resolved through an
+// alias" so callers can log how a steer found its target.
+//
+// Caller must hold r.mu.
+func (r *DispatchRegistry) resolveIDLocked(id string) (resolved string, viaAlias bool, ok bool) {
+	if _, direct := r.dispatches[id]; direct {
+		return id, false, true
+	}
+	if canonical, aliased := r.aliases[id]; aliased {
+		if _, live := r.dispatches[canonical]; live {
+			return canonical, true, true
+		}
+	}
+	return id, false, false
+}
+
+// dropAliasesForLocked removes every alias bound to a canonical dispatch ID.
+// Called from Deregister so an alias never outlives the dispatch it names and
+// therefore can never resolve onto a later, unrelated dispatch that happens to
+// reuse the consumer's key.
+//
+// Caller must hold r.mu.
+func (r *DispatchRegistry) dropAliasesForLocked(canonicalID string) {
+	for alias, target := range r.aliases {
+		if target == canonicalID {
+			delete(r.aliases, alias)
+			utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "deregister: dropped dispatch alias", map[string]any{
+				"alias": alias, "run_id": canonicalID,
+			})
+		}
 	}
 }
 
@@ -409,6 +520,7 @@ func (r *DispatchRegistry) Deregister(id string) {
 	}
 
 	delete(r.dispatches, id)
+	r.dropAliasesForLocked(id)
 	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "deregister removed", map[string]any{"run_id": id, "count": len(r.dispatches)})
 }
 
@@ -426,6 +538,55 @@ func (r *DispatchRegistry) Get(id string) (*activeDispatch, bool) {
 	}
 	utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "get", map[string]any{"run_id": id, "model": d.Name, "session_id": d.SessionID})
 	return d, true
+}
+
+// CountLiveByNameUnderParent returns how many live dispatches carry the given
+// agent name AND the given parent dispatch id. It is the population a
+// per-name concurrency cap bounds.
+//
+// Reserved placeholders count. A reservation exists precisely because the
+// dispatch is starting but not yet fully registered, so skipping reservations
+// would let a burst of concurrent dispatch calls each observe zero and all
+// proceed — the classic check-then-act race, and exactly what a cap of 1 must
+// prevent. Counting them makes the check conservative in the only direction
+// that is safe.
+//
+// parentID is matched exactly, including the empty string, which is the
+// orchestrator's identity (depth 0 has no dispatch id of its own). That is
+// what scopes a singleton to one dispatcher rather than to the whole session:
+// two different parents each holding one dispatch of the same advisory agent
+// are two separate counts of one, not one count of two.
+//
+// Name comparison is case-insensitive, matching namesEqual in the eligibility
+// guard — an agent addressed as "Dev-Lead" and one addressed as "dev-lead" are
+// the same agent, and a cap that missed on case would be trivially bypassed.
+func (r *DispatchRegistry) CountLiveByNameUnderParent(name, parentID string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, d := range r.dispatches {
+		if d.ParentID == parentID && strings.EqualFold(d.Name, name) {
+			n++
+		}
+	}
+	return n
+}
+
+// LiveIDsByNameUnderParent returns the dispatch ids counted by
+// CountLiveByNameUnderParent. Used to name the offending dispatches in a
+// refusal, so a harness (and its operator) can see WHICH dispatch already
+// holds the slot instead of only that the slot is taken.
+func (r *DispatchRegistry) LiveIDsByNameUnderParent(name, parentID string) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []string
+	for id, d := range r.dispatches {
+		if d.ParentID == parentID && strings.EqualFold(d.Name, name) {
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // NameForID returns the registered agent name for a dispatch ID. This is the
@@ -535,113 +696,6 @@ func (r *DispatchRegistry) ActiveIDs() map[string]bool {
 	return ids
 }
 
-// SteerDispatchOutcome is a string-typed enum describing how a
-// SteerByID call was resolved. It mirrors the backend.SteerResult
-// values with an additional "not_found" for registry-level misses.
-type SteerDispatchOutcome string
-
-const (
-	// SteerOutcomeDelivered: the steer message was buffered on the child's
-	// steer channel and will be injected at the next drainSteer checkpoint.
-	SteerOutcomeDelivered SteerDispatchOutcome = "delivered"
-	// SteerOutcomeChannelFull: the child's steer channel has 4 pending
-	// messages; no room for another.
-	SteerOutcomeChannelFull SteerDispatchOutcome = "channel_full"
-	// SteerOutcomeNoRun: the dispatch exists in the registry but its child
-	// backend has no active run matching the ChildRunID.
-	SteerOutcomeNoRun SteerDispatchOutcome = "no_run"
-	// SteerOutcomeNotFound: no dispatch with that ID exists in the registry.
-	SteerOutcomeNotFound SteerDispatchOutcome = "not_found"
-)
-
-// Steerable is a narrow interface for backends that support in-process
-// steer delivery. Both *backend.ApiBackend and *backend.HybridBackend
-// implement it. This mirrors the session-local steerable interface
-// (session/agent.go) but is exported so the dispatch registry (a
-// different package) can type-assert against it.
-type Steerable interface {
-	SteerWithReason(requestID, message string) backend.SteerResult
-	SteerWithKind(requestID, message, kind string) backend.SteerResult
-}
-
-// SteerByID delivers a steering message to a running background dispatch
-// identified by its public dispatch ID. It looks up the registry entry,
-// type-asserts the stored Child backend to the Steerable interface, and
-// calls SteerWithReason with the entry's ChildRunID. The backend's
-// SteerResult is mapped to a SteerDispatchOutcome so the caller gets a
-// four-value verdict: delivered, channel_full, no_run, or not_found.
-func (r *DispatchRegistry) SteerByID(dispatchID, message string) SteerDispatchOutcome {
-	return r.SteerByIDWithKind(dispatchID, message, "")
-}
-
-// SteerByIDWithKind is the classification-carrying variant of SteerByID.
-//
-// kind is a types.InjectionKind wire value naming who authored the message, so
-// a completion or check-in steered into a live child run is persisted as the
-// machine-to-machine turn it is rather than as an unclassified user turn.
-func (r *DispatchRegistry) SteerByIDWithKind(dispatchID, message, kind string) SteerDispatchOutcome {
-	r.mu.Lock()
-	entry, ok := r.dispatches[dispatchID]
-	if !ok {
-		r.mu.Unlock()
-		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerbyid: not found", map[string]any{"run_id": dispatchID, "count": len(message), "steer_outcome_not_found": SteerOutcomeNotFound})
-		return SteerOutcomeNotFound
-	}
-	child := entry.Child
-	childRunID := entry.ChildRunID
-	name := entry.Name
-	r.mu.Unlock()
-
-	s, ok := child.(Steerable)
-	if !ok {
-		utils.LogWithFields(utils.LevelWarn, "session.extcontext.dispatch_registry", "steerbyid: child backend does not implement steerable", map[string]any{"run_id": dispatchID, "model": name, "steer_outcome_no_run": SteerOutcomeNoRun})
-		return SteerOutcomeNoRun
-	}
-
-	result := s.SteerWithKind(childRunID, message, kind)
-	var outcome SteerDispatchOutcome
-	switch result {
-	case backend.SteerResultDelivered:
-		outcome = SteerOutcomeDelivered
-	case backend.SteerResultChannelFull:
-		outcome = SteerOutcomeChannelFull
-	case backend.SteerResultNoRun:
-		outcome = SteerOutcomeNoRun
-	default:
-		outcome = SteerOutcomeNoRun
-	}
-
-	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerbyid", map[string]any{"dispatch_id": dispatchID, "agent_name": name, "child_run_id": childRunID, "count": len(message), "result": result, "outcome": outcome})
-	return outcome
-}
-
-// SteerByName delivers a steering message to a running background dispatch
-// identified by its agent name. It iterates the registry to find the first
-// entry where d.Name == name, then delegates to SteerByID on that entry's
-// dispatch ID. Returns SteerOutcomeNotFound when no dispatch with that name
-// exists. When multiple dispatches share a name, the first one found is
-// steered (non-deterministic order, matching Recall's existing semantics).
-// Use SteerByID for precise targeting when a specific dispatch ID is known.
-func (r *DispatchRegistry) SteerByName(name, message string) SteerDispatchOutcome {
-	r.mu.Lock()
-	var foundID string
-	for id, d := range r.dispatches {
-		if d.Name == name {
-			foundID = id
-			break
-		}
-	}
-	r.mu.Unlock()
-
-	if foundID == "" {
-		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerbyname: not found", map[string]any{"model": name, "count": len(message), "steer_outcome_not_found": SteerOutcomeNotFound})
-		return SteerOutcomeNotFound
-	}
-
-	utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "steerbyname: resolved to id", map[string]any{"model": name, "run_id": foundID})
-	return r.SteerByID(foundID, message)
-}
-
 // SetChildConvID records the child conversation ID for a dispatch entry once
 // it is known (from the child's SessionInitEvent). No-op if the dispatch ID
 // is not found.
@@ -673,9 +727,9 @@ func (r *DispatchRegistry) LiveConvIDs() []string {
 }
 
 // waitingOnSnapshot returns independent, stable-order copies of a dispatch's
-// parked task and child sets. Caller must hold r.mu.
+// parked task, child, and poll sets. Caller must hold r.mu.
 func waitingOnSnapshot(d *activeDispatch) *DispatchWaitingOn {
-	if !d.Suspended || (len(d.PendingTasks) == 0 && len(d.PendingChildren) == 0) {
+	if !d.Suspended || (len(d.PendingTasks) == 0 && len(d.PendingChildren) == 0 && len(d.PendingPolls) == 0) {
 		return nil
 	}
 	waiting := &DispatchWaitingOn{}
@@ -685,8 +739,12 @@ func waitingOnSnapshot(d *activeDispatch) *DispatchWaitingOn {
 	for childID := range d.PendingChildren {
 		waiting.ChildDispatchIDs = append(waiting.ChildDispatchIDs, childID)
 	}
+	for pollID := range d.PendingPolls {
+		waiting.PollIDs = append(waiting.PollIDs, pollID)
+	}
 	sort.Strings(waiting.TaskIDs)
 	sort.Strings(waiting.ChildDispatchIDs)
+	sort.Strings(waiting.PollIDs)
 	return waiting
 }
 

@@ -233,6 +233,10 @@
       "machineAuthored",
       "messageLength"
     ],
+    "steer_interrupted_stream": [
+      "blocksKept",
+      "queuedSteers"
+    ],
     "stream_reset": null,
     "task_complete": [
       "conversationTurns",
@@ -512,9 +516,11 @@
     "steerClientMessageId",
     "steerDegradedMessageLength",
     "steerEntryId",
+    "steerInterruptBlocksKept",
     "steerKind",
     "steerMachineAuthored",
     "steerMessageLength",
+    "steerQueuedCount",
     "strategy",
     "summary",
     "taskSuspendAwaitingCount",

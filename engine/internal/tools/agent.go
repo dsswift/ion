@@ -86,7 +86,7 @@ func AgentTool() *types.ToolDef {
 			"properties": map[string]any{
 				"prompt":              map[string]any{"type": "string", "description": "The task for the agent to perform"},
 				"description":         map[string]any{"type": "string", "description": "A short description of what the agent will do"},
-				"model":               map[string]any{"type": "string", "description": "Optional model request. Omit it to inherit the parent. A direct model request is locked to the parent provider; only configured tiers can deliberately select another provider."},
+				"model":               map[string]any{"type": "string", "description": "Optional model request. Omit it to inherit the parent. Prefer a configured tier name over a raw model ID, and pick the fastest tier the task allows — mechanical work with clear instructions does not need a premium model. A direct model request is locked to the parent provider; only configured tiers can deliberately select another provider."},
 				"wait_for_completion": map[string]any{"type": "boolean", "description": "Wait for terminal child output. Default false: dispatch asynchronously and receive automatic completion delivery."},
 				"name":                map[string]any{"type": "string", "description": "Optional specialist agent name (e.g. 'code-reviewer'). If set, the engine resolves the spec from the session's agent registry; the capability_match hook fires when the name is not registered."},
 			},

@@ -11,9 +11,27 @@ import (
 
 // DispatchAgentOpts configures an engine-native agent dispatch.
 type DispatchAgentOpts struct {
-	Name  string `json:"name"`
-	Task  string `json:"task"`
+	Name string `json:"name"`
+	Task string `json:"task"`
+	// Model accepts a configured tier name as well as a concrete model
+	// identifier. The shared dispatch seam resolves tiers (see
+	// extcontext.resolveDispatchModelTier), so every dispatch path gets tier
+	// support. An unconfigured name passes through unchanged.
 	Model string `json:"model,omitempty"`
+	// Visibility controls how long this dispatch's agent-state row survives in
+	// a client roster. Empty means "sticky", which is the engine default: the
+	// row persists after the dispatch finishes so an operator can open a
+	// completed dispatch and still see what it dispatched.
+	//
+	// "ephemeral" is opt-in, for a caller that genuinely wants a row to vanish
+	// on completion. It was previously the effective default for any agent
+	// whose metadata omitted the field, which meant a finished child was gone
+	// from its parent's drill-down before an operator could look at it.
+	//
+	// Recognized values: "sticky", "ephemeral", "always". An unrecognized value
+	// resolves to "sticky" rather than failing the dispatch -- a roster row is
+	// not worth refusing real work over.
+	Visibility string `json:"visibility,omitempty"`
 	// ModelOrigin is engine-internal provenance. SDK calls always receive the
 	// extension origin at the transport boundary; extensions cannot spoof it.
 	ModelOrigin  types.ModelOrigin `json:"-"`
@@ -28,6 +46,54 @@ type DispatchAgentOpts struct {
 	// known (the stub RPC response carries the DispatchID, but notifications
 	// can arrive before it). Not part of the engine wire contract.
 	CallbackID string `json:"callbackId,omitempty"`
+
+	// ClientDispatchID is a consumer-owned identifier for this dispatch,
+	// registered as an alias for the engine's canonical dispatch ID so a later
+	// SteerDispatch / RecallDispatch addressed with the consumer's own key
+	// resolves to this dispatch instead of missing it.
+	//
+	// It exists because a harness usually has to name a dispatch before the
+	// engine can: it creates local bookkeeping the moment it decides to
+	// dispatch, keys that state by a locally-minted id, and only afterwards
+	// receives the engine's DispatchID from the stub. Any state keyed by the
+	// local id then carries the wrong key from the engine's point of view, and
+	// a steer sent with it lands nowhere. Worse, the miss is reported as
+	// not_found — the same answer as a dispatch that already finished — so the
+	// harness has no signal that anything is misaddressed and silently loses
+	// every steer aimed at that dispatch.
+	//
+	// Supplying this field is optional and purely additive: omit it and
+	// nothing is aliased. Prefer the returned DispatchID for new code; this is
+	// for callers whose own identity is minted first. Aliases are dropped when
+	// the dispatch deregisters, so a reused key never resolves to a stale
+	// dispatch, and an id that collides with a live alias is rejected (logged,
+	// original kept) rather than silently rebound.
+	ClientDispatchID string `json:"clientDispatchId,omitempty"`
+
+	// MaxConcurrentPerName caps how many dispatches of THIS agent name may be
+	// live at once under the same parent. Zero or negative (including omitted)
+	// means no cap — the engine ships unopinionated, exactly as it does for
+	// MaxTurns.
+	//
+	// The engine owns the mechanism and the harness owns the number. Only the
+	// registry knows what is actually live, with each entry's name, parent, and
+	// depth, so the count belongs here; but which agents are singletons is pure
+	// harness policy (an agent that owns exclusive durable state, or whose value
+	// comes from synthesising everything at once, versus one doing an isolated
+	// job that parallelises cleanly). The harness reads its own declaration and
+	// passes the resulting number per dispatch.
+	//
+	// Scoped per PARENT rather than per session. A cap keyed on the dispatching
+	// parent expresses "this dispatcher may hold one of these at a time", which
+	// is the constraint a dispatcher can actually reason about — it can see its
+	// own children and cannot see a sibling's. A session-global cap would also
+	// make a cross-cutting advisory agent unusable the moment two different
+	// parents wanted it concurrently, which is a legitimate pattern rather than
+	// a conflict.
+	//
+	// Enforced before the dispatch ID is minted, so a refusal costs nothing and
+	// leaves no partial registration behind.
+	MaxConcurrentPerName int `json:"maxConcurrentPerName,omitempty"`
 
 	// MaxTurns caps the child session's agent loop iteration count. <=0 (the
 	// default when omitted) means unlimited -- the engine ships unopinionated.

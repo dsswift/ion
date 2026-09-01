@@ -328,3 +328,27 @@ func TestBackgroundNotifier_RegistersWithOutstandingSet(t *testing.T) {
 		}
 	}
 }
+
+// notify_on_complete is a free wait; Poll costs one inference per attempt. The
+// observed misuse was a conversation that started a background command WITHOUT
+// notify_on_complete and then paid a frontier model to poll its output file, so
+// the Bash guidance must name the cheap path and warn Poll off this job.
+func TestBashDescriptionSteersWaitingToNotifyOnComplete(t *testing.T) {
+	def := BashTool()
+	if !strings.Contains(def.Description, "never to watch a command you started here") {
+		t.Errorf("Bash description does not warn Poll off background bash waiting: %s", def.Description)
+	}
+	props, _ := def.InputSchema["properties"].(map[string]any)
+
+	background, _ := props["run_in_background"].(map[string]any)
+	backgroundDesc, _ := background["description"].(string)
+	if !strings.Contains(backgroundDesc, "notify_on_complete") {
+		t.Errorf("run_in_background does not point at notify_on_complete: %q", backgroundDesc)
+	}
+
+	notify, _ := props["notify_on_complete"].(map[string]any)
+	notifyDesc, _ := notify["description"].(string)
+	if !strings.Contains(notifyDesc, "costs no inference") {
+		t.Errorf("notify_on_complete does not state its cost advantage over Poll: %q", notifyDesc)
+	}
+}

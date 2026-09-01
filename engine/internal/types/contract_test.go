@@ -69,6 +69,7 @@ func normalizedEventVariants() map[string]NormalizedEventData {
 		EventToolStalled:             &ToolStalledEvent{},
 		EventSteerInjected:           &SteerInjectedEvent{},
 		EventSteerDegraded:           &SteerDegradedEvent{},
+		EventSteerInterruptedStream:  &SteerInterruptedStreamEvent{},
 		EventAgentStateClamped:       &AgentStateClampedEvent{},
 		EventPromptInjected:          &PromptInjectedEvent{},
 		EventModelFallback:           &ModelFallbackEvent{},

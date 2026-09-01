@@ -49,6 +49,43 @@ func (b *ApiBackend) processStream(
 			return nil, "", nil, ctx.Err()
 		}
 
+		// Steer interrupt: a steer arrived while this stream was in flight and
+		// the run's policy is to apply it now rather than after the model
+		// finishes composing. Stop consuming and report "end_turn" so the
+		// established end_turn path handles it — that path already drains the
+		// steer and forces a continuation turn, so the steer lands on the very
+		// next provider call with the partial assistant text preserved ahead of
+		// it. Reporting "" instead would read as a truncated stream and trigger
+		// the truncation-retry branch, which discards the partial output and
+		// re-runs the turn: the model would lose what it had said and never see
+		// the steer that interrupted it.
+		//
+		// Guarded to text-only progress. Once a tool_use block has begun, the
+		// provider protocol obliges this turn to answer every tool_use with a
+		// tool_result, so cutting the stream there would either drop a call the
+		// model believes it made or emit an unanswerable one. Tool phases are
+		// covered by the post-tool-results drain checkpoint instead, which is
+		// the earliest legal injection point for them.
+		if run != nil && run.steerInterrupt.Load() {
+			if toolCallIndex == 0 && !thinkingActive {
+				utils.LogWithFields(utils.LevelInfo, "backend.runloop", "steer arrived mid-stream: ending provider call early so the steer applies on the next turn", map[string]any{
+					"run_id":       run.requestID,
+					"blocks":       len(assistantBlocks),
+					"queued_steer": len(run.steerCh),
+				})
+				b.emit(run, types.NormalizedEvent{Data: &types.SteerInterruptedStreamEvent{
+					BlocksKept:   len(assistantBlocks),
+					QueuedSteers: len(run.steerCh),
+				}})
+				return assistantBlocks, "end_turn", &cumUsage, nil
+			}
+			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "steer buffered mid-stream but stream is not at an interruptible point; deferring to the next drain checkpoint", map[string]any{
+				"run_id":          run.requestID,
+				"tool_calls":      toolCallIndex,
+				"thinking_active": thinkingActive,
+			})
+		}
+
 		if !ttftEmitted {
 			ttftEmitted = true
 			if telem := runTelemetry(run); telem != nil {

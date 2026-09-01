@@ -54,16 +54,10 @@ func (m *Manager) buildRunConfig(
 		return m.OutstandingBackgroundTaskIDs(key)
 	}
 	runCfg.OutstandingPolls = func() []string {
-		m.mu.RLock()
-		defer m.mu.RUnlock()
-		if current := m.sessions[key]; current != nil {
-			ids := make([]string, 0, len(current.activePolls))
-			for id := range current.activePolls {
-				ids = append(ids, id)
-			}
-			return ids
-		}
-		return nil
+		// Root-owned polls only. A dispatched child's poll -- including the
+		// poll-check child Poll itself dispatches -- is owned by that dispatch
+		// and must not hold the root run open.
+		return m.OutstandingPollIDsFor(key, "")
 	}
 
 	// Thread the engine's default model so the run loop can fall back
@@ -78,6 +72,13 @@ func (m *Manager) buildRunConfig(
 		runCfg.Timeouts = m.config.Timeouts
 	}
 	tools.SetFinishedBackgroundTaskRetentionLimit(m.backgroundTasksConfig().MaxRetainedFinishedTasksPerSession)
+
+	// Thread steering config so the run resolves its steer buffer capacity and
+	// its mid-stream interrupt policy from engine.json. Nil leaves the compiled
+	// defaults (interrupt on, generous buffer) via the types resolvers.
+	if m.config != nil && m.config.Steering != nil {
+		runCfg.Steering = m.config.Steering
+	}
 
 	// Thread shell config so the Bash tool can run commands through the user's
 	// login shell when EngineRuntimeConfig.Shell.UseLoginShell is set. Nil
@@ -238,7 +239,12 @@ func (m *Manager) buildRunConfig(
 	}
 	m.wireAgentSpawner(s, key, currentModel, spawnerExtGroup, runCfg)
 	runCfg.PollStarter = func(ctx context.Context, request tools.PollRequest, cwd string) (string, error) {
-		return m.startPoll(s, key, currentModel, request, cwd)
+		// currentModel is deliberately not threaded here: a poll child resolves
+		// its model from operator configuration, never from the conversation.
+		//
+		// Owner "": the root run is not a dispatch, so it parks only on the
+		// polls it started itself.
+		return m.startPoll(s, key, "", request, cwd)
 	}
 	runCfg.AgentStatus = extcontext.AgentStatusGetter(s.dispatchRegistry)
 

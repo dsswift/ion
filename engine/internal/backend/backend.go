@@ -394,6 +394,13 @@ type RunConfig struct {
 	AgentStatus tools.AgentStatusGetter
 	Telemetry   TelemetryCollector
 	Timeouts    *types.TimeoutsConfig
+	// Steering carries the resolved engine-wide steering configuration
+	// (stream-interrupt policy and steer buffer capacity) into the run, so a
+	// run reads its steer behavior from the same place it reads its other
+	// per-run policy instead of reaching for global config. Nil inherits the
+	// compiled defaults via types.SteerInterruptStreamEnabled /
+	// types.SteerBufferSize.
+	Steering *types.SteeringConfig
 
 	// BackgroundTaskOwner is the session key stamped onto tool contexts so
 	// background Bash tasks (run_in_background) are attributed to their

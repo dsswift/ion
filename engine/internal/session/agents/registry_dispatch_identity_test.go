@@ -13,14 +13,24 @@ import (
 
 // TestGroupByNameDistinctDispatches creates two concurrent dispatches with the
 // same agent name but distinct dispatch ids and distinct parent ids, drives
-// them through the snapshot/groupByName projection, and asserts both dispatches
-// appear as distinct, ID-addressable entries whose dispatchId is non-empty.
+// them through the snapshot/groupByName projection, and asserts each dispatch
+// remains distinct and ID-addressable with a non-empty dispatchId.
 //
-// Before the Commit 3 fix (stamping an explicit dispatchId onto each merged
-// dispatch member in groupByName), the members carry only "id" and a consumer
-// keying on "dispatchId" sees empty strings — the two same-name dispatches are
-// indistinguishable. After the fix, each member exposes a non-empty dispatchId
-// mirrored from its stable id, plus its own parent/depth attribution.
+// This test previously asserted the two collapsed into ONE row, with per-
+// dispatch identity preserved only inside metadata.dispatches[]. That shape was
+// the defect: the single row carried a single top-level dispatchParentId, and a
+// consumer grouping children by that field (the desktop's childAgentsOf) could
+// match only one parent -- every other parent's drill-down showed no children.
+//
+// Observed live: two "poll-check" dispatches under different parents produced
+// one emitted row whose parent flipped mid-run as statusPriority changed
+// (running=4 beat error=2). The child never vanished; the collapsed row stopped
+// pointing at the parent being viewed.
+//
+// Grouping is now keyed by name AND parent, so distinct lineages stay distinct
+// rows. The per-member identity stamping this test also covers is unchanged and
+// still asserted below -- same name under the SAME parent still collapses, which
+// is the duplicate-row case the projection exists to prevent.
 func TestGroupByNameDistinctDispatches(t *testing.T) {
 	r := NewRegistry()
 
@@ -66,13 +76,34 @@ func TestGroupByNameDistinctDispatches(t *testing.T) {
 	}, func(existing *types.AgentStateUpdate) {})
 
 	snap := r.MergedSnapshot()
-	if len(snap) != 1 {
-		t.Fatalf("expected 1 grouped dev-lead row, got %d: %+v", len(snap), snap)
+	// Distinct parents => distinct rows. One row per lineage is what lets a
+	// consumer group children by the top-level dispatchParentId.
+	if len(snap) != 2 {
+		t.Fatalf("expected 2 dev-lead rows (one per parent lineage), got %d: %+v", len(snap), snap)
 	}
 
-	dispatches, ok := snap[0].Metadata["dispatches"].([]interface{})
-	if !ok {
-		t.Fatalf("dispatches[] not found in snapshot metadata: %v", snap[0].Metadata)
+	byParent := map[string]types.AgentStateUpdate{}
+	for _, row := range snap {
+		parent, _ := row.Metadata["dispatchParentId"].(string)
+		if _, dup := byParent[parent]; dup {
+			t.Fatalf("two rows share parent %q — lineages collapsed", parent)
+		}
+		byParent[parent] = row
+	}
+	if _, ok := byParent["root"]; !ok {
+		t.Fatalf("no row attributed to parent root: %+v", snap)
+	}
+	if _, ok := byParent["orchestrator"]; !ok {
+		t.Fatalf("no row attributed to parent orchestrator: %+v", snap)
+	}
+
+	// Per-member identity stamping is unchanged: gather every member across
+	// both rows and assert each is ID-addressable.
+	var dispatches []interface{}
+	for _, row := range snap {
+		if d, ok := row.Metadata["dispatches"].([]interface{}); ok {
+			dispatches = append(dispatches, d...)
+		}
 	}
 	if len(dispatches) != 2 {
 		t.Fatalf("expected 2 distinct dispatch members, got %d: %v", len(dispatches), dispatches)

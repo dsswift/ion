@@ -514,6 +514,14 @@ func (m *mockSteerableBackend) SteerWithKind(requestID, message, kind string) ba
 	return m.result
 }
 
+// IsRunning is implemented (rather than inherited from the embedded nil
+// RunBackend) because Deregister consults it for its invariant check. Reaching
+// the embedded nil interface panics, so any test that deregisters an entry
+// holding this mock needs a real method here. Reports false: these fakes have
+// no run, and false is the same answer a ClaudeCodeBackend gives, which
+// Deregister already treats as the benign case.
+func (m *mockSteerableBackend) IsRunning(string) bool { return false }
+
 // TestDispatchRegistry_SteerByID_Delivered verifies that SteerByID
 // returns SteerOutcomeDelivered when the child backend accepts the steer.
 func TestDispatchRegistry_SteerByID_Delivered(t *testing.T) {

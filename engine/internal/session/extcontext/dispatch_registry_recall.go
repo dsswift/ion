@@ -53,7 +53,22 @@ func (r *DispatchRegistry) RecallByID(id, reason string) bool {
 // takeRecallLocked atomically removes target plus descendants and returns their
 // live handles for teardown. Caller holds r.mu. A nil return means target was
 // already terminal/deregistered.
+//
+// The target is resolved through resolveIDLocked, so a consumer-supplied
+// dispatch id (registered via ClientDispatchID) addresses the same dispatch a
+// steer would. Recall and steer must accept the identical id space: a harness
+// that can steer a dispatch but cannot recall it — or worse, one whose recall
+// silently misses and leaves the dispatch running — is the asymmetry that makes
+// a timeout guard useless.
 func (r *DispatchRegistry) takeRecallLocked(id string) *recallSet {
+	canonicalID, viaAlias, found := r.resolveIDLocked(id)
+	if !found {
+		return nil
+	}
+	if viaAlias {
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recall: resolved consumer dispatch id through alias", map[string]any{"alias": id, "dispatch_id": canonicalID})
+	}
+	id = canonicalID
 	target, exists := r.dispatches[id]
 	if !exists {
 		return nil
@@ -74,9 +89,16 @@ func (r *DispatchRegistry) takeRecallLocked(id string) *recallSet {
 		}
 	}
 
+	// Drop aliases alongside the entries they name. Recall deletes from
+	// r.dispatches directly rather than going through Deregister, so without
+	// this the alias would outlive its dispatch and a consumer reusing its own
+	// key would have a stale alias resolve onto a recalled dispatch — a miss
+	// that looks like a hit.
 	delete(r.dispatches, id)
+	r.dropAliasesForLocked(id)
 	for _, childID := range descendantIDs {
 		delete(r.dispatches, childID)
+		r.dropAliasesForLocked(childID)
 	}
 	return &recallSet{
 		targetID: id, target: target,

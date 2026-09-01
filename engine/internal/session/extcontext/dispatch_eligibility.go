@@ -23,6 +23,65 @@ var ErrSelfDispatch = errors.New("agent cannot dispatch itself")
 // present.
 var ErrSubAgentNotAllowed = errors.New("agent not in dispatcher's allowed sub-agents")
 
+// ErrConcurrencyCapReached is returned when a dispatch would exceed the
+// harness-declared MaxConcurrentPerName cap for that agent name under the same
+// parent. The cap is harness policy (the engine has no opinion on which agents
+// are singletons); the engine enforces the count because only the registry
+// knows what is actually live.
+//
+// A distinct error rather than a generic failure: "this agent already has a
+// dispatch running for you" is an ordinary, expected condition a dispatcher
+// recovers from by waiting or by reusing the running dispatch, whereas a
+// self-dispatch or allowlist violation means the caller asked for something it
+// may never have. Collapsing them would leave the dispatching model unable to
+// tell "not yet" from "not ever".
+var ErrConcurrencyCapReached = errors.New("agent concurrency cap reached")
+
+// checkConcurrencyCap enforces the harness-declared per-name concurrency cap
+// for one dispatch, scoped to the requesting parent.
+//
+// limit <= 0 means no cap, which is the engine's unopinionated default: a harness
+// that declares nothing gets the historic unlimited behaviour.
+//
+// The count is taken over live dispatches with the same name AND the same
+// parent id (parentID == "" being the orchestrator). This is what makes a
+// singleton mean "one per dispatcher" rather than "one per session", so a
+// cross-cutting advisory agent stays usable by two different parents at once
+// while a state-owning agent still cannot be doubled under one parent.
+//
+// Returns nil when the dispatch is allowed. Every branch logs, including the
+// allowed one, so a refusal and a near-miss are both reconstructible from logs
+// alone (engine-grounding §7).
+func checkConcurrencyCap(
+	sa SessionAccessor,
+	registry *DispatchRegistry,
+	parentID string,
+	requestedName string,
+	limit int,
+) error {
+	if limit <= 0 || registry == nil {
+		return nil
+	}
+	live := registry.CountLiveByNameUnderParent(requestedName, parentID)
+	if live < limit {
+		utils.LogWithFields(utils.LevelInfo, "server", "concurrency guard: allowed dispatch", map[string]any{
+			"requested_name": requestedName, "live": live, "max": limit,
+			"parent_dispatch_id": parentID, "session_key": sa.SessionKey(),
+		})
+		return nil
+	}
+	holders := registry.LiveIDsByNameUnderParent(requestedName, parentID)
+	utils.LogWithFields(utils.LevelWarn, "server", "concurrency guard: blocked dispatch, per-name cap reached", map[string]any{
+		"requested_name": requestedName, "live": live, "max": limit,
+		"parent_dispatch_id": parentID, "holders": holders, "session_key": sa.SessionKey(),
+	})
+	// The message names the live dispatch ids because the dispatching model's
+	// only useful next move is to wait for, steer, or read the result of the
+	// dispatch that already holds the slot.
+	return fmt.Errorf("%w: agent %q already has %d of %d allowed concurrent dispatch(es) running for this dispatcher (%s)",
+		ErrConcurrencyCapReached, requestedName, live, limit, strings.Join(holders, ", "))
+}
+
 // checkDispatchEligibility enforces the two non-depth dispatch guards:
 //
 //  1. Self-dispatch rail (engine-owned, on by default): a dispatched agent may
