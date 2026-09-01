@@ -535,6 +535,7 @@
 		A1B2C3D4E5F60001FF0021AB /* RemoteCommand+DecodeWorktree.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0020AB /* RemoteCommand+DecodeWorktree.swift */; };
 		A1B2C3D4E5F60001FF0023AA /* SessionViewModel+ConversationHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0022AA /* SessionViewModel+ConversationHelpers.swift */; };
 		A1B2C3D4E5F60001FF0025AA /* NormalizedEvent+EngineDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0024AA /* NormalizedEvent+EngineDecoder.swift */; };
+		A1B2C3D4E5F60001FF0025AB /* NormalizedEvent+EngineDecoderTail.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0024AB /* NormalizedEvent+EngineDecoderTail.swift */; };
 		A1B2C3D4E5F60003000201AA /* ModelFallbackSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000202AA /* ModelFallbackSnapshotTests.swift */; };
 		A1B2C3D4E5F60003000201BB /* SnapshotBackgroundShellMergeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000202BB /* SnapshotBackgroundShellMergeTests.swift */; };
 		TABSTSRT000000000000001 /* TabRowStatusPriorityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TABSTSRT000000000000002 /* TabRowStatusPriorityTests.swift */; };
@@ -1130,6 +1131,7 @@
 		SNDITT00000000000000002 /* SendIntentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendIntentTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0022AA /* SessionViewModel+ConversationHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ConversationHelpers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0024AA /* NormalizedEvent+EngineDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+EngineDecoder.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001FF0024AB /* NormalizedEvent+EngineDecoderTail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+EngineDecoderTail.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60003000202AA /* ModelFallbackSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelFallbackSnapshotTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60003000202BB /* SnapshotBackgroundShellMergeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotBackgroundShellMergeTests.swift; sourceTree = "<group>"; };
 		TABSTSRT000000000000002 /* TabRowStatusPriorityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabRowStatusPriorityTests.swift; sourceTree = "<group>"; };
@@ -1254,6 +1256,7 @@
 				B1B2C3D4E5F60001CC000012 /* RemoteTabGroup.swift */,
 				B1B2C3D4E5F60001CC000014 /* NormalizedEvent+Codable.swift */,
 				A1B2C3D4E5F60001FF0024AA /* NormalizedEvent+EngineDecoder.swift */,
+				A1B2C3D4E5F60001FF0024AB /* NormalizedEvent+EngineDecoderTail.swift */,
 				A1B2C3D4E5F60001E50007AA /* EngineEventSupport.swift */,
 				F2A1B3C4D5E60718293A4B5D /* TaskCompletionReason.swift */,
 				AGDOT00000000000000002 /* AgentDotModel.swift */,
@@ -2218,6 +2221,7 @@
 				B1B2C3D4E5F60001CC000011 /* RemoteTabGroup.swift in Sources */,
 				B1B2C3D4E5F60001CC000013 /* NormalizedEvent+Codable.swift in Sources */,
 				A1B2C3D4E5F60001FF0025AA /* NormalizedEvent+EngineDecoder.swift in Sources */,
+				A1B2C3D4E5F60001FF0025AB /* NormalizedEvent+EngineDecoderTail.swift in Sources */,
 				A1B2C3D4E5F60001E50006AA /* EngineEventSupport.swift in Sources */,
 				F2A1B3C4D5E60718293A4B5C /* TaskCompletionReason.swift in Sources */,
 				AGDOT00000000000000001 /* AgentDotModel.swift in Sources */,

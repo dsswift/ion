@@ -159,6 +159,8 @@ extension DiagnosticLog {
             log("EVENT: engineSteerInjected tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength) clientMsgId=\(clientMessageId?.prefix(8) ?? "nil") entryId=\(entryId?.prefix(8) ?? "nil") kind=\(kind ?? "") machineAuthored=\(machineAuthored ?? false)", tag: "session", level: .info)
         case .engineSteerDegraded(let tabId, let instId, let messageLength, let kind, let machineAuthored):
             log("EVENT: engineSteerDegraded tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength) kind=\(kind ?? "") machineAuthored=\(machineAuthored ?? false)", tag: "session", level: .info)
+        case .engineSteerInterruptedStream(let tabId, let instId, let blocksKept, let queuedSteers):
+            log("EVENT: engineSteerInterruptedStream tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") blocksKept=\(blocksKept ?? 0) queuedSteers=\(queuedSteers ?? 0)", tag: "session", level: .info)
 
         case .engineRewindResult(let tabId, let instId, let error):
             log("EVENT: engineRewindResult tabId=\(tabId.prefix(8)) inst=\(instId.prefix(8)) error=\(error ?? "nil")", tag: "session", level: .info)
