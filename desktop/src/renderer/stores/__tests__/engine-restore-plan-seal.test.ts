@@ -33,7 +33,7 @@ vi.mock('../session-store-persistence', () => ({
   isExtensionErrorMessage: () => false,
 }))
 
-import { buildPopulatedInstance, hasPlanBeenImplemented } from '../../hooks/useTabRestoration-engine'
+import { buildPopulatedInstance, hasPlanBeenImplemented, persistedPlanCardIsStale } from '../../hooks/useTabRestoration-engine'
 
 // Minimal PersistedConversationInstance for testing.
 function makePersistedInstance(messages: Array<{ role: string; content: string; timestamp: number }>, extra: Record<string, unknown> = {}) {
@@ -196,6 +196,76 @@ describe('hasPlanBeenImplemented', () => {
 
     // No Implementing divider → plan is still pending approval → restore as plan.
     expect(populated.permissionMode).toBe('plan')
+  })
+})
+
+// ─── Stale persisted plan card guard ────────────────────────────────────────
+// The reported bug's desktop analog: an autonomous "Implement the following
+// plan:" turn (or any path that skips implementPlan's card clear) leaves
+// permissionDenied set on disk. Restoration trusted it authoritatively and
+// resurfaced a Plan Ready card on a completed, auto-mode conversation, which the
+// snapshot then sent to iOS. buildPopulatedInstance must drop a persisted card
+// once its plan has been implemented with nothing newer pending.
+
+describe('persistedPlanCardIsStale', () => {
+  const IMPLEMENTED = [
+    { role: 'tool', content: '', toolName: 'mcp__ion-extensions__ExitPlanMode', timestamp: 1000 },
+    { role: 'user', content: 'Implement the following plan:', timestamp: 2000 },
+    { role: 'system', content: '── Implementing plan at 12:05 PM ──', timestamp: 3000 },
+    { role: 'assistant', content: 'Done, fully implemented.', timestamp: 4000 },
+  ]
+
+  it('is stale when the plan was implemented and nothing newer is pending', () => {
+    expect(persistedPlanCardIsStale(IMPLEMENTED as any)).toBe(true)
+  })
+
+  it('is NOT stale when no Implementing divider exists (card still pending)', () => {
+    const pending = [
+      { role: 'tool', content: '', toolName: 'mcp__ion-extensions__ExitPlanMode', timestamp: 1000 },
+      { role: 'assistant', content: 'Plan ready for review.', timestamp: 2000 },
+    ]
+    expect(persistedPlanCardIsStale(pending as any)).toBe(false)
+  })
+
+  it('is NOT stale when a newer proposal follows the last Implementing divider', () => {
+    const reproposed = [
+      ...IMPLEMENTED,
+      { role: 'tool', content: '', toolName: 'mcp__ion-extensions__ExitPlanMode', timestamp: 5000 },
+      { role: 'assistant', content: 'Here is the next phase plan.', timestamp: 6000 },
+    ]
+    expect(persistedPlanCardIsStale(reproposed as any)).toBe(false)
+  })
+
+  it('is false for empty / undefined', () => {
+    expect(persistedPlanCardIsStale([])).toBe(false)
+    expect(persistedPlanCardIsStale(undefined)).toBe(false)
+  })
+})
+
+describe('buildPopulatedInstance — drops a stale persisted plan card', () => {
+  const PLAN_DENIED = {
+    tools: [{ toolName: 'ExitPlanMode', toolUseId: 'toolu_x', toolInput: { planFilePath: '/tmp/p.md' } }],
+  }
+
+  it('drops permissionDenied when the plan was already implemented', () => {
+    const inst = makePersistedInstance([
+      { role: 'tool', content: '', toolName: 'mcp__ion-extensions__ExitPlanMode', timestamp: 1000 },
+      { role: 'system', content: '── Implementing plan at 12:05 PM ──', timestamp: 2000 },
+      { role: 'assistant', content: 'Implemented and committed.', timestamp: 3000 },
+    ] as any, { permissionDenied: PLAN_DENIED })
+
+    const populated = buildPopulatedInstance(inst as any, 'tab1', NOOP_TAB as any)
+    expect(populated.permissionDenied).toBeNull()
+  })
+
+  it('keeps permissionDenied for a genuinely pending card (no implementation)', () => {
+    const inst = makePersistedInstance([
+      { role: 'tool', content: '', toolName: 'mcp__ion-extensions__ExitPlanMode', timestamp: 1000 },
+      { role: 'assistant', content: 'Plan ready for review.', timestamp: 2000 },
+    ] as any, { permissionDenied: PLAN_DENIED })
+
+    const populated = buildPopulatedInstance(inst as any, 'tab1', NOOP_TAB as any)
+    expect(populated.permissionDenied).toEqual(PLAN_DENIED)
   })
 })
 

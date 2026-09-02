@@ -42,6 +42,46 @@ export function hasPlanBeenImplemented(
   )
 }
 
+/**
+ * True when a persisted `permissionDenied` plan/question card is STALE — the
+ * plan it proposed was implemented and no newer proposal has been raised since.
+ *
+ * The authoritative restore branch trusts a persisted `permissionDenied`, which
+ * is correct for a conversation the user quit while a plan card was genuinely
+ * pending. It is wrong when the card's plan was already implemented — an
+ * autonomous "Implement the following plan:" turn (or any path that does not run
+ * implementPlan's card clear) leaves `permissionDenied` set on disk, and every
+ * restore then resurfaces a Plan Ready card on a completed, auto-mode
+ * conversation. This is the desktop analog of the iOS snapshot re-injection: the
+ * desktop must not emit the stale card in the first place.
+ *
+ * A newer proposal AFTER the last "Implementing plan" divider (multi-phase work
+ * that re-proposes) is a genuine pending card and must survive, so this returns
+ * false in that case. The proposal marker is an ExitPlanMode / AskUserQuestion
+ * tool message; its toolName may be bare or mcp-prefixed
+ * (`mcp__ion-extensions__ExitPlanMode`), so match on suffix.
+ */
+export function persistedPlanCardIsStale(
+  messages: PersistedConversationInstance['messages'],
+): boolean {
+  if (!messages || messages.length === 0) return false
+  let lastImplementIdx = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('── Implementing plan at')) {
+      lastImplementIdx = i
+      break
+    }
+  }
+  if (lastImplementIdx === -1) return false
+  const isProposalTool = (name?: string): boolean =>
+    !!name && (name.endsWith('ExitPlanMode') || name.endsWith('AskUserQuestion'))
+  for (let i = lastImplementIdx + 1; i < messages.length; i++) {
+    if (isProposalTool(messages[i].toolName)) return false
+  }
+  return true
+}
+
 /** Parse a JSON toolInput string into a Record, or undefined on failure. */
 function parseToolInput(raw?: string): Record<string, unknown> | undefined {
   if (!raw) return undefined
@@ -529,7 +569,12 @@ export function buildPopulatedInstance(
 
   // Resolve denied permission: authoritative from instance, then synthesize.
   let denied: { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null = null
-  if (inst.permissionDenied?.tools && inst.permissionDenied.tools.length > 0) {
+  if (inst.permissionDenied?.tools && inst.permissionDenied.tools.length > 0 && persistedPlanCardIsStale(inst.messages)) {
+    // The persisted card's plan was already implemented (and nothing newer is
+    // pending). Trusting it would resurrect a Plan Ready card on a completed,
+    // auto-mode conversation — the desktop side of the reported stale-card bug.
+    rDebug('restore', 'engine denial dropped: plan already implemented', { tab_id: tabId.slice(0, 8), inst_id: inst.id.slice(0, 8) })
+  } else if (inst.permissionDenied?.tools && inst.permissionDenied.tools.length > 0) {
     denied = { tools: inst.permissionDenied.tools }
     rDebug('restore', 'engine denial', { tab_id: tabId.slice(0, 8), inst_id: inst.id.slice(0, 8), tools: inst.permissionDenied.tools.map((t) => t.toolName).join(',') })
   } else {
