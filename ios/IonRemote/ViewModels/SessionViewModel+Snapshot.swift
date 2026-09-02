@@ -162,6 +162,14 @@ extension SessionViewModel {
                 return false
             }
 
+            // Record which promoted special cards this snapshot vouches for (see
+            // snapshotConfirmedSpecialIds). Cap growth; a false re-preserve is benign.
+            for entry in merged[i].permissionQueue
+            where entry.toolName == "ExitPlanMode" || entry.toolName == "AskUserQuestion" {
+                snapshotConfirmedSpecialIds.insert(entry.questionId)
+            }
+            if snapshotConfirmedSpecialIds.count > 1000 { snapshotConfirmedSpecialIds.removeAll() }
+
             if let existing = tabs.first(where: { $0.id == tabId }),
                !existing.permissionQueue.isEmpty {
                 // Keep existing local queue entries that aren't in the snapshot
@@ -169,8 +177,14 @@ extension SessionViewModel {
                 let isRunning = merged[i].status == .running
                 let localOnly = existing.permissionQueue.filter { entry in
                     if snapshotIds.contains(entry.questionId) { return false }
+                    let isSpecial = entry.toolName == "ExitPlanMode" || entry.toolName == "AskUserQuestion"
                     // Don't re-inject stale plan/question cards once a new task is running
-                    if isRunning && (entry.toolName == "ExitPlanMode" || entry.toolName == "AskUserQuestion") {
+                    if isRunning && isSpecial {
+                        return false
+                    }
+                    // Confirmed-then-omitted: the desktop resolved this card, so
+                    // the snapshot is authoritative — drop it (see the field doc).
+                    if isSpecial && snapshotConfirmedSpecialIds.contains(entry.questionId) {
                         return false
                     }
                     return true
