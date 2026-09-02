@@ -20,6 +20,12 @@ describe("StudioShell shortcut wiring", () => {
     }
   });
 
+  it("creates and reveals a project Scratch Document with Cmd+N", () => {
+    expect(source).toContain('"tab.scratch": () =>')
+    expect(source).toContain('useSurfaceStore.getState().createScratch()')
+    expect(source).toContain('setNarrowPane("surface")')
+  })
+
   it("uses the active conversation's terminal tray for toggle and new-shell commands", () => {
     expect(source).toContain('"terminal.toggle": toggleActiveTerminal')
     expect(source).toContain('state.toggleTerminal(tabId)')

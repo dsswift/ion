@@ -27,6 +27,34 @@ export interface FileTab {
   /** Source conversation tab, used to recompute a worktree's canonical editor dir. */
   tabId?: string
 }
+
+/** One unsaved document shared by every conversation for the same source project. */
+export interface ScratchDocument {
+  id: string
+  fileName: string
+  content: string
+  /** Last content written to disk. Empty while the document is unsaved. */
+  savedContent: string
+  isPreview: boolean
+  wordWrap?: boolean
+  /** Runtime-only save failure. The persisted document content stays unchanged. */
+  saveError?: string
+}
+
+/** Durable Scratch Document collection for one source-project identity. */
+export interface ScratchProject {
+  documents: ScratchDocument[]
+}
+
+/** Runtime descriptor composed from a project-scoped Scratch Document. */
+export interface ScratchTab {
+  kind: 'scratch'
+  id: string
+  projectKey: string
+  documentId: string
+  fileName: string
+  dirty: boolean
+}
 export interface PreviewTab {
   kind: 'preview'
   id: string
@@ -75,8 +103,9 @@ export interface BrowserTab {
 }
 export interface TerminalTab { kind: 'terminal'; id: string; instanceId: string; cwd: string; title: string }
 
-export type SurfaceTab = SingletonTab | FileTab | PreviewTab | NotificationTab | RuntimePanelTab | QuestionsTab | DispatchTab | BrowserTab | TerminalTab
+export type SurfaceTab = SingletonTab | FileTab | ScratchTab | PreviewTab | NotificationTab | RuntimePanelTab | QuestionsTab | DispatchTab | BrowserTab | TerminalTab
 export function fileTabId(filePath: string): string { return `file:${filePath}` }
+export function scratchTabId(documentId: string): string { return `scratch:${documentId}` }
 export function previewTabId(filePath: string): string { return `preview:${filePath}` }
 export function browserTabId(instanceId: string): string { return `browser:${instanceId}` }
 export function terminalTabId(instanceId: string): string { return `terminal:${instanceId}` }
@@ -106,22 +135,18 @@ export interface SurfaceConversationPersisted {
 }
 
 /**
- * Version 3 adds each conversation's Agent-linked browser pointer.
+ * Version 4 adds source-project-scoped Scratch Documents.
  *
- * The version bump is what makes a deliberate null survive a restart. Read
- * against a v2 record, `agentBrowserInstanceId: null` is indistinguishable
- * from "this field did not exist yet", so a v2 reader must back-fill the
- * first browser tab; a v3 reader must NOT. Without the bump, every restart
- * would silently re-link a tab the operator had unlinked.
- *
- * Versions 2 and 1 are read only for migration.
+ * Versions 1–3 are read only for migration.
  */
 export interface SurfacePersisted {
-  version: 3
+  version: 4
   pinnedTabs: PinnableSingletonId[]
   /** A workspace-scoped notification stays open across every conversation until closed. */
   notification: NotificationTab | null
   conversations: Record<string, SurfaceConversationPersisted>
+  /** Unsaved documents keyed by source checkout identity. */
+  scratchProjects: Record<string, ScratchProject>
 }
 
 /** Version 1 was one window-global surface. It is read only for migration. */

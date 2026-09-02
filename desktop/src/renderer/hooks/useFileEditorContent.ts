@@ -147,6 +147,8 @@ export function useFileEditorContent({
       const result = await window.ion.fsWriteFile(activeFile.filePath, activeFile.content)
       if (result.ok) {
         markEditorSaved(dir, activeFile.id, activeFile.filePath)
+      } else {
+        rWarn('file-editor', 'file save failed', { path: activeFile.filePath, error: result.error ?? 'unknown error' })
       }
     } else {
       const dialog = await window.ion.fsSaveDialog()
@@ -154,6 +156,8 @@ export function useFileEditorContent({
         const result = await window.ion.fsWriteFile(dialog.filePath, activeFile.content)
         if (result.ok) {
           markEditorSaved(dir, activeFile.id, dialog.filePath)
+        } else {
+          rWarn('file-editor', 'new file save failed', { path: dialog.filePath, error: result.error ?? 'unknown error' })
         }
       }
     }

@@ -26,24 +26,28 @@ export function isEditableByDefault(name: string): boolean {
   return EDITABLE_EXTS.has(ext)
 }
 
-export function editorDirForTab(tab: TabState): string {
+export function editorDirForTab(tab: Pick<TabState, 'worktree' | 'workingDirectory'>): string {
   return tab.worktree?.repoPath ?? tab.workingDirectory
 }
 
 let editorFileCounter = 0
 export const nextEditorFileId = () => `ef-${++editorFileCounter}`
 
-export function nextUntitledName(states: Map<string, FileEditorDirState>): string {
+export function nextUntitledNameFromNames(names: Iterable<string>): string {
   const used = new Set<number>()
-  for (const state of states.values()) {
-    for (const f of state.files) {
-      const m = f.fileName.match(/^Untitled-(\d+)\.md$/)
-      if (m) used.add(Number(m[1]))
-    }
+  for (const name of names) {
+    const match = name.match(/^Untitled-(\d+)\.md$/)
+    if (match) used.add(Number(match[1]))
   }
   let n = 1
   while (used.has(n)) n++
   return `Untitled-${n}.md`
+}
+
+export function nextUntitledName(states: Map<string, FileEditorDirState>): string {
+  return nextUntitledNameFromNames(
+    [...states.values()].flatMap((state) => state.files.map((file) => file.fileName)),
+  )
 }
 
 let msgCounter = 0

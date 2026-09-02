@@ -8,6 +8,7 @@ describe("Studio command map", () => {
     expect(STUDIO_COMMANDS).toContain("tab.next");
     expect(STUDIO_COMMANDS).toContain("tab.close");
     expect(STUDIO_COMMANDS).toContain("tab.new");
+    expect(STUDIO_COMMANDS).toContain("tab.scratch");
     expect(STUDIO_COMMANDS).toContain("permission.togglePlanAuto");
     expect(STUDIO_COMMANDS).toContain("settings.open");
     expect(STUDIO_COMMANDS).toContain("conversation.find");

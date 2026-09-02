@@ -6,6 +6,8 @@ import {
   type LegacySurfacePersisted,
   type NotificationTab,
   type PinnableSingletonId,
+  type ScratchDocument,
+  type ScratchProject,
   type SurfaceConversationPersisted,
   type SurfacePersisted,
   type SurfaceTab,
@@ -90,6 +92,7 @@ function parseConversation(
   pinnedTabs: readonly PinnableSingletonId[] = [],
   notification: NotificationTab | null = null,
   backfillAgentBrowser = false,
+  extraSelectableIds: readonly string[] = [],
 ): SurfaceConversationPersisted | null {
   if (!raw || typeof raw !== 'object') return null
   const v = raw as Record<string, unknown>
@@ -100,6 +103,7 @@ function parseConversation(
   const selectableIds = new Set([
     ...pinnedTabs,
     ...tabs.map((tab) => tab.id),
+    ...extraSelectableIds,
     ...(notification ? [notification.id] : []),
   ])
   const activeTabId = typeof v.activeTabId === 'string' && selectableIds.has(v.activeTabId)
@@ -108,7 +112,39 @@ function parseConversation(
   return { tabs, activeTabId, visible: v.visible, agentBrowserInstanceId }
 }
 
-/** Reads v3 durable state, migrates v2, and reads legacy v1 for renderer migration. */
+function parseScratchDocument(raw: unknown): ScratchDocument | null {
+  if (!raw || typeof raw !== 'object') return null
+  const value = raw as Record<string, unknown>
+  if (typeof value.id !== 'string' || !value.id || typeof value.fileName !== 'string' || !value.fileName || typeof value.content !== 'string' || typeof value.isPreview !== 'boolean') return null
+  if (value.savedContent !== undefined && typeof value.savedContent !== 'string') return null
+  if (value.wordWrap !== undefined && typeof value.wordWrap !== 'boolean') return null
+  return {
+    id: value.id,
+    fileName: value.fileName,
+    content: value.content,
+    savedContent: typeof value.savedContent === 'string' ? value.savedContent : '',
+    isPreview: value.isPreview,
+    ...(typeof value.wordWrap === 'boolean' ? { wordWrap: value.wordWrap } : {}),
+  }
+}
+
+function parseScratchProjects(raw: unknown): Record<string, ScratchProject> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const projects: Record<string, ScratchProject> = {}
+  for (const [projectKey, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!projectKey || !value || typeof value !== 'object') continue
+    const documentsRaw = (value as Record<string, unknown>).documents
+    if (!Array.isArray(documentsRaw)) continue
+    const seen = new Set<string>()
+    const documents = documentsRaw
+      .map(parseScratchDocument)
+      .filter((document): document is ScratchDocument => document !== null && !seen.has(document.id) && !!seen.add(document.id))
+    if (documents.length > 0) projects[projectKey] = { documents }
+  }
+  return projects
+}
+
+/** Reads v4 durable state and migrates versions 1–3. */
 export function parseSurfacePersisted(raw: unknown): ParsedSurface | null {
   if (!raw || typeof raw !== 'object') return null
   const v = raw as Record<string, unknown>
@@ -118,19 +154,22 @@ export function parseSurfacePersisted(raw: unknown): ParsedSurface | null {
     return { version: 1, tabs, activeTabId }
   }
   const isV2 = v.version === 2
-  if ((v.version !== 3 && !isV2) || !Array.isArray(v.pinnedTabs) || !v.conversations || typeof v.conversations !== 'object' || Array.isArray(v.conversations)) return null
+  const isCurrent = v.version === 4
+  if ((!isCurrent && v.version !== 3 && !isV2) || !Array.isArray(v.pinnedTabs) || !v.conversations || typeof v.conversations !== 'object' || Array.isArray(v.conversations)) return null
   const pinnedTabs = normalizePinnedTabs([...new Set(v.pinnedTabs.filter((id): id is PinnableSingletonId => typeof id === 'string' && PINNABLES.has(id)))])
   const notification = parseNotification(v.notification)
+  const scratchProjects = isCurrent ? parseScratchProjects(v.scratchProjects) : {}
+  const scratchIds = Object.values(scratchProjects).flatMap((project) => project.documents.map((document) => `scratch:${document.id}`))
   const conversations: Record<string, SurfaceConversationPersisted> = {}
   for (const [tabId, row] of Object.entries(v.conversations as Record<string, unknown>)) {
     if (!tabId) continue
     // v2 records predate the pointer, so each conversation back-fills its
     // first browser tab exactly once, on this read. The v3 write that follows
     // makes the result durable, and a later null then stays null.
-    const parsed = parseConversation(row, pinnedTabs, notification, isV2)
+    const parsed = parseConversation(row, pinnedTabs, notification, isV2, scratchIds)
     if (parsed) conversations[tabId] = parsed
   }
-  return { version: 3, pinnedTabs, notification, conversations }
+  return { version: 4, pinnedTabs, notification, conversations, scratchProjects }
 }
 
 export function normalizePinnedTabs(ids: readonly PinnableSingletonId[]): PinnableSingletonId[] {
@@ -138,21 +177,29 @@ export function normalizePinnedTabs(ids: readonly PinnableSingletonId[]): Pinnab
 }
 
 export function emptySurfacePersisted(): SurfacePersisted {
-  return { version: 3, pinnedTabs: [...DEFAULT_PINNED_SURFACE_TABS], notification: null, conversations: {} }
+  return { version: 4, pinnedTabs: [...DEFAULT_PINNED_SURFACE_TABS], notification: null, conversations: {}, scratchProjects: {} }
 }
 
-export function isSurfacePersistedV3(raw: unknown): raw is SurfacePersisted {
-  if (!raw || typeof raw !== 'object' || (raw as Record<string, unknown>).version !== 3) return false
-  return parseSurfacePersisted(raw)?.version === 3
+export function isSurfacePersistedV4(raw: unknown): raw is SurfacePersisted {
+  if (!raw || typeof raw !== 'object') return false
+  const value = raw as Record<string, unknown>
+  if (value.version !== 4 || !value.scratchProjects || typeof value.scratchProjects !== 'object' || Array.isArray(value.scratchProjects)) return false
+  return parseSurfacePersisted(raw)?.version === 4
 }
 
 /**
  * Main-process write predicate. Only the current version is a legal write:
  * v1 and v2 payloads exist to migrate on read, never to be written back.
  */
-export function validateSurfacePersisted(raw: unknown): boolean { return isSurfacePersistedV3(raw) }
+export function validateSurfacePersisted(raw: unknown): boolean { return isSurfacePersistedV4(raw) }
 
-export function serializeSurface(pinnedTabs: readonly PinnableSingletonId[], notification: NotificationTab | null, conversations: Readonly<Record<string, SurfaceConversationPersisted>>): SurfacePersisted {
+export function serializeSurface(
+  pinnedTabs: readonly PinnableSingletonId[],
+  notification: NotificationTab | null,
+  conversations: Readonly<Record<string, SurfaceConversationPersisted>>,
+  scratchProjects: Readonly<Record<string, ScratchProject>> = {},
+): SurfacePersisted {
+  const scratchIds = Object.values(scratchProjects).flatMap((project) => project.documents.map((document) => `scratch:${document.id}`))
   const serialized: Record<string, SurfaceConversationPersisted> = {}
   for (const [tabId, state] of Object.entries(conversations)) {
     const tabs: SurfaceTab[] = []
@@ -160,13 +207,14 @@ export function serializeSurface(pinnedTabs: readonly PinnableSingletonId[], not
       // questions is window-transient (derived from live coordinator state);
       // notification is global (serialized separately); runtime panels exist
       // only while their producer runs. None belongs in a conversation row.
-      if (tab.kind === 'notification' || tab.kind === 'runtime-panel' || tab.kind === 'questions') continue
+      if (tab.kind === 'notification' || tab.kind === 'runtime-panel' || tab.kind === 'questions' || tab.kind === 'scratch') continue
       if (tab.kind === 'preview') tabs.push({ kind: 'preview', id: tab.id, filePath: tab.filePath })
       else tabs.push(tab)
     }
     const composedIds = new Set([
       ...pinnedTabs,
       ...tabs.map((tab) => tab.id),
+      ...scratchIds,
       ...(notification ? [notification.id] : []),
     ])
     const activeTabId = state.activeTabId && composedIds.has(state.activeTabId)
@@ -196,5 +244,16 @@ export function serializeSurface(pinnedTabs: readonly PinnableSingletonId[], not
     if (!worthKeeping) continue
     serialized[tabId] = { tabs, activeTabId, visible: state.visible, agentBrowserInstanceId }
   }
-  return { version: 3, pinnedTabs: normalizePinnedTabs(pinnedTabs), notification, conversations: serialized }
+  const persistedScratchProjects: Record<string, ScratchProject> = {}
+  for (const [projectKey, project] of Object.entries(scratchProjects)) {
+    const documents = project.documents.map(({ saveError: _saveError, ...document }) => document)
+    if (documents.length > 0) persistedScratchProjects[projectKey] = { documents }
+  }
+  return {
+    version: 4,
+    pinnedTabs: normalizePinnedTabs(pinnedTabs),
+    notification,
+    conversations: serialized,
+    scratchProjects: persistedScratchProjects,
+  }
 }

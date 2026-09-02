@@ -11,13 +11,14 @@
  * store keeps the state fields and the wiring; the focus-restore decision
  * lives here where it can be read in one piece.
  */
-import { QUESTIONS_SURFACE_ID, type NotificationTab, type PinnableSingletonId, type SurfaceConversationPersisted, type SurfaceTab } from '../../../shared/studio-surface-types'
+import { QUESTIONS_SURFACE_ID, type NotificationTab, type PinnableSingletonId, type ScratchProject, type SurfaceConversationPersisted, type SurfaceTab } from '../../../shared/studio-surface-types'
 import { rInfo } from '../../rendererLogger'
 
 /** The slice of surface state these actions read and write. */
 interface QuestionsSurfaceState {
   pinnedTabs: PinnableSingletonId[]
   notification: NotificationTab | null
+  scratchProjects: Record<string, ScratchProject>
   conversations: Record<string, SurfaceConversationPersisted>
   currentConversationId: string | null
   activeTabId: string | null
@@ -32,7 +33,7 @@ export interface QuestionsSurfaceDeps<S extends QuestionsSurfaceState> {
   set(partial: Partial<S>): void
   /** Re-derive the visible strip from conversation state. */
   project(state: S): Partial<S>
-  visibleTabs(pinnedTabs: readonly PinnableSingletonId[], notification: NotificationTab | null, conversation: SurfaceConversationPersisted): SurfaceTab[]
+  visibleTabs(pinnedTabs: readonly PinnableSingletonId[], notification: NotificationTab | null, conversation: SurfaceConversationPersisted, tabId: string): SurfaceTab[]
   emptyConversation(): SurfaceConversationPersisted
 }
 
@@ -85,7 +86,7 @@ export function createQuestionsSurfaceActions<S extends QuestionsSurfaceState>(d
       if (current && current.activeTabId === QUESTIONS_SURFACE_ID) {
         // Restore the pre-Questions focus when still valid; otherwise the
         // normal normalization fallback picks the first composed tab.
-        const composed = deps.visibleTabs(state.pinnedTabs, state.notification, current)
+        const composed = deps.visibleTabs(state.pinnedTabs, state.notification, current, tabId)
         const restored = prior && composed.some((tab) => tab.id === prior) ? prior : (composed[0]?.id ?? null)
         conversations[tabId] = { ...current, activeTabId: restored }
       }

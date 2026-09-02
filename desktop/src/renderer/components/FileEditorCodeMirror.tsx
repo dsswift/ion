@@ -26,6 +26,8 @@ interface FileEditorCodeMirrorProps {
   dir: string
   activeFile: FileEditorTab
   onSave: () => void
+  onContentChange?: (content: string) => void
+  showBlame?: boolean
   onCursorChange?: (pos: CursorPosition) => void
   editorViewRef?: React.MutableRefObject<EditorView | null>
   languageOverride?: string | null
@@ -35,7 +37,7 @@ interface FileEditorCodeMirrorProps {
  * The CodeMirror editing surface. Lives only when a non-preview file is
  * active; preview rendering is handled by FileEditorPreview.
  */
-export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, editorViewRef, languageOverride }: FileEditorCodeMirrorProps) {
+export function FileEditorCodeMirror({ dir, activeFile, onSave, onContentChange, showBlame = true, onCursorChange, editorViewRef, languageOverride }: FileEditorCodeMirrorProps) {
   rTrace('file-editor.codemirror', 'render', { dir, file_id: activeFile.id, file_name: activeFile.fileName, is_read_only: activeFile.isReadOnly, content_len: activeFile.content.length })
   const colors = useColors()
   const editorWordWrapPref = usePreferencesStore((s) => s.editorWordWrap)
@@ -53,9 +55,12 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, 
   // Context menu state
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
 
-  // Keep save handler ref current for CodeMirror keybinding
+  // Keep save and content handlers current for CodeMirror extensions that live
+  // across React renders while the same file remains active.
   const saveHandlerRef = useRef(onSave)
   saveHandlerRef.current = onSave
+  const contentChangeRef = useRef(onContentChange)
+  contentChangeRef.current = onContentChange
 
   const [blameActive, setBlameActive] = useState(false)
 
@@ -179,7 +184,8 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, 
       exts.push(EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           const newContent = update.state.doc.toString()
-          updateEditorContent(dir, file.id, newContent)
+          if (contentChangeRef.current) contentChangeRef.current(newContent)
+          else updateEditorContent(dir, file.id, newContent)
         }
       }))
     }
@@ -295,26 +301,28 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, 
           READ-ONLY
         </div>
       )}
-      <button
-        onClick={() => { void handleToggleBlame().catch((err) => rError('file-editor.codemirror', 'toggle blame failed', { error: String(err) })) }}
-        style={{
-          position: 'absolute',
-          top: 6,
-          right: activeFile.isReadOnly ? 80 : 12,
-          fontSize: 9,
-          fontFamily: 'var(--ion-font-mono, monospace)',
-          color: blameActive ? colors.accent : colors.textTertiary,
-          background: colors.surfacePrimary,
-          padding: '1px 6px',
-          borderRadius: 3,
-          cursor: 'pointer',
-          border: 'none',
-          opacity: 0.8,
-        }}
-        title={blameActive ? 'Hide blame' : 'Show blame'}
-      >
-        BLAME
-      </button>
+      {showBlame && (
+        <button
+          onClick={() => { void handleToggleBlame().catch((err) => rError('file-editor.codemirror', 'toggle blame failed', { error: String(err) })) }}
+          style={{
+            position: 'absolute',
+            top: 6,
+            right: activeFile.isReadOnly ? 80 : 12,
+            fontSize: 9,
+            fontFamily: 'var(--ion-font-mono, monospace)',
+            color: blameActive ? colors.accent : colors.textTertiary,
+            background: colors.surfacePrimary,
+            padding: '1px 6px',
+            borderRadius: 3,
+            cursor: 'pointer',
+            border: 'none',
+            opacity: 0.8,
+          }}
+          title={blameActive ? 'Hide blame' : 'Show blame'}
+        >
+          BLAME
+        </button>
+      )}
     </div>
   )
 }

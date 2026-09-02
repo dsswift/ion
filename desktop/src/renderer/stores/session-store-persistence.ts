@@ -270,8 +270,8 @@ async function persistSessionChains(useSessionStore: Store): Promise<void> {
     }
 
     await window.ion.saveSessionChains({ chains, reverse })
-  } catch {
-    // Non-critical
+  } catch (error) {
+    rError('session.persist', 'session chain persistence failed', { error: String(error) })
   }
 }
 

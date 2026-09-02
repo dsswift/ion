@@ -28,7 +28,7 @@ const v2 = (tabs: SurfaceTab[]): unknown => ({
 describe('agent-linked browser pointer', () => {
   it('back-fills the first browser tab when migrating a v2 record', () => {
     const parsed = parseSurfacePersisted(v2([browser('b1'), browser('b2')]))
-    expect(parsed).toMatchObject({ version: 3 })
+    expect(parsed).toMatchObject({ version: 4 })
     expect((parsed as { conversations: Record<string, { agentBrowserInstanceId: string | null }> }).conversations.alpha?.agentBrowserInstanceId).toBe('b1')
   })
 

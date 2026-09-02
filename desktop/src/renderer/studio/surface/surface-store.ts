@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import { useSessionStore } from '../../stores/sessionStore'
-import { editorDirForTab } from '../../stores/session-store-helpers'
 import type { ResourceItem } from '../../../shared/types-engine'
 import {
   browserTabId,
@@ -12,6 +11,8 @@ import {
   type NotificationTab,
   type LegacySurfacePersisted,
   type PinnableSingletonId,
+  type ScratchProject,
+  type ScratchTab,
   type SingletonId,
   type SurfaceConversationPersisted,
   type SurfaceTab,
@@ -43,7 +44,10 @@ import {
   parseSurfacePersisted,
 } from '../../../shared/studio-surface-persistence'
 import { rDebug, rInfo, rWarn } from '../../rendererLogger'
-import { runtimePanel, unregisterRuntimePanel } from './runtime-panel-registry'
+import { unregisterRuntimePanel } from './runtime-panel-registry'
+import { scratchProjectKey, scratchTabsForProject } from './surface-scratch'
+import { createScratchSurfaceActions } from './surface-scratch-actions'
+import { materializeConversation, materializeFileBuffer, teardownSurfaceTab } from './surface-tab-lifecycle'
 
 
 type ConversationMap = Record<string, SurfaceConversationPersisted>
@@ -55,8 +59,12 @@ export interface SurfaceState {
   pinnedTabs: PinnableSingletonId[]
   /** Workspace-scoped notification kept open across every conversation. */
   notification: NotificationTab | null
+  /** Unsaved documents shared by conversations with the same source-project key. */
+  scratchProjects: Record<string, ScratchProject>
   conversations: ConversationMap
   currentConversationId: string | null
+  /** Dirty Scratch Document waiting for an explicit discard decision. */
+  pendingScratchCloseId: string | null
   /** Current window state. It can intentionally differ from the saved conversation state. */
   visible: boolean
   hydrated: boolean
@@ -86,6 +94,16 @@ export interface SurfaceState {
   openRuntimePanel(id: string, title: string): void
   updateRuntimePanelTitle(id: string, title: string): void
   removeRuntimePanel(id: string): void
+  createScratch(): void
+  updateScratch(projectKey: string, documentId: string, content: string): void
+  toggleScratchPreview(projectKey: string, documentId: string): void
+  toggleScratchWordWrap(projectKey: string, documentId: string): void
+  setScratchSaveError(projectKey: string, documentId: string, error: string | undefined): void
+  deleteScratch(projectKey: string, documentId: string): void
+  requestScratchClose(projectKey: string, documentId: string): void
+  cancelScratchClose(): void
+  confirmScratchClose(): void
+  promoteScratch(projectKey: string, documentId: string, filePath: string, conversationId: string): void
   openBrowserTab(url: string, mode: 'preview' | 'browse', sessionMode?: 'isolated' | 'shared'): void
   /** Move this conversation's agent browser link to an existing browser tab. */
   linkAgentBrowser(instanceId: string): void
@@ -128,20 +146,37 @@ function emptyConversation(): SurfaceConversationPersisted {
   return { tabs: [], activeTabId: null, visible: false, agentBrowserInstanceId: null }
 }
 
-function visibleTabs(pinnedTabs: readonly PinnableSingletonId[], notification: NotificationTab | null, conversation: SurfaceConversationPersisted, hasQuestions = false): SurfaceTab[] {
+function projectKeyForConversation(conversationId: string | null): string | null {
+  const tab = useSessionStore.getState().tabs.find((item) => item.id === conversationId)
+  return scratchProjectKey(tab)
+}
+
+function visibleTabs(
+  pinnedTabs: readonly PinnableSingletonId[],
+  notification: NotificationTab | null,
+  conversation: SurfaceConversationPersisted,
+  scratchTabs: readonly ScratchTab[] = [],
+  hasQuestions = false,
+): SurfaceTab[] {
   // The Questions tab is an explicit FORCED group ahead of the global pins:
   // composeTabs puts pins first, so changing SINGLETON_ORDER alone could
   // never place a needs-you surface leftmost. Window-transient — derived
   // from the coordinator state, never part of conversation.tabs.
   const forced: SurfaceTab[] = hasQuestions ? [{ kind: 'questions', id: QUESTIONS_SURFACE_ID }] : []
-  return [...forced, ...composeTabs(pinnedTabs, conversation.tabs, conversation.agentBrowserInstanceId), ...(notification ? [notification] : [])]
+  return [...forced, ...composeTabs(pinnedTabs, conversation.tabs, conversation.agentBrowserInstanceId), ...scratchTabs, ...(notification ? [notification] : [])]
 }
 
 function globalTabIds(pinnedTabs: readonly PinnableSingletonId[], notification: NotificationTab | null): string[] {
   return [...pinnedTabs, ...(notification ? [notification.id] : [])]
 }
 
-function normalizeConversation(pinnedTabs: readonly PinnableSingletonId[], notification: NotificationTab | null, conversation: SurfaceConversationPersisted, hasQuestions = false): SurfaceConversationPersisted {
+function normalizeConversation(
+  pinnedTabs: readonly PinnableSingletonId[],
+  notification: NotificationTab | null,
+  conversation: SurfaceConversationPersisted,
+  scratchTabs: readonly ScratchTab[] = [],
+  hasQuestions = false,
+): SurfaceConversationPersisted {
   const tabs = normalizeTabs(
     conversation.tabs.filter((tab) => !(tab.kind === 'singleton' && pinnedTabs.includes(tab.id as PinnableSingletonId))),
     conversation.agentBrowserInstanceId,
@@ -153,7 +188,7 @@ function normalizeConversation(pinnedTabs: readonly PinnableSingletonId[], notif
   const agentBrowserInstanceId = conversation.agentBrowserInstanceId && tabs.some((tab) => isBrowserTab(tab) && tab.instanceId === conversation.agentBrowserInstanceId)
     ? conversation.agentBrowserInstanceId
     : null
-  const composed = visibleTabs(pinnedTabs, notification, { ...conversation, tabs, agentBrowserInstanceId }, hasQuestions)
+  const composed = visibleTabs(pinnedTabs, notification, { ...conversation, tabs, agentBrowserInstanceId }, scratchTabs, hasQuestions)
   return {
     tabs,
     visible: conversation.visible,
@@ -164,61 +199,13 @@ function normalizeConversation(pinnedTabs: readonly PinnableSingletonId[], notif
   }
 }
 
-function project(state: Pick<SurfaceState, 'pinnedTabs' | 'notification' | 'conversations' | 'currentConversationId' | 'visible'> & { questionsConversations?: Set<string> }): Pick<SurfaceState, 'tabs' | 'activeTabId' | 'conversations' | 'visible'> {
+function project(state: Pick<SurfaceState, 'pinnedTabs' | 'notification' | 'scratchProjects' | 'conversations' | 'currentConversationId' | 'visible'> & { questionsConversations?: Set<string> }): Pick<SurfaceState, 'tabs' | 'activeTabId' | 'conversations' | 'visible'> {
   if (!state.currentConversationId) return { tabs: [], activeTabId: null, conversations: state.conversations, visible: state.visible }
   const hasQuestions = state.questionsConversations?.has(state.currentConversationId) ?? false
-  const current = normalizeConversation(state.pinnedTabs, state.notification, state.conversations[state.currentConversationId] ?? emptyConversation(), hasQuestions)
+  const scratchTabs = scratchTabsForProject(state.scratchProjects, projectKeyForConversation(state.currentConversationId))
+  const current = normalizeConversation(state.pinnedTabs, state.notification, state.conversations[state.currentConversationId] ?? emptyConversation(), scratchTabs, hasQuestions)
   const conversations = { ...state.conversations, [state.currentConversationId]: current }
-  return { tabs: visibleTabs(state.pinnedTabs, state.notification, current, hasQuestions), activeTabId: current.activeTabId, conversations, visible: state.visible }
-}
-
-function materializeFileBuffer(filePath: string, dir: string, tabId: string | undefined): string | null {
-  const sessionState = useSessionStore.getState()
-  if (tabId) {
-    const tab = sessionState.tabs.find((item) => item.id === tabId)
-    if (!tab) {
-      rWarn('studio.surface', 'materializeFileBuffer: source tab gone, skipping', { tab_id: tabId, file_path: filePath })
-      return null
-    }
-    const resolvedDir = editorDirForTab(tab)
-    sessionState.openFileInEditor(resolvedDir, tabId, filePath)
-    return resolvedDir
-  }
-  sessionState.openFileInEditor(dir, '', filePath)
-  return dir
-}
-
-function materializeConversation(conversation: SurfaceConversationPersisted): SurfaceConversationPersisted {
-  const tabs: SurfaceTab[] = []
-  for (const tab of conversation.tabs) {
-    if (tab.kind !== 'file') {
-      tabs.push(tab)
-      continue
-    }
-    const dir = materializeFileBuffer(tab.filePath, tab.dir, tab.tabId)
-    if (dir !== null) tabs.push({ ...tab, dir })
-  }
-  return { ...conversation, tabs }
-}
-
-function teardown(tab: SurfaceTab, conversationId: string | null): void {
-  if (tab.kind === 'browser' && conversationId) {
-    // The body lives in main as a WebContentsView, so closing the descriptor
-    // is not enough — without this the guest keeps running, holding its
-    // session and painting over the shell.
-    void window.ion.studioBrowserViewClose(conversationId, tab.instanceId)
-      .catch((err) => rWarn('studio.surface', 'browser view close failed', { instance_id: tab.instanceId, error: String(err) }))
-    rDebug('studio.surface', 'browser tab closed, view destroyed', { instance_id: tab.instanceId })
-  }
-  if (tab.kind === 'terminal') {
-    void window.ion.terminalDestroy?.(`${useSurfaceStore.getState().currentConversationId ?? 'studio'}:surface:${tab.instanceId}`)
-    rDebug('studio.surface', 'terminal tab closed, pty destroyed', { instance_id: tab.instanceId })
-  }
-  if (tab.kind === 'runtime-panel') {
-    const entry = runtimePanel(tab.id)
-    unregisterRuntimePanel(tab.id)
-    entry?.close()
-  }
+  return { tabs: visibleTabs(state.pinnedTabs, state.notification, current, scratchTabs, hasQuestions), activeTabId: current.activeTabId, conversations, visible: state.visible }
 }
 
 /**
@@ -241,7 +228,8 @@ export function updateConversationById(
 ): void {
   const state = get()
   const current = state.conversations[conversationId] ?? emptyConversation()
-  const conversations = { ...state.conversations, [conversationId]: normalizeConversation(state.pinnedTabs, state.notification, update(current)) }
+  const scratchTabs = scratchTabsForProject(state.scratchProjects, projectKeyForConversation(conversationId))
+  const conversations = { ...state.conversations, [conversationId]: normalizeConversation(state.pinnedTabs, state.notification, update(current), scratchTabs) }
   set({ ...project({ ...state, conversations }), conversations })
   schedulePersist(get)
 }
@@ -254,7 +242,8 @@ function updateCurrent(set: (partial: Partial<SurfaceState>) => void, get: () =>
   const id = state.currentConversationId ?? useSessionStore.getState().activeTabId
   if (!id) return
   const current = state.conversations[id] ?? emptyConversation()
-  const conversations = { ...state.conversations, [id]: normalizeConversation(state.pinnedTabs, state.notification, update(current)) }
+  const scratchTabs = scratchTabsForProject(state.scratchProjects, projectKeyForConversation(id))
+  const conversations = { ...state.conversations, [id]: normalizeConversation(state.pinnedTabs, state.notification, update(current), scratchTabs) }
   set({ ...project({ ...state, conversations, currentConversationId: id }), currentConversationId: id })
   schedulePersist(get)
 }
@@ -273,8 +262,10 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
   activeTabId: null,
   pinnedTabs: [],
   notification: null,
+  scratchProjects: {},
   conversations: {},
   currentConversationId: null,
+  pendingScratchCloseId: null,
   visible: false,
   hydrated: false,
   diffReveal: null,
@@ -302,7 +293,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
         })
         if (!parsed) {
           const empty = emptySurfacePersisted()
-          set({ ...project({ pinnedTabs: empty.pinnedTabs, notification: empty.notification, conversations: {}, currentConversationId, visible: false }), pinnedTabs: empty.pinnedTabs, notification: empty.notification, currentConversationId, hydrated: true })
+          set({ ...project({ pinnedTabs: empty.pinnedTabs, notification: empty.notification, scratchProjects: empty.scratchProjects, conversations: {}, currentConversationId, visible: false }), pinnedTabs: empty.pinnedTabs, notification: empty.notification, scratchProjects: empty.scratchProjects, currentConversationId, hydrated: true })
           rDebug('studio.surface', 'no persisted surface, starting with default pins')
           return
         }
@@ -316,25 +307,25 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
           const local = currentConversationId ? conversations[currentConversationId]! : emptyConversation()
           for (const pin of pinnedTabs) local.tabs = local.tabs.filter((tab: SurfaceTab) => tab.id !== pin)
           if (currentConversationId) conversations[currentConversationId] = local
-          const state = { pinnedTabs, notification: null, conversations, currentConversationId, visible: legacyVisible }
+          const state = { pinnedTabs, notification: null, scratchProjects: {}, conversations, currentConversationId, visible: legacyVisible }
           set({ ...project(state), pinnedTabs, currentConversationId, hydrated: true })
           rInfo('studio.surface', 'legacy surface migrated to conversation state', { tab_id: currentConversationId ?? '', tab_count: legacy.tabs.length })
           schedulePersist(get)
           return
         }
         const conversations = Object.fromEntries(Object.entries(parsed.conversations).map(([id, conversation]) => [id, materializeConversation(conversation)]))
-        const initial = { pinnedTabs: parsed.pinnedTabs, notification: parsed.notification, conversations, currentConversationId, visible: false }
+        const initial = { pinnedTabs: parsed.pinnedTabs, notification: parsed.notification, scratchProjects: parsed.scratchProjects, conversations, currentConversationId, visible: false }
         const current = currentConversationId ? conversations[currentConversationId] : null
         // Restoring the panel as the operator left it is correct in both
         // modes: 'preserve' is about keeping it pinned across tab switches,
         // not about discarding it across restarts.
         initial.visible = current?.visible ?? false
-        set({ ...project(initial), pinnedTabs: parsed.pinnedTabs, notification: parsed.notification, currentConversationId, hydrated: true })
+        set({ ...project(initial), pinnedTabs: parsed.pinnedTabs, notification: parsed.notification, scratchProjects: parsed.scratchProjects, currentConversationId, hydrated: true })
         rDebug('studio.surface', 'surface hydrated', { conversation_count: Object.keys(conversations).length, pinned_count: parsed.pinnedTabs.length, tab_id: currentConversationId ?? '' })
       } catch (err) {
         const currentConversationId = useSessionStore.getState().activeTabId
         const empty = emptySurfacePersisted()
-        set({ ...project({ pinnedTabs: empty.pinnedTabs, notification: empty.notification, conversations: {}, currentConversationId, visible: false }), pinnedTabs: empty.pinnedTabs, notification: empty.notification, currentConversationId, hydrated: true })
+        set({ ...project({ pinnedTabs: empty.pinnedTabs, notification: empty.notification, scratchProjects: empty.scratchProjects, conversations: {}, currentConversationId, visible: false }), pinnedTabs: empty.pinnedTabs, notification: empty.notification, scratchProjects: empty.scratchProjects, currentConversationId, hydrated: true })
         rWarn('studio.surface', 'surface hydrate failed, starting with default pins', { error: String(err) })
       }
     })()
@@ -439,8 +430,10 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
 
   removeRuntimePanel: (id) => {
     unregisterRuntimePanel(id)
-    updateCurrent(set, get, (current) => ({ ...current, tabs: current.tabs.filter((tab) => tab.id !== id), activeTabId: current.activeTabId === id ? nextActiveAfterClose(visibleTabs(get().pinnedTabs, get().notification, current), id) : current.activeTabId }))
+    updateCurrent(set, get, (current) => ({ ...current, tabs: current.tabs.filter((tab) => tab.id !== id), activeTabId: current.activeTabId === id ? nextActiveAfterClose(get().tabs, id) : current.activeTabId }))
   },
+
+  ...createScratchSurfaceActions({ set, get, project, schedulePersist, emptyConversation }),
 
   openBrowserTab: (url, mode, sessionMode = 'shared') => {
     const instanceId = crypto.randomUUID()
@@ -477,7 +470,21 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
     updateCurrent(set, get, (current) => ({ ...current, tabs: normalizeTabs([...current.tabs, { kind: 'terminal', id, instanceId, cwd, title: nextTerminalTitle(visibleTabs(get().pinnedTabs, get().notification, current)) }]), activeTabId: id }))
   },
 
-  activateTab: (id) => updateCurrent(set, get, (current) => visibleTabs(get().pinnedTabs, get().notification, current).some((tab) => tab.id === id) ? { ...current, activeTabId: id } : current),
+  activateTab: (id) => updateCurrent(set, get, (current) => {
+    // The membership guard must see the SAME strip project() renders. Scratch
+    // tabs live in the global scratchProjects map (not conversation.tabs) and
+    // the Questions tab is coordinator-transient — both are appended only when
+    // their arguments are passed. Omitting them here made activateTab a no-op
+    // for a scratch tab: it never matched, so clicking it (or returning to it
+    // after visiting another tab) silently kept the old active tab and the
+    // document never loaded.
+    const state = get()
+    const scratchTabs = scratchTabsForProject(state.scratchProjects, projectKeyForConversation(state.currentConversationId))
+    const hasQuestions = !!state.currentConversationId && state.questionsConversations.has(state.currentConversationId)
+    return visibleTabs(state.pinnedTabs, state.notification, current, scratchTabs, hasQuestions).some((tab) => tab.id === id)
+      ? { ...current, activeTabId: id }
+      : current
+  }),
 
   closeTab: (id) => {
     const state = get()
@@ -521,6 +528,10 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
       rInfo('studio.surface', 'pinned surface tab closed', { surface_tab: id, tab_id: state.currentConversationId ?? '' })
       return
     }
+    if (tab.kind === 'scratch') {
+      get().requestScratchClose(tab.projectKey, tab.documentId)
+      return
+    }
     if (tab.kind === 'terminal') {
       const key = `${state.currentConversationId ?? 'studio'}:surface:${tab.instanceId}`
       const activity = useSessionStore.getState().terminalActivities?.get(key)
@@ -529,22 +540,26 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
         return
       }
     }
-    teardown(tab, state.currentConversationId)
+    teardownSurfaceTab(tab, state.currentConversationId)
     updateCurrent(set, get, (current) => ({ ...current, tabs: current.tabs.filter((item) => item.id !== id), activeTabId: current.activeTabId === id ? nextActiveAfterClose(state.tabs, id) : current.activeTabId }))
   },
 
   closeOthers: (id) => {
     const state = get()
-    const targets = closeOthersTargets(state.tabs, id, [...globalTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID]).filter((tab) => tab.kind !== 'terminal' || !useSessionStore.getState().terminalActivities?.get(`${state.currentConversationId ?? 'studio'}:surface:${tab.instanceId}`)?.active)
-    for (const tab of targets) teardown(tab, state.currentConversationId)
+    const targets = closeOthersTargets(state.tabs, id, [...globalTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID])
+      .filter((tab) => tab.kind !== 'scratch')
+      .filter((tab) => tab.kind !== 'terminal' || !useSessionStore.getState().terminalActivities?.get(`${state.currentConversationId ?? 'studio'}:surface:${tab.instanceId}`)?.active)
+    for (const tab of targets) teardownSurfaceTab(tab, state.currentConversationId)
     const ids = new Set(targets.map((tab) => tab.id))
     updateCurrent(set, get, (current) => ({ ...current, tabs: current.tabs.filter((tab) => !ids.has(tab.id)), activeTabId: current.activeTabId && ids.has(current.activeTabId) ? id : current.activeTabId }))
   },
 
   closeToRight: (id) => {
     const state = get()
-    const targets = closeToRightTargets(state.tabs, id, [...globalTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID]).filter((tab) => tab.kind !== 'terminal' || !useSessionStore.getState().terminalActivities?.get(`${state.currentConversationId ?? 'studio'}:surface:${tab.instanceId}`)?.active)
-    for (const tab of targets) teardown(tab, state.currentConversationId)
+    const targets = closeToRightTargets(state.tabs, id, [...globalTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID])
+      .filter((tab) => tab.kind !== 'scratch')
+      .filter((tab) => tab.kind !== 'terminal' || !useSessionStore.getState().terminalActivities?.get(`${state.currentConversationId ?? 'studio'}:surface:${tab.instanceId}`)?.active)
+    for (const tab of targets) teardownSurfaceTab(tab, state.currentConversationId)
     const ids = new Set(targets.map((tab) => tab.id))
     updateCurrent(set, get, (current) => ({ ...current, tabs: current.tabs.filter((tab) => !ids.has(tab.id)), activeTabId: current.activeTabId && ids.has(current.activeTabId) ? id : current.activeTabId }))
   },
@@ -586,7 +601,12 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
     get,
     set,
     project,
-    visibleTabs: (pinnedTabs, notification, conversation) => visibleTabs(pinnedTabs, notification, conversation),
+    visibleTabs: (pinnedTabs, notification, conversation, tabId) => visibleTabs(
+      pinnedTabs,
+      notification,
+      conversation,
+      scratchTabsForProject(get().scratchProjects, projectKeyForConversation(tabId)),
+    ),
     emptyConversation,
   }),
 }))

@@ -57,10 +57,18 @@ export function FileSurfaceControls({
   dir,
   file,
   onSave,
+  onTogglePreview,
+  onToggleReadOnly,
+  onToggleWordWrap,
+  showReadOnly = true,
 }: {
   dir: string
   file: FileEditorTab
   onSave: () => void
+  onTogglePreview?: () => void
+  onToggleReadOnly?: () => void
+  onToggleWordWrap?: () => void
+  showReadOnly?: boolean
 }): React.JSX.Element {
   const colors = useColors()
   const toggleEditorPreview = useSessionStore((s) => s.toggleEditorPreview)
@@ -91,19 +99,21 @@ export function FileSurfaceControls({
         <ControlButton
           title={file.isPreview ? 'Edit source' : 'Preview'}
           active={file.isPreview}
-          onClick={() => toggleEditorPreview(dir, file.id)}
+          onClick={onTogglePreview ?? (() => toggleEditorPreview(dir, file.id))}
         >
           {file.isPreview ? <PencilSimple size={13} /> : <Eye size={13} />}
         </ControlButton>
       )}
-      <ControlButton
-        title={file.isReadOnly ? 'Unlock (read-only)' : 'Lock (read-only)'}
-        active={file.isReadOnly}
-        onClick={() => toggleEditorReadOnly(dir, file.id)}
-      >
-        {file.isReadOnly ? <LockSimple size={13} /> : <LockSimpleOpen size={13} />}
-      </ControlButton>
-      <ControlButton title={`Word wrap ${effectiveWrap ? 'off' : 'on'} (this tab)`} active={effectiveWrap} onClick={() => toggleEditorWordWrap(dir, file.id)}>
+      {showReadOnly && (
+        <ControlButton
+          title={file.isReadOnly ? 'Unlock (read-only)' : 'Lock (read-only)'}
+          active={file.isReadOnly}
+          onClick={onToggleReadOnly ?? (() => toggleEditorReadOnly(dir, file.id))}
+        >
+          {file.isReadOnly ? <LockSimple size={13} /> : <LockSimpleOpen size={13} />}
+        </ControlButton>
+      )}
+      <ControlButton title={`Word wrap ${effectiveWrap ? 'off' : 'on'} (this tab)`} active={effectiveWrap} onClick={onToggleWordWrap ?? (() => toggleEditorWordWrap(dir, file.id))}>
         <TextAlignLeft size={13} />
       </ControlButton>
       <ControlButton title="Save" onClick={onSave}>

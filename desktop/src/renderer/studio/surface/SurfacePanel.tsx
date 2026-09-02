@@ -18,6 +18,7 @@ import { SurfaceTabStrip } from './SurfaceTabStrip'
 import { VisualizerSurface } from './tabs/VisualizerSurface'
 import { PlanSurface } from './tabs/PlanSurface'
 import { FileSurface } from './tabs/FileSurface'
+import { ScratchSurface } from './tabs/ScratchSurface'
 import { DiffSurface } from './tabs/DiffSurface'
 import { PreviewSurface } from './tabs/PreviewSurface'
 import { TerminalSurface } from './tabs/TerminalSurface'
@@ -73,6 +74,9 @@ function bodyFor(tab: SurfaceTab, active: boolean, conversationTabId: string, on
     case 'file':
       if (!active) return null
       return <FileSurface key={tab.id} dir={tab.dir} filePath={tab.filePath} />
+    case 'scratch':
+      if (!active) return null
+      return <ScratchSurface key={tab.id} projectKey={tab.projectKey} documentId={tab.documentId} />
     case 'preview':
       if (!active) return null
       return <PreviewSurface key={tab.id} filePath={tab.filePath} dataUrl={tab.dataUrl} />

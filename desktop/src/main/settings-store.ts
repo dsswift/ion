@@ -140,7 +140,7 @@ export const SETTINGS_DEFAULTS = {
     dispatchSplitRatio: 0.45,
   },
   // Studio surface records by conversation plus core tabs pinned across them.
-  studioSurface: { version: 2, pinnedTabs: ['plan'], notification: null, conversations: {} },
+  studioSurface: { version: 4, pinnedTabs: ['plan'], notification: null, conversations: {}, scratchProjects: {} },
   // Ambient soundscape in the Studio window (procedurally synthesized; mute toggle
   // in the control bar — office users need one-click silence).
   studioSound: true,

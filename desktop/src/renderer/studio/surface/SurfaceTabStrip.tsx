@@ -5,7 +5,7 @@
  * middle-click close), not the conversation TabStrip. Dirty dots for file
  * tabs read sessionStore.fileEditorStates — the buffer owner.
  */
-import React, { useCallback, useState } from 'react'
+import React, { useState } from 'react'
 import { Plus, ChartBar, FileText, FolderOpen, GitBranch, GitDiff, Globe, Question, Robot, TerminalWindow, Image, File as FileIcon, Bell, Rectangle, ChartDonut } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
@@ -31,6 +31,7 @@ function tabIcon(tab: SurfaceTab, activity: import('../../../shared/terminal-act
       if (tab.id === 'gitpanel') return <GitBranch size={size} />
       return <ChartBar size={size} />
     case 'file':
+    case 'scratch':
       return <FileIcon size={size} />
     case 'preview':
       return <Image size={size} />
@@ -62,6 +63,8 @@ function tabLabel(tab: SurfaceTab): string {
     case 'file':
     case 'preview':
       return tab.filePath.split('/').pop() ?? tab.filePath
+    case 'scratch':
+      return tab.fileName
     case 'notification':
       return 'Notification'
     case 'questions':
@@ -103,10 +106,13 @@ function SurfaceTabPill({
     : null)
   const [confirmingClose, setConfirmingClose] = useState(false)
 
-  // Dirty file tabs get an inline discard confirm (the FileEditorTabItem
-  // pattern); the buffer itself is closed alongside the descriptor so the
-  // floating editor never resurrects a closed surface tab's file.
-  const requestClose = useCallback(() => {
+  // Saved files own their buffer lifetime. Scratch Documents instead route
+  // through the store's global discard dialog before project state is removed.
+  const requestClose = () => {
+    if (tab.kind === 'scratch') {
+      closeTab(tab.id)
+      return
+    }
     if (tab.kind === 'file' && dirty && !confirmingClose) {
       setConfirmingClose(true)
       return
@@ -118,7 +124,7 @@ function SurfaceTabPill({
       if (buffer) s.closeFileEditorTab(tab.dir, buffer.id)
     }
     closeTab(tab.id)
-  }, [tab, dirty, confirmingClose, closeTab])
+  }
 
   return (
     <div
@@ -241,7 +247,7 @@ export function SurfaceTabStrip(): React.JSX.Element {
               key={t.id}
               tab={t}
               active={t.id === activeTabId}
-              dirty={t.kind === 'file' && dirtyPaths.has(t.filePath)}
+              dirty={t.kind === 'scratch' ? t.dirty : t.kind === 'file' && dirtyPaths.has(t.filePath)}
               agentLinked={t.kind === 'browser' && t.instanceId === agentBrowserInstanceId}
               chord={command ? revealed.get(command) : undefined}
               onContextMenu={(e) => {

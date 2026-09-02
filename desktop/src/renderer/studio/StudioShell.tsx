@@ -48,6 +48,7 @@ import { StudioTitleBar } from "./StudioTitleBar";
 import { StudioCenter } from "./StudioCenter";
 import { StudioSurface } from "./StudioSurface";
 import { StudioBrowserHost } from "./surface/SurfacePanel";
+import { ScratchCloseDialog } from "./surface/ScratchCloseDialog";
 import { useStudioLayout } from "./layout/useStudioLayout";
 import { revealDockView } from "./layout/dock-view-reveal";
 import type { StudioSidebarView } from "../../shared/types-studio";
@@ -244,6 +245,10 @@ export function StudioShell(): React.JSX.Element {
       "tab.recentDirs": () => window.dispatchEvent(new CustomEvent("ion:open-recent-dirs")),
       "tab.new": () => {
         handleNewConversationShortcut("", "Cmd+T");
+      },
+      "tab.scratch": () => {
+        useSurfaceStore.getState().createScratch();
+        setNarrowPane("surface");
       },
       "tab.newPicker": () => {
         handleNewConversationShortcut("", "Cmd+Opt+T", undefined, true);
@@ -585,6 +590,7 @@ export function StudioShell(): React.JSX.Element {
           open={paletteOpen}
           onOpenChange={setPaletteOpen}
         />
+        <ScratchCloseDialog />
         <DeepLinkConfirmDialog />
         <UpdateDialog />
       </div>

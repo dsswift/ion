@@ -2110,6 +2110,28 @@
       ]
     },
     {
+      "id": "scratch-document",
+      "term": "Scratch Document",
+      "definition": "An unsaved Studio document stored by source-project identity. It appears across matching conversations and worktrees until the user saves or discards it. Saving removes the project-scoped document and opens the saved file in the active conversation.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "scratch file",
+        "untitled document"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface ScratchDocument",
+          "path": "desktop/src/shared/studio-surface-types.ts"
+        }
+      ]
+    },
+    {
       "id": "server-message",
       "term": "Server message",
       "definition": "One outbound NDJSON message from the engine to a consumer. It is either a broadcast event envelope or a result for a request that carried an identifier.",
@@ -2425,7 +2447,7 @@
     {
       "id": "studio-surface",
       "term": "Studio Surface",
-      "definition": "The Studio region on the right that holds conversation-scoped tabs plus the global pinned diff, plan, visualizer, and notification slots.",
+      "definition": "The Studio region on the right that holds conversation-scoped tabs, source-project-scoped Scratch Documents, and the global pinned diff, plan, visualizer, and notification slots.",
       "domain": "clients",
       "kind": "ui-component",
       "status": "canonical",

@@ -11,7 +11,7 @@ const conversation: SurfaceConversationPersisted = { tabs, activeTabId: 'file:/r
 
 describe('surface persistence', () => {
   it('defaults Plan as the only global pin', () => {
-    expect(emptySurfacePersisted()).toEqual({ version: 3, pinnedTabs: ['plan'], notification: null, conversations: {} })
+    expect(emptySurfacePersisted()).toEqual({ version: 4, pinnedTabs: ['plan'], notification: null, conversations: {}, scratchProjects: {} })
   })
 
   it('defaults a legacy browse tab without sessionMode to shared', () => {
@@ -43,6 +43,56 @@ describe('surface persistence', () => {
     const parsed = parseSurfacePersisted(JSON.parse(JSON.stringify(persisted)))
     expect(parsed).toEqual(persisted)
     expect(validateSurfacePersisted(persisted)).toBe(true)
+  })
+
+  it('requires the version 4 Scratch Document map on new writes', () => {
+    expect(validateSurfacePersisted({ version: 4, pinnedTabs: ['plan'], notification: null, conversations: {} })).toBe(false)
+    expect(validateSurfacePersisted(emptySurfacePersisted())).toBe(true)
+  })
+
+  it('round-trips project-scoped Scratch Documents and strips runtime errors', () => {
+    const persisted = serializeSurface(['plan'], null, {
+      alpha: { tabs: [], activeTabId: 'scratch:s1', visible: true, agentBrowserInstanceId: null },
+    }, {
+      '/repo': { documents: [{ id: 's1', fileName: 'Untitled-1.md', content: 'notes', savedContent: '', isPreview: false, wordWrap: true, saveError: 'old failure' }] },
+    })
+
+    expect(persisted.scratchProjects['/repo']?.documents[0]).toEqual({
+      id: 's1', fileName: 'Untitled-1.md', content: 'notes', savedContent: '', isPreview: false, wordWrap: true,
+    })
+    expect(persisted.conversations.alpha?.tabs).toEqual([])
+    expect(persisted.conversations.alpha?.activeTabId).toBe('scratch:s1')
+    expect(parseSurfacePersisted(JSON.parse(JSON.stringify(persisted)))).toEqual(persisted)
+  })
+
+  it('migrates v3 with no Scratch Documents', () => {
+    const parsed = parseSurfacePersisted({
+      version: 3,
+      pinnedTabs: ['plan'],
+      notification: null,
+      conversations: { alpha: conversation },
+    })
+
+    expect(parsed).toMatchObject({ version: 4, scratchProjects: {} })
+  })
+
+  it('drops malformed Scratch Documents without dropping valid project content', () => {
+    const parsed = parseSurfacePersisted({
+      version: 4,
+      pinnedTabs: ['plan'],
+      notification: null,
+      conversations: {},
+      scratchProjects: {
+        '/repo': { documents: [
+          { id: 'good', fileName: 'Untitled-1.md', content: 'notes', savedContent: '', isPreview: false },
+          { id: '', fileName: 'bad.md', content: 'bad', savedContent: '', isPreview: false },
+        ] },
+      },
+    })
+
+    expect(parsed).toMatchObject({
+      scratchProjects: { '/repo': { documents: [{ id: 'good', content: 'notes' }] } },
+    })
   })
 
   it('normalizes pinned priority before selecting a conversation fallback', () => {
@@ -81,7 +131,7 @@ describe('surface persistence', () => {
 
   it('drops malformed conversation records and invalid pins', () => {
     const parsed = parseSurfacePersisted({ version: 2, pinnedTabs: ['plan', 'files', 'plan'], conversations: { valid: conversation, broken: { tabs: [] } } })
-    expect(parsed).toMatchObject({ version: 3, pinnedTabs: ['plan'] })
+    expect(parsed).toMatchObject({ version: 4, pinnedTabs: ['plan'] })
     expect((parsed as { conversations: Record<string, unknown> }).conversations).toHaveProperty('valid')
     expect((parsed as { conversations: Record<string, unknown> }).conversations).not.toHaveProperty('broken')
   })
