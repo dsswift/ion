@@ -30,26 +30,26 @@ func TestBuildUserContentBlocks_TextPlusOneImage(t *testing.T) {
 	if len(blocks) != 2 {
 		t.Fatalf("want 2 blocks, got %d", len(blocks))
 	}
-	if blocks[0].Type != "text" || blocks[0].Text != "what is this" {
-		t.Fatalf("first block: want text/'what is this', got type=%q text=%q", blocks[0].Type, blocks[0].Text)
+	if blocks[0].Type != "image" {
+		t.Fatalf("first block: want image, got %q", blocks[0].Type)
 	}
-	if blocks[1].Type != "image" {
-		t.Fatalf("second block: want image, got %q", blocks[1].Type)
-	}
-	if blocks[1].Source == nil {
+	if blocks[0].Source == nil {
 		t.Fatalf("image block missing Source")
 	}
-	if blocks[1].Source.Type != "base64" {
-		t.Fatalf("image source type: want base64, got %q", blocks[1].Source.Type)
+	if blocks[0].Source.Type != "base64" {
+		t.Fatalf("image source type: want base64, got %q", blocks[0].Source.Type)
 	}
-	if blocks[1].Source.MediaType != "image/jpeg" {
-		t.Fatalf("image media_type: want image/jpeg, got %q", blocks[1].Source.MediaType)
+	if blocks[0].Source.MediaType != "image/jpeg" {
+		t.Fatalf("image media_type: want image/jpeg, got %q", blocks[0].Source.MediaType)
 	}
-	if blocks[1].Source.Data != "AAA=" {
-		t.Fatalf("image data: want AAA=, got %q", blocks[1].Source.Data)
+	if blocks[0].Source.Data != "AAA=" {
+		t.Fatalf("image data: want AAA=, got %q", blocks[0].Source.Data)
 	}
-	if blocks[1].Source.ContentHash != "input-hash" {
-		t.Fatalf("image content hash: want input-hash, got %q", blocks[1].Source.ContentHash)
+	if blocks[0].Source.ContentHash != "input-hash" {
+		t.Fatalf("image content hash: want input-hash, got %q", blocks[0].Source.ContentHash)
+	}
+	if blocks[1].Type != "text" || blocks[1].Text != "what is this" {
+		t.Fatalf("second block: want text/'what is this', got type=%q text=%q", blocks[1].Type, blocks[1].Text)
 	}
 }
 
@@ -62,11 +62,14 @@ func TestBuildUserContentBlocks_MultipleImagesPreserveOrder(t *testing.T) {
 	if len(blocks) != 3 {
 		t.Fatalf("want 3 blocks, got %d", len(blocks))
 	}
-	if blocks[1].Source.MediaType != "image/png" || blocks[1].Source.Data != "PNG1" {
-		t.Fatalf("first image: got %+v", blocks[1].Source)
+	if blocks[0].Type != "image" || blocks[0].Source == nil || blocks[0].Source.MediaType != "image/png" || blocks[0].Source.Data != "PNG1" {
+		t.Fatalf("first image: got %+v", blocks[0])
 	}
-	if blocks[2].Source.MediaType != "image/jpeg" || blocks[2].Source.Data != "JPG2" {
-		t.Fatalf("second image: got %+v", blocks[2].Source)
+	if blocks[1].Type != "image" || blocks[1].Source == nil || blocks[1].Source.MediaType != "image/jpeg" || blocks[1].Source.Data != "JPG2" {
+		t.Fatalf("second image: got %+v", blocks[1])
+	}
+	if blocks[2].Type != "text" || blocks[2].Text != "two" {
+		t.Fatalf("text must follow images, got type=%q text=%q", blocks[2].Type, blocks[2].Text)
 	}
 }
 
@@ -78,10 +81,13 @@ func TestBuildUserContentBlocks_DropsEmptyAttachments(t *testing.T) {
 	}
 	blocks := buildUserContentBlocks("hi", atts)
 	if len(blocks) != 2 {
-		t.Fatalf("want 2 blocks (text + 1 valid image), got %d", len(blocks))
+		t.Fatalf("want 2 blocks (image + text), got %d", len(blocks))
 	}
-	if blocks[1].Source.Data != "GOOD" {
-		t.Fatalf("only valid image should survive, got %+v", blocks[1].Source)
+	if blocks[0].Source.Data != "GOOD" {
+		t.Fatalf("only valid image should survive, got %+v", blocks[0].Source)
+	}
+	if blocks[1].Type != "text" || blocks[1].Text != "hi" {
+		t.Fatalf("text must follow valid media, got type=%q text=%q", blocks[1].Type, blocks[1].Text)
 	}
 }
 
@@ -116,10 +122,10 @@ func TestBuildUserContentBlocks_DerivesMissingImageHash(t *testing.T) {
 		MediaType: "image/png",
 		Data:      "AAECAwQ=",
 	}})
-	if len(blocks) != 2 || blocks[1].Source == nil {
-		t.Fatalf("blocks = %#v, want text and image", blocks)
+	if len(blocks) != 2 || blocks[0].Source == nil {
+		t.Fatalf("blocks = %#v, want image then text", blocks)
 	}
-	if blocks[1].Source.ContentHash == "" {
+	if blocks[0].Source.ContentHash == "" {
 		t.Fatal("image block missing derived content hash")
 	}
 }
@@ -138,22 +144,25 @@ func TestBuildUserContentBlocks_PDF_EmitsDocumentBlock(t *testing.T) {
 	}
 	blocks := buildUserContentBlocks("summarize this", atts)
 	if len(blocks) != 2 {
-		t.Fatalf("want 2 blocks (text + document), got %d", len(blocks))
+		t.Fatalf("want 2 blocks (document + text), got %d", len(blocks))
 	}
-	if blocks[1].Type != "document" {
-		t.Fatalf("PDF attachment: want block type 'document', got %q", blocks[1].Type)
+	if blocks[0].Type != "document" {
+		t.Fatalf("PDF attachment: want first block type 'document', got %q", blocks[0].Type)
 	}
-	if blocks[1].Source == nil {
+	if blocks[0].Source == nil {
 		t.Fatal("document block missing Source")
 	}
-	if blocks[1].Source.Type != "base64" {
-		t.Fatalf("document source type: want 'base64', got %q", blocks[1].Source.Type)
+	if blocks[0].Source.Type != "base64" {
+		t.Fatalf("document source type: want 'base64', got %q", blocks[0].Source.Type)
 	}
-	if blocks[1].Source.MediaType != "application/pdf" {
-		t.Fatalf("document media_type: want 'application/pdf', got %q", blocks[1].Source.MediaType)
+	if blocks[0].Source.MediaType != "application/pdf" {
+		t.Fatalf("document media_type: want 'application/pdf', got %q", blocks[0].Source.MediaType)
 	}
-	if blocks[1].Source.Data != "PDFBASE64==" {
-		t.Fatalf("document data mismatch: got %q", blocks[1].Source.Data)
+	if blocks[0].Source.Data != "PDFBASE64==" {
+		t.Fatalf("document data mismatch: got %q", blocks[0].Source.Data)
+	}
+	if blocks[1].Type != "text" || blocks[1].Text != "summarize this" {
+		t.Fatalf("text must follow document, got type=%q text=%q", blocks[1].Type, blocks[1].Text)
 	}
 }
 
@@ -183,13 +192,16 @@ func TestBuildUserContentBlocks_MixedImageAndPDF(t *testing.T) {
 	}
 	blocks := buildUserContentBlocks("compare", atts)
 	if len(blocks) != 3 {
-		t.Fatalf("want 3 blocks (text + image + document), got %d", len(blocks))
+		t.Fatalf("want 3 blocks (image + document + text), got %d", len(blocks))
 	}
-	if blocks[1].Type != "image" {
-		t.Fatalf("second block: want image, got %q", blocks[1].Type)
+	if blocks[0].Type != "image" {
+		t.Fatalf("first block: want image, got %q", blocks[0].Type)
 	}
-	if blocks[2].Type != "document" {
-		t.Fatalf("third block: want document, got %q", blocks[2].Type)
+	if blocks[1].Type != "document" {
+		t.Fatalf("second block: want document, got %q", blocks[1].Type)
+	}
+	if blocks[2].Type != "text" || blocks[2].Text != "compare" {
+		t.Fatalf("third block: want text/compare, got type=%q text=%q", blocks[2].Type, blocks[2].Text)
 	}
 }
 
@@ -203,11 +215,14 @@ func TestBuildUserContentBlocks_UnknownMediaType_Skipped(t *testing.T) {
 		{MediaType: "image/jpeg", Data: "IMG=="},
 	}
 	blocks := buildUserContentBlocks("data", atts)
-	// text + image only; the csv attachment is skipped
+	// The unknown attachment is skipped; valid media still precedes text.
 	if len(blocks) != 2 {
-		t.Fatalf("want 2 blocks (text + image), got %d (csv should be skipped)", len(blocks))
+		t.Fatalf("want 2 blocks (image + text), got %d (csv should be skipped)", len(blocks))
 	}
-	if blocks[1].Type != "image" {
-		t.Fatalf("second block should be image (csv skipped), got %q", blocks[1].Type)
+	if blocks[0].Type != "image" {
+		t.Fatalf("first block should be image (csv skipped), got %q", blocks[0].Type)
+	}
+	if blocks[1].Type != "text" || blocks[1].Text != "data" {
+		t.Fatalf("text must follow image, got type=%q text=%q", blocks[1].Type, blocks[1].Text)
 	}
 }

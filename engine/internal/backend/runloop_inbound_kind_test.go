@@ -128,8 +128,8 @@ func TestAppendInboundUserMessage_DisplayPromptKeepsProviderInstructionsOutOfTra
 	if md.InjectionKind != string(types.InjectionKindStructuredAnswer) || md.MachineAuthored {
 		t.Fatalf("structured answer classification = kind %q machine=%v", md.InjectionKind, md.MachineAuthored)
 	}
-	if blocks, ok := md.Content.([]types.LlmContentBlock); !ok || len(blocks) != 2 || blocks[1].Type != "image" {
-		t.Fatalf("display content did not retain the prompt attachment: %#v", md.Content)
+	if blocks, ok := md.Content.([]types.LlmContentBlock); !ok || len(blocks) != 2 || blocks[0].Type != "image" || blocks[1].Type != "text" {
+		t.Fatalf("display content did not retain media-first prompt attachment: %#v", md.Content)
 	}
 }
 
@@ -139,7 +139,13 @@ func contentBlockText(t *testing.T, content any) string {
 	if !ok || len(blocks) == 0 {
 		t.Fatalf("content is %T, want non-empty []types.LlmContentBlock", content)
 	}
-	return blocks[0].Text
+	for _, block := range blocks {
+		if block.Type == "text" {
+			return block.Text
+		}
+	}
+	t.Fatal("content has no text block")
+	return ""
 }
 
 // TestAppendInboundUserMessage_BackgroundWorkKeepsItsOwnKind pins that the

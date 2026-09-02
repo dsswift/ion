@@ -149,15 +149,31 @@ func buildCliUserContent(convID, prompt string, attachments []types.ImageAttachm
 		})
 	}
 
-	// Text block first (matches ApiBackend's buildUserContentBlocks). Collapse
-	// whitespace left by stripped markers; keep a non-empty placeholder so the
-	// message stays well-formed when the prompt was only an attachment.
+	// Collapse whitespace left by stripped markers; keep a non-empty placeholder
+	// so the message stays well-formed when the prompt was only an attachment.
+	// Media comes first so vision models receive visual context before the text
+	// instruction, matching the API backend's buildUserContentBlocks order.
 	text = strings.TrimSpace(text)
 	if text == "" && len(media) > 0 {
 		text = "(see attached)"
 	}
 	blocks := make([]map[string]interface{}, 0, len(media)+1)
-	blocks = append(blocks, map[string]interface{}{"type": "text", "text": text})
 	blocks = append(blocks, media...)
+	blocks = append(blocks, map[string]interface{}{"type": "text", "text": text})
+	blockTypes := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		blockTypes = append(blockTypes, blockTypeName(block))
+	}
+	utils.LogWithFields(utils.LevelDebug, "backend.claude_code", "user attachment content built", map[string]any{
+		"conversation_id": convID, "count": len(blocks), "attachment_count": len(attachments), "block_types": blockTypes, "content_len": len(text),
+	})
 	return blocks
+}
+
+func blockTypeName(block map[string]interface{}) string {
+	blockType, ok := block["type"].(string)
+	if !ok {
+		return "unknown"
+	}
+	return blockType
 }
