@@ -1,6 +1,7 @@
 ---
 description: Triage open Dependabot PRs, return a quick risk/action summary table, then enter planning mode with an ordered rebase→merge→follow-up→resume resolution plan.
 model: standard
+clears-conversation: true
 allowed_bash_commands: [gh pr list, gh pr view, gh pr diff, gh pr checks, git]
 ---
 

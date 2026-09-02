@@ -1,6 +1,7 @@
 ---
 description: Rebuild a feature branch into clean conventional commits while preserving its exact final tracked tree.
 model: standard
+clears-conversation: true
 ---
 
 # /squash

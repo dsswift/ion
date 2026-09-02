@@ -1,6 +1,5 @@
 ---
 description: Analyze confirmed Ion vocabulary changes, update the registry, and regenerate its index without renaming code.
-model: standard
 allowed_bash_commands: [git, graphify, grep, rg, sed, cat, node, make]
 ---
 
