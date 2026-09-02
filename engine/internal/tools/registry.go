@@ -87,6 +87,12 @@ func registerBuiltinTools() {
 	RegisterTool(AgentStatusTool())
 	RegisterTool(WebFetchTool())
 	RegisterTool(WebSearchTool())
+	// TodoWrite gives an API-backend run the task-list capability that a
+	// delegated CLI backend brings natively: the model records a checklist and
+	// clients render it (desktop TodoListPanel). Registered by default so every
+	// API-runloop run is offered it; delegated-CLI children use their own tools
+	// and never see engine built-ins, so this does not double up there.
+	RegisterTool(TodoWriteTool())
 	// Task tools (TaskCreate, TaskList, TaskGet, TaskStop) are optional.
 	// Call RegisterTaskTools() from harness code to opt in.
 	RegisterTool(NotebookTool())
