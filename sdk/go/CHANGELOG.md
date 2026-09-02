@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.9](https://github.com/dsswift/ion/compare/sdk/go-v0.1.8...sdk/go-v0.1.9) (2026-09-02)
+
+### Bug Fixes
+
+* **sdk:** update dispatch SDK surface and identity docs ([4486de1](https://github.com/dsswift/ion/commit/4486de15a3c5f01306a04d453dce207cfe692a12))
+* **sdk:** align model boundary options ([7e94906](https://github.com/dsswift/ion/commit/7e94906663aede81c8428abe3e3520e3fc80163e))
+
 ## [0.1.8](https://github.com/dsswift/ion/compare/sdk/go-v0.1.7...sdk/go-v0.1.8) (2026-08-27)
 
 ### Features

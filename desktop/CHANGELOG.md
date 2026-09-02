@@ -10,6 +10,23 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.91.0](https://github.com/dsswift/ion/compare/desktop-v1.90.0...desktop-v1.91.0) (2026-09-02)
+
+### Features
+
+* **desktop:** warn before a model switch or a clearing command ([7fde974](https://github.com/dsswift/ion/commit/7fde974fe076843d24e050c1aa4d90fb519fa1f7))
+
+### Bug Fixes
+
+* **ci:** require trusted desktop packages ([498a56b](https://github.com/dsswift/ion/commit/498a56b2056e5d4169f31ecddd16fff738fdec4f))
+* **desktop:** persist notification read identity ([ef0eb33](https://github.com/dsswift/ion/commit/ef0eb33afc27a8fe126533112f3c1f9221e73543))
+* **desktop:** persist notification deletions ([adae5d9](https://github.com/dsswift/ion/commit/adae5d9e48b970dacf6d9b8d87b6fcad9b123b82))
+* **engine:** create durable independent forks ([2b25c2b](https://github.com/dsswift/ion/commit/2b25c2be50a46caad64fdc9309de7dcb8fe33c0b))
+* **desktop:** update dispatch control-plane handling ([5aa07de](https://github.com/dsswift/ion/commit/5aa07de33fe8295bb67d271bc190411fc9287b2d))
+* **sdk:** align model boundary options ([7e94906](https://github.com/dsswift/ion/commit/7e94906663aede81c8428abe3e3520e3fc80163e))
+* **desktop:** clarify attachment-only prompts ([7bacbe8](https://github.com/dsswift/ion/commit/7bacbe8bc8db5d3c313587a087ed419ab8a3fe92))
+* **engine:** accept Anthropic browser callback ([dc41372](https://github.com/dsswift/ion/commit/dc41372c962027f6f82319866249d87e7a24b3a7))
+
 ## [1.90.0](https://github.com/dsswift/ion/compare/desktop-v1.89.0...desktop-v1.90.0) (2026-08-31)
 
 ### Features

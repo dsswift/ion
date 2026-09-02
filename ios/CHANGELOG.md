@@ -10,6 +10,17 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.72.0](https://github.com/dsswift/ion/compare/ios-v1.71.0...ios-v1.72.0) (2026-09-02)
+
+### Features
+
+* **ios:** warn before a model switch or a clearing command ([59425c8](https://github.com/dsswift/ion/commit/59425c80acabaabbfa08078bfc240abe602a8bee))
+
+### Bug Fixes
+
+* **ios:** preserve notification read state ([e428607](https://github.com/dsswift/ion/commit/e4286073417ec267466d4339391a1b38981310bb))
+* **ios:** handle dispatch steering events ([c473fdf](https://github.com/dsswift/ion/commit/c473fdf58198ff1a1ee65798e99670fb2ec68b0c))
+
 ## [1.71.0](https://github.com/dsswift/ion/compare/ios-v1.70.0...ios-v1.71.0) (2026-08-31)
 
 ### Features

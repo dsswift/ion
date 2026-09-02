@@ -13,6 +13,21 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.79.0](https://github.com/dsswift/ion/compare/engine-v1.78.1...engine-v1.79.0) (2026-09-02)
+
+### Features
+
+* **engine:** manage model conversation boundaries ([a71bdf5](https://github.com/dsswift/ion/commit/a71bdf507f3d851c317a9a226ba3b56c41e77754))
+
+### Bug Fixes
+
+* **engine:** allow global resource mutations ([c8b6c78](https://github.com/dsswift/ion/commit/c8b6c78705d4004fcbe8aeca9e7b5dc2c984e50d))
+* **engine:** create durable independent forks ([2b25c2b](https://github.com/dsswift/ion/commit/2b25c2be50a46caad64fdc9309de7dcb8fe33c0b))
+* **engine:** correct dispatch control and runtime behavior ([ef50bf0](https://github.com/dsswift/ion/commit/ef50bf03e83b4657c12ece35680aedd9b8d48121))
+* **engine:** send attachments before prompt text ([8bf1743](https://github.com/dsswift/ion/commit/8bf17437aa39ca883db35ec4ef78536dd0bd345a))
+* **engine:** accept Anthropic browser callback ([dc41372](https://github.com/dsswift/ion/commit/dc41372c962027f6f82319866249d87e7a24b3a7))
+* **engine:** correct attachment block index in recovery test ([9cd5832](https://github.com/dsswift/ion/commit/9cd58325a4ae0263c997e7f112a394e7c4267160))
+
 ## [1.78.1](https://github.com/dsswift/ion/compare/engine-v1.78.0...engine-v1.78.1) (2026-08-31)
 
 ### Bug Fixes
