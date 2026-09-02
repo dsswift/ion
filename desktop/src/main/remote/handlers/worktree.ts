@@ -24,6 +24,7 @@ import {
   refreshStaleness, sourceBranchTip,
 } from '../../integration/bench-ops'
 import { setWorktreeStage, lookupWorktreeRegistration } from '../../worktree/registry'
+import { readWorktreeBranchDefault } from '../../settings-store'
 import { workStageDescriptor } from '../../../shared/types-git'
 import {
   collectAllDirConversations,
@@ -206,7 +207,13 @@ export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktr
     })
   }
 
-  return { repoPath: sourceRepoPath, worktrees, benches }
+  // The operator's recorded default source branch for this repo, keyed by the
+  // canonical source-repo path exactly as the desktop renderer reads it. When
+  // set, iOS creates a worktree conversation directly with this branch instead
+  // of prompting; when absent, iOS falls back to the branch picker.
+  const defaultSourceBranch = readWorktreeBranchDefault(sourceRepoPath)
+
+  return { repoPath: sourceRepoPath, worktrees, benches, defaultSourceBranch }
 }
 
 /**

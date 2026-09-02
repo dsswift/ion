@@ -282,6 +282,29 @@ export function readClaudeCompat(): boolean {
   }
 }
 
+/**
+ * Resolve the operator's default worktree source branch for a repo, recorded in
+ * settings.json under `worktreeBranchDefaults` (keyed by source-repo path, set
+ * from Git settings or the "set as default" checkbox at worktree setup).
+ *
+ * This is the value the desktop uses to SKIP the branch picker when creating a
+ * worktree conversation (tab-slice-worktree-resolve.ts resolves
+ * `sourceBranch || worktreeBranchDefaults[dir]`, and only the absence of a
+ * default defers to the picker). `worktreeBranchDefaults` is a renderer
+ * preference deliberately excluded from projectable settings, so iOS never saw
+ * it and always prompted. Reading it here lets the worktree-state projection
+ * carry the resolved default to iOS so the phone makes the same decision.
+ *
+ * Returns undefined when none is recorded or the stored value is not a
+ * non-empty string.
+ */
+export function readWorktreeBranchDefault(repoPath: string): string | undefined {
+  const raw = readSettings().worktreeBranchDefaults;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const v = (raw as Record<string, unknown>)[repoPath];
+  return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+
 export function readEngineConfig(): Record<string, any> {
   try {
     if (existsSync(ENGINE_CONFIG_FILE)) {

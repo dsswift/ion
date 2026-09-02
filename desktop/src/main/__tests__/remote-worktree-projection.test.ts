@@ -63,6 +63,7 @@ const mocks = {
   workspaceRepoPaths: [] as string[],
   stalenessRepoPaths: [] as string[],
   sourceTipRepoPaths: [] as string[],
+  branchDefaults: {} as Record<string, string>,
 }
 
 async function loadBuilder() {
@@ -99,6 +100,9 @@ async function loadBuilder() {
   vi.doMock('../remote/snapshot', () => ({
     getRemoteTabStates: vi.fn(async () => ({ tabs: mocks.tabs })),
   }))
+  vi.doMock('../settings-store', () => ({
+    readWorktreeBranchDefault: vi.fn((repoPath: string) => mocks.branchDefaults[repoPath]),
+  }))
   const mod = await import('../remote/handlers/worktree')
   return mod
 }
@@ -110,6 +114,7 @@ beforeEach(() => {
   mocks.workspaceRepoPaths = []
   mocks.stalenessRepoPaths = []
   mocks.sourceTipRepoPaths = []
+  mocks.branchDefaults = {}
   remoteWorktreeStates.clear()
   remoteTransport.send.mockClear()
 })
@@ -190,6 +195,31 @@ describe('buildWorktreeState — worktrees', () => {
     expect(mocks.workspaceRepoPaths).toEqual([REPO])
     expect(mocks.stalenessRepoPaths).toEqual([REPO])
     expect(mocks.sourceTipRepoPaths).toEqual([REPO])
+  })
+
+  it('projects the recorded default source branch so iOS can skip the picker', async () => {
+    mocks.worktrees = [inventoryEntry()]
+    mocks.branchDefaults = { [REPO]: 'josh' }
+    const { buildWorktreeState: build } = await loadBuilder()
+
+    expect((await build(REPO)).defaultSourceBranch).toBe('josh')
+  })
+
+  it('reads the default under the CANONICAL source repo, not the requested alias', async () => {
+    // The renderer records worktreeBranchDefaults[sourceRepoPath]; iOS may
+    // request from an alias checkout. The projection must key the lookup by the
+    // resolved source repo or the default is silently lost.
+    mocks.branchDefaults = { [REPO]: 'josh' }
+    const { buildWorktreeState: build } = await loadBuilder()
+
+    expect((await build(REPO_ALIAS)).defaultSourceBranch).toBe('josh')
+  })
+
+  it('omits the default source branch when the operator has recorded none', async () => {
+    mocks.worktrees = [inventoryEntry()]
+    const { buildWorktreeState: build } = await loadBuilder()
+
+    expect((await build(REPO)).defaultSourceBranch).toBeUndefined()
   })
 
   it('caches and pushes one canonical state after alias refreshes', async () => {
