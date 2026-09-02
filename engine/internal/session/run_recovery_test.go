@@ -143,7 +143,7 @@ func TestRecordRunRecovery_PreservesCanonicalAttachmentBlocks(t *testing.T) {
 		t.Fatalf("entry data = %T, want MessageData", conv.Entries[0].Data)
 	}
 	blocks := conversationBlocks(entry.Content)
-	if len(blocks) != 3 || blocks[1].Type != "image" || blocks[1].Source == nil || blocks[1].Source.Data != "aW1hZ2U=" || blocks[2].Type != "document" || blocks[2].Source == nil || blocks[2].Source.Data != "cGRm" {
+	if len(blocks) != 3 || blocks[0].Type != "image" || blocks[0].Source == nil || blocks[0].Source.Data != "aW1hZ2U=" || blocks[1].Type != "document" || blocks[1].Source == nil || blocks[1].Source.Data != "cGRm" {
 		t.Fatalf("recovery attachment blocks = %#v", blocks)
 	}
 	journal := conversation.ActiveRunRecovery(conv)
