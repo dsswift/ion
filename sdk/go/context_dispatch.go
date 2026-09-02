@@ -36,6 +36,9 @@ type DispatchAgentOpts struct {
 	Task string `json:"task"`
 	// Model overrides the session's model for the child.
 	Model string `json:"model,omitempty"`
+	// Visibility controls how long clients retain the child in their agent-state
+	// roster. Empty uses the engine default (sticky).
+	Visibility string `json:"visibility,omitempty"`
 	// ExtensionDir loads an extension into the child session, giving it the
 	// extension's hooks, persona, and tools — including this extension's own
 	// dispatch tool, which is what makes n-tier delegation work. Accepts a

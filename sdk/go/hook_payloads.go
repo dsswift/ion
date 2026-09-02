@@ -151,6 +151,21 @@ type SlashCommandResolvedInfo struct {
 	ExpandedBody string `json:"expandedBody"`
 }
 
+// SlashModelBoundaryInfo describes a resolved command's pending model-tier
+// decision. DefaultApply is the result before the hook runs.
+type SlashModelBoundaryInfo struct {
+	Command       string `json:"command"`
+	RequestedTier string `json:"requestedTier"`
+	ServingModel  string `json:"servingModel"`
+	HasHistory    bool   `json:"hasHistory"`
+	DefaultApply  bool   `json:"defaultApply"`
+}
+
+// SlashModelBoundaryResult overrides the default decision. Nil Apply abstains.
+type SlashModelBoundaryResult struct {
+	Apply *bool `json:"apply,omitempty"`
+}
+
 // --- Context discovery ---
 
 // ContextDiscoverInfo is the payload for context_discover. Returning false

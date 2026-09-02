@@ -58,13 +58,14 @@ const (
 	HookNameEarlyStopContinued      = "early_stop_continued"
 
 	// Content.
-	HookNameContext              = "context"
-	HookNameMessageUpdate        = "message_update"
-	HookNameToolResult           = "tool_result"
-	HookNameInput                = "input"
-	HookNameModelSelect          = "model_select"
-	HookNameUserBash             = "user_bash"
-	HookNameSlashCommandResolved = "slash_command_resolved"
+	HookNameContext                  = "context"
+	HookNameMessageUpdate            = "message_update"
+	HookNameToolResult               = "tool_result"
+	HookNameInput                    = "input"
+	HookNameModelSelect              = "model_select"
+	HookNameUserBash                 = "user_bash"
+	HookNameSlashCommandResolved     = "slash_command_resolved"
+	HookNameBeforeSlashModelBoundary = "before_slash_model_boundary"
 
 	// Per-tool call.
 	HookNameBashToolCall  = "bash_tool_call"
