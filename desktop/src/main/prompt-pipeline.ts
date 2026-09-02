@@ -83,6 +83,7 @@
  * policy-data constants and pure side-effect callees have moved out.
  */
 
+import { resolveAttachmentPrompt } from '../shared/attachment-prompt'
 import type { RunOptions } from '../shared/types'
 import { IPC } from '../shared/types'
 
@@ -363,7 +364,8 @@ function applyHarnessSystemPromptAddenda(p: IncomingPrompt): void {
 function prepareAttachmentsForDispatch(p: IncomingPrompt): void {
   const attachments = p.attachments ?? []
   if (attachments.length === 0) return
-  const sourceText = p.runOptions?.prompt ?? p.text
+  const unresolvedText = p.runOptions?.prompt ?? p.text
+  const sourceText = resolveAttachmentPrompt(unresolvedText, attachments.length)
   const missingMarkers = attachments
     .map((attachment) => `[Attached ${attachment.type}: ${attachment.path}]`)
     .filter((marker) => !sourceText.includes(marker))
