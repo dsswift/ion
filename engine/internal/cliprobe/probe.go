@@ -127,6 +127,23 @@ func probeClaudeCode() Probe {
 		"binaryPath": bin, "authenticated": st.LoggedIn, "authMethod": st.AuthMethod,
 		"apiProvider": st.APIProvider, "planType": st.SubscriptionType, "label": p.Label,
 	})
+
+	// The CLI exposes no model-list command, so for a subscription login the
+	// live Anthropic model list comes from Anthropic's own /v1/models, queried
+	// with the CLI's stored OAuth token. Without this the provider is CLI-backed
+	// (HTTP discovery skipped) yet advertises no models, and ListModels falls
+	// back to the stale embedded catalog. Fails open: any error leaves Models
+	// nil and that catalog fallback stands.
+	if p.Authenticated {
+		if models, err := claudeModelsProbe(ctx); err != nil {
+			utils.LogWithFields(utils.LevelWarn, "cliprobe", "claude-code model list unavailable, falling back to catalog", map[string]any{
+				"error": utils.ErrStr(err),
+			})
+		} else if len(models) > 0 {
+			p.Models = models
+			utils.LogWithFields(utils.LevelInfo, "cliprobe", "claude-code models discovered", map[string]any{"count": len(models)})
+		}
+	}
 	return p
 }
 

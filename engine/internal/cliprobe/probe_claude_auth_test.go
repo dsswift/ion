@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/dsswift/ion/engine/internal/types"
 )
 
 // The claude-code probe must report REAL auth state from
@@ -93,12 +95,30 @@ func TestProbeClaudeCodeAuthStatus(t *testing.T) {
 			// it matters.
 			restoreFinder := claudeFinder
 			claudeFinder = func() (string, error) { return "/usr/local/bin/claude", nil }
+			// Keep the probe hermetic: the authenticated branch now fetches the
+			// live model list, which would otherwise read the operator's real
+			// token and hit the network during unit tests. A stub also lets this
+			// table assert that a fetched list reaches Probe.Models.
+			restoreModels := claudeModelsProbe
+			claudeModelsProbe = func(context.Context) ([]types.ModelEntry, error) {
+				return []types.ModelEntry{{ID: "claude-opus-5", ProviderID: "anthropic"}}, nil
+			}
 			defer func() {
 				claudeAuthRunner = restoreRunner
 				claudeFinder = restoreFinder
+				claudeModelsProbe = restoreModels
 			}()
 
 			p := probeClaudeCode()
+			// The fetched model list is advertised only for an authenticated
+			// probe; a signed-out CLI must advertise nothing.
+			if tt.wantAuthd {
+				if len(p.Models) != 1 || p.Models[0].ID != "claude-opus-5" {
+					t.Errorf("Models = %+v, want the fetched [claude-opus-5]", p.Models)
+				}
+			} else if len(p.Models) != 0 {
+				t.Errorf("Models = %+v, want none when signed out", p.Models)
+			}
 			if p.Kind != "claude-code" {
 				t.Errorf("Kind = %q, want claude-code", p.Kind)
 			}
