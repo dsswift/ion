@@ -511,6 +511,8 @@
     "sessionStatus",
     "sessionWorkStopped",
     "signal",
+    "slashModelTierRequested",
+    "slashModelTierServing",
     "source",
     "stderrTail",
     "steerClientMessageId",
@@ -689,6 +691,8 @@
     ],
     "ModelEntry": [
       "contextWindow",
+      "costPer1kCacheCreation",
+      "costPer1kCacheRead",
       "costPer1kInput",
       "costPer1kOutput",
       "costPerImage",
@@ -836,6 +840,13 @@
       "sessionId",
       "state",
       "stateSince"
+    ],
+    "SlashCommandListing": [
+      "argumentHint",
+      "clearsConversation",
+      "description",
+      "name",
+      "source"
     ],
     "StatusFields": [
       "activeBackgroundTasks",

@@ -10,6 +10,10 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if src.DefaultModel != "" {
 		dst.DefaultModel = src.DefaultModel
 	}
+	if src.SlashModelTier != nil {
+		copy := *src.SlashModelTier
+		dst.SlashModelTier = &copy
+	}
 
 	// Providers: merge maps
 	if len(src.Providers) > 0 {

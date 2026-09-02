@@ -151,6 +151,11 @@ func buildManifest() contractManifest {
 		// new block variants land (most recently the "compact_boundary"
 		// variant — see internal/conversation/compact_boundary.go).
 		"LlmContentBlock": reflect.TypeOf(LlmContentBlock{}),
+		// SlashCommandListing is the filesystem command-discovery feed
+		// (list_slash_commands). Clients render it as their autocomplete menu
+		// and read ClearsConversation to warn before a command wipes history,
+		// so it is a cross-language mirror like every other listing type.
+		"SlashCommandListing": reflect.TypeOf(SlashCommandListing{}),
 		// ContextBreakdownPayload is the wire payload for
 		// engine_context_breakdown; ContextBreakdownCategory is a nested row.
 		// Tracked so cross-language mirrors carry the per-category context readout.

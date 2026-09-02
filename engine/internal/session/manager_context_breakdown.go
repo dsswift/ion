@@ -206,10 +206,15 @@ func (m *Manager) ComputeAndEmitContextBreakdownContext(ctx context.Context, key
 	}
 
 	// Build the LlmStreamOptions that BuildContextBreakdown expects.
+	//
+	// Git context is appended to the message view here for the same reason the
+	// run loop appends it (backend.AppendGitContextMessage): it no longer lives
+	// in the system prompt, so counting only systemPrompt + conv.Messages would
+	// under-report the turn by the size of the git block.
 	streamOpts := types.LlmStreamOptions{
 		Model:    opts.Model,
 		System:   systemPrompt,
-		Messages: conv.Messages,
+		Messages: backend.AppendGitContextMessage(conv.Messages, opts, "context_breakdown", 0),
 		Tools:    toolDefs,
 	}
 

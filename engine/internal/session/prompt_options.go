@@ -34,15 +34,22 @@ import (
 // run via opts.BashAllowlistAdditionsForThisPrompt (applied in buildRunOptions
 // below) and the run loop's effectiveBashAllowlist; they are never persisted on
 // the engineSession. See extension.Context.SendPrompt for the contract.
-func buildPromptOverrides(model string, bashAllowlistAdditions []string, kind string) *PromptOverrides {
-	if model == "" && len(bashAllowlistAdditions) == 0 && kind == "" {
+func buildPromptOverridesWithBoundary(model string, bashAllowlistAdditions []string, kind string, applyMidConversation *bool) *PromptOverrides {
+	if model == "" && len(bashAllowlistAdditions) == 0 && kind == "" && applyMidConversation == nil {
 		return nil
 	}
-	overrides := &PromptOverrides{Model: model, InjectionKind: kind}
+	overrides := &PromptOverrides{
+		Model: model, InjectionKind: kind,
+		SlashModelTierApplyMidConversation: applyMidConversation,
+	}
 	if len(bashAllowlistAdditions) > 0 {
 		overrides.BashAllowlistAdditionsForThisPrompt = bashAllowlistAdditions
 	}
 	return overrides
+}
+
+func buildPromptOverrides(model string, bashAllowlistAdditions []string, kind string) *PromptOverrides {
+	return buildPromptOverridesWithBoundary(model, bashAllowlistAdditions, kind, nil)
 }
 
 // dispatchSendPromptPayload is the single onSendMessage callback body shared by
@@ -59,7 +66,7 @@ func buildPromptOverrides(model string, bashAllowlistAdditions []string, kind st
 // origin is a short label ("start_session" / "prompt_extensions") used only in
 // the log line so an operator can tell which wiring site queued the prompt.
 func (m *Manager) dispatchSendPromptPayload(key, origin string, payload extension.SendPromptPayload) {
-	overrides := buildPromptOverrides(payload.Model, payload.BashAllowlistAdditions, payload.Kind)
+	overrides := buildPromptOverridesWithBoundary(payload.Model, payload.BashAllowlistAdditions, payload.Kind, payload.SlashModelTierApplyMidConversation)
 	if len(payload.BashAllowlistAdditions) > 0 {
 		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "onsendmessage(): forwarding bash-allowlist additions", map[string]any{"origin": origin, "key": key, "count": len(payload.BashAllowlistAdditions), "bash_allowlist_additions": payload.BashAllowlistAdditions})
 	}
@@ -201,6 +208,7 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		if overrides.Model != "" {
 			opts.Model = overrides.Model
 		}
+		opts.SlashModelTierApplyMidConversation = overrides.SlashModelTierApplyMidConversation
 		if overrides.MaxTurns > 0 {
 			opts.MaxTurns = overrides.MaxTurns
 		}
@@ -682,7 +690,18 @@ const gitContextTimeout = 5 * time.Second
 // subprocesses without replacing the real binary. Nil in production.
 var testInjectGitContextHook func()
 
-// injectGitContext appends formatted git context to the system prompt.
+// injectGitContext resolves formatted git context for the session's working
+// directory and stores it on opts.GitContextText.
+//
+// It deliberately does NOT append to opts.AppendSystemPrompt. Git output is the
+// most volatile context the engine injects — it changes on every commit, stage,
+// and working-tree edit — and the system prompt is the head of the provider's
+// cacheable prefix. Volatile bytes in a cached prefix invalidate everything
+// behind them, so appending here re-wrote the entire system prompt and the full
+// conversation history on any turn that followed a repository change. The run
+// loop places GitContextText after the last cache breakpoint instead, so a
+// changed branch or commit costs only the block itself.
+//
 // Git subprocesses are bounded by gitContextTimeout; a timeout produces
 // a warning log and skips the injection rather than blocking the dispatch.
 func injectGitContext(s *engineSession, opts *types.RunOptions) {
@@ -690,6 +709,7 @@ func injectGitContext(s *engineSession, opts *types.RunOptions) {
 		testInjectGitContextHook()
 	}
 	if s.config.WorkingDirectory == "" {
+		utils.LogWithFields(utils.LevelDebug, "session", "git context skipped: no working directory", map[string]any{})
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), gitContextTimeout)
@@ -702,11 +722,25 @@ func injectGitContext(s *engineSession, opts *types.RunOptions) {
 		})
 		return
 	}
-	if gitCtx != nil {
-		if formatted := gitcontext.FormatForPrompt(gitCtx); formatted != "" {
-			opts.AppendSystemPrompt += "\n\n" + formatted
-		}
+	if gitCtx == nil {
+		utils.LogWithFields(utils.LevelDebug, "session", "git context unavailable: not a repository", map[string]any{
+			"cwd": s.config.WorkingDirectory,
+		})
+		return
 	}
+	formatted := gitcontext.FormatForPrompt(gitCtx)
+	if formatted == "" {
+		utils.LogWithFields(utils.LevelDebug, "session", "git context resolved but empty", map[string]any{
+			"cwd": s.config.WorkingDirectory,
+		})
+		return
+	}
+	opts.GitContextText = formatted
+	utils.LogWithFields(utils.LevelDebug, "session", "git context resolved for post-cache injection", map[string]any{
+		"cwd":    s.config.WorkingDirectory,
+		"branch": gitCtx.Branch,
+		"count":  len(formatted),
+	})
 }
 
 // injectPluginContext populates opts.InitialMessages with the plugin SessionStart

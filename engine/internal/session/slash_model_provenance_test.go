@@ -87,7 +87,7 @@ func TestApplySlashModelHint(t *testing.T) {
 		opts := &types.RunOptions{
 			Prompt: "/test-cmd",
 		}
-		applySlashModelHint(opts, "claude-sonnet")
+		applySlashModelHint(opts, "claude-sonnet", true)
 
 		if opts.ResolvedSlashModelAlias != "claude-sonnet" {
 			t.Errorf("ResolvedSlashModelAlias = %q, want %q", opts.ResolvedSlashModelAlias, "claude-sonnet")
@@ -105,7 +105,7 @@ func TestApplySlashModelHint(t *testing.T) {
 			Prompt: "/test-cmd",
 			Model:  "claude-opus",
 		}
-		applySlashModelHint(opts, "claude-sonnet")
+		applySlashModelHint(opts, "claude-sonnet", true)
 
 		if opts.ResolvedSlashModelAlias != "claude-sonnet" {
 			t.Errorf("ResolvedSlashModelAlias = %q, want %q", opts.ResolvedSlashModelAlias, "claude-sonnet")
@@ -123,7 +123,7 @@ func TestApplySlashModelHint(t *testing.T) {
 			Prompt: "/test-cmd",
 			Model:  "claude-opus",
 		}
-		applySlashModelHint(opts, "")
+		applySlashModelHint(opts, "", true)
 
 		if opts.ResolvedSlashModelAlias != "" {
 			t.Errorf("ResolvedSlashModelAlias = %q, want empty", opts.ResolvedSlashModelAlias)
@@ -137,7 +137,7 @@ func TestApplySlashModelHint(t *testing.T) {
 		opts := &types.RunOptions{
 			Prompt: "/test-cmd",
 		}
-		applySlashModelHint(opts, "")
+		applySlashModelHint(opts, "", true)
 
 		if opts.ResolvedSlashModelAlias != "" {
 			t.Errorf("ResolvedSlashModelAlias = %q, want empty", opts.ResolvedSlashModelAlias)

@@ -99,16 +99,18 @@ func TestListModelsEnrichmentFillIfZero(t *testing.T) {
 	// claude-opus-4-6 exists in the embedded catalog with its own metadata.
 	// Discover it with different live metadata and verify the live values survive.
 	live := types.ModelEntry{
-		ID:               "claude-opus-4-6",
-		ProviderID:       "anthropic",
-		ContextWindow:    1000000,
-		CostPer1kInput:   0.009,
-		CostPer1kOutput:  0.045,
-		SupportsCaching:  true,
-		SupportsThinking: true,
-		SupportsImages:   true,
-		ThinkingMode:     "adaptive",
-		ThinkingEfforts:  []string{"low", "high"},
+		ID:                     "claude-opus-4-6",
+		ProviderID:             "anthropic",
+		ContextWindow:          1000000,
+		CostPer1kInput:         0.009,
+		CostPer1kOutput:        0.045,
+		CostPer1kCacheCreation: 0.007,
+		CostPer1kCacheRead:     0.0007,
+		SupportsCaching:        true,
+		SupportsThinking:       true,
+		SupportsImages:         true,
+		ThinkingMode:           "adaptive",
+		ThinkingEfforts:        []string{"low", "high"},
 	}
 	// Sparse sibling: only ID — catalog must fill everything it knows.
 	sparse := types.ModelEntry{ID: "claude-sonnet-4-6", ProviderID: "anthropic"}
@@ -128,6 +130,9 @@ func TestListModelsEnrichmentFillIfZero(t *testing.T) {
 	}
 	if got.CostPer1kInput != 0.009 || got.CostPer1kOutput != 0.045 {
 		t.Errorf("live costs clobbered: got %v/%v want 0.009/0.045", got.CostPer1kInput, got.CostPer1kOutput)
+	}
+	if got.CostPer1kCacheCreation != 0.007 || got.CostPer1kCacheRead != 0.0007 {
+		t.Errorf("live cache costs clobbered: got %v/%v want 0.007/0.0007", got.CostPer1kCacheCreation, got.CostPer1kCacheRead)
 	}
 	if got.ThinkingMode != "adaptive" {
 		t.Errorf("live ThinkingMode clobbered: got %q want %q", got.ThinkingMode, "adaptive")

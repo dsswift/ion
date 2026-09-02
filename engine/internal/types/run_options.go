@@ -88,8 +88,25 @@ type RunOptions struct {
 	AddDirs            []string    `json:"addDirs,omitempty"`
 	PermissionModeCli  string      `json:"permissionModeCli,omitempty"`
 	AppendSystemPrompt string      `json:"appendSystemPrompt,omitempty"`
-	Source             string      `json:"source,omitempty"`
-	McpConfig          string      `json:"mcpConfig,omitempty"`
+	// GitContextText carries the formatted repository context ("# Git Context"
+	// + branch, short status, recent commits) for this run's working directory.
+	//
+	// It is deliberately NOT folded into AppendSystemPrompt, even though it is
+	// the same kind of ambient context, because the two have opposite cache
+	// characteristics. AppendSystemPrompt lands in the system prompt, which
+	// providers treat as the head of the cacheable prefix. Git output changes
+	// on every commit, stage, and working-tree edit. Volatile bytes inside a
+	// cached prefix invalidate everything behind them — the whole system prompt
+	// AND the entire conversation history — so a ~100-token git block was
+	// forcing a full re-write of hundreds of thousands of cached tokens on any
+	// turn that followed a repository change.
+	//
+	// Carrying it separately lets the run loop position the text after every
+	// cache breakpoint (see backend.AppendGitContextMessage), where a change
+	// costs only the block itself.
+	GitContextText string `json:"gitContextText,omitempty"`
+	Source         string `json:"source,omitempty"`
+	McpConfig      string `json:"mcpConfig,omitempty"`
 	// CliMcpServers carries structured per-session MCP-server specs to inject
 	// into a delegated-CLI backend that accepts inline MCP servers on session
 	// creation — the ACP backends (grok, cursor) pass these on `session/new`.
@@ -338,6 +355,12 @@ type RunOptions struct {
 	// consumer classifies the invocation (the same trivial check a client
 	// already does to drive its slash-command autocomplete) and sets this flag.
 	ResolveSlash bool `json:"resolveSlash,omitempty"`
+	// SlashModelTierApplyMidConversation overrides the engine-wide
+	// slashModelTier policy for this invocation. Nil inherits configuration;
+	// true permits the command-owned tier to switch a conversation with history;
+	// false retains the serving model. The before_slash_model_boundary hook has
+	// final say when it returns an explicit decision.
+	SlashModelTierApplyMidConversation *bool `json:"slashModelTierApplyMidConversation,omitempty"`
 	// TemporaryAutoFromPlan is an in-process workflow marker. The session remains
 	// in plan mode while this one command run receives auto-mode tools.
 	TemporaryAutoFromPlan bool `json:"-"`
@@ -367,6 +390,14 @@ type RunOptions struct {
 	// run after tier and provider resolution. Empty when no model was resolved.
 	// In-process run field.
 	ResolvedSlashModelEffective string `json:"-"`
+	// SlashModelTierIgnored is true when the resolved command declared a
+	// `model:` tier that the engine deliberately did not apply, because the
+	// conversation already carried model-visible history and honoring the
+	// declaration would have forced a full prompt-cache re-write to serve one
+	// turn. ResolvedSlashModelAlias still records what the command asked for.
+	// In-process run field; the durable signal is the engine_slash_model_tier_
+	// ignored event.
+	SlashModelTierIgnored bool `json:"-"`
 	// ResolvedSlashFrontmatter is complete parsed command frontmatter captured
 	// at resolution time. It is in-process only; persistence and typed events
 	// carry the durable provenance for history and live consumers.

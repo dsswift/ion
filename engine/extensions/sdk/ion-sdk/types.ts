@@ -1728,6 +1728,13 @@ export interface SendPromptOpts {
   bashAllowlistAdditions?: string[]
 
   /**
+   * Per-prompt policy for a resolved slash command that declares a model tier.
+   * Omit to inherit engine.json. True permits a mid-conversation switch; false
+   * retains the serving model. `before_slash_model_boundary` has final say.
+   */
+  slashModelTierApplyMidConversation?: boolean
+
+  /**
    * Semantic classification of this injection. See {@link InjectionKind} for
    * the set the engine defines and what each one means.
    *
@@ -2050,6 +2057,20 @@ export interface ModelSelectInfo {
    * site has no prompt in hand.
    */
   prompt?: string
+}
+
+/** Payload for `before_slash_model_boundary`. */
+export interface SlashModelBoundaryInfo {
+  command: string
+  requestedTier: string
+  servingModel: string
+  hasHistory: boolean
+  defaultApply: boolean
+}
+
+/** Optional decision from `before_slash_model_boundary`; omit to abstain. */
+export interface SlashModelBoundaryResult {
+  apply?: boolean | null
 }
 
 /** Payload for `context_discover`. */
@@ -2652,6 +2673,7 @@ export interface HookPayloadMap {
   tool_result: ToolResultInfo
   input: string
   model_select: ModelSelectInfo
+  before_slash_model_boundary: SlashModelBoundaryInfo
   user_bash: string
   plan_mode_prompt: string
 

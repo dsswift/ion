@@ -148,6 +148,10 @@ func (h *Host) FireSlashCommandResolved(ctx *Context, info SlashResolvedInfo) (s
 	return h.sdk.FireSlashCommandResolved(ctx, info)
 }
 
+func (h *Host) FireBeforeSlashModelBoundary(ctx *Context, info SlashModelBoundaryInfo) *SlashModelBoundaryResult {
+	return h.sdk.FireBeforeSlashModelBoundary(ctx, info)
+}
+
 // FireBeforeRunRecovery delegates to the SDK.
 func (h *Host) FireBeforeRunRecovery(ctx *Context, info BeforeRunRecoveryInfo) *BeforeRunRecoveryResult {
 	return h.sdk.FireBeforeRunRecovery(ctx, info)

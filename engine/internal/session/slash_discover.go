@@ -158,9 +158,10 @@ func addListing(path, name, source string, seen map[string]struct{}, out *[]type
 	}
 
 	*out = append(*out, types.SlashCommandListing{
-		Name:         name,
-		Description:  frontmatterString(fm, "description"),
-		ArgumentHint: frontmatterString(fm, "argument-hint"),
-		Source:       source,
+		Name:               name,
+		Description:        frontmatterString(fm, "description"),
+		ArgumentHint:       frontmatterString(fm, "argument-hint"),
+		Source:             source,
+		ClearsConversation: frontmatterBool(fm, "clears-conversation", "clears_conversation"),
 	})
 }

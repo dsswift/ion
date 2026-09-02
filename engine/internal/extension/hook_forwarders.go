@@ -64,6 +64,7 @@ func (h *Host) registerHookForwarders() {
 	// Dedicated forwarders for hooks with structured results.
 	h.registerBeforeAgentStartForwarder()
 	h.registerBeforePromptForwarder()
+	h.registerBeforeSlashModelBoundaryForwarder()
 	h.registerBeforePlanModeEnterForwarder()
 	h.registerBeforePlanModeExitForwarder()
 	h.registerBeforePlanModeAutoExitForwarder()
@@ -422,6 +423,34 @@ func (h *Host) registerContentForwarder(hook string) {
 			return nil, nil
 		}
 		return result, nil
+	})
+}
+
+// registerBeforeSlashModelBoundaryForwarder parses an optional {apply:boolean}
+// result. A missing/null apply field is an abstention.
+func (h *Host) registerBeforeSlashModelBoundaryForwarder() {
+	h.noteForwarder(HookBeforeSlashModelBoundary, hookResultStructured)
+	h.sdk.On(HookBeforeSlashModelBoundary, func(ctx *Context, payload interface{}) (interface{}, error) {
+		raw, err := h.callHook("hook/"+HookBeforeSlashModelBoundary, ctx, payload)
+		if err != nil {
+			logHookErr(HookBeforeSlashModelBoundary, err)
+			return nil, nil
+		}
+		emitHookEvents(ctx, raw)
+		if len(raw) == 0 || string(raw) == "null" {
+			return nil, nil
+		}
+		var result struct {
+			Apply *bool `json:"apply"`
+		}
+		if err := json.Unmarshal(raw, &result); err != nil {
+			utils.LogWithFields(utils.LevelInfo, "extension", "hook result decode failed", map[string]any{"hook": HookBeforeSlashModelBoundary, "error": err})
+			return nil, nil
+		}
+		if result.Apply == nil {
+			return nil, nil
+		}
+		return &SlashModelBoundaryResult{Apply: result.Apply}, nil
 	})
 }
 

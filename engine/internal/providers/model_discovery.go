@@ -279,10 +279,8 @@ func storeResult(providerID string, models []types.ModelEntry, err error) {
 	// every extended field is zero. Overwriting the registry entry with that
 	// sparse struct would destroy the embedded-catalog metadata that
 	// GetModelInfo serves — and GetModelInfo is what cost.TurnCost reads, so a
-	// clobbered entry silently prices every turn at $0. mergeDiscoveredInfo
-	// overlays only the non-zero live values (see its contract), which also
-	// preserves the cache-pricing fields that have no ModelEntry counterpart
-	// and therefore cannot survive a round-trip through a discovered entry.
+	// clobbered entry silently prices every turn at $0. Exact cache prices now
+	// follow the same non-zero overlay rule as the base token rates.
 	//
 	// Dual-provider coexistence: when the bare id is already claimed by a
 	// DIFFERENT provider (e.g. public anthropic owns claude-opus-4-8 and a
@@ -300,20 +298,22 @@ func storeResult(providerID string, models []types.ModelEntry, err error) {
 		added, refreshed, qualifiedAdded := 0, 0, 0
 		for _, m := range models {
 			info := types.ModelInfo{
-				ProviderID:       providerID,
-				ContextWindow:    m.ContextWindow,
-				CostPer1kInput:   m.CostPer1kInput,
-				CostPer1kOutput:  m.CostPer1kOutput,
-				SupportsCaching:  m.SupportsCaching,
-				SupportsThinking: m.SupportsThinking,
-				SupportsImages:   m.SupportsImages,
-				MaxOutputTokens:  m.MaxOutputTokens,
-				ThinkingMode:     m.ThinkingMode,
-				ThinkingEfforts:  m.ThinkingEfforts,
-				Tokenizer:        m.Tokenizer,
-				ModelKind:        m.ModelKind,
-				Dialect:          m.Dialect,
-				CostPerImage:     m.CostPerImage,
+				ProviderID:             providerID,
+				ContextWindow:          m.ContextWindow,
+				CostPer1kInput:         m.CostPer1kInput,
+				CostPer1kOutput:        m.CostPer1kOutput,
+				CostPer1kCacheCreation: m.CostPer1kCacheCreation,
+				CostPer1kCacheRead:     m.CostPer1kCacheRead,
+				SupportsCaching:        m.SupportsCaching,
+				SupportsThinking:       m.SupportsThinking,
+				SupportsImages:         m.SupportsImages,
+				MaxOutputTokens:        m.MaxOutputTokens,
+				ThinkingMode:           m.ThinkingMode,
+				ThinkingEfforts:        m.ThinkingEfforts,
+				Tokenizer:              m.Tokenizer,
+				ModelKind:              m.ModelKind,
+				Dialect:                m.Dialect,
+				CostPerImage:           m.CostPerImage,
 			}
 			existing, exists := modelRegistry[m.ID]
 			if !exists {
@@ -362,9 +362,9 @@ func storeResult(providerID string, models []types.ModelEntry, err error) {
 // entry). Discovery must never subtract: a stock provider returning ids only
 // leaves the entry exactly as it was.
 //
-// Fields absent from types.ModelEntry (CostPer1kCacheCreation,
-// CostPer1kCacheRead, IsCustom) are carried through untouched by construction,
-// since the merge starts from the existing entry.
+// ModelEntry carries the same cache-pricing fields as ModelInfo. Sparse live
+// discovery still preserves catalog rates because the merge starts from the
+// existing entry and overlays only non-zero values.
 func mergeDiscoveredInfo(existing, discovered types.ModelInfo) types.ModelInfo {
 	merged := existing
 	// ProviderID is the routing key. Callers only merge when the provider
@@ -380,6 +380,12 @@ func mergeDiscoveredInfo(existing, discovered types.ModelInfo) types.ModelInfo {
 	}
 	if discovered.CostPer1kOutput != 0 {
 		merged.CostPer1kOutput = discovered.CostPer1kOutput
+	}
+	if discovered.CostPer1kCacheCreation != 0 {
+		merged.CostPer1kCacheCreation = discovered.CostPer1kCacheCreation
+	}
+	if discovered.CostPer1kCacheRead != 0 {
+		merged.CostPer1kCacheRead = discovered.CostPer1kCacheRead
 	}
 	if discovered.MaxOutputTokens != 0 {
 		merged.MaxOutputTokens = discovered.MaxOutputTokens
@@ -571,6 +577,8 @@ func doModelsFetch(req *http.Request, providerID string, factory modelFactory) (
 		entry.MaxOutputTokens = m.MaxOutputTokens
 		entry.CostPer1kInput = m.CostPer1kInput
 		entry.CostPer1kOutput = m.CostPer1kOutput
+		entry.CostPer1kCacheCreation = m.CostPer1kCacheCreation
+		entry.CostPer1kCacheRead = m.CostPer1kCacheRead
 		entry.CostPerImage = m.CostPerImage
 		entry.SupportsCaching = m.SupportsCaching
 		entry.SupportsThinking = m.SupportsThinking

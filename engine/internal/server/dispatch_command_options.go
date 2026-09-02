@@ -37,6 +37,7 @@ func promptOverridesFromCommand(cmd *protocol.ClientCommand) *session.PromptOver
 		DeliveryId:                          cmd.DeliveryId,
 		DisplayText:                         cmd.DisplayText,
 		TemporaryAutoFromPlan:               cmd.TemporaryAutoFromPlan,
+		SlashModelTierApplyMidConversation:  cmd.SlashModelTierApplyMidConversation,
 		InjectionKind:                       resolveClientInjectionKind(cmd.Key, cmd.InjectionKind),
 	}
 }

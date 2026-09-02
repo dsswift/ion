@@ -136,6 +136,19 @@ func (g *ExtensionGroup) FireSlashCommandResolved(ctx *Context, info SlashResolv
 	return override, overridden
 }
 
+// FireBeforeSlashModelBoundary resolves the last explicit Apply decision across
+// all extension hosts. Nil means every host abstained.
+func (g *ExtensionGroup) FireBeforeSlashModelBoundary(ctx *Context, info SlashModelBoundaryInfo) *SlashModelBoundaryResult {
+	var decision *SlashModelBoundaryResult
+	for _, h := range g.hosts {
+		if result := h.FireBeforeSlashModelBoundary(ctx, info); result != nil && result.Apply != nil {
+			value := *result.Apply
+			decision = &SlashModelBoundaryResult{Apply: &value}
+		}
+	}
+	return decision
+}
+
 func (g *ExtensionGroup) FireToolStart(ctx *Context, info ToolStartInfo) error {
 	return g.fireVoid(func(h *Host) error { return h.FireToolStart(ctx, info) })
 }

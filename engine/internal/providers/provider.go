@@ -248,23 +248,25 @@ func ListModels() []types.ModelEntry {
 
 	for id, info := range modelRegistry {
 		entry := types.ModelEntry{
-			ID:                    id,
-			ProviderID:            info.ProviderID,
-			ContextWindow:         info.ContextWindow,
-			CostPer1kInput:        info.CostPer1kInput,
-			CostPer1kOutput:       info.CostPer1kOutput,
-			SupportsCaching:       info.SupportsCaching,
-			SupportsThinking:      info.SupportsThinking,
-			SupportsImages:        info.SupportsImages,
-			MaxOutputTokens:       info.MaxOutputTokens,
-			EffectiveContextLimit: conversation.ResolveModelContextCapacity(info.ContextWindow, 0, &info).EffectiveLimit,
-			ThinkingMode:          info.ThinkingMode,
-			ThinkingEfforts:       info.ThinkingEfforts,
-			Tokenizer:             info.Tokenizer,
-			ModelKind:             info.ModelKind,
-			Dialect:               info.Dialect,
-			CostPerImage:          info.CostPerImage,
-			IsCustom:              info.IsCustom,
+			ID:                     id,
+			ProviderID:             info.ProviderID,
+			ContextWindow:          info.ContextWindow,
+			CostPer1kInput:         info.CostPer1kInput,
+			CostPer1kOutput:        info.CostPer1kOutput,
+			CostPer1kCacheCreation: info.CostPer1kCacheCreation,
+			CostPer1kCacheRead:     info.CostPer1kCacheRead,
+			SupportsCaching:        info.SupportsCaching,
+			SupportsThinking:       info.SupportsThinking,
+			SupportsImages:         info.SupportsImages,
+			MaxOutputTokens:        info.MaxOutputTokens,
+			EffectiveContextLimit:  conversation.ResolveModelContextCapacity(info.ContextWindow, 0, &info).EffectiveLimit,
+			ThinkingMode:           info.ThinkingMode,
+			ThinkingEfforts:        info.ThinkingEfforts,
+			Tokenizer:              info.Tokenizer,
+			ModelKind:              info.ModelKind,
+			Dialect:                info.Dialect,
+			CostPerImage:           info.CostPerImage,
+			IsCustom:               info.IsCustom,
 		}
 		if info.IsCustom {
 			customModels = append(customModels, entry)
@@ -313,6 +315,12 @@ func ListModels() []types.ModelEntry {
 					}
 					if dm.CostPer1kOutput == 0 {
 						dm.CostPer1kOutput = catalog.CostPer1kOutput
+					}
+					if dm.CostPer1kCacheCreation == 0 {
+						dm.CostPer1kCacheCreation = catalog.CostPer1kCacheCreation
+					}
+					if dm.CostPer1kCacheRead == 0 {
+						dm.CostPer1kCacheRead = catalog.CostPer1kCacheRead
 					}
 					if dm.MaxOutputTokens == 0 {
 						dm.MaxOutputTokens = catalog.MaxOutputTokens

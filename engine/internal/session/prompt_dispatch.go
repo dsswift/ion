@@ -180,14 +180,27 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		if override, ok := m.fireSlashResolved(s, key, resolved); ok {
 			resolved.ExpandedBody = override
 		}
-		applyResolvedSlashToOpts(key, &opts, resolved)
+		if _, err := m.applySlashClearsConversation(s, key, resolved); err != nil {
+			s.clearRunIdentity()
+			m.unbindRunLocked(requestID)
+			m.mu.Unlock()
+			m.ReleaseDeliveryID(key, deliveryIDFromOverrides(overrides))
+			return err
+		}
+		decision := m.evaluateSlashModelBoundary(s, key, resolved, &opts)
+		applyResolvedSlashToOpts(key, &opts, resolved, decision.applied)
+		opts.SlashModelTierIgnored = decision.alias != "" && !decision.applied
 	} else if overrides != nil && overrides.ResolveSlash {
-		resolved, failedCmd := m.resolveSlashIntoOpts(s, key, &opts)
+		resolved, failedCmd, resolveErr := m.resolveSlashIntoOpts(s, key, &opts)
 		if !resolved {
 			s.clearRunIdentity()
 			m.unbindRunLocked(requestID)
 			m.mu.Unlock()
 			m.ReleaseDeliveryID(key, deliveryIDFromOverrides(overrides))
+			if resolveErr != nil {
+				m.emitCommandResult(key, trimSlashCommand(failedCmd), resolveErr)
+				return resolveErr
+			}
 			m.emitUnknownCommand(key, failedCmd)
 			return nil
 		}
@@ -531,6 +544,10 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	m.mu.Unlock()
 
 	utils.LogWithFields(utils.LevelInfo, "session", "dispatching prompt", map[string]any{"key": key, "run_id": requestID, "model": opts.Model})
+	// Report a declined command tier now that opts.Model is final, so the
+	// event names the model the run actually serves on rather than a
+	// mid-resolution value.
+	m.emitSlashModelTierIgnored(key, &opts)
 	promptCtxWindow := conversation.DefaultContext
 	if info := providers.GetModelInfo(opts.Model); info != nil {
 		promptCtxWindow = info.ContextWindow

@@ -103,12 +103,29 @@ func (m *Manager) clearConversationCore(conversationID, preferKey string) (clear
 		utils.LogWithFields(utils.LevelInfo, "session", "clearcore: has no live session (file-only wipe)", map[string]any{"conversation_id": conversationID})
 	}
 
+	fileResult, err := clearConversationFile(conversationID)
+	if err != nil {
+		return res, err
+	}
+	res.wiped = fileResult.wiped
+	res.clearEntryID = fileResult.clearEntryID
+	utils.LogWithFields(utils.LevelInfo, "session", "clearcore: conversation file clear complete", map[string]any{
+		"conversation_id": conversationID, "clear_entry_id": res.clearEntryID,
+		"session_key": res.sessionKey, "denied_cleared": res.deniedCleared, "wiped": res.wiped,
+	})
+	return res, nil
+}
+
+// clearConversationFile performs only the durable part of a clear. It does not
+// read or lock Manager state. This separation lets SendPrompt clear a resolved
+// command while it already owns m.mu, without recursively locking the mutex.
+func clearConversationFile(conversationID string) (clearResult, error) {
+	res := clearResult{}
 	conv, err := conversation.Load(conversationID, "")
 	if err != nil {
 		if errors.Is(err, conversation.ErrNotFound) {
 			// Pre-minted id with no prompt sent yet — file doesn't exist.
-			// Treat as already-empty: a semantic success with nothing to
-			// wipe. The denial clear above (if any) still applied.
+			// Treat as already-empty: a semantic success with nothing to wipe.
 			utils.LogWithFields(utils.LevelDebug, "session", "clearcore: file not found, treating as already-empty", map[string]any{"conversation_id": conversationID})
 			return res, nil
 		}
@@ -146,7 +163,6 @@ func (m *Manager) clearConversationCore(conversationID, preferKey string) (clear
 		return res, fmt.Errorf("save conversation %q: %w", conversationID, err)
 	}
 	res.wiped = true
-	utils.LogWithFields(utils.LevelInfo, "session", "clearcore: wiped messages, appended /clear invocation + cleared entry (entries preserved in tree)", map[string]any{"conversation_id": conversationID, "count": len(conv.Entries), "clear_entry_id": res.clearEntryID, "session_key": res.sessionKey, "denied_cleared": res.deniedCleared})
 	return res, nil
 }
 
@@ -160,23 +176,21 @@ func (m *Manager) clearConversationCore(conversationID, preferKey string) (clear
 // dropRetainedDenials instead; see its comment for why conflating the two
 // would make the engine misreport occupancy.
 func (m *Manager) clearSessionDenials(key string) (string, int) {
-	sessionKey, n := m.dropRetainedDenials(key, "/clear dismisses pending question/plan card")
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.clearSessionDenialsLocked(key)
+}
+
+// clearSessionDenialsLocked is the lock-aware form used by prompt dispatch,
+// which already owns m.mu while it resolves command frontmatter.
+func (m *Manager) clearSessionDenialsLocked(key string) (string, int) {
+	sessionKey, n := m.dropRetainedDenialsLocked(key, "/clear dismisses pending question/plan card")
 	if sessionKey == "" {
 		return "", 0
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	s, ok := m.sessions[key]
-	if !ok {
-		// The session exited between the two locks. The denial drop already
-		// happened and there is no occupancy left to reset.
-		utils.LogWithFields(utils.LevelDebug, "session", "clearsessiondenials: session gone before occupancy reset", map[string]any{"key": key})
-		return sessionKey, n
-	}
-	// /clear empties the LLM-visible messages, so occupancy really is zero.
-	// Both the percent and its numerator reset together — leaving the token
-	// count behind would let a consumer recompute a non-zero percentage from
-	// a conversation that no longer holds anything.
+	s := m.sessions[key]
+	// A clear empties the LLM-visible messages, so occupancy is zero. Reset
+	// both values together so every later status snapshot reports the truth.
 	s.lastContextPct = 0
 	s.lastContextTokens = 0
 	return sessionKey, n
@@ -201,6 +215,10 @@ func (m *Manager) clearSessionDenials(key string) (string, int) {
 func (m *Manager) dropRetainedDenials(key, reason string) (string, int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.dropRetainedDenialsLocked(key, reason)
+}
+
+func (m *Manager) dropRetainedDenialsLocked(key, reason string) (string, int) {
 	s, ok := m.sessions[key]
 	if !ok {
 		utils.LogWithFields(utils.LevelDebug, "session", "dropretaineddenials: not found", map[string]any{"key": key, "reason": reason})
@@ -269,7 +287,7 @@ func (m *Manager) emitClearSignal(key string) {
 	m.emit(key, types.EngineEvent{
 		Type: "engine_status",
 		Fields: &types.StatusFields{
-			State:          state,
+			State: state,
 			// Hand-built snapshot: stamp the epoch explicitly so a /clear
 			// during a live run does not read as older than that run.
 			RunEpoch:       epoch,

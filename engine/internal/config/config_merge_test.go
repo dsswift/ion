@@ -155,6 +155,17 @@ func TestMergeConfigs_WorkspaceDeepMerge(t *testing.T) {
 	}
 }
 
+func TestMergeConfigs_CarriesSlashModelTierPolicy(t *testing.T) {
+	base := DefaultConfig()
+	global := &types.EngineRuntimeConfig{SlashModelTier: &types.SlashModelTierConfig{ApplyMidConversation: false}}
+	project := &types.EngineRuntimeConfig{SlashModelTier: &types.SlashModelTierConfig{ApplyMidConversation: true}}
+
+	result := MergeConfigs(nil, base, global, project)
+	if result.SlashModelTier == nil || !result.SlashModelTier.ApplyMidConversation {
+		t.Fatalf("SlashModelTier = %+v, want project policy applied", result.SlashModelTier)
+	}
+}
+
 // TestMergeConfigs_CarriesLimitsBashAllowlistAndSiblings pins that mergeInto
 // carries the Limits fields that were historically dropped: the plan-mode Bash
 // allowlist (a slice), MaxTokenThinkingOnlyBreaker (a non-pointer int),

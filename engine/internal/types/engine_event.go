@@ -457,6 +457,20 @@ type EngineEvent struct {
 	Command      string `json:"command,omitempty"`
 	CommandError string `json:"commandError,omitempty"`
 
+	// engine_slash_model_tier_ignored — a resolved slash command declared a
+	// `model:` tier that the engine did not apply, because the conversation
+	// already held model-visible history. Applying it would have switched
+	// models mid-conversation, which cannot reuse the provider prompt cache
+	// (the cache is keyed per exact model) and therefore re-sends the whole
+	// conversation as cache-creation input to serve one turn.
+	//
+	// SlashModelTierRequested is the tier the command asked for;
+	// SlashModelTierServing is the model the run actually uses. The command
+	// still runs — only the model selection was declined. A consumer that
+	// ignores this event loses the explanation, not correctness.
+	SlashModelTierRequested string `json:"slashModelTierRequested,omitempty"`
+	SlashModelTierServing   string `json:"slashModelTierServing,omitempty"`
+
 	// engine_export — ExportFormat carries the rendered format the engine
 	// produced ("markdown" | "json" | "html" | "jsonl"), driven by the
 	// /export args (defaults to "markdown"). Consumers use it to pick a

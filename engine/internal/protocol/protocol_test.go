@@ -472,6 +472,36 @@ func TestParseClientCommand_SetPlanModeValues(t *testing.T) {
 	}
 }
 
+func TestParseClientCommand_SlashModelTierOverride(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		line string
+		want *bool
+	}{
+		{"true", `{"cmd":"send_prompt","key":"s1","text":"/review","slashModelTierApplyMidConversation":true}`, boolPtr(true)},
+		{"false", `{"cmd":"send_prompt","key":"s1","text":"/review","slashModelTierApplyMidConversation":false}`, boolPtr(false)},
+		{"absent", `{"cmd":"send_prompt","key":"s1","text":"/review"}`, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ParseClientCommand(tc.line)
+			if got == nil {
+				t.Fatal("expected command")
+			}
+			if tc.want == nil {
+				if got.SlashModelTierApplyMidConversation != nil {
+					t.Fatalf("override = %v, want nil", *got.SlashModelTierApplyMidConversation)
+				}
+				return
+			}
+			if got.SlashModelTierApplyMidConversation == nil || *got.SlashModelTierApplyMidConversation != *tc.want {
+				t.Fatalf("override = %v, want %v", got.SlashModelTierApplyMidConversation, *tc.want)
+			}
+		})
+	}
+}
+
+func boolPtr(value bool) *bool { return &value }
+
 // TestParseClientCommand_ThinkingEffortValues pins the three-state decode of
 // send_prompt's thinkingEffort field. The distinction between "off" and an
 // absent field is load-bearing: the session layer treats "off" as an explicit

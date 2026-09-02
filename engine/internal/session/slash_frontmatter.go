@@ -168,6 +168,34 @@ func frontmatterList(fm map[string]any, keys ...string) []string {
 	return nil
 }
 
+// frontmatterBool resolves a boolean frontmatter key under any of the given
+// aliases (first present wins), defaulting to false when absent.
+//
+// It accepts both a YAML-parsed bool and the string forms, because the open
+// frontmatter parser preserves unknown keys verbatim and a hand-written
+// template may quote the value. Only an affirmative value is true; anything
+// unrecognized is false, so a typo fails closed rather than silently arming a
+// destructive behavior like clearing a conversation.
+func frontmatterBool(fm map[string]any, keys ...string) bool {
+	for _, key := range keys {
+		v, ok := fm[key]
+		if !ok || v == nil {
+			continue
+		}
+		switch t := v.(type) {
+		case bool:
+			return t
+		case string:
+			switch strings.ToLower(strings.TrimSpace(t)) {
+			case "true", "yes", "on", "1":
+				return true
+			}
+			return false
+		}
+	}
+	return false
+}
+
 // frontmatterUserInvocable resolves the `user-invocable` key. Commands AND
 // skills default to user-invocable: a discoverable template is directly
 // addressable by the user who can see it — a user who can find /name in the

@@ -265,7 +265,11 @@ type EngineRuntimeConfig struct {
 	Backend      string                    `json:"backend"`
 	DefaultModel string                    `json:"defaultModel"`
 	Providers    map[string]ProviderConfig `json:"providers,omitempty"`
-	Limits       LimitsConfig              `json:"limits"`
+	// SlashModelTier controls whether command-owned model tiers may replace the
+	// serving model after a conversation has model-visible history. Nil keeps the
+	// least-surprising default: retain the current model and its warm cache.
+	SlashModelTier *SlashModelTierConfig `json:"slashModelTier,omitempty"`
+	Limits         LimitsConfig          `json:"limits"`
 	// ResourceLimits caps concurrent sessions and per-session agent
 	// dispatches. Per-run Limits bound depth (turns, budget); resource
 	// limits bound breadth (how many orchestration contexts run at once).
