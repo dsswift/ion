@@ -11,24 +11,17 @@
  * window the output accumulates ONLY in the main-process `terminalScrollback`
  * map (`main/state.ts`).
  *
- * `TerminalInstance.tsx` restored history exclusively from `consumeSavedBuffer`,
- * a renderer-only map fed by TAB RESTORE and never by main. So navigating to
- * such a tab showed an EMPTY pane for a service that had been logging for
- * minutes. The fix fetches main's scrollback on first mount when no saved
- * buffer exists.
+ * The shared Conversation Terminal Panel now uses `terminalAttach` for both
+ * presentations. The attach snapshot carries the main-owned scrollback and
+ * lifecycle in one response. A persisted renderer buffer remains the restart
+ * fallback when main has no live history.
  *
  * WHY THESE TESTS FAIL WITHOUT THE FIX:
- *   - "fetches main-process scrollback" — `terminalGetScrollback` is never
- *     called at all, so the spy has zero calls.
- *   - "writes fetched history into the terminal" — nothing is written, so the
- *     written text never contains the backlog.
- *   - "does not fetch when a saved buffer exists" — passes before and after;
- *     it pins that the fix did not regress the tab-restore path.
- *   - "orders late-arriving live output after the fetched history" — before the
- *     fix there is no history to order against; after the fix it pins the
- *     queue that prevents live chunks from interleaving ahead of the backlog.
- *     This is the ordering hazard the async fetch introduces, so it is pinned
- *     explicitly rather than left to chance.
+ *   - The attach request is absent, so a second renderer cannot read the
+ *     main-owned terminal history and lifecycle.
+ *   - Fetched history is not written, so a background service looks empty.
+ *   - A persisted buffer is not used when main has no history after restart.
+ *   - Live chunks can be written ahead of the attach snapshot unless queued.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -89,7 +82,6 @@ vi.mock('../../stores/sessionStore', () => ({
     {
       getState: () => ({
         staticInfo: { homePath: '/Users/test' },
-        consumeTerminalPendingCommand: () => undefined,
         openFileInEditor: () => {},
       }),
     },
@@ -112,6 +104,13 @@ const onTerminalExit = vi.fn((cb: (key: string, exitCode: number) => void) => {
   return () => { exitCallback = null }
 })
 const terminalGetScrollback = vi.fn<(key: string) => Promise<string>>()
+const terminalAttach = vi.fn<(key: string, opts?: { restartIfNotRunning?: boolean; cwd?: string }) => Promise<{
+  history: string
+  running: boolean
+  exitCode: number | null
+  cwd: string
+  cwdFellBack: boolean
+}>>()
 
 function installIonBridge(): void {
   ;(globalThis as unknown as { window: Record<string, unknown> }).window.ion = {
@@ -125,6 +124,7 @@ function installIonBridge(): void {
     studioBrowserViewAction: vi.fn().mockResolvedValue(true),
     studioBrowserViewClose: vi.fn().mockResolvedValue(true),
     onStudioBrowserViewState: vi.fn(() => () => undefined),
+    terminalAttach,
     terminalGetScrollback,
     onTerminalData,
     onTerminalExit,
@@ -149,6 +149,14 @@ describe('TerminalInstance scrollback restoration', () => {
     onTerminalExit.mockClear()
     terminalGetScrollback.mockReset()
     terminalGetScrollback.mockResolvedValue('')
+    terminalAttach.mockReset()
+    terminalAttach.mockImplementation(async (key) => ({
+      history: await terminalGetScrollback(key),
+      running: true,
+      exitCode: null,
+      cwd: '/repo',
+      cwdFellBack: false,
+    }))
     // React 18+ requires this flag for act() to flush effects synchronously.
     // Without it React warns and effect timing is not guaranteed, which would
     // make the ordering assertion below unreliable rather than wrong.
@@ -212,10 +220,13 @@ describe('TerminalInstance scrollback restoration', () => {
     expect(written.join('')).toContain('listening on :3000')
   })
 
-  it('does not fetch scrollback when a saved buffer already exists', async () => {
+  it('uses the saved buffer when main has no scrollback after restart', async () => {
     await mount('tab-c:inst-c', { savedBuffer: 'restored from disk\n' })
 
-    expect(terminalGetScrollback).not.toHaveBeenCalled()
+    expect(terminalAttach).toHaveBeenCalledWith('tab-c:inst-c', {
+      restartIfNotRunning: true,
+      cwd: '/repo',
+    })
     expect(written.join('')).toContain('restored from disk')
   })
 

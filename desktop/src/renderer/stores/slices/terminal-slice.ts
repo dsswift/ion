@@ -3,7 +3,7 @@ import { usePreferencesStore } from '../../preferences'
 import { destroyTerminalInstance } from '../../components/TerminalPanel'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, isReusableBlankTerminalTab } from '../session-store-helpers'
-import { rWarn } from '../../rendererLogger'
+import { rDebug, rWarn } from '../../rendererLogger'
 import { resolveRegisteredWorktree } from '../worktree-registration'
 
 // ─── Tall-suspend helpers ─────────────────────────────────────────────────────
@@ -36,15 +36,20 @@ function tallRestoreOnClose(s: { suspendedTallTabId: string | null }, tabId: str
 
 export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
-    toggleTerminal: (tabId) => {
+    toggleTerminal: async (tabId) => {
+      const closing = get().terminalOpenTabIds.has(tabId)
+      if (!closing && !get().terminalPanes.get(tabId)?.instances.length) {
+        await get().addTerminalInstance(tabId, 'user')
+        rDebug('terminal', 'conversation terminal panel toggled', {
+          tab_id: tabId,
+          open: true,
+        })
+        return
+      }
       set((s) => {
         const next = new Set(s.terminalOpenTabIds)
-        const closing = next.has(tabId)
-        if (closing) {
-          next.delete(tabId)
-        } else {
-          next.add(tabId)
-        }
+        if (closing) next.delete(tabId)
+        else next.add(tabId)
         return {
           terminalOpenTabIds: next,
           ...(closing ? tallRestoreOnClose(s, tabId) : tallSuspendOnOpen(s, tabId)),
@@ -52,52 +57,105 @@ export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State
           ...(closing && s.terminalBigScreenTabId === tabId ? { terminalBigScreenTabId: null } : {}),
         }
       })
+      rDebug('terminal', 'conversation terminal panel toggled', {
+        tab_id: tabId,
+        open: !closing,
+      })
     },
 
-    addTerminalInstance: (tabId, kind, cwd?) => {
+    addTerminalInstance: async (tabId, kind, cwd?, requestedLabel?) => {
       const tab = get().tabs.find((t) => t.id === tabId)
-      const resolvedCwd = cwd || tab?.workingDirectory || '~'
-      const panes = new Map(get().terminalPanes)
-      const pane = panes.get(tabId) || { instances: [], activeInstanceId: null }
+      if (!tab) {
+        rWarn('terminal', 'terminal creation refused: conversation not found', { tab_id: tabId, kind })
+        throw new Error(`Conversation ${tabId} is not open.`)
+      }
       let labelBase = kind === 'commit' ? 'Commit' : kind === 'cli' ? 'CLI' : kind === 'user' ? 'Shell' : 'Shell'
       if (kind.startsWith('tool:')) {
         const toolId = kind.slice(5)
         const tool = usePreferencesStore.getState().quickTools.find((t) => t.id === toolId)
         labelBase = tool?.name || 'Tool'
       }
-      let label: string
-      if (kind === 'user') {
-        const maxShellNum = pane.instances
-          .filter((i) => i.kind === 'user')
-          .reduce((max, i) => {
-            const m = i.label.match(/^Shell (\d+)$/)
-            return m ? Math.max(max, parseInt(m[1], 10)) : max
-          }, 0)
-        label = `${labelBase} ${maxShellNum + 1}`
-      } else {
-        label = labelBase
-      }
       const id = crypto.randomUUID().slice(0, 8)
-      const instance: TerminalInstance = { id, label, kind, readOnly: kind !== 'user', cwd: resolvedCwd }
-      panes.set(tabId, {
-        instances: [...pane.instances, instance],
-        activeInstanceId: id,
+      const resolvedCwd = cwd || tab.workingDirectory || '~'
+      const key = `${tabId}:${id}`
+      try {
+        await window.ion.terminalCreate(key, resolvedCwd)
+      } catch (error) {
+        rWarn('terminal', 'conversation terminal create failed', {
+          key,
+          tab_id: tabId,
+          instance_id: id,
+          kind,
+          cwd: resolvedCwd,
+          error: String(error),
+        })
+        throw error
+      }
+      let committedLabel = labelBase
+      set((s) => {
+        const latestPanes = new Map(s.terminalPanes)
+        const latestPane = latestPanes.get(tabId) || { instances: [], activeInstanceId: null }
+        let label = labelBase
+        if (kind === 'user' && requestedLabel?.trim()) {
+          label = requestedLabel.trim()
+        } else if (kind === 'user') {
+          const maxShellNum = latestPane.instances
+            .filter((candidate) => candidate.kind === 'user')
+            .reduce((max, candidate) => {
+              const match = candidate.label.match(/^Shell (\d+)$/)
+              return match ? Math.max(max, parseInt(match[1], 10)) : max
+            }, 0)
+          label = `${labelBase} ${maxShellNum + 1}`
+        }
+        committedLabel = label
+        const instance: TerminalInstance = { id, label, kind, readOnly: kind !== 'user', cwd: resolvedCwd }
+        latestPanes.set(tabId, {
+          instances: [...latestPane.instances, instance],
+          activeInstanceId: id,
+        })
+        const terminalOpenTabIds = new Set(s.terminalOpenTabIds)
+        const wasOpen = terminalOpenTabIds.has(tabId)
+        terminalOpenTabIds.add(tabId)
+        return {
+          terminalPanes: latestPanes,
+          terminalOpenTabIds,
+          ...(!wasOpen ? tallSuspendOnOpen(s, tabId) : {}),
+        }
       })
-      set({ terminalPanes: panes })
+      rDebug('terminal', 'conversation terminal created', {
+        key,
+        tab_id: tabId,
+        instance_id: id,
+        label: committedLabel,
+        kind,
+        cwd: resolvedCwd,
+      })
       return id
     },
 
-    removeTerminalInstance: (tabId, instanceId) => {
-      const panes = new Map(get().terminalPanes)
-      const pane = panes.get(tabId)
+    removeTerminalInstance: async (tabId, instanceId) => {
+      const pane = get().terminalPanes.get(tabId)
       if (!pane) return
       const key = `${tabId}:${instanceId}`
-      window.ion.terminalDestroy(key).catch((err) => rWarn('terminal', 'terminalDestroy IPC failed', { key, error: String(err) }))
+      try {
+        await window.ion.terminalDestroy(key)
+        rDebug('terminal', 'conversation terminal destroyed', {
+          key,
+          tab_id: tabId,
+          instance_id: instanceId,
+        })
+      } catch (error) {
+        rWarn('terminal', 'terminalDestroy IPC failed', { key, error: String(error) })
+        throw error
+      }
       destroyTerminalInstance(key)
-      const remaining = pane.instances.filter((i) => i.id !== instanceId)
-      const activeId = pane.activeInstanceId === instanceId
+      const panes = new Map(get().terminalPanes)
+      const current = panes.get(tabId)
+      if (!current) return
+      const remaining = current.instances.filter((i) => i.id !== instanceId)
+      const activeId = current.activeInstanceId === instanceId
         ? (remaining[remaining.length - 1]?.id || null)
-        : pane.activeInstanceId
+        : current.activeInstanceId
       if (remaining.length === 0) {
         panes.delete(tabId)
         const s = get()
@@ -172,11 +230,25 @@ export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State
       })
     },
 
-    getOrCreateDedicatedTerminal: (tabId, kind) => {
+    getOrCreateDedicatedTerminal: async (tabId, kind) => {
       const pane = get().terminalPanes.get(tabId)
       const existing = pane?.instances.find((i) => i.kind === kind)
-      if (existing) return existing.id
-      return get().addTerminalInstance(tabId, kind)
+      if (existing) {
+        const key = `${tabId}:${existing.id}`
+        const info = await window.ion.terminalAttach(key, {
+          restartIfNotRunning: true,
+          cwd: existing.cwd,
+        })
+        rDebug('terminal', 'dedicated conversation terminal ready', {
+          key,
+          tab_id: tabId,
+          instance_id: existing.id,
+          kind,
+          running: info.running,
+        })
+        return existing.id
+      }
+      return await get().addTerminalInstance(tabId, kind)
     },
 
     renameTerminalInstance: (tabId, instanceId, label) => {
@@ -248,76 +320,70 @@ export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State
       return tab.id
     },
 
-    runInTerminal: (tabId, cmd) => {
-      const instanceId = get().getOrCreateDedicatedTerminal(tabId, 'commit')
+    runInTerminal: async (tabId, cmd) => {
+      const instanceId = await get().getOrCreateDedicatedTerminal(tabId, 'commit')
       get().selectTerminalInstance(tabId, instanceId)
       const key = `${tabId}:${instanceId}`
       set((s) => {
         const nextOpen = new Set(s.terminalOpenTabIds)
-        const nextPending = new Map(s.terminalPendingCommands)
-        nextPending.set(key, cmd)
         const wasOpen = nextOpen.has(tabId)
-        if (wasOpen) {
-          window.ion.terminalWrite(key, cmd + '\n')
-          nextPending.delete(key)
-        } else {
-          nextOpen.add(tabId)
-        }
+        nextOpen.add(tabId)
         return {
           terminalOpenTabIds: nextOpen,
-          terminalPendingCommands: nextPending,
           ...(!wasOpen ? tallSuspendOnOpen(s, tabId) : {}),
         }
       })
+      window.ion.terminalWrite(key, cmd + '\n')
+      rDebug('terminal', 'command sent to conversation terminal', {
+        key,
+        tab_id: tabId,
+        instance_id: instanceId,
+        command_length: cmd.length,
+      })
     },
 
-    runQuickTool: (tabId, toolId) => {
+    runQuickTool: async (tabId, toolId) => {
       const tool = usePreferencesStore.getState().quickTools.find((t) => t.id === toolId)
-      if (!tool) return
+      if (!tool) {
+        rWarn('terminal', 'quick tool launch refused: tool not found', { tab_id: tabId, tool_id: toolId })
+        return
+      }
       const tab = get().tabs.find((t) => t.id === tabId)
       const cwd = tab?.workingDirectory || '~'
       const kind = `tool:${toolId}`
-      const instanceId = get().getOrCreateDedicatedTerminal(tabId, kind)
+      const instanceId = await get().getOrCreateDedicatedTerminal(tabId, kind)
       get().selectTerminalInstance(tabId, instanceId)
-      const resolveAndRun = async () => {
-        let branch = 'main'
-        try {
-          const result = await window.ion.gitChanges(cwd)
-          if (result?.branch) branch = result.branch
-        } catch { /* fall back to 'main' */ }
-        const cmd = tool.command.replace(/\{cwd\}/g, cwd).replace(/\{branch\}/g, branch)
-        const key = `${tabId}:${instanceId}`
-        set((s) => {
-          const nextOpen = new Set(s.terminalOpenTabIds)
-          const nextPending = new Map(s.terminalPendingCommands)
-          nextPending.set(key, cmd)
-          const wasOpen = nextOpen.has(tabId)
-          if (wasOpen) {
-            window.ion.terminalWrite(key, cmd + '\n')
-            nextPending.delete(key)
-          } else {
-            nextOpen.add(tabId)
-          }
-          return {
-            terminalOpenTabIds: nextOpen,
-            terminalPendingCommands: nextPending,
-            ...(!wasOpen ? tallSuspendOnOpen(s, tabId) : {}),
-          }
+      let branch = 'main'
+      try {
+        const result = await window.ion.gitChanges(cwd)
+        if (result?.branch) branch = result.branch
+      } catch (error) {
+        rDebug('terminal', 'quick tool branch lookup failed; using main', {
+          tab_id: tabId,
+          tool_id: toolId,
+          cwd,
+          error: String(error),
         })
       }
-      void resolveAndRun().catch((err) => rWarn('terminal', 'quick-tool resolveAndRun failed', { tab_id: tabId, tool_id: toolId, error: String(err) }))
-    },
-
-    consumeTerminalPendingCommand: (key) => {
-      const cmd = get().terminalPendingCommands.get(key)
-      if (cmd) {
-        set((s) => {
-          const next = new Map(s.terminalPendingCommands)
-          next.delete(key)
-          return { terminalPendingCommands: next }
-        })
-      }
-      return cmd
+      const cmd = tool.command.replace(/\{cwd\}/g, cwd).replace(/\{branch\}/g, branch)
+      const key = `${tabId}:${instanceId}`
+      set((s) => {
+        const nextOpen = new Set(s.terminalOpenTabIds)
+        const wasOpen = nextOpen.has(tabId)
+        nextOpen.add(tabId)
+        return {
+          terminalOpenTabIds: nextOpen,
+          ...(!wasOpen ? tallSuspendOnOpen(s, tabId) : {}),
+        }
+      })
+      window.ion.terminalWrite(key, cmd + '\n')
+      rDebug('terminal', 'quick tool sent to conversation terminal', {
+        key,
+        tab_id: tabId,
+        instance_id: instanceId,
+        tool_id: toolId,
+        command_length: cmd.length,
+      })
     },
   }
 }

@@ -40,8 +40,8 @@ import { homedir } from 'os'
 import { state } from '../../state'
 import { log as _log, error as _error } from '../../logger'
 import { readSettings } from '../../settings-store'
-import { terminalManager } from '../../terminal-manager-instance'
 import { refreshRendererSnapshotCache, getRemoteTabStates } from '../snapshot'
+import { createTerminalInstanceOnTab } from './terminal'
 import type { RemoteCommand } from '../protocol'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -295,24 +295,10 @@ export async function handleCreateTerminalTab(cmd: Extract<RemoteCommand, { type
   const tabId = await createTabFromCommand(cmd, 'createTerminalTab')
   if (tabId) {
     // Eagerly create a terminal instance + PTY so remote clients can use it
-    // without waiting for the desktop renderer to navigate to this tab.
+    // without waiting for either renderer to mount the shared panel.
     try {
-      const escaped = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-      const instance = await state.mainWindow?.webContents.executeJavaScript(`
-        (function() {
-          var store = window.__Ion_SESSION_STORE__;
-          if (!store) return null;
-          var id = store.getState().addTerminalInstance('${escaped}', 'user');
-          var pane = store.getState().terminalPanes.get('${escaped}');
-          if (!pane) return null;
-          var inst = pane.instances.find(function(i) { return i.id === id; });
-          if (!inst) return null;
-          return { id: inst.id, label: inst.label, kind: inst.kind, cwd: inst.cwd || '' };
-        })()
-      `)
+      const instance = await createTerminalInstanceOnTab(tabId)
       if (instance) {
-        const key = `${tabId}:${instance.id}`
-        terminalManager.create(key, instance.cwd || cmd.workingDirectory || '~')
         state.remoteTransport?.send({
           type: 'desktop_terminal_instance_added',
           tabId,

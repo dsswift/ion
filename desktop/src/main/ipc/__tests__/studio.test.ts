@@ -13,6 +13,7 @@ const {
   applyStudioActivationPolicyMock,
   setStudioTitleBarOverlayMock,
   broadcastMock,
+  studioSendMock,
 } = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
   onHandlers: new Map<string, (...args: unknown[]) => unknown>(),
@@ -21,6 +22,7 @@ const {
   applyStudioActivationPolicyMock: vi.fn(),
   setStudioTitleBarOverlayMock: vi.fn(() => true),
   broadcastMock: vi.fn(),
+  studioSendMock: vi.fn(),
 }));
 
 vi.mock("electron", () => ({
@@ -51,6 +53,10 @@ vi.mock("../../state", () => ({
     mainWindow: {
       isDestroyed: () => false,
       webContents: { id: 1 },
+    },
+    studioWindow: {
+      isDestroyed: () => false,
+      webContents: { send: studioSendMock },
     },
   },
   enterprisePolicyCache: { policy: null },
@@ -100,6 +106,28 @@ beforeEach(() => {
   applyStudioActivationPolicyMock.mockClear();
   setStudioTitleBarOverlayMock.mockClear();
   broadcastMock.mockClear();
+  studioSendMock.mockClear();
+});
+
+describe("studio:tabs-sync owner validation", () => {
+  const snapshot = { tabs: [], activeSessionId: null };
+
+  it("accepts only the Overlay owner and pushes the main-assigned revision", () => {
+    const publish = onHandlers.get(IPC.STUDIO_PUBLISH_TABS_SYNC)!;
+    publish(ownerEvent(), snapshot);
+
+    expect(broadcastMock).toHaveBeenCalledWith(
+      IPC.STUDIO_TABS_SYNC,
+      expect.objectContaining({ ...snapshot, revision: expect.any(Number) }),
+    );
+  });
+
+  it("rejects a non-owner publisher", () => {
+    const publish = onHandlers.get(IPC.STUDIO_PUBLISH_TABS_SYNC)!;
+    publish(ownerEvent(2), snapshot);
+
+    expect(studioSendMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("studio:get-state validation", () => {

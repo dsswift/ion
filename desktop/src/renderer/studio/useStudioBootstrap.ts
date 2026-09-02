@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
 import { bootstrapResources } from '../hooks/useResourceBootstrap'
 import { reportStartup } from '../startup-report'
-import { waitForTabsSync, waitForWorktreeSync } from './state/secondary-store'
+import { waitForConversationTerminalSync, waitForTabsSync, waitForWorktreeSync } from './state/secondary-store'
 import { useSurfaceStore } from './surface/surface-store'
 import { rError } from '../rendererLogger'
 import { bootstrapPreferencesReady } from '../preferences-bootstrap'
@@ -15,7 +15,12 @@ export function useStudioBootstrap(layoutHydrated: boolean): boolean {
     void (async () => {
       try {
         reportStartup('studio', 'Synchronizing conversations…')
-        await Promise.all([bootstrapPreferencesReady(), waitForTabsSync(), waitForWorktreeSync()])
+        await Promise.all([
+          bootstrapPreferencesReady(),
+          waitForTabsSync(),
+          waitForConversationTerminalSync(),
+          waitForWorktreeSync(),
+        ])
         reportStartup('studio', 'Loading workspace state…')
         await bootstrapResources()
         const activeTabId = useSessionStore.getState().activeTabId

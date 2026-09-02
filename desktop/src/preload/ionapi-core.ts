@@ -279,14 +279,6 @@ export interface IonCoreApi {
   getActiveUi(): Promise<{ activeUi: "overlay" | "studio"; locked: boolean }>;
   /** Set the active conversation UI (live switch, no restart). False = rejected/locked. */
   setActiveUi(ui: "overlay" | "studio"): Promise<boolean>;
-  /**
-   * Main-process scrollback for a terminal key.
-   *
-   * Non-empty when a PTY streamed output while the renderer had no xterm
-   * attached (a pane opened into a background conversation by a deep link, or
-   * an instance created from iOS). Consumed once on first mount.
-   */
-  terminalGetScrollback(key: string): Promise<string>;
   terminalActiveTabs(): Promise<string[]>;
   terminalActivitySnapshot(): Promise<import('../shared/terminal-activity').TerminalActivity[]>;
   onTerminalActivity(callback: (activity: import('../shared/terminal-activity').TerminalActivity) => void): () => void;

@@ -9,6 +9,13 @@
  * Zustand actions are plain state fields, so the swap is a setState.
  */
 import { useSessionStore } from '../../stores/sessionStore'
+import { destroyTerminalInstance } from '../../components/TerminalInstance'
+import {
+  isStudioConversationTerminalSnapshot,
+  removedConversationTerminalKeys,
+  terminalPaneMap,
+  type StudioConversationTerminalSnapshot,
+} from '../../../shared/studio-conversation-terminal-sync'
 import { FORWARDED_ACTIONS } from '../../../shared/studio-mirror-actions'
 import { tabsFromSnapshot, mergePanes } from './hydrate-tabs'
 import { commitInstance } from '../../stores/conversation-instance'
@@ -20,7 +27,10 @@ import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 let applied = false
 
 let tabsSyncPromise: Promise<void> | null = null
+let terminalSyncPromise: Promise<void> | null = null
+let resolveTerminalSync: (() => void) | null = null
 let lastSnapshotRevision = -1
+let lastTerminalSnapshotRevision = -1
 let lastWorktreeSnapshotRevision = -1
 let worktreeSyncPromise: Promise<void> | null = null
 let worktreeReady = false
@@ -162,6 +172,69 @@ export function hydrateTabsFromSync(snapshot: unknown): void {
 export function initTabsSync(): () => void {
   void waitForTabsSync().catch((err) => rWarn('studio.mirror', 'initial tabs sync failed', { error: String(err) }))
   return window.ion.onStudioTabsSync((snapshot) => hydrateTabsFromSync(snapshot))
+}
+
+/** Apply one complete Conversation Terminal Panel snapshot to the mirror. */
+export function hydrateConversationTerminals(snapshot: unknown): boolean {
+  if (!isStudioConversationTerminalSnapshot(snapshot)) {
+    rWarn('studio.terminal-sync', 'terminal snapshot malformed, ignored')
+    return false
+  }
+  if (snapshot.revision <= lastTerminalSnapshotRevision) return false
+
+  const current = useSessionStore.getState()
+  const terminalPanes = terminalPaneMap(snapshot)
+  const removedKeys = removedConversationTerminalKeys(current.terminalPanes, terminalPanes)
+  lastTerminalSnapshotRevision = snapshot.revision
+  const openTabIds = new Set(snapshot.openTabIds)
+  useSessionStore.setState({
+    terminalPanes,
+    terminalOpenTabIds: openTabIds,
+    ...(current.terminalTallTabId && !openTabIds.has(current.terminalTallTabId)
+      ? { terminalTallTabId: null }
+      : {}),
+    ...(current.terminalBigScreenTabId && !openTabIds.has(current.terminalBigScreenTabId)
+      ? { terminalBigScreenTabId: null }
+      : {}),
+  })
+  for (const key of removedKeys) destroyTerminalInstance(key)
+  resolveTerminalSync?.()
+  resolveTerminalSync = null
+  rDebug('studio.terminal-sync', 'terminal snapshot hydrated', {
+    revision: snapshot.revision,
+    conversation_count: snapshot.panes.length,
+    terminal_count: snapshot.panes.reduce((total, pane) => total + pane.instances.length, 0),
+    removed_viewer_count: removedKeys.length,
+  })
+  return true
+}
+
+/** Wait until Studio has the owner's current Conversation Terminal Panel state. */
+export function waitForConversationTerminalSync(): Promise<void> {
+  if (lastTerminalSnapshotRevision >= 0) return Promise.resolve()
+  if (terminalSyncPromise) return terminalSyncPromise
+  terminalSyncPromise = new Promise((resolve, reject) => {
+    resolveTerminalSync = resolve
+    void window.ion.studioGetConversationTerminals().then((snapshot) => {
+      if (snapshot) hydrateConversationTerminals(snapshot)
+      else rDebug('studio.terminal-sync', 'owner terminal snapshot not ready; waiting for live push')
+    }).catch((error) => {
+      terminalSyncPromise = null
+      resolveTerminalSync = null
+      reject(error)
+    })
+  })
+  return terminalSyncPromise
+}
+
+/** Boot pull plus live owner snapshot subscription. */
+export function initConversationTerminalSync(): () => void {
+  const unsubscribe = window.ion.onStudioConversationTerminals((snapshot: StudioConversationTerminalSnapshot) => {
+    hydrateConversationTerminals(snapshot)
+  })
+  void waitForConversationTerminalSync().catch((error) =>
+    rWarn('studio.terminal-sync', 'initial terminal sync failed', { error: String(error) }))
+  return unsubscribe
 }
 
 /** Replace the mirror's derived worktree state from one complete owner snapshot. */

@@ -27,6 +27,26 @@ describe('mirror-parity classification', async () => {
     expect(doubled, 'actions classified in BOTH tables').toEqual([])
   })
 
+  it('classifies Conversation Terminal Panel mutations as owner-forwarded and display modes as local', () => {
+    for (const action of [
+      'toggleTerminal',
+      'addTerminalInstance',
+      'removeTerminalInstance',
+      'selectTerminalInstance',
+      'toggleTerminalReadOnly',
+      'renameTerminalInstance',
+      'getOrCreateDedicatedTerminal',
+      'runInTerminal',
+      'runQuickTool',
+    ]) {
+      expect(FORWARDED_ACTIONS[action], `${action} must execute in the Overlay owner`).toBeDefined()
+      expect(MIRROR_LOCAL_ACTIONS[action]).toBeUndefined()
+    }
+    expect(MIRROR_LOCAL_ACTIONS.toggleTerminalTall).toContain('per-window')
+    expect(MIRROR_LOCAL_ACTIONS.toggleTerminalBigScreen).toContain('per-window')
+    expect(validForwardedAction('addTerminalInstance', ['tab-1', 'user', '/repo', 'API'])).toBe(true)
+  })
+
   it('only forwards actions that exist on the current store', () => {
     const actions = new Set(storeActions)
     const staleForwardedActions = Object.keys(FORWARDED_ACTIONS)

@@ -300,10 +300,14 @@ export const IPC = {
   TERMINAL_INCOMING: "ion:terminal-incoming",
   TERMINAL_EXIT: "ion:terminal-exit",
   TERMINAL_DESTROY: "ion:terminal-destroy",
-  TERMINAL_GET_SCROLLBACK: "ion:terminal-get-scrollback",
   // Attach protocol (D2): history snapshot + lifecycle state in one call,
   // with optional respawn-on-demand for dead terminals.
   TERMINAL_ATTACH: "ion:terminal-attach",
+  // Shared Conversation Terminal Panel metadata: owner renderer → main
+  // (publish), main → Studio (push), and Studio → main (boot pull).
+  STUDIO_PUBLISH_CONVERSATION_TERMINALS: "studio:publish-conversation-terminals",
+  STUDIO_CONVERSATION_TERMINALS: "studio:conversation-terminals",
+  STUDIO_GET_CONVERSATION_TERMINALS: "studio:get-conversation-terminals",
   ...STUDIO_BROWSER_IPC,
   // System/OS facilities: fonts, diagnostics, clipboard, chart navigation.
   ...SYSTEM_IPC,
@@ -557,43 +561,8 @@ export const IPC = {
   STARTUP_QUIT: "startup:quit",
 } as const;
 
-/**
- * An untrusted `ion://` request awaiting the operator's decision.
- *
- * Lives in `shared/` because it crosses the process boundary: main builds it,
- * the preload bridge types it, and the renderer dialog renders it. Every field
- * the operator needs in order to decide is present — the dialog shows the real
- * command or the real prompt text, because a confirmation that describes the
- * request only vaguely trains people to approve without reading.
- */
-export type DeepLinkConfirmOwner = "overlay" | "studio";
-
-export interface DeepLinkConfirmResult {
-  id: string;
-  owner: DeepLinkConfirmOwner;
-  approved: boolean;
-  /** Required only when an untrusted terminal link omitted its target. */
-  tabId?: string;
-}
-
-export interface DeepLinkConfirmRequest {
-  /** Correlates the operator's answer with the pending request in main. */
-  id: string;
-  /** Exactly one renderer presents and may answer this request. */
-  owner: DeepLinkConfirmOwner;
-  action: "terminal" | "prompt";
-  /** True when untrusted terminal request needs explicit target selection. */
-  selectTab?: boolean;
-  /** Target conversation id (terminal requests). */
-  tabId?: string;
-  /** Pane label (terminal requests). */
-  title?: string;
-  /** The command that would run (terminal requests). */
-  cmd?: string;
-  /** Working directory. */
-  dir?: string;
-  /** The prompt that would be sent (prompt requests). */
-  text?: string;
-  /** Whether the prompt would be submitted immediately (prompt requests). */
-  submit?: boolean;
-}
+export type {
+  DeepLinkConfirmOwner,
+  DeepLinkConfirmRequest,
+  DeepLinkConfirmResult,
+} from './types-ipc-deeplink'

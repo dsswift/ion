@@ -22,7 +22,7 @@ there is no `ion://` handler on iOS or in the engine daemon.
 
 ### `ion://terminal`
 
-Open a terminal pane inside a conversation.
+Open a terminal pane inside a conversation. In the Desktop client this targets the shared **Conversation Terminal Panel**: Overlay and Studio show the same terminal tabs and attach to the same main-owned PTYs. Studio Surface terminals use separate conversation-scoped Surface keys and are never created by `ion://terminal`.
 
 | Parameter | Required | Description |
 |---|---|---|
