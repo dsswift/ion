@@ -43,7 +43,23 @@ final class NormalizedEventTypeKeyTests: XCTestCase {
         XCTAssertEqual(event.typeKey, "desktop_tab_meta")
     }
 
-    // MARK: - Lenient decode contract
+    func testSlashModelTierIgnoredDecodesAllWireFields() throws {
+        let json = """
+        {"type":"desktop_slash_model_tier_ignored","tabId":"tab-1","instanceId":"inst-1","command":"/review","slashModelTierRequested":"fast","slashModelTierServing":"safe"}
+        """.data(using: .utf8)!
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+        if case .desktopSlashModelTierIgnored(let tabId, let instanceId, let command, let requested, let serving) = event {
+            XCTAssertEqual(tabId, "tab-1")
+            XCTAssertEqual(instanceId, "inst-1")
+            XCTAssertEqual(command, "/review")
+            XCTAssertEqual(requested, "fast")
+            XCTAssertEqual(serving, "safe")
+        } else {
+            XCTFail("Expected desktopSlashModelTierIgnored")
+        }
+        XCTAssertEqual(event.typeKey, "desktop_slash_model_tier_ignored")
+    }
+
 
     func testLANSecretUnusableIsNotWireDecodable() {
         let json = """

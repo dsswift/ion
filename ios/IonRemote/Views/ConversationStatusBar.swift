@@ -54,6 +54,9 @@ struct ConversationStatusBar: View {
 
     @State private var showModeConfirm = false
     @State private var showModelPicker = false
+    /// A model switch the operator chose but has not paid for yet. Held until
+    /// they accept the prompt-cache re-write cost; nil when nothing is pending.
+    @State private var pendingModelSwitch: (model: String, estimate: ModelSwitchCost.Estimate)?
 
     /// Engine-derived inputs for the status bar, resolved nil-safely from an
     /// optional `StatusFields`. The bar must ALWAYS render for engine tabs (like
@@ -385,8 +388,71 @@ struct ConversationStatusBar: View {
                 // `preferredModel` carries; `effectiveModel` above folds in the
                 // per-conversation override and is marked with the checkmark.
                 preferredModelId: preferredModel,
-                onSelect: onSelectModel,
+                onSelect: handleSelectModel,
             )
         }
+        .confirmationDialog(
+            "Switch model?",
+            isPresented: Binding(
+                get: { pendingModelSwitch != nil },
+                set: { if !$0 { pendingModelSwitch = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Switch anyway") {
+                if let pending = pendingModelSwitch {
+                    DiagnosticLog.log(
+                        "model switch: operator accepted the re-write cost",
+                        tag: "session",
+                        level: .info,
+                        fields: ["model": pending.model, "tokens": String(pending.estimate.tokens)]
+                    )
+                    onSelectModel(pending.model)
+                }
+                pendingModelSwitch = nil
+            }
+            Button("Stay on this model", role: .cancel) {
+                DiagnosticLog.log(
+                    "model switch: operator declined the re-write cost",
+                    tag: "session",
+                    level: .info,
+                    fields: ["model": pendingModelSwitch?.model ?? ""]
+                )
+                pendingModelSwitch = nil
+            }
+        } message: {
+            if let pending = pendingModelSwitch {
+                Text(ModelSwitchCost.describe(pending.estimate)
+                    + "\n\nA prompt cache belongs to one model, so the new model cannot read the cache this conversation already built.")
+            }
+        }
+    }
+
+    /// Confirm a model switch before applying it when the conversation already
+    /// holds history.
+    ///
+    /// Switching the model a conversation runs on cannot reuse the prompt cache
+    /// the previous model built — the cache is keyed per exact model — so the
+    /// whole conversation is re-sent as cache-creation input on the next turn.
+    /// `ModelSwitchCost.estimate` returns nil on a fresh or just-cleared
+    /// conversation, which is exactly the case where the switch is free and the
+    /// operator must not be interrupted.
+    private func handleSelectModel(_ model: String) {
+        let estimate = ModelSwitchCost.estimate(
+            contextTokens: contextTokens,
+            targetModel: availableModels.first(where: { $0.id == model }),
+            currentModel: availableModels.first(where: { $0.id == effectiveModel })
+        )
+        guard let estimate, model != effectiveModel else {
+            onSelectModel(model)
+            return
+        }
+        DiagnosticLog.log(
+            "model switch: confirming mid-conversation switch",
+            tag: "session",
+            level: .info,
+            fields: ["from": effectiveModel, "to": model, "tokens": String(estimate.tokens)]
+        )
+        pendingModelSwitch = (model: model, estimate: estimate)
     }
 }

@@ -627,6 +627,10 @@ extension SessionViewModel {
         case .desktopContextBreakdown(let tabId, let instanceId, let payload):
             handleContextBreakdown(tabId: tabId, instanceId: instanceId, payload: payload)
 
+        case .desktopSlashModelTierIgnored:
+            // Observation-only. DiagnosticLog.logEvent records the typed event;
+            // this client applies no additional presentation policy.
+            break
         case .promptResult(let tabId, let clientMsgId, let status, let error):
             handlePromptResult(tabId: tabId, clientMsgId: clientMsgId, status: status, error: error)
 

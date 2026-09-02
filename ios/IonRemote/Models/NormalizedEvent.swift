@@ -583,10 +583,12 @@ enum RemoteEvent: Sendable {
         contextBreakdown: ContextBreakdownPayload
     )
 
-    /// Prompt acceptance acknowledgement (desktop_prompt_result). Sent by the
-    /// desktop after `window.ion.prompt` resolves (accepted) or an early
-    /// failure prevents delivery (rejected). iOS correlates via clientMsgId
-    /// to update the optimistic user bubble's delivery state.
+    /// Desktop-forwarded notice that a slash command's requested model tier
+    /// was ignored because the conversation already has model-visible history.
+    case desktopSlashModelTierIgnored(tabId: String, instanceId: String?, command: String, slashModelTierRequested: String, slashModelTierServing: String)
+
+    /// Prompt acceptance acknowledgement. iOS correlates via clientMsgId to
+    /// update the optimistic user bubble's delivery state.
     case promptResult(tabId: String, clientMsgId: String, status: String, error: String?)
 
     /// Background work delivered into the conversation. The desktop emits this
@@ -746,6 +748,7 @@ enum RemoteEvent: Sendable {
         /// from the engine's context analysis. Lockstep parity with engine_context_breakdown
         /// (plan modest-leaping-waffle.md §9).
         case desktopContextBreakdown = "desktop_context_breakdown"
+        case desktopSlashModelTierIgnored = "desktop_slash_model_tier_ignored"
         case promptResult = "desktop_prompt_result"
         case backgroundWorkDelivered = "desktop_background_work_delivered"
         case backgroundTaskStopResult = "desktop_background_task_stop_result"
@@ -855,6 +858,7 @@ enum RemoteEvent: Sendable {
         case dataUrl
         case attachments
         case sourceTabId, targetTabId
+        case slashModelTierRequested, slashModelTierServing
         case customName, customIcon, updatedAt, remoteDisplayUpdatedAt
         // engine_plan_mode_changed — state event for plan-mode entry/exit.
         case planModeEnabled

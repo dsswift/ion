@@ -157,6 +157,13 @@ extension RemoteEvent {
             let sinceSeq = try container.decodeIfPresent(Int.self, forKey: .sinceSeq) ?? 0
             return .requestDiagnosticLogs(sinceSeq: sinceSeq)
 
+        case .desktopSlashModelTierIgnored:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let command = try container.decode(String.self, forKey: .command)
+            let requested = try container.decode(String.self, forKey: .slashModelTierRequested)
+            let serving = try container.decode(String.self, forKey: .slashModelTierServing)
+            return .desktopSlashModelTierIgnored(tabId: tabId, instanceId: instanceId, command: command, slashModelTierRequested: requested, slashModelTierServing: serving)
         case .promptResult:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let clientMsgId = try container.decode(String.self, forKey: .clientMsgId)
@@ -316,6 +323,14 @@ extension RemoteEvent {
             }
             return true
 
+        case .desktopSlashModelTierIgnored(let tabId, let instanceId, let command, let requested, let serving):
+            try container.encode(TypeKey.desktopSlashModelTierIgnored, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(command, forKey: .command)
+            try container.encode(requested, forKey: .slashModelTierRequested)
+            try container.encode(serving, forKey: .slashModelTierServing)
+            return true
         case .promptResult(let tabId, let clientMsgId, let status, let error):
             try container.encode(TypeKey.promptResult, forKey: .type)
             try container.encode(tabId, forKey: .tabId)

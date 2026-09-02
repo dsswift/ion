@@ -153,6 +153,8 @@
 		ACTLROW00000000000001 /* ActiveToolRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACTLROW00000000000002 /* ActiveToolRow.swift */; };
 		CTXBDPAY0000000000001 /* ContextBreakdownPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = CTXBDPAY0000000000002 /* ContextBreakdownPayload.swift */; };
 		CTXBDTST0000000000001 /* ContextBreakdownDecodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CTXBDTST0000000000002 /* ContextBreakdownDecodeTests.swift */; };
+		MSWCOSTTST0000000001 /* ModelSwitchCostTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MSWCOSTTST0000000002 /* ModelSwitchCostTests.swift */; };
+		CLRCMDTST00000000001 /* ClearingCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLRCMDTST00000000002 /* ClearingCommandTests.swift */; };
 		CTXOCCTST00000000001 /* ContextOccupancyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CTXOCCTST00000000002 /* ContextOccupancyTests.swift */; };
 		REQCTXBD0000000000001 /* RequestContextBreakdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = REQCTXBD0000000000002 /* RequestContextBreakdownTests.swift */; };
 		DBSTATE00000000000000A1 /* DispatchBodyState.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBSTATE00000000000000A2 /* DispatchBodyState.swift */; };
@@ -345,6 +347,8 @@
 		A1B2C3D4E5F60001001000AA /* LayoutCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001001AA /* LayoutCache.swift */; };
 		A1B2C3D4E5F60001001002AA /* PeerStatusPoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001003AA /* PeerStatusPoller.swift */; };
 		A1B2C3D4E5F60001001004AA /* DesktopPickerMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001005AA /* DesktopPickerMenu.swift */; };
+		MSWCOST000000000001 /* ModelSwitchCost.swift in Sources */ = {isa = PBXBuildFile; fileRef = MSWCOST000000000002 /* ModelSwitchCost.swift */; };
+		CLRCMD0000000000001 /* ClearingCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLRCMD0000000000002 /* ClearingCommand.swift */; };
 		A1B2C3D4E5F60001001006AA /* DiagnosticLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001007AA /* DiagnosticLog.swift */; };
 		IMGCOMP0000000000000BF01 /* ImageCompression.swift in Sources */ = {isa = PBXBuildFile; fileRef = IMGCOMP0000000000000FR01 /* ImageCompression.swift */; };
 		A1B2C3D4E5F60001001008AA /* DiagnosticLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001009AA /* DiagnosticLogView.swift */; };
@@ -742,6 +746,8 @@
 		ACTLROW00000000000002 /* ActiveToolRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveToolRow.swift; sourceTree = "<group>"; };
 		CTXBDPAY0000000000002 /* ContextBreakdownPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBreakdownPayload.swift; sourceTree = "<group>"; };
 		CTXBDTST0000000000002 /* ContextBreakdownDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBreakdownDecodeTests.swift; sourceTree = "<group>"; };
+		MSWCOSTTST0000000002 /* ModelSwitchCostTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSwitchCostTests.swift; sourceTree = "<group>"; };
+		CLRCMDTST00000000002 /* ClearingCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClearingCommandTests.swift; sourceTree = "<group>"; };
 		CTXOCCTST00000000002 /* ContextOccupancyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextOccupancyTests.swift; sourceTree = "<group>"; };
 		REQCTXBD0000000000002 /* RequestContextBreakdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestContextBreakdownTests.swift; sourceTree = "<group>"; };
 		DBSTATE00000000000000A2 /* DispatchBodyState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchBodyState.swift; sourceTree = "<group>"; };
@@ -925,6 +931,8 @@
 		A1B2C3D4E5F60001001001AA /* LayoutCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutCache.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001003AA /* PeerStatusPoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerStatusPoller.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001005AA /* DesktopPickerMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPickerMenu.swift; sourceTree = "<group>"; };
+		MSWCOST000000000002 /* ModelSwitchCost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSwitchCost.swift; sourceTree = "<group>"; };
+		CLRCMD0000000000002 /* ClearingCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClearingCommand.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001007AA /* DiagnosticLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLog.swift; sourceTree = "<group>"; };
 		IMGCOMP0000000000000FR01 /* ImageCompression.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCompression.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001009AA /* DiagnosticLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLogView.swift; sourceTree = "<group>"; };
@@ -1694,6 +1702,8 @@
 				C0DE0000000000000000000C /* InboxSnapshotWireTests.swift */,
 				WTPROJIDENT000000000004 /* WorktreeProjectIdentityTests.swift */,
 				CTXBDTST0000000000002 /* ContextBreakdownDecodeTests.swift */,
+				MSWCOSTTST0000000002 /* ModelSwitchCostTests.swift */,
+				CLRCMDTST00000000002 /* ClearingCommandTests.swift */,
 				CTXOCCTST00000000002 /* ContextOccupancyTests.swift */,
 				REQCTXBD0000000000002 /* RequestContextBreakdownTests.swift */,
 				B1B2C3D4E5F60001CC000002 /* ConversationStatusBarContextTests.swift */,
@@ -1863,6 +1873,8 @@
 				A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */,
 				INJPOLICY00000000000002 /* InjectionPolicy.swift */,
 				A1B2C3D4E5F60001001001AA /* LayoutCache.swift */,
+				MSWCOST000000000002 /* ModelSwitchCost.swift */,
+				CLRCMD0000000000002 /* ClearingCommand.swift */,
 				A1B2C3D4E5F60001001007AA /* DiagnosticLog.swift */,
 				IMGCOMP0000000000000FR01 /* ImageCompression.swift */,
 				A1B2C3D4E5F60001007002AA /* CrashReporter.swift */,
@@ -2333,6 +2345,8 @@
 				A1B2C3D4E5F60001009101AA /* OneShotDisplayCommand.swift in Sources */,
 				A1B2C3D4E5F60001009103AA /* DeviceCustomizationSheet.swift in Sources */,
 				A1B2C3D4E5F60001001004AA /* DesktopPickerMenu.swift in Sources */,
+				MSWCOST000000000001 /* ModelSwitchCost.swift in Sources */,
+				CLRCMD0000000000001 /* ClearingCommand.swift in Sources */,
 				A1B2C3D4E5F60001001006AA /* DiagnosticLog.swift in Sources */,
 				IMGCOMP0000000000000BF01 /* ImageCompression.swift in Sources */,
 				A1B2C3D4E5F60001007001AA /* CrashReporter.swift in Sources */,
@@ -2527,6 +2541,8 @@
 				C0DE0000000000000000000B /* InboxSnapshotWireTests.swift in Sources */,
 				WTPROJIDENT000000000003 /* WorktreeProjectIdentityTests.swift in Sources */,
 				CTXBDTST0000000000001 /* ContextBreakdownDecodeTests.swift in Sources */,
+				MSWCOSTTST0000000001 /* ModelSwitchCostTests.swift in Sources */,
+				CLRCMDTST00000000001 /* ClearingCommandTests.swift in Sources */,
 				CTXOCCTST00000000001 /* ContextOccupancyTests.swift in Sources */,
 				REQCTXBD0000000000001 /* RequestContextBreakdownTests.swift in Sources */,
 				B1B2C3D4E5F60001CC000001 /* ConversationStatusBarContextTests.swift in Sources */,

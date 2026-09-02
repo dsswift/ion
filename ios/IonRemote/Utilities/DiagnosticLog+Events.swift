@@ -455,6 +455,14 @@ extension DiagnosticLog {
             let occupancy = payload.occupancyTokens.map(String.init) ?? "nil"
             log("EVENT: desktopContextBreakdown tab=\(tabId.prefix(8)) inst=\(instanceId?.prefix(8) ?? "nil") cats=\(payload.categories.count) occupancy=\(occupancy)/\(payload.contextWindow) total=\(payload.totalTokens) \(reconciled)\(unaccounted)", tag: "session", level: .info)
 
+        case .desktopSlashModelTierIgnored(let tabId, let instanceId, let command, let requested, let serving):
+            log("EVENT: desktopSlashModelTierIgnored", tag: "session", level: .info, fields: [
+                "tab_id": tabId,
+                "instance_id": instanceId ?? "",
+                "command": command,
+                "requested": requested,
+                "serving": serving,
+            ])
         case .promptResult(let tabId, let clientMsgId, let status, let error):
             log("EVENT: promptResult tab=\(tabId.prefix(8)) msgId=\(clientMsgId.prefix(8)) status=\(status) err=\(error ?? "nil")", tag: "session", level: .info)
         }

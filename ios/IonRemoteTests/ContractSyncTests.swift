@@ -962,6 +962,8 @@ final class ContractSyncTests: XCTestCase {
       "contextWindow": 200000,
       "costPer1kInput": 0.003,
       "costPer1kOutput": 0.015,
+      "costPer1kCacheCreation": 0.00375,
+      "costPer1kCacheRead": 0.0003,
       "supportsCaching": true,
       "supportsThinking": true,
       "supportsImages": true,
@@ -978,6 +980,7 @@ final class ContractSyncTests: XCTestCase {
     let swiftHandled: Set<String> = [
       "id", "providerId", "contextWindow",
       "costPer1kInput", "costPer1kOutput",
+      "costPer1kCacheCreation", "costPer1kCacheRead",
       "supportsCaching", "supportsThinking", "supportsImages",
       "thinkingMode", "thinkingEfforts",
       // Operator-defined model (engine.json `models` entry) rather than

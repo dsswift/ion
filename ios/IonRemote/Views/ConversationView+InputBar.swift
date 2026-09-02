@@ -504,10 +504,34 @@ extension ConversationView {
         forceScrollCounter += 1
     }
 
-    func submitPrompt() {
+    func submitPrompt(skipClearConfirm: Bool = false) {
         let trimmed = promptText.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty || !pendingAttachments.isEmpty else { return }
         guard !hasUploading else { return }
+        // A command that clears the conversation is destructive from the
+        // operator's seat: they typed a command and their history goes away. The
+        // engine does the clear unconditionally and never asks (it does not
+        // block for user input), so the confirmation has to happen here, before
+        // the prompt is sent. ClearingCommand.resolve returns nil whenever there
+        // is nothing to lose or anything is uncertain — see its doc comment on
+        // failing open.
+        if !skipClearConfirm {
+            let tokens = viewModel.tab(for: tabId)?.contextTokens ?? 0
+            if let clearing = ClearingCommand.resolve(
+                input: trimmed,
+                hasHistory: tokens > 0,
+                commands: viewModel.discoveredCommands[workingDirectory] ?? []
+            ) {
+                DiagnosticLog.log(
+                    "clearing command: confirming before send",
+                    tag: "session",
+                    level: .info,
+                    fields: ["command": clearing.command]
+                )
+                pendingClearingCommand = clearing
+                return
+            }
+        }
         // Submitting while a voice recording is active: the transcript is
         // already in the field (live transcription writes into the draft), so
         // whatever was being transcribed is what is being sent. Stop the

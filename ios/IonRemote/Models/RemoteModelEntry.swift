@@ -48,4 +48,18 @@ struct RemoteModelEntry: Codable, Sendable, Identifiable, Equatable {
     /// than one the provider's own catalog reported. Drives the `custom` badge
     /// in the picker. Optional for back-compat.
     var isCustom: Bool?
+    /// Base input price per 1k tokens, projected by the desktop from the
+    /// engine's model catalog.
+    ///
+    /// Present so the phone can price a model switch. The snapshot also carries
+    /// exact cache rates when the model publishes them; otherwise the clients
+    /// apply their documented fallback multipliers.
+    /// Optional for back-compat; absent means the cost cannot be stated.
+    var costPer1kInput: Double?
+    /// Cache-creation input price per 1k tokens. Optional for older snapshots;
+    /// when absent, `ModelSwitchCost` uses the documented fallback multiplier.
+    var costPer1kCacheCreation: Double?
+    /// Cache-read input price per 1k tokens. Optional for older snapshots;
+    /// when absent, `ModelSwitchCost` uses the documented fallback multiplier.
+    var costPer1kCacheRead: Double?
 }
