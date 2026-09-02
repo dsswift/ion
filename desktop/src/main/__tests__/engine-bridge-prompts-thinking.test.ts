@@ -47,6 +47,21 @@ describe('buildSendPromptMessage — thinking effort wire states', () => {
   })
 })
 
+describe('buildSendPromptMessage — slash model tier policy', () => {
+  const base = { key: 'tab-1', text: '/review' }
+
+  it('preserves explicit true and false values', () => {
+    expect(buildSendPromptMessage({ ...base, slashModelTierApplyMidConversation: true }))
+      .toHaveProperty('slashModelTierApplyMidConversation', true)
+    expect(buildSendPromptMessage({ ...base, slashModelTierApplyMidConversation: false }))
+      .toHaveProperty('slashModelTierApplyMidConversation', false)
+  })
+
+  it('omits the field when the client has no opinion', () => {
+    expect(buildSendPromptMessage(base)).not.toHaveProperty('slashModelTierApplyMidConversation')
+  })
+})
+
 describe('buildSendPromptMessage — display text', () => {
   const base = { key: 'tab-1', text: 'model prompt with control text' }
 

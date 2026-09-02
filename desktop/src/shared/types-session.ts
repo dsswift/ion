@@ -671,6 +671,8 @@ export interface RunOptions {
    * wire only when truthy (mirrors the engine's omitempty `resolveSlash`).
    */
   resolveSlash?: boolean;
+  /** Per-invocation override for a resolved slash command's model tier. */
+  slashModelTierApplyMidConversation?: boolean;
   /** Main-owned automation causation, consumed by desktop IPC only. */
   automationCausation?: import("./types-automation").AutomationCausation;
   /** Runs one slash command with auto-mode tools while its plan workflow remains active. */

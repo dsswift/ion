@@ -43,6 +43,8 @@ export interface SendPromptArgs {
    * `resolveSlash` field).
    */
   resolveSlash?: boolean
+  /** Per-invocation override for command-owned model-tier application. */
+  slashModelTierApplyMidConversation?: boolean
   /** Use auto-mode tools for one command without leaving the active plan workflow. */
   temporaryAutoFromPlan?: boolean
   clientWorkspaceContext?: ClientWorkspaceContext
@@ -138,6 +140,9 @@ export function buildSendPromptMessage(args: SendPromptArgs): Record<string, unk
   // the engine's omitempty `resolveSlash` field round-trips cleanly and an
   // absent value means "plain message" (unchanged behavior).
   if (args.resolveSlash) msg.resolveSlash = true
+  if (args.slashModelTierApplyMidConversation !== undefined) {
+    msg.slashModelTierApplyMidConversation = args.slashModelTierApplyMidConversation
+  }
   if (args.temporaryAutoFromPlan) msg.temporaryAutoFromPlan = true
   if (args.clientWorkspaceContext) msg.clientWorkspaceContext = args.clientWorkspaceContext
   if (args.deliveryId) msg.deliveryId = args.deliveryId

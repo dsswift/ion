@@ -1,8 +1,12 @@
-import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react'
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { create } from 'zustand'
 import { useSessionStore } from '../stores/sessionStore'
 import { activeInstance } from '../stores/conversation-instance'
+import { resolveClearingCommand, clearingCommandMessage, type ClearingCommandPrompt } from './InputBarClearingCommand'
+import { resolveContextInputs } from './context-usage'
+import { useInputAutoResize } from '../hooks/useInputAutoResize'
+import { ConfirmDialog } from './git/ConfirmDialog'
 import { AttachmentChips } from './AttachmentChips'
 import { SlashCommandMenu, getFilteredCommandsWithExtras, slashMenuEnterAction, ExtensionCommandIcon, type SlashCommand } from './SlashCommandMenu'
 import { useColors } from '../theme'
@@ -12,7 +16,7 @@ import { getRendererExtensionCommands } from '../stores/slices/engine-event-slic
 import { useVoiceRecording, VoiceButtons } from './InputBarVoiceButton'
 import { SendButton } from './InputBarSendButton'
 import { UpdateButton } from './UpdateButton'
-import { rDebug, rError, rWarn } from '../rendererLogger'
+import { rDebug, rError, rInfo, rWarn } from '../rendererLogger'
 import { dispatchSend } from './InputBarSend'
 import { dispatchBashCommand } from './InputBarBash'
 import { useModelStore } from '../stores/model-store'
@@ -41,7 +45,6 @@ export function InputBar() {
   const [isMultiLine, setIsMultiLine] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
-  const measureRef = useRef<HTMLTextAreaElement | null>(null)
 
   const submit = useSessionStore((s) => s.submit)
   // (clearTab/addSystemMessage/addEngineSystemMessage were used by the
@@ -82,6 +85,9 @@ export function InputBar() {
   const attachments = tab?.attachments || []
   const showSlashMenu = slashFilter !== null && !isConnecting
   const [discoveredCommands, setDiscoveredCommands] = useState<DiscoveredCommand[]>([])
+  // A clearing command the operator submitted but has not confirmed yet. Held
+  // here so the send is not performed until they accept losing the history.
+  const [pendingClear, setPendingClear] = useState<ClearingCommandPrompt | null>(null)
   const workingDir = tab?.workingDirectory || '~'
 
   const appendTranscript = useCallback((transcript: string) => {
@@ -176,82 +182,22 @@ export function InputBar() {
     return unsub
   }, [])
 
-  const measureInlineHeight = useCallback((value: string): number => {
-    if (typeof document === 'undefined') return 0
-    if (!measureRef.current) {
-      const m = document.createElement('textarea')
-      m.setAttribute('aria-hidden', 'true')
-      m.tabIndex = -1
-      m.style.position = 'absolute'
-      m.style.top = '-99999px'
-      m.style.left = '0'
-      m.style.height = '0'
-      m.style.minHeight = '0'
-      m.style.overflow = 'hidden'
-      m.style.visibility = 'hidden'
-      m.style.pointerEvents = 'none'
-      m.style.zIndex = '-1'
-      m.style.resize = 'none'
-      m.style.border = '0'
-      m.style.outline = '0'
-      m.style.boxSizing = 'border-box'
-      document.body.appendChild(m)
-      measureRef.current = m
-    }
-
-    const m = measureRef.current
-    const hostWidth = wrapperRef.current?.clientWidth ?? 0
-    const inlineWidth = Math.max(120, hostWidth - INLINE_CONTROLS_RESERVED_WIDTH)
-    m.style.width = `${inlineWidth}px`
-    m.style.fontSize = '14px'
-    m.style.lineHeight = '20px'
-    m.style.paddingTop = '15px'
-    m.style.paddingBottom = '15px'
-    m.style.paddingLeft = '0'
-    m.style.paddingRight = '0'
-
-    const computed = textareaRef.current ? window.getComputedStyle(textareaRef.current) : null
-    if (computed) {
-      m.style.fontFamily = computed.fontFamily
-      m.style.letterSpacing = computed.letterSpacing
-      m.style.fontWeight = computed.fontWeight
-    }
-
-    m.value = value || ' '
-    return m.scrollHeight
-  }, [])
-
-  const autoResize = useCallback(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = `${INPUT_MIN_HEIGHT}px`
-    const naturalHeight = el.scrollHeight
-    const clampedHeight = Math.min(naturalHeight, INPUT_MAX_HEIGHT)
-    el.style.height = `${clampedHeight}px`
-    el.style.overflowY = naturalHeight > INPUT_MAX_HEIGHT ? 'auto' : 'hidden'
-    if (naturalHeight <= INPUT_MAX_HEIGHT) {
-      el.scrollTop = 0
-    }
-    // Decide multiline mode against fixed inline-width measurement to avoid
-    // expand/collapse bounce when layout switches between modes.
-    const inlineHeight = measureInlineHeight(input)
-    setIsMultiLine((prev) => {
-      if (!prev) return inlineHeight > MULTILINE_ENTER_HEIGHT
-      return inlineHeight > MULTILINE_EXIT_HEIGHT
-    })
-  }, [input, measureInlineHeight])
-
-  useLayoutEffect(() => { autoResize() }, [input, isMultiLine, autoResize])
-
-  // Cleanup measurement DOM node on unmount
-  useEffect(() => {
-    return () => {
-      if (measureRef.current) {
-        measureRef.current.remove()
-        measureRef.current = null
-      }
-    }
-  }, [])
+  // Textarea sizing + multiline detection live in their own hook: a
+  // self-contained DOM concern with its own hidden measurement node.
+  useInputAutoResize({
+    value: input,
+    isMultiLine,
+    setIsMultiLine,
+    textareaRef,
+    wrapperRef,
+    metrics: {
+      minHeight: INPUT_MIN_HEIGHT,
+      maxHeight: INPUT_MAX_HEIGHT,
+      multilineEnterHeight: MULTILINE_ENTER_HEIGHT,
+      multilineExitHeight: MULTILINE_EXIT_HEIGHT,
+      inlineControlsReservedWidth: INLINE_CONTROLS_RESERVED_WIDTH,
+    },
+  })
 
   // ─── Slash command detection ───
   const updateSlashFilter = useCallback((value: string) => {
@@ -280,7 +226,12 @@ export function InputBar() {
   }, [])
 
   // ─── Send ───
-  const handleSend = useCallback(() => {
+  /**
+   * `skipClearConfirm` is set only by the confirmation dialog's accept path, so
+   * the second pass performs the send the operator already approved instead of
+   * re-asking. Every other caller leaves it false.
+   */
+  const handleSend = useCallback((skipClearConfirm = false) => {
     if (showSlashMenu) {
       const filtered = getFilteredCommandsWithExtras(slashFilter!, extraCommands)
       if (filtered.length > 0) {
@@ -314,6 +265,24 @@ export function InputBar() {
     }
     const prompt = input.trim()
     if (!prompt && attachments.length === 0) return
+
+    // A command that clears the conversation is destructive from the operator's
+    // seat: they typed a command and their history goes away. The engine does
+    // the clear unconditionally and never asks (it does not block for user
+    // input), so the confirmation has to happen here, before the prompt is
+    // sent. resolveClearingCommand returns null whenever there is nothing to
+    // lose or anything is uncertain — see its doc comment on failing open.
+    if (!skipClearConfirm) {
+      const clearing = resolveClearingCommand(prompt, {
+        hasHistory: (resolveContextInputs(activeInstance(useSessionStore.getState().conversationPanes, activeTabId ?? '')).tokens ?? 0) > 0,
+        commands: discoveredCommands,
+      })
+      if (clearing) {
+        rInfo('input-bar', 'confirming clearing command before send', { command: clearing.command })
+        setPendingClear(clearing)
+        return
+      }
+    }
 
     // Decide, then clear, then submit — the ordering lives in dispatchSend
     // (InputBarSend.ts) so it is pinned by a unit test rather than by this
@@ -359,7 +328,7 @@ export function InputBar() {
     if (!outcome.accepted) return
     // Refocus after React re-renders from the state update
     requestAnimationFrame(() => textareaRef.current?.focus())
-  }, [input, submit, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand, extraCommands, isConnecting, activeTabId, setDraftInput, setBashMode])
+  }, [input, submit, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand, extraCommands, isConnecting, activeTabId, setDraftInput, setBashMode, discoveredCommands])
 
   // ─── Keyboard ───
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -582,6 +551,19 @@ export function InputBar() {
         <div className="px-1 pb-2 text-[11px]" style={{ color: colors.statusError }}>
           {voiceError}
         </div>
+      )}
+
+      {pendingClear && (
+        <ConfirmDialog
+          title="Clear the conversation first?"
+          message={clearingCommandMessage(pendingClear.command)}
+          confirmLabel="Clear and run"
+          cancelLabel="Cancel"
+          initialFocus="cancel"
+          danger
+          onConfirm={() => { setPendingClear(null); handleSend(true) }}
+          onCancel={() => { rInfo('input-bar', 'operator declined a clearing command', { command: pendingClear.command }); setPendingClear(null) }}
+        />
       )}
     </div>
   )

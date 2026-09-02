@@ -94,6 +94,7 @@ export async function discoverSlashCommands(bridge: EngineBridge, workingDir: st
       scope,
       source,
       origin,
+      clearsConversation: c.clearsConversation === true,
     }
   })
 }

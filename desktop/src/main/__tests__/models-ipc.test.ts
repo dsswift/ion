@@ -85,4 +85,27 @@ describe('model cache projection', () => {
       effectiveContextLimit: 155_000,
     })
   })
+
+  // The cache is what feeds desktop_snapshot.availableModels, and iOS never
+  // receives the engine's model catalog. Dropping costPer1kInput here would
+  // silently degrade the phone's model-switch warning to "cost is unknown"
+  // without failing anything, so the mapping is pinned at the seam where the
+  // drop would occur.
+  it('carries costPer1kInput into the cache for client-side switch pricing', async () => {
+    bridge.listModels.mockResolvedValue({
+      providers: [{ id: 'anthropic', hasAuth: true }],
+      models: [{
+        id: 'anthropic/claude-opus-5',
+        providerId: 'anthropic',
+        contextWindow: 1_000_000,
+        costPer1kInput: 0.015,
+        costPer1kCacheCreation: 0.02,
+        costPer1kCacheRead: 0.003,
+      }],
+    })
+
+    await refreshModelCache()
+
+    expect(modelCache.models[0].costPer1kInput).toBe(0.015)
+  })
 })

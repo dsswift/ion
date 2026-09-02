@@ -100,6 +100,47 @@ describe('buildSnapshotEvent: modelKind projection', () => {
     expect(models![0].modelKind).toBe('image')
   })
 
+  // costPer1kInput is the input the phone's model-switch cost warning is built
+  // from. iOS never receives the engine's model catalog, so if this field is
+  // dropped in projection the warning silently loses its number and degrades to
+  // "cost is unknown" with no failure anywhere.
+  it('includes costPer1kInput so a client can price a model switch', async () => {
+    modelCache.models = [
+      {
+        id: 'claude-opus-5',
+        providerId: 'anthropic',
+        label: 'Opus 5',
+        contextWindow: 1000000,
+        hasAuth: true,
+        costPer1kInput: 0.015,
+      },
+    ] as any[]
+
+    const { event } = await buildSnapshotEvent()
+    const models = event.availableModels as any[] | undefined
+    expect(models).toBeDefined()
+    expect(models![0].costPer1kInput).toBe(0.015)
+  })
+
+  it('projects exact cache rates to availableModels', async () => {
+    modelCache.models = [{
+      id: 'claude-opus-5',
+      providerId: 'anthropic',
+      label: 'Opus 5',
+      contextWindow: 1000000,
+      hasAuth: true,
+      costPer1kInput: 0.015,
+      costPer1kCacheCreation: 0.02,
+      costPer1kCacheRead: 0.003,
+    }] as any[]
+
+    const { event } = await buildSnapshotEvent()
+    const models = event.availableModels as any[] | undefined
+    expect(models![0]).toMatchObject({
+      costPer1kCacheCreation: 0.02,
+      costPer1kCacheRead: 0.003,
+    })
+  })
   it('omits modelKind for standard chat models that carry no modelKind field', async () => {
     modelCache.models = [
       {

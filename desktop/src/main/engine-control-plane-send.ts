@@ -54,6 +54,7 @@ export function bridgeSendAdapter(bridge: EngineBridge) {
       planFilePath: opts.planFilePath,
       thinkingEffort: opts.thinkingEffort,
       resolveSlash: opts.resolveSlash,
+      slashModelTierApplyMidConversation: opts.slashModelTierApplyMidConversation,
       clientWorkspaceContext: opts.clientWorkspaceContext,
       deliveryId: opts.deliveryId,
       displayText: opts.displayText,

@@ -127,6 +127,12 @@ export type EngineEvent =
     }
   | { type: "engine_text_delta"; text: string }
   | {
+      type: "engine_slash_model_tier_ignored";
+      command: string;
+      slashModelTierRequested: string;
+      slashModelTierServing: string;
+    }
+  | {
       type: "engine_message_end";
       usage: {
         inputTokens: number;
