@@ -694,6 +694,20 @@ bare slash name (e.g. `"clear"`, `"ion--review-changes"`).
 `description` is an optional human-readable hint the autocomplete UI
 surfaces.
 
+#### engine_slash_model_tier_ignored
+
+Advisory emitted when a resolved slash command declares a `model:` tier but the resolved Model Boundary policy retains the conversation's current serving model. The command still runs. The event is the complete signal; the engine does not alter stream content or inject a synthetic message.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_slash_model_tier_ignored"` | Event type. |
+| `command` | string | Raw slash command, including the leading slash. |
+| `slashModelTierRequested` | string | Tier or model declared by the command. |
+| `slashModelTierServing` | string | Concrete model serving the run. |
+| `message` | string | Human-readable explanation for consumers that want to display one. |
+
+A consumer can ignore this advisory without changing execution. To change the decision, set `slashModelTier.applyMidConversation`, pass `slashModelTierApplyMidConversation` on one request, or handle `before_slash_model_boundary`.
+
 #### engine_command_result
 
 Result of every `Manager.SendCommand` dispatch: success (no error),

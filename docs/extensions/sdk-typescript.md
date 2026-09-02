@@ -160,6 +160,12 @@ ion.on('model_select', (ctx, info) => {
   return info.requestedModel
 })
 
+ion.on('before_slash_model_boundary', (_ctx, info) => {
+  // Permit an intentional command-owned switch after history exists.
+  if (info.command === '/benchmark') return { apply: true }
+  return undefined
+})
+
 ion.on('session_end', (ctx) => {
   intentBySession.delete(ctx.sessionKey)
 })
@@ -398,7 +404,7 @@ Ion's own records use the same vocabulary — see
 [`docs/observability/log-schema.md`](../observability/log-schema.md) § "Correlation-ID vocabulary"
 for the field reference and the LogQL/`jq` pivots.
 
-**`sendPrompt(text, opts?)`** -- queue a fresh prompt on this session's agent loop. Resolves once the engine has accepted the prompt; does **not** wait for the LLM to finish. Pass `opts.model` to override the model for this single prompt.
+**`sendPrompt(text, opts?)`** -- queue a fresh prompt on this session's agent loop. Resolves once the engine has accepted the prompt; does **not** wait for the LLM to finish. Pass `opts.model` to override the model for this single prompt. Pass `opts.slashModelTierApplyMidConversation` only when this prompt executes a resolved slash command and must override the configured Model Boundary policy; `before_slash_model_boundary` still has final say.
 
 ```typescript
 ion.registerCommand('cloud', {

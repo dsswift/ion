@@ -102,8 +102,8 @@ Register a model under a specific provider. Each entry sets the routing target p
 | `contextWindow` | int | 0 | Maximum tokens the model accepts in a single request. Used for compaction triggers. When the model also exists in the engine's built-in catalog, the catalog value wins (the catalog is the reconciled source for context windows). |
 | `costPer1kInput` | float | 0.0 | USD cost per 1,000 input tokens. Used for budget tracking. |
 | `costPer1kOutput` | float | 0.0 | USD cost per 1,000 output tokens. Used for budget tracking. |
-| `costPer1kCacheCreation` | float | 0.0 | USD cost per 1,000 prompt-cache-creation tokens. When unset, the engine falls back to 1.25× `costPer1kInput`. |
-| `costPer1kCacheRead` | float | 0.0 | USD cost per 1,000 prompt-cache-read tokens. When unset, the engine falls back to 0.1× `costPer1kInput`. |
+| `costPer1kCacheCreation` | float | 0.0 | USD cost per 1,000 prompt-cache-creation tokens. When unset, the engine falls back to 1.25× `costPer1kInput`. Published on `list_models` so clients can quote exact model-switch costs. |
+| `costPer1kCacheRead` | float | 0.0 | USD cost per 1,000 prompt-cache-read tokens. When unset, the engine falls back to 0.1× `costPer1kInput`. Published on `list_models` so clients can compare the switch with a cache read. |
 | `costPerImage` | float | 0.0 | USD cost of one standard (1MP) generation for image models, which bill per image rather than per token. Used for `modelKind: "image"` runs; leave unset for per-token image models (they report token usage and are priced through the normal token math). |
 | `maxOutputTokens` | int | 0 | Maximum output tokens the model can produce in one response. Unset ⇒ the engine sends no cap and the provider applies the model's own maximum. |
 | `supportsCaching` | bool | false | Provider supports prompt caching for this model. |

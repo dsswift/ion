@@ -19,6 +19,25 @@ Ion ships with no default model. Before the engine can run a prompt, you must ei
 | `backend` | string | `"api"` | Backend mode. `"api"` for direct API calls, `"cli"` for CLI proxy. |
 | `defaultModel` | string | `""` | Model identifier used when no `--model` override is passed. Required. The engine errors out if neither this field nor `--model` is set. |
 | `logLevel` | string | `""` | Log verbosity. One of `"debug"`, `"info"`, `"warn"`, `"error"`. Empty string uses the engine default. |
+| `slashModelTier` | object | omitted | Policy for command-owned model tiers after a conversation has history. See [slashModelTier](#slashmodeltier). |
+
+## slashModelTier
+
+Controls whether a slash command's `model:` tier may replace the serving model after the conversation has model-visible history.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `applyMidConversation` | boolean | `false` | When true, a command-owned tier can switch models after history exists. When false or omitted, the engine retains the current model to preserve its prompt cache. |
+
+```json
+{
+  "slashModelTier": {
+    "applyMidConversation": true
+  }
+}
+```
+
+A `slashModelTierApplyMidConversation` value on one `send_prompt` or `command` request overrides this block for that invocation. The `before_slash_model_boundary` hook has final say. Fresh conversations always apply the command tier because no history must be re-sent.
 
 ## runRecovery
 

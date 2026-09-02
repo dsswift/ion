@@ -1589,6 +1589,42 @@
       "notes": "See ADR-021. The Overlay renderer is the single owner; the Studio presentation is the mirror."
     },
     {
+      "id": "model-boundary",
+      "term": "Model Boundary",
+      "definition": "The decision point where a slash command that declares a model tier either applies that tier or retains the conversation's serving model. A fresh conversation applies the tier; after model-visible history exists, engine configuration, a per-prompt override, and the before_slash_model_boundary hook control the decision.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "slash model boundary"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "evaluateSlashModelBoundary",
+          "path": "engine/internal/session/slash_model_boundary.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "SlashModelBoundaryInfo",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "HookBeforeSlashModelBoundary",
+          "path": "sdk/go/hook_descriptors.go"
+        }
+      ],
+      "notes": "The default retains the serving model after history exists. Consumers can override the policy per configuration, request, or hook."
+    },
+    {
       "id": "new-conversation-picker",
       "term": "New Conversation Picker",
       "definition": "The single entry point that starts a conversation. Normal creation selects a Project and an Engine profile. Explicit worktree creation also selects a source branch.",

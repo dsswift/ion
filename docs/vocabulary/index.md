@@ -94,6 +94,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Message](#term-message)
 - [Message forwarding](#term-forwarding)
 - [Mirror store](#term-mirror-store)
+- [Model Boundary](#term-model-boundary)
 - [New Conversation Picker](#term-new-conversation-picker)
 - [Normalized event](#term-normalized-event)
 - [Notification](#term-notification)
@@ -399,6 +400,22 @@ The headless process that accepts consumer connections, owns session lifecycle, 
 - **Contract:** `public-wire`
 - **Implementations:**
   - `engine` / `code` / `go`: `type Server struct` in `engine/internal/server/server.go`
+
+#### Model Boundary {#term-model-boundary}
+
+The decision point where a slash command that declares a model tier either applies that tier or retains the conversation's serving model. A fresh conversation applies the tier; after model-visible history exists, engine configuration, a per-prompt override, and the before_slash_model_boundary hook control the decision.
+
+- **ID:** `model-boundary`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `slash model boundary`
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `evaluateSlashModelBoundary` in `engine/internal/session/slash_model_boundary.go`
+  - `sdk` / `code` / `typescript`: `SlashModelBoundaryInfo` in `engine/extensions/sdk/ion-sdk/types.ts`
+  - `sdk` / `code` / `go`: `HookBeforeSlashModelBoundary` in `sdk/go/hook_descriptors.go`
+- **Notes:** The default retains the serving model after history exists. Consumers can override the policy per configuration, request, or hook.
 
 #### Permission {#term-permission}
 
@@ -1742,6 +1759,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `server event envelope` → [Server message](#term-server-message)
 - Alias: `shell pane` → [Terminal](#term-terminal)
 - Alias: `side drawer` → [Drawer](#term-drawer)
+- Alias: `slash model boundary` → [Model Boundary](#term-model-boundary)
 - Alias: `socket transport` → [Transport](#term-transport)
 - Alias: `span` → [Telemetry](#term-telemetry)
 - Alias: `spend` → [Cost](#term-cost)
