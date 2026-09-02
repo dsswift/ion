@@ -38,16 +38,16 @@ func pollStarterFromContext(ctx context.Context) PollStarter {
 func PollTool() *types.ToolDef {
 	return &types.ToolDef{
 		Name:        "Poll",
-		Description: "Sparingly monitor external state that has no completion callback. A bounded child agent judges evidence as satisfied, failed, advancing, or uncertain; the engine retries only advancing work and delivers one terminal verdict. Never use Poll to wait for Agent or dispatch completion — those results are delivered automatically. The check command must directly observe the condition in intent. Do not sleep or manually re-poll while Poll is active.",
+		Description: "Sparingly monitor external state that has no completion callback. A bounded child agent judges evidence as satisfied, failed, advancing, or uncertain; the engine retries only advancing work and delivers one terminal verdict. Poll costs one inference per attempt, so reserve it for work that needs judgment. Never use Poll to wait for Agent or dispatch completion — those results are delivered automatically. Never use Poll to wait for your own background Bash command either: start it with run_in_background and notify_on_complete and end your turn, which waits for free. The check command must directly observe the condition in intent. Do not sleep or manually re-poll while Poll is active.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"intent":        map[string]any{"type": "string", "description": "External condition to watch, what counts as satisfied or failed, and what evidence proves it"},
-				"check_command": map[string]any{"type": "string", "description": "Optional shell command that directly observes the intent; the engine runs it before each inference attempt and uses its raw output as evidence"},
+				"check_command": map[string]any{"type": "string", "description": "Optional shell command that directly observes the intent; the engine runs it before each inference attempt and uses its raw output as evidence. Its complete output is sent to the check agent, so a command that prints a lot costs a lot per attempt — print what the verdict needs, not everything available"},
 				"interval_ms":   map[string]any{"type": "number", "description": "Delay between attempts in milliseconds; clamped to the configured floor"},
 				"deadline_ms":   map[string]any{"type": "number", "description": "Whole-poll deadline in milliseconds; clamped to the configured ceiling"},
 				"max_attempts":  map[string]any{"type": "number", "description": "Optional scope-down attempt cap; cannot exceed the configured ceiling"},
-				"model":         map[string]any{"type": "string", "description": "Optional poll-child model override"},
+				"model":         map[string]any{"type": "string", "description": "Optional poll-child model override. Omit it: the engine already selects a fast tier. Judging evidence is mechanical work, so never name a premium or reasoning model here"},
 			},
 			"required": []string{"intent"},
 		},

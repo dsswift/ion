@@ -43,6 +43,7 @@ type ClientCommand struct {
 	Prefix             string   `json:"prefix,omitempty"`
 	MessageIndex       *int     `json:"messageIndex,omitempty"`
 	UserTurnIndex      *int     `json:"userTurnIndex,omitempty"`
+	NewKey             string   `json:"newKey,omitempty"`
 	Enabled            *bool    `json:"enabled,omitempty"`
 	AllowedTools       []string `json:"allowedTools,omitempty"`
 	EntryID            string   `json:"entryId,omitempty"`
@@ -285,6 +286,12 @@ type ClientCommand struct {
 	// leading slash on its own; the client classifies the invocation (the same
 	// trivial check it already does to drive slash-command autocomplete).
 	ResolveSlash bool `json:"resolveSlash,omitempty"`
+
+	// send_prompt / command: per-invocation override for command-owned model
+	// tiers. Nil inherits engine.json slashModelTier policy. True permits a tier
+	// to switch a conversation that already has model-visible history; false
+	// retains the current serving model. The extension decision hook has final say.
+	SlashModelTierApplyMidConversation *bool `json:"slashModelTierApplyMidConversation,omitempty"`
 
 	// TemporaryAutoFromPlan runs this command with auto-mode tools while preserving
 	// the session's active planning workflow and plan file. On successful terminal

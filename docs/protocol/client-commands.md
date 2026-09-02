@@ -99,6 +99,7 @@ Send a user message to an active session.
 | `compactMemoryEnabled`      | boolean  | no       | Whether the background session memory summarizer is active for this prompt. |
 | `clientWorkspaceContext`    | object   | no       | Per-prompt workspace context override. Takes precedence over the session-level `EngineConfig.clientWorkspaceContext`. Fields: `kind` (string), `cwd` (string), `bench` (object, structured bench facts), `data` (object, generic consumer data), `text` (string, prose for system prompt). The engine routes `bench` to `PromptContext.Bench` and `data` to `PromptContext.Client` for hook payloads. |
 | `resolveSlash`              | boolean  | no       | Backward-compatible direct-prompt command resolution. New clients should use `command`, which runs the complete command precedence chain in one request. When `true`, the engine resolves `text` as `/name args`, expands the template, feeds the expanded body to the model, and persists the raw invocation. Ordinary `/`-leading content remains unchanged when this field is absent. |
+| `slashModelTierApplyMidConversation` | boolean | no | Per-invocation override for a resolved command's `model:` tier. Omitted inherits `engine.json` `slashModelTier.applyMidConversation`; `true` permits a switch after history exists; `false` retains the serving model. `before_slash_model_boundary` has final say. |
 | `temporaryAutoFromPlan` | boolean | no | Runs one command with auto-mode tools while preserving the session Plan mode and plan file. A real user question pauses this workflow. A final successful completion emits the existing synthesized plan-approval proposal. Errors, cancellation, unresolved commands, and hook suppression preserve Plan mode without proposing approval. |
 
 ```json
@@ -285,17 +286,20 @@ Fork a session at a specific message index, creating a new session with conversa
 |----------------|-------------------|----------|------------------------------------|
 | `cmd`          | `"fork_session"`  | yes      | Command discriminator              |
 | `key`          | string            | yes      | Source session key                  |
-| `messageIndex` | number            | yes      | Message index to fork at           |
+| `messageIndex` | number            | yes      | Message index to fork at. A client-owned exact-target fork still sends the local prefix index as a backward-compatible fallback. |
+| `newKey`       | string            | no       | Client-owned key for the forked session |
+| `entryId`      | string            | no       | User-turn entry to exclude from the fork; takes priority over `messageIndex` |
+| `userTurnIndex`| number            | no       | User-turn ordinal fallback when `entryId` is unavailable; used only with `newKey` |
 | `requestId`    | string            | no       | Correlates with ServerResult       |
 
 ```json
 {"cmd":"fork_session","key":"abc-123","messageIndex":4,"requestId":"r6"}
 ```
 
-**Response:** `ServerResult` with `ok: true` and `newKey` field containing the forked session's key.
+**Response:** `ServerResult` with `ok: true`, `newKey`, and `conversationId`. The fields are top-level for existing consumers and repeated in `data` for clients that use the common data-response helper.
 
 ```json
-{"cmd":"result","requestId":"r6","ok":true,"newKey":"abc-123-fork-1"}
+{"cmd":"result","requestId":"r6","ok":true,"newKey":"abc-123-fork-1","conversationId":"1788000000000-acde1234abcd","data":{"newKey":"abc-123-fork-1","conversationId":"1788000000000-acde1234abcd"}}
 ```
 
 ---
@@ -776,20 +780,21 @@ Tear down an active resource subscription.
 
 ### resource_publish
 
-Publish a resource operation from the client. Routes to the global broker when `resourceItem.conversationId` is empty, to the session broker otherwise. Uses `PublishDirect` — no registered producer is required.
+Publish a resource operation from the client. Set `resourceGlobal: true` for a workspace-scoped resource; no session key is required in that mode. Otherwise, `key` selects the session broker. Uses `PublishDirect` — no registered producer is required.
 
 | Field          | Type                    | Required | Description                                                                      |
 |----------------|-------------------------|----------|----------------------------------------------------------------------------------|
 | `cmd`          | `"resource_publish"`    | yes      | Command discriminator                                                            |
-| `key`          | string                  | yes      | Session key                                                                      |
-| `resourceKind` | string                  | no       | Resource kind (informational; the kind is carried on `resourceItem`)             |
+| `key`          | string                  | conditional | Session key for a session-scoped publish; omit or use `""` with `resourceGlobal` |
+| `resourceKind` | string                  | yes      | Resource kind                                                                    |
+| `resourceGlobal` | boolean               | no       | `true` to publish to the workspace broker; otherwise publish to `key`'s session broker |
 | `resourceOp`   | string                  | yes      | Operation: one of `"create"`, `"update"`, `"delete"`, `"mark_read"`              |
-| `resourceItem` | ResourceItem object     | no       | The resource item to publish. Its nested `producer` value is ignored. |
+| `resourceItem` | ResourceItem object     | yes      | The resource item to publish. Its nested `producer` value is ignored. |
 | `resourceProducer` | string              | no       | Trusted producer selector for a client action on an existing producer-owned item. |
 | `requestId`    | string                  | no       | Correlates with ServerResult                                                     |
 
 ```json
-{"cmd":"resource_publish","key":"abc-123","resourceOp":"update","resourceItem":{"id":"item-1","conversationId":"conv-1"},"requestId":"r22"}
+{"cmd":"resource_publish","key":"","resourceGlobal":true,"resourceKind":"briefing","resourceOp":"mark_read","resourceProducer":"producer-a","resourceItem":{"id":"item-1","kind":"briefing"},"requestId":"r22"}
 ```
 
 **Response:** `ServerResult` with `ok: true`.
@@ -1115,7 +1120,7 @@ Starting a login for a provider that already has one in flight cancels the previ
 
 ### provider_login_code
 
-Return a browser-issued authorization code to a login parked on the `await_auth_code` stage. Required by flows the engine drives through a CLI's manual-paste fallback rather than its own callback: the provider hands the user a code in the browser and the CLI waits for it on stdin, so the consumer must carry it back.
+Return a browser-issued authorization code to a login on the `await_auth_code` stage. This supports a CLI's manual-paste fallback: the provider hands the user a code in the browser and the CLI can receive it on stdin. A CLI that also opened a loopback callback can complete without this command when that browser flow succeeds.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

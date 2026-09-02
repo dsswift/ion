@@ -137,31 +137,41 @@ func TestDispatchRegistry_SignalReviveForSession_WakesAllBareSuspends(t *testing
 	}
 }
 
-// TestDispatchRegistry_SignalReviveForSession_SkipsFanOutParks confirms the
-// multi-wake preserves the pending-children predicate: a fan-out park
-// (PendingChildren non-nil) on the same session is NOT woken by sendPrompt.
-func TestDispatchRegistry_SignalReviveForSession_SkipsFanOutParks(t *testing.T) {
-	r := NewDispatchRegistry()
-	r.RegisterWithID("d-bare", "agent-a", func() {}, nil, "mixed-sess", "", 1)
-	r.RegisterWithID("d-fan", "agent-b", func() {}, nil, "mixed-sess", "", 1)
+func TestDispatchRegistry_SignalReviveForSession_SkipsAwaitedWork(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		children []string
+		tasks    []string
+		polls    []string
+	}{
+		{name: "child dispatch", children: []string{"child-z"}},
+		{name: "background task", tasks: []string{"bash-z"}},
+		{name: "poll", polls: []string{"poll-z"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := NewDispatchRegistry()
+			r.RegisterWithID("d-bare", "agent-a", func() {}, nil, "mixed-sess", "", 1)
+			r.RegisterWithID("d-waiting", "agent-b", func() {}, nil, "mixed-sess", "", 1)
 
-	bareCh := make(chan struct{}, 1)
-	fanCh := make(chan struct{}, 1)
-	r.SetSuspendedState("d-bare", bareCh, nil)
-	r.SetSuspendedState("d-fan", fanCh, []string{"child-z"})
+			bareCh := make(chan struct{}, 1)
+			waitingCh := make(chan struct{}, 1)
+			r.SetSuspendedState("d-bare", bareCh, nil)
+			r.SetSuspendedStateWithWaitingOn("d-waiting", waitingCh, tc.children, tc.tasks, tc.polls)
 
-	if !r.SignalReviveForSession("mixed-sess") {
-		t.Fatal("SignalReviveForSession returned false")
-	}
-	select {
-	case <-bareCh:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("bare suspend not woken")
-	}
-	select {
-	case <-fanCh:
-		t.Fatal("fan-out park woken by sendPrompt — only NotifyChildComplete may revive it")
-	default:
+			if !r.SignalReviveForSession("mixed-sess") {
+				t.Fatal("SignalReviveForSession returned false")
+			}
+			select {
+			case <-bareCh:
+			case <-time.After(200 * time.Millisecond):
+				t.Fatal("bare suspend not woken")
+			}
+			select {
+			case <-waitingCh:
+				t.Fatalf("prompt woke dispatch still awaiting %s", tc.name)
+			default:
+			}
+		})
 	}
 }
 

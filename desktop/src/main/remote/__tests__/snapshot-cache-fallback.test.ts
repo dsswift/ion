@@ -9,8 +9,8 @@
  *   - stale cache (>= max age) → legacy poll invoked
  *   - legacy poll returning empty does NOT poison the cache and falls through
  *     to the cold-start path
- *   - the catalog-sourced manifest is served with the main-process read-state
- *     overlay applied copy-on-write (the catalog item itself is never mutated)
+ *   - main-process catalog read state is projected without mutating the legacy
+ *     renderer cache manifest
  *
  * The legacy poll is injected via _setPollRendererTabStatesForTest so no
  * BrowserWindow / executeJavaScript is involved.
@@ -54,6 +54,7 @@ vi.mock("../../settings-store", () => ({
 }));
 
 vi.mock("../../event-wiring-resources", () => ({
+  filterDeletedResources: <T>(items: T[]) => items,
   isResourceRead: (resourceId: string, producer?: string, kind?: string) =>
     mockIsResourceRead(resourceId, producer, kind),
 }));
@@ -64,8 +65,8 @@ import {
   RENDERER_CACHE_MAX_AGE_MS,
   _setPollRendererTabStatesForTest,
 } from "../snapshot";
-import { state } from "../../state";
 import { resourceCatalog } from "../../resource-catalog";
+import { state } from "../../state";
 import type {
   RemoteTabStatesPayload,
   ProjectedRendererTab,
@@ -126,7 +127,6 @@ describe("getRemoteTabStates — renderer-push cache + legacy-poll fallback", ()
   afterEach(() => {
     _setPollRendererTabStatesForTest(null);
     state.rendererSnapshotCache = null;
-    resourceCatalog.clear();
     vi.restoreAllMocks();
   });
 
@@ -209,44 +209,47 @@ describe("getRemoteTabStates — renderer-push cache + legacy-poll fallback", ()
     expect(tabs[1].lastActivityAt).toBe(500);
   });
 
-  it("overlays main-process persisted read state WITHOUT mutating the catalog item (copy-on-write)", async () => {
-    // The served manifest comes from the resource catalog, not from the
-    // renderer-push cache: the catalog is the single source so every client
-    // sees one manifest. The cached payload still carries a manifest field,
-    // so this test pins that the catalog is what is served AND that the
-    // overlay copies.
-    resourceCatalog.applySnapshot(
-      "source-a",
-      "briefing",
-      [
+  it("projects main-process catalog read state without mutating the legacy cached manifest", async () => {
+    const cachedManifest = {
+      briefing: [
         {
-          id: "r1",
+          id: "cached-r1",
           kind: "briefing",
-          producer: "p1",
-          content: "",
-          title: "B",
+          title: "Cached",
           createdAt: "2025-01-01",
+          read: false,
         },
       ],
-      ["p1"],
-    );
-    const catalogItem = resourceCatalog.getItem("briefing", "r1", "p1")!;
+    };
     state.rendererSnapshotCache = {
       tabs: [projectedTab("t1")],
-      resourceManifest: {},
+      resourceManifest: cachedManifest,
       receivedAt: Date.now(),
     };
+    resourceCatalog.applyFullItem("briefing", {
+      id: "r1",
+      kind: "briefing",
+      title: "B",
+      content: "body",
+      createdAt: "2025-01-01",
+      read: false,
+    });
     mockIsResourceRead.mockImplementation(
       (resourceId: string) => resourceId === "r1",
     );
 
     const { resourceManifest } = await getRemoteTabStates();
-    // Served manifest carries the persisted read state…
-    expect(resourceManifest.briefing[0].read).toBe(true);
-    // …but the catalog's own item is untouched. A mutated catalog would make
-    // read state permanent in memory, so a "mark unread" on any client could
-    // never travel back out through a later manifest.
-    expect(catalogItem.read).toBeFalsy();
+
+    // The main catalog owns the manifest and carries persisted read state.
+    expect(resourceManifest.briefing[0]).toMatchObject({
+      id: "r1",
+      read: true,
+    });
+    // The old renderer payload stays untouched and cannot replace catalog truth.
+    expect(cachedManifest.briefing[0]).toMatchObject({
+      id: "cached-r1",
+      read: false,
+    });
   });
 });
 

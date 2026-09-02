@@ -170,6 +170,19 @@ enum RemoteEvent: Sendable {
     /// no run-loop checkpoint drained it. Clients may render the same
     /// confirmation without mutating any live-steer pending-bubble state.
     case engineSteerDegraded(tabId: String, instanceId: String?, messageLength: Int, kind: String?, machineAuthored: Bool?)
+    /// A steer arrived while the model was streaming assistant text and the
+    /// engine ended that provider call early so the steer applies on the next
+    /// turn rather than after the model finishes composing.
+    ///
+    /// This is the SCHEDULING decision, not the delivery — engineSteerInjected
+    /// still follows when the steer reaches the conversation. It exists so a
+    /// client never has to guess why an assistant message stopped short:
+    /// `blocksKept` counts the assistant content blocks the engine preserved
+    /// (nothing the model produced is discarded), so the shortened message is
+    /// an intentional early stop rather than a truncation or a stream error.
+    /// `queuedSteers` above 1 explains a following turn that consumes several
+    /// instructions at once.
+    case engineSteerInterruptedStream(tabId: String, instanceId: String?, blocksKept: Int?, queuedSteers: Int?)
     /// The desktop's rewind is transactional and sends this event ONLY on
     /// refusal (unknown entry, foreign-branch target, non-user-turn target)
     /// — a successful rewind needs no notice because the transcript truncation
@@ -570,10 +583,12 @@ enum RemoteEvent: Sendable {
         contextBreakdown: ContextBreakdownPayload
     )
 
-    /// Prompt acceptance acknowledgement (desktop_prompt_result). Sent by the
-    /// desktop after `window.ion.prompt` resolves (accepted) or an early
-    /// failure prevents delivery (rejected). iOS correlates via clientMsgId
-    /// to update the optimistic user bubble's delivery state.
+    /// Desktop-forwarded notice that a slash command's requested model tier
+    /// was ignored because the conversation already has model-visible history.
+    case desktopSlashModelTierIgnored(tabId: String, instanceId: String?, command: String, slashModelTierRequested: String, slashModelTierServing: String)
+
+    /// Prompt acceptance acknowledgement. iOS correlates via clientMsgId to
+    /// update the optimistic user bubble's delivery state.
     case promptResult(tabId: String, clientMsgId: String, status: String, error: String?)
 
     /// Background work delivered into the conversation. The desktop emits this
@@ -651,6 +666,7 @@ enum RemoteEvent: Sendable {
         case engineRunRecovery = "desktop_run_recovery"
         case engineSteerInjected = "desktop_steer_injected"
         case engineSteerDegraded = "desktop_steer_degraded"
+        case engineSteerInterruptedStream = "desktop_steer_interrupted_stream"
         case engineRewindResult = "desktop_engine_rewind_result"
         case enginePromptInjected = "desktop_prompt_injected"
         // Extended-thinking events (issue #158). The desktop forwards the
@@ -732,6 +748,7 @@ enum RemoteEvent: Sendable {
         /// from the engine's context analysis. Lockstep parity with engine_context_breakdown
         /// (plan modest-leaping-waffle.md §9).
         case desktopContextBreakdown = "desktop_context_breakdown"
+        case desktopSlashModelTierIgnored = "desktop_slash_model_tier_ignored"
         case promptResult = "desktop_prompt_result"
         case backgroundWorkDelivered = "desktop_background_work_delivered"
         case backgroundTaskStopResult = "desktop_background_task_stop_result"
@@ -841,6 +858,7 @@ enum RemoteEvent: Sendable {
         case dataUrl
         case attachments
         case sourceTabId, targetTabId
+        case slashModelTierRequested, slashModelTierServing
         case customName, customIcon, updatedAt, remoteDisplayUpdatedAt
         // engine_plan_mode_changed — state event for plan-mode entry/exit.
         case planModeEnabled
@@ -864,6 +882,11 @@ enum RemoteEvent: Sendable {
         // because no owning run was live. Mirrors EngineEvent's dedicated
         // SteerDegradedMessageLength JSON tag.
         case steerDegradedMessageLength
+        // engine_steer_interrupted_stream — the engine ended a provider call
+        // early because a steer arrived mid-stream. Mirrors EngineEvent's
+        // SteerInterruptBlocksKept / SteerQueuedCount JSON tags.
+        case steerInterruptBlocksKept
+        case steerQueuedCount
         // engine_prompt_injected — extension-injected prompt (the run's user
         // turn no client submitted). Mirror EngineEvent.InjectedPrompt /
         // InjectedPromptOrigin JSON tags.

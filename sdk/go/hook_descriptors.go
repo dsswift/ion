@@ -129,6 +129,10 @@ var HookUserBash = Hook[string, NoResult]{Name: HookNameUserBash}
 // Return a string to override the expansion.
 var HookSlashCommandResolved = Hook[SlashCommandResolvedInfo, StringResult]{Name: HookNameSlashCommandResolved}
 
+// HookBeforeSlashModelBoundary fires before a command-owned tier is applied.
+// Set Apply to override the engine's configured decision for this invocation.
+var HookBeforeSlashModelBoundary = Hook[SlashModelBoundaryInfo, SlashModelBoundaryResult]{Name: HookNameBeforeSlashModelBoundary}
+
 // --- Per-tool call ---
 
 // HookBashToolCall fires before the Bash tool runs.
@@ -347,7 +351,7 @@ func allHookDescriptors() []descriptorInfo {
 		descriptorOf(HookContext), descriptorOf(HookMessageUpdate),
 		descriptorOf(HookToolResult), descriptorOf(HookInput),
 		descriptorOf(HookModelSelect), descriptorOf(HookUserBash),
-		descriptorOf(HookSlashCommandResolved),
+		descriptorOf(HookSlashCommandResolved), descriptorOf(HookBeforeSlashModelBoundary),
 
 		descriptorOf(HookBashToolCall), descriptorOf(HookReadToolCall),
 		descriptorOf(HookWriteToolCall), descriptorOf(HookEditToolCall),

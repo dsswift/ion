@@ -168,6 +168,11 @@ export function registerEngineIpc(): void {
     return engineBridge.rewindSession(key, { entryId, userTurnIndex })
   })
 
+  ipcMain.handle(IPC.ENGINE_FORK, async (_event, payload: { key: string; newKey: string; messageIndex: number; entryId?: string; userTurnIndex?: number }) => {
+    log('engine_fork', { key: payload.key, new_key: payload.newKey, message_index: payload.messageIndex ?? -1, entry_id: payload.entryId ?? '', user_turn_index: payload.userTurnIndex ?? -1 })
+    return sessionPlane.forkSession(payload.key, payload.newKey, payload)
+  })
+
   ipcMain.handle(IPC.ENGINE_GET_CONTEXT_BREAKDOWN, (_event, { key }: { key: string }) => {
     log('engine_get_context_breakdown', { key })
     // Fire-and-forget. The engine emits engine_context_breakdown on its event
@@ -182,9 +187,9 @@ export function registerEngineIpc(): void {
     engineBridge.remapSession(oldKey, newKey)
   })
 
-  ipcMain.handle(IPC.ENGINE_BROADCAST_HISTORY, async (_event, { tabId, instanceId }: { tabId: string; instanceId: string | null }) => {
-    log('engine_broadcast_history', { tab_id: tabId, instance_id: instanceId || '' })
-    await broadcastEngineHistory(tabId, instanceId)
+  ipcMain.handle(IPC.ENGINE_BROADCAST_HISTORY, async (_event, { tabId, instanceId, opts }: { tabId: string; instanceId: string | null; opts?: { queueUntilTabExists?: boolean } }) => {
+    log('engine_broadcast_history', { tab_id: tabId, instance_id: instanceId || '', queue_until_tab_exists: opts?.queueUntilTabExists ?? false })
+    await broadcastEngineHistory(tabId, instanceId, opts)
   })
 
   ipcMain.on(IPC.SET_PERMISSION_MODE, (_event, payload: { tabId: string; mode: string; source?: string; planFilePath?: string }) => {

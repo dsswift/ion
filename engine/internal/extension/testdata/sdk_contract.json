@@ -158,6 +158,20 @@
         "instruction"
       ]
     },
+    "before_slash_model_boundary": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "command",
+        "defaultApply",
+        "hasHistory",
+        "requestedTier",
+        "servingModel"
+      ],
+      "result": "structured",
+      "resultFields": [
+        "apply"
+      ]
+    },
     "capability_discover": {
       "payloadKind": "none",
       "result": "string"

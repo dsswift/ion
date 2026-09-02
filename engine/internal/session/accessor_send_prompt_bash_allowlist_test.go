@@ -68,10 +68,12 @@ func TestDispatchSendPromptPayload_ForwardsFullPayload(t *testing.T) {
 	mgr := NewManager(mb)
 	_, _ = mgr.StartSession("dispatch-full", defaultConfig())
 
+	applyMidConversation := true
 	mgr.dispatchSendPromptPayload("dispatch-full", "test", extension.SendPromptPayload{
-		Text:                   "queued by extension",
-		Model:                  "claude-opus-4-20250514",
-		BashAllowlistAdditions: []string{"gh issue create", "git diff"},
+		Text:                               "queued by extension",
+		Model:                              "claude-opus-4-20250514",
+		BashAllowlistAdditions:             []string{"gh issue create", "git diff"},
+		SlashModelTierApplyMidConversation: &applyMidConversation,
 	})
 
 	keys := mb.startedKeys()
@@ -84,6 +86,9 @@ func TestDispatchSendPromptPayload_ForwardsFullPayload(t *testing.T) {
 	}
 	if opts.Model != "claude-opus-4-20250514" {
 		t.Errorf("expected model forwarded on the fallback wiring, got %q", opts.Model)
+	}
+	if opts.SlashModelTierApplyMidConversation == nil || !*opts.SlashModelTierApplyMidConversation {
+		t.Fatalf("expected slash model tier override forwarded, got %v", opts.SlashModelTierApplyMidConversation)
 	}
 	got := opts.BashAllowlistAdditionsForThisPrompt
 	if len(got) != 2 || got[0] != "gh issue create" || got[1] != "git diff" {

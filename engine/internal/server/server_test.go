@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -608,6 +609,91 @@ func TestForkSessionError(t *testing.T) {
 	// For a brand-new session with no conversation, ok=false is expected.
 	if r.OK && r.NewKey == "" {
 		t.Error("fork returned ok=true but newKey is empty")
+	}
+}
+
+func TestForkSessionExactTargetResultContract(t *testing.T) {
+	mb := newMockBackend()
+	srv := newShortPathTestServer(t, mb)
+	conn := dialServer(t, srv)
+	defer conn.Close()
+
+	startSession(t, conn, "fork-source-exact", "req-source-exact")
+	sourceID := ""
+	for _, info := range srv.manager.ListSessions() {
+		if info.Key == "fork-source-exact" {
+			sourceID = info.ConversationID
+			break
+		}
+	}
+	if sourceID == "" {
+		t.Fatal("source conversation id not found")
+	}
+	source := conversation.CreateConversation(sourceID, "system", "test-model")
+	conversation.AddUserMessage(source, "first")
+	conversation.AddAssistantMessage(source, []types.LlmContentBlock{{Type: "text", Text: "answer"}}, types.LlmUsage{})
+	target := conversation.AddUserMessage(source, "second")
+	if err := conversation.Save(source, ""); err != nil {
+		t.Fatalf("save source: %v", err)
+	}
+
+	sendJSON(t, conn, map[string]interface{}{
+		"cmd": "fork_session", "key": "fork-source-exact", "newKey": "fork-target-exact",
+		"messageIndex": 1, "entryId": target.ID, "userTurnIndex": 1, "requestId": "req-fork-exact",
+	})
+	r := findResult(t, readLines(t, conn, 8, 2*time.Second))
+	if r == nil || !r.OK {
+		t.Fatalf("fork result = %+v", r)
+	}
+	if r.NewKey != "fork-target-exact" || r.ConversationID == "" {
+		t.Fatalf("fork identity = (%q, %q)", r.NewKey, r.ConversationID)
+	}
+	data, ok := r.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("fork data = %T, want object", r.Data)
+	}
+	if data["newKey"] != r.NewKey || data["conversationId"] != r.ConversationID {
+		t.Fatalf("fork data = %v, top-level = (%q, %q)", data, r.NewKey, r.ConversationID)
+	}
+	forked, err := conversation.Load(r.ConversationID, "")
+	if err != nil {
+		t.Fatalf("load fork: %v", err)
+	}
+	if len(forked.Messages) != 2 {
+		t.Fatalf("fork messages = %d, want 2", len(forked.Messages))
+	}
+}
+
+func TestForkSessionStaleExactTargetReturnsNoIdentity(t *testing.T) {
+	mb := newMockBackend()
+	srv := newShortPathTestServer(t, mb)
+	conn := dialServer(t, srv)
+	defer conn.Close()
+
+	startSession(t, conn, "fork-source-stale", "req-source-stale")
+	sourceID := ""
+	for _, info := range srv.manager.ListSessions() {
+		if info.Key == "fork-source-stale" {
+			sourceID = info.ConversationID
+			break
+		}
+	}
+	if sourceID == "" {
+		t.Fatal("source conversation id not found")
+	}
+	source := conversation.CreateConversation(sourceID, "system", "test-model")
+	conversation.AddUserMessage(source, "first")
+	if err := conversation.Save(source, ""); err != nil {
+		t.Fatalf("save source: %v", err)
+	}
+
+	sendJSON(t, conn, map[string]interface{}{
+		"cmd": "fork_session", "key": "fork-source-stale", "newKey": "fork-target-stale",
+		"entryId": "not-on-path", "userTurnIndex": 0, "requestId": "req-fork-stale",
+	})
+	r := findResult(t, readLines(t, conn, 8, 2*time.Second))
+	if r == nil || r.OK || r.ConversationID != "" || r.NewKey != "" {
+		t.Fatalf("stale fork result = %+v", r)
 	}
 }
 

@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events'
+import { forkControlPlaneSession, type ForkSessionTarget } from './engine-control-plane-fork'
 import { EngineBridge } from './engine-bridge'
 import { resolveRemoteWorkingDirectory } from './engine-control-plane-remote-dir'
 import { log as _log, warn as _warn, error as _error } from './logger'
@@ -135,6 +136,10 @@ export class EngineControlPlane extends EventEmitter {
     closeTabEntry(this.tabs, tabId, (id) => {
       this.bridge.stopSession(id).catch((err) => warn('close_tab: stop session failed', { tab_id: id, error: String(err) }))
     })
+  }
+
+  forkSession(sourceTabId: string, newTabId: string, target: ForkSessionTarget): Promise<{ ok: boolean; error?: string; conversationId?: string }> {
+    return forkControlPlaneSession(this.bridge, this.tabs, sourceTabId, newTabId, target, (tabId, reason) => this._resyncStatus(tabId, reason))
   }
 
   /** See markConversationCleared in engine-control-plane-tab.ts. */

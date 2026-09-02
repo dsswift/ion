@@ -52,7 +52,7 @@ export interface RemoteProject {
 export type RemoteEvent =
   | RemoteWorktreeEvent
   | RemoteQuestionsEvent
-  | { type: 'desktop_snapshot'; tabs: RemoteTabState[]; projects?: RemoteProject[]; worktreeStates?: RemoteWorktreeState[]; settledTabs?: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; providerLabel: string; label: string; contextWindow: number; maxOutputTokens?: number; effectiveContextLimit?: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[]; modelKind?: string; isCustom?: boolean }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; producer?: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
+  | { type: 'desktop_snapshot'; tabs: RemoteTabState[]; projects?: RemoteProject[]; worktreeStates?: RemoteWorktreeState[]; settledTabs?: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; providerLabel: string; label: string; contextWindow: number; maxOutputTokens?: number; effectiveContextLimit?: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[]; modelKind?: string; isCustom?: boolean; costPer1kInput?: number; costPer1kCacheCreation?: number; costPer1kCacheRead?: number }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; producer?: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
   | { type: 'desktop_resource_content'; resourceId: string; kind: string; producer?: string; content: string }
   // `clientCmdId` echoes the id the iOS client attached to `desktop_create_tab`
   // / `desktop_create_terminal_tab` so the client's confirm-or-resend tracker
@@ -95,6 +95,7 @@ export type RemoteEvent =
       pillIcon?: string | null
     }
   | { type: 'desktop_text_chunk'; tabId: string; text: string }
+  | { type: 'desktop_slash_model_tier_ignored'; tabId: string; instanceId?: string | null; command: string; slashModelTierRequested: string; slashModelTierServing: string }
   | { type: 'desktop_tool_call'; tabId: string; toolName: string; toolId: string }
   // desktop_tool_update: forwarded verbatim from engine_tool_update by the
   // generic engine-event forwarder. Carries incremental tool input chunks as
@@ -178,6 +179,12 @@ export type RemoteEvent =
   | { type: 'desktop_steer_injected'; tabId: string; instanceId?: string | null; steerMessageLength: number; steerClientMessageId?: string; steerEntryId?: string; steerKind?: string; steerMachineAuthored?: boolean }
   // No owning run was live, so ctx.steerSelf delivered a fresh prompt instead.
   | { type: 'desktop_steer_degraded'; tabId: string; instanceId?: string | null; steerDegradedMessageLength: number; steerKind?: string; steerMachineAuthored?: boolean }
+  // A steer arrived mid-stream and the engine ended that provider call early so
+  // the steer applies on the next turn. Scheduling notice, not delivery:
+  // desktop_steer_injected still follows. steerInterruptBlocksKept counts the
+  // assistant blocks preserved, so a short message reads as an intentional
+  // early stop rather than a truncation.
+  | { type: 'desktop_steer_interrupted_stream'; tabId: string; instanceId?: string | null; steerInterruptBlocksKept?: number; steerQueuedCount?: number }
   // desktop_prompt_injected: forwarded verbatim from engine_prompt_injected
   // by the generic engine-event forwarder in event-wiring.ts (engineToWireType
   // strips the engine_ prefix). An extension injected a prompt via
@@ -381,7 +388,12 @@ export type RemoteEvent =
   // `desktop_fs_write_result` deliberately: ok-flag plus optional error string.
   | { type: 'desktop_fs_rename_result'; oldPath: string; newPath: string; ok: boolean; error?: string }
   | { type: 'desktop_upload_attachment_result'; id: string; name: string; path: string; contentHash?: string; correlationId?: string; error?: string }
-  | { type: 'desktop_discover_commands_response'; directory: string; commands: Array<{ name: string; description: string; scope: 'user' | 'project'; source: 'command' | 'skill' }> }
+  // `commands` carries the desktop's full DiscoveredCommand shape: the handler
+  // forwards the engine-discovered objects verbatim, so `origin` and
+  // `clearsConversation` are on the wire whether or not a client reads them.
+  // clearsConversation lets iOS confirm before a command wipes conversation
+  // history, matching the desktop's pre-send gate.
+  | { type: 'desktop_discover_commands_response'; directory: string; commands: Array<{ name: string; description: string; scope: 'user' | 'project'; source: 'command' | 'skill'; origin?: 'ion' | 'claude'; clearsConversation?: boolean }> }
   | { type: 'desktop_tab_attachments'; tabId: string; attachments: Array<{ type: string; name: string; path: string }> }
   /**
    * Request iOS diagnostic logs newer than `sinceSeq`. sinceSeq=0 requests

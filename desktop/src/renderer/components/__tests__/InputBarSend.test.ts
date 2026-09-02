@@ -138,10 +138,10 @@ describe('dispatchSend', () => {
     expect(calls).toEqual(['clearInput', 'clearDraft:tab-new', 'submit:tab-new:hello'])
   })
 
-  it('substitutes the attachment-only prompt text', () => {
+  it('substitutes an actionable attachment-only prompt', () => {
     const { d } = deps(idle)
     dispatchSend('', 2, d)
-    expect(d.submit).toHaveBeenCalledWith('tab-aaaaaaaa', 'See attached files')
+    expect(d.submit).toHaveBeenCalledWith('tab-aaaaaaaa', 'Analyze the attached files.')
   })
 
   it('sends an empty prompt as empty when there is nothing attached', () => {
@@ -254,7 +254,7 @@ describe('dispatchSend', () => {
 
     // submit() received the substitute; the operator typed nothing, so there is
     // nothing to put back in the box.
-    expect(d.submit).toHaveBeenCalledWith('tab-aaaaaaaa', 'See attached files')
+    expect(d.submit).toHaveBeenCalledWith('tab-aaaaaaaa', 'Analyze the attached files.')
     expect(d.restoreInput).toHaveBeenCalledWith('')
   })
 })

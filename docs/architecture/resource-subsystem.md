@@ -153,9 +153,7 @@ iOS                           Desktop                    Disk
 
 ### 4. Read State Propagation
 
-Desktop is the source of truth for read state. Any client that marks
-a resource as read must propagate to the desktop so the engine can
-broadcast the change to all subscribers.
+Desktop persists read state, while the engine broker is the live distribution path. Any client that marks a resource as read sends the mutation to Desktop. Desktop persists it, publishes it to the workspace broker, and every connected client applies the same delta. Read state is monotonic: an unread producer snapshot cannot reverse a read observed by any client.
 
 ```
 iOS reads a briefing            Desktop                   Engine
@@ -183,11 +181,11 @@ iOS reads a briefing            Desktop                   Engine
  |                                |<-- engine_resource_delta |
  |                                |    {op:'mark_read'}     |
  |                                |                         |
- |                          Renderer updates               |
- |                          readResourceIds Set             |
+ |                          Overlay + Studio update       |
+ |                          from the same typed delta        |
  |                                |                         |
- | Next snapshot includes         |                         |
- | read:true for this item        |                         |
+ |                          Desktop snapshots include       |
+ |                          read:true for reconnects        |
 ```
 
 ### 5. Desktop reads a briefing
@@ -209,9 +207,10 @@ Desktop Renderer                Desktop Main              Engine
  |                                |                         |
  |                                |                   Broker fans out
  |                                |                         |
+ |                                |<-- engine_resource_delta |
+ |                          Overlay + Studio update       |
+ |                                |                         |
  |                                |                   iOS receives delta
- |                                |                   via next snapshot or
- |                                |                   direct event
 ```
 
 ## Persistence Layout
@@ -224,7 +223,9 @@ Desktop Renderer                Desktop Main              Engine
     {conversationId}/                # Conversation-scoped resources
       briefing-{timestamp}-{hex}.json
   resource-read-state.json           # Desktop read-state persistence
-                                     # Array of resource IDs marked read
+                                     # Array of producer-qualified identities
+  resource-deleted-state.json        # Desktop deletion tombstones
+                                     # Prevents producer snapshots restoring deletes
 
 iOS Documents/
   resource-store-items.json          # Persisted items across app relaunches
@@ -246,6 +247,8 @@ iOS Documents/
 
 2. **Snapshots carry metadata only.** The snapshot/polling path sends id, kind, title, createdAt, read. Full content is fetched on demand via `request_resource_content`. This keeps snapshot payloads small for polling.
 
-3. **Desktop is source of truth for read state.** iOS marks reads locally for instant UI feedback, then propagates to desktop. Desktop persists and publishes through the engine. Any client that connects later gets the correct read state from the snapshot.
+3. **One read state across clients.** Desktop persists the read identity. The engine broker distributes live `mark_read` deltas to every connected client. Desktop and iOS apply reads monotonically, and reconnecting clients receive the persisted state in the Desktop snapshot.
 
-4. **Content preservation across snapshots.** iOS's `applySnapshot` preserves existing non-empty content when the incoming snapshot item has empty content. This prevents the 5-second snapshot poll from wiping content the user just loaded.
+4. **Deletes use durable tombstones.** Desktop persists each deleted identity and filters it from producer snapshots. The engine broker distributes the live `delete` delta to every connected client. A producer can keep its own historical file without making a deleted notification return.
+
+5. **Content preservation across snapshots.** iOS's `applySnapshot` preserves existing non-empty content when the incoming snapshot item has empty content. This prevents the 5-second snapshot poll from wiping content the user just loaded.

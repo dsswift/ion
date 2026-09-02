@@ -53,3 +53,24 @@ func buildReviveResumePrompt(results []ChildResultRecord) string {
 	}
 	return b.String()
 }
+
+// buildPollReviveResumePrompt renders the poll verdicts a dispatch was parked
+// on, so the revived agent is told what its poll decided.
+//
+// Without this the poll path signalled revive and carried nothing: the agent
+// resumed, drained an empty child-result set, and received the generic "no
+// child results were recorded" prompt. It then reported that no terminal
+// verdict ever arrived -- correctly -- while the engine's delivery log line
+// said "delivered". The verdict has to travel with the wake, not just cause it.
+func buildPollReviveResumePrompt(results []PollResultRecord) string {
+	var b strings.Builder
+	if len(results) == 1 {
+		b.WriteString("[SYSTEM] The Poll you were waiting on has returned its terminal verdict, below. Continue your task from where you parked — your earlier work is in this conversation; do NOT restart from the beginning.\n")
+	} else {
+		fmt.Fprintf(&b, "[SYSTEM] All %d Polls you were waiting on have returned terminal verdicts, below. Continue your task from where you parked — your earlier work is in this conversation; do NOT restart from the beginning.\n", len(results))
+	}
+	for _, r := range results {
+		fmt.Fprintf(&b, "\n--- Poll %s: %s ---\n%s\n", r.PollID, r.Verdict, r.Evidence)
+	}
+	return b.String()
+}

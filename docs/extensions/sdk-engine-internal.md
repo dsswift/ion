@@ -403,7 +403,7 @@ ctx.SetRunRecovery(&types.RunRecoveryConfig{Enabled: &enabled, MaxAttempts: 3})
 
 **`RegisterAgent(name, handle)`** / **`DeregisterAgent(name)`** -- register/deregister agent handles for per-agent abort and steering.
 
-**`ResolveTier(name)`** -- resolve a model tier name to a model ID.
+**`ResolveTier(name)`** -- resolve a model tier name to a model ID. Calling this before `DispatchAgent` is not required: `opts.Model` accepts a tier name directly and the engine resolves it at the shared dispatch seam, including the tier's ordered fallback chain.
 
 **`RegisterProcess`**, **`DeregisterProcess`**, **`ListProcesses`**, **`TerminateProcess`**, **`CleanStaleProcesses`** -- process lifecycle management (see TypeScript SDK for semantics).
 

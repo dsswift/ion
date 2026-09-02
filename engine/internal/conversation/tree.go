@@ -171,54 +171,105 @@ func GetLeaves(conv *Conversation) []SessionEntry {
 	return result
 }
 
-// ForkConversation forks at a message index. For v2 trees, uses branch in-place.
-// For legacy v1 conversations, creates a new conversation with copied messages.
+// ForkConversationBefore creates an independent conversation whose active path
+// stops immediately before entryID. The target must be a user turn on the
+// current path so a stale or foreign-branch client identity fails loudly.
+func ForkConversationBefore(conv *Conversation, entryID string) (*Conversation, error) {
+	conv.lock()
+	defer conv.unlock()
+
+	path := getContextPathEntriesLocked(conv)
+	cut := -1
+	for i, entry := range path {
+		if entry.ID != entryID {
+			continue
+		}
+		message := asMessageData(entry.Data)
+		if entry.Type != EntryMessage || message == nil || message.Role != "user" {
+			return nil, fmt.Errorf("entry %q is not a user turn on the current path", entryID)
+		}
+		cut = i
+		break
+	}
+	if cut < 0 {
+		return nil, fmt.Errorf("entry %q is not a user turn on the current path", entryID)
+	}
+	return forkConversationAtPathLocked(conv, path[:cut]), nil
+}
+
+// ForkConversation creates an independent conversation whose active path ends at
+// the requested message index. The source tree is never mutated: a fork and its
+// source must be able to advance independently after this call.
 func ForkConversation(conv *Conversation, atMessageIndex int) *Conversation {
+	conv.lock()
+	defer conv.unlock()
+
 	if len(conv.Entries) > 0 {
-		path := getContextPathEntries(conv)
-		var messageEntries []SessionEntry
-		for _, e := range path {
-			if e.Type == EntryMessage {
-				messageEntries = append(messageEntries, e)
+		path := getContextPathEntriesLocked(conv)
+		messageIndex := -1
+		cut := len(path)
+		for i, entry := range path {
+			if entry.Type != EntryMessage {
+				continue
+			}
+			messageIndex++
+			if messageIndex == atMessageIndex {
+				cut = i + 1
+				break
 			}
 		}
-		idx := atMessageIndex
-		if idx >= len(messageEntries) {
-			idx = len(messageEntries) - 1
+		if atMessageIndex < 0 {
+			cut = 0
 		}
-		if idx >= 0 && idx < len(messageEntries) {
-			Branch(conv, messageEntries[idx].ID) //nolint:errcheck // best-effort branch to the resolved head; failure leaves conv at root
-		}
-		return conv
+		return forkConversationAtPathLocked(conv, path[:cut])
 	}
 
-	newID := fmt.Sprintf("fork-%s-%d", conv.ID, nowMillis())
 	idx := atMessageIndex
 	if idx >= len(conv.Messages) {
 		idx = len(conv.Messages) - 1
 	}
-	if idx < 0 {
-		idx = 0
+	forked := newForkedConversation(conv)
+	if idx >= 0 {
+		forked.Messages = append([]types.LlmMessage(nil), conv.Messages[:idx+1]...)
 	}
+	return forked
+}
 
-	forked := make([]types.LlmMessage, idx+1)
-	for i := 0; i <= idx; i++ {
-		forked[i] = types.LlmMessage{
-			Role:    conv.Messages[i].Role,
-			Content: conv.Messages[i].Content,
+func forkConversationAtPathLocked(source *Conversation, path []SessionEntry) *Conversation {
+	forked := newForkedConversation(source)
+	forked.Entries = cloneEntries(path)
+	if len(forked.Entries) > 0 {
+		leaf := forked.Entries[len(forked.Entries)-1].ID
+		forked.LeafID = &leaf
+	}
+	forked.Messages = buildContextPathLocked(forked)
+	return forked
+}
+
+func newForkedConversation(source *Conversation) *Conversation {
+	return &Conversation{
+		ID:               NewConversationID(),
+		System:           source.System,
+		Model:            source.Model,
+		CreatedAt:        nowMillis(),
+		Version:          CurrentVersion,
+		ParentID:         source.ID,
+		WorkingDirectory: source.WorkingDirectory,
+	}
+}
+
+// cloneEntries copies entry headers and parent pointers. Entry payloads are
+// immutable values replaced wholesale by mutators, so sharing them is safe.
+func cloneEntries(entries []SessionEntry) []SessionEntry {
+	cloned := make([]SessionEntry, len(entries))
+	copy(cloned, entries)
+	for i := range cloned {
+		if cloned[i].ParentID != nil {
+			parent := *cloned[i].ParentID
+			cloned[i].ParentID = &parent
 		}
 	}
-
-	return &Conversation{
-		ID:        newID,
-		System:    conv.System,
-		Model:     conv.Model,
-		Messages:  forked,
-		CreatedAt: nowMillis(),
-		Version:   CurrentVersion,
-		ParentID:  conv.ID,
-		LeafID:    nil,
-	}
+	return cloned
 }
 
 func getContextPathEntries(conv *Conversation) []SessionEntry {

@@ -241,6 +241,16 @@ type SlashCommandListing struct {
 	ArgumentHint string `json:"argumentHint,omitempty"`
 	// Source is one of "ion" | "claude" | "skill" — where the template lives.
 	Source string `json:"source,omitempty"`
+	// ClearsConversation is true when the template declares the
+	// `clears-conversation` frontmatter key. Running the command wipes the
+	// conversation's model-visible history before the body executes.
+	//
+	// It is published on the discovery feed so a consumer can tell the operator
+	// what the command will do BEFORE the prompt is sent — the engine never
+	// blocks for user input, so any confirmation is the consumer's to run at
+	// its own layer. A consumer that ignores the field loses the warning, not
+	// correctness: the clear still happens engine-side.
+	ClearsConversation bool `json:"clearsConversation,omitempty"`
 }
 
 // StatusFields are the fields emitted by engine_status events.

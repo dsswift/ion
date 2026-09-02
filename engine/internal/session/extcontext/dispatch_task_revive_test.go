@@ -32,7 +32,7 @@ func TestDeliverTaskResult_RevivesTaskOnlyPark(t *testing.T) {
 	r.RegisterWithID("disp-1", "shell-agent", func() {}, nil, "sess", "", 1)
 
 	reviveCh := make(chan struct{}, 1)
-	if !r.SetSuspendedStateWithWaitingOn("disp-1", reviveCh, nil, []string{"bash-1", "bash-2"}) {
+	if !r.SetSuspendedStateWithWaitingOn("disp-1", reviveCh, nil, []string{"bash-1", "bash-2"}, nil) {
 		t.Fatal("SetSuspendedStateWithWaitingOn refused to park on tasks")
 	}
 
@@ -84,7 +84,7 @@ func TestDeliverTaskResult_MixedWaitSetWaitsForBothHalves(t *testing.T) {
 	r.RegisterWithID("disp-2", "lead", func() {}, nil, "sess", "", 1)
 
 	reviveCh := make(chan struct{}, 1)
-	if !r.SetSuspendedStateWithWaitingOn("disp-2", reviveCh, []string{"child-1"}, []string{"bash-9"}) {
+	if !r.SetSuspendedStateWithWaitingOn("disp-2", reviveCh, []string{"child-1"}, []string{"bash-9"}, nil) {
 		t.Fatal("SetSuspendedStateWithWaitingOn refused to park on a mixed wait set")
 	}
 
@@ -115,7 +115,7 @@ func TestDeliverTaskResult_ChildDoesNotReviveWhileTaskOutstanding(t *testing.T) 
 	r.RegisterWithID("disp-3", "lead", func() {}, nil, "sess", "", 1)
 
 	reviveCh := make(chan struct{}, 1)
-	if !r.SetSuspendedStateWithWaitingOn("disp-3", reviveCh, []string{"child-1"}, []string{"bash-9"}) {
+	if !r.SetSuspendedStateWithWaitingOn("disp-3", reviveCh, []string{"child-1"}, []string{"bash-9"}, nil) {
 		t.Fatal("SetSuspendedStateWithWaitingOn refused to park on a mixed wait set")
 	}
 
@@ -156,7 +156,7 @@ func TestDeliverTaskResult_SettledBeforeArmingPrunesPark(t *testing.T) {
 	}
 
 	reviveCh := make(chan struct{}, 1)
-	if r.SetSuspendedStateWithWaitingOn("disp-4", reviveCh, nil, []string{"bash-early"}) {
+	if r.SetSuspendedStateWithWaitingOn("disp-4", reviveCh, nil, []string{"bash-early"}, nil) {
 		t.Fatal("SetSuspendedStateWithWaitingOn parked on a task that had already completed")
 	}
 

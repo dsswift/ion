@@ -240,7 +240,8 @@ type BeforeProviderRequestInfo struct {
 | `message_update` | Message content updated | `MessageUpdateInfo{Role, Content}` | ignored | Observe only |
 | `tool_result` | Tool returns a result | tool result data | ignored | Observe only |
 | `input` | User input received | `string` (prompt) | `string` | Last non-nil string wins. Rewrites the user prompt. |
-| `model_select` | Model selection occurs | `ModelSelectInfo{RequestedModel, AvailableModels, Prompt}` | `string` (model ID) | Last non-nil string wins for ordinary prompts and resolved slash commands with no `model:` field. A non-empty slash-command model is authoritative and skips this hook. Routes on the RAW prompt (`Prompt`); see the routing-vs-payload note below. |
+| `model_select` | Model selection occurs | `ModelSelectInfo{RequestedModel, AvailableModels, Prompt}` | `string` (model ID) | Last non-nil string wins for ordinary prompts and resolved slash commands with no `model:` field. A non-empty slash-command model is handled by the Model Boundary decision. Routes on the RAW prompt (`Prompt`); see the routing-vs-payload note below. |
+| `before_slash_model_boundary` | A resolved slash command declares a `model:` tier | `SlashModelBoundaryInfo{Command, RequestedTier, ServingModel, HasHistory, DefaultApply}` | `SlashModelBoundaryResult{Apply *bool}` | Last explicit `Apply` wins. Nil abstains. Fresh boundaries always apply before this hook is needed; with history, the hook has final say over config and per-prompt policy. |
 | `user_bash` | User runs bash command | `string` (command) | ignored | Observe only |
 
 ### Payload Types
@@ -260,6 +261,15 @@ type ModelSelectInfo struct {
     AvailableModels []string
     Prompt          string // RAW user prompt, before before_prompt rewrite
 }
+```
+
+**Model Boundary precedence.** A fresh conversation applies the command tier because no prior history must be re-sent. With model-visible history, the engine resolves `engine.json` `slashModelTier.applyMidConversation`, then the request's `slashModelTierApplyMidConversation`, then `before_slash_model_boundary`. The last layer that expresses a value wins. A handler that omits `apply` abstains.
+
+```ts
+ion.on('before_slash_model_boundary', (_ctx, info) => {
+  if (info.command === '/benchmark') return { apply: true }
+  return undefined
+})
 ```
 
 **Routing vs. payload — `model_select` then `before_prompt`.** The two hooks split one concern into two stages. `model_select` *routes*: it reads the RAW user prompt (`ModelSelectInfo.Prompt`, captured before any rewrite) and picks the model that fits the request (content and length routing). `before_prompt` then *adapts the payload*: it rewrites the prompt text for the model that was chosen, and can read that chosen model via `ctx.model` (populated with the selected model's ID and context window). Route on the raw prompt first; shape the text to the winning model second.

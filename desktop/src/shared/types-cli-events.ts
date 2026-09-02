@@ -18,6 +18,16 @@ export interface DiscoveredCommand {
    * `desktop/src/main/remote/handlers/tabs.ts` for the filter logic.
    */
   origin: "ion" | "claude";
+  /**
+   * True when the command declares `clears-conversation` frontmatter: running
+   * it wipes the conversation's model-visible history before the body runs.
+   *
+   * Carried from the engine's discovery feed so a client can confirm with the
+   * operator BEFORE sending the prompt. The engine performs the clear either
+   * way — it never blocks for user input — so a client that drops this field
+   * loses the warning, not correctness.
+   */
+  clearsConversation?: boolean;
 }
 
 /**
@@ -41,6 +51,15 @@ export interface EngineDiscoveredCommand {
   description?: string;
   argumentHint?: string;
   source?: "extension" | "ion" | "claude" | "skill" | "project";
+  /**
+   * True when the command declares `clears-conversation` frontmatter: running
+   * it wipes the conversation's model-visible history before the body executes.
+   *
+   * Published so a client can confirm with the operator BEFORE sending the
+   * prompt. The engine never blocks for user input, so the confirmation is the
+   * client's to run; the clear happens engine-side either way.
+   */
+  clearsConversation?: boolean;
 }
 
 // ─── CLI Backend Stream Event Types ───

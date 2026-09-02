@@ -372,6 +372,7 @@ export const IPC = {
   ENGINE_STOP: "ion:engine-stop",
   ENGINE_BRANCH_BEFORE: "ion:engine-branch-before",
   ENGINE_REWIND: "ion:engine-rewind",
+  ENGINE_FORK: "ion:engine-fork",
   ENGINE_EVENT: "ion:engine-event",
   ENGINE_REMAP_SESSION: "ion:engine-remap-session",
   ENGINE_BROADCAST_HISTORY: "ion:engine-broadcast-history",

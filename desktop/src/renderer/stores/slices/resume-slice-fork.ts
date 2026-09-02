@@ -3,9 +3,9 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, nextMsgId } from '../session-store-helpers'
 import { makeMainPane, activeInstance, effectivePermissionMode, effectiveThinkingEffort } from '../conversation-instance'
 import { buildRestoredDenied } from './resume-slice-restore-denied'
-import { markForkPendingChartReconcile } from './fork-chart-reconcile'
+import { reconcileChartsForBranch } from '../../lib/chart-reconcile-request'
 import { stageableAttachments } from '../../../shared/staged-attachments'
-import { rInfo } from '../../rendererLogger'
+import { rError, rInfo } from '../../rendererLogger'
 
 /**
  * resume-slice-fork — the two fork verbs (`forkTab`, `forkFromMessage`).
@@ -42,16 +42,40 @@ export function forkModelSelection(
   }
 }
 
+/** A durable engine entry id is never one of the desktop's optimistic msg ids. */
+function durableEntryId(message: Message): string | undefined {
+  return message.id.startsWith('msg-') ? undefined : message.id
+}
+
+/** Fork through the engine before publishing any local tab state. */
+async function createDurableFork(
+  sourceTabId: string,
+  newTabId: string,
+  target: { messageIndex: number; entryId?: string; userTurnIndex?: number },
+): Promise<string> {
+  const result = await window.ion.engineFork(sourceTabId, newTabId, target)
+  if (!result.ok || !result.conversationId) {
+    throw new Error(result.error || 'The engine did not return a forked conversation ID')
+  }
+  return result.conversationId
+}
+
 export function createForkSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
     forkTab: async (sourceTabId) => {
       const source = get().tabs.find((t) => t.id === sourceTabId)
-      if (!source || !source.conversationId) return null
+      if (!source || !source.conversationId) {
+        rError('session.fork', 'fork tab rejected because source identity is absent', { source_tab: sourceTabId.slice(0, 8) })
+        return null
+      }
       // Source scrollback lives on the source tab's active instance now.
       const sourceInst = activeInstance(get().conversationPanes, sourceTabId)
       if (!sourceInst) throw new Error('Cannot fork a tab whose conversation instance is missing')
       try {
         const { tabId } = await window.ion.createTab()
+        const conversationId = await createDurableFork(sourceTabId, tabId, {
+          messageIndex: sourceInst.messages.length - 1,
+        })
 
         const messages: Message[] = sourceInst.messages.map((m) => ({
           ...m,
@@ -64,7 +88,8 @@ export function createForkSlice(set: StoreSet, get: StoreGet): Partial<State> {
         const tab: TabState = {
           ...makeLocalTab(),
           id: tabId,
-          conversationId: null,
+          conversationId,
+          lastKnownSessionId: conversationId,
           forkedFromSessionId: source.conversationId,
           title: source.title,
           customTitle: forkTitle,
@@ -90,6 +115,9 @@ export function createForkSlice(set: StoreSet, get: StoreGet): Partial<State> {
           conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({
             messages,
             messageCount: messages.length,
+            historyHydrated: true,
+            conversationIds: [conversationId],
+            sessions: [{ id: conversationId, reason: 'fork', createdAt: Date.now(), parentId: source.conversationId! }],
             ...forkModelSelection(sourceInst),
             permissionDenied: restoredDenied,
             permissionMode: forkMode,
@@ -99,13 +127,13 @@ export function createForkSlice(set: StoreSet, get: StoreGet): Partial<State> {
           isExpanded: true,
         }))
         window.ion.setPermissionMode(tabId, forkMode, 'tab_create')
-        // The copied scrollback carries the source's chart rows, but this tab
-        // has no durable conversation id yet — a conversation-scoped publish
-        // has nowhere to route. The marker is drained by the session_init
-        // reducer once the engine mints one.
-        markForkPendingChartReconcile(tab.id)
+        reconcileChartsForBranch(tab.id, conversationId, messages)
+        void window.ion.engineBroadcastHistory(tab.id, 'main', { queueUntilTabExists: true }).catch((error) => {
+          rError('session.fork', 'fork tab history broadcast failed', { tab_id: tab.id.slice(0, 8), error: String(error) })
+        })
         return tabId
-      } catch {
+      } catch (error) {
+        rError('session.fork', 'fork tab failed', { source_tab: sourceTabId.slice(0, 8), error: String(error) })
         return null
       }
     },
@@ -122,6 +150,15 @@ export function createForkSlice(set: StoreSet, get: StoreGet): Partial<State> {
       try {
         const { tabId: newTabId } = await window.ion.createTab()
         const targetMessage = sourceInst.messages[idx]
+        let userTurnIndex = -1
+        for (let i = 0; i <= idx; i++) {
+          if (sourceInst.messages[i].role === 'user') userTurnIndex++
+        }
+        const conversationId = await createDurableFork(tabId, newTabId, {
+          messageIndex: idx - 1,
+          entryId: durableEntryId(targetMessage),
+          userTurnIndex,
+        })
         const messages: Message[] = sourceInst.messages.slice(0, idx).map((m) => ({
           ...m,
           id: nextMsgId(),
@@ -133,7 +170,8 @@ export function createForkSlice(set: StoreSet, get: StoreGet): Partial<State> {
         const tab: TabState = {
           ...makeLocalTab(),
           id: newTabId,
-          conversationId: null,
+          conversationId,
+          lastKnownSessionId: conversationId,
           forkedFromSessionId: source.conversationId,
           title: source.title,
           customTitle: forkTitle,
@@ -163,6 +201,9 @@ export function createForkSlice(set: StoreSet, get: StoreGet): Partial<State> {
           conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({
             messages,
             messageCount: messages.length,
+            historyHydrated: true,
+            conversationIds: [conversationId],
+            sessions: [{ id: conversationId, reason: 'fork', createdAt: Date.now(), parentId: source.conversationId! }],
             ...forkModelSelection(sourceInst),
             permissionDenied: restoredDenied,
             draftInput: targetMessage.content,
@@ -173,11 +214,13 @@ export function createForkSlice(set: StoreSet, get: StoreGet): Partial<State> {
           isExpanded: true,
         }))
         window.ion.setPermissionMode(newTabId, forkMode, 'tab_create')
-        // Same handoff as forkTab: the copied prefix may carry chart rows, and
-        // this tab's durable conversation id does not exist yet.
-        markForkPendingChartReconcile(tab.id)
+        reconcileChartsForBranch(tab.id, conversationId, messages)
+        void window.ion.engineBroadcastHistory(tab.id, 'main', { queueUntilTabExists: true }).catch((error) => {
+          rError('session.fork', 'fork from message history broadcast failed', { tab_id: tab.id.slice(0, 8), error: String(error) })
+        })
         return newTabId
-      } catch {
+      } catch (error) {
+        rError('session.fork', 'fork from message failed', { source_tab: tabId.slice(0, 8), message_id: messageId, error: String(error) })
         return null
       }
     },

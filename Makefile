@@ -1,4 +1,4 @@
-.PHONY: default desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test test test-all test-linux test-linux-engine test-linux-engine-summary test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-studio-parity check-logging check-swiftlint check-dashboards check-vocabulary generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop
+.PHONY: default desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test test test-all test-linux test-linux-engine test-linux-engine-summary test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-studio-parity check-logging check-swiftlint check-dashboards check-vocabulary generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop log-level-debug
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -347,8 +347,19 @@ bootstrap:
 	@echo "▶ npm install (husky hooks)"
 	@npm install --silent
 	@$(MAKE) --no-print-directory claude-symlinks
+	@$(MAKE) --no-print-directory log-level-debug
 	@$(MAKE) --no-print-directory graph-ensure
 	@echo "✅ bootstrap complete"
+
+# Put the developer's engine into DEBUG.
+#
+# Running bootstrap means developing Ion, and the global engine at ~/.ion is
+# the dev build being tested. DEBUG is the level that build needs; a consumer
+# install stays on INFO, which is why this lives in bootstrap and not in the
+# shipped defaults. logLevel resolves once at daemon start from the global
+# config alone, so a project-level .ion/engine.json cannot raise it.
+log-level-debug:
+	@bash scripts/bootstrap-log-level.sh
 
 # Build the graphify knowledge graph if this clone has none.
 #

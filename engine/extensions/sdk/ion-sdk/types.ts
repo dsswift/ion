@@ -26,8 +26,31 @@ export interface DispatchAgentOpts {
   /**
    * Deterministic extension-selected model. Extensions may select another
    * provider; model-authored Agent tool requests cannot.
+   *
+   * Accepts a configured tier name (`"fast"`, `"standard"`, …) as well as a
+   * concrete model identifier. The engine resolves a tier at the shared
+   * dispatch seam, along with any ordered fallback chain the tier declares.
+   * An unconfigured name and a concrete model identifier both pass through
+   * unchanged, so this is safe to set from operator configuration. Prefer a
+   * tier name: it keeps model selection in `~/.ion/models.json` rather than
+   * hardcoded in the extension, and lets the operator pick the cheapest model
+   * that suits mechanical child work.
    */
   model?: string
+  /**
+   * How long this dispatch's agent-state row survives in a client roster.
+   *
+   * Omit it. The engine default is `'sticky'`: the row persists after the
+   * dispatch finishes, so an operator opening a completed dispatch can still
+   * see what it dispatched. `'ephemeral'` drops the row the moment the
+   * dispatch stops running, which is opt-in for a caller that genuinely wants
+   * a transient row. `'always'` keeps it unconditionally.
+   *
+   * Ephemeral used to be the effective default for any row whose metadata
+   * omitted the field, which meant a finished child vanished from its parent's
+   * drill-down before it could be inspected.
+   */
+  visibility?: 'sticky' | 'ephemeral' | 'always'
   /**
    * Extension to load into the child session so the child receives the
    * extension's hooks, persona composition, AND its registered tools
@@ -42,6 +65,45 @@ export interface DispatchAgentOpts {
   systemPrompt?: string
   projectPath?: string
   sessionId?: string
+  /**
+   * Register your OWN identifier for this dispatch as an alias for the
+   * engine's dispatch ID, so a later `steerDispatch` / `recallDispatch`
+   * addressed with your key reaches this dispatch.
+   *
+   * Set it when your bookkeeping is keyed before the dispatch returns. A
+   * harness usually has to name a dispatch first: it records local state the
+   * moment it decides to dispatch, keys that state by an id it minted itself,
+   * and only then receives the engine's `dispatchId`. Steering with the local
+   * key misses — and the miss comes back as `"not_found"`, the same answer as
+   * a dispatch that already finished, so nothing signals the address was wrong
+   * and every steer for that dispatch is silently dropped.
+   *
+   * Optional. Omit it and nothing is aliased; prefer the returned `dispatchId`
+   * where you can. The alias is dropped when the dispatch ends, so a reused
+   * key never resolves to a stale dispatch.
+   */
+  clientDispatchId?: string
+  /**
+   * Cap how many dispatches of THIS agent name may be live at once under the
+   * same parent. Omit or pass <= 0 for no cap.
+   *
+   * The engine owns the mechanism and you own the number: only the engine's
+   * registry knows what is actually live, but which agents are singletons is
+   * your policy. Set it to 1 for an agent that owns exclusive durable state, or
+   * whose value comes from reasoning over everything at once rather than one
+   * item at a time. Leave it unset for an agent doing an isolated job that
+   * parallelises cleanly.
+   *
+   * Scoped per PARENT, not per session. A cap of 1 means "this dispatcher may
+   * hold one at a time" -- so two different parents may each hold their own
+   * dispatch of the same cross-cutting advisory agent concurrently, while a
+   * state-owning agent still cannot be doubled under one parent.
+   *
+   * A refusal names the dispatch ids already holding the slot, so the caller can
+   * wait for, steer, or read the result of the running dispatch rather than
+   * retrying blindly.
+   */
+  maxConcurrentPerName?: number
   /**
    * Cap the child session's agent loop turn count. Omit or pass <= 0 for
    * unlimited (the engine ships unopinionated). Lets harness engineers bound
@@ -1666,6 +1728,13 @@ export interface SendPromptOpts {
   bashAllowlistAdditions?: string[]
 
   /**
+   * Per-prompt policy for a resolved slash command that declares a model tier.
+   * Omit to inherit engine.json. True permits a mid-conversation switch; false
+   * retains the serving model. `before_slash_model_boundary` has final say.
+   */
+  slashModelTierApplyMidConversation?: boolean
+
+  /**
    * Semantic classification of this injection. See {@link InjectionKind} for
    * the set the engine defines and what each one means.
    *
@@ -1988,6 +2057,20 @@ export interface ModelSelectInfo {
    * site has no prompt in hand.
    */
   prompt?: string
+}
+
+/** Payload for `before_slash_model_boundary`. */
+export interface SlashModelBoundaryInfo {
+  command: string
+  requestedTier: string
+  servingModel: string
+  hasHistory: boolean
+  defaultApply: boolean
+}
+
+/** Optional decision from `before_slash_model_boundary`; omit to abstain. */
+export interface SlashModelBoundaryResult {
+  apply?: boolean | null
 }
 
 /** Payload for `context_discover`. */
@@ -2590,6 +2673,7 @@ export interface HookPayloadMap {
   tool_result: ToolResultInfo
   input: string
   model_select: ModelSelectInfo
+  before_slash_model_boundary: SlashModelBoundaryInfo
   user_bash: string
   plan_mode_prompt: string
 

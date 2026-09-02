@@ -38,6 +38,23 @@ type activeRun struct {
 	totalCost float64
 	startTime time.Time
 	steerCh   chan steerMessage
+	// steerInterrupt latches "a steer is buffered and the current provider
+	// stream should stop early so the model reacts to it now". It is set by
+	// the steer entry point and consumed by processStream, which returns as
+	// soon as it observes the latch. Atomic because the setter is an RPC
+	// goroutine and the reader is the stream-consuming run goroutine.
+	//
+	// A separate latch rather than reading len(steerCh): the drain checkpoints
+	// legitimately empty the channel, and a stream that started AFTER a steer
+	// was already drained must not be interrupted by the leftover signal. The
+	// latch is cleared at the top of every provider call, so it only ever
+	// means "a steer arrived during THIS stream".
+	steerInterrupt atomic.Bool
+	// steerInterruptStream is the resolved per-run policy for whether a steer
+	// arriving mid-stream ends that provider call early. Latched at run start
+	// from RunConfig.Steering so the policy cannot change under a run in
+	// flight. Read-only after construction, so it needs no lock.
+	steerInterruptStream bool
 	// suspendCh carries the suspend signal from ext/task_suspend. When the
 	// extension calls ctx.suspend() or ctx.suspendUntilAll(), the RPC handler
 	// sends a suspendSignal here. runLoop drains it at the next turn boundary
@@ -46,8 +63,8 @@ type activeRun struct {
 	// alive; when a revive message arrives via sendPrompt, runChild restarts the
 	// LLM run with the updated conversation context. Buffered with capacity 1 so
 	// the RPC handler never blocks.
-	suspendCh         chan suspendSignal
-	exitPlanMode      bool                     // set when ExitPlanMode tool is called during plan mode
+	suspendCh    chan suspendSignal
+	exitPlanMode bool // set when ExitPlanMode tool is called during plan mode
 	// parkedHumanWait is set when a human-wait client tool (AskUserQuestions
 	// and kin) parked the run. It terminates the run exactly like
 	// exitPlanMode does, but under its OWN identity: the run is waiting on a

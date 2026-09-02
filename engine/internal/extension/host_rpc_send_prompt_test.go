@@ -228,6 +228,34 @@ func sendPromptPayloadFull(t *testing.T, text, model string, additions []string)
 	return data
 }
 
+func TestExtSendPrompt_ForwardsSlashModelTierOverride(t *testing.T) {
+	h := NewHost()
+	ch := attachStdout(h)
+	got := make(chan SendPromptPayload, 1)
+	h.SetOnSendMessage(func(payload SendPromptPayload) { got <- payload })
+	allow := true
+	data, err := json.Marshal(map[string]interface{}{
+		"jsonrpc": "2.0", "id": 1, "method": "ext/send_prompt",
+		"params": map[string]interface{}{
+			"text": "run command", "slashModelTierApplyMidConversation": allow,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h.handleExtRequest("ext/send_prompt", 1, data)
+	select {
+	case payload := <-got:
+		if payload.SlashModelTierApplyMidConversation == nil || !*payload.SlashModelTierApplyMidConversation {
+			t.Fatalf("boundary override = %v, want true", payload.SlashModelTierApplyMidConversation)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("onSendMessage was not called")
+	}
+	readResponse(t, ch, time.Second)
+}
+
 // TestExtSendPrompt_ThreadsBashAllowlistAdditions_OnHookCtx verifies that the
 // ext/send_prompt RPC decodes the bashAllowlistAdditions param and forwards it
 // as the third argument to ctx.SendPrompt on the active-hook path. This is the

@@ -694,6 +694,20 @@ bare slash name (e.g. `"clear"`, `"ion--review-changes"`).
 `description` is an optional human-readable hint the autocomplete UI
 surfaces.
 
+#### engine_slash_model_tier_ignored
+
+Advisory emitted when a resolved slash command declares a `model:` tier but the resolved Model Boundary policy retains the conversation's current serving model. The command still runs. The event is the complete signal; the engine does not alter stream content or inject a synthetic message.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_slash_model_tier_ignored"` | Event type. |
+| `command` | string | Raw slash command, including the leading slash. |
+| `slashModelTierRequested` | string | Tier or model declared by the command. |
+| `slashModelTierServing` | string | Concrete model serving the run. |
+| `message` | string | Human-readable explanation for consumers that want to display one. |
+
+A consumer can ignore this advisory without changing execution. To change the decision, set `slashModelTier.applyMidConversation`, pass `slashModelTierApplyMidConversation` on one request, or handle `before_slash_model_boundary`.
+
 #### engine_command_result
 
 Result of every `Manager.SendCommand` dispatch: success (no error),
@@ -1094,6 +1108,20 @@ A live run-loop checkpoint drained a steer message into the conversation before 
 | `steerKind` | string | Optional injection classification. Empty for a user-authored steer. |
 | `steerMachineAuthored` | boolean | Engine-derived classification for the steer source. |
 
+#### engine_steer_interrupted_stream
+
+A steer arrived while the model was streaming assistant text, and the engine ended that provider call early so the steer applies on the next turn instead of after the model finishes composing. Governed by `steering.interruptStream` in `engine.json` (default on).
+
+This event reports the **scheduling decision**, not the delivery: `engine_steer_injected` still follows when the steer reaches the conversation. It exists so a consumer never has to infer why an assistant message ended short. Nothing the model produced is discarded — the completed assistant blocks are preserved and persisted — so a client renders the shortened message as an intentional early stop rather than as a truncation or a stream error.
+
+Only emitted when the stream was at an interruptible point: text in progress, with no `tool_use` block started. A tool call in flight must be answered by a `tool_result`, so the engine never cuts a stream mid-tool; those steers land at the post-tool-results checkpoint instead.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_steer_interrupted_stream"` | Event type |
+| `steerInterruptBlocksKept` | integer | Assistant content blocks completed before the interrupt and preserved into history. Omitted when zero. |
+| `steerQueuedCount` | integer | Steer messages buffered at interrupt time. Above 1 explains a following turn that consumes several instructions at once. Omitted when zero. |
+
 
 #### engine_intercept
 
@@ -1182,7 +1210,7 @@ Delegated-CLI login lifecycle for a provider (e.g. `openai` via the `codex` CLI)
 | `providerLogin.loginError` | string | Failure reason (`failed`, optional) |
 | `providerLogin.loginId` | string | CLI login handle, usable to cancel the flow (optional) |
 
-**Stage directions.** `await_device_code` and `await_auth_code` both involve a code, in opposite directions. On `await_device_code` the CLI generated the code and the user types it into the provider's verification page. On `await_auth_code` the *provider* issued the code to the user in the browser and the CLI is waiting for it on stdin — the consumer must return it with [`provider_login_code`](client-commands.md#provider_login_code). A login parked on `await_auth_code` makes no progress until it does.
+**Stage directions.** `await_device_code` and `await_auth_code` both involve a code, in opposite directions. On `await_device_code` the CLI generated the code and the user types it into the provider's verification page. On `await_auth_code` the *provider* issued the fallback code to the user in the browser and the CLI can receive it on stdin. The consumer can return it with [`provider_login_code`](client-commands.md#provider_login_code). For a CLI that also opened a loopback callback, the login can instead advance to `completed` when that browser flow makes the child exit successfully.
 
 **Terminal stages.** Every login ends in exactly one of `completed`, `failed`, or `cancelled`. The engine guarantees this even when a login driver fails without reporting a stage of its own, so a consumer can always retire its pending-login state on the first terminal stage it sees.
 

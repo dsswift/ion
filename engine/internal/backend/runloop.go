@@ -423,6 +423,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			messages = sanitized
 		}
 
+		// Append volatile repository context AFTER the history, past the
+		// provider's cache breakpoints. See runloop_git_context.go for why this
+		// must not live in the system prompt.
+		messages = AppendGitContextMessage(messages, opts, run.requestID, turn)
+
 		// Plan mode can flip mid-run: the model calls the EnterPlanMode
 		// sentinel and interceptEnterPlanMode sets run.planMode true
 		// (runloop_plan_mode_gates.go). The tool list built before this loop
@@ -503,10 +508,28 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// unchanged when the block is nil.
 		streamCtx := providers.WithTelemetryCorrelation(ctx, buildTelemCtx(run))
 
-		events, errc := providers.WithRetry(streamCtx, provider, streamOpts, retryConfig)
+		// Clear the steer-interrupt latch before starting this provider call.
+		// Every steer buffered up to this point has already been drained by the
+		// checkpoint at the top of the loop, so a latch still set here refers to
+		// work already applied. Clearing before WithRetry starts is load-bearing:
+		// a steer accepted after the provider begins must remain latched for this
+		// call rather than being erased by run-loop setup.
+		run.steerInterrupt.Store(false)
 
-		// Process stream events
-		assistantBlocks, stopReason, turnUsage, streamErr := b.processStream(ctx, run, events, errc)
+		// Give each provider call its own cancellation boundary. The run context
+		// stays live across turns, but processStream can return early after a steer
+		// interrupt. Canceling this child context when consumption ends stops
+		// WithRetry and the provider from continuing to publish into channels that
+		// no longer have a reader.
+		providerCtx, cancelProvider := context.WithCancel(streamCtx)
+		events, errc := providers.WithRetry(providerCtx, provider, streamOpts, retryConfig)
+
+		// Process stream events. Always close the provider-call lifetime when the
+		// consumer returns. On the normal path the stream has already ended; on a
+		// steer interrupt this is what stops the abandoned request and its retry
+		// forwarder before the next turn starts.
+		assistantBlocks, stopReason, turnUsage, streamErr := b.processStream(providerCtx, run, events, errc)
+		cancelProvider()
 
 		// Ephemeral MCP image blocks are valid only for the completed provider
 		// request. Drop them before persisting assistant output or next turn.

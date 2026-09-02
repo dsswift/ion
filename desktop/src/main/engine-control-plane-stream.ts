@@ -175,6 +175,28 @@ export function handleStreamSignalEvent(
       } as NormalizedEvent);
       return true;
 
+    case "engine_steer_interrupted_stream":
+      // The engine ended a provider call early because a steer arrived while
+      // the model was streaming, so the steer applies on the next turn instead
+      // of after the model finishes composing. Forwarded as its own normalized
+      // type rather than folded into steer_injected: this reports the
+      // SCHEDULING decision (an assistant message stopped short by engine
+      // action, with its completed blocks preserved), while steer_injected —
+      // which still follows — reports the delivery. Collapsing them would
+      // leave a consumer unable to distinguish an intentional early stop from
+      // a truncation or an error.
+      log("steer_interrupted_stream", {
+        tab_id: tabId,
+        blocks_kept: event.steerInterruptBlocksKept ?? 0,
+        queued_steers: event.steerQueuedCount ?? 0,
+      });
+      ctx.emit("event", tabId, {
+        type: "steer_interrupted_stream",
+        blocksKept: event.steerInterruptBlocksKept,
+        queuedSteers: event.steerQueuedCount,
+      } as NormalizedEvent);
+      return true;
+
     case "engine_background_task_started": {
       const task = event.backgroundTaskStarted;
       if (!task) return true;

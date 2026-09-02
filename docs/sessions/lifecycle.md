@@ -34,7 +34,7 @@ If a session with the same key already exists, `StartSession` returns an error.
 3. Build `RunOptions` from session config, per-prompt overrides, and engine defaults.
 4. Discover context files (AGENTS.md, ION.md, CLAUDE.md) from the working directory. Dispatched sub-agents receive the same grounding via the [context loading cascade](../context-loading.md).
 5. Fire `context_inject` hook for extension-provided context.
-6. Inject git context from the working directory.
+6. Inject git context from the working directory. It is stored on `RunOptions.GitContextText`, **not** appended to the system prompt: repository state changes on every commit, and the system prompt is the head of the provider's cacheable prefix, so volatile bytes there invalidate the whole prefix plus the entire conversation history. The run loop appends it after the message history, past the cache breakpoints.
 7. Fire `before_agent_start` for system prompt injection.
 8. Wire extension hooks (tool_call, turn, compaction, permission, file_changed, workspace_file_changed).
 9. Wire MCP tools and agent spawner.

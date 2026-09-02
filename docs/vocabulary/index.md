@@ -72,6 +72,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Desktop](#term-desktop-client)
 - [Dialog](#term-dialog)
 - [Dispatch](#term-dispatch)
+- [Dispatch Alias](#term-dispatch-alias)
 - [Dispatch Split Pane](#term-dispatch-split-pane)
 - [Drawer](#term-drawer)
 - [Engine event](#term-engine-event)
@@ -93,6 +94,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Message](#term-message)
 - [Message forwarding](#term-forwarding)
 - [Mirror store](#term-mirror-store)
+- [Model Boundary](#term-model-boundary)
 - [New Conversation Picker](#term-new-conversation-picker)
 - [Normalized event](#term-normalized-event)
 - [Notification](#term-notification)
@@ -114,6 +116,9 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Session](#term-session)
 - [Slash command](#term-slash-command)
 - [Status Drawer](#term-status-drawer)
+- [Steer](#term-steer)
+- [Steer Drain Checkpoint](#term-steer-drain-checkpoint)
+- [Steer Stream Interrupt](#term-steer-stream-interrupt)
 - [Studio](#term-studio-shell)
 - [Studio Browser Surface](#term-studio-browser-surface)
 - [Studio Center](#term-studio-center)
@@ -369,6 +374,20 @@ One started sub-agent run, tracked by a dispatch identifier. The engine reports 
   - `engine` / `code` / `go`: `type DispatchStateEntry struct` in `engine/internal/extension/sdk_types.go`
   - `sdk` / `code` / `typescript`: `export interface DispatchEntry` in `engine/extensions/sdk/ion-sdk/types.ts`
 
+#### Dispatch Alias {#term-dispatch-alias}
+
+A consumer-supplied identifier registered as an alternate name for a dispatch's engine identifier, so a steer or recall addressed with the consumer's own key resolves to the real dispatch. It exists because a harness usually keys its local state before the engine answers with its identifier. An alias is dropped when its dispatch ends, so a reused key never resolves to a finished dispatch.
+
+- **ID:** `dispatch-alias`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `client dispatch id`
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func (r *DispatchRegistry) RegisterAlias` in `engine/internal/session/extcontext/dispatch_registry.go`
+  - `sdk` / `code` / `go`: `ClientDispatchID string` in `sdk/go/context_dispatch.go`
+
 #### Engine server {#term-engine-server}
 
 The headless process that accepts consumer connections, owns session lifecycle, and broadcasts events. It speaks NDJSON over a socket.
@@ -381,6 +400,22 @@ The headless process that accepts consumer connections, owns session lifecycle, 
 - **Contract:** `public-wire`
 - **Implementations:**
   - `engine` / `code` / `go`: `type Server struct` in `engine/internal/server/server.go`
+
+#### Model Boundary {#term-model-boundary}
+
+The decision point where a slash command that declares a model tier either applies that tier or retains the conversation's serving model. A fresh conversation applies the tier; after model-visible history exists, engine configuration, a per-prompt override, and the before_slash_model_boundary hook control the decision.
+
+- **ID:** `model-boundary`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `slash model boundary`
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `evaluateSlashModelBoundary` in `engine/internal/session/slash_model_boundary.go`
+  - `sdk` / `code` / `typescript`: `SlashModelBoundaryInfo` in `engine/extensions/sdk/ion-sdk/types.ts`
+  - `sdk` / `code` / `go`: `HookBeforeSlashModelBoundary` in `sdk/go/hook_descriptors.go`
+- **Notes:** The default retains the serving model after history exists. Consumers can override the policy per configuration, request, or hook.
 
 #### Permission {#term-permission}
 
@@ -453,6 +488,48 @@ A named set of daily or weekly Schedules whose latest catch-up policy selects on
 - **Implementations:**
   - `engine` / `code` / `go`: `type ScheduleJob` in `engine/internal/extension/sdk_schedules.go`
   - `sdk` / `code` / `go`: `type ScheduleOpts` in `sdk/go/schedule.go`
+
+#### Steer {#term-steer}
+
+One instruction delivered into a run that is already in flight. The engine buffers it and injects it at the next turn boundary, because a provider request already sent cannot have a message added to it. An operator typing into a running turn and a harness bubbling a completion into that turn both arrive as steers, distinguished by their injection kind.
+
+- **ID:** `steer`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `steer message`, `mid-turn steer`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type steerMessage struct` in `engine/internal/backend/runloop_steer.go`
+  - `engine` / `wire` / `go`: `type SteerInjectedEvent struct` in `engine/internal/types/normalized_event_run_signals.go`
+  - `sdk` / `code` / `go`: `func (c *Context) SteerDispatch` in `sdk/go/context_dispatch_methods.go`
+
+#### Steer Drain Checkpoint {#term-steer-drain-checkpoint}
+
+One point in the agent loop where the engine empties the run's steer buffer into the conversation: the top of each loop iteration, immediately after tool results are saved, and before an end_turn completes. Every buffered steer drains at the first checkpoint reached, in arrival order.
+
+- **ID:** `steer-drain-checkpoint`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `drain checkpoint`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func (b *ApiBackend) drainSteer` in `engine/internal/backend/runloop_steer.go`
+
+#### Steer Stream Interrupt {#term-steer-stream-interrupt}
+
+The engine ending a provider call early because a steer arrived while the model was streaming assistant text, so the steer applies on the next turn rather than after the model finishes composing. The completed assistant blocks are preserved. Governed by steering.interruptStream and reported by the engine_steer_interrupted_stream event. Never applies during tool execution, where the provider protocol obliges the turn to answer every tool call.
+
+- **ID:** `steer-stream-interrupt`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `stream interrupt`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `wire` / `go`: `type SteerInterruptedStreamEvent struct` in `engine/internal/types/normalized_event_run_signals.go`
+  - `engine` / `code` / `go`: `type SteeringConfig struct` in `engine/internal/types/config_steering.go`
 
 #### Telemetry {#term-telemetry}
 
@@ -1612,6 +1689,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `center pane` → [Studio Center](#term-studio-center)
 - Alias: `chart` → [Chart Output](#term-chart-output)
 - Alias: `chart index rebuild` → [Chart index reconciliation](#term-chart-index-reconciliation)
+- Alias: `client dispatch id` → [Dispatch Alias](#term-dispatch-alias)
 - Alias: `command` → [Slash command](#term-slash-command)
 - Alias: `command envelope` → [Client command](#term-client-command)
 - Alias: `composer` → [Input Bar](#term-input-bar)
@@ -1627,6 +1705,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `daemon` → [Engine server](#term-engine-server)
 - Alias: `desktop client` → [Desktop](#term-desktop-client)
 - Alias: `dispatch split` → [Dispatch Split Pane](#term-dispatch-split-pane)
+- Alias: `drain checkpoint` → [Steer Drain Checkpoint](#term-steer-drain-checkpoint)
 - Alias: `engine configuration` → [Configuration](#term-configuration)
 - Alias: `engine session` → [Session](#term-session)
 - Alias: `engine tool` → [Tool](#term-tool)
@@ -1653,6 +1732,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `linked browser tab` → [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
 - Alias: `local web app` → [Web Application](#term-web-application)
 - Alias: `message list` → [Transcript](#term-transcript)
+- Alias: `mid-turn steer` → [Steer](#term-steer)
 - Alias: `mirror mode` → [Mirror store](#term-mirror-store)
 - Alias: `modal` → [Dialog](#term-dialog)
 - Alias: `new conversation flow` → [New Conversation Picker](#term-new-conversation-picker)
@@ -1679,11 +1759,14 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `server event envelope` → [Server message](#term-server-message)
 - Alias: `shell pane` → [Terminal](#term-terminal)
 - Alias: `side drawer` → [Drawer](#term-drawer)
+- Alias: `slash model boundary` → [Model Boundary](#term-model-boundary)
 - Alias: `socket transport` → [Transport](#term-transport)
 - Alias: `span` → [Telemetry](#term-telemetry)
 - Alias: `spend` → [Cost](#term-cost)
 - Alias: `status` → [Conversation status](#term-conversation-status)
 - Alias: `status bar` → [Conversation Status Bar](#term-conversation-status-bar)
+- Alias: `steer message` → [Steer](#term-steer)
+- Alias: `stream interrupt` → [Steer Stream Interrupt](#term-steer-stream-interrupt)
 - Alias: `sub-agent` → [Agent](#term-agent)
 - Alias: `surface pane` → [Studio Surface](#term-studio-surface)
 - Alias: `surface tab` → [Surface](#term-surface)

@@ -143,6 +143,14 @@ extension RemoteEvent {
             try container.encodeIfPresent(machineAuthored, forKey: .steerMachineAuthored)
             return true
 
+        case .engineSteerInterruptedStream(let tabId, let instanceId, let blocksKept, let queuedSteers):
+            try container.encode(TypeKey.engineSteerInterruptedStream, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encodeIfPresent(blocksKept, forKey: .steerInterruptBlocksKept)
+            try container.encodeIfPresent(queuedSteers, forKey: .steerQueuedCount)
+            return true
+
         case .engineRewindResult(let tabId, let instanceId, let error):
             // Encoder mirror for engine_rewind_result. iOS never originates
             // this event; the encoder enables round-trip tests. `status` is

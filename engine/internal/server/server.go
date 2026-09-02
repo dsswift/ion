@@ -609,31 +609,6 @@ func (s *Server) sendResult(conn net.Conn, cmd *protocol.ClientCommand, err erro
 	s.writeToClient(conn, line)
 }
 
-// sendForkResult sends a fork_session response with newKey at the top level
-// of the result JSON (not nested inside data), matching the TS wire contract.
-func (s *Server) sendForkResult(conn net.Conn, cmd *protocol.ClientCommand, err error, newKey string) {
-	if cmd.RequestID == "" {
-		return
-	}
-	if s.lifecycle != nil && !s.lifecycle.claimResult(cmd) {
-		utils.LogWithFields(utils.LevelDebug, "server", "late command result suppressed", map[string]any{
-			"status": cmd.Cmd, "request_id": cmd.RequestID, "session_id": cmd.Key,
-		})
-		return
-	}
-	result := protocol.ServerResult{
-		RequestID: cmd.RequestID,
-		OK:        err == nil,
-	}
-	if err != nil {
-		result.Error = err.Error()
-	} else {
-		result.NewKey = newKey
-	}
-	line := protocol.SerializeServerResult(result)
-	s.writeToClient(conn, line)
-}
-
 // healthSnapshot returns daemon liveness data for the health command.
 func (s *Server) healthSnapshot() map[string]interface{} {
 	version := s.version

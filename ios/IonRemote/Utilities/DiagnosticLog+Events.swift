@@ -159,6 +159,8 @@ extension DiagnosticLog {
             log("EVENT: engineSteerInjected tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength) clientMsgId=\(clientMessageId?.prefix(8) ?? "nil") entryId=\(entryId?.prefix(8) ?? "nil") kind=\(kind ?? "") machineAuthored=\(machineAuthored ?? false)", tag: "session", level: .info)
         case .engineSteerDegraded(let tabId, let instId, let messageLength, let kind, let machineAuthored):
             log("EVENT: engineSteerDegraded tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength) kind=\(kind ?? "") machineAuthored=\(machineAuthored ?? false)", tag: "session", level: .info)
+        case .engineSteerInterruptedStream(let tabId, let instId, let blocksKept, let queuedSteers):
+            log("EVENT: engineSteerInterruptedStream tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") blocksKept=\(blocksKept ?? 0) queuedSteers=\(queuedSteers ?? 0)", tag: "session", level: .info)
 
         case .engineRewindResult(let tabId, let instId, let error):
             log("EVENT: engineRewindResult tabId=\(tabId.prefix(8)) inst=\(instId.prefix(8)) error=\(error ?? "nil")", tag: "session", level: .info)
@@ -453,6 +455,14 @@ extension DiagnosticLog {
             let occupancy = payload.occupancyTokens.map(String.init) ?? "nil"
             log("EVENT: desktopContextBreakdown tab=\(tabId.prefix(8)) inst=\(instanceId?.prefix(8) ?? "nil") cats=\(payload.categories.count) occupancy=\(occupancy)/\(payload.contextWindow) total=\(payload.totalTokens) \(reconciled)\(unaccounted)", tag: "session", level: .info)
 
+        case .desktopSlashModelTierIgnored(let tabId, let instanceId, let command, let requested, let serving):
+            log("EVENT: desktopSlashModelTierIgnored", tag: "session", level: .info, fields: [
+                "tab_id": tabId,
+                "instance_id": instanceId ?? "",
+                "command": command,
+                "requested": requested,
+                "serving": serving,
+            ])
         case .promptResult(let tabId, let clientMsgId, let status, let error):
             log("EVENT: promptResult tab=\(tabId.prefix(8)) msgId=\(clientMsgId.prefix(8)) status=\(status) err=\(error ?? "nil")", tag: "session", level: .info)
         }

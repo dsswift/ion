@@ -265,7 +265,11 @@ type EngineRuntimeConfig struct {
 	Backend      string                    `json:"backend"`
 	DefaultModel string                    `json:"defaultModel"`
 	Providers    map[string]ProviderConfig `json:"providers,omitempty"`
-	Limits       LimitsConfig              `json:"limits"`
+	// SlashModelTier controls whether command-owned model tiers may replace the
+	// serving model after a conversation has model-visible history. Nil keeps the
+	// least-surprising default: retain the current model and its warm cache.
+	SlashModelTier *SlashModelTierConfig `json:"slashModelTier,omitempty"`
+	Limits         LimitsConfig          `json:"limits"`
 	// ResourceLimits caps concurrent sessions and per-session agent
 	// dispatches. Per-run Limits bound depth (turns, budget); resource
 	// limits bound breadth (how many orchestration contexts run at once).
@@ -309,6 +313,10 @@ type EngineRuntimeConfig struct {
 	// continuation nudge. Pointer so engine.json can fully omit the block
 	// and inherit the built-in defaults. See types.EarlyStopDefaults().
 	EarlyStopContinue *EarlyStopContinueConfig `json:"earlyStopContinue,omitempty"`
+	// Steering configures how a steer message reaches a run that is already
+	// in flight. Pointer so engine.json can omit the block and inherit the
+	// built-in defaults. See types.SteeringDefaults().
+	Steering *SteeringConfig `json:"steering,omitempty"`
 	// Thinking is the engine-wide DEFAULT extended-thinking configuration —
 	// the lowest layer of a three-layer precedence chain:
 	//

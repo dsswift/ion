@@ -49,22 +49,22 @@ func TestBuildCliUserContent_PDFMarkerBecomesDocumentBlock(t *testing.T) {
 
 	blocks := buildCliUserContent("test-conv", prompt, nil)
 	if len(blocks) != 2 {
-		t.Fatalf("want text + document, got %d blocks: %#v", len(blocks), blocks)
+		t.Fatalf("want document + text, got %d blocks: %#v", len(blocks), blocks)
 	}
-	// Marker stripped from the text block.
-	if txt, _ := blocks[0]["text"].(string); strings.Contains(txt, "[Attached") {
-		t.Fatalf("marker not stripped from text: %q", txt)
+	if blockType(blocks[0]) != "document" {
+		t.Fatalf("want document block first, got %q", blockType(blocks[0]))
 	}
-	doc := blocks[1]
-	if blockType(doc) != "document" {
-		t.Fatalf("want document block, got %q", blockType(doc))
-	}
+	doc := blocks[0]
 	src, _ := doc["source"].(map[string]interface{})
 	if src["media_type"] != "application/pdf" || src["type"] != "base64" {
 		t.Fatalf("bad document source: %#v", src)
 	}
 	if _, err := base64.StdEncoding.DecodeString(src["data"].(string)); err != nil {
 		t.Fatalf("document data is not valid base64: %v", err)
+	}
+	// Marker stripped from the trailing text block.
+	if txt, _ := blocks[1]["text"].(string); strings.Contains(txt, "[Attached") {
+		t.Fatalf("marker not stripped from text: %q", txt)
 	}
 }
 
@@ -75,13 +75,13 @@ func TestBuildCliUserContent_ImageAttachmentBecomesImageBlock(t *testing.T) {
 
 	blocks := buildCliUserContent("test-conv", prompt, atts)
 	if len(blocks) != 2 {
-		t.Fatalf("want text + image, got %d blocks: %#v", len(blocks), blocks)
+		t.Fatalf("want image + text, got %d blocks: %#v", len(blocks), blocks)
 	}
-	if txt, _ := blocks[0]["text"].(string); strings.Contains(txt, "[Attached") {
+	if blockType(blocks[0]) != "image" {
+		t.Fatalf("want image block first, got %q", blockType(blocks[0]))
+	}
+	if txt, _ := blocks[1]["text"].(string); strings.Contains(txt, "[Attached") {
 		t.Fatalf("image marker not stripped from text: %q", txt)
-	}
-	if blockType(blocks[1]) != "image" {
-		t.Fatalf("want image block, got %q", blockType(blocks[1]))
 	}
 }
 
@@ -163,7 +163,7 @@ func TestBuildCliUserContent_DuplicatePDFMarkerInlinedOnce(t *testing.T) {
 	if docs != 1 {
 		t.Fatalf("duplicate marker should inline once, got %d document blocks", docs)
 	}
-	if txt, _ := blocks[0]["text"].(string); strings.Contains(txt, "[Attached") {
+	if txt, _ := blocks[1]["text"].(string); strings.Contains(txt, "[Attached") {
 		t.Fatalf("both duplicate markers should be stripped: %q", txt)
 	}
 }
@@ -179,16 +179,16 @@ func TestBuildCliUserContent_WirePDFDocumentBlock(t *testing.T) {
 		{MediaType: "application/pdf", Data: pdfB64, Path: clientPath},
 	})
 	if len(blocks) != 2 {
-		t.Fatalf("want text+document, got %d blocks: %#v", len(blocks), blocks)
+		t.Fatalf("want document+text, got %d blocks: %#v", len(blocks), blocks)
 	}
-	if blockType(blocks[1]) != "document" {
-		t.Fatalf("want document block, got %q", blockType(blocks[1]))
+	if blockType(blocks[0]) != "document" {
+		t.Fatalf("want document block first, got %q", blockType(blocks[0]))
 	}
-	src := blocks[1]["source"].(map[string]interface{})
+	src := blocks[0]["source"].(map[string]interface{})
 	if src["media_type"] != "application/pdf" || src["data"] != pdfB64 {
 		t.Fatalf("document source mismatch: %#v", src)
 	}
-	text := blocks[0]["text"].(string)
+	text := blocks[1]["text"].(string)
 	if strings.Contains(text, clientPath) || strings.Contains(text, "[Attached file:") {
 		t.Fatalf("file marker not stripped: %q", text)
 	}
@@ -203,10 +203,10 @@ func TestBuildCliUserContent_WireMixedAndUnknown(t *testing.T) {
 		{MediaType: "application/pdf", Data: "cGRm"},
 	})
 	if len(blocks) != 3 {
-		t.Fatalf("want text+image+document, got %d: %#v", len(blocks), blocks)
+		t.Fatalf("want image+document+text, got %d: %#v", len(blocks), blocks)
 	}
-	if blockType(blocks[1]) != "image" || blockType(blocks[2]) != "document" {
-		t.Fatalf("unexpected order: %q, %q", blockType(blocks[1]), blockType(blocks[2]))
+	if blockType(blocks[0]) != "image" || blockType(blocks[1]) != "document" || blockType(blocks[2]) != "text" {
+		t.Fatalf("unexpected order: %q, %q, %q", blockType(blocks[0]), blockType(blocks[1]), blockType(blocks[2]))
 	}
 }
 
@@ -217,7 +217,7 @@ func TestBuildCliUserContent_UnmatchedFileMarkerKept(t *testing.T) {
 	blocks := buildCliUserContent("test-conv", prompt, []types.ImageAttachment{
 		{MediaType: "application/pdf", Data: "cGRm", Path: "/somewhere/else.pdf"},
 	})
-	text := blocks[0]["text"].(string)
+	text := blocks[1]["text"].(string)
 	if !strings.Contains(text, "[Attached file: /nonexistent/other.pdf]") {
 		t.Fatalf("unmatched file marker should survive: %q", text)
 	}

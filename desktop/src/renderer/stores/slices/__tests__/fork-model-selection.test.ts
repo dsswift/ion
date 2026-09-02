@@ -70,9 +70,37 @@ describe('forkFromMessage conversation kind preservation', () => {
     ;(globalThis as any).window = {
       ion: {
         createTab: vi.fn(async () => ({ tabId: 'fork-tab' })),
+        engineFork: vi.fn(async () => ({ ok: true, newKey: 'fork-tab', conversationId: 'fork-conversation' })),
+        engineBroadcastHistory: vi.fn(async () => undefined),
+        reconcileCharts: vi.fn(),
         setPermissionMode: vi.fn(),
       },
     }
+  })
+
+  it('creates a durable fork whose identity is available before the first prompt', async () => {
+    const state = buildForkHarness('extension-profile')
+
+    await state.forkFromMessage('source-tab', 'user-1')
+
+    const forked = state.tabs.find((tab: { id: string }) => tab.id === 'fork-tab')
+    expect(forked).toMatchObject({
+      conversationId: 'fork-conversation',
+      lastKnownSessionId: 'fork-conversation',
+      forkedFromSessionId: 'source-conversation',
+    })
+    expect(state.conversationPanes.get('fork-tab').instances[0]).toMatchObject({
+      conversationIds: ['fork-conversation'],
+      historyHydrated: true,
+    })
+    expect((window as any).ion.engineFork).toHaveBeenCalledWith('source-tab', 'fork-tab', {
+      messageIndex: -1,
+      entryId: 'user-1',
+      userTurnIndex: 0,
+    })
+    expect((window as any).ion.engineBroadcastHistory).toHaveBeenCalledWith(
+      'fork-tab', 'main', { queueUntilTabExists: true },
+    )
   })
 
   it('keeps an extension profile on the forked tab', async () => {

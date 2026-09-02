@@ -20,7 +20,9 @@ These GitHub repository secrets power the CI signing pipeline:
 | Secret | Description |
 |--------|-------------|
 | `APPLE_CERT_BASE64` | Base64-encoded .p12 Developer ID Application certificate |
-| `APPLE_CERT_PASSWORD` | Password for the .p12 file |
+| `APPLE_CERT_PASSWORD` | Password for the Application .p12 file |
+| `APPLE_INSTALLER_CERT_BASE64` | Base64-encoded .p12 Developer ID Installer certificate |
+| `APPLE_INSTALLER_CERT_PASSWORD` | Password for the Installer .p12 file |
 | `APPLE_API_KEY` | Base64-encoded App Store Connect API .p8 key |
 | `APPLE_API_KEY_ID` | Key ID from App Store Connect |
 | `APPLE_API_ISSUER` | Issuer UUID from App Store Connect |
@@ -40,9 +42,11 @@ These GitHub repository secrets power the CI signing pipeline:
 
 1. Builds on `macos-14` with electron-builder
 2. Certificate imported into keychain (same process as engine)
-3. electron-builder signs the .app with Developer ID
-4. `afterSign` hook (`scripts/notarize.js`) notarizes and staples
-5. `.pkg` uploaded for manual installation; zip + `latest-mac.yml` uploaded for auto-update
+3. electron-builder signs the `.app` with Developer ID Application
+4. `afterSign` (`scripts/notarize.js`) notarizes and staples the `.app`
+5. `productsign` signs the `.pkg` with Developer ID Installer
+6. CI notarizes and staples the `.pkg`
+7. CI verifies the installer with `pkgutil`, `stapler`, and Gatekeeper before upload
 
 ### Local Builds
 

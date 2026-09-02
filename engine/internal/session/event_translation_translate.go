@@ -362,6 +362,17 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		// that semantic distinction for external consumers.
 		return types.EngineEvent{Type: "engine_steer_degraded", SteerDegradedMessageLength: e.MessageLength}
 
+	case *types.SteerInterruptedStreamEvent:
+		// The scheduling decision that precedes an injection: this assistant
+		// message stopped short by engine action, not by the model finishing or
+		// the stream failing. Emitted separately so a consumer never has to
+		// infer an intentional early stop from a truncation-shaped gap.
+		return types.EngineEvent{
+			Type:                     "engine_steer_interrupted_stream",
+			SteerInterruptBlocksKept: e.BlocksKept,
+			SteerQueuedCount:         e.QueuedSteers,
+		}
+
 	case types.AgentStateClampedEvent:
 		return types.EngineEvent{
 			Type:                 "engine_agent_state_clamped",

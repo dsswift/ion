@@ -43,6 +43,36 @@ func (s *SDK) FireSlashCommandResolved(ctx *Context, info SlashResolvedInfo) (st
 	return "", false
 }
 
+// FireBeforeSlashModelBoundary resolves the last explicit Apply decision.
+// A nil result means every handler abstained.
+func (s *SDK) FireBeforeSlashModelBoundary(ctx *Context, info SlashModelBoundaryInfo) *SlashModelBoundaryResult {
+	results := s.fire(HookBeforeSlashModelBoundary, ctx, info)
+	var decision *bool
+	for _, result := range results {
+		var apply *bool
+		switch typed := result.(type) {
+		case SlashModelBoundaryResult:
+			apply = typed.Apply
+		case *SlashModelBoundaryResult:
+			if typed != nil {
+				apply = typed.Apply
+			}
+		case map[string]interface{}:
+			if value, ok := typed["apply"].(bool); ok {
+				apply = &value
+			}
+		}
+		if apply != nil {
+			value := *apply
+			decision = &value
+		}
+	}
+	if decision == nil {
+		return nil
+	}
+	return &SlashModelBoundaryResult{Apply: decision}
+}
+
 // FireUserBash fires the user_bash hook.
 func (s *SDK) FireUserBash(ctx *Context, command string) error {
 	s.fire(HookUserBash, ctx, command)

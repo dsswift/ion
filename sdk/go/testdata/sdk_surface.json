@@ -134,6 +134,7 @@
     "before_prompt",
     "before_provider_request",
     "before_run_recovery",
+    "before_slash_model_boundary",
     "capability_discover",
     "capability_invoke",
     "capability_match",
@@ -210,12 +211,14 @@
       "allowedTools",
       "background",
       "callbackId",
+      "clientDispatchId",
       "contextPolicy",
       "detached",
       "displayName",
       "extensionDir",
       "fallbackChain",
       "implementationPhase",
+      "maxConcurrentPerName",
       "maxDispatchDepth",
       "maxTurns",
       "model",
@@ -230,6 +233,7 @@
       "suppressTools",
       "systemPrompt",
       "task",
+      "visibility",
       "waitForCompletion"
     ],
     "DispatchAgentResult": [
@@ -253,6 +257,12 @@
       "sessionId",
       "thinkingTokens",
       "toolCount"
+    ],
+    "SendPromptOpts": [
+      "bashAllowlistAdditions",
+      "kind",
+      "model",
+      "slashModelTierApplyMidConversation"
     ]
   }
 }

@@ -11,16 +11,17 @@ const (
 	ProviderLoginStarted         = "started"
 	ProviderLoginAwaitBrowser    = "await_browser"
 	ProviderLoginAwaitDeviceCode = "await_device_code"
-	// ProviderLoginAwaitAuthCode means the CLI is waiting for an authorization
-	// code the user obtained in the browser. Unlike await_device_code (where the
-	// user types a code the CLI generated into a verification page), here the
-	// code flows the other direction: the provider issues it to the user, who
-	// must return it to the engine via the provider_login_code command.
+	// ProviderLoginAwaitAuthCode means the CLI can accept an authorization code
+	// the user obtained in the browser. Unlike await_device_code (where the user
+	// types a code the CLI generated into a verification page), here the code
+	// flows the other direction: the provider issues it to the user, who can
+	// return it to the engine via the provider_login_code command.
 	//
-	// Emitted by flows the engine drives through a CLI's manual-paste fallback
-	// rather than its own callback (claude-code): the CLI has already opened a
-	// loopback-callback tab the engine cannot observe, so the engine surfaces the
-	// CLI's printed fallback URL and returns the pasted code over stdin.
+	// Emitted by flows that offer a CLI's manual-paste fallback
+	// (claude-code): the CLI has already opened a loopback-callback tab and
+	// also prints a fallback URL. The engine observes the child process, so
+	// either the loopback callback can finish the login or the user can return
+	// the fallback code through provider_login_code.
 	ProviderLoginAwaitAuthCode = "await_auth_code"
 	ProviderLoginCompleted     = "completed"
 	ProviderLoginFailed        = "failed"

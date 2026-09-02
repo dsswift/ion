@@ -95,6 +95,7 @@ export const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
     "messageLength",
   ],
   steer_degraded: ["messageLength"],
+  steer_interrupted_stream: ["blocksKept", "queuedSteers"],
   agent_state_clamped: [
     "agentName",
     "scope",
@@ -299,6 +300,8 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
     "effectiveContextLimit",
     "costPer1kInput",
     "costPer1kOutput",
+    "costPer1kCacheCreation",
+    "costPer1kCacheRead",
     "costPerImage",
     "dialect",
     "id",
@@ -409,6 +412,17 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
   // The desktop's prompt pipeline reads this off the wire to populate a
   // routing-hint cache keyed by session — see desktop/src/main/prompt-pipeline.ts.
   EngineCommandListing: ["description", "name"],
+  // Filesystem slash-command discovery feed (list_slash_commands). Mirrors
+  // Go's SlashCommandListing; the TS shape is EngineDiscoveredCommand in
+  // shared/types-cli-events.ts. clearsConversation lets a client warn the
+  // operator before a command wipes conversation history.
+  SlashCommandListing: [
+    "argumentHint",
+    "clearsConversation",
+    "description",
+    "name",
+    "source",
+  ],
   // Per-category token breakdown category row (one entry per category in
   // ContextBreakdownPayload.categories). Mirrors Go's ContextBreakdownCategory.
   ContextBreakdownCategory: ["kind", "name", "path", "tier", "tokens"],

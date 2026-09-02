@@ -108,6 +108,35 @@ type SteerDegradedEvent struct {
 
 func (SteerDegradedEvent) eventType() string { return EventSteerDegraded }
 
+// SteerInterruptedStreamEvent is emitted when a steer arrived while the model
+// was streaming assistant text and the engine ended that provider call early
+// so the steer applies on the next turn.
+//
+// It is distinct from SteerInjectedEvent, which proves a steer reached the
+// conversation. This one reports the *scheduling* decision that preceded the
+// injection: the assistant message a consumer is rendering stopped short by
+// engine action rather than by the model finishing or the stream failing. A
+// consumer that cannot tell those apart has to guess why a message ended, and
+// would otherwise reasonably render an engine-initiated early stop as a
+// truncation or an error.
+//
+// Emitted only when steering.interruptStream is on and the stream was at an
+// interruptible point (text, no tool call started). The injection itself still
+// arrives as SteerInjectedEvent at the following drain.
+type SteerInterruptedStreamEvent struct {
+	// BlocksKept is the number of assistant content blocks completed before
+	// the interrupt and preserved into conversation history. Nothing the model
+	// produced is discarded — this reports how much was committed early.
+	BlocksKept int `json:"blocksKept"`
+
+	// QueuedSteers is the number of steer messages buffered at interrupt time.
+	// All of them drain at the next checkpoint, so a value above 1 explains a
+	// turn that consumes several instructions at once.
+	QueuedSteers int `json:"queuedSteers"`
+}
+
+func (SteerInterruptedStreamEvent) eventType() string { return EventSteerInterruptedStream }
+
 // AgentStateClampedEvent is emitted when the engine bounded an agent-state
 // metadata payload that exceeded the configured limits.
 //

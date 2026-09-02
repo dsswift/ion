@@ -107,7 +107,10 @@ func TestResolveSlashIntoOptsCarriesFrontmatterForPersistence(t *testing.T) {
 	s := &engineSession{config: types.EngineConfig{WorkingDirectory: work}}
 	opts := &types.RunOptions{Prompt: "/x", ResolveSlash: true}
 
-	resolved, failed := mgr.resolveSlashIntoOpts(s, "slash-frontmatter", opts)
+	resolved, failed, err := mgr.resolveSlashIntoOpts(s, "slash-frontmatter", opts)
+	if err != nil {
+		t.Fatalf("resolveSlashIntoOpts error = %v", err)
+	}
 	if !resolved || failed != "" {
 		t.Fatalf("resolveSlashIntoOpts = (%t, %q), want (true, empty)", resolved, failed)
 	}

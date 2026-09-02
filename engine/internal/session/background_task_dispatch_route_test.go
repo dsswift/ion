@@ -39,7 +39,7 @@ func TestBackgroundWake_ParkedDispatchConsumesCompletion(t *testing.T) {
 
 	registry.RegisterWithID("disp-owner", "shell-agent", func() {}, nil, key, "", 1)
 	reviveCh := make(chan struct{}, 1)
-	if !registry.SetSuspendedStateWithWaitingOn("disp-owner", reviveCh, nil, []string{"bash-1"}) {
+	if !registry.SetSuspendedStateWithWaitingOn("disp-owner", reviveCh, nil, []string{"bash-1"}, nil) {
 		t.Fatal("dispatch refused to park on the task")
 	}
 
@@ -83,7 +83,7 @@ func TestBackgroundWake_UnownedCompletionStillWakesRoot(t *testing.T) {
 	mgr.mu.Unlock()
 	// A parked dispatch exists, but it is waiting on a DIFFERENT command.
 	registry.RegisterWithID("disp-other", "shell-agent", func() {}, nil, key, "", 1)
-	if !registry.SetSuspendedStateWithWaitingOn("disp-other", registryReviveCh(), nil, []string{"bash-99"}) {
+	if !registry.SetSuspendedStateWithWaitingOn("disp-other", registryReviveCh(), nil, []string{"bash-99"}, nil) {
 		t.Fatal("dispatch refused to park")
 	}
 

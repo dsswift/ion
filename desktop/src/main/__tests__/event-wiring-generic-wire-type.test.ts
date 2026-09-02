@@ -171,6 +171,25 @@ describe('wireEngineBridgeEvents — generic engine-event wire type', () => {
   })
 
 
+  it('forwards slash model tier ignored events with the desktop wire type', () => {
+    emit(KEY, {
+      type: 'engine_slash_model_tier_ignored',
+      command: '/review',
+      slashModelTierRequested: 'fast',
+      slashModelTierServing: 'standard',
+    })
+
+    expect(sentOfType('desktop_slash_model_tier_ignored')).toEqual([
+      [{
+        type: 'desktop_slash_model_tier_ignored',
+        tabId: 'tab1',
+        instanceId: 'inst1',
+        command: '/review',
+        slashModelTierRequested: 'fast',
+        slashModelTierServing: 'standard',
+      }],
+    ])
+  })
   it('forwards engine_steer_degraded with its distinct desktop type and length field', () => {
     emit(KEY, { type: 'engine_steer_degraded', steerDegradedMessageLength: 42 })
 

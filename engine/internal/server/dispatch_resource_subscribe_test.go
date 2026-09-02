@@ -21,6 +21,42 @@ func (p *blockingWorkspaceProducer) HandleQuery(types.ResourceFilter) ([]types.R
 	return p.items, nil
 }
 
+func TestDispatchResourcePublish_GlobalEmptyKeyFansOutDelta(t *testing.T) {
+	server := newShortPathTestServer(t, newMockBackend())
+	subscriber := dialServer(t, server)
+	defer subscriber.Close()
+	publisher := dialServer(t, server)
+	defer publisher.Close()
+
+	sendJSON(t, subscriber, map[string]interface{}{
+		"cmd": "resource_subscribe", "key": "", "resourceKind": "*",
+		"resourceGlobal": true, "requestId": "global-publish-subscribe",
+	})
+	subscribeLines := readLines(t, subscriber, 2, time.Second)
+	if !strings.Contains(strings.Join(subscribeLines, "\n"), `"ok":true`) {
+		t.Fatalf("global subscription failed; lines=%v", subscribeLines)
+	}
+
+	sendJSON(t, publisher, map[string]interface{}{
+		"cmd": "resource_publish", "key": "", "resourceKind": "briefing",
+		"resourceGlobal": true, "resourceOp": "mark_read", "resourceProducer": "producer-a",
+		"resourceItem": map[string]interface{}{"id": "briefing-1", "kind": "briefing"},
+		"requestId":    "global-publish",
+	})
+	publishLines := readLines(t, publisher, 1, time.Second)
+	if !strings.Contains(strings.Join(publishLines, "\n"), `"ok":true`) {
+		t.Fatalf("global publish failed; lines=%v", publishLines)
+	}
+
+	deltaLines := readLines(t, subscriber, 1, time.Second)
+	joined := strings.Join(deltaLines, "\n")
+	if !strings.Contains(joined, `"type":"engine_resource_delta"`) ||
+		!strings.Contains(joined, `"op":"mark_read"`) ||
+		!strings.Contains(joined, `"producer":"producer-a"`) {
+		t.Fatalf("global publish did not fan out a producer-qualified delta; lines=%v", deltaLines)
+	}
+}
+
 func TestDispatchResourceSubscribe_GlobalWildcardReturnsExistingWorkspaceSnapshot(t *testing.T) {
 	server := newShortPathTestServer(t, newMockBackend())
 	connection := dialServer(t, server)

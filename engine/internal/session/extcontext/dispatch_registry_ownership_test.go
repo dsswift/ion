@@ -104,7 +104,7 @@ func TestOwnedSnapshot_CarriesWaitingOn(t *testing.T) {
 	r := NewDispatchRegistry()
 	r.RegisterWithID("a", "parent-a", func() {}, nil, "s", "", 1)
 	r.RegisterWithID("a1", "child-a", func() {}, nil, "s", "a", 2)
-	if !r.SetSuspendedStateWithWaitingOn("a1", make(chan struct{}, 1), []string{"a2"}, []string{"bash-1"}) {
+	if !r.SetSuspendedStateWithWaitingOn("a1", make(chan struct{}, 1), []string{"a2"}, []string{"bash-1"}, nil) {
 		t.Fatal("failed to suspend a1")
 	}
 

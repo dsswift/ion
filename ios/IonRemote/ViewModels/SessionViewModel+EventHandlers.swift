@@ -258,6 +258,29 @@ extension SessionViewModel {
                 handleEngineSteerDegraded(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
             }
 
+        case .engineSteerInterruptedStream(let tabId, _, let blocksKept, let queuedSteers):
+            // Scheduling notice only — no transcript mutation. The assistant
+            // message already streamed is complete and correct as far as it
+            // goes; the engine merely stopped asking for more so the steer
+            // applies to the next turn. The steer itself arrives as
+            // engineSteerInjected, which owns the divider and the pending-bubble
+            // reconciliation, so appending anything here would double-render it.
+            //
+            // Logged rather than dropped: this is the one signal that explains
+            // why an assistant message ended short, and without it a shortened
+            // message is indistinguishable from a truncation in a diagnostic
+            // read of the session.
+            DiagnosticLog.log(
+                "steer interrupted a streaming turn; the steer applies on the next turn",
+                tag: "session",
+                level: .info,
+                fields: [
+                    "tab_id": tabId,
+                    "blocks_kept": String(blocksKept ?? 0),
+                    "queued_steers": String(queuedSteers ?? 0),
+                ]
+            )
+
         case .engineRewindResult(_, _, let error):
             // Transactional rejection-only notice: the desktop sends this
             // ONLY on refusal (unknown entry, foreign-branch target,
@@ -604,6 +627,10 @@ extension SessionViewModel {
         case .desktopContextBreakdown(let tabId, let instanceId, let payload):
             handleContextBreakdown(tabId: tabId, instanceId: instanceId, payload: payload)
 
+        case .desktopSlashModelTierIgnored:
+            // Observation-only. DiagnosticLog.logEvent records the typed event;
+            // this client applies no additional presentation policy.
+            break
         case .promptResult(let tabId, let clientMsgId, let status, let error):
             handlePromptResult(tabId: tabId, clientMsgId: clientMsgId, status: status, error: error)
 

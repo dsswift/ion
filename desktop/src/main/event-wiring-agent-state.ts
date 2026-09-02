@@ -63,4 +63,34 @@ export function ingestAgentStateEvent(key: string, event: { agents?: unknown } &
       _trace('main', 'agent_state: dispatch_agent', { name: a.name, status: a.status, conv_id: meta.conversationId ?? 'MISSING' })
     }
   }
+
+  // Nesting attribution, on the RECEIVE side.
+  //
+  // `dispatchParentId` is the only field the renderer groups children by
+  // (agent-helpers.ts childAgentsOf), and nothing on this side ever logged it.
+  // Combined with the engine logging only a count, a report of "the dispatch
+  // drill-down shows no child agents" could not be attributed to a layer: the
+  // engine's emission and the desktop's ingest were both opaque. This pairs
+  // with the engine's `agent snapshot nesting summary` so the two can be
+  // compared directly for the same snapshot.
+  //
+  // A nested agent (depth > 1) that arrives with no parent id cannot be
+  // grouped under anything, so the renderer shows it at the root. That is a
+  // real rendering defect rather than a cosmetic one, so it warns.
+  let nested = 0
+  let missingAttribution = 0
+  for (const a of agents) {
+    const parentId = typeof a.metadata?.dispatchParentId === 'string' ? a.metadata.dispatchParentId : ''
+    const rawDepth = a.metadata?.dispatchDepth
+    const depth = typeof rawDepth === 'number' ? rawDepth : null
+    if (parentId) nested++
+    else if (depth !== null && depth > 1) missingAttribution++
+  }
+  if (missingAttribution > 0) {
+    _log('main', 'agent_state: nested agents arrived with no parent attribution; they will render at root', {
+      key, count: agents.length, nested, missingAttribution,
+    })
+  } else {
+    _trace('main', 'agent_state: nesting', { key, count: agents.length, nested, missingAttribution })
+  }
 }

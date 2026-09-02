@@ -59,6 +59,17 @@ function updateCache(result: { models: any[]; providers: any[] }): void {
     thinkingEfforts: m.thinkingEfforts,
     modelKind: m.modelKind,
     isCustom: m.isCustom,
+    // Base input price, projected so a client can price a model switch. iOS
+    // never receives the engine's model catalog, so without this field the
+    // phone could only warn that a switch is expensive without saying how
+    // expensive — and a warning with no number is the kind a user learns to
+    // dismiss. The cache-creation and cache-read rates are derived from this
+    // one value by the shared multipliers (see shared/model-switch-cost.ts),
+    // matching what the engine does when a model carries no explicit cache
+    // pricing.
+    costPer1kInput: m.costPer1kInput,
+    costPer1kCacheCreation: m.costPer1kCacheCreation,
+    costPer1kCacheRead: m.costPer1kCacheRead,
   }))
   modelCache.lastFetched = Date.now()
 }

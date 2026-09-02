@@ -13,7 +13,7 @@ func TestAgentStatusGetterMapsCompleteActiveSnapshot(t *testing.T) {
 	r.RegisterWithID("dispatch-child", "child", nil, nil, "sess", "dispatch-parent", 2)
 	r.SetChildConvID("dispatch-child", "child-conversation")
 	r.UpdateActivity("dispatch-child", 4, "Using Read...")
-	if !r.SetSuspendedStateWithWaitingOn("dispatch-child", make(chan struct{}, 1), []string{"dispatch-grandchild"}, []string{"bash-task"}) {
+	if !r.SetSuspendedStateWithWaitingOn("dispatch-child", make(chan struct{}, 1), []string{"dispatch-grandchild"}, []string{"bash-task"}, nil) {
 		t.Fatal("failed to suspend child dispatch")
 	}
 
@@ -125,7 +125,7 @@ func TestDispatchRegistry_Snapshot_ReturnsActiveEntries(t *testing.T) {
 
 	// Park beta on mixed task and child work. Snapshot must preserve exact,
 	// sorted sets so SDK consumers can distinguish what holds it open.
-	if !r.SetSuspendedStateWithWaitingOn("dispatch-beta-1001-bbb", make(chan struct{}, 1), []string{"child-z", "child-a"}, []string{"bash-2", "bash-1"}) {
+	if !r.SetSuspendedStateWithWaitingOn("dispatch-beta-1001-bbb", make(chan struct{}, 1), []string{"child-z", "child-a"}, []string{"bash-2", "bash-1"}, nil) {
 		t.Fatal("SetSuspendedStateWithWaitingOn unexpectedly refused to park")
 	}
 	snap = r.Snapshot()

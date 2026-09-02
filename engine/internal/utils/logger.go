@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -437,7 +438,75 @@ func schemaReplaceAttr(_ []string, a slog.Attr) slog.Attr {
 // handler never suppresses any record; Ion's own logLevel gate in logAtFull
 // is the authoritative filter.
 // Must be called with logMu held.
+// discardLogs latches "this process must never write an operational log file".
+// Set once, before any logging, by a CLI entry point answering a question about
+// the binary itself (`ion version`, `ion help`). Never set by the daemon.
+//
+// It exists because provider registration happens in package init(), and every
+// provider constructor logs. So the log file is created before main() picks a
+// command — meaning even a pure `ion version` appended several kilobytes of
+// provider-registration lines to the operator's engine.jsonl. On a machine
+// whose build tooling shells out to `ion version` on every build, that is
+// continuous write amplification against the live log, and it competes for the
+// rotation budget with the daemon's real output.
+var discardLogs atomic.Bool
+
+// DiscardOperationalLogs routes all logging to io.Discard for the remainder of
+// the process. Call it as the first statement of a command that answers a
+// question about the binary and then exits; it must run before anything logs.
+//
+// Idempotent and safe to call when logging has already initialized: it clears
+// the memoized logger so the next call rebuilds against the discard sink.
+func DiscardOperationalLogs() {
+	discardLogs.Store(true)
+	logMu.Lock()
+	defer logMu.Unlock()
+	logger = nil
+	if logFile != nil {
+		logFile.Close() //nolint:errcheck // resource close on a path that is being abandoned
+		logFile = nil
+	}
+}
+
+// infoOnlyInvocation reports whether this process was started purely to answer
+// a question about the binary (`ion version`, `ion --version`, `-v`, and the
+// help spellings) and will exit without serving anything.
+//
+// Read from os.Args inside the logger rather than latched by the CLI, because
+// of init() ordering: provider registration in internal/providers.init() logs
+// once per provider, and an imported package is fully initialized before the
+// importing package's init() runs. So cmd/ion cannot set a flag early enough —
+// by the time any code in main's package executes, the log file exists and
+// ~4.5 KB of provider noise is in it. Deciding here, at the first log call, is
+// the only point that precedes the first write.
+//
+// The concrete cost this removes: `ion version` is called by extension build
+// tooling on every build, and each call appended kilobytes to the operator's
+// live engine.jsonl and consumed rotation budget that belongs to the daemon.
+func infoOnlyInvocation() bool {
+	args := os.Args[1:]
+	if len(args) == 0 {
+		return false
+	}
+	switch strings.TrimPrefix(args[0], "--") {
+	case "version", "help":
+		return true
+	}
+	return args[0] == "-v" || args[0] == "-h"
+}
+
 func initLogger() {
+	// A version/help invocation must leave no trace in the operator's log.
+	// Checked first so it wins over every other sink decision below.
+	if discardLogs.Load() || infoOnlyInvocation() {
+		h := slog.NewJSONHandler(io.Discard, &slog.HandlerOptions{
+			Level:       slogLevelTrace,
+			ReplaceAttr: schemaReplaceAttr,
+		})
+		logger = slog.New(h)
+		return
+	}
+
 	// Dev-only human-readable path: text to stderr, no file.
 	if os.Getenv("ION_LOG_TEXT") == "1" {
 		h := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{

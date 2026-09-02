@@ -10,6 +10,10 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if src.DefaultModel != "" {
 		dst.DefaultModel = src.DefaultModel
 	}
+	if src.SlashModelTier != nil {
+		copy := *src.SlashModelTier
+		dst.SlashModelTier = &copy
+	}
 
 	// Providers: merge maps
 	if len(src.Providers) > 0 {
@@ -192,7 +196,7 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 		dst.Poll = src.Poll
 	}
 
-	// LogLevel: project-level overrides global
+	// LogLevel: a higher layer's value replaces a lower one.
 	if src.LogLevel != "" {
 		dst.LogLevel = src.LogLevel
 	}

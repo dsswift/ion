@@ -134,6 +134,15 @@ export const modelCache = {
     thinkingEfforts?: string[];
     modelKind?: string;
     isCustom?: boolean;
+    // updateCache (main/ipc/models.ts) has always projected these two, but the
+    // cache type never declared them, so the snapshot's availableModels shape
+    // silently disagreed with what the cache actually held.
+    maxOutputTokens?: number;
+    effectiveContextLimit?: number;
+    // Base input price, used by a client to price a model switch.
+    costPer1kInput?: number;
+    costPer1kCacheCreation?: number;
+    costPer1kCacheRead?: number;
   }>,
   lastFetched: 0,
 };

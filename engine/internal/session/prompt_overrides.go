@@ -104,6 +104,9 @@ type PromptOverrides struct {
 	// invocation against the conventional roots, rewrites the LLM-visible prompt
 	// to the expanded body, and persists the raw invocation as the display turn.
 	ResolveSlash bool
+	// SlashModelTierApplyMidConversation is the per-invocation wire override.
+	// Nil inherits engine configuration; the extension hook can override either.
+	SlashModelTierApplyMidConversation *bool
 	// TemporaryAutoFromPlan uses auto-mode tools for this run without mutating session plan mode.
 	TemporaryAutoFromPlan bool
 

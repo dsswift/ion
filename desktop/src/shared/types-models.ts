@@ -7,6 +7,10 @@ export interface ModelEntry {
   contextWindow: number
   costPer1kInput: number
   costPer1kOutput: number
+  /** Explicit prompt-cache creation price per 1k input tokens, when published. */
+  costPer1kCacheCreation?: number
+  /** Explicit prompt-cache read price per 1k input tokens, when published. */
+  costPer1kCacheRead?: number
   supportsCaching?: boolean
   supportsThinking?: boolean
   supportsImages?: boolean

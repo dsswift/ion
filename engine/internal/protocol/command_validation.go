@@ -104,7 +104,8 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 	case "command":
 		return hasNonEmptyString(raw, "key") && hasString(raw, "command")
 	case "fork_session":
-		return hasNonEmptyString(raw, "key") && hasNumber(raw, "messageIndex")
+		return hasNonEmptyString(raw, "key") && (hasNumber(raw, "messageIndex") ||
+			(hasNonEmptyString(raw, "newKey") && (hasNonEmptyString(raw, "entryId") || hasNumber(raw, "userTurnIndex"))))
 	case "set_plan_mode":
 		return hasNonEmptyString(raw, "key") && hasBool(raw, "enabled")
 	case "branch":
@@ -164,7 +165,13 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 	case "resource_unsubscribe":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "resourceSubId")
 	case "resource_publish":
-		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "resourceOp")
+		if !hasNonEmptyString(raw, "resourceKind") || !hasNonEmptyString(raw, "resourceOp") {
+			return false
+		}
+		if hasTrueBool(raw, "resourceGlobal") {
+			return true
+		}
+		return hasNonEmptyString(raw, "key")
 	case "resource_get":
 		if !hasNonEmptyString(raw, "resourceKind") || !hasNonEmptyString(raw, "resourceId") {
 			return false

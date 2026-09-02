@@ -120,7 +120,11 @@ func TestParseClientCommand_ValidCommands(t *testing.T) {
 			cmd:  "fork_session",
 		},
 		{
-			name: "set_plan_mode enabled",
+			name: "fork_session with caller key and exact turn",
+			line: `{"cmd":"fork_session","key":"s1","newKey":"fork-tab","messageIndex":0,"entryId":"entry-1","userTurnIndex":2}`,
+			cmd:  "fork_session",
+		},
+		{
 			line: `{"cmd":"set_plan_mode","key":"s1","enabled":true}`,
 			cmd:  "set_plan_mode",
 		},
@@ -440,6 +444,20 @@ func TestParseClientCommand_ForkSessionValues(t *testing.T) {
 	}
 }
 
+func TestParseClientCommand_ForkSessionAdditiveFields(t *testing.T) {
+	line := `{"cmd":"fork_session","key":"source","newKey":"fork-tab","messageIndex":3,"entryId":"entry-7","userTurnIndex":2,"requestId":"r3"}`
+	result := ParseClientCommand(line)
+	if result == nil {
+		t.Fatal("expected valid fork_session")
+	}
+	if result.NewKey != "fork-tab" || result.EntryID != "entry-7" {
+		t.Fatalf("fork identity = (%q, %q)", result.NewKey, result.EntryID)
+	}
+	if result.UserTurnIndex == nil || *result.UserTurnIndex != 2 {
+		t.Fatalf("userTurnIndex = %v", result.UserTurnIndex)
+	}
+}
+
 func TestParseClientCommand_SetPlanModeValues(t *testing.T) {
 	line := `{"cmd":"set_plan_mode","key":"s1","enabled":false,"allowedTools":["read","write"]}`
 	result := ParseClientCommand(line)
@@ -453,6 +471,36 @@ func TestParseClientCommand_SetPlanModeValues(t *testing.T) {
 		t.Errorf("allowedTools = %v, want [read write]", result.AllowedTools)
 	}
 }
+
+func TestParseClientCommand_SlashModelTierOverride(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		line string
+		want *bool
+	}{
+		{"true", `{"cmd":"send_prompt","key":"s1","text":"/review","slashModelTierApplyMidConversation":true}`, boolPtr(true)},
+		{"false", `{"cmd":"send_prompt","key":"s1","text":"/review","slashModelTierApplyMidConversation":false}`, boolPtr(false)},
+		{"absent", `{"cmd":"send_prompt","key":"s1","text":"/review"}`, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ParseClientCommand(tc.line)
+			if got == nil {
+				t.Fatal("expected command")
+			}
+			if tc.want == nil {
+				if got.SlashModelTierApplyMidConversation != nil {
+					t.Fatalf("override = %v, want nil", *got.SlashModelTierApplyMidConversation)
+				}
+				return
+			}
+			if got.SlashModelTierApplyMidConversation == nil || *got.SlashModelTierApplyMidConversation != *tc.want {
+				t.Fatalf("override = %v, want %v", got.SlashModelTierApplyMidConversation, *tc.want)
+			}
+		})
+	}
+}
+
+func boolPtr(value bool) *bool { return &value }
 
 // TestParseClientCommand_ThinkingEffortValues pins the three-state decode of
 // send_prompt's thinkingEffort field. The distinction between "off" and an
@@ -1108,8 +1156,30 @@ func TestParseClientCommand_ResourceGetScoping(t *testing.T) {
 	}
 }
 
+func TestParseClientCommand_ResourcePublishScoping(t *testing.T) {
+	tests := []struct {
+		name  string
+		line  string
+		valid bool
+	}{
+		{"session publish includes key", `{"cmd":"resource_publish","key":"s1","resourceKind":"briefing","resourceOp":"mark_read"}`, true},
+		{"global publish needs no key", `{"cmd":"resource_publish","resourceGlobal":true,"resourceKind":"briefing","resourceOp":"mark_read"}`, true},
+		{"session publish rejects missing key", `{"cmd":"resource_publish","resourceKind":"briefing","resourceOp":"mark_read"}`, false},
+		{"global publish rejects missing kind", `{"cmd":"resource_publish","resourceGlobal":true,"resourceOp":"mark_read"}`, false},
+		{"global publish rejects missing op", `{"cmd":"resource_publish","resourceGlobal":true,"resourceKind":"briefing"}`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ParseClientCommand(tt.line)
+			if (got != nil) != tt.valid {
+				t.Fatalf("ParseClientCommand(%s) = %v, want valid=%t", tt.line, got, tt.valid)
+			}
+		})
+	}
+}
+
 func TestParseClientCommand_ResourcePublishValid(t *testing.T) {
-	raw := `{"cmd":"resource_publish","key":"s1","resourceOp":"upsert"}`
+	raw := `{"cmd":"resource_publish","key":"s1","resourceKind":"briefing","resourceOp":"upsert"}`
 	cmd := ParseClientCommand(raw)
 	if cmd == nil {
 		t.Fatal("expected non-nil result for valid resource_publish")
@@ -1126,7 +1196,7 @@ func TestParseClientCommand_ResourcePublishValid(t *testing.T) {
 }
 
 func TestParseClientCommand_ResourcePublishMissingResourceOp(t *testing.T) {
-	raw := `{"cmd":"resource_publish","key":"s1"}`
+	raw := `{"cmd":"resource_publish","key":"s1","resourceKind":"briefing"}`
 	cmd := ParseClientCommand(raw)
 	if cmd != nil {
 		t.Errorf("expected nil for resource_publish missing resourceOp, got %+v", cmd)

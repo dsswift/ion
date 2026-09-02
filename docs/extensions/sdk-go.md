@@ -41,6 +41,16 @@ func main() {
 			return ion.NoResult{}, nil
 		})
 
+	// Override the command-owned model-tier decision for one command family.
+	ion.OnHook(sdk, ion.HookBeforeSlashModelBoundary,
+		func(ctx *ion.Context, info ion.SlashModelBoundaryInfo) (ion.SlashModelBoundaryResult, error) {
+			if info.Command != "/benchmark" {
+				return ion.SlashModelBoundaryResult{}, nil
+			}
+			apply := true
+			return ion.SlashModelBoundaryResult{Apply: &apply}, nil
+		})
+
 	// A tool the model can call.
 	sdk.RegisterTool(ion.ToolDef{
 		Name:        "greet",
@@ -87,6 +97,8 @@ The engine probes for script entry points first (`extension.ts`, `index.ts`, `ex
 The public Go SDK is an ordinary Go module resolved by `go get`. In a source checkout, `engine/commands/install.command` also copies `sdk/go` into `~/.ion/extensions/sdk-go` as a developer asset, so locally compiled extensions use the SDK matching their installed engine. The `ion install-assets` subcommand installs only the TypeScript SDK.
 
 `BuildIdentity` is intentionally linker-stamped rather than read from the engine's init config. A compiled Go extension statically links its SDK, so echoing an engine-provided value would let an old binary claim any new engine identity. The engine compares the value embedded in the extension artifact with its own and rejects a mismatch. An empty SDK value remains compatible with older SDKs and logs a warning. Engine builds identified as `dev` also accept any SDK identity, so local source builds work without linker stamping. Release builds require an exact match; rebuild the extension with the command above to enable strict verification.
+
+`HookBeforeSlashModelBoundary` receives the command, requested tier, current serving model, history state, and configured default. Return `SlashModelBoundaryResult{Apply: &value}` to override that decision. Return the zero value to abstain. `SendPromptOpts.SlashModelTierApplyMidConversation` supplies the same policy for one prompt before the hook runs.
 
 ## Stdout is the protocol
 

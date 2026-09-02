@@ -40,6 +40,11 @@ const (
 	// and delivered the steer as a fresh prompt instead. Distinct from
 	// EventSteerInjected, whose contract is a live run-loop drain.
 	EventSteerDegraded = "steer_degraded"
+	// EventSteerInterruptedStream is emitted when a steer arriving mid-stream
+	// caused the engine to end that provider call early so the steer applies
+	// on the next turn. Reports the scheduling decision; the injection itself
+	// still arrives as EventSteerInjected.
+	EventSteerInterruptedStream = "steer_interrupted_stream"
 
 	// EventAgentStateClamped is emitted when the engine bounded an
 	// agent-state metadata payload that exceeded the configured limits.

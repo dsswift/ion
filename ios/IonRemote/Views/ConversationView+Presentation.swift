@@ -188,6 +188,32 @@ extension ConversationView {
                 Button("Browse Desktop Files") { showFilePicker = true }
                 Button("Cancel", role: .cancel) {}
             }
+            .confirmationDialog(
+                "Clear the conversation first?",
+                isPresented: Binding(
+                    get: { pendingClearingCommand != nil },
+                    set: { if !$0 { pendingClearingCommand = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Clear and run", role: .destructive) {
+                    pendingClearingCommand = nil
+                    submitPrompt(skipClearConfirm: true)
+                }
+                Button("Cancel", role: .cancel) {
+                    DiagnosticLog.log(
+                        "clearing command: operator declined",
+                        tag: "session",
+                        level: .info,
+                        fields: ["command": pendingClearingCommand?.command ?? ""]
+                    )
+                    pendingClearingCommand = nil
+                }
+            } message: {
+                if let pending = pendingClearingCommand {
+                    Text(ClearingCommand.message(for: pending.command))
+                }
+            }
             .animation(.default, value: pendingPermission?.id)
     }
 

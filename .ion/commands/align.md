@@ -1,6 +1,5 @@
 ---
 description: Context-aware alignment. When in plan mode, it reviews the active plan. Otherwise, it reviews all branch changes against Ion quality gates and principles, implements the fixes and commits them after operator approval.
-model: standard
 allowed_bash_commands: [ls, stat, git, gh pr view, gh pr diff, gh pr list, gh pr checks, gh pr checkout]
 ---
 

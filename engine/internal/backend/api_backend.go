@@ -131,14 +131,28 @@ func (b *ApiBackend) StartRunWithConfig(requestID string, options types.RunOptio
 	}
 	ctx, cancel := context.WithCancel(parent)
 
+	// Steer buffer capacity comes from resolved config so an operator can trade
+	// queue depth against back-pressure. Resolved before the run struct is
+	// built because a channel's capacity is fixed at creation.
+	var steerCfg *types.SteeringConfig
+	if cfg != nil {
+		steerCfg = cfg.Steering
+	}
+	steerBuf := types.SteerBufferSize(steerCfg)
+	steerInterrupt := types.SteerInterruptStreamEnabled(steerCfg)
+	utils.LogWithFields(utils.LevelDebug, "backend.runloop", "StartRunWithConfig: resolved steering policy", map[string]any{
+		"run_id": requestID, "buffer_size": steerBuf, "interrupt_stream": steerInterrupt,
+	})
+
 	run := &activeRun{
-		requestID:    requestID,
-		cancel:       cancel,
-		startTime:    time.Now(),
-		steerCh:      make(chan steerMessage, 4),
-		suspendCh:    make(chan suspendSignal, 1),
-		planMode:     options.PlanMode,
-		planFilePath: options.PlanFilePath,
+		requestID:            requestID,
+		cancel:               cancel,
+		startTime:            time.Now(),
+		steerCh:              make(chan steerMessage, steerBuf),
+		steerInterruptStream: steerInterrupt,
+		suspendCh:            make(chan suspendSignal, 1),
+		planMode:             options.PlanMode,
+		planFilePath:         options.PlanFilePath,
 		// Cache the RunOptions sparse-reminder override (highest precedence).
 		// The plan_mode_prompt hook may also contribute a value later in
 		// buildSystemPrompt; RunOptions wins so we set it unconditionally
@@ -381,13 +395,26 @@ func (b *ApiBackend) steer(requestID string, msg steerMessage) SteerResult {
 	}
 	select {
 	case run.steerCh <- msg:
+		// Latch the interrupt so a provider stream in flight ends early and the
+		// steer is applied on the next turn instead of after the model finishes
+		// composing. Set AFTER the buffer accepted the message: a steer that was
+		// rejected must not interrupt anything, or the run would lose a stream
+		// for a message it never took.
+		interrupted := false
+		if run.steerInterruptStream {
+			run.steerInterrupt.Store(true)
+			interrupted = true
+		}
 		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "Steer buffered on steer channel", map[string]any{
 			"run_id": requestID, "msg_len": len(msg.text), "kind": kind,
+			"queued": len(run.steerCh), "capacity": cap(run.steerCh),
+			"stream_interrupt_armed": interrupted,
 		})
 		return SteerResultDelivered
 	default:
 		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "Steer rejected, channel full", map[string]any{
 			"run_id": requestID, "msg_len": len(msg.text), "kind": kind,
+			"queued": len(run.steerCh), "capacity": cap(run.steerCh),
 		})
 		return SteerResultChannelFull
 	}

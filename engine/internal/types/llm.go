@@ -390,14 +390,19 @@ type ModelInfo struct {
 // ModelEntry is the wire-format model information returned by list_models.
 // Tracked by contract sync.
 type ModelEntry struct {
-	ID               string  `json:"id"`
-	ProviderID       string  `json:"providerId"`
-	ContextWindow    int     `json:"contextWindow"`
-	CostPer1kInput   float64 `json:"costPer1kInput"`
-	CostPer1kOutput  float64 `json:"costPer1kOutput"`
-	SupportsCaching  bool    `json:"supportsCaching,omitempty"`
-	SupportsThinking bool    `json:"supportsThinking,omitempty"`
-	SupportsImages   bool    `json:"supportsImages,omitempty"`
+	ID              string  `json:"id"`
+	ProviderID      string  `json:"providerId"`
+	ContextWindow   int     `json:"contextWindow"`
+	CostPer1kInput  float64 `json:"costPer1kInput"`
+	CostPer1kOutput float64 `json:"costPer1kOutput"`
+	// CostPer1kCacheCreation and CostPer1kCacheRead carry exact provider cache
+	// rates when the model catalog declares them. Zero means the rate is absent;
+	// consumers then use the same fallback multipliers as cost.TurnCost.
+	CostPer1kCacheCreation float64 `json:"costPer1kCacheCreation,omitempty"`
+	CostPer1kCacheRead     float64 `json:"costPer1kCacheRead,omitempty"`
+	SupportsCaching        bool    `json:"supportsCaching,omitempty"`
+	SupportsThinking       bool    `json:"supportsThinking,omitempty"`
+	SupportsImages         bool    `json:"supportsImages,omitempty"`
 	// MaxOutputTokens is the model's maximum output-token capacity per response.
 	// See ModelInfo.MaxOutputTokens for the value contract. Additive, omitempty.
 	MaxOutputTokens int `json:"maxOutputTokens,omitempty"`

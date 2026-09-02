@@ -337,13 +337,11 @@ func TestGatewayProviderDialectDispatch(t *testing.T) {
 // destroys the embedded-catalog metadata that GetModelInfo serves — and
 // cost.TurnCost reads GetModelInfo directly (not ListModels), so a clobbered
 // entry silently prices every turn on that provider at $0. The cache-pricing
-// fields are the worst case: they have no ModelEntry counterpart at all, so a
-// round-trip through a discovered entry cannot restore them.
+// exact cache-pricing fields are included in that preservation contract.
 func TestStoreResultPreservesCatalogMetadata(t *testing.T) {
 	ResetDiscoveryCache()
 
-	// Seed a catalog-shaped registry entry, including the two cache-pricing
-	// fields that ModelEntry cannot carry.
+	// Seed a catalog-shaped registry entry, including exact cache-pricing fields.
 	const model = "clobber-probe-model"
 	seeded := types.ModelInfo{
 		ProviderID:             "anthropic",
@@ -378,7 +376,7 @@ func TestStoreResultPreservesCatalogMetadata(t *testing.T) {
 			got.CostPer1kInput, got.CostPer1kOutput, seeded.CostPer1kInput, seeded.CostPer1kOutput)
 	}
 	if got.CostPer1kCacheCreation != seeded.CostPer1kCacheCreation || got.CostPer1kCacheRead != seeded.CostPer1kCacheRead {
-		t.Errorf("cache pricing clobbered (unrecoverable — no ModelEntry counterpart): create=%v read=%v want create=%v read=%v",
+		t.Errorf("cache pricing clobbered: create=%v read=%v want create=%v read=%v",
 			got.CostPer1kCacheCreation, got.CostPer1kCacheRead, seeded.CostPer1kCacheCreation, seeded.CostPer1kCacheRead)
 	}
 	if got.ContextWindow != seeded.ContextWindow {

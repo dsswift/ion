@@ -262,6 +262,7 @@ const DISPATCH_WIRE_TYPES = [
   "DispatchAgentOpts",
   "DispatchAgentResult",
   "ContextPolicy",
+  "SendPromptOpts",
 ] as const;
 
 const tsDispatchFields = extractWireFields(

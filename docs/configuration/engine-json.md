@@ -19,6 +19,25 @@ Ion ships with no default model. Before the engine can run a prompt, you must ei
 | `backend` | string | `"api"` | Backend mode. `"api"` for direct API calls, `"cli"` for CLI proxy. |
 | `defaultModel` | string | `""` | Model identifier used when no `--model` override is passed. Required. The engine errors out if neither this field nor `--model` is set. |
 | `logLevel` | string | `""` | Log verbosity. One of `"debug"`, `"info"`, `"warn"`, `"error"`. Empty string uses the engine default. |
+| `slashModelTier` | object | omitted | Policy for command-owned model tiers after a conversation has history. See [slashModelTier](#slashmodeltier). |
+
+## slashModelTier
+
+Controls whether a slash command's `model:` tier may replace the serving model after the conversation has model-visible history.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `applyMidConversation` | boolean | `false` | When true, a command-owned tier can switch models after history exists. When false or omitted, the engine retains the current model to preserve its prompt cache. |
+
+```json
+{
+  "slashModelTier": {
+    "applyMidConversation": true
+  }
+}
+```
+
+A `slashModelTierApplyMidConversation` value on one `send_prompt` or `command` request overrides this block for that invocation. The `before_slash_model_boundary` hook has final say. Fresh conversations always apply the command tier because no history must be re-sent.
 
 ## runRecovery
 
@@ -206,6 +225,34 @@ Two properties of this key matter:
 - **Omitting it preserves today's behavior exactly**, which is what every `engine.json` already on disk does. A per-run `RunOptions.EarlyStopEnabled` still wins over both — a harness that forces on for one dispatch is never second-guessed by machine config.
 
 This key is unrelated to the dispatch work gate (`DispatchAgentOpts.RequireToolUse`). Early-stop continuation is an engine-initiative nudge that still ships no continuation text of its own; the work gate acts only on an explicit per-dispatch declaration and supplies its own text. See [`docs/extensions/sdk-typescript.md`](../extensions/sdk-typescript.md#requiretooluse--declaring-that-a-dispatch-must-produce-work).
+
+## steering
+
+Controls how a **steer** — a new instruction aimed at a run that is already in flight — reaches that run. A steer comes either from an operator typing into a running turn or from a harness bubbling a completion, a poll result, or a check-in into it.
+
+A steer can only enter the conversation at a turn boundary, because a provider request already in flight cannot have a message added to it. The engine buffers the steer, then injects it at the next drain checkpoint: the top of each agent-loop iteration, immediately after tool results are saved, and before an `end_turn` completes. Every buffered steer drains at the first checkpoint reached, in arrival order, so a corrected instruction still lands after the one it corrects.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `interruptStream` | bool (nullable) | `true` | When on, a steer that arrives while the model is streaming assistant text ends that provider call early so the steer applies on the very next turn. The partial assistant text is kept and persisted; the model sees its own partial output followed by the new instruction. Set to `false` to let every provider call finish as issued, accepting that the steer waits for the stream to end. |
+| `bufferSize` | int | `32` | Per-run steer channel capacity — how many steers may be outstanding before the engine reports `channel_full` and refuses one. |
+
+```json
+{
+  "steering": {
+    "interruptStream": true,
+    "bufferSize": 32
+  }
+}
+```
+
+**Why interruption defaults on.** Steering exists to change what an agent is doing now. An instruction that only applies after the current stream finishes is not steering the current turn — it is steering the next one, and in the meantime the agent keeps producing output for the instruction the operator just replaced. Because the engine keeps the partial output either way, the default costs nothing beyond a shorter assistant message.
+
+Interruption never applies during tool execution. The provider protocol requires every `tool_use` block to be answered by a `tool_result`, so a tool call in flight must run to completion; the post-tool-results checkpoint is the earliest legal injection point there. A long tool call therefore still delays a steer, and that delay is a protocol constraint rather than a policy choice.
+
+When the engine does interrupt a stream it emits `engine_steer_interrupted_stream`, carrying the number of assistant blocks preserved and the number of steers queued. That event reports the scheduling decision only; the steer's arrival in the conversation is still confirmed by `engine_steer_injected`. Consumers use the interrupt event to render a shortened assistant message as an intentional early stop rather than as a truncation or an error.
+
+**Why the buffer is generous.** A rejected steer is the one outcome the engine cannot recover from — the caller has to decide what to do with an instruction the engine would not take. A queued message costs a pointer and a string; a dropped one costs a wrong-direction turn. Lower `bufferSize` only when you specifically want back-pressure at a low watermark.
 
 ## thinking
 

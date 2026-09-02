@@ -58,3 +58,42 @@ func TestPollToolIsNotPlanModeSafe(t *testing.T) {
 		t.Fatal("Poll must not be exposed in plan mode")
 	}
 }
+
+// Poll costs one inference per attempt, and a background Bash command already
+// has a free wait (run_in_background + notify_on_complete). The observed misuse
+// was exactly that substitution: a conversation started a background command
+// without notify_on_complete, then paid a frontier model to watch its output
+// file. The tool descriptions must steer both halves of that decision.
+func TestPollDescriptionRedirectsBackgroundBashWaiting(t *testing.T) {
+	def := PollTool()
+	for _, phrase := range []string{"notify_on_complete", "one inference per attempt"} {
+		if !strings.Contains(def.Description, phrase) {
+			t.Errorf("Poll description missing %q: %s", phrase, def.Description)
+		}
+	}
+}
+
+// The check command's full output is sent to the child on every attempt, and it
+// is deliberately not truncated so the judge keeps a complete view. The cost of
+// that choice belongs in the guidance the model reads.
+func TestPollCheckCommandDescriptionWarnsAboutOutputCost(t *testing.T) {
+	props, _ := PollTool().InputSchema["properties"].(map[string]any)
+	check, _ := props["check_command"].(map[string]any)
+	desc, _ := check["description"].(string)
+	if !strings.Contains(desc, "complete output is sent") {
+		t.Errorf("check_command does not disclose that full output reaches the child: %q", desc)
+	}
+}
+
+// The engine now selects a fast tier for the poll child. The model override must
+// tell the caller to leave it alone rather than naming a premium model.
+func TestPollModelOverrideDiscouragesPremiumModels(t *testing.T) {
+	props, _ := PollTool().InputSchema["properties"].(map[string]any)
+	model, _ := props["model"].(map[string]any)
+	desc, _ := model["description"].(string)
+	for _, phrase := range []string{"fast tier", "never name a premium"} {
+		if !strings.Contains(strings.ToLower(desc), strings.ToLower(phrase)) {
+			t.Errorf("model override description missing %q: %q", phrase, desc)
+		}
+	}
+}

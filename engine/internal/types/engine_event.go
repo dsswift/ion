@@ -170,6 +170,17 @@ type EngineEvent struct {
 	// SteerMessageLength: no run-loop steer channel drained this message.
 	SteerDegradedMessageLength int `json:"steerDegradedMessageLength,omitempty"`
 
+	// engine_steer_interrupted_stream — the engine ended a provider call early
+	// because a steer arrived while the model was streaming text, so the steer
+	// applies on the next turn instead of after the model finishes composing.
+	// BlocksKept reports how many completed assistant blocks were preserved
+	// (nothing is discarded); SteerQueuedCount reports how many steers were
+	// buffered at that moment. Together they let a consumer explain a short
+	// assistant message as an intentional early stop rather than a truncation
+	// or an error. See SteerInterruptedStreamEvent.
+	SteerInterruptBlocksKept int `json:"steerInterruptBlocksKept,omitempty"`
+	SteerQueuedCount         int `json:"steerQueuedCount,omitempty"`
+
 	// engine_agent_state_clamped — the engine bounded an agent-state metadata
 	// payload that exceeded the configured limits. Carries key names and byte
 	// counts only; the offending content is never echoed, because it is by
@@ -445,6 +456,20 @@ type EngineEvent struct {
 	// whatever fallback they own.
 	Command      string `json:"command,omitempty"`
 	CommandError string `json:"commandError,omitempty"`
+
+	// engine_slash_model_tier_ignored — a resolved slash command declared a
+	// `model:` tier that the engine did not apply, because the conversation
+	// already held model-visible history. Applying it would have switched
+	// models mid-conversation, which cannot reuse the provider prompt cache
+	// (the cache is keyed per exact model) and therefore re-sends the whole
+	// conversation as cache-creation input to serve one turn.
+	//
+	// SlashModelTierRequested is the tier the command asked for;
+	// SlashModelTierServing is the model the run actually uses. The command
+	// still runs — only the model selection was declined. A consumer that
+	// ignores this event loses the explanation, not correctness.
+	SlashModelTierRequested string `json:"slashModelTierRequested,omitempty"`
+	SlashModelTierServing   string `json:"slashModelTierServing,omitempty"`
 
 	// engine_export — ExportFormat carries the rendered format the engine
 	// produced ("markdown" | "json" | "html" | "jsonl"), driven by the

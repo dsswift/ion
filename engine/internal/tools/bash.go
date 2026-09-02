@@ -15,14 +15,14 @@ import (
 func BashTool() *types.ToolDef {
 	return &types.ToolDef{
 		Name:        "Bash",
-		Description: "Execute a bash command and return its output. Bare sleep commands at or above the configured threshold are refused in foreground and background modes. For a real command, use run_in_background with notify_on_complete; use Poll for inference-driven wait-and-recheck work.",
+		Description: "Execute a bash command and return its output. Bare sleep commands at or above the configured threshold are refused in foreground and background modes. For a real command, use run_in_background with notify_on_complete; use Poll only for inference-driven wait-and-recheck work, never to watch a command you started here.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"command":            map[string]any{"type": "string", "description": "The bash command to execute"},
 				"timeout":            map[string]any{"type": "number", "description": "Timeout in milliseconds (default: 120000). Values above the engine's configured maximum are clamped. Ignored when run_in_background is true."},
-				"run_in_background":  map[string]any{"type": "boolean", "description": "Run the command in the background and return immediately with a task ID and output file path. Read the output file for progress; TaskGet and TaskStop are available only when the harness registered the Task tools. Use for real long-lived commands, not bare sleep."},
-				"notify_on_complete": map[string]any{"type": "boolean", "description": "Only meaningful with run_in_background. Deliver this command's result back to the session when it finishes, instead of requiring polling. You may start further work or start more background commands. When this task is the only remaining work, end your turn; the engine parks the session and resumes it when the command completes."},
+				"run_in_background":  map[string]any{"type": "boolean", "description": "Run the command in the background and return immediately with a task ID and output file path. Set notify_on_complete with it unless you truly never need the result. Read the output file for progress; TaskGet and TaskStop are available only when the harness registered the Task tools. Use for real long-lived commands, not bare sleep."},
+				"notify_on_complete": map[string]any{"type": "boolean", "description": "Only meaningful with run_in_background. Deliver this command's result back to the session when it finishes, instead of requiring polling. This is the cheapest way to wait: it costs no inference, unlike Poll. You may start further work or start more background commands. When this task is the only remaining work, end your turn; the engine parks the session and resumes it when the command completes."},
 			},
 			"required": []string{"command"},
 		},

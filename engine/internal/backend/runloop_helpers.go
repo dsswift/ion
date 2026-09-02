@@ -180,8 +180,9 @@ func strPtr(v string) *string { return &v }
 
 // buildUserContentBlocks turns a text prompt plus pre-encoded image and
 // document attachments into a structured content-block slice for the user
-// message. The text block is emitted first when non-empty; one content block
-// per attachment follows, in order.
+// message. Valid media blocks are emitted first, in attachment order, and the
+// text block follows when non-empty. Media-first ordering gives vision models
+// the visual context before the instruction they must apply to it.
 //
 // Media type dispatch:
 //   - "image/*"         — native image block (base64 source)
@@ -195,9 +196,6 @@ func strPtr(v string) *string { return &v }
 // (the corresponding marker, if any, stays for the Read-tool fallback).
 func buildUserContentBlocks(prompt string, attachments []types.ImageAttachment) []types.LlmContentBlock {
 	blocks := make([]types.LlmContentBlock, 0, len(attachments)+1)
-	if prompt != "" {
-		blocks = append(blocks, types.LlmContentBlock{Type: "text", Text: prompt})
-	}
 	for _, a := range attachments {
 		if a.Data == "" || a.MediaType == "" {
 			utils.LogWithFields(utils.LevelWarn, "ApiBackend", "buildUserContentBlocks: dropping attachment with empty data or media type", map[string]any{"mimeType": a.MediaType})
@@ -249,6 +247,9 @@ func buildUserContentBlocks(prompt string, attachments []types.ImageAttachment) 
 			})
 		}
 	}
+	if prompt != "" {
+		blocks = append(blocks, types.LlmContentBlock{Type: "text", Text: prompt})
+	}
 	if len(blocks) == 0 {
 		// All attachments invalid AND prompt empty: emit a placeholder text
 		// block so AddUserMessage's blocks branch is well-formed. Must be
@@ -256,6 +257,13 @@ func buildUserContentBlocks(prompt string, attachments []types.ImageAttachment) 
 		utils.Debug("ApiBackend", "buildUserContentBlocks: emitting placeholder for empty prompt + invalid attachments")
 		blocks = append(blocks, types.LlmContentBlock{Type: "text", Text: "(empty prompt)"})
 	}
+	blockTypes := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		blockTypes = append(blockTypes, block.Type)
+	}
+	utils.LogWithFields(utils.LevelDebug, "backend.runloop", "user attachment content built", map[string]any{
+		"count": len(blocks), "attachment_count": len(attachments), "block_types": blockTypes, "content_len": len(prompt),
+	})
 	return blocks
 }
 

@@ -131,8 +131,10 @@ Community **partitioning** is offline; community **naming** is not. `--no-label`
 `make bootstrap` is the one command a fresh clone needs:
 
 ```bash
-make bootstrap    # npm install (husky hooks) + CLAUDE.md symlinks + graph build
+make bootstrap    # npm install (husky hooks) + CLAUDE.md symlinks + engine DEBUG + graph build
 ```
+
+Bootstrap also sets `logLevel: debug` in the global `~/.ion/engine.json`. Whoever runs it is developing Ion, so that engine is their dev build and DEBUG is the level it needs; a consumer install stays on `info`. The write preserves every other key, refuses rather than guesses when the file does not parse, and needs an engine restart to take effect.
 
 Until it runs, no hook fires — git looks in an empty `.git/hooks`, because `core.hooksPath` is per-clone state that git never clones. Bootstrap is idempotent, and it skips the graph build when one already exists.
 
@@ -444,7 +446,7 @@ The desktop is the primary client. The iOS app is a thin client connected via We
 
 - When a resource is published, the engine broadcasts the delta to all subscribers (desktop + iOS).
 - When a user reads a resource on either device, the client sends a `resource_publish` with `op: 'mark_read'`. The engine fans the delta to all subscribers. Both devices update their read state.
-- The engine does not track read state. Clients send the mark_read delta; the engine routes it. Producer extensions persist read state if they choose to.
+- Desktop persists read identities and deletion tombstones as the client source of truth. Clients send `mark_read` and `delete` deltas through the engine; the engine fans each delta to all subscribers. Desktop snapshots carry the persisted result to reconnecting devices.
 
 ### Producer-owned persistence
 
@@ -566,6 +568,8 @@ Logs are structured JSONL (one JSON object per line). Every line has a canonical
 
 Check the logs before investigating any issue. All files are JSONL — use `jq` to filter rather than reading them raw.
 
+**Confirm the effective level before you trust a log or pick one to write at.** `logLevel` in `~/.ion/engine.json` is read once at daemon start, from the global config only — a project `.ion/engine.json` cannot raise it, and an edit needs an engine restart. A clone bootstrapped with `make bootstrap` runs `debug`; a consumer install runs `info`. When the level would discard what you are about to write, or hide what you are about to read, say so and offer to fix it — do not silently demote a diagnostic to a level nobody receives.
+
 **Filter one conversation** (all surfaces, all log lines for a conversation ID):
 ```bash
 jq -c 'select(.conversation_id=="<id>")' ~/.ion/engine.jsonl
@@ -673,7 +677,7 @@ You are not breaking functionality by correcting a comment, a doc, or a test; yo
 
 ### The boundary (so this never becomes a tangent)
 
-- **Do not go hunting.** This rule fires on what you *encounter in the path of the work*, not on a codebase-wide audit you launch to find problems. No speculative sweeps.
+- **Fix what you encounter; do not audit what you do not.** This rule fires on defects in the path of the work, not on a codebase-wide hunt for them. Diagnosis is not auditing: instrumenting a whole pipeline to answer a reported symptom *is* the path of the work, and belongs in the first commit rather than the seventh.
 - **Roll it into the current plan.** When you find it, add it to the plan you are executing. Do not defer it to a "future PR", an issue, or a `TODO` — deferral is the forbidden anti-pattern (see "## Aspirational comments" and the "## Scope" rule in the user's global rules).
 - **Commit separately when unrelated.** The fix does not have to address the same issue you are working on. A stale comment found while implementing feature X is committed as its own `fix` / `chore` / `docs` commit at a clean scope seam, before or after the main work — it does not have to be entangled with feature X's commit.
 

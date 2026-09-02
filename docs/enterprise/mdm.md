@@ -291,4 +291,4 @@ The release pipeline signs and notarizes the package when these repository secre
 | `APPLE_INSTALLER_CERT_BASE64` / `APPLE_INSTALLER_CERT_PASSWORD` | Developer ID **Installer** cert — `productsign` for the `.pkg` (a distinct cert type from the Application cert) |
 | `APPLE_API_KEY` / `APPLE_API_KEY_ID` / `APPLE_API_ISSUER` | App Store Connect API key (base64-encoded `.p8`) — notarization for both the app and the pkg |
 
-Without the Installer cert, CI still builds the `.pkg` but leaves it unsigned, which is not usable for MDM push.
+All signing and notarization secrets are required for a desktop release. CI stops before upload if the Installer certificate is absent, if notarization fails, or if Gatekeeper rejects the package.

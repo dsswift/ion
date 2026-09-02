@@ -20,4 +20,14 @@ struct DiscoveredSlashCommand: Codable, Sendable, Identifiable {
     /// that pre-date the field (the field was added alongside the
     /// claude-compat filter fix).
     let origin: String?     // "ion" | "claude"
+    /// True when the command declares `clears-conversation` frontmatter:
+    /// running it wipes the conversation's model-visible history before the
+    /// command body runs.
+    ///
+    /// The engine performs that clear unconditionally and never asks — it does
+    /// not block for user input — so a client that wants to confirm must do it
+    /// BEFORE sending the prompt. Optional for back-compat with desktops that
+    /// predate the field; absent decodes as nil and is treated as false, which
+    /// fails open (no confirmation) rather than blocking a send.
+    var clearsConversation: Bool? = nil
 }

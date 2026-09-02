@@ -2,13 +2,26 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"strings"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 var version = "dev"
 
 func main() {
 	command, flags, listFlags, positional := parseArgs()
+
+	// Answering a question about the binary must not touch the operator's
+	// engine.jsonl. Provider registration runs in package init() and every
+	// provider constructor logs, so the log file is already destined to be
+	// written by the time main() runs — this discards it before the first
+	// flush. Must happen before the switch, and before anything else logs.
+	if command == "version" || command == "help" {
+		utils.DiscardOperationalLogs()
+	}
 
 	switch command {
 	case "serve":
@@ -56,50 +69,76 @@ func main() {
 		cmdTelemetry(positional, flags)
 	case "version":
 		fmt.Printf("ion-engine %s\n", version)
+	case "help":
+		// Reached by `help`, `--help`, and `-h`. printUsage exits non-zero
+		// because it is also the unknown-command path; an explicit request for
+		// help is not an error, so it exits 0.
+		printUsageTo(os.Stdout)
 	default:
 		printUsage()
 	}
 }
 
+// printUsage writes usage to stderr and exits 1. This is the unknown-command
+// path: the caller asked for something that does not exist, so the non-zero
+// exit and the stderr stream are both correct.
 func printUsage() {
-	fmt.Fprintln(os.Stderr, "Ion Engine - Headless AI agent runtime")
-	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "Usage: ion [command] [options]")
-	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "Commands:")
-	fmt.Fprintln(os.Stderr, "  serve                    Start daemon (default)")
-	fmt.Fprintln(os.Stderr, "  start --profile --dir    Start session")
-	fmt.Fprintln(os.Stderr, "    --key KEY              Session key (default: profile name)")
-	fmt.Fprintln(os.Stderr, "    --extension FILE       Load extension (can be repeated)")
-	fmt.Fprintln(os.Stderr, "  prompt \"text\"             Send prompt")
-	fmt.Fprintln(os.Stderr, "  prompt -                 Read prompt text from stdin (also: prompt < file)")
-	fmt.Fprintln(os.Stderr, "    --no-extensions        Skip extensions for this prompt")
-	fmt.Fprintln(os.Stderr, "    --extension FILE       Load extension (can be repeated)")
-	fmt.Fprintln(os.Stderr, "    --attach               Stream output until idle (keyed sessions)")
-	fmt.Fprintln(os.Stderr, "    --timeout DURATION      Wall-clock deadline (e.g. 60s, 5m, 2h); exit 124 on timeout")
-	fmt.Fprintln(os.Stderr, "  attach                   Stream events (NDJSON)")
-	fmt.Fprintln(os.Stderr, "  status                   List sessions")
-	fmt.Fprintln(os.Stderr, "  stop --key               Stop session")
-	fmt.Fprintln(os.Stderr, "  shutdown                 Stop daemon")
-	fmt.Fprintln(os.Stderr, "  health                   Probe daemon liveness (exit 0=ok, 1=down)")
-	fmt.Fprintln(os.Stderr, "  record --output          Record session to NDJSON")
-	fmt.Fprintln(os.Stderr, "  rpc                      JSON-RPC over stdin/stdout")
-	fmt.Fprintln(os.Stderr, "  upgrade                  Upgrade to latest release")
-	fmt.Fprintln(os.Stderr, "  auth verify              Verify configured workload identity")
-	fmt.Fprintln(os.Stderr, "  mcp <sub>                Manage MCP servers (add|list|remove|login|logout)")
-	fmt.Fprintln(os.Stderr, "  install-assets           Install the extension SDK to ~/.ion")
-	fmt.Fprintln(os.Stderr, "  plugin install <owner/repo>  Install a plugin")
-	fmt.Fprintln(os.Stderr, "  plugin list                  List installed plugins")
-	fmt.Fprintln(os.Stderr, "  plugin remove <name>         Remove a plugin")
-	fmt.Fprintln(os.Stderr, "  telemetry expand [FILE|-] Expand telemetry frames as JSONL")
-	fmt.Fprintln(os.Stderr, "  telemetry forward          Forward telemetry to Loki")
-	fmt.Fprintln(os.Stderr, "  version                  Show version")
-	fmt.Fprintln(os.Stderr, "")
-	fmt.Fprintln(os.Stderr, "Options:")
-	fmt.Fprintln(os.Stderr, "  --model <model>          Model override")
-	fmt.Fprintln(os.Stderr, "  --max-turns N            Max LLM turns (default: 50)")
-	fmt.Fprintln(os.Stderr, "  --max-budget USD         Cost ceiling")
-	fmt.Fprintln(os.Stderr, "  --output text|json|stream-json")
-	fmt.Fprintln(os.Stderr, "  --key KEY                Session key")
+	printUsageTo(os.Stderr)
 	os.Exit(1)
+}
+
+// printUsageTo renders the usage text to w. Split from printUsage so an
+// explicit `help` request can write to stdout and exit 0, while an unknown
+// command still writes to stderr and exits 1.
+func printUsageTo(w io.Writer) {
+	// Built as one string and written once: a per-line Fprintln to an
+	// io.Writer returns an error errcheck rightly demands be handled, and
+	// threading a check through ~40 calls would be noise. One write also means
+	// usage text cannot interleave with another goroutine's output.
+	var b strings.Builder
+	b.WriteString("Ion Engine - Headless AI agent runtime" + "\n")
+	b.WriteString("\n")
+	b.WriteString("Usage: ion [command] [options]" + "\n")
+	b.WriteString("\n")
+	b.WriteString("Commands:" + "\n")
+	b.WriteString("  serve                    Start daemon (default)" + "\n")
+	b.WriteString("  start --profile --dir    Start session" + "\n")
+	b.WriteString("    --key KEY              Session key (default: profile name)" + "\n")
+	b.WriteString("    --extension FILE       Load extension (can be repeated)" + "\n")
+	b.WriteString("  prompt \"text\"             Send prompt" + "\n")
+	b.WriteString("  prompt -                 Read prompt text from stdin (also: prompt < file)" + "\n")
+	b.WriteString("    --no-extensions        Skip extensions for this prompt" + "\n")
+	b.WriteString("    --extension FILE       Load extension (can be repeated)" + "\n")
+	b.WriteString("    --attach               Stream output until idle (keyed sessions)" + "\n")
+	b.WriteString("    --timeout DURATION      Wall-clock deadline (e.g. 60s, 5m, 2h); exit 124 on timeout" + "\n")
+	b.WriteString("  attach                   Stream events (NDJSON)" + "\n")
+	b.WriteString("  status                   List sessions" + "\n")
+	b.WriteString("  stop --key               Stop session" + "\n")
+	b.WriteString("  shutdown                 Stop daemon" + "\n")
+	b.WriteString("  health                   Probe daemon liveness (exit 0=ok, 1=down)" + "\n")
+	b.WriteString("  record --output          Record session to NDJSON" + "\n")
+	b.WriteString("  rpc                      JSON-RPC over stdin/stdout" + "\n")
+	b.WriteString("  upgrade                  Upgrade to latest release" + "\n")
+	b.WriteString("  auth verify              Verify configured workload identity" + "\n")
+	b.WriteString("  mcp <sub>                Manage MCP servers (add|list|remove|login|logout)" + "\n")
+	b.WriteString("  install-assets           Install the extension SDK to ~/.ion" + "\n")
+	b.WriteString("  plugin install <owner/repo>  Install a plugin" + "\n")
+	b.WriteString("  plugin list                  List installed plugins" + "\n")
+	b.WriteString("  plugin remove <name>         Remove a plugin" + "\n")
+	b.WriteString("  telemetry expand [FILE|-] Expand telemetry frames as JSONL" + "\n")
+	b.WriteString("  telemetry forward          Forward telemetry to Loki" + "\n")
+	b.WriteString("  version                  Show version (also: --version, -v)" + "\n")
+	b.WriteString("  help                     Show this help (also: --help, -h)" + "\n")
+	b.WriteString("\n")
+	b.WriteString("Options:" + "\n")
+	b.WriteString("  --model <model>          Model override" + "\n")
+	b.WriteString("  --max-turns N            Max LLM turns (default: 50)" + "\n")
+	b.WriteString("  --max-budget USD         Cost ceiling" + "\n")
+	b.WriteString("  --output text|json|stream-json" + "\n")
+	b.WriteString("  --key KEY                Session key" + "\n")
+	if _, err := io.WriteString(w, b.String()); err != nil {
+		// Usage text is the only output this path produces; if it cannot be
+		// written there is nowhere left to report that, so exit non-zero.
+		os.Exit(1)
+	}
 }

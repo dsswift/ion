@@ -135,13 +135,31 @@ export function isRootLevelAgent(agent: AgentStateUpdate): boolean {
   return depth <= 1 || parentId === ''
 }
 
+/**
+ * Roster visibility default for a row whose metadata omits the field.
+ *
+ * Sticky, not ephemeral. An ephemeral default discards the record the instant
+ * a run finishes: a dispatched child was gone from its parent's drill-down
+ * before an operator could open it, so a completed dispatch always looked as
+ * though it had dispatched nothing. Persisting is the useful behavior and
+ * vanishing is the special case, so vanishing is what a producer opts into.
+ *
+ * Mirrors the engine default (extcontext.resolveDispatchVisibility).
+ */
+export const DEFAULT_AGENT_VISIBILITY = 'sticky'
+
 export function isAgentVisible(agent: AgentStateUpdate): boolean {
-  const visibility = meta<string>(agent, 'visibility', 'ephemeral')
+  const visibility = meta<string>(agent, 'visibility', DEFAULT_AGENT_VISIBILITY)
   switch (visibility) {
     case 'always': return true
-    case 'sticky': return meta(agent, 'invited', false)
+    // A sticky row persists once invited. The `|| running` arm keeps this
+    // change strictly additive: before sticky became the default, a row with
+    // no metadata fell through to ephemeral and was visible while running.
+    // Without the arm, flipping the default would HIDE such a row entirely
+    // (no `invited` flag => false) — a regression dressed as a fix.
+    case 'sticky': return meta(agent, 'invited', false) || agent.status === 'running'
     case 'ephemeral': return agent.status === 'running'
-    default: return agent.status === 'running'
+    default: return meta(agent, 'invited', false) || agent.status === 'running'
   }
 }
 
@@ -216,7 +234,7 @@ export function activityTierForAgent(
 
 function visibilitySortRank(agent: AgentStateUpdate): number {
   const order: Record<string, number> = { always: 0, sticky: 1, ephemeral: 2 }
-  return order[meta(agent, 'visibility', 'ephemeral')] ?? 9
+  return order[meta(agent, 'visibility', DEFAULT_AGENT_VISIBILITY)] ?? 9
 }
 
 /**

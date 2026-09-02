@@ -59,6 +59,17 @@ type ResolvedSlash struct {
 	AllowedBashCommands []string // frontmatter `allowed-tools` / `allowed_bash_commands`
 	UserInvocable       bool     // frontmatter `user-invocable` (resolved with source default)
 	Context             string   // frontmatter `context`: "inline" (default) | "fork"
+	// ClearsConversation is the frontmatter `clears-conversation` /
+	// `clears_conversation` key. A command that declares it starts a fresh
+	// context boundary: the engine clears the conversation before the expanded
+	// body runs, so the command sees no prior history and sources its context
+	// from durable artifacts instead.
+	//
+	// This composes with the model-tier boundary gate. Because the clear lands
+	// first, the command's own `model:` tier is then evaluated at a genuinely
+	// fresh boundary and is applied — which is what makes a declared tier
+	// meaningful on a command that is expected to run mid-conversation.
+	ClearsConversation bool
 }
 
 // slashRE parses a leading slash invocation. The command name must start with a
@@ -170,6 +181,7 @@ func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*Res
 			AllowedBashCommands: frontmatterList(fm, "allowed-tools", "allowed_bash_commands"),
 			UserInvocable:       frontmatterUserInvocable(fm),
 			Context:             frontmatterContext(fm),
+			ClearsConversation:  frontmatterBool(fm, "clears-conversation", "clears_conversation"),
 		}, true
 	}
 
@@ -180,31 +192,30 @@ func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*Res
 // resolveSlashIntoOpts resolves the slash invocation carried in opts.Prompt and,
 // on success, rewrites opts.Prompt to the EXPANDED body and records the raw
 // invocation on opts (ResolvedSlash* fields) so the runloop persists the
-// invocation as the display turn. A non-empty command `model:` field owns model
-// selection for this invocation and therefore overrides any client-supplied
-// per-prompt model. Allowed-bash hints are unioned for this run. On failure
-// (not a parseable invocation, or no template found) it emits an
-// unknown_command result and returns false so SendPrompt aborts the prompt
-// without starting a run.
+// invocation as the display turn. A non-empty command `model:` field may own
+// model selection according to the resolved boundary policy. Allowed-bash
+// hints are unioned for this run. On failure (not a parseable invocation, no
+// template found, or a required clear that could not be persisted) it returns
+// the failed command and an optional error so SendPrompt aborts before a run.
 //
 // Called with m.mu held (SendPrompt holds the lock across buildRunOptions).
 // resolveSlashCommand only touches the filesystem and is safe under the lock.
 // resolveSlashIntoOpts resolves a slash invocation and rewrites opts in place.
-// Returns (true, "") on success. On failure returns (false, failedCommand) where
-// failedCommand is the string to pass to emitUnknownCommand. The caller is
-// responsible for emitting the unknown-command event AFTER releasing m.mu,
-// because emit acquires m.mu.RLock which deadlocks under a held write lock.
-func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types.RunOptions) (bool, string) {
+// Returns (true, "", nil) on success. An unresolved invocation returns
+// (false, failedCommand, nil); a failed required clear returns
+// (false, failedCommand, error). The caller emits only after releasing m.mu,
+// because emit acquires m.mu.RLock and would deadlock under the write lock.
+func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types.RunOptions) (bool, string, error) {
 	name, args, ok := parseSlashInvocation(opts.Prompt)
 	if !ok {
 		utils.LogWithFields(utils.LevelInfo, "session.slash", "resolveslash set but prompt is not a slash invocation", map[string]any{"key": key})
-		return false, opts.Prompt
+		return false, opts.Prompt, nil
 	}
 
 	res, found := resolveSlashCommand(name, args, s.config.WorkingDirectory, s.config.ClaudeCompat)
 	if !found {
 		utils.LogWithFields(utils.LevelInfo, "session.slash", "unknown command name=/", map[string]any{"key": key, "model": name})
-		return false, "/" + name
+		return false, "/" + name, nil
 	}
 
 	// Fire the resolution hook so an extension can observe/override before the
@@ -214,15 +225,32 @@ func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types
 		res.ExpandedBody = override
 	}
 
-	applyResolvedSlashToOpts(key, opts, res)
+	// A `clears-conversation` command wipes history FIRST, so the boundary gate
+	// below then sees a genuinely fresh conversation and honors the command's
+	// declared tier.
+	if _, err := m.applySlashClearsConversation(s, key, res); err != nil {
+		return false, res.Command, err
+	}
+
+	// Decide whether the command's declared tier may select the model before
+	// committing it to opts. Mid-conversation the declaration is recorded as
+	// provenance but never routes unless configuration or a hook permits it.
+	decision := m.evaluateSlashModelBoundary(s, key, res, opts)
+
+	applyResolvedSlashToOpts(key, opts, res, decision.applied)
+	opts.SlashModelTierIgnored = decision.alias != "" && !decision.applied
 
 	utils.LogWithFields(utils.LevelInfo, "session.slash", "resolved into opts", map[string]any{"session_id": key, "reason": res.Command, "status": res.Source, "count": len(res.ExpandedBody)})
-	return true, ""
+	return true, "", nil
 }
 
 // applyResolvedSlashToOpts applies one already-resolved command to a run. Both
 // send_prompt(resolveSlash) and the unified command dispatcher use this seam.
-func applyResolvedSlashToOpts(key string, opts *types.RunOptions, res *ResolvedSlash) {
+//
+// modelApplied carries the boundary gate's decision for res.Model. The gate
+// runs in the caller because it needs the session and conversation, which this
+// pure-ish seam deliberately does not take.
+func applyResolvedSlashToOpts(key string, opts *types.RunOptions, res *ResolvedSlash, modelApplied bool) {
 	// Rewrite the LLM-visible prompt to the expanded body; stash the raw
 	// invocation for the runloop's display-turn persistence.
 	opts.Prompt = res.ExpandedBody
@@ -232,8 +260,10 @@ func applyResolvedSlashToOpts(key string, opts *types.RunOptions, res *ResolvedS
 	opts.ResolvedSlashContext = res.Context
 	opts.ResolvedSlashFrontmatter = cloneResolvedSlashFrontmatter(res.Frontmatter)
 
-	// A command-declared model is authoritative for this invocation.
-	applySlashModelHint(opts, res.Model)
+	// A command-declared model is authoritative for this invocation only at a
+	// fresh conversation boundary; mid-conversation it is recorded but not
+	// applied. See slash_model_boundary.go.
+	applySlashModelHint(opts, res.Model, modelApplied)
 
 	if len(res.AllowedBashCommands) > 0 {
 		opts.BashAllowlistAdditionsForThisPrompt = unionStrings(
@@ -253,9 +283,20 @@ func cloneResolvedSlashFrontmatter(frontmatter map[string]any) map[string]any {
 	return clone
 }
 
-func applySlashModelHint(opts *types.RunOptions, frontmatterModel string) {
+// applySlashModelHint records the command-declared model alias and, when the
+// boundary gate allowed it, lets that alias select the serving model.
+//
+// The alias is recorded on opts even when it is not applied. Provenance is
+// about what the command asked for, and a consumer rendering "this command
+// wanted the reasoning tier" needs the request regardless of the outcome. Only
+// opts.Model — the field that actually routes the request — is gated.
+//
+// applied=false leaves opts.Model exactly as the caller resolved it, so the
+// conversation stays on its current model and its prompt cache stays warm. See
+// slash_model_boundary.go for why a mid-conversation switch is refused.
+func applySlashModelHint(opts *types.RunOptions, frontmatterModel string, applied bool) {
 	opts.ResolvedSlashModelAlias = frontmatterModel
-	if frontmatterModel != "" {
+	if frontmatterModel != "" && applied {
 		opts.Model = frontmatterModel
 	}
 }
@@ -295,6 +336,10 @@ func (m *Manager) emitUnknownCommand(key, command string) {
 		Command:      command,
 		CommandError: "unknown_command",
 	})
+}
+
+func trimSlashCommand(command string) string {
+	return strings.TrimPrefix(command, "/")
 }
 
 // unionStrings appends src entries not already present in dst (de-duplicated,

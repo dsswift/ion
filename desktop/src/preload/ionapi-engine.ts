@@ -82,6 +82,12 @@ export interface IonEngineApi {
     key: string,
     target: { entryId?: string; userTurnIndex?: number },
   ): Promise<{ ok: boolean; error?: string }>;
+  /** Create a durable, independent conversation from the source session. */
+  engineFork(
+    key: string,
+    newKey: string,
+    target: { messageIndex: number; entryId?: string; userTurnIndex?: number },
+  ): Promise<{ ok: boolean; error?: string; newKey?: string; conversationId?: string }>;
   /** Fire get_context_breakdown for the given engine key. Fire-and-forget:
    *  the engine emits engine_context_breakdown on its event bus; the renderer
    *  observes the result via the existing context_breakdown normalized event. */
@@ -101,6 +107,7 @@ export interface IonEngineApi {
   engineBroadcastHistory(
     tabId: string,
     instanceId: string | null,
+    opts?: { queueUntilTabExists?: boolean },
   ): Promise<void>;
   /** Notify the main process that the user focused a tab. The main
    *  process publishes the session key as a desktop.focus resource so
@@ -116,6 +123,7 @@ export interface IonEngineApi {
     Array<{
       id: string;
       kind: string;
+      producer?: string;
       title?: string;
       content: string;
       createdAt: string;
@@ -140,7 +148,7 @@ export interface IonEngineApi {
   resourceGet(
     kind: string,
     id: string,
-    opts?: { sessionKey?: string; global?: boolean },
+    opts?: { sessionKey?: string; global?: boolean; producer?: string },
   ): Promise<void>;
   onEngineEvent(
     callback: (key: string, event: EngineEvent) => void,

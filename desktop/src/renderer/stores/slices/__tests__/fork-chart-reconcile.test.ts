@@ -99,18 +99,11 @@ describe('fork chart reconciliation handoff', () => {
 })
 
 /**
- * The marker is left by the fork VERBS, and it must name the tab they just
- * created — never the tab they forked from.
- *
- * The helper suite above proves the handoff mechanism in isolation, which is
- * exactly why it cannot catch this: it marks and drains the same id by
- * construction. A source-tab marker would satisfy every assertion up there
- * while the real fork silently never reconciles, because the source tab
- * already has its durable conversation id and never reaches the drain with a
- * marker pending. So these cases drive the real slice and assert on the id the
- * verb actually registered.
+ * Fork verbs now receive the durable conversation id before they publish the
+ * tab. Chart reconciliation therefore runs immediately against the created tab
+ * and does not wait for a later session_init handoff.
  */
-describe('fork verbs register the created tab', () => {
+describe('fork verbs reconcile the durable created conversation', () => {
   const SOURCE_MESSAGES = [
     { id: 'user-1', role: 'user', content: 'chart it', timestamp: 1 },
     {
@@ -120,32 +113,21 @@ describe('fork verbs register the created tab', () => {
     { id: 'user-2', role: 'user', content: 'follow up', timestamp: 3 },
   ]
 
-  /** A store harness whose fork verbs run for real against a live source tab. */
   function buildForkHarness() {
     const state: Record<string, any> = {
       tabs: [{
-        id: 'source-tab',
-        title: 'Source',
-        customTitle: null,
-        conversationId: 'source-conversation',
-        engineProfileId: null,
-        workingDirectory: '/repo',
-        hasChosenDirectory: true,
-        additionalDirs: [],
-        pillColor: null,
-        pillIcon: null,
+        id: 'source-tab', title: 'Source', customTitle: null,
+        conversationId: 'source-conversation', engineProfileId: null,
+        workingDirectory: '/repo', hasChosenDirectory: true, additionalDirs: [],
+        pillColor: null, pillIcon: null,
       }],
       conversationPanes: new Map([[
         'source-tab',
         {
           activeInstanceId: 'main',
           instances: [{
-            id: 'main',
-            messages: SOURCE_MESSAGES,
-            modelOverride: null,
-            modelOverrideSource: null,
-            permissionMode: 'auto',
-            thinkingEffort: 'off',
+            id: 'main', messages: SOURCE_MESSAGES, modelOverride: null,
+            modelOverrideSource: null, permissionMode: 'auto', thinkingEffort: 'off',
           }],
         },
       ]]),
@@ -168,56 +150,45 @@ describe('fork verbs register the created tab', () => {
     ;(globalThis as any).window = {
       ion: {
         createTab: vi.fn(async () => ({ tabId: 'created-tab' })),
+        engineFork: vi.fn(async () => ({
+          ok: true, newKey: 'created-tab', conversationId: 'created-conversation',
+        })),
+        engineBroadcastHistory: vi.fn(async () => undefined),
+        reconcileCharts: vi.fn(),
         setPermissionMode: vi.fn(),
       },
     }
   })
 
-  it('marks the tab forkTab created, not the source tab', async () => {
+  it('forkTab records the engine-created identity and reconciles its copied chart rows', async () => {
     const state = buildForkHarness()
 
     await state.forkTab('source-tab')
 
-    expect(claimForkPendingChartReconcile('created-tab')).toBe(true)
-    expect(claimForkPendingChartReconcile('source-tab')).toBe(false)
+    expect(state.tabs.find((tab: { id: string }) => tab.id === 'created-tab')).toMatchObject({
+      conversationId: 'created-conversation',
+      lastKnownSessionId: 'created-conversation',
+    })
+    expect(reconcileMock.reconcileChartsForBranch).toHaveBeenCalledWith(
+      'created-tab', 'created-conversation', expect.arrayContaining([expect.objectContaining({ toolName: 'RenderChart' })]),
+    )
+    expect(claimForkPendingChartReconcile('created-tab')).toBe(false)
   })
 
-  it('marks the tab forkFromMessage created, not the source tab', async () => {
+  it('forkFromMessage creates the prefix before the selected turn', async () => {
     const state = buildForkHarness()
 
     await state.forkFromMessage('source-tab', 'user-2')
 
-    expect(claimForkPendingChartReconcile('created-tab')).toBe(true)
-    expect(claimForkPendingChartReconcile('source-tab')).toBe(false)
-  })
-
-  it('reconciles the fork against its own conversation once session_init lands', async () => {
-    // End to end through the real verb: fork, mint the durable id, drain. The
-    // copied chart row must reach main under the CREATED tab and the new
-    // conversation — the pairing a source-tab marker would never produce.
-    const state = buildForkHarness()
-    await state.forkFromMessage('source-tab', 'user-2')
-
-    const created = state.tabs.find((tab: { id: string }) => tab.id === 'created-tab')
-    created.conversationId = 'created-conversation'
-    maybeReconcileForkedCharts('created-tab', (() => state) as never)
-
-    expect(reconcileMock.reconcileChartsForBranch).toHaveBeenCalledTimes(1)
-    const [tabId, conversationId, messages] =
-      reconcileMock.reconcileChartsForBranch.mock.calls[0] as [string, string, Array<{ toolName?: string }>]
-    expect(tabId).toBe('created-tab')
-    expect(conversationId).toBe('created-conversation')
-    expect(messages.some((row) => row.toolName === 'RenderChart')).toBe(true)
-  })
-
-  it('does not reconcile the source tab when its own session_init arrives', async () => {
-    // The source keeps running and reaches session_init on its next turn. It
-    // owes no reconcile: its branch did not change.
-    const state = buildForkHarness()
-    await state.forkFromMessage('source-tab', 'user-2')
-
-    maybeReconcileForkedCharts('source-tab', (() => state) as never)
-
-    expect(reconcileMock.reconcileChartsForBranch).not.toHaveBeenCalled()
+    const instance = state.conversationPanes.get('created-tab').instances[0]
+    expect(instance.messages).toHaveLength(2)
+    expect(instance.historyHydrated).toBe(true)
+    expect(instance.conversationIds).toEqual(['created-conversation'])
+    expect((window as any).ion.engineFork).toHaveBeenCalledWith('source-tab', 'created-tab', {
+      messageIndex: 1, entryId: 'user-2', userTurnIndex: 1,
+    })
+    expect((window as any).ion.engineBroadcastHistory).toHaveBeenCalledWith(
+      'created-tab', 'main', { queueUntilTabExists: true },
+    )
   })
 })

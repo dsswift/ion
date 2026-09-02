@@ -233,6 +233,10 @@
       "machineAuthored",
       "messageLength"
     ],
+    "steer_interrupted_stream": [
+      "blocksKept",
+      "queuedSteers"
+    ],
     "stream_reset": null,
     "task_complete": [
       "conversationTurns",
@@ -507,14 +511,18 @@
     "sessionStatus",
     "sessionWorkStopped",
     "signal",
+    "slashModelTierRequested",
+    "slashModelTierServing",
     "source",
     "stderrTail",
     "steerClientMessageId",
     "steerDegradedMessageLength",
     "steerEntryId",
+    "steerInterruptBlocksKept",
     "steerKind",
     "steerMachineAuthored",
     "steerMessageLength",
+    "steerQueuedCount",
     "strategy",
     "summary",
     "taskSuspendAwaitingCount",
@@ -683,6 +691,8 @@
     ],
     "ModelEntry": [
       "contextWindow",
+      "costPer1kCacheCreation",
+      "costPer1kCacheRead",
       "costPer1kInput",
       "costPer1kOutput",
       "costPerImage",
@@ -830,6 +840,13 @@
       "sessionId",
       "state",
       "stateSince"
+    ],
+    "SlashCommandListing": [
+      "argumentHint",
+      "clearsConversation",
+      "description",
+      "name",
+      "source"
     ],
     "StatusFields": [
       "activeBackgroundTasks",

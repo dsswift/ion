@@ -252,6 +252,47 @@ describe('processIncomingPrompt — rawAttachments encoding', () => {
     )
   })
 
+  it('desktop attachment-only prompt uses an actionable instruction before submit', async () => {
+    const opts = {
+      prompt: '',
+      projectPath: '/proj',
+    } as any
+    await processIncomingPrompt({
+      tabId: 'tab-1',
+      text: '',
+      reqId: 'req-desktop-attachment-only',
+      source: 'desktop',
+      hasExtensions: true,
+      projectPath: '/proj',
+      runOptions: opts,
+      attachments: [{ type: 'image', name: 'photo.jpeg', path: '/tmp/photo.jpeg' }],
+    })
+
+    const submitted = mocks.submitPromptMock.mock.calls[0][2]
+    expect(submitted.prompt).toContain('Analyze the attached files.')
+    expect(submitted.prompt).toContain('[Attachment: rewritten]')
+    expect(submitted.imageAttachments).toHaveLength(1)
+  })
+
+  it('remote attachment-only prompt uses the same actionable instruction', async () => {
+    await processIncomingPrompt({
+      tabId: 'tab-remote',
+      text: '',
+      reqId: 'req-remote-attachment-only',
+      source: 'remote',
+      hasExtensions: false,
+      attachments: [{ type: 'image', name: 'photo.jpeg', path: '/tmp/photo.jpeg' }],
+    })
+
+    expect(mocks.broadcastMock).toHaveBeenCalledWith(
+      expect.stringMatching(/remote-user-message/i),
+      expect.objectContaining({
+        prompt: expect.stringContaining('Analyze the attached files.'),
+        imageAttachments: [expect.objectContaining({ path: '/tmp/photo.jpeg' })],
+      }),
+    )
+  })
+
   it('desktop prompt without attachments leaves runOptions untouched', async () => {
     const opts = { prompt: 'plain', projectPath: '/proj' } as any
     await processIncomingPrompt({

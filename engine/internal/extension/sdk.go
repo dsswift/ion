@@ -63,6 +63,10 @@ const (
 	HookModelSelect   = "model_select"
 	HookUserBash      = "user_bash"
 
+	// HookBeforeSlashModelBoundary lets a harness override whether a resolved
+	// slash command may apply its model tier when the conversation has history.
+	HookBeforeSlashModelBoundary = "before_slash_model_boundary"
+
 	// HookSlashCommandResolved fires after the engine resolves and expands a
 	// slash-command invocation, before the expanded body is committed as the
 	// LLM-visible prompt. Handlers see the full frontmatter map + invocation

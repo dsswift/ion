@@ -205,7 +205,7 @@ func TestFlattenEntries_LegacyOrphanImages(t *testing.T) {
 
 // TestUserPromptImage_ReplayedOnUserRow asserts that an image the CLIENT sent
 // as a prompt attachment (RunOptions.Attachments → buildUserContentBlocks →
-// a user entry with [text, image] blocks and NO tool_result blocks) reloads
+// a user entry with [image, text] blocks and NO tool_result blocks) reloads
 // with the attachment on the USER row itself.
 //
 // This test is RED without the tool-result-carrier discriminator in
@@ -219,10 +219,10 @@ func TestUserPromptImage_ReplayedOnUserRow(t *testing.T) {
 
 	conv := CreateConversation("prompt-image-reload", "be helpful", "claude-3-5-sonnet")
 	// Exactly the shape buildUserContentBlocks writes for a prompt with one
-	// image attachment: text block first, image block after, no tool_result.
+	// image attachment: image block first, text block after, no tool_result.
 	AddUserMessage(conv, []types.LlmContentBlock{
-		{Type: "text", Text: "[Attachment: photo.jpeg (content attached)]\n\nwhat is this image?"},
 		{Type: "image", Source: &types.ImageSource{Type: "base64", MediaType: "image/png", Data: b64}},
+		{Type: "text", Text: "[Attachment: photo.jpeg (content attached)]\n\nwhat is this image?"},
 	})
 
 	if err := Save(conv, dir); err != nil {

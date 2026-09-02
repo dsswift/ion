@@ -470,7 +470,12 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 			return sa.SendPrompt(text, model, bashAllowlistAdditions)
 		},
 		SendPromptPayload: func(payload extension.SendPromptPayload) error {
-			return sa.SendPromptWithKind(payload.Text, payload.Model, payload.BashAllowlistAdditions, payload.Kind)
+			if accessor, ok := sa.(interface {
+				SendPromptPayload(extension.SendPromptPayload) error
+			}); ok {
+				return accessor.SendPromptPayload(payload)
+			}
+			return sa.SendPrompt(payload.Text, payload.Model, payload.BashAllowlistAdditions)
 		},
 		Suspend: suspendFn,
 		SearchHistory: func(query string, maxResults int) ([]extension.HistoryMatch, error) {

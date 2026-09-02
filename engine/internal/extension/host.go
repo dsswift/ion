@@ -565,6 +565,9 @@ type SendPromptPayload struct {
 	// prefixes, unioned with the session allowlist for the single run this
 	// prompt starts. Never persisted on the session. Empty/nil is a no-op.
 	BashAllowlistAdditions []string
+	// SlashModelTierApplyMidConversation is an optional per-prompt policy
+	// override. Nil inherits engine.json; the decision hook has final say.
+	SlashModelTierApplyMidConversation *bool
 	// Kind classifies the injection semantically. "agent_completion" means
 	// this is a machine-to-machine dispatch callback (a completed child
 	// agent's result being routed back to its parent agent) rather than a

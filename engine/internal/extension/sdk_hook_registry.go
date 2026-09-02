@@ -108,13 +108,14 @@ func hookSpecs() map[string]hookSpec {
 		HookEarlyStopContinued:      {Payload: EarlyStopContinuedInfo{}, Result: hookResultNone},
 
 		// --- Content ---
-		HookContext:              {Payload: nil, Result: hookResultString},
-		HookMessageUpdate:        {Payload: MessageUpdateInfo{}, Result: hookResultContent},
-		HookToolResult:           {Payload: nil, Result: hookResultContent},
-		HookInput:                {Payload: "", Result: hookResultString},
-		HookModelSelect:          {Payload: ModelSelectInfo{}, Result: hookResultString},
-		HookUserBash:             {Payload: "", Result: hookResultNone},
-		HookSlashCommandResolved: {Payload: SlashResolvedInfo{}, Result: hookResultString},
+		HookContext:                  {Payload: nil, Result: hookResultString},
+		HookMessageUpdate:            {Payload: MessageUpdateInfo{}, Result: hookResultContent},
+		HookToolResult:               {Payload: nil, Result: hookResultContent},
+		HookInput:                    {Payload: "", Result: hookResultString},
+		HookModelSelect:              {Payload: ModelSelectInfo{}, Result: hookResultString},
+		HookUserBash:                 {Payload: "", Result: hookResultNone},
+		HookSlashCommandResolved:     {Payload: SlashResolvedInfo{}, Result: hookResultString},
+		HookBeforeSlashModelBoundary: {Payload: SlashModelBoundaryInfo{}, Result: hookResultStructured, ResultType: SlashModelBoundaryResult{}},
 
 		// --- Per-tool call ---
 		HookBashToolCall:  {Payload: nil, Result: hookResultPerToolCall},

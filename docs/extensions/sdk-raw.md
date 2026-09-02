@@ -192,6 +192,20 @@ Return `isError: true` to signal failure:
 {"jsonrpc":"2.0","id":10,"result":{"content":"Failed to process","isError":true}}
 ```
 
+### Model Boundary hook
+
+Before applying a resolved command's model tier to a conversation with history, the engine sends:
+
+```json
+{"jsonrpc":"2.0","id":6,"method":"hook/before_slash_model_boundary","params":{"_ctx":{"sessionKey":"s1"},"command":"/benchmark","requestedTier":"reasoning","servingModel":"current-model","hasHistory":true,"defaultApply":false}}
+```
+
+Return `null` to abstain, or an explicit decision. The last explicit decision across handlers wins.
+
+```json
+{"jsonrpc":"2.0","id":6,"result":{"apply":true}}
+```
+
 ## Command calls
 
 **Request:**
@@ -221,6 +235,12 @@ Write notifications (no `id` field) to stdout to emit events or send messages:
 ## Sending requests to the engine
 
 For process management and agent dispatch, send requests with an `id` field. The engine will write a response back on your stdin.
+
+```json
+{"jsonrpc":"2.0","id":100001,"method":"ext/send_prompt","params":{"text":"Run the command","slashModelTierApplyMidConversation":true}}
+```
+
+`slashModelTierApplyMidConversation` is optional. Omit it to inherit engine configuration; `before_slash_model_boundary` still has final say.
 
 ```json
 {"jsonrpc":"2.0","id":100001,"method":"ext/register_process","params":{"name":"worker","pid":54321,"task":"running"}}

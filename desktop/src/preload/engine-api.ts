@@ -25,6 +25,7 @@ export type EngineIpcApi = Pick<
   | "engineStop"
   | "engineBranchBefore"
   | "engineRewind"
+  | "engineFork"
   | "engineGetContextBreakdown"
   | "getPlanBashAllowlist"
   | "setPlanBashAllowlist"
@@ -87,6 +88,8 @@ export const engineApi: EngineIpcApi = {
     ipcRenderer.invoke(IPC.ENGINE_BRANCH_BEFORE, { key, entryId }),
   engineRewind: (key, target) =>
     ipcRenderer.invoke(IPC.ENGINE_REWIND, { key, ...target }),
+  engineFork: (key, newKey, target) =>
+    ipcRenderer.invoke(IPC.ENGINE_FORK, { key, newKey, ...target }),
   engineGetContextBreakdown: (key) =>
     ipcRenderer.invoke(IPC.ENGINE_GET_CONTEXT_BREAKDOWN, { key }),
   getPlanBashAllowlist: () => ipcRenderer.invoke(IPC.GET_PLAN_BASH_ALLOWLIST),
@@ -94,8 +97,8 @@ export const engineApi: EngineIpcApi = {
     ipcRenderer.invoke(IPC.SET_PLAN_BASH_ALLOWLIST, cmds),
   engineRemapSession: (oldKey, newKey) =>
     ipcRenderer.invoke(IPC.ENGINE_REMAP_SESSION, { oldKey, newKey }),
-  engineBroadcastHistory: (tabId, instanceId) =>
-    ipcRenderer.invoke(IPC.ENGINE_BROADCAST_HISTORY, { tabId, instanceId }),
+  engineBroadcastHistory: (tabId, instanceId, opts) =>
+    ipcRenderer.invoke(IPC.ENGINE_BROADCAST_HISTORY, { tabId, instanceId, opts }),
   notifyTabFocus: (tabId, engineProfileId) =>
     ipcRenderer.send(IPC.NOTIFY_TAB_FOCUS, {
       tabId,

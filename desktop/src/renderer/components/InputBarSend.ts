@@ -25,6 +25,7 @@
  * flicker of a clear-then-restore is worth keeping for the common case where
  * both windows agree.
  */
+import { resolveAttachmentPrompt } from '../../shared/attachment-prompt'
 import { promptRefusal, type PromptAcceptanceTab } from '../../shared/prompt-acceptance'
 import type { PromptSubmitResult } from '../../shared/prompt-submit-result'
 
@@ -85,7 +86,7 @@ export function dispatchSend(
     return { accepted: false, reason }
   }
 
-  const text = prompt || (attachmentCount > 0 ? 'See attached files' : '')
+  const text = resolveAttachmentPrompt(prompt, attachmentCount)
   deps.clearInput()
   deps.clearDraft(currentTab.id)
   const outcome = deps.submit(currentTab.id, text)

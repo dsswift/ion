@@ -102,8 +102,8 @@ Register a model under a specific provider. Each entry sets the routing target p
 | `contextWindow` | int | 0 | Maximum tokens the model accepts in a single request. Used for compaction triggers. When the model also exists in the engine's built-in catalog, the catalog value wins (the catalog is the reconciled source for context windows). |
 | `costPer1kInput` | float | 0.0 | USD cost per 1,000 input tokens. Used for budget tracking. |
 | `costPer1kOutput` | float | 0.0 | USD cost per 1,000 output tokens. Used for budget tracking. |
-| `costPer1kCacheCreation` | float | 0.0 | USD cost per 1,000 prompt-cache-creation tokens. When unset, the engine falls back to 1.25× `costPer1kInput`. |
-| `costPer1kCacheRead` | float | 0.0 | USD cost per 1,000 prompt-cache-read tokens. When unset, the engine falls back to 0.1× `costPer1kInput`. |
+| `costPer1kCacheCreation` | float | 0.0 | USD cost per 1,000 prompt-cache-creation tokens. When unset, the engine falls back to 1.25× `costPer1kInput`. Published on `list_models` so clients can quote exact model-switch costs. |
+| `costPer1kCacheRead` | float | 0.0 | USD cost per 1,000 prompt-cache-read tokens. When unset, the engine falls back to 0.1× `costPer1kInput`. Published on `list_models` so clients can compare the switch with a cache read. |
 | `costPerImage` | float | 0.0 | USD cost of one standard (1MP) generation for image models, which bill per image rather than per token. Used for `modelKind: "image"` runs; leave unset for per-token image models (they report token usage and are priced through the normal token math). |
 | `maxOutputTokens` | int | 0 | Maximum output tokens the model can produce in one response. Unset ⇒ the engine sends no cap and the provider applies the model's own maximum. |
 | `supportsCaching` | bool | false | Provider supports prompt caching for this model. |
@@ -209,6 +209,20 @@ When the engine receives a model name, it resolves the provider in this order:
 3. Return nil. The engine emits a `"no provider found for model"` error and exits.
 
 If you pass a tier name (such as `fast`), `ResolveTier` runs first. It checks your `tiers` map and substitutes the resolved model name before the provider lookup runs.
+
+### Where tier names resolve
+
+Tier resolution runs at three seams, so a tier name is usable everywhere a model name is:
+
+| Seam | Covers |
+|------|--------|
+| Root prompt options | A conversation's own model, including a slash command's frontmatter model |
+| Agent tool spawner | An LLM-authored `Agent({ model })` request, after the provider lock |
+| Shared dispatch | Every dispatched child: the `Agent` tool, an extension's `ctx.dispatchAgent`, and the `Poll` driver |
+
+The shared dispatch seam resolves last and is idempotent — a caller that already resolved its tier passes a concrete model identifier, which is not a configured tier name and passes through unchanged.
+
+Provider locking is not applied at the dispatch seam. A tier is operator configuration, so its configured provider is always allowed. A raw model identifier authored by an LLM is locked to the parent session's provider by the caller that knows the request's origin.
 
 ## See also
 

@@ -20,6 +20,9 @@ func mergeCommandPromptOverrides(command, extension *PromptOverrides) *PromptOve
 	if extension.DisplayText != "" {
 		merged.DisplayText = extension.DisplayText
 	}
+	if extension.SlashModelTierApplyMidConversation != nil {
+		merged.SlashModelTierApplyMidConversation = extension.SlashModelTierApplyMidConversation
+	}
 	merged.CommandContinuation = extension.CommandContinuation
 	if len(extension.BashAllowlistAdditionsForThisPrompt) > 0 {
 		merged.BashAllowlistAdditionsForThisPrompt = unionStrings(

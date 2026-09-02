@@ -8,14 +8,16 @@ import (
 )
 
 func TestPromptOverridesFromCommandPreservesRunOptions(t *testing.T) {
+	applyMidConversation := true
 	cmd := &protocol.ClientCommand{
-		Key:                   "tab-1",
-		Model:                 "standard",
-		AppendSystemPrompt:    "guidance",
-		ThinkingEffort:        "low",
-		PlanFilePath:          "/plans/active.md",
-		TemporaryAutoFromPlan: true,
-		DisplayText:           "visible answers",
+		Key:                                "tab-1",
+		Model:                              "standard",
+		AppendSystemPrompt:                 "guidance",
+		ThinkingEffort:                     "low",
+		PlanFilePath:                       "/plans/active.md",
+		TemporaryAutoFromPlan:              true,
+		SlashModelTierApplyMidConversation: &applyMidConversation,
+		DisplayText:                        "visible answers",
 		Attachments: []types.ImageAttachment{{
 			MediaType: "application/pdf",
 			Data:      "encoded",
@@ -28,6 +30,9 @@ func TestPromptOverridesFromCommandPreservesRunOptions(t *testing.T) {
 	}
 	if got.PlanFilePath != cmd.PlanFilePath || !got.TemporaryAutoFromPlan || got.DisplayText != cmd.DisplayText {
 		t.Fatalf("plan workflow options were not preserved: %+v", got)
+	}
+	if got.SlashModelTierApplyMidConversation == nil || !*got.SlashModelTierApplyMidConversation {
+		t.Fatalf("slash model boundary override was not preserved: %+v", got)
 	}
 	if len(got.Attachments) != 1 || got.Attachments[0].MediaType != "application/pdf" {
 		t.Fatalf("attachments were not preserved: %+v", got.Attachments)

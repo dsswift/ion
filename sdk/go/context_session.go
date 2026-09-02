@@ -15,14 +15,17 @@ import (
 // SendPromptOpts configures [Context.SendPrompt].
 type SendPromptOpts struct {
 	// Model overrides the session model for this one prompt.
-	Model string
+	Model string `json:"model,omitempty"`
 	// BashAllowlistAdditions grants extra bash patterns for this run only.
 	// The engine unions them with the session allowlist and never persists
 	// them.
-	BashAllowlistAdditions []string
+	BashAllowlistAdditions []string `json:"bashAllowlistAdditions,omitempty"`
+	// SlashModelTierApplyMidConversation overrides the engine policy for this
+	// prompt. Nil inherits configuration; the decision hook has final say.
+	SlashModelTierApplyMidConversation *bool `json:"slashModelTierApplyMidConversation,omitempty"`
 	// Kind labels the injection for observability, surfacing on the
 	// engine_prompt_injected event.
-	Kind string
+	Kind string `json:"kind,omitempty"`
 }
 
 // SendPrompt injects a prompt into the session, starting a run if none is
@@ -36,6 +39,9 @@ func (c *Context) SendPrompt(ctx context.Context, text string, opts SendPromptOp
 	// omitempty, and an empty array is not the same as an absent one.
 	if len(opts.BashAllowlistAdditions) > 0 {
 		params["bashAllowlistAdditions"] = opts.BashAllowlistAdditions
+	}
+	if opts.SlashModelTierApplyMidConversation != nil {
+		params["slashModelTierApplyMidConversation"] = *opts.SlashModelTierApplyMidConversation
 	}
 	if opts.Kind != "" {
 		params["kind"] = opts.Kind

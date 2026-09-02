@@ -19,7 +19,7 @@ import (
 // immediately instead of blocking. Returns true when the dispatch is parked
 // (or unknown, the historical no-op). Thread-safe.
 func (r *DispatchRegistry) SetSuspendedState(id string, reviveCh chan struct{}, pendingChildIDs []string) bool {
-	return r.SetSuspendedStateWithWaitingOn(id, reviveCh, pendingChildIDs, nil)
+	return r.SetSuspendedStateWithWaitingOn(id, reviveCh, pendingChildIDs, nil, nil)
 }
 
 // SetSuspendedStateWithWaitingOn parks a dispatch with its complete async wait
@@ -33,7 +33,7 @@ func (r *DispatchRegistry) SetSuspendedState(id string, reviveCh chan struct{}, 
 // the immediate revive still carries it. Returns false when the prune empties
 // a non-empty wait set, meaning the caller must revive immediately rather than
 // park on work that will never notify again.
-func (r *DispatchRegistry) SetSuspendedStateWithWaitingOn(id string, reviveCh chan struct{}, pendingChildIDs, pendingTaskIDs []string) bool {
+func (r *DispatchRegistry) SetSuspendedStateWithWaitingOn(id string, reviveCh chan struct{}, pendingChildIDs, pendingTaskIDs, pendingPollIDs []string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -43,7 +43,7 @@ func (r *DispatchRegistry) SetSuspendedStateWithWaitingOn(id string, reviveCh ch
 		return true
 	}
 
-	awaitedAny := len(pendingChildIDs) > 0 || len(pendingTaskIDs) > 0
+	awaitedAny := len(pendingChildIDs) > 0 || len(pendingTaskIDs) > 0 || len(pendingPollIDs) > 0
 
 	// Prune children that already completed (their results are recorded on
 	// this entry); they will never notify again.
@@ -78,7 +78,7 @@ func (r *DispatchRegistry) SetSuspendedStateWithWaitingOn(id string, reviveCh ch
 		pendingTaskIDs = pruned
 	}
 
-	if awaitedAny && len(pendingChildIDs) == 0 && len(pendingTaskIDs) == 0 {
+	if awaitedAny && len(pendingChildIDs) == 0 && len(pendingTaskIDs) == 0 && len(pendingPollIDs) == 0 {
 		// Everything awaited already finished: the park is already satisfied.
 		// Do not arm; the caller revives immediately.
 		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "setsuspendedstate: all awaited work already complete, immediate revive", map[string]any{"run_id": id})
@@ -103,7 +103,15 @@ func (r *DispatchRegistry) SetSuspendedStateWithWaitingOn(id string, reviveCh ch
 	} else {
 		d.PendingTasks = nil
 	}
-	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "setsuspendedstate: dispatch parked", map[string]any{"run_id": id, "count": len(pendingChildIDs), "awaiting_tasks": len(pendingTaskIDs)})
+	if len(pendingPollIDs) > 0 {
+		d.PendingPolls = make(map[string]struct{}, len(pendingPollIDs))
+		for _, pollID := range pendingPollIDs {
+			d.PendingPolls[pollID] = struct{}{}
+		}
+	} else {
+		d.PendingPolls = nil
+	}
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "setsuspendedstate: dispatch parked", map[string]any{"run_id": id, "count": len(pendingChildIDs), "awaiting_tasks": len(pendingTaskIDs), "awaiting_polls": len(pendingPollIDs)})
 	return true
 }
 
@@ -166,6 +174,20 @@ func (r *DispatchRegistry) NotifyChildComplete(dispatchID, childID string) bool 
 		return false
 	}
 
+	// The same rule for polls. A poll-check child is itself a dispatch, and
+	// since it is now parented to the run that started the poll, its completion
+	// reaches here. Reviving on it would resume the agent the instant its JUDGE
+	// finished rather than when its POLL did -- and a poll that returns
+	// "advancing" re-arms for another attempt, so the agent would wake mid-poll
+	// with no verdict. DeliverPollResult would then find an unarmed entry: the
+	// lost-wake shape this file already guards against for background commands.
+	if len(d.PendingPolls) > 0 {
+		remainingPolls := len(d.PendingPolls)
+		r.mu.Unlock()
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "notifychildcomplete: children done, still waiting on polls", map[string]any{"run_id": dispatchID, "reason": childID, "awaiting_polls": remainingPolls})
+		return false
+	}
+
 	// All pending children done (or bare suspend): signal revive.
 	ch := d.ReviveCh
 	d.ReviveCh = nil
@@ -182,24 +204,22 @@ func (r *DispatchRegistry) NotifyChildComplete(dispatchID, childID string) bool 
 	return true
 }
 
-// SignalReviveForSession signals the reviveCh of EVERY suspended dispatch
-// whose session ID matches sessionID and whose park is a bare suspend
-// (PendingChildren nil). This is the hook that sendPrompt calls after
-// queueing a new user message on a session that may host suspended
-// dispatches. For bare suspend() calls the revive fires immediately because
-// the new message is already in the conversation; fan-out parks
-// (PendingChildren non-nil) are deliberately skipped — only
-// NotifyChildComplete may drive those. Returns true when at least one
-// dispatch was signalled. All matches are woken (not just the first): two
-// bare-parked dispatches on one session must both see the prompt, and
-// leaving one parked strands it until timeout. Thread-safe.
+// SignalReviveForSession signals the reviveCh of every suspended dispatch
+// whose session ID matches sessionID and whose park is bare: it has no pending
+// child dispatches, background tasks, or polls. This is the hook that
+// sendPrompt calls after queueing a new user message on a session that may host
+// suspended dispatches. A bare suspend revives because the new message is
+// already in the conversation. A dispatch awaiting any tracked work remains
+// parked until that work's delivery path drains its complete wait set.
+// Returns true when at least one dispatch was signalled. All matches are woken
+// so two bare-parked dispatches on one session both see the prompt. Thread-safe.
 func (r *DispatchRegistry) SignalReviveForSession(sessionID string) bool {
 	r.mu.Lock()
 
 	var matched []*activeDispatch
 	var channels []chan struct{}
 	for _, d := range r.dispatches {
-		if d.SessionID == sessionID && d.ReviveCh != nil && d.PendingChildren == nil {
+		if d.SessionID == sessionID && d.ReviveCh != nil && len(d.PendingChildren) == 0 && len(d.PendingTasks) == 0 && len(d.PendingPolls) == 0 {
 			matched = append(matched, d)
 			channels = append(channels, d.ReviveCh)
 			d.ReviveCh = nil

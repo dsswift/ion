@@ -43,6 +43,35 @@ describe('command file structural invariants', () => {
   })
 })
 
+/**
+ * Model-tier placement. A command's `model:` tier is only honored by the engine
+ * at a fresh conversation boundary, because switching models mid-conversation
+ * re-sends the whole history as cache-creation input (the provider cache is
+ * keyed per exact model). So a tier belongs ONLY on a command that starts a
+ * phase, and a command that starts a phase from an existing conversation must
+ * also declare `clears-conversation` — the clear is what makes the boundary
+ * fresh, which is what makes its tier apply.
+ */
+describe('command model-tier placement', () => {
+  it('a command declaring a tier also declares clears-conversation', () => {
+    const files = readdirSync(COMMANDS_DIR).filter((f) => f.endsWith('.md'))
+    for (const file of files) {
+      const fm = parseFrontmatter(readCommand(file))
+      if (!fm.model) continue
+      expect(
+        fm['clears-conversation'],
+        `${file} pins model="${fm.model}" but does not clear the conversation, so the tier is ignored whenever the command runs mid-conversation`,
+      ).toBe('true')
+    }
+  })
+
+  it('squash pins a tier and clears the conversation', () => {
+    const fm = parseFrontmatter(readCommand('squash.md'))
+    expect(fm.model).toBeTruthy()
+    expect(fm['clears-conversation']).toBe('true')
+  })
+})
+
 describe('squash.md lifecycle invariants', () => {
   const content = readCommand('squash.md')
 
@@ -57,8 +86,13 @@ describe('align.md lifecycle invariants', () => {
   const content = readCommand('align.md')
   const fm = parseFrontmatter(content)
 
-  it('model is set to standard', () => {
-    expect(fm.model).toBe('standard')
+  // align runs INSIDE an existing conversation, at the end of a working
+  // session. A pinned tier there would switch models mid-conversation, which
+  // cannot reuse the provider prompt cache (it is keyed per exact model) and so
+  // re-sends the entire conversation to serve one turn. align must inherit
+  // whatever model the conversation is already using.
+  it('declares no model tier so it inherits the conversation model', () => {
+    expect(fm.model).toBeUndefined()
   })
 
   it('description uses definitive "implements" not permissive "may implement"', () => {

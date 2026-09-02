@@ -16,10 +16,11 @@ import (
 func (h *Host) rpcSendPrompt(ctx *Context, id int64, raw []byte) {
 	var req struct {
 		Params struct {
-			Text                   string   `json:"text"`
-			Model                  string   `json:"model,omitempty"`
-			BashAllowlistAdditions []string `json:"bashAllowlistAdditions,omitempty"`
-			Kind                   string   `json:"kind,omitempty"`
+			Text                               string   `json:"text"`
+			Model                              string   `json:"model,omitempty"`
+			BashAllowlistAdditions             []string `json:"bashAllowlistAdditions,omitempty"`
+			SlashModelTierApplyMidConversation *bool    `json:"slashModelTierApplyMidConversation,omitempty"`
+			Kind                               string   `json:"kind,omitempty"`
 		} `json:"params"`
 	}
 	if err := json.Unmarshal(raw, &req); err != nil {
@@ -31,19 +32,18 @@ func (h *Host) rpcSendPrompt(ctx *Context, id int64, raw []byte) {
 		return
 	}
 	if ctx != nil && ctx.SendPrompt != nil {
-		// Active hook context: use hook-aware path (supports model override,
-		// per-prompt bash-allowlist additions, recursion guard). When Kind is
-		// set, use SendPromptPayload (if wired) so Kind reaches emitPromptInjected;
-		// fall back to SendPrompt for callers that have not wired the payload variant.
+		// Use the structured callback when either structured option is present.
+		// The legacy positional callback cannot carry either value.
 		utils.LogWithFields(utils.LevelDebug, "extension", "ext/send_prompt: hook ctx path", map[string]any{"model": req.Params.Model, "count": len(req.Params.BashAllowlistAdditions), "kind": req.Params.Kind})
 		go func() {
 			var err error
-			if req.Params.Kind != "" && ctx.SendPromptPayload != nil {
+			if (req.Params.Kind != "" || req.Params.SlashModelTierApplyMidConversation != nil) && ctx.SendPromptPayload != nil {
 				err = ctx.SendPromptPayload(SendPromptPayload{
-					Text:                   req.Params.Text,
-					Model:                  req.Params.Model,
-					BashAllowlistAdditions: req.Params.BashAllowlistAdditions,
-					Kind:                   req.Params.Kind,
+					Text:                               req.Params.Text,
+					Model:                              req.Params.Model,
+					BashAllowlistAdditions:             req.Params.BashAllowlistAdditions,
+					SlashModelTierApplyMidConversation: req.Params.SlashModelTierApplyMidConversation,
+					Kind:                               req.Params.Kind,
 				})
 			} else {
 				err = ctx.SendPrompt(req.Params.Text, req.Params.Model, req.Params.BashAllowlistAdditions)
@@ -74,10 +74,11 @@ func (h *Host) rpcSendPrompt(ctx *Context, id int64, raw []byte) {
 	utils.LogWithFields(utils.LevelInfo, "extension", "ext/send_prompt: fallback path via onsendmessage forwarding full payload", map[string]any{"model": req.Params.Model, "count": len(req.Params.BashAllowlistAdditions), "kind": req.Params.Kind})
 	go func() {
 		fn(SendPromptPayload{
-			Text:                   req.Params.Text,
-			Model:                  req.Params.Model,
-			BashAllowlistAdditions: req.Params.BashAllowlistAdditions,
-			Kind:                   req.Params.Kind,
+			Text:                               req.Params.Text,
+			Model:                              req.Params.Model,
+			BashAllowlistAdditions:             req.Params.BashAllowlistAdditions,
+			SlashModelTierApplyMidConversation: req.Params.SlashModelTierApplyMidConversation,
+			Kind:                               req.Params.Kind,
 		})
 		h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 	}()
