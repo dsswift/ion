@@ -577,6 +577,7 @@
 		B3NCHTERMTST000000000002 /* InboxBenchTerminalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3NCHTERMTST000000000001 /* InboxBenchTerminalTests.swift */; };
 		IBORDER0000000000000001 /* InboxNavigatorBenchOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */; };
 		ICWT0000000000000001 /* InboxConvertToWorktreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */; };
+		IWDB0000000000000001 /* InboxWorktreeDefaultBranchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IWDB0000000000000002 /* InboxWorktreeDefaultBranchTests.swift */; };
 		WLNTL0000000000000001 /* WorktreeLandAndRetireNothingToLandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WLNTL0000000000000002 /* WorktreeLandAndRetireNothingToLandTests.swift */; };
 		C0DE0000000000000000000B /* InboxSnapshotWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE0000000000000000000C /* InboxSnapshotWireTests.swift */; };
 		C0DEC0DE000000000001 /* FileIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000000 /* FileIcon.swift */; };
@@ -1177,6 +1178,7 @@
 		B3NCHTERMTST000000000001 /* InboxBenchTerminalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxBenchTerminalTests.swift; sourceTree = "<group>"; };
 		IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxNavigatorBenchOrderTests.swift; sourceTree = "<group>"; };
 		ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxConvertToWorktreeTests.swift; sourceTree = "<group>"; };
+		IWDB0000000000000002 /* InboxWorktreeDefaultBranchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxWorktreeDefaultBranchTests.swift; sourceTree = "<group>"; };
 		WLNTL0000000000000002 /* WorktreeLandAndRetireNothingToLandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorktreeLandAndRetireNothingToLandTests.swift; sourceTree = "<group>"; };
 		C0DE0000000000000000000C /* InboxSnapshotWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxSnapshotWireTests.swift; sourceTree = "<group>"; };
 		C0DEC0DE000000000000 /* FileIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIcon.swift; sourceTree = "<group>"; };
@@ -1698,6 +1700,7 @@
 				B3NCHTERMTST000000000001 /* InboxBenchTerminalTests.swift */,
 				IBORDER0000000000000002 /* InboxNavigatorBenchOrderTests.swift */,
 				ICWT0000000000000002 /* InboxConvertToWorktreeTests.swift */,
+				IWDB0000000000000002 /* InboxWorktreeDefaultBranchTests.swift */,
 				WLNTL0000000000000002 /* WorktreeLandAndRetireNothingToLandTests.swift */,
 				C0DE0000000000000000000C /* InboxSnapshotWireTests.swift */,
 				WTPROJIDENT000000000004 /* WorktreeProjectIdentityTests.swift */,
@@ -2537,6 +2540,7 @@
 				B3NCHTERMTST000000000002 /* InboxBenchTerminalTests.swift in Sources */,
 				IBORDER0000000000000001 /* InboxNavigatorBenchOrderTests.swift in Sources */,
 				ICWT0000000000000001 /* InboxConvertToWorktreeTests.swift in Sources */,
+				IWDB0000000000000001 /* InboxWorktreeDefaultBranchTests.swift in Sources */,
 				WLNTL0000000000000001 /* WorktreeLandAndRetireNothingToLandTests.swift in Sources */,
 				C0DE0000000000000000000B /* InboxSnapshotWireTests.swift in Sources */,
 				WTPROJIDENT000000000003 /* WorktreeProjectIdentityTests.swift in Sources */,

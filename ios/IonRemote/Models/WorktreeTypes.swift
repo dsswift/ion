@@ -422,6 +422,12 @@ struct RemoteWorktreeState: Codable, Identifiable, Hashable {
     var repoPath: String
     var worktrees: [RemoteWorktree]
     var benches: [RemoteBench]
+    /// The operator's recorded default source branch for this repo, projected
+    /// from the desktop's `worktreeBranchDefaults[repoPath]`. When set, the
+    /// inbox "New worktree conversation" action creates the worktree directly
+    /// with this branch instead of showing the branch picker; when nil, the
+    /// picker is shown -- matching the desktop's own behavior.
+    var defaultSourceBranch: String?
 
     var id: String { repoPath }
 
