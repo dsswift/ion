@@ -167,13 +167,13 @@ export function setupModelSync(): void {
         store.setLoginState(u.provider, { phase: 'waiting', userCode: u.userCode, verificationUrl: u.verificationUrl })
         if (u.verificationUrl) void window.ion.openExternal(u.verificationUrl)
         break
-      // The provider issued a code to the user in the browser and the CLI is
-      // waiting for it on stdin (claude-code, whose printed fallback URL cannot
-      // self-complete). The user pastes it into the settings row, which returns
-      // it via providerLoginCode. Signing in through a browser and pasting a
-      // code back takes longer than the 120s started-stage budget, so the
-      // timeout is re-armed to the engine's own 10-minute login ceiling rather
-      // than expiring under the user mid-paste.
+      // The provider can issue a fallback code for stdin after the CLI has
+      // opened its own loopback-callback browser tab. The user can paste that
+      // code into the settings row through providerLoginCode. The CLI can also
+      // finish directly through the loopback callback; the engine observes the
+      // child exit and sends completed. A manual paste can take longer than the
+      // 120s started-stage budget, so the timeout is re-armed to the engine's
+      // own 10-minute login ceiling rather than expiring under the user.
       case 'await_auth_code':
         store.setLoginState(u.provider, { phase: 'await_code', url: u.authUrl })
         armTimeout(u.provider, 10 * 60_000)

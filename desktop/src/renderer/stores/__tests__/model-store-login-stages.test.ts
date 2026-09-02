@@ -2,9 +2,9 @@
 //
 // The delegated-CLI login stage machine in setupModelSync. The behavior that
 // matters most here is which stages auto-open a browser: a CLI that opens its
-// own tab (claude-code) must NOT have its printed fallback URL auto-opened,
-// because that URL carries a different redirect_uri and cannot self-complete —
-// the user would get two tabs and only the CLI's own one works.
+// own tab (claude-code) must NOT have its printed fallback URL auto-opened.
+// That URL carries a different redirect_uri, so auto-opening it would create a
+// second browser flow instead of using the loopback callback already in flight.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useModelStore, setupModelSync } from '../model-store'
 import type { ProviderLoginUpdate } from '../../../shared/types-engine-event'

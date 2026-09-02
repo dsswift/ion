@@ -1210,7 +1210,7 @@ Delegated-CLI login lifecycle for a provider (e.g. `openai` via the `codex` CLI)
 | `providerLogin.loginError` | string | Failure reason (`failed`, optional) |
 | `providerLogin.loginId` | string | CLI login handle, usable to cancel the flow (optional) |
 
-**Stage directions.** `await_device_code` and `await_auth_code` both involve a code, in opposite directions. On `await_device_code` the CLI generated the code and the user types it into the provider's verification page. On `await_auth_code` the *provider* issued the code to the user in the browser and the CLI is waiting for it on stdin — the consumer must return it with [`provider_login_code`](client-commands.md#provider_login_code). A login parked on `await_auth_code` makes no progress until it does.
+**Stage directions.** `await_device_code` and `await_auth_code` both involve a code, in opposite directions. On `await_device_code` the CLI generated the code and the user types it into the provider's verification page. On `await_auth_code` the *provider* issued the fallback code to the user in the browser and the CLI can receive it on stdin. The consumer can return it with [`provider_login_code`](client-commands.md#provider_login_code). For a CLI that also opened a loopback callback, the login can instead advance to `completed` when that browser flow makes the child exit successfully.
 
 **Terminal stages.** Every login ends in exactly one of `completed`, `failed`, or `cancelled`. The engine guarantees this even when a login driver fails without reporting a stage of its own, so a consumer can always retire its pending-login state on the first terminal stage it sees.
 

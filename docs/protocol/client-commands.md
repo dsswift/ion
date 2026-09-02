@@ -1120,7 +1120,7 @@ Starting a login for a provider that already has one in flight cancels the previ
 
 ### provider_login_code
 
-Return a browser-issued authorization code to a login parked on the `await_auth_code` stage. Required by flows the engine drives through a CLI's manual-paste fallback rather than its own callback: the provider hands the user a code in the browser and the CLI waits for it on stdin, so the consumer must carry it back.
+Return a browser-issued authorization code to a login on the `await_auth_code` stage. This supports a CLI's manual-paste fallback: the provider hands the user a code in the browser and the CLI can receive it on stdin. A CLI that also opened a loopback callback can complete without this command when that browser flow succeeds.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
