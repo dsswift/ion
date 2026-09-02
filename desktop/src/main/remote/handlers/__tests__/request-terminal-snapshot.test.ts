@@ -9,9 +9,8 @@
  *      entry (the desktop user never opened the terminal panel locally),
  *      the handler must mirror TerminalPanel.tsx's first-mount behavior:
  *      auto-create the default "Shell" instance via the renderer's
- *      `addTerminalInstance`, spawn the PTY via `terminalManager.create`
- *      with the `${tabId}:${instanceId}` key and the tab-derived cwd, and
- *      reply to the requesting device with a `desktop_terminal_snapshot`
+ *      `addTerminalInstance`. The owner store action starts the PTY before it
+ *      publishes metadata, and the handler replies to the requesting device
  *      containing exactly that instance.
  *   2. Pane-present passthrough (existing behavior preserved). When the
  *      pane exists, the handler replies with the pane's instances and
@@ -20,7 +19,7 @@
  * Regression contract
  * ───────────────────
  * On the unfixed code, the pane-missing renderer IIFE returned null and
- * the handler exited silently: no `terminalManager.create`, no reply to
+ * the handler exited silently: no owner terminal creation and no reply to
  * iOS. Test #1 goes red on that code — it asserts both the PTY spawn and
  * the `sendToDevice` reply happen.
  */
@@ -91,11 +90,10 @@ describe('handleRequestTerminalSnapshot', () => {
     // with kind 'user' — same default TerminalPanel.tsx creates on mount.
     expect(mocks.executeJsMock).toHaveBeenCalledTimes(2)
     const createBody = mocks.executeJsMock.mock.calls[1][0] as string
-    expect(createBody).toContain("addTerminalInstance('tab-abc', 'user')")
+    expect(createBody).toContain('await s.addTerminalInstance("tab-abc", \'user\', undefined, null)')
 
-    // PTY spawned with the tab-derived key and the renderer-resolved cwd.
-    expect(mocks.terminalCreate).toHaveBeenCalledTimes(1)
-    expect(mocks.terminalCreate).toHaveBeenCalledWith('tab-abc:inst1234', '/repo/work')
+    // The owner store action starts the PTY. Main must not start it a second time.
+    expect(mocks.terminalCreate).not.toHaveBeenCalled()
 
     // Reply goes to the requesting device with exactly the new instance.
     expect(mocks.sendToDevice).toHaveBeenCalledTimes(1)

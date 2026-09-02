@@ -96,7 +96,13 @@ export function GitPanelRepoSection(props: GitPanelRepoSectionProps): React.JSX.
   const handleQuickCommit = useCallback(() => {
     if (commitCommand) {
       const safeCwd = directory.replace(/'/g, "'\\''")
-      useSessionStore.getState().runInTerminal(activeTabId, `cd '${safeCwd}' && ${commitCommand}`)
+      void useSessionStore.getState().runInTerminal(activeTabId, `cd '${safeCwd}' && ${commitCommand}`).catch((error) => {
+        rError('git', 'quick commit terminal launch failed', {
+          tab_id: activeTabId,
+          directory,
+          error: String(error),
+        })
+      })
     } else {
       useSessionStore.getState().submit(activeTabId, 'commit the current changes')
     }

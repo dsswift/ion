@@ -103,8 +103,6 @@ export const requestApi = {
     ipcRenderer.invoke(IPC.TERMINAL_ATTACH, { key, ...opts }),
   getActiveUi: () => ipcRenderer.invoke(IPC.GET_ACTIVE_UI),
   setActiveUi: (ui) => ipcRenderer.invoke(IPC.SET_ACTIVE_UI, ui),
-  terminalGetScrollback: (key) =>
-    ipcRenderer.invoke(IPC.TERMINAL_GET_SCROLLBACK, { key }),
   terminalActiveTabs: () => ipcRenderer.invoke(IPC.TERMINAL_ACTIVE_TABS),
   terminalActivitySnapshot: () =>
     ipcRenderer.invoke(IPC.TERMINAL_ACTIVITY_SNAPSHOT),

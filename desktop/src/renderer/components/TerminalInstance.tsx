@@ -16,7 +16,7 @@ interface TerminalEntry {
   terminal: Terminal
   fitAddon: FitAddon
   serializeAddon: SerializeAddon
-  created: boolean
+  attached: boolean
   cwd: string
   hostEl: HTMLDivElement
   historyPending: boolean
@@ -211,6 +211,7 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
 
     let entry = terminalInstances.get(key)
     const isNew = !entry
+    let restoredBuffer: string | undefined
 
     if (!entry) {
       const terminal = new Terminal({
@@ -287,31 +288,18 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
       hostEl.style.background = 'transparent'
       terminal.open(hostEl)
 
-      // Restore saved buffer if available (history restore)
-      const restoredBuffer = consumeSavedBuffer(key)
-      if (restoredBuffer) {
-        terminal.write(restoredBuffer)
-      }
-
-      // No saved buffer means this xterm has never seen this PTY. The PTY may
-      // nevertheless have been streaming for a while: a deep-link pane opened
-      // into a background conversation, or an instance created from iOS, runs
-      // in main with no renderer attached, and its output accumulated only in
-      // the main-process scrollback. Fetch it so arriving at the tab shows the
-      // history rather than an empty pane.
-      //
-      // The fetch is async, so live chunks can arrive before it resolves.
-      // Queueing them and flushing AFTER the history keeps the transcript in
-      // chronological order — writing live data first would interleave the
-      // backlog behind output that came later.
-      const historyPending = !restoredBuffer
+      // Attach returns the authoritative main-process history. Live chunks queue
+      // until it resolves so history is always written first. A disk-restored
+      // buffer is the fallback after app restart, when main has no scrollback.
+      restoredBuffer = consumeSavedBuffer(key)
+      const historyPending = true
       const pendingChunks: string[] = []
       const unsubLinks = registerTerminalLinks(terminal, cwd, tabId)
       entry = {
         terminal,
         fitAddon,
         serializeAddon,
-        created: false,
+        attached: false,
         cwd,
         hostEl,
         historyPending,
@@ -319,19 +307,6 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
         unsubLinks,
       }
       terminalInstances.set(key, entry)
-      if (historyPending) {
-        void window.ion.terminalGetScrollback(key).then((history) => {
-          if (history) terminal.write(history)
-        }).catch((err) => {
-          rWarn('terminal', 'scrollback fetch failed', { key, error: String(err) })
-        }).finally(() => {
-          const current = terminalInstances.get(key)
-          if (!current) return
-          current.historyPending = false
-          for (const chunk of current.pendingChunks) terminal.write(chunk)
-          current.pendingChunks.length = 0
-        })
-      }
     }
 
     // Move persistent host element into the React container
@@ -340,20 +315,29 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
     requestAnimationFrame(() => {
       entry!.fitAddon.fit()
 
-      // Create PTY on first open
-      if (isNew && !entry!.created) {
-        entry!.created = true
+      if (isNew && !entry!.attached) {
+        entry!.attached = true
         const dims = entry!.fitAddon.proposeDimensions()
-        void window.ion.terminalCreate(key, cwd).then(() => {
-          if (dims) {
-            window.ion.terminalResize(key, dims.cols, dims.rows)
-          }
-          // Execute any pending command
-          const pendingCmd = useSessionStore.getState().consumeTerminalPendingCommand(key)
-          if (pendingCmd) {
-            setTimeout(() => window.ion.terminalWrite(key, pendingCmd + '\n'), 100)
-          }
-        }).catch((err) => rWarn('terminal', 'terminal create failed', { error: String(err) }))
+        void window.ion.terminalAttach(key, { restartIfNotRunning: true, cwd }).then((info) => {
+          const history = info.history || restoredBuffer || ''
+          if (history) entry!.terminal.write(history)
+          entry!.historyPending = false
+          for (const chunk of entry!.pendingChunks) entry!.terminal.write(chunk)
+          entry!.pendingChunks.length = 0
+          if (dims) window.ion.terminalResize(key, dims.cols, dims.rows)
+          rDebug('terminal', 'conversation terminal viewer attached', {
+            key,
+            running: info.running,
+            history_bytes: history.length,
+            cwd_fell_back: info.cwdFellBack,
+          })
+        }).catch((err) => {
+          entry!.historyPending = false
+          if (restoredBuffer) entry!.terminal.write(restoredBuffer)
+          for (const chunk of entry!.pendingChunks) entry!.terminal.write(chunk)
+          entry!.pendingChunks.length = 0
+          rWarn('terminal', 'terminal attach failed', { key, error: String(err) })
+        })
       }
     })
 

@@ -7,6 +7,10 @@ const source = readFileSync(
   resolve(import.meta.dirname, "../StudioShell.tsx"),
   "utf8",
 );
+const terminalCommandsSource = readFileSync(
+  resolve(import.meta.dirname, "../studio-conversation-terminal-commands.ts"),
+  "utf8",
+);
 
 describe("StudioShell shortcut wiring", () => {
   it("uses capture-phase shared dispatcher with typed conversation slot handlers", () => {
@@ -27,9 +31,10 @@ describe("StudioShell shortcut wiring", () => {
   })
 
   it("uses the active conversation's terminal tray for toggle and new-shell commands", () => {
-    expect(source).toContain('"terminal.toggle": toggleActiveTerminal')
-    expect(source).toContain('state.toggleTerminal(tabId)')
-    expect(source).toContain('state.addTerminalInstance(tab.id, "user", tab.workingDirectory)')
+    expect(source).toContain('"terminal.toggle": toggleActiveConversationTerminal')
+    expect(source).toContain('"terminal.addShell": addActiveConversationShell')
+    expect(terminalCommandsSource).toContain('state.toggleTerminal(tabId)')
+    expect(terminalCommandsSource).toContain("state.addTerminalInstance(tab.id, 'user', tab.workingDirectory)")
     expect(source).toContain('s.terminalOpenTabIds.has(s.activeTabId)')
     expect(source).not.toContain('terminalVisible: !layoutRef.current.terminalVisible')
   });

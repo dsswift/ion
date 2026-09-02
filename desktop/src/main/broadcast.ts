@@ -10,7 +10,7 @@ export function broadcast(channel: string, ...args: unknown[]): void {
     if (splash && !splash.isDestroyed()) splash.webContents.send(channel, ...args)
     return
   }
-  if (channel === IPC.STUDIO_WORKTREE_SYNC) {
+  if (channel === IPC.STUDIO_WORKTREE_SYNC || channel === IPC.STUDIO_TABS_SYNC || channel === IPC.STUDIO_CONVERSATION_TERMINALS) {
     const studio = state.studioWindow
     if (studio && !studio.isDestroyed()) studio.webContents.send(channel, ...args)
     return

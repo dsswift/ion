@@ -766,6 +766,36 @@
       "notes": "Honest mismatch: iOS has a named ConversationStatusBar view. The Desktop client has no component of that name and places the same controls inside the Input Bar, split across the StatusBar* control files. The name is canonical for the concept, not yet for a shared Desktop symbol."
     },
     {
+      "id": "conversation-terminal-panel",
+      "term": "Conversation Terminal Panel",
+      "definition": "The per-conversation terminal panel shared by the Overlay and Studio presentations. Both presentations show the same terminal tabs and attach to the same main-owned PTYs.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "terminal panel",
+        "bottom terminal tray"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "TerminalPanel",
+          "path": "desktop/src/renderer/components/TerminalPanel.tsx"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "StudioCenter",
+          "path": "desktop/src/renderer/studio/StudioCenter.tsx"
+        }
+      ],
+      "notes": "Studio Surface terminal tabs are separate Studio-only surfaces with <conversationId>:surface:<instanceId> PTY keys. The ion://terminal action targets this shared panel, never a Studio Surface terminal."
+    },
+    {
       "id": "conversation-timeline-minimap",
       "term": "Conversation Timeline Minimap",
       "definition": "The narrow scrubber beside a transcript. It maps the conversation history to a compact strip so a user can jump to an earlier point.",

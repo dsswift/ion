@@ -29,6 +29,7 @@ import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
+import { rWarn } from '../rendererLogger'
 
 const ICON_MAP: Record<string, ComponentType<IconProps>> = {
   Lightning,
@@ -154,7 +155,13 @@ export function QuickToolsTray({ anchorRef, onClose }: QuickToolsTrayProps) {
                 key={tool.id}
                 onClick={() => {
                   if (activeTabId) {
-                    useSessionStore.getState().runQuickTool(activeTabId, tool.id)
+                    void useSessionStore.getState().runQuickTool(activeTabId, tool.id).catch((error) => {
+                      rWarn('terminal', 'quick tool terminal launch failed', {
+                        tab_id: activeTabId,
+                        tool_id: tool.id,
+                        error: String(error),
+                      })
+                    })
                   }
                   onClose()
                 }}

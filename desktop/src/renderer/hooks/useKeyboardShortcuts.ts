@@ -88,18 +88,33 @@ export function useKeyboardShortcuts(togglePalette: () => void = () => {}): void
       },
       'panel.terminal': () => {
         const state = useSessionStore.getState()
-        state.toggleTerminal(state.activeTabId)
+        void state.toggleTerminal(state.activeTabId).catch((error) => {
+          rError('shortcut', 'conversation terminal panel toggle failed', {
+            tab_id: state.activeTabId,
+            error: String(error),
+          })
+        })
       },
       'terminal.addShell': () => {
         const state = useSessionStore.getState()
         const tab = state.tabs.find((candidate) => candidate.id === state.activeTabId)
         if (!tab) return
-        if (!state.terminalOpenTabIds.has(state.activeTabId)) state.toggleTerminal(state.activeTabId)
-        state.addTerminalInstance(state.activeTabId, 'user', tab.workingDirectory)
+        void state.addTerminalInstance(state.activeTabId, 'user', tab.workingDirectory).catch((error) => {
+          rError('shortcut', 'conversation terminal creation failed', {
+            tab_id: state.activeTabId,
+            cwd: tab.workingDirectory,
+            error: String(error),
+          })
+        })
       },
       'terminal.toggle': () => {
         const state = useSessionStore.getState()
-        state.toggleTerminal(state.activeTabId)
+        void state.toggleTerminal(state.activeTabId).catch((error) => {
+          rError('shortcut', 'conversation terminal panel toggle failed', {
+            tab_id: state.activeTabId,
+            error: String(error),
+          })
+        })
       },
       'panel.git': () => useSessionStore.getState().toggleGitPanel(),
       'panel.statusDrawer': () => useSessionStore.getState().toggleStatusDrawer(),

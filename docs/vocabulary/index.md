@@ -64,6 +64,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Context Identity](#term-context-identity)
 - [Conversation](#term-conversation)
 - [Conversation Status Bar](#term-conversation-status-bar)
+- [Conversation Terminal Panel](#term-conversation-terminal-panel)
 - [Conversation Timeline Minimap](#term-conversation-timeline-minimap)
 - [Conversation View](#term-conversation-view)
 - [Conversation backfill](#term-conversation-backfill)
@@ -995,6 +996,21 @@ The strip that shows conversation status and its inline controls: the model pick
   - `desktop` / `ui` / `typescript`: `export function ComposerControls` in `desktop/src/renderer/components/ComposerControls.tsx`
 - **Notes:** Honest mismatch: iOS has a named ConversationStatusBar view. The Desktop client has no component of that name and places the same controls inside the Input Bar, split across the StatusBar* control files. The name is canonical for the concept, not yet for a shared Desktop symbol.
 
+#### Conversation Terminal Panel {#term-conversation-terminal-panel}
+
+The per-conversation terminal panel shared by the Overlay and Studio presentations. Both presentations show the same terminal tabs and attach to the same main-owned PTYs.
+
+- **ID:** `conversation-terminal-panel`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `terminal panel`, `bottom terminal tray`
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `desktop` / `ui` / `typescript`: `TerminalPanel` in `desktop/src/renderer/components/TerminalPanel.tsx`
+  - `studio` / `ui` / `typescript`: `StudioCenter` in `desktop/src/renderer/studio/StudioCenter.tsx`
+- **Notes:** Studio Surface terminal tabs are separate Studio-only surfaces with <conversationId>:surface:<instanceId> PTY keys. The ion://terminal action targets this shared panel, never a Studio Surface terminal.
+
 #### Conversation Timeline Minimap {#term-conversation-timeline-minimap}
 
 The narrow scrubber beside a transcript. It maps the conversation history to a compact strip so a user can jump to an earlier point.
@@ -1679,6 +1695,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Conversation instance | `export interface ProjectedConversationInstance` | `export interface ProjectedConversationInstance` | `export interface ProjectedConversationInstance` | `struct EngineInstanceBar` | None |
 | Conversation status | `StatusDot` | `StatusDot` | `StatusDot` | `TabStatusRollup` | None |
 | Conversation Status Bar | `export function ComposerControls` | `export function ComposerControls` | `export function ComposerControls` | `struct ConversationStatusBar` | None |
+| Conversation Terminal Panel | `TerminalPanel` | `TerminalPanel`, `StudioCenter` | `TerminalPanel` | None | iOS |
 | Conversation Timeline Minimap | `TimelineMinimap` | `TimelineMinimap` | `TimelineMinimap` | None | iOS |
 | Conversation View | `export function ConversationView` | `export function ConversationView`, `ConversationView` | `export function ConversationView` | `struct ConversationView` | None |
 | Cost | None | None | None | `StatusDrawerBreakdown` | Desktop, Studio, Overlay |
@@ -1750,6 +1767,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `automation rule editor` → [Automation Editor](#term-automation-editor)
 - Alias: `automation rules` → [Desktop Automation](#term-desktop-automation)
 - Alias: `bench` → [Integration bench](#term-integration-bench)
+- Alias: `bottom terminal tray` → [Conversation Terminal Panel](#term-conversation-terminal-panel)
 - Alias: `browser surface` → [Studio Browser Surface](#term-studio-browser-surface)
 - Alias: `canonical event` → [Normalized event](#term-normalized-event)
 - Alias: `center pane` → [Studio Center](#term-studio-center)
@@ -1840,6 +1858,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `surface tab` → [Surface](#term-surface)
 - Alias: `tab list` → [Tab Strip](#term-tab-strip)
 - Alias: `term registry` → [Vocabulary registry](#term-vocabulary-registry)
+- Alias: `terminal panel` → [Conversation Terminal Panel](#term-conversation-terminal-panel)
 - Alias: `thread` → [Conversation](#term-conversation)
 - Alias: `timeline minimap` → [Conversation Timeline Minimap](#term-conversation-timeline-minimap)
 - Alias: `transcript view` → [Conversation View](#term-conversation-view)

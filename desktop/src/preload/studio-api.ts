@@ -10,6 +10,7 @@ import { ipcRenderer, webUtils } from 'electron'
 import { IPC } from '../shared/types'
 import type { BrowserSessionMode } from '../shared/studio-surface-types'
 import type { StudioBrowserCommandEnvelope, StudioBrowserCommandResult } from '../shared/studio-browser-types'
+import type { StudioConversationTerminalPublish, StudioConversationTerminalSnapshot } from '../shared/studio-conversation-terminal-sync'
 import type { StudioGetStateResult, StudioHistoryReplace, StudioRawPackBundle, StudioSettings, StudioTabListEntry, StudioTabState, StudioThemeListEntry, StudioUserMessageEcho, StudioWorktreeSnapshot } from '../shared/types-studio'
 
 export interface StudioApi {
@@ -125,6 +126,12 @@ export interface StudioApi {
   studioGetTabsSync(): Promise<unknown | null>
   /** Studio side: live tab-metadata snapshots pushed after every owner persist. */
   onStudioTabsSync(callback: (snapshot: unknown) => void): () => void
+  /** Owner-renderer side: publish the complete Conversation Terminal Panel snapshot. */
+  studioPublishConversationTerminals(snapshot: StudioConversationTerminalPublish): void
+  /** Studio side: boot pull of the latest Conversation Terminal Panel snapshot. */
+  studioGetConversationTerminals(): Promise<StudioConversationTerminalSnapshot | null>
+  /** Studio side: live complete Conversation Terminal Panel snapshots. */
+  onStudioConversationTerminals(callback: (snapshot: StudioConversationTerminalSnapshot) => void): () => void
   /** Owner-renderer side: publish a complete worktree and bench snapshot. */
   studioPublishWorktreeSync(snapshot: Omit<StudioWorktreeSnapshot, 'revision'>): void
   /** Studio side: boot pull of the last owner-published worktree snapshot. */
@@ -250,6 +257,14 @@ export const studioApi: StudioApi = {
     const handler = (_e: Electron.IpcRendererEvent, snapshot: unknown) => callback(snapshot)
     ipcRenderer.on(IPC.STUDIO_TABS_SYNC, handler)
     return () => ipcRenderer.removeListener(IPC.STUDIO_TABS_SYNC, handler)
+  },
+  studioPublishConversationTerminals: (snapshot) =>
+    ipcRenderer.send(IPC.STUDIO_PUBLISH_CONVERSATION_TERMINALS, snapshot),
+  studioGetConversationTerminals: () => ipcRenderer.invoke(IPC.STUDIO_GET_CONVERSATION_TERMINALS),
+  onStudioConversationTerminals: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, snapshot: StudioConversationTerminalSnapshot) => callback(snapshot)
+    ipcRenderer.on(IPC.STUDIO_CONVERSATION_TERMINALS, handler)
+    return () => ipcRenderer.removeListener(IPC.STUDIO_CONVERSATION_TERMINALS, handler)
   },
   studioPublishWorktreeSync: (snapshot) => ipcRenderer.send(IPC.STUDIO_PUBLISH_WORKTREE_SYNC, snapshot),
   studioGetWorktreeSync: () => ipcRenderer.invoke(IPC.STUDIO_GET_WORKTREE_SYNC),

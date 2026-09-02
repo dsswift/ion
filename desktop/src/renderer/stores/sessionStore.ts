@@ -27,6 +27,7 @@ import { createGitConflictSlice } from './slices/git-conflict-slice'
 import { createConflictOperationSlice } from './slices/conflict-operation-slice'
 import { trackWorkspaceActions } from './session-store-workspace-operation-ledger'
 import { setupStudioWorktreeSync } from './session-store-worktree-sync'
+import { setupStudioConversationTerminalSync } from './session-store-terminal-sync'
 import { createAttachmentsSlice } from './slices/attachments-slice'
 import { createPermissionsSlice } from './slices/permissions-slice'
 import { createSendSlice } from './slices/send-slice'
@@ -69,7 +70,6 @@ const initialState = {
   dispatchSplit: null,
   terminalOpenTabIds: new Set<string>(),
   terminalActivities: new Map(),
-  terminalPendingCommands: new Map<string, string>(),
   terminalPanes: new Map<string, TerminalPaneState>(),
   terminalTallTabId: null,
   terminalBigScreenTabId: null,
@@ -191,4 +191,5 @@ if (!isMirrorWindow()) {
   setupPersistence(useSessionStore)
   startAutoSettleSweep(useSessionStore)
   setupStudioWorktreeSync(useSessionStore)
+  setupStudioConversationTerminalSync(useSessionStore)
 }

@@ -300,10 +300,14 @@ export const IPC = {
   TERMINAL_INCOMING: "ion:terminal-incoming",
   TERMINAL_EXIT: "ion:terminal-exit",
   TERMINAL_DESTROY: "ion:terminal-destroy",
-  TERMINAL_GET_SCROLLBACK: "ion:terminal-get-scrollback",
   // Attach protocol (D2): history snapshot + lifecycle state in one call,
   // with optional respawn-on-demand for dead terminals.
   TERMINAL_ATTACH: "ion:terminal-attach",
+  // Shared Conversation Terminal Panel metadata: owner renderer → main
+  // (publish), main → Studio (push), and Studio → main (boot pull).
+  STUDIO_PUBLISH_CONVERSATION_TERMINALS: "studio:publish-conversation-terminals",
+  STUDIO_CONVERSATION_TERMINALS: "studio:conversation-terminals",
+  STUDIO_GET_CONVERSATION_TERMINALS: "studio:get-conversation-terminals",
   ...STUDIO_BROWSER_IPC,
   // System/OS facilities: fonts, diagnostics, clipboard, chart navigation.
   ...SYSTEM_IPC,

@@ -99,19 +99,18 @@ export interface StoreActions extends EngineSubmitActions {
    * durable agentStates (dispatchParentId walk) before presenting the panel.
    */
   openDispatchPreview: (dispatchId: string) => void;
-  toggleTerminal: (tabId: string) => void;
-  runInTerminal: (tabId: string, cmd: string) => void;
-  consumeTerminalPendingCommand: (key: string) => string | undefined;
+  toggleTerminal: (tabId: string) => Promise<void>;
+  runInTerminal: (tabId: string, cmd: string) => Promise<void>;
   /** `adoptTabId` is supplied only by boot restoration; see resumeSession. */
   createTerminalTab: (dir?: string, adoptTabId?: string) => Promise<string>;
-  addTerminalInstance: (tabId: string, kind: string, cwd?: string) => string;
-  removeTerminalInstance: (tabId: string, instanceId: string) => void;
+  addTerminalInstance: (tabId: string, kind: string, cwd?: string, label?: string) => Promise<string>;
+  removeTerminalInstance: (tabId: string, instanceId: string) => Promise<void>;
   selectTerminalInstance: (tabId: string, instanceId: string) => void;
   toggleTerminalReadOnly: (tabId: string, instanceId: string) => void;
   toggleTerminalTall: (tabId: string) => void;
   toggleTerminalBigScreen: (tabId: string) => void;
-  getOrCreateDedicatedTerminal: (tabId: string, kind: string) => string;
-  runQuickTool: (tabId: string, toolId: string) => void;
+  getOrCreateDedicatedTerminal: (tabId: string, kind: string) => Promise<string>;
+  runQuickTool: (tabId: string, toolId: string) => Promise<void>;
   renameTerminalInstance: (
     tabId: string,
     instanceId: string,

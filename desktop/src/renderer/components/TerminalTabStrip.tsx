@@ -5,6 +5,7 @@ import { useSessionStore } from '../stores/sessionStore'
 import { Tooltip } from './git/Tooltip'
 import { contentRouter } from '../lib/file-open-router'
 import type { TerminalInstance } from '../../shared/types'
+import { rWarn } from '../rendererLogger'
 
 interface Props {
   tabId: string
@@ -151,7 +152,16 @@ export function TerminalTabStrip({ tabId }: Props) {
         {/* Close button */}
         <button
           data-ion-ui
-          onClick={(e) => { e.stopPropagation(); removeTerminalInstance(tabId, inst.id) }}
+          onClick={(e) => {
+            e.stopPropagation()
+            void removeTerminalInstance(tabId, inst.id).catch((error) => {
+              rWarn('terminal', 'conversation terminal close failed', {
+                tab_id: tabId,
+                instance_id: inst.id,
+                error: String(error),
+              })
+            })
+          }}
           style={{
             background: 'none',
             border: 'none',
@@ -202,7 +212,14 @@ export function TerminalTabStrip({ tabId }: Props) {
           {/* Add terminal button */}
           <button
             data-ion-ui
-            onClick={() => addTerminalInstance(tabId, 'user')}
+            onClick={() => {
+              void addTerminalInstance(tabId, 'user').catch((error) => {
+                rWarn('terminal', 'conversation terminal creation failed', {
+                  tab_id: tabId,
+                  error: String(error),
+                })
+              })
+            }}
             title="New terminal"
             style={{
               background: 'none',
