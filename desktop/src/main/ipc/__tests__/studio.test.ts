@@ -204,6 +204,22 @@ describe("studio:set-setting validation", () => {
     expect(invoke(IPC.STUDIO_SET_SETTING, "studioLayout", null)).toBe(false);
   });
 
+  it("studioSurface: accepts v4 Scratch Documents and rejects legacy writes", () => {
+    const current = {
+      version: 4,
+      pinnedTabs: ["plan"],
+      notification: null,
+      conversations: {},
+      scratchProjects: {
+        "/repo": {
+          documents: [{ id: "scratch-1", fileName: "Untitled-1.md", content: "notes", savedContent: "", isPreview: false }],
+        },
+      },
+    };
+    expect(invoke(IPC.STUDIO_SET_SETTING, "studioSurface", current)).toBe(true);
+    expect(invoke(IPC.STUDIO_SET_SETTING, "studioSurface", { ...current, version: 3 })).toBe(false);
+  });
+
   it("studioDockPresence: boolean-validated and re-applied live to the open window", () => {
     expect(invoke(IPC.STUDIO_SET_SETTING, "studioDockPresence", "on")).toBe(
       false,

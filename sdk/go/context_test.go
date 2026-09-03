@@ -20,6 +20,7 @@ func TestNewContextDecodesModelEnvelope(t *testing.T) {
 		"dispatchId":"dispatch-1",
 		"cwd":"/work",
 		"model":{"id":"opus","contextWindow":200000},
+		"identity":{"kind":"operator","provider":"oidc","claims":{"roles":["admin"],"metadata":{"active":true},"empty":null}},
 		"config":{"extensionDir":"/extension","model":"opus","workingDirectory":"/work","mcpConfigPath":"/work/mcp.json"}
 	}`)
 
@@ -38,6 +39,12 @@ func TestNewContextDecodesModelEnvelope(t *testing.T) {
 	}
 	if ctx.Model.ID != "opus" || ctx.Model.ContextWindow != 200000 {
 		t.Errorf("Model = %+v, want opus / 200000", ctx.Model)
+	}
+	if ctx.Identity == nil || ctx.Identity.Kind != "operator" || ctx.Identity.Provider != "oidc" {
+		t.Errorf("Identity = %+v, want decoded identity", ctx.Identity)
+	}
+	if claims := ctx.Identity.Claims; claims["empty"] != nil || claims["metadata"].(map[string]any)["active"] != true {
+		t.Errorf("Identity claims = %#v, want nested JSON values", claims)
 	}
 	if ctx.Config.ExtensionDir != "/extension" || ctx.Config.McpConfigPath != "/work/mcp.json" {
 		t.Errorf("Config = %+v, want decoded envelope config", ctx.Config)
@@ -62,6 +69,9 @@ func TestNewContextWithoutModelKeepsSiblingFields(t *testing.T) {
 	ctx := sdk.newContext(meta)
 	if ctx.Model != nil {
 		t.Errorf("Model = %+v, want nil when engine omitted model", ctx.Model)
+	}
+	if ctx.Identity != nil {
+		t.Errorf("Identity = %+v, want nil when engine omitted identity", ctx.Identity)
 	}
 	if ctx.SessionKey != "session-2" || ctx.ConversationID != "conversation-2" ||
 		ctx.RunID != "run-2" || ctx.TraceID != "trace-2" || ctx.Depth != 1 ||

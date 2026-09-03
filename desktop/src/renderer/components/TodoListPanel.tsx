@@ -11,7 +11,7 @@ interface TodoItem {
   status: 'pending' | 'in_progress' | 'completed'
 }
 
-function extractTodos(messages: Message[]): TodoItem[] {
+export function extractTodos(messages: Message[]): TodoItem[] {
   // 1. Find last successful TodoWrite call (it's always the full snapshot)
   const lastTodoWrite = [...messages]
     .reverse()

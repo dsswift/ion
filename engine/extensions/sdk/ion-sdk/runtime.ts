@@ -26,6 +26,7 @@ import {
 } from './runtime-resources'
 import { doRegisterAgentTools } from './runtime-agents'
 import { emitLog as sharedEmitLog, type LogLevel as SharedLogLevel } from './runtime-log'
+import { createToolRegistry } from './runtime-tools'
 import type {
   AgentSpec,
   CommandDef,
@@ -72,6 +73,7 @@ import type { RecallAgentOpts, RecallDispatchOpts } from './types-dispatch-contr
 
 const hooks = new Map<string, (ctx: IonContext, payload?: any) => any>()
 const tools = new Map<string, ToolDef>()
+let toolRegistry: ReturnType<typeof createToolRegistry>
 const commands = new Map<string, CommandDef>()
 let initConfig: ExtensionConfig | null = null
 
@@ -183,6 +185,8 @@ function requestWithId(
   return { id, promise }
 }
 
+toolRegistry = createToolRegistry(request, tools)
+
 // ---------------------------------------------------------------------------
 // Context builder
 // ---------------------------------------------------------------------------
@@ -234,6 +238,12 @@ function readBuildIdentity(): BuildIdentityRead {
   }
 }
 
+function isContextIdentity(value: unknown): value is NonNullable<IonContext['identity']> {
+  return typeof value === 'object' && value !== null &&
+    typeof (value as { kind?: unknown }).kind === 'string' &&
+    typeof (value as { provider?: unknown }).provider === 'string'
+}
+
 function buildContext(ctxData: any): IonContext {
   return {
     sessionKey: typeof ctxData?.sessionKey === 'string' ? ctxData.sessionKey : '',
@@ -248,6 +258,7 @@ function buildContext(ctxData: any): IonContext {
     // the defaults (0 / '') ARE the root-session shape.
     depth: typeof ctxData?.depth === 'number' ? ctxData.depth : 0,
     dispatchId: typeof ctxData?.dispatchId === 'string' ? ctxData.dispatchId : '',
+    identity: isContextIdentity(ctxData?.identity) ? ctxData.identity : undefined,
     cwd: ctxData?.cwd || initConfig?.workingDirectory || '',
     model: ctxData?.model || null,
     config: ctxData?.config || initConfig || emptyConfig,
@@ -747,6 +758,7 @@ async function handleRequest(
       if (buildIdentity.diagnostic) {
         emitLog('warn', buildIdentity.diagnostic.message, buildIdentity.diagnostic.fields)
       }
+      toolRegistry.setInitialized()
       respond(id, {
         tools: Array.from(tools.values()).map((t) => ({
           name: t.name,
@@ -823,8 +835,18 @@ async function handleRequest(
       const localEvents: EngineEvent[] = []
       activeEvents = localEvents
       const ctx = buildContext(ctxData)
-      const result = await handler(ctx, unwrapped)
-      activeEvents = savedEvents
+      const identityTransaction = hookName === 'identity_changed'
+      if (identityTransaction) toolRegistry.begin()
+      let result: unknown
+      try {
+        result = await handler(ctx, unwrapped)
+        if (identityTransaction) await toolRegistry.commit()
+      } catch (err) {
+        if (identityTransaction) toolRegistry.rollback()
+        throw err
+      } finally {
+        activeEvents = savedEvents
+      }
 
       // Wrap the handler return value with any accumulated events.
       if (localEvents.length > 0) {
@@ -969,7 +991,13 @@ export function createIon(): IonSDK {
       hooks.set(hook, handler)
     },
     registerTool(def) {
-      tools.set(def.name, def)
+      toolRegistry.register(def)
+    },
+    deregisterTool(name) {
+      return toolRegistry.deregister(name)
+    },
+    syncTools() {
+      return toolRegistry.sync()
     },
     registerCommand(name, def) {
       commands.set(name, def)

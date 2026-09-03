@@ -33,6 +33,21 @@ describe('AI-assisted workflow templates', () => {
     })
   })
 
+  it('every operation template starts with a guard that verifies the operation is in progress', () => {
+    // Each template must instruct the agent to check the git ref FIRST so it
+    // stops immediately if the operation already completed — prevents infinite
+    // loops where the agent misreads its own diagnostic output as conflict markers.
+    const guards: Record<string, string> = {
+      'rebase-resolution': 'git rev-parse --verify REBASE_HEAD',
+      'merge-resolution': 'git rev-parse --verify MERGE_HEAD',
+      'cherry-pick-resolution': 'git rev-parse --verify CHERRY_PICK_HEAD',
+    }
+    for (const [id, expectedGuard] of Object.entries(guards)) {
+      const workflow = aiAssistWorkflow(id as Parameters<typeof aiAssistWorkflow>[0])
+      expect(workflow.defaultTemplate).toContain(expectedGuard)
+    }
+  })
+
   it('uses an override only for its own workflow and resets to source default', () => {
     const overrides = { 'rebase-resolution': 'custom {{directory}}' }
     expect(effectiveAiAssistTemplate('rebase-resolution', overrides).overridden).toBe(true)

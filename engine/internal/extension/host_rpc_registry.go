@@ -52,6 +52,9 @@ var extRequestHandlers = map[string]extRequestHandler{
 	"ext/list_dispatch_state":           (*Host).rpcListDispatchState,
 	"ext/set_dispatch_context_defaults": (*Host).rpcSetDispatchContextDefaults,
 
+	// Dynamic tool registry.
+	"ext/tool_registry_snapshot": (*Host).rpcToolRegistrySnapshot,
+
 	// Session surface.
 	"ext/send_prompt":        (*Host).rpcSendPrompt,
 	"ext/call_tool":          (*Host).rpcCallTool,

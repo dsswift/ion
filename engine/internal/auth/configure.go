@@ -13,6 +13,7 @@ import (
 func ConfigureIdentityProviders(cfg *types.AuthConfig) (*IdentityManager, error) {
 	SetTokenProvider(nil)
 	SetAWSCredentialsProvider(nil)
+	SetContextIdentityProvider(nil)
 	if cfg == nil || cfg.IdentityProvider == "" {
 		if cfg != nil && cfg.RequireOperatorIdentity {
 			return nil, fmt.Errorf("auth.requireOperatorIdentity requires auth.identityProvider")
@@ -28,8 +29,23 @@ func ConfigureIdentityProviders(cfg *types.AuthConfig) (*IdentityManager, error)
 		return nil, fmt.Errorf("auth.requireOperatorIdentity requires an interactive operator provider; auth.identityProvider %q uses machineIdentity", cfg.IdentityProvider)
 	}
 	if oauthCfg.MachineIdentity == nil {
+		// A verified operator identity is proven by checking the id_token
+		// signature, which needs the provider's JWKS. JWKS is reached through
+		// OIDC discovery from issuerUrl. An operator provider without issuerUrl
+		// can still mint access tokens (explicit tokenUrl), but every identity
+		// verification — interactive login, startup reconcile, background
+		// renewal — fails with "issuerUrl is required", and the failure only
+		// surfaces later in renewal retries. Warn loudly at boot instead.
+		if oauthCfg.IssuerURL == "" {
+			utils.LogWithFields(utils.LevelWarn, "auth.identity", "operator identity provider has no issuerUrl; identity verification cannot run", map[string]any{
+				"provider":      cfg.IdentityProvider,
+				"has_token_url": oauthCfg.TokenURL != "",
+				"remedy":        "set auth.oauth." + cfg.IdentityProvider + ".issuerUrl so OIDC discovery can reach the provider's signing keys",
+			})
+		}
 		operator := NewIdentityManager(cfg.IdentityProvider, oauthCfg, cfg.RefreshThresholdMs)
 		SetTokenProvider(operator)
+		SetContextIdentityProvider(operator)
 		utils.LogWithFields(utils.LevelInfo, "auth.identity", "operator identity provider configured", map[string]any{
 			"provider": cfg.IdentityProvider, "signed_in": operator.SignedIn(),
 		})
@@ -44,6 +60,7 @@ func ConfigureIdentityProviders(cfg *types.AuthConfig) (*IdentityManager, error)
 	} else {
 		SetTokenProvider(machine)
 	}
+	SetContextIdentityProvider(machine)
 	utils.LogWithFields(utils.LevelInfo, "auth.identity", "machine identity provider configured", map[string]any{
 		"provider": cfg.IdentityProvider, "source": machine.SourceKind(),
 	})

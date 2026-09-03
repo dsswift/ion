@@ -53,8 +53,8 @@ func TestAttachToolServerMcp_ClaudeCode(t *testing.T) {
 
 // TestAttachToolServerMcp_Acp pins that the ACP backends get an inline
 // mcpServers spec (opts.CliMcpServers) and no config-file path, and that the
-// spec is the socat→Unix-socket stdio bridge grok's serde accepts (name +
-// command + args + env).
+// spec is the self-exec ion mcp-bridge stdio bridge grok's serde accepts (name +
+// command + args + env), never socat.
 func TestAttachToolServerMcp_Acp(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	mgr := NewManager(backend.NewGrokBackend())
@@ -74,14 +74,15 @@ func TestAttachToolServerMcp_Acp(t *testing.T) {
 	if spec["name"] != backend.McpServerName {
 		t.Errorf("spec name = %v, want %q", spec["name"], backend.McpServerName)
 	}
-	if spec["command"] != "socat" {
-		t.Errorf("spec command = %v, want socat", spec["command"])
+	if spec["command"] == "socat" || spec["command"] == "" {
+		t.Errorf("spec command = %v, want the self-exec ion mcp-bridge (never socat)", spec["command"])
 	}
 	if _, hasEnv := spec["env"]; !hasEnv {
 		t.Error("spec missing env (grok's stdio McpServer serde requires it)")
 	}
-	if _, hasArgs := spec["args"]; !hasArgs {
-		t.Error("spec missing args")
+	args, hasArgs := spec["args"].([]string)
+	if !hasArgs || len(args) != 3 || args[0] != "mcp-bridge" || args[1] != "--socket" {
+		t.Errorf("spec args = %v, want [mcp-bridge --socket <sock>]", spec["args"])
 	}
 }
 

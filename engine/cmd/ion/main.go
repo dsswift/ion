@@ -19,7 +19,10 @@ func main() {
 	// provider constructor logs, so the log file is already destined to be
 	// written by the time main() runs — this discards it before the first
 	// flush. Must happen before the switch, and before anything else logs.
-	if command == "version" || command == "help" {
+	if command == "version" || command == "help" || command == "mcp-bridge" {
+		// mcp-bridge is a transient stdio<->socket adapter spawned per delegated-CLI
+		// MCP session; it must not spam the operator's engine.jsonl with the
+		// provider-registration logs every process emits at init().
 		utils.DiscardOperationalLogs()
 	}
 
@@ -65,6 +68,8 @@ func main() {
 		cmdAuth(positional, flags)
 	case "mcp":
 		cmdMcp(positional, flags, listFlags)
+	case "mcp-bridge":
+		cmdMcpBridge(flags)
 	case "telemetry":
 		cmdTelemetry(positional, flags)
 	case "version":

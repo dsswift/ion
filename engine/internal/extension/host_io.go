@@ -183,6 +183,7 @@ func (h *Host) callWithTimeout(method string, params interface{}, timeout time.D
 // hook per turn (turn_start/turn_end/tool_call/permission_request all
 // fire many times per second).
 func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.RawMessage, error) {
+	ctx = stampContextIdentity(ctx)
 	if h.dead.Load() {
 		if h.deathReported.CompareAndSwap(false, true) {
 			if ctx != nil && ctx.Emit != nil {
@@ -332,6 +333,9 @@ func (h *Host) buildHookEnvelope(ctx *Context, payload interface{}) map[string]i
 			"id":            ctx.Model.ID,
 			"contextWindow": ctx.Model.ContextWindow,
 		}
+	}
+	if ctx.Identity != nil {
+		ctxMeta["identity"] = ctx.Identity
 	}
 	if ctx.Config != nil {
 		// Populate ExtensionDir from this host's loaded config when the

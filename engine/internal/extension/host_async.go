@@ -363,6 +363,17 @@ func (h *Host) CommitPendingAsyncDecls() []error {
 // setDeclaredHooks replaces the callback set reported by a subprocess init
 // handshake. Older SDKs omit the declaration, which is equivalent to an empty
 // set: preserve legacy auto catch-up rather than counting engine forwarders.
+// DeclaresHook reports whether the subprocess declared a callback.
+func (h *Host) DeclaresHook(hook string) bool {
+	if h.process == nil {
+		return h.sdk.HasHandlers(hook)
+	}
+	h.notifMu.RLock()
+	defer h.notifMu.RUnlock()
+	_, ok := h.declaredHooks[hook]
+	return ok
+}
+
 func (h *Host) setDeclaredHooks(hooks []string) {
 	declaredHooks := make(map[string]struct{}, len(hooks))
 	for _, hook := range hooks {

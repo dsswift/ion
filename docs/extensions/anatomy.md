@@ -221,3 +221,9 @@ ion.on('before_prompt', async (ctx, prompt) => {
   }
 })
 ```
+
+## Context Identity requirement
+
+`extension.json` can require a verified [Context Identity](../vocabulary/index.md#context-identity). The engine validates all manifest requirements before it starts an extension process. See [`extension.json` Reference](extension-json.md#identity-requirement) for the allowed values and composition with `auth.requireOperatorIdentity`.
+
+When the requirement is optional or satisfied, the engine sends the initial `identity_changed` snapshot after init and session wiring. It sends this snapshot before `session_start` and other extension lifecycle hooks. An extension can use it to select its live tool registry without a separate identity endpoint.

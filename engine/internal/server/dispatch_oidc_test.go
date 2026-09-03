@@ -15,7 +15,8 @@ package server
 //  4. oidc_logout: clears the grant and broadcasts the signed-out snapshot.
 
 import (
-	"encoding/base64"
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -27,19 +28,71 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/types"
+	jose "github.com/go-jose/go-jose/v4"
 )
 
-// oidcTestJWT builds an unsigned JWT carrying the given claims (the engine
-// intentionally skips signature verification for tokens received directly
-// from the token endpoint).
-func oidcTestJWT(t *testing.T, claims map[string]any) string {
+type signedOIDCTestProvider struct {
+	issuer string
+	key    *rsa.PrivateKey
+	server *httptest.Server
+}
+
+func newSignedOIDCTestProvider(t *testing.T) *signedOIDCTestProvider {
 	t.Helper()
-	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none"}`))
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate OIDC signing key: %v", err)
+	}
+	provider := &signedOIDCTestProvider{key: key}
+	provider.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"issuer":                                provider.issuer,
+				"jwks_uri":                              provider.issuer + "/keys",
+				"authorization_endpoint":                provider.issuer + "/authorize",
+				"token_endpoint":                        provider.issuer + "/token",
+				"id_token_signing_alg_values_supported": []string{"RS256"},
+			}); err != nil {
+				t.Errorf("encode OIDC discovery: %v", err)
+			}
+		case "/keys":
+			key := jose.JSONWebKey{Key: &provider.key.PublicKey, KeyID: "test-key", Algorithm: "RS256", Use: "sig"}
+			if err := json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{key}}); err != nil {
+				t.Errorf("encode OIDC JWKS: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	provider.issuer = provider.server.URL
+	t.Cleanup(provider.server.Close)
+	return provider
+}
+
+func (p *signedOIDCTestProvider) token(t *testing.T, claims map[string]any) string {
+	t.Helper()
+	claims["iss"] = p.issuer
+	claims["aud"] = "client-1"
+	claims["sub"] = "subject"
+	claims["exp"] = time.Now().Add(time.Hour).Unix()
 	payload, err := json.Marshal(claims)
 	if err != nil {
-		t.Fatalf("marshal claims: %v", err)
+		t.Fatalf("marshal OIDC claims: %v", err)
 	}
-	return header + "." + base64.RawURLEncoding.EncodeToString(payload) + ".sig"
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: p.key}, (&jose.SignerOptions{}).WithHeader("kid", "test-key"))
+	if err != nil {
+		t.Fatalf("create OIDC signer: %v", err)
+	}
+	signed, err := signer.Sign(payload)
+	if err != nil {
+		t.Fatalf("sign OIDC token: %v", err)
+	}
+	token, err := signed.CompactSerialize()
+	if err != nil {
+		t.Fatalf("serialize OIDC token: %v", err)
+	}
+	return token
 }
 
 // findOidcEvent scans NDJSON lines for the given engine_oidc_* event type.
@@ -146,11 +199,8 @@ func TestDispatchOidc_NoIdentityManagerConfigured(t *testing.T) {
 func TestDispatchOidc_PKCELoginRoundTrip(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
-	idToken := oidcTestJWT(t, map[string]any{
-		"preferred_username": "josh@example.com",
-		"name":               "Joshua Sprague",
-		"oid":                "oid-123",
-	})
+	provider := newSignedOIDCTestProvider(t)
+	var idToken string
 
 	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{
@@ -170,6 +220,7 @@ func TestDispatchOidc_PKCELoginRoundTrip(t *testing.T) {
 		ClientID:         "client-1",
 		AuthorizationURL: "https://login.example.com/authorize",
 		TokenURL:         tokenSrv.URL,
+		IssuerURL:        provider.issuer,
 		Scopes:           []string{"openid", "profile", "offline_access"},
 	}, 0))
 
@@ -197,6 +248,12 @@ func TestDispatchOidc_PKCELoginRoundTrip(t *testing.T) {
 		t.Fatalf("parse auth url: %v", err)
 	}
 	q := authURL.Query()
+	idToken = provider.token(t, map[string]any{
+		"preferred_username": "operator@example.com",
+		"name":               "Operator",
+		"oid":                "oid-123",
+		"nonce":              q.Get("nonce"),
+	})
 	resp, err := http.Get(fmt.Sprintf("%s?code=code-1&state=%s", q.Get("redirect_uri"), url.QueryEscape(q.Get("state"))))
 	if err != nil {
 		t.Fatalf("callback: %v", err)
@@ -216,7 +273,7 @@ func TestDispatchOidc_PKCELoginRoundTrip(t *testing.T) {
 	if identityEvt.OidcSignedIn == nil || !*identityEvt.OidcSignedIn {
 		t.Error("identity snapshot must carry oidcSignedIn=true")
 	}
-	if identityEvt.OidcUsername != "josh@example.com" {
+	if identityEvt.OidcUsername != "operator@example.com" {
 		t.Errorf("oidcUsername = %q", identityEvt.OidcUsername)
 	}
 	if identityEvt.OidcSubject != "oid-123" {
@@ -286,11 +343,11 @@ func TestDispatchOidc_TokenMint(t *testing.T) {
 		TokenURL:         mint.URL,
 	}, 0)
 	srv.SetIdentityManager(im)
-	if err := im.CompleteLogin(&auth.TokenResponse{
+	if err := im.SeedVerifiedLoginForTest(&auth.TokenResponse{
 		AccessToken:  "base-at",
 		RefreshToken: "rt-1",
 		ExpiresAt:    time.Now().Add(-time.Minute), // force a mint
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("seed grant: %v", err)
 	}
 
@@ -330,9 +387,9 @@ func TestDispatchOidc_TokenForceRefresh(t *testing.T) {
 	srv := newShortPathTestServer(t, newMockBackend())
 	im := auth.NewIdentityManager("entra", types.OAuthConfig{ClientID: "client-1", TokenURL: mint.URL}, 0)
 	srv.SetIdentityManager(im)
-	if err := im.CompleteLogin(&auth.TokenResponse{
+	if err := im.SeedVerifiedLoginForTest(&auth.TokenResponse{
 		AccessToken: "base-at", RefreshToken: "rt-1", ExpiresAt: time.Now().Add(time.Hour),
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("seed grant: %v", err)
 	}
 
@@ -364,12 +421,12 @@ func TestDispatchOidc_Logout(t *testing.T) {
 	srv.SetIdentityManager(im)
 
 	// Seed a signed-in grant directly through the manager.
-	if err := im.CompleteLogin(&auth.TokenResponse{
+	if err := im.SeedVerifiedLoginForTest(&auth.TokenResponse{
 		AccessToken:  "at",
 		RefreshToken: "rt",
-		IDToken:      oidcTestJWT(t, map[string]any{"preferred_username": "josh@example.com", "oid": "oid-1"}),
+		IDToken:      "test-only-token",
 		ExpiresAt:    time.Now().Add(time.Hour),
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("seed grant: %v", err)
 	}
 

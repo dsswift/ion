@@ -480,3 +480,54 @@ It stays on `v0` until parity has been green across a full release cycle. Treat 
 - [TypeScript SDK](sdk-typescript.md) — the other first-class SDK
 - [Engine-Internal Extension SDK](sdk-engine-internal.md) — the registry inside the engine
 - [Hook reference](../hooks/reference.md) — every hook by name, with payload and return semantics
+
+## Context Identity
+
+`Context.Identity` is an optional [Context Identity](../vocabulary/index.md#context-identity) snapshot. A present value is verified current state. Nil means no verified identity is available. Do not use an access-token claim as identity.
+
+```go
+type ContextIdentity struct {
+    Kind        string         `json:"kind"` // "operator" or "workload"
+    Provider    string         `json:"provider"`
+    Subject     string         `json:"subject,omitempty"`
+    Username    string         `json:"username,omitempty"`
+    DisplayName string         `json:"displayName,omitempty"`
+    Attribution string         `json:"attribution,omitempty"`
+    Source      string         `json:"source,omitempty"`
+    Claims      map[string]any `json:"claims,omitempty"`
+}
+```
+
+The engine copies the complete verified identity-token claim object. JSON types stay intact. A projection larger than 256 KiB fails closed; the engine does not truncate it. The snapshot contains no token, header, signature, refresh token, secret, assertion, or credential-process output.
+
+`Kind == "operator"` identifies a signed-in operator. `Kind == "workload"` identifies a verified machine source. Workload `Subject` and `Claims` can be empty when the source has no verified values. Do not create a subject from a workload selector.
+
+A provider can return a groups-overage claim or marker instead of a group array. The engine preserves that exact verified value. Use authenticated `Context.HTTP()` for provider-specific group expansion. The engine does not expand groups.
+
+### `identity_changed`
+
+Use `HookIdentityChanged` to replace local identity state and select tools for the next run.
+
+```go
+ion.OnHook(sdk, ion.HookIdentityChanged,
+    func(ctx *ion.Context, info ion.IdentityChangedInfo) (ion.NoResult, error) {
+        if info.Identity != nil && info.Identity.Kind == "operator" {
+            sdk.RegisterTool(operatorTool)
+        } else {
+            sdk.DeregisterTool("operator_tool")
+        }
+        return ion.NoResult{}, nil
+    })
+```
+
+`IdentityChangedInfo` contains `Identity *ContextIdentity` and `Reason string`. Reasons are `initial`, `signed_in`, `signed_out`, `claims_changed`, `verification_lost`, and `workload_ready`. Each value is a complete snapshot. Replace your saved state. Do not merge it. `initial` fires once after init and session wiring, before `session_start` or another lifecycle hook. The engine deduplicates later equal snapshots.
+
+The hook is a tool-registry transaction. `ctx.Identity` and `info.Identity` are equal deep copies. A successful handler commits all tool changes together. A failed handler restores the prior SDK-local tools and leaves the host unavailable for new tools until it can receive the snapshot again.
+
+### Dynamic tools
+
+`RegisterTool` replaces a same-name local tool. `DeregisterTool(name)` returns true when it removes a tool. Call `SyncTools(ctx)` outside a hook when you must wait for the engine to accept the current registry.
+
+The SDK sends complete snapshots, not add/remove deltas. A snapshot carries a monotonic revision. Init uses revision zero. `SyncTools` returns the accepted revision. A successful `identity_changed` response carries the same full snapshot and commits it atomically. A failed, malformed, or stale snapshot activates no partial registry.
+
+A changed snapshot is visible when the engine builds the next run's tool list. Each call resolves the live registry again. A call to a removed tool is denied even when a running model has an old definition.

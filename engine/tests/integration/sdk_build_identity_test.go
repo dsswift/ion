@@ -50,7 +50,7 @@ func TestSDKBuildIdentity_RealTypeScriptInit(t *testing.T) {
 	entry := filepath.Join(extDir, "index.ts")
 	code := "import { createIon } from '" + sdkPath + "'\n" +
 		"const ion = createIon()\n" +
-		"ion.registerTool({ name: 'identity_probe', description: 'identity probe', parameters: {}, execute: () => ({ content: 'ok' }) })\n"
+		"ion.registerTool({ name: 'identity_probe', description: 'identity probe', parameters: { type: 'object', properties: {} }, execute: () => ({ content: 'ok' }) })\n"
 	if err := os.WriteFile(entry, []byte(code), 0o644); err != nil {
 		t.Fatalf("write TypeScript extension: %v", err)
 	}

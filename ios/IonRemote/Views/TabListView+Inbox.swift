@@ -165,8 +165,21 @@ extension TabListView {
                 } else {
                     effectiveDirectory = project.id
                 }
-                viewModel.pendingBranchPickerRepo = effectiveDirectory
-                viewModel.requestGitBranches(directory: effectiveDirectory)
+                // When the desktop already records a default source branch for
+                // this repo, create the worktree conversation directly with it
+                // -- exactly as the desktop does -- rather than prompting. The
+                // picker is only for a repo with no recorded default.
+                if let defaultBranch = viewModel.worktreeState(for: effectiveDirectory)?.defaultSourceBranch,
+                   !defaultBranch.isEmpty {
+                    DiagnosticLog.log("creating worktree conversation from recorded default", tag: "view.inbox", fields: [
+                        "repo_path": effectiveDirectory,
+                        "source_branch": defaultBranch
+                    ])
+                    viewModel.createTab(workingDirectory: effectiveDirectory, useWorktree: true, sourceBranch: defaultBranch)
+                } else {
+                    viewModel.pendingBranchPickerRepo = effectiveDirectory
+                    viewModel.requestGitBranches(directory: effectiveDirectory)
+                }
             } label: {
                 Label("New worktree conversation", systemImage: "arrow.triangle.branch")
             }

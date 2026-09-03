@@ -8,7 +8,7 @@
 import React, { useEffect, useRef } from 'react'
 import { usePopoverLayer } from '../../components/PopoverLayer'
 import { createPortal } from 'react-dom'
-import { ChartBar, FileText, FolderOpen, GitBranch, GitDiff, Globe, TerminalWindow } from '@phosphor-icons/react'
+import { ChartBar, FileText, FolderOpen, GitBranch, GitDiff, Globe, NotePencil, TerminalWindow } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { useAnchoredPopover } from '../../hooks/useAnchoredPopover'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
@@ -29,6 +29,7 @@ export const SURFACE_ADD_ENTRIES: readonly AddEntry[] = [
   { id: 'diff', label: 'Diff', icon: GitDiff, create: (s) => s.openSingleton('diff') },
   { id: 'plan', label: 'Plan Preview', icon: FileText, create: (s) => s.openSingleton('plan') },
   { id: 'visualizer', label: 'Visualizer', icon: ChartBar, create: (s) => s.openSingleton('visualizer') },
+  { id: 'scratch', label: 'Scratch Document', icon: NotePencil, create: (s) => s.createScratch() },
   { id: 'files', label: 'Explorer', icon: FolderOpen, create: (s) => s.openSingleton('files') },
   { id: 'gitpanel', label: 'Git', icon: GitBranch, create: (s) => s.openSingleton('gitpanel') },
   { id: 'browser', label: 'Browser', icon: Globe, create: (s) => s.openBrowserTab('', 'browse') },

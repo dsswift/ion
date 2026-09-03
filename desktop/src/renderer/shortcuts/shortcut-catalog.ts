@@ -42,7 +42,7 @@ export const SHORTCUT_CATALOG: readonly ShortcutEntry[] = [
   { id: 'tab.newPicker', group: 'Tabs', description: 'New tab (choose conversation type)', defaultBinding: 'Mod+Alt+t', views: ['overlay', 'studio'] },
   { id: 'tab.newHere', group: 'Tabs', description: 'New tab (current directory)', defaultBinding: 'Mod+Shift+t', views: ['overlay'] },
   { id: 'tab.recentDirs', group: 'Tabs', description: 'Open recent directories', defaultBinding: 'Mod+r', views: ['overlay', 'studio'] },
-  { id: 'tab.scratch', group: 'Tabs', description: 'New scratch file', defaultBinding: 'Mod+n', views: ['overlay'] },
+  { id: 'tab.scratch', group: 'Tabs', description: 'New Scratch Document', defaultBinding: 'Mod+n', views: ['overlay', 'studio'] },
 
   { id: 'zoom.in', group: 'Zoom', description: 'Zoom in (active surface)', defaultBinding: 'Mod+=', views: ['overlay', 'studio'] },
   { id: 'zoom.inShifted', group: 'Zoom', description: 'Zoom in (shifted alias)', defaultBinding: 'Mod++', views: ['overlay', 'studio'] },

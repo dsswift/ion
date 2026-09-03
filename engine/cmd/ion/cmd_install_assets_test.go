@@ -11,15 +11,21 @@ import (
 //
 //	root/
 //	  extensions/
-//	    sdk/            (a few files)
+//	    sdk/            (TypeScript SDK files)
+//	    sdk-go/         (standalone Go SDK files)
 func buildFakeAssetTree(t *testing.T, root string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(root, "extensions", "sdk"), 0o755); err != nil {
-		t.Fatalf("mkdir sdk: %v", err)
+		t.Fatalf("mkdir TypeScript SDK: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "extensions", "sdk-go"), 0o755); err != nil {
+		t.Fatalf("mkdir Go SDK: %v", err)
 	}
 	files := map[string]string{
-		"extensions/sdk/index.js":   "// sdk stub",
-		"extensions/sdk/types.d.ts": "// types stub",
+		"extensions/sdk/index.js":      "// TypeScript SDK stub",
+		"extensions/sdk/types.d.ts":    "// TypeScript SDK types stub",
+		"extensions/sdk-go/context.go": "// Go SDK context stub",
+		"extensions/sdk-go/go.mod":     "module example/sdk-go\n",
 	}
 	for rel, content := range files {
 		path := filepath.Join(root, rel)
@@ -29,23 +35,36 @@ func buildFakeAssetTree(t *testing.T, root string) {
 	}
 }
 
-// TestInstallAssets_CopiesSDK verifies that cmdInstallAssets (via its
-// constituent helpers) copies extensions/sdk into the target ion home.
-func TestInstallAssets_CopiesSDK(t *testing.T) {
+// TestInstallAssets_CopiesSDKs verifies that cmdInstallAssets (via its
+// constituent helpers) copies both shipped SDKs into the target ion home.
+func TestInstallAssets_CopiesSDKs(t *testing.T) {
 	assetRoot := t.TempDir()
 	buildFakeAssetTree(t, assetRoot)
 
 	ionHome := t.TempDir()
-
-	sdkSrc := filepath.Join(assetRoot, "extensions", "sdk")
-	sdkDst := filepath.Join(ionHome, "extensions", "sdk")
-	if err := copyDirContents(sdkSrc, sdkDst); err != nil {
-		t.Fatalf("copyDirContents sdk: %v", err)
-	}
-
-	for _, rel := range []string{"index.js", "types.d.ts"} {
-		if _, err := os.Stat(filepath.Join(sdkDst, rel)); err != nil {
-			t.Errorf("sdk file %q missing: %v", rel, err)
+	for _, asset := range []struct {
+		source      string
+		destination string
+		files       []string
+	}{
+		{
+			source:      filepath.Join(assetRoot, "extensions", "sdk"),
+			destination: filepath.Join(ionHome, "extensions", "sdk"),
+			files:       []string{"index.js", "types.d.ts"},
+		},
+		{
+			source:      filepath.Join(assetRoot, "extensions", "sdk-go"),
+			destination: filepath.Join(ionHome, "extensions", "sdk-go"),
+			files:       []string{"context.go", "go.mod"},
+		},
+	} {
+		if err := replaceDirContents(asset.source, asset.destination); err != nil {
+			t.Fatalf("replace %s: %v", asset.source, err)
+		}
+		for _, file := range asset.files {
+			if _, err := os.Stat(filepath.Join(asset.destination, file)); err != nil {
+				t.Errorf("installed SDK file %q missing: %v", file, err)
+			}
 		}
 	}
 }

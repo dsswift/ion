@@ -320,6 +320,14 @@
       "payloadKind": "none",
       "result": "none"
     },
+    "identity_changed": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "identity",
+        "reason"
+      ],
+      "result": "none"
+    },
     "input": {
       "payloadKind": "string",
       "result": "string"
@@ -710,6 +718,7 @@
     "ext/suppress_tool",
     "ext/task_suspend",
     "ext/terminate_process",
+    "ext/tool_registry_snapshot",
     "ext/walk_context_files"
   ],
   "extNotifications": [
@@ -764,6 +773,21 @@
       },
       "dispatchId": {
         "kind": "string"
+      },
+      "identity": {
+        "kind": "object",
+        "fields": {
+          "claims": {
+            "kind": "object",
+            "additionalProperties": true
+          },
+          "kind": {
+            "kind": "string"
+          },
+          "provider": {
+            "kind": "string"
+          }
+        }
       },
       "model": {
         "kind": "object",

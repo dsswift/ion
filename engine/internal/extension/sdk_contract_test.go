@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/dsswift/ion/engine/internal/auth"
 )
 
 var updateSDKContract = flag.Bool("update", false, "update golden testdata/sdk_contract.json")
@@ -69,8 +71,10 @@ type sdkHookContract struct {
 // kinds, not only names: decoding an object into a string rejects the entire
 // _ctx envelope and loses every sibling field.
 type sdkJSONSchema struct {
-	Kind   string                   `json:"kind"`
-	Fields map[string]sdkJSONSchema `json:"fields,omitempty"`
+	Kind                 string                   `json:"kind"`
+	Fields               map[string]sdkJSONSchema `json:"fields,omitempty"`
+	Value                *sdkJSONSchema           `json:"value,omitempty"`
+	AdditionalProperties bool                     `json:"additionalProperties,omitempty"`
 }
 
 func schemaFromJSONValue(value any) (sdkJSONSchema, error) {
@@ -81,6 +85,20 @@ func schemaFromJSONValue(value any) (sdkJSONSchema, error) {
 		return sdkJSONSchema{Kind: "boolean"}, nil
 	case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 		return sdkJSONSchema{Kind: "number"}, nil
+	case nil:
+		return sdkJSONSchema{Kind: "null"}, nil
+	case []interface{}:
+		var item *sdkJSONSchema
+		for _, entry := range value {
+			schema, err := schemaFromJSONValue(entry)
+			if err != nil {
+				return sdkJSONSchema{}, err
+			}
+			if item == nil {
+				item = &schema
+			}
+		}
+		return sdkJSONSchema{Kind: "array", Value: item}, nil
 	case map[string]interface{}:
 		fields := make(map[string]sdkJSONSchema, len(value))
 		for name, field := range value {
@@ -108,7 +126,12 @@ func contextEnvelopeSchema() sdkJSONSchema {
 		TraceID:        "4bf92f3577b34da6a3ce929d0e0e4736",
 		Depth:          1,
 		DispatchId:     "dispatch",
-		Model:          &ModelRef{ID: "model", ContextWindow: 200000},
+		Identity: &auth.ContextIdentity{
+			Kind: "operator", Provider: "provider", Claims: map[string]any{
+				"string": "value", "array": []any{"item"}, "object": map[string]any{"enabled": true}, "number": 1, "null": nil,
+			},
+		},
+		Model: &ModelRef{ID: "model", ContextWindow: 200000},
 		Config: &ExtensionConfig{
 			ExtensionDir:     "/extension",
 			Model:            "model",
@@ -135,6 +158,14 @@ func contextEnvelopeSchema() sdkJSONSchema {
 	if err != nil {
 		panic(fmt.Sprintf("build _ctx schema: %v", err))
 	}
+	// Claims are an open JSON map. The representative values above exercise all
+	// JSON kinds, but none of their claim names form part of the SDK contract.
+	identity := schema.Fields["identity"]
+	claims := identity.Fields["claims"]
+	claims.Fields = nil
+	claims.AdditionalProperties = true
+	identity.Fields["claims"] = claims
+	schema.Fields["identity"] = identity
 	return schema
 }
 

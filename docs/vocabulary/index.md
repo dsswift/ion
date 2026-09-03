@@ -60,6 +60,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Configuration](#term-configuration)
 - [Connection](#term-connection)
 - [Context](#term-context)
+- [Context Identity](#term-context-identity)
 - [Conversation](#term-conversation)
 - [Conversation Status Bar](#term-conversation-status-bar)
 - [Conversation Timeline Minimap](#term-conversation-timeline-minimap)
@@ -112,6 +113,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Resource](#term-resource)
 - [Schedule](#term-schedule)
 - [Schedule catch-up group](#term-schedule-catch-up-group)
+- [Scratch Document](#term-scratch-document)
 - [Server message](#term-server-message)
 - [Session](#term-session)
 - [Slash command](#term-slash-command)
@@ -775,6 +777,21 @@ The path that carries a schedule firing or an inbound webhook into an extension 
 
 ### public-contract
 
+#### Context Identity {#term-context-identity}
+
+Credential-free, verified identity state that the engine gives to one extension invocation. The engine verifies and transports the state. An extension interprets its claims and decides which tools or features to use.
+
+- **ID:** `context-identity`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type ContextIdentity struct` in `engine/internal/auth/identity_context.go`
+  - `sdk` / `code` / `typescript`: `export interface ContextIdentity` in `engine/extensions/sdk/ion-sdk/types.ts`
+  - `sdk` / `code` / `go`: `type ContextIdentity struct` in `sdk/go/context.go`
+
 #### Extension context {#term-extension-context}
 
 The object that the SDK gives a hook or tool handler. It carries session identity and every engine capability the extension can call.
@@ -916,6 +933,19 @@ One client application built with SwiftUI. It is a thin client that renders the 
 - **Implementations:**
   - `ios` / `ui` / `swift`: `struct TabListView` in `ios/IonRemote/Views/TabListView.swift`
   - `ios` / `wire` / `swift`: `NormalizedEvent` in `ios/IonRemote/Models/NormalizedEvent.swift`
+
+#### Scratch Document {#term-scratch-document}
+
+An unsaved Studio document stored by source-project identity. It appears across matching conversations and worktrees until the user saves or discards it. Saving removes the project-scoped document and opens the saved file in the active conversation.
+
+- **ID:** `scratch-document`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `scratch file`, `untitled document`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `studio` / `code` / `typescript`: `export interface ScratchDocument` in `desktop/src/shared/studio-surface-types.ts`
 
 #### Worktree {#term-worktree}
 
@@ -1190,7 +1220,7 @@ One of the Desktop client's two presentations. It is a standalone window with a 
 
 #### Studio Surface {#term-studio-surface}
 
-The Studio region on the right that holds conversation-scoped tabs plus the global pinned diff, plan, visualizer, and notification slots.
+The Studio region on the right that holds conversation-scoped tabs, source-project-scoped Scratch Documents, and the global pinned diff, plan, visualizer, and notification slots.
 
 - **ID:** `studio-surface`
 - **Status:** `canonical`
@@ -1645,6 +1675,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Picker | `ModelPickerPopover` | `ModelPickerPopover` | `ModelPickerPopover` | `struct ModelPickerSheet` | None |
 | Questions Wizard | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | None | iOS |
 | Resource | `ResourceViewer` | `ResourceViewer` | `ResourceViewer` | `Resource` | None |
+| Scratch Document | None | `export interface ScratchDocument` | None | None | Overlay, iOS |
 | Slash command | `SlashCommandMenu` | `SlashCommandMenu` | `SlashCommandMenu` | `struct SlashCommandMenu` | None |
 | Status Drawer | `StatusDrawer` | `StatusDrawer` | `StatusDrawer` | `struct StatusDrawerView` | None |
 | Studio Browser Surface | `export interface BrowserTab` | `export function BrowserSurface`, `export interface BrowserTab` | `export interface BrowserTab` | None | iOS |
@@ -1756,6 +1787,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `role` → [Peer role](#term-peer-role)
 - Alias: `run backend` → [Backend](#term-backend)
 - Alias: `scheduled job` → [Schedule](#term-schedule)
+- Alias: `scratch file` → [Scratch Document](#term-scratch-document)
 - Alias: `server event envelope` → [Server message](#term-server-message)
 - Alias: `shell pane` → [Terminal](#term-terminal)
 - Alias: `side drawer` → [Drawer](#term-drawer)
@@ -1776,6 +1808,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `timeline minimap` → [Conversation Timeline Minimap](#term-conversation-timeline-minimap)
 - Alias: `transcript view` → [Conversation View](#term-conversation-view)
 - Alias: `turn authorship` → [Injection Kind](#term-injection-kind)
+- Alias: `untitled document` → [Scratch Document](#term-scratch-document)
 - Alias: `update installer` → [Install worker](#term-install-worker)
 - Alias: `user turn` → [Turn](#term-turn)
 - Alias: `visualizer` → [Visualizer Canvas](#term-visualizer-canvas)

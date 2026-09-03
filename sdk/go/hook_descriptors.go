@@ -23,6 +23,9 @@ import "encoding/json"
 
 // --- Lifecycle ---
 
+// HookIdentityChanged fires when verified identity changes.
+var HookIdentityChanged = Hook[IdentityChangedInfo, NoResult]{Name: HookNameIdentityChanged}
+
 // HookSessionStart fires when a session begins.
 var HookSessionStart = Hook[NoPayload, NoResult]{Name: HookNameSessionStart}
 
@@ -332,7 +335,7 @@ var HookSessionMessage = Hook[SessionMessageInfo, NoResult]{Name: HookNameSessio
 // A descriptor added above and not here fails TestDescriptorTableIsComplete.
 func allHookDescriptors() []descriptorInfo {
 	return []descriptorInfo{
-		descriptorOf(HookSessionStart), descriptorOf(HookSessionEnd),
+		descriptorOf(HookIdentityChanged), descriptorOf(HookSessionStart), descriptorOf(HookSessionEnd),
 		descriptorOf(HookBeforePrompt), descriptorOf(HookTurnStart),
 		descriptorOf(HookTurnEnd), descriptorOf(HookMessageStart),
 		descriptorOf(HookMessageEnd), descriptorOf(HookToolStart),

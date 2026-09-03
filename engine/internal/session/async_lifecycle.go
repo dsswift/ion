@@ -85,9 +85,16 @@ func (m *Manager) buildAsyncContextResolver() func(*extension.Host) (*extension.
 			m.mu.RUnlock()
 			return nil, fmt.Errorf("session %q is settled; async triggers are paused", key)
 		}
+		var policy identityPolicy
+		if ok {
+			policy = s.identityPolicy
+		}
 		m.mu.RUnlock()
 		if !ok {
 			return nil, fmt.Errorf("session %q not found for host %s", key, host.Name())
+		}
+		if err := policy.check(key, "async dispatch"); err != nil {
+			return nil, err
 		}
 		ctx := m.newExtContext(s, key)
 		return ctx, nil

@@ -107,6 +107,7 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 	m.mu.Unlock()
 
 	ctx := m.newExtContext(s, key)
+	m.fireInitialIdentityChanged(s, key)
 	group.FireSessionStart(ctx) //nolint:errcheck // errors logged internally by fireVoid/s.fire
 }
 

@@ -225,6 +225,16 @@ export interface RemoteWorktreeState {
   repoPath: string
   worktrees: RemoteWorktree[]
   benches: RemoteBench[]
+  /**
+   * The operator's recorded default source branch for this repo
+   * (`worktreeBranchDefaults[repoPath]` in settings.json), when one is set.
+   *
+   * The desktop uses this to create a worktree conversation WITHOUT the branch
+   * picker; carrying it lets iOS make the same decision instead of always
+   * prompting. Omitted when no default is recorded — iOS then falls back to the
+   * branch picker, matching the desktop.
+   */
+  defaultSourceBranch?: string
 }
 
 /** iOS → desktop worktree/bench commands. */

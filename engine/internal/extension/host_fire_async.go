@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/asyncreg"
+	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -43,15 +44,20 @@ import (
 // running for different sessions (currently always the host's bound
 // session, but future fan-in might cross sessions).
 type AsyncFirePayload struct {
-	Kind       string      `json:"kind"`
-	ID         string      `json:"id"`
-	SessionKey string      `json:"sessionKey"`
-	Payload    interface{} `json:"payload,omitempty"`
+	Kind       string                `json:"kind"`
+	ID         string                `json:"id"`
+	SessionKey string                `json:"sessionKey"`
+	Identity   *auth.ContextIdentity `json:"identity,omitempty"`
+	Payload    interface{}           `json:"payload,omitempty"`
 }
 
 // FireAsync sends engine/fire_async into the subprocess. See file
 // header for behavior and error semantics.
 func (h *Host) FireAsync(kind asyncreg.Kind, id string, ctx *Context, payload interface{}, timeout time.Duration) (json.RawMessage, error) {
+	ctx = stampContextIdentity(ctx)
+	if ctx == nil {
+		ctx = &Context{}
+	}
 	if h.dead.Load() {
 		return nil, fmt.Errorf("extension subprocess is dead")
 	}
@@ -63,6 +69,7 @@ func (h *Host) FireAsync(kind asyncreg.Kind, id string, ctx *Context, payload in
 		Kind:       string(kind),
 		ID:         id,
 		SessionKey: h.SessionKey(),
+		Identity:   ctx.Identity,
 		Payload:    payload,
 	}
 

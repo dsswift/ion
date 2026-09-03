@@ -21,7 +21,10 @@ import (
 //     "extensions" directory, to support repo-relative dev builds where the
 //     binary lives at engine/bin/ion and extensions live at engine/extensions/.
 //
-// Action: copy extensions/sdk → ~/.ion/extensions/sdk (replace semantics).
+// Action: copy engine-shipped SDK assets into ~/.ion/extensions with replace
+// semantics. The TypeScript SDK is used by TypeScript extensions. The Go SDK
+// is used by compiled Go extensions and must move with the engine so extension
+// builds use the public surface from the same engine release.
 func cmdInstallAssets() {
 	exeDir, err := resolveExeDir()
 	if err != nil {
@@ -42,27 +45,40 @@ func cmdInstallAssets() {
 	}
 	ionHome := filepath.Join(home, ".ion")
 
-	// Install SDK — replace, don't merge. The installed copy is
-	// "overwritten at build time" by contract (root CLAUDE.md § Extension
-	// SDK source location); a merge-copy leaves orphaned files (deleted or
-	// renamed SDK modules, stray nested directories from older staging
-	// bugs) that shadow the real surface forever.
-	sdkSrc := filepath.Join(assetRoot, "extensions", "sdk")
-	sdkDst := filepath.Join(ionHome, "extensions", "sdk")
-	if err := replaceDirContents(sdkSrc, sdkDst); err != nil {
-		fmt.Fprintf(os.Stderr, "install-assets: install SDK: %v\n", err)
-		os.Exit(1)
+	// Install both SDKs with replace semantics. Each installed copy is a derived
+	// build asset, never a source tree; a merge could preserve stale API files.
+	assets := []struct {
+		name string
+		src  string
+		dst  string
+	}{
+		{
+			name: "TypeScript SDK",
+			src:  filepath.Join(assetRoot, "extensions", "sdk"),
+			dst:  filepath.Join(ionHome, "extensions", "sdk"),
+		},
+		{
+			name: "Go SDK",
+			src:  filepath.Join(assetRoot, "extensions", "sdk-go"),
+			dst:  filepath.Join(ionHome, "extensions", "sdk-go"),
+		},
+	}
+	for _, asset := range assets {
+		if err := replaceDirContents(asset.src, asset.dst); err != nil {
+			fmt.Fprintf(os.Stderr, "install-assets: install %s: %v\n", asset.name, err)
+			os.Exit(1)
+		}
 	}
 
-	// Stamp the engine's build identity into the installed SDK so the
-	// subprocess can report it back during the init handshake. The engine
-	// validates this against its own identity to detect mixed-build runtimes.
-	if err := stampBuildIdentity(sdkDst); err != nil {
+	// Stamp the engine's build identity into the installed TypeScript SDK so the
+	// subprocess can report it during the init handshake. The Go SDK links its
+	// identity into compiled extension binaries at build time.
+	if err := stampBuildIdentity(filepath.Join(ionHome, "extensions", "sdk")); err != nil {
 		fmt.Fprintf(os.Stderr, "install-assets: stamp build identity: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("==> Installed extension SDK to %s\n", sdkDst)
+	fmt.Printf("==> Installed extension SDKs to %s\n", filepath.Join(ionHome, "extensions"))
 	fmt.Println("==> install-assets complete")
 }
 

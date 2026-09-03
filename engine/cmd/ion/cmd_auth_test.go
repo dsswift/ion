@@ -56,10 +56,14 @@ func TestRunAuthVerifySigV4(t *testing.T) {
 		if !strings.HasPrefix(r.Header.Get("Authorization"), "AWS4-HMAC-SHA256 ") {
 			t.Errorf("Authorization = %q", r.Header.Get("Authorization"))
 		}
+		if r.Method == http.MethodPost {
+			_, _ = w.Write([]byte(`<GetCallerIdentityResponse><GetCallerIdentityResult><Account>123</Account><Arn>arn:aws:iam::123:role/test</Arn><UserId>user</UserId></GetCallerIdentityResult></GetCallerIdentityResponse>`))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer probe.Close()
-	writeAuthVerifyConfig(t, `{"auth":{"identityProvider":"aws","oauth":{"aws":{"machineIdentity":{"source":"aws","aws":{"kind":"env"}}}}}}`)
+	writeAuthVerifyConfig(t, `{"auth":{"identityProvider":"aws","oauth":{"aws":{"machineIdentity":{"source":"aws","aws":{"kind":"env","region":"us-east-1","stsEndpoint":"`+probe.URL+`"}}}}}}`)
 
 	report, code := runAuthVerify(map[string]string{"aws-service": "execute-api", "aws-region": "us-east-1", "url": probe.URL})
 	if code != 0 || !report.OK || report.TokenType != "aws_sigv4" || report.Probe == nil {

@@ -535,6 +535,38 @@
       ]
     },
     {
+      "id": "context-identity",
+      "term": "Context Identity",
+      "definition": "Credential-free, verified identity state that the engine gives to one extension invocation. The engine verifies and transports the state. An extension interprets its claims and decides which tools or features to use.",
+      "domain": "harness-sdk",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type ContextIdentity struct",
+          "path": "engine/internal/auth/identity_context.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface ContextIdentity",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type ContextIdentity struct",
+          "path": "sdk/go/context.go"
+        }
+      ]
+    },
+    {
       "id": "conversation",
       "term": "Conversation",
       "definition": "One continuous thread of user prompts and agent responses, held in a tree that supports branching. There is one conversation type. The extension list is the only variable.",
@@ -2110,6 +2142,28 @@
       ]
     },
     {
+      "id": "scratch-document",
+      "term": "Scratch Document",
+      "definition": "An unsaved Studio document stored by source-project identity. It appears across matching conversations and worktrees until the user saves or discards it. Saving removes the project-scoped document and opens the saved file in the active conversation.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "scratch file",
+        "untitled document"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface ScratchDocument",
+          "path": "desktop/src/shared/studio-surface-types.ts"
+        }
+      ]
+    },
+    {
       "id": "server-message",
       "term": "Server message",
       "definition": "One outbound NDJSON message from the engine to a consumer. It is either a broadcast event envelope or a result for a request that carried an identifier.",
@@ -2425,7 +2479,7 @@
     {
       "id": "studio-surface",
       "term": "Studio Surface",
-      "definition": "The Studio region on the right that holds conversation-scoped tabs plus the global pinned diff, plan, visualizer, and notification slots.",
+      "definition": "The Studio region on the right that holds conversation-scoped tabs, source-project-scoped Scratch Documents, and the global pinned diff, plan, visualizer, and notification slots.",
       "domain": "clients",
       "kind": "ui-component",
       "status": "canonical",

@@ -3,10 +3,93 @@ package backend
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/types"
 )
+
+// TestResolveCliPlanModePrompt_HarnessOverrideWins pins the plan-prompt seam:
+// RunOptions.PlanModePrompt replaces the engine default verbatim, and an empty
+// field falls back to the engine default (a full workflow that names the
+// ExitPlanMode delivery mechanism). Revert resolveCliPlanModePrompt to call
+// buildCliPlanModePrompt unconditionally and the override case goes red — that
+// regression is exactly the CLI path ignoring the harness seam that codex and
+// the API backend both honor.
+func TestResolveCliPlanModePrompt_HarnessOverrideWins(t *testing.T) {
+	planPath := filepath.Join(t.TempDir(), "plan.md")
+
+	override := "HARNESS PLAN POLICY: investigate read-only, then call ExitPlanMode."
+	got := resolveCliPlanModePrompt(types.RunOptions{
+		PlanMode:       true,
+		PlanFilePath:   planPath,
+		PlanModePrompt: override,
+	}, false)
+	if got != override {
+		t.Fatalf("harness override must be used verbatim; got %q", got)
+	}
+
+	// Empty override -> engine default full workflow, still carrying the
+	// ExitPlanMode delivery mechanism.
+	def := resolveCliPlanModePrompt(types.RunOptions{PlanMode: true, PlanFilePath: planPath}, false)
+	if !strings.Contains(def, "[PLAN MODE]") {
+		t.Errorf("engine default missing [PLAN MODE] marker: %q", def)
+	}
+	if !strings.Contains(def, "ExitPlanMode") {
+		t.Errorf("engine default must name ExitPlanMode delivery: %q", def)
+	}
+}
+
+// TestBuildClaudeArgs_PlanModePromptOverride pins the seam at the args layer:
+// a plan-mode spawn whose RunOptions carry PlanModePrompt injects that text into
+// --append-system-prompt instead of the engine default. Without the resolver the
+// engine default would win and this goes red.
+func TestBuildClaudeArgs_PlanModePromptOverride(t *testing.T) {
+	planPath := filepath.Join(t.TempDir(), "plan.md")
+	override := "HARNESS-ONLY PLAN DIRECTIVE via ExitPlanMode"
+	args := buildClaudeArgs(types.RunOptions{
+		PlanMode:       true,
+		PlanFilePath:   planPath,
+		PlanModePrompt: override,
+		Model:          "claude-sonnet-4-5",
+	})
+	appendPrompt := flagValue(args, "--append-system-prompt")
+	if !strings.Contains(appendPrompt, override) {
+		t.Errorf("plan-mode --append-system-prompt must carry the harness override; got %q", appendPrompt)
+	}
+	if strings.Contains(appendPrompt, "[PLAN MODE] You are in planning mode") {
+		t.Errorf("harness override must replace the engine default, not append to it; got %q", appendPrompt)
+	}
+}
+
+// TestPlanModeExtensionToolAllowed pins the CLI plan-mode authorization rule,
+// mirroring the ApiBackend buildToolDefs filter: a plan-safe tool is admitted,
+// a non-plan-safe tool is withheld, and a non-plan-safe tool becomes admitted
+// only when the run's plan-mode MCP allowlist matches its prefixed name.
+func TestPlanModeExtensionToolAllowed(t *testing.T) {
+	const prefixed = "mcp__" + McpServerName + "__deploy_service"
+
+	if !PlanModeExtensionToolAllowed(prefixed, true, types.RunOptions{PlanMode: true}) {
+		t.Error("a plan-mode-safe extension tool must be allowed")
+	}
+	if PlanModeExtensionToolAllowed(prefixed, false, types.RunOptions{PlanMode: true}) {
+		t.Error("a non-plan-safe extension tool must be withheld by default")
+	}
+	// Explicit per-run allowlist admits an otherwise-unsafe tool.
+	if !PlanModeExtensionToolAllowed(prefixed, false, types.RunOptions{
+		PlanMode:                true,
+		PlanModeAllowedMcpTools: []string{prefixed},
+	}) {
+		t.Error("an allowlisted extension tool must be admitted even when not plan-safe")
+	}
+	// A prefix-scoped allowlist entry (whole ion-extensions server) also matches.
+	if !PlanModeExtensionToolAllowed(prefixed, false, types.RunOptions{
+		PlanMode:                true,
+		PlanModeAllowedMcpTools: []string{"mcp__" + McpServerName},
+	}) {
+		t.Error("a server-scoped allowlist entry must admit its tools")
+	}
+}
 
 // planModeTestBackend returns a backend whose normalized events are collected.
 func planModeTestBackend() (*ClaudeCodeBackend, *[]types.NormalizedEvent) {
@@ -55,6 +138,45 @@ func TestClaudeCodePlanCapture_FromExitPlanModeArg(t *testing.T) {
 	proposal, ok := (*events)[1].Data.(*types.PlanProposalEvent)
 	if !ok || proposal.Kind != "exit" || proposal.PlanFilePath != planPath {
 		t.Fatalf("event[1] wrong: %#v", (*events)[1].Data)
+	}
+}
+
+// TestClaudeCodePlanCapture_FromMcpExitPlanModeArg pins the engine-owned CLI
+// plan path: the read-only model calls the ExitPlanMode tool exposed through the
+// ion-extensions MCP server, so the tool_use block carries the PREFIXED name.
+// The plan must still be captured from its `plan` argument. Narrow the name
+// match in handlePlanModeAssistant back to the bare name and this goes red.
+func TestClaudeCodePlanCapture_FromMcpExitPlanModeArg(t *testing.T) {
+	b, events := planModeTestBackend()
+	planPath := filepath.Join(t.TempDir(), "swift-plan.md")
+	run := &claudeCodeRun{requestID: "req-mcp", planMode: true, planFilePath: planPath}
+
+	e := &types.TaskUpdateEvent{Message: types.AssistantMessagePayload{
+		Content: []types.ContentBlock{
+			{Type: "text", Text: "here is the plan"},
+			{Type: "tool_use", Name: mcpExitPlanModeToolName, ID: "tu-1", Input: map[string]any{"plan": "# MCP Plan\n\nsteps\n"}},
+		},
+	}}
+	b.handlePlanModeAssistant(run, e)
+
+	if !run.planCaptured {
+		t.Fatal("planCaptured not latched after MCP ExitPlanMode capture")
+	}
+	if !run.sawExitPlanMode {
+		t.Fatal("sawExitPlanMode not latched for the MCP-prefixed ExitPlanMode name")
+	}
+	data, err := os.ReadFile(planPath)
+	if err != nil || string(data) != "# MCP Plan\n\nsteps\n" {
+		t.Fatalf("plan file not written from MCP ExitPlanMode arg: err=%v content=%q", err, string(data))
+	}
+	if len(*events) != 2 {
+		t.Fatalf("expected PlanFileWritten + PlanProposal, got %d events", len(*events))
+	}
+	if _, ok := (*events)[0].Data.(*types.PlanFileWrittenEvent); !ok {
+		t.Fatalf("event[0] = %T, want PlanFileWrittenEvent", (*events)[0].Data)
+	}
+	if _, ok := (*events)[1].Data.(*types.PlanProposalEvent); !ok {
+		t.Fatalf("event[1] = %T, want PlanProposalEvent", (*events)[1].Data)
 	}
 }
 

@@ -105,15 +105,15 @@ func TestMcpServerSpec_AcpStdioShape(t *testing.T) {
 	if spec["name"] != McpServerName {
 		t.Errorf("name = %v, want %q", spec["name"], McpServerName)
 	}
-	if spec["command"] != "socat" {
-		t.Errorf("command = %v, want socat", spec["command"])
+	if spec["command"] == "socat" || spec["command"] == "" {
+		t.Errorf("command = %v, want the self-exec ion mcp-bridge (never socat)", spec["command"])
 	}
 	args, ok := spec["args"].([]string)
-	if !ok || len(args) != 2 || args[1] != "STDIO" {
-		t.Errorf("args = %v, want [UNIX-CONNECT:<sock> STDIO]", spec["args"])
+	if !ok || len(args) != 3 || args[0] != "mcp-bridge" || args[1] != "--socket" {
+		t.Errorf("args = %v, want [mcp-bridge --socket <sock>]", spec["args"])
 	}
-	if !strings.HasPrefix(args[0], "UNIX-CONNECT:") || !strings.Contains(args[0], ts.SocketPath()) {
-		t.Errorf("args[0] = %q, want UNIX-CONNECT to the tool-server socket %q", args[0], ts.SocketPath())
+	if args[2] != ts.SocketPath() {
+		t.Errorf("args[2] = %q, want the tool-server socket %q", args[2], ts.SocketPath())
 	}
 	if _, hasEnv := spec["env"]; !hasEnv {
 		t.Error("spec missing env (grok's stdio McpServer serde requires it)")

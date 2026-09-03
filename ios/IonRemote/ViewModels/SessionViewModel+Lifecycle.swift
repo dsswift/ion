@@ -510,6 +510,9 @@ extension SessionViewModel {
         // must not carry a prior desktop's dismissals into the new pairing.
         dismissedLiveSpecialTabs = []
         dismissedRestoredCards = []
+        // Snapshot-confirmation is per-pairing: a switch/unpair must not carry a
+        // prior desktop's confirmed card ids into the new pairing's snapshots.
+        snapshotConfirmedSpecialIds = []
         tabGroupMode = "auto"
         tabGroups = []
         connectionQuality.reset()

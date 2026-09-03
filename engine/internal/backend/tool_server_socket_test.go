@@ -12,11 +12,11 @@ import (
 // test correct on both platforms without a build tag.
 const sunPathLimit = 104
 
-// readSocatArg parses the MCP config JSON written by McpConfigPath and
-// returns the socat UNIX-CONNECT argument (the first entry in
-// mcpServers.ion-extensions.args). Reading the arg from the written file
-// avoids adding new surface just for the test.
-func readSocatArg(t *testing.T, configPath string) string {
+// readBridgeSocketArg parses the MCP config JSON written by McpConfigPath and
+// returns the socket path the self-exec bridge is pointed at (the argv element
+// after "--socket"). Reading it from the written file avoids adding new surface
+// just for the test.
+func readBridgeSocketArg(t *testing.T, configPath string) string {
 	t.Helper()
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -24,7 +24,8 @@ func readSocatArg(t *testing.T, configPath string) string {
 	}
 	var cfg struct {
 		McpServers map[string]struct {
-			Args []string `json:"args"`
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
 		} `json:"mcpServers"`
 	}
 	if err := json.Unmarshal(data, &cfg); err != nil {
@@ -34,15 +35,22 @@ func readSocatArg(t *testing.T, configPath string) string {
 	if !ok {
 		t.Fatalf("config missing mcpServers.%s", McpServerName)
 	}
-	if len(srv.Args) == 0 {
-		t.Fatalf("config args empty")
+	// The bridge must never be socat again: that dependency was the whole bug.
+	if srv.Command == "socat" {
+		t.Fatalf("config command is socat; expected the self-exec ion mcp-bridge")
 	}
-	return srv.Args[0]
+	for i, a := range srv.Args {
+		if a == "--socket" && i+1 < len(srv.Args) {
+			return srv.Args[i+1]
+		}
+	}
+	t.Fatalf("config args %v missing --socket <path>", srv.Args)
+	return ""
 }
 
 // TestSocketPathSanitization verifies that session keys containing
 // characters illegal or dangerous in a socket path (colon, comma, slash,
-// space) never leak into the derived socket path or the socat argument,
+// space) never leak into the derived socket path or the bridge argument,
 // and that the derived path stays within the platform sun_path limit.
 func TestSocketPathSanitization(t *testing.T) {
 	cases := []struct {
@@ -79,34 +87,36 @@ func TestSocketPathSanitization(t *testing.T) {
 				t.Errorf("socket path len %d >= sun_path limit %d: %q", len(sockPath), sunPathLimit, sockPath)
 			}
 
-			// The socat UNIX-CONNECT arg must have no colon AFTER the
-			// scheme prefix — socat parses a post-scheme colon as an
-			// address-option delimiter, which is the root-cause bug.
+			// The bridge receives the socket path as a discrete argv element
+			// (`--socket <path>`), so the sanitized digest — not the raw key —
+			// is what reaches it, and it matches the actual listening socket.
 			configPath, err := ts.McpConfigPath(tc.key)
 			if err != nil {
 				t.Fatalf("McpConfigPath: %v", err)
 			}
 			t.Cleanup(func() { _ = os.Remove(configPath) })
 
-			arg := readSocatArg(t, configPath)
-			const scheme = "UNIX-CONNECT:"
-			if !strings.HasPrefix(arg, scheme) {
-				t.Fatalf("socat arg %q missing scheme prefix %q", arg, scheme)
+			arg := readBridgeSocketArg(t, configPath)
+			if arg != ts.SocketPath() {
+				t.Errorf("bridge --socket arg %q != tool-server socket %q", arg, ts.SocketPath())
 			}
-			pathPart := strings.TrimPrefix(arg, scheme)
-			if strings.Contains(pathPart, ":") {
-				t.Errorf("socat arg path part %q contains a colon after scheme", pathPart)
+			for _, bad := range []string{":", ",", " "} {
+				// The filename (digest) portion carries no raw-key characters.
+				argBase := arg
+				if i := strings.LastIndex(arg, "/"); i >= 0 {
+					argBase = arg[i+1:]
+				}
+				if strings.Contains(argBase, bad) {
+					t.Errorf("bridge socket filename %q contains forbidden %q", argBase, bad)
+				}
 			}
 		})
 	}
 }
 
 // TestStartWithColonKey verifies that a session key containing a colon
-// binds successfully. Note the OS itself tolerates a colon in a unix
-// socket filename, so this alone does not reproduce the bug — the
-// colon's real damage is to socat's UNIX-CONNECT:<path> argument parsing,
-// which is pinned by TestSocketPathSanitization's socat-arg assertion.
-// This test guards the complementary invariant: the derived path is a
+// binds successfully. The derived path is a hashed digest, so the colon
+// never reaches the filesystem; this test guards that the digest yields a
 // valid, bindable socket path for a colon-bearing key.
 func TestStartWithColonKey(t *testing.T) {
 	ts := NewToolServer("tab-1:instance-2")

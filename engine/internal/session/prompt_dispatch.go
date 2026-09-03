@@ -29,15 +29,33 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		}
 	}()
 
-	m.mu.Lock()
+	// Read the session policy without holding Manager.mu across the identity
+	// provider call. ContextIdentity is cached, but this boundary must remain
+	// free of provider work.
+	m.mu.RLock()
 	s, ok := m.sessions[key]
+	var policy identityPolicy
+	if ok {
+		policy = s.identityPolicy
+	}
+	m.mu.RUnlock()
 	if !ok {
-		m.mu.Unlock()
 		m.emit(key, types.EngineEvent{
 			Type:         "engine_error",
 			EventMessage: fmt.Sprintf("session %q not found", key),
 			ErrorCode:    "session_not_found",
 		})
+		return fmt.Errorf("session %q not found", key)
+	}
+	// A required identity can disappear after a session starts. Refuse new work
+	// before reserving a run; an active run is deliberately left unchanged.
+	if err := policy.check(key, "prompt dispatch"); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	s, ok = m.sessions[key]
+	if !ok {
+		m.mu.Unlock()
 		return fmt.Errorf("session %q not found", key)
 	}
 	// Settled check: a settled session rejects prompts until resumed.
@@ -515,6 +533,8 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	m.wireDelegatedPermissions(key, &opts)
 	m.wireToolServer(s, key, &opts, extGroup)
 	m.wireAgentToolServer(s, key, &opts)
+	m.wirePlanModeToolServer(s, key, &opts)
+	m.wireQuestionToolServer(s, key, &opts)
 
 	// Fire before_prompt for ClaudeCodeBackend (ApiBackend wires this inside buildRunConfig).
 	m.fireBeforePromptCli(s, key, extGroup, skipExtensions, &opts)
@@ -536,6 +556,12 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		m.wireClientTools(key, &opts, runCfg)
 	}
 	m.wireClientToolServer(s, key, &opts)
+	// Guarantee the reused session ToolServer's MCP config rides this turn's
+	// RunOptions. The wire* helpers only attach when they CREATE the server
+	// (needsStart), so a session reusing its ToolServer across turns lost the
+	// --mcp-config flag and the mcp__<server>__* allowedTools wildcard on every
+	// turn after the first — the CLI then saw none of the ion-extensions tools.
+	m.ensureCliToolServerAttached(s, key, &opts)
 	// Record the run's client-tool signature beside runCaps so handleRunExit
 	// stamps it onto the captured native-session cursor (codex resume
 	// validity — see NativeSessionCursor.ClientToolSignature).

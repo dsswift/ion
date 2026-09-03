@@ -523,3 +523,9 @@ type ScheduleMissedInfo struct {
 	// current scope window (today for daily, this week for weekly).
 	RanWithinScope bool `json:"ranWithinScope"`
 }
+
+// IdentityChangedInfo is a complete credential-free identity snapshot.
+type IdentityChangedInfo struct {
+	Identity *ContextIdentity `json:"identity,omitempty"`
+	Reason   string           `json:"reason"`
+}

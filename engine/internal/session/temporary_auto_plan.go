@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/extension"
+	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -127,7 +128,7 @@ func (m *Manager) inheritTemporaryAutoPlanWorkflow(s *engineSession, key string,
 
 func hasHumanWaitDenial(s *engineSession, denials []types.PermissionDenial) bool {
 	for _, denial := range denials {
-		if denial.ToolName == "AskUserQuestion" || denial.ToolName == "AskUserQuestions" {
+		if denial.ToolName == tools.AskUserQuestionName || denial.ToolName == tools.AskUserQuestionsName {
 			return true
 		}
 		if s.config.ToolGate != nil {

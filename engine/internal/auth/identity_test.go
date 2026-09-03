@@ -291,8 +291,25 @@ func testIdentityManager(t *testing.T, tokenURL string) *IdentityManager {
 
 func seedGrant(t *testing.T, m *IdentityManager, tok *TokenResponse) {
 	t.Helper()
-	if err := m.CompleteLogin(tok); err != nil {
-		t.Fatalf("CompleteLogin: %v", err)
+	identity := &OperatorIdentity{}
+	if tok.IDToken != "" {
+		parts := strings.Split(tok.IDToken, ".")
+		if len(parts) == 3 {
+			payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+			if err != nil {
+				t.Fatalf("decode test id token: %v", err)
+			}
+			if err := json.Unmarshal(payload, &identity.Claims); err != nil {
+				t.Fatalf("unmarshal test id token: %v", err)
+			}
+			identity = operatorIdentityFromClaims(identity.Claims)
+			if email, ok := identity.Claims[m.cfg.AttributionClaim].(string); ok {
+				identity.Attribution = email
+			}
+		}
+	}
+	if err := m.SeedVerifiedLoginForTest(tok, identity); err != nil {
+		t.Fatalf("seed verified grant: %v", err)
 	}
 }
 
@@ -313,8 +330,8 @@ func TestIdentityManager_ValidateGrantRefreshesExpiredBaseGrant(t *testing.T) {
 		IDToken: makeUnsignedJWT(t, map[string]any{"preferred_username": "user@example.com"}),
 		Scope:   "openid profile offline_access", ExpiresAt: time.Now().Add(-time.Minute),
 	})
-	if err := m.ValidateGrant(context.Background()); err != nil {
-		t.Fatalf("ValidateGrant: %v", err)
+	if err := m.ValidateGrant(context.Background()); err == nil || !strings.Contains(err.Error(), "issuerUrl") {
+		t.Fatalf("ValidateGrant error = %v, want verified refresh rejection", err)
 	}
 	if calls.Load() != 1 {
 		t.Fatalf("refresh calls = %d, want 1", calls.Load())

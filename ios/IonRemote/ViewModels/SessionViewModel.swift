@@ -72,6 +72,15 @@ final class SessionViewModel {
     var dismissedRestoredCards: Set<String> = []
     /// Tracks tabs where a live special card was dismissed (prevents restoredSpecialCard re-trigger)
     var dismissedLiveSpecialTabs: Set<String> = []
+    /// questionIds of promoted plan/question cards (`denied-*`) that at least one
+    /// snapshot has carried. A `denied-*` entry is a projection of the desktop's
+    /// permissionDenied; once a snapshot has vouched for it, the desktop's queue
+    /// becomes authoritative, so a later snapshot that omits it means the desktop
+    /// resolved the card (plan implemented / question answered / dismissed — on
+    /// this device or another). The snapshot merge drops such a confirmed-then-
+    /// omitted local entry instead of re-injecting it forever. An entry still in
+    /// the live-forward → snapshot race is NOT yet in this set, so it survives.
+    var snapshotConfirmedSpecialIds: Set<String> = []
     // Terminal state (per terminal tab)
     var terminalInstances: [String: [TerminalInstanceInfo]] = [:]  // tabId -> instances
     var activeTerminalInstance: [String: String] = [:]              // tabId -> active instanceId

@@ -132,6 +132,14 @@ Response:
 
 Helper receives a minimal environment containing `PATH` plus `ION_TOKEN_SCOPE` and `ION_TOKEN_RESOURCE` compatibility fields; parent credentials and unrelated variables are not inherited.
 
+## Context Identity readiness
+
+No identity configuration is valid. The engine can start without an operator or workload identity.
+
+When `machineIdentity` is configured, the engine verifies its workload credentials before it binds the socket or reports ready. Bearer sources acquire a token for the configured scope or audience and warm the cache. AWS sources obtain credentials and make a signed STS `GetCallerIdentity` request. A failed verification stops startup before readiness.
+
+After successful verification, extensions receive a workload Context Identity. The engine refreshes bearer credentials and AWS credentials by the existing cache rules. A configured descriptor alone is not proof of identity. Only a successful startup verification makes the workload snapshot available.
+
 ## Verify before running workloads
 
 Run daemonless verification on target instance:

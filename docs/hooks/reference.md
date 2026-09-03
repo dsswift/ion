@@ -12,6 +12,7 @@ All hooks grouped by category. For each hook: when it fires, what payload it rec
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
+| `identity_changed` | Verified Context Identity changes | `IdentityChangedInfo{Identity, Reason}` | ignored | Complete snapshot. Tool changes commit as one transaction. |
 | `session_start` | Session initialized | `nil` | ignored | Observe only |
 | `session_end` | Session teardown | `nil` | ignored | Observe only |
 | `before_prompt` | Before prompt sent to LLM | `string` (prompt) | `BeforePromptResult{Prompt, SystemPrompt}` or `string` | Last non-nil wins. String = prompt rewrite. Struct can set both prompt and system prompt addition. `ctx.model` carries the selected model (ID + context window) for model-aware rewriting. |
@@ -39,6 +40,23 @@ All hooks grouped by category. For each hook: when it fires, what payload it rec
 > `session_start`; they are the session-level counterpart of
 > `AgentInfo.IsRoot` on `before_agent_start` (which discriminates
 > per-firing rather than per-session).
+
+### `identity_changed`
+
+`identity_changed` carries a complete [Context Identity](../vocabulary/index.md#context-identity) snapshot:
+
+```go
+type IdentityChangedInfo struct {
+    Identity *ContextIdentity `json:"identity,omitempty"`
+    Reason   string           `json:"reason"`
+}
+```
+
+`Identity` is absent when no verified identity is available. `Reason` is one of `initial`, `signed_in`, `signed_out`, `claims_changed`, `verification_lost`, or `workload_ready`. Replace extension-local identity state with each payload. Do not merge values from an earlier payload.
+
+The engine fires `initial` once per host load or respawn after init and session wiring, before `session_start` and all other extension lifecycle hooks. Later verified transitions fire after sign-in, sign-out, verified claim changes, verification loss, or workload readiness. Equal later snapshots are deduplicated.
+
+During this hook, `ctx.identity` equals payload `Identity` as a deep copy. Tool changes are transactional. The SDK returns the complete tool snapshot with the hook result and the engine swaps the registry only after handler success. A failed, timed-out, malformed, or stale snapshot keeps the host pending: it contributes no new-run tools and denies live tool calls until it receives the transition again.
 
 ### Context identifiers (every hook)
 

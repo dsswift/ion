@@ -231,7 +231,7 @@ describe('persist on quit', () => {
 
     flushSurfacePersist()
 
-    expect(setSetting).toHaveBeenCalledWith('studioSurface', expect.objectContaining({ version: 3 }))
+    expect(setSetting).toHaveBeenCalledWith('studioSurface', expect.objectContaining({ version: 4 }))
     const written = setSetting.mock.calls[0]![1] as { conversations: Record<string, { tabs: { kind: string }[] }> }
     expect(written.conversations['tab-1']?.tabs.some((tab) => tab.kind === 'browser')).toBe(true)
   })

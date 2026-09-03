@@ -18,7 +18,7 @@ func TestParseInitResult_BuildIdentityMatch_Succeeds(t *testing.T) {
 	h.name = "test-ext"
 	h.sdk = NewSDK()
 
-	raw := []byte(`{"buildIdentity":"v2.0.0","tools":[{"name":"test","description":"d"}]}`)
+	raw := []byte(`{"buildIdentity":"v2.0.0","tools":[{"name":"test","description":"d","parameters":{"type":"object"}}]}`)
 	err := h.parseInitResult(raw)
 	if err != nil {
 		t.Fatalf("expected no error on match, got: %v", err)
@@ -33,7 +33,7 @@ func TestParseInitResult_NoBuildIdentity_BackwardCompat(t *testing.T) {
 	h.name = "test-ext"
 	h.sdk = NewSDK()
 
-	raw := []byte(`{"tools":[{"name":"old","description":"from old sdk"}]}`)
+	raw := []byte(`{"tools":[{"name":"old","description":"from old sdk","parameters":{"type":"object"}}]}`)
 	err := h.parseInitResult(raw)
 	if err != nil {
 		t.Fatalf("expected no error for old SDK without identity, got: %v", err)

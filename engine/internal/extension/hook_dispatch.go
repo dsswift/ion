@@ -11,6 +11,10 @@ import (
 
 // --- Delegated fire methods ---
 
+func (h *Host) FireIdentityChanged(ctx *Context, info IdentityChangedInfo) error {
+	return h.sdk.FireIdentityChanged(ctx, info)
+}
+
 func (h *Host) FireSessionStart(ctx *Context) error { return h.sdk.FireSessionStart(ctx) }
 func (h *Host) FireSessionEnd(ctx *Context) error   { return h.sdk.FireSessionEnd(ctx) }
 func (h *Host) FireMessageStart(ctx *Context) error { return h.sdk.FireMessageStart(ctx) }

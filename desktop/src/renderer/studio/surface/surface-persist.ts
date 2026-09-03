@@ -16,7 +16,7 @@
  * tabs survived — the write had never happened.
  */
 import { useEffect } from 'react'
-import type { NotificationTab, PinnableSingletonId, SurfaceConversationPersisted } from '../../../shared/studio-surface-types'
+import type { NotificationTab, PinnableSingletonId, ScratchProject, SurfaceConversationPersisted } from '../../../shared/studio-surface-types'
 import { serializeSurface } from '../../../shared/studio-surface-persistence'
 import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 
@@ -26,6 +26,7 @@ const PERSIST_DEBOUNCE_MS = 300
 export interface PersistableSurface {
   pinnedTabs: PinnableSingletonId[]
   notification: NotificationTab | null
+  scratchProjects: Record<string, ScratchProject>
   conversations: Record<string, SurfaceConversationPersisted>
 }
 
@@ -38,7 +39,7 @@ export function configureSurfacePersist(read: () => PersistableSurface): void {
 }
 
 function write(state: PersistableSurface, reason: string, onResult?: (ok: boolean) => void): void {
-  const payload = serializeSurface(state.pinnedTabs, state.notification, state.conversations)
+  const payload = serializeSurface(state.pinnedTabs, state.notification, state.conversations, state.scratchProjects)
   // Logged per write with the shape that matters when a tab comes back
   // missing: which conversation keys carry content, and whether the panel was
   // recorded open. Without this a lost tab is indistinguishable from a tab

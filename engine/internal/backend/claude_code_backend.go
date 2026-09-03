@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -60,6 +59,13 @@ type claudeCodeRun struct {
 	// EMPTY argument, so this is the fallback plan source when ExitPlanMode
 	// carries no text.
 	pendingPlanFromFile string
+	// pendingQuestionDenials accumulates PermissionDenials captured from
+	// AskUserQuestion / AskUserQuestions tool_use blocks in the assistant
+	// stream (handleQuestionAssistant). Injected onto the result event by
+	// injectQuestionDenials so the session surfaces them like any retained
+	// denial — the CLI's own result carries none because the MCP handler
+	// auto-acknowledges the call. See claude_code_questions.go.
+	pendingQuestionDenials []types.PermissionDenial
 }
 
 // ClaudeCodeBackend implements RunBackend by spawning the Claude Code CLI
@@ -237,87 +243,12 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 		return
 	}
 
-	// Build command arguments -- use stream-json for bidirectional stdin
-	args := []string{
-		"-p",
-		"--output-format", "stream-json",
-		"--input-format", "stream-json",
-		"--verbose",
-		"--include-partial-messages",
-	}
-
-	// Permission mode: respect caller override, default to "bypassPermissions".
-	// The engine is security-free by design — the harness is responsible for
-	// implementing whatever approval layer it needs via hooks.  Defaulting to
-	// "auto" would inject Claude Code's interactive prompts, which hangs
-	// headless / daemon deployments where no user is present to approve.
-	// Plan mode: delegate to the CLI's native --permission-mode plan rather
-	// than injecting our own plan prompt on top of bypassPermissions.
-	permMode := "bypassPermissions"
-	if opts.PlanMode {
-		permMode = "plan"
-	} else if opts.PermissionModeCli != "" {
-		permMode = opts.PermissionModeCli
-	}
-	args = append(args, "--permission-mode", permMode)
-
-	if opts.Model != "" {
-		args = append(args, "--model", opts.Model)
-	}
-	if opts.MaxTurns > 0 {
-		args = append(args, "--max-turns", strconv.Itoa(opts.MaxTurns))
-	}
-	if opts.MaxBudgetUsd > 0 {
-		args = append(args, "--max-budget-usd", strconv.FormatFloat(opts.MaxBudgetUsd, 'f', -1, 64))
-	}
-	// Resume only with claude's own captured session UUID (CliResumeSessionID),
-	// never with Ion's conversation id (opts.ConversationID). See cliResumeArgs.
-	args = append(args, cliResumeArgs(opts)...)
-	for _, dir := range opts.AddDirs {
-		args = append(args, "--add-dir", dir)
-	}
-	if opts.SystemPrompt != "" {
-		args = append(args, "--system-prompt", opts.SystemPrompt)
-	}
-
-	// Plan mode adds no supplementary prompt: the CLI's native plan mode owns
-	// the behavioral framework (read-only tools, phases, ExitPlanMode), and the
-	// engine captures the plan text from the native ExitPlanMode tool argument
-	// (see handlePlanModeAssistant), writing it to the Ion plan file itself.
-	if opts.AppendSystemPrompt != "" {
-		args = append(args, "--append-system-prompt", opts.AppendSystemPrompt)
-	}
-
-	// Allowed tools: use provided list, or restrict when hook settings injected.
-	// Plan mode deliberately does NOT force Write/Edit in: the plan is captured
-	// from the native ExitPlanMode argument, so the model never authors a plan
-	// file itself and stray plan-file writes are not a supported path.
-	allowedTools := opts.AllowedTools
-	if len(allowedTools) == 0 {
-		if opts.HookSettingsPath != "" {
-			// Restrict to safe read-only + agent tools when running with hook settings
-			allowedTools = []string{"Read", "Glob", "Grep", "WebSearch", "WebFetch", "Agent", "TaskCreate", "TaskList", "TaskGet", "LSP", "NotebookEdit"}
-		} else {
-			allowedTools = []string{"Read", "Glob", "Grep", "LS", "Agent", "WebSearch", "WebFetch"}
-		}
-	}
-	// When an MCP ToolServer is wired, add the wildcard allowlist entry so
-	// the CLI offers all tools from the ion-extensions MCP server to the model.
-	if opts.McpConfig != "" {
-		allowedTools = append(allowedTools, "mcp__"+McpServerName+"__*")
-		utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "added MCP wildcard to allowedTools: mcp____*", map[string]any{
-			"mcp_server_name": McpServerName,
-		})
-	}
-	args = append(args, "--allowedTools", strings.Join(allowedTools, ","))
-
-	if opts.McpConfig != "" {
-		args = append(args, "--mcp-config", opts.McpConfig)
-	}
-
-	if opts.HookSettingsPath != "" {
-		args = append(args, "--settings", opts.HookSettingsPath)
-	}
+	// Build the CLI argv. Extracted to buildClaudeArgs (claude_code_args.go) so
+	// the plan-mode spawn contract — read-only bypassPermissions + the mutating
+	// tools stripped via --disallowedTools, the engine plan prompt injected, and
+	// ExitPlanMode exposed through the MCP ToolServer — is unit-testable without
+	// spawning a process.
+	args := buildClaudeArgs(opts)
 
 	utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "spawning", map[string]any{
 		"claude_path": claudePath,
@@ -481,6 +412,11 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 				if run.planMode && !run.planCaptured {
 					b.handlePlanModeAssistant(run, e)
 				}
+				// Question tools (AskUserQuestion / AskUserQuestions) are
+				// engine-owned on this backend in ALL modes: capture the
+				// streamed tool_use so injectQuestionDenials can surface the
+				// question as a retained denial. See claude_code_questions.go.
+				b.handleQuestionAssistant(run, e)
 			case *types.TaskCompleteEvent:
 				if e.SessionID != "" {
 					sessionID = e.SessionID
@@ -522,6 +458,11 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 				if run.planMode {
 					b.handlePlanModeResult(run, e, &opts)
 				}
+				// Surface any question captured from the stream as a retained
+				// PermissionDenial on the result event — all modes. The session
+				// then idles on the question and treats the next prompt as the
+				// answer. See claude_code_questions.go.
+				b.injectQuestionDenials(run, e)
 			}
 			b.emit(run.requestID, ev)
 		}
