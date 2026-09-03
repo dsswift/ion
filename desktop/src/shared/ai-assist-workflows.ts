@@ -14,15 +14,24 @@ export interface AiAssistWorkflow {
 
 const REBASE_TEMPLATE = `Resolve the currently in-progress rebase in {{directory}}.
 
+First, in a standalone call, run: git rev-parse --verify REBASE_HEAD
+If that command fails, the rebase has already completed — stop immediately and report success. Do not run any further git rebase command.
+
 Inspect every conflict, resolve files, run relevant formatters and tests, then stage resolved files. Do not abort the rebase. Do not combine continue with resolution, formatting, testing, or staging commands. Only after those steps succeed, make a separate standalone call containing only git rebase --continue. Done only when the operation has ended and git status reports no unmerged paths.`
 
 const MERGE_TEMPLATE = `Resolve the currently in-progress merge in {{directory}}.
 
 {{benchContext}}
 
+First, in a standalone call, run: git rev-parse --verify MERGE_HEAD
+If that command fails, the merge has already completed — stop immediately and report success. Do not run any further git merge command.
+
 Inspect every conflict, resolve files, run relevant formatters and tests, then stage resolved files. Do not abort the merge. Do not combine continue with resolution, formatting, testing, or staging commands. Only after those steps succeed, make a separate standalone call containing only git merge --continue. Done only when the operation has ended and git status reports no unmerged paths.`
 
 const CHERRY_PICK_TEMPLATE = `Resolve the currently in-progress cherry-pick in {{directory}}.
+
+First, in a standalone call, run: git rev-parse --verify CHERRY_PICK_HEAD
+If that command fails, the cherry-pick has already completed — stop immediately and report success. Do not run any further git cherry-pick command.
 
 Inspect every conflict, resolve files, run relevant formatters and tests, then stage resolved files. Do not abort the cherry-pick. Do not combine continue with resolution, formatting, testing, or staging commands. Only after those steps succeed, make a separate standalone call containing only git cherry-pick --continue. Done only when the operation has ended and git status reports no unmerged paths.`
 
