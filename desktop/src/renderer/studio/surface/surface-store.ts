@@ -55,7 +55,6 @@ import { createScratchSurfaceActions } from "./surface-scratch-actions";
 import { createSurfaceTabLifecycleActions } from "./surface-tab-lifecycle-actions";
 import { materializeFileBuffer } from "./surface-tab-lifecycle";
 import {
-  closePanelIfEmptied,
   emptyConversation,
   normalizeConversation,
   project,
