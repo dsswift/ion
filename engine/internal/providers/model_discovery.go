@@ -469,9 +469,39 @@ func fetchAnthropicModels(baseURL, apiKey string) ([]types.ModelEntry, error) {
 	}
 	req.Header.Set("x-api-key", apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
-	return doModelsFetch(req, "anthropic", func(id string) types.ModelEntry {
-		return types.ModelEntry{ID: id, ProviderID: "anthropic"}
-	})
+	// Anthropic's native /v1/models payload is snake_case (`display_name`), which
+	// the generic camelCase discoveredModelEntry decoder does not read, so it is
+	// decoded directly here to carry the human-friendly name onto the entry.
+	client := &http.Client{Timeout: discoveryTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("http error: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // resource close
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512)) //nolint:errcheck // best-effort read of error-response body
+		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+	}
+	var result struct {
+		Data []struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"display_name"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode error: %w", err)
+	}
+	entries := make([]types.ModelEntry, 0, len(result.Data))
+	for _, m := range result.Data {
+		if m.ID == "" {
+			continue
+		}
+		entries = append(entries, types.ModelEntry{
+			ID: m.ID, ProviderID: "anthropic", DisplayName: m.DisplayName,
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].ID < entries[j].ID })
+	return entries, nil
 }
 
 func fetchGoogleModels(baseURL, apiKey string) ([]types.ModelEntry, error) {
@@ -529,6 +559,7 @@ type modelFactory func(id string) types.ModelEntry
 // providers omit the extended fields — zero values, behavior unchanged.
 type discoveredModelEntry struct {
 	ID                     string   `json:"id"`
+	DisplayName            string   `json:"displayName,omitempty"`
 	Dialect                string   `json:"dialect,omitempty"`
 	ContextWindow          int      `json:"contextWindow,omitempty"`
 	MaxOutputTokens        int      `json:"maxOutputTokens,omitempty"`
@@ -570,6 +601,7 @@ func doModelsFetch(req *http.Request, providerID string, factory modelFactory) (
 		entry := factory(m.ID)
 		// Overlay extended payload fields (zero values from stock providers
 		// leave the factory entry untouched, minus fields the factory set).
+		entry.DisplayName = m.DisplayName
 		entry.Dialect = m.Dialect
 		if m.ContextWindow != 0 {
 			entry.ContextWindow = m.ContextWindow

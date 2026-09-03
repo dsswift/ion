@@ -18,6 +18,7 @@ const extendedModelsPayload = `{
       "id": "claude-opus-5",
       "object": "model",
       "owned_by": "dcim-ai-gateway",
+      "displayName": "Claude Opus 5",
       "dialect": "anthropic",
       "contextWindow": 1000000,
       "costPer1kInput": 0.005,
@@ -94,6 +95,9 @@ func TestDiscoveryExtendedPayload(t *testing.T) {
 	if opus.Dialect != "anthropic" {
 		t.Errorf("opus dialect = %q, want anthropic", opus.Dialect)
 	}
+	if opus.DisplayName != "Claude Opus 5" {
+		t.Errorf("opus displayName = %q, want Claude Opus 5", opus.DisplayName)
+	}
 	if opus.ContextWindow != 1000000 || opus.CostPer1kInput != 0.005 || opus.CostPer1kOutput != 0.025 {
 		t.Errorf("opus metadata = ctx %d in %v out %v", opus.ContextWindow, opus.CostPer1kInput, opus.CostPer1kOutput)
 	}
@@ -121,6 +125,52 @@ func TestDiscoveryExtendedPayload(t *testing.T) {
 	}
 	if flux.CostPerImage != 0.03 {
 		t.Errorf("flux costPerImage = %v, want 0.03", flux.CostPerImage)
+	}
+}
+
+// TestFetchAnthropicModelsDisplayName verifies the dedicated Anthropic decode:
+// its native /v1/models payload is snake_case (`display_name`), which the
+// generic camelCase decoder does not read, so fetchAnthropicModels decodes it
+// directly and carries the friendly name onto the entry. This is the API-key
+// path's parity with the catalog's DisplayName.
+func TestFetchAnthropicModelsDisplayName(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			t.Errorf("path = %q, want /v1/models", r.URL.Path)
+		}
+		if r.Header.Get("x-api-key") != "sk-test" {
+			t.Errorf("x-api-key = %q, want sk-test", r.Header.Get("x-api-key"))
+		}
+		if r.Header.Get("anthropic-version") == "" {
+			t.Error("anthropic-version header missing")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"data":[
+			{"type":"model","id":"claude-opus-4-8","display_name":"Claude Opus 4.8","created_at":"2026-01-01T00:00:00Z"},
+			{"type":"model","id":"claude-fable-5-1","display_name":"Claude Fable 5.1","created_at":"2026-08-28T00:00:00Z"}
+		]}`)
+	}))
+	defer srv.Close()
+
+	models, err := fetchAnthropicModels(srv.URL, "sk-test")
+	if err != nil {
+		t.Fatalf("fetch error: %v", err)
+	}
+	if len(models) != 2 {
+		t.Fatalf("models = %d, want 2", len(models))
+	}
+	byID := make(map[string]types.ModelEntry)
+	for _, m := range models {
+		if m.ProviderID != "anthropic" {
+			t.Errorf("model %q providerId = %q, want anthropic", m.ID, m.ProviderID)
+		}
+		byID[m.ID] = m
+	}
+	if byID["claude-opus-4-8"].DisplayName != "Claude Opus 4.8" {
+		t.Errorf("opus-4-8 displayName = %q, want Claude Opus 4.8", byID["claude-opus-4-8"].DisplayName)
+	}
+	if byID["claude-fable-5-1"].DisplayName != "Claude Fable 5.1" {
+		t.Errorf("fable-5-1 displayName = %q, want Claude Fable 5.1", byID["claude-fable-5-1"].DisplayName)
 	}
 }
 
