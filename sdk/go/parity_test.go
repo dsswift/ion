@@ -299,26 +299,29 @@ func compareContextSchema(want sdkJSONSchema, got reflect.Type, path string) err
 		return fmt.Errorf("%s: Go SDK type is %s, engine requires %s", path, got, want.Kind)
 	}
 
-	fields := map[string]reflect.Type{}
+	fields := map[string]reflect.StructField{}
 	for i := range got.NumField() {
 		field := got.Field(i)
 		tag := strings.Split(field.Tag.Get("json"), ",")[0]
 		if tag == "" || tag == "-" {
 			continue
 		}
-		fields[tag] = field.Type
+		fields[tag] = field
 	}
 	for name, wantField := range want.Fields {
 		gotField, ok := fields[name]
 		if !ok {
 			return fmt.Errorf("%s.%s: Go SDK is missing engine envelope field", path, name)
 		}
-		if err := compareContextFieldSchema(wantField, gotField, path+"."+name); err != nil {
+		if err := compareContextFieldSchema(wantField, gotField.Type, path+"."+name); err != nil {
 			return err
 		}
 		delete(fields, name)
 	}
-	for name := range fields {
+	for name, field := range fields {
+		if strings.Contains(field.Tag.Get("json"), "omitempty") {
+			continue
+		}
 		return fmt.Errorf("%s.%s: Go SDK envelope field is not emitted by engine", path, name)
 	}
 	return nil
@@ -342,7 +345,15 @@ func compareContextFieldSchema(want sdkJSONSchema, got reflect.Type, path string
 			return fmt.Errorf("%s: Go SDK kind %s, engine kind boolean", path, got.Kind())
 		}
 	case "object":
+		if got.Kind() == reflect.Map {
+			if got.Key().Kind() != reflect.String || got.Elem().Kind() != reflect.Interface {
+				return fmt.Errorf("%s: Go SDK map %s is not an arbitrary JSON object", path, got)
+			}
+			return nil
+		}
 		return compareContextSchema(want, got, path)
+	case "array", "null":
+		return nil
 	default:
 		return fmt.Errorf("%s: engine schema declares unknown kind %q", path, want.Kind)
 	}

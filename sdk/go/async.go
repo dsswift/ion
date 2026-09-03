@@ -67,10 +67,11 @@ func (r *asyncRegistry) drainPendingInit() ([]WebhookRoute, []ScheduleJob) {
 
 // fireAsyncParams is the inbound engine/fire_async shape.
 type fireAsyncParams struct {
-	Kind       string          `json:"kind"`
-	ID         string          `json:"id"`
-	SessionKey string          `json:"sessionKey"`
-	Payload    json.RawMessage `json:"payload"`
+	Kind       string           `json:"kind"`
+	ID         string           `json:"id"`
+	SessionKey string           `json:"sessionKey"`
+	Identity   *ContextIdentity `json:"identity"`
+	Payload    json.RawMessage  `json:"payload"`
 }
 
 // handleFireAsync dispatches a webhook or schedule firing to its handler.
@@ -88,6 +89,7 @@ func (r *asyncRegistry) handleFireAsync(c context.Context, id *int64, params jso
 	// context carrying the session key the engine supplied.
 	ctx := r.sdk.newContext(nil)
 	ctx.SessionKey = p.SessionKey
+	ctx.Identity = p.Identity
 	// No batch is opened: a fire_async response carries the handler's own
 	// result shape and no events array, so an Emit from a webhook or schedule
 	// handler goes straight out as its own notification.

@@ -43,6 +43,9 @@ func sdkClaimedMethods() map[string]string {
 		"ext/list_dispatch_state":           "Context.ListDispatchState",
 		"ext/set_dispatch_context_defaults": "Context.SetDispatchContextDefaults",
 
+		// Dynamic tools.
+		"ext/tool_registry_snapshot": "SDK.SyncTools",
+
 		// Session surface.
 		"ext/send_prompt":        "Context.SendPrompt",
 		"ext/call_tool":          "Context.CallTool",

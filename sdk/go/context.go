@@ -55,6 +55,9 @@ type Context struct {
 	Model *ModelRef
 	// Config is the extension configuration from the init handshake.
 	Config ExtensionConfig
+	// Identity is the optional credential-free verified identity snapshot for
+	// this invocation. Claims preserve arbitrary decoded JSON values.
+	Identity *ContextIdentity
 
 	sdk *SDK
 
@@ -78,6 +81,19 @@ type ModelRef struct {
 	ContextWindow int    `json:"contextWindow"`
 }
 
+// ContextIdentity is credential-free verified identity state for one Context
+// invocation. Claims preserve arbitrary JSON data.
+type ContextIdentity struct {
+	Kind        string         `json:"kind"`
+	Provider    string         `json:"provider"`
+	Subject     string         `json:"subject,omitempty"`
+	Username    string         `json:"username,omitempty"`
+	DisplayName string         `json:"displayName,omitempty"`
+	Attribution string         `json:"attribution,omitempty"`
+	Source      string         `json:"source,omitempty"`
+	Claims      map[string]any `json:"claims,omitempty"`
+}
+
 // ctxEnvelope is the wire shape of the _ctx key.
 type ctxEnvelope struct {
 	SessionKey     string           `json:"sessionKey"`
@@ -89,6 +105,7 @@ type ctxEnvelope struct {
 	Cwd            string           `json:"cwd"`
 	Model          *ModelRef        `json:"model"`
 	Config         *ExtensionConfig `json:"config"`
+	Identity       *ContextIdentity `json:"identity,omitempty"`
 }
 
 // newContext builds a Context from an inbound _ctx envelope, filling absent
@@ -114,6 +131,7 @@ func (s *SDK) newContext(meta json.RawMessage) *Context {
 	ctx.Depth = env.Depth
 	ctx.DispatchID = env.DispatchID
 	ctx.Model = env.Model
+	ctx.Identity = env.Identity
 	if env.Cwd != "" {
 		ctx.Cwd = env.Cwd
 	}

@@ -81,10 +81,11 @@ import (
 type SDK struct {
 	name string
 
-	mu       sync.RWMutex
-	hooks    map[string]hookEntry
-	tools    map[string]ToolDef
-	commands map[string]CommandDef
+	mu           sync.RWMutex
+	hooks        map[string]hookEntry
+	tools        map[string]ToolDef
+	commands     map[string]CommandDef
+	toolRevision int64
 
 	transport *transport
 	logger    *Logger
@@ -194,8 +195,11 @@ func (s *SDK) On(hook string, handler func(ctx *Context, payload json.RawMessage
 // the engine's tool registry uses replace-on-duplicate semantics.
 func (s *SDK) RegisterTool(def ToolDef) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.tools[def.Name] = def
+	if s.initialized() {
+		s.toolRevision++
+	}
+	s.mu.Unlock()
 }
 
 // RegisterCommand adds a slash command to the extension's registry.
