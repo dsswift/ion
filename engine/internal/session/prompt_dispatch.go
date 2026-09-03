@@ -533,6 +533,8 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	m.wireDelegatedPermissions(key, &opts)
 	m.wireToolServer(s, key, &opts, extGroup)
 	m.wireAgentToolServer(s, key, &opts)
+	m.wirePlanModeToolServer(s, key, &opts)
+	m.wireQuestionToolServer(s, key, &opts)
 
 	// Fire before_prompt for ClaudeCodeBackend (ApiBackend wires this inside buildRunConfig).
 	m.fireBeforePromptCli(s, key, extGroup, skipExtensions, &opts)
@@ -554,6 +556,12 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		m.wireClientTools(key, &opts, runCfg)
 	}
 	m.wireClientToolServer(s, key, &opts)
+	// Guarantee the reused session ToolServer's MCP config rides this turn's
+	// RunOptions. The wire* helpers only attach when they CREATE the server
+	// (needsStart), so a session reusing its ToolServer across turns lost the
+	// --mcp-config flag and the mcp__<server>__* allowedTools wildcard on every
+	// turn after the first — the CLI then saw none of the ion-extensions tools.
+	m.ensureCliToolServerAttached(s, key, &opts)
 	// Record the run's client-tool signature beside runCaps so handleRunExit
 	// stamps it onto the captured native-session cursor (codex resume
 	// validity — see NativeSessionCursor.ClientToolSignature).
