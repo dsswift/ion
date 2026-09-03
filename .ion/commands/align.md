@@ -1,6 +1,7 @@
 ---
 description: Context-aware alignment. When in plan mode, it reviews the active plan. Otherwise, it reviews all branch changes against Ion quality gates and principles, implements the fixes and commits them after operator approval.
 allowed_bash_commands: [ls, stat, git, gh pr view, gh pr diff, gh pr list, gh pr checks, gh pr checkout]
+model: standard
 ---
 
 You are running the `/align` command. This command operates in two modes depending on context. Detect the active mode first, then follow the instructions for that mode.
