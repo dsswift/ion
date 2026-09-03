@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.80.2](https://github.com/dsswift/ion/compare/engine-v1.80.1...engine-v1.80.2) (2026-09-03)
+
+### Bug Fixes
+
+* **desktop:** mirror conversation terminal panel ([0983cff](https://github.com/dsswift/ion/commit/0983cff5983a85e93e4f02fab197ae3050dcba03))
+
 ## [1.80.1](https://github.com/dsswift/ion/compare/engine-v1.80.0...engine-v1.80.1) (2026-09-03)
 
 ### Bug Fixes

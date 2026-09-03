@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.93.1](https://github.com/dsswift/ion/compare/desktop-v1.93.0...desktop-v1.93.1) (2026-09-03)
+
+### Bug Fixes
+
+* **desktop:** mirror conversation terminal panel ([0983cff](https://github.com/dsswift/ion/commit/0983cff5983a85e93e4f02fab197ae3050dcba03))
+
 ## [1.93.0](https://github.com/dsswift/ion/compare/desktop-v1.92.0...desktop-v1.93.0) (2026-09-03)
 
 ### Features
