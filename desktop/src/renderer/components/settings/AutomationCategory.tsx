@@ -35,6 +35,19 @@ function blankAutomation(): AutomationDefinition {
 }
 
 /**
+ * Whether `editing` is one of the listing's own entries rather than a draft
+ * (a blank workflow, or a template just applied to one). A template assigns a
+ * real id immediately, so a blank-id check cannot tell "new" from "saved" —
+ * membership in the current listing is the only stable signal.
+ */
+function isSavedEntry(
+  editing: AutomationDefinition,
+  listing: AutomationListing | null,
+): boolean {
+  return listing?.entries.some((entry) => entry.definition.id === editing.id) ?? false;
+}
+
+/**
  * The Desktop Automation category: a source-aware list plus the inline
  * Automation Editor. The main process owns evaluation and persistence; this
  * screen only reads the listing and requests one user mutation at a time.
@@ -184,8 +197,11 @@ export function AutomationCategory() {
         </div>
 
         {/* New-definition editor: shown above the list when creating from scratch.
-            Existing-definition editors expand inline after their own card below. */}
-        {editing?.id === "" && (
+            Existing-definition editors expand inline after their own card below.
+            Distinguished by listing membership, not a blank id — picking a
+            template assigns a real id immediately, so an id check alone would
+            drop the editor the moment a template is chosen. */}
+        {editing !== null && !isSavedEntry(editing, listing) && (
           <div style={{ display: "grid", gap: 6, marginBottom: 4 }}>
             <AutomationEditor definition={editing} onCancel={() => setEditing(null)} onSave={save} />
             {!editing.trigger.event && (
@@ -208,7 +224,11 @@ export function AutomationCategory() {
           </div>
         )}
 
-        {/* Each card expands its own editor inline. Only one card is editable at a time. */}
+        {/* Each card expands its own editor inline. Selecting a different
+            rule's Edit swaps the open editor's content in place (see
+            docs/design/desktop-automation.md § "The Automation Editor") — so
+            Edit stays enabled on every user card, never locked while another
+            is open. */}
         <div style={{ display: "grid", gap: 6 }}>
           {listing === null && <div style={emptyStyle(colors)}>Loading workflows…</div>}
           {listing?.entries.length === 0 && !editing && (
@@ -219,7 +239,6 @@ export function AutomationCategory() {
               <WorkflowCard
                 entry={entry}
                 locked={listing.locked}
-                editLocked={editing !== null && editing.id !== entry.definition.id}
                 onEdit={() => setEditing(entry.definition)}
                 onDuplicate={() => duplicate(entry.definition.id)}
                 onDelete={() => remove(entry.definition.id)}
@@ -250,7 +269,6 @@ export function AutomationCategory() {
 function WorkflowCard({
   entry,
   locked,
-  editLocked,
   onEdit,
   onDuplicate,
   onDelete,
@@ -259,7 +277,6 @@ function WorkflowCard({
 }: {
   entry: AutomationSourceEntry;
   locked: boolean;
-  editLocked: boolean;
   onEdit(): void;
   onDuplicate(): void;
   onDelete(): void;
@@ -297,12 +314,7 @@ function WorkflowCard({
           <span style={tagStyle(colors)}>overridden by {sourceLabel(entry.overriddenBy)}</span>
         )}
         {isUser && !locked && (
-          <button
-            type="button"
-            onClick={onEdit}
-            disabled={editLocked}
-            style={{ ...linkStyle(colors), opacity: editLocked ? 0.4 : 1 }}
-          >
+          <button type="button" onClick={onEdit} style={linkStyle(colors)}>
             Edit
           </button>
         )}
