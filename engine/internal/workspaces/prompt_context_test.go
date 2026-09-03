@@ -96,10 +96,11 @@ func TestPromptContextDescribesWorktree(t *testing.T) {
 // The branch-attachment invariant, stated as an end state rather than a verb
 // blocklist.
 //
-// This assertion set moved here from internal/gitcontext, which used to inject a
-// second "# Worktree Safety" section saying the same thing in different words on
-// every dispatch. It pins BOTH directions, because both have been wrong in
-// shipped code: the invariant must be present, and the sanctioned history verbs
+// The worktree prompt context is the ONE place this invariant is stated; an
+// earlier revision also injected a second "# Worktree Safety" section saying the
+// same thing in different words on every dispatch. It pins BOTH directions,
+// because both have been wrong in shipped code: the invariant must be present,
+// and the sanctioned history verbs
 // must NOT be forbidden — an earlier revision told the model not to rebase,
 // reset, or stash at all, which contradicted the operator's own /align amend
 // sequence, /squash rebuild, and /create-pr push.

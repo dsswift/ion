@@ -424,7 +424,6 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 	workspaceContext := m.injectWorkspaceContext(s, key, &opts, clientWsCtx)
 	m.injectExtensionContext(s, key, &opts, workspaceContext)
-	injectGitContext(s, &opts)
 	injectPluginContext(s, &opts)
 
 	if s.sessionMemory != nil {

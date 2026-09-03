@@ -88,23 +88,6 @@ type RunOptions struct {
 	AddDirs            []string    `json:"addDirs,omitempty"`
 	PermissionModeCli  string      `json:"permissionModeCli,omitempty"`
 	AppendSystemPrompt string      `json:"appendSystemPrompt,omitempty"`
-	// GitContextText carries the formatted repository context ("# Git Context"
-	// + branch, short status, recent commits) for this run's working directory.
-	//
-	// It is deliberately NOT folded into AppendSystemPrompt, even though it is
-	// the same kind of ambient context, because the two have opposite cache
-	// characteristics. AppendSystemPrompt lands in the system prompt, which
-	// providers treat as the head of the cacheable prefix. Git output changes
-	// on every commit, stage, and working-tree edit. Volatile bytes inside a
-	// cached prefix invalidate everything behind them — the whole system prompt
-	// AND the entire conversation history — so a ~100-token git block was
-	// forcing a full re-write of hundreds of thousands of cached tokens on any
-	// turn that followed a repository change.
-	//
-	// Carrying it separately lets the run loop position the text after every
-	// cache breakpoint (see backend.AppendGitContextMessage), where a change
-	// costs only the block itself.
-	GitContextText string `json:"gitContextText,omitempty"`
 	Source         string `json:"source,omitempty"`
 	McpConfig      string `json:"mcpConfig,omitempty"`
 	// CliMcpServers carries structured per-session MCP-server specs to inject

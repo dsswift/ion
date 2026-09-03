@@ -880,7 +880,7 @@ explicit recovery request; they must not forward it to fan-out transports.
 
 Request an on-demand context breakdown for a session. The engine reconstructs the full assembly pipeline (system prompt + tools + conversation messages) outside any active run and emits `engine_context_breakdown` on the event stream.
 
-**Recompute model.** This command fires the same assembly pipeline that `send_prompt` runs before every prompt: it loads the conversation from disk, injects context files, extension context, git context, and session memory into `RunOptions`, then calls `BuildContextBreakdown`. The result always reflects the current on-disk state — it is never cached or persisted.
+**Recompute model.** This command fires the same assembly pipeline that `send_prompt` runs before every prompt: it loads the conversation from disk, injects context files, extension context, and session memory into `RunOptions`, then calls `BuildContextBreakdown`. The result always reflects the current on-disk state — it is never cached or persisted.
 
 **Fresh conversations.** When the session has not sent its first prompt yet, the conversation file may not exist. The engine falls back to an empty conversation, so the breakdown shows system prompt + tools with zero conversation tokens. This is the accurate pre-first-prompt view.
 

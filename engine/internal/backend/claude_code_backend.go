@@ -343,15 +343,11 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 	// Write initial prompt as NDJSON user message over stdin. PDFs/images
 	// referenced by the prompt are inlined as native document/image content
 	// blocks rather than left for the Read tool to expand (#789).
-	//
-	// Git context rides the prompt rather than --append-system-prompt: the CLI
-	// caches its system prompt, and repository state changes on every commit.
-	// See gitContextPrompt in transient_prompt.go.
 	initMsg := map[string]interface{}{
 		"type": "user",
 		"message": map[string]interface{}{
 			"role":    "user",
-			"content": buildCliUserContent(opts.ConversationID, gitContextPrompt(opts.Prompt, opts.GitContextText), opts.Attachments),
+			"content": buildCliUserContent(opts.ConversationID, opts.Prompt, opts.Attachments),
 		},
 	}
 	if data, err := json.Marshal(initMsg); err != nil {
