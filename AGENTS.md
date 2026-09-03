@@ -566,7 +566,17 @@ Logs are structured JSONL (one JSON object per line). Every line has a canonical
 
 ### Check Logs First
 
-Check the logs before investigating any issue. All files are JSONL — use `jq` to filter rather than reading them raw.
+Check the logs before investigating any issue. All files are JSONL — use `jq` to filter rather than reading them raw. This is the project-specific form of the global `## Read the logs first` rule: reading is the first step of an investigation, never an option inside one, and never something to ask permission for.
+
+**These files rotate.** `engine.jsonl` is the current window only; `engine.jsonl.1`, `.2`, `.3` hold the preceding ones, and a busy engine fills a window in well under an hour. A grep of `engine.jsonl` alone that returns nothing means "not in the last window" — it does not mean "never happened". Search the rotations that cover the timestamp you care about:
+
+```bash
+for f in ~/.ion/engine.jsonl ~/.ion/engine.jsonl.*; do grep '"msg":"<marker>"' "$f"; done
+```
+
+**Filter on the `msg` field, not the raw line.** Every tool call an agent makes is echoed into the log inside a `normalized event` payload, so a bare `grep keepplan engine.jsonl` matches your own commands and reads like a hit. `grep '"msg":"keepplan'` matches only what the engine actually emitted.
+
+**A missing log line is evidence, not a dead end.** When a code path emits a log on every execution and that log is absent across every rotation covering the window, the path did not run. That is frequently the whole diagnosis — it converts "why did this behave wrong" into "which branch was skipped, and why".
 
 **Confirm the effective level before you trust a log or pick one to write at.** `logLevel` in `~/.ion/engine.json` is read once at daemon start, from the global config only — a project `.ion/engine.json` cannot raise it, and an edit needs an engine restart. A clone bootstrapped with `make bootstrap` runs `debug`; a consumer install runs `info`. When the level would discard what you are about to write, or hide what you are about to read, say so and offer to fix it — do not silently demote a diagnostic to a level nobody receives.
 
