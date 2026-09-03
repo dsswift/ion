@@ -24,7 +24,7 @@ Legacy formats may also exist: `.jsonl` (v1) and `.json` (v0). The engine auto-m
 - **Subsequent lines:** `SessionEntry` objects (`engine/internal/conversation/conversation.go`), each with:
   - `id` — unique entry identifier
   - `parentId` — pointer to parent entry (null for roots)
-  - `type` — one of `message`, `compaction`, `cleared`, `model_change`, `label`, `custom`
+  - `type` — one of `message`, `compaction`, `cleared`, `model_change`, `label`, `custom`, `agent_dispatch`, `dispatch_error`, `plan_marker`, `steer_marker`, `aborted` (see `SessionEntryType` in `engine/internal/conversation/conversation.go`)
   - `timestamp` — Unix millis
   - `data` — type-specific payload (message content, compaction summary, etc.)
 
@@ -32,6 +32,15 @@ A `cleared` entry is an LLM-context boundary, not a tree deletion. Prior entries
 remain available for rendering, export, and branch navigation. When the active
 path is rebuilt into `.llm.jsonl`, entries before its latest `cleared` marker are
 excluded; only non-display messages after marker reach model.
+
+An `aborted` entry records that a run was cancelled. The engine is the only
+actor that knows a run was interrupted rather than completed, and without this
+entry a cancelled run and a finished run are the same file. Its payload carries
+`runId`, `source` (`user` for an operator stop, `engine` for a cancel that came
+from inside the run such as a hook or a watchdog), the abort `scope` when the
+operator set one, and the exit `signal`. The entry's own `timestamp` is the
+when. It is history data only: it is not replayed into scrollback and never
+enters LLM context.
 
 ## `.llm.jsonl` structure
 

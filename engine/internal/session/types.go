@@ -174,6 +174,24 @@ type engineSession struct {
 	// as it consumes it. Guarded by m.mu.
 	orchestratorAbortRunID string
 
+	// operatorAbortRunID and operatorAbortScope name the run the operator
+	// stopped, and the scope they stopped it with, so handleRunExit can write
+	// the durable abort marker with the scope attached.
+	//
+	// Why the marker is not written by SendAbortScoped itself. The run is still
+	// live at that moment and the backend performs its own final save when it
+	// unwinds; a load-append-save from the abort path would be overwritten by
+	// that save. handleRunExit runs after it — the same window
+	// persistTerminalDispatches already relies on — so the stop is written once,
+	// at the point where the write survives.
+	//
+	// Run-scoped and one-shot for the same reason as orchestratorAbortRunID
+	// above: handleRunExit honors it only when it names the exiting run, so a
+	// stop recorded for an earlier run can never mislabel a later cancel as
+	// operator-initiated. Guarded by m.mu.
+	operatorAbortRunID string
+	operatorAbortScope AbortScope
+
 	// rootCtx is the per-session cancellation root. Every cancellable
 	// operation spawned on behalf of this session derives its own
 	// context.Context from rootCtx — the backend run (via

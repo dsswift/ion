@@ -42,6 +42,13 @@ const (
 	// from engine_command_result{command:"clear"}; without this entry there
 	// is no persisted signal for flattenEntries to replay on reload.
 	EntryCleared SessionEntryType = "cleared"
+	// EntryAborted records that a run was cancelled, so the stop survives
+	// reload. The engine is the only actor that knows a run was interrupted
+	// rather than completed; without this entry that fact exists only in the
+	// engine log, which rotates and cannot be joined against a conversation
+	// file. It is history/telemetry data only: it is not replayed into
+	// scrollback and never enters provider-visible context.
+	EntryAborted SessionEntryType = "aborted"
 )
 
 // MessageData holds a chat message entry.
@@ -177,6 +184,28 @@ type SteerMarkerData struct {
 // itself — the only signal flattenEntries needs is that a clear occurred
 // at a specific point in the tree so clients can replay the divider.
 type ClearedData struct{}
+
+// AbortedData records a cancelled run for persistence.
+//
+// The entry's own timestamp supplies the when, exactly as ClearedData relies on
+// it. Source separates the two ways a run is cancelled, because they mean
+// different things to anything reading the history: AbortSourceUser is the
+// operator pressing Stop, while AbortSourceEngine is a cancel that arrived from
+// inside the run (a turn or tool hook, a watchdog) with no operator behind it.
+// Scope is empty for an engine-side cancel, which has no abort scope to record.
+type AbortedData struct {
+	RunID  string `json:"runId"`
+	Source string `json:"source"`
+	Scope  string `json:"scope,omitempty"`
+	Signal string `json:"signal,omitempty"`
+}
+
+const (
+	// AbortSourceUser marks a stop the operator asked for.
+	AbortSourceUser = "user"
+	// AbortSourceEngine marks a cancel that originated inside the engine.
+	AbortSourceEngine = "engine"
+)
 
 // ModelChangeData records a model switch.
 type ModelChangeData struct {

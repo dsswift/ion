@@ -450,6 +450,13 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// dispatches running. Read from the session's one-shot marker under the
 	// lock below and consumed by the reap decision further down.
 	var skipDescendantReap bool
+	// operatorStop reports that the operator asked for this run to stop, and
+	// operatorScope is the scope they asked for. Read from the session's
+	// one-shot marker under the lock below and consumed by the abort-marker
+	// write further down, which is the first point after the backend's final
+	// save where the entry survives.
+	var operatorStop bool
+	var operatorScope AbortScope
 	m.mu.Lock()
 	// Authoritative terminal point: clear the runID -> key routing binding
 	// under the lock, unconditionally (even if the session was already torn
@@ -470,6 +477,15 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		if s.orchestratorAbortRunID != "" && s.orchestratorAbortRunID == runID {
 			skipDescendantReap = true
 			s.orchestratorAbortRunID = ""
+		}
+		// Consume the operator-stop marker the same way, and for the same
+		// reason: a stop recorded against an earlier run must never label this
+		// run's exit as operator-initiated.
+		if s.operatorAbortRunID != "" && s.operatorAbortRunID == runID {
+			operatorStop = true
+			operatorScope = s.operatorAbortScope
+			s.operatorAbortRunID = ""
+			s.operatorAbortScope = ""
 		}
 		// Ion's durable conversation-file identity, captured under the lock
 		// for use in persistTerminalDispatches below. This is NOT the
@@ -692,6 +708,11 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// run precisely so its background dispatches could keep running. Reaping
 	// here would silently undo that scope, since a scoped abort is otherwise
 	// indistinguishable from any other cancel at run exit.
+	// Record the stop in the conversation before teardown. See
+	// persistAbortMarker for why this point, and why an operator stop is
+	// recorded regardless of how the run exited.
+	m.persistAbortMarker(key, ionConvID, runID, signal, operatorStop, operatorScope, cleanCancel)
+
 	if cleanCancel || abnormalExit {
 		if skipDescendantReap {
 			utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: skipping descendant reap (orchestrator-scoped abort)", map[string]any{"key": key, "run_id": runID, "code_str": codeStr, "sig_str": sigStr})
