@@ -48,6 +48,7 @@ import { unregisterRuntimePanel } from './runtime-panel-registry'
 import { scratchProjectKey, scratchTabsForProject } from './surface-scratch'
 import { createScratchSurfaceActions } from './surface-scratch-actions'
 import { materializeConversation, materializeFileBuffer, teardownSurfaceTab } from './surface-tab-lifecycle'
+import { globalSurfaceTabIds, visibleSurfaceTabs } from './surface-tab-composition'
 
 
 type ConversationMap = Record<string, SurfaceConversationPersisted>
@@ -151,25 +152,6 @@ function projectKeyForConversation(conversationId: string | null): string | null
   return scratchProjectKey(tab)
 }
 
-function visibleTabs(
-  pinnedTabs: readonly PinnableSingletonId[],
-  notification: NotificationTab | null,
-  conversation: SurfaceConversationPersisted,
-  scratchTabs: readonly ScratchTab[] = [],
-  hasQuestions = false,
-): SurfaceTab[] {
-  // The Questions tab is an explicit FORCED group ahead of the global pins:
-  // composeTabs puts pins first, so changing SINGLETON_ORDER alone could
-  // never place a needs-you surface leftmost. Window-transient — derived
-  // from the coordinator state, never part of conversation.tabs.
-  const forced: SurfaceTab[] = hasQuestions ? [{ kind: 'questions', id: QUESTIONS_SURFACE_ID }] : []
-  return [...forced, ...composeTabs(pinnedTabs, conversation.tabs, conversation.agentBrowserInstanceId), ...scratchTabs, ...(notification ? [notification] : [])]
-}
-
-function globalTabIds(pinnedTabs: readonly PinnableSingletonId[], notification: NotificationTab | null): string[] {
-  return [...pinnedTabs, ...(notification ? [notification.id] : [])]
-}
-
 function normalizeConversation(
   pinnedTabs: readonly PinnableSingletonId[],
   notification: NotificationTab | null,
@@ -188,7 +170,7 @@ function normalizeConversation(
   const agentBrowserInstanceId = conversation.agentBrowserInstanceId && tabs.some((tab) => isBrowserTab(tab) && tab.instanceId === conversation.agentBrowserInstanceId)
     ? conversation.agentBrowserInstanceId
     : null
-  const composed = visibleTabs(pinnedTabs, notification, { ...conversation, tabs, agentBrowserInstanceId }, scratchTabs, hasQuestions)
+  const composed = visibleSurfaceTabs(pinnedTabs, notification, { ...conversation, tabs, agentBrowserInstanceId }, scratchTabs, hasQuestions)
   return {
     tabs,
     visible: conversation.visible,
@@ -205,7 +187,7 @@ function project(state: Pick<SurfaceState, 'pinnedTabs' | 'notification' | 'scra
   const scratchTabs = scratchTabsForProject(state.scratchProjects, projectKeyForConversation(state.currentConversationId))
   const current = normalizeConversation(state.pinnedTabs, state.notification, state.conversations[state.currentConversationId] ?? emptyConversation(), scratchTabs, hasQuestions)
   const conversations = { ...state.conversations, [state.currentConversationId]: current }
-  return { tabs: visibleTabs(state.pinnedTabs, state.notification, current, scratchTabs, hasQuestions), activeTabId: current.activeTabId, conversations, visible: state.visible }
+  return { tabs: visibleSurfaceTabs(state.pinnedTabs, state.notification, current, scratchTabs, hasQuestions), activeTabId: current.activeTabId, conversations, visible: state.visible }
 }
 
 /**
@@ -467,7 +449,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
   openTerminalTab: (cwd) => {
     const instanceId = crypto.randomUUID()
     const id = terminalTabId(instanceId)
-    updateCurrent(set, get, (current) => ({ ...current, tabs: normalizeTabs([...current.tabs, { kind: 'terminal', id, instanceId, cwd, title: nextTerminalTitle(visibleTabs(get().pinnedTabs, get().notification, current)) }]), activeTabId: id }))
+    updateCurrent(set, get, (current) => ({ ...current, tabs: normalizeTabs([...current.tabs, { kind: 'terminal', id, instanceId, cwd, title: nextTerminalTitle(visibleSurfaceTabs(get().pinnedTabs, get().notification, current)) }]), activeTabId: id }))
   },
 
   activateTab: (id) => updateCurrent(set, get, (current) => {
@@ -481,7 +463,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
     const state = get()
     const scratchTabs = scratchTabsForProject(state.scratchProjects, projectKeyForConversation(state.currentConversationId))
     const hasQuestions = !!state.currentConversationId && state.questionsConversations.has(state.currentConversationId)
-    return visibleTabs(state.pinnedTabs, state.notification, current, scratchTabs, hasQuestions).some((tab) => tab.id === id)
+    return visibleSurfaceTabs(state.pinnedTabs, state.notification, current, scratchTabs, hasQuestions).some((tab) => tab.id === id)
       ? { ...current, activeTabId: id }
       : current
   }),
@@ -504,7 +486,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
       const conversations = { ...state.conversations }
       if (state.currentConversationId) {
         const current = conversations[state.currentConversationId] ?? emptyConversation()
-        const remaining = visibleTabs(state.pinnedTabs, notification, current)
+        const remaining = visibleSurfaceTabs(state.pinnedTabs, notification, current)
         conversations[state.currentConversationId] = { ...current, activeTabId: current.activeTabId === id ? (remaining[0]?.id ?? null) : current.activeTabId }
       }
       set({ ...project({ ...state, notification, conversations }), notification })
@@ -517,7 +499,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
       const conversations = { ...state.conversations }
       if (state.currentConversationId) {
         const current = conversations[state.currentConversationId] ?? emptyConversation()
-        const remaining = visibleTabs(pinnedTabs, state.notification, current)
+        const remaining = visibleSurfaceTabs(pinnedTabs, state.notification, current)
         conversations[state.currentConversationId] = {
           ...current,
           activeTabId: current.activeTabId === id ? (remaining[0]?.id ?? null) : current.activeTabId,
@@ -546,7 +528,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
 
   closeOthers: (id) => {
     const state = get()
-    const targets = closeOthersTargets(state.tabs, id, [...globalTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID])
+    const targets = closeOthersTargets(state.tabs, id, [...globalSurfaceTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID])
       .filter((tab) => tab.kind !== 'scratch')
       .filter((tab) => tab.kind !== 'terminal' || !useSessionStore.getState().terminalActivities?.get(`${state.currentConversationId ?? 'studio'}:surface:${tab.instanceId}`)?.active)
     for (const tab of targets) teardownSurfaceTab(tab, state.currentConversationId)
@@ -556,7 +538,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
 
   closeToRight: (id) => {
     const state = get()
-    const targets = closeToRightTargets(state.tabs, id, [...globalTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID])
+    const targets = closeToRightTargets(state.tabs, id, [...globalSurfaceTabIds(state.pinnedTabs, state.notification), QUESTIONS_SURFACE_ID])
       .filter((tab) => tab.kind !== 'scratch')
       .filter((tab) => tab.kind !== 'terminal' || !useSessionStore.getState().terminalActivities?.get(`${state.currentConversationId ?? 'studio'}:surface:${tab.instanceId}`)?.active)
     for (const tab of targets) teardownSurfaceTab(tab, state.currentConversationId)
@@ -601,7 +583,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
     get,
     set,
     project,
-    visibleTabs: (pinnedTabs, notification, conversation, tabId) => visibleTabs(
+    visibleTabs: (pinnedTabs, notification, conversation, tabId) => visibleSurfaceTabs(
       pinnedTabs,
       notification,
       conversation,
