@@ -239,41 +239,15 @@ func (h *Host) parseInitResult(raw json.RawMessage) error {
 	}
 	h.setDeclaredHooks(result.Hooks)
 
-	for _, t := range result.Tools {
-		toolName := t.Name // capture for closure
-		h.sdk.RegisterTool(ToolDefinition{
-			Name:         t.Name,
-			Description:  t.Description,
-			Parameters:   t.Parameters,
-			PlanModeSafe: t.PlanModeSafe,
-			Execute: func(params interface{}, ctx *Context) (*types.ToolResult, error) {
-				raw, err := h.callHook("tool/"+toolName, ctx, params)
-				if err != nil {
-					return &types.ToolResult{Content: err.Error(), IsError: true}, nil
-				}
-				if len(raw) == 0 || string(raw) == "null" {
-					return &types.ToolResult{Content: ""}, nil
-				}
-				// Structured tool return: image paths and/or typed contentItems.
-				// Typed vision items stay ephemeral; they feed this provider turn but
-				// never become durable event or conversation payloads.
-				if result, ok := parseToolResultWithImages(raw, h.name_()); ok {
-					utils.LogWithFields(utils.LevelInfo, "extension", "tool returned structured result", map[string]any{
-						"tag":          h.name_(),
-						"tool":         toolName,
-						"images":       len(result.Images),
-						"contentItems": len(result.ContentItems),
-					})
-					return result, nil
-				}
-				var content interface{}
-				if err := json.Unmarshal(raw, &content); err != nil {
-					return &types.ToolResult{Content: string(raw)}, nil
-				}
-				formatted, _ := json.MarshalIndent(content, "", "  ") //nolint:errcheck // pretty-printing an already-unmarshaled value; re-marshal cannot fail
-				return &types.ToolResult{Content: string(formatted)}, nil
-			},
-		})
+	toolDeclarations := make([]toolRegistryTool, 0, len(result.Tools))
+	for _, tool := range result.Tools {
+		toolDeclarations = append(toolDeclarations, toolRegistryTool{Name: tool.Name, Description: tool.Description, Parameters: tool.Parameters, PlanModeSafe: tool.PlanModeSafe})
+	}
+	if err := h.initToolRegistry(toolDeclarations); err != nil {
+		return fmt.Errorf("initialize tool registry: %w", err)
+	}
+	for _, tool := range toolDeclarations {
+		h.sdk.RegisterTool(h.dynamicToolDefinition(tool))
 	}
 
 	for name, def := range result.Commands {

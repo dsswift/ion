@@ -212,17 +212,14 @@ func TestStartSession_ReRegistersExtensionsOnExistingSession(t *testing.T) {
 		t.Fatal("expected no extensions on initial session")
 	}
 
-	// Second start with extensions -- these are fake paths that will fail to load,
-	// but the code path should be exercised (load failure is logged, group stays empty)
+	// Second start with an invalid extension path. Preflight now rejects before
+	// any extension process can load.
 	cfgWithExt := defaultConfig()
 	cfgWithExt.Extensions = []string{"/nonexistent/extension.js"}
 
-	result, err := mgr.StartSession("reext", cfgWithExt)
-	if err != nil {
-		t.Fatalf("second StartSession: %v", err)
-	}
-	if !result.Existed {
-		t.Error("expected Existed=true")
+	_, err = mgr.StartSession("reext", cfgWithExt)
+	if err == nil {
+		t.Fatal("second StartSession succeeded with an invalid extension path")
 	}
 }
 

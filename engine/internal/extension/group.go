@@ -72,6 +72,10 @@ func (g *ExtensionGroup) Commands() map[string]CommandDefinition {
 // Void hooks: call each host sequentially, log errors, return first error.
 // ---------------------------------------------------------------------------
 
+func (g *ExtensionGroup) FireIdentityChanged(ctx *Context, info IdentityChangedInfo) error {
+	return g.fireVoid(func(h *Host) error { return h.FireIdentityChanged(ctx, info) })
+}
+
 func (g *ExtensionGroup) FireSessionStart(ctx *Context) error {
 	return g.fireVoid(func(h *Host) error { return h.FireSessionStart(ctx) })
 }

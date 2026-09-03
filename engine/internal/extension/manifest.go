@@ -38,9 +38,34 @@ type Manifest struct {
 	// from `<extDir>/node_modules` (the engine sets NODE_PATH accordingly).
 	External []string `json:"external,omitempty"`
 
+	// Identity declares the verified Context Identity required to admit this
+	// extension into a session. Omitted keeps the extension identity-optional.
+	Identity *ManifestIdentity `json:"identity,omitempty"`
+
 	// EngineVersion is an optional semver range (e.g. ">=0.5.0"). Reserved
 	// for future use; the engine does not currently enforce this constraint.
 	EngineVersion string `json:"engineVersion,omitempty"`
+}
+
+// ManifestIdentity defines the verified identity kind an extension requires.
+// Required accepts operator, workload, or any.
+type ManifestIdentity struct {
+	Required string `json:"required"`
+}
+
+func (m *ManifestIdentity) UnmarshalJSON(data []byte) error {
+	type rawManifestIdentity ManifestIdentity
+	var decoded rawManifestIdentity
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&decoded); err != nil {
+		return err
+	}
+	if decoded.Required != "operator" && decoded.Required != "workload" && decoded.Required != "any" {
+		return fmt.Errorf("identity.required must be operator, workload, or any")
+	}
+	*m = ManifestIdentity(decoded)
+	return nil
 }
 
 // LoadManifest reads `<extDir>/extension.json` if present. Returns

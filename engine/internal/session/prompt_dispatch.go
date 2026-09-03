@@ -29,15 +29,33 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		}
 	}()
 
-	m.mu.Lock()
+	// Read the session policy without holding Manager.mu across the identity
+	// provider call. ContextIdentity is cached, but this boundary must remain
+	// free of provider work.
+	m.mu.RLock()
 	s, ok := m.sessions[key]
+	var policy identityPolicy
+	if ok {
+		policy = s.identityPolicy
+	}
+	m.mu.RUnlock()
 	if !ok {
-		m.mu.Unlock()
 		m.emit(key, types.EngineEvent{
 			Type:         "engine_error",
 			EventMessage: fmt.Sprintf("session %q not found", key),
 			ErrorCode:    "session_not_found",
 		})
+		return fmt.Errorf("session %q not found", key)
+	}
+	// A required identity can disappear after a session starts. Refuse new work
+	// before reserving a run; an active run is deliberately left unchanged.
+	if err := policy.check(key, "prompt dispatch"); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	s, ok = m.sessions[key]
+	if !ok {
+		m.mu.Unlock()
 		return fmt.Errorf("session %q not found", key)
 	}
 	// Settled check: a settled session rejects prompts until resumed.

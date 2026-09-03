@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
@@ -46,9 +47,10 @@ type rootDispatchCompletion struct {
 
 // engineSession holds the state for a single session managed by the Manager.
 type engineSession struct {
-	key       string
-	config    types.EngineConfig
-	requestID string // empty when no active run
+	key            string
+	config         types.EngineConfig
+	identityPolicy identityPolicy
+	requestID      string // empty when no active run
 	// acceptedDeliveryIDs makes duplicate deliveryId checks atomic before the
 	// user turn has been persisted. Persisted conversation entries remain the
 	// restart-safe authority once a run writes its first turn.
@@ -328,16 +330,18 @@ type engineSession struct {
 	rootDispatchCompletions []rootDispatchCompletion
 
 	// Wired subsystems (populated in StartSession)
-	extGroup         *extension.ExtensionGroup
-	mcpConns         []*mcp.Connection
-	permEngine       *permissions.Engine
-	telemetry        *telemetry.Collector
-	recorder         *recorder.Recorder
-	toolServer       *backend.ToolServer
-	hookSettingsPath string
-	procRegistry     *extension.ProcessRegistry
-	pending          *pending.Broker
-	resourceBroker   *resource.Broker
+	extGroup            *extension.ExtensionGroup
+	identitySnapshot    *auth.ContextIdentity
+	identityInitialized bool
+	mcpConns            []*mcp.Connection
+	permEngine          *permissions.Engine
+	telemetry           *telemetry.Collector
+	recorder            *recorder.Recorder
+	toolServer          *backend.ToolServer
+	hookSettingsPath    string
+	procRegistry        *extension.ProcessRegistry
+	pending             *pending.Broker
+	resourceBroker      *resource.Broker
 
 	// mcpConnectOnce single-flights the lazy MCP connect for this session, and
 	// mcpConnectDone records (under m.mu) that it has run.

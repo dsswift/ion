@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/scheduling"
@@ -126,7 +127,8 @@ type Manager struct {
 	// shuttingDown is set by Shutdown before StopAll so StopSession can
 	// distinguish a server shutdown (preserve active-run journals) from an
 	// explicit stop (clear journal).
-	shuttingDown bool
+	shuttingDown        bool
+	identityUnsubscribe func()
 }
 
 // SetProcessTelemetry installs the process-level telemetry collector used for
@@ -201,6 +203,9 @@ func NewManager(b backend.RunBackend) *Manager {
 	// Route background bash completions into the park/wake driver
 	// (background_task_wake.go).
 	m.wireBackgroundTaskNotifier()
+
+	// Fan verified identity changes to active extension hosts.
+	m.identityUnsubscribe = auth.SubscribeContextIdentityChanges(m.handleIdentityChange)
 
 	// Start the status-heartbeat goroutine. The goroutine reads
 	// heartbeatInterval atomically (via a snapshot in runStatusHeartbeat)
@@ -518,6 +523,13 @@ func (m *Manager) StopAll() error {
 // in NewManager. The stop is idempotent (sync.Once-guarded) so
 // multi-call Shutdown is safe.
 func (m *Manager) Shutdown() {
+	m.mu.Lock()
+	unsubscribe := m.identityUnsubscribe
+	m.identityUnsubscribe = nil
+	m.mu.Unlock()
+	if unsubscribe != nil {
+		unsubscribe()
+	}
 	// Stop the heartbeat before tearing down sessions so the goroutine
 	// cannot observe a partially-shutdown Manager. Wait on heartbeatDone
 	// so Shutdown does not return while the goroutine is still mid-tick;

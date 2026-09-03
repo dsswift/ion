@@ -77,19 +77,20 @@ type hookSpec struct {
 func hookSpecs() map[string]hookSpec {
 	return map[string]hookSpec{
 		// --- Lifecycle ---
-		HookSessionStart: {Payload: nil, Result: hookResultNone},
-		HookSessionEnd:   {Payload: nil, Result: hookResultNone},
-		HookBeforePrompt: {Payload: "", Result: hookResultStructured, ResultType: BeforePromptResult{}},
-		HookTurnStart:    {Payload: TurnInfo{}, Result: hookResultNone},
-		HookTurnEnd:      {Payload: TurnInfo{}, Result: hookResultNone},
-		HookMessageStart: {Payload: nil, Result: hookResultNone},
-		HookMessageEnd:   {Payload: nil, Result: hookResultNone},
-		HookToolStart:    {Payload: ToolStartInfo{}, Result: hookResultNone},
-		HookToolEnd:      {Payload: nil, Result: hookResultNone},
-		HookToolCall:     {Payload: ToolCallInfo{}, Result: hookResultBlock},
-		HookOnError:      {Payload: ErrorInfo{}, Result: hookResultNone},
-		HookAgentStart:   {Payload: AgentInfo{}, Result: hookResultNone},
-		HookAgentEnd:     {Payload: AgentInfo{}, Result: hookResultNone},
+		HookIdentityChanged: {Payload: IdentityChangedInfo{}, Result: hookResultNone},
+		HookSessionStart:    {Payload: nil, Result: hookResultNone},
+		HookSessionEnd:      {Payload: nil, Result: hookResultNone},
+		HookBeforePrompt:    {Payload: "", Result: hookResultStructured, ResultType: BeforePromptResult{}},
+		HookTurnStart:       {Payload: TurnInfo{}, Result: hookResultNone},
+		HookTurnEnd:         {Payload: TurnInfo{}, Result: hookResultNone},
+		HookMessageStart:    {Payload: nil, Result: hookResultNone},
+		HookMessageEnd:      {Payload: nil, Result: hookResultNone},
+		HookToolStart:       {Payload: ToolStartInfo{}, Result: hookResultNone},
+		HookToolEnd:         {Payload: nil, Result: hookResultNone},
+		HookToolCall:        {Payload: ToolCallInfo{}, Result: hookResultBlock},
+		HookOnError:         {Payload: ErrorInfo{}, Result: hookResultNone},
+		HookAgentStart:      {Payload: AgentInfo{}, Result: hookResultNone},
+		HookAgentEnd:        {Payload: AgentInfo{}, Result: hookResultNone},
 
 		// --- Session management ---
 		HookSessionBeforeCompact:  {Payload: CompactionInfo{}, Result: hookResultBool},

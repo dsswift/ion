@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -76,38 +75,15 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 	// h.lastSpawnReadyMs below is serialized with SpawnReadyMs's read.
 	spawnStart := time.Now()
 
-	// Expand ~ to home directory
-	if strings.HasPrefix(extensionPath, "~/") {
-		home, _ := os.UserHomeDir() //nolint:errcheck // empty home falls back to leaving the ~ path unexpanded below
-		extensionPath = filepath.Join(home, extensionPath[2:])
-	}
-
-	// Resolve to absolute path
-	absPath, err := filepath.Abs(extensionPath)
+	// Resolve the configured path before any manifest read or process work.
+	resolvedPath, err := ResolveExtensionPath(extensionPath)
 	if err != nil {
-		return fmt.Errorf("resolve extension path: %w", err)
+		return err
 	}
-	extensionPath = absPath
-
-	// Verify the path exists. A directory is resolved to its conventional
-	// entry point (extension.ts, index.ts, extension.js, index.js — first
-	// match wins). This is what lets dispatch-path callers pass the
-	// DispatchAgentOpts.ExtensionDir they already hold (the SDK field is a
-	// directory by name and by convention: ctx.config.extensionDir) without
-	// every harness re-implementing entry-point discovery. Root-session
-	// loads still pass full file paths and take the file branch unchanged.
-	info, err := os.Stat(extensionPath)
-	if err != nil {
-		return fmt.Errorf("extension path not found: %w", err)
+	if resolvedPath != extensionPath {
+		utils.LogWithFields(utils.LevelInfo, "extension", "resolved extension path", map[string]any{"path": extensionPath, "entry": resolvedPath})
 	}
-	if info.IsDir() {
-		entry, entryErr := resolveExtensionEntry(extensionPath)
-		if entryErr != nil {
-			return entryErr
-		}
-		utils.LogWithFields(utils.LevelInfo, "extension", "resolved directory to entry point", map[string]any{"ext_dir": extensionPath, "entry": entry})
-		extensionPath = entry
-	}
+	extensionPath = resolvedPath
 
 	extensionDir := filepath.Dir(extensionPath)
 
@@ -541,26 +517,8 @@ var extensionEntryCandidates = []string{
 // is a source tree, and the script is the authored entry point.
 const nativeExtensionEntry = "main"
 
-// resolveExtensionEntry maps an extension directory to its entry-point file
-// by probing the conventional candidates in order. Script candidates come
-// first; an executable file named "main" is the native-binary fallback, which
-// the spawn path runs directly (no transpile, no node). Returns a descriptive
-// error naming the directory and the probed candidates when none exists.
+// resolveExtensionEntry preserves the package-private helper used by existing
+// callers while routing all resolution through the exported preflight seam.
 func resolveExtensionEntry(extDir string) (string, error) {
-	for _, name := range extensionEntryCandidates {
-		candidate := filepath.Join(extDir, name)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-			return candidate, nil
-		}
-	}
-	// Native binary fallback. The executable bit is required: a stray
-	// non-executable file named "main" (a Go source tree's build output that
-	// lost its mode, a "main" directory, a text file) must not resolve, because
-	// spawning it would fail with a bare EACCES far from this decision.
-	native := filepath.Join(extDir, nativeExtensionEntry)
-	if info, err := os.Stat(native); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
-		return native, nil
-	}
-	candidates := append(append([]string{}, extensionEntryCandidates...), nativeExtensionEntry+" (executable)")
-	return "", fmt.Errorf("no extension entry point in %s (looked for %s)", extDir, strings.Join(candidates, ", "))
+	return ResolveExtensionEntry(extDir)
 }

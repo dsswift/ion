@@ -297,7 +297,7 @@ export async function dispatchFireAsync(params: any, buildContext: (raw: any) =>
   const kind = String(params?.kind ?? '')
   const id = String(params?.id ?? '')
   const payload = params?.payload ?? {}
-  const ctx = buildContext({ sessionKey: params?.sessionKey })
+  const ctx = buildContext({ sessionKey: params?.sessionKey, identity: params?.identity })
 
   if (kind === 'webhook') {
     const handler = webhookHandlers.get(id)

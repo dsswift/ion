@@ -6,25 +6,27 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // Hook event names.
 const (
 	// Lifecycle hooks
-	HookSessionStart = "session_start"
-	HookSessionEnd   = "session_end"
-	HookBeforePrompt = "before_prompt"
-	HookTurnStart    = "turn_start"
-	HookTurnEnd      = "turn_end"
-	HookMessageStart = "message_start"
-	HookMessageEnd   = "message_end"
-	HookToolStart    = "tool_start"
-	HookToolEnd      = "tool_end"
-	HookToolCall     = "tool_call"
-	HookOnError      = "on_error"
-	HookAgentStart   = "agent_start"
-	HookAgentEnd     = "agent_end"
+	HookIdentityChanged = "identity_changed"
+	HookSessionStart    = "session_start"
+	HookSessionEnd      = "session_end"
+	HookBeforePrompt    = "before_prompt"
+	HookTurnStart       = "turn_start"
+	HookTurnEnd         = "turn_end"
+	HookMessageStart    = "message_start"
+	HookMessageEnd      = "message_end"
+	HookToolStart       = "tool_start"
+	HookToolEnd         = "tool_end"
+	HookToolCall        = "tool_call"
+	HookOnError         = "on_error"
+	HookAgentStart      = "agent_start"
+	HookAgentEnd        = "agent_end"
 
 	// Session management hooks
 	HookSessionBeforeCompact = "session_before_compact"
@@ -225,6 +227,8 @@ type SDK struct {
 	// or event types — the callback indirection keeps that policy in the
 	// session manager where it belongs. Nil is valid (no observer wired).
 	onCommandsChange func()
+	// onToolsChange observes atomic native registry changes.
+	onToolsChange func()
 }
 
 // NewSDK creates a new extension SDK with empty registries.
@@ -255,15 +259,55 @@ func (s *SDK) PrependHook(event string, handler HookHandler) {
 // same name already exists it is replaced, preventing duplicates when the
 // extension subprocess is respawned and re-registers during init.
 func (s *SDK) RegisterTool(def ToolDefinition) {
+	if def.Execute != nil {
+		original := def.Execute
+		def.Execute = func(params interface{}, ctx *Context) (*types.ToolResult, error) {
+			return original(params, stampContextIdentity(ctx))
+		}
+	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	for i, t := range s.tools {
 		if t.Name == def.Name {
 			s.tools[i] = def
+			cb := s.onToolsChange
+			s.mu.Unlock()
+			if cb != nil {
+				cb()
+			}
 			return
 		}
 	}
 	s.tools = append(s.tools, def)
+	cb := s.onToolsChange
+	s.mu.Unlock()
+	if cb != nil {
+		cb()
+	}
+}
+
+// DeregisterTool removes a tool from the registry. It returns whether it existed.
+func (s *SDK) DeregisterTool(name string) bool {
+	s.mu.Lock()
+	for i, tool := range s.tools {
+		if tool.Name == name {
+			s.tools = append(s.tools[:i], s.tools[i+1:]...)
+			cb := s.onToolsChange
+			s.mu.Unlock()
+			if cb != nil {
+				cb()
+			}
+			return true
+		}
+	}
+	s.mu.Unlock()
+	return false
+}
+
+// SetOnToolsChange installs a callback invoked after a native tool mutation.
+func (s *SDK) SetOnToolsChange(fn func()) {
+	s.mu.Lock()
+	s.onToolsChange = fn
+	s.mu.Unlock()
 }
 
 // RegisterCommand adds a slash command to the registry. After the map is
@@ -273,6 +317,12 @@ func (s *SDK) RegisterTool(def ToolDefinition) {
 // while a session is already running -- the snapshot semantics on the wire
 // (always full set, never a diff) make late registrations safe.
 func (s *SDK) RegisterCommand(name string, def CommandDefinition) {
+	if def.Execute != nil {
+		original := def.Execute
+		def.Execute = func(args string, ctx *Context) error {
+			return original(args, stampContextIdentity(ctx))
+		}
+	}
 	s.mu.Lock()
 	_, replaced := s.commands[name]
 	s.commands[name] = def
@@ -395,7 +445,8 @@ func (s *SDK) fire(event string, ctx *Context, payload interface{}) []interface{
 	handlers := s.Handlers(event)
 	var results []interface{}
 	for i, h := range handlers {
-		result, err := h(ctx, payload)
+		invocationCtx := stampContextIdentity(ctx)
+		result, err := h(invocationCtx, payload)
 		if err != nil {
 			utils.LogWithFields(utils.LevelInfo, "extension", "hook handler[] error", map[string]any{"event": event, "i": i, "error": err})
 			continue

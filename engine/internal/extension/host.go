@@ -89,6 +89,9 @@ type Host struct {
 	// hook_forwarder_audit.go.
 	forwarders forwarderAudit
 
+	// toolRegistry is the accepted dynamic subprocess registry.
+	toolRegistry *hostToolRegistry
+
 	// declaredHooks is the hook set the subprocess reported in its init
 	// handshake. It is intentionally separate from SDK handlers: engine-installed
 	// forwarders transport every possible hook but do not mean the subprocess
@@ -593,7 +596,20 @@ func (h *Host) SetOnSendMessage(fn func(SendPromptPayload)) {
 // point directly to an entry point file (.ts, .js, or binary). TypeScript
 // Tools returns all registered tool definitions from the SDK.
 func (h *Host) Tools() []ToolDefinition {
-	return h.sdk.Tools()
+	if h.toolRegistry == nil {
+		return h.sdk.Tools()
+	}
+	h.toolRegistry.mu.RLock()
+	declarations := make([]toolRegistryTool, 0, len(h.toolRegistry.tools))
+	for _, tool := range h.toolRegistry.tools {
+		declarations = append(declarations, tool)
+	}
+	h.toolRegistry.mu.RUnlock()
+	out := make([]ToolDefinition, 0, len(declarations))
+	for _, tool := range declarations {
+		out = append(out, h.dynamicToolDefinition(tool))
+	}
+	return out
 }
 
 // Commands returns all registered command definitions from the SDK.

@@ -1,6 +1,7 @@
 package extension
 
 import (
+	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -73,6 +74,11 @@ type Context struct {
 	Cwd    string
 	Model  *ModelRef
 	Config *ExtensionConfig
+
+	// Identity is a fresh, credential-free snapshot of the verified identity
+	// available when this invocation starts. Nil means no verified identity is
+	// available. Claims are private to this invocation and safe to mutate.
+	Identity *auth.ContextIdentity
 
 	// Event emission -- extensions emit typed data events, engine forwards to socket clients.
 	Emit func(event types.EngineEvent)

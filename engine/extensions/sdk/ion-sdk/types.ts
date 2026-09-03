@@ -5,6 +5,20 @@
 
 import type { DispatchControlContext } from './types-dispatch-control'
 
+export type JSONValue = string | number | boolean | null | JSONValue[] | { [key: string]: JSONValue }
+
+/** Credential-free verified identity available for one handler invocation. */
+export interface ContextIdentity {
+  kind: string
+  provider: string
+  subject?: string
+  username?: string
+  displayName?: string
+  attribution?: string
+  source?: string
+  claims?: Record<string, JSONValue>
+}
+
 export interface ExtensionConfig {
   extensionDir: string
   model: string
@@ -1109,6 +1123,8 @@ export interface IonContext extends DispatchControlContext {
    *  the agent was spawned, so per-dispatch state can be keyed without
    *  inventing a session-local identity. */
   dispatchId: string
+  /** Optional credential-free verified identity for this invocation. */
+  identity?: ContextIdentity
   cwd: string
   model: { id: string; contextWindow: number } | null
   config: ExtensionConfig
@@ -2640,7 +2656,13 @@ export interface SystemInjectResult {
  * to give handlers strongly-typed `payload` parameters when the hook name is
  * a string literal. Hooks that fire with no payload map to `void`.
  */
+export interface IdentityChangedInfo {
+  identity?: ContextIdentity
+  reason: string
+}
+
 export interface HookPayloadMap {
+  identity_changed: IdentityChangedInfo
   // Lifecycle
   session_start: void
   session_end: void
@@ -2923,6 +2945,8 @@ export interface IonSDK {
   on<K extends HookName>(hook: K, handler: HookHandler<HookPayloadMap[K]>): void
   on(hook: string, handler: HookHandler<any>): void
   registerTool(def: ToolDef): void
+  deregisterTool(name: string): boolean
+  syncTools(): Promise<number>
   registerCommand(name: string, def: CommandDef): void
   /**
    * Auto-discover agents from the extension's `agents/*.md` directory and
