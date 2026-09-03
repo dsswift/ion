@@ -89,7 +89,7 @@ func (m *Manager) dispatchCommand(s *engineSession, key, command, args string, o
 
 	switch command {
 	case "clear":
-		m.dispatchClear(s, key)
+		m.dispatchClear(s, key, args)
 	case "compact":
 		m.dispatchCompact(s, key)
 	case "export":
@@ -166,7 +166,14 @@ func (m *Manager) emitCommandResult(key, command string, err error) {
 // semantics, then re-fires session_start (a /clear is a checkpoint that
 // re-primes the harness) and emits the shared clear signal. See clear_core.go
 // for the rationale behind the single shared core.
-func (m *Manager) dispatchClear(s *engineSession, key string) {
+//
+// args carries the raw /clear argument string. `--keep-plan` (parsed by
+// ClearArgsRequestKeepPlan) makes the clear retain the latest unimplemented
+// plan: after the wipe, retainPlanForClear re-injects that plan's markdown into
+// the now-empty context so the next prompt continues from it (e.g. across a
+// model switch). The outcome rides the final engine_command_result.
+func (m *Manager) dispatchClear(s *engineSession, key, args string) {
+	keepPlan := ClearArgsRequestKeepPlan(args)
 	// Run the shared core with this session's key as the known owner. The
 	// core clears retained AskUserQuestion / ExitPlanMode denials on the
 	// session (so heartbeat / ReconcileState / QuerySessionStatus stop
@@ -213,12 +220,24 @@ func (m *Manager) dispatchClear(s *engineSession, key string) {
 		utils.LogWithFields(utils.LevelDebug, "session", "clear: no extensions loaded for , skipping session_start re-fire", map[string]any{"key": key})
 	}
 
+	// Retain the plan AFTER the wipe and the session_start re-fire so the
+	// injected plan turn is the last thing appended to the cleared context —
+	// closest to (and therefore freshest for) the next prompt. Only when
+	// --keep-plan was requested; a plain /clear injects nothing. keptSlug is ""
+	// when the flag found no unimplemented plan to keep.
+	keptSlug := ""
+	if keepPlan {
+		keptSlug = retainPlanForClear(s.conversationID)
+		utils.LogWithFields(utils.LevelInfo, "session", "clear: keep-plan outcome", map[string]any{"key": key, "conversation_id": s.conversationID, "retained": keptSlug != "", "plan_slug": keptSlug})
+	}
+
 	// Emit the single shared clear signal: engine_status (empty denials,
 	// reset context-percent) followed by engine_command_result{clear}. This
 	// is the same signal ClearConversationFile emits when it finds a live
 	// session, so desktop and iOS dismiss the card identically regardless of
-	// which clear entry point ran.
-	m.emitClearSignal(key)
+	// which clear entry point ran. The keep-plan outcome rides the final
+	// command_result so consumers render the retained-plan / no-plan notice.
+	m.emitClearSignal(key, keepPlan, keptSlug)
 }
 
 // compactable is the local interface satisfied by any backend that can

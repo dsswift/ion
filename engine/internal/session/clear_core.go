@@ -3,6 +3,8 @@ package session
 import (
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -53,6 +55,71 @@ type clearResult struct {
 	// `/clear` entry to this id and a history reload dedups against it — the same
 	// re-key contract every other slash command already has. See dispatchClear.
 	clearEntryID string
+}
+
+// ClearConversationFile wipes the LLM-visible history on a stored conversation
+// file by sessionId, without requiring a live engine session. It is the
+// stateless counterpart of dispatchClear: it performs the same load → zero
+// → save sequence but does not emit any events (no session exists to emit to)
+// and does not re-fire session_start (no extension group is loaded).
+//
+// Fields wiped (matches dispatchClear exactly):
+//   - Messages           — the flat LLM-visible message list
+//   - (token counters are not persisted as scalars — GetContextUsage reads
+//     them from LlmMessage.Usage via the backward scan)
+//
+// Fields preserved: Entries, LeafID, TotalInputTokens, TotalOutputTokens,
+// TotalCost, ID, System, Model, CreatedAt, Version, ParentID,
+// WorkingDirectory — same rationale as dispatchClear (/clear is a checkpoint,
+// not a delete).
+//
+// Returns nil on success. Returns an error if the conversation file cannot be
+// loaded or saved; in that case no partial write occurs (Load/Save are atomic
+// operations at the file level).
+func (m *Manager) ClearConversationFile(sessionID string) error {
+	_, err := m.ClearConversationFileWithOptions(sessionID, false)
+	return err
+}
+
+// ClearConversationFileWithOptions is ClearConversationFile plus the
+// `/clear --keep-plan` behavior, so the file-only path (a tab loaded from disk
+// but never prompted, cleared by id) retains a plan exactly as the live-session
+// path does. When keepPlan is true and the conversation's tree holds an
+// unimplemented plan, retainPlanForClear re-injects that plan into the cleared
+// context; the retained slug is returned so the caller (server dispatch) can
+// hand it back to the client that will render the notice locally — the file-only
+// path may own no live session to emit a signal to.
+func (m *Manager) ClearConversationFileWithOptions(sessionID string, keepPlan bool) (string, error) {
+	utils.LogWithFields(utils.LevelInfo, "session", "clearconversationfile: clearing conversation", map[string]any{"run_id": sessionID, "keep_plan": keepPlan})
+	// Route through the shared clear core (preferKey empty → the core does a
+	// reverse lookup over live sessions by conversationID). This guarantees
+	// the file-only clear path carries identical semantics to the
+	// live-session /clear: if a live session owns this conversation, its
+	// retained AskUserQuestion / ExitPlanMode denials are cleared and the
+	// shared clear signal is emitted so desktop and iOS dismiss the pending
+	// card. If no live session owns it, the file is still wiped and there is
+	// no in-memory card to dismiss (the consumer's restore-time rule handles
+	// a later reopen).
+	res, err := m.clearConversationCore(sessionID, "")
+	if err != nil {
+		utils.LogWithFields(utils.LevelInfo, "session", "clearconversationfile: core failed", map[string]any{"run_id": sessionID, "error": err})
+		return "", err
+	}
+	// Retain the plan after the wipe, exactly as dispatchClear does. Runs on
+	// the file whether or not a live session owns it, so a never-prompted tab
+	// keeps its plan too.
+	keptSlug := ""
+	if keepPlan {
+		keptSlug = retainPlanForClear(sessionID)
+		utils.LogWithFields(utils.LevelInfo, "session", "clearconversationfile: keep-plan outcome", map[string]any{"run_id": sessionID, "retained": keptSlug != "", "plan_slug": keptSlug})
+	}
+	if res.sessionKey != "" {
+		utils.LogWithFields(utils.LevelInfo, "session", "clearconversationfile: owned by live session — emitting shared clear signal", map[string]any{"run_id": sessionID, "session_key": res.sessionKey, "denied_cleared": res.deniedCleared})
+		m.emitClearSignal(res.sessionKey, keepPlan, keptSlug)
+	} else {
+		utils.LogWithFields(utils.LevelInfo, "session", "clearconversationfile: (no live session owner, no signal to emit)", map[string]any{"run_id": sessionID, "wiped": res.wiped})
+	}
+	return keptSlug, nil
 }
 
 // clearConversationCore is the single source of clear semantics. It:
@@ -262,7 +329,13 @@ func (m *Manager) sessionKeyForConversation(conversationID string) string {
 // The engine_status fires before the command_result so consumers that mirror
 // context-percent from engine_status observe the reset before the completion
 // event — same ordering invariant dispatchClear documented inline.
-func (m *Manager) emitClearSignal(key string) {
+//
+// keepPlan / keptSlug carry the `/clear --keep-plan` outcome onto the final
+// engine_command_result so a consumer renders a keep-plan-aware notice: keepPlan
+// echoes that the flag was requested, keptSlug is the retained plan's slug (empty
+// when the flag found no unimplemented plan to keep). Both are zero for an
+// ordinary /clear.
+func (m *Manager) emitClearSignal(key string, keepPlan bool, keptSlug string) {
 	m.mu.RLock()
 	s, ok := m.sessions[key]
 	var window int
@@ -280,7 +353,7 @@ func (m *Manager) emitClearSignal(key string) {
 	m.mu.RUnlock()
 	if !ok {
 		utils.LogWithFields(utils.LevelDebug, "session", "emitclearsignal: not found, emitting command_result only", map[string]any{"key": key})
-		m.emitCommandResult(key, "clear", nil)
+		m.emitClearCommandResult(key, keepPlan, keptSlug)
 		return
 	}
 	utils.LogWithFields(utils.LevelInfo, "session", "emitclearsignal: emitting engine_status(empty denials) + command_result", map[string]any{"key": key})
@@ -308,7 +381,110 @@ func (m *Manager) emitClearSignal(key string) {
 			ActiveBackgroundTasks: liveBackgroundTaskStates(key),
 		},
 	})
-	m.emitCommandResult(key, "clear", nil)
+	m.emitClearCommandResult(key, keepPlan, keptSlug)
+}
+
+// emitClearCommandResult emits the single success-flavored
+// engine_command_result{command:"clear"} carrying the keep-plan outcome. It is
+// the clear-specific analogue of emitCommandResult(key, "clear", nil): both
+// produce "command executed: clear", but this one stamps ClearKeepPlan /
+// ClearKeptPlanSlug so consumers render the retained-plan / no-plan notice.
+func (m *Manager) emitClearCommandResult(key string, keepPlan bool, keptSlug string) {
+	m.emit(key, types.EngineEvent{
+		Type:              "engine_command_result",
+		EventMessage:      "command executed: clear",
+		Command:           "clear",
+		ClearKeepPlan:     keepPlan,
+		ClearKeptPlanSlug: keptSlug,
+	})
+}
+
+// ClearArgsRequestKeepPlan reports whether a /clear argument string requested
+// the --keep-plan behavior. The flag rides the existing command args string
+// (no new wire field): the desktop sends `clear` with args "--keep-plan". Any
+// whitespace-delimited token equal to "--keep-plan" enables it; every other
+// argument is ignored, so an ordinary /clear (empty args) is unaffected.
+//
+// Exported so both callers share one definition: the live-session path
+// (dispatchClear, below) and server.dispatchCommand's file-only
+// clear_conversation_file case, which used to substring-match the same flag
+// independently and would have silently diverged on an argument like
+// "--keep-plan-extra".
+func ClearArgsRequestKeepPlan(args string) bool {
+	for _, tok := range strings.Fields(args) {
+		if tok == "--keep-plan" {
+			return true
+		}
+	}
+	return false
+}
+
+// buildRetainedPlanTurn renders the single machine-authored user turn that
+// re-seeds a freshly-cleared conversation with the retained plan. The preamble
+// names the situation so the model treats the markdown as the plan to continue
+// from rather than as a stray document, and the slug (when known) labels which
+// plan was kept.
+func buildRetainedPlanTurn(planSlug, planMarkdown string) string {
+	var b strings.Builder
+	b.WriteString("The conversation history was cleared to start fresh, but this plan was kept so the work continues from it.")
+	if planSlug != "" {
+		b.WriteString(" Plan: ")
+		b.WriteString(planSlug)
+		b.WriteString(".")
+	}
+	b.WriteString("\n\n")
+	b.WriteString(planMarkdown)
+	return b.String()
+}
+
+// retainPlanForClear resolves the latest unimplemented plan on conversationID's
+// tree and, when one exists, re-injects its markdown into the just-cleared
+// conversation as a single machine-authored user turn
+// (InjectionKindPlanRetained). Returns the retained plan's slug, or "" when
+// there is no unimplemented plan or its file is unreadable (the "clear +
+// notice" outcome).
+//
+// It runs AFTER clearConversationCore has wiped conv.Messages and appended
+// EntryCleared: the wipe never touches the tree's plan markers or
+// implementation-phase user turns, so LatestUnimplementedPlan still resolves
+// them on the context path. The reload here reads that just-saved post-clear
+// state (Messages == nil, leaf == EntryCleared), so AddUserMessageWithKind
+// appends the plan as the ONLY LLM-visible message and as a tree child of the
+// clear boundary — exactly the [plan] context the next prompt continues from.
+func retainPlanForClear(conversationID string) string {
+	if conversationID == "" {
+		return ""
+	}
+	conv, err := conversation.Load(conversationID, "")
+	if err != nil {
+		utils.LogWithFields(utils.LevelInfo, "session", "keepplan: load failed, nothing to retain", map[string]any{"conversation_id": conversationID, "error": err})
+		return ""
+	}
+	planPath, planSlug, found := conversation.LatestUnimplementedPlan(conv)
+	if !found {
+		// The tree is the only authority here, and it now records a marker on
+		// every backend. Answering from the session's live planFilePath instead
+		// would ignore the implementation-phase verdict LatestUnimplementedPlan
+		// just returned, and re-seed the context with a plan the conversation
+		// had already moved past. LatestUnimplementedPlan logs which of its
+		// three not-found branches it took.
+		utils.LogWithFields(utils.LevelInfo, "session", "keepplan: no unimplemented plan on path", map[string]any{"conversation_id": conversationID})
+		return ""
+	}
+	planMarkdown, err := os.ReadFile(planPath) //nolint:gosec // path comes from the engine's own persisted plan marker
+	if err != nil {
+		utils.LogWithFields(utils.LevelInfo, "session", "keepplan: plan file unreadable, nothing to retain", map[string]any{"conversation_id": conversationID, "plan_file_path": planPath, "error": err})
+		return ""
+	}
+	conversation.AddUserMessageWithKind(conv, buildRetainedPlanTurn(planSlug, string(planMarkdown)), string(types.InjectionKindPlanRetained))
+	if err := conversation.Save(conv, ""); err != nil {
+		utils.LogWithFields(utils.LevelInfo, "session", "keepplan: save failed after injection", map[string]any{"conversation_id": conversationID, "plan_file_path": planPath, "error": err})
+		return ""
+	}
+	utils.LogWithFields(utils.LevelInfo, "session", "keepplan: plan retained and re-injected into cleared context", map[string]any{
+		"conversation_id": conversationID, "plan_file_path": planPath, "plan_slug": planSlug, "bytes": len(planMarkdown),
+	})
+	return planSlug
 }
 
 // ResolvePermissionDenials drops the session's retained AskUserQuestion /

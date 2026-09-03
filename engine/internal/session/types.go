@@ -264,6 +264,21 @@ type engineSession struct {
 	// through handleNormalizedEvent, for the same CLI-turn persistence.
 	// Guarded by m.mu.
 	pendingCliAssistantText string
+	// pendingCliPlanMarker holds the plan-file write a delegated-CLI run
+	// captured natively (Claude Code's ExitPlanMode argument, codex's plan
+	// item, cursor's ACP plan update), so persistCliTurn can append the
+	// matching EntryPlanMarker to the tree.
+	//
+	// Why the session owns this rather than the backend: the engine-owned
+	// ApiBackend authors its plan file through the Write/Edit gates and holds
+	// run.conv, so it appends its own marker inline. A delegated-CLI run has
+	// no conversation in the backend — the session persists the whole turn at
+	// run exit — so the marker has to ride the same path or it is never
+	// written at all. Without it every plan-marker consumer (history
+	// rendering, rewind, /clear --keep-plan) is blind to plans made by a
+	// delegated CLI. Set from PlanFileWrittenEvent in handleNormalizedEvent,
+	// drained by persistCliTurn. Guarded by m.mu.
+	pendingCliPlanMarker *conversation.PlanMarkerData
 	// cliRunFailedTerminal marks the current delegated-CLI run as having
 	// reported a terminal error (an ErrorEvent from the CLI's result stream —
 	// e.g. its autocompactor thrashing until the process gives up). Set in

@@ -143,6 +143,8 @@ func (m *Manager) persistCliTurn(key, convID string) {
 	injectionKind := s.pendingCliInjectionKind
 	assistantText := s.pendingCliAssistantText
 	recorder := s.cliTranscript
+	planMarker := s.pendingCliPlanMarker
+	s.pendingCliPlanMarker = nil
 	s.pendingCliUserTurn = ""
 	s.pendingCliDisplayText = ""
 	s.pendingCliInjectionKind = ""
@@ -169,6 +171,7 @@ func (m *Manager) persistCliTurn(key, convID string) {
 	// between this load and its save would otherwise be erased by it.
 	leaf := ""
 	wroteStructured := false
+	wrotePlanMarker := false
 	appendTurn := func(conv *conversation.Conversation) (bool, error) {
 		// Recovery-enabled sessions persist their canonical user turn before the
 		// delegated CLI starts. On exit only append CLI output: writing userText
@@ -201,6 +204,16 @@ func (m *Manager) persistCliTurn(key, convID string) {
 			// backward scan (GetContextUsage) into reading ~0 tokens.
 			conversation.AddAssistantMessageNoUsage(conv, []types.LlmContentBlock{{Type: "text", Text: assistantText}})
 		}
+		// Append the plan marker LAST, after the turn's content, so the tree
+		// order matches when the plan was captured: the marker sits after the
+		// planning turn and before any later implementation-phase user turn.
+		// That ordering is what LatestUnimplementedPlan walks, and what the
+		// history renderer replays. Only a delegated-CLI run reaches here with
+		// a marker set; the ApiBackend appended its own inline.
+		if planMarker != nil {
+			conversation.AppendEntry(conv, conversation.EntryPlanMarker, *planMarker)
+			wrotePlanMarker = true
+		}
 		if conv.LeafID != nil {
 			leaf = *conv.LeafID
 		}
@@ -225,6 +238,7 @@ func (m *Manager) persistCliTurn(key, convID string) {
 	}
 	utils.LogWithFields(utils.LevelInfo, "session.native_session", "persisted delegated-CLI turn into Ion transcript", map[string]any{
 		"key": key, "conversation_id": convID, "new_leaf": leaf, "structured": wroteStructured,
+		"plan_marker": wrotePlanMarker, "plan_slug": planMarkerSlug(planMarker),
 		"structured_items": len(structuredItems), "user_bytes": len(userText), "display_bytes": len(displayText), "assistant_bytes": len(assistantText),
 	})
 }
@@ -353,4 +367,14 @@ func (m *Manager) rehydrateNativeSessions(s *engineSession, conv *conversation.C
 	utils.LogWithFields(utils.LevelInfo, "session.native_session", "rehydrated native session cursors", map[string]any{
 		"key": s.key, "conversation_id": s.conversationID, "count": len(ns),
 	})
+}
+
+// planMarkerSlug returns the marker's plan slug for logging, or "" when the
+// turn carried no plan marker. Keeps the persistCliTurn log line one call
+// rather than a nil check at the call site.
+func planMarkerSlug(md *conversation.PlanMarkerData) string {
+	if md == nil {
+		return ""
+	}
+	return md.PlanSlug
 }
