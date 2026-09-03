@@ -170,3 +170,31 @@ export function project(
     visible: state.visible,
   };
 }
+
+/**
+ * Whether closing a tab emptied the panel for the current conversation.
+ *
+ * `tabs` here is the already-projected strip (pins, notification, scratch,
+ * and the forced Questions tab all included), so this is only true when
+ * nothing is left to show — a Questions tab present for an in-progress
+ * workflow keeps the panel open, which is the desired refusal.
+ */
+export function panelEmptiedByClose(
+  tabs: readonly SurfaceTab[],
+  visible: boolean,
+): boolean {
+  return visible && tabs.length === 0;
+}
+
+/**
+ * Close the panel when a tab close left the current conversation's strip
+ * empty. Called after every closeTab completion path rather than folded into
+ * `updateCurrent`, since most callers (activateTab, pinTab, renames, ...)
+ * never remove a tab and must not risk collapsing the panel on a no-op.
+ */
+export function closePanelIfEmptied(get: () => SurfaceState): void {
+  const state = get();
+  if (panelEmptiedByClose(state.tabs, state.visible)) {
+    state.setVisible(false);
+  }
+}

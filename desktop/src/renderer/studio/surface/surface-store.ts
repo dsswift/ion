@@ -53,10 +53,9 @@ import { unregisterRuntimePanel } from "./runtime-panel-registry";
 import { scratchTabsForProject } from "./surface-scratch";
 import { createScratchSurfaceActions } from "./surface-scratch-actions";
 import { createSurfaceTabLifecycleActions } from "./surface-tab-lifecycle-actions";
+import { materializeFileBuffer } from "./surface-tab-lifecycle";
 import {
-  materializeFileBuffer,
-} from "./surface-tab-lifecycle";
-import {
+  closePanelIfEmptied,
   emptyConversation,
   normalizeConversation,
   project,
@@ -281,7 +280,6 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
   questionsPriorActive: {},
 
   ...createSurfaceHydrationActions(set, get, schedulePersist),
-
 
   selectConversation: (currentConversationId) =>
     applyConversationSelection(set, get, currentConversationId),
@@ -539,7 +537,12 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
     }));
   },
 
-  ...createSurfaceTabLifecycleActions({ set, get, updateCurrent, schedulePersist }),
+  ...createSurfaceTabLifecycleActions({
+    set,
+    get,
+    updateCurrent,
+    schedulePersist,
+  }),
 
   revealDiffFile: ({ filePath, staged }) => {
     get().openSingleton("diff");
