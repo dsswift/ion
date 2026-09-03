@@ -122,6 +122,20 @@ const (
 	// machine-originated steer passes its own kind — checkin, revive, or
 	// agent_completion — and is classified by that instead.
 	InjectionKindSteer InjectionKind = "steer"
+
+	// InjectionKindPlanRetained is the plan text re-injected into a freshly
+	// cleared conversation by `/clear --keep-plan`. The clear wipes the
+	// LLM-visible history; when an unimplemented plan was in effect, the engine
+	// re-seeds the empty context with that plan's markdown as a single turn so
+	// the next prompt continues from the plan across a model switch.
+	//
+	// NOT machine-to-machine, by the same reasoning as InjectionKindStructuredAnswer:
+	// the engine, not the user, produced this exact turn, but its content is the
+	// user's own plan and the operator explicitly chose `--keep-plan` to retain
+	// it. Hiding it would contradict the operator's own action. A client LABELS
+	// it ("Plan retained") instead — a presentation choice the kind enables and
+	// the engine does not make (ADR-017).
+	InjectionKindPlanRetained InjectionKind = "plan_retained"
 )
 
 // IsMachineToMachine reports whether a turn of this kind was authored by an
@@ -146,7 +160,7 @@ func (k InjectionKind) IsMachineToMachine() bool {
 		InjectionKindRunRecovery,
 		InjectionKindSystemSteer:
 		return true
-	case InjectionKindNone, InjectionKindSteer, InjectionKindStructuredAnswer:
+	case InjectionKindNone, InjectionKindSteer, InjectionKindStructuredAnswer, InjectionKindPlanRetained:
 		return false
 	default:
 		// A consumer-defined kind the engine does not know. Treated as
@@ -194,4 +208,5 @@ var AllInjectionKinds = []InjectionKind{
 	InjectionKindStructuredAnswer,
 	InjectionKindSystemSteer,
 	InjectionKindSteer,
+	InjectionKindPlanRetained,
 }

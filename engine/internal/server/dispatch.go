@@ -590,9 +590,18 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		// against it (e.g. a tab that was loaded from disk but never sent a
 		// prompt, so no in-memory session exists to receive a dispatchClear).
 		// The key field carries the conversationId (sessionId) to wipe.
-		utils.LogWithFields(utils.LevelInfo, "server", "clear conversation file", map[string]any{"session_id": cmd.Key})
-		err := s.manager.ClearConversationFile(cmd.Key)
-		s.sendResult(conn, cmd, err, nil)
+		// The optional args string carries "--keep-plan" (same flag the live
+		// /clear accepts) so a file-only clear on a never-prompted tab retains
+		// its plan too. keptPlanSlug rides the result payload because this path
+		// may own no live session to emit an engine_command_result on — the
+		// client renders its own notice from the returned slug. Parsed by the
+		// same token-matching function the live path uses (session.
+		// ClearArgsRequestKeepPlan) — a prior substring match here would have
+		// falsely enabled retention for e.g. "--keep-plan-extra".
+		keepPlan := session.ClearArgsRequestKeepPlan(cmd.Args)
+		utils.LogWithFields(utils.LevelInfo, "server", "clear conversation file", map[string]any{"session_id": cmd.Key, "keep_plan": keepPlan})
+		keptPlanSlug, err := s.manager.ClearConversationFileWithOptions(cmd.Key, keepPlan)
+		s.sendResult(conn, cmd, err, map[string]any{"keptPlanSlug": keptPlanSlug})
 
 	case "delete_stored_conversations":
 		activeSessions := s.manager.ListSessions()

@@ -34,6 +34,7 @@ func TestIsMachineToMachineIsExhaustive(t *testing.T) {
 		InjectionKindStructuredAnswer:         false,
 		InjectionKindSystemSteer:              true,
 		InjectionKindSteer:                    false,
+		InjectionKindPlanRetained:             false,
 	}
 
 	for _, k := range AllInjectionKinds {
@@ -120,6 +121,7 @@ func TestInjectionKindWireValues(t *testing.T) {
 		InjectionKindStructuredAnswer:         "structured_answer",
 		InjectionKindSystemSteer:              "system_steer",
 		InjectionKindSteer:                    "steer",
+		InjectionKindPlanRetained:             "plan_retained",
 	}
 	for k, s := range want {
 		if string(k) != s {

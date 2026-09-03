@@ -511,6 +511,9 @@ export interface RecallInfo {
  *   completion payload nor a periodic check-in.
  * - `steer` — a message steered onto a live run. Not machine-authored by
  *   default: the common case is a human typing mid-turn.
+ * - `plan_retained` — the plan re-injected into a freshly cleared conversation
+ *   by `/clear --keep-plan`. Machine-authored, but its content is the operator's
+ *   retained plan, so a client labels it rather than hiding it.
  *
  * The union stays open (`| string`) so a consumer may define its own kinds.
  * The engine treats a kind it does not recognise as user-authored, because it
@@ -523,6 +526,7 @@ export type InjectionKind =
   | 'checkin'
   | 'revive'
   | 'steer'
+  | 'plan_retained'
   | string
 
 /** Options for {@link IonContext.steerSelf}. */
