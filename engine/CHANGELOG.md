@@ -18,6 +18,25 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.80.0](https://github.com/dsswift/ion/compare/engine-v1.79.0...engine-v1.80.0) (2026-09-03)
+
+### Features
+
+* **engine:** verify operator and workload identity (#377) ([e84f7df](https://github.com/dsswift/ion/commit/e84f7dff9f413bcb5f85554f6cf08e5a16b7b9d4))
+* **engine:** scope tools and context to verified identity (#377) ([4d1b80a](https://github.com/dsswift/ion/commit/4d1b80a67baa7e7f51ec73cffbe3811f5494e433))
+* **engine:** add TodoWrite tool so API backend has a task list ([3eff153](https://github.com/dsswift/ion/commit/3eff1531616ee303920fda27072586a21b7ce28b))
+
+### Bug Fixes
+
+* **engine:** make dispatch steering addressable and observable ([1963f30](https://github.com/dsswift/ion/commit/1963f30fcbd3cae3a1eed8a97ae15dc358e07170))
+* **engine:** install both extension SDKs ([e1cad82](https://github.com/dsswift/ion/commit/e1cad827bc12fa3efed848b98be83eafa7be3bb8))
+* **engine:** self-exec mcp bridge, drop socat dependency ([f3bd3ea](https://github.com/dsswift/ion/commit/f3bd3eabe9bf015bc8276b78dacbbe19ae700eeb))
+* **engine:** own AskUserQuestion(s) on claude-code cli backend ([0b8b7bb](https://github.com/dsswift/ion/commit/0b8b7bb91f59660615f7ebe2cc3db6bef90e53cd))
+* **engine:** reattach reused CLI ToolServer MCP config each turn ([9f66bb8](https://github.com/dsswift/ion/commit/9f66bb8e023515dd2ac3674403143ed783f55e1e))
+* **engine:** restrict claude-code plan-mode MCP tools ([1032498](https://github.com/dsswift/ion/commit/1032498a9976226201376a8e6d868143f7af1ec4))
+* **engine:** require JSON Schema object params in tool test fixtures ([662b357](https://github.com/dsswift/ion/commit/662b35788ed64fc72e0e3f4e9200c1ac3b8f8ccc))
+* **engine:** check type assertions in TodoWrite validation ([9ebfa60](https://github.com/dsswift/ion/commit/9ebfa605602c084141ae912b14f92c86cbdd02af))
+
 ## [1.79.0](https://github.com/dsswift/ion/compare/engine-v1.78.1...engine-v1.79.0) (2026-09-02)
 
 ### Features

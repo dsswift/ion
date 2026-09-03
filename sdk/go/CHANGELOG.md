@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.10](https://github.com/dsswift/ion/compare/sdk/go-v0.1.9...sdk/go-v0.1.10) (2026-09-03)
+
+### Features
+
+* **sdk:** expose verified identity context (#377) ([196c63d](https://github.com/dsswift/ion/commit/196c63d11eee77f9ac49134fbe74e63aba974935))
+
 ## [0.1.9](https://github.com/dsswift/ion/compare/sdk/go-v0.1.8...sdk/go-v0.1.9) (2026-09-02)
 
 ### Bug Fixes

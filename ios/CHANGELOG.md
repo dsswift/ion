@@ -10,6 +10,13 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.72.1](https://github.com/dsswift/ion/compare/ios-v1.72.0...ios-v1.72.1) (2026-09-03)
+
+### Bug Fixes
+
+* **ios:** drop stale plan card the snapshot no longer carries ([7ef0be7](https://github.com/dsswift/ion/commit/7ef0be73151f36af7a743f500bf36315c7a13780))
+* **ios:** skip source picker when a default branch is set ([aa49e9f](https://github.com/dsswift/ion/commit/aa49e9f791901aae9bb48b651743fdb6896cb0de))
+
 ## [1.72.0](https://github.com/dsswift/ion/compare/ios-v1.71.0...ios-v1.72.0) (2026-09-02)
 
 ### Features

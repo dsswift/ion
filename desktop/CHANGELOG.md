@@ -10,6 +10,21 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.92.0](https://github.com/dsswift/ion/compare/desktop-v1.91.0...desktop-v1.92.0) (2026-09-03)
+
+### Features
+
+* **desktop:** restore project scratch documents ([f3ba86e](https://github.com/dsswift/ion/commit/f3ba86ea45be28a55933d3dd9db6457453ace7bf))
+
+### Bug Fixes
+
+* **desktop:** install both extension SDKs ([141bd97](https://github.com/dsswift/ion/commit/141bd97ffad6071e73ba1187289c773f5e23b6d2))
+* **desktop:** split surface tab composition ([7c9cdf2](https://github.com/dsswift/ion/commit/7c9cdf278dabbbfdd1071b3263e5c082a313947d))
+* **desktop:** drop persisted plan card after plan implemented ([9825a38](https://github.com/dsswift/ion/commit/9825a38d5ec94e946f7c3cb19dfafcec111c7045))
+* **desktop:** project worktree branch default to ios ([8a71cf2](https://github.com/dsswift/ion/commit/8a71cf288fc21a69af9d9926c3592dfc65946429))
+* **desktop:** guard autofix prompts with git ref check before resolving ([0bc185c](https://github.com/dsswift/ion/commit/0bc185cbd28cc36ec2de7f301f0952abf767f6ca))
+* **desktop:** remove unused composeTabs import in surface-store ([7ecd9fc](https://github.com/dsswift/ion/commit/7ecd9fc3984848e5a638175d995edda9d651aa22))
+
 ## [1.91.0](https://github.com/dsswift/ion/compare/desktop-v1.90.0...desktop-v1.91.0) (2026-09-02)
 
 ### Features
