@@ -34,6 +34,7 @@ final class InjectionPolicyTests: XCTestCase {
         Expectation(kind: "structured_answer", machineAuthored: false, suppressed: false),
         Expectation(kind: "system_steer", machineAuthored: true, suppressed: true),
         Expectation(kind: "steer", machineAuthored: false, suppressed: false),
+        Expectation(kind: "plan_retained", machineAuthored: false, suppressed: false),
     ]
 
     func testEveryEnumeratedKindMatchesTheDesktopVerdict() {
@@ -102,6 +103,18 @@ final class InjectionPolicyTests: XCTestCase {
         XCTAssertFalse(
             InjectionPolicy.suppresses(machineAuthored: false, injectionKind: "structured_answer"),
             "the engine classifies structured_answer as user-authored"
+        )
+    }
+
+    /// A `/clear --keep-plan` retained plan RENDERS. The engine, not the
+    /// operator, produced this exact turn, but its content is the operator's
+    /// own plan and `--keep-plan` was the operator's explicit choice. Hiding
+    /// it would contradict the divider ("plan kept: <slug>") the same action
+    /// produces; the transcript shows it with a "Plan retained" label instead.
+    func testPlanRetainedRenders() {
+        XCTAssertFalse(
+            InjectionPolicy.suppresses(machineAuthored: false, injectionKind: "plan_retained"),
+            "a retained plan is the operator's own content and must stay visible"
         )
     }
 

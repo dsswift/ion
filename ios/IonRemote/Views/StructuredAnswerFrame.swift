@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// Chrome that frames a Guided Questions submission in the transcript.
+/// Chrome that frames transcript content that is real, operator-visible turn
+/// content but not something the operator typed at the prompt.
 ///
-/// A submitted answer set is the operator's own input — they read the
-/// questions, chose the options, typed the free text, attached the images — so
-/// it must stay visible. Hiding it (an earlier revision did) deleted real work
-/// from the transcript.
+/// Built for a Guided Questions submission: the operator's own input — they
+/// read the questions, chose the options, typed the free text, attached the
+/// images — so it must stay visible. Hiding it (an earlier revision did)
+/// deleted real work from the transcript.
 ///
 /// But it is not a message they composed at the prompt: the submission is
 /// rendered into prose (question prompts echoed, option labels resolved, skips
@@ -15,14 +16,21 @@ import SwiftUI
 ///
 /// A caption label was the first attempt and was not enough — at a glance the
 /// bubble still read as a normal message. This is deliberate chrome: a
-/// labelled rule above, a tinted panel that groups the answers WITH their
+/// labelled rule above, a tinted panel that groups the content WITH any
 /// attachments, and a closing rule, so the block reads as a distinct region
 /// while scrolling fast.
+///
+/// `label`/`systemImage` let the same chrome serve a second, structurally
+/// identical case: a `/clear --keep-plan` retained-plan turn. Both are
+/// engine-authored turns the operator's own action caused and must see; only
+/// the rule text differs.
 ///
 /// Desktop parity: `desktop/src/renderer/components/conversation/StructuredAnswerFrame.tsx`.
 private struct StructuredAnswerFrameModifier: ViewModifier {
     @Environment(\.appTheme) private var theme
     let active: Bool
+    var label: String = "Questions answered"
+    var systemImage: String = "checklist"
 
     func body(content: Content) -> some View {
         if active {
@@ -58,7 +66,7 @@ private struct StructuredAnswerFrameModifier: ViewModifier {
             Rectangle()
                 .fill(theme.accent.opacity(0.25))
                 .frame(height: 1)
-            Label("Questions answered", systemImage: "checklist")
+            Label(label, systemImage: systemImage)
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(theme.accent)
                 .fixedSize()
@@ -70,9 +78,10 @@ private struct StructuredAnswerFrameModifier: ViewModifier {
 }
 
 extension View {
-    /// Wrap a submitted answer set in its transcript chrome. A no-op when
-    /// `active` is false, so an ordinary turn is untouched.
-    func structuredAnswerFrame(active: Bool) -> some View {
-        modifier(StructuredAnswerFrameModifier(active: active))
+    /// Wrap a submitted answer set (or a retained plan) in its transcript
+    /// chrome. A no-op when `active` is false, so an ordinary turn is
+    /// untouched.
+    func structuredAnswerFrame(active: Bool, label: String = "Questions answered", systemImage: String = "checklist") -> some View {
+        modifier(StructuredAnswerFrameModifier(active: active, label: label, systemImage: systemImage))
     }
 }
