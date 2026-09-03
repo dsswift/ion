@@ -46,6 +46,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 ## Alphabetical index
 
 - [APNs pusher](#term-apns-pusher)
+- [Abort Marker](#term-abort-marker)
 - [Agent](#term-agent)
 - [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
 - [Async delivery](#term-async-delivery)
@@ -64,6 +65,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Context Identity](#term-context-identity)
 - [Conversation](#term-conversation)
 - [Conversation Status Bar](#term-conversation-status-bar)
+- [Conversation Telemetry](#term-conversation-telemetry)
 - [Conversation Terminal Panel](#term-conversation-terminal-panel)
 - [Conversation Timeline Minimap](#term-conversation-timeline-minimap)
 - [Conversation View](#term-conversation-view)
@@ -291,6 +293,20 @@ A new path in the conversation tree that starts at an earlier entry. A branch ke
   - `engine` / `wire` / `go`: `branch_before` in `engine/internal/protocol/protocol.go`
 
 ### runtime-mechanic
+
+#### Abort Marker {#term-abort-marker}
+
+The conversation tree entry that records a cancelled run. It names the run, whether the operator or the engine cancelled it, the abort scope, and the exit signal. Without it a cancelled run and a completed run are the same file on disk.
+
+- **ID:** `abort-marker`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `engine` / `code` / `go`: `EntryAborted` in `engine/internal/conversation/conversation.go`
+  - `engine` / `code` / `go`: `func AppendAbortMarker` in `engine/internal/conversation/abort_marker.go`
 
 #### Backend {#term-backend}
 
@@ -862,6 +878,21 @@ A chart the agent renders in a conversation from data it already holds. The mode
   - `ios` / `ui` / `swift`: `ChartCardView` in `ios/IonRemote/Views/ChartCardView.swift`
   - `ios` / `code` / `swift`: `enum ChartTranscript` in `ios/IonRemote/Models/ChartTranscript.swift`
   - `ios` / `ui` / `swift`: `ChartTranscriptCard` in `ios/IonRemote/Views/ChartTranscriptCard.swift`
+
+#### Conversation Telemetry {#term-conversation-telemetry}
+
+The desktop client tool that measures conversation records on disk and returns counts, timestamps, cost, and file paths, never message text. Its scope follows the session's working directory: every conversation in a registered worktree, or the calling conversation and the chain it was cleared and continued from.
+
+- **ID:** `conversation-telemetry`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `conversationTelemetryTool` in `desktop/src/main/telemetry/conversation-telemetry-tool.ts`
+  - `desktop` / `code` / `typescript`: `selectConversations` in `desktop/src/main/telemetry/conversation-telemetry-select.ts`
+  - `desktop` / `doc` / `markdown`: `ConversationTelemetry` in `docs/tools/reference.md`
 
 #### Desktop {#term-desktop-client}
 
@@ -1695,6 +1726,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Conversation instance | `export interface ProjectedConversationInstance` | `export interface ProjectedConversationInstance` | `export interface ProjectedConversationInstance` | `struct EngineInstanceBar` | None |
 | Conversation status | `StatusDot` | `StatusDot` | `StatusDot` | `TabStatusRollup` | None |
 | Conversation Status Bar | `export function ComposerControls` | `export function ComposerControls` | `export function ComposerControls` | `struct ConversationStatusBar` | None |
+| Conversation Telemetry | `conversationTelemetryTool`, `selectConversations`, `ConversationTelemetry` | `conversationTelemetryTool`, `selectConversations`, `ConversationTelemetry` | `conversationTelemetryTool`, `selectConversations`, `ConversationTelemetry` | None | iOS |
 | Conversation Terminal Panel | `TerminalPanel` | `TerminalPanel`, `StudioCenter` | `TerminalPanel` | None | iOS |
 | Conversation Timeline Minimap | `TimelineMinimap` | `TimelineMinimap` | `TimelineMinimap` | None | iOS |
 | Conversation View | `export function ConversationView` | `export function ConversationView`, `ConversationView` | `export function ConversationView` | `struct ConversationView` | None |

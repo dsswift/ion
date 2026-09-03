@@ -2,6 +2,31 @@
   "version": 1,
   "terms": [
     {
+      "id": "abort-marker",
+      "term": "Abort Marker",
+      "definition": "The conversation tree entry that records a cancelled run. It names the run, whether the operator or the engine cancelled it, the abort scope, and the exit signal. Without it a cancelled run and a completed run are the same file on disk.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "EntryAborted",
+          "path": "engine/internal/conversation/conversation.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func AppendAbortMarker",
+          "path": "engine/internal/conversation/abort_marker.go"
+        }
+      ]
+    },
+    {
       "id": "agent",
       "term": "Agent",
       "definition": "One named actor that runs a prompt loop with its own model, tools, and system prompt. The root agent is the conversation itself. A sub-agent is an agent that the root agent or another agent starts.",
@@ -764,6 +789,38 @@
         }
       ],
       "notes": "Honest mismatch: iOS has a named ConversationStatusBar view. The Desktop client has no component of that name and places the same controls inside the Input Bar, split across the StatusBar* control files. The name is canonical for the concept, not yet for a shared Desktop symbol."
+    },
+    {
+      "id": "conversation-telemetry",
+      "term": "Conversation Telemetry",
+      "definition": "The desktop client tool that measures conversation records on disk and returns counts, timestamps, cost, and file paths, never message text. Its scope follows the session's working directory: every conversation in a registered worktree, or the calling conversation and the chain it was cleared and continued from.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "conversationTelemetryTool",
+          "path": "desktop/src/main/telemetry/conversation-telemetry-tool.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "selectConversations",
+          "path": "desktop/src/main/telemetry/conversation-telemetry-select.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "doc",
+          "language": "markdown",
+          "symbol": "ConversationTelemetry",
+          "path": "docs/tools/reference.md"
+        }
+      ]
     },
     {
       "id": "conversation-terminal-panel",
