@@ -35,6 +35,7 @@ import { SETTINGS_DEFAULTS } from "../preferences-types";
 import {
   applyMirrorOverrides,
   initTabsSync,
+  initConversationTerminalSync,
   initWorktreeSync,
   initPermissionResolutionSync,
   initUserMessageEcho,
@@ -53,6 +54,7 @@ import { useStudioLayout } from "./layout/useStudioLayout";
 import { revealDockView } from "./layout/dock-view-reveal";
 import type { StudioSidebarView } from "../../shared/types-studio";
 import { useStudioBootstrap } from "./useStudioBootstrap";
+import { addActiveConversationShell, toggleActiveConversationTerminal } from "./studio-conversation-terminal-commands";
 import { useCommandShortcuts } from "./keymap/useStudioKeymap";
 import { useSurfaceStore } from "./surface/surface-store";
 import { useSurfacePersistOnUnload } from "./surface/surface-persist";
@@ -85,6 +87,7 @@ function bootMirror(): void {
   const swapped = applyMirrorOverrides();
   initDispatchSplitConversationGuard();
   initTabsSync();
+  initConversationTerminalSync();
   initWorktreeSync();
   initPermissionResolutionSync();
   initUserMessageEcho();
@@ -207,7 +210,7 @@ export function StudioShell(): React.JSX.Element {
         if (responsive.mode === "narrow" && requestedLeftVisible) setNarrowPane("left");
         else patchRef.current({ leftSidebarVisible: !layoutRef.current.leftSidebarVisible });
       },
-      "terminal.toggle": toggleActiveTerminal,
+      "terminal.toggle": toggleActiveConversationTerminal,
       // Cmd+4 toggles the canvas/surface pane without choosing content. The
       // current surface tab remains active; an empty surface stays empty.
       "panel.statusDrawer": () => {
@@ -253,18 +256,7 @@ export function StudioShell(): React.JSX.Element {
       "tab.newPicker": () => {
         handleNewConversationShortcut("", "Cmd+Opt+T", undefined, true);
       },
-      "terminal.addShell": () => {
-        const state = useSessionStore.getState();
-        const tab = state.tabs.find((candidate) => candidate.id === state.activeTabId);
-        if (!tab) return;
-        if (!state.terminalOpenTabIds.has(tab.id)) state.toggleTerminal(tab.id);
-        const instanceId = state.addTerminalInstance(tab.id, "user", tab.workingDirectory);
-        rDebug("studio.terminal", "conversation shell added", {
-          tab_id: tab.id,
-          instance_id: instanceId,
-          cwd: tab.workingDirectory,
-        });
-      },
+      "terminal.addShell": addActiveConversationShell,
       "tab.close": () => {
         if (lastFocusedColumn === "surface") {
           const s = useSurfaceStore.getState();
@@ -318,18 +310,6 @@ export function StudioShell(): React.JSX.Element {
   function selectConversationSlot(index: number): void {
     const tab = useSessionStore.getState().tabs[index];
     if (tab) useSessionStore.getState().selectTab(tab.id);
-  }
-
-  function toggleActiveTerminal(): void {
-    const state = useSessionStore.getState();
-    const tabId = state.activeTabId;
-    if (!tabId) return;
-    const opening = !state.terminalOpenTabIds.has(tabId);
-    state.toggleTerminal(tabId);
-    rDebug("studio.terminal", "conversation terminal tray toggled", {
-      tab_id: tabId,
-      open: opening,
-    });
   }
 
   /**
@@ -428,7 +408,7 @@ export function StudioShell(): React.JSX.Element {
       label: "Toggle Terminal",
       keywords: "shell pty bottom",
       section: "Actions",
-      run: toggleActiveTerminal,
+      run: toggleActiveConversationTerminal,
     },
   ]);
   // Palette entries are created once; refs keep them reading fresh state.
@@ -494,7 +474,7 @@ export function StudioShell(): React.JSX.Element {
               if (responsive.mode === "narrow" && requestedLeftVisible) setNarrowPane("left");
               else patch({ leftSidebarVisible: !layout.leftSidebarVisible });
             },
-            onToggleTerminal: () => toggleActiveTerminal(),
+            onToggleTerminal: () => toggleActiveConversationTerminal(),
             onToggleSurface: () => {
               if (responsive.mode === "narrow" && surfaceVisible) setNarrowPane("surface");
               else useSurfaceStore.getState().toggleVisible();

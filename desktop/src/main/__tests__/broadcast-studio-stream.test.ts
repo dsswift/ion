@@ -37,7 +37,8 @@ function fakeWindow() {
 
 beforeEach(() => {
   updateStudioCacheMock.mockClear()
-  ;(state as { studioWindow: unknown }).studioWindow = null
+  ;(state as { studioWindow: unknown; mainWindow: unknown }).studioWindow = null
+  ;(state as { studioWindow: unknown; mainWindow: unknown }).mainWindow = null
 })
 
 describe('broadcast → Studio full-stream gate', () => {
@@ -81,6 +82,19 @@ describe('broadcast → Studio full-stream gate', () => {
       expect.objectContaining({ id: 'dl-1', owner: 'studio' }),
     )
     expect(win.webContents.send).toHaveBeenCalledWith(IPC.DEEPLINK_CONFIRM_SETTLED, 'dl-1')
+  })
+
+  it('routes Conversation Terminal Panel snapshots only to Studio', () => {
+    const studio = fakeWindow()
+    const main = fakeWindow()
+    ;(state as { studioWindow: unknown; mainWindow: unknown }).studioWindow = studio
+    ;(state as { studioWindow: unknown; mainWindow: unknown }).mainWindow = main
+    const snapshot = { revision: 1, panes: [], openTabIds: [] }
+
+    broadcast(IPC.STUDIO_CONVERSATION_TERMINALS, snapshot)
+
+    expect(studio.webContents.send).toHaveBeenCalledWith(IPC.STUDIO_CONVERSATION_TERMINALS, snapshot)
+    expect(main.webContents.send).not.toHaveBeenCalled()
   })
 
   it('drops nothing into the void: closed Studio window means no send, no throw', () => {

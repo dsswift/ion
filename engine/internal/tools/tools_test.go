@@ -134,6 +134,7 @@ func TestRegisterCustomTool(t *testing.T) {
 	got := GetTool("CustomTest")
 	if got == nil {
 		t.Fatal("custom tool not found after registration")
+		return
 	}
 	result, err := got.Execute(context.Background(), nil, "/tmp")
 	if err != nil {

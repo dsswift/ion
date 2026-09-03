@@ -660,6 +660,7 @@ func TestRefreshSkillToolDescription(t *testing.T) {
 	before := GetTool("Skill")
 	if before == nil {
 		t.Fatal("Skill tool not registered")
+		return
 	}
 	if strings.Contains(before.Description, "Available skills:") {
 		t.Error("expected no manifest in description before skills are registered")
@@ -673,6 +674,7 @@ func TestRefreshSkillToolDescription(t *testing.T) {
 	after := GetTool("Skill")
 	if after == nil {
 		t.Fatal("Skill tool not registered after refresh")
+		return
 	}
 	if !strings.Contains(after.Description, "fresh") {
 		t.Errorf("expected 'fresh' in description after refresh, got:\n%s", after.Description)

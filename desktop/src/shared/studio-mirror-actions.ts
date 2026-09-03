@@ -263,8 +263,16 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   // the three above do, so it forwards with them rather than splitting the
   // field's ownership across windows.
   rehydrateAttachmentPreviews: { minArgs: 0, maxArgs: 0 },
-  // ── Terminal instances are owner-persisted tab metadata ──
+  // ── Conversation Terminal Panel metadata is owner-controlled ──
+  toggleTerminal: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
+  addTerminalInstance: { minArgs: 2, maxArgs: 4, tabIdAt: 0 },
+  removeTerminalInstance: { minArgs: 2, maxArgs: 2, tabIdAt: 0 },
+  selectTerminalInstance: { minArgs: 2, maxArgs: 2, tabIdAt: 0 },
+  toggleTerminalReadOnly: { minArgs: 2, maxArgs: 2, tabIdAt: 0 },
   renameTerminalInstance: { minArgs: 3, maxArgs: 3, tabIdAt: 0 },
+  getOrCreateDedicatedTerminal: { minArgs: 2, maxArgs: 2, tabIdAt: 0 },
+  runInTerminal: { minArgs: 2, maxArgs: 2, tabIdAt: 0 },
+  runQuickTool: { minArgs: 2, maxArgs: 2, tabIdAt: 0 },
 };
 
 /**
@@ -306,7 +314,6 @@ export const MIRROR_LOCAL_ACTIONS: Record<string, string> = {
     "ingestion: derived from inventory refresh; no git mutation",
   dismissConflictAlert:
     "per-window toast dismissal; badges derive from live inventory state",
-  runQuickTool: "pass-through: one-shot tool run",
   // ── Close confirmation ──
   // The close DIALOG is per-window: the operator who clicked X in a given
   // window is the one who must answer, and forwarding the intent would pop a
@@ -387,19 +394,10 @@ export const MIRROR_LOCAL_ACTIONS: Record<string, string> = {
   createScratchFile: "per-window UI",
   focusFileEditor: "per-window UI",
   blurFileEditor: "per-window UI",
-  // Terminals are per-window and per-conversation. Studio mounts the shared
-  // bottom multiplexer, but its pane pool and visibility must stay independent
-  // from the overlay window's local terminal UI.
-  toggleTerminal: "per-window terminal UI",
-  toggleTerminalTall: "per-window terminal UI",
-  toggleTerminalBigScreen: "per-window terminal UI",
-  toggleTerminalReadOnly: "per-window terminal UI",
-  selectTerminalInstance: "per-window terminal UI",
-  addTerminalInstance: "per-window pty pool",
-  removeTerminalInstance: "per-window pty pool",
-  getOrCreateDedicatedTerminal: "per-window pty pool",
-  consumeTerminalPendingCommand: "per-window terminal UI",
-  runInTerminal: "per-window pty pool",
+  // Conversation Terminal Panel geometry is local. The pane list and its
+  // selection/visibility are owner-controlled and listed in FORWARDED_ACTIONS.
+  toggleTerminalTall: "per-window Conversation Terminal Panel display",
+  toggleTerminalBigScreen: "per-window Conversation Terminal Panel display",
   startBashCommand: "per-window bash flow",
   completeBashCommand: "per-window bash flow",
 };

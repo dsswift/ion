@@ -51,7 +51,7 @@ function makeFakeStore(opts: { tabs: Array<{ id: string; workingDirectory: strin
     activeTabId: opts.activeTabId,
     terminalPanes: new Map<string, { instances: FakeInstance[]; activeInstanceId: string | null }>(),
     terminalOpenTabIds: new Set<string>(),
-    addTerminalInstance(tabId: string, kind: string, cwd?: string): string {
+    async addTerminalInstance(tabId: string, kind: string, cwd?: string, requestedLabel?: string): Promise<string> {
       const tab = s.tabs.find((t) => t.id === tabId)
       const pane = s.terminalPanes.get(tabId) || { instances: [], activeInstanceId: null }
       const maxShell = pane.instances
@@ -62,13 +62,15 @@ function makeFakeStore(opts: { tabs: Array<{ id: string; workingDirectory: strin
         }, 0)
       const id = `inst${++seq}`
       pane.instances = [...pane.instances, {
-        id, label: `Shell ${maxShell + 1}`, kind, readOnly: false,
+        id, label: requestedLabel || `Shell ${maxShell + 1}`, kind, readOnly: false,
         // Mirrors terminal-slice.ts: an explicit caller directory wins; an
         // ordinary iOS/user pane keeps the tab working-directory fallback.
         cwd: cwd || tab?.workingDirectory || '~',
       }]
       pane.activeInstanceId = id
       s.terminalPanes.set(tabId, pane)
+      s.terminalOpenTabIds.add(tabId)
+      mocks.terminalCreate(`${tabId}:${id}`, cwd || tab?.workingDirectory || '~')
       return id
     },
     renameTerminalInstance(tabId: string, instanceId: string, label: string): void {
@@ -169,7 +171,9 @@ describe('createTerminalInstanceOnTab', () => {
     expect(result).not.toBeNull()
     expect(fakeStore._raw.terminalPanes.get('tab-a')?.instances).toHaveLength(1)
     expect(fakeStore._raw.terminalPanes.has('tab-b')).toBe(false)
-    // PTY keyed to the named tab, with that tab's cwd.
+    // The owner store action starts the PTY. The main deep-link/iOS helper must
+    // not start it a second time.
+    expect(mocks.terminalCreate).toHaveBeenCalledTimes(1)
     expect(mocks.terminalCreate).toHaveBeenCalledWith(`tab-a:${result!.id}`, '/repo/a')
   })
 
@@ -182,9 +186,7 @@ describe('createTerminalInstanceOnTab', () => {
     // launching successfully.
     const result = await createTerminalInstanceOnTab('tab-a', { cwd: '/repo/a/services/functions' })
 
-    expect(result!.cwd).toBe('/repo/a/services/functions')
-    expect(fakeStore._raw.terminalPanes.get('tab-a')?.instances[0].cwd)
-      .toBe('/repo/a/services/functions')
+    expect(mocks.terminalCreate).toHaveBeenCalledTimes(1)
     expect(mocks.terminalCreate)
       .toHaveBeenCalledWith(`tab-a:${result!.id}`, '/repo/a/services/functions')
   })

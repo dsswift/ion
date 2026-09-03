@@ -15,6 +15,7 @@ func TestTodoWriteIsDefaultBuiltinAndPlanModeSafe(t *testing.T) {
 	def := GetTool("TodoWrite")
 	if def == nil {
 		t.Fatal("TodoWrite is not a registered built-in tool")
+		return
 	}
 	if !def.PlanModeSafe {
 		t.Error("TodoWrite must be PlanModeSafe so it survives plan-mode filtering")

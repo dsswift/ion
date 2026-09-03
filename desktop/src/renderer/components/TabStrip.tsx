@@ -401,7 +401,12 @@ export function TabStrip({ presentation = 'overlay' }: { presentation?: TabStrip
         <button
           onClick={(e) => {
             if (e.altKey) {
-              toggleTerminal(activeTabId)
+              void toggleTerminal(activeTabId).catch((error) => {
+                rError('terminal', 'conversation terminal panel toggle failed', {
+                  tab_id: activeTabId,
+                  error: String(error),
+                })
+              })
             } else {
               const rect = zoomRect((e.currentTarget as HTMLElement).getBoundingClientRect())
               setDirPickerState({ anchor: { x: rect.left, y: rect.top, bottom: rect.bottom }, mode: 'terminal' })

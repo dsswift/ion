@@ -33,6 +33,8 @@ import { validForwardedAction } from "../../shared/studio-mirror-actions";
 import { registerStudioWorktreeSyncIpc } from './studio-worktree-sync'
 import { registerStudioSettingsIpc } from './studio-settings'
 import { registerStudioBrowserIpc } from './studio-browser'
+import { registerStudioTabsSyncIpc } from './studio-tabs-sync'
+import { registerStudioConversationTerminalSyncIpc } from './studio-terminal-sync'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log("studio", msg, fields);
@@ -82,6 +84,8 @@ let studioCallSeq = 0;
 export function registerStudioIpc(): void {
   registerStudioWorktreeSyncIpc();
   registerStudioBrowserIpc();
+  registerStudioTabsSyncIpc();
+  registerStudioConversationTerminalSyncIpc();
   ipcMain.handle(
     IPC.STUDIO_SET_TITLE_BAR_OVERLAY,
     (_event, color: unknown, symbolColor: unknown) => {
@@ -203,22 +207,6 @@ export function registerStudioIpc(): void {
 
   // Campus view: live per-tab summaries derived from the all-tabs cache.
   ipcMain.handle(IPC.STUDIO_GET_ALL_STATUS, () => allStudioSummaries());
-
-  // Owner-published tab-metadata sync. The overlay renderer publishes its
-  // persisted tabs snapshot after every persist; main caches the latest and
-  // pushes it to the Studio window. The Studio pulls the cache once on boot (view
-  // readiness), then lives off the pushes.
-  let tabsSyncSnapshot: unknown = null;
-  let tabsSyncRevision = 0;
-  ipcMain.on(IPC.STUDIO_PUBLISH_TABS_SYNC, (_event, snapshot: unknown) => {
-    if (snapshot == null || typeof snapshot !== "object") return;
-    tabsSyncSnapshot = { ...(snapshot as Record<string, unknown>), revision: ++tabsSyncRevision };
-    const win = state.studioWindow;
-    if (win && !win.isDestroyed()) {
-      win.webContents.send(IPC.STUDIO_TABS_SYNC, tabsSyncSnapshot);
-    }
-  });
-  ipcMain.handle(IPC.STUDIO_GET_TABS_SYNC, () => tabsSyncSnapshot);
 
   // Mirror-store action forwarding: the Studio window routes owner-durable store
   // mutations here; validation is derived from FORWARDED_ACTIONS (the single

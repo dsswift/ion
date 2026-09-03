@@ -67,22 +67,14 @@ export async function createTerminalInstanceOnTab(
   let result: { id: string; label: string; kind: string; cwd: string } | 'no-such-tab' | null | undefined
   try {
     result = await state.mainWindow?.webContents.executeJavaScript(`
-    (function() {
+    (async function() {
       var store = window.__Ion_SESSION_STORE__;
       if (!store) return null;
       var s = store.getState();
       // Resolve by id only. No fallback to the active tab: a caller that names
       // a dead tab must be refused, not silently redirected.
       if (!s.tabs.some(function(t) { return t.id === ${escaped}; })) return 'no-such-tab';
-      var id = s.addTerminalInstance(${escaped}, 'user', ${escapedCwd});
-      var label = ${escapedLabel};
-      if (label) s.renameTerminalInstance(${escaped}, id, label);
-      // Mark the pane open so the panel actually renders it, and select the new
-      // instance within that pane. activeTabId is deliberately NOT changed.
-      var nextOpen = new Set(store.getState().terminalOpenTabIds);
-      nextOpen.add(${escaped});
-      store.setState({ terminalOpenTabIds: nextOpen });
-      store.getState().selectTerminalInstance(${escaped}, id);
+      var id = await s.addTerminalInstance(${escaped}, 'user', ${escapedCwd}, ${escapedLabel});
       var pane = store.getState().terminalPanes.get(${escaped});
       if (!pane) return null;
       var inst = pane.instances.find(function(i) { return i.id === id; });
@@ -103,7 +95,6 @@ export async function createTerminalInstanceOnTab(
     log('terminal_add_instance failed: renderer store unavailable', { tabId })
     return null
   }
-  terminalManager.create(`${tabId}:${result.id}`, result.cwd || '~')
   log('terminal_add_instance created', { tabId, instanceId: result.id, label: result.label })
   return result
 }
@@ -152,13 +143,12 @@ export async function handleTerminalRemoveInstance(cmd: Extract<RemoteCommand, {
     const escapedTab = cmd.tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const escapedInst = cmd.instanceId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     await state.mainWindow?.webContents.executeJavaScript(`
-      (function() {
+      (async function() {
         var store = window.__Ion_SESSION_STORE__;
         if (!store) return;
-        store.getState().removeTerminalInstance('${escapedTab}', '${escapedInst}');
+        await store.getState().removeTerminalInstance('${escapedTab}', '${escapedInst}');
       })()
     `)
-    terminalManager.destroy(`${cmd.tabId}:${cmd.instanceId}`)
     state.remoteTransport?.send({ type: 'desktop_terminal_instance_removed', tabId: cmd.tabId, instanceId: cmd.instanceId })
   } catch (err) {
     log('terminal_remove_instance error', { error: (err as Error).message })
@@ -215,21 +205,8 @@ export async function handleRequestTerminalSnapshot(cmd: Extract<RemoteCommand, 
     // the default "Shell" instance (kind 'user'). The renderer's
     // addTerminalInstance resolves cwd from the tab's workingDirectory
     // (falling back to '~'), exactly as handleTerminalAddInstance relies on.
-    const created = await state.mainWindow?.webContents.executeJavaScript(`
-      (function() {
-        var store = window.__Ion_SESSION_STORE__;
-        if (!store) return null;
-        var id = store.getState().addTerminalInstance('${escapedTabId}', 'user');
-        var pane = store.getState().terminalPanes.get('${escapedTabId}');
-        if (!pane) return null;
-        var inst = pane.instances.find(function(i) { return i.id === id; });
-        if (!inst) return null;
-        return { id: inst.id, label: inst.label, kind: inst.kind, cwd: inst.cwd || '' };
-      })()
-    `)
+    const created = await createTerminalInstanceOnTab(cmd.tabId)
     if (created) {
-      const key = `${cmd.tabId}:${created.id}`
-      terminalManager.create(key, created.cwd || '~')
       log('request_terminal_snapshot pane missing, auto-created default instance', {
         tabId: cmd.tabId,
         instanceId: created.id,

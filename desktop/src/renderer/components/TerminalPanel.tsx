@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
 import { TerminalInstanceView } from './TerminalInstance'
 import { TerminalTabStrip } from './TerminalTabStrip'
+import { rWarn } from '../rendererLogger'
 
 // Re-export destroyTerminalInstance for backward compatibility
 export { destroyTerminalInstance } from './TerminalInstance'
@@ -17,12 +18,19 @@ export function TerminalPanel({ tabId, cwd, autoCreate = true, onEmpty }: Props)
   const pane = useSessionStore((s) => s.terminalPanes.get(tabId))
   const hadInstances = useRef(false)
 
-  // Auto-create a default "Shell" instance on first mount if none exist
+  // Auto-create a default shell on first mount when no owner metadata exists.
+  // In Studio this action is forwarded, so the owner creates and republishes it.
   useEffect(() => {
     if (!autoCreate) return
     const currentPane = useSessionStore.getState().terminalPanes.get(tabId)
     if (!currentPane || currentPane.instances.length === 0) {
-      useSessionStore.getState().addTerminalInstance(tabId, 'user', cwd)
+      void useSessionStore.getState().addTerminalInstance(tabId, 'user', cwd).catch((error) => {
+        rWarn('terminal', 'automatic conversation terminal creation failed', {
+          tab_id: tabId,
+          cwd,
+          error: String(error),
+        })
+      })
     }
   }, [tabId, cwd, autoCreate])
 

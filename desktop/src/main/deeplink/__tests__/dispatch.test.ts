@@ -84,6 +84,7 @@ describe('runTerminalAction — target resolution', () => {
 
     expect(r.ok).toBe(true)
     expect(mocks.createInstance).toHaveBeenCalledWith('tab-a', { label: 'api', cwd: undefined })
+    expect(mocks.createInstance.mock.calls[0][0]).not.toMatch(/^studio:/)
   })
 
   it('refuses when no tab is named, and explains why', async () => {
@@ -113,6 +114,7 @@ describe('runTerminalAction — target resolution', () => {
     await runTerminalAction({ action: 'terminal', tabId: 'tab-a', title: '', cmd: 'npm run dev', dir: '' })
 
     expect(mocks.terminalWrite).toHaveBeenCalledWith('tab-a:inst-1', 'npm run dev\n')
+    expect(mocks.terminalWrite.mock.calls[0][0]).not.toContain(':surface:')
   })
 
   it('forwards a service directory before writing the command', async () => {

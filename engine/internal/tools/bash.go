@@ -84,7 +84,10 @@ func executeBash(ctx context.Context, input map[string]any, cwd string) (*types.
 	}
 
 	ops := GetBashOperations()
-	result, err := ops.Exec(ctx, command, cwd, ExecOptions{Timeout: timeout})
+	result, err := ops.Exec(ctx, command, cwd, ExecOptions{
+		Timeout: timeout,
+		Env:     bashExecutionEnv(ctx),
+	})
 
 	// A timed-out command reports the deadline it hit and the mechanism that
 	// outlives it. This precedes the error check because a killed process
@@ -163,7 +166,9 @@ func executeBashBackground(ctx context.Context, command, cwd string, notify bool
 		notify = false
 	}
 
-	info, err := startBackgroundBashTask(ctx, bg, command, cwd, ExecOptions{}, notify)
+	info, err := startBackgroundBashTask(ctx, bg, command, cwd, ExecOptions{
+		Env: bashExecutionEnv(ctx),
+	}, notify)
 	if err != nil {
 		return &types.ToolResult{Content: fmt.Sprintf("Error: %s", err), IsError: true}, nil
 	}
