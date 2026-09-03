@@ -70,11 +70,24 @@ export function handleCrossNormalizedEvent(
         : formatClearDivider(new Date())
       // WI-001: all conversations use bare tabId + active instance (single-path).
       // Insert the clear divider and clear any pending permissionDenied card.
+      //
+      // contextBreakdown is also invalidated here. It is a client-side cache
+      // populated on demand (context_breakdown event, fired when the Status
+      // Drawer opens or a turn runs) and the engine's clear signal never
+      // refreshes it — emitClearSignal only resets engine_status's
+      // ContextTokens/ContextPercent to 0. resolveContextInputs prefers a
+      // non-null contextBreakdown.occupancyTokens over statusFields.contextTokens,
+      // so a breakdown cached before the clear kept reporting the pre-clear
+      // token count as truth: the context ring stayed stale, and the
+      // `clears-conversation` confirmation gate (which reads the same
+      // resolveContextInputs output as `hasHistory`) kept firing on a
+      // conversation that was, in fact, already empty.
       set((state) => {
         const conversationPanes = commitInstance(state.conversationPanes, tabId, (inst) => ({
           ...inst,
           messages: [...inst.messages, { id: nextMsgId(), role: 'system' as const, content: divider, timestamp: Date.now() }],
           permissionDenied: null,
+          contextBreakdown: null,
         }))
         return { conversationPanes }
       })
