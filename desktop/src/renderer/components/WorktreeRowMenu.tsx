@@ -534,7 +534,6 @@ export function WorktreeRowMenu({
         setConfirmDiscardWorktree={setConfirmDiscardWorktree}
         doDiscardWorktree={doDiscardWorktree}
         doLandAndRetire={doLandAndRetire}
-        hasNothingToLand={entry.unlandedCommitCount === 0}
         onClose={onClose}
       />
     </>,
