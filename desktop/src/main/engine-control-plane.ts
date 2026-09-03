@@ -296,8 +296,9 @@ export class EngineControlPlane extends EventEmitter {
       ...(opts.extensions?.length ? {} : { runRecovery: resolveRunRecoveryConfig() }),
       // Client tool gate: bench containment policy + bench client tools. Declared
       // on every session because bench involvement can begin mid-session; policy
-      // resolves the workspace fresh per call.
-      toolGate: toolGateSessionConfig(),
+      // resolves the workspace fresh per call. The working directory selects the
+      // ConversationTelemetry variant, which is a per-session declaration.
+      toolGate: toolGateSessionConfig(opts.workingDirectory),
       clientWorkspaceContext: benchClientWorkspaceContext(opts.workingDirectory) ?? undefined,
     }
     log('ensure_session: starting', { tab_id: tabId, session_id: config.sessionId ?? 'new', dir: config.workingDirectory, client_ws_ctx: config.clientWorkspaceContext?.kind ?? 'none' })
@@ -373,7 +374,7 @@ export class EngineControlPlane extends EventEmitter {
       thinking: options.thinking ?? resolveSessionThinkingConfig(),
       claudeCompat: resolveClaudeCompat(),
       // Same gate declaration as ensureSession so this start path has bench rules.
-      toolGate: toolGateSessionConfig(),
+      toolGate: toolGateSessionConfig(options.projectPath),
     }
 
     // When the engine is remote, verify the working directory exists on the
