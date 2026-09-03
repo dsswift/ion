@@ -3,13 +3,18 @@
 All notable changes to the engine will be documented here. This file is
 maintained by the release pipeline; do not edit by hand.
 
+## Unreleased
+
+### Features
+
+* **engine:** add verified Context Identity to TypeScript and Go extension SDKs. Interactive operator identity now requires `issuerUrl`; existing grants need one new login before they provide Context Identity.
+
 ## 1.0.0 - 2026-04-28
 
 Initial 1.0.0 baseline. Establishes the Ion Engine as a headless,
 multi-provider LLM runtime: single static Go binary, Unix-socket protocol,
-55 extension hooks, 14 core tools, 16 LLM providers, and built-in security
-primitives (sandboxing, secret redaction, dangerous command blocking,
-permission engine).
+and built-in security primitives (sandboxing, secret redaction, dangerous
+command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
