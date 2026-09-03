@@ -439,6 +439,14 @@ Authentication and credential management.
 | `cacheTtlMs` | int64 | `0` | How long to cache resolved credentials (milliseconds). |
 | `refreshThresholdMs` | int64 | `0` | Refresh tokens this many milliseconds before expiry. |
 
+### Operator Context Identity migration
+
+Interactive operator [Context Identity](../vocabulary/index.md#context-identity) requires `issuerUrl` on the selected `auth.oauth` provider. The engine verifies the identity token before it projects identity to an extension.
+
+Stored grants without `identity_version: 1` are not Context Identity. After you add this configuration, restart or reload the engine and sign in once. That new sign-in creates a verified grant. Do not copy an old grant forward.
+
+If identity is optional, a verification failure keeps unrelated sessions usable with Context Identity absent. `auth.requireOperatorIdentity` and an extension manifest requirement fail closed instead.
+
 ### OAuth provider fields
 
 | Field | Type | Description |
@@ -450,7 +458,7 @@ Authentication and credential management.
 | `usePkce` | bool | Enable PKCE. |
 | `redirectUri` | string | Redirect URI. |
 
-| `issuerUrl` | string | OIDC issuer used to discover endpoints. Explicit endpoint fields win. |
+| `issuerUrl` | string | OIDC issuer used to discover endpoints. Required for interactive operator Context Identity. Explicit endpoint fields win. |
 | `audience` | string | Default token audience/resource. |
 | `audienceParameter` | string | `"audience"` (default) or RFC 8707 `"resource"`. |
 | `machineIdentity` | object | Optional non-interactive identity source. Presence switches this selected provider from operator login to machine identity. See [Machine identity](../deployment/machine-identity.md). |

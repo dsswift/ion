@@ -178,3 +178,19 @@ The transpiled bundle lands in `<extDir>/.ion-build/ext-<timestamp>.mjs`. The en
 - [Extension Anatomy](anatomy.md) -- directory layout and load lifecycle.
 - [TypeScript SDK Reference](sdk-typescript.md)
 - [Configuration overview](../configuration/index.md)
+
+## Identity requirement
+
+An extension can require a verified [Context Identity](../vocabulary/index.md#context-identity) before the engine starts its session host.
+
+```json
+{
+  "identity": {
+    "required": "operator"
+  }
+}
+```
+
+`identity.required` accepts `operator`, `workload`, or `any`. Omit `identity` to keep the extension optional. `operator` requires an operator snapshot. `workload` requires a workload snapshot. `any` accepts either verified kind.
+
+The engine preflights every configured extension before it starts a subprocess. A malformed manifest or an unmet requirement refuses `start_session` before extension side effects. `auth.requireOperatorIdentity: true` composes with each manifest as an operator requirement. The engine checks the effective requirement before prompts and async fires. Optional extensions run when Context Identity is absent.

@@ -60,6 +60,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Configuration](#term-configuration)
 - [Connection](#term-connection)
 - [Context](#term-context)
+- [Context Identity](#term-context-identity)
 - [Conversation](#term-conversation)
 - [Conversation Status Bar](#term-conversation-status-bar)
 - [Conversation Timeline Minimap](#term-conversation-timeline-minimap)
@@ -775,6 +776,21 @@ The path that carries a schedule firing or an inbound webhook into an extension 
   - `engine` / `wire` / `go`: `DeliveryId` in `engine/internal/protocol/protocol.go`
 
 ### public-contract
+
+#### Context Identity {#term-context-identity}
+
+Credential-free, verified identity state that the engine gives to one extension invocation. The engine verifies and transports the state. An extension interprets its claims and decides which tools or features to use.
+
+- **ID:** `context-identity`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type ContextIdentity struct` in `engine/internal/auth/identity_context.go`
+  - `sdk` / `code` / `typescript`: `export interface ContextIdentity` in `engine/extensions/sdk/ion-sdk/types.ts`
+  - `sdk` / `code` / `go`: `type ContextIdentity struct` in `sdk/go/context.go`
 
 #### Extension context {#term-extension-context}
 

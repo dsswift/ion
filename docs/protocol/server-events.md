@@ -1149,6 +1149,8 @@ Emitted by the OIDC login orchestration to the **requesting client only** (reque
 
 #### engine_oidc_identity
 
+This client event is unchanged. It reports client-facing operator login state. [Context Identity](../vocabulary/index.md#context-identity) is an extension SDK surface and does not change this event.
+
 Complete operator identity snapshot. **Snapshot-replace semantics:** consumers replace their local identity state with this payload. Emitted on every identity state transition — device-code login completion, PKCE login completion, and logout — and broadcast to all connected clients (an `oidc_identity` request also delivers it requester-scoped).
 
 `oidcSignedIn` is a `*bool` (pointer) precisely so the signed-out `false` survives `omitempty` and appears on the wire: a signed-out snapshot carries `"oidcSignedIn": false` explicitly rather than omitting the field, so consumers can distinguish "signed out" from "field absent". The remaining identity fields are populated only when signed in.

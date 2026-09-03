@@ -144,6 +144,70 @@ Five return patterns cover every hook:
 { "jsonrpc": "2.0", "id": 5, "result": { "reject": true } }
 ```
 
+### Context Identity in `_ctx`
+
+Every normal hook, tool, and command request can include optional `_ctx.identity`. It is a credential-free verified [Context Identity](../vocabulary/index.md#context-identity) snapshot. Its absence means no verified identity is available.
+
+```json
+{
+  "_ctx": {
+    "identity": {
+      "kind": "operator",
+      "provider": "example-provider",
+      "subject": "subject-123",
+      "username": "user@example.com",
+      "displayName": "Example User",
+      "claims": { "groups": ["operators"] }
+    }
+  }
+}
+```
+
+The `claims` object comes only from a verified identity token. It preserves JSON values. It has no access token, refresh token, secret, signature, header, assertion, or credential-process output. The engine rejects a serialized claim object larger than 256 KiB instead of truncating it.
+
+Async fires carry the same optional snapshot directly because they have no `_ctx` envelope:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "method": "engine/fire_async",
+  "params": {
+    "kind": "schedule",
+    "id": "daily-report",
+    "sessionKey": "session-123",
+    "identity": { "kind": "workload", "provider": "example-provider", "source": "managed" },
+    "payload": {}
+  }
+}
+```
+
+### `identity_changed` tool snapshot
+
+The `hook/identity_changed` payload is `{ "identity"?: ContextIdentity, "reason": string }`. Its reasons are `initial`, `signed_in`, `signed_out`, `claims_changed`, `verification_lost`, and `workload_ready`. The payload replaces prior identity state.
+
+A successful response can carry the reserved `_toolRegistry` field. It is not a hook return value. The engine removes it before normal hook-result decoding and atomically applies the complete declaration snapshot.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 8,
+  "result": {
+    "_toolRegistry": {
+      "revision": 1,
+      "tools": [
+        {
+          "name": "operator_tool",
+          "description": "Use an operator-only action",
+          "parameters": { "type": "object" },
+          "planModeSafe": true
+        }
+      ]
+    }
+  }
+}
+```
+
 ### `tool/{toolName}`
 
 Invoked when the LLM calls a registered tool.
@@ -250,6 +314,35 @@ Queue a message to be sent as assistant content. The engine processes this as a 
 ## Extension-to-engine requests
 
 These are bidirectional RPC calls. The extension sends a request with an `id`, and the engine sends a response back. Use these for process management and agent dispatch.
+
+### `ext/tool_registry_snapshot`
+
+Publish a complete dynamic tool declaration outside a hook. `revision` is a non-negative monotonic integer. Init uses revision `0`. The engine accepts only a revision newer than the host's accepted revision and returns the accepted revision.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 100010,
+  "method": "ext/tool_registry_snapshot",
+  "params": {
+    "revision": 2,
+    "tools": [
+      {
+        "name": "operator_tool",
+        "description": "Use an operator-only action",
+        "parameters": { "type": "object" },
+        "planModeSafe": true
+      }
+    ]
+  }
+}
+```
+
+```json
+{ "jsonrpc": "2.0", "id": 100010, "result": { "revision": 2 } }
+```
+
+The snapshot replaces the host declaration set. It is not an add/remove delta. The engine rejects the entire snapshot when it is stale, malformed, too large, or has invalid names. New runs see an accepted snapshot. Live calls resolve names in the current registry and deny a removed tool.
 
 ### `ext/register_process`
 

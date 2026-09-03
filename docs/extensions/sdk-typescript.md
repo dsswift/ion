@@ -1384,3 +1384,52 @@ ion.on('session_end', async (ctx) => {
 The scheduler emits `engine_schedule_deregistered` for all deregistration paths: explicit `unregister()` / `cancel()`, handler calling `control.unregister()`, and the automatic once-job teardown after the handler returns. The auto path carries `asyncReason: "once_complete"`. No new event types were introduced.
 
 See [Scheduling SDK](scheduling.md) for the full reference covering catch-up behavior, in-process dedup, `engine.json` configuration, respawn behavior, and the veto-capable lifecycle hooks.
+
+## Context Identity
+
+`ctx.identity` is an optional [Context Identity](../vocabulary/index.md#context-identity) snapshot. A present value is verified current state. Its absence means that no verified identity is available. Do not treat an access-token claim as Context Identity.
+
+```typescript
+interface ContextIdentity {
+  kind: string // 'operator' or 'workload'
+  provider: string
+  subject?: string
+  username?: string
+  displayName?: string
+  attribution?: string
+  source?: string
+  claims?: Record<string, JSONValue>
+}
+```
+
+The engine copies the complete verified identity-token claim object. Claim values keep their JSON type, including arrays, objects, and `null`. The engine rejects an identity projection larger than 256 KiB. It does not truncate it. Credentials never cross this boundary. The snapshot has no token, header, signature, refresh token, secret, assertion, or credential-process output.
+
+`kind: 'operator'` identifies a signed-in operator. `kind: 'workload'` identifies a verified machine source. A workload can omit `subject` and `claims` when its source has no verified value for them. Do not infer a subject from a workload selector.
+
+A provider can send a groups-overage claim or marker instead of a group array. The engine exposes that exact verified claim or marker. If your policy needs provider-specific group expansion, use authenticated `ctx.http`; the engine does not expand groups.
+
+### `identity_changed`
+
+Register `identity_changed` to replace extension-local identity state and choose tools for the next run.
+
+```typescript
+ion.on('identity_changed', (ctx, info) => {
+  if (info.identity?.kind === 'operator') {
+    ion.registerTool(operatorTool)
+  } else {
+    ion.deregisterTool('operator_tool')
+  }
+})
+```
+
+The payload is `{ identity?: ContextIdentity, reason: IdentityChangeReason }`. Reason values are `initial`, `signed_in`, `signed_out`, `claims_changed`, `verification_lost`, and `workload_ready`. Each payload is a complete snapshot. Replace your stored state; do not merge it. The engine sends `initial` once after init and session wiring, before `session_start` or another lifecycle hook. It deduplicates later equal snapshots.
+
+The hook runs as a tool-registry transaction. `ctx.identity` and `info.identity` hold equal deep copies. A successful handler commits all tool changes together. A failed handler restores the SDK-local tool set and leaves the host unavailable for new tools until it can receive the snapshot again.
+
+### Dynamic tools
+
+`registerTool(def)` replaces a same-name local tool. `deregisterTool(name)` returns `true` when it removed a tool. Call `syncTools()` outside a hook when you must wait for the engine to accept the current registry.
+
+The SDK sends full snapshots, never add/remove deltas. A snapshot has a monotonic `revision`; init uses revision `0`. `syncTools()` resolves to the accepted revision. A successful `identity_changed` response includes the same full snapshot and commits it atomically. A failed, malformed, or stale snapshot activates no partial registry.
+
+A changed snapshot is visible when the engine builds the next run's tool list. Each tool call resolves the live registry again. A call to a removed tool is denied, even if a running model still has an old definition.

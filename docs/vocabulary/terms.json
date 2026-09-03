@@ -535,6 +535,38 @@
       ]
     },
     {
+      "id": "context-identity",
+      "term": "Context Identity",
+      "definition": "Credential-free, verified identity state that the engine gives to one extension invocation. The engine verifies and transports the state. An extension interprets its claims and decides which tools or features to use.",
+      "domain": "harness-sdk",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type ContextIdentity struct",
+          "path": "engine/internal/auth/identity_context.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface ContextIdentity",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type ContextIdentity struct",
+          "path": "sdk/go/context.go"
+        }
+      ]
+    },
+    {
       "id": "conversation",
       "term": "Conversation",
       "definition": "One continuous thread of user prompts and agent responses, held in a tree that supports branching. There is one conversation type. The extension list is the only variable.",
