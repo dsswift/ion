@@ -26,8 +26,8 @@ let root: Root | null = null
 const onOpenFile = vi.fn()
 const onOpenUrl = vi.fn()
 
-function renderMarkdown(md: string, variant: 'assistant' | 'user' = 'assistant'): HTMLElement {
-  const components = makeMarkdownComponents({ colors: darkColors, onOpenFile, onOpenUrl, variant })
+function renderMarkdown(md: string): HTMLElement {
+  const components = makeMarkdownComponents({ colors: darkColors, onOpenFile, onOpenUrl })
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
@@ -78,6 +78,22 @@ describe('extractCodeText', () => {
 })
 
 describe('makeMarkdownComponents', () => {
+  // A GFM table must render inside the horizontal scroll wrapper — a real
+  // <table> nested in an `overflow-x: auto` container — so a table wider than a
+  // thin panel scrolls instead of crushing its columns. The regression this
+  // guards: an override that returned a bare <div>{children}</div> dropped the
+  // <table> element entirely, leaving orphan <thead>/<tr> rows, and a table with
+  // no scroll ancestor squeezes to fit and stacks cell text one char per line.
+  it('wraps a table in a horizontal scroll container that still contains a real <table>', () => {
+    const el = renderMarkdown('| A | B |\n| - | - |\n| 1 | 2 |')
+    const table = el.querySelector('table')
+    expect(table).not.toBeNull()
+    expect(table!.textContent).toContain('1')
+    const scroller = table!.closest('div') as HTMLDivElement
+    expect(scroller).not.toBeNull()
+    expect(scroller.style.overflowX).toBe('auto')
+  })
+
   it('routes fenced code through CodeBlock with the fence language badge', () => {
     const el = renderMarkdown('```ts\nconst x = 1\n```')
     expect(el.textContent).toContain('TypeScript')

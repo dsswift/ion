@@ -3,6 +3,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useColors } from '../theme'
 import { useNavigableText, NavigableLink, NavigableCode, remarkNavigableLinks } from '../hooks/useNavigableLinks'
+import { TableScrollWrapper } from './conversation/markdownRenderers'
 import { rError } from '../rendererLogger'
 import type { FileClickModifiers } from '../lib/open-file-intent'
 
@@ -15,6 +16,10 @@ export function ResourceContent({ content }: { content: string }): React.JSX.Ele
     void onOpenFile(path, event).catch((err) => rError('resource-viewer', 'open file failed', { error: String(err) }))
   }, [onOpenFile])
   const markdownComponents = useMemo(() => ({
+    // Wrap the table in the shared horizontal scroller so a wide table scrolls
+    // (with fade edges) instead of crushing its right-hand columns in a thin
+    // panel. The override REPLACES the <table>, so the wrapper re-emits one.
+    table: ({ children }: any) => <TableScrollWrapper>{children}</TableScrollWrapper>,
     a: ({ node, href, children }: any) => <NavigableLink node={node} href={href} color={colors.accent} onOpenFile={handleOpenFile} onOpenUrl={onOpenUrl}>{children}</NavigableLink>,
     code: ({ children, className, ...props }: any) => <NavigableCode className={className} onOpenFile={handleOpenFile} onOpenUrl={onOpenUrl} {...props}>{children}</NavigableCode>,
   }), [colors, handleOpenFile, onOpenUrl])

@@ -189,19 +189,26 @@ input::placeholder {
   color: var(--ion-text-secondary);
   margin: 0.5em 0;
 }
+/* Tables size to their content and scroll horizontally inside the
+   TableScrollWrapper rather than crushing to fit a thin panel. width:max-content
+   lets a wide table exceed the panel — the wrapper then scrolls, with fade edges
+   signalling there is more — while min-width:100% keeps a small table filling the
+   panel. The per-cell min-width floor is what prevents the old failure: width:100%
+   forced the table to fit the panel, and overflow-wrap:anywhere then broke the
+   squeezed right-hand columns into one-character-per-line stacks. max-width caps a
+   long-prose cell so it wraps instead of stretching the row off-screen. */
 .prose-cloud table {
   border-collapse: collapse;
-  max-width: 100%;
   font-size: var(--ion-data-code-font-size, 13px);
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
 }
 .prose-cloud th, .prose-cloud td {
   border: 1px solid var(--ion-container-border);
   padding: 0.4em 0.6em;
-  overflow-wrap: anywhere;
-}
-.prose-cloud th:first-child, .prose-cloud td:first-child {
-  white-space: nowrap;
+  overflow-wrap: break-word;
+  min-width: 7ch;
+  max-width: 32rem;
 }
 .prose-cloud th {
   background: var(--ion-surface-primary);
