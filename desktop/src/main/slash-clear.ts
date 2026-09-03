@@ -29,7 +29,7 @@
 
 import { log as _log } from './logger'
 import { state, sessionPlane, engineBridge } from './state'
-import { formatClearDivider, buildClearDividerRemoteEvent } from '../shared/clear-divider'
+import { formatClearDivider, formatClearKeepPlanDivider, buildClearDividerRemoteEvent, buildDividerRemoteEvent } from '../shared/clear-divider'
 import { insertRendererSystemMessage, clearConnectingStatus } from './prompt-pipeline-renderer'
 import type { IncomingPrompt } from './prompt-pipeline'
 
@@ -101,7 +101,12 @@ async function resolveConversationId(p: IncomingPrompt): Promise<{ id: string; v
  * lives in prompt-pipeline.ts; computing it inline here would either
  * duplicate the helper or create an import cycle.
  */
-export async function handleLocalClearShortCircuit(p: IncomingPrompt, engineKey: string): Promise<void> {
+export async function handleLocalClearShortCircuit(p: IncomingPrompt, engineKey: string, keepPlan = false): Promise<void> {
+  // When --keep-plan was requested the engine's file-only clear retains the
+  // latest unimplemented plan and returns its slug; we render the keep-plan
+  // notice from it (this path may own no live session, so the engine emits no
+  // signal — the divider is drawn here).
+  let keptPlanSlug: string | undefined
   // If the tab has a tracked conversationId (loaded from disk but never
   // sent a prompt), wipe the on-disk conversation file so the LLM does
   // NOT see the prior history on the next prompt. Without this step the
@@ -117,8 +122,9 @@ export async function handleLocalClearShortCircuit(p: IncomingPrompt, engineKey:
     const { id: convId, via } = resolved
     log('slash_clear: conversationId resolved', { via, conv_id: convId })
     try {
-      await engineBridge.clearConversationFile(convId)
-      log('slash_clear: on-disk wipe complete', { conv_id: convId })
+      const wipe = await engineBridge.clearConversationFile(convId, keepPlan)
+      keptPlanSlug = wipe?.keptPlanSlug
+      log('slash_clear: on-disk wipe complete', { conv_id: convId, keep_plan: keepPlan, kept_plan_slug: keptPlanSlug ?? '' })
     } catch (err) {
       // Log and continue: the divider is still inserted so the user sees
       // the expected UI feedback. The wipe failure is non-fatal — worse
@@ -139,8 +145,12 @@ export async function handleLocalClearShortCircuit(p: IncomingPrompt, engineKey:
   sessionPlane.notifyConversationCleared(p.tabId)
   log(`pipeline: /clear unknown_command (no session) → inserting divider locally`)
   const now = new Date()
-  const divider = formatClearDivider(now)
+  const divider = keepPlan ? formatClearKeepPlanDivider(now, keptPlanSlug) : formatClearDivider(now)
   await insertRendererSystemMessage(p, divider)
-  state.remoteTransport?.send(buildClearDividerRemoteEvent(engineKey, now))
+  state.remoteTransport?.send(
+    keepPlan
+      ? buildDividerRemoteEvent(engineKey, divider, now)
+      : buildClearDividerRemoteEvent(engineKey, now),
+  )
   await clearConnectingStatus(p)
 }

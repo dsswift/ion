@@ -13,6 +13,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   formatClearDivider,
+  formatClearKeepPlanDivider,
   isClearDivider,
   formatImplementDivider,
   isImplementDivider,
@@ -33,6 +34,29 @@ describe('formatClearDivider', () => {
     const out = formatClearDivider(new Date('2024-01-01T15:42:00'))
     expect(out.startsWith('── Cleared at ')).toBe(true)
     expect(out.endsWith(' ──')).toBe(true)
+  })
+})
+
+describe('formatClearKeepPlanDivider', () => {
+  const at = new Date('2024-01-01T15:42:00')
+
+  it('names the kept plan slug when one was retained', () => {
+    const out = formatClearKeepPlanDivider(at, 'happy-jumping-rabbit')
+    expect(out.startsWith('── Cleared at ')).toBe(true)
+    expect(out).toContain('plan kept: happy-jumping-rabbit')
+    expect(out.endsWith(' ──')).toBe(true)
+  })
+
+  it('states no plan was kept when the slug is empty', () => {
+    for (const slug of [undefined, null, '']) {
+      const out = formatClearKeepPlanDivider(at, slug)
+      expect(out).toContain('no plan to keep')
+    }
+  })
+
+  it('keeps the `── Cleared` sentinel so isClearDivider still matches', () => {
+    expect(isClearDivider(formatClearKeepPlanDivider(at, 'tidy-sailing-wren'))).toBe(true)
+    expect(isClearDivider(formatClearKeepPlanDivider(at, ''))).toBe(true)
   })
 })
 

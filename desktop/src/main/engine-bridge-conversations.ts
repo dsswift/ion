@@ -194,10 +194,24 @@ export async function deleteStoredConversations(
  * LastInputTokensMsgCount. Entries, cost totals, and identity fields are
  * preserved — /clear is a checkpoint, not a delete.
  */
-export async function clearConversationFile(bridge: EngineBridge, conversationId: string): Promise<void> {
+export async function clearConversationFile(
+  bridge: EngineBridge,
+  conversationId: string,
+  keepPlan = false,
+): Promise<{ keptPlanSlug?: string }> {
   await bridge.connect()
-  log('clear_conversation_file', { conversation_id: conversationId })
-  await bridge._sendWithResult({ cmd: 'clear_conversation_file', key: conversationId })
+  log('clear_conversation_file', { conversation_id: conversationId, keep_plan: keepPlan })
+  // Pass --keep-plan through the command args (same flag the live /clear
+  // accepts) so a file-only clear on a never-prompted tab retains its plan too.
+  // The engine returns the retained slug so the caller renders the notice.
+  const result = await bridge._sendWithResult({
+    cmd: 'clear_conversation_file',
+    key: conversationId,
+    ...(keepPlan ? { args: '--keep-plan' } : {}),
+  })
+  const data = result?.data as { keptPlanSlug?: unknown } | undefined
+  const keptPlanSlug = typeof data?.keptPlanSlug === 'string' ? data.keptPlanSlug : undefined
+  return { keptPlanSlug }
 }
 
 export async function saveSessionLabel(bridge: EngineBridge, sessionId: string, label: string): Promise<{ ok: boolean; error?: string }> {

@@ -21,7 +21,7 @@
 
 import type { StoreSet, StoreGet } from '../session-store-types'
 import { nextMsgId } from '../session-store-helpers'
-import { formatClearDivider } from '../../../shared/clear-divider'
+import { formatClearDivider, formatClearKeepPlanDivider } from '../../../shared/clear-divider'
 import { applyResourceSnapshot, applyResourceDelta } from './resource-slice'
 import type { ResourceItem } from '../../../shared/types-engine'
 import { extensionCommandsByKey, dispatchActivityFoldByDispatchId } from './engine-event-slice-helpers'
@@ -65,7 +65,9 @@ export function handleCrossNormalizedEvent(
     const cmdName = event.command || ''
     const failed = !!event.commandError
     if (cmdName === 'clear' && !failed) {
-      const divider = formatClearDivider(new Date())
+      const divider = event.clearKeepPlan
+        ? formatClearKeepPlanDivider(new Date(), event.clearKeptPlanSlug)
+        : formatClearDivider(new Date())
       // WI-001: all conversations use bare tabId + active instance (single-path).
       // Insert the clear divider and clear any pending permissionDenied card.
       set((state) => {

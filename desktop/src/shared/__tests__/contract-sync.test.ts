@@ -181,6 +181,16 @@ describe("Contract sync: EngineEvent dispatch fields", () => {
     ).toEqual([]);
   });
 
+  it("the /clear --keep-plan outcome fields are present in the Go EngineEvent manifest", () => {
+    const goFields = new Set(manifest.engineEvent);
+    for (const field of ["clearKeepPlan", "clearKeptPlanSlug"]) {
+      expect(
+        goFields.has(field),
+        `Go EngineEvent is missing ${field} (consumed by the /clear --keep-plan divider)`,
+      ).toBe(true);
+    }
+  });
+
   it("the engine_oidc_identity requirement field is present in the Go EngineEvent manifest", () => {
     const goFields = new Set(manifest.engineEvent);
     expect(

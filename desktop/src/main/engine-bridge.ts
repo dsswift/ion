@@ -457,8 +457,11 @@ export class EngineBridge extends EventEmitter {
     return conv.deleteStoredConversations(this, sessionIds);
   }
 
-  async clearConversationFile(conversationId: string): Promise<void> {
-    return conv.clearConversationFile(this, conversationId);
+  async clearConversationFile(
+    conversationId: string,
+    keepPlan = false,
+  ): Promise<{ keptPlanSlug?: string }> {
+    return conv.clearConversationFile(this, conversationId, keepPlan);
   }
 
   async saveSessionLabel(

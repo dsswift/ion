@@ -177,7 +177,7 @@ describe('processIncomingPrompt — /clear file wipe on loaded-but-not-started t
 
     // clearConversationFile must be called with the correct conversationId.
     expect(mocks.clearConversationFileMock).toHaveBeenCalledTimes(1)
-    expect(mocks.clearConversationFileMock).toHaveBeenCalledWith('loaded-conv-42')
+    expect(mocks.clearConversationFileMock).toHaveBeenCalledWith('loaded-conv-42', false)
 
     // Divider must still appear.
     const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
@@ -185,6 +185,27 @@ describe('processIncomingPrompt — /clear file wipe on loaded-but-not-started t
 
     // No "Unknown command" error.
     expect(calls.every((s: string) => !s.includes('Unknown command'))).toBe(true)
+  })
+
+  // ── /clear --keep-plan on the no-session short-circuit ──────────────────
+  // The flag rides the file-only clear so a never-prompted tab keeps its plan
+  // too; the engine returns the retained slug and the divider names it.
+  it('passes --keep-plan through and renders the kept-plan notice', async () => {
+    mocks.getTabStatusMock.mockReturnValue({ conversationId: 'loaded-conv-42' })
+    mocks.clearConversationFileMock.mockResolvedValue({ keptPlanSlug: 'happy-jumping-rabbit' })
+
+    await processIncomingPrompt({
+      tabId: 'tab-loaded',
+      text: '/clear --keep-plan',
+      reqId: 'req-wipe-keep',
+      source: 'desktop',
+      hasExtensions: false,
+      runOptions: { prompt: '/clear --keep-plan' } as any,
+    })
+
+    expect(mocks.clearConversationFileMock).toHaveBeenCalledWith('loaded-conv-42', true)
+    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
+    expect(calls.some((s: string) => s.includes('plan kept: happy-jumping-rabbit'))).toBe(true)
   })
 
   // ── Priority 1: runOptions.sessionId ────────────────────────────────────
@@ -207,7 +228,7 @@ describe('processIncomingPrompt — /clear file wipe on loaded-but-not-started t
 
     // clearConversationFile must be called with the runOptions id.
     expect(mocks.clearConversationFileMock).toHaveBeenCalledTimes(1)
-    expect(mocks.clearConversationFileMock).toHaveBeenCalledWith('1779509603510-e1dbeb9b1544')
+    expect(mocks.clearConversationFileMock).toHaveBeenCalledWith('1779509603510-e1dbeb9b1544', false)
 
     // Divider must still appear.
     const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
@@ -245,7 +266,7 @@ describe('processIncomingPrompt — /clear file wipe on loaded-but-not-started t
 
     // clearConversationFile must be called with the renderer-store id.
     expect(mocks.clearConversationFileMock).toHaveBeenCalledTimes(1)
-    expect(mocks.clearConversationFileMock).toHaveBeenCalledWith('remote-conv-ios-99')
+    expect(mocks.clearConversationFileMock).toHaveBeenCalledWith('remote-conv-ios-99', false)
 
     // Divider must still appear.
     const allScripts = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)

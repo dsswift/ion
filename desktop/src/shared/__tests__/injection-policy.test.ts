@@ -27,6 +27,7 @@ const KIND_EXPECTATIONS: ReadonlyArray<{ kind: string; machineAuthored: boolean;
   { kind: 'structured_answer', machineAuthored: false, suppressed: false },
   { kind: 'system_steer', machineAuthored: true, suppressed: true },
   { kind: 'steer', machineAuthored: false, suppressed: false },
+  { kind: 'plan_retained', machineAuthored: false, suppressed: false },
 ]
 
 describe('suppressesInjection', () => {
@@ -144,5 +145,14 @@ describe('outbound client-authored kinds', () => {
     // The outbound set is an allowlist, not a licence for any kind string: a
     // client cannot hide a turn by inventing one.
     expect(suppressesInjection({ injectionKind: 'invented_kind' })).toBe(false)
+  })
+
+  it('RENDERS a retained plan — the operator chose --keep-plan', () => {
+    // The engine, not the user, produced this exact turn, but the content is
+    // the user's own plan and `--keep-plan` was the operator's explicit
+    // choice. Hiding it would contradict the divider ("plan kept: <slug>")
+    // the same action produces; the transcript shows it with a "Plan
+    // retained" label instead.
+    expect(suppressesInjection({ injectionKind: 'plan_retained', machineAuthored: false })).toBe(false)
   })
 })

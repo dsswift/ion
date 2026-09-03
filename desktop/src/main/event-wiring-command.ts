@@ -19,6 +19,10 @@ export function handleCommandEvent(
     type: "command_result",
     command: event.command,
     commandError: event.commandError,
+    // Forward the /clear --keep-plan outcome so the renderer and the iOS relay
+    // both draw the keep-plan-aware divider from one engine signal.
+    clearKeepPlan: event.clearKeepPlan,
+    clearKeptPlanSlug: event.clearKeptPlanSlug,
   });
   return true;
 }

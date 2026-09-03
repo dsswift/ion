@@ -254,7 +254,8 @@ export async function handleSlash(
 
   if (result.commandError === "unknown_command") {
     if (slash.command === "clear") {
-      await handleLocalClearShortCircuit(p, deps.engineKey(p));
+      const keepPlan = (slash.args ?? "").split(/\s+/).includes("--keep-plan");
+      await handleLocalClearShortCircuit(p, deps.engineKey(p), keepPlan);
       return;
     }
     const msg = `Unknown command: /${slash.command}`;
