@@ -332,7 +332,8 @@ jobs:
           # as extraResources alongside the engine binary. The plist template is
           # written by engine-bootstrap.ts at first launch after $HOME substitution.
           mkdir -p desktop/resources/engine/extensions
-          cp -r engine/extensions/sdk desktop/resources/engine/extensions/sdk
+          cp -R engine/extensions/sdk desktop/resources/engine/extensions/sdk
+          cp -R sdk/go desktop/resources/engine/extensions/sdk-go
 
           # Copy plist template; engine-bootstrap.ts substitutes $HOME at runtime.
           cp packaging/launchd/com.ion.engine.plist desktop/resources/engine/com.ion.engine.plist
