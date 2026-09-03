@@ -42,13 +42,18 @@ vi.mock('../../git/untracked-obstruction', () => ({ retryAfterClearingBlockingUn
 vi.mock('../base-repair', () => ({ repairStaleBase: vi.fn() }))
 vi.mock('../patch-identity', () => ({ computeReplayPlan: vi.fn() }))
 vi.mock('../inventory-cache', () => ({ invalidateWorktreeInventoryCache: vi.fn() }))
+vi.mock('../lifecycle-automation-trigger', () => ({
+  triggerWorktreeLifecycleAutomation: vi.fn(),
+}))
 
-import { lookupWorktreeLandedAt } from '../inventory'
+import { lookupWorktreeLandedAt, markWorktreeLanded } from '../inventory'
 import { runGit } from '../../git-runner'
 import { landWorktreeUnqueued } from '../integrate'
 import { syncWorktreeFromSource } from '../sync'
+import { triggerWorktreeLifecycleAutomation } from '../lifecycle-automation-trigger'
 const landedAtMock = vi.mocked(lookupWorktreeLandedAt)
 const runGitMock = vi.mocked(runGit)
+const landedFactMock = vi.mocked(triggerWorktreeLifecycleAutomation)
 
 beforeEach(() => {
   vi.resetAllMocks()
@@ -85,6 +90,50 @@ describe('land: terminal guard', () => {
     expect(result.ok).toBe(false)
     expect(result.error).toContain('Commit')
     expect(runGitMock).toHaveBeenCalled()
+  })
+
+  it('emits the worktree:landed automation fact once on a successful ref-advance land', async () => {
+    landedAtMock.mockReturnValue(null)
+    vi.mocked(markWorktreeLanded).mockReturnValue(true)
+    runGitMock.mockImplementation(async (_dir: string, args: string[]) => {
+      if (args[0] === 'status') return '' // clean worktree
+      if (args[0] === 'worktree') return '' // source branch checked out nowhere
+      if (args[0] === 'fetch') return ''
+      if (args[0] === 'rev-parse') return 'abc1234sha\n'
+      return ''
+    })
+
+    const result = await landWorktreeUnqueued({
+      repoPath: '/repo',
+      worktreePath: '/repo/.ion/worktrees/wt-1',
+      worktreeBranch: 'feat/foo',
+      sourceBranch: 'main',
+    })
+
+    expect(result.ok).toBe(true)
+    expect(landedFactMock).toHaveBeenCalledTimes(1)
+    expect(landedFactMock).toHaveBeenCalledWith(
+      'worktree:landed',
+      expect.objectContaining({
+        repoPath: '/repo',
+        worktreePath: '/repo/.ion/worktrees/wt-1',
+        branchName: 'feat/foo',
+        sourceBranch: 'main',
+        resolvedSha: 'abc1234sha',
+        landMode: 'ref-advance',
+      }),
+    )
+  })
+
+  it('does not emit the landed fact when land is refused', async () => {
+    landedAtMock.mockReturnValue(1700000000000) // already landed → terminal refusal
+    await landWorktreeUnqueued({
+      repoPath: '/repo',
+      worktreePath: '/repo/.ion/worktrees/wt-1',
+      worktreeBranch: 'feat/foo',
+      sourceBranch: 'main',
+    })
+    expect(landedFactMock).not.toHaveBeenCalled()
   })
 })
 

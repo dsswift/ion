@@ -46,6 +46,7 @@ import { runGit } from '../git-runner'
 import { repositoryManager } from '../git/repositoryManager'
 import { log as _log, warn as _warn } from '../logger'
 import { markWorktreeLanded, lookupWorktreeLandedAt } from './inventory'
+import { triggerWorktreeLifecycleAutomation } from './lifecycle-automation-trigger'
 import { disenrollWorktree } from '../integration/bench-ops'
 import type { LandResult, WorktreeMoveResult } from '../../shared/types'
 import { retireWorktreeUnqueued } from './relocate'
@@ -337,6 +338,20 @@ export async function landWorktreeUnqueued(opts: LandOptions): Promise<LandResul
         return { ok: true, mode: 'ref-advance', sha, warning: landWarning }
       }
       const prunedBenchPaths = await disenrollAfterLand(repoPath, worktreePath)
+      // The declared landed lifecycle fact, emitted from the operation that
+      // owns it — after the registry mutation persisted and the benches were
+      // pruned, and only on a durable success. This is separate from the
+      // renderer `ion:worktree-landed` seal broadcast, which the IPC/remote
+      // handlers send to seal client state after the whole Land-and-Retire.
+      await triggerWorktreeLifecycleAutomation('worktree:landed', {
+        repoPath,
+        worktreePath,
+        branchName: worktreeBranch,
+        sourceBranch,
+        resolvedSha: sha,
+        landMode: 'ref-advance',
+        prunedBenchPaths,
+      })
       return { ok: true, mode: 'ref-advance', sha, prunedBenchPaths }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -402,7 +417,19 @@ export async function landWorktreeUnqueued(opts: LandOptions): Promise<LandResul
       return { ok: true, mode: requireFastForward ? 'fast-forward' : 'merge', sha, warning: mergeWarning }
     }
     const prunedBenchPaths = await disenrollAfterLand(repoPath, worktreePath)
-    return { ok: true, mode: requireFastForward ? 'fast-forward' : 'merge', sha, prunedBenchPaths }
+    const landMode = requireFastForward ? 'fast-forward' : 'merge'
+    // Same durable landed fact as the ref-advance strategy above. Emitted once,
+    // after persistence and bench pruning, from the in-place merge path.
+    await triggerWorktreeLifecycleAutomation('worktree:landed', {
+      repoPath,
+      worktreePath,
+      branchName: worktreeBranch,
+      sourceBranch,
+      resolvedSha: sha,
+      landMode,
+      prunedBenchPaths,
+    })
+    return { ok: true, mode: landMode, sha, prunedBenchPaths }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     // Ask git whether this is actually a conflict rather than pattern-matching

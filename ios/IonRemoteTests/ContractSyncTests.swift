@@ -979,6 +979,11 @@ final class ContractSyncTests: XCTestCase {
 
     let swiftHandled: Set<String> = [
       "id", "providerId", "contextWindow",
+      // Human-friendly model name. The desktop resolves it into
+      // RemoteModelEntry.label at projection time (models.ts updateCache →
+      // getModelDisplayLabel, which prefers this field), so iOS consumes it as
+      // `label` rather than decoding it directly.
+      "displayName",
       "costPer1kInput", "costPer1kOutput",
       "costPer1kCacheCreation", "costPer1kCacheRead",
       "supportsCaching", "supportsThinking", "supportsImages",

@@ -6,6 +6,7 @@ const MAX_LEDGER_ENTRIES = 40
 
 const WORKSPACE_MUTATION_ACTIONS = new Set([
   'syncWorktree', 'startWorktreePipeline', 'confirmWorktreePipelineAi',
+  'landAndRetireWorktree', 'retireWorktree',
   'benchAssemble', 'benchResolveConflict', 'benchDiscardMemberRecordings',
   'benchUpdateMember', 'benchUpdateAll', 'benchAddMember', 'benchRemoveMember',
   'benchSetOrder', 'continueConflictOperation', 'abortConflictOperation',
@@ -20,6 +21,25 @@ function descriptor(action: string, args: unknown[]): Pick<WorkspaceOperation,
       sourceBranch: typeof args[1] === 'string' ? args[1] : undefined,
       repoPath: typeof args[2] === 'string' ? args[2] : undefined,
     }
+  }
+  // landAndRetireWorktree(repoPath, entry, strategyOverride?): the worktree it
+  // acts on is carried on the entry object, not as a positional string. The row
+  // menu's busy guard matches this ledger entry by worktreePath, so extracting
+  // it here is what makes the confirm dialog show its spinner and lock its
+  // buttons for the whole land+retire, rather than staying inert.
+  if (action === 'landAndRetireWorktree') {
+    const entry = args[1] as { worktreePath?: string; sourceBranch?: string } | undefined
+    return {
+      repoPath,
+      worktreePath: typeof entry?.worktreePath === 'string' ? entry.worktreePath : undefined,
+      sourceBranch: typeof entry?.sourceBranch === 'string' ? entry.sourceBranch : undefined,
+    }
+  }
+  // retireWorktree(repoPath, worktreePath, branchName): worktreePath is the
+  // SECOND arg, so the generic tail below (which reads args[2]) would record the
+  // branch name instead and the busy guard would never match.
+  if (action === 'retireWorktree') {
+    return { repoPath, worktreePath: typeof args[1] === 'string' ? args[1] : undefined }
   }
   if (action === 'continueConflictOperation' || action === 'abortConflictOperation') {
     return { worktreePath: typeof args[0] === 'string' ? args[0] : undefined }

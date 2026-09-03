@@ -82,12 +82,14 @@ beforeEach(async () => {
 
 describe("preload module ownership", () => {
   it("does not let later modules replace an API owned by another module", async () => {
-    const [{ requestApi }, { engineApi }, { systemApi }] = await Promise.all([
-      import("../api-request"),
-      import("../engine-api"),
-      import("../api-system"),
-    ]);
-    const modules = [requestApi, engineApi, systemApi];
+    const [{ requestApi }, { automationApi }, { engineApi }, { systemApi }] =
+      await Promise.all([
+        import("../api-request"),
+        import("../api-automation"),
+        import("../engine-api"),
+        import("../api-system"),
+      ]);
+    const modules = [requestApi, automationApi, engineApi, systemApi];
 
     for (let left = 0; left < modules.length; left++) {
       for (let right = left + 1; right < modules.length; right++) {
@@ -97,6 +99,32 @@ describe("preload module ownership", () => {
         expect(duplicateKeys).toEqual([]);
       }
     }
+  });
+});
+
+describe("preload automation bridge", () => {
+  it("each automation listener removes the exact wrapper it registered", () => {
+    const onEvent = exposed.onAutomationEvent(vi.fn());
+    const onCommand = exposed.onAutomationCommand(vi.fn());
+    expect(count(IPC.AUTOMATION_EVENT)).toBe(1);
+    expect(count(IPC.AUTOMATION_COMMAND)).toBe(1);
+
+    onEvent();
+    onCommand();
+    expect(count(IPC.AUTOMATION_EVENT)).toBe(0);
+    expect(count(IPC.AUTOMATION_COMMAND)).toBe(0);
+  });
+
+  it("routes the source-aware listing and per-item CRUD through their channels", () => {
+    exposed.automationListing("/repo");
+    exposed.automationDelete("id-1");
+    exposed.automationDuplicate("id-2", "/repo");
+    expect(fakeIpc.invoke).toHaveBeenCalledWith(IPC.AUTOMATION_LISTING, "/repo");
+    expect(fakeIpc.invoke).toHaveBeenCalledWith(IPC.AUTOMATION_DELETE, "id-1");
+    expect(fakeIpc.invoke).toHaveBeenCalledWith(IPC.AUTOMATION_DUPLICATE, {
+      id: "id-2",
+      projectPath: "/repo",
+    });
   });
 });
 

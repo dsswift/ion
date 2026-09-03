@@ -1,491 +1,427 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState } from "react";
 import type {
-  AutomationConditionDecisionResult,
   AutomationDefinition,
-  AutomationEvaluationTrace,
   AutomationHistoryEntry,
+  AutomationListing,
+  AutomationSourceEntry,
   AutomationStep,
-  AutomationStepDecision,
-  AutomationValue,
-} from '../../../shared/types-automation'
-import { deriveEnterpriseAutomationPolicy } from '../../../shared/types-automation'
-import type { EnterprisePolicy } from '../../../shared/types-engine'
-import { rInfo, rWarn } from '../../rendererLogger'
-import { useColors } from '../../theme'
-import { Tooltip } from '../git/Tooltip'
-import { AutomationEditor, AUTOMATION_TEMPLATES, AiAuthorizationBadge } from './AutomationEditor'
-import { eventLabel, actionLabel } from './automation-editor-options'
-import { SettingHeading } from './SettingHeading'
-import { SettingSection } from './SettingSection'
+} from "../../../shared/types-automation";
+import { deriveEnterpriseAutomationPolicy } from "../../../shared/types-automation";
+import {
+  automationAction,
+  automationTrigger,
+} from "../../../shared/automation-catalog";
+import type { EnterprisePolicy } from "../../../shared/types-engine";
+import { rInfo, rWarn } from "../../rendererLogger";
+import { useColors } from "../../theme";
+import { Tooltip } from "../git/Tooltip";
+import { AutomationEditor } from "./AutomationEditor";
+import { AutomationActivity } from "./AutomationActivity";
+import { AUTOMATION_TEMPLATES } from "./automation-editor-helpers";
+import { SettingHeading } from "./SettingHeading";
+import { SettingSection } from "./SettingSection";
 
 function blankAutomation(): AutomationDefinition {
-  const now = new Date().toISOString()
+  const now = new Date().toISOString();
   return {
-    id: '',
-    name: '',
+    id: "",
+    name: "",
     enabled: true,
-    trigger: { kind: 'event', event: '' },
+    trigger: { kind: "event", event: "" },
     steps: [],
     createdAt: now,
     updatedAt: now,
-  }
+  };
 }
 
-/** Desktop-local editor for declarative workflows. Main process remains evaluator. */
+/**
+ * Whether `editing` is one of the listing's own entries rather than a draft
+ * (a blank workflow, or a template just applied to one). A template assigns a
+ * real id immediately, so a blank-id check cannot tell "new" from "saved" —
+ * membership in the current listing is the only stable signal.
+ */
+function isSavedEntry(
+  editing: AutomationDefinition,
+  listing: AutomationListing | null,
+): boolean {
+  return listing?.entries.some((entry) => entry.definition.id === editing.id) ?? false;
+}
+
+/**
+ * The Desktop Automation category: a source-aware list plus the inline
+ * Automation Editor. The main process owns evaluation and persistence; this
+ * screen only reads the listing and requests one user mutation at a time.
+ */
 export function AutomationCategory() {
-  const colors = useColors()
-  const [definitions, setDefinitions] = useState<AutomationDefinition[] | null>(null)
-  const [history, setHistory] = useState<AutomationHistoryEntry[]>([])
-  const [editing, setEditing] = useState<AutomationDefinition | null>(null)
-  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [aiAuthorized, setAiAuthorized] = useState(false)
-  const [projectPath, setProjectPath] = useState('')
-  const [projectIds, setProjectIds] = useState<string[]>([])
+  const colors = useColors();
+  const [listing, setListing] = useState<AutomationListing | null>(null);
+  const [history, setHistory] = useState<AutomationHistoryEntry[]>([]);
+  const [editing, setEditing] = useState<AutomationDefinition | null>(null);
+  const [aiAuthorized, setAiAuthorized] = useState(false);
+  const [projectPath, setProjectPath] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
-    let active = true
+    let active = true;
     void Promise.all([
-      window.ion.automationList(projectPath || undefined),
+      window.ion.automationListing(projectPath || undefined),
       window.ion.automationHistory(),
       window.ion.getEnterprisePolicyFull(),
-      projectPath ? window.ion.automationProjectIds(projectPath) : Promise.resolve([]),
     ])
-      .then(([nextDefinitions, nextHistory, policy, nextProjectIds]) => {
-        if (!active) return
-        setDefinitions(nextDefinitions)
-        setHistory(nextHistory)
+      .then(([nextListing, nextHistory, policy]) => {
+        if (!active) return;
+        setListing(nextListing);
+        setHistory(nextHistory);
         setAiAuthorized(
           deriveEnterpriseAutomationPolicy(policy as EnterprisePolicy | null)
             ?.authorizeAiActions === true,
-        )
-        setProjectIds(nextProjectIds)
+        );
       })
       .catch((loadError) => {
-        if (!active) return
-        setError(String(loadError))
-        rWarn('automation.settings', 'automation settings load failed', {
+        if (!active) return;
+        setError(String(loadError));
+        rWarn("automation.settings", "automation settings load failed", {
           error: String(loadError),
-        })
-      })
+        });
+      });
     return () => {
-      active = false
-    }
-  }, [projectPath])
+      active = false;
+    };
+  }, [projectPath, refreshTick]);
 
-  const persist = (
-    next: AutomationDefinition[],
-    message: string,
-    automationId?: string,
-  ) => {
-    const previous = definitions
-    setDefinitions(next)
-    setError(null)
-    void window.ion.automationSave(next)
-      .then((result) => {
-        if (result.ok) {
-          rInfo('automation.settings', message, {
-            automation_id: automationId ?? '',
-            count: next.length,
-          })
-          return
-        }
-        setDefinitions(previous)
-        setError(result.error ?? 'Could not save workflow')
-        rWarn('automation.settings', 'automation setting save rejected', {
-          automation_id: automationId ?? '',
-          error: result.error ?? '',
-        })
-      })
-      .catch((saveError) => {
-        setDefinitions(previous)
-        setError(String(saveError))
-        rWarn('automation.settings', 'automation setting save failed', {
-          automation_id: automationId ?? '',
-          error: String(saveError),
-        })
-      })
-  }
-
-  const toggle = (definition: AutomationDefinition) => {
-    if (projectIds.includes(definition.id) && projectPath) {
-      void window.ion
-        .setProjectAutomationEnabled(projectPath, definition.id, !definition.enabled)
-        .then((result) => {
-          if (!result.ok) {
-            setError(result.error ?? 'Could not update project workflow')
-            return
-          }
-          setDefinitions((current) =>
-            current?.map((item) =>
-              item.id === definition.id
-                ? { ...item, enabled: !item.enabled }
-                : item,
-            ) ?? null,
-          )
-        })
-        .catch((toggleError) => setError(String(toggleError)))
-      return
-    }
-    persist(
-      (definitions ?? []).map((item) =>
-        item.id === definition.id
-          ? { ...item, enabled: !item.enabled, updatedAt: new Date().toISOString() }
-          : item,
-      ),
-      'automation workflow saved',
-      definition.id,
-    )
-  }
+  const refresh = () => setRefreshTick((t) => t + 1);
 
   const save = (definition: AutomationDefinition) => {
-    const exists = (definitions ?? []).some((item) => item.id === definition.id)
-    persist(
-      exists
-        ? (definitions ?? []).map((item) =>
-            item.id === definition.id ? definition : item,
-          )
-        : [...(definitions ?? []), definition],
-      'automation workflow saved',
-      definition.id,
-    )
-    setEditing(null)
-  }
+    setError(null);
+    void window.ion
+      .automationUpsert(definition)
+      .then((result) => {
+        if (!result.ok) {
+          setError(result.error ?? "Could not save workflow");
+          rWarn("automation.settings", "automation save rejected", {
+            error: result.error ?? "",
+          });
+          return;
+        }
+        rInfo("automation.settings", "automation workflow saved", {
+          automation_id: result.definition?.id ?? definition.id,
+        });
+        setEditing(null);
+        refresh();
+      })
+      .catch((saveError) => {
+        setError(String(saveError));
+        rWarn("automation.settings", "automation save failed", {
+          error: String(saveError),
+        });
+      });
+  };
+
+  const remove = (id: string) => {
+    void window.ion.automationDelete(id).then((result) => {
+      if (!result.ok) setError(result.error ?? "Could not delete workflow");
+      else refresh();
+    });
+  };
+
+  const duplicate = (id: string) => {
+    void window.ion
+      .automationDuplicate(id, projectPath || undefined)
+      .then((result) => {
+        if (!result.ok || !result.definition) {
+          setError(result.error ?? "Could not duplicate workflow");
+          return;
+        }
+        // Open the fresh user copy for editing immediately.
+        setEditing(result.definition);
+        refresh();
+      });
+  };
+
+  const toggleUser = (definition: AutomationDefinition) =>
+    save({ ...definition, enabled: !definition.enabled });
+
+  const toggleProject = (id: string, enabled: boolean) => {
+    void window.ion
+      .setProjectAutomationEnabled(projectPath, id, enabled)
+      .then((result) => {
+        if (!result.ok) setError(result.error ?? "Could not update project workflow");
+        else refresh();
+      });
+  };
 
   return (
     <>
-      <SettingHeading first>Automation</SettingHeading>
+      <SettingHeading first>Desktop Automation</SettingHeading>
       <SettingSection description="Workflows watch for desktop events, check optional conditions, then run actions. They and their activity history stay on this desktop.">
         {error && (
           <div role="alert" style={{ color: colors.statusError, fontSize: 12, marginBottom: 8 }}>
             {error}
           </div>
         )}
+        {listing?.locked && (
+          <div style={{ color: colors.statusWarning, fontSize: 12, marginBottom: 8 }}>
+            Enterprise policy locks changes to your workflows.
+          </div>
+        )}
         <label style={labelStyle(colors)}>
-          <Tooltip text="Project workflows come from this project's .ion/automation folder. Leave this blank to manage only desktop workflows.">
+          <Tooltip text="Project workflows come from this project's .ion/automation folder. Leave blank to manage only your desktop workflows.">
             <span style={helpLabelStyle(colors)}>Project directory (optional)</span>
           </Tooltip>
-          <input
-            aria-label="Automation project directory"
-            value={projectPath}
-            onChange={(event) => setProjectPath(event.target.value)}
-            placeholder="/path/to/project"
-            style={inputStyle(colors)}
-          />
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              aria-label="Automation project directory"
+              value={projectPath}
+              onChange={(e) => setProjectPath(e.target.value)}
+              placeholder="/path/to/project"
+              style={{ ...inputStyle(colors), flex: 1 }}
+            />
+            {projectPath && (
+              <button type="button" onClick={() => setProjectPath("")} style={buttonStyle(colors)}>
+                Clear
+              </button>
+            )}
+          </div>
         </label>
 
         <div style={toolbarStyle}>
-          <AiAuthorizationBadge
-            policy={aiAuthorized ? { authorizeAiActions: true } : undefined}
-          />
-          <button
-            type="button"
-            onClick={() => setEditing(blankAutomation())}
-            style={buttonStyle(colors)}
-          >
-            Create workflow
-          </button>
+          <span style={{ color: aiAuthorized ? colors.accent : colors.statusWarning, fontSize: 12 }}>
+            {aiAuthorized ? "AI automation authorized" : "AI automation needs confirmation"}
+          </span>
+          {!listing?.locked && (
+            <button type="button" onClick={() => setEditing(blankAutomation())} style={buttonStyle(colors)}>
+              Create workflow
+            </button>
+          )}
         </div>
 
-        <div style={{ display: 'grid', gap: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-            <strong style={{ color: colors.textPrimary, fontSize: 13 }}>Your workflows</strong>
-            <Tooltip text="Each card is one saved workflow. Select a card or its Edit button to change its trigger, conditions, or actions.">
-              <span style={helpLabelStyle(colors)}>What is this?</span>
-            </Tooltip>
+        {/* New-definition editor: shown above the list when creating from scratch.
+            Existing-definition editors expand inline after their own card below.
+            Distinguished by listing membership, not a blank id — picking a
+            template assigns a real id immediately, so an id check alone would
+            drop the editor the moment a template is chosen. */}
+        {editing !== null && !isSavedEntry(editing, listing) && (
+          <div style={{ display: "grid", gap: 6, marginBottom: 4 }}>
+            <AutomationEditor definition={editing} onCancel={() => setEditing(null)} onSave={save} />
+            {!editing.trigger.event && (
+              <div style={{ display: "grid", gap: 5 }}>
+                <span style={{ color: colors.textSecondary, fontSize: 12 }}>Start from a template</span>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {AUTOMATION_TEMPLATES.map((template) => (
+                    <button
+                      key={template.id}
+                      type="button"
+                      onClick={() => setEditing(template.definition())}
+                      style={buttonStyle(colors)}
+                    >
+                      Use {template.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-          {definitions === null && (
-            <div style={emptyStyle(colors)}>Loading workflows…</div>
+        )}
+
+        {/* Each card expands its own editor inline. Selecting a different
+            rule's Edit swaps the open editor's content in place (see
+            docs/design/desktop-automation.md § "The Automation Editor") — so
+            Edit stays enabled on every user card, never locked while another
+            is open. */}
+        <div style={{ display: "grid", gap: 6 }}>
+          {listing === null && <div style={emptyStyle(colors)}>Loading workflows…</div>}
+          {listing?.entries.length === 0 && !editing && (
+            <div style={emptyStyle(colors)}>No workflows yet. Create one, or start from a template.</div>
           )}
-          {definitions?.length === 0 && !editing && (
-            <div style={emptyStyle(colors)}>
-              No workflows yet. Create one, or start from a template below.
-            </div>
-          )}
-          {definitions?.map((definition) => (
-            <WorkflowCard
-              key={definition.id}
-              definition={definition}
-              project={projectIds.includes(definition.id)}
-              onEdit={() => setEditing(definition)}
-              onToggle={() => toggle(definition)}
-            />
+          {listing?.entries.map((entry) => (
+            <React.Fragment key={`${entry.source}:${entry.definition.id}`}>
+              <WorkflowCard
+                entry={entry}
+                locked={listing.locked}
+                onEdit={() => setEditing(entry.definition)}
+                onDuplicate={() => duplicate(entry.definition.id)}
+                onDelete={() => remove(entry.definition.id)}
+                onToggleUser={() => toggleUser(entry.definition)}
+                onToggleProject={(enabled) => toggleProject(entry.definition.id, enabled)}
+              />
+              {editing?.id === entry.definition.id && (
+                <AutomationEditor definition={editing} onCancel={() => setEditing(null)} onSave={save} />
+              )}
+            </React.Fragment>
           ))}
         </div>
-
-        {editing && (
-          <AutomationEditor
-            definition={editing}
-            aiAuthorized={aiAuthorized}
-            onCancel={() => setEditing(null)}
-            onSave={save}
-          />
-        )}
-        {!editing && (
-          <div style={{ display: 'grid', gap: 5, marginTop: 10 }}>
-            <span style={{ color: colors.textSecondary, fontSize: 12 }}>
-              Start from a template
-            </span>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {AUTOMATION_TEMPLATES.map((template) => (
-                <button
-                  key={template.id}
-                  type="button"
-                  onClick={() => setEditing(template.definition())}
-                  style={buttonStyle(colors)}
-                >
-                  Use {template.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </SettingSection>
 
       <SettingHeading>Recent activity</SettingHeading>
       <SettingSection description="Select an activity row to see the stored evaluation path. Older runs without trace data still show their final outcome.">
-        {history.length === 0 ? (
-          <div style={emptyStyle(colors)}>No workflow activity yet.</div>
-        ) : (
-          <div style={{ display: 'grid', gap: 5 }}>
-            {history.slice(-10).reverse().map((item) => (
-              <ActivityRow
-                key={item.id}
-                item={item}
-                workflowName={definitions?.find((definition) => definition.id === item.automationId)?.name ?? item.automationId}
-                expanded={expandedHistoryId === item.id}
-                onToggle={() =>
-                  setExpandedHistoryId((current) =>
-                    current === item.id ? null : item.id,
-                  )
-                }
-              />
-            ))}
-          </div>
-        )}
+        <AutomationActivity
+          history={history}
+          nameFor={(id) =>
+            listing?.entries.find((e) => e.definition.id === id)?.definition.name ?? id
+          }
+        />
       </SettingSection>
     </>
-  )
+  );
 }
 
 function WorkflowCard({
-  definition,
-  project,
+  entry,
+  locked,
   onEdit,
-  onToggle,
+  onDuplicate,
+  onDelete,
+  onToggleUser,
+  onToggleProject,
 }: {
-  definition: AutomationDefinition
-  project: boolean
-  onEdit(): void
-  onToggle(): void
+  entry: AutomationSourceEntry;
+  locked: boolean;
+  onEdit(): void;
+  onDuplicate(): void;
+  onDelete(): void;
+  onToggleUser(): void;
+  onToggleProject(enabled: boolean): void;
 }) {
-  const colors = useColors()
-  const steps = definition.steps ?? definition.actions ?? []
+  const colors = useColors();
+  const { definition, source } = entry;
+  const steps = definition.steps ?? definition.actions ?? [];
+  const isUser = source === "user";
+  const enabled = source === "project" ? !entry.locallyDisabled : definition.enabled;
   return (
     <div
-      role="button"
-      tabIndex={0}
-      aria-label={`Edit workflow ${definition.name}`}
-      onClick={onEdit}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onEdit()
-        }
-      }}
       style={{
-        display: 'grid',
+        display: "grid",
         gap: 6,
         padding: 9,
         border: `1px solid ${colors.containerBorder}`,
         borderRadius: 6,
         background: colors.surfaceSecondary,
-        cursor: 'pointer',
+        opacity: entry.effective ? 1 : 0.7,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <input
           aria-label={`Enable ${definition.name}`}
           type="checkbox"
-          checked={definition.enabled}
-          onClick={(event) => event.stopPropagation()}
-          onChange={onToggle}
+          checked={enabled}
+          disabled={locked || source === "enterprise" || source === "built-in"}
+          onChange={() => (isUser ? onToggleUser() : onToggleProject(!enabled))}
         />
-        <strong style={{ flex: 1, color: colors.textPrimary, fontSize: 13 }}>
-          {definition.name}
-        </strong>
-        {project && <span style={tagStyle(colors)}>Project</span>}
-        <span style={tagStyle(colors)}>{definition.enabled ? 'Enabled' : 'Paused'}</span>
-        <span style={{ color: colors.accent, fontSize: 12 }}>Edit</span>
+        <strong style={{ flex: 1, color: colors.textPrimary, fontSize: 13 }}>{definition.name}</strong>
+        <span style={tagStyle(colors)}>{sourceLabel(source)}</span>
+        {entry.overriddenBy && (
+          <span style={tagStyle(colors)}>overridden by {sourceLabel(entry.overriddenBy)}</span>
+        )}
+        {isUser && !locked && (
+          <button type="button" onClick={onEdit} style={linkStyle(colors)}>
+            Edit
+          </button>
+        )}
+        {!locked && (
+          <button type="button" onClick={onDuplicate} style={linkStyle(colors)}>
+            Duplicate
+          </button>
+        )}
+        {isUser && !locked && (
+          <button
+            type="button"
+            onClick={onDelete}
+            style={{ ...linkStyle(colors), color: colors.statusError }}
+          >
+            Delete
+          </button>
+        )}
       </div>
-      <div style={{ display: 'grid', gap: 3, color: colors.textSecondary, fontSize: 12 }}>
-        <span><strong>When:</strong> {eventLabel(definition.trigger.event)}</span>
-        <span><strong>Then:</strong> {actionSummary(steps)}</span>
-      </div>
-      {definition.id === 'builtin.worktree-pin-advance-stage' && (
-        <div style={{ color: colors.textTertiary, fontSize: 11, lineHeight: 1.35 }}>
-          When an <strong>Issue found</strong> worktree receives new committed work in the integration bench, move it to <strong>Needs testing</strong>.
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ActivityRow({
-  item,
-  workflowName,
-  expanded,
-  onToggle,
-}: {
-  item: AutomationHistoryEntry
-  workflowName: string
-  expanded: boolean
-  onToggle(): void
-}) {
-  const colors = useColors()
-  const outcomeColor = item.outcome === 'succeeded'
-    ? colors.successFg
-    : item.outcome === 'failed'
-      ? colors.statusError
-      : colors.statusWarning
-  return (
-    <div style={{ border: `1px solid ${colors.containerBorder}`, borderRadius: 6 }}>
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={onToggle}
-        style={{
-          width: '100%',
-          display: 'grid',
-          gridTemplateColumns: '1fr auto',
-          gap: 8,
-          padding: '7px 8px',
-          border: 'none',
-          background: 'transparent',
-          color: colors.textSecondary,
-          cursor: 'pointer',
-          textAlign: 'left',
-        }}
-      >
-        <span style={{ display: 'grid', gap: 2 }}>
-          <strong style={{ color: colors.textPrimary, fontSize: 12 }}>{workflowName}</strong>
-          <span style={{ fontSize: 11 }}>Trigger: {eventLabel(item.eventType)} · {new Date(item.finishedAt).toLocaleString()}</span>
+      <div style={{ display: "grid", gap: 3, color: colors.textSecondary, fontSize: 12 }}>
+        <span>
+          <strong>When:</strong> {automationTrigger(definition.trigger.event)?.label ?? definition.trigger.event}
         </span>
-        <span style={{ color: outcomeColor, fontSize: 12 }}>{expanded ? 'Hide' : 'Show'} {item.outcome}</span>
-      </button>
-      {expanded && (
-        <div style={{ borderTop: `1px solid ${colors.containerBorder}`, padding: 8 }}>
-          {item.trace ? <TraceView trace={item.trace} /> : (
-            <span style={emptyStyle(colors)}>This older activity record has no step-by-step trace.</span>
-          )}
-          {item.error && (
-            <div style={{ color: colors.statusError, fontSize: 12, marginTop: 7 }}>
-              Error: {item.error}
-            </div>
-          )}
-        </div>
-      )}
+        <span>
+          <strong>Then:</strong> {actionSummary(steps)}
+        </span>
+      </div>
     </div>
-  )
+  );
 }
 
-function TraceView({ trace }: { trace: AutomationEvaluationTrace }) {
-  const colors = useColors()
-  const rows = [
-    `Trigger received: ${eventLabel(trace.trigger.eventType)}`,
-    `Conditions: ${describeCondition(trace.condition)}`,
-    `Causation: ${describeCausation(trace)}`,
-    ...trace.steps.flatMap(describeStep),
-  ]
-  return (
-    <ol style={{ display: 'grid', gap: 5, margin: 0, paddingLeft: 20, color: colors.textSecondary, fontSize: 12 }}>
-      {rows.map((row, index) => <li key={`${index}-${row}`}>{row}</li>)}
-    </ol>
-  )
-}
-
-function describeStep(step: AutomationStepDecision): string[] {
-  if (step.type === 'action') {
-    return [`Action ${step.outcome}: ${step.kind}${step.error ? ` (${step.error})` : ''}`]
-  }
-  return [
-    `Branch selected: ${step.selected === 'then' ? 'Then actions' : 'Else actions'} (${describeGroup(step.condition)})`,
-    ...step.steps.flatMap(describeStep),
-  ]
-}
-
-function describeCondition(decision: AutomationConditionDecisionResult): string {
-  if (decision.type === 'none') return 'No conditions configured; workflow is eligible.'
-  return describeDecisionTree(decision)
-}
-
-function describeGroup(decision: Extract<AutomationConditionDecisionResult, { type: 'group' }>): string {
-  const parts = [
-    ...decision.all.map(describeDecisionTree),
-    ...decision.any.map(describeDecisionTree),
-  ]
-  return `${decision.matched ? 'Matched' : 'Did not match'}${parts.length ? `: ${parts.join('; ')}` : ''}`
-}
-
-function describeDecisionTree(decision: Exclude<AutomationConditionDecisionResult, { type: 'none' }>): string {
-  return decision.type === 'group' ? describeGroup(decision) : describeLeaf(decision)
-}
-
-function describeLeaf(decision: Extract<AutomationConditionDecisionResult, { type: 'condition' }>): string {
-  const expected = decision.expected === undefined ? '' : ` ${decision.operator} ${formatValue(decision.expected)}`
-  return `${decision.path}${expected} (${decision.matched ? 'matched' : `was ${formatValue(decision.actual)}`})`
-}
-
-function describeCausation(trace: AutomationEvaluationTrace): string {
-  switch (trace.causation.decision) {
-    case 'continued': return 'Allowed to run.'
-    case 'cycle': return 'Skipped to prevent an automation cycle.'
-    case 'max-depth': return 'Skipped because the automation chain reached its depth limit.'
-    default: return 'Not evaluated after the condition did not match.'
+function sourceLabel(source: AutomationSourceEntry["source"]): string {
+  switch (source) {
+    case "user":
+      return "You";
+    case "project":
+      return "Project";
+    case "enterprise":
+      return "Enterprise";
+    case "built-in":
+      return "Built-in";
   }
 }
 
 function actionSummary(steps: AutomationStep[]): string {
-  if (steps.length === 0) return 'No actions configured.'
-  const actionNames = steps.map((step) =>
-    'type' in step ? 'choose a branch' : actionLabel(step),
-  )
-  return actionNames.join(', ')
-}
-
-function formatValue(value: AutomationValue | undefined): string {
-  if (value === undefined) return 'no value'
-  return typeof value === 'string' ? value : JSON.stringify(value)
+  if (steps.length === 0) return "No actions configured.";
+  return steps
+    .map((step) => ("type" in step ? "choose a branch" : automationAction(step.kind)?.label ?? step.kind))
+    .join(", ");
 }
 
 function labelStyle(colors: ReturnType<typeof useColors>): React.CSSProperties {
-  return { display: 'grid', gap: 3, color: colors.textSecondary, fontSize: 12, marginBottom: 8 }
+  return { display: "grid", gap: 3, color: colors.textSecondary, fontSize: 12, marginBottom: 8 };
 }
-
 function inputStyle(colors: ReturnType<typeof useColors>): React.CSSProperties {
-  return { background: colors.surfacePrimary, color: colors.textPrimary, border: `1px solid ${colors.containerBorder}`, borderRadius: 5, padding: '5px 7px' }
+  return {
+    background: colors.surfacePrimary,
+    color: colors.textPrimary,
+    border: `1px solid ${colors.containerBorder}`,
+    borderRadius: 5,
+    padding: "5px 7px",
+  };
 }
-
 function buttonStyle(colors: ReturnType<typeof useColors>): React.CSSProperties {
-  return { background: colors.surfaceSecondary, color: colors.textSecondary, border: `1px solid ${colors.containerBorder}`, borderRadius: 5, padding: '5px 8px', fontSize: 12 }
+  return {
+    background: colors.surfaceSecondary,
+    color: colors.textSecondary,
+    border: `1px solid ${colors.containerBorder}`,
+    borderRadius: 5,
+    padding: "5px 8px",
+    fontSize: 12,
+  };
 }
-
+function linkStyle(colors: ReturnType<typeof useColors>): React.CSSProperties {
+  return {
+    background: "transparent",
+    border: "none",
+    color: colors.accent,
+    fontSize: 12,
+    cursor: "pointer",
+    padding: 0,
+  };
+}
 function emptyStyle(colors: ReturnType<typeof useColors>): React.CSSProperties {
-  return { color: colors.textTertiary, fontSize: 12 }
+  return { color: colors.textTertiary, fontSize: 12 };
 }
-
 function helpLabelStyle(colors: ReturnType<typeof useColors>): React.CSSProperties {
-  return { color: colors.textTertiary, fontSize: 11, borderBottom: `1px dotted ${colors.textTertiary}`, cursor: 'help' }
+  return {
+    color: colors.textTertiary,
+    fontSize: 11,
+    borderBottom: `1px dotted ${colors.textTertiary}`,
+    cursor: "help",
+  };
 }
-
 function tagStyle(colors: ReturnType<typeof useColors>): React.CSSProperties {
-  return { color: colors.textTertiary, fontSize: 11, border: `1px solid ${colors.containerBorder}`, borderRadius: 10, padding: '1px 5px' }
+  return {
+    color: colors.textTertiary,
+    fontSize: 11,
+    border: `1px solid ${colors.containerBorder}`,
+    borderRadius: 10,
+    padding: "1px 5px",
+  };
 }
 
 const toolbarStyle: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
+  display: "flex",
+  justifyContent: "space-between",
   gap: 8,
-  alignItems: 'center',
+  alignItems: "center",
   marginBottom: 8,
-}
+};

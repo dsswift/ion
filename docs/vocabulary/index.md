@@ -50,6 +50,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
 - [Async delivery](#term-async-delivery)
 - [Attachment](#term-attachment)
+- [Automation Editor](#term-automation-editor)
 - [Backend](#term-backend)
 - [Branch](#term-branch)
 - [Channel](#term-channel)
@@ -71,6 +72,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Conversation status](#term-conversation-status)
 - [Cost](#term-cost)
 - [Desktop](#term-desktop-client)
+- [Desktop Automation](#term-desktop-automation)
 - [Dialog](#term-dialog)
 - [Dispatch](#term-dispatch)
 - [Dispatch Alias](#term-dispatch-alias)
@@ -964,6 +966,20 @@ A registered git checkout that holds one branch of work. It refuses writes outsi
 
 ### ui-component
 
+#### Automation Editor {#term-automation-editor}
+
+The shared Settings surface for Desktop Automation: one panel with three labeled sections (When / If / Then), not a wizard. It renders inline beside the source-aware rule list, offers only catalog-valid triggers, fields, operators, and finite values, derives action targets from the trigger, shows a plain-language preview, and disables Save until the rule is runnable. Constructs it cannot represent are shown read-only and preserved.
+
+- **ID:** `automation-editor`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `automation rule editor`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `ui` / `typescript`: `export function AutomationEditor` in `desktop/src/renderer/components/settings/AutomationEditor.tsx`
+  - `desktop` / `code` / `typescript`: `AUTOMATION_TRIGGERS` in `desktop/src/shared/automation-catalog.ts`
+
 #### Conversation Status Bar {#term-conversation-status-bar}
 
 The strip that shows conversation status and its inline controls: the model picker, the permission mode, and the context indicator.
@@ -1451,6 +1467,21 @@ Background retrieval of a conversation's older history pages after the newest pa
   - `ios` / `code` / `swift`: `final class ConversationBackfill` in `ios/IonRemote/ViewModels/ConversationBackfill.swift`
 - **Notes:** iOS only today. The Desktop keeps its own pagination and has not adopted prefetch; revisit if the Desktop shows the same scroll-back stutter.
 
+#### Desktop Automation {#term-desktop-automation}
+
+The desktop-owned engine that runs declarative user, project, and enterprise rules from desktop events (message submitted, slash resolved, worktree pin advanced, stage changed, lifecycle, bench). The main process resolves layered definitions, normalizes the current worktree stage onto each event, evaluates conditions that fail closed on an absent path, and runs finite typed actions; renderer actions go through the owner command bridge. Settings edits it through the source-aware Automation Editor with per-item user CRUD, so no project, enterprise, or built-in rule is ever copied into the user store.
+
+- **ID:** `desktop-automation`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `automation rules`, `desktop automation rules`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `export class AutomationRuntime` in `desktop/src/main/automation/runtime.ts`
+  - `desktop` / `code` / `typescript`: `export function validateUserDefinition` in `desktop/src/shared/automation-catalog.ts`
+  - `desktop` / `ui` / `typescript`: `export function AutomationCategory` in `desktop/src/renderer/components/settings/AutomationCategory.tsx`
+
 #### Mirror store {#term-mirror-store}
 
 The Studio presentation's copy of the session store. It reads the same event stream, forwards owner-only mutations, and never persists.
@@ -1638,6 +1669,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Agent | None | None | None | `AgentStatusDotStack` | Desktop, Studio, Overlay |
 | Agent-linked Browser Tab | `agentBrowserInstanceId`, `export async function resolveBrowser` | `agentBrowserInstanceId`, `export function bindAgentBrowserActions`, `export async function resolveBrowser` | `agentBrowserInstanceId`, `export async function resolveBrowser` | None | iOS |
 | Attachment | `export function AttachmentChips` | `export function AttachmentChips` | `export function AttachmentChips` | `struct AttachmentChipsView` | None |
+| Automation Editor | `export function AutomationEditor`, `AUTOMATION_TRIGGERS` | `export function AutomationEditor`, `AUTOMATION_TRIGGERS` | `export function AutomationEditor`, `AUTOMATION_TRIGGERS` | None | iOS |
 | Chart index reconciliation | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | None | iOS |
 | Chart Output | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `struct ChartSpec`, `ChartCardView`, `enum ChartTranscript`, `ChartTranscriptCard` | None |
 | Compaction | None | None | None | `CompactionRowView` | Desktop, Studio, Overlay |
@@ -1650,6 +1682,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Conversation Timeline Minimap | `TimelineMinimap` | `TimelineMinimap` | `TimelineMinimap` | None | iOS |
 | Conversation View | `export function ConversationView` | `export function ConversationView`, `ConversationView` | `export function ConversationView` | `struct ConversationView` | None |
 | Cost | None | None | None | `StatusDrawerBreakdown` | Desktop, Studio, Overlay |
+| Desktop Automation | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationCategory` | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationCategory` | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationCategory` | None | iOS |
 | Desktop | `export type WindowRole`, `export interface TabState` | `export type WindowRole`, `export interface TabState` | `export type WindowRole`, `export interface TabState` | None | iOS |
 | Dialog | `SettingsDialog` | `SettingsDialog` | `SettingsDialog` | `struct EngineDialogSheet` | None |
 | Dispatch Split Pane | None | `DispatchSplitPane` | None | None | Overlay, iOS |
@@ -1714,6 +1747,8 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `agent dispatch` → [Dispatch](#term-dispatch)
 - Alias: `assembled context` → [Context](#term-context)
 - Alias: `async trigger delivery` → [Async delivery](#term-async-delivery)
+- Alias: `automation rule editor` → [Automation Editor](#term-automation-editor)
+- Alias: `automation rules` → [Desktop Automation](#term-desktop-automation)
 - Alias: `bench` → [Integration bench](#term-integration-bench)
 - Alias: `browser surface` → [Studio Browser Surface](#term-studio-browser-surface)
 - Alias: `canonical event` → [Normalized event](#term-normalized-event)
@@ -1734,6 +1769,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `conversation storage` → [Conversation persistence](#term-conversation-persistence)
 - Alias: `conversation tab` → [Tab](#term-tab)
 - Alias: `daemon` → [Engine server](#term-engine-server)
+- Alias: `desktop automation rules` → [Desktop Automation](#term-desktop-automation)
 - Alias: `desktop client` → [Desktop](#term-desktop-client)
 - Alias: `dispatch split` → [Dispatch Split Pane](#term-dispatch-split-pane)
 - Alias: `drain checkpoint` → [Steer Drain Checkpoint](#term-steer-drain-checkpoint)

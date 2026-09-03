@@ -697,6 +697,7 @@
       "costPer1kOutput",
       "costPerImage",
       "dialect",
+      "displayName",
       "effectiveContextLimit",
       "id",
       "isCustom",

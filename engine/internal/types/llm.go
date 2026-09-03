@@ -316,7 +316,13 @@ type LlmStreamDelta struct {
 
 // ModelInfo contains metadata about a supported model.
 type ModelInfo struct {
-	ProviderID      string  `json:"providerId"`
+	ProviderID string `json:"providerId"`
+	// DisplayName is the human-friendly name for this model ("Claude Opus 4.8"),
+	// carried from the model catalog or a provider /models payload's display
+	// name. Clients render it in the model picker instead of the machine id.
+	// Empty means the client derives a label from the id itself. Additive,
+	// omitempty.
+	DisplayName     string  `json:"displayName,omitempty"`
 	ContextWindow   int     `json:"contextWindow"`
 	CostPer1kInput  float64 `json:"costPer1kInput"`
 	CostPer1kOutput float64 `json:"costPer1kOutput"`
@@ -390,8 +396,11 @@ type ModelInfo struct {
 // ModelEntry is the wire-format model information returned by list_models.
 // Tracked by contract sync.
 type ModelEntry struct {
-	ID              string  `json:"id"`
-	ProviderID      string  `json:"providerId"`
+	ID         string `json:"id"`
+	ProviderID string `json:"providerId"`
+	// DisplayName is the human-friendly model name. See ModelInfo.DisplayName
+	// for the value contract. Additive, omitempty.
+	DisplayName     string  `json:"displayName,omitempty"`
 	ContextWindow   int     `json:"contextWindow"`
 	CostPer1kInput  float64 `json:"costPer1kInput"`
 	CostPer1kOutput float64 `json:"costPer1kOutput"`

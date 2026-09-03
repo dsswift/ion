@@ -250,6 +250,7 @@ func ListModels() []types.ModelEntry {
 		entry := types.ModelEntry{
 			ID:                     id,
 			ProviderID:             info.ProviderID,
+			DisplayName:            info.DisplayName,
 			ContextWindow:          info.ContextWindow,
 			CostPer1kInput:         info.CostPer1kInput,
 			CostPer1kOutput:        info.CostPer1kOutput,

@@ -77,11 +77,20 @@ function conditionDecision(
 }
 
 function conditionMatches(condition: AutomationCondition, actual: unknown): boolean {
+  // Presence operators are the only ones that treat an absent path as meaningful.
+  if (condition.operator === "exists")
+    return actual !== undefined && actual !== null;
+  if (condition.operator === "not-exists")
+    return actual === undefined || actual === null;
+  // Absent path semantics split by operator polarity:
+  //   Positive (equals, contains, …): missing field → false (no match).
+  //   Negative (not-equals, not-contains): missing field → true (undefined ≠ any value,
+  //     so "stage is not Ready to land" is vacuously satisfied when there is no stage).
+  // A present JSON null is a real value and is compared normally below.
+  if (actual === undefined) {
+    return condition.operator === "not-equals" || condition.operator === "not-contains";
+  }
   switch (condition.operator) {
-    case "exists":
-      return actual !== undefined && actual !== null;
-    case "not-exists":
-      return actual === undefined || actual === null;
     case "equals":
       return same(actual, condition.value);
     case "not-equals":

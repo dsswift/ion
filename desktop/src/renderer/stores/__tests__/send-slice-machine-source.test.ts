@@ -220,11 +220,11 @@ describe("submit() with source: 'machine' on a locked auto-fix conversation", ()
     ])
   })
 
-  it('does not forward the marker as a remote origin', () => {
-    // RED if the forwarding collapses to `source: source`: 'machine' would
-    // reach the IPC.PROMPT handler, which reads a non-undefined source as
-    // "already echoed to iOS" and skips desktop_message_added — the phone
-    // would silently lose the user bubble. 'machine' is renderer-local only.
+  it('forwards the machine marker for automation without treating it as remote', () => {
+    // 'machine' is now retained through IPC.PROMPT so Desktop Automation can
+    // classify the submission as machine-authored (messageKind). It must still
+    // NOT be a remote origin: every echo/delivery branch keys strictly on
+    // 'remote', and no deliveryId is set, so iOS still receives the bubble.
     const { state } = buildHarness(makeTab({
       inputLocked: true,
       tabRole: 'conflict-auto-fix',
@@ -233,7 +233,9 @@ describe("submit() with source: 'machine' on a locked auto-fix conversation", ()
     state.submit('tab-1', 'the machine prompt', { source: 'machine' })
 
     expect(mockPrompt).toHaveBeenCalledTimes(1)
-    expect(promptOptions().source).toBeUndefined()
+    expect(promptOptions().source).toBe('machine')
+    expect(promptOptions().messageKind).toBe('machine')
+    expect(promptOptions().deliveryId).toBeUndefined()
   })
 
   it('leaves the remote passage untouched: source=remote still forwards', () => {

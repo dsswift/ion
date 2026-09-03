@@ -52,8 +52,9 @@ vi.mock("../../stores/sessionStore", () => ({
       selector: (state: {
         benchWorkspaces: Map<string, IntegrationWorkspace[]>;
         tabs: never[];
+        workspaceOperationLedger: Map<string, never>;
       }) => unknown,
-    ) => selector({ benchWorkspaces: mocks.benchWorkspaces, tabs: [] }),
+    ) => selector({ benchWorkspaces: mocks.benchWorkspaces, tabs: [], workspaceOperationLedger: new Map<string, never>() }),
     {
       getState: () => ({
         benchDiscardMemberRecordings: mocks.discard,

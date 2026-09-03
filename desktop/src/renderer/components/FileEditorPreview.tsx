@@ -6,6 +6,7 @@ import { useColors } from '../theme'
 import { useSessionStore, FileEditorTab } from '../stores/sessionStore'
 import { EDITABLE_EXTS } from '../hooks/useNavigableLinks'
 import { REMARK_PLUGINS } from './FileEditorShared'
+import { TableScrollWrapper } from './conversation/markdownRenderers'
 import { openClickedLink } from '../lib/open-link'
 
 interface FileEditorPreviewProps {
@@ -87,6 +88,10 @@ export function FileEditorPreview({ dir, tabId, activeFile }: FileEditorPreviewP
   )
 
   const markdownComponents = useMemo(() => ({
+    // Wrap the table in the shared horizontal scroller so a wide table scrolls
+    // (with fade edges) instead of crushing its right-hand columns in a thin
+    // panel. The override REPLACES the <table>, so the wrapper re-emits one.
+    table: ({ children }: any) => <TableScrollWrapper>{children}</TableScrollWrapper>,
     a: ({ href, children }: any) => (
       <button
         type="button"

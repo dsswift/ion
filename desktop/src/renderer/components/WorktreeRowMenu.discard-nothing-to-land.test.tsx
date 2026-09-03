@@ -50,8 +50,8 @@ const REPO = '/Users/dev/src/ion'
 
 vi.mock('../stores/sessionStore', () => ({
   useSessionStore: Object.assign(
-    (selector: (state: { benchWorkspaces: Map<string, never>; tabs: never[] }) => unknown) =>
-      selector({ benchWorkspaces: new Map<string, never>(), tabs: [] }),
+    (selector: (state: { benchWorkspaces: Map<string, never>; tabs: never[]; workspaceOperationLedger: Map<string, never> }) => unknown) =>
+      selector({ benchWorkspaces: new Map<string, never>(), tabs: [], workspaceOperationLedger: new Map<string, never>() }),
     {
       getState: () => ({
         tabs: [],

@@ -153,6 +153,32 @@ export interface EffectiveAutomations {
   locked: boolean;
   maxHistoryEntries: number;
 }
+
+/** Which layer a listed definition came from. Only `user` is editable. */
+export type AutomationSource = "user" | "project" | "enterprise" | "built-in";
+
+/**
+ * One source definition as Settings sees it. The listing carries every source
+ * layer that defines an id — not only the effective winner — so the operator can
+ * see an overridden or locally disabled rule and act on it.
+ */
+export interface AutomationSourceEntry {
+  definition: AutomationDefinition;
+  source: AutomationSource;
+  /** True when this exact source is the one the runtime evaluates for its id. */
+  effective: boolean;
+  /** Project rules only: the id sits in the local disable ledger. */
+  locallyDisabled?: boolean;
+  /** Set on a non-effective entry: the higher layer that owns the id instead. */
+  overriddenBy?: AutomationSource;
+}
+
+/** Source-aware view for Settings. The runtime never reads this shape. */
+export interface AutomationListing {
+  entries: AutomationSourceEntry[];
+  /** Enterprise policy locks user mutations (definitions still listed). */
+  locked: boolean;
+}
 export interface AutomationActionContext {
   automation: AutomationDefinition;
   action: AutomationAction;

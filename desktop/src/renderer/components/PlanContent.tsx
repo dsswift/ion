@@ -13,6 +13,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useColors } from '../theme'
 import { useNavigableText, NavigableLink, NavigableCode, remarkNavigableLinks } from '../hooks/useNavigableLinks'
+import { TableScrollWrapper } from './conversation/markdownRenderers'
 import { rError } from '../rendererLogger'
 import type { FileClickModifiers } from '../lib/open-file-intent'
 
@@ -30,6 +31,10 @@ export const PlanContent = React.memo(function PlanContent({ content }: { conten
 
   const markdownComponents = useMemo(
     () => ({
+      // Wrap the table in the shared horizontal scroller so a wide table scrolls
+      // (with fade edges) instead of crushing its right-hand columns in a thin
+      // panel. The override REPLACES the <table>, so the wrapper re-emits one.
+      table: ({ children }: any) => <TableScrollWrapper>{children}</TableScrollWrapper>,
       a: ({ node, href, children }: any) => (
         <NavigableLink node={node} href={href} color={colors.accent} onOpenFile={handleOpenFile} onOpenUrl={onOpenUrl}>
           {children}

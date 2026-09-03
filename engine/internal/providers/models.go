@@ -13,6 +13,7 @@ import (
 type catalogEntry struct {
 	ID                     string   `json:"id"`
 	ProviderID             string   `json:"providerId"`
+	DisplayName            string   `json:"displayName,omitempty"`
 	ContextWindow          int      `json:"contextWindow"`
 	CostPer1kInput         float64  `json:"costPer1kInput"`
 	CostPer1kOutput        float64  `json:"costPer1kOutput"`
@@ -47,6 +48,11 @@ func MergeModelInfo(base, user types.ModelInfo) types.ModelInfo {
 	// provider endpoint the model routes to.
 	if user.ProviderID != "" {
 		merged.ProviderID = user.ProviderID
+	}
+	// DisplayName: non-empty user value wins (additive, matches the rule above).
+	// Lets a custom/user-config model entry declare its own picker label.
+	if user.DisplayName != "" {
+		merged.DisplayName = user.DisplayName
 	}
 	if user.CostPer1kInput != 0 {
 		merged.CostPer1kInput = user.CostPer1kInput
@@ -118,6 +124,7 @@ func loadModelsFromJSON(data []byte) error {
 	for _, e := range entries {
 		RegisterModel(e.ID, types.ModelInfo{
 			ProviderID:             e.ProviderID,
+			DisplayName:            e.DisplayName,
 			ContextWindow:          e.ContextWindow,
 			CostPer1kInput:         e.CostPer1kInput,
 			CostPer1kOutput:        e.CostPer1kOutput,

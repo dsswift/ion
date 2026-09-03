@@ -297,6 +297,7 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
   AgentStateUpdate: ["id", "metadata", "name", "status"],
   ModelEntry: [
     "contextWindow",
+    "displayName",
     "effectiveContextLimit",
     "costPer1kInput",
     "costPer1kOutput",

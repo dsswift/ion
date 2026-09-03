@@ -1,7 +1,11 @@
 import { ipcMain } from "electron";
 import { IPC } from "../../shared/types";
 import { takeRemotePromptDelivery } from "../remote/prompt-delivery";
-import type { RunOptions } from "../../shared/types";
+import type { RunOptions, SteerMeta } from "../../shared/types";
+import {
+  emitFreshMessageSubmitted,
+  emitSteerMessageSubmitted,
+} from "./session-message-automation";
 import { log as _log, warn as _warn } from "../logger";
 import {
   state,
@@ -340,6 +344,23 @@ export function registerSessionIpc(): void {
           { type: "prompt:submitted", payload: promptPayload },
           options.automationCausation,
         );
+        // The one authorship-classified submission fact. Unlike prompt:submitted
+        // (retained for compatibility), this fires for every admitted client
+        // Message and carries messageKind + isSteer so a rule can target only
+        // real operator prompts. A mid-run Steer emits the same event from the
+        // STEER handler below with isSteer:true.
+        await emitFreshMessageSubmitted({
+          tabId,
+          requestId,
+          clientMessageId: options.deliveryId ?? requestId,
+          projectPath: options.projectPath,
+          permissionMode: promptPayload.permissionMode,
+          source: options.source,
+          messageKind: options.messageKind,
+          injectionKind: options.injectionKind,
+          isSlash: !!slash,
+          causation: options.automationCausation,
+        });
         if (slash) {
           await getAutomationRuntime().trigger(
             { type: "conversation:slash", payload: promptPayload },
@@ -384,7 +405,13 @@ export function registerSessionIpc(): void {
         tabId,
         message,
         clientMessageId,
-      }: { tabId: string; message: string; clientMessageId?: string },
+        meta,
+      }: {
+        tabId: string;
+        message: string;
+        clientMessageId?: string;
+        meta?: SteerMeta;
+      },
     ) => {
       // Unified steer for EVERY conversation tab — plain or extension-backed
       // (the engine-vs-plain split was collapsed; there is no separate
@@ -425,6 +452,20 @@ export function registerSessionIpc(): void {
       // harness-authored steer must not appear as an operator message.
       echoUserTurn({ tabId, id: echoId, content: message }, { ios: false });
       engineBridge.sendSteer(tabId, message, clientMessageId);
+      // A mid-run human Steer is an admitted client Message too. Emit the same
+      // authorship-classified automation fact the fresh-prompt path emits, with
+      // isSteer:true. permissionMode is read from the live tab status; the
+      // worktree path and classification ride the optional steer metadata.
+      emitSteerMessageSubmitted({
+        tabId,
+        message,
+        clientMessageId,
+        meta,
+        permissionMode:
+          typeof sessionPlane.getTabStatus === "function"
+            ? (sessionPlane.getTabStatus(tabId)?.permissionMode ?? "")
+            : "",
+      });
     },
   );
 

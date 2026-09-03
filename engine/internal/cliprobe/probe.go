@@ -127,6 +127,14 @@ func probeClaudeCode() Probe {
 		"binaryPath": bin, "authenticated": st.LoggedIn, "authMethod": st.AuthMethod,
 		"apiProvider": st.APIProvider, "planType": st.SubscriptionType, "label": p.Label,
 	})
+
+	// The claude CLI exposes no model-list command, and the CLI's OAuth
+	// subscription token is licensed for use through Anthropic's own apps, not
+	// for direct /v1/models calls from Ion. So a subscription login advertises
+	// no models here and ListModels serves the embedded catalog. An API-key
+	// login routes through the HTTP discovery path (EffectiveBackendForProvider
+	// returns "api" when a key is present), which fetches /v1/models with the
+	// key under Anthropic's Commercial Terms.
 	return p
 }
 

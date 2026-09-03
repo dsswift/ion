@@ -1,7 +1,96 @@
 [
   {
-    "id": "claude-opus-4-6",
+    "id": "claude-fable-5-1",
     "providerId": "anthropic",
+    "displayName": "Claude Fable 5.1",
+    "contextWindow": 1000000,
+    "costPer1kInput": 0.01,
+    "costPer1kOutput": 0.05,
+    "costPer1kCacheCreation": 0.0125,
+    "costPer1kCacheRead": 0.00025,
+    "maxOutputTokens": 128000,
+    "supportsCaching": true,
+    "supportsThinking": true,
+    "supportsImages": true,
+    "thinkingMode": "adaptive",
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "tokenizer": "o200k_base"
+  },
+  {
+    "id": "claude-fable-5",
+    "providerId": "anthropic",
+    "displayName": "Claude Fable 5",
+    "contextWindow": 1000000,
+    "costPer1kInput": 0.01,
+    "costPer1kOutput": 0.05,
+    "costPer1kCacheCreation": 0.0125,
+    "costPer1kCacheRead": 0.001,
+    "maxOutputTokens": 128000,
+    "supportsCaching": true,
+    "supportsThinking": true,
+    "supportsImages": true,
+    "thinkingMode": "adaptive",
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "tokenizer": "o200k_base"
+  },
+  {
+    "id": "claude-opus-5",
+    "providerId": "anthropic",
+    "displayName": "Claude Opus 5",
+    "contextWindow": 1000000,
+    "costPer1kInput": 0.015,
+    "costPer1kOutput": 0.075,
+    "maxOutputTokens": 128000,
+    "supportsCaching": true,
+    "supportsThinking": true,
+    "supportsImages": true,
+    "thinkingMode": "adaptive",
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "tokenizer": "o200k_base"
+  },
+  {
+    "id": "claude-sonnet-5",
+    "providerId": "anthropic",
+    "displayName": "Claude Sonnet 5",
+    "contextWindow": 1000000,
+    "costPer1kInput": 0.003,
+    "costPer1kOutput": 0.015,
+    "maxOutputTokens": 128000,
+    "supportsCaching": true,
+    "supportsThinking": true,
+    "supportsImages": true,
+    "thinkingMode": "adaptive",
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "tokenizer": "o200k_base"
+  },
+  {
+    "id": "claude-opus-4-8",
+    "providerId": "anthropic",
+    "displayName": "Claude Opus 4.8",
     "contextWindow": 1000000,
     "costPer1kInput": 0.015,
     "costPer1kOutput": 0.075,
@@ -20,6 +109,7 @@
   {
     "id": "claude-opus-4-7",
     "providerId": "anthropic",
+    "displayName": "Claude Opus 4.7",
     "contextWindow": 1000000,
     "costPer1kInput": 0.015,
     "costPer1kOutput": 0.075,
@@ -36,8 +126,9 @@
     "tokenizer": "o200k_base"
   },
   {
-    "id": "claude-opus-4-8",
+    "id": "claude-opus-4-6",
     "providerId": "anthropic",
+    "displayName": "Claude Opus 4.6",
     "contextWindow": 1000000,
     "costPer1kInput": 0.015,
     "costPer1kOutput": 0.075,
@@ -56,6 +147,7 @@
   {
     "id": "claude-sonnet-4-6",
     "providerId": "anthropic",
+    "displayName": "Claude Sonnet 4.6",
     "contextWindow": 1000000,
     "costPer1kInput": 0.003,
     "costPer1kOutput": 0.015,
@@ -74,6 +166,7 @@
   {
     "id": "claude-haiku-4-5-20251001",
     "providerId": "anthropic",
+    "displayName": "Claude Haiku 4.5",
     "contextWindow": 200000,
     "costPer1kInput": 0.0008,
     "costPer1kOutput": 0.004,

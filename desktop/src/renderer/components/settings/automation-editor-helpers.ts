@@ -1,45 +1,8 @@
 import type {
-  AutomationAction,
   AutomationCondition,
-  AutomationConditionOperator,
   AutomationDefinition,
   AutomationStep,
 } from "../../../shared/types-automation";
-
-export const OPERATORS: AutomationConditionOperator[] = [
-  "equals",
-  "not-equals",
-  "exists",
-  "not-exists",
-  "contains",
-  "not-contains",
-  "matches",
-  "greater-than",
-  "greater-than-or-equals",
-  "less-than",
-  "less-than-or-equals",
-];
-
-export const ACTION_KINDS = [
-  "record",
-  "worktree:set-stage",
-  "desktop:notification",
-  "conversation:run",
-  "conversation:slash",
-  "tab:set-color",
-  "tab:set-icon",
-  "tab:set-group",
-] as const;
-
-export const STAGES = [
-  "plan",
-  "build",
-  "test",
-  "bug",
-  "verified",
-  "merge",
-  "ready",
-];
 
 type Template = {
   id: string;
@@ -48,6 +11,27 @@ type Template = {
 };
 
 export const AUTOMATION_TEMPLATES: readonly Template[] = [
+  {
+    id: "issue-found-refinement",
+    label: "Normal message on a tested worktree marks Issue found",
+    definition: () =>
+      template(
+        "Normal refinement marks worktree as Issue found",
+        "conversation:message-submitted",
+        [
+          {
+            kind: "worktree:set-stage",
+            payload: { stage: "bug", onlyIfStage: "test" },
+          },
+        ],
+        [
+          { path: "payload.worktreePath", operator: "exists" },
+          { path: "payload.stage", operator: "equals", value: "test" },
+          { path: "payload.messageKind", operator: "equals", value: "prompt" },
+          { path: "payload.permissionMode", operator: "equals", value: "auto" },
+        ],
+      ),
+  },
   {
     id: "verified-align",
     label: "Verified runs alignment",
@@ -73,11 +57,13 @@ export const AUTOMATION_TEMPLATES: readonly Template[] = [
     definition: () =>
       template(
         "Align enters merge checks",
-        "conversation:slash",
+        "conversation:slash-resolved",
         [{ kind: "worktree:set-stage", payload: { stage: "merge" } }],
         [
           { path: "payload.slashCommand", operator: "equals", value: "align" },
           { path: "payload.worktreePath", operator: "exists" },
+          // Requires a stage and never moves a ready worktree back to merge.
+          { path: "payload.stage", operator: "not-equals", value: "ready" },
         ],
       ),
   },
@@ -87,11 +73,12 @@ export const AUTOMATION_TEMPLATES: readonly Template[] = [
     definition: () =>
       template(
         "Squash enters merge checks",
-        "conversation:slash",
+        "conversation:slash-resolved",
         [{ kind: "worktree:set-stage", payload: { stage: "merge" } }],
         [
           { path: "payload.slashCommand", operator: "equals", value: "squash" },
           { path: "payload.worktreePath", operator: "exists" },
+          { path: "payload.stage", operator: "not-equals", value: "ready" },
         ],
       ),
   },
@@ -180,29 +167,6 @@ export function newId(): string {
   );
 }
 
-export function newAction(
-  kind: (typeof ACTION_KINDS)[number] = "record",
-): AutomationAction {
-  switch (kind) {
-    case "worktree:set-stage":
-      return { kind, payload: { stage: "test" } };
-    case "desktop:notification":
-      return { kind, payload: { title: "", body: "" } };
-    case "conversation:run":
-      return { kind, payload: { prompt: "" } };
-    case "conversation:slash":
-      return { kind, payload: { command: "", args: "" } };
-    case "tab:set-color":
-      return { kind, payload: { tabId: "", color: "" } };
-    case "tab:set-icon":
-      return { kind, payload: { tabId: "", icon: "" } };
-    case "tab:set-group":
-      return { kind, payload: { tabId: "", groupId: "" } };
-    default:
-      return { kind };
-  }
-}
-
 export function toSteps(definition: AutomationDefinition): AutomationStep[] {
   return definition.steps ?? definition.actions ?? [];
 }
@@ -211,24 +175,6 @@ export function isBranch(
   step: AutomationStep,
 ): step is Extract<AutomationStep, { type: "branch" }> {
   return "type" in step;
-}
-
-export function isValueOperator(
-  operator: AutomationConditionOperator,
-): boolean {
-  return operator !== "exists" && operator !== "not-exists";
-}
-
-export function parseValue(value: string): string | number | boolean | null {
-  try {
-    return JSON.parse(value) as string | number | boolean | null;
-  } catch {
-    return value;
-  }
-}
-
-export function displayValue(value: unknown): string {
-  return value === undefined ? "" : JSON.stringify(value);
 }
 
 export function normalize(
@@ -243,21 +189,4 @@ export function normalize(
     steps: JSON.parse(JSON.stringify(toSteps(definition))),
     actions: undefined,
   };
-}
-
-export function countAiActions(steps: AutomationStep[]): number {
-  return steps.reduce(
-    (count, step) =>
-      count +
-      (isBranch(step)
-        ? countAiActions(step.then) + countAiActions(step.else ?? [])
-        : [
-              "conversation",
-              "conversation:run",
-              "conversation:slash",
-            ].includes(step.kind)
-          ? 1
-          : 0),
-    0,
-  );
 }

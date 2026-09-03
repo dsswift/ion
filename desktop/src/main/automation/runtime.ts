@@ -1,6 +1,7 @@
 import { Notification } from "electron";
+import { debug } from "../logger";
 import { broadcast } from "../broadcast";
-import { setWorktreeStage } from "../worktree/registry";
+import { setWorktreeStage, lookupWorktreeStage } from "../worktree/registry";
 import { setWorktreePinAdvanceAutomationTrigger } from "../worktree/pin-advance-trigger";
 import {
   setWorktreeStageChangeAutomationTrigger,
@@ -17,6 +18,7 @@ import {
   type AutomationDefinition,
   type AutomationEvent,
   type AutomationHistoryEntry,
+  type AutomationListing,
   type AutomationRuntimeEvent,
 } from "../../shared/types-automation";
 import type { WorkStage, WorktreePinAdvance } from "../../shared/types-git";
@@ -75,31 +77,45 @@ export class AutomationRuntime {
   history(): AutomationHistoryEntry[] {
     return this.service.historyEntries();
   }
-  saveDefinitions(definitions: readonly AutomationDefinition[]): void {
-    this.service.saveUserDefinitions(definitions);
+  /** Source-aware view for Settings; the runtime itself evaluates only effective. */
+  listing(projectPath?: string): AutomationListing {
+    return this.service.listing(projectPath);
+  }
+  saveUserDefinition(definition: AutomationDefinition): AutomationDefinition {
+    return this.service.saveUserDefinition(definition);
+  }
+  deleteUserDefinition(id: string): void {
+    this.service.deleteUserDefinition(id);
+  }
+  duplicateDefinition(id: string, projectPath?: string): AutomationDefinition {
+    return this.service.duplicateDefinition(id, projectPath);
   }
 
   async trigger(
     event: AutomationEvent,
     parentCausation?: AutomationCausation,
   ): Promise<void> {
-    const eventTabId = stringField(event.payload, "tabId");
-    if (event.type === "prompt:submitted" && eventTabId)
-      this.lastPromptContextByTab.set(eventTabId, event.payload ?? {});
-    if (event.type === "conversation:slash") {
-      const command = stringField(event.payload, "slashCommand");
+    // Normalize the current worktree stage onto the payload before any caching
+    // or evaluation so every rule — message, slash, completion, plan, pin,
+    // lifecycle, and bench — sees the same authoritative `payload.stage`.
+    const normalized = normalizeAutomationEvent(event);
+    const eventTabId = stringField(normalized.payload, "tabId");
+    if (normalized.type === "prompt:submitted" && eventTabId)
+      this.lastPromptContextByTab.set(eventTabId, normalized.payload ?? {});
+    if (normalized.type === "conversation:slash") {
+      const command = stringField(normalized.payload, "slashCommand");
       if (eventTabId && command)
         this.lastSlashByTab.set(eventTabId, {
           command,
-          args: stringField(event.payload, "slashArgs") ?? "",
-          payload: event.payload ?? {},
+          args: stringField(normalized.payload, "slashArgs") ?? "",
+          payload: normalized.payload ?? {},
         });
     }
     const projectPath =
-      stringField(event.payload, "projectPath") ??
-      stringField(event.payload, "worktreePath");
+      stringField(normalized.payload, "projectPath") ??
+      stringField(normalized.payload, "worktreePath");
     const evaluations = await this.service.evaluate(
-      event,
+      normalized,
       (context) => this.runAction(context),
       parentCausation,
       projectPath,
@@ -108,9 +124,9 @@ export class AutomationRuntime {
       this.emit({
         type: "automation:executed",
         automationId: evaluation.automationId,
-        eventType: event.type,
+        eventType: normalized.type,
         outcome: evaluation.outcome,
-        worktreePath: stringField(event.payload, "worktreePath"),
+        worktreePath: stringField(normalized.payload, "worktreePath"),
       });
     }
   }
@@ -255,8 +271,15 @@ export class AutomationRuntime {
 
   private setWorktreeStage(context: AutomationActionContext): void {
     const worktreePath = stringField(context.event.payload, "worktreePath");
-    if (!worktreePath)
-      throw new Error("worktree:set-stage requires event payload worktreePath");
+    if (!worktreePath) {
+      // Event has no worktree context (plain conversation, no worktree checked out).
+      // Skip silently — a worktree action on a non-worktree event is a no-op, not
+      // an error. The rule author need not add a "Worktree is present" guard.
+      debug("automation", "worktree:set-stage skipped: no worktreePath in event payload", {
+        automation_id: context.automation.id,
+      });
+      return;
+    }
     const stage = context.action.payload?.stage;
     if (!isWorkStage(stage))
       throw new Error("worktree:set-stage requires a valid stage");
@@ -277,6 +300,27 @@ export class AutomationRuntime {
       );
     }
   }
+}
+
+/**
+ * Return a copy of the event whose payload carries the current worktree stage.
+ *
+ * The producer of an event knows a worktree path but not its live stage, so the
+ * runtime resolves it here from the registry once, before caching and
+ * evaluation. A registered worktree contributes its current stage; an
+ * unregistered or unstaged directory leaves `stage` absent (never an
+ * empty-string sentinel), which lets a value operator fail closed. A semantic
+ * transition that already supplied a stage keeps it when the registry has none.
+ */
+export function normalizeAutomationEvent(event: AutomationEvent): AutomationEvent {
+  const payload: Record<string, unknown> = { ...(event.payload ?? {}) };
+  const worktreePath = stringField(payload, "worktreePath");
+  if (worktreePath) {
+    const stage = lookupWorktreeStage(worktreePath);
+    if (stage !== null) payload.stage = stage;
+  }
+  if (payload.stage === "") delete payload.stage;
+  return { ...event, payload };
 }
 
 function showNotification(title: string, body: string): void {

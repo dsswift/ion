@@ -151,6 +151,61 @@ func TestModelCatalogJSON_AllModelsRegistered(t *testing.T) {
 	}
 }
 
+// TestModelCatalogAnthropicDisplayNames pins the Anthropic catalog rewrite: the
+// requested model set is present, each carries its friendly DisplayName, and
+// ListModels propagates DisplayName onto the wire entry. This is the regression
+// guard for the reported bug — pre-fix the catalog omitted fable/opus-5/sonnet-5
+// and ModelEntry had no DisplayName, so the picker showed a stale machine-id list.
+func TestModelCatalogAnthropicDisplayNames(t *testing.T) {
+	want := map[string]string{
+		"claude-fable-5-1":          "Claude Fable 5.1",
+		"claude-fable-5":            "Claude Fable 5",
+		"claude-opus-5":             "Claude Opus 5",
+		"claude-sonnet-5":           "Claude Sonnet 5",
+		"claude-opus-4-8":           "Claude Opus 4.8",
+		"claude-opus-4-7":           "Claude Opus 4.7",
+		"claude-opus-4-6":           "Claude Opus 4.6",
+		"claude-sonnet-4-6":         "Claude Sonnet 4.6",
+		"claude-haiku-4-5-20251001": "Claude Haiku 4.5",
+	}
+	// The registry (loaded from models.json in init) carries the friendly name.
+	for id, name := range want {
+		info := GetModelInfo(id)
+		if info == nil {
+			t.Errorf("model %q not registered", id)
+			continue
+		}
+		if info.DisplayName != name {
+			t.Errorf("model %q DisplayName = %q, want %q", id, info.DisplayName, name)
+		}
+	}
+	// ListModels propagates DisplayName onto the wire entry the picker reads.
+	got := make(map[string]string)
+	for _, e := range ListModels() {
+		if e.ProviderID == "anthropic" {
+			got[e.ID] = e.DisplayName
+		}
+	}
+	for id, name := range want {
+		if got[id] != name {
+			t.Errorf("ListModels[%q].DisplayName = %q, want %q", id, got[id], name)
+		}
+	}
+
+	// Fable pricing is operator-supplied (no published API rate); pin the exact
+	// per-1k values so a later catalog edit cannot silently drift them.
+	if f := GetModelInfo("claude-fable-5-1"); f == nil ||
+		f.CostPer1kInput != 0.01 || f.CostPer1kOutput != 0.05 ||
+		f.CostPer1kCacheCreation != 0.0125 || f.CostPer1kCacheRead != 0.00025 {
+		t.Errorf("claude-fable-5-1 pricing = %+v", f)
+	}
+	if f := GetModelInfo("claude-fable-5"); f == nil ||
+		f.CostPer1kInput != 0.01 || f.CostPer1kOutput != 0.05 ||
+		f.CostPer1kCacheCreation != 0.0125 || f.CostPer1kCacheRead != 0.001 {
+		t.Errorf("claude-fable-5 pricing = %+v", f)
+	}
+}
+
 func TestModelCatalogJSON_RoundTrip(t *testing.T) {
 	// Parse the embedded JSON directly and verify it matches the runtime registry.
 	var entries []catalogEntry

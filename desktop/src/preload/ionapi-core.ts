@@ -21,11 +21,6 @@ import type {
   DeepLinkConfirmResult,
 } from "../shared/types-ipc";
 import type { EnterprisePolicy } from "../shared/types-engine";
-import type {
-  AutomationDefinition,
-  AutomationHistoryEntry,
-  AutomationRuntimeEvent,
-} from "../shared/types-automation";
 import type { CustomThemeForRenderer } from "../shared/theme-pack-types";
 import type { StartupReport } from "../shared/startup-state";
 
@@ -44,7 +39,12 @@ export interface IonCoreApi {
   adoptTab(tabId: string): Promise<{ tabId: string }>;
   prompt(tabId: string, requestId: string, options: RunOptions): Promise<void>;
   cancel(requestId: string): Promise<boolean>;
-  steer(tabId: string, message: string, clientMessageId?: string): void;
+  steer(
+    tabId: string,
+    message: string,
+    clientMessageId?: string,
+    meta?: import("../shared/types-session").SteerMeta,
+  ): void;
   stopTab(
     tabId: string,
     scope?: import("../shared/types-engine").AbortScope,
@@ -135,41 +135,6 @@ export interface IonCoreApi {
       sourceBranch?: string;
     }) => void,
   ): () => void;
-  /** Automation definition, history, and execution bridge. No renderer executes actions. */
-  automationList(projectPath?: string): Promise<AutomationDefinition[]>;
-  automationSave(
-    definitions: AutomationDefinition[],
-  ): Promise<{ ok: boolean; error?: string }>;
-  automationHistory(): Promise<AutomationHistoryEntry[]>;
-  automationProjectIds(projectPath: string): Promise<string[]>;
-  setProjectAutomationEnabled(
-    projectPath: string,
-    id: string,
-    enabled: boolean,
-  ): Promise<{ ok: boolean; error?: string }>;
-  triggerPlanImplemented(payload: {
-    tabId: string;
-    worktreePath: string;
-    repoPath: string;
-    branchName: string;
-    sourceBranch: string;
-    planFilePath: string;
-    clearContext: boolean;
-    source: "renderer";
-  }): Promise<void>;
-  onAutomationEvent(
-    callback: (event: AutomationRuntimeEvent) => void,
-  ): () => void;
-  onAutomationCommand(
-    callback: (command: {
-      id: string;
-      action: import("../shared/types-automation").AutomationAction;
-    }) => void,
-  ): () => void;
-  resolveAutomationCommand(
-    id: string,
-    result: { ok: boolean; error?: string },
-  ): void;
   /** A worktree was named (generated or renamed). Both windows re-read the row. */
   onWorktreeTitled(
     callback: (arg: {

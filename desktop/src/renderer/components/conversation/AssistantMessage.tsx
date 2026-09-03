@@ -32,7 +32,7 @@ export const AssistantMessage = React.memo(function AssistantMessage({
   const onOpenFileVoid = useCallback((path: string, event?: FileClickModifiers) => { void onOpenFile(path, event).catch((err) => rWarn('conversation', 'open file failed', { error: String(err) })) }, [onOpenFile])
 
   const markdownComponents = useMemo(
-    () => makeMarkdownComponents({ colors, onOpenFile: onOpenFileVoid, onOpenUrl, variant: 'assistant' }),
+    () => makeMarkdownComponents({ colors, onOpenFile: onOpenFileVoid, onOpenUrl }),
     [colors, onOpenFileVoid, onOpenUrl],
   )
 

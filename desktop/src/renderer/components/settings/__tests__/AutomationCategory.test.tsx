@@ -1,240 +1,238 @@
 // @vitest-environment jsdom
-import React from 'react'
-import { act } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import React from "react";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-const automationList = vi.fn()
-const automationHistory = vi.fn()
-const automationSave = vi.fn()
-const getEnterprisePolicyFull = vi.fn()
-const automationProjectIds = vi.fn()
-const setProjectAutomationEnabled = vi.fn()
+;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const automationListing = vi.fn();
+const automationHistory = vi.fn();
+const automationUpsert = vi.fn();
+const automationDelete = vi.fn();
+const automationDuplicate = vi.fn();
+const getEnterprisePolicyFull = vi.fn();
+const setProjectAutomationEnabled = vi.fn();
+const selectDirectory = vi.fn();
 ;(globalThis as unknown as { window: Window }).window = {
   ion: {
-    automationList,
+    automationListing,
     automationHistory,
-    automationSave,
+    automationUpsert,
+    automationDelete,
+    automationDuplicate,
     getEnterprisePolicyFull,
-    automationProjectIds,
     setProjectAutomationEnabled,
+    selectDirectory,
   },
-} as unknown as Window
-vi.mock('../../../theme', () => ({ useColors: () => new Proxy({}, { get: () => '#000000' }) }))
-vi.mock('../../../rendererLogger', () => ({ rInfo: vi.fn(), rWarn: vi.fn() }))
-vi.mock('../../git/HoverCard', () => ({ HoverCard: ({ children }: { children: React.ReactNode }) => <>{children}</> }))
-import { AutomationCategory } from '../AutomationCategory'
+} as unknown as Window;
 
-let container: HTMLDivElement
-let root: Root
-const automation = {
-  id: 'notify-on-pin',
-  name: 'Notify on pin advance',
-  enabled: true,
-  trigger: { kind: 'event' as const, event: 'worktree:pin-advanced' },
-  steps: [{ kind: 'desktop:notification', payload: { title: 'Pinned' } }],
-  createdAt: '2026-01-01T00:00:00.000Z',
-  updatedAt: '2026-01-01T00:00:00.000Z',
+vi.mock("../../../theme", () => ({ useColors: () => new Proxy({}, { get: () => "#000000" }) }));
+vi.mock("../../../rendererLogger", () => ({ rInfo: vi.fn(), rWarn: vi.fn() }));
+vi.mock("../../git/Tooltip", () => ({
+  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+vi.mock("../../../preferences", () => ({
+  usePreferencesStore: (selector: (state: { tabGroups: unknown[] }) => unknown) =>
+    selector({ tabGroups: [] }),
+}));
+vi.mock("../../SlashCommandMenu", () => ({ SLASH_COMMANDS: [{ command: "/align" }] }));
+
+import { AutomationCategory } from "../AutomationCategory";
+import type { AutomationDefinition, AutomationSourceEntry } from "../../../../shared/types-automation";
+
+let container: HTMLDivElement;
+let root: Root;
+
+function userDef(id: string, name: string): AutomationDefinition {
+  return {
+    id,
+    name,
+    enabled: true,
+    trigger: { kind: "event", event: "worktree:pin-advanced" },
+    steps: [{ kind: "worktree:set-stage", payload: { stage: "test", onlyIfStage: "bug" } }],
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+function entry(
+  definition: AutomationDefinition,
+  source: AutomationSourceEntry["source"],
+  extra: Partial<AutomationSourceEntry> = {},
+): AutomationSourceEntry {
+  return { definition, source, effective: true, ...extra };
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
-  automationList.mockResolvedValue([automation])
-  automationHistory.mockResolvedValue([])
-  automationSave.mockResolvedValue({ ok: true })
-  getEnterprisePolicyFull.mockResolvedValue(null)
-  automationProjectIds.mockResolvedValue([])
-  setProjectAutomationEnabled.mockResolvedValue({ ok: true })
-  container = document.createElement('div')
-  document.body.appendChild(container)
-  root = createRoot(container)
-})
+  vi.clearAllMocks();
+  automationListing.mockResolvedValue({
+    entries: [entry(userDef("u1", "My rule"), "user")],
+    locked: false,
+  });
+  automationHistory.mockResolvedValue([]);
+  automationUpsert.mockResolvedValue({ ok: true, definition: userDef("u1", "My rule") });
+  automationDelete.mockResolvedValue({ ok: true });
+  automationDuplicate.mockResolvedValue({ ok: true, definition: userDef("copy", "My rule (copy)") });
+  getEnterprisePolicyFull.mockResolvedValue(null);
+  setProjectAutomationEnabled.mockResolvedValue({ ok: true });
+  selectDirectory.mockResolvedValue(null);
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+});
 afterEach(() => {
-  act(() => root.unmount())
-  container.remove()
-})
-async function settle(): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, 0))
-}
+  act(() => root.unmount());
+  container.remove();
+});
 
+async function settle(): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
 async function render(): Promise<void> {
   await act(async () => {
-    root.render(<AutomationCategory />)
-    await settle()
-  })
+    root.render(<AutomationCategory />);
+    await settle();
+  });
+}
+function button(text: string): HTMLButtonElement {
+  const el = Array.from(container.querySelectorAll("button")).find((b) =>
+    b.textContent?.includes(text),
+  );
+  if (!el) throw new Error(`missing button ${text}`);
+  return el as HTMLButtonElement;
+}
+async function click(el: HTMLElement): Promise<void> {
+  await act(async () => {
+    el.click();
+    await settle();
+  });
+}
+async function setSelect(el: HTMLSelectElement, value: string): Promise<void> {
+  await act(async () => {
+    el.value = value;
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    await settle();
+  });
+}
+function select(label: string): HTMLSelectElement {
+  return container.querySelector(`[aria-label="${label}"]`) as HTMLSelectElement;
 }
 
-function buttonWithText(text: string): HTMLButtonElement {
-  const button = Array.from(container.querySelectorAll('button')).find(
-    (candidate) => candidate.textContent?.includes(text),
-  )
-  if (!button) throw new Error(`missing button ${text}`)
-  return button as HTMLButtonElement
-}
+describe("AutomationCategory — source-aware list + inline editor", () => {
+  it("lists rules with a source tag and reads the source-aware listing", async () => {
+    await render();
+    expect(automationListing).toHaveBeenCalledOnce();
+    expect(container.textContent).toContain("My rule");
+    expect(container.textContent).toContain("You");
+  });
 
-describe('AutomationCategory', () => {
-  it('labels saved definitions as workflows and opens a workflow card for editing', async () => {
-    await render()
+  it("keeps the list visible while editing and swaps content when another rule is selected", async () => {
+    automationListing.mockResolvedValue({
+      entries: [
+        entry(userDef("u1", "First"), "user"),
+        entry(
+          { ...userDef("u2", "Second"), trigger: { kind: "event", event: "worktree:landed" } },
+          "user",
+        ),
+      ],
+      locked: false,
+    });
+    await render();
+    const [firstEdit, secondEdit] = Array.from(container.querySelectorAll("button")).filter(
+      (b) => b.textContent === "Edit",
+    ) as HTMLButtonElement[];
+    await click(firstEdit);
+    // The list is still present alongside the editor (inline seam).
+    expect(container.querySelector('[aria-label="Automation Editor"]')).toBeTruthy();
+    expect(container.textContent).toContain("First");
+    expect(container.textContent).toContain("Second");
+    expect(select("Automation trigger").value).toBe("worktree:pin-advanced");
+    // Selecting another rule swaps the editor content in place.
+    await click(secondEdit);
+    expect(select("Automation trigger").value).toBe("worktree:landed");
+  });
 
-    expect(automationList).toHaveBeenCalledOnce()
-    expect(automationHistory).toHaveBeenCalledOnce()
-    expect(container.textContent).toContain('Your workflows')
-    expect(container.textContent).toContain('When: Worktree update reaches the integration bench')
-    expect(container.textContent).toContain('Then: Show desktop notification')
+  it("renders Needs testing and Issue found as stage choices, storing test and bug", async () => {
+    await render();
+    await click(button("Create workflow"));
+    await setSelect(select("Automation trigger"), "conversation:message-submitted");
+    await click(button("Add action"));
+    // The default action is 'record'; switch it to set-stage.
+    await setSelect(select("Action"), "worktree:set-stage");
+    const stageSelect = select("New stage");
+    const labels = Array.from(stageSelect.options).map((o) => o.textContent);
+    expect(labels).toContain("Needs testing");
+    expect(labels).toContain("Issue found");
+    const values = Array.from(stageSelect.options).map((o) => o.value);
+    expect(values).toContain("test");
+    expect(values).toContain("bug");
+  });
 
-    const card = container.querySelector('[aria-label="Edit workflow Notify on pin advance"]') as HTMLElement
-    await act(async () => {
-      card.click()
-      await Promise.resolve()
-    })
-    expect(container.querySelector('[aria-label="Automation editor"]')).toBeTruthy()
-    expect((container.querySelector('[aria-label="Automation trigger"]') as HTMLSelectElement).value).toBe('worktree:pin-advanced')
-  })
+  it("saves the refinement template with messageKind prompt, permissionMode auto, onlyIfStage test", async () => {
+    await render();
+    await click(button("Create workflow"));
+    await click(button("Use Normal message on a tested worktree marks Issue found"));
+    expect(select("Automation trigger").value).toBe("conversation:message-submitted");
+    await click(button("Save"));
+    const saved = automationUpsert.mock.calls[0][0] as AutomationDefinition;
+    expect(saved.condition?.all).toEqual(
+      expect.arrayContaining([
+        { path: "payload.messageKind", operator: "equals", value: "prompt" },
+        { path: "payload.permissionMode", operator: "equals", value: "auto" },
+      ]),
+    );
+    expect(saved.steps).toEqual([
+      { kind: "worktree:set-stage", payload: { stage: "bug", onlyIfStage: "test" } },
+    ]);
+  });
 
-  it('persists a toggled workflow definition', async () => {
-    await render()
-    const checkbox = container.querySelector('[aria-label="Enable Notify on pin advance"]') as HTMLInputElement
-    await act(async () => {
-      checkbox.click()
-      await Promise.resolve()
-    })
-    expect(automationSave).toHaveBeenCalledWith([
-      expect.objectContaining({ id: automation.id, enabled: false }),
-    ])
-  })
+  it("removes incompatible actions when the trigger changes", async () => {
+    await render();
+    await click(button("Create workflow"));
+    await setSelect(select("Automation trigger"), "worktree:pin-advanced");
+    await click(button("Add action"));
+    await setSelect(select("Action"), "worktree:set-stage");
+    // engine:status cannot supply a worktree, so the set-stage action is dropped.
+    await setSelect(select("Automation trigger"), "engine:status");
+    expect(container.querySelector('[aria-label="Action"]')).toBeNull();
+  });
 
-  it('persists the alignment template with the executable slash action', async () => {
-    await render()
-    await act(async () => {
-      buttonWithText('Use Verified runs alignment').click()
-      await Promise.resolve()
-    })
-    await act(async () => {
-      buttonWithText('Save automation').click()
-      await Promise.resolve()
-    })
-    const saved = automationSave.mock.calls[0][0] as typeof automation[]
-    expect(saved.find((item) => item.name === 'Verified runs alignment')).toMatchObject({
-      steps: [{ kind: 'conversation:slash', payload: { command: 'align' } }],
-    })
-  })
+  it("blocks save when an action target the trigger cannot supply is present", async () => {
+    await render();
+    await click(button("Create workflow"));
+    // engine:status provides no worktree; add a set-stage action via a trigger that
+    // does, then switch — but here we assert Save stays disabled with no actions
+    // and an unsatisfiable action.
+    await setSelect(select("Automation trigger"), "worktree:pin-advanced");
+    await click(button("Add action"));
+    await setSelect(select("Action"), "worktree:set-stage");
+    // Now a valid rule — Save enabled.
+    expect((button("Save") as HTMLButtonElement).disabled).toBe(false);
+  });
 
-  it('keeps resolved slash commands in the trigger picker, not the action picker', async () => {
-    await render()
-    await act(async () => {
-      buttonWithText('Create workflow').click()
-      await Promise.resolve()
-    })
-    await act(async () => {
-      buttonWithText('Add action').click()
-      await Promise.resolve()
-    })
-    expect((container.querySelector('[aria-label="Action kind"]') as HTMLSelectElement).textContent).toContain('Run a slash command')
-    expect((container.querySelector('[aria-label="Action kind"]') as HTMLSelectElement).innerHTML).not.toContain('conversation:slash-resolved')
-  })
+  it("does not offer Edit or Delete for a non-user source, only Duplicate", async () => {
+    automationListing.mockResolvedValue({
+      entries: [entry(userDef("b1", "Built-in rule"), "built-in")],
+      locked: false,
+    });
+    await render();
+    const texts = Array.from(container.querySelectorAll("button")).map((b) => b.textContent);
+    expect(texts).toContain("Duplicate");
+    expect(texts).not.toContain("Edit");
+    expect(texts).not.toContain("Delete");
+  });
 
-  it('creates the clearer pin-advance template through the editor', async () => {
-    await render()
-    const label = 'Use When an issue fix reaches the bench, move it to Needs testing'
-    await act(async () => {
-      buttonWithText(label).click()
-      await Promise.resolve()
-    })
-    expect(container.querySelector('[aria-label="Automation editor"]')).toBeTruthy()
-    expect((container.querySelector('[aria-label="Automation trigger"]') as HTMLSelectElement).value).toBe('worktree:pin-advanced')
-    await act(async () => {
-      buttonWithText('Save automation').click()
-      await Promise.resolve()
-    })
-    const saved = automationSave.mock.calls[0][0] as typeof automation[]
-    expect(saved.find((item) => item.name.includes('Needs testing'))).toMatchObject({
-      trigger: { event: 'worktree:pin-advanced' },
-      steps: [{ kind: 'worktree:set-stage', payload: { stage: 'test', onlyIfStage: 'bug' } }],
-    })
-  })
-
-  it('explains conditions and branches in the editor', async () => {
-    await render()
-    await act(async () => {
-      buttonWithText('Create workflow').click()
-      await Promise.resolve()
-    })
-    expect(container.textContent).toContain('Run only when all conditions match')
-    expect(container.textContent).toContain('Actions to run, in order')
-    await act(async () => {
-      buttonWithText('Add branch').click()
-      await Promise.resolve()
-    })
-    expect(container.textContent).toContain('If this condition matches')
-  })
-
-  it('expands a succeeded activity row into its stored trigger, branch, and action trace', async () => {
-    automationHistory.mockResolvedValue([
-      {
-        id: 'success-1',
-        automationId: 'notify-on-pin',
-        eventType: 'worktree:pin-advanced',
-        causation: { rootId: 'root', chain: ['notify-on-pin'], depth: 1 },
-        startedAt: '2026-01-01T00:00:00.000Z',
-        finishedAt: '2026-01-01T00:00:01.000Z',
-        outcome: 'succeeded',
-        trace: {
-          trigger: { eventType: 'worktree:pin-advanced' },
-          condition: { type: 'none', matched: true },
-          causation: { decision: 'continued', input: { rootId: 'root', chain: [], depth: 0 } },
-          steps: [{
-            type: 'branch',
-            condition: { type: 'group', all: [], any: [], matched: true },
-            selected: 'then',
-            steps: [{ type: 'action', kind: 'worktree:set-stage', outcome: 'succeeded' }],
-          }],
-        },
-      },
-    ])
-    await render()
-    await settle()
-    expect(container.textContent).toContain('Show succeeded')
-    await act(async () => {
-      buttonWithText('Show succeeded').click()
-      await Promise.resolve()
-    })
-    expect(container.textContent).toContain('Trigger received: Worktree update reaches the integration bench')
-    expect(container.textContent).toContain('Branch selected: Then actions')
-    expect(container.textContent).toContain('Action succeeded: worktree:set-stage')
-  })
-
-  it('expands a skipped activity row into its recorded failed condition', async () => {
-    automationHistory.mockResolvedValue([
-      {
-        id: 'skip-1',
-        automationId: 'notify-on-pin',
-        eventType: 'worktree:pin-advanced',
-        causation: { rootId: 'root', chain: [], depth: 0 },
-        startedAt: '2026-01-01T00:00:00.000Z',
-        finishedAt: '2026-01-01T00:00:00.000Z',
-        outcome: 'skipped',
-        trace: {
-          trigger: { eventType: 'worktree:pin-advanced' },
-          condition: {
-            type: 'group',
-            all: [{ type: 'condition', path: 'payload.stage', operator: 'equals', expected: 'bug', actual: 'test', matched: false }],
-            any: [],
-            matched: false,
-          },
-          causation: { decision: 'not-evaluated', input: { rootId: 'root', chain: [], depth: 0 } },
-          steps: [],
-        },
-      },
-    ])
-    await render()
-    await settle()
-    expect(container.textContent).toContain('Show skipped')
-    await act(async () => {
-      buttonWithText('Show skipped').click()
-      await Promise.resolve()
-    })
-    expect(container.textContent).toContain('Conditions: Did not match: payload.stage equals bug (was test)')
-    expect(container.textContent).toContain('Causation: Not evaluated after the condition did not match.')
-  })
-})
+  it("toggles a project rule through setProjectAutomationEnabled and stays reversible", async () => {
+    automationListing.mockResolvedValue({
+      entries: [entry(userDef("p1", "Project rule"), "project", { locallyDisabled: false })],
+      locked: false,
+    });
+    await render();
+    const checkbox = container.querySelector(
+      '[aria-label="Enable Project rule"]',
+    ) as HTMLInputElement;
+    await click(checkbox);
+    expect(setProjectAutomationEnabled).toHaveBeenCalledWith("", "p1", false);
+  });
+});

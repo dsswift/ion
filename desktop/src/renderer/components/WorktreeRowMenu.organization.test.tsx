@@ -44,8 +44,8 @@ let tabs: Array<{ id: string; workingDirectory: string; title: string; customTit
 
 vi.mock('../stores/sessionStore', () => ({
   useSessionStore: Object.assign(
-    (selector: (state: { benchWorkspaces: Map<string, never>; tabs: typeof tabs }) => unknown) =>
-      selector({ benchWorkspaces: new Map<string, never>(), tabs }),
+    (selector: (state: { benchWorkspaces: Map<string, never>; tabs: typeof tabs; workspaceOperationLedger: Map<string, never> }) => unknown) =>
+      selector({ benchWorkspaces: new Map<string, never>(), tabs, workspaceOperationLedger: new Map<string, never>() }),
     {
       getState: () => ({
         tabs,

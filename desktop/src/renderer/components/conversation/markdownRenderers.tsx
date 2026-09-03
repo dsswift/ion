@@ -1,11 +1,12 @@
 /**
  * Shared react-markdown component factory for conversation prose.
  *
- * One factory serves both message renderers (AssistantMessage, MessageBubble)
- * so the fenced-code pipeline (CodeBlock: syntax highlighting, badge, copy,
- * wrap, diff coloring) and the link treatments (favicons, file-path chips)
- * exist exactly once. Variant differences are cosmetic (table scroll
- * treatment); everything behavioral is identical.
+ * One factory serves the assistant message renderer (AssistantMessage) so the
+ * fenced-code pipeline (CodeBlock: syntax highlighting, badge, copy, wrap, diff
+ * coloring) and the link treatments (favicons, file-path chips) live in one
+ * place. TableScrollWrapper is exported separately for the other prose surfaces
+ * (UserMarkdown, PlanContent, FileEditorPreview, ResourceContent, harness
+ * banners) that build their own component maps but share the table treatment.
  *
  * Callers must memoize the result (useMemo on colors + handlers) — every
  * component returned here is referenced by react-markdown's reconciliation,
@@ -234,18 +235,17 @@ export interface MarkdownComponentsOptions {
   colors: ColorPalette
   onOpenFile: (path: string, event?: FileClickModifiers) => void
   onOpenUrl: (url: string) => void
-  variant: 'assistant' | 'user'
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- react-markdown's
    component props are untyped hast passthroughs; matching the existing
    convention in AssistantMessage/MessageBubble. */
-export function makeMarkdownComponents({ colors, onOpenFile, onOpenUrl, variant }: MarkdownComponentsOptions) {
+export function makeMarkdownComponents({ colors, onOpenFile, onOpenUrl }: MarkdownComponentsOptions) {
   return {
-    table: ({ children }: any) =>
-      variant === 'assistant'
-        ? <TableScrollWrapper>{children}</TableScrollWrapper>
-        : <div className="overflow-x-auto max-w-full">{children}</div>,
+    // The override REPLACES the <table>, so the wrapper re-emits one inside its
+    // horizontal scroller — a wide table scrolls (with fade edges) instead of
+    // crushing its right-hand columns in a thin panel.
+    table: ({ children }: any) => <TableScrollWrapper>{children}</TableScrollWrapper>,
     // A real markdown link gets the favicon treatment; a bare path/URL that
     // `remarkNavigableLinks` detected and rewrote into a `link` node (carrying
     // the NAVIGABLE_DATA_ATTR marker) routes through NavigableLink instead, so
@@ -260,9 +260,7 @@ export function makeMarkdownComponents({ colors, onOpenFile, onOpenUrl, variant 
         : (
           <FaviconLink href={href} colors={colors}>{children}</FaviconLink>
         ),
-    ...(variant === 'assistant'
-      ? { img: ({ src, alt }: any) => <ImageCard src={src} alt={alt} colors={colors} /> }
-      : {}),
+    img: ({ src, alt }: any) => <ImageCard src={src} alt={alt} colors={colors} />,
     // Inline code only — fenced blocks are intercepted by the `pre` override
     // below before this renders with a className.
     code: ({ children, className, ...props }: any) => (

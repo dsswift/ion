@@ -535,6 +535,21 @@ export interface RunResult {
 
 // ─── Run Options ───
 
+/**
+ * Optional authorship + location facts carried alongside a mid-run Steer, so the
+ * main process can emit the Desktop Automation `conversation:message-submitted`
+ * event with the same classification a fresh prompt gets. Every field is
+ * optional; a caller that omits the object keeps the legacy positional shape and
+ * main falls back to reclassifying and to the session's own tab status.
+ */
+export interface SteerMeta {
+  projectPath?: string;
+  worktreePath?: string;
+  source?: "desktop" | "remote" | "machine";
+  injectionKind?: string;
+  messageKind?: import("./automation-message-kind").AutomationMessageKind;
+}
+
 export interface RunOptions {
   prompt: string;
   projectPath: string;
@@ -545,8 +560,20 @@ export interface RunOptions {
   addDirs?: string[];
   /** Extra context appended to the system prompt (additive, not replacement) */
   appendSystemPrompt?: string;
-  /** Origin of the prompt — 'remote' skips iOS forwarding (already echoed) */
-  source?: "desktop" | "remote";
+  /**
+   * Origin of the prompt. 'remote' skips iOS forwarding (already echoed).
+   * 'machine' is a renderer-local marker (e.g. the auto-fix lock passage): it
+   * behaves as a local prompt for delivery and echo (echo stays keyed on
+   * 'remote'), but is retained here so Desktop Automation can classify the
+   * submission as machine-authored.
+   */
+  source?: "desktop" | "remote" | "machine";
+  /**
+   * Client-classified authorship for the Desktop Automation
+   * `conversation:message-submitted` event. Computed once at the send boundary
+   * so the fresh-prompt and steer paths agree. Absent → main reclassifies.
+   */
+  messageKind?: import("./automation-message-kind").AutomationMessageKind;
   /** Main-originated turn must be published to iOS after renderer acceptance. */
   echoToIos?: boolean;
   /** Stable client delivery identity. Reused on retries to make engine acceptance idempotent. */

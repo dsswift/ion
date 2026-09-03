@@ -1,6 +1,7 @@
 import { contextBridge } from "electron";
 import { studioApi } from "./studio-api";
 import { requestApi } from "./api-request";
+import { automationApi } from "./api-automation";
 import { systemApi } from "./api-system";
 import { worktreeApi } from "./api-worktree";
 import { engineApi } from "./engine-api";
@@ -12,6 +13,7 @@ export type { IonAPI } from "./ionapi";
 const api: IonAPI = {
   ...studioApi,
   ...requestApi,
+  ...automationApi,
   ...worktreeApi,
   ...engineApi,
   ...systemApi,

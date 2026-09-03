@@ -19,6 +19,22 @@ import { resolveRetireBlockers } from "../stores/slices/worktree-occupant-close"
 import { rDebug, rError, rInfo, rWarn } from "../rendererLogger";
 import type { WorktreeInventoryEntry } from "../../shared/types";
 
+/**
+ * The land-and-retire confirmation, captured when the operator opens it.
+ *
+ * `hasNothingToLand` is FROZEN here rather than re-derived from the live entry.
+ * The land half of the operation drops `entry.unlandedCommitCount` to 0 while
+ * the retire half is still running; deriving the dialog's title/label from the
+ * live value flipped "Land and retire this worktree?" to "Retire this
+ * worktree?" mid-flight, which read as a second confirmation appearing and
+ * auto-accepting. Freezing both the message and the flag together keeps the
+ * dialog's identity fixed for the whole operation.
+ */
+export interface RetireConfirm {
+  message: string;
+  hasNothingToLand: boolean;
+}
+
 export function useWorktreeRowMenuVerbs({
   entry,
   repoPath,
@@ -34,12 +50,19 @@ export function useWorktreeRowMenuVerbs({
     s.benchWorkspaces.get(repoPath),
   );
   const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy);
-  const operation = useSessionStore((s) => {
-    const ledger = (s as unknown as { worktreeOperations?: Map<string, { worktreePath?: string; status: string }> }).worktreeOperations
-    return [...(ledger?.values() ?? [])].find((item) => item.worktreePath === entry.worktreePath)
-  });
-  const busy = operation?.status === 'pending' || operation?.status === 'running';
-  const [confirmRetire, setConfirmRetire] = useState<string | null>(null);
+  // The operation ledger is the source of truth for in-flight workspace
+  // mutations in both presentations (see studio/README.md — no local busy
+  // flags). Land/retire now record a `running` entry keyed by worktreePath;
+  // a match here is what raises `busy` for the confirm dialog. The field is
+  // `workspaceOperationLedger` — an earlier `worktreeOperations` read never
+  // matched a real store key, so this dialog never went busy at all.
+  const operation = useSessionStore((s) =>
+    [...s.workspaceOperationLedger.values()].find(
+      (item) => item.worktreePath === entry.worktreePath && item.status === 'running',
+    ),
+  );
+  const busy = operation !== undefined;
+  const [confirmRetire, setConfirmRetire] = useState<RetireConfirm | null>(null);
   const [confirmDiscardWorktree, setConfirmDiscardWorktree] = useState<string | null>(null);
   const [confirmDiscardRecordings, setConfirmDiscardRecordings] = useState<
     string | null
@@ -81,12 +104,15 @@ export function useWorktreeRowMenuVerbs({
     // A worktree with nothing to land (a mistakenly created one, or work
     // abandoned before the first commit) still needs a way to be discarded.
     // The confirmation says so honestly rather than promising a merge that
-    // `landAndRetireWorktree` will skip.
-    setConfirmRetire(
-      entry.unlandedCommitCount > 0
-        ? `This merges into ${entry.sourceBranch}, then removes the worktree, branch, and its finished conversations.`
-        : `This worktree has nothing to land. It will be discarded: nothing merges into ${entry.sourceBranch}, and the worktree, branch, and its finished conversations are removed.`
-    )
+    // `landAndRetireWorktree` will skip. Both the wording and the flag are
+    // captured now so the dialog cannot change identity mid-operation.
+    const hasNothingToLand = entry.unlandedCommitCount === 0
+    setConfirmRetire({
+      hasNothingToLand,
+      message: hasNothingToLand
+        ? `This worktree has nothing to land. It will be discarded: nothing merges into ${entry.sourceBranch}, and the worktree, branch, and its finished conversations are removed.`
+        : `This merges into ${entry.sourceBranch}, then removes the worktree, branch, and its finished conversations.`,
+    })
   }
 
   async function requestDiscardWorktree(): Promise<void> {

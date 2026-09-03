@@ -1,3 +1,4 @@
+import { getModelDisplayLabel } from './types-models'
 import type { ModelEntry } from './types-models'
 
 /** One model choice with routing-safe value and human-visible identity. */
@@ -33,9 +34,13 @@ export function findModelEntry(modelId: string, models: ModelEntry[]): ModelEntr
   return models.find((model) => model.id === modelId)
 }
 
-/** Visible identity. Shows "(unavailable)" when not in the live model set. */
+/**
+ * Visible identity. Shows the engine-supplied friendly name when the model is in
+ * the live set (matching the picker), and "<id> (unavailable)" when it is not.
+ */
 export function modelIdentityLabel(modelId: string, models: ModelEntry[] = []): string {
-  return findModelEntry(modelId, models) ? modelId : `${modelId} (unavailable)`
+  const entry = findModelEntry(modelId, models)
+  return entry ? getModelDisplayLabel(entry) : `${modelId} (unavailable)`
 }
 
 /** Backward-compatible name for model-picker label resolution. */

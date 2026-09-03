@@ -56,7 +56,21 @@ describe('getProviderDisplayName', () => {
 })
 
 describe('getModelDisplayLabel', () => {
-  it('maps a well-known bare model id to its friendly label', () => {
+  it('prefers the engine-supplied displayName over the static label map', () => {
+    // The wire field is authoritative: a model the engine labels "Claude Fable
+    // 5.1" must show that name even though the static LABELS map has no entry
+    // for it. This is the mechanism that surfaces catalog/API friendly names in
+    // the picker rather than the machine id.
+    expect(getModelDisplayLabel(model({ id: 'claude-fable-5-1', providerId: 'anthropic', displayName: 'Claude Fable 5.1' })))
+      .toBe('Claude Fable 5.1')
+  })
+
+  it('lets displayName win even when the id is in the static label map', () => {
+    expect(getModelDisplayLabel(model({ id: 'claude-opus-4-6', providerId: 'anthropic', displayName: 'Claude Opus 4.6' })))
+      .toBe('Claude Opus 4.6')
+  })
+
+  it('falls back to the static map when the engine supplies no displayName', () => {
     expect(getModelDisplayLabel(model({ id: 'claude-opus-4-6', providerId: 'anthropic' }))).toBe('Opus 4.6')
   })
 
