@@ -67,8 +67,8 @@ let storeTabs: Array<{ id: string; workingDirectory: string; title: string; cust
 
 vi.mock('../../stores/sessionStore', () => ({
   useSessionStore: Object.assign(
-    (selector: (s: { benchWorkspaces: Map<string, never>; tabs: typeof storeTabs; conversationPanes: Map<string, never> }) => unknown) =>
-      selector({ benchWorkspaces: new Map<string, never>(), tabs: storeTabs, conversationPanes: new Map<string, never>() }),
+    (selector: (s: { benchWorkspaces: Map<string, never>; tabs: typeof storeTabs; conversationPanes: Map<string, never>; workspaceOperationLedger: Map<string, never> }) => unknown) =>
+      selector({ benchWorkspaces: new Map<string, never>(), tabs: storeTabs, conversationPanes: new Map<string, never>(), workspaceOperationLedger: new Map<string, never>() }),
     {
       getState: () => ({
         retireWorktree: mocks.retireWorktree,
