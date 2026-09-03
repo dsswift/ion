@@ -125,7 +125,7 @@ rl.on("line", async (line) => {
 
   if (msg.method === "init") {
     send({ jsonrpc: "2.0", id: msg.id, result: {
-      tools: [{ name: "proxy", description: "Calls target via callTool", parameters: {} }],
+      tools: [{ name: "proxy", description: "Calls target via callTool", parameters: { type: "object", properties: {} } }],
       commands: {},
     }});
     return;
@@ -238,7 +238,7 @@ rl.on("line", async (line) => {
     return;
   }
   if (msg.method === "init") {
-    send({ jsonrpc:"2.0", id: msg.id, result: { tools: [{ name: "probe", description: "", parameters: {} }], commands: {} }});
+    send({ jsonrpc:"2.0", id: msg.id, result: { tools: [{ name: "probe", description: "probes an unknown tool", parameters: { type: "object", properties: {} } }], commands: {} }});
     return;
   }
   if (msg.method === "tool/probe") {
@@ -311,7 +311,7 @@ rl.on("line", (line) => {
   const req = JSON.parse(line.trim());
   if (req.method === "init") {
     process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: req.id, result: {
-      tools: [{ name: "emit_custom", description: "fires a custom event", parameters: {} }],
+      tools: [{ name: "emit_custom", description: "fires a custom event", parameters: { type: "object", properties: {} } }],
       commands: {}
     }}) + "\n");
     return;
@@ -578,7 +578,7 @@ rl.on("line", (line: string) => {
   const req = JSON.parse(line.trim())
   if (req.method === "init") {
     process.stdout.write(JSON.stringify({ jsonrpc:"2.0", id: req.id, result: {
-      tools: [{ name: "tag_" + native.tag.replace(/-/g, "_"), description: "", parameters: {} }],
+      tools: [{ name: "tag_" + native.tag.replace(/-/g, "_"), description: "reports native dep tag", parameters: { type: "object", properties: {} } }],
       commands: {}
     }}) + "\n")
     return
@@ -629,7 +629,7 @@ const rl = createInterface({ input: process.stdin, terminal: false })
 rl.on("line", (line: string) => {
   const req = JSON.parse(line.trim())
   if (req.method === "init") {
-    const tools = names.map(n => ({ name: n, description: "tla", parameters: {} }))
+    const tools = names.map(n => ({ name: n, description: "tla", parameters: { type: "object", properties: {} } }))
     process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: req.id, result: { tools, commands: {} }}) + "\n")
     return
   }
@@ -887,7 +887,7 @@ rl.on("line", async (line) => {
 
   if (msg.method === "init") {
     send({ jsonrpc: "2.0", id: msg.id, result: {
-      tools: [{ name: "peek", description: "peek at usage + history", parameters: {} }],
+      tools: [{ name: "peek", description: "peek at usage + history", parameters: { type: "object", properties: {} } }],
       commands: {},
     }});
     return;
@@ -1063,7 +1063,7 @@ rl.on("line", async (line) => {
 
   if (msg.method === "init") {
     send({ jsonrpc: "2.0", id: msg.id, result: {
-      tools: [{ name: "peek", description: "...", parameters: {} }],
+      tools: [{ name: "peek", description: "...", parameters: { type: "object", properties: {} } }],
       commands: {},
     }});
     return;
