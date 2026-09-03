@@ -33,7 +33,6 @@ import { createQuestionsSurfaceActions } from './surface-questions-actions'
 import {
   closeOthersTargets,
   closeToRightTargets,
-  composeTabs,
   nextActiveAfterClose,
   nextTerminalTitle,
   normalizeTabs,
