@@ -177,7 +177,7 @@ func TestACP_SessionNew_SendsMcpServerSpec(t *testing.T) {
 	agent.on("session/new", func(json.RawMessage) any { return SessionResult{SessionID: "sess_mcp"} })
 
 	spec := []map[string]interface{}{
-		{"name": "ion-extensions", "command": "socat", "args": []string{"UNIX-CONNECT:/tmp/x.sock", "STDIO"}, "env": []interface{}{}},
+		{"name": "ion-extensions", "command": "/usr/bin/ion", "args": []string{"mcp-bridge", "--socket", "/tmp/x.sock"}, "env": []interface{}{}},
 	}
 	if _, err := c.SessionNew(context.Background(), "/repo", spec); err != nil {
 		t.Fatalf("session/new: %v", err)

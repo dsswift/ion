@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/dsswift/ion/engine/internal/durablefile"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -36,6 +37,13 @@ type ToolServer struct {
 	server *mcp.Server
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	// connections counts MCP sessions the bridge has successfully established.
+	// It stays zero when the delegated CLI could never reach the socket (e.g. the
+	// bridge command failed to spawn), which is the signal Stop uses to convert an
+	// otherwise-invisible "tools registered but never delivered" failure into a
+	// logged one. Atomic because acceptLoop goroutines increment it concurrently.
+	connections atomic.Int64
 }
 
 // toolEntry stores a tool's handler alongside its MCP metadata so
@@ -53,18 +61,20 @@ type toolEntry struct {
 // cancelled may ignore it.
 type ToolHandler func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error)
 
-// socketToken derives a filesystem- and socat-safe token from a session
-// key. The engine treats session keys as opaque (per the engine
-// contract, cmd.Key is accepted verbatim from any harness), so a raw key
-// can contain characters that are illegal or dangerous in a socket path:
-// most importantly a colon, which socat parses as an address-option
-// delimiter in UNIX-CONNECT:<path> -- a colon-bearing key silently kills
-// every MCP/extension tool. It can also be arbitrarily long, blowing the
-// platform sun_path limit. A SHA-256 hex digest is collision-resistant
-// and length-bounded (fixed 64 chars, immune to sun_path overflow) where
-// a raw key is neither, and character-safe ([0-9a-f] only) for both socat
-// and the filesystem. So the socket and MCP-config filenames must be
-// derived from this token, never from the raw key.
+// socketToken derives a filesystem-safe, length-bounded token from a session
+// key. The engine treats session keys as opaque (per the engine contract,
+// cmd.Key is accepted verbatim from any harness), so a raw key can contain
+// characters that are illegal or dangerous in a socket path (colon, comma,
+// slash, space) and can be arbitrarily long, blowing the platform sun_path
+// limit. A SHA-256 hex digest is collision-resistant and length-bounded (fixed
+// 64 chars, immune to sun_path overflow) where a raw key is neither, and
+// character-safe ([0-9a-f] only) for the filesystem. So the socket and
+// MCP-config filenames must be derived from this token, never from the raw key.
+//
+// The socket path is now handed to the bridge as a discrete argv element
+// (`ion mcp-bridge --socket <path>`), not embedded in a `UNIX-CONNECT:<path>`
+// string, so a colon in the path is no longer parsed as an address delimiter --
+// but the length and filesystem-safety guarantees above still require the digest.
 func socketToken(sessionID string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(sessionID)))
 }
@@ -230,7 +240,21 @@ func (ts *ToolServer) Stop() {
 	}
 	configPath := ts.configPath
 	ts.configPath = ""
+	toolCount := len(ts.tools)
 	ts.mu.Unlock()
+
+	// Silent-failure backstop: if this server carried tools but no delegated-CLI
+	// MCP session ever connected, the model ran without any ion tool and the
+	// operator would otherwise see nothing. The usual cause is the bridge command
+	// failing to spawn or the socket being unreachable. Surface it at ERROR so the
+	// failure is reconstructible from ~/.ion/engine.jsonl alone.
+	if toolCount > 0 && ts.connections.Load() == 0 {
+		utils.LogWithFields(utils.LevelError, "backend.tool_server", "MCP bridge never connected; delegated-CLI ion tools were unavailable this session", map[string]any{
+			"key":        ts.key,
+			"tool_count": toolCount,
+			"sock_path":  ts.sockPath,
+		})
+	}
 
 	ts.wg.Wait()
 	os.Remove(ts.sockPath) //nolint:errcheck // stale socket cleanup; absent is fine
@@ -253,20 +277,43 @@ func (ts *ToolServer) HasTool(name string) bool {
 	return ok
 }
 
+// mcpBridgeInvocation returns the command and args a delegated CLI runs to reach
+// this ToolServer's Unix socket over stdio. It self-execs the Ion engine binary
+// (os.Executable) as `ion mcp-bridge --socket <path>`, which pumps stdio<->socket
+// exactly as `socat UNIX-CONNECT:<path> STDIO` did.
+//
+// Self-execing removes the dependency on socat -- a third-party binary Ion never
+// ships, installs, or probes. When socat was absent the delegated CLI could not
+// spawn the bridge; the ion-extensions MCP server reported status "failed" and
+// every ion tool (ExitPlanMode, ion_agent, and every client tool such as
+// AskUserQuestion) reported "No such tool available", because the MCP connection
+// failed before tools/list. The Ion binary is guaranteed present -- it spawned the
+// delegated CLI in the first place. Shared by McpConfigPath (claude-code) and
+// McpServerSpec (ACP grok/cursor) so neither path can quietly retain socat.
+func mcpBridgeInvocation(sockPath string) (command string, args []string) {
+	exe, err := os.Executable()
+	if err != nil || exe == "" {
+		// os.Executable should not fail for a running process. If it does, fall
+		// back to resolving "ion" on PATH so the bridge still has a chance, rather
+		// than emitting an unrunnable command. Logged so the degrade is visible.
+		utils.LogWithFields(utils.LevelError, "backend.tool_server", "os.Executable failed resolving MCP bridge command; falling back to ion on PATH", map[string]any{"error": utils.ErrStr(err)})
+		exe = "ion"
+	}
+	return exe, []string{"mcp-bridge", "--socket", sockPath}
+}
+
 // McpConfigPath writes MCP config JSON for the Claude CLI --mcp-config flag.
 func (ts *ToolServer) McpConfigPath(sessionID string) (string, error) {
 	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	configDir := filepath.Join(home, ".ion", "mcp")
 
+	bridgeCmd, bridgeArgs := mcpBridgeInvocation(ts.sockPath)
 	config := map[string]interface{}{
 		"mcpServers": map[string]interface{}{
 			McpServerName: map[string]interface{}{
 				"type":    "stdio",
-				"command": "socat",
-				"args": []string{
-					fmt.Sprintf("UNIX-CONNECT:%s", ts.sockPath),
-					"STDIO",
-				},
+				"command": bridgeCmd,
+				"args":    bridgeArgs,
 			},
 		},
 	}
@@ -291,16 +338,14 @@ func (ts *ToolServer) McpConfigPath(sessionID string) (string, error) {
 // rather than a config-file path. The ACP backends (grok, cursor) pass this on
 // `session/new`. The shape is the ACP stdio `McpServer` variant -- the grok
 // agent's serde requires `env` to be present (an empty array is accepted), so
-// it is always included. Same socat->Unix-socket bridge as McpConfigPath.
+// it is always included. Same self-exec stdio->Unix-socket bridge as McpConfigPath.
 func (ts *ToolServer) McpServerSpec() map[string]interface{} {
+	bridgeCmd, bridgeArgs := mcpBridgeInvocation(ts.sockPath)
 	return map[string]interface{}{
 		"name":    McpServerName,
-		"command": "socat",
-		"args": []string{
-			fmt.Sprintf("UNIX-CONNECT:%s", ts.sockPath),
-			"STDIO",
-		},
-		"env": []interface{}{},
+		"command": bridgeCmd,
+		"args":    bridgeArgs,
+		"env":     []interface{}{},
 	}
 }
 
@@ -340,6 +385,11 @@ func (ts *ToolServer) handleConnection(ctx context.Context, conn net.Conn) {
 		utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "MCP session connect failed", map[string]any{"error": err.Error()})
 		return
 	}
+	// A successful Connect means the bridge reached the socket and the delegated
+	// CLI's MCP client handshook. Record it so Stop can tell a working bridge from
+	// one that never connected (missing bridge command, unreachable socket).
+	ts.connections.Add(1)
+	utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "MCP session established via bridge", map[string]any{"key": ts.key})
 
 	if waitErr := ss.Wait(); waitErr != nil {
 		utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "MCP session ended", map[string]any{"error": waitErr.Error()})
