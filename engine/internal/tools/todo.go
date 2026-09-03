@@ -84,12 +84,12 @@ func executeTodoWrite(ctx context.Context, input map[string]any, _ string) (*typ
 		if !ok {
 			return &types.ToolResult{Content: "Error: each todo must be an object with 'content' and 'status'.", IsError: true}, nil
 		}
-		content, _ := item["content"].(string)
-		if strings.TrimSpace(content) == "" {
+		content, contentOk := item["content"].(string)
+		if !contentOk || strings.TrimSpace(content) == "" {
 			return &types.ToolResult{Content: "Error: each todo requires a non-empty 'content'.", IsError: true}, nil
 		}
-		status, _ := item["status"].(string)
-		if !validTodoStatuses[status] {
+		status, statusOk := item["status"].(string)
+		if !statusOk || !validTodoStatuses[status] {
 			status = "pending"
 		}
 		switch status {
