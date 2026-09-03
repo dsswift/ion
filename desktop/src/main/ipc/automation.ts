@@ -1,9 +1,6 @@
 import { ipcMain } from "electron";
 import { IPC } from "../../shared/types-ipc";
-import {
-  isAutomationDefinition,
-  type AutomationDefinition,
-} from "../../shared/types-automation";
+import { isAutomationDefinition } from "../../shared/types-automation";
 import { getAutomationRuntime } from "../automation/runtime";
 import { resolveAutomationRendererCommand } from "../automation/renderer-command";
 import { error as _error, log as _log } from "../logger";
@@ -16,13 +13,6 @@ function error(msg: string, fields?: Record<string, unknown>): void {
   _error(TAG, msg, fields);
 }
 
-function isDefinitions(value: unknown): value is AutomationDefinition[] {
-  return (
-    Array.isArray(value) &&
-    value.length <= 500 &&
-    value.every(isAutomationDefinition)
-  );
-}
 
 function isPlanImplementedPayload(
   value: unknown,
@@ -44,12 +34,12 @@ function isPlanImplementedPayload(
 
 /** Renderer contract for automation listing and persistence. Evaluation remains main-owned. */
 export function registerAutomationIpc(): void {
-  ipcMain.handle(IPC.AUTOMATION_LIST, (_event, projectPath?: unknown) => {
-    const definitions = getAutomationRuntime().definitions(
+  ipcMain.handle(IPC.AUTOMATION_LISTING, (_event, projectPath?: unknown) => {
+    const listing = getAutomationRuntime().listing(
       typeof projectPath === "string" ? projectPath : undefined,
     );
-    log("automation definitions listed", { count: definitions.length });
-    return definitions;
+    log("automation definitions listed", { count: listing.entries.length });
+    return listing;
   });
 
   ipcMain.handle(IPC.AUTOMATION_HISTORY, () =>
@@ -126,17 +116,52 @@ export function registerAutomationIpc(): void {
     resolveAutomationRendererCommand(id, { ok, error: failure });
   });
 
-  ipcMain.handle(IPC.AUTOMATION_SAVE, (_event, definitions: unknown) => {
-    if (!isDefinitions(definitions)) {
-      error("automation save rejected invalid definitions");
-      return { ok: false, error: "invalid automation definitions" };
+  ipcMain.handle(IPC.AUTOMATION_UPSERT, (_event, definition: unknown) => {
+    if (!isAutomationDefinition(definition)) {
+      error("automation upsert rejected invalid definition");
+      return { ok: false, error: "invalid automation definition" };
     }
     try {
-      getAutomationRuntime().saveDefinitions(definitions);
-      log("automation definitions saved", { count: definitions.length });
+      const saved = getAutomationRuntime().saveUserDefinition(definition);
+      log("automation definition saved", { automation_id: saved.id });
+      return { ok: true, definition: saved };
+    } catch (err) {
+      error("automation definition save failed", { error: String(err) });
+      return { ok: false, error: String(err) };
+    }
+  });
+
+  ipcMain.handle(IPC.AUTOMATION_DELETE, (_event, id: unknown) => {
+    if (typeof id !== "string" || id.length === 0)
+      return { ok: false, error: "invalid automation id" };
+    try {
+      getAutomationRuntime().deleteUserDefinition(id);
+      log("automation definition deleted", { automation_id: id });
       return { ok: true };
     } catch (err) {
-      error("automation definitions save failed", { error: String(err) });
+      error("automation definition delete failed", { error: String(err) });
+      return { ok: false, error: String(err) };
+    }
+  });
+
+  ipcMain.handle(IPC.AUTOMATION_DUPLICATE, (_event, request: unknown) => {
+    if (!request || typeof request !== "object")
+      return { ok: false, error: "invalid duplicate request" };
+    const value = request as { id?: unknown; projectPath?: unknown };
+    if (typeof value.id !== "string" || value.id.length === 0)
+      return { ok: false, error: "invalid automation id" };
+    try {
+      const saved = getAutomationRuntime().duplicateDefinition(
+        value.id,
+        typeof value.projectPath === "string" ? value.projectPath : undefined,
+      );
+      log("automation definition duplicated", {
+        source_id: value.id,
+        automation_id: saved.id,
+      });
+      return { ok: true, definition: saved };
+    } catch (err) {
+      error("automation definition duplicate failed", { error: String(err) });
       return { ok: false, error: String(err) };
     }
   });

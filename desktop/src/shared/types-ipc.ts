@@ -219,8 +219,12 @@ export const IPC = {
   // see shared/types-git.ts WorkStage).
   GIT_WORKTREE_SET_STAGE: "ion:git-worktree-set-stage",
   // Durable main-process automations. No renderer executes automation code.
-  AUTOMATION_LIST: "ion:automation-list",
-  AUTOMATION_SAVE: "ion:automation-save",
+  // Source-aware listing + per-item user CRUD; the old whole-list AUTOMATION_SAVE
+  // is gone so a merged effective list can never copy a non-user rule into ~/.ion.
+  AUTOMATION_LISTING: "ion:automation-listing",
+  AUTOMATION_UPSERT: "ion:automation-upsert",
+  AUTOMATION_DELETE: "ion:automation-delete",
+  AUTOMATION_DUPLICATE: "ion:automation-duplicate",
   AUTOMATION_HISTORY: "ion:automation-history",
   AUTOMATION_PLAN_IMPLEMENTED: "ion:automation-plan-implemented",
   AUTOMATION_PROJECT_IDS: "ion:automation-project-ids",

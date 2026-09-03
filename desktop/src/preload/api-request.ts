@@ -17,8 +17,8 @@ export const requestApi = {
   prompt: (tabId, requestId, options) =>
     ipcRenderer.invoke(IPC.PROMPT, { tabId, requestId, options }),
   cancel: (requestId) => ipcRenderer.invoke(IPC.CANCEL, requestId),
-  steer: (tabId, message, clientMessageId) =>
-    ipcRenderer.send(IPC.STEER, { tabId, message, clientMessageId }),
+  steer: (tabId, message, clientMessageId, meta) =>
+    ipcRenderer.send(IPC.STEER, { tabId, message, clientMessageId, meta }),
   stopTab: (tabId) => ipcRenderer.invoke(IPC.STOP_TAB, tabId),
   retry: (tabId, requestId, options) =>
     ipcRenderer.invoke(IPC.RETRY, { tabId, requestId, options }),
@@ -47,42 +47,6 @@ export const requestApi = {
   listCustomThemes: () => ipcRenderer.invoke(IPC.THEMES_LIST_CUSTOM),
   openExternal: (url) => ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
   getFavicon: (host) => ipcRenderer.invoke(IPC.FAVICON_GET, host),
-  automationList: (projectPath) =>
-    ipcRenderer.invoke(IPC.AUTOMATION_LIST, projectPath),
-  automationSave: (definitions) =>
-    ipcRenderer.invoke(IPC.AUTOMATION_SAVE, definitions),
-  automationHistory: () => ipcRenderer.invoke(IPC.AUTOMATION_HISTORY),
-  automationProjectIds: (projectPath) =>
-    ipcRenderer.invoke(IPC.AUTOMATION_PROJECT_IDS, projectPath),
-  setProjectAutomationEnabled: (projectPath, id, enabled) =>
-    ipcRenderer.invoke(IPC.AUTOMATION_PROJECT_ENABLED, {
-      projectPath,
-      id,
-      enabled,
-    }),
-  triggerPlanImplemented: (payload) =>
-    ipcRenderer.invoke(IPC.AUTOMATION_PLAN_IMPLEMENTED, payload),
-  onAutomationEvent: (callback) => {
-    const handler = (
-      _e: Electron.IpcRendererEvent,
-      event: import("../shared/types-automation").AutomationRuntimeEvent,
-    ) => callback(event);
-    ipcRenderer.on(IPC.AUTOMATION_EVENT, handler);
-    return () => ipcRenderer.removeListener(IPC.AUTOMATION_EVENT, handler);
-  },
-  onAutomationCommand: (callback) => {
-    const handler = (
-      _e: Electron.IpcRendererEvent,
-      command: {
-        id: string;
-        action: import("../shared/types-automation").AutomationAction;
-      },
-    ) => callback(command);
-    ipcRenderer.on(IPC.AUTOMATION_COMMAND, handler);
-    return () => ipcRenderer.removeListener(IPC.AUTOMATION_COMMAND, handler);
-  },
-  resolveAutomationCommand: (id, result) =>
-    ipcRenderer.send(IPC.AUTOMATION_COMMAND_RESULT, { id, ...result }),
   revealPath: (path) => ipcRenderer.invoke(IPC.REVEAL_PATH, path),
   attachFiles: () => ipcRenderer.invoke(IPC.ATTACH_FILES),
   attachFileByPath: (path) => ipcRenderer.invoke(IPC.ATTACH_FILE_BY_PATH, path),

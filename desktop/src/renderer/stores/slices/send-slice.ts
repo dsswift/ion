@@ -23,6 +23,7 @@ import {
   promptRefusalMessage,
 } from "../../../shared/prompt-submit-result";
 import { suppressesInjection } from "../../../shared/injection-policy";
+import { classifyAutomationMessageKind } from "../../../shared/automation-message-kind";
 import { createSendBashSlice } from "./send-slice-bash";
 
 type PromptModelSelection =
@@ -242,6 +243,15 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // (MessageBubble reads message.injectionKind) rather than being hidden.
       // Classified by the ONE shared policy (shared/injection-policy.ts).
       const suppressBubble = suppressesInjection({ injectionKind });
+      // Classify authorship once, at the send boundary, so the fresh-prompt and
+      // steer paths hand the main process the same Desktop Automation
+      // messageKind. Never inferred from message text — only source, injection
+      // kind, and whether the text parses as a slash invocation.
+      const messageKind = classifyAutomationMessageKind({
+        source,
+        injectionKind,
+        isSlash: parseSlash(text.trim()) !== null,
+      });
       const tab = tabs.find((t) => t.id === tabId);
       if (!tab) {
         // A dropped operator prompt is never a debug detail: the text is gone
@@ -493,7 +503,13 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       }
 
       if (isBusy && !implementationPhase) {
-        window.ion.steer(tabId, fullPrompt, steerClientMessageId);
+        window.ion.steer(tabId, fullPrompt, steerClientMessageId, {
+          projectPath: resolvedPath,
+          worktreePath: resolvedPath,
+          source,
+          injectionKind,
+          messageKind,
+        });
         // A mid-turn steer consumed the operator's text (the optimistic steer
         // bubble is already in the conversation), so this is an acceptance —
         // returning a refusal here would restore text the user can see was sent.
@@ -625,7 +641,13 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           // different id would cause a duplicate user bubble. 'machine' is a
           // renderer-local marker (the auto-fix lock passage) and is NOT a
           // remote origin, so it forwards as a local prompt.
-          source: source === "remote" ? "remote" : undefined,
+          source:
+            source === "remote"
+              ? "remote"
+              : source === "machine"
+                ? "machine"
+                : undefined,
+          messageKind,
           echoToIos,
           deliveryId: source === "remote" ? requestId : undefined,
           // Client-stated authorship and optional transcript rendering. The
@@ -670,6 +692,11 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // is never echoed into the transcript as a user bubble. Classified by
       // the one shared policy (shared/injection-policy.ts).
       const suppressRemoteBubble = suppressesInjection({ injectionKind });
+      const remoteMessageKind = classifyAutomationMessageKind({
+        source: "remote",
+        injectionKind,
+        isSlash: parseSlash(prompt.trim()) !== null,
+      });
       const { tabs, staticInfo } = get();
       const preferredModel = usePreferencesStore.getState().preferredModel;
       const tab = tabs.find((t) => t.id === tabId);
@@ -807,7 +834,13 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       }
 
       if (isBusy && !isImplementation) {
-        window.ion.steer(tabId, prompt, steerClientMessageId);
+        window.ion.steer(tabId, prompt, steerClientMessageId, {
+          projectPath: resolvedPath,
+          worktreePath: resolvedPath,
+          source: "remote",
+          injectionKind,
+          messageKind: remoteMessageKind,
+        });
         return;
       }
 
@@ -866,6 +899,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           addDirs:
             tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
           source: "remote",
+          messageKind: remoteMessageKind,
           echoToIos,
           deliveryId: requestId,
           displayText,

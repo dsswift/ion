@@ -6,7 +6,8 @@ import {
 } from "./causation";
 import { evaluateCondition, runSteps } from "./declarative";
 import { AutomationHistoryStore } from "./history";
-import { mergeAutomationLayers } from "./merge";
+import { listAutomationLayers, mergeAutomationLayers } from "./merge";
+import { validateUserDefinition } from "../../shared/automation-catalog";
 import {
   AutomationDefinitionSource,
   AutomationStore,
@@ -24,8 +25,10 @@ import type {
   AutomationEvaluationTrace,
   AutomationHistoryEntry,
   AutomationLayers,
+  AutomationListing,
   EffectiveAutomations,
 } from "./types";
+import { cloneDefinition } from "../../shared/types-automation";
 
 const TAG = "automation.service";
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -85,20 +88,30 @@ export class AutomationService {
       options.maxCausationDepth ?? DEFAULT_MAX_AUTOMATION_DEPTH;
   }
 
-  effective(projectPath?: string): EffectiveAutomations {
+  /** Build the layer inputs once so effective() and listing() cannot disagree. */
+  private layers(projectPath?: string): AutomationLayers {
     const projectSource = projectPath
       ? new AutomationDefinitionSource(projectAutomationDirectory(projectPath))
       : this.projectSource;
     const projectState = projectPath
       ? new ProjectAutomationStateStore(projectAutomationStateFile(projectPath))
       : this.projectState;
-    return mergeAutomationLayers({
+    return {
       builtIn: this.builtIn,
       user: this.store.load(),
       project: projectSource?.load(),
       projectDisabledIds: projectState?.loadDisabledIds(),
       enterprise: this.enterprisePolicy(),
-    });
+    };
+  }
+
+  effective(projectPath?: string): EffectiveAutomations {
+    return mergeAutomationLayers(this.layers(projectPath));
+  }
+
+  /** Source-aware view for Settings — every source layer, not only winners. */
+  listing(projectPath?: string): AutomationListing {
+    return listAutomationLayers(this.layers(projectPath));
   }
 
   userDefinitions(): AutomationDefinition[] {
@@ -141,6 +154,83 @@ export class AutomationService {
       throw new Error("Enterprise policy locks automation changes");
     validateUniqueDefinitions(definitions);
     this.store.save(definitions);
+  }
+
+  /**
+   * Create or replace ONE user definition. The main process is the source of
+   * truth: it reloads the user store, applies exactly this change, validates the
+   * result against the catalog and uniqueness, then writes the whole user set
+   * atomically. It never trusts a renderer to send the complete list, so no
+   * project, enterprise, or built-in definition can be copied into the user
+   * store by a save.
+   */
+  saveUserDefinition(definition: AutomationDefinition): AutomationDefinition {
+    this.assertUnlocked();
+    const validation = validateUserDefinition(definition);
+    if (!validation.ok) throw new Error(validation.error);
+    const saved: AutomationDefinition = {
+      ...cloneDefinition(definition),
+      updatedAt: new Date().toISOString(),
+    };
+    const next = this.store.load().filter((d) => d.id !== saved.id);
+    next.push(saved);
+    validateUniqueDefinitions(next);
+    this.store.save(next);
+    return saved;
+  }
+
+  /** Delete ONE user definition. A no-op id leaves the user set unchanged. */
+  deleteUserDefinition(id: string): void {
+    this.assertUnlocked();
+    const current = this.store.load();
+    const next = current.filter((d) => d.id !== id);
+    if (next.length === current.length) return;
+    this.store.save(next);
+  }
+
+  /**
+   * Duplicate any readable definition (from any source) into a NEW disabled user
+   * definition with a fresh id. Copying is how a project, enterprise, or
+   * built-in rule becomes editable without ever mutating its source layer.
+   */
+  duplicateDefinition(
+    id: string,
+    projectPath?: string,
+  ): AutomationDefinition {
+    this.assertUnlocked();
+    const source = this.findReadableDefinition(id, projectPath);
+    if (!source) throw new Error(`Unknown automation id: ${id}`);
+    const now = new Date().toISOString();
+    const copy: AutomationDefinition = {
+      ...cloneDefinition(source),
+      id: `user.${randomUUID()}`,
+      name: `${source.name} (copy)`,
+      enabled: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const next = this.store.load();
+    next.push(copy);
+    validateUniqueDefinitions(next);
+    this.store.save(next);
+    return copy;
+  }
+
+  private assertUnlocked(): void {
+    if (this.effective().locked)
+      throw new Error("Enterprise policy locks automation changes");
+  }
+
+  private findReadableDefinition(
+    id: string,
+    projectPath?: string,
+  ): AutomationDefinition | undefined {
+    const entries = this.listing(projectPath).entries.filter(
+      (entry) => entry.definition.id === id,
+    );
+    if (entries.length === 0) return undefined;
+    // Prefer the effective winner so a duplicate copies what actually runs.
+    return (entries.find((entry) => entry.effective) ?? entries[0]).definition;
   }
 
   async evaluate(

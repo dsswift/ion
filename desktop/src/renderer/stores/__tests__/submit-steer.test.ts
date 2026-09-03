@@ -79,7 +79,12 @@ describe('submit — mid-turn steering', () => {
     // bubble's own id) — passed so the engine's confirming steer_injected
     // event can re-key THIS exact bubble by identity instead of trusting
     // buffer position. See engine-slice-rewind.ts / event-slice.ts.
-    expect(mockSteer).toHaveBeenCalledWith('tab1', 'steer me in a new direction', 'steer-msg-id')
+    expect(mockSteer).toHaveBeenCalledWith(
+      'tab1',
+      'steer me in a new direction',
+      'steer-msg-id',
+      expect.objectContaining({ messageKind: 'prompt' }),
+    )
     expect(mockPrompt).not.toHaveBeenCalled()
   })
 
@@ -121,7 +126,12 @@ describe('submit — mid-turn steering', () => {
     state.submit('tab1', 'redirect please')
     const msgs = state.conversationPanes.get('tab1')?.instances.find((i: any) => i.id === 'main')?.messages ?? []
     const bubbleId = msgs[0].id
-    expect(mockSteer).toHaveBeenCalledWith('tab1', 'redirect please', bubbleId)
+    expect(mockSteer).toHaveBeenCalledWith(
+      'tab1',
+      'redirect please',
+      bubbleId,
+      expect.objectContaining({ messageKind: 'prompt' }),
+    )
   })
 
   it('does not pass a client correlation id on an idle (non-steer) prompt', () => {
@@ -145,7 +155,12 @@ describe('submit — mid-turn steering', () => {
     state.submit('tab1', 'redirect please', { source: 'remote', requestId: 'ios-steer-correlation-id' })
     const msgs = state.conversationPanes.get('tab1')?.instances.find((i: any) => i.id === 'main')?.messages ?? []
     expect(msgs[0].id).toBe('ios-steer-correlation-id')
-    expect(mockSteer).toHaveBeenCalledWith('tab1', 'redirect please', 'ios-steer-correlation-id')
+    expect(mockSteer).toHaveBeenCalledWith(
+      'tab1',
+      'redirect please',
+      'ios-steer-correlation-id',
+      expect.objectContaining({ source: 'remote', messageKind: 'prompt' }),
+    )
   })
 
   it('mints a fresh id for a local (desktop-typed) steer even when a requestId happens to be supplied', () => {
@@ -156,7 +171,32 @@ describe('submit — mid-turn steering', () => {
     state.submit('tab1', 'redirect please', { requestId: 'should-be-ignored' })
     const msgs = state.conversationPanes.get('tab1')?.instances.find((i: any) => i.id === 'main')?.messages ?? []
     expect(msgs[0].id).toBe('steer-msg-id')
-    expect(mockSteer).toHaveBeenCalledWith('tab1', 'redirect please', 'steer-msg-id')
+    expect(mockSteer).toHaveBeenCalledWith(
+      'tab1',
+      'redirect please',
+      'steer-msg-id',
+      expect.objectContaining({ messageKind: 'prompt' }),
+    )
+  })
+
+  it('classifies steer authorship in the metadata handed to the main process', () => {
+    // The main process emits conversation:message-submitted from the steer IPC,
+    // so the renderer must classify the message kind at the boundary. Never
+    // inferred from text — a plain sentence beginning with a slash is still a
+    // slash, a structured answer stays structured, a machine turn stays machine.
+    const slash = buildHarness('running')
+    slash.submit('tab1', '/align now')
+    expect(mockSteer.mock.calls[0][3]).toMatchObject({ messageKind: 'slash' })
+
+    mockSteer.mockClear()
+    const structured = buildHarness('running')
+    structured.submit('tab1', 'my answer', { injectionKind: 'structured_answer' })
+    expect(mockSteer.mock.calls[0][3]).toMatchObject({ messageKind: 'structured' })
+
+    mockSteer.mockClear()
+    const machine = buildHarness('running')
+    machine.submit('tab1', 'auto fix', { source: 'machine' })
+    expect(mockSteer.mock.calls[0][3]).toMatchObject({ messageKind: 'machine' })
   })
 })
 
@@ -170,7 +210,12 @@ describe('submitRemotePrompt — mid-turn steering (always remote-sourced)', () 
     state.submitRemotePrompt('tab1', 'redirect please', undefined, undefined, undefined, 'ios-reqid-123')
     const msgs = state.conversationPanes.get('tab1')?.instances.find((i: any) => i.id === 'main')?.messages ?? []
     expect(msgs[0].id).toBe('ios-reqid-123')
-    expect(mockSteer).toHaveBeenCalledWith('tab1', 'redirect please', 'ios-reqid-123')
+    expect(mockSteer).toHaveBeenCalledWith(
+      'tab1',
+      'redirect please',
+      'ios-reqid-123',
+      expect.objectContaining({ source: 'remote', messageKind: 'prompt' }),
+    )
   })
 
   it('falls back to a generated requestId when iOS omits reqId entirely', () => {

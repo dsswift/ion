@@ -38,7 +38,7 @@ const CATEGORIES: Category[] = [
   { id: 'projects', label: 'Projects', icon: Folder, component: ProjectsCategory },
   { id: 'ai', label: 'AI & Models', icon: Brain, component: AIModelsCategory },
   { id: 'ai-assist', label: 'AI Workflows', icon: MagicWand, component: AIAssistWorkflowsCategory },
-  { id: 'automation', label: 'Automation', icon: Lightning, component: AutomationCategory },
+  { id: 'automation', label: 'Desktop Automation', icon: Lightning, component: AutomationCategory },
   { id: 'appearance', label: 'Appearance', icon: PaintBrush, component: AppearanceCategory },
   { id: 'tabs', label: 'Tabs & Panels', icon: Columns, component: TabsPanelsCategory },
   { id: 'git', label: 'Git', icon: GitBranch, component: GitCategory },
