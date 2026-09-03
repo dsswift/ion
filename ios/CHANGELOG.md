@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.72.2](https://github.com/dsswift/ion/compare/ios-v1.72.1...ios-v1.72.2) (2026-09-03)
+
+### Bug Fixes
+
+* **ios:** track model displayName in contract sync ([3dcaf21](https://github.com/dsswift/ion/commit/3dcaf21fd1bdd8f642f637879e9089a8fe3172f1))
+
 ## [1.72.1](https://github.com/dsswift/ion/compare/ios-v1.72.0...ios-v1.72.1) (2026-09-03)
 
 ### Bug Fixes

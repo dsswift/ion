@@ -18,6 +18,13 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.80.1](https://github.com/dsswift/ion/compare/engine-v1.80.0...engine-v1.80.1) (2026-09-03)
+
+### Bug Fixes
+
+* **engine:** list live anthropic models for claude subscription ([e53fb68](https://github.com/dsswift/ion/commit/e53fb687e06ef1757cda32f84fe5e5db11b73367))
+* **engine:** serve current anthropic catalog with friendly names ([353dafe](https://github.com/dsswift/ion/commit/353dafe024061be5dfaf7d686a894bb89cc5d14e))
+
 ## [1.80.0](https://github.com/dsswift/ion/compare/engine-v1.79.0...engine-v1.80.0) (2026-09-03)
 
 ### Features

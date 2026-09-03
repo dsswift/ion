@@ -10,6 +10,20 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.93.0](https://github.com/dsswift/ion/compare/desktop-v1.92.0...desktop-v1.93.0) (2026-09-03)
+
+### Features
+
+* **desktop:** show friendly model names in the picker ([6736cb3](https://github.com/dsswift/ion/commit/6736cb3dd32db2edc229109035c8f7c1b4e3a87a))
+* **desktop:** add declarative automations ([660c371](https://github.com/dsswift/ion/commit/660c371b733927ec6260b1c64ca9c5f5cffac6dd))
+
+### Bug Fixes
+
+* **desktop:** scroll wide markdown tables instead of crushing ([deb8d82](https://github.com/dsswift/ion/commit/deb8d82a35a1b9b4453d30151634996e31566729))
+* **desktop:** freeze land-and-retire confirm, show progress ([f4282b1](https://github.com/dsswift/ion/commit/f4282b188fbdc6291a03a78a76691830f4a3b34e))
+* **desktop:** add workspaceOperationLedger to worktree menu test mocks ([05e3eee](https://github.com/dsswift/ion/commit/05e3eee0595c7c5f35640f805859b49d03ed113d))
+* **desktop:** fix template editor drop and rule-swap lock in Automation Editor ([b3319ff](https://github.com/dsswift/ion/commit/b3319ff47873d05a52e872285152bd6906271170))
+
 ## [1.92.0](https://github.com/dsswift/ion/compare/desktop-v1.91.0...desktop-v1.92.0) (2026-09-03)
 
 ### Features
