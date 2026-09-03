@@ -28,26 +28,34 @@ func TestAzureManagedIdentity_Acquire(t *testing.T) {
 		t.Skip("ION_E2E_AZURE_MI not set — skipping Azure managed identity test")
 	}
 
-	source := auth.NewAzureIdentitySource(auth.AzureMachineIdentityConfig{})
+	audience := os.Getenv("ION_E2E_AUDIENCE")
+	scope := "https://cognitiveservices.azure.com/.default"
+	cfg := &types.AuthConfig{IdentityProvider: "azure", OAuth: map[string]types.OAuthConfig{"azure": {
+		Scopes: []string{scope}, Audience: audience,
+		MachineIdentity: &types.MachineIdentityConfig{Source: "azure_managed_identity", Azure: &types.AzureMachineIdentityConfig{}},
+	}}}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	audience := os.Getenv("ION_E2E_AUDIENCE")
-	scope := "https://cognitiveservices.azure.com/.default"
-
-	token, expiry, err := source.Acquire(ctx, scope, audience)
+	first, err := auth.VerifyConfiguredWorkload(ctx, cfg)
 	if err != nil {
-		t.Fatalf("Acquire failed: %v", err)
+		t.Fatalf("VerifyConfiguredWorkload failed: %v", err)
+	}
+	second, err := auth.VerifyConfiguredWorkload(ctx, cfg)
+	if err != nil {
+		t.Fatalf("second VerifyConfiguredWorkload failed: %v", err)
+	}
+	if first.Identity == nil || first.Identity.Kind != "workload" || first.Identity.Source != "azure_managed_identity" {
+		t.Fatalf("identity = %#v", first.Identity)
+	}
+	if first.ExpiresAt.Before(time.Now()) || second.ExpiresAt.Before(time.Now()) {
+		t.Fatalf("expiry is in the past: first=%v second=%v", first.ExpiresAt, second.ExpiresAt)
+	}
+	if !first.ExpiresAt.Equal(second.ExpiresAt) {
+		t.Fatalf("cache was not reused: first=%v second=%v", first.ExpiresAt, second.ExpiresAt)
 	}
 
-	if token == "" {
-		t.Fatal("token is empty")
-	}
-	if expiry.Before(time.Now()) {
-		t.Fatalf("expiry %v is in the past", expiry)
-	}
-
-	t.Logf("Azure MI token acquired, expires %v (in %v)", expiry, time.Until(expiry).Round(time.Second))
+	t.Logf("Azure workload identity verified, expires %v", first.ExpiresAt)
 }
 
 func TestAzureManagedIdentity_AcquireWithClientID(t *testing.T) {

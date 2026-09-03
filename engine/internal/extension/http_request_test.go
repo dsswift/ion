@@ -42,12 +42,12 @@ func setupOperator(t *testing.T, tokenURL string) {
 		AuthorizationURL: "https://login.example.com/authorize",
 		TokenURL:         tokenURL,
 	}, 0)
-	if err := m.CompleteLogin(&auth.TokenResponse{
+	if err := m.SeedVerifiedLoginForTest(&auth.TokenResponse{
 		AccessToken:  "base-at",
 		RefreshToken: "rt-1",
 		Scope:        "openid profile offline_access",
 		ExpiresAt:    time.Now().Add(time.Hour),
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("seed grant: %v", err)
 	}
 	auth.SetOperator(m)

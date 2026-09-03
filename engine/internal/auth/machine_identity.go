@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -20,6 +21,10 @@ type MachineIdentityManager struct {
 	source          TokenSource
 	cache           *machineTokenCache
 	aws             AWSCredentialsProvider
+	awsRegion       string
+	awsSTSEndpoint  string
+	verifiedMu      sync.RWMutex
+	verified        *ContextIdentity
 }
 
 // NewMachineIdentityManager validates and builds the configured machine source.
@@ -105,6 +110,8 @@ func NewMachineIdentityManager(provider string, cfg types.OAuthConfig, refreshTh
 		if mi.AWS == nil {
 			return nil, fmt.Errorf("aws source requires aws config")
 		}
+		m.awsRegion = mi.AWS.Region
+		m.awsSTSEndpoint = mi.AWS.STSEndpoint
 		m.aws, err = NewAWSCredentialsProvider(mi.AWS, threshold)
 	default:
 		return nil, fmt.Errorf("unsupported machine identity source %q", mi.Source)
@@ -184,3 +191,17 @@ func (m *MachineIdentityManager) LastExpiry(scope, audience string) string {
 
 func (m *MachineIdentityManager) Provider() string   { return m.provider }
 func (m *MachineIdentityManager) SourceKind() string { return m.sourceKind }
+
+// ContextIdentity returns a defensive snapshot only after workload proof.
+func (m *MachineIdentityManager) ContextIdentity() *ContextIdentity {
+	m.verifiedMu.RLock()
+	defer m.verifiedMu.RUnlock()
+	return cloneContextIdentity(m.verified)
+}
+
+func (m *MachineIdentityManager) setVerifiedWorkload(identity *ContextIdentity) {
+	m.verifiedMu.Lock()
+	m.verified = cloneContextIdentity(identity)
+	m.verifiedMu.Unlock()
+	publishContextIdentityChange(ContextIdentityChange{Identity: identity, Reason: "workload_ready"})
+}

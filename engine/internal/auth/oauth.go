@@ -261,6 +261,8 @@ type PKCEFlowConfig struct {
 	// metadata. When non-empty, the callback validates the RFC 9207 `iss`
 	// parameter against it -- a mix-up attack defense.
 	ExpectedIssuer string
+	// Nonce binds the authorization request to the returned ID token.
+	Nonce string
 }
 
 // PKCEFlowResult contains the started flow's URL and completion channel.
@@ -470,6 +472,15 @@ func generateCodeChallenge(verifier string) string {
 	return base64.RawURLEncoding.EncodeToString(h[:])
 }
 
+// generateNonce creates a random OIDC nonce for an authorization request.
+func generateNonce() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
 // generateState creates a random state parameter.
 func generateState() (string, error) {
 	b := make([]byte, 16)
@@ -497,6 +508,9 @@ func buildAuthorizationURL(cfg PKCEFlowConfig, redirectURI, challenge, state str
 	}
 	if cfg.Audience != "" {
 		q.Set(audienceParamName(cfg.AudienceParam), cfg.Audience)
+	}
+	if cfg.Nonce != "" {
+		q.Set("nonce", cfg.Nonce)
 	}
 	if cfg.Resource != "" {
 		q.Set("resource", cfg.Resource)

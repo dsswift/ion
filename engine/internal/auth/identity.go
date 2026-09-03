@@ -17,12 +17,12 @@ package auth
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -78,6 +78,9 @@ type OperatorIdentity struct {
 	// Provider is the auth-config key this identity was minted under
 	// (e.g. "entra").
 	Provider string `json:"provider"`
+	// Claims preserves every JSON-compatible claim from the verified id_token.
+	Claims    map[string]any `json:"claims,omitempty"`
+	expiresAt time.Time
 	// Attribution is the value of the configured attributionClaim, when
 	// set. Takes precedence over the standard fallback chain in
 	// AttributionValue.
@@ -125,11 +128,19 @@ type IdentityManager struct {
 	// only; the durable refresh token is what persists (encrypted, on
 	// disk).
 	scopeCache map[string]oauthToken
-	// identity is the parsed id_token claims, cached after first parse.
+	// identity is the verified id_token claims, cached after first resolution.
 	identity *OperatorIdentity
+	// identityResolved caches both present and absent state to avoid repeated
+	// credential-store decryptions while signed out.
+	identityResolved bool
+	identityExpiry   time.Time
+	verifier         *oidcVerifier
 	// endpointsResolved marks a completed OIDC discovery pass (issuerUrl
 	// config). Guarded by mu; a failed pass retries on the next call.
 	endpointsResolved bool
+	// renewing guards against launching more than one concurrent background
+	// renewal from Identity()'s hot path. See kickBackgroundRenewal.
+	renewing atomic.Bool
 }
 
 // cacheKey builds the scopeCache key for a scope+audience pair. The
@@ -224,6 +235,11 @@ func (m *IdentityManager) BeginLogin() (*LoginResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	nonce, err := generateNonce()
+	if err != nil {
+		return nil, fmt.Errorf("identity: generate login nonce: %w", err)
+	}
+	pkceCfg.Nonce = nonce
 
 	flow, err := StartPKCEFlow(pkceCfg)
 	if err != nil {
@@ -241,7 +257,7 @@ func (m *IdentityManager) BeginLogin() (*LoginResult, error) {
 	go func() {
 		select {
 		case tok := <-flow.Token:
-			if err := m.CompleteLogin(tok); err != nil {
+			if err := m.completeLogin(context.Background(), tok, nonce); err != nil {
 				utils.LogWithFields(utils.LevelError, "auth.identity", "login persistence failed", map[string]any{
 					"provider": m.provider,
 					"error":    err.Error(),
@@ -280,12 +296,13 @@ func (m *IdentityManager) pkceConfig() (PKCEFlowConfig, error) {
 	}
 
 	pkceCfg := PKCEFlowConfig{
-		ClientID:      m.cfg.ClientID,
-		AuthURL:       m.cfg.AuthorizationURL,
-		TokenURL:      m.cfg.TokenURL,
-		Scope:         strings.Join(m.cfg.Scopes, " "),
-		Audience:      m.cfg.Audience,
-		AudienceParam: m.cfg.AudienceParameter,
+		ClientID:       m.cfg.ClientID,
+		AuthURL:        m.cfg.AuthorizationURL,
+		TokenURL:       m.cfg.TokenURL,
+		Scope:          strings.Join(m.cfg.Scopes, " "),
+		Audience:       m.cfg.Audience,
+		AudienceParam:  m.cfg.AudienceParameter,
+		ExpectedIssuer: m.cfg.IssuerURL,
 	}
 
 	if m.cfg.RedirectURI != "" {
@@ -393,30 +410,37 @@ func (d *DeviceLogin) Wait(ctx context.Context) (*OperatorIdentity, error) {
 
 // --- Grant persistence and token minting ---
 
-// CompleteLogin persists a freshly-granted token bundle as the operator's
-// identity. Exposed for flows where an external surface performed the
-// exchange as well as for the engine's own PKCE/device completions.
+// CompleteLogin verifies a freshly granted token bundle before it persists it.
+// The method never accepts claims decoded by a caller: only the configured OIDC
+// verifier can create a durable operator grant.
 func (m *IdentityManager) CompleteLogin(tok *TokenResponse) error {
+	return m.completeLogin(context.Background(), tok, "")
+}
+
+func (m *IdentityManager) completeLogin(ctx context.Context, tok *TokenResponse, expectedNonce string) error {
 	if tok == nil || tok.AccessToken == "" {
 		return fmt.Errorf("identity: empty token response")
 	}
+	identity, err := m.verifyIdentity(ctx, tok.IDToken, expectedNonce)
+	if err != nil {
+		utils.LogWithFields(utils.LevelError, "auth.identity", "operator identity verification failed", map[string]any{
+			"provider": m.provider,
+			"stage":    "login",
+			"error":    err.Error(),
+		})
+		return err
+	}
 	if tok.RefreshToken == "" {
-		// Without a refresh token the engine cannot silently maintain the
-		// identity or mint per-scope tokens; surface it loudly. The grant
-		// must request offline_access (or the provider's equivalent).
 		utils.LogWithFields(utils.LevelError, "auth.identity", "login grant carries no refresh token; silent refresh unavailable", map[string]any{
 			"provider": m.provider,
 			"scope":    tok.Scope,
 		})
 	}
-
 	stored := oauthToken{
-		AccessToken:  tok.AccessToken,
-		RefreshToken: tok.RefreshToken,
-		ExpiresAt:    tok.ExpiresAt,
-		IDToken:      tok.IDToken,
-		TokenType:    tok.TokenType,
-		Scope:        tok.Scope,
+		AccessToken: tok.AccessToken, RefreshToken: tok.RefreshToken,
+		ExpiresAt: tok.ExpiresAt, IDToken: tok.IDToken, TokenType: tok.TokenType,
+		Scope: tok.Scope, IdentityVersion: currentIdentityVersion,
+		PersistedIdentity: identityToPersisted(identity),
 	}
 	encoded, err := json.Marshal(stored)
 	if err != nil {
@@ -427,71 +451,111 @@ func (m *IdentityManager) CompleteLogin(tok *TokenResponse) error {
 	}
 
 	m.mu.Lock()
+	previous := cloneOperatorIdentity(m.identity)
 	m.scopeCache = make(map[string]oauthToken)
-	m.identity = nil
+	m.identity = identity
+	m.identityExpiry = identity.expiresAt
+	m.identityResolved = true
 	if tok.Scope != "" {
 		m.scopeCache[cacheKey(tok.Scope, m.cfg.Audience)] = stored
 	}
 	m.mu.Unlock()
 
-	identity := m.Identity()
+	reason := "signed_in"
+	if !operatorIdentityEqual(previous, identity) && previous != nil {
+		reason = "claims_changed"
+	}
+	m.publishIdentity(identity, reason)
 	utils.LogWithFields(utils.LevelInfo, "auth.identity", "operator signed in", map[string]any{
-		"provider":          m.provider,
-		"scope":             tok.Scope,
-		"has_refresh_token": tok.RefreshToken != "",
-		"has_id_token":      tok.IDToken != "",
-		"user":              identity.AttributionValue(),
+		"provider": m.provider, "scope": tok.Scope,
+		"has_refresh_token": tok.RefreshToken != "", "has_id_token": tok.IDToken != "",
 	})
 	return nil
 }
 
-// SignedIn reports whether a persisted identity grant exists.
-func (m *IdentityManager) SignedIn() bool {
-	_, err := m.loadStored()
-	return err == nil
+func (m *IdentityManager) verifyIdentity(ctx context.Context, rawIDToken, expectedNonce string) (*OperatorIdentity, error) {
+	m.mu.Lock()
+	verifier := m.verifier
+	m.mu.Unlock()
+	if verifier == nil {
+		var err error
+		verifier, err = newOIDCVerifier(m.cfg.IssuerURL, m.cfg.ClientID)
+		if err != nil {
+			return nil, err
+		}
+		m.mu.Lock()
+		if m.verifier == nil {
+			m.verifier = verifier
+		}
+		verifier = m.verifier
+		m.mu.Unlock()
+	}
+	identity, err := verifier.verify(ctx, rawIDToken, expectedNonce)
+	if err != nil {
+		return nil, err
+	}
+	identity.Provider = m.provider
+	if m.cfg.AttributionClaim != "" {
+		if attribution, ok := identity.Claims[m.cfg.AttributionClaim].(string); ok {
+			identity.Attribution = attribution
+		}
+	}
+	return identity, nil
 }
 
-// ValidateGrant proves the persisted operator grant is usable now. It parses the
-// identity claims and obtains a current base-scope access token, which performs
-// silent refresh when the stored token is expired. A persisted but revoked or
-// unrefreshable grant is therefore not treated as authenticated.
-func (m *IdentityManager) ValidateGrant(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return err
+// SeedVerifiedLoginForTest creates a version-one verified fixture for package
+// tests outside auth. Production login paths must use CompleteLogin, which
+// verifies the token first.
+func (m *IdentityManager) SeedVerifiedLoginForTest(tok *TokenResponse, identity *OperatorIdentity) error {
+	if tok == nil || tok.AccessToken == "" {
+		return fmt.Errorf("identity: empty test token response")
 	}
-	if m.Identity() == nil {
-		return fmt.Errorf("identity: signed-in grant has no usable id_token claims")
+	stored := oauthToken{AccessToken: tok.AccessToken, RefreshToken: tok.RefreshToken, ExpiresAt: tok.ExpiresAt, IDToken: tok.IDToken, TokenType: tok.TokenType, Scope: tok.Scope, IdentityVersion: currentIdentityVersion, PersistedIdentity: identityToPersisted(identity)}
+	encoded, err := json.Marshal(stored)
+	if err != nil {
+		return fmt.Errorf("identity: marshal test token: %w", err)
 	}
-	m.refreshMu.Lock()
-	defer m.refreshMu.Unlock()
+	if err := m.fs.SetKey(m.storeKey(), string(encoded)); err != nil {
+		return fmt.Errorf("identity: persist test token: %w", err)
+	}
+	identity = cloneOperatorIdentity(identity)
+	if identity != nil {
+		identity.Provider = m.provider
+	}
+	m.mu.Lock()
+	m.scopeCache = make(map[string]oauthToken)
+	m.identity = identity
+	m.identityExpiry = time.Time{}
+	m.identityResolved = true
+	if tok.Scope != "" {
+		m.scopeCache[cacheKey(tok.Scope, m.cfg.Audience)] = stored
+	}
+	m.mu.Unlock()
+	return nil
+}
+
+// SignedIn reports whether a persisted operator identity grant exists. Any
+// versioned grant counts: a below-current-version grant is a signed-in operator
+// awaiting a silent reconcile, not a signed-out one. A grant that carries only
+// the identity snapshot (no version, e.g. a future downgrade-tolerant blob)
+// also counts.
+func (m *IdentityManager) SignedIn() bool {
 	stored, err := m.loadStored()
 	if err != nil {
-		return err
+		return false
 	}
-	if m.tokenFresh(*stored) {
-		return nil
-	}
-	if stored.RefreshToken == "" {
-		return fmt.Errorf("identity: stored grant has expired and has no refresh token")
-	}
-	if err := m.resolveEndpoints(); err != nil {
-		return err
-	}
-	refreshed, err := doRefreshTokenGrant(m.cfg.ClientID, stored.RefreshToken, m.cfg.TokenURL, stored.Scope, m.cfg.Audience, m.cfg.AudienceParameter)
-	if err != nil {
-		return fmt.Errorf("identity: refresh required grant: %w", err)
-	}
-	if refreshed.RefreshToken == "" {
-		refreshed.RefreshToken = stored.RefreshToken
-	}
-	if refreshed.IDToken == "" {
-		refreshed.IDToken = stored.IDToken
-	}
-	return m.CompleteLogin(&TokenResponse{
-		AccessToken: refreshed.AccessToken, RefreshToken: refreshed.RefreshToken,
-		IDToken: refreshed.IDToken, TokenType: refreshed.TokenType,
-		Scope: refreshed.Scope, ExpiresAt: refreshed.ExpiresAt,
-	})
+	return stored.IdentityVersion >= 1 || stored.PersistedIdentity != nil
+}
+
+// ValidateGrant proves the persisted operator grant is usable now. A current,
+// fresh grant validates from its identity snapshot without network I/O; a stale
+// or below-current-version grant is silently refreshed, its fresh id_token
+// verified, and re-persisted at the current version. A persisted but revoked or
+// unrefreshable grant is therefore not treated as authenticated. It shares the
+// renewNow mechanism, so a required-identity session gate and the background
+// renewer prove the grant the same way.
+func (m *IdentityManager) ValidateGrant(ctx context.Context) error {
+	return m.renewNow(ctx, false)
 }
 
 // SignOut deletes the persisted grant and clears all cached tokens.
@@ -499,11 +563,14 @@ func (m *IdentityManager) SignOut() error {
 	m.mu.Lock()
 	m.scopeCache = make(map[string]oauthToken)
 	m.identity = nil
+	m.identityExpiry = time.Time{}
+	m.identityResolved = true
 	m.mu.Unlock()
 
 	if err := m.fs.DeleteKey(m.storeKey()); err != nil {
 		return fmt.Errorf("identity: delete stored grant: %w", err)
 	}
+	m.publishIdentity(nil, "signed_out")
 	utils.LogWithFields(utils.LevelInfo, "auth.identity", "operator signed out", map[string]any{"provider": m.provider})
 	return nil
 }
@@ -620,56 +687,64 @@ func (m *IdentityManager) getTokenWithAudienceExpiry(ctx context.Context, scope,
 	return newTok.AccessToken, newTok.ExpiresAt, nil
 }
 
-// Identity implements TokenProvider. It parses the stored id_token's claims
-// (cached after first parse) and returns nil when signed out.
+// Identity returns the cached verified identity. It never performs network I/O
+// on its own, and it never discards a known identity because a freshness window
+// lapsed: the operator's identity is a stable fact, not a time-boxed one. When
+// the cached id_token has aged past its expiry, Identity keeps serving the known
+// identity and kicks a non-blocking background renewal; only an explicit
+// SignOut clears the identity.
 func (m *IdentityManager) Identity() *OperatorIdentity {
 	m.mu.Lock()
-	if m.identity != nil {
-		cached := *m.identity
+	if m.identityResolved {
+		identity := cloneOperatorIdentity(m.identity)
+		expiresAt := m.identityExpiry
 		m.mu.Unlock()
-		return &cached
+		if identity != nil && !expiresAt.IsZero() && time.Now().After(expiresAt) {
+			m.kickBackgroundRenewal()
+		}
+		return identity
 	}
 	m.mu.Unlock()
 
 	stored, err := m.loadStored()
-	if err != nil || stored.IDToken == "" {
-		return nil
-	}
-
-	claims, err := parseJWTClaims(stored.IDToken)
 	if err != nil {
-		utils.LogWithFields(utils.LevelError, "auth.identity", "id_token claim parse failed", map[string]any{
-			"provider": m.provider,
-			"error":    err.Error(),
-		})
+		m.cacheIdentity(nil)
 		return nil
 	}
 
-	identity := &OperatorIdentity{
-		Provider: m.provider,
-		Username: claims["preferred_username"],
-		Name:     claims["name"],
-	}
-	// Entra: oid is the stable directory object id; sub is pairwise
-	// per-app. Prefer oid, fall back to sub.
-	if oid := claims["oid"]; oid != "" {
-		identity.Subject = oid
-	} else {
-		identity.Subject = claims["sub"]
-	}
-	// Configurable attribution claim (generic IdPs whose human identity
-	// lives in a different claim, e.g. "email"). Takes precedence in
-	// AttributionValue over the preferred_username fallback chain.
-	if m.cfg.AttributionClaim != "" {
-		identity.Attribution = claims[m.cfg.AttributionClaim]
+	// v2 grant: hydrate the verified identity snapshot without any network I/O,
+	// then renew in the background if the id_token's freshness window has lapsed.
+	if stored.PersistedIdentity != nil {
+		identity := persistedToIdentity(stored.PersistedIdentity)
+		identity.Provider = m.provider
+		m.cacheIdentity(identity)
+		if !m.tokenFresh(*stored) || time.Now().After(identity.expiresAt) {
+			m.kickBackgroundRenewal()
+		}
+		return cloneOperatorIdentity(identity)
 	}
 
-	m.mu.Lock()
-	m.identity = identity
-	m.mu.Unlock()
+	// v0/v1 grant: verify the stored id_token to derive the identity.
+	if stored.IDToken != "" {
+		identity, verr := m.verifyIdentity(context.Background(), stored.IDToken, "")
+		if verr == nil {
+			m.cacheIdentity(identity)
+			return cloneOperatorIdentity(identity)
+		}
+		utils.LogWithFields(utils.LevelWarn, "auth.identity", "stored id_token unusable; renewing from refresh token", map[string]any{
+			"provider": m.provider, "stage": "stored_grant", "error": verr.Error(),
+		})
+	}
 
-	cached := *identity
-	return &cached
+	// No usable snapshot or id_token. A refresh token can still restore identity;
+	// renew in the background and report last-known (nil) until it completes. Do
+	// not cache nil here — a concurrent renewal must be able to fill the cache.
+	if stored.RefreshToken != "" {
+		m.kickBackgroundRenewal()
+		return nil
+	}
+	m.cacheIdentity(nil)
+	return nil
 }
 
 // tokenFresh reports whether a token is valid now and beyond the refresh
@@ -692,31 +767,4 @@ func (m *IdentityManager) loadStored() (*oauthToken, error) {
 		return nil, fmt.Errorf("parse stored grant: %w", err)
 	}
 	return &tok, nil
-}
-
-// parseJWTClaims decodes the payload segment of a JWT and returns its
-// string-valued claims. Signature verification is intentionally skipped:
-// the token was received directly from the provider's token endpoint over
-// TLS, so its provenance is already established (the standard posture for
-// a client consuming its own id_token).
-func parseJWTClaims(token string) (map[string]string, error) {
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
-		return nil, fmt.Errorf("jwt: expected 3 segments, got %d", len(parts))
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return nil, fmt.Errorf("jwt: decode payload: %w", err)
-	}
-	var raw map[string]any
-	if err := json.Unmarshal(payload, &raw); err != nil {
-		return nil, fmt.Errorf("jwt: parse payload: %w", err)
-	}
-	claims := make(map[string]string, len(raw))
-	for k, v := range raw {
-		if s, ok := v.(string); ok {
-			claims[k] = s
-		}
-	}
-	return claims, nil
 }

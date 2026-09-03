@@ -63,6 +63,23 @@ func runAuthVerify(flags map[string]string) (authVerifyReport, int) {
 	}
 	report := authVerifyReport{Provider: providerName, Source: sourceKind}
 
+	if oauthCfg := cfg.Auth.OAuth[providerName]; oauthCfg.MachineIdentity != nil {
+		verification, verifyErr := auth.VerifyConfiguredWorkloadAtStartup(cfg.Auth)
+		if verifyErr != nil {
+			report.Error = verifyErr.Error()
+			return report, 3
+		}
+		report.OK = true
+		report.TokenType = "workload"
+		report.ExpiresAt = verification.ExpiresAt.UTC().Format(time.RFC3339)
+		if verification.Identity != nil {
+			report.Claims = verification.Identity.Claims
+		}
+		if flags["url"] == "" && flags["aws-service"] == "" {
+			return report, 0
+		}
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var token string

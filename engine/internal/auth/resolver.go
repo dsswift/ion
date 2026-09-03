@@ -42,12 +42,19 @@ var providerEnvVars = map[string][]string{
 // All added fields are omitempty, so pre-existing stored entries decode
 // unchanged.
 type oauthToken struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token,omitempty"`
-	ExpiresAt    time.Time `json:"expires_at,omitempty"`
-	IDToken      string    `json:"id_token,omitempty"`
-	TokenType    string    `json:"token_type,omitempty"`
-	Scope        string    `json:"scope,omitempty"`
+	AccessToken     string    `json:"access_token"`
+	RefreshToken    string    `json:"refresh_token,omitempty"`
+	ExpiresAt       time.Time `json:"expires_at,omitempty"`
+	IDToken         string    `json:"id_token,omitempty"`
+	TokenType       string    `json:"token_type,omitempty"`
+	Scope           string    `json:"scope,omitempty"`
+	IdentityVersion int       `json:"identity_version,omitempty"`
+	// PersistedIdentity is the verified operator identity captured at grant
+	// time (schema v2). It lets the engine present the operator's identity
+	// immediately at startup and after an id_token's freshness window lapses,
+	// without re-verifying against the IdP on a hot path. Absent on v0/v1
+	// grants, which reconcile up to the current version on the next load.
+	PersistedIdentity *persistedIdentity `json:"identity,omitempty"`
 }
 
 // StoredCredential describes a credential entry visible through ListStored.

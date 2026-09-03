@@ -231,19 +231,37 @@ func cmdServe() {
 	// are fatal when operator identity is required, because continuing would leave
 	// a daemon that can never satisfy its own session gate.
 	if cfg.Auth != nil {
-		im, identityErr := auth.ConfigureIdentityProviders(cfg.Auth)
+		im, verification, identityErr := configureIdentityReadiness(cfg.Auth)
 		if identityErr != nil {
-			if cfg.Auth.RequireOperatorIdentity {
-				utils.LogWithFields(utils.LevelError, "main", "required operator identity configuration failed; sessions will remain gated", map[string]any{
-					"provider": cfg.Auth.IdentityProvider, "error": identityErr.Error(),
+			if cfg.Auth.RequireOperatorIdentity || configuredMachineIdentity(cfg.Auth) {
+				utils.LogWithFields(utils.LevelError, "main", "configured identity readiness failed", map[string]any{
+					"provider": cfg.Auth.IdentityProvider, "stage": identityReadinessStage(cfg.Auth), "error": identityErr.Error(),
 				})
-			} else {
-				utils.LogWithFields(utils.LevelError, "main", "identity provider configuration failed; continuing without brokered credentials", map[string]any{
-					"provider": cfg.Auth.IdentityProvider, "error": identityErr.Error(),
-				})
+				fmt.Fprintln(os.Stderr, "Configured identity readiness failed")
+				os.Exit(1)
 			}
+			utils.LogWithFields(utils.LevelError, "main", "identity provider configuration failed; continuing without brokered credentials", map[string]any{
+				"provider": cfg.Auth.IdentityProvider, "error": identityErr.Error(),
+			})
+		} else if configuredMachineIdentity(cfg.Auth) {
+			utils.LogWithFields(utils.LevelInfo, "main", "workload identity ready", map[string]any{
+				"provider": verification.Identity.Provider, "source": verification.Identity.Source,
+				"expires_at": verification.ExpiresAt.UTC().Format(time.RFC3339),
+			})
 		} else if im != nil {
 			srv.SetIdentityManager(im)
+			// Reconcile the stored grant before the socket serves: a grant from an
+			// older engine (below the current identity schema) is silently upgraded
+			// here using the existing refresh token, so the operator's identity is
+			// available without an interactive re-login. A missing grant is a valid
+			// signed-out state, not an error.
+			reconcileCtx, cancelReconcile := context.WithTimeout(context.Background(), 30*time.Second)
+			if reconcileErr := im.ReconcileAtStartup(reconcileCtx); reconcileErr != nil {
+				utils.LogWithFields(utils.LevelWarn, "main", "operator identity reconcile at startup failed; identity may require re-login", map[string]any{
+					"provider": cfg.Auth.IdentityProvider, "error": reconcileErr.Error(),
+				})
+			}
+			cancelReconcile()
 			if id := im.Identity(); id != nil {
 				utils.SetEgressUser(id.AttributionValue())
 				telemetry.SetUserIdentity(id.AttributionValue())
