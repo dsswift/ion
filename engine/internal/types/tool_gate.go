@@ -89,10 +89,13 @@ type ClientToolDef struct {
 	// AskUserQuestion sentinel treatment). The session goes idle, the engine
 	// retains the question across heartbeats/reconciles/restarts, and the
 	// user's answer arrives as the next prompt whenever they submit it.
-	// Delegated-CLI backends exclude human-wait tools from their transports
-	// (the model uses the AskUserQuestion sentinel there instead). False or
-	// absent keeps machine-tool behavior: a blocking wire round-trip bounded
-	// by the finite ClientToolTimeoutMs.
+	// The claude-code delegated-CLI backend owns the identical mechanism: it
+	// exposes the tool on its MCP ToolServer with an acknowledging handler and
+	// captures the streamed tool_use to record the same retained denial (see
+	// wireClientToolServer / claude_code_questions.go). The ACP backends
+	// (grok/cursor) exclude human-wait tools until that tool_use detection is
+	// wired for them. False or absent keeps machine-tool behavior: a blocking
+	// wire round-trip bounded by the finite ClientToolTimeoutMs.
 	HumanWait bool `json:"humanWait,omitempty"`
 }
 

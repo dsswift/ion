@@ -9,6 +9,13 @@ import (
 // AskUserQuestionName is the tool name used to identify the ask-user-question sentinel.
 const AskUserQuestionName = "AskUserQuestion"
 
+// AskUserQuestionsName is the tool name of the multi-question sibling. The tool
+// itself is harness-declared (its schema arrives via the client-tool runtime,
+// not an engine ToolDef), but its name is a shared identity the engine matches
+// in several places (retained-denial handling, delegated-CLI tool_use capture),
+// so it lives here as the single source of truth rather than as a bare literal.
+const AskUserQuestionsName = "AskUserQuestions"
+
 // AskUserQuestionTool is a sentinel tool available in all runs that lets the
 // LLM pause the run to ask the user a clarifying question. The engine
 // intercepts calls to this tool unconditionally (see runloop_tools.go),
