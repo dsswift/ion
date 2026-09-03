@@ -177,6 +177,34 @@
       ]
     },
     {
+      "id": "automation-editor",
+      "term": "Automation Editor",
+      "definition": "The shared Settings surface for Desktop Automation: one panel with three labeled sections (When / If / Then), not a wizard. It renders inline beside the source-aware rule list, offers only catalog-valid triggers, fields, operators, and finite values, derives action targets from the trigger, shows a plain-language preview, and disables Save until the rule is runnable. Constructs it cannot represent are shown read-only and preserved.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "automation rule editor"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "symbol": "export function AutomationEditor",
+          "path": "desktop/src/renderer/components/settings/AutomationEditor.tsx",
+          "language": "typescript"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "AUTOMATION_TRIGGERS",
+          "path": "desktop/src/shared/automation-catalog.ts"
+        }
+      ]
+    },
+    {
       "id": "backend",
       "term": "Backend",
       "definition": "The pluggable implementation that runs one agent loop. The API backend calls a provider directly. Other backends drive an external agent process.",
@@ -821,6 +849,42 @@
           "language": "swift",
           "symbol": "StatusDrawerBreakdown",
           "path": "ios/IonRemote/Views/StatusDrawerBreakdown.swift"
+        }
+      ]
+    },
+    {
+      "id": "desktop-automation",
+      "term": "Desktop Automation",
+      "definition": "The desktop-owned engine that runs declarative user, project, and enterprise rules from desktop events (message submitted, slash resolved, worktree pin advanced, stage changed, lifecycle, bench). The main process resolves layered definitions, normalizes the current worktree stage onto each event, evaluates conditions that fail closed on an absent path, and runs finite typed actions; renderer actions go through the owner command bridge. Settings edits it through the source-aware Automation Editor with per-item user CRUD, so no project, enterprise, or built-in rule is ever copied into the user store.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "automation rules",
+        "desktop automation rules"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export class AutomationRuntime",
+          "path": "desktop/src/main/automation/runtime.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function validateUserDefinition",
+          "path": "desktop/src/shared/automation-catalog.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "symbol": "export function AutomationCategory",
+          "path": "desktop/src/renderer/components/settings/AutomationCategory.tsx",
+          "language": "typescript"
         }
       ]
     },
