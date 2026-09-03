@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest'
 import {
   findModelEntry,
   groupModelChoices,
+  modelIdentityLabel,
   normalizeModelPreferences,
   resolveLegacyModelId,
 } from '../model-identity'
 import type { ModelEntry } from '../types-models'
 
-function model(id: string, providerId: string): ModelEntry {
-  return { id, providerId, contextWindow: 0, costPer1kInput: 0, costPer1kOutput: 0 }
+function model(id: string, providerId: string, displayName?: string): ModelEntry {
+  return { id, providerId, displayName, contextWindow: 0, costPer1kInput: 0, costPer1kOutput: 0 }
 }
 
 describe('model identity', () => {
@@ -37,6 +38,22 @@ describe('model identity', () => {
     it('matches engine-qualified IDs when engine advertises them', () => {
       const m = model('openrouter/deepseek-chat', 'openrouter')
       expect(findModelEntry('openrouter/deepseek-chat', [m])).toBe(m)
+    })
+  })
+
+  describe('modelIdentityLabel', () => {
+    it('shows the engine-supplied friendly name for a live model (matches the picker)', () => {
+      const m = model('claude-fable-5-1', 'anthropic', 'Claude Fable 5.1')
+      expect(modelIdentityLabel('claude-fable-5-1', [m])).toBe('Claude Fable 5.1')
+    })
+
+    it('falls back to the derived label when the live entry carries no displayName', () => {
+      const m = model('claude-opus-4-6', 'anthropic')
+      expect(modelIdentityLabel('claude-opus-4-6', [m])).toBe('Opus 4.6')
+    })
+
+    it('marks a model absent from the live set as unavailable, by id', () => {
+      expect(modelIdentityLabel('claude-fable-5-1', [])).toBe('claude-fable-5-1 (unavailable)')
     })
   })
 

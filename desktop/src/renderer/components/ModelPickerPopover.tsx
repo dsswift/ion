@@ -7,6 +7,8 @@ import { transitions } from '../theme-tokens'
 import { useModelStore } from '../stores/model-store'
 import { usePreferencesStore } from '../preferences'
 import { getProviderDisplayName, getModelDisplayLabel } from '../../shared/types-models'
+// getModelDisplayLabel prefers the engine-supplied ModelEntry.displayName and
+// falls back to its static id-to-name table, so the picker shows friendly names.
 import type { ModelEntry } from '../../shared/types-models'
 
 const COLLAPSED_KEY = 'ion:model-picker-collapsed'
@@ -80,7 +82,7 @@ function ModelRow({ model, hasAuth, isSelected, isDefault, isDupe, onPick }: {
 }) {
   const colors = useColors()
   const { hover, pressed, handlers } = useInteractiveState()
-  const label = model.id
+  const label = getModelDisplayLabel(model)
   return (
     <button
       onClick={onPick}
@@ -185,12 +187,16 @@ export function ModelPickerPopover({ selectedModelId, onSelect, onClose, positio
     return models.filter((m) => authedProviderIds.has(m.providerId)).length
   }, [models, authedProviderIds])
 
+  // Rows now show the friendly label, so two distinct ids that resolve to the
+  // same label (e.g. a gateway copy and the native model) would look identical.
+  // Key duplicate detection on the displayed label so those rows get the raw-id
+  // disambiguator suffix.
   const duplicateLabels = useMemo(() => {
     const dupes = new Set<string>()
     for (const [, providerModels] of grouped) {
       const seen = new Map<string, number>()
       for (const m of providerModels) {
-        const label = m.id
+        const label = getModelDisplayLabel(m)
         seen.set(label, (seen.get(label) || 0) + 1)
       }
       for (const [label, count] of seen) {
@@ -251,7 +257,7 @@ export function ModelPickerPopover({ selectedModelId, onSelect, onClose, positio
                   hasAuth={hasAuth}
                   isSelected={m.id === selectedModelId}
                   isDefault={m.id === preferredModel}
-                  isDupe={duplicateLabels.has(m.id)}
+                  isDupe={duplicateLabels.has(getModelDisplayLabel(m))}
                   onPick={() => { onSelect(m.id); onClose() }}
                 />
               ))}

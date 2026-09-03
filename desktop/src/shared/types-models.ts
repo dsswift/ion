@@ -4,6 +4,13 @@
 export interface ModelEntry {
   id: string
   providerId: string
+  /**
+   * Human-friendly model name ("Claude Opus 4.8"), carried from the engine's
+   * model catalog or a provider /models payload (mirrors Go ModelEntry.
+   * DisplayName). Preferred over the machine id in the picker; absent means the
+   * client derives a label from the id. Additive, omitempty.
+   */
+  displayName?: string
   contextWindow: number
   costPer1kInput: number
   costPer1kOutput: number
@@ -146,6 +153,11 @@ export function getProviderDisplayName(providerId: string, providers?: Array<Pic
 /** Get human-friendly label for a model entry. */
 export function getModelDisplayLabel(model: ModelEntry): string {
   const id = model.id
+  // The engine-supplied display name is authoritative: it comes from the model
+  // catalog or the provider's own /models payload, so it never drifts the way a
+  // client-side id-to-name table does. Prefer it whenever present; the static
+  // map below is only the fallback for entries the engine did not label.
+  if (model.displayName) return model.displayName
   // Well-known model name simplifications
   const LABELS: Record<string, string> = {
     'claude-opus-4-6': 'Opus 4.6',
