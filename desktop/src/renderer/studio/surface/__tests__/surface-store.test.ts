@@ -43,7 +43,6 @@ vi.mock("../../../preferences", () => ({
 }));
 
 import {
-  flushSurfacePersist,
   resetSurfaceHydrationForTests,
   useSurfaceStore,
 } from "../surface-store";
