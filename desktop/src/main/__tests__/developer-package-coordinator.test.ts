@@ -32,6 +32,13 @@ describe('developer package coordinator', () => {
     expect(body).not.toContain('cp -R')
   })
 
+  it('stages both SDKs before building the local package', () => {
+    const body = readFileSync(developerBuildPath, 'utf8')
+    expect(body).toContain('rm -rf resources/engine/extensions/sdk resources/engine/extensions/sdk-go')
+    expect(body).toContain('cp -R ../engine/extensions/sdk resources/engine/extensions/sdk')
+    expect(body).toContain('cp -R ../sdk/go resources/engine/extensions/sdk-go')
+  })
+
   it('builds the local package and dispatches the coordinator with that package', () => {
     const body = readFileSync(developerBuildPath, 'utf8')
     expect(body).toContain('npm run pkg')

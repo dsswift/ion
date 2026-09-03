@@ -38,8 +38,9 @@ codesign --force --sign - --identifier house.sprague.ion.engine --options runtim
 xattr -cr "$ENGINE_OUT" 2>/dev/null || true
 
 mkdir -p resources/engine/extensions
-rm -rf resources/engine/extensions/sdk
-cp -r ../engine/extensions/sdk resources/engine/extensions/sdk
+rm -rf resources/engine/extensions/sdk resources/engine/extensions/sdk-go
+cp -R ../engine/extensions/sdk resources/engine/extensions/sdk
+cp -R ../sdk/go resources/engine/extensions/sdk-go
 cp ../packaging/launchd/com.ion.engine.plist resources/engine/com.ion.engine.plist
 
 print_section "Building Ion package"
