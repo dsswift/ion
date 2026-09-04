@@ -533,6 +533,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	m.wireDelegatedPermissions(key, &opts)
 	m.wireToolServer(s, key, &opts, extGroup)
 	m.wireAgentToolServer(s, key, &opts)
+	m.wireEnterPlanModeToolServer(s, key, &opts)
 	m.wirePlanModeToolServer(s, key, &opts)
 	m.wireQuestionToolServer(s, key, &opts)
 
