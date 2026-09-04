@@ -101,6 +101,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Message forwarding](#term-forwarding)
 - [Mirror store](#term-mirror-store)
 - [Model Boundary](#term-model-boundary)
+- [Model Change Marker](#term-model-change-marker)
 - [New Conversation Picker](#term-new-conversation-picker)
 - [Normalized event](#term-normalized-event)
 - [Notification](#term-notification)
@@ -437,6 +438,20 @@ The decision point where a slash command that declares a model tier either appli
   - `sdk` / `code` / `typescript`: `SlashModelBoundaryInfo` in `engine/extensions/sdk/ion-sdk/types.ts`
   - `sdk` / `code` / `go`: `HookBeforeSlashModelBoundary` in `sdk/go/hook_descriptors.go`
 - **Notes:** The default retains the serving model after history exists. Consumers can override the policy per configuration, request, or hook.
+
+#### Model Change Marker {#term-model-change-marker}
+
+The conversation tree entry that records a run serving the conversation on a different model than the previous run did. It names the new model and the previous one. The conversation header carries only the most recent model, so this entry chain is what recovers where the work started and where it moved.
+
+- **ID:** `model-change-marker`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `engine` / `code` / `go`: `EntryModelChange` in `engine/internal/conversation/conversation.go`
+  - `engine` / `code` / `go`: `func syncConversationModel` in `engine/internal/backend/runloop_model.go`
 
 #### Permission {#term-permission}
 

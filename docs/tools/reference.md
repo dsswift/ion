@@ -308,6 +308,11 @@ Two properties matter to a caller:
   operator additions — context missing from the opening prompt, or a task
   appended while work was already running. Operator redirects are
   `courseCorrections`, derived from a recorded stop followed by a fresh prompt.
+- **Models are attributed per turn, cost is not.** `modelUsage` splits assistant
+  turns and tokens by the model that served them, `models[0]` is the model the
+  conversation started on, and `modelChanges` is where it moved. `costUsd` stays
+  one number for the whole conversation, because no per-turn price is persisted
+  and splitting the total by tokens would invent a figure.
 
 The scope is fixed by where the session is working, not chosen by the model.
 Inside a registered Ion worktree the tool covers every conversation that worked
