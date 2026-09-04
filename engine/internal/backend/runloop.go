@@ -142,9 +142,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 	// Record the model actually serving this run, and persist a model_change
 	// entry when it differs from the one the conversation last ran on. See
-	// runloop_model.go: the header value is load-bearing (context window,
+	// conversation.SyncModel: the header value is load-bearing (context window,
 	// early-stop telemetry) and the switch is otherwise unrecorded on disk.
-	syncConversationModel(conv, model, run.requestID)
+	conversation.SyncModel(conv, model, run.requestID)
 
 	// Build system prompt (may rewrite opts.Prompt and opts.PlanModeTools)
 	conv.System = buildSystemPrompt(&opts, conv, hooks, run.requestID, run)

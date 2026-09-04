@@ -451,7 +451,7 @@ The conversation tree entry that records a run serving the conversation on a dif
 - **Contract:** `internal`
 - **Implementations:**
   - `engine` / `code` / `go`: `EntryModelChange` in `engine/internal/conversation/conversation.go`
-  - `engine` / `code` / `go`: `func syncConversationModel` in `engine/internal/backend/runloop_model.go`
+  - `engine` / `code` / `go`: `func SyncModel` in `engine/internal/conversation/model_sync.go`
 
 #### Permission {#term-permission}
 

@@ -149,6 +149,10 @@ func (m *Manager) persistCliTurn(key, convID string) {
 	s.modelMu.RLock()
 	servingModel := s.lastModel
 	s.modelMu.RUnlock()
+	// The run this turn belongs to, for log correlation only. Empty when the
+	// run has already been cleared by the time the turn is persisted; an empty
+	// value is logged as-is rather than guessed at.
+	turnRunID := s.requestID
 	planMarker := s.pendingCliPlanMarker
 	slashInvocation := s.pendingCliSlashInvocation
 	s.pendingCliPlanMarker = nil
@@ -202,6 +206,11 @@ func (m *Manager) persistCliTurn(key, convID string) {
 			}
 			conversation.ClassifyEntry(userEntry, injectionKind)
 		}
+		// Record the model that served this delegated turn, and append a
+		// model_change entry when it differs from the model the conversation
+		// last ran on. A CLI-served conversation reaches none of the API
+		// runloop, so this is the only place the header advances for it.
+		conversation.SyncModel(conv, servingModel, turnRunID)
 		wroteStructured = appendStructuredCliTurn(conv, structuredItems, servingModel)
 		hasRecordedText := false
 		for _, it := range structuredItems {

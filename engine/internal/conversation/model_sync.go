@@ -1,13 +1,17 @@
-package backend
+package conversation
 
 import (
-	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// syncConversationModel tracks the model that is actually serving this run on
-// the conversation, and records the switch as a durable tree entry when it
-// differs from the model the conversation last ran on.
+// SyncModel tracks the model that is actually serving a run on the
+// conversation, and records the switch as a durable tree entry when it differs
+// from the model the conversation last ran on.
+//
+// It lives here rather than in a backend because it is pure conversation
+// bookkeeping and every path that serves a turn owes it: the API runloop and
+// the delegated-CLI turn writer both call it. A backend-local copy would have
+// left CLI-served conversations with a first-run header forever.
 //
 // Two defects share this one seam.
 //
@@ -37,7 +41,7 @@ import (
 // Returns true when the conversation was updated. Both outcomes log — a silent
 // divergence between the serving model and the persisted one is the exact
 // class of defect this exists to prevent.
-func syncConversationModel(conv *conversation.Conversation, model, runID string) bool {
+func SyncModel(conv *Conversation, model, runID string) bool {
 	if conv == nil {
 		return false
 	}
@@ -68,7 +72,7 @@ func syncConversationModel(conv *conversation.Conversation, model, runID string)
 	}
 
 	previous := conv.Model
-	conversation.AppendEntry(conv, conversation.EntryModelChange, conversation.ModelChangeData{
+	AppendEntry(conv, EntryModelChange, ModelChangeData{
 		Model:         model,
 		PreviousModel: previous,
 	})

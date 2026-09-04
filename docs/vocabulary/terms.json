@@ -1827,8 +1827,8 @@
           "platform": "engine",
           "presentation": "code",
           "language": "go",
-          "symbol": "func syncConversationModel",
-          "path": "engine/internal/backend/runloop_model.go"
+          "symbol": "func SyncModel",
+          "path": "engine/internal/conversation/model_sync.go"
         }
       ]
     },

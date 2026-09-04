@@ -266,3 +266,48 @@ func TestPersistCliTurn_CreatesFileForFirstTurn(t *testing.T) {
 		t.Fatal("first CLI turn did not create the Ion conversation file")
 	}
 }
+
+// TestPersistCliTurn_RecordsModelChange pins the delegated-CLI half of model
+// attribution. A CLI-served conversation runs none of the API runloop, so
+// without the SyncModel call in persistCliTurn its header keeps the first
+// run's model forever and the switch is never recorded. Revert that call and
+// this goes red on both assertions.
+func TestPersistCliTurn_RecordsModelChange(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	mgr := NewManager(backend.NewClaudeCodeBackend())
+	_, _ = mgr.StartSession("cli-model-change", defaultConfig())
+
+	const convID = "1784000000000-cccccccccccc"
+	persist := func(model, text string) {
+		mgr.mu.Lock()
+		s := mgr.sessions["cli-model-change"]
+		s.conversationID = convID
+		s.pendingCliUserTurn = text
+		s.pendingCliAssistantText = "ok"
+		s.modelMu.Lock()
+		s.lastModel = model
+		s.modelMu.Unlock()
+		mgr.mu.Unlock()
+		mgr.persistCliTurn("cli-model-change", convID)
+	}
+
+	persist("claude-fable-5-1", "first turn")
+	persist("claude-opus-5", "second turn")
+
+	conv, err := conversation.Load(convID, "")
+	if err != nil {
+		t.Fatalf("load conversation: %v", err)
+	}
+	if conv.Model != "claude-opus-5" {
+		t.Errorf("expected the header to follow the serving model, got %q", conv.Model)
+	}
+	var changes int
+	for _, entry := range conv.Entries {
+		if entry.Type == conversation.EntryModelChange {
+			changes++
+		}
+	}
+	if changes != 1 {
+		t.Fatalf("expected exactly one model_change entry, got %d", changes)
+	}
+}
