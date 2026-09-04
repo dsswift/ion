@@ -46,7 +46,7 @@ func SyncModel(conv *Conversation, model, runID string) bool {
 		return false
 	}
 	if model == "" {
-		utils.LogWithFields(utils.LevelDebug, "backend.runloop", "conversation model: run carries no model, keeping persisted value", map[string]any{
+		utils.LogWithFields(utils.LevelDebug, "conversation.model_sync", "conversation model: run carries no model, keeping persisted value", map[string]any{
 			"run_id":          runID,
 			"conversation_id": conv.ID,
 			"model":           conv.Model,
@@ -54,7 +54,7 @@ func SyncModel(conv *Conversation, model, runID string) bool {
 		return false
 	}
 	if conv.Model == model {
-		utils.LogWithFields(utils.LevelDebug, "backend.runloop", "conversation model unchanged", map[string]any{
+		utils.LogWithFields(utils.LevelDebug, "conversation.model_sync", "conversation model unchanged", map[string]any{
 			"run_id":          runID,
 			"conversation_id": conv.ID,
 			"model":           model,
@@ -63,7 +63,7 @@ func SyncModel(conv *Conversation, model, runID string) bool {
 	}
 	if conv.Model == "" {
 		conv.Model = model
-		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "conversation model adopted (none recorded)", map[string]any{
+		utils.LogWithFields(utils.LevelInfo, "conversation.model_sync", "conversation model adopted (none recorded)", map[string]any{
 			"run_id":          runID,
 			"conversation_id": conv.ID,
 			"model":           model,
@@ -77,7 +77,7 @@ func SyncModel(conv *Conversation, model, runID string) bool {
 		PreviousModel: previous,
 	})
 	conv.Model = model
-	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "conversation model changed", map[string]any{
+	utils.LogWithFields(utils.LevelInfo, "conversation.model_sync", "conversation model changed", map[string]any{
 		"run_id":          runID,
 		"conversation_id": conv.ID,
 		"from":            previous,
