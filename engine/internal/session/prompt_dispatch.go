@@ -3,6 +3,7 @@ package session
 import (
 	"fmt"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -13,6 +14,10 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
+
+// runSeq disambiguates run ids minted inside the same millisecond. See the
+// mint site in SendPrompt for why a clock-only id is not an identity.
+var runSeq atomic.Int64
 
 // SendPrompt dispatches a prompt to the session's backend run.
 func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retErr error) {
@@ -90,7 +95,14 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		return err
 	}
 
-	requestID := fmt.Sprintf("%s-%d", key, time.Now().UnixMilli())
+	// A monotonic counter, not the clock alone: two runs of one session that
+	// start inside the same millisecond would otherwise share a run id, and a
+	// run id is an identity, not a label. It keys the active-run map, scopes an
+	// abort, correlates every log line under the run, and de-duplicates the
+	// persisted stop marker — so a collision makes the second run adopt the
+	// first one's history. The counter is process-wide, which is enough:
+	// uniqueness is only required among live runs.
+	requestID := fmt.Sprintf("%s-%d-%d", key, time.Now().UnixMilli(), runSeq.Add(1))
 	// Mint this run's trace ID under the same lock hold that assigns
 	// requestID, so the two identities for one run can never disagree. Scope
 	// is the run because a trace is one logical transaction: every log line
