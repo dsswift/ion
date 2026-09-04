@@ -212,8 +212,9 @@ export function scanConversation(conversationId: string, paths: ScanPaths): Conv
 
   const record = emptyRecord(conversationId, treePath, llmPath, header)
   if (existsSync(memoryPath)) record.memoryPath = memoryPath
-  applyLlmHeader(record, llmPath)
+  const headerModel = applyLlmHeader(record, llmPath)
   measure(record, selectEntries(entries, header.leafId ?? ''))
+  if (record.models.length === 0 && headerModel) record.models.push(headerModel)
 
   _log(TAG, 'conversation scanned', {
     conversation_id: conversationId,
@@ -257,6 +258,7 @@ function emptyRecord(
     planMarkers: [],
     models: [],
     modelChanges: [],
+    modelUsage: [],
     inputTokens: 0,
     outputTokens: 0,
     costUsd: 0,
@@ -264,9 +266,17 @@ function emptyRecord(
   }
 }
 
-/** Money, tokens, the starting model, and the parent link live in the llm header. */
-function applyLlmHeader(record: ConversationTelemetry, llmPath: string): void {
-  if (!existsSync(llmPath)) return
+/**
+ * Money, tokens, and the parent link live in the llm header.
+ *
+ * Returns the header's model, which the caller uses only as a fallback. The
+ * header names the model the conversation ran on MOST RECENTLY — the engine
+ * advances it whenever a run serves a different one — so seeding `models` from
+ * it would report the last model as the first. The turn record is the ordered
+ * truth; this is what fills in for a conversation with no assistant turn.
+ */
+function applyLlmHeader(record: ConversationTelemetry, llmPath: string): string {
+  if (!existsSync(llmPath)) return ''
   try {
     const buffer = readFileSync(llmPath)
     const newline = buffer.indexOf(0x0a)
@@ -278,10 +288,35 @@ function applyLlmHeader(record: ConversationTelemetry, llmPath: string): void {
     record.costUsd = num(header, 'totalCost')
     const parentId = str(header, 'parentId')
     if (parentId) record.parentId = parentId
-    const model = str(header, 'model')
-    if (model) record.models.push(model)
+    return str(header, 'model')
   } catch (err) {
     _warn(TAG, 'llm header unreadable', { conversation_id: record.conversationId, error: String(err) })
+    return ''
+  }
+}
+
+/**
+ * Record one assistant turn against the model that served it.
+ *
+ * Every assistant message entry persists its model and token usage, so the
+ * per-model split is read rather than estimated. A turn with no model named
+ * (a legacy file written before the field existed) is attributed to `unknown`
+ * instead of being dropped, so the turn totals still reconcile.
+ */
+function creditModelTurn(record: ConversationTelemetry, model: string, at: number, usage: unknown): void {
+  const name = model || 'unknown'
+  let row = record.modelUsage.find((entry) => entry.model === name)
+  if (!row) {
+    row = { model: name, assistantTurns: 0, inputTokens: 0, outputTokens: 0, firstAt: at, lastAt: at }
+    record.modelUsage.push(row)
+    if (!record.models.includes(name)) record.models.push(name)
+  }
+  row.assistantTurns += 1
+  row.lastAt = at
+  if (usage && typeof usage === 'object') {
+    const u = usage as Record<string, unknown>
+    row.inputTokens += typeof u.input_tokens === 'number' ? u.input_tokens : 0
+    row.outputTokens += typeof u.output_tokens === 'number' ? u.output_tokens : 0
   }
 }
 
@@ -400,6 +435,7 @@ function measureMessage(
 
   if (role === 'assistant') {
     record.assistantTurnCount += 1
+    creditModelTurn(record, str(data, 'model'), entry.timestamp, data.usage)
     for (const block of blocks) {
       if (block.type !== 'tool_use') continue
       const name = block.name ?? 'unknown'

@@ -59,6 +59,56 @@ function tempDir(): string {
 }
 
 describe('conversation telemetry scan', () => {
+  it('splits turns and tokens by the model that served them', () => {
+    const dir = tempDir()
+    writeConversation(dir, 'conv-models', [
+      prompt('plan this'),
+      { type: 'message', data: { role: 'assistant', content: [], model: 'claude-fable-5-1', usage: { input_tokens: 100, output_tokens: 10 } } },
+      { type: 'message', data: { role: 'assistant', content: [], model: 'claude-fable-5-1', usage: { input_tokens: 200, output_tokens: 20 } } },
+      { type: 'model_change', data: { model: 'claude-opus-5', previousModel: 'claude-fable-5-1' } },
+      prompt('now build it'),
+      { type: 'message', data: { role: 'assistant', content: [], model: 'claude-opus-5', usage: { input_tokens: 50, output_tokens: 5 } } },
+    ], { model: 'claude-opus-5' })
+
+    const record = scanConversation('conv-models', { conversationsDir: dir })
+
+    // The header names the model the conversation ran on LAST. Reading the
+    // order from the turns is what makes models[0] the model it started on.
+    expect(record?.models).toEqual(['claude-fable-5-1', 'claude-opus-5'])
+    expect(record?.modelChanges).toEqual([
+      { at: expect.any(Number), model: 'claude-opus-5', previousModel: 'claude-fable-5-1' },
+    ])
+    expect(record?.modelUsage.map((u) => [u.model, u.assistantTurns, u.inputTokens, u.outputTokens])).toEqual([
+      ['claude-fable-5-1', 2, 300, 30],
+      ['claude-opus-5', 1, 50, 5],
+    ])
+  })
+
+  it('attributes a turn with no recorded model rather than dropping it', () => {
+    const dir = tempDir()
+    writeConversation(dir, 'conv-model-legacy', [
+      prompt('hello'),
+      { type: 'message', data: { role: 'assistant', content: [] } },
+    ])
+
+    const record = scanConversation('conv-model-legacy', { conversationsDir: dir })
+
+    expect(record?.assistantTurnCount).toBe(1)
+    expect(record?.modelUsage).toEqual([
+      { model: 'unknown', assistantTurns: 1, inputTokens: 0, outputTokens: 0, firstAt: expect.any(Number), lastAt: expect.any(Number) },
+    ])
+  })
+
+  it('falls back to the header model when no turn names one', () => {
+    const dir = tempDir()
+    writeConversation(dir, 'conv-model-header', [prompt('only a prompt')], { model: 'claude-sonnet-5' })
+
+    const record = scanConversation('conv-model-header', { conversationsDir: dir })
+
+    expect(record?.models).toEqual(['claude-sonnet-5'])
+    expect(record?.modelUsage).toEqual([])
+  })
+
   it('counts prompts from before a /clear, which no context window still holds', () => {
     const dir = tempDir()
     writeConversation(dir, 'conv-clear', [

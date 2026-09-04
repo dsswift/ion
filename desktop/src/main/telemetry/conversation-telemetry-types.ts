@@ -42,6 +42,25 @@ export interface TelemetryModelChange {
   previousModel?: string
 }
 
+/**
+ * What one model actually did inside a conversation.
+ *
+ * The conversation header names one model and `costUsd` is a single number for
+ * the whole file, so neither can answer "how much of this ran on Fable" once a
+ * conversation switched models. Every assistant turn persists the model that
+ * served it and its token usage, so the turn-level split is measured rather
+ * than apportioned. Cost stays absent here on purpose: no per-turn price is
+ * persisted, and splitting the total by tokens would invent a number.
+ */
+export interface TelemetryModelUsage {
+  model: string
+  assistantTurns: number
+  inputTokens: number
+  outputTokens: number
+  firstAt: number
+  lastAt: number
+}
+
 export interface TelemetryDispatches {
   count: number
   byAgentName: Record<string, number>
@@ -104,8 +123,11 @@ export interface ConversationTelemetry {
   slashCommands: TelemetrySlashCommand[]
   planMarkers: TelemetryPlanMarker[]
 
+  /** Every model that served a turn, in the order each was first seen. */
   models: string[]
   modelChanges: TelemetryModelChange[]
+  /** Per-model turn and token split, ordered like `models`. */
+  modelUsage: TelemetryModelUsage[]
 
   inputTokens: number
   outputTokens: number
@@ -141,6 +163,12 @@ export interface TelemetryTotals {
   inputTokens: number
   outputTokens: number
   costUsd: number
+  /**
+   * Every model that served a turn anywhere in scope, rolled up. This is what
+   * answers "how much of this project ran on which model" — the per-model cost
+   * is deliberately absent, because no per-turn price is persisted.
+   */
+  modelUsage: TelemetryModelUsage[]
   firstActivityAt: number
   lastActivityAt: number
   spanMs: number

@@ -185,6 +185,7 @@ function totalsOf(conversations: ConversationTelemetry[]): TelemetryTotals {
     inputTokens: 0,
     outputTokens: 0,
     costUsd: 0,
+    modelUsage: [],
     firstActivityAt: 0,
     lastActivityAt: 0,
     spanMs: 0,
@@ -200,6 +201,19 @@ function totalsOf(conversations: ConversationTelemetry[]): TelemetryTotals {
     totals.inputTokens += record.inputTokens
     totals.outputTokens += record.outputTokens
     totals.costUsd += record.costUsd
+    for (const usage of record.modelUsage) {
+      let row = totals.modelUsage.find((entry) => entry.model === usage.model)
+      if (!row) {
+        row = { ...usage }
+        totals.modelUsage.push(row)
+        continue
+      }
+      row.assistantTurns += usage.assistantTurns
+      row.inputTokens += usage.inputTokens
+      row.outputTokens += usage.outputTokens
+      if (usage.firstAt < row.firstAt) row.firstAt = usage.firstAt
+      if (usage.lastAt > row.lastAt) row.lastAt = usage.lastAt
+    }
     const start = record.firstPromptAt || record.createdAt
     if (start > 0 && (firstActivityAt === 0 || start < firstActivityAt)) firstActivityAt = start
     if (record.lastActivityAt > lastActivityAt) lastActivityAt = record.lastActivityAt
