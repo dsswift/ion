@@ -2,8 +2,9 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Check, ClockCounterClockwise, Globe, PushPin, PushPinSlash, Terminal, WarningCircle } from '@phosphor-icons/react'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useQuestionsStore } from '../../stores/questions-store'
+import { usePreferencesStore } from '../../preferences'
 import { activeInstance } from '../../stores/conversation-instance'
-import { getWaitingState, formatRelativeShort } from '../../components/TabStripShared'
+import { getWaitingState, formatRelativeShort, abbreviateProfileName } from '../../components/TabStripShared'
 import { useColors } from '../../theme'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
 import { transitions } from '../../theme-tokens'
@@ -56,6 +57,17 @@ export function InboxRow({
   const [name, setName] = useState(tab.customTitle ?? tab.title)
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => { if (renaming) inputRef.current?.focus() }, [renaming])
+
+  // Harness badge label — mirrors TabPill/TabStripDropdownTabRow's
+  // subscription and rendering exactly, so a conversation running under an
+  // engine profile shows the same abbreviated extension name here as it does
+  // in the tab strip. Subscribe narrowly so the row only re-renders when
+  // engine profiles change, not on every preference write.
+  const harnessBadgeLabel = usePreferencesStore((s) => {
+    if (!tab.engineProfileId) return null
+    const profile = s.engineProfiles.find((p) => p.id === tab.engineProfileId)
+    return abbreviateProfileName(profile?.name)
+  })
 
   const status = pendingAsk ? 'Approval'
     : waiting === 'plan-ready' ? 'Plan Ready'
@@ -114,6 +126,29 @@ export function InboxRow({
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
           {tab.pinnedAt != null && <PushPin size={12} color={colors.textTertiary} weight="fill" />}
+          {harnessBadgeLabel !== null && (
+            // Harness badge: abbreviated profile name in an accent-tinted chip.
+            // Mirrors TabPill/TabStripDropdownTabRow's badge exactly — same
+            // style spec: 4px radius, accent bg/border/text at 25/40/100%
+            // opacity, 9px/600 weight.
+            <span
+              style={{
+                flexShrink: 0,
+                fontSize: 9,
+                fontWeight: 600,
+                color: colors.accent,
+                background: `${colors.accent}25`,
+                border: `1px solid ${colors.accent}40`,
+                borderRadius: 4,
+                padding: '1px 3px',
+                lineHeight: 1.4,
+                letterSpacing: '0.02em',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {harnessBadgeLabel}
+            </span>
+          )}
           {renaming ? (
             <input ref={inputRef} value={name} onChange={(event) => setName(event.target.value)} onBlur={commitRename}
               onKeyDown={(event) => { if (event.key === 'Enter') commitRename(); if (event.key === 'Escape') setRenaming(false) }}
