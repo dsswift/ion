@@ -42,11 +42,7 @@ vi.mock("../../../preferences", () => ({
   usePreferencesStore: { getState: () => preferences },
 }));
 
-import {
-  flushSurfacePersist,
-  resetSurfaceHydrationForTests,
-  useSurfaceStore,
-} from "../surface-store";
+import { resetSurfaceHydrationForTests, useSurfaceStore } from "../surface-store";
 
 const terminalDestroyMock = vi.fn().mockResolvedValue(undefined);
 const setSettingMock = vi.fn().mockResolvedValue(true);
