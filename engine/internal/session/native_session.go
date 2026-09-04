@@ -144,12 +144,14 @@ func (m *Manager) persistCliTurn(key, convID string) {
 	assistantText := s.pendingCliAssistantText
 	recorder := s.cliTranscript
 	planMarker := s.pendingCliPlanMarker
+	slashInvocation := s.pendingCliSlashInvocation
 	s.pendingCliPlanMarker = nil
 	s.pendingCliUserTurn = ""
 	s.pendingCliDisplayText = ""
 	s.pendingCliInjectionKind = ""
 	s.pendingCliAssistantText = ""
 	s.cliTranscript = nil
+	s.pendingCliSlashInvocation = nil
 	m.mu.Unlock()
 
 	if convID == "" || userText == "" {
@@ -178,9 +180,18 @@ func (m *Manager) persistCliTurn(key, convID string) {
 		// again would duplicate the exact turn recovery relies on.
 		if journal := conversation.ActiveRunRecovery(conv); journal == nil || journal.UserEntryID == "" {
 			var userEntry *conversation.SessionEntry
-			if displayText != "" {
+			switch {
+			case slashInvocation != nil:
+				// Mirrors the API backend's AddUserMessageWithInvocation call: the
+				// model already saw the expanded body (userText) during the run;
+				// this stamps the same SlashCommand/SlashArgs/SlashSource/model
+				// provenance onto the display entry so the command pill survives
+				// a reload instead of showing the expanded template body (see
+				// pendingCliSlashInvocation in types.go).
+				userEntry = conversation.AddUserMessageWithInvocation(conv, userText, *slashInvocation)
+			case displayText != "":
 				userEntry = conversation.AddUserMessageWithDisplay(conv, userText, displayText)
-			} else {
+			default:
 				userEntry = conversation.AddUserMessage(conv, userText)
 			}
 			conversation.ClassifyEntry(userEntry, injectionKind)
@@ -236,10 +247,15 @@ func (m *Manager) persistCliTurn(key, convID string) {
 		})
 		return
 	}
+	slashCommand := ""
+	if slashInvocation != nil {
+		slashCommand = slashInvocation.Command
+	}
 	utils.LogWithFields(utils.LevelInfo, "session.native_session", "persisted delegated-CLI turn into Ion transcript", map[string]any{
 		"key": key, "conversation_id": convID, "new_leaf": leaf, "structured": wroteStructured,
 		"plan_marker": wrotePlanMarker, "plan_slug": planMarkerSlug(planMarker),
 		"structured_items": len(structuredItems), "user_bytes": len(userText), "display_bytes": len(displayText), "assistant_bytes": len(assistantText),
+		"slash_command": slashCommand,
 	})
 }
 

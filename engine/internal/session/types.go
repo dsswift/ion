@@ -259,6 +259,18 @@ type engineSession struct {
 	// pendingCliInjectionKind preserves the turn provenance for delegated-CLI
 	// persistence, matching the API backend's classified entry path.
 	pendingCliInjectionKind string
+	// pendingCliSlashInvocation carries the raw slash-command invocation
+	// (command, args, source, model provenance) for a delegated-CLI run whose
+	// prompt originated from a resolved slash command, mirroring the fields
+	// AddUserMessageWithInvocation already persists for the API backend. Nil
+	// for a plain turn. persistCliTurn consumes it to write the same
+	// SlashCommand/SlashArgs/SlashSource provenance onto the display entry, so
+	// a Claude Code-backed conversation's slash-command pill survives an
+	// engine restart instead of showing the expanded template body. Set at
+	// dispatch from opts.ResolvedSlashCommand (see prompt_dispatch.go), which
+	// is already final by the time the native-session branch runs. Guarded by
+	// m.mu.
+	pendingCliSlashInvocation *conversation.SlashInvocation
 	// pendingCliAssistantText holds the current run's final assistant text
 	// (TaskCompleteEvent.LastText, else Result), captured as the event flows
 	// through handleNormalizedEvent, for the same CLI-turn persistence.

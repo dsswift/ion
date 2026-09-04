@@ -369,11 +369,29 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		// transcript verbatim, not just the final text. See
 		// cli_transcript_recorder.go.
 		s.cliTranscript = newCliTranscriptRecorder()
+		// opts.ResolvedSlashCommand is final by this point (resolveSlashIntoOpts /
+		// applyResolvedSlashToOpts and finalizeSlashModelProvenance both run
+		// earlier in this function). Stash it so persistCliTurn can stamp the
+		// same slash provenance the API backend writes via
+		// AddUserMessageWithInvocation.
+		if opts.ResolvedSlashCommand != "" {
+			s.pendingCliSlashInvocation = &conversation.SlashInvocation{
+				Command:        opts.ResolvedSlashCommand,
+				Args:           opts.ResolvedSlashArgs,
+				Source:         opts.ResolvedSlashSource,
+				ModelAlias:     opts.ResolvedSlashModelAlias,
+				ModelEffective: opts.ResolvedSlashModelEffective,
+				Frontmatter:    opts.ResolvedSlashFrontmatter,
+			}
+		} else {
+			s.pendingCliSlashInvocation = nil
+		}
 	} else {
 		s.pendingCliUserTurn = ""
 		s.pendingCliDisplayText = ""
 		s.pendingCliInjectionKind = ""
 		s.cliTranscript = nil
+		s.pendingCliSlashInvocation = nil
 	}
 
 	// G07: Enterprise model enforcement (fast check, under initial lock).

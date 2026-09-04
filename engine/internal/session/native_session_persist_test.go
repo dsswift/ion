@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -158,6 +159,86 @@ func TestCliTurnPersistence_RestoresCrossProviderContinuity(t *testing.T) {
 	}
 	if !strings.HasSuffix(opts.Prompt, "what was the secret code?") {
 		t.Fatalf("current prompt must remain at the end: %q", opts.Prompt)
+	}
+}
+
+// TestPersistCliTurn_PreservesSlashCommandProvenance is the regression test
+// for the reported bug: a slash command run on a Claude Code (delegated-CLI)
+// conversation must persist the same SlashCommand/SlashArgs/SlashSource/model
+// provenance the API backend writes via AddUserMessageWithInvocation, so the
+// command pill survives a reload instead of showing the expanded template
+// body. Before the fix, persistCliTurn had no pendingCliSlashInvocation to
+// consume and always fell back to AddUserMessage/AddUserMessageWithDisplay,
+// which carry no slash fields — this test fails on that code with a nil
+// MessageData.SlashCommand and passes once the invocation is threaded through.
+func TestPersistCliTurn_PreservesSlashCommandProvenance(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	mgr := NewManager(backend.NewClaudeCodeBackend())
+	_, _ = mgr.StartSession("slash-cli-turn", defaultConfig())
+
+	const convID = "1784000000000-ffffffffffff"
+	mgr.mu.Lock()
+	s := mgr.sessions["slash-cli-turn"]
+	s.conversationID = convID
+	s.pendingCliUserTurn = "EXPANDED /recap TEMPLATE BODY for the model"
+	s.pendingCliAssistantText = "Here is your recap."
+	s.pendingCliSlashInvocation = &conversation.SlashInvocation{
+		Command:        "/recap",
+		Args:           "today",
+		Source:         "ion",
+		ModelAlias:     "fast",
+		ModelEffective: "claude-haiku-4-5-20251001",
+	}
+	mgr.mu.Unlock()
+
+	mgr.persistCliTurn("slash-cli-turn", convID)
+
+	// Pending slash invocation cleared so a later exit cannot double-stamp it.
+	mgr.mu.RLock()
+	pending := s.pendingCliSlashInvocation
+	mgr.mu.RUnlock()
+	if pending != nil {
+		t.Fatalf("pendingCliSlashInvocation not cleared: %#v", pending)
+	}
+
+	// A fresh reload from disk must show the raw invocation and its
+	// provenance, not the expanded body — this is what the pill renders.
+	conv, err := conversation.Load(convID, "")
+	if err != nil {
+		t.Fatalf("load conversation: %v", err)
+	}
+	if len(conv.Entries) < 1 {
+		t.Fatal("expected persisted user entry")
+	}
+	md, ok := conv.Entries[0].Data.(conversation.MessageData)
+	if !ok {
+		t.Fatalf("entry data is %T", conv.Entries[0].Data)
+	}
+	if md.SlashCommand != "/recap" || md.SlashArgs != "today" || md.SlashSource != "ion" {
+		t.Fatalf("slash provenance not persisted: command=%q args=%q source=%q", md.SlashCommand, md.SlashArgs, md.SlashSource)
+	}
+	if md.SlashModelAlias != "fast" || md.SlashModelEffective != "claude-haiku-4-5-20251001" {
+		t.Fatalf("slash model provenance not persisted: alias=%q effective=%q", md.SlashModelAlias, md.SlashModelEffective)
+	}
+	displayJSON, err := json.Marshal(md.Content)
+	if err != nil {
+		t.Fatalf("marshal display content: %v", err)
+	}
+	if !strings.Contains(string(displayJSON), "/recap today") || strings.Contains(string(displayJSON), "EXPANDED /recap TEMPLATE BODY") {
+		t.Fatalf("display content must be the raw invocation, not the expanded body: %s", displayJSON)
+	}
+
+	// The model-visible transcript (conv.Messages, distinct from the flattened
+	// display messages checked above) still carries the expanded body.
+	if len(conv.Messages) < 1 {
+		t.Fatal("expected an LLM message")
+	}
+	llmJSON, err := json.Marshal(conv.Messages[0].Content)
+	if err != nil {
+		t.Fatalf("marshal llm content: %v", err)
+	}
+	if !strings.Contains(string(llmJSON), "EXPANDED /recap TEMPLATE BODY") {
+		t.Fatalf("LLM-visible content missing expanded body: %s", llmJSON)
 	}
 }
 
