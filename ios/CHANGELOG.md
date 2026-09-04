@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.73.0](https://github.com/dsswift/ion/compare/ios-v1.72.2...ios-v1.73.0) (2026-09-04)
+
+### Features
+
+* **ios:** add /clear --keep-plan to the slash menu ([40f2acf](https://github.com/dsswift/ion/commit/40f2acf785eabbf37760bb6ca716c28b377ab444))
+
 ## [1.72.2](https://github.com/dsswift/ion/compare/ios-v1.72.1...ios-v1.72.2) (2026-09-03)
 
 ### Bug Fixes

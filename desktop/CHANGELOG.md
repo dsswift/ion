@@ -10,6 +10,20 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.94.0](https://github.com/dsswift/ion/compare/desktop-v1.93.1...desktop-v1.94.0) (2026-09-04)
+
+### Features
+
+* **desktop:** surface /clear --keep-plan and its notice ([d30a2d5](https://github.com/dsswift/ion/commit/d30a2d5c05c24e56b30f1863361af2cc0ab800a1))
+
+### Bug Fixes
+
+* **desktop:** close surface panel when last tab closes ([375ce1c](https://github.com/dsswift/ion/commit/375ce1c8c31fcb1c16206749c3bd635837677fdd))
+* **desktop:** invalidate cached context breakdown on /clear ([23fd450](https://github.com/dsswift/ion/commit/23fd450bf3886f0dfdccb8219b7e467e6c418eb0))
+* **desktop:** align clear and slash command tests ([d688c1b](https://github.com/dsswift/ion/commit/d688c1b8e341cabf5140e1002c1efa8d80dd4fe4))
+* **desktop:** split oversized surface store tests ([60e105e](https://github.com/dsswift/ion/commit/60e105e3a6110fa2aff61df80e38bca9aa751bb4))
+* **desktop:** remove unused import in split surface test ([1fed20a](https://github.com/dsswift/ion/commit/1fed20a0f76b45d5195037335ec866dbf536fe28))
+
 ## [1.93.1](https://github.com/dsswift/ion/compare/desktop-v1.93.0...desktop-v1.93.1) (2026-09-03)
 
 ### Bug Fixes

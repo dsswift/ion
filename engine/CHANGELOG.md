@@ -18,6 +18,17 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.81.0](https://github.com/dsswift/ion/compare/engine-v1.80.2...engine-v1.81.0) (2026-09-04)
+
+### Features
+
+* **engine:** add /clear --keep-plan to retain the active plan ([b2da7b9](https://github.com/dsswift/ion/commit/b2da7b9499d2fe534053bf0eafbfc1802a4df2c2))
+
+### Bug Fixes
+
+* **engine:** persist the plan marker for delegated-CLI plan capture ([35779db](https://github.com/dsswift/ion/commit/35779dba6af43c0fb9af6d62461a7ab30b51001b))
+* **engine:** remove engine-injected git context ([b86ed3e](https://github.com/dsswift/ion/commit/b86ed3e90b3f7d5333caeb08f01aba438653a575))
+
 ## [1.80.2](https://github.com/dsswift/ion/compare/engine-v1.80.1...engine-v1.80.2) (2026-09-03)
 
 ### Bug Fixes
