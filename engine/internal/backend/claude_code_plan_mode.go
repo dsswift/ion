@@ -24,6 +24,12 @@ var cliPlanModeDisallowedTools = []string{"Write", "Edit", "MultiEdit", "Noteboo
 // name. handlePlanModeAssistant matches both this and the bare native name.
 var mcpExitPlanModeToolName = "mcp__" + McpServerName + "__" + tools.ExitPlanModeName
 
+// mcpEnterPlanModeToolName is the wire name of the engine EnterPlanMode tool
+// as the delegated-CLI model sees it, mirroring mcpExitPlanModeToolName.
+// handleEnterPlanModeAssistant matches this prefixed name in the assistant
+// stream.
+var mcpEnterPlanModeToolName = "mcp__" + McpServerName + "__" + tools.EnterPlanModeName
+
 // CliExitPlanModeTool returns the metadata for the engine-owned ExitPlanMode
 // tool that wirePlanModeToolServer registers on a delegated claude-code
 // plan-mode run's MCP ToolServer. Unlike the ApiBackend's no-arg sentinel
@@ -202,6 +208,41 @@ func (b *ClaudeCodeBackend) handlePlanModeAssistant(run *claudeCodeRun, e *types
 			}
 			run.planCaptured = true
 		}
+	}
+}
+
+// handleEnterPlanModeAssistant scans a streamed assistant message for the
+// engine-owned EnterPlanMode tool_use and flips run.planMode to true the
+// moment it is observed. This is the CLI-backend mirror of the ApiBackend's
+// interceptEnterPlanMode (runloop_plan_mode_gates.go), which flips
+// run.planMode on the SAME activeRun and lets that run continue — no restart.
+// Here the equivalent decision (before_plan_mode_enter, session state,
+// plan-file allocation) already happened synchronously inside
+// enterPlanModeToolHandler's MCP round trip before this tool_use was even
+// streamed back; this scan only updates the backend's own stream-tracking
+// state so the plan-capture pipeline below (handlePlanModeAssistant,
+// gated on run.planMode) starts recognizing ExitPlanMode/Write-to-plan-file
+// signals that arrive later in this SAME subprocess, without any restart.
+//
+// Called unconditionally (like handleQuestionAssistant), because EnterPlanMode
+// can appear at any point in an auto-mode stream and run.planMode starts
+// false.
+func (b *ClaudeCodeBackend) handleEnterPlanModeAssistant(run *claudeCodeRun, e *types.TaskUpdateEvent) {
+	if run.planMode {
+		return
+	}
+	for _, block := range e.Message.Content {
+		if block.Type != "tool_use" {
+			continue
+		}
+		if block.Name != tools.EnterPlanModeName && block.Name != mcpEnterPlanModeToolName {
+			continue
+		}
+		run.planMode = true
+		utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "EnterPlanMode observed mid-stream, run.planMode flipped (same subprocess, no restart)", map[string]any{
+			"run_id": run.requestID,
+		})
+		return
 	}
 }
 

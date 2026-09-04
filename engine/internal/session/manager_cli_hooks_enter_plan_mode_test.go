@@ -223,3 +223,84 @@ func TestEnterPlanModeToolHandler_DeniedByHook(t *testing.T) {
 		t.Error("expected no engine_plan_mode_changed on denial")
 	}
 }
+
+// TestEnterPlanModeToolHandler_NoRestartNoQueuedContinuation pins the
+// corrected design: the model keeps running in the SAME claude-code
+// subprocess after calling EnterPlanMode — no queued continuation prompt, no
+// "turn ends here" framing. This mirrors the ApiBackend's
+// interceptEnterPlanMode, which flips activeRun.planMode and lets that same
+// run continue with no restart. Reintroducing a queued SendPrompt
+// continuation (the prior, incorrect design) turns this red.
+func TestEnterPlanModeToolHandler_NoRestartNoQueuedContinuation(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	const key = "enter-handler3"
+	if _, err := mgr.StartSession(key, defaultConfig()); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	// Simulate the handler firing mid-turn: a claude-code subprocess is still
+	// running this exact request when the model calls EnterPlanMode.
+	mgr.mu.Lock()
+	s := mgr.sessions[key]
+	s.requestID = "in-flight-run"
+	mgr.mu.Unlock()
+
+	handler := enterPlanModeToolHandler(mgr, key)
+	res, err := handler(context.Background(), map[string]interface{}{})
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("unexpected error result: %s", res.Content)
+	}
+	if strings.Contains(res.Content, "turn ends here") {
+		t.Errorf("tool result must not claim the turn ends here; got %q", res.Content)
+	}
+	if !strings.Contains(res.Content, "ExitPlanMode") {
+		t.Errorf("tool result must instruct the model to call ExitPlanMode; got %q", res.Content)
+	}
+
+	mgr.mu.Lock()
+	defer mgr.mu.Unlock()
+
+	if s.requestID != "in-flight-run" {
+		t.Fatalf("expected the in-flight run to be untouched, got requestID=%q", s.requestID)
+	}
+	if len(s.promptQueue) != 0 {
+		t.Fatalf("expected no queued continuation prompt (no restart), got %d queued", len(s.promptQueue))
+	}
+}
+
+// TestWireEnterPlanModeToolServer_RegistersExitPlanModeToo pins the core
+// mechanism of this fix: EnterPlanMode and ExitPlanMode are registered
+// together on the SAME auto-mode ToolServer in one wiring call, so the model
+// can call ExitPlanMode without a restart the moment it decides its plan is
+// ready — mirroring the ApiBackend's interceptEnterPlanMode, which makes
+// ExitPlanMode callable moments later in the SAME run.
+func TestWireEnterPlanModeToolServer_RegistersExitPlanModeToo(t *testing.T) {
+	cb := backend.NewClaudeCodeBackend()
+	mgr := NewManager(cb)
+	s := newCliSession("enter-ts5")
+
+	opts := types.RunOptions{PlanMode: false}
+	mgr.wireEnterPlanModeToolServer(s, "enter-ts5", &opts)
+
+	mgr.mu.Lock()
+	ts := s.toolServer
+	mgr.mu.Unlock()
+
+	if ts == nil {
+		t.Fatal("expected ToolServer to be created for claude-code auto mode")
+	}
+	if !ts.HasTool("EnterPlanMode") {
+		t.Error("expected EnterPlanMode to be registered on the auto-mode ToolServer")
+	}
+	if !ts.HasTool("ExitPlanMode") {
+		t.Error("expected ExitPlanMode to be registered alongside EnterPlanMode, so no restart is needed to call it")
+	}
+	if !strings.Contains(opts.AppendSystemPrompt, "ExitPlanMode = mcp__ion-extensions__ExitPlanMode") {
+		t.Errorf("expected the ExitPlanMode alias directive, got: %q", opts.AppendSystemPrompt)
+	}
+	ts.Stop()
+}

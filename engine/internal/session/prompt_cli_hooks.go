@@ -304,42 +304,40 @@ func (m *Manager) wireAgentToolServer(s *engineSession, key string, opts *types.
 	utils.LogWithFields(utils.LevelInfo, "session", "ion agent tools registered on ToolServer for CLI backend", map[string]any{"kind": kind, "key": key, "count": len(aliasNames)})
 }
 
-// wireEnterPlanModeToolServer registers the engine-owned EnterPlanMode
-// sentinel on the per-session ToolServer for a delegated claude-code AUTO-MODE
-// run, so a read-write model can request a transition into plan mode. This is
-// the CLI mirror of runloop_setup.go's ApiBackend EnterPlanMode injection
-// (interceptEnterPlanMode in runloop_plan_mode_gates.go): the CLI's native
-// plan mode exposes no headless EnterPlanMode either, so the engine owns this
-// mechanism end to end exactly as it already owns ExitPlanMode
-// (wirePlanModeToolServer below) — register an MCP tool, and when the model
-// calls it, decide via the SAME before_plan_mode_enter hook path the API
-// backend uses (m.RequestPlanModeEnter) and flip session state.
+// wireEnterPlanModeToolServer registers the engine-owned EnterPlanMode AND
+// ExitPlanMode tools together on the per-session ToolServer for a delegated
+// claude-code AUTO-MODE run, so a read-write model can request a transition
+// into plan mode and then, without any restart, keep running in the SAME
+// subprocess and call ExitPlanMode when its plan is ready. This is the CLI
+// mirror of runloop_setup.go's ApiBackend EnterPlanMode injection
+// (interceptEnterPlanMode in runloop_plan_mode_gates.go): that handler flips
+// activeRun.planMode and lets the SAME run continue, with ExitPlanMode
+// becoming callable moments later — no restart. The CLI backend achieves the
+// same "no restart" outcome by registering ExitPlanMode from the start (this
+// function) and having the backend's stream scanner
+// (handleEnterPlanModeAssistant) flip claudeCodeRun.planMode the moment
+// EnterPlanMode is observed in the stream, which turns on the existing
+// plan-capture pipeline (handlePlanModeAssistant/handlePlanModeResult) for
+// the rest of THIS subprocess.
 //
-// Unlike ExitPlanMode, the decision and the state flip happen entirely inside
-// the MCP handler (enterPlanModeToolHandler) rather than via backend-side
-// stream detection: entering plan mode carries no argument to capture from
-// the stream (no plan text, unlike ExitPlanMode's `plan` argument), so there
-// is nothing for the backend package to scan for. And RequestPlanModeEnter is
-// a synchronous same-turn veto, not the deferred user-approval chokepoint
-// ExitPlanMode routes through (ADR-003) — so there is no reason to defer it
-// to a later event either.
+// The EnterPlanMode decision itself (before_plan_mode_enter hook,
+// session-state flip, plan-file allocation) happens entirely inside the MCP
+// handler (enterPlanModeToolHandler), synchronously, exactly like
+// RequestPlanModeEnter on the API backend — there is no reason to defer it to
+// a later event.
 //
-// The flip takes effect starting the NEXT turn, not the current one: a
-// delegated-CLI turn is a fresh subprocess invocation, so there is no
-// in-turn tool-list rebuild to do (unlike the ApiBackend, which rebuilds its
-// tool defs mid-run). RequestPlanModeEnter sets s.planMode = true, so the
-// next SendPrompt builds opts.PlanMode = true (prompt_options.go), which
-// makes buildClaudeArgs spawn the CLI read-only (--disallowedTools) and
-// inject the plan-mode system prompt (claude_code_args.go), and
-// wirePlanModeToolServer takes over exposing ExitPlanMode instead of this
-// tool. Verified against the read Go source, not assumed — see
-// claude_code_args.go:75-119, which gates both the disallowed-tools list and
-// the appended plan-mode prompt on opts.PlanMode alone.
+// What does NOT change mid-subprocess: --disallowedTools is fixed at spawn
+// (claude_code_args.go), so this run keeps its full auto-mode tool list
+// (Write/Edit/Bash) for the rest of the subprocess — genuine read-only
+// enforcement starts on the NEXT real spawn, once s.planMode has flipped and
+// SendPrompt builds opts.PlanMode=true. enterPlanModeToolHandler's tool
+// result tells the model this honestly: keep working, make no further edits,
+// then call ExitPlanMode.
 //
 // No-op outside claude-code auto mode: skipped when already in plan mode
-// (ExitPlanMode is the tool for that turn, not this one) and when
-// opts.ImplementationPhase suppresses the sentinel, mirroring
-// runloop_setup.go's ApiBackend suppression for the same flag.
+// (wirePlanModeToolServer owns ExitPlanMode registration for that turn
+// instead) and when opts.ImplementationPhase suppresses the sentinel,
+// mirroring runloop_setup.go's ApiBackend suppression for the same flag.
 func (m *Manager) wireEnterPlanModeToolServer(s *engineSession, key string, opts *types.RunOptions) {
 	if opts.PlanMode || opts.ImplementationPhase {
 		return
@@ -363,6 +361,9 @@ func (m *Manager) wireEnterPlanModeToolServer(s *engineSession, key string, opts
 	enterDef := tools.EnterPlanModeToolWithDescription(opts.EnterPlanModeDescription)
 	ts.RegisterTool(enterDef.Name, enterPlanModeToolHandler(m, key), enterDef.Description, enterDef.InputSchema)
 
+	exitName, exitDesc, exitSchema := backend.CliExitPlanModeTool()
+	ts.RegisterTool(exitName, planModeExitToolHandler(key), exitDesc, exitSchema)
+
 	if needsStart {
 		if err := ts.Start(); err != nil {
 			utils.LogWithFields(utils.LevelError, "session", "toolserver start failed (enter plan mode)", map[string]any{"key": key, "kind": kind, "error": err.Error()})
@@ -378,24 +379,38 @@ func (m *Manager) wireEnterPlanModeToolServer(s *engineSession, key string, opts
 		m.mu.Unlock()
 	}
 
-	directive := buildToolAliasDirective([]string{enterDef.Name}, backend.McpServerName)
-	appendDirective(opts, directive, []string{enterDef.Name})
+	toolNames := []string{enterDef.Name, exitName}
+	directive := buildToolAliasDirective(toolNames, backend.McpServerName)
+	appendDirective(opts, directive, toolNames)
 
-	utils.LogWithFields(utils.LevelInfo, "session", "EnterPlanMode registered on ToolServer for claude-code auto mode", map[string]any{"key": key})
+	utils.LogWithFields(utils.LevelInfo, "session", "EnterPlanMode+ExitPlanMode registered on ToolServer for claude-code auto mode", map[string]any{"key": key})
 }
 
 // enterPlanModeToolHandler returns the handler for the injected EnterPlanMode
-// MCP tool on a claude-code auto-mode run. Unlike the other CLI sentinel
-// handlers below (planModeExitToolHandler, questionAckToolHandler), which
-// only acknowledge a call already captured elsewhere, this handler performs
-// the full decision itself: it calls m.RequestPlanModeEnter, which fires
-// before_plan_mode_enter and — when allowed — flips session state and
-// allocates/reuses the plan file path, exactly as the ApiBackend's
-// interceptEnterPlanMode does via the OnPlanModeEnter hook. On allow, it
-// emits engine_plan_mode_changed directly (translateToEngineEvent + m.emit)
-// so consumers see the transition immediately — the normal run pipeline never
-// carries this event for a CLI run because the decision is made here, in the
-// MCP round trip, rather than in a backend-side stream scan.
+// MCP tool on a claude-code auto-mode run. Unlike planModeExitToolHandler and
+// questionAckToolHandler, which only acknowledge a call already captured
+// elsewhere, this handler performs the full decision itself: it calls
+// m.RequestPlanModeEnter, which fires before_plan_mode_enter and — when
+// allowed — flips session state and allocates/reuses the plan file path,
+// exactly as the ApiBackend's interceptEnterPlanMode does via the
+// OnPlanModeEnter hook. On allow, it emits engine_plan_mode_changed directly
+// (translateToEngineEvent + m.emit) so consumers see the transition
+// immediately — the normal run pipeline never carries this event for a CLI
+// run because the decision is made here, in the MCP round trip, rather than
+// in a backend-side stream scan.
+//
+// No restart happens here, mirroring the ApiBackend's interceptEnterPlanMode
+// exactly: the model keeps running in the SAME claude-code subprocess.
+// ExitPlanMode is already registered alongside EnterPlanMode on this run's
+// ToolServer (wireEnterPlanModeToolServer), and the backend's stream scanner
+// (handleEnterPlanModeAssistant) flips claudeCodeRun.planMode the instant it
+// observes this tool_use, which turns on the existing plan-capture pipeline
+// for the rest of this subprocess. The one thing that genuinely cannot change
+// mid-invocation is --disallowedTools, fixed at spawn (buildClaudeArgs), so
+// this subprocess keeps its full auto-mode tool list (Write/Edit/Bash) —
+// real read-only enforcement starts on the NEXT spawn, once s.planMode has
+// flipped and a future SendPrompt builds opts.PlanMode=true. The tool result
+// below says so honestly instead of claiming the turn must end.
 func enterPlanModeToolHandler(m *Manager, key string) backend.ToolHandler {
 	return func(_ context.Context, _ map[string]interface{}) (*types.ToolResult, error) {
 		utils.LogWithFields(utils.LevelInfo, "session", "EnterPlanMode invoked by claude-code model", map[string]any{"key": key})
@@ -415,8 +430,9 @@ func enterPlanModeToolHandler(m *Manager, key string) backend.ToolHandler {
 			},
 		}, 0))
 		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "EnterPlanMode allowed for claude-code model", map[string]any{"key": key, "plan_file_path": planFilePath})
+
 		return &types.ToolResult{
-			Content: fmt.Sprintf("Plan mode entered. Plan file: %s\n\nThe turn ends here — take no further action and call no more tools. The next turn starts in plan mode.", planFilePath),
+			Content: fmt.Sprintf("Plan mode entered. Plan file: %s\n\nKeep working in this same conversation: continue exploring with your current tools, but make no further edits or other mutating tool calls from here on. Write your finished plan to the plan file above (or pass it directly as ExitPlanMode's `plan` argument), then call ExitPlanMode.", planFilePath),
 			IsError: false,
 		}, nil
 	}

@@ -402,6 +402,14 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 					sessionID = e.SessionID
 				}
 			case *types.TaskUpdateEvent:
+				// EnterPlanMode is engine-owned in auto mode too (see
+				// wireEnterPlanModeToolServer): scan unconditionally so a
+				// call anywhere in this subprocess's stream flips
+				// run.planMode immediately, with no restart. Must run before
+				// the run.planMode-gated call below so a Write/ExitPlanMode
+				// tool_use arriving in this SAME assistant message is
+				// captured too.
+				b.handleEnterPlanModeAssistant(run, e)
 				// Plan mode: the CLI streams the fully-populated ExitPlanMode
 				// tool_use (its input carries the plan text) in the assistant
 				// message BEFORE the result/denial arrives. Capture it here.
