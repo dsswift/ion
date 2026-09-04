@@ -378,7 +378,15 @@ export type NormalizedEvent =
       type: "command_registry";
       commands: Array<{ name: string; description?: string }>;
     }
-  | { type: "command_result"; command: string; commandError?: string }
+  | {
+      type: "command_result";
+      command: string;
+      commandError?: string;
+      // command:"clear" only — the `/clear --keep-plan` outcome, forwarded from
+      // the engine event so the renderer draws the keep-plan-aware divider.
+      clearKeepPlan?: boolean;
+      clearKeptPlanSlug?: string;
+    }
   | {
       type: "resource_snapshot";
       resourceKind: string;

@@ -145,6 +145,13 @@ export type EngineEventAsync =
       message?: string;
       command?: string;
       commandError?: string;
+      // command:"clear" only — the `/clear --keep-plan` outcome. clearKeepPlan
+      // echoes that the flag was requested; clearKeptPlanSlug is the slug of the
+      // plan retained and re-injected into the cleared context (empty when the
+      // flag found no unimplemented plan to keep). Both absent on an ordinary
+      // /clear, so the plain "Cleared" divider still renders.
+      clearKeepPlan?: boolean;
+      clearKeptPlanSlug?: string;
     }
   // engine_export carries the rendered export output for a /export command.
   // The engine's dispatchExport emits this event with the rendered string

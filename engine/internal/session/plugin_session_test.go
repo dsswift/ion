@@ -88,7 +88,7 @@ func TestPluginUserPromptHooks_FireWithoutExtGroup(t *testing.T) {
 	}
 
 	runCfg := mgr.buildRunConfig(s, "plugin-no-ext", "req-no-ext",
-		apiBackend, nil /* extGroup */, false /* skipExtensions */,
+		apiBackend, nil /* extGroup */, false, /* skipExtensions */
 		nil, nil, nil, "")
 
 	// Plugin hooks now wire OnInitialMessages, not OnBeforePrompt.

@@ -19,6 +19,7 @@ export interface SlashCommand {
 
 export const SLASH_COMMANDS: SlashCommand[] = [
   { command: '/clear', description: 'Clear conversation history', icon: <Trash size={13} />, group: 'builtin' },
+  { command: '/clear --keep-plan', description: 'Clear history but keep the active plan in context', icon: <Trash size={13} />, group: 'builtin' },
   { command: '/compact', description: 'Summarize older turns and free context', icon: <Broom size={13} />, group: 'builtin' },
   { command: '/export', description: 'Export conversation as Markdown', icon: <DownloadSimple size={13} />, group: 'builtin' },
 ]

@@ -653,50 +653,6 @@ func (m *Manager) currentSessionStatus(s *engineSession) string {
 	return "running"
 }
 
-// ClearConversationFile wipes the LLM-visible history on a stored conversation
-// file by sessionId, without requiring a live engine session. It is the
-// stateless counterpart of dispatchClear: it performs the same load → zero
-// → save sequence but does not emit any events (no session exists to emit to)
-// and does not re-fire session_start (no extension group is loaded).
-//
-// Fields wiped (matches dispatchClear exactly):
-//   - Messages           — the flat LLM-visible message list
-//   - (token counters are not persisted as scalars — GetContextUsage reads
-//     them from LlmMessage.Usage via the backward scan)
-//
-// Fields preserved: Entries, LeafID, TotalInputTokens, TotalOutputTokens,
-// TotalCost, ID, System, Model, CreatedAt, Version, ParentID,
-// WorkingDirectory — same rationale as dispatchClear (/clear is a checkpoint,
-// not a delete).
-//
-// Returns nil on success. Returns an error if the conversation file cannot be
-// loaded or saved; in that case no partial write occurs (Load/Save are atomic
-// operations at the file level).
-func (m *Manager) ClearConversationFile(sessionID string) error {
-	utils.LogWithFields(utils.LevelInfo, "session", "clearconversationfile: clearing conversation", map[string]any{"run_id": sessionID})
-	// Route through the shared clear core (preferKey empty → the core does a
-	// reverse lookup over live sessions by conversationID). This guarantees
-	// the file-only clear path carries identical semantics to the
-	// live-session /clear: if a live session owns this conversation, its
-	// retained AskUserQuestion / ExitPlanMode denials are cleared and the
-	// shared clear signal is emitted so desktop and iOS dismiss the pending
-	// card. If no live session owns it, the file is still wiped and there is
-	// no in-memory card to dismiss (the consumer's restore-time rule handles
-	// a later reopen).
-	res, err := m.clearConversationCore(sessionID, "")
-	if err != nil {
-		utils.LogWithFields(utils.LevelInfo, "session", "clearconversationfile: core failed", map[string]any{"run_id": sessionID, "error": err})
-		return err
-	}
-	if res.sessionKey != "" {
-		utils.LogWithFields(utils.LevelInfo, "session", "clearconversationfile: owned by live session — emitting shared clear signal", map[string]any{"run_id": sessionID, "session_key": res.sessionKey, "denied_cleared": res.deniedCleared})
-		m.emitClearSignal(res.sessionKey)
-	} else {
-		utils.LogWithFields(utils.LevelInfo, "session", "clearconversationfile: (no live session owner, no signal to emit)", map[string]any{"run_id": sessionID, "wiped": res.wiped})
-	}
-	return nil
-}
-
 // ResourceBroker returns the resource broker for the session identified by key.
 // Returns nil when no session is found for the key.
 func (m *Manager) ResourceBroker(key string) *resource.Broker {

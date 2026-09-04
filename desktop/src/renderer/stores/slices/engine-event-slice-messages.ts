@@ -21,7 +21,7 @@
 
 import type { StoreSet, StoreGet } from '../session-store-types'
 import { nextMsgId } from '../session-store-helpers'
-import { formatClearDivider } from '../../../shared/clear-divider'
+import { formatClearDivider, formatClearKeepPlanDivider } from '../../../shared/clear-divider'
 import { applyResourceSnapshot, applyResourceDelta } from './resource-slice'
 import type { ResourceItem } from '../../../shared/types-engine'
 import { extensionCommandsByKey, dispatchActivityFoldByDispatchId } from './engine-event-slice-helpers'
@@ -65,14 +65,29 @@ export function handleCrossNormalizedEvent(
     const cmdName = event.command || ''
     const failed = !!event.commandError
     if (cmdName === 'clear' && !failed) {
-      const divider = formatClearDivider(new Date())
+      const divider = event.clearKeepPlan
+        ? formatClearKeepPlanDivider(new Date(), event.clearKeptPlanSlug)
+        : formatClearDivider(new Date())
       // WI-001: all conversations use bare tabId + active instance (single-path).
       // Insert the clear divider and clear any pending permissionDenied card.
+      //
+      // contextBreakdown is also invalidated here. It is a client-side cache
+      // populated on demand (context_breakdown event, fired when the Status
+      // Drawer opens or a turn runs) and the engine's clear signal never
+      // refreshes it — emitClearSignal only resets engine_status's
+      // ContextTokens/ContextPercent to 0. resolveContextInputs prefers a
+      // non-null contextBreakdown.occupancyTokens over statusFields.contextTokens,
+      // so a breakdown cached before the clear kept reporting the pre-clear
+      // token count as truth: the context ring stayed stale, and the
+      // `clears-conversation` confirmation gate (which reads the same
+      // resolveContextInputs output as `hasHistory`) kept firing on a
+      // conversation that was, in fact, already empty.
       set((state) => {
         const conversationPanes = commitInstance(state.conversationPanes, tabId, (inst) => ({
           ...inst,
           messages: [...inst.messages, { id: nextMsgId(), role: 'system' as const, content: divider, timestamp: Date.now() }],
           permissionDenied: null,
+          contextBreakdown: null,
         }))
         return { conversationPanes }
       })

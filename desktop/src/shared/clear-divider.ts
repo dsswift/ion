@@ -26,6 +26,34 @@ export function isClearDivider(content: string): boolean {
 }
 
 /**
+ * Format the `/clear --keep-plan` divider. Keeps the `── Cleared` sentinel so
+ * `isClearDivider` still matches (renderers switch into divider mode), and
+ * appends the keep-plan outcome after ` · `:
+ *
+ *   - `keptSlug` set   → `── Cleared at 3:04 PM · plan kept: happy-jumping-rabbit ──`
+ *   - `keptSlug` empty → `── Cleared at 3:04 PM · no plan to keep ──`
+ *
+ * The engine carries the outcome on `engine_command_result{clear}`
+ * (`clearKeepPlan` / `clearKeptPlanSlug`); callers pass the slug through here.
+ */
+export function formatClearKeepPlanDivider(at: Date, keptSlug?: string | null): string {
+  const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  if (keptSlug) {
+    return `── Cleared at ${time} · plan kept: ${keptSlug} ──`
+  }
+  return `── Cleared at ${time} · no plan to keep ──`
+}
+
+/**
+ * Pick the clear divider for a `/clear` outcome: the keep-plan notice when the
+ * flag was requested, otherwise the plain "Cleared" divider. One helper so every
+ * clear path (main relay, renderer, no-session short-circuit) renders identically.
+ */
+export function formatClearDividerForOutcome(at: Date, keepPlan?: boolean, keptSlug?: string | null): string {
+  return keepPlan ? formatClearKeepPlanDivider(at, keptSlug) : formatClearDivider(at)
+}
+
+/**
  * Format the divider system message inserted into scrollback when the user
  * clicks "Implement" on a plan. Mirrors `formatClearDivider` but signals an
  * implementation-phase transition rather than a `/clear` checkpoint. If `slug`

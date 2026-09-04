@@ -1,18 +1,17 @@
 import React from 'react'
-import { ListChecks } from '@phosphor-icons/react'
+import { ListChecks, type Icon } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 
 /**
- * Chrome that frames a Guided Questions submission in the transcript.
+ * Chrome that frames content in the transcript that is real, operator-visible
+ * turn content but not something the operator typed at the prompt.
  *
  * ── Why this exists ─────────────────────────────────────────────────────────
  *
- * A submitted answer set is the operator's own input — they read the
- * questions, chose the options, typed the free text, attached the images — so
- * it must stay visible. Hiding it (an earlier revision did) deleted real work
- * from the transcript.
- *
- * But it is not a message they composed at the prompt. The engine renders the
+ * Built for a Guided Questions submission: the operator's own input — they
+ * read the questions, chose the options, typed the free text, attached the
+ * images — so it must stay visible. Hiding it (an earlier revision did)
+ * deleted real work from the transcript. But the engine renders the
  * submission into prose (question prompts echoed, option labels resolved,
  * skips spelled out), and an ordinary user bubble presents that rendering as
  * something they typed. Scrolling back weeks later, the honest reaction is
@@ -20,30 +19,43 @@ import { useColors } from '../../theme'
  *
  * A small corner tag was the first attempt and was not enough: at a glance the
  * bubble still read as a normal message. So this is deliberate CHROME —
- * a labelled rule above, an inset panel that visually groups the answers AND
- * their attachments, and a closing rule. The block reads as a distinct region
+ * a labelled rule above, an inset panel that visually groups the content AND
+ * any attachments, and a closing rule. The block reads as a distinct region
  * of the transcript, scannable while scrolling fast, without ever implying the
  * operator typed the prose inside it.
+ *
+ * The `label`/`icon` props let the same chrome serve a second, structurally
+ * identical case: a `/clear --keep-plan` retained-plan turn. Both are
+ * engine-authored turns the operator's own action caused and must see; only
+ * the rule text differs.
  *
  * Full width, not bubble width: the point is separation from the surrounding
  * turns, and a right-aligned 85%-width block would still read as "a message
  * they sent".
  */
-export function StructuredAnswerFrame({ children }: { children: React.ReactNode }) {
+interface StructuredAnswerFrameProps {
+  children: React.ReactNode
+  /** Rule label. Defaults to the Guided Questions case this frame was built for. */
+  label?: string
+  /** Rule icon. Defaults to the Guided Questions case this frame was built for. */
+  icon?: Icon
+}
+
+export function StructuredAnswerFrame({ children, label = 'Questions answered', icon: IconComponent = ListChecks }: StructuredAnswerFrameProps) {
   const colors = useColors()
 
   return (
     <div className="w-full flex flex-col select-none-header">
       {/* Opening rule + label. The rule spans the transcript so the boundary
-          is visible even when the answers themselves are short. */}
+          is visible even when the content itself is short. */}
       <div className="flex items-center gap-2 w-full pb-1.5 select-none">
         <div className="h-px flex-1" style={{ background: colors.infoBorder }} />
         <div
           className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide leading-none"
           style={{ color: colors.infoText }}
         >
-          <ListChecks size={12} weight="bold" />
-          Questions answered
+          <IconComponent size={12} weight="bold" />
+          {label}
         </div>
         <div className="h-px flex-1" style={{ background: colors.infoBorder }} />
       </div>

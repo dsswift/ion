@@ -358,6 +358,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// leave these fields empty. Reset all pending fields at dispatch so a prior
 	// turn can never leak into this one.
 	s.pendingCliAssistantText = ""
+	s.pendingCliPlanMarker = nil
 	s.cliRunFailedTerminal = false
 	if caps.ContextModel == backend.ContextModelNativeSession {
 		s.pendingCliUserTurn = text
@@ -423,7 +424,6 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 	workspaceContext := m.injectWorkspaceContext(s, key, &opts, clientWsCtx)
 	m.injectExtensionContext(s, key, &opts, workspaceContext)
-	injectGitContext(s, &opts)
 	injectPluginContext(s, &opts)
 
 	if s.sessionMemory != nil {

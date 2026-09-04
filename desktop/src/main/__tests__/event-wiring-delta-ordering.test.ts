@@ -51,7 +51,10 @@ vi.mock('../state', () => ({
 vi.mock('../broadcast', () => ({ broadcast: vi.fn() }))
 vi.mock('../settings-store', () => ({ shouldStreamThinkingToRemote: vi.fn(() => false) }))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
-vi.mock('../../shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
+vi.mock('../../shared/clear-divider', () => ({
+  formatClearDivider: vi.fn(() => '[clear]'),
+  formatClearDividerForOutcome: vi.fn(() => '[clear]'),
+}))
 vi.mock('../event-wiring-resources', () => ({
   handleResourceEngineEvent: vi.fn(),
   subscribeToResourceKinds: vi.fn(() => Promise.resolve()),

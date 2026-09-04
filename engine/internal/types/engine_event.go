@@ -457,6 +457,17 @@ type EngineEvent struct {
 	Command      string `json:"command,omitempty"`
 	CommandError string `json:"commandError,omitempty"`
 
+	// engine_command_result{command:"clear"} — outcome of a `/clear --keep-plan`
+	// invocation. ClearKeepPlan echoes that the flag was requested, so a consumer
+	// renders a keep-plan-aware notice instead of the plain "Cleared" divider.
+	// ClearKeptPlanSlug is the slug of the plan that was retained and re-injected
+	// into the freshly-cleared context; it is empty when --keep-plan found no
+	// unimplemented plan to keep (the "clear + notice" outcome). Both are absent
+	// on an ordinary /clear (ClearKeepPlan false), so an existing consumer that
+	// ignores them renders exactly as before.
+	ClearKeepPlan     bool   `json:"clearKeepPlan,omitempty"`
+	ClearKeptPlanSlug string `json:"clearKeptPlanSlug,omitempty"`
+
 	// engine_slash_model_tier_ignored — a resolved slash command declared a
 	// `model:` tier that the engine did not apply, because the conversation
 	// already held model-visible history. Applying it would have switched

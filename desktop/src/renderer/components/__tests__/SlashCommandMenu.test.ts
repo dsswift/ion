@@ -63,7 +63,7 @@ describe('slashMenuPlacement', () => {
 describe('SLASH_COMMANDS', () => {
   it('includes the three engine built-ins', () => {
     const names = SLASH_COMMANDS.map((c) => c.command).sort()
-    expect(names).toEqual(['/clear', '/compact', '/export'])
+    expect(names).toEqual(['/clear', '/clear --keep-plan', '/compact', '/export'])
   })
 
   it('marks every built-in with group="builtin"', () => {

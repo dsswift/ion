@@ -294,7 +294,7 @@ func (b *AcpBackend) runPrompt(requestID string, options types.RunOptions) {
 	b.emit(requestID, types.NormalizedEvent{Data: &types.SessionInitEvent{SessionID: sessionID, Model: options.Model}})
 
 	// session/prompt blocks until the turn ends; updates stream meanwhile.
-	prompt := gitContextPrompt(transientPrompt(options.Prompt, options.AppendSystemPrompt), options.GitContextText)
+	prompt := transientPrompt(options.Prompt, options.AppendSystemPrompt)
 	res, err := client.SessionPrompt(ctx, sessionID, acp.NewTextPrompt(prompt))
 	if err != nil {
 		b.emitError(requestID, fmt.Errorf("%s prompt: %w", b.spec.kind, err))

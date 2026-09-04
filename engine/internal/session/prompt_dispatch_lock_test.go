@@ -8,18 +8,18 @@ import (
 
 // TestSendPrompt_BlockedContextInjection_DoesNotWedgeOtherSessions pins the
 // core fix for the live-process wedge incident: context-file discovery,
-// workspace lookup, git context, and plugin injection now run AFTER m.mu is
-// released (see prompt_dispatch.go's "off-lock inject" section). Before that
-// change, a single session whose git subprocess (or any blocking inject step)
-// stalled would hold m.mu for the duration, wedging every other session's
+// workspace lookup, and plugin injection now run AFTER m.mu is released (see
+// prompt_dispatch.go's "off-lock inject" section). Before that change, a single
+// session whose inject step stalled on I/O would hold m.mu for the duration,
+// wedging every other session's
 // StartSession/SendPrompt/status call behind it — exactly what the incident
 // showed: one stalled prompt on conversation 1786321978902-9996c0daf5cd froze
 // the whole engine.
 //
-// testInjectGitContextHook lets us simulate that stall deterministically
-// (blocking on a channel) without depending on a real slow git subprocess.
+// testInjectContextFilesHook lets us simulate that stall deterministically
+// (blocking on a channel) without depending on a real slow filesystem.
 //
-// Revert check: if injectGitContext (or any of injectContextFiles /
+// Revert check: if injectContextFiles (or any of
 // injectWorkspaceContext / injectExtensionContext / injectPluginContext) is
 // ever moved back under m.mu, this test hangs until its own timeout and fails,
 // because StartSession("other-session", ...) will block behind the stalled
@@ -29,21 +29,21 @@ func TestSendPrompt_BlockedContextInjection_DoesNotWedgeOtherSessions(t *testing
 	entered := make(chan struct{}, 1)
 	var claimed atomic.Bool
 
-	// testInjectGitContextHook is a single package-global hook shared by every
-	// session's injectGitContext call. sync.Once is NOT usable here: Once.Do
+	// testInjectContextFilesHook is a single package-global hook shared by every
+	// session's injectContextFiles call. sync.Once is NOT usable here: Once.Do
 	// blocks every concurrent caller (not just the first) until the winning
 	// call returns, which would make the "other" session block on the Once
 	// itself rather than on m.mu -- masking exactly the bug this test exists
 	// to catch. A CompareAndSwap claims the stall for the first caller only;
 	// every later caller (the other session) returns immediately, exactly as
-	// it would with a real, unstalled git subprocess.
-	testInjectGitContextHook = func() {
+	// it would with a real, unstalled context-file walk.
+	testInjectContextFilesHook = func() {
 		if claimed.CompareAndSwap(false, true) {
 			entered <- struct{}{}
 			<-release
 		}
 	}
-	defer func() { testInjectGitContextHook = nil }()
+	defer func() { testInjectContextFilesHook = nil }()
 
 	mb := newMockBackend()
 	mgr := NewManager(mb)
@@ -63,7 +63,7 @@ func TestSendPrompt_BlockedContextInjection_DoesNotWedgeOtherSessions(t *testing
 	select {
 	case <-entered:
 	case <-time.After(5 * time.Second):
-		t.Fatal("blocked session's injectGitContext hook never entered")
+		t.Fatal("blocked session's injectContextFiles hook never entered")
 	}
 
 	// While the blocked session's context injection is stalled indefinitely,

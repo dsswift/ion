@@ -190,9 +190,9 @@ func TestSessionMemory_MemoryEnabledConfigGate(t *testing.T) {
 	boolPtr := func(b bool) *bool { return &b }
 
 	tests := []struct {
-		name           string
-		memoryEnabled  *bool
-		wantDisabled   bool
+		name          string
+		memoryEnabled *bool
+		wantDisabled  bool
 	}{
 		{
 			name:          "nil (default) — memory enabled",

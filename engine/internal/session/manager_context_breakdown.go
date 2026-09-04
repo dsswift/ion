@@ -150,10 +150,10 @@ func (m *Manager) ComputeAndEmitContextBreakdownContext(ctx context.Context, key
 		opts.Model = snap.model
 	}
 
-	// Inject context (context files, extension context, git context, memory)
-	// using the same helpers prompt_dispatch uses before every prompt.
-	// injectContextFiles and injectGitContext only read s.config (WorkingDirectory,
-	// ClaudeCompat) and do no locking themselves, so using the snapshotted s is safe.
+	// Inject context (context files, extension context, memory) using the same
+	// helpers prompt_dispatch uses before every prompt. injectContextFiles only
+	// reads s.config (WorkingDirectory, ClaudeCompat) and does no locking
+	// itself, so using the snapshotted s is safe.
 	m.mu.RLock()
 	s, ok = m.sessions[key]
 	if !ok {
@@ -167,7 +167,6 @@ func (m *Manager) ComputeAndEmitContextBreakdownContext(ctx context.Context, key
 	injectContextFiles(sForInject, &opts)
 	workspaceContext := m.injectWorkspaceContext(sForInject, key, &opts, sForInject.config.ClientWorkspaceContext)
 	m.injectExtensionContext(sForInject, key, &opts, workspaceContext)
-	injectGitContext(sForInject, &opts)
 	injectPluginContext(sForInject, &opts)
 	if snap.sessionMemory != nil {
 		snap.sessionMemory.InjectMemoryIntoSystemPrompt(&opts)
@@ -206,15 +205,10 @@ func (m *Manager) ComputeAndEmitContextBreakdownContext(ctx context.Context, key
 	}
 
 	// Build the LlmStreamOptions that BuildContextBreakdown expects.
-	//
-	// Git context is appended to the message view here for the same reason the
-	// run loop appends it (backend.AppendGitContextMessage): it no longer lives
-	// in the system prompt, so counting only systemPrompt + conv.Messages would
-	// under-report the turn by the size of the git block.
 	streamOpts := types.LlmStreamOptions{
 		Model:    opts.Model,
 		System:   systemPrompt,
-		Messages: backend.AppendGitContextMessage(conv.Messages, opts, "context_breakdown", 0),
+		Messages: conv.Messages,
 		Tools:    toolDefs,
 	}
 

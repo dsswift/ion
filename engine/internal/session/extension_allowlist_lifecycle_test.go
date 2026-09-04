@@ -177,4 +177,3 @@ setInterval(() => {}, 1000);
 		t.Error("allowed extension must load into the session's extension group")
 	}
 }
-

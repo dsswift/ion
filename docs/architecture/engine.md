@@ -41,7 +41,7 @@ The Ion Engine is a single Go binary. It runs as a daemon, listens on a Unix soc
 | `internal/export` | Session export (JSON, Markdown, HTML) |
 | `internal/skills` | Skill loader, presets |
 | `internal/stream` | NDJSON line parser |
-| `internal/utils` | Logger, git context helpers |
+| `internal/utils` | Logger, atomic writes, log egress |
 
 ## Data flow
 

@@ -14,7 +14,7 @@ import {
 } from "./state";
 import { broadcast } from "./broadcast";
 import { shouldStreamThinkingToRemote } from "./settings-store";
-import { formatClearDivider } from "../shared/clear-divider";
+import { formatClearDividerForOutcome } from "../shared/clear-divider";
 import { tabIdFromKey } from "../shared/session-key";
 import {
   subscribeToResourceKinds,
@@ -568,7 +568,7 @@ export function wireEngineBridgeEvents(): void {
         // immediate send must drain pending text first. See RC-5.
         flushKeyDeltas(key);
 
-        const divider = formatClearDivider(new Date());
+        const divider = formatClearDividerForOutcome(new Date(), event.clearKeepPlan, event.clearKeptPlanSlug);
         if (instanceId) {
           state.remoteTransport.send({
             type: "desktop_harness_message",

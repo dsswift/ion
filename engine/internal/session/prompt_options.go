@@ -1,14 +1,11 @@
 package session
 
 import (
-	"context"
 	"strings"
-	"time"
 
 	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	ioncontext "github.com/dsswift/ion/engine/internal/context"
 	"github.com/dsswift/ion/engine/internal/extension"
-	"github.com/dsswift/ion/engine/internal/gitcontext"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -548,7 +545,15 @@ func finalizeSlashModelProvenance(opts *types.RunOptions, key string) {
 // ~/.claude root, then appends them to the system prompt. The gate mirrors the
 // slash-command / skill subsystem: Ion roots are unconditional, Claude roots
 // are honored only when the consumer enabled ClaudeCompat.
+// testInjectContextFilesHook is called at the start of injectContextFiles when
+// non-nil. Tests use it to stall the off-lock inject phase deterministically,
+// without depending on a real slow filesystem. Nil in production.
+var testInjectContextFilesHook func()
+
 func injectContextFiles(s *engineSession, opts *types.RunOptions) {
+	if testInjectContextFilesHook != nil {
+		testInjectContextFilesHook()
+	}
 	if s.config.WorkingDirectory == "" {
 		utils.Log("Session", "injectContextFiles: skipped (empty WorkingDirectory)")
 		return
@@ -676,71 +681,6 @@ func (m *Manager) injectExtensionContext(s *engineSession, key string, opts *typ
 			opts.CapabilityPrompt += capPrompt.String()
 		}
 	}
-}
-
-// gitContextTimeout bounds the total wall-clock time git subprocesses may
-// take during a single prompt dispatch. Each GetGitContext call spawns
-// several git subprocesses (rev-parse, status, log); on a healthy repo
-// they complete in <100ms. 5s gives generous margin for large repos or
-// slow filesystems while preventing an indefinite hang.
-const gitContextTimeout = 5 * time.Second
-
-// testInjectGitContextHook is called at the start of injectGitContext when
-// non-nil. Tests use it to inject delays that simulate slow git
-// subprocesses without replacing the real binary. Nil in production.
-var testInjectGitContextHook func()
-
-// injectGitContext resolves formatted git context for the session's working
-// directory and stores it on opts.GitContextText.
-//
-// It deliberately does NOT append to opts.AppendSystemPrompt. Git output is the
-// most volatile context the engine injects — it changes on every commit, stage,
-// and working-tree edit — and the system prompt is the head of the provider's
-// cacheable prefix. Volatile bytes in a cached prefix invalidate everything
-// behind them, so appending here re-wrote the entire system prompt and the full
-// conversation history on any turn that followed a repository change. The run
-// loop places GitContextText after the last cache breakpoint instead, so a
-// changed branch or commit costs only the block itself.
-//
-// Git subprocesses are bounded by gitContextTimeout; a timeout produces
-// a warning log and skips the injection rather than blocking the dispatch.
-func injectGitContext(s *engineSession, opts *types.RunOptions) {
-	if testInjectGitContextHook != nil {
-		testInjectGitContextHook()
-	}
-	if s.config.WorkingDirectory == "" {
-		utils.LogWithFields(utils.LevelDebug, "session", "git context skipped: no working directory", map[string]any{})
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), gitContextTimeout)
-	defer cancel()
-	gitCtx := gitcontext.GetGitContextWithContext(ctx, s.config.WorkingDirectory)
-	if ctx.Err() != nil {
-		utils.LogWithFields(utils.LevelWarn, "session", "git context timed out, skipping injection", map[string]any{
-			"cwd":     s.config.WorkingDirectory,
-			"timeout": gitContextTimeout.String(),
-		})
-		return
-	}
-	if gitCtx == nil {
-		utils.LogWithFields(utils.LevelDebug, "session", "git context unavailable: not a repository", map[string]any{
-			"cwd": s.config.WorkingDirectory,
-		})
-		return
-	}
-	formatted := gitcontext.FormatForPrompt(gitCtx)
-	if formatted == "" {
-		utils.LogWithFields(utils.LevelDebug, "session", "git context resolved but empty", map[string]any{
-			"cwd": s.config.WorkingDirectory,
-		})
-		return
-	}
-	opts.GitContextText = formatted
-	utils.LogWithFields(utils.LevelDebug, "session", "git context resolved for post-cache injection", map[string]any{
-		"cwd":    s.config.WorkingDirectory,
-		"branch": gitCtx.Branch,
-		"count":  len(formatted),
-	})
 }
 
 // injectPluginContext populates opts.InitialMessages with the plugin SessionStart

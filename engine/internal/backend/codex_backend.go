@@ -267,7 +267,7 @@ func (b *CodexBackend) runTurn(requestID string, options types.RunOptions) {
 		})
 	}
 
-	prompt := gitContextPrompt(transientPrompt(options.Prompt, options.AppendSystemPrompt), options.GitContextText)
+	prompt := transientPrompt(options.Prompt, options.AppendSystemPrompt)
 	turnID, err := b.client.TurnStart(ctx, codexrpc.TurnStartParams{
 		ThreadID:          threadID,
 		Input:             codexrpc.NewTextInput(prompt),

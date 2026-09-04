@@ -13,11 +13,21 @@ extension ConversationView {
     var slashCommands: [DiscoveredSlashCommand] {
         var cmds = viewModel.discoveredCommands[workingDirectory] ?? []
 
-        // Inject the /clear builtin (matches desktop's SLASH_COMMANDS constant).
+        // Inject the /clear builtins (matches desktop's SLASH_COMMANDS constant).
+        // The --keep-plan variant clears history but re-injects the active plan;
+        // selecting it drafts "/clear --keep-plan ", which the desktop pipeline
+        // parses as the clear command with the --keep-plan arg.
         let clearCmd = DiscoveredSlashCommand(
             name: "clear", description: "Clear conversation history",
             scope: "builtin", source: "builtin", origin: nil
         )
+        let clearKeepPlanCmd = DiscoveredSlashCommand(
+            name: "clear --keep-plan", description: "Clear history but keep the active plan in context",
+            scope: "builtin", source: "builtin", origin: nil
+        )
+        if !cmds.contains(where: { $0.name == "clear --keep-plan" }) {
+            cmds.insert(clearKeepPlanCmd, at: 0)
+        }
         if !cmds.contains(where: { $0.name == "clear" }) {
             cmds.insert(clearCmd, at: 0)
         }

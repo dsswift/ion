@@ -56,10 +56,10 @@ const gitQueryWaitDelay = time.Second
 
 // runGitCtx executes a read-only git query in dir, honoring ctx cancellation.
 //
-// Every call is prefixed with --no-optional-locks, matching gitcontext.go's
-// runGit: without it, git opportunistically refreshes the on-disk index for
-// some read commands, taking .git/index.lock and colliding with whatever git
-// command the operator is running concurrently in the same worktree.
+// Every call is prefixed with --no-optional-locks. Without it, git
+// opportunistically refreshes the on-disk index for some read commands, taking
+// .git/index.lock and colliding with whatever git command the operator is
+// running concurrently in the same worktree.
 func runGitCtx(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks"}, args...)...)
 	cmd.WaitDelay = gitQueryWaitDelay

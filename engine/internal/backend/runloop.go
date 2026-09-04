@@ -423,11 +423,6 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			messages = sanitized
 		}
 
-		// Append volatile repository context AFTER the history, past the
-		// provider's cache breakpoints. See runloop_git_context.go for why this
-		// must not live in the system prompt.
-		messages = AppendGitContextMessage(messages, opts, run.requestID, turn)
-
 		// Plan mode can flip mid-run: the model calls the EnterPlanMode
 		// sentinel and interceptEnterPlanMode sets run.planMode true
 		// (runloop_plan_mode_gates.go). The tool list built before this loop

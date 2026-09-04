@@ -32,8 +32,8 @@ import (
 // remains nil post-call.
 func TestLateLoadExtensions_NilVsEmptySlice_NoopEquivalence(t *testing.T) {
 	for _, tc := range []struct {
-		name  string
-		exts  []string
+		name string
+		exts []string
 	}{
 		{"nil extensions", nil},
 		{"empty slice extensions", []string{}},

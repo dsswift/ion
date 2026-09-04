@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Brain } from '@phosphor-icons/react'
+import { Brain, NotePencil } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { CopyButton } from './CopyButton'
 import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
@@ -22,6 +22,10 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
   const isBashCmd = !!message.userExecuted
 
   const structuredAnswer = message.injectionKind === 'structured_answer'
+  const planRetained = message.injectionKind === 'plan_retained'
+  // Both kinds are framed rather than rendered as an ordinary bubble — see
+  // `framed` below — so they share the same display-content and layout path.
+  const framed = structuredAnswer || planRetained
   const displayContent = structuredAnswer
     ? structuredAnswerDisplayText(stripAttachmentMarkers(message.content || ''))
     : stripAttachmentMarkers(message.content || '').trim()
@@ -59,19 +63,19 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
     </div>
   )
 
-  // Guided Questions submission. This IS the operator's own input — they read
-  // the questions, chose the options, typed the text and attached the images —
-  // so it renders in full rather than being hidden. But they did not compose
-  // the rendered prose at the prompt, so it is wrapped in explicit chrome
+  // Guided Questions submission and a `/clear --keep-plan` retained plan are
+  // both engine-authored turns the operator's own action caused, so both
+  // render in full rather than being hidden. But neither is prose the
+  // operator composed at the prompt, so both are wrapped in explicit chrome
   // (StructuredAnswerFrame: labelled rules top and bottom, tinted panel
-  // grouping the answers WITH their attachments). A small corner tag was the
+  // grouping the content with any attachments). A small corner tag was the
   // first attempt and was not enough — at a glance the bubble still read as an
   // ordinary message, which is the false impression the frame removes.
 
   const inner = (
     <div
       className={
-        structuredAnswer
+        framed
           // Inside the frame the content sizes to itself: the panel hugs it,
           // so stretching here would push the panel out to the full row and
           // reproduce the empty-box look the frame is meant to avoid. The
@@ -95,10 +99,10 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
               // a second border here would read as a bubble sitting in a box.
               border: isBashCmd
                 ? `2px solid ${colors.bashModeRing}`
-                : structuredAnswer
+                : framed
                   ? 'none'
                   : `1px solid ${colors.userBubbleBorder}`,
-              borderRadius: structuredAnswer ? '8px' : '14px 14px 4px 14px',
+              borderRadius: framed ? '8px' : '14px 14px 4px 14px',
             }}
           >
             {slashPill ? (
@@ -150,7 +154,7 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
             // Inside the frame the row is followed by the closing rule, and
             // the default -bottom-5 lands the hover actions on top of it.
             // Drop them clear of the rule instead of overlapping it.
-            structuredAnswer ? '-bottom-8' : '-bottom-5'
+            framed ? '-bottom-8' : '-bottom-5'
           }`}
         >
           {actions || defaultActions}
@@ -164,11 +168,13 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
   // block would still read as "a message the operator sent".
   const content = structuredAnswer
     ? <StructuredAnswerFrame>{inner}</StructuredAnswerFrame>
-    : inner
+    : planRetained
+      ? <StructuredAnswerFrame label="Plan retained" icon={NotePencil}>{inner}</StructuredAnswerFrame>
+      : inner
 
   // A framed submission stretches across the transcript; an ordinary bubble
   // stays right-aligned in its 85% column.
-  const rowClass = structuredAnswer
+  const rowClass = framed
     // Extra bottom padding reserves the band the hover actions drop into
     // below the closing rule, so they never crowd the following turn.
     ? 'flex items-stretch pt-2.5 pb-5'
@@ -181,6 +187,7 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
         data-message-id={message.id}
         data-message-role="user"
         data-structured-answer={structuredAnswer ? 'true' : undefined}
+        data-plan-retained={planRetained ? 'true' : undefined}
       >
         {content}
       </div>
@@ -196,6 +203,7 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
       data-message-id={message.id}
       data-message-role="user"
       data-structured-answer={structuredAnswer ? 'true' : undefined}
+      data-plan-retained={planRetained ? 'true' : undefined}
     >
       {content}
     </motion.div>

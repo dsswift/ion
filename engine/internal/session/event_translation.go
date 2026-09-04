@@ -179,42 +179,9 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 		m.markSessionParked(key, ts.AwaitingTaskIDs)
 	}
 
-	// Track plan mode changes so re-entering plan mode triggers reentry
-	// detection in SendPrompt. We do this here (rather than in the pure
-	// translateToEngineEvent) because we need access to the session manager.
-	if pmc, ok := event.Data.(*types.PlanModeChangedEvent); ok {
-		if !pmc.Enabled {
-			// Model called ExitPlanMode: record the exit so that if the
-			// session is later re-entered into plan mode, the reentry
-			// prompt fires.
-			m.MarkPlanModeExited(key)
-		} else if pmc.PlanFilePath != "" {
-			// Model called EnterPlanMode: keep the manager's session state in
-			// sync with the run's state so the next SendPrompt sees the correct
-			// planFilePath and planMode flag. Without this the manager's view
-			// diverges from the backend run's view across run boundaries.
-			m.mu.Lock()
-			if s2, ok2 := m.sessions[key]; ok2 {
-				s2.planMode = true
-				s2.planFilePath = pmc.PlanFilePath
-				utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "event_translation: model entered plan mode", map[string]any{"key": key, "plan_file_path": pmc.PlanFilePath})
-			}
-			m.mu.Unlock()
-		}
-	}
-
-	// Per ADR-003, the model calling ExitPlanMode surfaces as a
-	// PlanProposalEvent{Kind:"exit"} (a workflow proposal), NOT a
-	// PlanModeChangedEvent{Enabled:false} (a confirmed state change). The
-	// CLI backend emits this on the model's ExitPlanMode tool call, and the
-	// API backend emits it from interceptExitPlanMode. Record the exit so
-	// reentry detection fires when plan mode is re-enabled — mirroring the
-	// PlanModeChangedEvent{Enabled:false} branch above. Idempotent with the
-	// SetPlanMode(false) user-approval chokepoint path (both set
-	// hasExitedPlanMode=true).
-	if pp, ok := event.Data.(*types.PlanProposalEvent); ok && pp.Kind == "exit" {
-		m.MarkPlanModeExited(key)
-	}
+	// Plan-mode side effects (reentry tracking, planFilePath sync, and the
+	// delegated-CLI plan marker). Split into event_translation_plan_mode.go.
+	m.applyPlanModeSideEffects(key, event)
 
 	// Track last-known context usage on the session so subsequent
 	// engine_status emissions carry the latest values.
