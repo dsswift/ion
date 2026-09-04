@@ -445,13 +445,19 @@ func AddAssistantMessage(conv *Conversation, blocks []types.LlmContentBlock, usa
 // what poisoned GetContextUsage's backward scan (the zero struct read as "the
 // provider says ~0 tokens"), so this variant leaves Usage nil on both the
 // message and the persisted entry.
-func AddAssistantMessageNoUsage(conv *Conversation, blocks []types.LlmContentBlock) {
+//
+// The model that served the turn IS recorded, even though the accounting is
+// not. The two facts are independent: a delegated backend reports no token
+// usage but always knows which model ran, and an assistant entry with no model
+// cannot be attributed afterwards — which is what made per-model turn counts
+// read as "unknown" for every CLI-served conversation.
+func AddAssistantMessageNoUsage(conv *Conversation, blocks []types.LlmContentBlock, model string) {
 	conv.lock()
 	defer conv.unlock()
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: blocks})
 
 	if conv.Entries != nil {
-		entry := appendEntryLocked(conv, EntryMessage, MessageData{Role: "assistant", Content: blocks}, "")
+		entry := appendEntryLocked(conv, EntryMessage, MessageData{Role: "assistant", Content: blocks, Model: model}, "")
 		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
 	}
 }

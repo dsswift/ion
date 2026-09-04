@@ -143,6 +143,12 @@ func (m *Manager) persistCliTurn(key, convID string) {
 	injectionKind := s.pendingCliInjectionKind
 	assistantText := s.pendingCliAssistantText
 	recorder := s.cliTranscript
+	// The model that served this delegated turn, stamped on every entry the
+	// append writes. Read here, under the manager lock, alongside the other
+	// pending turn state.
+	s.modelMu.RLock()
+	servingModel := s.lastModel
+	s.modelMu.RUnlock()
 	planMarker := s.pendingCliPlanMarker
 	slashInvocation := s.pendingCliSlashInvocation
 	s.pendingCliPlanMarker = nil
@@ -196,7 +202,7 @@ func (m *Manager) persistCliTurn(key, convID string) {
 			}
 			conversation.ClassifyEntry(userEntry, injectionKind)
 		}
-		wroteStructured = appendStructuredCliTurn(conv, structuredItems)
+		wroteStructured = appendStructuredCliTurn(conv, structuredItems, servingModel)
 		hasRecordedText := false
 		for _, it := range structuredItems {
 			if it.kind == "text" {
@@ -213,7 +219,7 @@ func (m *Manager) persistCliTurn(key, convID string) {
 			// No usage annotation: the CLI reported no provider accounting for
 			// this turn, and a zero-valued LlmUsage{} would poison the occupancy
 			// backward scan (GetContextUsage) into reading ~0 tokens.
-			conversation.AddAssistantMessageNoUsage(conv, []types.LlmContentBlock{{Type: "text", Text: assistantText}})
+			conversation.AddAssistantMessageNoUsage(conv, []types.LlmContentBlock{{Type: "text", Text: assistantText}}, servingModel)
 		}
 		// Append the plan marker LAST, after the turn's content, so the tree
 		// order matches when the plan was captured: the marker sits after the

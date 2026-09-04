@@ -152,14 +152,18 @@ func (r *cliTranscriptRecorder) flushTextLocked() {
 // message carrying text/tool_use blocks is immediately followed by one user
 // message carrying every consecutive tool_result. Returns true when at least
 // one message was written.
-func appendStructuredCliTurn(conv *conversation.Conversation, items []cliTranscriptItem) bool {
+//
+// model is the delegated backend's serving model, stamped on every assistant
+// entry this writes. A CLI turn reports no token usage, but it does know its
+// model, and an unstamped entry is unattributable once the run is over.
+func appendStructuredCliTurn(conv *conversation.Conversation, items []cliTranscriptItem, model string) bool {
 	var assistantBlocks []types.LlmContentBlock
 	var results []conversation.ToolResultEntry
 	wrote := false
 
 	flushAssistant := func() {
 		if len(assistantBlocks) > 0 {
-			conversation.AddAssistantMessageNoUsage(conv, assistantBlocks)
+			conversation.AddAssistantMessageNoUsage(conv, assistantBlocks, model)
 			assistantBlocks = nil
 			wrote = true
 		}

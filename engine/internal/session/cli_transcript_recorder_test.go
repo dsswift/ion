@@ -68,7 +68,7 @@ func TestAppendStructuredCliTurn_Adjacency(t *testing.T) {
 		{kind: "tool_result", toolID: "tu_1", resultContent: "answered"},
 		{kind: "text", text: "done"},
 	}
-	if !appendStructuredCliTurn(conv, items) {
+	if !appendStructuredCliTurn(conv, items, "cli-model") {
 		t.Fatal("appendStructuredCliTurn wrote nothing")
 	}
 
@@ -88,6 +88,76 @@ func TestAppendStructuredCliTurn_Adjacency(t *testing.T) {
 	}
 	if msgs[2].Role != "assistant" {
 		t.Fatalf("msg 2 role: %s", msgs[2].Role)
+	}
+
+	// Every assistant entry carries the serving model. A delegated turn reports
+	// no token usage, but it does know its model, and an entry without one
+	// cannot be attributed to a model after the run is over. Drop the stamp and
+	// this goes red.
+	assistantEntries := 0
+	for _, entry := range conv.Entries {
+		if entry.Type != conversation.EntryMessage {
+			continue
+		}
+		data, ok := entry.Data.(conversation.MessageData)
+		if !ok || data.Role != "assistant" {
+			continue
+		}
+		assistantEntries++
+		if data.Model != "cli-model" {
+			t.Errorf("assistant entry carries model %q, want the serving model", data.Model)
+		}
+	}
+	if assistantEntries != 2 {
+		t.Fatalf("want 2 assistant entries, got %d", assistantEntries)
+	}
+}
+
+// TestPersistCliTurn_StampsServingModel pins the wire-up: the model the
+// session last ran on reaches the persisted delegated turn, both on the
+// structured path and on the text-only completion.
+func TestPersistCliTurn_StampsServingModel(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	mgr := NewManager(backend.NewClaudeCodeBackend())
+	const key, convID = "cli-model-stamp", "1784000000007-eeeeeeeeeee3"
+	_, _ = mgr.StartSession(key, defaultConfig())
+
+	rec := newCliTranscriptRecorder()
+	rec.record(types.NormalizedEvent{Data: &types.TextChunkEvent{Text: "working"}})
+
+	mgr.mu.Lock()
+	s := mgr.sessions[key]
+	s.conversationID = convID
+	s.pendingCliUserTurn = "do the thing"
+	s.pendingCliAssistantText = "done"
+	s.cliTranscript = rec
+	s.modelMu.Lock()
+	s.lastModel = "claude-opus-5"
+	s.modelMu.Unlock()
+	mgr.mu.Unlock()
+
+	mgr.persistCliTurn(key, convID)
+
+	conv, err := conversation.Load(convID, "")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	found := 0
+	for _, entry := range conv.Entries {
+		if entry.Type != conversation.EntryMessage {
+			continue
+		}
+		data, ok := entry.Data.(conversation.MessageData)
+		if !ok || data.Role != "assistant" {
+			continue
+		}
+		found++
+		if data.Model != "claude-opus-5" {
+			t.Errorf("persisted assistant entry model = %q, want claude-opus-5", data.Model)
+		}
+	}
+	if found == 0 {
+		t.Fatal("no assistant entry persisted for the delegated turn")
 	}
 }
 

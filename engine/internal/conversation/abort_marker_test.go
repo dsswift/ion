@@ -23,7 +23,7 @@ func TestAppendAbortMarker_DurableAndIdempotent(t *testing.T) {
 	const conversationID = "abort-marker-test"
 	conv := CreateConversation(conversationID, "system", "model")
 	AddUserMessage(conv, "do a long thing")
-	AddAssistantMessageNoUsage(conv, []types.LlmContentBlock{{Type: "text", Text: "starting"}})
+	AddAssistantMessageNoUsage(conv, []types.LlmContentBlock{{Type: "text", Text: "starting"}}, "test-model")
 	if err := Save(conv, ""); err != nil {
 		t.Fatalf("initial Save: %v", err)
 	}
