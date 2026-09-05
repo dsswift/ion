@@ -22,6 +22,20 @@ import (
 // real cap in models.json and never hit this path.
 const anthropicDefaultMaxTokens = 16384
 
+// AnthropicEphemeralCacheTtlSeconds is the lifetime of the prompt-cache entries
+// this provider writes. The request below asks for `cache_control` type
+// "ephemeral" with no explicit `ttl`, which is Anthropic's 5-minute default
+// tier. The constant exists because the cache lifetime is a fact about what the
+// engine sends, not a property a consumer can read off a price list: after this
+// many seconds of inactivity the entry is gone and the next turn re-writes the
+// whole prompt at the cache-creation rate. Any code that reasons about whether a
+// conversation's cache is still warm derives it from here.
+//
+// Changing the requested ttl (to the 1-hour tier, say) means changing this
+// constant in the same edit, so the published lifetime can never disagree with
+// the lifetime actually requested.
+const AnthropicEphemeralCacheTtlSeconds = 300
+
 // ProviderOptions configures API key and base URL for a provider.
 type ProviderOptions struct {
 	ID         string // override provider ID (default: provider-specific)

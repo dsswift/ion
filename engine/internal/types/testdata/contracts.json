@@ -698,6 +698,7 @@
       "outputTokens"
     ],
     "ModelEntry": [
+      "cacheTtlSeconds",
       "contextWindow",
       "costPer1kCacheCreation",
       "costPer1kCacheRead",

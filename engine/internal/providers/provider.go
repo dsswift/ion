@@ -257,6 +257,7 @@ func ListModels() []types.ModelEntry {
 			CostPer1kCacheCreation: info.CostPer1kCacheCreation,
 			CostPer1kCacheRead:     info.CostPer1kCacheRead,
 			SupportsCaching:        info.SupportsCaching,
+			CacheTtlSeconds:        info.CacheTtlSeconds,
 			SupportsThinking:       info.SupportsThinking,
 			SupportsImages:         info.SupportsImages,
 			MaxOutputTokens:        info.MaxOutputTokens,
