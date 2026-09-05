@@ -269,12 +269,17 @@ type compactable interface {
 //
 // Path B — CLI backend (subprocess forwarding):
 //
-//	The Claude Code subprocess owns the conversation. We write the literal
-//	"/compact" string as a stream-json user message to its stdin so the
-//	subprocess executes its own compaction. Only valid while a run is
-//	in flight (the stdin pipe is closed at run-end). When no run is
-//	active we surface an informational error code the consumer can render
-//	as a friendly system message.
+//	The delegated CLI subprocess owns the conversation, so the engine hands
+//	it the literal "/compact" string and lets its own slash dispatcher run
+//	the compaction. How that string is delivered depends on whether a run
+//	is in flight, because the stdin pipe only exists for the life of a run:
+//
+//	  - Run in flight: write it as a stream-json user message to stdin,
+//	    mirroring SteerAgent's message shape.
+//	  - Idle: dispatch it as an ordinary prompt turn, which starts a run
+//	    whose first user message is "/compact". This is the case an
+//	    operator actually types the command in, and the engine performs it
+//	    rather than refusing and asking them to retype the same string.
 //
 // Path C — no conversation:
 //
