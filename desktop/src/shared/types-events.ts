@@ -419,7 +419,7 @@ export type NormalizedEvent =
       notificationLevel: string;
     }
   // dispatch_activity — a running dispatched (sub-)agent's intra-turn transcript
-  // delta (tool start/end, streamed text), bridged from the engine's
+  // delta (tool start/end, stream reset, streamed text), bridged from the engine's
   // engine_dispatch_activity (event-wiring.ts). Cross-cutting: the agent popup
   // folds it into the per-dispatch transcript cache keyed by
   // dispatchAgentId/conversationId; it must never append to the main conversation
@@ -428,8 +428,9 @@ export type NormalizedEvent =
       type: "dispatch_activity";
       dispatchAgentId: string;
       dispatchConversationId: string;
-      dispatchActivityKind: "text" | "tool_start" | "tool_end";
+      dispatchActivityKind: "text" | "tool_start" | "tool_end" | "stream_reset";
       dispatchSeq: number;
+      dispatchResetAfterSeq?: number;
       toolName?: string;
       toolId?: string;
       dispatchTextDelta?: string;

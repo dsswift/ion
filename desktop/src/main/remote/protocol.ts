@@ -219,7 +219,7 @@ export type RemoteEvent =
   // The unified response is desktop_conversation_history for every tab.
   | { type: 'desktop_agent_conversation_history'; agentName: string; conversationId?: string; messages: Array<{ id: string; role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number }> }
   // desktop_dispatch_activity streams a running dispatched agent's intra-turn
-  // activity (tool start/end, streamed text) to iOS. Forwarded generically from
+  // activity (tool start/end, stream reset, streamed text) to iOS. Forwarded generically from
   // the engine's engine_dispatch_activity via engineToWireType (event-wiring.ts);
   // the engine field names are carried through verbatim by the `{...event}`
   // spread. INCREMENTAL/append-by-key — the client folds it into the per-dispatch
@@ -227,7 +227,7 @@ export type RemoteEvent =
   // toolId and streaming text by dispatchSeq. It must NOT be appended to the main
   // conversation message stream (that surface is desktop_text_delta /
   // desktop_tool_start). The file-backed reconcile is the snapshot authority.
-  | { type: 'desktop_dispatch_activity'; tabId: string; instanceId?: string | null; dispatchAgentId: string; dispatchConversationId: string; dispatchActivityKind: 'text' | 'tool_start' | 'tool_end'; dispatchSeq: number; toolName?: string; toolId?: string; dispatchTextDelta?: string; dispatchToolIsError?: boolean; dispatchActivityTs?: number }
+  | { type: 'desktop_dispatch_activity'; tabId: string; instanceId?: string | null; dispatchAgentId: string; dispatchConversationId: string; dispatchActivityKind: 'text' | 'tool_start' | 'tool_end' | 'stream_reset'; dispatchSeq: number; dispatchResetAfterSeq?: number; toolName?: string; toolId?: string; dispatchTextDelta?: string; dispatchToolIsError?: boolean; dispatchActivityTs?: number }
   // input_prefill seeds a remote client's input box with text (e.g. the
   // rewound user message after a rewind). `instanceId` is set when the
   // prefill targets a specific engine instance's draft (desktop_engine_rewind);

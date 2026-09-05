@@ -26,6 +26,7 @@ function fold(state: DispatchActivityState, delta: Partial<DispatchActivityDelta
     dispatchTextDelta: delta.dispatchTextDelta,
     dispatchToolIsError: delta.dispatchToolIsError,
     dispatchActivityTs: delta.dispatchActivityTs,
+    dispatchResetAfterSeq: delta.dispatchResetAfterSeq,
     dispatchActivityKind: delta.dispatchActivityKind,
     dispatchSeq: delta.dispatchSeq,
   }).state
@@ -50,6 +51,21 @@ describe('foldActivity — push dedupe by toolId and seq', () => {
     s = fold(s, { dispatchActivityKind: 'tool_start', dispatchSeq: 1, toolId: 'tool-x', toolName: 'Bash' })
     s = fold(s, { dispatchActivityKind: 'tool_end', dispatchSeq: 2, toolId: 'tool-x', dispatchToolIsError: true })
     expect(activityMessages(s).filter((m) => m.role === 'tool')[0].toolStatus).toBe('error')
+  })
+
+  it('discards uncommitted tool and text rows on stream reset', () => {
+    let s = emptyActivityState()
+    s = fold(s, { dispatchActivityKind: 'tool_start', dispatchSeq: 1, toolId: 'done', toolName: 'Read' })
+    s = fold(s, { dispatchActivityKind: 'tool_end', dispatchSeq: 2, toolId: 'done' })
+    s = fold(s, { dispatchActivityKind: 'text', dispatchSeq: 3, dispatchTextDelta: 'partial' })
+    s = fold(s, { dispatchActivityKind: 'tool_start', dispatchSeq: 4, toolId: 'partial', toolName: 'Write' })
+
+    s = fold(s, { dispatchActivityKind: 'stream_reset', dispatchSeq: 5, dispatchResetAfterSeq: 2 })
+
+    const msgs = activityMessages(s)
+    expect(msgs).toHaveLength(1)
+    expect(msgs[0].toolId).toBe('done')
+    expect(msgs[0].toolStatus).toBe('completed')
   })
 
   it('folds a coalesced text run sharing a seq slot into ONE ordered text entry', () => {

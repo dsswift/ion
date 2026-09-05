@@ -110,6 +110,7 @@ describe('wireEngineBridgeEvents — engine_dispatch_activity routing', () => {
     expect(payload.dispatchAgentId).toBe('dispatch-dev-lead-123')
     expect(payload.dispatchConversationId).toBe('child-conv-1')
     expect(payload.dispatchActivityKind).toBe('tool_start')
+    expect(payload.dispatchResetAfterSeq).toBeUndefined()
     expect(payload.toolId).toBe('tool-1')
     // tabId/instanceId ride-along from the wire key split.
     expect(payload.tabId).toBe('tab1')
@@ -123,6 +124,21 @@ describe('wireEngineBridgeEvents — engine_dispatch_activity routing', () => {
     expect(bridged[0][1]).toBe('tab1') // tabId
     expect(bridged[0][2].dispatchConversationId).toBe('child-conv-1')
     expect(bridged[0][2].dispatchSeq).toBe(1)
+  })
+
+  it('forwards a stream reset boundary to both clients', () => {
+    emit(KEY, {
+      ...ACTIVITY_EVENT,
+      dispatchActivityKind: 'stream_reset',
+      dispatchSeq: 5,
+      dispatchResetAfterSeq: 2,
+      toolName: undefined,
+      toolId: undefined,
+    })
+    const remote = sentOfType('desktop_dispatch_activity')[0][0]
+    const renderer = broadcastNormalizedOfType('dispatch_activity')[0][2]
+    expect(remote.dispatchResetAfterSeq).toBe(2)
+    expect(renderer.dispatchResetAfterSeq).toBe(2)
   })
 
   it('does NOT route dispatch activity to the main-conversation delta surfaces', () => {

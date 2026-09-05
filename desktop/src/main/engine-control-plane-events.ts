@@ -377,7 +377,7 @@ export function handleEngineEvent(
       // gives us 100ms to reply; the policy module must respond off the
       // event loop, not via any async I/O.
       log(
-        `early_stop_decision_request: tabId=${tabId} requestId=${event.earlyStopRequestId} run=${event.earlyStopRunId} turn=${event.earlyStopTurnNumber} wouldContinue=${event.earlyStopWouldContinue}`,
+        `early_stop_decision_request: tabId=${tabId} requestId=${event.earlyStopRequestId} run=${event.earlyStopRunId} turn=${event.earlyStopTurnNumber} wouldContinue=${event.earlyStopWouldContinue} eligible=${event.earlyStopEligible}`,
       );
       ctx.emit("engine_early_stop_decision_request", tabId, event);
       break;

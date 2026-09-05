@@ -271,18 +271,29 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               break;
 
             case "stream_reset": {
-              // Engine retrying mid-turn: discard trailing in-progress
-              // assistant text AND any still-active thinking row (a sealed
-              // thinking row from earlier in the turn survives). Mirrors
-              // engine-event-slice.ts.
-              const lastMsgReset = messages[messages.length - 1];
-              if (
-                lastMsgReset?.role === "assistant" &&
-                !lastMsgReset.toolName
-              ) {
-                messages = messages.slice(0, -1);
-              }
+              // Engine retrying mid-turn: discard every uncommitted artifact
+              // from the abandoned provider attempt. A tool row is created at
+              // content_block_start, before its JSON arguments are complete or
+              // the tool executor runs. Leaving those running rows behind made
+              // a stalled Write look like a series of real writes even though
+              // no file_path was ever decoded and nothing reached the tool.
+              const beforeCount = messages.length;
+              messages = messages.filter(
+                (message) =>
+                  !(
+                    (message.role === "assistant" &&
+                      !message.toolName &&
+                      !message.sealed) ||
+                    (message.role === "tool" &&
+                      message.toolStatus === "running")
+                  ),
+              );
               messages = discardActiveThinking(messages);
+              updated.currentActivity = "Thinking...";
+              rInfo("event.stream", "stream reset discarded partial attempt", {
+                tab_id: tabId,
+                discarded_rows: beforeCount - messages.length,
+              });
               break;
             }
 

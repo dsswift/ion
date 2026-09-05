@@ -147,6 +147,7 @@ export function handleCrossNormalizedEvent(
       dispatchConversationId: convId,
       dispatchActivityKind: event.dispatchActivityKind,
       dispatchSeq: event.dispatchSeq,
+      dispatchResetAfterSeq: event.dispatchResetAfterSeq,
       toolName: event.toolName,
       toolId: event.toolId,
       dispatchTextDelta: event.dispatchTextDelta,
