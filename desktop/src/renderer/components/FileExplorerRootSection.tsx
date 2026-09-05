@@ -32,11 +32,17 @@ export interface FileExplorerRootSectionProps {
   onToggleCollapsed: () => void
   /** Legacy image-popup fallback (overlay). Studio routes via the router. */
   onOpenImage: (preview: { path: string; name: string }) => void
-  /** Present on secondary roots only: Remove from Workspace. */
+  /** Present on mounted folders only: Remove from Workspace. */
   onRemoveFromWorkspace?: () => void
   /** Set by the orchestrator when New File/Folder targets this root. */
   inlineCreate: { type: 'file' | 'folder'; parentDir: string; depth: number } | null
   onInlineCreateDone: () => void
+  /**
+   * Ask the explorer to open an inline create input in `parentDir` at `depth`.
+   * Raised by both right-click menus; the section makes the target visible
+   * first (see requestCreate) so the input is never created off-screen.
+   */
+  onRequestCreate: (type: 'file' | 'folder', parentDir: string, depth: number) => void
 }
 
 export function FileExplorerRootSection(props: FileExplorerRootSectionProps): React.JSX.Element {
@@ -140,10 +146,29 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
     }
   }, [rootDir, activeTabId, openFileInEditor, setFileExplorerSelected, props])
 
-  const handleContextMenu = useCallback((e: React.MouseEvent, entry: FsEntry) => {
+  const handleContextMenu = useCallback((e: React.MouseEvent, entry: FsEntry, depth: number) => {
     e.preventDefault()
-    setContextMenu({ x: e.clientX, y: e.clientY, entry })
+    setContextMenu({ x: e.clientX, y: e.clientY, entry, depth })
   }, [])
+
+  /**
+   * Make the create target visible, then raise the request.
+   *
+   * The header buttons this replaced could only ever target an already-rendered
+   * directory, so two cases are new: a collapsed root renders no tree at all,
+   * and `renderTree` only emits the inline input when its parent directory is
+   * itself rendered. Un-collapsing the root and expanding (plus fetching) the
+   * parent are what keep the input from being created where nothing shows it.
+   */
+  const requestCreate = useCallback((type: 'file' | 'folder', parentDir: string, depth: number) => {
+    if (collapsed) props.onToggleCollapsed()
+    if (parentDir !== rootDir && !explorerState.expandedPaths.has(parentDir)) {
+      rDebug('file-explorer', 'expanding create target', { dir: parentDir })
+      setFileExplorerExpanded(rootDir, parentDir, true)
+      fetchDir(parentDir).catch((err) => rWarn('file-explorer', 'create target fetch failed', { dir: parentDir, error: String(err) }))
+    }
+    props.onRequestCreate(type, parentDir, depth)
+  }, [collapsed, props, rootDir, explorerState.expandedPaths, setFileExplorerExpanded, fetchDir])
 
   const handleInlineSubmit = useCallback(async (name: string) => {
     const input = props.inlineCreate
@@ -242,7 +267,7 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
             isGitIgnored={isIgnored(entry.path)}
             onToggle={() => handleToggleDir(entry)}
             onClick={(e) => handleFileClick(entry, e)}
-            onContextMenu={(e) => handleContextMenu(e, entry)}
+            onContextMenu={(e) => handleContextMenu(e, entry, depth)}
             colors={colors}
           />,
         )
@@ -265,7 +290,6 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
       <div
         onClick={props.onToggleCollapsed}
         onContextMenu={(e) => {
-          if (!props.onRemoveFromWorkspace) return
           e.preventDefault()
           setHeaderMenu({ x: e.clientX, y: e.clientY })
         }}
@@ -290,18 +314,19 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
             {parentPath}
           </span>
         )}
-        {props.onRemoveFromWorkspace && (
-          <span
-            onClick={(e) => {
-              e.stopPropagation()
-              setHeaderMenu({ x: e.clientX, y: e.clientY })
-            }}
-            style={{ marginLeft: 'auto', display: 'flex', color: colors.textTertiary }}
-            aria-label={`Root menu for ${baseName}`}
-          >
-            <DotsThree size={13} />
-          </span>
-        )}
+        {/* Every root carries the menu, the source repository root included:
+            with New File and New Folder gone from the explorer header, this is
+            the only way to create at the top level of a root. */}
+        <span
+          onClick={(e) => {
+            e.stopPropagation()
+            setHeaderMenu({ x: e.clientX, y: e.clientY })
+          }}
+          style={{ marginLeft: 'auto', display: 'flex', color: colors.textTertiary }}
+          aria-label={`Root menu for ${baseName}`}
+        >
+          <DotsThree size={13} />
+        </span>
       </div>
       {!collapsed && <div style={{ padding: '0 0 4px' }}>{renderTree(rootDir, 0)}</div>}
 
@@ -311,10 +336,11 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
           workingDir={rootDir}
           onClose={() => setContextMenu(null)}
           onRename={handleRenameStart}
+          onCreate={requestCreate}
           portalTarget={popoverLayer}
         />
       )}
-      {headerMenu && props.onRemoveFromWorkspace && (
+      {headerMenu && (
         <FileExplorerRootHeaderMenu
           x={headerMenu.x}
           y={headerMenu.y}

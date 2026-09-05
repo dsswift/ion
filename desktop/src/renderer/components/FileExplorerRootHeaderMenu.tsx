@@ -1,6 +1,13 @@
 /**
- * FileExplorerRootHeaderMenu — context menu on a secondary workspace-root
- * header: Remove from Workspace / Reveal in Finder / Collapse All in Folder.
+ * FileExplorerRootHeaderMenu — context menu on a workspace-root header.
+ *
+ * Every root has one, the source repository root included: with New File and
+ * New Folder gone from the explorer header, right-clicking the root is the only
+ * way to create at the top level of a root, so a root that cannot be
+ * right-clicked would have no create path at all.
+ *
+ * Remove from Workspace appears on mounted folders only — the source
+ * repository root is not something the workspace can unmount.
  */
 import React, { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
@@ -45,13 +52,17 @@ export function FileExplorerRootHeaderMenu({
   onClose,
   onRemoveFromWorkspace,
   onCollapseAllInFolder,
+  onCreate,
 }: {
   x: number
   y: number
   rootDir: string
   onClose: () => void
-  onRemoveFromWorkspace: () => void
+  /** Mounted folders only; absent on the source repository root. */
+  onRemoveFromWorkspace?: () => void
   onCollapseAllInFolder: () => void
+  /** Create at the top level of this root (depth 0). */
+  onCreate: (type: 'file' | 'folder') => void
 }): React.JSX.Element {
   const colors = useColors()
   const layer = usePopoverLayer()
@@ -72,10 +83,14 @@ export function FileExplorerRootHeaderMenu({
     }
   }, [onClose])
 
-  const items = [
-    { label: 'Remove from Workspace', action: onRemoveFromWorkspace },
+  type Item = { label: string; action: () => void } | { separator: true }
+  const items: Item[] = [
+    { label: 'New File', action: () => onCreate('file') },
+    { label: 'New Folder', action: () => onCreate('folder') },
+    { separator: true },
     { label: 'Reveal in Finder', action: () => void window.ion.fsRevealInFinder(rootDir) },
     { label: 'Collapse All in Folder', action: onCollapseAllInFolder },
+    ...(onRemoveFromWorkspace ? [{ separator: true as const }, { label: 'Remove from Workspace', action: onRemoveFromWorkspace }] : []),
   ]
 
   const pos = useAnchoredPopover({ x, y }, { deps: [items.length] })
@@ -104,15 +119,19 @@ export function FileExplorerRootHeaderMenu({
         pointerEvents: 'auto',
       }}
     >
-      {items.map((item) => (
-        <MenuButton
-          key={item.label}
-          label={item.label}
-          onSelect={() => {
-            item.action()
-            onClose()
-          }}
-        />
+      {items.map((item, i) => (
+        'separator' in item ? (
+          <div key={`sep-${i}`} style={{ height: 1, background: colors.containerBorder, margin: '4px 8px' }} />
+        ) : (
+          <MenuButton
+            key={item.label}
+            label={item.label}
+            onSelect={() => {
+              item.action()
+              onClose()
+            }}
+          />
+        )
       ))}
     </div>
   )

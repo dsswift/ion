@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { Paperclip, Copy, FolderOpen as FolderOpenIcon, ArrowSquareOut, PencilSimple } from '@phosphor-icons/react'
+import { Paperclip, Copy, FolderOpen as FolderOpenIcon, ArrowSquareOut, PencilSimple, FilePlus, FolderPlus } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
@@ -16,6 +16,8 @@ export interface ContextMenuState {
   x: number
   y: number
   entry: FsEntry
+  /** Indent the right-clicked row renders at; the inline input matches it. */
+  depth: number
 }
 
 /** Menu row with the standard hover/pressed background cascade. */
@@ -61,6 +63,7 @@ export function FileExplorerContextMenu({
   workingDir,
   onClose,
   onRename,
+  onCreate,
   portalTarget,
 }: {
   menu: ContextMenuState
@@ -72,6 +75,13 @@ export function FileExplorerContextMenu({
    * the context menu just signals intent.
    */
   onRename: (entry: FsEntry) => void
+  /**
+   * Create in `parentDir`, rendering the inline input at `depth`. The menu
+   * resolves the target from the right-clicked row — a directory receives the
+   * new entry as a child, a file receives it as a sibling — so creation always
+   * names its folder instead of inferring one from the selection.
+   */
+  onCreate: (type: 'file' | 'folder', parentDir: string, depth: number) => void
   portalTarget: HTMLDivElement
 }) {
   const colors = useColors()
@@ -97,7 +107,13 @@ export function FileExplorerContextMenu({
       : menu.entry.path
     const ext = menu.entry.name.includes('.') ? '.' + menu.entry.name.split('.').pop()!.toLowerCase() : ''
     const isHtml = ext === '.html' || ext === '.htm'
+    const lastSlash = menu.entry.path.lastIndexOf('/')
+    const createParent = menu.entry.isDirectory ? menu.entry.path : (lastSlash > 0 ? menu.entry.path.slice(0, lastSlash) : workingDir)
+    const createDepth = menu.entry.isDirectory ? menu.depth + 1 : menu.depth
     return [
+      { label: 'New File', icon: FilePlus, action: () => onCreate('file', createParent, createDepth) },
+      { label: 'New Folder', icon: FolderPlus, action: () => onCreate('folder', createParent, createDepth) },
+      { separator: true as const },
       // HTML defaults to browser preview on click (Studio); "Edit" is the
       // explicit editor path. Overlay (no router) opens the floating editor.
       ...(isHtml && !menu.entry.isDirectory
@@ -138,7 +154,7 @@ export function FileExplorerContextMenu({
       { label: 'Reveal in Finder', icon: FolderOpenIcon, action: () => { maybeCloseExplorerBeforeExternal(); void window.ion.fsRevealInFinder(menu.entry.path) } },
       { label: 'Open in Native App', icon: ArrowSquareOut, action: () => { maybeCloseExplorerBeforeExternal(); void window.ion.fsOpenNative(menu.entry.path) } },
     ]
-  }, [menu.entry, workingDir, onRename, addAttachments])
+  }, [menu.entry, menu.depth, workingDir, onRename, onCreate, addAttachments])
 
   // Measured placement: a right-click low in the file tree used to open a menu
   // that ran off the bottom of the window. `items.length` is the only thing
