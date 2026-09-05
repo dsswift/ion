@@ -35,11 +35,11 @@
  *
  * Source-of-truth
  * ───────────────
- * The single injection site is
- * `desktop/src/main/prompt-pipeline.ts::submitAsPrompt`, the lone
- * converging dispatch point for every prompt origin (desktop
- * renderer + iOS CLI/engine, slash + non-slash). Do not add a second
- * injection site — the helper handles idempotency by `endsWith()`,
- * but the right architectural answer is "one append, one place."
+ * This constant is injected from exactly one place: the prompt pipeline's
+ * addenda list, applied at its converging dispatch point so every prompt
+ * origin (desktop renderer + iOS CLI/engine, slash + non-slash) receives
+ * it once. Do not add a second injection site. The pipeline's append is
+ * idempotent, so a duplicate site would not visibly break anything — it
+ * would just make "where does this text come from" unanswerable.
  */
 export const TURN_GROUPING_GUIDANCE = `Tool calls are rendered below your response text, not above it. Write your reply as a complete thought. Do not end sentences with colons to introduce tool output — the tool cluster appears after your words, so lead-in phrases like "here's what I did:" are misleading. End sentences with normal punctuation unless prefacing a list that is genuinely written out in the text.`
