@@ -62,4 +62,18 @@ struct RemoteModelEntry: Codable, Sendable, Identifiable, Equatable {
     /// Cache-read input price per 1k tokens. Optional for older snapshots;
     /// when absent, `ModelSwitchCost` uses the documented fallback multiplier.
     var costPer1kCacheRead: Double?
+    /// Whether this model caches prompts at all. A model that does not cache
+    /// bills the whole prompt at the base input rate on every turn, so there is
+    /// no cheaper "stay put" rate to weigh a switch against. Optional for older
+    /// snapshots; absent means the desktop did not state it.
+    var supportsCaching: Bool?
+    /// Prompt-cache lifetime in seconds, as declared by the engine.
+    ///
+    /// A cached prompt is only billable at the cheap read rate for this long
+    /// after the write that created it. Pricing the next turn on the current
+    /// model therefore needs the lifetime as well as the rates: once it has
+    /// elapsed, that turn re-writes the whole prompt at the creation rate.
+    /// Optional for older snapshots; absent means undeclared and the client
+    /// must not substitute a default.
+    var cacheTtlSeconds: Int?
 }

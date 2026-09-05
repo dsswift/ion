@@ -31,7 +31,7 @@ extension DiagnosticLog {
         case .tabStatus(let tabId, let status, let resync):
             log("EVENT: tabStatus id=\(tabId.prefix(8)) status=\(status.rawValue) resync=\(resync)", tag: "session", level: .info)
 
-        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, _, _, let messageCount, _, _):
+        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, _, _, _, let messageCount, _, _):
             log("EVENT: tabMeta id=\(tabId.prefix(8)) title=\(title?.prefix(20) ?? "-") runCostUsd=\(totalCostUsd.map { String(format: "%.4f", $0) } ?? "-") group=\(groupId ?? "-") fp=\(convFingerprint?.suffix(12) ?? "-") count=\(messageCount.map(String.init) ?? "-")",
                 tag: "session", level: .debug)
 

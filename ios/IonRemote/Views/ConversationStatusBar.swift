@@ -18,6 +18,13 @@ struct ConversationStatusBar: View {
     /// picker selection); honoring the engine's truth prevents the
     /// 100% / 498k / 200k display bug fixed in plan cosy-pacing-bee.md.
     let engineContextWindow: Int?
+    /// Unix ms of the conversation's last real turn — the turn that wrote the
+    /// prompt cache. The model-switch estimate needs it because the cheap
+    /// stay-put rate only applies while that cache is still readable; past the
+    /// model's published lifetime the next turn re-writes the whole prompt
+    /// regardless of which model runs it. Nil means unknown, and the estimate
+    /// says so rather than assuming the cache survived.
+    var lastTurnAtMs: Double? = nil
     let isRunning: Bool
     let permissionMode: PermissionMode?
     let availableModels: [RemoteModelEntry]
@@ -422,8 +429,9 @@ struct ConversationStatusBar: View {
             }
         } message: {
             if let pending = pendingModelSwitch {
-                Text(ModelSwitchCost.describe(pending.estimate)
-                    + "\n\nA prompt cache belongs to one model, so the new model cannot read the cache this conversation already built.")
+                Text([ModelSwitchCost.describe(pending.estimate), ModelSwitchCost.reason(pending.estimate)]
+                    .compactMap { $0 }
+                    .joined(separator: "\n\n"))
             }
         }
     }
@@ -441,7 +449,8 @@ struct ConversationStatusBar: View {
         let estimate = ModelSwitchCost.estimate(
             contextTokens: contextTokens,
             targetModel: availableModels.first(where: { $0.id == model }),
-            currentModel: availableModels.first(where: { $0.id == effectiveModel })
+            currentModel: availableModels.first(where: { $0.id == effectiveModel }),
+            lastActivityAt: lastTurnAtMs.map { Date(timeIntervalSince1970: $0 / 1000) }
         )
         guard let estimate, model != effectiveModel else {
             onSelectModel(model)
@@ -451,7 +460,14 @@ struct ConversationStatusBar: View {
             "model switch: confirming mid-conversation switch",
             tag: "session",
             level: .info,
-            fields: ["from": effectiveModel, "to": model, "tokens": String(estimate.tokens)]
+            fields: [
+                "from": effectiveModel,
+                "to": model,
+                "tokens": String(estimate.tokens),
+                "cache_state": estimate.cacheState.rawValue,
+                "idle_seconds": estimate.idleSeconds.map { String(Int($0)) } ?? "unknown",
+                "cache_ttl_seconds": estimate.cacheTtlSeconds.map(String.init) ?? "unknown",
+            ]
         )
         pendingModelSwitch = (model: model, estimate: estimate)
     }

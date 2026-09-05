@@ -978,6 +978,7 @@ final class ContractSyncTests: XCTestCase {
       "costPer1kCacheCreation": 0.00375,
       "costPer1kCacheRead": 0.0003,
       "supportsCaching": true,
+      "cacheTtlSeconds": 300,
       "supportsThinking": true,
       "supportsImages": true,
     ]
@@ -1000,6 +1001,10 @@ final class ContractSyncTests: XCTestCase {
       "costPer1kInput", "costPer1kOutput",
       "costPer1kCacheCreation", "costPer1kCacheRead",
       "supportsCaching", "supportsThinking", "supportsImages",
+      // Prompt-cache lifetime. Consumed: ModelSwitchCost prices the
+      // "stay on this model" side of a switch against it, because a cached
+      // prompt only bills at the cheap read rate while the entry is alive.
+      "cacheTtlSeconds",
       "thinkingMode", "thinkingEfforts",
       // Operator-defined model (engine.json `models` entry) rather than
       // one the provider's catalog reported. Consumed: drives the

@@ -31,7 +31,7 @@ enum RemoteEvent: Sendable {
     /// `pillColor` and `pillIcon` use double optionals: outer nil means key was
     /// omitted and state must remain untouched; outer non-nil with inner nil
     /// means desktop explicitly sent JSON null to clear customization.
-    case tabMeta(tabId: String, title: String?, totalCostUsd: Double?, groupId: String?, convFingerprint: String?, lastActivityAt: Double?, lastMessage: String?, messageCount: Int?, pillColor: String??, pillIcon: String??)
+    case tabMeta(tabId: String, title: String?, totalCostUsd: Double?, groupId: String?, convFingerprint: String?, lastActivityAt: Double?, lastMessageAt: Double?, lastMessage: String?, messageCount: Int?, pillColor: String??, pillIcon: String??)
     case textChunk(tabId: String, text: String)
     case toolCall(tabId: String, toolName: String, toolId: String)
     case toolResult(tabId: String, toolId: String, content: String, isError: Bool)
@@ -792,7 +792,7 @@ enum RemoteEvent: Sendable {
         // desktop_tab_meta volatile conversation fields (B6-1): pushed by the
         // desktop's poll tick when they change so the full snapshot need not
         // re-ship per streamed delta. Names mirror RemoteTabState.
-        case convFingerprint, lastActivityAt, lastMessage, messageCount
+        case convFingerprint, lastActivityAt, lastMessageAt, lastMessage, messageCount
         case content, transcript, isError, result, costUsd, durationMs, reason, backgroundTaskId
         case task, taskId, requestId, notifyOnComplete, startedAt, elapsedMs, outputPath, tail
         case stoppedBackgroundTaskIds, scope, cancelledRunId, recalledDispatchIds, killedAgentProcessCount
