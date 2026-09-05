@@ -532,7 +532,7 @@ func (g *ExtensionGroup) FireTurnEnd(ctx *Context, info TurnInfo) {
 // Returns nil when no host expressed an opinion. The runloop treats a nil
 // return as "use the engine's default decision".
 func (g *ExtensionGroup) FireBeforeEarlyStopDecision(ctx *Context, info EarlyStopDecisionInfo) *EarlyStopDecisionResult {
-	utils.LogWithFields(utils.LevelInfo, "extension_group", "firebeforeearlystopdecision: dispatching to host(s)", map[string]any{"count": len(g.hosts), "run_id": info.RunID, "turn_number": info.TurnNumber, "cumulative_output_tokens": info.CumulativeOutputTokens, "budget": info.Budget, "would_continue": info.WouldContinue})
+	utils.LogWithFields(utils.LevelInfo, "extension_group", "firebeforeearlystopdecision: dispatching to host(s)", map[string]any{"count": len(g.hosts), "run_id": info.RunID, "turn_number": info.TurnNumber, "cumulative_output_tokens": info.CumulativeOutputTokens, "budget": info.Budget, "would_continue": info.WouldContinue, "eligible": info.Eligible})
 	var out EarlyStopDecisionResult
 	anySet := false
 	for _, h := range g.hosts {

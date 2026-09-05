@@ -527,6 +527,7 @@ type EngineEvent struct {
 	EarlyStopMaxContinuations      int    `json:"earlyStopMaxContinuations,omitempty"`
 	EarlyStopLastContinuationDelta int    `json:"earlyStopLastContinuationDelta,omitempty"`
 	EarlyStopWouldContinue         bool   `json:"earlyStopWouldContinue,omitempty"`
+	EarlyStopEligible              bool   `json:"earlyStopEligible,omitempty"`
 	EarlyStopIsSubagent            bool   `json:"earlyStopIsSubagent,omitempty"`
 
 	// --- Async-trigger events (D-010 / D-011) ---
@@ -682,15 +683,17 @@ type EngineEvent struct {
 	//
 	// Emitted on the parent session's event stream for each intra-turn
 	// activity of a running dispatched (sub-)agent: a tool call starting, a
-	// tool result returning, or a chunk of streamed assistant text. The child
-	// produces these events as it works; the engine forwards them here so any
+	// tool result returning, a retry resetting partial activity, or a chunk of
+	// streamed assistant text. The child produces these events as it works; the
 	// consumer can render or audit the live sub-agent transcript WITHOUT
 	// waiting for the dispatch to complete.
 	//
-	// Semantics: INCREMENTAL, append-by-key. NOT a snapshot, NOT retained, NOT
-	// replayed on reconnect (distinct from engine_agent_state, which IS a
-	// snapshot — see docs/architecture/agent-state.md). The file-backed
-	// conversation transcript is the snapshot authority that heals gaps; a
+	// Semantics: INCREMENTAL, append-by-key. A stream_reset delta is a bounded
+	// rollback: consumers retain activity at or before DispatchResetAfterSeq and
+	// discard later entries from the abandoned provider attempt. This is NOT a
+	// snapshot and is not replayed on reconnect (distinct from engine_agent_state,
+	// which IS a snapshot). The file-backed conversation transcript is the
+	// snapshot authority that heals gaps; a
 	// consumer that needs complete/sticky state reconciles from there and
 	// never from retained activity events. Sibling to model_fallback /
 	// run_stalled in being a fire-and-forget signal.
@@ -700,18 +703,22 @@ type EngineEvent struct {
 	//                             right agent/dispatch row; never to the parent
 	//                             conversation's own message stream).
 	//   - DispatchConversationID: the child conversation id (reconcile keying).
-	//   - DispatchActivityKind:   "tool_start" | "tool_end" | "text".
+	//   - DispatchActivityKind:   "tool_start" | "tool_end" | "text" | "stream_reset".
 	//   - DispatchSeq:            monotonic per-dispatch sequence; orders deltas
 	//                             and keys a streaming-text run.
 	//   - ToolID / ToolName:      tool_start / tool_end (ToolID is durable and
 	//                             also persisted, so it survives reconcile).
 	//   - DispatchTextDelta:      text (the streamed chunk, possibly coalesced).
 	//   - DispatchToolIsError:    tool_end (true when the tool failed).
+	//   - DispatchResetAfterSeq: last committed activity sequence retained by a
+	//                             stream_reset; later entries are discarded. Zero
+	//                             means the attempt began before any committed row.
 	//   - DispatchActivityTs:     emit timestamp (unix millis).
 	DispatchAgentID        string `json:"dispatchAgentId,omitempty"`
 	DispatchConversationID string `json:"dispatchConversationId,omitempty"`
 	DispatchActivityKind   string `json:"dispatchActivityKind,omitempty"`
 	DispatchSeq            int    `json:"dispatchSeq,omitempty"`
+	DispatchResetAfterSeq  int    `json:"dispatchResetAfterSeq,omitempty"`
 	DispatchTextDelta      string `json:"dispatchTextDelta,omitempty"`
 	DispatchToolIsError    bool   `json:"dispatchToolIsError,omitempty"`
 	DispatchActivityTs     int64  `json:"dispatchActivityTs,omitempty"`

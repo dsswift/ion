@@ -11,9 +11,10 @@ import (
 // Activity-kind discriminators for engine_dispatch_activity. These mirror the
 // DispatchActivityKind wire field values documented on EngineEvent.
 const (
-	dispatchActivityText      = "text"
-	dispatchActivityToolStart = "tool_start"
-	dispatchActivityToolEnd   = "tool_end"
+	dispatchActivityText        = "text"
+	dispatchActivityToolStart   = "tool_start"
+	dispatchActivityToolEnd     = "tool_end"
+	dispatchActivityStreamReset = "stream_reset"
 )
 
 // textCoalesceInterval is how long streamed text chunks accumulate before a
@@ -63,10 +64,11 @@ type DispatchActivityEmitter struct {
 	// textBuf accumulates streamed text between flushes. flushTimer fires once
 	// per buffered run; textSeq is the seq slot the whole coalesced run is keyed
 	// to (assigned when the run starts, reused for the single emitted delta).
-	textBuf    string
-	textSeq    int
-	flushTimer *time.Timer
-	closed     bool
+	textBuf      string
+	textSeq      int
+	flushTimer   *time.Timer
+	committedSeq int
+	closed       bool
 }
 
 // NewDispatchActivityEmitter builds an emitter that forwards engine_dispatch_activity
@@ -129,13 +131,47 @@ func (e *DispatchActivityEmitter) HandleToolEnd(toolID string, isError bool) {
 	defer e.mu.Unlock()
 	e.flushTextLocked()
 	seq := e.nextSeq()
+	e.committedSeq = seq
 	e.emitEvent(types.EngineEvent{
 		DispatchActivityKind: dispatchActivityToolEnd,
 		DispatchSeq:          seq,
 		ToolID:               toolID,
 		DispatchToolIsError:  isError,
 	})
-	utils.LogWithFields(utils.LevelDebug, "server", "activity emit", map[string]any{"dispatch_activity_tool_end": dispatchActivityToolEnd, "agent_name": e.agentName, "tool_i_d": toolID, "is_error": isError, "seq": seq, "conversation_id": e.convID})
+	utils.LogWithFields(utils.LevelDebug, "server", "activity emit", map[string]any{"dispatch_activity_tool_end": dispatchActivityToolEnd, "agent_name": e.agentName, "tool_i_d": toolID, "is_error": isError, "seq": seq, "committed_seq": e.committedSeq, "conversation_id": e.convID})
+}
+
+// HandleMessageEnd commits every activity delta emitted for the completed child
+// message. A later provider retry may discard only entries after this boundary.
+func (e *DispatchActivityEmitter) HandleMessageEnd() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.flushTextLocked()
+	e.committedSeq = e.seq
+	utils.LogWithFields(utils.LevelDebug, "server", "dispatch activity message committed", map[string]any{
+		"agent_name": e.agentName, "committed_seq": e.committedSeq, "conversation_id": e.convID,
+	})
+}
+
+// HandleStreamReset flushes no partial text. It drops the local text buffer and
+// tells consumers to discard all uncommitted rows for the abandoned attempt.
+func (e *DispatchActivityEmitter) HandleStreamReset() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.flushTimer != nil {
+		e.flushTimer.Stop()
+		e.flushTimer = nil
+	}
+	e.textBuf = ""
+	seq := e.nextSeq()
+	e.emitEvent(types.EngineEvent{
+		DispatchActivityKind:  dispatchActivityStreamReset,
+		DispatchSeq:           seq,
+		DispatchResetAfterSeq: e.committedSeq,
+	})
+	utils.LogWithFields(utils.LevelInfo, "server", "dispatch activity stream reset", map[string]any{
+		"agent_name": e.agentName, "seq": seq, "reset_after_seq": e.committedSeq, "conversation_id": e.convID,
+	})
 }
 
 // AccumulateText appends a streamed text chunk to the coalesce buffer and

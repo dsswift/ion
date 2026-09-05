@@ -105,6 +105,9 @@ func TestRequestEarlyStopDecisionViaWire_DeliversResponse(t *testing.T) {
 		if emittedKey != key || ev.Type != "engine_early_stop_decision_request" {
 			return
 		}
+		if !ev.EarlyStopEligible {
+			t.Error("wire event omitted mechanical eligibility")
+		}
 		emitMu.Lock()
 		emittedRequestID = ev.EarlyStopRequestID
 		emitMu.Unlock()
@@ -128,6 +131,7 @@ func TestRequestEarlyStopDecisionViaWire_DeliversResponse(t *testing.T) {
 		Budget:                 100,
 		ThresholdPct:           90,
 		WouldContinue:          true,
+		Eligible:               true,
 	}
 	result := mgr.requestEarlyStopDecisionViaWire(key, info)
 

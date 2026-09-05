@@ -106,7 +106,10 @@ type EarlyStopDecisionInfo struct {
 	MaxContinuations       int
 	LastContinuationDelta  int
 	WouldContinue          bool
-	IsSubagent             bool
+	// Eligible excludes the configurable enabled gate but includes the token
+	// threshold, continuation cap, and diminishing-returns safeguards.
+	Eligible   bool
+	IsSubagent bool
 }
 
 // EarlyStopDecisionResult mirrors extension.EarlyStopDecisionResult for the
@@ -254,9 +257,9 @@ type RunHooks struct {
 	// If text is non-empty, it replaces the default.
 	OnSystemInject func(kind, defaultText string, turn, maxTurns int) (text string, suppress bool)
 
-	// OnBeforeEarlyStopDecision fires after the model emits end_turn / stop
-	// and the engine has updated cumulative output tokens, but before it
-	// evaluates the continuation criteria. Handlers can return a non-nil
+	// OnBeforeEarlyStopDecision fires after the model emits end_turn / stop,
+	// after cumulative output tokens and mechanical eligibility are resolved.
+	// Handlers can return a non-nil
 	// EarlyStopDecisionResult to force the verdict, override the budget /
 	// threshold for the remainder of the run, or supply a custom prompt.
 	// Nil callback means no handler is wired (engine uses its default).

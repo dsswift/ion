@@ -51,6 +51,7 @@ func TestFireBeforeEarlyStopDecision_PayloadFields(t *testing.T) {
 		MaxContinuations:       3,
 		LastContinuationDelta:  1200,
 		WouldContinue:          true,
+		Eligible:               true,
 		IsSubagent:             false,
 	}
 	_ = sdk.FireBeforeEarlyStopDecision(testCtx(), info)

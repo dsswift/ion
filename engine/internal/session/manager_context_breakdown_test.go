@@ -87,7 +87,7 @@ func TestComputeAndEmitContextBreakdown_NativeSessionReconcilesAgainstOccupancy(
 	// appendStructuredCliTurn (AddAssistantMessageNoUsage).
 	conversation.AddAssistantMessageNoUsage(conv, []types.LlmContentBlock{
 		{Type: "text", Text: strings.Repeat("This is a long summary of the repository. ", 200)},
-	})
+	}, "")
 	if err := conversation.Save(conv, ""); err != nil {
 		t.Fatalf("Save conversation: %v", err)
 	}

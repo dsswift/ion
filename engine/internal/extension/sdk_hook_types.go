@@ -562,8 +562,7 @@ type PeerExtensionInfo struct {
 
 // EarlyStopDecisionInfo describes a pending early-stop continuation decision.
 // Fires after the model emits end_turn / stop and after the engine has updated
-// its cumulative output-token counter, but **before** it evaluates the
-// continuation criteria. The hook is the primary extension point for harness
+// its cumulative output-token counter and computed mechanical eligibility. The hook is the primary extension point for harness
 // engineers writing continuation policy: handlers can force the verdict,
 // override the budget mid-run, or supply a custom continuation prompt.
 //
@@ -597,9 +596,14 @@ type EarlyStopDecisionInfo struct {
 	// continuation (0 on the first decision). Used by the diminishing-
 	// returns guard.
 	LastContinuationDelta int `json:"lastContinuationDelta"`
-	// WouldContinue is the engine's tentative verdict before this hook
-	// runs. Handlers may flip it via EarlyStopDecisionResult.ForceContinue.
+	// WouldContinue is the engine's tentative verdict after its configured
+	// enabled gate. Handlers may flip it via EarlyStopDecisionResult.ForceContinue.
 	WouldContinue bool `json:"wouldContinue"`
+	// Eligible reports whether the threshold, continuation cap, and
+	// diminishing-returns safeguards permit another turn before the engine's
+	// configured enabled gate is applied. This lets consumer policy opt in
+	// without bypassing the mechanical safety limits.
+	Eligible bool `json:"eligible"`
 	// IsSubagent is true when this run is a child agent dispatched by the
 	// Agent tool. The engine defaults the feature off for subagents; the
 	// hook still fires so harness can force-on with ForceContinue=&true.

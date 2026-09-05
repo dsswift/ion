@@ -71,6 +71,7 @@
         "budget",
         "continuationCount",
         "cumulativeOutputTokens",
+        "eligible",
         "isSubagent",
         "lastContinuationDelta",
         "maxContinuations",
