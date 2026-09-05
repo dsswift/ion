@@ -224,15 +224,26 @@ export function setupAppLifecycle(): void {
       current_pid: process.pid,
       source: runningIon.source,
     })
-    dialog.showMessageBoxSync({
-      type: 'warning',
-      buttons: ['OK'],
-      defaultId: 0,
-      title: 'Ion is already running',
-      message: 'Quit the running Ion application before opening this copy.',
-      detail: 'Ion does not start a second desktop because it could interrupt active conversations or replace a live engine.',
+    // The refusal is decided here, before any startup work, but Electron
+    // refuses every dialog call until the ready event fires — showing it now
+    // throws an uncaught exception and the user gets a crash box instead of
+    // the explanation. Defer only the telling; no startup work runs either way.
+    app.whenReady().then(() => {
+      dialog.showMessageBoxSync({
+        type: 'warning',
+        buttons: ['OK'],
+        defaultId: 0,
+        title: 'Ion is already running',
+        message: 'Quit the running Ion application before opening this copy.',
+        detail: 'Ion does not start a second desktop because it could interrupt active conversations or replace a live engine.',
+      })
+      app.exit(0)
+    }).catch((err) => {
+      error('app_lifecycle: could not show already-running notice; exiting anyway', {
+        error: err instanceof Error ? err.message : String(err),
+      })
+      app.exit(0)
     })
-    app.exit(0)
     return
   }
 
