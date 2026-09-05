@@ -156,7 +156,7 @@ func (p *anthropicProvider) doStream(ctx context.Context, opts types.LlmStreamOp
 	// Wrap with the per-event idle deadline + heartbeat so a stream that
 	// returns headers then goes silent is caught fast and retried, instead of
 	// blocking this loop indefinitely. See sse_idle.go.
-	sseCh, sseErr := streamWithIdle(rawCh, rawErr, "anthropic", opts.Model, "", nil, telemetryCorrelationFromContext(ctx))
+	sseCh, sseErr := streamWithIdle(rawCh, rawErr, "anthropic", opts.Model, "", streamProgressFromContext(ctx), telemetryCorrelationFromContext(ctx))
 	for sse := range sseCh {
 		if sse.Data == "" {
 			continue

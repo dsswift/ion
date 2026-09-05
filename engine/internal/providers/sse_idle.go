@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -149,14 +150,40 @@ func telemetryCorrelationFromContext(ctx context.Context) map[string]any {
 	return nil
 }
 
-// streamProgress is an optional callback invoked on every received SSE event
-// and on every heartbeat tick, so the caller (the run loop) can keep its
-// progress clock fresh while a slow-but-alive stream is in flight. Nil-safe.
+// streamProgress is an optional callback invoked on every semantic SSE event so
+// the caller (the run loop) can keep its progress clock fresh while provider
+// output is advancing. Transport heartbeat frames do not invoke it. Nil-safe.
 type streamProgress func()
+
+type streamProgressKey struct{}
+
+// WithStreamProgress attaches the run's semantic-progress callback to a provider
+// request. Provider implementations pass it to streamWithIdle without changing
+// the public LlmProvider interface.
+func WithStreamProgress(ctx context.Context, onProgress func()) context.Context {
+	if ctx == nil || onProgress == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, streamProgressKey{}, streamProgress(onProgress))
+}
+
+func streamProgressFromContext(ctx context.Context) streamProgress {
+	if ctx == nil {
+		return nil
+	}
+	onProgress, ok := ctx.Value(streamProgressKey{}).(streamProgress)
+	if !ok {
+		return nil
+	}
+	return onProgress
+}
 
 // streamWithIdle consumes the raw SSE channel and re-emits its events on the
 // returned channel, enforcing the per-event idle deadline and emitting
-// heartbeat logs. The returned errFn (call after draining) reports:
+// heartbeat logs. Only semantic provider events reset the deadline and invoke
+// onProgress. Transport heartbeat frames and this wrapper's own log ticker prove
+// that a connection or goroutine is alive, not that model output is advancing.
+// The returned errFn (call after draining) reports:
 //   - the idle-deadline error (retryable stream_truncated, tagged stream_idle)
 //     when the gap between events exceeded the deadline,
 //   - otherwise whatever the underlying srcErr() reports (clean EOF → nil,
@@ -239,6 +266,12 @@ func streamWithIdle(
 					}
 					return
 				}
+				if isSSEHeartbeat(sse) {
+					utils.LogWithFields(utils.LevelDebug, tag, "stream provider heartbeat", map[string]any{
+						"model": model, "request_id": requestID, "duration_ms": time.Since(lastEventAt).Milliseconds(),
+					})
+					continue
+				}
 				eventCount++
 				now := time.Now()
 				if gap := now.Sub(lastEventAt); gap > maxGap {
@@ -295,16 +328,10 @@ func streamWithIdle(
 				return
 
 			case <-heartbeat.C:
-				// Pure observability + progress bump for a slow-but-alive
-				// stream. Logged at INFO: engine.jsonl carries INFO and above,
-				// and this heartbeat is the only in-file liveness signal for a
-				// stream that is healthy but slow (long prefill on a huge
-				// context). One line per 15s per active stream is bounded and
-				// is exactly what distinguishes "slow" from "hung" during an
-				// incident.
-				if onProgress != nil {
-					onProgress()
-				}
+				// Pure observability. This ticker proves the local wrapper goroutine
+				// is scheduled; it does not prove the provider produced model output.
+				// Resetting the run watchdog here would let transport heartbeats keep
+				// a semantically wedged run alive forever.
 				utils.LogWithFields(utils.LevelInfo, tag, "stream alive", map[string]any{
 					"model": model, "request_id": requestID, "count": eventCount,
 					"duration_ms": time.Since(start).Milliseconds(),
@@ -325,4 +352,22 @@ func streamWithIdle(
 	}
 
 	return out, errFn
+}
+
+// isSSEHeartbeat reports whether an SSE frame is transport-level liveness rather
+// than model output. Some Anthropic-compatible gateways send JSON ping events
+// while an upstream generation is wedged. Those frames must not reset the
+// semantic idle deadline: the deadline exists to bound the gap between model
+// events, not merely the gap between bytes on the connection.
+func isSSEHeartbeat(event SSEEvent) bool {
+	if event.Event == "ping" {
+		return true
+	}
+	if event.Data == "" {
+		return false
+	}
+	var envelope struct {
+		Type string `json:"type"`
+	}
+	return json.Unmarshal([]byte(event.Data), &envelope) == nil && envelope.Type == "ping"
 }

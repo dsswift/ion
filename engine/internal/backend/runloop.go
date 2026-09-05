@@ -508,6 +508,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// scoring joins on. Nil-safe: WithTelemetryCorrelation returns ctx
 		// unchanged when the block is nil.
 		streamCtx := providers.WithTelemetryCorrelation(ctx, buildTelemCtx(run))
+		streamCtx = providers.WithStreamProgress(streamCtx, run.bumpProgress)
 
 		// Clear the steer-interrupt latch before starting this provider call.
 		// Every steer buffered up to this point has already been drained by the

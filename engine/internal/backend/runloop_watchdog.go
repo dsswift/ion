@@ -46,6 +46,10 @@ func runProgressWatchdogTick() time.Duration {
 // future refactor that adds another progress hook (e.g. inside the
 // tool dispatcher) should follow the same pattern.
 func (r *activeRun) bumpProgressAtTurnBoundary() {
+	r.bumpProgress()
+}
+
+func (r *activeRun) bumpProgress() {
 	r.lastProgressAt.Store(time.Now().UnixNano())
 }
 
