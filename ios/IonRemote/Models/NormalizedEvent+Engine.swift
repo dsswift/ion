@@ -219,7 +219,7 @@ extension RemoteEvent {
             try container.encode(dispatchId, forKey: .dispatchId)
             try container.encodeIfPresent(conversationId, forKey: .dispatchConversationId)
             return true
-        case .engineDispatchActivity(let tabId, let instanceId, let agentId, let conversationId, let kind, let seq, let toolName, let toolId, let textDelta, let isError, let ts):
+        case .engineDispatchActivity(let tabId, let instanceId, let agentId, let conversationId, let kind, let seq, let resetAfterSeq, let toolName, let toolId, let textDelta, let isError, let ts):
             try container.encode(TypeKey.engineDispatchActivity, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
@@ -227,6 +227,7 @@ extension RemoteEvent {
             try container.encode(conversationId, forKey: .dispatchConversationId)
             try container.encode(kind, forKey: .dispatchActivityKind)
             try container.encode(seq, forKey: .dispatchSeq)
+            try container.encodeIfPresent(resetAfterSeq, forKey: .dispatchResetAfterSeq)
             try container.encodeIfPresent(toolName, forKey: .toolName)
             try container.encodeIfPresent(toolId, forKey: .toolId)
             try container.encodeIfPresent(textDelta, forKey: .dispatchTextDelta)
@@ -406,7 +407,7 @@ extension RemoteEvent {
             )
             return true
 
-        case .engineEarlyStopDecisionRequest(let tabId, let instanceId, let requestId, let runId, let model, let turnNumber, let stopReason, let cumulativeOutput, let budget, let thresholdPct, let continuationCount, let maxContinuations, let lastContinuationDelta, let wouldContinue, let isSubagent):
+        case .engineEarlyStopDecisionRequest(let tabId, let instanceId, let requestId, let runId, let model, let turnNumber, let stopReason, let cumulativeOutput, let budget, let thresholdPct, let continuationCount, let maxContinuations, let lastContinuationDelta, let wouldContinue, let eligible, let isSubagent):
             // Encoder mirror of the decoder above. iOS never originates
             // this event in practice (the engine emits it, iOS observes),
             // but the encoder must round-trip cleanly so that re-encoded
@@ -430,6 +431,7 @@ extension RemoteEvent {
             try container.encode(maxContinuations, forKey: .earlyStopMaxContinuations)
             try container.encode(lastContinuationDelta, forKey: .earlyStopLastContinuationDelta)
             try container.encode(wouldContinue, forKey: .earlyStopWouldContinue)
+            try container.encode(eligible, forKey: .earlyStopEligible)
             try container.encode(isSubagent, forKey: .earlyStopIsSubagent)
             return true
 

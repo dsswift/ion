@@ -369,36 +369,6 @@ extension SessionViewModel {
         }
     }
 
-    /// desktop_stream_reset: the engine discarded the current attempt's
-    /// partial output (mid-stream provider retry or reactive compaction) and
-    /// is re-streaming the turn. Mirror the desktop renderer's stream_reset
-    /// handling: drop the trailing in-progress assistant text row and any
-    /// ACTIVE thinking row (a sealed thinking row from earlier in the turn
-    /// survives). The re-streamed attempt arrives as fresh text deltas.
-    @MainActor
-    func handleEngineStreamReset(tabId: String, instanceId: String?) {
-        DiagnosticLog.log("stream reset: discarding partial attempt output", tag: "session.engine", level: .info, fields: [
-            "tab_id": String(tabId.prefix(8))
-        ])
-        // Remove the active thinking row before touching the assistant text —
-        // the live row (if any) is the last thinking message by id.
-        if let msgId = thinkingMessageId(tabId) {
-            setThinkingMessageId(tabId: tabId, nil)
-            mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
-                if let idx = inst.messages.lastIndex(where: { $0.id == msgId }) {
-                    inst.messages.remove(at: idx)
-                }
-            }
-        }
-        // Discard the trailing in-progress assistant text row (never a tool row).
-        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
-            if let last = inst.messages.last, last.role == .assistant, last.toolName == nil {
-                inst.messages.removeLast()
-            }
-        }
-        engineTurnHasText.remove(tabId)
-    }
-
     @MainActor
     func handleEngineMessageEnd(tabId: String, instanceId: String?, inputTokens: Int?, contextPercent: Double?, entryId: String? = nil, userEntryId: String? = nil) {
         // Clear pinned prompt after message completes

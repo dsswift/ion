@@ -55,6 +55,21 @@ final class ToolRowLifecycleTests: XCTestCase {
             "handleTaskComplete must also finalize a stuck running tool row")
     }
 
+    func testStreamResetRemovesOnlyUncommittedToolRows() {
+        let vm = SessionViewModel()
+        seedTab(vm, id: "t")
+
+        vm.handleEngineToolStart(tabId: "t", instanceId: nil, toolName: "Read", toolId: "done")
+        vm.handleEngineToolEnd(tabId: "t", instanceId: nil, toolId: "done", result: "ok", isError: false)
+        vm.handleEngineToolStart(tabId: "t", instanceId: nil, toolName: "Write", toolId: "partial")
+
+        vm.handleEngineStreamReset(tabId: "t", instanceId: nil)
+
+        let toolRows = vm.conversationMessages("t").filter { $0.role == .tool }
+        XCTAssertEqual(toolRows.compactMap(\.toolId), ["done"])
+        XCTAssertNil(vm.activeTools["t"], "reset must clear active tool bookkeeping")
+    }
+
     func testNormalToolEndStillCompletes() {
         let vm = SessionViewModel()
         seedTab(vm, id: "t")

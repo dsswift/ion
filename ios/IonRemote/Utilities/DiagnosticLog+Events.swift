@@ -194,7 +194,7 @@ extension DiagnosticLog {
             log("EVENT: engineDispatchStart tab=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") agent=\(agent) depth=\(depth) parentId=\(parentId.prefix(16)) id=\(dispatchId.prefix(16))", tag: "session", level: .info)
         case .engineDispatchEnd(let tabId, let instId, let agent, let depth, let parentId, let exitCode, let elapsed, let dispatchId, _):
             log("EVENT: engineDispatchEnd tab=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") agent=\(agent) depth=\(depth) parentId=\(parentId.prefix(16)) exit=\(exitCode) elapsed=\(String(format: "%.2f", elapsed))s id=\(dispatchId.prefix(16))", tag: "session", level: .info)
-        case .engineDispatchActivity(let tabId, _, let agentId, let convId, let kind, let seq, _, let toolId, _, _, _):
+        case .engineDispatchActivity(let tabId, _, let agentId, let convId, let kind, let seq, _, _, let toolId, _, _, _):
             log("EVENT: engineDispatchActivity tab=\(tabId.prefix(8)) agent=\(agentId.prefix(16)) conv=\(convId.prefix(8)) kind=\(kind) seq=\(seq) toolId=\(toolId ?? "")", tag: "session", level: .info)
 
         case .backgroundWorkDelivered(let tabId, let instanceId, let message):
@@ -290,7 +290,7 @@ extension DiagnosticLog {
             // synthesis with the engine.log entry that produced it.
             log("EVENT: enginePlanModeAutoExit tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") runId=\(runId?.prefix(12) ?? "nil") stopReason=\(stopReason) path=\(path?.suffix(40) ?? "nil")", tag: "session", level: .info)
 
-        case .engineEarlyStopDecisionRequest(let tabId, let instId, let reqId, _, _, let turn, _, let cumOut, let budget, let pct, _, _, _, let would, _):
+        case .engineEarlyStopDecisionRequest(let tabId, let instId, let reqId, _, _, let turn, _, let cumOut, let budget, let pct, _, _, _, let would, let eligible, _):
             // Engine ↔ harness wire-protocol request. The desktop is the
             // authoritative responder; iOS only observes for diagnostic
             // visibility. Log the most useful correlation fields (request
@@ -298,7 +298,7 @@ extension DiagnosticLog {
             // continuation issues can pair the iOS-side log line with the
             // engine's `earlyStop: ...` lines and the desktop's
             // `early-stop-policy` lines.
-            log("EVENT: engineEarlyStopDecisionRequest tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") reqId=\(reqId.prefix(8)) turn=\(turn) tokens=\(cumOut)/\(budget) thr=\(pct)% would=\(would)", tag: "session", level: .info)
+            log("EVENT: engineEarlyStopDecisionRequest tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") reqId=\(reqId.prefix(8)) turn=\(turn) tokens=\(cumOut)/\(budget) thr=\(pct)% would=\(would) eligible=\(eligible)", tag: "session", level: .info)
 
         case .engineCommandRegistry(let tabId, let instId, let commands):
             // Complete snapshot of session-scoped slash commands. Log

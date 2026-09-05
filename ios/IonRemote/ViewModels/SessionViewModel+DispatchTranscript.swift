@@ -25,7 +25,7 @@ extension SessionViewModel {
     /// agent-dispatch-activity.ts. Cross-cutting — never touches the main
     /// conversation messages.
     @MainActor
-    func handleDispatchActivity(dispatchAgentId: String, conversationId: String, kind: String, seq: Int, ts: Int64?, toolName: String?, toolId: String?, textDelta: String?, isError: Bool) {
+    func handleDispatchActivity(dispatchAgentId: String, conversationId: String, kind: String, seq: Int, resetAfterSeq: Int? = nil, ts: Int64?, toolName: String?, toolId: String?, textDelta: String?, isError: Bool) {
         guard !dispatchAgentId.isEmpty else {
             DiagnosticLog.log("dispatch activity missing dispatch id", tag: "session.dispatch", level: .warn, fields: [
                 "conversation_id": conversationId,
@@ -43,7 +43,17 @@ extension SessionViewModel {
         var seqs   = agentDispatchSeqs[dispatchAgentId] ?? []
         let entryTs = Double(ts ?? 0)
 
-        if kind == "tool_start" || kind == "tool_end" {
+        if kind == "stream_reset" {
+            let boundary = resetAfterSeq ?? 0
+            let retained = zip(entries, seqs).filter { _, entrySeq in entrySeq <= boundary }
+            entries = retained.map(\.0)
+            seqs = retained.map(\.1)
+            DiagnosticLog.log("dispatch stream reset discarded partial attempt", tag: "session.dispatch", level: .info, fields: [
+                "run_id": dispatchAgentId,
+                "conversation_id": conversationId,
+                "count": String((agentDispatchActivity[dispatchAgentId] ?? []).count - entries.count)
+            ])
+        } else if kind == "tool_start" || kind == "tool_end" {
             let tid = toolId ?? "seq-\(seq)"
             let status: ToolStatus = kind == "tool_end" ? (isError ? .error : .completed) : .running
             if let idx = entries.firstIndex(where: { $0.role == .tool && $0.toolId == tid }) {
