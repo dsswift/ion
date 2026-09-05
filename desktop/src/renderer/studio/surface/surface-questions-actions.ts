@@ -24,6 +24,7 @@ interface QuestionsSurfaceState {
   activeTabId: string | null
   /** Showing a guided wait opens the pane, so projection needs this field. */
   visible: boolean
+  surfaceWidth: number | null
   questionsConversations: Set<string>
   questionsPriorActive: Record<string, string | null>
 }

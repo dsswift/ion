@@ -79,6 +79,14 @@ export interface SurfaceState {
   pendingScratchCloseId: string | null;
   /** Current window state. It can intentionally differ from the saved conversation state. */
   visible: boolean;
+  /**
+   * The projected surface panel width for the current conversation, in px, or
+   * null to use the global `studioLayout.surfaceWidth` default. Mirrors
+   * `visible`'s current-window/saved-conversation split: this is the value
+   * StudioShell renders, `conversations[id].width` is what gets restored on
+   * conversation switch (subject to the same studioSurfaceSwitchMode).
+   */
+  surfaceWidth: number | null;
   hydrated: boolean;
   diffReveal: { filePath: string; staged: boolean; nonce: number } | null;
   /**
@@ -98,6 +106,8 @@ export interface SurfaceState {
   selectConversation(tabId: string | null): void;
   setVisible(visible: boolean): void;
   toggleVisible(): void;
+  /** Commit the surface panel's resized width for the current conversation. */
+  setWidth(width: number): void;
   openSingleton(id: SingletonId): void;
   openFileTab(dir: string, tabId: string, filePath: string): void;
   openPreviewTab(filePath: string, dataUrl?: string): void;
@@ -273,6 +283,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
   currentConversationId: null,
   pendingScratchCloseId: null,
   visible: false,
+  surfaceWidth: null,
   hydrated: false,
   diffReveal: null,
   questionsConversations: new Set<string>(),
@@ -313,6 +324,18 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
   },
 
   toggleVisible: () => get().setVisible(!get().visible),
+
+  setWidth: (width) => {
+    const state = get();
+    // Recorded in both modes, same as setVisible: the switch mode decides how
+    // a conversation SWITCH reads this, never whether a resize is remembered.
+    if (state.currentConversationId) {
+      updateCurrent(set, get, (current) => ({ ...current, width }));
+      set({ surfaceWidth: width });
+    } else {
+      set({ surfaceWidth: width });
+    }
+  },
 
   openSingleton: (id) => {
     const state = get();

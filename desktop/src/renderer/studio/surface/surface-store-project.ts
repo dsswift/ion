@@ -27,6 +27,7 @@ export function emptyConversation(): SurfaceConversationPersisted {
     tabs: [],
     activeTabId: null,
     visible: false,
+    width: null,
     agentBrowserInstanceId: null,
   };
 }
@@ -113,6 +114,7 @@ export function normalizeConversation(
   return {
     tabs,
     visible: conversation.visible,
+    width: conversation.width,
     agentBrowserInstanceId,
     activeTabId:
       conversation.activeTabId &&
@@ -131,14 +133,19 @@ export function project(
     | "conversations"
     | "currentConversationId"
     | "visible"
+    | "surfaceWidth"
   > & { questionsConversations?: Set<string> },
-): Pick<SurfaceState, "tabs" | "activeTabId" | "conversations" | "visible"> {
+): Pick<
+  SurfaceState,
+  "tabs" | "activeTabId" | "conversations" | "visible" | "surfaceWidth"
+> {
   if (!state.currentConversationId)
     return {
       tabs: [],
       activeTabId: null,
       conversations: state.conversations,
       visible: state.visible,
+      surfaceWidth: state.surfaceWidth,
     };
   const hasQuestions =
     state.questionsConversations?.has(state.currentConversationId) ?? false;
@@ -168,6 +175,7 @@ export function project(
     activeTabId: current.activeTabId,
     conversations,
     visible: state.visible,
+    surfaceWidth: state.surfaceWidth,
   };
 }
 

@@ -121,6 +121,16 @@ export interface SurfaceConversationPersisted {
   activeTabId: string | null
   visible: boolean
   /**
+   * The panel width this conversation was last resized to, in px, or null
+   * when it has never been resized — a thin terminal collapsed to minimum
+   * width in one conversation and a fully expanded panel in another are both
+   * remembered by conversation rather than sharing one global width. null
+   * falls back to the global `studioLayout.surfaceWidth` default, which is
+   * what every conversation used before this field existed and what a
+   * conversation without a saved width still uses.
+   */
+  width: number | null
+  /**
    * The instanceId of this conversation's single Agent-linked browser tab,
    * or null when it has none.
    *

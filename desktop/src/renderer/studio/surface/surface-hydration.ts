@@ -61,6 +61,7 @@ export function createSurfaceHydrationActions(
               conversations: {},
               currentConversationId,
               visible: false,
+              surfaceWidth: null,
             }),
             pinnedTabs: empty.pinnedTabs,
             notification: empty.notification,
@@ -88,6 +89,7 @@ export function createSurfaceHydrationActions(
                     tabs: legacy.tabs,
                     activeTabId: legacy.activeTabId,
                     visible: legacyVisible,
+                    width: null,
                     agentBrowserInstanceId: null,
                   },
                 }
@@ -107,6 +109,7 @@ export function createSurfaceHydrationActions(
             conversations,
             currentConversationId,
             visible: legacyVisible,
+            surfaceWidth: null,
           };
           set({
             ...project(state),
@@ -138,14 +141,18 @@ export function createSurfaceHydrationActions(
           conversations,
           currentConversationId,
           visible: false,
+          surfaceWidth: null as number | null,
         };
         const current = currentConversationId
           ? conversations[currentConversationId]
           : null;
         // Restoring the panel as the operator left it is correct in both
         // modes: 'preserve' is about keeping it pinned across tab switches,
-        // not about discarding it across restarts.
+        // not about discarding it across restarts. Same for the resized
+        // width: a restart always opens on the current conversation's own
+        // saved size, not a blanket default.
         initial.visible = current?.visible ?? false;
+        initial.surfaceWidth = current?.width ?? null;
         set({
           ...project(initial),
           pinnedTabs: parsed.pinnedTabs,
@@ -170,6 +177,7 @@ export function createSurfaceHydrationActions(
             conversations: {},
             currentConversationId,
             visible: false,
+            surfaceWidth: null,
           }),
           pinnedTabs: empty.pinnedTabs,
           notification: empty.notification,

@@ -63,6 +63,7 @@ function resetStore(): void {
     currentConversationId: "tab-1",
     pendingScratchCloseId: null,
     visible: false,
+    surfaceWidth: null,
     hydrated: true,
     diffReveal: null,
   });
