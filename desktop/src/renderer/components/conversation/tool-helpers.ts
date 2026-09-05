@@ -371,11 +371,21 @@ export function getToolDescription(name: string, input?: string): string {
       const m = new RegExp(`"${p}"\\s*:\\s*"([^"]*)"`).exec(input);
       return m?.[1] || "";
     };
+    // A value whose closing quote has not streamed yet. Only matches when the
+    // remaining text contains no quote, so a complete value never routes here.
+    const partialString = (p: string) => {
+      const m = new RegExp(`"${p}"\\s*:\\s*"([^"]*)$`).exec(input);
+      return m?.[1] || "";
+    };
     switch (name) {
       case "Read":
       case "Edit":
-      case "Write": {
-        const fp = str("file_path") || str("path");
+      case "Write":
+      case "NotebookEdit": {
+        // A file path streams as its own JSON token well before the (often
+        // enormous) content value finishes, so a partially-received path is
+        // shown as it arrives rather than withheld until the call completes.
+        const fp = str("file_path") || str("path") || partialString("file_path") || partialString("path");
         return fp ? `${name} ${fp}` : name;
       }
       case "Glob": {

@@ -319,6 +319,30 @@ describe('groupMessages unified turn view', () => {
     expect(turn.isActive).toBe(true)
   })
 
+  it('shows a running file write and reveals its path as arguments stream', () => {
+    // Arguments stream after tool_start, so the row must exist immediately and
+    // name its target the moment the path key arrives — never wait for the call
+    // to finish, and never hide the executing write.
+    const partial = msg('tool', '', {
+      toolName: 'Write',
+      toolStatus: 'running',
+      toolInput: '{"content":"# long body stil',
+    })
+    const beforePath = groupMessages([msg('user', 'go'), partial], { unifiedTurnView: true })
+    expect(beforePath).toHaveLength(2)
+    const turn = beforePath[1] as Extract<GroupedItem, { kind: 'agent-turn' }>
+    expect(turn.isActive).toBe(true)
+    expect(getToolDescription('Write', partial.toolInput)).toBe('Write')
+
+    // The path arrives mid-stream, before its closing quote.
+    partial.toolInput = '{"content":"# long body still streaming","file_path":"/tmp/ledger.md'
+    expect(getToolDescription('Write', partial.toolInput)).toBe('Write /tmp/ledger.md')
+
+    // And once the call completes.
+    partial.toolInput = JSON.stringify({ content: 'body', file_path: '/tmp/ledger.md' })
+    expect(getToolDescription('Write', partial.toolInput)).toBe('Write /tmp/ledger.md')
+  })
+
   it('produces an agent-turn with empty assistantMessages for tools-only sequences', () => {
     const messages = [
       msg('user', 'start'),
