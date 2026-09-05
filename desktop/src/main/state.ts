@@ -143,6 +143,11 @@ export const modelCache = {
     costPer1kInput?: number;
     costPer1kCacheCreation?: number;
     costPer1kCacheRead?: number;
+    // Prompt-cache lifetime and caching support. A price alone cannot tell a
+    // client whether an idle conversation's cache is still readable, which is
+    // what decides the true cost of its next turn.
+    supportsCaching?: boolean;
+    cacheTtlSeconds?: number;
   }>,
   lastFetched: 0,
 };

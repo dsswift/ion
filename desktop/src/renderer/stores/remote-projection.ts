@@ -433,6 +433,11 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
     // can finish after the last user/assistant message, and both iOS and the
     // cold snapshot must show that true stop time.
     lastActivityTs: Math.max(lastActivityTs, t.lastActivityAt ?? 0, t.lastMessageAt ?? 0, t.lastCompletionAt ?? 0),
+    // The honest turn boundary, kept separate from the activity clock above.
+    // That clock deliberately folds in reconnect-stamped and completion-only
+    // signals for sorting; a client pricing a prompt cache needs the last turn
+    // that actually reached the provider, which is what wrote the cache.
+    lastMessageTs: Math.max(lastActivityTs, t.lastMessageAt ?? 0) || undefined,
     idleSince: t.idleSince ?? null,
     createdAt: t.createdAt,
     // Explicit worktree identity so clients group without path guessing.

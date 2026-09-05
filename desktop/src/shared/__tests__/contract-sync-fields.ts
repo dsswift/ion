@@ -304,6 +304,7 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
     "costPer1kCacheCreation",
     "costPer1kCacheRead",
     "costPerImage",
+    "cacheTtlSeconds",
     "dialect",
     "id",
     "isCustom",

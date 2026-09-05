@@ -36,6 +36,7 @@ const lastSnapshotHashByDevice = new Map<string, string>()
 interface VolatileTabFields {
   convFingerprint?: string
   lastActivityAt?: number
+  lastMessageAt?: number
   lastMessage?: string | null
   messageCount?: number
 }
@@ -72,6 +73,7 @@ const HASH_EXCLUDED_TAB_FIELDS = new Set([
   'contextTokens',
   'convFingerprint',
   'lastActivityAt',
+  'lastMessageAt',
   'lastMessage',
   'messageCount',
 ])
@@ -269,6 +271,7 @@ export function computeVolatileTabMetaDeltas(
     const current: VolatileTabFields = {
       convFingerprint: t.convFingerprint,
       lastActivityAt: t.lastActivityAt,
+      lastMessageAt: t.lastMessageAt,
       lastMessage: t.lastMessage,
       messageCount: t.messageCount,
     }
@@ -287,6 +290,10 @@ export function computeVolatileTabMetaDeltas(
     }
     if (current.lastActivityAt !== prev.lastActivityAt) {
       delta.lastActivityAt = current.lastActivityAt
+      changed = true
+    }
+    if (current.lastMessageAt !== prev.lastMessageAt) {
+      delta.lastMessageAt = current.lastMessageAt
       changed = true
     }
     if (current.lastMessage !== prev.lastMessage) {

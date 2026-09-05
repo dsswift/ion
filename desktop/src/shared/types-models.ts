@@ -19,6 +19,15 @@ export interface ModelEntry {
   /** Explicit prompt-cache read price per 1k input tokens, when published. */
   costPer1kCacheRead?: number
   supportsCaching?: boolean
+  /**
+   * Prompt-cache lifetime in seconds, as declared by the engine for this model
+   * (mirrors Go ModelEntry.CacheTtlSeconds). A cached prompt is only billable
+   * at the cheap read rate for this long after the write that created it, so
+   * anything pricing a conversation's next turn needs the lifetime as well as
+   * the rates. Absent means the engine declared none; clients must not
+   * substitute a default.
+   */
+  cacheTtlSeconds?: number
   supportsThinking?: boolean
   supportsImages?: boolean
   /**

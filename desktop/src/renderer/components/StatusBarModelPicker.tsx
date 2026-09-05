@@ -19,6 +19,7 @@ import { tabHasExtensions } from '../../shared/tab-predicates'
 import {
   estimateModelSwitchCost,
   formatModelSwitchCost,
+  formatModelSwitchReason,
   type ModelSwitchCostEstimate,
 } from '../../shared/model-switch-cost'
 import { resolveContextInputs } from './context-usage'
@@ -66,7 +67,22 @@ export function ModelPicker() {
       // token count a model switch would re-send. resolveContextInputs is the
       // same helper the context indicator and status drawer use, so the
       // warning cannot quote a different number than the UI shows.
-      return { status: t.status, sessionModel: inst?.sessionModel ?? null, modelOverride: inst?.modelOverride ?? null, harnessGoverned: tabHasExtensions(t), contextTokens: resolveContextInputs(inst).tokens }
+      //
+      // lastMessageAt and idleSince locate the conversation's last real turn,
+      // which is the turn that wrote the prompt cache. The switch estimate
+      // needs it because the cheap stay-put rate only applies while that cache
+      // is still readable; both are turn-boundary signals, so the later of the
+      // two is the freshest evidence a request was actually sent. lastActivityAt
+      // is deliberately NOT used — reconnects and renderer activity stamp it
+      // without any provider request, which would report a dead cache as warm.
+      return {
+        status: t.status,
+        sessionModel: inst?.sessionModel ?? null,
+        modelOverride: inst?.modelOverride ?? null,
+        harnessGoverned: tabHasExtensions(t),
+        contextTokens: resolveContextInputs(inst).tokens,
+        lastTurnAt: Math.max(t.lastMessageAt ?? 0, t.idleSince ?? 0) || null,
+      }
     }),
   )
   const activeTabId = useSessionStore((s) => s.activeTabId)
@@ -183,15 +199,22 @@ export function ModelPicker() {
     // Confirm first when that cost is real. estimateModelSwitchCost returns
     // null on a fresh or just-cleared conversation, which is exactly the case
     // where the switch is free and the operator should not be interrupted.
+    //
+    // The last-turn time decides how the stay-put side is priced: past the
+    // model's published cache lifetime, staying put re-writes the prompt too,
+    // and quoting the cache-read rate there would understate it enormously.
     const estimate = estimateModelSwitchCost(
       tab?.contextTokens ?? null,
       allModels.find((m) => m.id === modelId) ?? null,
       allModels.find((m) => m.id === effectiveModel) ?? null,
+      { lastActivityAt: tab?.lastTurnAt ?? null },
     )
     if (estimate && modelId !== effectiveModel) {
       rInfo('model-picker', 'confirming mid-conversation model switch', {
         tabId: activeTabId, from: effectiveModel, to: modelId,
         tokens: estimate.tokens, estimatedCostUsd: estimate.costUsd,
+        stayCostUsd: estimate.cachedCostUsd, cacheState: estimate.cacheState,
+        idleSeconds: estimate.idleSeconds, cacheTtlSeconds: estimate.cacheTtlSeconds,
       })
       setPendingSwitch({ modelId, estimate })
       setOpen(false)
@@ -272,7 +295,7 @@ export function ModelPicker() {
       {pendingSwitch && (
         <ConfirmDialog
           title="Switch model?"
-          message={`${formatModelSwitchCost(pendingSwitch.estimate)}\n\nA prompt cache belongs to one model, so the new model cannot read the cache this conversation already built.`}
+          message={[formatModelSwitchCost(pendingSwitch.estimate), formatModelSwitchReason(pendingSwitch.estimate)].filter(Boolean).join('\n\n')}
           confirmLabel="Switch anyway"
           cancelLabel="Stay on this model"
           initialFocus="cancel"

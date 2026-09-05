@@ -401,6 +401,10 @@ function coldStartSnapshot(): RemoteTabSnapshot {
           typeof t.lastMessageAt === 'number' ? t.lastMessageAt : 0,
           typeof t.lastCompletionAt === 'number' ? t.lastCompletionAt : 0,
         ) || undefined,
+        // The last real turn, kept distinct from the activity max above: that
+        // max folds in health and completion clocks for sorting, while a client
+        // pricing a prompt cache needs the turn that actually wrote it.
+        lastMessageAt: typeof t.lastMessageAt === 'number' ? t.lastMessageAt : undefined,
         createdAt: typeof t.createdAt === 'number' ? t.createdAt : undefined,
         // Inbox classification, computed from the persisted record via the
         // SHARED classifier. Never omitted: a row with no inboxState files as
