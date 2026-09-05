@@ -846,6 +846,14 @@ export interface SessionLoadMessage {
   markerStrategy?: string;
   markerMicroOnly?: boolean;
   markerSummary?: string;
+  /**
+   * Native-compaction detail (`markerStrategy === 'native'`): a delegated CLI
+   * compacted its OWN session. The provider's word for why, and the occupancy
+   * it counted before doing so. Ion's transcript was not truncated, so the
+   * message-count fields above are absent on this variant.
+   */
+  markerTrigger?: string;
+  markerPreTokens?: number;
   /** Plan marker fields (markerKind === 'plan'). */
   markerPlanOperation?: string;
   markerPlanFilePath?: string;

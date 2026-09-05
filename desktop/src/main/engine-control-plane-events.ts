@@ -333,6 +333,7 @@ export function handleEngineEvent(
 
     case "engine_stream_reset":
     case "engine_compacting":
+    case "engine_native_compaction":
     case "engine_tool_stalled":
     case "engine_run_stalled":
     case "engine_run_recovery":

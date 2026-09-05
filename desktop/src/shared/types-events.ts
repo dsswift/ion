@@ -123,6 +123,14 @@ export type NormalizedEvent =
       clearedBlocks?: number;
       strategy?: string;
       microOnly?: boolean;
+      /**
+       * Native-compaction detail (strategy === 'native'): a delegated CLI
+       * compacted its OWN session. Ion's transcript is untouched, so the
+       * message-count fields above are absent and these carry what the
+       * provider reported instead.
+       */
+      trigger?: string;
+      preTokens?: number;
     }
   | { type: "tool_stalled"; toolId: string; toolName: string; elapsed: number }
   | {

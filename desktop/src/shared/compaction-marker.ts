@@ -19,6 +19,48 @@ export interface CompactionMarkerEvent {
    * marker must NOT show an "N → N messages" figure in this case.
    */
   microOnly?: boolean
+  /**
+   * A NATIVE compaction (`strategy === 'native'`) is a delegated CLI compacting
+   * its own session, not the engine compacting this conversation. Ion's
+   * transcript is unchanged, so none of the message-count fields above are
+   * populated. These two carry what the provider reported instead: its own word
+   * for why it compacted, and the occupancy it counted before doing so. Both
+   * are the provider's numbers and are not comparable to the context figure
+   * shown elsewhere in the UI.
+   */
+  trigger?: string
+  preTokens?: number
+}
+
+/** Strategy value marking a compaction performed by a delegated CLI. */
+export const NATIVE_COMPACTION_STRATEGY = 'native'
+
+/**
+ * Builds the marker line for a native compaction — a delegated CLI compacting
+ * its own session.
+ *
+ * It needs its own builder because the generic one measures a compaction by
+ * what it removed from THIS conversation, and a native compaction removes
+ * nothing from it: every message count is zero, so the no-op rule would return
+ * `null` and the marker would vanish. The event is still worth showing — it
+ * explains why the assistant's recollection changed and why the context figure
+ * dropped — so the copy says what actually happened without implying Ion lost
+ * history.
+ */
+export function buildNativeCompactionMarkerContent(event: CompactionMarkerEvent): string {
+  const parts = [COMPACTION_MARKER_PREFIX, 'the assistant compacted its own context']
+  if (event.trigger === 'manual') parts.push('requested')
+  if (event.preTokens && event.preTokens > 0) {
+    parts.push(`${formatApproxTokens(event.preTokens)} before`)
+  }
+  return parts.join(' · ')
+}
+
+/** Renders a token count compactly: 841821 → "842K", 900 → "900". */
+function formatApproxTokens(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`
+  return String(tokens)
 }
 
 /** Prefix every marker system message carries. Parsers key on it. */
@@ -39,6 +81,11 @@ export const COMPACTION_MARKER_PREFIX = '[Compaction]'
  *    "N → M messages" headline plus optional "K blocks cleared" and summary.
  */
 export function buildCompactionMarkerContent(event: CompactionMarkerEvent): string | null {
+  // A delegated CLI's own compaction is measured differently — see
+  // buildNativeCompactionMarkerContent.
+  if (event.strategy === NATIVE_COMPACTION_STRATEGY) {
+    return buildNativeCompactionMarkerContent(event)
+  }
   const before = event.messagesBefore ?? 0
   const after = event.messagesAfter ?? 0
   const cleared = event.clearedBlocks ?? 0
