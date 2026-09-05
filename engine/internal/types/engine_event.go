@@ -333,6 +333,17 @@ type EngineEvent struct {
 	// content). See PlanFileWrittenEvent for the full contract.
 	PlanWriteOperation string `json:"planWriteOperation,omitempty"`
 
+	// engine_native_compaction — emitted when a DELEGATED CLI compacts its own
+	// native session. Distinct from the engine's own compaction signal: Ion's
+	// transcript is untouched here, so a consumer must not read this as
+	// "earlier conversation is gone". See types.NativeCompactionEvent for the
+	// full contract. All four fields are the PROVIDER's own reporting and are
+	// not comparable to the engine's occupancy figures on engine_status.
+	NativeCompactionTrigger            string `json:"nativeCompactionTrigger,omitempty"`
+	NativeCompactionPreTokens          int    `json:"nativeCompactionPreTokens,omitempty"`
+	NativeCompactionMessagesSummarized int    `json:"nativeCompactionMessagesSummarized,omitempty"`
+	NativeCompactionDurationMs         int64  `json:"nativeCompactionDurationMs,omitempty"`
+
 	// engine_plan_proposal — workflow-level signal emitted when the model
 	// proposes a plan-mode transition that requires user approval. Distinct
 	// from engine_plan_mode_changed, which fires only on confirmed *state*

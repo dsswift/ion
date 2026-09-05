@@ -165,3 +165,29 @@ type UnknownEvent struct {
 	Type   string         `json:"type"`
 	Fields map[string]any `json:"-"`
 }
+
+// CompactBoundaryFrame is the raw `system` frame a delegated CLI emits after
+// compacting its own session. Field names follow the Claude Code stream-json
+// wire shape (camelCase compactMetadata), which is what the local
+// `claude -p --output-format stream-json` process writes.
+//
+// Every field is optional: the normalizer reports the compaction even when the
+// CLI supplies no metadata, because the fact that it happened is the signal
+// consumers need and the numbers are decoration.
+type CompactBoundaryFrame struct {
+	SessionID       string                   `json:"session_id,omitempty"`
+	UUID            string                   `json:"uuid,omitempty"`
+	CompactMetadata *CompactBoundaryMetadata `json:"compactMetadata,omitempty"`
+}
+
+// CompactBoundaryMetadata is the compactMetadata object inside a
+// CompactBoundaryFrame.
+type CompactBoundaryMetadata struct {
+	// Trigger is "auto" or "manual" as the CLI reports it. Kept opaque: the
+	// engine forwards the provider's own word rather than mapping it onto an
+	// engine vocabulary that would go stale when the CLI adds a value.
+	Trigger            string `json:"trigger,omitempty"`
+	PreTokens          int    `json:"preTokens,omitempty"`
+	MessagesSummarized int    `json:"messagesSummarized,omitempty"`
+	DurationMs         int64  `json:"durationMs,omitempty"`
+}

@@ -115,6 +115,11 @@ func rehydrateEntries(conv *Conversation) error {
 			if err := json.Unmarshal(b, &cd); err == nil {
 				e.Data = cd
 			}
+		case EntryNativeCompaction:
+			var nc NativeCompactionData
+			if err := json.Unmarshal(b, &nc); err == nil {
+				e.Data = nc
+			}
 		case EntryLabel:
 			var ld LabelData
 			if err := json.Unmarshal(b, &ld); err == nil {

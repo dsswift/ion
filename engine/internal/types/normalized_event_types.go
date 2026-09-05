@@ -34,8 +34,14 @@ const (
 	EventPlanFileWritten = "plan_file_written"
 	EventStreamReset     = "stream_reset"
 	EventCompacting      = "compacting"
-	EventToolStalled     = "tool_stalled"
-	EventSteerInjected   = "steer_injected"
+	// EventNativeCompaction is emitted when a DELEGATED CLI compacts its own
+	// native session. It is not EventCompacting: that event reports the
+	// engine compacting Ion's own conversation, which truncates the context
+	// path. A delegated CLI compacts a per-provider cache over Ion's
+	// transcript; Ion's transcript is unchanged and remains complete.
+	EventNativeCompaction = "native_compaction"
+	EventToolStalled      = "tool_stalled"
+	EventSteerInjected    = "steer_injected"
 	// EventSteerDegraded is emitted when ctx.steerSelf found no live owning run
 	// and delivered the steer as a fresh prompt instead. Distinct from
 	// EventSteerInjected, whose contract is a live run-loop drain.

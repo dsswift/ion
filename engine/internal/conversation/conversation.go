@@ -49,6 +49,25 @@ const (
 	// file. It is history/telemetry data only: it is not replayed into
 	// scrollback and never enters provider-visible context.
 	EntryAborted SessionEntryType = "aborted"
+	// EntryNativeCompaction records that a delegated-CLI backend compacted its
+	// OWN native session. It is deliberately NOT EntryCompaction.
+	//
+	// buildContextPathLocked treats EntryCompaction as a truncation: it drops
+	// every preceding message and replaces them with a boundary. That is right
+	// for an engine compaction, which really did remove those messages from
+	// Ion's context. It would be catastrophic here. A delegated CLI's native
+	// session is a disposable per-provider cache over Ion's transcript, and
+	// Ion's transcript is the source of truth — so letting the cache's own
+	// eviction delete Ion's archive would destroy history Ion still holds, and
+	// the next cross-provider turn would bridge a conversation that had
+	// silently lost its first half.
+	//
+	// This entry therefore carries no context-path semantics at all: it falls
+	// through buildContextPathLocked's default arm and changes nothing about
+	// what the model sees. It exists so the fact survives a reload and reaches
+	// clients as a marker row, exactly like EntryPlanMarker and
+	// EntrySteerMarker.
+	EntryNativeCompaction SessionEntryType = "native_compaction"
 )
 
 // MessageData holds a chat message entry.
@@ -170,6 +189,23 @@ type PlanMarkerData struct {
 	Operation    string `json:"operation"` // "created" | "updated"
 	PlanFilePath string `json:"planFilePath"`
 	PlanSlug     string `json:"planSlug"`
+}
+
+// NativeCompactionData records a delegated CLI's compaction of its own native
+// session for persistence and replay. It mirrors the live
+// types.NativeCompactionEvent so flattenEntries can replay the marker on
+// historical reload.
+//
+// The numbers are the PROVIDER's, not Ion's: PreTokens is what the CLI counted
+// in its own session and MessagesSummarized is in the CLI's message units.
+// Neither is comparable to Ion's own occupancy figure, and neither is used in
+// any engine decision — they are recorded so a consumer can show what the
+// provider reported.
+type NativeCompactionData struct {
+	Trigger            string `json:"trigger,omitempty"`
+	PreTokens          int    `json:"preTokens,omitempty"`
+	MessagesSummarized int    `json:"messagesSummarized,omitempty"`
+	DurationMs         int64  `json:"durationMs,omitempty"`
 }
 
 // SteerMarkerData records a steer injection event for persistence and replay.

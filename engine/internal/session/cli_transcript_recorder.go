@@ -35,7 +35,7 @@ import (
 
 // cliTranscriptItem is one ordered element of a delegated run's turn content.
 type cliTranscriptItem struct {
-	kind string // "text" | "tool_use" | "tool_result"
+	kind string // "text" | "tool_use" | "tool_result" | "native_compaction"
 	// text (kind "text")
 	text string
 	// tool_use fields
@@ -45,6 +45,9 @@ type cliTranscriptItem struct {
 	// tool_result fields (toolID shared)
 	resultContent string
 	resultIsError bool
+	// native_compaction payload (kind "native_compaction"): the delegated CLI
+	// compacted its own session at this point in the stream.
+	nativeCompaction *conversation.NativeCompactionData
 }
 
 // cliTranscriptRecorder accumulates one delegated root run's ordered turn
@@ -122,6 +125,18 @@ func (r *cliTranscriptRecorder) record(event types.NormalizedEvent) {
 			kind: "tool_result", toolID: e.ToolID,
 			resultContent: e.Content, resultIsError: e.IsError,
 		})
+	case *types.NativeCompactionEvent:
+		// Recorded in stream order rather than appended at the end of the turn:
+		// a CLI compacts partway through its own work, and the marker is only
+		// truthful where it actually happened.
+		r.flushTextLocked()
+		r.items = append(r.items, cliTranscriptItem{
+			kind: "native_compaction",
+			nativeCompaction: &conversation.NativeCompactionData{
+				Trigger: e.Trigger, PreTokens: e.PreTokens,
+				MessagesSummarized: e.MessagesSummarized, DurationMs: e.DurationMs,
+			},
+		})
 	}
 }
 
@@ -154,25 +169,39 @@ func (r *cliTranscriptRecorder) flushTextLocked() {
 // one message was written.
 //
 // model is the delegated backend's serving model, stamped on every assistant
-// entry this writes. A CLI turn reports no token usage, but it does know its
-// model, and an unstamped entry is unattributable once the run is over.
-func appendStructuredCliTurn(conv *conversation.Conversation, items []cliTranscriptItem, model string) bool {
+// entry this writes. An unstamped entry is unattributable once the run is over.
+//
+// finalUsage is the run's provider accounting, or nil when the run reported
+// none. It is stamped on the LAST assistant message only, because that is the
+// message GetContextUsage's backward scan reads as the conversation's
+// occupancy baseline; annotating the earlier assistant messages of the same
+// turn would inflate conv.TotalInputTokens by counting one turn's cache reads
+// once per intermediate tool round-trip.
+//
+// The items are grouped into ordered writes before anything is appended, so
+// "which assistant message is last" is known when the first one is written
+// rather than discovered afterwards.
+func appendStructuredCliTurn(conv *conversation.Conversation, items []cliTranscriptItem, model string, finalUsage *types.LlmUsage) bool {
+	// One ordered write. Exactly one of the two fields is populated.
+	type turnWrite struct {
+		assistant        []types.LlmContentBlock
+		results          []conversation.ToolResultEntry
+		nativeCompaction *conversation.NativeCompactionData
+	}
+	var writes []turnWrite
 	var assistantBlocks []types.LlmContentBlock
 	var results []conversation.ToolResultEntry
-	wrote := false
 
 	flushAssistant := func() {
 		if len(assistantBlocks) > 0 {
-			conversation.AddAssistantMessageNoUsage(conv, assistantBlocks, model)
+			writes = append(writes, turnWrite{assistant: assistantBlocks})
 			assistantBlocks = nil
-			wrote = true
 		}
 	}
 	flushResults := func() {
 		if len(results) > 0 {
-			conversation.AddToolResults(conv, results)
+			writes = append(writes, turnWrite{results: results})
 			results = nil
-			wrote = true
 		}
 	}
 
@@ -192,9 +221,40 @@ func appendStructuredCliTurn(conv *conversation.Conversation, items []cliTranscr
 			results = append(results, conversation.ToolResultEntry{
 				ToolUseID: it.toolID, Content: it.resultContent, IsError: it.resultIsError,
 			})
+		case "native_compaction":
+			// Close whatever is open so the marker lands between the messages
+			// it actually separated, then record it as its own write.
+			flushAssistant()
+			flushResults()
+			writes = append(writes, turnWrite{nativeCompaction: it.nativeCompaction})
 		}
 	}
 	flushAssistant()
 	flushResults()
-	return wrote
+
+	lastAssistant := -1
+	for i := range writes {
+		if len(writes[i].assistant) > 0 {
+			lastAssistant = i
+		}
+	}
+	for i := range writes {
+		if writes[i].nativeCompaction != nil {
+			// Appended as EntryNativeCompaction, never EntryCompaction: this
+			// records that the provider evicted its own cache, and must not
+			// truncate Ion's context path. See the entry type's doc comment.
+			conversation.AppendEntry(conv, conversation.EntryNativeCompaction, *writes[i].nativeCompaction)
+			continue
+		}
+		if len(writes[i].results) > 0 {
+			conversation.AddToolResults(conv, writes[i].results)
+			continue
+		}
+		if finalUsage != nil && i == lastAssistant {
+			conversation.AddAssistantMessageWithUsageAndModel(conv, writes[i].assistant, *finalUsage, model)
+			continue
+		}
+		conversation.AddAssistantMessageNoUsage(conv, writes[i].assistant, model)
+	}
+	return len(writes) > 0
 }

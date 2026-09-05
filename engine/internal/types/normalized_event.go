@@ -85,6 +85,8 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &StreamResetEvent{}
 	case EventCompacting:
 		target = &CompactingEvent{}
+	case EventNativeCompaction:
+		target = &NativeCompactionEvent{}
 	case EventToolStalled:
 		target = &ToolStalledEvent{}
 	case EventSteerInjected:
@@ -689,3 +691,41 @@ func (PlanContentEvent) eventType() string { return EventPlanContent }
 // ThinkingBlockEndEvent) are in normalized_event_thinking.go.
 // Extension-surface NormalizedEvent types are in normalized_event_extensions.go.
 // ContextBreakdownEvent and its row type are in context_breakdown_event.go.
+
+// NativeCompactionEvent reports that a delegated-CLI backend compacted its
+// OWN native session — Claude Code's system/compact_boundary frame, and the
+// equivalent from any other delegated CLI that grows a provider-side session.
+//
+// It is deliberately distinct from CompactingEvent. CompactingEvent reports
+// the engine compacting Ion's conversation: real messages leave the context
+// path and a compaction boundary replaces them. This event reports a cache
+// eviction one layer down. Ion's transcript is the source of truth and a
+// delegated CLI's native session is a disposable per-provider cache over it,
+// so when that cache compacts, Ion has lost nothing and truncates nothing —
+// the next bridge still rebuilds from the complete transcript.
+//
+// Consumers should render it as "the provider compacted its own context",
+// never as a signal that earlier conversation is gone. The engine records a
+// matching non-truncating marker in the tree (conversation.EntryNativeCompaction)
+// so the fact survives a reload.
+type NativeCompactionEvent struct {
+	// Trigger is the CLI's own discriminator for why it compacted, verbatim
+	// and opaque: Claude Code reports "auto" (it hit its own threshold) or
+	// "manual" (the user ran /compact). Empty when the CLI reported none.
+	Trigger string `json:"trigger,omitempty"`
+	// PreTokens is the native session's occupancy immediately BEFORE the
+	// compaction, as the CLI counted it. It is the provider's number, not
+	// Ion's: the two measure different things and will not agree.
+	PreTokens int `json:"preTokens,omitempty"`
+	// MessagesSummarized is how many of the CLI's own messages were folded
+	// into its summary. Counted in the provider's message units, which do not
+	// map one-to-one onto Ion transcript entries.
+	MessagesSummarized int `json:"messagesSummarized,omitempty"`
+	// DurationMs is how long the CLI's compaction took, when reported.
+	DurationMs int64 `json:"durationMs,omitempty"`
+	// SessionID is the CLI's own session identifier, when the frame carries
+	// one. Never Ion's conversation id.
+	SessionID string `json:"sessionId,omitempty"`
+}
+
+func (NativeCompactionEvent) eventType() string { return EventNativeCompaction }

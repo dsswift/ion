@@ -40,6 +40,9 @@ func Normalize(raw json.RawMessage) []types.NormalizedEvent {
 }
 
 func normalizeSystem(raw json.RawMessage, subtype string) []types.NormalizedEvent {
+	if subtype == "compact_boundary" {
+		return normalizeCompactBoundary(raw)
+	}
 	if subtype != "init" {
 		return nil
 	}
@@ -81,8 +84,7 @@ func normalizeStreamEvent(raw json.RawMessage) []types.NormalizedEvent {
 		// event-normalizer.ts emits a 'usage' NormalizedEvent for early/mid-stream
 		// cache token updates so consumers tracking context can update live).
 		if sub.Message != nil {
-			usage := sub.Message.Usage
-			if usage.InputTokens != nil || usage.CacheReadInputTokens != nil {
+			if usage, ok := occupancyUsage(sub.Message.Usage); ok {
 				events = append(events, types.NormalizedEvent{
 					Data: &types.UsageEvent{Usage: usage},
 				})
@@ -315,4 +317,69 @@ func resultCompletionReason(subtype string) types.TaskCompletionReason {
 	default:
 		return types.TaskCompletionReasonBackendExit
 	}
+}
+
+// occupancyUsage restates a raw Anthropic message usage record in the shape
+// UsageEvent consumers expect, reporting false when it carries no input
+// accounting at all.
+//
+// The contract on UsageEvent.Usage.InputTokens is "what the model actually
+// carried" — the summed occupancy, not the raw prompt field. The ApiBackend
+// runloop emits it that way (input + cache_read + cache_creation), and
+// translateToEngineEvent reads InputTokens alone to derive both
+// engine_message_end's token count and its context percent.
+//
+// Anthropic's accounting is ADDITIVE: cache_read_input_tokens and
+// cache_creation_input_tokens are counted separately from input_tokens, not as
+// a subset of it. On a cached turn the raw input_tokens field is therefore
+// tiny — a real observed record reads input_tokens=2 against
+// cache_read_input_tokens=840543 — so forwarding it unsummed reported a ~840K
+// context as ~2 tokens and pinned the live occupancy readout near 0%. The
+// component fields ride alongside the total, exactly as the runloop emits them.
+//
+// This deliberately does NOT generalise to every delegated CLI. OpenAI-shaped
+// accounting reports cached tokens as a SUBSET of the prompt total, where the
+// same sum would double-count; see codexUsage in
+// internal/backend/codex_events.go, which is correct as written.
+func occupancyUsage(raw types.UsageData) (types.UsageData, bool) {
+	if raw.InputTokens == nil && raw.CacheReadInputTokens == nil && raw.CacheCreationInputTokens == nil {
+		return types.UsageData{}, false
+	}
+	total := derefTokens(raw.InputTokens) + derefTokens(raw.CacheReadInputTokens) + derefTokens(raw.CacheCreationInputTokens)
+	out := raw
+	out.InputTokens = &total
+	return out, true
+}
+
+func derefTokens(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
+}
+
+// normalizeCompactBoundary converts a delegated CLI's compact_boundary frame
+// into a NativeCompactionEvent.
+//
+// Every non-init `system` frame used to be dropped here, so a Claude Code
+// conversation could compact its own session and Ion would neither report it
+// to consumers nor record that it happened — the engine's context readout and
+// the CLI's were describing different worlds with no event between them.
+//
+// A frame with unparseable or absent metadata still produces the event. The
+// compaction is the signal; the token counts are decoration, and reporting
+// "the provider compacted" with empty numbers beats reporting nothing.
+func normalizeCompactBoundary(raw json.RawMessage) []types.NormalizedEvent {
+	var frame types.CompactBoundaryFrame
+	if err := json.Unmarshal(raw, &frame); err != nil {
+		return []types.NormalizedEvent{{Data: &types.NativeCompactionEvent{}}}
+	}
+	ev := &types.NativeCompactionEvent{SessionID: frame.SessionID}
+	if md := frame.CompactMetadata; md != nil {
+		ev.Trigger = md.Trigger
+		ev.PreTokens = md.PreTokens
+		ev.MessagesSummarized = md.MessagesSummarized
+		ev.DurationMs = md.DurationMs
+	}
+	return []types.NormalizedEvent{{Data: ev}}
 }

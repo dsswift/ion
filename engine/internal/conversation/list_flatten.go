@@ -65,6 +65,27 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 				MarkerMicroOnly:      cd.MicroOnly,
 			})
 			continue
+		case EntryNativeCompaction:
+			// A delegated CLI compacted its own native session. Replayed as a
+			// compaction marker row so it reads like what it is to a person,
+			// with MarkerStrategy "native" telling a client that Ion's own
+			// transcript was not truncated — every message before this row is
+			// still present and still bridged to the next provider.
+			nc := asNativeCompactionData(entry.Data)
+			if nc == nil {
+				continue
+			}
+			result = append(result, types.SessionMessage{
+				ID:              rowID(entry.ID, 0),
+				Role:            "system",
+				Content:         "[Compaction]",
+				Timestamp:       entry.Timestamp,
+				MarkerKind:      "compaction",
+				MarkerStrategy:  "native",
+				MarkerTrigger:   nc.Trigger,
+				MarkerPreTokens: nc.PreTokens,
+			})
+			continue
 		case EntryPlanMarker:
 			// Replay a persisted plan-file-written event as a system-role marker
 			// row. Content carries the "──" sentinel the iOS detection code
