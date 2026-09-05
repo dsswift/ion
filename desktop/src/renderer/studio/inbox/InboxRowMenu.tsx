@@ -96,6 +96,10 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onClose }
   // conversation over a git repo (not already a worktree), disabled while the
   // tab is busy or the checkout is dirty. One mechanism, two menus.
   const convert = useConvertToWorktreeGate(tab)
+  // Same gate the tab-strip context menu uses for "Fork conversation": needs a
+  // minted conversation to copy from, and a landed worktree is a sealed
+  // read-only record that no longer accepts new forks.
+  const canFork = !!tab.conversationId && !tab.worktree?.landedAt
 
   // Settled state (override-aware) decides which settle verb shows.
   const view: InboxTabView = {
@@ -128,6 +132,7 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onClose }
     - (showPinAction ? 0 : 1)
     + (snoozeOpen ? presets.length : 0)
     + (convert.show ? 1 : 0)
+    + (canFork ? 1 : 0)
   const pos = useAnchoredPopover({ x, y }, { deps: [itemCount, convert.label] })
 
   const menu = (
@@ -188,6 +193,14 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onClose }
       <div style={{ height: 1, background: colors.containerBorder, margin: '4px 0' }} />
       <MenuButton label="Rename" onSelect={() => exec(onRename)} />
       <MenuButton label="Regenerate title" onSelect={() => exec(() => { void store.getState().regenerateTabTitle(tab.id) })} />
+      {canFork && (
+        <MenuButton
+          label="Fork conversation"
+          onSelect={() => exec(() => {
+            void store.getState().forkTab(tab.id).catch((err) => rError('inbox', 'fork tab failed', { error: String(err) }))
+          })}
+        />
+      )}
       {convert.show && (
         <MenuButton
           label={convert.label}
