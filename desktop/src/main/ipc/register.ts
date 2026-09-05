@@ -19,6 +19,7 @@ import { registerWorktreeIpc } from "./worktree";
 import { registerWorktreeLifecycleIpc } from "./worktree-lifecycle";
 import { registerBenchIpc } from "./bench";
 import { registerSettingsIpc } from "./settings";
+import { registerExplorerStateIpc } from "./explorer-state";
 import { registerRemoteControlIpc } from "./remote-control";
 import { registerModelsIpc } from "./models";
 import { registerMcpIpc } from "./mcp";
@@ -63,6 +64,7 @@ export function registerAllIpc(): void {
   registerWorktreeLifecycleIpc();
   registerBenchIpc();
   registerSettingsIpc();
+  registerExplorerStateIpc();
   registerRemoteControlIpc();
   registerModelsIpc();
   registerOAuthIpc();

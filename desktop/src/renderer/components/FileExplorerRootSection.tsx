@@ -67,6 +67,14 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
   const fetchDir = useCallback(async (dirPath: string) => {
     const result = await window.ion.fsReadDir(dirPath)
     if (result.entries) {
+      // Every listing is also the evidence that decides which remembered
+      // expansions are still real. Expansion outlives the window now, so a
+      // folder renamed or deleted outside Ion would otherwise stay in the set
+      // forever.
+      useSessionStore.getState().pruneExplorerExpanded(
+        dirPath,
+        result.entries.filter((entry) => entry.isDirectory).map((entry) => entry.path),
+      )
       setDirCache((prev) => {
         const next = new Map(prev)
         const sorted = [...result.entries].sort((a, b) => {
@@ -348,6 +356,7 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
           onClose={() => setHeaderMenu(null)}
           onRemoveFromWorkspace={props.onRemoveFromWorkspace}
           onCollapseAllInFolder={() => useSessionStore.getState().collapseAllExplorer(rootDir)}
+          onCreate={(type) => requestCreate(type, rootDir, 0)}
         />
       )}
     </div>

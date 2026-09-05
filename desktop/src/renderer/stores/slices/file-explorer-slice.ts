@@ -1,4 +1,5 @@
 import type { StoreSet, StoreGet, State } from '../session-store-types'
+import { pruneExpandedChildren } from '../../../shared/explorer-state'
 
 export function createFileExplorerSlice(set: StoreSet, _get: StoreGet): Partial<State> {
   return {
@@ -44,6 +45,52 @@ export function createFileExplorerSlice(set: StoreSet, _get: StoreGet): Partial<
         const current = states.get(dir)
         if (current) states.set(dir, { ...current, expandedPaths: new Set() })
         return { fileExplorerStates: states }
+      })
+    },
+
+    /**
+     * Replace tree state with the main-owned snapshot — the hydration at boot
+     * and every change another window made. Whole-state replacement, not a
+     * merge: main is the one owner, so a merge would resurrect entries it just
+     * pruned or forgot.
+     */
+    applyExplorerState: (snapshot) => {
+      set(() => {
+        const states = new Map<string, { expandedPaths: Set<string>; selectedPath: string | null }>()
+        for (const [root, paths] of Object.entries(snapshot.expanded)) {
+          states.set(root, { expandedPaths: new Set(paths), selectedPath: null })
+        }
+        for (const [root, selectedPath] of Object.entries(snapshot.selected)) {
+          const current = states.get(root)
+          if (current) current.selectedPath = selectedPath
+          else states.set(root, { expandedPaths: new Set(), selectedPath })
+        }
+        return {
+          fileExplorerStates: states,
+          fileExplorerRootCollapsed: new Set(snapshot.collapsedRoots),
+        }
+      })
+    },
+
+    /**
+     * Forget expanded children of `dir` that the listing just read no longer
+     * contains. A persisted set otherwise only grows: rename or delete a folder
+     * and its path is remembered forever.
+     */
+    pruneExplorerExpanded: (dir, presentDirectories) => {
+      set((s) => {
+        // The expansion set is keyed by ROOT and `dir` may be any directory
+        // inside one, so every root that could contain it is checked.
+        const states = new Map(s.fileExplorerStates)
+        let changed = false
+        for (const [root, state] of states) {
+          if (dir !== root && !dir.startsWith(root.endsWith('/') ? root : `${root}/`)) continue
+          const kept = pruneExpandedChildren([...state.expandedPaths], dir, presentDirectories)
+          if (kept.length === state.expandedPaths.size) continue
+          states.set(root, { ...state, expandedPaths: new Set(kept) })
+          changed = true
+        }
+        return changed ? { fileExplorerStates: states } : {}
       })
     },
 

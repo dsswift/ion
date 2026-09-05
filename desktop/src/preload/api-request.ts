@@ -6,6 +6,7 @@ import type {
 } from "../shared/types";
 import type { GitEvent } from "../shared/types";
 import type { IonAPI } from "./ionapi";
+import type { ExplorerStateBroadcast } from "./ionapi-core";
 
 /** Request, session, git, and listener methods exposed to the renderer. */
 export const requestApi = {
@@ -307,6 +308,15 @@ export const requestApi = {
     ipcRenderer.invoke(IPC.SAVE_SESSION_LABEL, { sessionId, customTitle }),
   loadSessionLabels: () => ipcRenderer.invoke(IPC.LOAD_SESSION_LABELS),
   generateTitle: (text) => ipcRenderer.invoke(IPC.GENERATE_TITLE, text),
+  loadExplorerState: () => ipcRenderer.invoke(IPC.LOAD_EXPLORER_STATE),
+  publishExplorerState: (payload) =>
+    ipcRenderer.send(IPC.PUBLISH_EXPLORER_STATE, payload),
+  onExplorerStateChanged: (callback) => {
+    const handler = (_event: unknown, payload: ExplorerStateBroadcast) =>
+      callback(payload);
+    ipcRenderer.on(IPC.EXPLORER_STATE_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.EXPLORER_STATE_CHANGED, handler);
+  },
   loadSessionChains: () => ipcRenderer.invoke(IPC.LOAD_SESSION_CHAINS),
   saveSessionChains: (data) =>
     ipcRenderer.invoke(IPC.SAVE_SESSION_CHAINS, data),

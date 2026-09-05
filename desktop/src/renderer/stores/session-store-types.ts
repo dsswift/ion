@@ -20,6 +20,7 @@ export type {
   FileEditorTab,
   FileEditorDirState,
 } from "./session-store-aux-types";
+import type { ExplorerStateSnapshot } from '../../shared/explorer-state';
 import type {
   GitConflictAlert,
   WorktreePipelineState,
@@ -409,6 +410,16 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
   ) => void;
   setFileExplorerSelected: (dir: string, path: string | null) => void;
   collapseAllExplorer: (dir: string) => void;
+  /**
+   * Replace explorer tree state with the main-owned snapshot (boot hydration
+   * and changes made in the other window).
+   */
+  applyExplorerState: (snapshot: ExplorerStateSnapshot) => void;
+  /**
+   * Drop expanded paths that are direct children of `dir` and absent from the
+   * directory listing just read.
+   */
+  pruneExplorerExpanded: (dir: string, presentDirectories: string[]) => void;
   /** Collapse/expand a whole workspace root section (multi-root explorer). */
   setExplorerRootCollapsed: (rootDir: string, collapsed: boolean) => void;
   toggleFileEditor: (tabId: string) => void;

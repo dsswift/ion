@@ -4,6 +4,7 @@
  * Kept separate from State's data fields so the store contract stays below
  * the TypeScript file-size cap while preserving the existing public types.
  */
+import type { ExplorerStateSnapshot } from '../../shared/explorer-state';
 import type {
   TabState,
   NormalizedEvent,
@@ -124,6 +125,16 @@ export interface StoreActions extends EngineSubmitActions {
   ) => void;
   setFileExplorerSelected: (dir: string, path: string | null) => void;
   collapseAllExplorer: (dir: string) => void;
+  /**
+   * Replace explorer tree state with the main-owned snapshot (boot hydration
+   * and changes made in the other window).
+   */
+  applyExplorerState: (snapshot: ExplorerStateSnapshot) => void;
+  /**
+   * Drop expanded paths that are direct children of `dir` and absent from the
+   * directory listing just read.
+   */
+  pruneExplorerExpanded: (dir: string, presentDirectories: string[]) => void;
   toggleFileEditor: (tabId: string) => void;
   focusFileEditor: () => void;
   blurFileEditor: () => void;

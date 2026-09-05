@@ -16,13 +16,21 @@ import type {
   NewConversationDefaultsPolicy,
   ResolvedNewConversationDefaults,
 } from "../shared/types";
+import type { ExplorerStateSnapshot } from "../shared/explorer-state";
 import type {
   DeepLinkConfirmRequest,
   DeepLinkConfirmResult,
 } from "../shared/types-ipc";
 import type { EnterprisePolicy } from "../shared/types-engine";
+
 import type { CustomThemeForRenderer } from "../shared/theme-pack-types";
 import type { StartupReport } from "../shared/startup-state";
+
+/** One explorer-state change, tagged with the window that caused it. */
+export interface ExplorerStateBroadcast {
+  snapshot: ExplorerStateSnapshot;
+  origin: string;
+}
 
 export interface IonCoreApi {
   /** Report a factual bootstrap phase to the main-process splash coordinator. */
@@ -332,6 +340,15 @@ export interface IonCoreApi {
   ): Promise<void>;
   loadSessionLabels(): Promise<Record<string, string>>;
   generateTitle(text: string): Promise<string>;
+  /** File-explorer tree state, main-owned so both presentations converge. */
+  loadExplorerState(): Promise<ExplorerStateSnapshot>;
+  publishExplorerState(payload: {
+    snapshot: ExplorerStateSnapshot;
+    origin: string;
+  }): void;
+  onExplorerStateChanged(
+    callback: (payload: ExplorerStateBroadcast) => void,
+  ): () => void;
   loadSessionChains(): Promise<{
     chains: Record<string, string[]>;
     reverse: Record<string, string>;
