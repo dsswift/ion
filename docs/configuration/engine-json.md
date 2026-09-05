@@ -169,7 +169,7 @@ Three resolution layers, lowest priority first:
 |-------|------|---------|-------------|
 | `enabled` | bool (nullable) | `false` | Global gate. Set to `true` to enable the feature for every run on this machine. A harness still must supply a `ContinueMessage` through `before_early_stop_decision` for any injection to happen. |
 | `budget` | int | `8000` | Output-token target per run. A run that ends at less than `thresholdPct` of this budget triggers the hook. Tune per typical agent output size. |
-| `thresholdPct` | int | `90` | Completion threshold (percent of `budget`). The engine stops calling the hook once cumulative output tokens reach this percent of the budget. |
+| `thresholdPct` | int | `90` | Completion threshold (percent of `budget`). Once cumulative output reaches this percent, `Eligible` is false and the reference policy stops nudging. |
 | `maxContinuations` | int | `3` | Cap on the number of continuation nudges per run. Prevents pathological loops with very chatty models. |
 | `diminishingDelta` | int | `500` | Per-continuation token delta below which the engine declares diminishing returns and stops nudging early (after at least 3 continuations). |
 | `subagentEnabled` | bool (nullable) | `null` (off) | Whether the feature applies to **dispatched sub-agent runs** as well as root runs. Null preserves the historic behavior exactly: sub-agents are skipped unless a harness forces them on per dispatch. See "Sub-agents" below. |
@@ -186,7 +186,7 @@ Three resolution layers, lowest priority first:
 }
 ```
 
-To **explicitly disable globally** (the default) — every `end_turn` immediately completes the run with no hook consultation:
+To **explicitly disable the built-in gate globally** (the default), leave `enabled` false. The decision hook still fires with `WouldContinue=false` and `Eligible` reporting whether the mechanical threshold, cap, and diminishing-returns safeguards permit another turn. A harness can opt in with `ForceContinue: &true`; with no such response, every `end_turn` completes normally:
 
 ```json
 {
@@ -200,9 +200,9 @@ To **explicitly disable globally** (the default) — every `end_turn` immediatel
 
 The Ion desktop client ships a reference `before_early_stop_decision` handler in `desktop/src/main/early-stop-policy.ts` that:
 
-- Reads a user-facing `enableEarlyStopContinuation` setting (default `true`).
-- Returns `ForceContinue: &true` plus a Claude-Code-style `ContinueMessage` ("Stopped at X% of token target …") when the setting is on.
-- Returns `nil` (no opinion) when the setting is off or when the engine's tentative `WouldContinue` is already false.
+- Reads a user-facing `enableEarlyStopContinuation` setting (default `false`).
+- Returns `ForceContinue: &true` plus a Claude-Code-style `ContinueMessage` ("Stopped at X% of token target …") when the setting is on and `Eligible` is true.
+- Returns `ForceContinue: &false` when the setting is off, and no opinion when the mechanical safeguards report `Eligible=false`.
 
 Harness engineers running the engine outside the Ion desktop are encouraged to copy or adapt this implementation. The engine deliberately ships no prompt text so the harness owns the wording (and the user-facing toggle, if any) end-to-end.
 

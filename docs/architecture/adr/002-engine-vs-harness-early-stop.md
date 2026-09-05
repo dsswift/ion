@@ -54,12 +54,12 @@ Compounding the issue, the engine emitted `before_early_stop_decision` as a subp
 
 ### Default behavior
 
-`engine.json` ships with `earlyStopContinue.enabled: false`. When disabled, the engine never fires the decision hook and never blocks on the wire-protocol round trip. The model's `end_turn` is honored as-is and the run completes normally.
+`engine.json` ships with `earlyStopContinue.enabled: false`. The engine still fires the decision hook with `WouldContinue=false` and `Eligible` reporting whether its mechanical threshold, cap, and diminishing-returns safeguards permit another turn. With no harness override, the model's `end_turn` is honored and the run completes normally. A harness can explicitly opt in with `ForceContinue: &true` without changing the engine's default policy.
 
 When enabled, the engine:
 
 1. Tracks cumulative output tokens.
-2. On model `end_turn` / `stop` below the threshold, fires `before_early_stop_decision` (extension subprocess hooks first).
+2. On model `end_turn` / `stop`, computes `Eligible` from the token threshold, continuation cap, and diminishing-returns guard, then fires `before_early_stop_decision` (extension subprocess hooks first).
 3. If no extension expressed an opinion, emits `engine_early_stop_decision_request` on the wire and blocks on a channel with a 100ms timeout.
 4. Merges the response (extension or wire) into a final decision.
 5. If the resolved decision is "continue" **and** a `ContinueMessage` was supplied (by the hook or the wire response), injects the message and re-runs the turn.
@@ -80,8 +80,8 @@ The "no message → skip" path is the safety valve that prevents an enabled-but-
 The desktop ships [`desktop/src/main/early-stop-policy.ts`](https://github.com/dsswift/ion/blob/main/desktop/src/main/early-stop-policy.ts) as the reference policy. It listens for `engine_early_stop_decision_request` on the bridge, reads the `enableEarlyStopContinuation` setting from the desktop's settings store, and:
 
 - Setting off → responds with `forceContinue: false` (explicit no-nudge).
-- Setting on + `wouldContinue` true → responds with a static Claude-Code-style `continueMessage`.
-- Setting on + `wouldContinue` false → responds empty (no opinion).
+- Setting on + `eligible` true → responds with `forceContinue: true` when needed and a static Claude-Code-style `continueMessage`.
+- Setting on + `eligible` false → responds empty (the mechanical safeguards stop the run).
 
 Third-party harnesses can copy this module verbatim or build their own.
 
