@@ -1833,6 +1833,42 @@
       ]
     },
     {
+      "id": "native-session-compaction",
+      "term": "Native Session Compaction",
+      "definition": "A delegated CLI compacting its own native session. Distinct from Compaction: Ion's transcript is the source of truth and the native session is a per-provider cache over it, so nothing leaves the Ion conversation and the context path is not truncated.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "compact boundary",
+        "provider-side compaction"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type NativeCompactionEvent struct",
+          "path": "engine/internal/types/normalized_event.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "EntryNativeCompaction",
+          "path": "engine/internal/conversation/conversation.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function buildNativeCompactionMarkerContent",
+          "path": "desktop/src/shared/compaction-marker.ts"
+        }
+      ]
+    },
+    {
       "id": "new-conversation-picker",
       "term": "New Conversation Picker",
       "definition": "The single entry point that starts a conversation. Normal creation selects a Project and an Engine profile. Explicit worktree creation also selects a source branch.",

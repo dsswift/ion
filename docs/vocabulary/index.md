@@ -102,6 +102,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Mirror store](#term-mirror-store)
 - [Model Boundary](#term-model-boundary)
 - [Model Change Marker](#term-model-change-marker)
+- [Native Session Compaction](#term-native-session-compaction)
 - [New Conversation Picker](#term-new-conversation-picker)
 - [Normalized event](#term-normalized-event)
 - [Notification](#term-notification)
@@ -452,6 +453,21 @@ The conversation tree entry that records a run serving the conversation on a dif
 - **Implementations:**
   - `engine` / `code` / `go`: `EntryModelChange` in `engine/internal/conversation/conversation.go`
   - `engine` / `code` / `go`: `func SyncModel` in `engine/internal/conversation/model_sync.go`
+
+#### Native Session Compaction {#term-native-session-compaction}
+
+A delegated CLI compacting its own native session. Distinct from Compaction: Ion's transcript is the source of truth and the native session is a per-provider cache over it, so nothing leaves the Ion conversation and the context path is not truncated.
+
+- **ID:** `native-session-compaction`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `compact boundary`, `provider-side compaction`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type NativeCompactionEvent struct` in `engine/internal/types/normalized_event.go`
+  - `engine` / `code` / `go`: `EntryNativeCompaction` in `engine/internal/conversation/conversation.go`
+  - `desktop` / `code` / `typescript`: `export function buildNativeCompactionMarkerContent` in `desktop/src/shared/compaction-marker.ts`
 
 #### Permission {#term-permission}
 
@@ -1763,6 +1779,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Menu | `export function TabContextMenu` | `export function TabContextMenu` | `export function TabContextMenu` | `struct TabRowContextMenu` | None |
 | Message | None | None | None | `struct Message` | Desktop, Studio, Overlay |
 | Mirror store | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS` | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS`, `waitForTabsSync` | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS` | None | iOS |
+| Native Session Compaction | `export function buildNativeCompactionMarkerContent` | `export function buildNativeCompactionMarkerContent` | `export function buildNativeCompactionMarkerContent` | None | iOS |
 | New Conversation Picker | `NewConversationPicker` | `NewConversationPicker` | `NewConversationPicker` | `struct TabListNewTabSheet` | None |
 | Normalized event | None | None | None | `NormalizedEvent` | Desktop, Studio, Overlay |
 | Notification | `export function NotificationsPanel` | `export function NotificationsPanel` | `export function NotificationsPanel` | `struct NotificationsView` | None |
@@ -1823,6 +1840,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `client dispatch id` → [Dispatch Alias](#term-dispatch-alias)
 - Alias: `command` → [Slash command](#term-slash-command)
 - Alias: `command envelope` → [Client command](#term-client-command)
+- Alias: `compact boundary` → [Native Session Compaction](#term-native-session-compaction)
 - Alias: `composer` → [Input Bar](#term-input-bar)
 - Alias: `context compaction` → [Compaction](#term-compaction)
 - Alias: `context menu` → [Menu](#term-menu)
@@ -1876,6 +1894,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `ping frame` → [Keepalive](#term-keepalive)
 - Alias: `popover picker` → [Picker](#term-picker)
 - Alias: `profile` → [Engine profile](#term-engine-profile)
+- Alias: `provider-side compaction` → [Native Session Compaction](#term-native-session-compaction)
 - Alias: `push notification` → [Notification](#term-notification)
 - Alias: `push sender` → [APNs pusher](#term-apns-pusher)
 - Alias: `question round` → [Guided Questions](#term-guided-questions)
