@@ -112,14 +112,14 @@ func splitSourceLines(content string) []string {
 func NotebookTool() *types.ToolDef {
 	return &types.ToolDef{
 		Name:        "NotebookEdit",
-		Description: "Read, edit, or run Jupyter notebook (.ipynb) cells. Actions: read (show cells), edit (modify cell), run (execute cell via subprocess), add (add new cell), delete (remove cell).",
+		Description: "Read, edit, or run Jupyter notebook (.ipynb) cells. Actions: read (show cells), edit (modify cell), run (execute cell via subprocess), add (add new cell), delete (remove cell). Always emit action and path before content: content can be arbitrarily long, and a consumer streaming the call cannot name the target until path arrives.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"action":    map[string]any{"type": "string", "enum": []string{"read", "edit", "run", "add", "delete"}, "description": "Action to perform"},
-				"path":      map[string]any{"type": "string", "description": "Path to .ipynb file"},
+				"action":    map[string]any{"type": "string", "enum": []string{"read", "edit", "run", "add", "delete"}, "description": "Action to perform. Emit this argument first."},
+				"path":      map[string]any{"type": "string", "description": "Path to .ipynb file. Emit this argument second."},
 				"cellIndex": map[string]any{"type": "number", "description": "Cell index (0-based) for edit/run/delete"},
-				"content":   map[string]any{"type": "string", "description": "New cell content for edit/add"},
+				"content":   map[string]any{"type": "string", "description": "New cell content for edit/add. Emit this argument last."},
 				"cellType":  map[string]any{"type": "string", "enum": []string{"code", "markdown"}, "description": "Cell type for add (default: code)"},
 			},
 			"required": []string{"action", "path"},

@@ -18,11 +18,11 @@ import (
 func EditTool() *types.ToolDef {
 	return &types.ToolDef{
 		Name:        "Edit",
-		Description: "Replace string matches in a file. Supports exact match and fuzzy matching (Unicode normalization for smart quotes, dashes, special spaces).",
+		Description: "Replace string matches in a file. Supports exact match and fuzzy matching (Unicode normalization for smart quotes, dashes, special spaces). Always emit file_path before the string arguments: they can be arbitrarily long, and a consumer streaming the call cannot name the target until file_path arrives.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"file_path":   map[string]any{"type": "string", "description": "Absolute path to file"},
+				"file_path":   map[string]any{"type": "string", "description": "Absolute path to file. Emit this argument first."},
 				"old_string":  map[string]any{"type": "string", "description": "String to find and replace"},
 				"new_string":  map[string]any{"type": "string", "description": "Replacement string"},
 				"replace_all": map[string]any{"type": "boolean", "description": "Replace all occurrences (default: false)"},
