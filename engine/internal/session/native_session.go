@@ -63,7 +63,7 @@ func (m *Manager) resolveCliContinuity(s *engineSession, opts *types.RunOptions)
 		signatureOk = cursor.ClientToolSignature == opts.ClientToolSignature
 	}
 
-	leaf := currentConversationLeaf(convID)
+	leaf := continuityLeaf(convID, opts.PrePersistedUserEntryID)
 	if hasCursor && cursor.Cursor != "" && caps.Resume && cursor.HeadEntryID == leaf && signatureOk {
 		// Valid cursor: the transcript has not advanced since this backend
 		// last saw it, so the native session still equals Ion's truth.
@@ -91,11 +91,29 @@ func (m *Manager) resolveCliContinuity(s *engineSession, opts *types.RunOptions)
 	m.seedCliHistory(s, opts)
 }
 
-// currentConversationLeaf reads the conversation's live LeafID from disk.
+// continuityLeaf reads the leaf a native-session cursor must be compared
+// against: the conversation's live LeafID, EXCEPT when that leaf is the user
+// entry this same dispatch just pre-persisted, in which case its parent.
+//
+// The exception is what makes resume possible at all. Cursor validity asks
+// "has any OTHER writer advanced the transcript since this backend last saw
+// it?" — a turn on another provider, a /clear, a rewind, a tree navigation.
+// But run recovery writes the accepted user turn (recordRunRecovery ->
+// AppendInboundUserMessage) BEFORE the continuity decision is made, so the
+// live leaf at decision time is this dispatch's own entry. Comparing against
+// it makes every dispatch stale itself: the cursor is discarded, the whole
+// transcript is bridged into a fresh subprocess, and the delegated CLI never
+// resumes — so it never accumulates a session it could compact.
+//
+// prePersistedUserEntryID is opts.PrePersistedUserEntryID, empty when this
+// dispatch wrote no journal (recovery disabled, or a recovery continuation
+// replaying an already-persisted turn). Empty means "discount nothing", which
+// is the pre-existing behaviour.
+//
 // Returns "" when the conversation has no backing file yet (a fresh
 // conversation, or a CLI-only conversation the Ion store never persisted) —
 // which round-trips correctly against a cursor captured at the same state.
-func currentConversationLeaf(convID string) string {
+func continuityLeaf(convID, prePersistedUserEntryID string) string {
 	if convID == "" || !conversation.Exists(convID, "") {
 		return ""
 	}
@@ -109,7 +127,33 @@ func currentConversationLeaf(convID string) string {
 	if conv.LeafID == nil {
 		return ""
 	}
-	return *conv.LeafID
+	leaf := *conv.LeafID
+	if prePersistedUserEntryID == "" || leaf != prePersistedUserEntryID {
+		return leaf
+	}
+	parent := entryParentID(conv, leaf)
+	utils.LogWithFields(utils.LevelDebug, "session.native_session", "discounting this dispatch's pre-persisted user entry from the continuity leaf", map[string]any{
+		"conversation_id": convID, "live_leaf": leaf, "continuity_leaf": parent,
+	})
+	return parent
+}
+
+// entryParentID returns the parent ID of the entry with the given ID, or ""
+// when the entry is a root or is not present. "" is the same value
+// continuityLeaf reports for a conversation with no leaf, so a first turn
+// whose pre-persisted entry is the root compares equal to a cursor captured
+// before anything was written.
+func entryParentID(conv *conversation.Conversation, entryID string) string {
+	for i := range conv.Entries {
+		if conv.Entries[i].ID != entryID {
+			continue
+		}
+		if conv.Entries[i].ParentID == nil {
+			return ""
+		}
+		return *conv.Entries[i].ParentID
+	}
+	return ""
 }
 
 // persistCliTurn appends a completed delegated-CLI turn (the provider prompt,
@@ -155,6 +199,10 @@ func (m *Manager) persistCliTurn(key, convID string) {
 	turnRunID := s.requestID
 	planMarker := s.pendingCliPlanMarker
 	slashInvocation := s.pendingCliSlashInvocation
+	// The provider accounting this run reported, retained from its usage
+	// events (see cli_turn_usage.go). Nil when the run reported none.
+	turnUsage := s.pendingCliUsage
+	s.pendingCliUsage = nil
 	s.pendingCliPlanMarker = nil
 	s.pendingCliUserTurn = ""
 	s.pendingCliDisplayText = ""
@@ -211,7 +259,6 @@ func (m *Manager) persistCliTurn(key, convID string) {
 		// last ran on. A CLI-served conversation reaches none of the API
 		// runloop, so this is the only place the header advances for it.
 		conversation.SyncModel(conv, servingModel, turnRunID)
-		wroteStructured = appendStructuredCliTurn(conv, structuredItems, servingModel)
 		hasRecordedText := false
 		for _, it := range structuredItems {
 			if it.kind == "text" {
@@ -219,16 +266,35 @@ func (m *Manager) persistCliTurn(key, convID string) {
 				break
 			}
 		}
+		// Decide which write gets the occupancy baseline BEFORE writing
+		// anything: it belongs on the last assistant message of the turn, and
+		// the text fallback below appends after the structured recording. The
+		// predicate is the fallback's own condition with wroteStructured
+		// replaced by its cause — a non-empty item list always writes.
+		fallbackWillRun := (len(structuredItems) == 0 || !hasRecordedText) && assistantText != ""
+		structuredUsage := turnUsage
+		if fallbackWillRun {
+			structuredUsage = nil
+		}
+		wroteStructured = appendStructuredCliTurn(conv, structuredItems, servingModel, structuredUsage)
 		if (!wroteStructured || !hasRecordedText) && assistantText != "" {
 			// Text-only fallback, and the completion for a structured recording
 			// whose stream carried no text chunks (some backends report the
 			// final text only on task_complete). Never runs when the recording
 			// already carries text — that would duplicate the same content.
 			//
-			// No usage annotation: the CLI reported no provider accounting for
-			// this turn, and a zero-valued LlmUsage{} would poison the occupancy
-			// backward scan (GetContextUsage) into reading ~0 tokens.
-			conversation.AddAssistantMessageNoUsage(conv, []types.LlmContentBlock{{Type: "text", Text: assistantText}}, servingModel)
+			// Annotated with the run's reported accounting when it has any, so
+			// GetContextUsage's backward scan finds a provider baseline instead
+			// of estimating the whole conversation from character counts. When
+			// the run reported none, the message stays unannotated: a
+			// zero-valued LlmUsage{} would poison that same scan into reading
+			// ~0 tokens.
+			blocks := []types.LlmContentBlock{{Type: "text", Text: assistantText}}
+			if turnUsage != nil {
+				conversation.AddAssistantMessageWithUsageAndModel(conv, blocks, *turnUsage, servingModel)
+			} else {
+				conversation.AddAssistantMessageNoUsage(conv, blocks, servingModel)
+			}
 		}
 		// Append the plan marker LAST, after the turn's content, so the tree
 		// order matches when the plan was captured: the marker sits after the
@@ -270,7 +336,7 @@ func (m *Manager) persistCliTurn(key, convID string) {
 		"key": key, "conversation_id": convID, "new_leaf": leaf, "structured": wroteStructured,
 		"plan_marker": wrotePlanMarker, "plan_slug": planMarkerSlug(planMarker),
 		"structured_items": len(structuredItems), "user_bytes": len(userText), "display_bytes": len(displayText), "assistant_bytes": len(assistantText),
-		"slash_command": slashCommand,
+		"slash_command": slashCommand, "usage_recorded": turnUsage != nil, "occupancy_tokens": occupancyTokens(turnUsage),
 	})
 }
 
@@ -408,4 +474,15 @@ func planMarkerSlug(md *conversation.PlanMarkerData) string {
 		return ""
 	}
 	return md.PlanSlug
+}
+
+// occupancyTokens renders a retained CLI turn usage as the single number the
+// occupancy scan derives from it (input + cache_read + cache_creation), or -1
+// when the run reported no accounting. Logged so a conversation whose context
+// readout looks wrong can be traced to the turn that set its baseline.
+func occupancyTokens(u *types.LlmUsage) int {
+	if u == nil {
+		return -1
+	}
+	return u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
 }

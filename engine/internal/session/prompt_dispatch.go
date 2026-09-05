@@ -370,6 +370,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// leave these fields empty. Reset all pending fields at dispatch so a prior
 	// turn can never leak into this one.
 	s.pendingCliAssistantText = ""
+	s.pendingCliUsage = nil
 	s.pendingCliPlanMarker = nil
 	s.cliRunFailedTerminal = false
 	if caps.ContextModel == backend.ContextModelNativeSession {
@@ -710,8 +711,8 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 
 	// Resume-vs-bridge decision for delegated-CLI backends: resume the
 	// backend's native session when this session holds a still-valid cursor
-	// for it (HeadEntryID == the conversation's LeafID), otherwise bridge by
-	// seeding the prior conversation transcript into the prompt — otherwise
+	// for it (HeadEntryID == the conversation's continuity leaf), otherwise
+	// bridge by seeding the prior conversation transcript into the prompt —
 	// the CLI subprocess receives only the current prompt and the model
 	// loses all context (e.g. a conversation built on the ApiBackend then
 	// continued on claude-code). See native_session.go and

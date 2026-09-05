@@ -237,8 +237,8 @@ type engineSession struct {
 	// emitExit → handleRunExit). A cursor is the ONLY value ever fed to a
 	// native resume (`claude --resume` / ThreadResume / session/load, via
 	// RunOptions.CliResumeSessionID), and only while its HeadEntryID still
-	// equals the conversation's LeafID — see resolveCliContinuity in
-	// native_session.go. Cursors are deliberately kept distinct from
+	// equals the conversation's continuity leaf — see resolveCliContinuity
+	// and continuityLeaf in native_session.go. Cursors are deliberately kept distinct from
 	// conversationID: conversationID is Ion's durable conversation-file
 	// identity (`{millis}-{12hex}`) and must never be overwritten with a
 	// backend-native id — doing so would break compaction, export, /clear,
@@ -294,6 +294,18 @@ type engineSession struct {
 	// through handleNormalizedEvent, for the same CLI-turn persistence.
 	// Guarded by m.mu.
 	pendingCliAssistantText string
+	// pendingCliUsage holds the provider accounting reported by the current
+	// delegated-CLI run's most recent usage event, in RAW component form
+	// (input / cache_read / cache_creation kept separate, exactly as the
+	// ApiBackend persists it). persistCliTurn stamps it on the final assistant
+	// message it writes, which is what GetContextUsage's backward scan reads as
+	// the conversation's provider baseline.
+	//
+	// Nil when the run reported no usage at all; persistCliTurn then falls back
+	// to the no-usage funnel rather than writing a zero-valued LlmUsage{},
+	// which would read as "the provider says ~0 tokens" and poison the same
+	// scan. Reset at dispatch and consumed at run exit, both under m.mu.
+	pendingCliUsage *types.LlmUsage
 	// pendingCliPlanMarker holds the plan-file write a delegated-CLI run
 	// captured natively (Claude Code's ExitPlanMode argument, codex's plan
 	// item, cursor's ACP plan update), so persistCliTurn can append the

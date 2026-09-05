@@ -462,6 +462,37 @@ func AddAssistantMessageNoUsage(conv *Conversation, blocks []types.LlmContentBlo
 	}
 }
 
+// AddAssistantMessageWithUsageAndModel appends an assistant message carrying
+// BOTH provider accounting and the model that produced it.
+//
+// It exists for delegated-CLI turns, which Ion persists on the backend's
+// behalf at run exit. Those turns have both facts available — the CLI reports
+// per-message token usage on its stream and Ion knows which model it routed
+// to — but neither existing funnel carries both: AddAssistantMessage takes
+// usage and no model, AddAssistantMessageNoUsage takes a model and no usage.
+// Persisting through the no-usage funnel is what left every CLI-served
+// conversation with no provider baseline at all, so GetContextUsage fell
+// through to character-count estimation while still reporting the result as
+// exact.
+//
+// usage is the RAW provider breakdown (input, cache_read, cache_creation kept
+// separate), matching what the ApiBackend persists — GetContextUsage sums the
+// three itself. Do not pass a pre-summed total here or the occupancy is
+// counted twice.
+func AddAssistantMessageWithUsageAndModel(conv *Conversation, blocks []types.LlmContentBlock, usage types.LlmUsage, model string) {
+	conv.lock()
+	defer conv.unlock()
+	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: blocks})
+	conv.TotalInputTokens += usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
+	conv.TotalOutputTokens += usage.OutputTokens
+	conv.Messages[len(conv.Messages)-1].Usage = &usage
+
+	if conv.Entries != nil {
+		entry := appendEntryLocked(conv, EntryMessage, MessageData{Role: "assistant", Content: blocks, Usage: &usage, Model: model}, "")
+		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
+	}
+}
+
 // AddAssistantMessageWithEntryID is AddAssistantMessage with a pre-minted
 // entry id. The runloop mints the id before emitting message_end so consumers
 // can re-key their live-streamed assistant rows to the canonical persisted

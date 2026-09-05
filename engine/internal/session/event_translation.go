@@ -183,6 +183,11 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 	// delegated-CLI plan marker). Split into event_translation_plan_mode.go.
 	m.applyPlanModeSideEffects(key, event)
 
+	// Retain this run's provider accounting when it is delegated-CLI served,
+	// so run exit can persist it onto the turn it copies into Ion's
+	// transcript. See cli_turn_usage.go.
+	m.captureCliTurnUsage(key, event)
+
 	// Track last-known context usage on the session so subsequent
 	// engine_status emissions carry the latest values.
 	//

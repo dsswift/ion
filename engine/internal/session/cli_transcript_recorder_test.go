@@ -68,7 +68,7 @@ func TestAppendStructuredCliTurn_Adjacency(t *testing.T) {
 		{kind: "tool_result", toolID: "tu_1", resultContent: "answered"},
 		{kind: "text", text: "done"},
 	}
-	if !appendStructuredCliTurn(conv, items, "cli-model") {
+	if !appendStructuredCliTurn(conv, items, "cli-model", nil) {
 		t.Fatal("appendStructuredCliTurn wrote nothing")
 	}
 
