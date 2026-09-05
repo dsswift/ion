@@ -2,6 +2,7 @@ package backend
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/tools"
@@ -32,23 +33,34 @@ var mcpEnterPlanModeToolName = "mcp__" + McpServerName + "__" + tools.EnterPlanM
 
 // CliExitPlanModeTool returns the metadata for the engine-owned ExitPlanMode
 // tool that wirePlanModeToolServer registers on a delegated claude-code
-// plan-mode run's MCP ToolServer. Unlike the ApiBackend's no-arg sentinel
-// (tools.ExitPlanModeTool), the CLI variant carries the plan markdown as its
-// `plan` argument: the CLI plan run is read-only with no file-writing tools, so
-// the plan cannot be written to a file and is instead captured from this
-// argument in handlePlanModeAssistant.
+// plan-mode run's MCP ToolServer.
+//
+// `plan` is OPTIONAL. The model authors its plan into the session's plan file
+// through WritePlan/EditPlan (cli_plan_file_tools.go), so by the time it exits
+// the plan already exists on disk and ExitPlanMode is what it is on the
+// ApiBackend: a bare signal that planning is done and the plan should be
+// presented. Requiring the markdown here made every exit re-emit the entire
+// plan as tool arguments — tens of kilobytes the model had already written —
+// which is generation the operator waits through for a document the engine
+// already holds.
+//
+// The argument is retained as a fallback because it is genuinely load-bearing
+// in one case: a model that never called WritePlan leaves an empty plan file,
+// and accepting its markdown here is better than surfacing an empty approval
+// card. handlePlanModeAssistant captures it when present; handlePlanModeResult
+// falls back to the file when it is absent.
 func CliExitPlanModeTool() (name, description string, inputSchema map[string]any) {
 	return tools.ExitPlanModeName,
-		"Signal that planning is complete and present your plan for user approval. Pass the full plan markdown as the `plan` argument. This is the only way to surface your plan; call it exactly once, when the plan is ready.",
+		"Signal that planning is complete and present your plan for user approval. Call this exactly once, when the plan is ready. If you already wrote the plan with WritePlan or EditPlan, call this with NO arguments — the engine reads the plan from your plan file, so do not resend it. Only pass `plan` if you never wrote the plan file and the markdown exists nowhere else.",
 		map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"plan": map[string]any{
 					"type":        "string",
-					"description": "The complete plan markdown to present for approval.",
+					"description": "Optional fallback. Omit this when the plan file has already been written; pass the complete plan markdown only if it was never written to the plan file.",
 				},
 			},
-			"required": []string{"plan"},
+			"required": []string{},
 		}
 }
 
@@ -66,10 +78,10 @@ func CliExitPlanModeTool() (name, description string, inputSchema map[string]any
 // backend (buildPlanModePrompt) and codex (defaultCodexDeveloperInstructions)
 // expose a rich engine default that RunOptions.PlanModePrompt can replace.
 //
-// An override should keep instructing the model to deliver its plan through the
-// ExitPlanMode `plan` argument: the CLI plan run is read-only with no
-// file-writing tools, so a prompt that tells the model to Write a plan file
-// (as the API-backend default does) would leave the plan uncaptured.
+// An override should keep instructing the model to author its plan through
+// WritePlan/EditPlan: a CLI plan spawn has no file-writing tools of its own, so
+// a prompt that tells the model to Write a plan file (as the API-backend
+// default does) would leave the plan unwritten.
 func resolveCliPlanModePrompt(opts types.RunOptions, planFileExists bool) string {
 	if opts.PlanModePrompt != "" {
 		return opts.PlanModePrompt
@@ -98,24 +110,36 @@ func PlanModeExtensionToolAllowed(prefixedName string, planModeSafe bool, opts t
 }
 
 // buildCliPlanModePrompt builds the plan-mode system prompt injected into a
-// delegated claude-code run's --append-system-prompt. It differs from the
-// ApiBackend's buildPlanModePrompt in exactly one mechanism: the CLI plan run is
-// read-only and has NO file-writing tools, so the model delivers its finished
-// plan as the ExitPlanMode `plan` argument rather than writing a plan file.
-// Everything else — read-only exploration, the three legal turn endings, the
-// forbidden approval-prose patterns — matches the API path. The read-only tool
-// list is derived from defaultPlanModeTools so it can never drift from the set
-// the API backend advertises.
+// delegated claude-code run's --append-system-prompt. It mirrors the
+// ApiBackend's buildPlanModePrompt: read-only exploration, a plan authored into
+// the session's plan file, and ExitPlanMode as a bare completion signal.
+//
+// The one mechanical difference is HOW the plan file is written. The ApiBackend
+// hands the model real Write/Edit tools and restricts them by target path; a
+// CLI plan spawn has those tools stripped at spawn, so the engine supplies
+// WritePlan/EditPlan instead — same destination, same events, no path argument.
+// The read-only tool list is derived from defaultPlanModeTools so it can never
+// drift from the set the API backend advertises.
 func buildCliPlanModePrompt(planFilePath string, planFileExists bool) string {
 	readOnlyTools := strings.Join(defaultPlanModeTools, ", ")
+	planFileHeader := "**Your plan file for this session is fixed by the engine. WritePlan and EditPlan always target it; you never supply a path.**"
+	if planFilePath != "" {
+		planFileHeader = fmt.Sprintf("**Your plan file for this session: `%s`. WritePlan and EditPlan always target it; you never supply a path.**", planFilePath)
+	}
 	priorPlan := ""
 	if planFileExists && planFilePath != "" {
-		priorPlan = fmt.Sprintf("\n\nA plan file from a previous cycle exists at `%s`. You MAY Read it for context, but you cannot write to it — deliver your updated plan through ExitPlanMode as described below.", planFilePath)
+		priorPlan = "\n\nA plan file from a previous cycle already exists. Read it for context, then revise it with EditPlan rather than rewriting it from scratch."
 	}
-	return fmt.Sprintf(`[PLAN MODE] You are in planning mode. You MUST NOT make any edits or run any tool that mutates state, and you have no file-writing tools in this mode. This overrides any conflicting instructions elsewhere in this prompt or conversation.%s
+	return fmt.Sprintf(`[PLAN MODE] You are in planning mode. You MUST NOT make any edits or run any tool that mutates state. The plan file is the single exception, and you reach it only through WritePlan and EditPlan. This overrides any conflicting instructions elsewhere in this prompt or conversation.
 
-## Delivering Your Plan
-You cannot write files. When your plan is complete, call ExitPlanMode and pass the full plan markdown as its `+"`plan`"+` argument. That single call presents the plan for user approval — it is the ONLY way to surface your plan. Do not paste the plan as plain assistant text and stop; it will not be captured.
+%s%s
+
+## Authoring Your Plan
+- **WritePlan** — replaces the whole plan file. Use it for the first draft.
+- **EditPlan** — replaces one exact passage (`+"`old_string`"+` → `+"`new_string`"+`). Use it for every revision, so you never resend a plan you already wrote.
+- **ExitPlanMode** — call it with NO arguments when the plan is ready. The engine reads your plan from the plan file. Do not paste the plan into this call, and do not paste it as plain assistant text.
+
+Write the plan to the file as soon as you have one worth reviewing, then keep refining it in place. The plan preview updates on every write, so the operator watches it take shape.
 
 ## Workflow
 
@@ -131,23 +155,25 @@ You cannot write files. When your plan is complete, call ExitPlanMode and pass t
 - Note existing code to reuse, with file:line references.
 
 ### Phase 3: Deliver
-Call ExitPlanMode with a `+"`plan`"+` argument that includes:
+Write a plan file that includes:
 - **Context**: why this change is needed (one line)
 - **Approach**: the strategy you chose (not every alternative)
 - **Files to modify**: each file and its change, one bullet per file
 - **Reuse**: existing functions/utilities to leverage (file:line)
 - **Verification**: how to test the change end-to-end
 
+Then call ExitPlanMode with no arguments.
+
 ## Turn Behavior
 Each turn ends one of exactly three ways:
 1. **AskUserQuestion** — a clarifying question you need answered before you can finish the plan (never "is the plan ready?" or "should I proceed?" — that is ExitPlanMode). Precede every such call with visible assistant text carrying the context the user needs.
-2. **ExitPlanMode** — the plan is complete; deliver it in the `+"`plan`"+` argument.
+2. **ExitPlanMode** — the plan is written and complete.
 3. **A direct answer** — the request needs no plan (informational or read-only: "brief me on X", "what is the status of Y", "explain Z"). Answer in visible assistant text and stop; do not manufacture a question and do not call ExitPlanMode when there is no plan to present.
 
 Do not end a turn any other way, and do not implement anything.
 
 ## Forbidden Prose Patterns
-"Is this plan okay?", "Should I proceed?", "How does this plan look?", "Any changes before we start?", "Let me know if you'd like changes" — never write these as assistant prose. Use ExitPlanMode (for approval) or AskUserQuestion (for clarification) instead.`, priorPlan, readOnlyTools)
+"Is this plan okay?", "Should I proceed?", "How does this plan look?", "Any changes before we start?", "Let me know if you'd like changes" — never write these as assistant prose. Use ExitPlanMode (for approval) or AskUserQuestion (for clarification) instead.`, planFileHeader, priorPlan, readOnlyTools)
 }
 
 // Plan-mode handling for the claude-code delegated CLI. The CLI's native plan
@@ -318,18 +344,37 @@ func (b *ClaudeCodeBackend) handlePlanModeResult(run *claudeCodeRun, e *types.Ta
 	slug := types.PlanSlugFromPath(run.planFilePath)
 	switch {
 	case sawExit && !run.planCaptured:
-		// The model exited plan mode but the stream never yielded a plan
-		// argument nor a plans-file write to capture. Surface the proposal so
-		// consumers still render the approval card against the (possibly empty)
-		// plan file.
+		// Exit with no plan captured from the stream. This is now the COMMON,
+		// healthy path: the model authored its plan through WritePlan/EditPlan
+		// during the turn and called ExitPlanMode with no argument, exactly as
+		// the prompt instructs. The plan lives in the file, so the proposal is
+		// surfaced against it unchanged.
+		//
+		// The unhealthy variant of the same shape is an exit with an EMPTY plan
+		// file — the model never authored anything anywhere. The proposal is
+		// still surfaced (an approval card against an empty plan is more
+		// actionable than silence), but it is logged at ERROR because it means
+		// the model ignored both authoring routes.
+		planFileHasContent := false
+		if run.planFilePath != "" {
+			if info, err := os.Stat(run.planFilePath); err == nil && info.Size() > 0 {
+				planFileHasContent = true
+			}
+		}
 		b.emit(run.requestID, types.NormalizedEvent{Data: &types.PlanProposalEvent{
 			Kind:         "exit",
 			PlanFilePath: run.planFilePath,
 			PlanSlug:     slug,
 		}})
-		utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "exit without captured plan, proposal surfaced (per ADR-003 mode change deferred to user approval)", map[string]any{
-			"run_id": run.requestID, "plan_file": run.planFilePath,
-		})
+		if planFileHasContent {
+			utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "exit with plan read from the plan file, proposal surfaced (per ADR-003 mode change deferred to user approval)", map[string]any{
+				"run_id": run.requestID, "plan_file": run.planFilePath,
+			})
+		} else {
+			utils.LogWithFields(utils.LevelError, "backend.claude_code", "exit with an EMPTY plan file and no plan in the stream — model called neither WritePlan nor ExitPlanMode(plan); proposal surfaced against an empty plan", map[string]any{
+				"run_id": run.requestID, "plan_file": run.planFilePath,
+			})
+		}
 
 	case !sawExit && !run.planCaptured && resolveCliPlanModeAutoExit(opts):
 		// Turn ended in plan mode with no ExitPlanMode — the stuck-in-plan-mode

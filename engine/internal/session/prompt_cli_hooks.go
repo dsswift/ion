@@ -364,6 +364,13 @@ func (m *Manager) wireEnterPlanModeToolServer(s *engineSession, key string, opts
 	exitName, exitDesc, exitSchema := backend.CliExitPlanModeTool()
 	ts.RegisterTool(exitName, planModeExitToolHandler(key), exitDesc, exitSchema)
 
+	// Register the plan-authoring pair alongside EnterPlanMode. This spawn
+	// still has its full auto-mode tool list, so the model could reach the plan
+	// file with a plain Write — but only these two resolve the canonical path
+	// on its behalf, so offering them here is what keeps a mid-run plan landing
+	// on the file the session actually tracks.
+	planToolNames := m.registerPlanFileTools(ts, key)
+
 	if needsStart {
 		if err := ts.Start(); err != nil {
 			utils.LogWithFields(utils.LevelError, "session", "toolserver start failed (enter plan mode)", map[string]any{"key": key, "kind": kind, "error": err.Error()})
@@ -379,11 +386,11 @@ func (m *Manager) wireEnterPlanModeToolServer(s *engineSession, key string, opts
 		m.mu.Unlock()
 	}
 
-	toolNames := []string{enterDef.Name, exitName}
+	toolNames := append([]string{enterDef.Name, exitName}, planToolNames...)
 	directive := buildToolAliasDirective(toolNames, backend.McpServerName)
 	appendDirective(opts, directive, toolNames)
 
-	utils.LogWithFields(utils.LevelInfo, "session", "EnterPlanMode+ExitPlanMode registered on ToolServer for claude-code auto mode", map[string]any{"key": key})
+	utils.LogWithFields(utils.LevelInfo, "session", "EnterPlanMode + ExitPlanMode + plan-file tools registered on ToolServer for claude-code auto mode", map[string]any{"key": key, "tools": toolNames})
 }
 
 // enterPlanModeToolHandler returns the handler for the injected EnterPlanMode
@@ -432,7 +439,7 @@ func enterPlanModeToolHandler(m *Manager, key string) backend.ToolHandler {
 		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "EnterPlanMode allowed for claude-code model", map[string]any{"key": key, "plan_file_path": planFilePath})
 
 		return &types.ToolResult{
-			Content: fmt.Sprintf("Plan mode entered. Plan file: %s\n\nKeep working in this same conversation: continue exploring with your current tools, but make no further edits or other mutating tool calls from here on. Write your finished plan to the plan file above (or pass it directly as ExitPlanMode's `plan` argument), then call ExitPlanMode.", planFilePath),
+			Content: fmt.Sprintf("Plan mode entered. Plan file: %s\n\nKeep working in this same conversation: continue exploring, but make no further edits or other mutating tool calls from here on. Author your plan with WritePlan (full draft) and refine it with EditPlan (targeted revisions) — both always target the plan file above, so you never pass a path. When the plan is ready, call ExitPlanMode with NO arguments; the engine reads the plan from that file, so do not resend it.", planFilePath),
 			IsError: false,
 		}, nil
 	}
@@ -473,6 +480,12 @@ func (m *Manager) wirePlanModeToolServer(s *engineSession, key string, opts *typ
 	name, desc, schema := backend.CliExitPlanModeTool()
 	ts.RegisterTool(name, planModeExitToolHandler(key), desc, schema)
 
+	// The plan-authoring pair. A plan-mode spawn has no file-writing tools
+	// (--disallowedTools, fixed at spawn), so these are the model's only way to
+	// author a plan file — and because neither takes a path, exposing them does
+	// not reopen the read-only boundary.
+	planToolNames := m.registerPlanFileTools(ts, key)
+
 	if needsStart {
 		if err := ts.Start(); err != nil {
 			utils.LogWithFields(utils.LevelError, "session", "toolserver start failed (plan mode)", map[string]any{"key": key, "kind": kind, "error": err.Error()})
@@ -488,20 +501,23 @@ func (m *Manager) wirePlanModeToolServer(s *engineSession, key string, opts *typ
 		m.mu.Unlock()
 	}
 
-	directive := buildToolAliasDirective([]string{name}, backend.McpServerName)
-	appendDirective(opts, directive, []string{name})
+	toolNames := append([]string{name}, planToolNames...)
+	directive := buildToolAliasDirective(toolNames, backend.McpServerName)
+	appendDirective(opts, directive, toolNames)
 
-	utils.LogWithFields(utils.LevelInfo, "session", "ExitPlanMode registered on ToolServer for claude-code plan mode", map[string]any{"key": key})
+	utils.LogWithFields(utils.LevelInfo, "session", "ExitPlanMode + plan-file tools registered on ToolServer for claude-code plan mode", map[string]any{"key": key, "tools": toolNames})
 }
 
 // planModeExitToolHandler returns the handler for the injected ExitPlanMode MCP
-// tool. The plan itself is captured from the streamed tool_use argument in the
-// backend (handlePlanModeAssistant), so this handler only acknowledges the call
+// tool. The plan itself lives in the session's plan file, authored through
+// WritePlan/EditPlan during the turn; when the model instead passes the legacy
+// `plan` fallback argument, the backend captures it from the streamed tool_use
+// (handlePlanModeAssistant). Either way this handler only acknowledges the call
 // — completing the CLI's tool round-trip and telling the model to end its turn.
 func planModeExitToolHandler(key string) backend.ToolHandler {
 	return func(_ context.Context, input map[string]interface{}) (*types.ToolResult, error) {
-		plan, _ := input["plan"].(string) //nolint:errcheck // absent/empty plan handled by the backend capture fallback (handlePlanModeResult)
-		utils.LogWithFields(utils.LevelInfo, "session", "ExitPlanMode invoked by claude-code plan-mode model", map[string]any{"key": key, "plan_bytes": len(plan)})
+		plan, _ := input["plan"].(string) //nolint:errcheck // absent plan is the normal path; the plan file is the source (handlePlanModeResult)
+		utils.LogWithFields(utils.LevelInfo, "session", "ExitPlanMode invoked by claude-code plan-mode model", map[string]any{"key": key, "plan_bytes": len(plan), "used_fallback_argument": plan != ""})
 		return &types.ToolResult{
 			Content: "Plan presented for approval. Planning is complete — take no further action and call no more tools.",
 			IsError: false,
