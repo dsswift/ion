@@ -915,6 +915,7 @@ final class ContractSyncTests: XCTestCase {
       "markerMessagesAfter", "markerMessagesBefore", "markerMicroOnly",
       "markerPlanOperation", "markerPlanSlug",
       "markerStrategy", "markerSummary",
+      "markerPreTokens", "markerTrigger",
       // Tracked but not decoded: the desktop mapper projects a tool
       // row's error state onto `toolStatus` before forwarding to iOS.
       "isError",
