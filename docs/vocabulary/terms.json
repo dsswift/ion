@@ -1833,6 +1833,34 @@
       ]
     },
     {
+      "id": "mounted-folder",
+      "term": "Mounted Folder",
+      "definition": "An additional directory a Project mounts, browsable and editable beside the source directory in the file explorer and the git panel, and inherited by every checkout of that Project.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "workspace folder"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "ProjectFoldersSection",
+          "path": "desktop/src/renderer/components/settings/ProjectFoldersSection.tsx"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "createWorkspaceFolderActions",
+          "path": "desktop/src/renderer/preferences-workspace.ts"
+        }
+      ]
+    },
+    {
       "id": "native-session-compaction",
       "term": "Native Session Compaction",
       "definition": "A delegated CLI compacting its own native session. Distinct from Compaction: Ion's transcript is the source of truth and the native session is a per-provider cache over it, so nothing leaves the Ion conversation and the context path is not truncated.",
@@ -2148,6 +2176,31 @@
           "language": "go",
           "symbol": "func (m *Manager) startPoll",
           "path": "engine/internal/session/poll_driver.go"
+        }
+      ]
+    },
+    {
+      "id": "project-workspace",
+      "term": "Project Workspace",
+      "definition": "A Project's source directory together with its mounted folders. Every checkout of that Project — the base repo, each worktree, each bench — renders the same set, because the mounted-folder setting is keyed by the Project rather than by the active directory.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "resolveProjectDir",
+          "path": "desktop/src/shared/project-workspace.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "orderedWorkspaceRoots",
+          "path": "desktop/src/shared/workspace-roots.ts"
         }
       ]
     },

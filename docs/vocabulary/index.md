@@ -102,6 +102,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Mirror store](#term-mirror-store)
 - [Model Boundary](#term-model-boundary)
 - [Model Change Marker](#term-model-change-marker)
+- [Mounted Folder](#term-mounted-folder)
 - [Native Session Compaction](#term-native-session-compaction)
 - [New Conversation Picker](#term-new-conversation-picker)
 - [Normalized event](#term-normalized-event)
@@ -113,6 +114,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Permission](#term-permission)
 - [Picker](#term-picker)
 - [Poll](#term-poll)
+- [Project Workspace](#term-project-workspace)
 - [Provider](#term-provider)
 - [Questions Wizard](#term-questions-wizard)
 - [Relay](#term-relay)
@@ -999,6 +1001,34 @@ One client application built with SwiftUI. It is a thin client that renders the 
   - `ios` / `ui` / `swift`: `struct TabListView` in `ios/IonRemote/Views/TabListView.swift`
   - `ios` / `wire` / `swift`: `NormalizedEvent` in `ios/IonRemote/Models/NormalizedEvent.swift`
 
+#### Mounted Folder {#term-mounted-folder}
+
+An additional directory a Project mounts, browsable and editable beside the source directory in the file explorer and the git panel, and inherited by every checkout of that Project.
+
+- **ID:** `mounted-folder`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `workspace folder`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `ui` / `typescript`: `ProjectFoldersSection` in `desktop/src/renderer/components/settings/ProjectFoldersSection.tsx`
+  - `desktop` / `code` / `typescript`: `createWorkspaceFolderActions` in `desktop/src/renderer/preferences-workspace.ts`
+
+#### Project Workspace {#term-project-workspace}
+
+A Project's source directory together with its mounted folders. Every checkout of that Project — the base repo, each worktree, each bench — renders the same set, because the mounted-folder setting is keyed by the Project rather than by the active directory.
+
+- **ID:** `project-workspace`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `resolveProjectDir` in `desktop/src/shared/project-workspace.ts`
+  - `desktop` / `code` / `typescript`: `orderedWorkspaceRoots` in `desktop/src/shared/workspace-roots.ts`
+
 #### Scratch Document {#term-scratch-document}
 
 An unsaved Studio document stored by source-project identity. It appears across matching conversations and worktrees until the user saves or discards it. Saving removes the project-scoped document and opens the saved file in the active conversation.
@@ -1779,6 +1809,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Menu | `export function TabContextMenu` | `export function TabContextMenu` | `export function TabContextMenu` | `struct TabRowContextMenu` | None |
 | Message | None | None | None | `struct Message` | Desktop, Studio, Overlay |
 | Mirror store | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS` | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS`, `waitForTabsSync` | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS` | None | iOS |
+| Mounted Folder | `ProjectFoldersSection`, `createWorkspaceFolderActions` | `ProjectFoldersSection`, `createWorkspaceFolderActions` | `ProjectFoldersSection`, `createWorkspaceFolderActions` | None | iOS |
 | Native Session Compaction | `export function buildNativeCompactionMarkerContent` | `export function buildNativeCompactionMarkerContent` | `export function buildNativeCompactionMarkerContent` | None | iOS |
 | New Conversation Picker | `NewConversationPicker` | `NewConversationPicker` | `NewConversationPicker` | `struct TabListNewTabSheet` | None |
 | Normalized event | None | None | None | `NormalizedEvent` | Desktop, Studio, Overlay |
@@ -1787,6 +1818,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Panel | `FloatingPanel` | `FloatingPanel` | `FloatingPanel` | `struct GitPaneView` | None |
 | Permission | `PermissionCard` | `PermissionCard` | `PermissionCard` | `struct PermissionCardView` | None |
 | Picker | `ModelPickerPopover` | `ModelPickerPopover` | `ModelPickerPopover` | `struct ModelPickerSheet` | None |
+| Project Workspace | `resolveProjectDir`, `orderedWorkspaceRoots` | `resolveProjectDir`, `orderedWorkspaceRoots` | `resolveProjectDir`, `orderedWorkspaceRoots` | None | iOS |
 | Questions Wizard | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | None | iOS |
 | Resource | `ResourceViewer` | `ResourceViewer` | `ResourceViewer` | `Resource` | None |
 | Scratch Document | None | `export interface ScratchDocument` | None | None | Overlay, iOS |
@@ -1935,6 +1967,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `visualizer` → [Visualizer Canvas](#term-visualizer-canvas)
 - Alias: `wake push` → [Wake notification](#term-wake-notification)
 - Alias: `window title bar` → [Studio Title Bar](#term-studio-title-bar)
+- Alias: `workspace folder` → [Mounted Folder](#term-mounted-folder)
 - Alias: `workspace root` → [Workspace](#term-workspace)
 
 ## Review queue
