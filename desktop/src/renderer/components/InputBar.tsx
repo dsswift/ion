@@ -75,6 +75,7 @@ export function InputBar() {
   })
   const preferredModel = usePreferencesStore((s) => s.preferredModel)
   const findModel = useModelStore((s) => s.findModel)
+  const isModelCliServed = useModelStore((s) => s.isModelCliServed)
   const effectiveModelId = modelOverride ?? preferredModel ?? ''
   const { state: contextCapacityStatus } = useActiveContextCapacity(effectiveModelId)
   const isImageModel = effectiveModelId !== '' && findModel(effectiveModelId)?.modelKind === 'image'
@@ -452,6 +453,7 @@ export function InputBar() {
 
       <ContextCapacityNotice
         state={contextCapacityStatus}
+        servedByCli={isModelCliServed(effectiveModelId)}
         colors={colors}
         onNewConversation={() => window.dispatchEvent(new CustomEvent('ion:open-new-conversation-picker'))}
       />

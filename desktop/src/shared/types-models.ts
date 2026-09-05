@@ -114,6 +114,19 @@ export interface ProviderEntry {
   cli?: ProviderCliStatus
 }
 
+/**
+ * Run backends that delegate the conversation to a CLI subprocess, which owns
+ * its own native session and performs its own compaction. The engine cannot
+ * compact one of these conversations itself — it holds the transcript, but the
+ * live context belongs to the subprocess.
+ */
+export const DELEGATED_CLI_BACKENDS = new Set(['claude-code', 'codex', 'grok', 'cursor'])
+
+/** True when a provider entry routes to a delegated CLI rather than the engine. */
+export function isDelegatedCliBackend(backend: string | undefined): boolean {
+  return backend !== undefined && DELEGATED_CLI_BACKENDS.has(backend)
+}
+
 /** Response shape from the list_models engine command. */
 export interface ModelsListResponse {
   models: ModelEntry[]

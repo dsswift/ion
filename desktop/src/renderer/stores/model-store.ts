@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ModelEntry, ProviderEntry } from '../../shared/types-models'
+import { isDelegatedCliBackend } from '../../shared/types-models'
 import { rDebug } from '../rendererLogger'
 
 /** Live state of an in-flight delegated-CLI login, keyed by provider id. */
@@ -22,6 +23,12 @@ interface ModelStoreState {
   getAvailableModels: () => ModelEntry[]
   getModelsByProvider: () => Map<string, ModelEntry[]>
   findModel: (id: string) => ModelEntry | undefined
+  /**
+   * True when this model currently routes to a delegated CLI. Derived from the
+   * provider entry the engine populates from the same routing helper a run
+   * uses, so what the UI states is what the next run will actually do.
+   */
+  isModelCliServed: (id: string) => boolean
 }
 
 export const useModelStore = create<ModelStoreState>((set, get) => ({
@@ -83,6 +90,13 @@ export const useModelStore = create<ModelStoreState>((set, get) => ({
     return grouped
   },
 
+  isModelCliServed: (id: string) => {
+    if (!id) return false
+    const { providers, findModel } = get()
+    const providerId = findModel(id)?.providerId
+    if (!providerId) return false
+    return isDelegatedCliBackend(providers.find((p) => p.id === providerId)?.backend)
+  },
   findModel: (id: string) => {
     return get().models.find((m) => m.id === id)
   },
