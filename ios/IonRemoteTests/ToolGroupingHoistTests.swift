@@ -26,6 +26,22 @@ final class ToolGroupingHoistTests: XCTestCase {
         return m
     }
 
+    func testRunningWriteHiddenUntilTargetPathComplete() {
+        var write = makeMsg(id: "write", role: .tool, toolStatus: .running)
+        write.toolName = "Write"
+        write.toolInput = "{\"file_path\":\"/tmp/led"
+
+        XCTAssertTrue(groupConversationItems([write], unifiedTurnView: true).isEmpty)
+
+        write.toolInput = "{\"file_path\":\"/tmp/ledger.md\",\"content\":\"body\"}"
+        let visible = groupConversationItems([write], unifiedTurnView: true)
+        XCTAssertEqual(visible.count, 1)
+        guard case .agentTurn(let tools, _, _, _) = visible[0] else {
+            return XCTFail("complete write must render as an agent turn")
+        }
+        XCTAssertEqual(tools.map(\.id), ["write"])
+    }
+
     // MARK: - (a) Hoist: thinking hoisted into agentTurn when tools present
 
     /// [thinking, tool, tool, assistant] with unifiedTurnView:true must produce

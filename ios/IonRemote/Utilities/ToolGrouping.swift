@@ -183,9 +183,25 @@ func materializePlanImplementationDividers(_ messages: [Message]) -> [Message] {
 /// When `unifiedTurnView` is true, groups tool + assistant messages between
 /// user boundaries into `.agentTurn` items (mirroring the desktop's
 /// turn-grouping algorithm).
+func isDisplayReadyTool(_ message: Message) -> Bool {
+    guard message.role == .tool, message.toolStatus == .running else { return true }
+    guard ["Write", "Edit", "NotebookEdit"].contains(message.toolName ?? "") else { return true }
+    guard let raw = message.toolInput,
+          let data = raw.data(using: .utf8),
+          let input = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        return false
+    }
+    let path = (input["file_path"] as? String) ?? (input["path"] as? String)
+    return !(path ?? "").isEmpty
+}
+
 func groupConversationItems(_ messages: [Message], unifiedTurnView: Bool = false) -> [ConversationItem] {
+    // A file-write tool is not a runnable operation until its streamed JSON has
+    // produced a complete target path. Hide that protocol progress so retries do
+    // not look like repeated executing writes.
+    let readyMessages = messages.filter(isDisplayReadyTool)
     let displayMessages = materializePlanImplementationDividers(
-        filterPriorUserContentHashAttachments(messages)
+        filterPriorUserContentHashAttachments(readyMessages)
     )
     if unifiedTurnView {
         return groupConversationItemsUnified(displayMessages)
