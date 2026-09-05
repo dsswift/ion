@@ -1233,6 +1233,38 @@
       ]
     },
     {
+      "id": "explorer-tree-state",
+      "term": "Explorer Tree State",
+      "definition": "Which folders are expanded, which root sections are folded shut, and which row is selected in the file explorer. Keyed by absolute root directory, owned by the desktop main process, shared by the Overlay and the Studio, and persisted apart from settings. Expansion and folded roots survive a relaunch; the selected row is shared live only.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "ExplorerStateSnapshot",
+          "path": "desktop/src/shared/explorer-state.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "loadExplorerState",
+          "path": "desktop/src/main/explorer-state-store.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "setupExplorerStateSync",
+          "path": "desktop/src/renderer/stores/explorer-state-sync.ts"
+        }
+      ]
+    },
+    {
       "id": "extension",
       "term": "Extension",
       "definition": "A subprocess that registers hooks, tools, commands, resources, schedules, and webhooks against the engine. It decides behavior that the engine executes.",

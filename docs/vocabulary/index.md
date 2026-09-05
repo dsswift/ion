@@ -84,6 +84,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Engine event](#term-engine-event)
 - [Engine profile](#term-engine-profile)
 - [Engine server](#term-engine-server)
+- [Explorer Tree State](#term-explorer-tree-state)
 - [Extension](#term-extension)
 - [Extension SDK](#term-extension-sdk)
 - [Extension context](#term-extension-context)
@@ -1590,6 +1591,21 @@ The desktop-owned engine that runs declarative user, project, and enterprise rul
   - `desktop` / `code` / `typescript`: `export function validateUserDefinition` in `desktop/src/shared/automation-catalog.ts`
   - `desktop` / `ui` / `typescript`: `export function AutomationCategory` in `desktop/src/renderer/components/settings/AutomationCategory.tsx`
 
+#### Explorer Tree State {#term-explorer-tree-state}
+
+Which folders are expanded, which root sections are folded shut, and which row is selected in the file explorer. Keyed by absolute root directory, owned by the desktop main process, shared by the Overlay and the Studio, and persisted apart from settings. Expansion and folded roots survive a relaunch; the selected row is shared live only.
+
+- **ID:** `explorer-tree-state`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `ExplorerStateSnapshot` in `desktop/src/shared/explorer-state.ts`
+  - `desktop` / `code` / `typescript`: `loadExplorerState` in `desktop/src/main/explorer-state-store.ts`
+  - `desktop` / `code` / `typescript`: `setupExplorerStateSync` in `desktop/src/renderer/stores/explorer-state-sync.ts`
+
 #### Mirror store {#term-mirror-store}
 
 The Studio presentation's copy of the session store. It reads the same event stream, forwards owner-only mutations, and never persists.
@@ -1799,6 +1815,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Drawer | `StatusDrawer` | `StatusDrawer` | `StatusDrawer` | `ModalSheetBoundary` | None |
 | Engine event | `EngineEvent` | `EngineEvent` | `EngineEvent` | `engine_status` | None |
 | Engine profile | `engineProfileId` | `engineProfileId` | `engineProfileId` | `EngineProfile` | None |
+| Explorer Tree State | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | None | iOS |
 | Guided Questions | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | None | iOS |
 | Inbox | `export function classifyInbox`, `export function InboxPanel` | `export function classifyInbox`, `export function InboxPanel`, `InboxSidebar` | `export function classifyInbox`, `export function InboxPanel` | `InboxRowView` | None |
 | Injection Kind | `export function suppressesInjection` | `export function suppressesInjection` | `export function suppressesInjection` | `enum InjectionPolicy` | None |
