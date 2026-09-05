@@ -24,14 +24,12 @@ import (
 // external watchdog intervened.
 //
 // streamWithIdle wraps the raw SSE channel from ParseSSEStream with a
-// per-event idle timer. Every received event resets the timer; if the gap
-// between events exceeds the configured idle deadline, the wrapper stops and
-// reports a RETRYABLE stream error (ErrStreamTruncated, tagged stream_idle) so
-// the existing WithRetry machinery re-streams transparently. It also emits a
-// periodic heartbeat log and invokes an optional progress callback so a
-// healthy-but-slow stream is observable in engine.log and keeps the run's
-// progress clock fresh (so the run-progress watchdog does not mistake a slow
-// stream for a stall).
+// connection-idle timer. Every received SSE frame, including a provider ping,
+// resets the timer; if the upstream sends no bytes past the deadline, the
+// wrapper reports a RETRYABLE stream error (ErrStreamTruncated, tagged
+// stream_idle) so the existing WithRetry machinery re-streams transparently.
+// Semantic events alone advance the separate run-progress clock, whose longer
+// watchdog catches a connected provider that emits only heartbeats.
 //
 // The mechanism is engine-owned and generic; the threshold is the opinion,
 // configured via TimeoutsConfig.StreamIdle() and installed once through
@@ -51,8 +49,7 @@ var streamIdleNanos atomic.Int64
 const streamHeartbeatInterval = 15 * time.Second
 
 // defaultStreamIdle mirrors TimeoutsConfig.StreamIdle()'s compiled default
-// (90s). Defined here so the providers package has a self-contained default
-// when no setter has run (e.g. unit tests that call streamWithIdle directly).
+// (90s). This is a connection-idle deadline, not a model-output deadline.
 const defaultStreamIdle = 90 * time.Second
 
 // SetStreamIdleTimeout installs the per-event SSE idle deadline used by all
@@ -179,10 +176,10 @@ func streamProgressFromContext(ctx context.Context) streamProgress {
 }
 
 // streamWithIdle consumes the raw SSE channel and re-emits its events on the
-// returned channel, enforcing the per-event idle deadline and emitting
-// heartbeat logs. Only semantic provider events reset the deadline and invoke
-// onProgress. Transport heartbeat frames and this wrapper's own log ticker prove
-// that a connection or goroutine is alive, not that model output is advancing.
+// returned channel, enforcing a transport-idle deadline and emitting heartbeat
+// logs. Every received SSE frame resets the connection deadline. Only semantic
+// provider events are forwarded and invoke onProgress; transport heartbeat
+// frames prove connection liveness without advancing the run-progress clock.
 // The returned errFn (call after draining) reports:
 //   - the idle-deadline error (retryable stream_truncated, tagged stream_idle)
 //     when the gap between events exceeded the deadline,
@@ -267,8 +264,26 @@ func streamWithIdle(
 					return
 				}
 				if isSSEHeartbeat(sse) {
+					// A provider heartbeat is real transport activity. It does not
+					// advance model output, so do not invoke onProgress, but it must reset
+					// this connection-idle deadline. Semantic stalls remain bounded by the
+					// separate run-progress watchdog (10 minutes by default).
+					now := time.Now()
+					if gap := now.Sub(lastEventAt); gap > maxGap {
+						maxGap = gap
+					}
+					lastEventAt = now
+					if idleEnabled {
+						if !idleTimer.Stop() {
+							select {
+							case <-idleTimer.C:
+							default:
+							}
+						}
+						idleTimer.Reset(idle)
+					}
 					utils.LogWithFields(utils.LevelDebug, tag, "stream provider heartbeat", map[string]any{
-						"model": model, "request_id": requestID, "duration_ms": time.Since(lastEventAt).Milliseconds(),
+						"model": model, "request_id": requestID, "duration_ms": time.Since(start).Milliseconds(),
 					})
 					continue
 				}

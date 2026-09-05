@@ -77,18 +77,17 @@ func TestStreamWithIdle_FiresOnSilence(t *testing.T) {
 	}
 }
 
-// TestStreamWithIdle_ProviderHeartbeatDoesNotResetDeadline pins the reported
-// failure: a gateway can send transport ping frames while model output is stuck
-// halfway through a tool argument. Pings must neither reach the run loop nor
-// reset the semantic idle deadline.
-func TestStreamWithIdle_ProviderHeartbeatDoesNotResetDeadline(t *testing.T) {
+// TestStreamWithIdle_ProviderHeartbeatResetsConnectionDeadline pins the two-
+// clock contract. Provider heartbeats keep the transport stream alive but are
+// neither forwarded as model output nor counted as semantic run progress.
+func TestStreamWithIdle_ProviderHeartbeatResetsConnectionDeadline(t *testing.T) {
 	restoreStreamIdle(t)
 	SetStreamIdleTimeout(80 * time.Millisecond)
 
 	src := make(chan SSEEvent)
 	stop := make(chan struct{})
-	srcErr := func() error { return nil }
-	out, errFn := streamWithIdle(src, srcErr, "test", "model-x", "req-heartbeat", nil, nil)
+	progress := 0
+	out, errFn := streamWithIdle(src, func() error { return nil }, "test", "model-x", "req-heartbeat", func() { progress++ }, nil)
 
 	go func() {
 		src <- SSEEvent{Event: "message_start", Data: `{}`}
@@ -100,9 +99,11 @@ func TestStreamWithIdle_ProviderHeartbeatDoesNotResetDeadline(t *testing.T) {
 				select {
 				case src <- SSEEvent{Event: "ping", Data: `{"type":"ping"}`}:
 				case <-stop:
+					close(src)
 					return
 				}
 			case <-stop:
+				close(src)
 				return
 			}
 		}
@@ -112,25 +113,20 @@ func TestStreamWithIdle_ProviderHeartbeatDoesNotResetDeadline(t *testing.T) {
 	if !ok || got.Event != "message_start" {
 		t.Fatalf("expected first semantic event forwarded, got %+v ok=%v", got, ok)
 	}
-	select {
-	case _, ok := <-out:
-		if ok {
-			t.Fatal("provider heartbeat must not be forwarded as model output")
-		}
-	case <-time.After(2 * time.Second):
-		close(stop)
-		t.Fatal("provider heartbeats kept a semantically stalled stream alive")
-	}
+	time.Sleep(200 * time.Millisecond) // longer than the idle deadline
 	close(stop)
-
-	err := errFn()
-	pe, ok := err.(*ProviderError)
-	if !ok || pe.Code != ErrStreamTruncated || !pe.Retryable {
-		t.Fatalf("heartbeat-only stream error = %#v, want retryable %s", err, ErrStreamTruncated)
+	for range out {
+		t.Fatal("provider heartbeat must not be forwarded as model output")
+	}
+	if err := errFn(); err != nil {
+		t.Fatalf("live heartbeat stream hit connection-idle deadline: %v", err)
+	}
+	if progress != 1 {
+		t.Fatalf("semantic progress calls = %d, want 1 (heartbeats excluded)", progress)
 	}
 }
 
-func TestStreamWithIdle_JSONProviderHeartbeatDoesNotResetDeadline(t *testing.T) {
+func TestStreamWithIdle_JSONProviderHeartbeatResetsConnectionDeadline(t *testing.T) {
 	restoreStreamIdle(t)
 	SetStreamIdleTimeout(80 * time.Millisecond)
 
@@ -147,19 +143,25 @@ func TestStreamWithIdle_JSONProviderHeartbeatDoesNotResetDeadline(t *testing.T) 
 				select {
 				case src <- SSEEvent{Data: `{"type":"ping"}`}:
 				case <-stop:
+					close(src)
 					return
 				}
 			case <-stop:
+				close(src)
 				return
 			}
 		}
 	}()
 
+	if _, ok := <-out; !ok {
+		t.Fatal("semantic event missing")
+	}
+	time.Sleep(200 * time.Millisecond)
+	close(stop)
 	for range out {
 	}
-	close(stop)
-	if err := errFn(); err == nil {
-		t.Fatal("JSON provider heartbeats kept a semantically stalled stream alive")
+	if err := errFn(); err != nil {
+		t.Fatalf("JSON heartbeat stream hit connection-idle deadline: %v", err)
 	}
 }
 
