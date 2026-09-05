@@ -4,6 +4,22 @@ import (
 	"testing"
 )
 
+func TestBuildHookEnvelope_NilContext(t *testing.T) {
+	h := NewHost()
+
+	env := h.buildHookEnvelope(nil, map[string]interface{}{"action": "created"})
+	ctxMap, ok := env["_ctx"].(map[string]interface{})
+	if !ok {
+		t.Fatal("nil-context envelope must contain an _ctx object")
+	}
+	if len(ctxMap) != 1 || ctxMap["cwd"] != "" {
+		t.Fatalf("nil-context _ctx = %#v, want only empty cwd", ctxMap)
+	}
+	if got := env["action"]; got != "created" {
+		t.Fatalf("merged payload action = %v, want created", got)
+	}
+}
+
 // TestBuildHookEnvelope_DispatchIdentity pins the `_ctx` wire shape for the
 // dispatch-identity fields. Root sessions (Depth 0, empty DispatchId) must
 // omit both keys — SDK runtimes default depth to 0 / dispatchId to "" when
