@@ -26,6 +26,7 @@ import {
 import { usePaneSash } from '../hooks/usePaneSash'
 import { resolveBenchContextAcrossRepos } from './git/benchContext'
 import { orderedWorkspaceRoots } from '../../shared/workspace-roots'
+import { useProjectDir } from '../hooks/useProjectDir'
 import { useWorkspaceRepos } from '../hooks/useWorkspaceRepos'
 import { surfaceRouter } from '../lib/file-open-router'
 import { Sash } from './git/Sash'
@@ -154,7 +155,10 @@ export function GitPanel({
   // git repo (non-repos silently omitted). Same ordering helper the
   // explorer uses, so the two surfaces can never disagree.
   const workspaceFolders = usePreferencesStore((s) => s.workspaceFolders)
-  const workspaceRoots = useMemo(() => orderedWorkspaceRoots(directory, workspaceFolders), [directory, workspaceFolders])
+  // Mounted folders are keyed by PROJECT, so a worktree or bench tab shows the
+  // same roots as a tab in the base repo. The active directory stays primary.
+  const projectDir = useProjectDir(directory, worktree)
+  const workspaceRoots = useMemo(() => orderedWorkspaceRoots(directory, projectDir, workspaceFolders), [directory, projectDir, workspaceFolders])
   const { repos: secondaryRepos } = useWorkspaceRepos(workspaceRoots.secondary)
 
   // Diff-click override: present only when a surface router is registered

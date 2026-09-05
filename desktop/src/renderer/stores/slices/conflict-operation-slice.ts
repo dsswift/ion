@@ -1,5 +1,8 @@
 import type { StoreGet, StoreSet, State } from "../session-store-types";
 import { rInfo, rWarn } from "../../rendererLogger";
+import { resolveProjectDir } from "../../../shared/project-workspace";
+import { normalizeWorkspacePath } from "../../../shared/workspace-roots";
+import { selectProjectResolutionSources } from "../project-workspace-sources";
 
 /**
  * conflict-operation-slice — the operator's "I resolved it, carry on" and
@@ -40,18 +43,20 @@ interface ConflictOperationResult {
  *
  * `worktreeInventory` and `benchWorkspaces` are both keyed by REPO path, so a
  * refresh keyed by the conflicted directory would populate a cache under a key
- * no surface reads while leaving the real one stale. Returns null when the
- * directory belongs to no known workspace — a plain checkout has no worktree
- * surfaces to refresh, which is not a failure.
+ * no surface reads while leaving the real one stale.
+ *
+ * Resolution is the shared `resolveProjectDir` walk over those two caches, so a
+ * conflict reported for a SUBDIRECTORY of a worktree resolves to the repo too —
+ * an exact-path match missed that and refreshed nothing. `projects` is
+ * deliberately empty: only a worktree or bench has worktree surfaces to
+ * refresh, so the resolver answering the directory itself is what "belongs to
+ * no known workspace" looks like here. A plain checkout returning null is not a
+ * failure.
  */
 function resolveRepoForDirectory(directory: string, get: StoreGet): string | null {
-  for (const [repoPath, entries] of get().worktreeInventory) {
-    if (entries.some((entry) => entry.worktreePath === directory)) return repoPath;
-  }
-  for (const [repoPath, workspaces] of get().benchWorkspaces) {
-    if (workspaces.some((workspace) => workspace.benchPath === directory)) return repoPath;
-  }
-  return null;
+  const sources = selectProjectResolutionSources(get(), { projects: {} });
+  const resolved = resolveProjectDir(directory, null, sources);
+  return resolved && resolved !== normalizeWorkspacePath(directory) ? resolved : null;
 }
 
 /**

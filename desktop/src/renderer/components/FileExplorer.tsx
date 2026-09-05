@@ -7,15 +7,18 @@
  * ordering/dedupe via the shared orderedWorkspaceRoots helper the git panel
  * also consumes, so the two surfaces can never diverge.
  *
- * A no-directory tab ('~') renders nothing (no project, no workspace
- * entry). New File/Folder target the root containing the current selection
- * (default primary). Root collapse is window-local session state
+ * A no-directory tab ('~') renders nothing. Mounted folders are keyed by the
+ * PROJECT that owns the active directory (useProjectDir), so a worktree or
+ * bench tab shows the same set as a tab in the base repo.
+ *
+ * The header carries only explorer-wide actions. Creating a file or folder is
+ * a folder-scoped action and lives on the right-click menus (entry rows and
+ * root headers), where the target is explicit instead of inferred from an
+ * invisible selection. Root collapse is window-local session state
  * (fileExplorerRootCollapsed, MIRROR_LOCAL).
  */
 import React, { useState, useCallback, useMemo } from 'react'
-import {
-  X, FilePlus, FolderPlus, ArrowsClockwise, ArrowsInLineVertical, FolderSimplePlus,
-} from '@phosphor-icons/react'
+import { X, ArrowsClockwise, ArrowsInLineVertical, Folders } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
@@ -25,11 +28,17 @@ import { usePanelVerticalResize } from '../hooks/usePanelVerticalResize'
 import { FileExplorerRootSection } from './FileExplorerRootSection'
 import { ImageViewer } from './ImageViewer'
 import { orderedWorkspaceRoots } from '../../shared/workspace-roots'
+import { useProjectDir } from '../hooks/useProjectDir'
+import { Tooltip } from './git/Tooltip'
 import { rDebug, rError } from '../rendererLogger'
 
 /**
- * Header icon button (close X, New File, New Folder, Refresh, Collapse All,
- * Add Folder). Standard interactive states.
+ * Header icon button (close X, Add Folder to Workspace, Refresh, Collapse All).
+ * Standard interactive states.
+ *
+ * The label rides `<Tooltip>` rather than the HTML `title` attribute: a native
+ * tooltip renders behind the Electron overlay, so these labels were invisible
+ * in the Overlay presentation.
  */
 function ExplorerHeaderButton({
   title,
@@ -46,8 +55,9 @@ function ExplorerHeaderButton({
 }) {
   const { hover, pressed, handlers } = useInteractiveState()
   return (
+    <Tooltip text={title}>
     <button
-      title={title}
+      aria-label={title}
       onClick={onClick}
       className="ion-focusable"
       {...handlers}
@@ -66,6 +76,7 @@ function ExplorerHeaderButton({
     >
       {children}
     </button>
+    </Tooltip>
   )
 }
 
@@ -79,19 +90,17 @@ export function FileExplorer({
   const colors = useColors()
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const tabs = useSessionStore((s) => s.tabs)
-  const explorerStates = useSessionStore((s) => s.fileExplorerStates)
   const rootCollapsed = useSessionStore((s) => s.fileExplorerRootCollapsed)
   const { collapseAllExplorer, toggleFileExplorer, setExplorerRootCollapsed } = useSessionStore.getState()
   const workspaceFolders = usePreferencesStore((s) => s.workspaceFolders)
   const addWorkspaceFolder = usePreferencesStore((s) => s.addWorkspaceFolder)
   const removeWorkspaceFolder = usePreferencesStore((s) => s.removeWorkspaceFolder)
 
-  const workingDir = useMemo(() => {
-    const tab = tabs.find((t) => t.id === activeTabId)
-    return tab?.workingDirectory || null
-  }, [tabs, activeTabId])
+  const activeTab = useMemo(() => tabs.find((t) => t.id === activeTabId), [tabs, activeTabId])
+  const workingDir = activeTab?.workingDirectory || null
+  const projectDir = useProjectDir(workingDir, activeTab?.worktree)
 
-  const roots = useMemo(() => orderedWorkspaceRoots(workingDir, workspaceFolders), [workingDir, workspaceFolders])
+  const roots = useMemo(() => orderedWorkspaceRoots(workingDir, projectDir, workspaceFolders), [workingDir, projectDir, workspaceFolders])
   const allRoots = useMemo(
     () => (roots.primary ? [roots.primary, ...roots.secondary] : []),
     [roots],
@@ -101,40 +110,28 @@ export function FileExplorer({
   const [inlineCreate, setInlineCreate] = useState<{ rootDir: string; type: 'file' | 'folder'; parentDir: string; depth: number } | null>(null)
   const [refreshNonce, setRefreshNonce] = useState(0)
 
-  /** The root that owns the current selection (New File/Folder target). */
-  const selectionRoot = useMemo(() => {
-    for (const root of allRoots) {
-      if (explorerStates.get(root)?.selectedPath) return root
-    }
-    return roots.primary
-  }, [allRoots, explorerStates, roots.primary])
-
-  const startInlineCreate = useCallback(
-    (type: 'file' | 'folder') => {
-      const rootDir = selectionRoot
-      if (!rootDir) return
-      // Target the selected directory when the selection is a dir path,
-      // else the root itself. Depth is visual only; the section resolves
-      // placement by parentDir.
-      const selected = explorerStates.get(rootDir)?.selectedPath
-      const expandedPaths = explorerStates.get(rootDir)?.expandedPaths ?? new Set<string>()
-      const parentDir = selected && expandedPaths.has(selected) ? selected : rootDir
-      setInlineCreate({ rootDir, type, parentDir, depth: 0 })
-      rDebug('file-explorer', 'inline create started', { type, root: rootDir, parent: parentDir })
+  /**
+   * Both right-click menus name their target, so the explorer no longer has to
+   * infer one from the selection: the root that asked, the folder to create in,
+   * and the indent to render the input at all arrive with the request.
+   */
+  const handleRequestCreate = useCallback(
+    (rootDir: string, type: 'file' | 'folder', parentDir: string, depth: number) => {
+      setInlineCreate({ rootDir, type, parentDir, depth })
+      rDebug('file-explorer', 'inline create started', { type, root: rootDir, parent: parentDir, depth })
     },
-    [selectionRoot, explorerStates],
+    [],
   )
 
   const handleAddFolder = useCallback(() => {
-    if (!roots.primary) return
-    const primary = roots.primary
+    if (!projectDir) return
     void window.ion
       .selectDirectory()
       .then((dir) => {
-        if (dir) addWorkspaceFolder(primary, dir)
+        if (dir) addWorkspaceFolder(projectDir, dir)
       })
       .catch((err) => rError('file-explorer', 'add workspace folder failed', { error: String(err) }))
-  }, [roots.primary, addWorkspaceFolder])
+  }, [projectDir, addWorkspaceFolder])
 
   const expandedUI = usePreferencesStore((s) => s.expandedUI)
   // Declared BEFORE the early return: hooks must run on every render. The same
@@ -210,9 +207,9 @@ export function FileExplorer({
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
           {[
-            { Icon: FilePlus, title: 'New File', action: () => startInlineCreate('file') },
-            { Icon: FolderPlus, title: 'New Folder', action: () => startInlineCreate('folder') },
-            { Icon: FolderSimplePlus, title: 'Add Folder to Workspace', action: handleAddFolder },
+            // Explorer-wide only. Anything scoped to one folder is a right-click
+            // action on that folder, not a header button with an invisible target.
+            { Icon: Folders, title: 'Add Folder to Workspace', action: handleAddFolder },
             { Icon: ArrowsClockwise, title: 'Refresh', action: () => setRefreshNonce((n) => n + 1) },
             { Icon: ArrowsInLineVertical, title: 'Collapse All', action: () => allRoots.forEach((r) => collapseAllExplorer(r)) },
           ].map(({ Icon, title, action }) => (
@@ -235,9 +232,10 @@ export function FileExplorer({
             collapsed={rootCollapsed.has(root)}
             onToggleCollapsed={() => setExplorerRootCollapsed(root, !rootCollapsed.has(root))}
             onOpenImage={setImagePreview}
-            onRemoveFromWorkspace={root === primary ? undefined : () => removeWorkspaceFolder(primary, root)}
+            onRemoveFromWorkspace={root === primary || !projectDir ? undefined : () => removeWorkspaceFolder(projectDir, root)}
             inlineCreate={inlineCreate && inlineCreate.rootDir === root ? inlineCreate : null}
             onInlineCreateDone={() => setInlineCreate(null)}
+            onRequestCreate={(type, parentDir, depth) => handleRequestCreate(root, type, parentDir, depth)}
           />
         ))}
       </div>

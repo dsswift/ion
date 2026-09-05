@@ -73,10 +73,30 @@ describe('FileExplorer multi-root', () => {
     unmount()
   })
 
-  it('remove affordance exists only on secondary roots', () => {
+  it('every root carries a menu affordance, the source root included', () => {
+    // New File / New Folder left the header, so a root with no menu would have
+    // no way to create at its top level.
     const { container, unmount } = render()
     expect(container.querySelector('[aria-label="Root menu for alpha"]')).not.toBeNull()
-    expect(container.querySelector('[aria-label="Root menu for main"]')).toBeNull()
+    expect(container.querySelector('[aria-label="Root menu for main"]')).not.toBeNull()
+    unmount()
+  })
+
+  it('a worktree tab inherits its project mounted folders, staying primary', () => {
+    // The behaviour that did not exist: mounted folders are keyed by Project,
+    // so a checkout of that Project shows the same set.
+    useSessionStore.setState({
+      tabs: [{
+        id: 'tab-1',
+        workingDirectory: '/home/.ion/worktrees/main-1',
+        worktree: { repoPath: '/proj/main' },
+      }] as never,
+    })
+    const { container, unmount } = render()
+    const text = container.textContent ?? ''
+    expect(text).toContain('MAIN-1')
+    expect(text).toContain('ALPHA')
+    expect(text).toContain('ZETA')
     unmount()
   })
 
