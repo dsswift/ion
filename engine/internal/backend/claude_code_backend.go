@@ -436,34 +436,24 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 				if e.SessionID != "" {
 					sessionID = e.SessionID
 				}
-				// Delta-normalize the cost. Claude CLI reports a
-				// session-cumulative total_cost_usd; the engine wire
-				// contract (and ApiBackend) emit a per-run cost. Subtract
-				// the last known cumulative to produce a run-incremental
-				// value. Key by sessionID (the CLI's own session UUID) so
-				// each CLI session tracks independently.
+				// Turn-boundary park decision, taken BEFORE the cost baseline
+				// moves. A park suppresses this event, and this event is the
+				// only carrier of the run's cost and usage on this backend —
+				// so advancing the cumulative baseline and then dropping the
+				// event would erase the turn's spend from this run AND from
+				// every later delta, which is measured from the advanced mark.
+				// Leaving the baseline alone makes the woken run's delta span
+				// both turns. See claude_code_park.go.
+				parking, parkTasks, parkPolls := b.delegatedParkDecision(run, opts)
+
+				// Key by sessionID (the CLI's own session UUID) so each CLI
+				// session tracks independently. See normalizeRunCost for why
+				// the park decision reaches it.
 				costKey := sessionID
 				if costKey == "" {
 					costKey = opts.ConversationID
 				}
-				b.mu.Lock()
-				cumulativeCost := e.CostUsd
-				last := b.lastCumulativeCost[costKey]
-				runCost := cumulativeCost - last
-				if runCost < 0 {
-					// Should not happen; treat as full cost (new session).
-					runCost = cumulativeCost
-				}
-				b.lastCumulativeCost[costKey] = cumulativeCost
-				b.mu.Unlock()
-				e.CostUsd = runCost
-				utils.LogWithFields(utils.LevelDebug, "backend.claude_code", "cost delta", map[string]any{
-					"run_id":     run.requestID,
-					"key":        costKey,
-					"cumulative": cumulativeCost,
-					"last":       last,
-					"delta":      runCost,
-				})
+				b.normalizeRunCost(run.requestID, costKey, e, parking)
 
 				// Plan mode result handling: enrich the ExitPlanMode denial
 				// with the plan file path and, when needed, surface the
@@ -478,6 +468,22 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 				// then idles on the question and treats the next prompt as the
 				// answer. See claude_code_questions.go.
 				b.injectQuestionDenials(run, e)
+
+				// Emit the park in place of the completion. The model has
+				// finished, but the session is still waiting on background
+				// commands or polls it started; reporting completion here would
+				// let the session go idle, which is precisely how a notifying
+				// command ended up with nowhere to deliver its result. The
+				// process exit below does the terminal bookkeeping.
+				//
+				// This runs AFTER the plan-mode and question handlers above:
+				// both have side effects the park must not skip (a captured
+				// plan is emitted as its own event, and run.planCaptured must
+				// stay accurate for the woken turn).
+				if parking {
+					b.emitDelegatedPark(run, parkTasks, parkPolls)
+					continue
+				}
 			}
 			b.emit(run.requestID, ev)
 		}

@@ -416,6 +416,26 @@ type RunOptions struct {
 	// starts. The backend persists them before the provider sees the run.
 	PendingBackgroundWork []BackgroundWorkDelivery `json:"-"`
 
+	// OutstandingBackgroundTasks and OutstandingPolls report what the owning
+	// session is still waiting on, read live at the turn boundary so a backend
+	// can park the run instead of completing it.
+	//
+	// They are FUNCTIONS, not slices, for the reason the API backend's
+	// equivalent RunConfig seams are: the model starts commands DURING the run,
+	// so a set captured when the run began would miss exactly the ones that
+	// motivate the park.
+	//
+	// They live here rather than on RunConfig because RunConfig reaches only the
+	// API backend. A delegated-CLI run has no run loop and no RunConfig, and it
+	// needs the same decision — otherwise its background work is started, tracked
+	// and then abandoned when the turn ends.
+	//
+	// In-process only (json:"-"): closures never cross the wire. A nil seam means
+	// "this run has no outstanding notion" and the park never fires, which is the
+	// behavior every pre-existing consumer had.
+	OutstandingBackgroundTasks func() []string `json:"-"`
+	OutstandingPolls           func() []string `json:"-"`
+
 	// SteerDegraded marks a prompt that began as a ctx.steerSelf delivery and
 	// became a fresh prompt because the owning run was not live.
 	//
