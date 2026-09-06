@@ -145,7 +145,7 @@ export function resolvePersistedLastKnownSessionId(args: {
 }): string | undefined {
   if (args.lastKnownSessionId) return args.lastKnownSessionId;
   if (args.conversationId) return args.conversationId;
-  const hist = args.historicalSessionIds;
+  const hist = args.historicalSessionIds ?? [];
   if (hist.length > 0) return hist[hist.length - 1];
   const ids = args.instanceConversationIds;
   if (ids && ids.length > 0) return ids[ids.length - 1];

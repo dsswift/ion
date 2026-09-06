@@ -25,6 +25,7 @@ vi.mock('../../../preferences', () => ({
       '/work/alpha': { addedManually: true, lastUsedAt: 0, isDefault: true },
       '/work/beta': { addedManually: true, lastUsedAt: 0, name: 'Beta' },
     },
+    workspaceFolders: {},
     engineProfiles: [{ id: 'dev', name: 'Development', extensions: [] }],
     addProject: mocks.addProject,
     removeProject: mocks.removeProject,

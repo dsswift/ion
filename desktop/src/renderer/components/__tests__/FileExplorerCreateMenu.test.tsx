@@ -15,6 +15,7 @@ import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { useSessionStore } from '../../stores/sessionStore'
+import { makeLocalTab } from '../../stores/session-store-helpers'
 import { usePreferencesStore } from '../../preferences'
 import { FileExplorer } from '../FileExplorer'
 import { PopoverLayerProvider } from '../PopoverLayer'
@@ -38,7 +39,7 @@ beforeEach(() => {
   }
   useSessionStore.setState({
     activeTabId: 'tab-1',
-    tabs: [{ id: 'tab-1', workingDirectory: ROOT }] as never,
+    tabs: [{ ...makeLocalTab(), id: 'tab-1', workingDirectory: ROOT }] as never,
     fileExplorerRootCollapsed: new Set<string>(),
     fileExplorerStates: new Map(),
   })

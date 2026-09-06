@@ -23,6 +23,7 @@ vi.mock('fs', async (importOriginal) => {
 })
 
 vi.mock('../../settings-store', () => ({
+  SETTINGS_DIR: '/tmp/ion-stable-pairing-test',
   SETTINGS_FILE: '/tmp/fake-settings.json',
   readSettings: vi.fn(() => ({ pairedDevices: [] })),
   writeSettings: vi.fn(),

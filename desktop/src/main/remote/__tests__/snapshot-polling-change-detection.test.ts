@@ -318,6 +318,7 @@ vi.mock('../../state', () => ({
 }))
 
 vi.mock('../../settings-store', () => ({
+  SETTINGS_DIR: '/tmp/ion-snapshot-polling-change-test',
   readSettings: (...args: unknown[]) => mockReadSettings(...args),
 }))
 

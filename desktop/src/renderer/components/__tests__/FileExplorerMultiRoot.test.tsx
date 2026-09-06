@@ -9,6 +9,7 @@ import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { useSessionStore } from '../../stores/sessionStore'
+import { makeLocalTab } from '../../stores/session-store-helpers'
 import { usePreferencesStore } from '../../preferences'
 import { FileExplorer } from '../FileExplorer'
 import { PopoverLayerProvider } from '../PopoverLayer'
@@ -24,7 +25,7 @@ beforeEach(() => {
   }
   useSessionStore.setState({
     activeTabId: 'tab-1',
-    tabs: [{ id: 'tab-1', workingDirectory: '/proj/main' }] as never,
+    tabs: [{ ...makeLocalTab(), id: 'tab-1', workingDirectory: '/proj/main' }] as never,
     fileExplorerRootCollapsed: new Set<string>(),
     fileExplorerStates: new Map(),
   })
@@ -87,6 +88,7 @@ describe('FileExplorer multi-root', () => {
     // so a checkout of that Project shows the same set.
     useSessionStore.setState({
       tabs: [{
+        ...makeLocalTab(),
         id: 'tab-1',
         workingDirectory: '/home/.ion/worktrees/main-1',
         worktree: { repoPath: '/proj/main' },
@@ -113,7 +115,7 @@ describe('FileExplorer multi-root', () => {
   })
 
   it('no-directory tab renders nothing', () => {
-    useSessionStore.setState({ tabs: [{ id: 'tab-1', workingDirectory: '~' }] as never })
+    useSessionStore.setState({ tabs: [{ ...makeLocalTab(), id: 'tab-1', workingDirectory: '~' }] as never })
     const { container, unmount } = render()
     expect(container.textContent).toBe('')
     unmount()

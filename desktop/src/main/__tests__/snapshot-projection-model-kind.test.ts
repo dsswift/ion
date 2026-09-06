@@ -63,6 +63,7 @@ vi.mock('../remote/snapshot', () => ({
 }))
 
 vi.mock('../settings-store', () => ({
+  SETTINGS_DIR: '/tmp/ion-snapshot-model-kind-test',
   readSettings: (...args: any[]) => mocks.readSettingsMock(...args),
 }))
 

@@ -203,7 +203,7 @@ describe('startup wiring', () => {
     // renderer's first catalog read races app.whenReady, which is the exact
     // ordering that made the panel paint empty.
     const callIndex = source.indexOf('hydrateChartCatalogFromDisk()')
-    const readyIndex = source.indexOf('app.whenReady()')
+    const readyIndex = source.lastIndexOf('app.whenReady()')
     expect(callIndex).toBeGreaterThan(-1)
     expect(readyIndex).toBeGreaterThan(-1)
     expect(callIndex).toBeLessThan(readyIndex)

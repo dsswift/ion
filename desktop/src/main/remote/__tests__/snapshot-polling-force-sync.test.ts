@@ -82,6 +82,7 @@ vi.mock('../../theme-policy', () => ({
 }))
 
 vi.mock('../../settings-store', () => ({
+  SETTINGS_DIR: '/tmp/ion-snapshot-polling-force-test',
   readSettings: (...args: unknown[]) => mockReadSettings(...args),
   readClaudeCompat: vi.fn(() => false),
   TABS_FILE: '/tmp/ion-force-sync-test/tabs.json',

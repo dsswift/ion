@@ -73,6 +73,7 @@ vi.mock('../../../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(),
 vi.mock('../../../broadcast', () => ({ broadcast: vi.fn() }))
 vi.mock('../../../terminal-manager-instance', () => ({ terminalManager: {} }))
 vi.mock('../../../settings-store', () => ({
+  SETTINGS_DIR: '/tmp/ion-parity-test',
   readSettings: vi.fn(() => ({})),
   readClaudeCompat: vi.fn(() => false),
   TABS_FILE: '/tmp/ion-parity-test/tabs.json',
