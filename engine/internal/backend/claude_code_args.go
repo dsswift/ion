@@ -72,10 +72,23 @@ func buildClaudeArgs(opts types.RunOptions) []string {
 		permMode = opts.PermissionModeCli
 	}
 	args = append(args, "--permission-mode", permMode)
+
+	// Tool removal is now reserved for the read-only boundary. The async-mode
+	// problem it briefly also served is handled at the PreToolUse hook instead
+	// (cli_async_gate.go), which refuses the broken MODE and leaves the tool
+	// itself in the model's hands — the native tools stay available and behave
+	// the way the harness decides.
+	//
+	// Removal was the wrong instrument for that job. It is tool-level, so
+	// stripping background Bash also stripped foreground Bash, and the CLI's
+	// refusal for a removed tool is terminal-sounding and not ours to reword.
+	// Under bypassPermissions the CLI drops a disallowed tool from the advertised
+	// list entirely, which is exactly what plan mode needs and exactly what an
+	// argument-level rule must not do.
 	if opts.PlanMode {
-		// The read-only boundary: under bypassPermissions the CLI strips these
-		// from the advertised tool list, so the model cannot mutate state and
-		// never hits the interactive-approval denial that broke native plan mode.
+		utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "plan-mode spawn: removing mutating tools from the advertised set", map[string]any{
+			"tools": cliPlanModeDisallowedTools,
+		})
 		args = append(args, "--disallowedTools", strings.Join(cliPlanModeDisallowedTools, ","))
 	}
 

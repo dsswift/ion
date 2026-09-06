@@ -111,13 +111,38 @@ func (s *PermissionHookServer) UnregisterToken(token string) {
 }
 
 // GenerateSettingsJSON creates a settings file content for --settings flag.
+//
+// # The shape is load-bearing and was wrong
+//
+// Each entry under "PreToolUse" is a MATCHER GROUP, not a hook. The group names
+// which tools it applies to and carries a nested "hooks" array of the commands
+// to run:
+//
+//	"PreToolUse": [ { "matcher": "*", "hooks": [ { "type": "command", ... } ] } ]
+//
+// This function used to put "type" and "command" directly on the group, with no
+// nested array. The CLI read each group, looked for hooks to run, found none,
+// and ran nothing — so this server listened on a port that never received a
+// single request for the whole time it existed. Nothing failed and nothing was
+// logged, because there was no failure: the CLI did exactly what a group with no
+// hooks says to do. Every permission decision on a delegated-CLI run was
+// therefore never consulted.
+//
+// The matcher is "*" because this server is the permission rail for the whole
+// run, not a rule about one tool. A group scoped to a single tool would silently
+// exempt every other tool from policy.
 func (s *PermissionHookServer) GenerateSettingsJSON(token string) []byte {
 	settings := map[string]interface{}{
 		"hooks": map[string]interface{}{
 			"PreToolUse": []map[string]interface{}{
 				{
-					"type":    "command",
-					"command": fmt.Sprintf("curl -s -X POST %s -H 'Content-Type: application/json' -d @-", s.URL(token)),
+					"matcher": "*",
+					"hooks": []map[string]interface{}{
+						{
+							"type":    "command",
+							"command": fmt.Sprintf("curl -s -X POST %s -H 'Content-Type: application/json' -d @-", s.URL(token)),
+						},
+					},
 				},
 			},
 		},
@@ -192,11 +217,47 @@ func (s *PermissionHookServer) handlePreToolUse(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// Entry log. Every inbound hook request is recorded before any decision is
+	// taken, so the log answers "did the CLI call this hook at all" — a question
+	// the previous rejection-only logging could not answer, because every allow
+	// path returned silently and an absent log was indistinguishable from a
+	// subprocess that never invoked the hook.
+	utils.LogWithFields(utils.LevelDebug, "backend.permission_hook", "pre-tool-use request received", map[string]any{
+		"tool":       req.ToolName,
+		"token":      reqToken,
+		"input_keys": len(req.Input),
+	})
+
+	// Async-mode gate, ahead of policy. This is a capability refusal, not a
+	// permission decision: the mode cannot work on this backend regardless of
+	// what any rule says, and the reason names the engine tool that can do the
+	// job. See cli_async_gate.go.
+	if reason, denied := asyncModeDenial(req.ToolName, req.Input); denied {
+		s.respond(w, req.ToolName, "deny", "async mode unavailable on this backend", reason)
+		return
+	}
+
+	// Engine-bridged tools are policy-checked where they execute, in their own
+	// MCP handler (session/prompt_cli_shell_tools.go). Evaluating them here as
+	// well would put one call through two rails: on an "ask" policy the operator
+	// is prompted twice for a single command, and the audit trail records one
+	// decision twice.
+	//
+	// The handler owns the decision rather than this hook because it is the rail
+	// that still exists when this server does not — a failed settings-file write
+	// leaves the permission engine live and this hook absent. Short-circuiting
+	// AFTER the async gate above is deliberate: the gate is a capability refusal
+	// about the CLI's own tools and must keep running for every name.
+	if strings.HasPrefix(req.ToolName, permissions.EngineMcpToolPrefix) {
+		s.respond(w, req.ToolName, "allow", "engine-bridged tool: policy applied at its own handler", "")
+		return
+	}
+
 	// Check safe commands for Bash
-	if req.ToolName == "Bash" || req.ToolName == "bash" {
+	if permissions.IsBashToolName(req.ToolName) {
 		if cmd, ok := req.Input["command"].(string); ok {
 			if permissions.IsSafeBashCommand(cmd) {
-				writePermissionResponse(w, "allow")
+				s.respond(w, req.ToolName, "allow", "safe-command allowlist", "")
 				return
 			}
 		}
@@ -209,7 +270,7 @@ func (s *PermissionHookServer) handlePreToolUse(w http.ResponseWriter, r *http.R
 			Input: req.Input,
 		})
 		if result.Decision != "ask" {
-			writePermissionResponse(w, result.Decision)
+			s.respond(w, req.ToolName, result.Decision, "permission engine rule", result.Reason)
 			return
 		}
 	}
@@ -222,7 +283,7 @@ func (s *PermissionHookServer) handlePreToolUse(w http.ResponseWriter, r *http.R
 
 	if askFn == nil {
 		// No callback registered -- default allow
-		writePermissionResponse(w, "allow")
+		s.respond(w, req.ToolName, "allow", "no ask callback registered", "")
 		return
 	}
 
@@ -240,7 +301,7 @@ func (s *PermissionHookServer) handlePreToolUse(w http.ResponseWriter, r *http.R
 
 	ch := askFn(reqToken, questionID, req.ToolName, "", req.Input, options)
 	if ch == nil {
-		writePermissionResponse(w, "allow")
+		s.respond(w, req.ToolName, "allow", "ask callback declined to prompt", "")
 		return
 	}
 
@@ -275,15 +336,17 @@ func (s *PermissionHookServer) handlePreToolUse(w http.ResponseWriter, r *http.R
 	// subprocess dies and this handler unblocks.
 	select {
 	case optionID := <-ch:
-		// Map option IDs to hook decisions
-		decision := "allow"
+		// Map option IDs to hook decisions. A deny carries its reason to the
+		// model: a bare refusal says nothing about whether retrying could ever
+		// work, so the model retries it.
+		decision, reason := "allow", ""
 		switch optionID {
 		case "deny":
-			decision = "deny"
+			decision, reason = "deny", "The operator declined this call. Do not retry it; ask what to do instead."
 		case "allow", "allow_always":
 			decision = "allow"
 		}
-		writePermissionResponse(w, decision)
+		s.respond(w, req.ToolName, decision, "user decision", reason)
 	case <-r.Context().Done():
 		// Subprocess/connection gone — the run is being torn down. Do not
 		// write a decision; there is no longer anyone to receive it.
@@ -296,15 +359,54 @@ func (s *PermissionHookServer) handlePreToolUse(w http.ResponseWriter, r *http.R
 			"action":      decision,
 			"question_id": questionID,
 		})
-		writePermissionResponse(w, decision)
+		reason := ""
+		if decision == "deny" {
+			reason = "The approval request timed out with no operator response. Do not retry it immediately; say that the call needs approval."
+		}
+		s.respond(w, req.ToolName, decision, "human-wait timeout fail-action", reason)
 	}
 }
 
-func writePermissionResponse(w http.ResponseWriter, decision string) {
+// respond logs the decision and the rail that produced it, then writes the
+// response. Every terminating branch of handlePreToolUse goes through here, so
+// the log carries one line per inbound request and one per outcome — the pairing
+// that makes a hook invocation reconstructible from the log alone.
+//
+// layer names the internal rail ("safe-command allowlist", "permission engine
+// rule", "user decision", ...) and is for the operator. reason is the
+// model-facing text and travels to the CLI on the wire; it is empty for the
+// paths that have nothing useful to tell the model.
+func (s *PermissionHookServer) respond(w http.ResponseWriter, tool, decision, layer, reason string) {
+	utils.LogWithFields(utils.LevelInfo, "backend.permission_hook", "pre-tool-use decision", map[string]any{
+		"tool":     tool,
+		"decision": decision,
+		"layer":    layer,
+		"reason":   reason,
+	})
+	writePermissionResponse(w, decision, reason)
+}
+
+// writePermissionResponse encodes the CLI's PreToolUse hook response.
+//
+// permissionDecisionReason is what the CLI surfaces to the model on a deny. A
+// bare refusal with no reason just gets retried, so a deny that knows why it
+// denied says so. It is omitted entirely when empty rather than sent as "".
+func writePermissionResponse(w http.ResponseWriter, decision, reason string) {
+	hookOutput := map[string]interface{}{
+		// hookEventName is REQUIRED, not decoration. The CLI matches the
+		// hookSpecificOutput block against the event it fired for; a block
+		// without it is discarded and the tool runs as if no hook had answered.
+		// Verified against claude 2.1.259: an identical deny is honored with this
+		// field and silently ignored without it — the command executes and the
+		// model is told it succeeded.
+		"hookEventName":      "PreToolUse",
+		"permissionDecision": decision,
+	}
+	if reason != "" {
+		hookOutput["permissionDecisionReason"] = reason
+	}
 	resp := map[string]interface{}{
-		"hookSpecificOutput": map[string]interface{}{
-			"permissionDecision": decision,
-		},
+		"hookSpecificOutput": hookOutput,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
