@@ -12,8 +12,12 @@
  *
  * The conversation is the center surface; the visualizer canvas lives in
  * the right surface pane (v1: hardcoded tab — the surface-store workstream
- * makes it a real tab). Pane geometry persists as `studioLayout` via
- * useStudioLayout (one debounced write per gesture).
+ * makes it a real tab). Left-sidebar and terminal geometry persist as
+ * `studioLayout` via useStudioLayout (one debounced write per gesture); the
+ * surface pane's width persists per-conversation on the surface store
+ * instead (`SurfaceConversationPersisted.width`), since two conversations
+ * legitimately want different surface widths — `studioLayout.surfaceWidth`
+ * remains only as the default for a conversation that has never been resized.
  *
  * Overlay↔Studio parity mechanism 1: shared surfaces are the SAME component
  * reading the same store — never a bespoke Studio widget.
@@ -138,6 +142,9 @@ export function StudioShell(): React.JSX.Element {
     return () => window.ion.off(IPC.STUDIO_OPEN_WEB_APPLICATION, openWebApplication)
   }, [])
   const surfaceVisible = useSurfaceStore((s) => s.visible);
+  // Per-conversation width, or null when this conversation has never been
+  // resized — falls back to the global default below.
+  const conversationSurfaceWidth = useSurfaceStore((s) => s.surfaceWidth);
   const startupReady = useStudioBootstrap(hydrated);
   const closeIntent = useSessionStore((s) => s.closeIntent);
   const settingsOpen = useSessionStore((s) => s.settingsOpen);
@@ -173,7 +180,7 @@ export function StudioShell(): React.JSX.Element {
     leftRequested: requestedLeftVisible,
     surfaceRequested: surfaceVisible,
     preferredLeftWidth: GIT_PANEL_WIDTH,
-    preferredSurfaceWidth: liveSurfaceWidth ?? layout.surfaceWidth,
+    preferredSurfaceWidth: liveSurfaceWidth ?? conversationSurfaceWidth ?? layout.surfaceWidth,
   });
   const narrowPrimary = requestedLeftVisible && narrowPane === "left"
     ? "left"
@@ -527,7 +534,7 @@ export function StudioShell(): React.JSX.Element {
               onLiveResize={setLiveSurfaceWidth}
               onCommitWidth={(w) => {
                 setLiveSurfaceWidth(null);
-                patch({ surfaceWidth: w });
+                useSurfaceStore.getState().setWidth(w);
               }}
               onClose={() => useSurfaceStore.getState().setVisible(false)}
               onAgentClick={onAgentClick}

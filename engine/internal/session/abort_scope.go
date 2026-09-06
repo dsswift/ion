@@ -127,6 +127,16 @@ func (m *Manager) SendAbortScoped(key string, scope AbortScope) {
 	// unwinds. Set under the same lock as the requestID read so the marker
 	// and the run it names cannot drift. Cleared by handleRunExit (or by the
 	// next orchestrator-scoped abort, which overwrites it with its own rid).
+	// Record the operator's stop against the run it cancels. handleRunExit
+	// consumes this to write the durable abort marker; recording it here is
+	// what distinguishes an operator stop from a cancel that came from inside
+	// the run, which are indistinguishable at run exit.
+	if rid != "" {
+		s.operatorAbortRunID = rid
+		s.operatorAbortScope = scope
+	} else {
+		utils.LogWithFields(utils.LevelWarn, "session", "sendabort: no run to record operator stop against", map[string]any{"key": key, "abort_scope": string(scope)})
+	}
 	if scope == AbortScopeOrchestrator {
 		s.orchestratorAbortRunID = rid
 		utils.LogWithFields(utils.LevelInfo, "session", "sendabort: marking run for no-reap exit (orchestrator scope)", map[string]any{"key": key, "run_id": rid})

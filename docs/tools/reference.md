@@ -289,6 +289,44 @@ parallel scoped agents needs them and would build them identically — see
 [ADR-025](../architecture/adr/025-client-tool-gate.md) for the ownership split
 between generic worktree mechanism (engine) and the bench product (desktop).
 
+### ConversationTelemetry
+
+Ion's desktop provides `ConversationTelemetry` over the same path. It takes no
+arguments and returns measurements of the conversation records on disk: prompt
+and turn counts, clear and compaction markers, per-tool call and failure counts,
+recorded stops, steers, slash commands, plan markers, dispatch roll-ups, tokens,
+cost, and the `treePath` / `llmPath` / `memoryPath` of every conversation it
+covers. It returns no message text at any level — an agent that needs prose
+reads the returned paths.
+
+Two properties matter to a caller:
+
+- **Prompt counts span a `/clear`.** The count is taken from the tree, where a
+  clear is a boundary rather than a deletion, so it is routinely larger than
+  what the live context window holds.
+- **A steer is not a course correction.** `steerCount` measures mid-turn
+  operator additions — context missing from the opening prompt, or a task
+  appended while work was already running. Operator redirects are
+  `courseCorrections`, derived from a recorded stop followed by a fresh prompt.
+- **Models are attributed per turn, cost is not.** `modelUsage` splits assistant
+  turns and tokens by the model that served them, `models[0]` is the model the
+  conversation started on, and `modelChanges` is where it moved. `costUsd` stays
+  one number for the whole conversation, because no per-turn price is persisted
+  and splitting the total by tokens would invent a figure.
+
+The scope is fixed by where the session is working, not chosen by the model.
+Inside a registered Ion worktree the tool covers every conversation that worked
+there, ordered oldest first, capped at the most recently active with
+`totals.matchedConversations` and `totals.truncated` reporting anything left
+out. Outside a worktree it covers the calling conversation and the parent chain
+it was cleared and continued from, because a plain directory is not a work
+boundary. One tool is declared either way; only its description differs.
+
+This is desktop surface, not an engine tool: the selection rule reads the
+desktop's worktree registry. The stop records it reads are engine mechanism —
+the engine persists a cancelled run as an `aborted` tree entry (see
+[conversation storage](../architecture/conversation-storage.md)).
+
 ### Studio browser tools
 
 Ion's desktop provides browser tools over the same path when Ion Studio is the

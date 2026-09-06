@@ -19,32 +19,38 @@ describe('orderedWorkspaceRoots', () => {
   }
 
   it('resolves the active project entry: dedupe, primary excluded, sorted', () => {
-    const out = orderedWorkspaceRoots('/proj/a', map)
+    const out = orderedWorkspaceRoots('/proj/a', '/proj/a', map)
     expect(out.primary).toBe('/proj/a')
     expect(out.secondary).toEqual(['/lib/a', '/lib/z'])
   })
 
   it('per-project isolation: project A roots never leak into project B', () => {
-    const out = orderedWorkspaceRoots('/proj/b', map)
+    const out = orderedWorkspaceRoots('/proj/b', '/proj/b', map)
     expect(out.secondary).toEqual(['/other/root'])
   })
 
   it('unknown project → primary only', () => {
-    expect(orderedWorkspaceRoots('/proj/unknown', map)).toEqual({ primary: '/proj/unknown', secondary: [] })
+    expect(orderedWorkspaceRoots('/proj/unknown', '/proj/unknown', map)).toEqual({ primary: '/proj/unknown', secondary: [] })
   })
 
   it("no-directory tab ('~' or empty) → primary null, no roots", () => {
-    expect(orderedWorkspaceRoots('~', map)).toEqual({ primary: null, secondary: [] })
-    expect(orderedWorkspaceRoots('', map)).toEqual({ primary: null, secondary: [] })
-    expect(orderedWorkspaceRoots(null, map)).toEqual({ primary: null, secondary: [] })
+    expect(orderedWorkspaceRoots('~', '~', map)).toEqual({ primary: null, secondary: [] })
+    expect(orderedWorkspaceRoots('', '', map)).toEqual({ primary: null, secondary: [] })
+    expect(orderedWorkspaceRoots(null, null, map)).toEqual({ primary: null, secondary: [] })
   })
 
   it('trailing-slash active dir normalizes to the same project key', () => {
-    expect(orderedWorkspaceRoots('/proj/a/', map).secondary).toEqual(['/lib/a', '/lib/z'])
+    expect(orderedWorkspaceRoots('/proj/a/', '/proj/a/', map).secondary).toEqual(['/lib/a', '/lib/z'])
+  })
+
+  it('a worktree tab inherits its project entry, keeping the worktree primary', () => {
+    const out = orderedWorkspaceRoots('/home/.ion/worktrees/a-1', '/proj/a', map)
+    expect(out.primary).toBe('/home/.ion/worktrees/a-1')
+    expect(out.secondary).toEqual(['/lib/a', '/lib/z'])
   })
 
   it('relative and junk entries are dropped', () => {
-    const out = orderedWorkspaceRoots('/p', { '/p': ['relative/path', '', '/ok'] })
+    const out = orderedWorkspaceRoots('/p', '/p', { '/p': ['relative/path', '', '/ok'] })
     expect(out.secondary).toEqual(['/ok'])
   })
 })

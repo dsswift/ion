@@ -14,12 +14,12 @@ import (
 func WriteTool() *types.ToolDef {
 	return &types.ToolDef{
 		Name:        "Write",
-		Description: "Write content to a file, creating directories as needed.",
+		Description: "Write content to a file, creating directories as needed. Always emit file_path before content: content can be arbitrarily long, and a consumer streaming the call cannot name the target until file_path arrives.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"file_path": map[string]any{"type": "string", "description": "Absolute path to file"},
-				"content":   map[string]any{"type": "string", "description": "Content to write"},
+				"file_path": map[string]any{"type": "string", "description": "Absolute path to file. Emit this argument first."},
+				"content":   map[string]any{"type": "string", "description": "Content to write. Emit this argument last."},
 			},
 			"required": []string{"file_path", "content"},
 		},

@@ -55,6 +55,21 @@ final class DispatchTurnCoverageTests: XCTestCase {
             "the snapshot's single finalized message must be the one retained")
     }
 
+    func testStreamResetDropsUncommittedDispatchRows() {
+        let vm = SessionViewModel()
+        vm.handleDispatchActivity(dispatchAgentId: dispatchId, conversationId: convId, kind: "tool_start", seq: 1, ts: 10, toolName: "Read", toolId: "done", textDelta: nil, isError: false)
+        vm.handleDispatchActivity(dispatchAgentId: dispatchId, conversationId: convId, kind: "tool_end", seq: 2, ts: 20, toolName: nil, toolId: "done", textDelta: nil, isError: false)
+        vm.handleDispatchActivity(dispatchAgentId: dispatchId, conversationId: convId, kind: "text", seq: 3, ts: 30, toolName: nil, toolId: nil, textDelta: "partial", isError: false)
+        vm.handleDispatchActivity(dispatchAgentId: dispatchId, conversationId: convId, kind: "tool_start", seq: 4, ts: 40, toolName: "Write", toolId: "partial", textDelta: nil, isError: false)
+
+        vm.handleDispatchActivity(dispatchAgentId: dispatchId, conversationId: convId, kind: "stream_reset", seq: 5, resetAfterSeq: 2, ts: 50, toolName: nil, toolId: nil, textDelta: nil, isError: false)
+
+        let messages = vm.agentConversationMessages[convId] ?? []
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages.first?.toolId, "done")
+        XCTAssertEqual(messages.first?.toolStatus, .completed)
+    }
+
     /// Case (2): in-flight run whose concatenation is NOT a prefix of any
     /// snapshot assistant message survives (no false drop). The snapshot has
     /// caught up only to an earlier turn; the live run is genuinely newer.

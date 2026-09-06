@@ -59,8 +59,14 @@ const colors = {
 } as never
 
 vi.mock('../../stores/sessionStore', () => ({ useSessionStore: h.useSessionStore }))
+// The mock must expose every selector InputBar reads, not just the ones this
+// test asserts on: a selector that resolves to undefined is called as a
+// function by the component and throws before the rewind behavior under test
+// ever renders.
 vi.mock('../../stores/model-store', () => ({
-  useModelStore: (selector: (state: { findModel: () => undefined }) => unknown) => selector({ findModel: () => undefined }),
+  useModelStore: (
+    selector: (state: { findModel: () => undefined; isModelCliServed: () => boolean }) => unknown,
+  ) => selector({ findModel: () => undefined, isModelCliServed: () => false }),
 }))
 vi.mock('../../preferences', () => ({
   usePreferencesStore: (selector: (state: { bashCommandEntry: boolean; preferredModel: null }) => unknown) => selector({ bashCommandEntry: false, preferredModel: null }),

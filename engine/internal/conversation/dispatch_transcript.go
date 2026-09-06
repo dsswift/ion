@@ -92,7 +92,7 @@ func (r *DispatchTranscriptRecorder) Record(event types.NormalizedEvent) {
 		r.flushTextLocked()
 		AddAssistantMessageNoUsage(r.conv, []types.LlmContentBlock{{
 			Type: "tool_use", ID: e.ToolID, Name: e.ToolName,
-		}})
+		}}, r.model)
 		r.saveLocked("tool_start")
 	case *types.ToolResultEvent:
 		AddToolResults(r.conv, []ToolResultEntry{{
@@ -130,7 +130,7 @@ func (r *DispatchTranscriptRecorder) flushTextLocked() {
 	if r.text == "" || r.conv == nil {
 		return
 	}
-	AddAssistantMessageNoUsage(r.conv, []types.LlmContentBlock{{Type: "text", Text: r.text}})
+	AddAssistantMessageNoUsage(r.conv, []types.LlmContentBlock{{Type: "text", Text: r.text}}, r.model)
 	r.text = ""
 }
 
@@ -176,7 +176,7 @@ func MaterializeDispatchTranscript(conversationID, task, output, model string) e
 		AddUserMessage(conv, task)
 	}
 	if output != "" {
-		AddAssistantMessageNoUsage(conv, []types.LlmContentBlock{{Type: "text", Text: output}})
+		AddAssistantMessageNoUsage(conv, []types.LlmContentBlock{{Type: "text", Text: output}}, model)
 	}
 	if err := Save(conv, ""); err != nil {
 		return err

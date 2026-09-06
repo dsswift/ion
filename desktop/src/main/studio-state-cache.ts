@@ -52,7 +52,8 @@ export function studioWantsEvent(event: NormalizedEvent): boolean {
   if (event.type === "dispatch_activity") {
     return (
       event.dispatchActivityKind === "tool_start" ||
-      event.dispatchActivityKind === "tool_end"
+      event.dispatchActivityKind === "tool_end" ||
+      event.dispatchActivityKind === "stream_reset"
     );
   }
   return true;

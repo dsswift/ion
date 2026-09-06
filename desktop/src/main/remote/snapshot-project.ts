@@ -56,6 +56,7 @@ export interface RendererTabInput {
   conversationId?: string | null
   sessionIds?: string[]
   lastActivityTs?: number
+  lastMessageTs?: number
   idleSince?: number | null
   createdAt?: number
   worktree?: RemoteTabState['worktree']
@@ -161,6 +162,7 @@ export function projectRendererTab(
     conversationId: t.conversationId || undefined,
     sessionIds: t.sessionIds && t.sessionIds.length > 0 ? t.sessionIds : undefined,
     lastActivityAt: t.lastActivityTs || undefined,
+    lastMessageAt: t.lastMessageTs || undefined,
     idleSince: t.idleSince || undefined,
     createdAt: t.createdAt || undefined,
     worktree: t.worktree || undefined,

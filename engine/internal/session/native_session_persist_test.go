@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -161,6 +162,86 @@ func TestCliTurnPersistence_RestoresCrossProviderContinuity(t *testing.T) {
 	}
 }
 
+// TestPersistCliTurn_PreservesSlashCommandProvenance is the regression test
+// for the reported bug: a slash command run on a Claude Code (delegated-CLI)
+// conversation must persist the same SlashCommand/SlashArgs/SlashSource/model
+// provenance the API backend writes via AddUserMessageWithInvocation, so the
+// command pill survives a reload instead of showing the expanded template
+// body. Before the fix, persistCliTurn had no pendingCliSlashInvocation to
+// consume and always fell back to AddUserMessage/AddUserMessageWithDisplay,
+// which carry no slash fields — this test fails on that code with a nil
+// MessageData.SlashCommand and passes once the invocation is threaded through.
+func TestPersistCliTurn_PreservesSlashCommandProvenance(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	mgr := NewManager(backend.NewClaudeCodeBackend())
+	_, _ = mgr.StartSession("slash-cli-turn", defaultConfig())
+
+	const convID = "1784000000000-ffffffffffff"
+	mgr.mu.Lock()
+	s := mgr.sessions["slash-cli-turn"]
+	s.conversationID = convID
+	s.pendingCliUserTurn = "EXPANDED /recap TEMPLATE BODY for the model"
+	s.pendingCliAssistantText = "Here is your recap."
+	s.pendingCliSlashInvocation = &conversation.SlashInvocation{
+		Command:        "/recap",
+		Args:           "today",
+		Source:         "ion",
+		ModelAlias:     "fast",
+		ModelEffective: "claude-haiku-4-5-20251001",
+	}
+	mgr.mu.Unlock()
+
+	mgr.persistCliTurn("slash-cli-turn", convID)
+
+	// Pending slash invocation cleared so a later exit cannot double-stamp it.
+	mgr.mu.RLock()
+	pending := s.pendingCliSlashInvocation
+	mgr.mu.RUnlock()
+	if pending != nil {
+		t.Fatalf("pendingCliSlashInvocation not cleared: %#v", pending)
+	}
+
+	// A fresh reload from disk must show the raw invocation and its
+	// provenance, not the expanded body — this is what the pill renders.
+	conv, err := conversation.Load(convID, "")
+	if err != nil {
+		t.Fatalf("load conversation: %v", err)
+	}
+	if len(conv.Entries) < 1 {
+		t.Fatal("expected persisted user entry")
+	}
+	md, ok := conv.Entries[0].Data.(conversation.MessageData)
+	if !ok {
+		t.Fatalf("entry data is %T", conv.Entries[0].Data)
+	}
+	if md.SlashCommand != "/recap" || md.SlashArgs != "today" || md.SlashSource != "ion" {
+		t.Fatalf("slash provenance not persisted: command=%q args=%q source=%q", md.SlashCommand, md.SlashArgs, md.SlashSource)
+	}
+	if md.SlashModelAlias != "fast" || md.SlashModelEffective != "claude-haiku-4-5-20251001" {
+		t.Fatalf("slash model provenance not persisted: alias=%q effective=%q", md.SlashModelAlias, md.SlashModelEffective)
+	}
+	displayJSON, err := json.Marshal(md.Content)
+	if err != nil {
+		t.Fatalf("marshal display content: %v", err)
+	}
+	if !strings.Contains(string(displayJSON), "/recap today") || strings.Contains(string(displayJSON), "EXPANDED /recap TEMPLATE BODY") {
+		t.Fatalf("display content must be the raw invocation, not the expanded body: %s", displayJSON)
+	}
+
+	// The model-visible transcript (conv.Messages, distinct from the flattened
+	// display messages checked above) still carries the expanded body.
+	if len(conv.Messages) < 1 {
+		t.Fatal("expected an LLM message")
+	}
+	llmJSON, err := json.Marshal(conv.Messages[0].Content)
+	if err != nil {
+		t.Fatalf("marshal llm content: %v", err)
+	}
+	if !strings.Contains(string(llmJSON), "EXPANDED /recap TEMPLATE BODY") {
+		t.Fatalf("LLM-visible content missing expanded body: %s", llmJSON)
+	}
+}
+
 // TestPersistCliTurn_CreatesFileForFirstTurn verifies the first CLI turn on a
 // pre-minted conversation (no backing file yet) creates the Ion file rather
 // than dropping the turn.
@@ -183,5 +264,50 @@ func TestPersistCliTurn_CreatesFileForFirstTurn(t *testing.T) {
 	mgr.persistCliTurn("first-turn", convID)
 	if !conversation.Exists(convID, "") {
 		t.Fatal("first CLI turn did not create the Ion conversation file")
+	}
+}
+
+// TestPersistCliTurn_RecordsModelChange pins the delegated-CLI half of model
+// attribution. A CLI-served conversation runs none of the API runloop, so
+// without the SyncModel call in persistCliTurn its header keeps the first
+// run's model forever and the switch is never recorded. Revert that call and
+// this goes red on both assertions.
+func TestPersistCliTurn_RecordsModelChange(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	mgr := NewManager(backend.NewClaudeCodeBackend())
+	_, _ = mgr.StartSession("cli-model-change", defaultConfig())
+
+	const convID = "1784000000000-cccccccccccc"
+	persist := func(model, text string) {
+		mgr.mu.Lock()
+		s := mgr.sessions["cli-model-change"]
+		s.conversationID = convID
+		s.pendingCliUserTurn = text
+		s.pendingCliAssistantText = "ok"
+		s.modelMu.Lock()
+		s.lastModel = model
+		s.modelMu.Unlock()
+		mgr.mu.Unlock()
+		mgr.persistCliTurn("cli-model-change", convID)
+	}
+
+	persist("claude-fable-5-1", "first turn")
+	persist("claude-opus-5", "second turn")
+
+	conv, err := conversation.Load(convID, "")
+	if err != nil {
+		t.Fatalf("load conversation: %v", err)
+	}
+	if conv.Model != "claude-opus-5" {
+		t.Errorf("expected the header to follow the serving model, got %q", conv.Model)
+	}
+	var changes int
+	for _, entry := range conv.Entries {
+		if entry.Type == conversation.EntryModelChange {
+			changes++
+		}
+	}
+	if changes != 1 {
+		t.Fatalf("expected exactly one model_change entry, got %d", changes)
 	}
 }

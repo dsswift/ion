@@ -105,16 +105,13 @@ export type EarlyStopRequestEvent = Extract<
 // various model ids) without spinning up the bridge.
 //
 // Resolution table:
-//   setting off                              → { forceContinue: false }
-//   setting on, wouldContinue=false           → {} (no opinion)
-//   setting on, wouldContinue=true            → { continueMessage: <CC-style text> }
+//   setting off                                → { forceContinue: false }
+//   setting on, eligible=false                 → {} (mechanical stop)
+//   setting on, enabled-gate off, eligible=true → { forceContinue: true, message }
+//   setting on, wouldContinue=true             → { continueMessage: <CC-style text> }
 //
-// We deliberately do NOT set forceContinue=true on the affirmative path.
-// The engine's own merge already decided wouldContinue=true; we just
-// supply the text it needs to inject. If a future extension wants to
-// override that verdict, it does so by registering the subprocess hook
-// (which fires before this wire path) and returning ForceContinue
-// explicitly.
+// ForceContinue is needed when the engine's generic default is disabled. The
+// request still fires so this consumer can opt in without changing that default.
 export function decideEarlyStopResponse(
   event: EarlyStopRequestEvent,
   enableEarlyStopContinuation: boolean,
@@ -130,12 +127,14 @@ export function decideEarlyStopResponse(
     )
     return { forceContinue: false }
   }
-  if (!event.earlyStopWouldContinue) {
+  const shouldContinue = event.earlyStopWouldContinue || event.earlyStopEligible
+  if (!shouldContinue) {
     debug(
-      `decision: setting=on but engine wouldContinue=false → no opinion (run=${event.earlyStopRunId} turn=${event.earlyStopTurnNumber})`,
+      `decision: setting=on but limits reached → no opinion (run=${event.earlyStopRunId} turn=${event.earlyStopTurnNumber})`,
     )
     return {}
   }
+  const forceContinue = event.earlyStopWouldContinue ? undefined : true
   const pct = event.earlyStopBudget > 0
     ? Math.floor((event.earlyStopCumulativeOutput * 100) / event.earlyStopBudget)
     : 0
@@ -145,9 +144,9 @@ export function decideEarlyStopResponse(
     event.earlyStopBudget,
   )
   debug(
-    `decision: setting=on wouldContinue=true → supplying message (run=${event.earlyStopRunId} turn=${event.earlyStopTurnNumber} pct=${pct} budget=${event.earlyStopBudget} model=${event.earlyStopModel})`,
+    `decision: setting=on → continue (run=${event.earlyStopRunId} turn=${event.earlyStopTurnNumber} engine_would_continue=${event.earlyStopWouldContinue} pct=${pct} budget=${event.earlyStopBudget} model=${event.earlyStopModel})`,
   )
-  return { continueMessage: message }
+  return { forceContinue, continueMessage: message }
 }
 
 // sendEarlyStopDecisionResponse forwards a wire-protocol response to the
@@ -205,14 +204,13 @@ export function wireEarlyStopPolicy(
 ): () => void {
   const handler = (tabId: string, event: EarlyStopRequestEvent): void => {
     const settings = readSettings()
-    // Default true per SETTINGS_DEFAULTS so a fresh install gets the
-    // nudge behavior out of the box; users disable it explicitly.
-    const enabled = settings.enableEarlyStopContinuation !== false
+    // SETTINGS_DEFAULTS is false; only an explicit user opt-in enables policy.
+    const enabled = settings.enableEarlyStopContinuation === true
 
     const response = decideEarlyStopResponse(event, enabled)
     log(
       `tabId=${tabId} requestId=${event.earlyStopRequestId} ` +
-        `enabled=${enabled} wouldContinue=${event.earlyStopWouldContinue} ` +
+        `enabled=${enabled} wouldContinue=${event.earlyStopWouldContinue} eligible=${event.earlyStopEligible} ` +
         `replying: forceContinue=${response.forceContinue ?? 'nil'} ` +
         `msg_len=${(response.continueMessage ?? '').length}`,
     )

@@ -69,6 +69,7 @@ export function handleNotificationOrDispatchEvent(
     dispatchConversationId: event.dispatchConversationId,
     dispatchActivityKind: event.dispatchActivityKind,
     dispatchSeq: event.dispatchSeq,
+    dispatchResetAfterSeq: event.dispatchResetAfterSeq,
     toolName: event.toolName,
     toolId: event.toolId,
     dispatchTextDelta: event.dispatchTextDelta,

@@ -174,6 +174,24 @@ type engineSession struct {
 	// as it consumes it. Guarded by m.mu.
 	orchestratorAbortRunID string
 
+	// operatorAbortRunID and operatorAbortScope name the run the operator
+	// stopped, and the scope they stopped it with, so handleRunExit can write
+	// the durable abort marker with the scope attached.
+	//
+	// Why the marker is not written by SendAbortScoped itself. The run is still
+	// live at that moment and the backend performs its own final save when it
+	// unwinds; a load-append-save from the abort path would be overwritten by
+	// that save. handleRunExit runs after it — the same window
+	// persistTerminalDispatches already relies on — so the stop is written once,
+	// at the point where the write survives.
+	//
+	// Run-scoped and one-shot for the same reason as orchestratorAbortRunID
+	// above: handleRunExit honors it only when it names the exiting run, so a
+	// stop recorded for an earlier run can never mislabel a later cancel as
+	// operator-initiated. Guarded by m.mu.
+	operatorAbortRunID string
+	operatorAbortScope AbortScope
+
 	// rootCtx is the per-session cancellation root. Every cancellable
 	// operation spawned on behalf of this session derives its own
 	// context.Context from rootCtx — the backend run (via
@@ -219,8 +237,8 @@ type engineSession struct {
 	// emitExit → handleRunExit). A cursor is the ONLY value ever fed to a
 	// native resume (`claude --resume` / ThreadResume / session/load, via
 	// RunOptions.CliResumeSessionID), and only while its HeadEntryID still
-	// equals the conversation's LeafID — see resolveCliContinuity in
-	// native_session.go. Cursors are deliberately kept distinct from
+	// equals the conversation's continuity leaf — see resolveCliContinuity
+	// and continuityLeaf in native_session.go. Cursors are deliberately kept distinct from
 	// conversationID: conversationID is Ion's durable conversation-file
 	// identity (`{millis}-{12hex}`) and must never be overwritten with a
 	// backend-native id — doing so would break compaction, export, /clear,
@@ -259,11 +277,35 @@ type engineSession struct {
 	// pendingCliInjectionKind preserves the turn provenance for delegated-CLI
 	// persistence, matching the API backend's classified entry path.
 	pendingCliInjectionKind string
+	// pendingCliSlashInvocation carries the raw slash-command invocation
+	// (command, args, source, model provenance) for a delegated-CLI run whose
+	// prompt originated from a resolved slash command, mirroring the fields
+	// AddUserMessageWithInvocation already persists for the API backend. Nil
+	// for a plain turn. persistCliTurn consumes it to write the same
+	// SlashCommand/SlashArgs/SlashSource provenance onto the display entry, so
+	// a Claude Code-backed conversation's slash-command pill survives an
+	// engine restart instead of showing the expanded template body. Set at
+	// dispatch from opts.ResolvedSlashCommand (see prompt_dispatch.go), which
+	// is already final by the time the native-session branch runs. Guarded by
+	// m.mu.
+	pendingCliSlashInvocation *conversation.SlashInvocation
 	// pendingCliAssistantText holds the current run's final assistant text
 	// (TaskCompleteEvent.LastText, else Result), captured as the event flows
 	// through handleNormalizedEvent, for the same CLI-turn persistence.
 	// Guarded by m.mu.
 	pendingCliAssistantText string
+	// pendingCliUsage holds the provider accounting reported by the current
+	// delegated-CLI run's most recent usage event, in RAW component form
+	// (input / cache_read / cache_creation kept separate, exactly as the
+	// ApiBackend persists it). persistCliTurn stamps it on the final assistant
+	// message it writes, which is what GetContextUsage's backward scan reads as
+	// the conversation's provider baseline.
+	//
+	// Nil when the run reported no usage at all; persistCliTurn then falls back
+	// to the no-usage funnel rather than writing a zero-valued LlmUsage{},
+	// which would read as "the provider says ~0 tokens" and poison the same
+	// scan. Reset at dispatch and consumed at run exit, both under m.mu.
+	pendingCliUsage *types.LlmUsage
 	// pendingCliPlanMarker holds the plan-file write a delegated-CLI run
 	// captured natively (Claude Code's ExitPlanMode argument, codex's plan
 	// item, cursor's ACP plan update), so persistCliTurn can append the

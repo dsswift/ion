@@ -2,9 +2,11 @@
  * Workspace-folder preference actions (multi-root explorer + git panel),
  * extracted from preferences.ts to keep it under the file-size cap.
  *
- * The workspaceFolders setting is PER-PROJECT (D3): normalized primary dir
- * → extra roots. Removal also prunes the removed root's persisted
- * git-panel collapse state.
+ * The workspaceFolders setting is PER-PROJECT (D3): normalized PROJECT dir
+ * → mounted folders. Callers resolve the key with `resolveProjectDir`
+ * (shared/project-workspace.ts), so a worktree or bench checkout reads and
+ * writes its Project's list rather than one of its own. Removal also prunes
+ * the removed root's persisted git-panel collapse state.
  */
 import type { PreferencesState } from './preferences-types'
 import { saveSettings, getAllSettings } from './preferences-persist'
@@ -20,6 +22,11 @@ export function createWorkspaceFolderActions(set: Set, get: Get): Pick<Preferenc
       const primary = normalizeWorkspacePath(primaryDir)
       const entry = normalizeWorkspacePath(dir)
       if (!primary.startsWith('/') || !entry.startsWith('/') || entry === primary) return
+      // A worktree or bench is a checkout inside a Project, never a Project of
+      // its own, so it can never become a key again. Keys written before the
+      // callers resolved the Project are remapped at startup by
+      // main/workspace-folder-migration.ts.
+      if (isManagedWorkspacePath(primary)) return
       const current = get().workspaceFolders
       const list = current[primary] ?? []
       if (list.includes(entry)) return

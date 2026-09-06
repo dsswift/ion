@@ -732,6 +732,12 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				// Push the tool-result completion to the live transcript
 				// (status-only; reconcile carries the full result body).
 				activity.HandleToolEnd(e.ToolID, e.IsError)
+			case *types.StreamResetEvent:
+				// The provider abandoned this partial attempt. Forward the reset
+				// so parent clients remove tool starts that never executed.
+				activity.HandleStreamReset()
+			case *types.MessageEndEvent:
+				activity.HandleMessageEnd()
 			}
 
 			// Track plan mode state from child events.

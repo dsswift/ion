@@ -36,6 +36,64 @@ type catalogEntry struct {
 	// CostPerImage is the USD cost of one standard (1MP) image generation.
 	// See types.ModelInfo.CostPerImage.
 	CostPerImage float64 `json:"costPerImage,omitempty"`
+	// CacheTtlSeconds overrides the prompt-cache lifetime for this model. Left
+	// unset for every catalog model today: the lifetime is a property of the
+	// request the provider builds, so loadModelsFromJSON derives it from the
+	// provider rather than repeating a number in 30 catalog rows. The field
+	// exists so a user-config or gateway model that caches on a different tier
+	// can declare it.
+	CacheTtlSeconds int `json:"cacheTtlSeconds,omitempty"`
+}
+
+// DefaultCacheTtlSeconds is the prompt-cache lifetime assumed for a caching
+// model that does not publish one.
+//
+// Five minutes is the shortest lifetime the major providers offer, and every
+// one of them is at least this long: Anthropic's default "ephemeral" tier is
+// exactly 5 minutes, and OpenAI's shortest retention (in_memory) holds entries
+// for roughly 5 to 10 minutes of inactivity, with its newer models defaulting
+// to 30. So a model that declares caching and no lifetime almost certainly
+// caches for at least this long.
+//
+// Taking the SHORTEST rather than a typical value is deliberate, because the
+// two ways of being wrong are not symmetric. Assuming too long reports a dead
+// cache as live and quotes the cheap read rate for a turn that will actually
+// be billed at the write rate — understating the cost by up to 50x, which is
+// the exact defect this whole estimate exists to prevent. Assuming too short
+// reports a live cache as dead and overstates the stay-put cost, which is
+// visible, self-correcting, and never talks the operator into a switch that
+// costs more than they were told.
+//
+// A gateway that knows better should publish cacheTtlSeconds; an explicit
+// value always wins over this floor.
+const DefaultCacheTtlSeconds = 300
+
+// ResolveCacheTtlSeconds reports the prompt-cache lifetime for a model.
+//
+// An explicit declared value always wins. Otherwise a model that declares
+// caching gets DefaultCacheTtlSeconds, whatever provider serves it. This is
+// deliberately provider-blind: an enterprise gateway serves models under its
+// own provider id and frequently publishes rates without a lifetime, and every
+// such model previously resolved to zero. Consumers read zero as "no declared
+// lifetime" and cannot tell a live prompt cache from an expired one, so they
+// are forced to hedge instead of pricing the turn — for exactly the models an
+// enterprise operator runs all day.
+//
+// supportsCaching is still honored: a model that says it does not cache has no
+// lifetime, and inventing one would claim a cache that is never written.
+func ResolveCacheTtlSeconds(supportsCaching bool, explicit int) int {
+	if explicit > 0 {
+		return explicit
+	}
+	if !supportsCaching {
+		return 0
+	}
+	return DefaultCacheTtlSeconds
+}
+
+// catalogCacheTtlSeconds resolves the lifetime for a catalog entry.
+func catalogCacheTtlSeconds(e catalogEntry) int {
+	return ResolveCacheTtlSeconds(e.SupportsCaching, e.CacheTtlSeconds)
 }
 
 // MergeModelInfo overlays user-config fields onto a catalog (base) entry.
@@ -66,6 +124,12 @@ func MergeModelInfo(base, user types.ModelInfo) types.ModelInfo {
 	}
 	if user.CostPer1kCacheRead != 0 {
 		merged.CostPer1kCacheRead = user.CostPer1kCacheRead
+	}
+	// Cache lifetime: non-zero user value wins (additive, matches the rule
+	// above). Lets a user-config model declare a different cache tier than the
+	// one its provider defaults to.
+	if user.CacheTtlSeconds != 0 {
+		merged.CacheTtlSeconds = user.CacheTtlSeconds
 	}
 	// MaxOutputTokens: non-zero user value wins (additive, matches the rule
 	// above). Lets a custom/user-config model declare its own output cap.
@@ -131,6 +195,7 @@ func loadModelsFromJSON(data []byte) error {
 			CostPer1kCacheCreation: e.CostPer1kCacheCreation,
 			CostPer1kCacheRead:     e.CostPer1kCacheRead,
 			SupportsCaching:        e.SupportsCaching,
+			CacheTtlSeconds:        catalogCacheTtlSeconds(e),
 			SupportsThinking:       e.SupportsThinking,
 			SupportsImages:         e.SupportsImages,
 			MaxOutputTokens:        e.MaxOutputTokens,

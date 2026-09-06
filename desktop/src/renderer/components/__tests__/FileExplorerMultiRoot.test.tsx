@@ -9,6 +9,7 @@ import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { useSessionStore } from '../../stores/sessionStore'
+import { makeLocalTab } from '../../stores/session-store-helpers'
 import { usePreferencesStore } from '../../preferences'
 import { FileExplorer } from '../FileExplorer'
 import { PopoverLayerProvider } from '../PopoverLayer'
@@ -24,7 +25,7 @@ beforeEach(() => {
   }
   useSessionStore.setState({
     activeTabId: 'tab-1',
-    tabs: [{ id: 'tab-1', workingDirectory: '/proj/main' }] as never,
+    tabs: [{ ...makeLocalTab(), id: 'tab-1', workingDirectory: '/proj/main' }] as never,
     fileExplorerRootCollapsed: new Set<string>(),
     fileExplorerStates: new Map(),
   })
@@ -73,10 +74,31 @@ describe('FileExplorer multi-root', () => {
     unmount()
   })
 
-  it('remove affordance exists only on secondary roots', () => {
+  it('every root carries a menu affordance, the source root included', () => {
+    // New File / New Folder left the header, so a root with no menu would have
+    // no way to create at its top level.
     const { container, unmount } = render()
     expect(container.querySelector('[aria-label="Root menu for alpha"]')).not.toBeNull()
-    expect(container.querySelector('[aria-label="Root menu for main"]')).toBeNull()
+    expect(container.querySelector('[aria-label="Root menu for main"]')).not.toBeNull()
+    unmount()
+  })
+
+  it('a worktree tab inherits its project mounted folders, staying primary', () => {
+    // The behaviour that did not exist: mounted folders are keyed by Project,
+    // so a checkout of that Project shows the same set.
+    useSessionStore.setState({
+      tabs: [{
+        ...makeLocalTab(),
+        id: 'tab-1',
+        workingDirectory: '/home/.ion/worktrees/main-1',
+        worktree: { repoPath: '/proj/main' },
+      }] as never,
+    })
+    const { container, unmount } = render()
+    const text = container.textContent ?? ''
+    expect(text).toContain('MAIN-1')
+    expect(text).toContain('ALPHA')
+    expect(text).toContain('ZETA')
     unmount()
   })
 
@@ -93,7 +115,7 @@ describe('FileExplorer multi-root', () => {
   })
 
   it('no-directory tab renders nothing', () => {
-    useSessionStore.setState({ tabs: [{ id: 'tab-1', workingDirectory: '~' }] as never })
+    useSessionStore.setState({ tabs: [{ ...makeLocalTab(), id: 'tab-1', workingDirectory: '~' }] as never })
     const { container, unmount } = render()
     expect(container.textContent).toBe('')
     unmount()

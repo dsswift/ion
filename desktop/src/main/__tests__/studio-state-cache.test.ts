@@ -120,7 +120,12 @@ describe("studio-state-cache", () => {
       dispatchActivityKind: "text",
       dispatchTextDelta: "x",
     } as unknown as NormalizedEvent;
+    const reset = {
+      ...base,
+      dispatchActivityKind: "stream_reset",
+    } as unknown as NormalizedEvent;
     expect(studioWantsEvent(toolStart)).toBe(true);
+    expect(studioWantsEvent(reset)).toBe(true);
     expect(studioWantsEvent(text)).toBe(false);
     updateStudioCache("tab1", toolStart);
     expect(getStudioState("tab1").events).toHaveLength(0);

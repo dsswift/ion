@@ -2,6 +2,31 @@
   "version": 1,
   "terms": [
     {
+      "id": "abort-marker",
+      "term": "Abort Marker",
+      "definition": "The conversation tree entry that records a cancelled run. It names the run, whether the operator or the engine cancelled it, the abort scope, and the exit signal. Without it a cancelled run and a completed run are the same file on disk.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "EntryAborted",
+          "path": "engine/internal/conversation/conversation.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func AppendAbortMarker",
+          "path": "engine/internal/conversation/abort_marker.go"
+        }
+      ]
+    },
+    {
       "id": "agent",
       "term": "Agent",
       "definition": "One named actor that runs a prompt loop with its own model, tools, and system prompt. The root agent is the conversation itself. A sub-agent is an agent that the root agent or another agent starts.",
@@ -766,6 +791,38 @@
       "notes": "Honest mismatch: iOS has a named ConversationStatusBar view. The Desktop client has no component of that name and places the same controls inside the Input Bar, split across the StatusBar* control files. The name is canonical for the concept, not yet for a shared Desktop symbol."
     },
     {
+      "id": "conversation-telemetry",
+      "term": "Conversation Telemetry",
+      "definition": "The desktop client tool that measures conversation records on disk and returns counts, timestamps, cost, and file paths, never message text. Its scope follows the session's working directory: every conversation in a registered worktree, or the calling conversation and the chain it was cleared and continued from.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "conversationTelemetryTool",
+          "path": "desktop/src/main/telemetry/conversation-telemetry-tool.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "selectConversations",
+          "path": "desktop/src/main/telemetry/conversation-telemetry-select.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "doc",
+          "language": "markdown",
+          "symbol": "ConversationTelemetry",
+          "path": "docs/tools/reference.md"
+        }
+      ]
+    },
+    {
       "id": "conversation-terminal-panel",
       "term": "Conversation Terminal Panel",
       "definition": "The per-conversation terminal panel shared by the Overlay and Studio presentations. Both presentations show the same terminal tabs and attach to the same main-owned PTYs.",
@@ -1172,6 +1229,38 @@
           "language": "go",
           "symbol": "type Server struct",
           "path": "engine/internal/server/server.go"
+        }
+      ]
+    },
+    {
+      "id": "explorer-tree-state",
+      "term": "Explorer Tree State",
+      "definition": "Which folders are expanded, which root sections are folded shut, and which row is selected in the file explorer. Keyed by absolute root directory, owned by the desktop main process, shared by the Overlay and the Studio, and persisted apart from settings. Expansion and folded roots survive a relaunch; the selected row is shared live only.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "ExplorerStateSnapshot",
+          "path": "desktop/src/shared/explorer-state.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "loadExplorerState",
+          "path": "desktop/src/main/explorer-state-store.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "setupExplorerStateSync",
+          "path": "desktop/src/renderer/stores/explorer-state-sync.ts"
         }
       ]
     },
@@ -1751,6 +1840,95 @@
       "notes": "The default retains the serving model after history exists. Consumers can override the policy per configuration, request, or hook."
     },
     {
+      "id": "model-change-marker",
+      "term": "Model Change Marker",
+      "definition": "The conversation tree entry that records a run serving the conversation on a different model than the previous run did. It names the new model and the previous one. The conversation header carries only the most recent model, so this entry chain is what recovers where the work started and where it moved.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "EntryModelChange",
+          "path": "engine/internal/conversation/conversation.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func SyncModel",
+          "path": "engine/internal/conversation/model_sync.go"
+        }
+      ]
+    },
+    {
+      "id": "mounted-folder",
+      "term": "Mounted Folder",
+      "definition": "An additional directory a Project mounts, browsable and editable beside the source directory in the file explorer and the git panel, and inherited by every checkout of that Project.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "workspace folder"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "ProjectFoldersSection",
+          "path": "desktop/src/renderer/components/settings/ProjectFoldersSection.tsx"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "createWorkspaceFolderActions",
+          "path": "desktop/src/renderer/preferences-workspace.ts"
+        }
+      ]
+    },
+    {
+      "id": "native-session-compaction",
+      "term": "Native Session Compaction",
+      "definition": "A delegated CLI compacting its own native session. Distinct from Compaction: Ion's transcript is the source of truth and the native session is a per-provider cache over it, so nothing leaves the Ion conversation and the context path is not truncated.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "compact boundary",
+        "provider-side compaction"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type NativeCompactionEvent struct",
+          "path": "engine/internal/types/normalized_event.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "EntryNativeCompaction",
+          "path": "engine/internal/conversation/conversation.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function buildNativeCompactionMarkerContent",
+          "path": "desktop/src/shared/compaction-marker.ts"
+        }
+      ]
+    },
+    {
       "id": "new-conversation-picker",
       "term": "New Conversation Picker",
       "definition": "The single entry point that starts a conversation. Normal creation selects a Project and an Engine profile. Explicit worktree creation also selects a source branch.",
@@ -2030,6 +2208,31 @@
           "language": "go",
           "symbol": "func (m *Manager) startPoll",
           "path": "engine/internal/session/poll_driver.go"
+        }
+      ]
+    },
+    {
+      "id": "project-workspace",
+      "term": "Project Workspace",
+      "definition": "A Project's source directory together with its mounted folders. Every checkout of that Project — the base repo, each worktree, each bench — renders the same set, because the mounted-folder setting is keyed by the Project rather than by the active directory.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "resolveProjectDir",
+          "path": "desktop/src/shared/project-workspace.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "orderedWorkspaceRoots",
+          "path": "desktop/src/shared/workspace-roots.ts"
         }
       ]
     },

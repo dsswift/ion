@@ -373,6 +373,20 @@ export type EngineEvent =
       runId?: string;
     }
   | { type: "engine_stream_reset" }
+  // engine_native_compaction fires when a DELEGATED CLI compacts its own
+  // native session. It is NOT engine_compacting: that reports the engine
+  // compacting this conversation, which removes messages from it. This
+  // reports a provider-side cache eviction over a transcript Ion still holds
+  // in full, so nothing was lost and nothing must be rendered as lost. Every
+  // field is the provider's own reporting and is not comparable to the
+  // context figures on engine_status.
+  | {
+      type: "engine_native_compaction";
+      nativeCompactionTrigger?: string;
+      nativeCompactionPreTokens?: number;
+      nativeCompactionMessagesSummarized?: number;
+      nativeCompactionDurationMs?: number;
+    }
   | {
       type: "engine_compacting";
       active: boolean;

@@ -69,6 +69,7 @@ vi.mock('../terminal-manager-instance', () => ({
 }))
 
 vi.mock('../settings-store', () => ({
+  SETTINGS_DIR: '/tmp/ion-remote-wire-merge-test',
   readSettings: (...args: any[]) => mocks.readSettingsMock(...args),
   readClaudeCompat: vi.fn().mockReturnValue(false),
 }))

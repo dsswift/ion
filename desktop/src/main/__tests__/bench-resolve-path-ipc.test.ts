@@ -13,6 +13,7 @@ vi.mock('../logger', () => ({ log: vi.fn(), warn: vi.fn(), error: vi.fn(), debug
 
 const handlers = new Map<string, (event: unknown, args: unknown) => unknown>()
 vi.mock('electron', () => ({
+  app: { commandLine: {} },
   ipcMain: {
     handle: (channel: string, fn: (event: unknown, args: unknown) => unknown) => {
       handlers.set(channel, fn)

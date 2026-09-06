@@ -21,6 +21,7 @@
  *   same conversation continues in a clean isolated tree with no re-priming.
  */
 import { mkdirSync, readdirSync, rmSync } from "fs";
+import { forgetExplorerStateForDirectories } from "../explorer-state-cleanup";
 import { randomBytes } from "crypto";
 import { homedir } from "os";
 import { basename, join } from "path";
@@ -320,6 +321,15 @@ export async function retireWorktreeUnqueued(
     operation: "retire",
   });
   if (!removal.ok) return removal;
+
+  // The checkout is gone, so every folder the explorer remembered as expanded
+  // inside it now names a path that does not exist. Forgetting them here — and
+  // in the bench directories the disenrollment pruned — is what keeps the
+  // persisted tree state from accumulating dead checkouts.
+  forgetExplorerStateForDirectories([
+    worktreePath,
+    ...(removal.prunedBenchPaths ?? []),
+  ]);
 
   log("retire: done", {
     worktree_path: worktreePath,

@@ -70,6 +70,13 @@ function updateCache(result: { models: any[]; providers: any[] }): void {
     costPer1kInput: m.costPer1kInput,
     costPer1kCacheCreation: m.costPer1kCacheCreation,
     costPer1kCacheRead: m.costPer1kCacheRead,
+    // Whether the model caches at all, and for how long an entry stays
+    // readable. Both are needed to price the "stay on this model" side of a
+    // switch honestly: past the lifetime the next turn re-writes the whole
+    // prompt at the creation rate, so quoting the read rate there understates
+    // the cost by the full creation-to-read ratio.
+    supportsCaching: m.supportsCaching,
+    cacheTtlSeconds: m.cacheTtlSeconds,
   }))
   modelCache.lastFetched = Date.now()
 }

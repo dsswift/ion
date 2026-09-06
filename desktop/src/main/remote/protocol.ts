@@ -52,7 +52,7 @@ export interface RemoteProject {
 export type RemoteEvent =
   | RemoteWorktreeEvent
   | RemoteQuestionsEvent
-  | { type: 'desktop_snapshot'; tabs: RemoteTabState[]; projects?: RemoteProject[]; worktreeStates?: RemoteWorktreeState[]; settledTabs?: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; providerLabel: string; label: string; contextWindow: number; maxOutputTokens?: number; effectiveContextLimit?: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[]; modelKind?: string; isCustom?: boolean; costPer1kInput?: number; costPer1kCacheCreation?: number; costPer1kCacheRead?: number }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; producer?: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
+  | { type: 'desktop_snapshot'; tabs: RemoteTabState[]; projects?: RemoteProject[]; worktreeStates?: RemoteWorktreeState[]; settledTabs?: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; providerLabel: string; label: string; contextWindow: number; maxOutputTokens?: number; effectiveContextLimit?: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[]; modelKind?: string; isCustom?: boolean; costPer1kInput?: number; costPer1kCacheCreation?: number; costPer1kCacheRead?: number; supportsCaching?: boolean; cacheTtlSeconds?: number }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; producer?: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
   | { type: 'desktop_resource_content'; resourceId: string; kind: string; producer?: string; content: string }
   // `clientCmdId` echoes the id the iOS client attached to `desktop_create_tab`
   // / `desktop_create_terminal_tab` so the client's confirm-or-resend tracker
@@ -219,7 +219,7 @@ export type RemoteEvent =
   // The unified response is desktop_conversation_history for every tab.
   | { type: 'desktop_agent_conversation_history'; agentName: string; conversationId?: string; messages: Array<{ id: string; role: string; content: string; toolName?: string; toolId?: string; toolStatus?: string; timestamp: number }> }
   // desktop_dispatch_activity streams a running dispatched agent's intra-turn
-  // activity (tool start/end, streamed text) to iOS. Forwarded generically from
+  // activity (tool start/end, stream reset, streamed text) to iOS. Forwarded generically from
   // the engine's engine_dispatch_activity via engineToWireType (event-wiring.ts);
   // the engine field names are carried through verbatim by the `{...event}`
   // spread. INCREMENTAL/append-by-key — the client folds it into the per-dispatch
@@ -227,7 +227,7 @@ export type RemoteEvent =
   // toolId and streaming text by dispatchSeq. It must NOT be appended to the main
   // conversation message stream (that surface is desktop_text_delta /
   // desktop_tool_start). The file-backed reconcile is the snapshot authority.
-  | { type: 'desktop_dispatch_activity'; tabId: string; instanceId?: string | null; dispatchAgentId: string; dispatchConversationId: string; dispatchActivityKind: 'text' | 'tool_start' | 'tool_end'; dispatchSeq: number; toolName?: string; toolId?: string; dispatchTextDelta?: string; dispatchToolIsError?: boolean; dispatchActivityTs?: number }
+  | { type: 'desktop_dispatch_activity'; tabId: string; instanceId?: string | null; dispatchAgentId: string; dispatchConversationId: string; dispatchActivityKind: 'text' | 'tool_start' | 'tool_end' | 'stream_reset'; dispatchSeq: number; dispatchResetAfterSeq?: number; toolName?: string; toolId?: string; dispatchTextDelta?: string; dispatchToolIsError?: boolean; dispatchActivityTs?: number }
   // input_prefill seeds a remote client's input box with text (e.g. the
   // rewound user message after a rewind). `instanceId` is set when the
   // prefill targets a specific engine instance's draft (desktop_engine_rewind);

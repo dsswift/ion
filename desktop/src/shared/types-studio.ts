@@ -188,7 +188,12 @@ export type StudioSidebarView = "inbox" | "explorer" | "git";
 export interface StudioLayout {
   leftSidebarVisible: boolean;
   leftSidebarView: StudioSidebarView;
-  /** 320..1400 */
+  /**
+   * 320..1400. The DEFAULT surface panel width for a conversation that has
+   * never been resized. A conversation's own width, once set, is persisted
+   * per-conversation on `SurfaceConversationPersisted.width` (studio-surface-types.ts)
+   * and overrides this default — see StudioShell's surface width wiring.
+   */
   surfaceWidth: number;
   /** 120..800 */
   terminalHeight: number;

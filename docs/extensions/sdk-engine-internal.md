@@ -234,11 +234,11 @@ fires only on confirmed transitions) and the *workflow* event
 **Early-stop continuation hooks:**
 
 ```go
-// Fired after the model emits end_turn / stop, when the engine has
-// detected the run is below the configured token budget and is
-// considering whether to nudge the model to keep working. Per-field
-// last-non-nil-across-hosts wins. Returning ContinueMessage="" lets the
-// engine fall through to the wire-protocol round trip (see below).
+// Fired after the model emits end_turn / stop. Eligible reports whether
+// the mechanical threshold, cap, and diminishing-returns safeguards permit
+// another turn before the configured enabled gate. Per-field last-non-nil-
+// across-hosts wins. Returning ContinueMessage="" lets the engine fall through
+// to the wire-protocol round trip (see below).
 sdk.FireBeforeEarlyStopDecision(ctx, EarlyStopDecisionInfo{
     RunID:                  "...",
     Model:                  "...",
@@ -246,7 +246,8 @@ sdk.FireBeforeEarlyStopDecision(ctx, EarlyStopDecisionInfo{
     CumulativeOutputTokens: 7200,
     Budget:                 8000,
     ThresholdPct:           90,
-    WouldContinue:          true,
+    WouldContinue:          false,
+    Eligible:               true,
 })
 // returns *EarlyStopDecisionResult (or nil for "no opinion")
 

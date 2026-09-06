@@ -239,6 +239,19 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			PlanModeSlug:     slug,
 		}
 
+	case *types.NativeCompactionEvent:
+		// A delegated CLI compacted its own native session. Forwarded verbatim;
+		// the engine forms no opinion about what a consumer should do with it,
+		// and deliberately does not also mutate stream content or synthesise a
+		// system message — the typed event is the whole signalling obligation.
+		return types.EngineEvent{
+			Type:                               "engine_native_compaction",
+			NativeCompactionTrigger:            e.Trigger,
+			NativeCompactionPreTokens:          e.PreTokens,
+			NativeCompactionMessagesSummarized: e.MessagesSummarized,
+			NativeCompactionDurationMs:         e.DurationMs,
+		}
+
 	case *types.PlanFileWrittenEvent:
 		// Emitted when a Write/Edit landed on the canonical plan file. Same
 		// slug-fallback semantics as PlanModeChangedEvent so consumers always

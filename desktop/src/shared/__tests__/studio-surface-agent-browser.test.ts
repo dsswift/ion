@@ -72,13 +72,13 @@ describe('agent-linked browser pointer', () => {
 
   it('round-trips the pointer and drops it when its tab is gone', () => {
     const kept = serializeSurface(['plan'], null, {
-      alpha: { tabs: [browser('b1'), browser('b2')], activeTabId: null, visible: false, agentBrowserInstanceId: 'b2' },
+      alpha: { tabs: [browser('b1'), browser('b2')], activeTabId: null, visible: false, width: null, agentBrowserInstanceId: 'b2' },
     })
     expect(kept.conversations.alpha?.agentBrowserInstanceId).toBe('b2')
     expect(parseSurfacePersisted(JSON.parse(JSON.stringify(kept)))).toEqual(kept)
 
     const dropped = serializeSurface(['plan'], null, {
-      alpha: { tabs: [browser('b1')], activeTabId: null, visible: false, agentBrowserInstanceId: 'vanished' },
+      alpha: { tabs: [browser('b1')], activeTabId: null, visible: false, width: null, agentBrowserInstanceId: 'vanished' },
     })
     expect(dropped.conversations.alpha?.agentBrowserInstanceId).toBeNull()
   })
@@ -94,7 +94,7 @@ describe('browser emulation persistence', () => {
 
   it('round-trips a browser emulation state', () => {
     const persisted = serializeSurface(['plan'], null, {
-      alpha: { tabs: [emulated], activeTabId: null, visible: false, agentBrowserInstanceId: 'b1' },
+      alpha: { tabs: [emulated], activeTabId: null, visible: false, width: null, agentBrowserInstanceId: 'b1' },
     })
     expect(parseSurfacePersisted(JSON.parse(JSON.stringify(persisted)))).toEqual(persisted)
   })

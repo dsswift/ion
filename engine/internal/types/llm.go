@@ -337,8 +337,15 @@ type ModelInfo struct {
 	// do not yet carry explicit pricing.
 	CostPer1kCacheRead float64 `json:"costPer1kCacheRead,omitempty"`
 	SupportsCaching    bool    `json:"supportsCaching,omitempty"`
-	SupportsThinking   bool    `json:"supportsThinking,omitempty"`
-	SupportsImages     bool    `json:"supportsImages,omitempty"`
+	// CacheTtlSeconds is how long a prompt-cache entry stays readable after the
+	// write that created it. A cache entry is only worth its read rate while it
+	// is alive; once it expires the same tokens are billed at the cache-creation
+	// rate again, so a consumer pricing "what does my next turn cost" needs the
+	// lifetime as well as the two rates. Zero means the engine declares no
+	// lifetime for this model, and a consumer must not assume one.
+	CacheTtlSeconds  int  `json:"cacheTtlSeconds,omitempty"`
+	SupportsThinking bool `json:"supportsThinking,omitempty"`
+	SupportsImages   bool `json:"supportsImages,omitempty"`
 	// MaxOutputTokens is the model's maximum output-token capacity per response.
 	// It is the per-model source of truth the provider body-builders use to size
 	// the outbound max_tokens directive when the caller sets no explicit override.
@@ -410,8 +417,14 @@ type ModelEntry struct {
 	CostPer1kCacheCreation float64 `json:"costPer1kCacheCreation,omitempty"`
 	CostPer1kCacheRead     float64 `json:"costPer1kCacheRead,omitempty"`
 	SupportsCaching        bool    `json:"supportsCaching,omitempty"`
-	SupportsThinking       bool    `json:"supportsThinking,omitempty"`
-	SupportsImages         bool    `json:"supportsImages,omitempty"`
+	// CacheTtlSeconds is the prompt-cache lifetime the engine requests for this
+	// model. See ModelInfo.CacheTtlSeconds for the value contract: it is what
+	// lets a consumer decide whether an idle conversation's cache is still
+	// readable, which the two cache rates alone cannot answer. Additive,
+	// omitempty; zero means undeclared.
+	CacheTtlSeconds  int  `json:"cacheTtlSeconds,omitempty"`
+	SupportsThinking bool `json:"supportsThinking,omitempty"`
+	SupportsImages   bool `json:"supportsImages,omitempty"`
 	// MaxOutputTokens is the model's maximum output-token capacity per response.
 	// See ModelInfo.MaxOutputTokens for the value contract. Additive, omitempty.
 	MaxOutputTokens int `json:"maxOutputTokens,omitempty"`

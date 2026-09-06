@@ -629,7 +629,7 @@ These hooks let harness extensions take **programmatic control** of the early-st
 
 The feature ships **off by default**. To enable it, a harness must either flip `earlyStopContinue.enabled = true` in `engine.json`, pass `RunOptions.EarlyStopEnabled = &true` per dispatch, or wire a `before_early_stop_decision` handler that returns `ForceContinue: &true`. The desktop ships [`desktop/src/main/early-stop-policy.ts`](https://github.com/dsswift/ion/blob/main/desktop/src/main/early-stop-policy.ts) as a reference policy implementation — third-party harnesses can copy it verbatim or build their own.
 
-When the model emits `end_turn` / `stop` below the configured output-token target, the engine fires `before_early_stop_decision` so handlers can:
+When the model emits `end_turn` / `stop`, the engine computes `Eligible` from the configured output-token threshold, continuation cap, and diminishing-returns guard, then fires `before_early_stop_decision` so handlers can:
 
 - **Force a specific verdict** (`ForceContinue: &true | &false`) — e.g. "always continue while a `TodoWrite` is in progress" or "stop now because the user already approved the plan."
 - **Override the budget mid-run** (`OverrideBudget`) — e.g. "user just expanded scope; bump from 8k to 16k."
@@ -642,7 +642,7 @@ If no extension expressed an opinion via `before_early_stop_decision`, the engin
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
-| `before_early_stop_decision` | After model emits `end_turn` / `stop`, before the engine evaluates continuation criteria | `EarlyStopDecisionInfo` | `*EarlyStopDecisionResult` | Per-field last-non-nil-across-hosts wins. See struct docs below. |
+| `before_early_stop_decision` | After model emits `end_turn` / `stop`, after the engine computes mechanical eligibility and its tentative verdict | `EarlyStopDecisionInfo` | `*EarlyStopDecisionResult` | Per-field last-non-nil-across-hosts wins. See struct docs below. |
 | `early_stop_continued` | After a continuation has been injected, before the next turn starts | `EarlyStopContinuedInfo` | ignored | Observe only |
 
 **Execution order during an early-stop event:**
@@ -668,7 +668,8 @@ type EarlyStopDecisionInfo struct {
     ContinuationCount      int    // number of nudges already issued (0 before first)
     MaxContinuations       int    // configured cap
     LastContinuationDelta  int    // output-token delta from the previous continuation
-    WouldContinue          bool   // the engine's tentative verdict before this hook
+    WouldContinue          bool   // tentative verdict after the configured enabled gate
+    Eligible               bool   // threshold/cap/diminishing limits permit another turn
     IsSubagent             bool   // true for runs dispatched by the Agent tool
 }
 ```

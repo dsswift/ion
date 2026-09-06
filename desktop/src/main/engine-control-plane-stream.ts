@@ -63,6 +63,34 @@ export function handleStreamSignalEvent(
       } as NormalizedEvent);
       return true;
 
+    case "engine_native_compaction":
+      log('native_compaction', {
+        tab_id: tabId,
+        trigger: event.nativeCompactionTrigger ?? '',
+        pre_tokens: event.nativeCompactionPreTokens ?? 0,
+        messages_summarized: event.nativeCompactionMessagesSummarized ?? 0,
+        duration_ms: event.nativeCompactionDurationMs ?? 0,
+      });
+      // Delivered as the SAME internal 'compacting' completion the engine's
+      // own compaction uses, tagged strategy 'native'. Reuse is deliberate:
+      // every downstream surface that already renders a compaction checkpoint
+      // — the renderer marker, the iOS-bound bridge, history replay — then
+      // handles this one by construction, and the strategy tag is what lets
+      // the marker copy say the provider compacted its own context rather
+      // than implying this conversation lost history.
+      //
+      // No message counts: a native compaction removes nothing from Ion’s
+      // transcript, and reporting zeroes would render a "0 → 0 messages" line
+      // that is both meaningless and alarming.
+      ctx.emit('event', tabId, {
+        type: 'compacting',
+        active: false,
+        strategy: 'native',
+        trigger: event.nativeCompactionTrigger,
+        preTokens: event.nativeCompactionPreTokens,
+      } as NormalizedEvent);
+      return true;
+
     case "engine_tool_stalled":
       debug("tool_stalled", {
         tab_id: tabId,

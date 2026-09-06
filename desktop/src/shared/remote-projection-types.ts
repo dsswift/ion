@@ -142,6 +142,16 @@ export interface ProjectedRendererTab {
    * activity, message, or run completion. Reconnect heartbeats never advance it.
    */
   lastActivityTs: number
+  /**
+   * DERIVED turn boundary: the newest real user or assistant message, which is
+   * the last turn that reached the provider and therefore wrote the prompt
+   * cache. Kept separate from `lastActivityTs`, which deliberately folds in
+   * completion and persisted-activity clocks for sorting. A client pricing a
+   * model switch needs this one, because a prompt cache's age decides whether
+   * its cheap read rate still applies. Absent when the conversation has no
+   * message yet.
+   */
+  lastMessageTs?: number
   /** Last running→idle transition (renderer-observed, restored verbatim). */
   idleSince: number | null
   /** Immutable creation timestamp — the "Newest created" inbox sort key. */

@@ -430,6 +430,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
             "earlyStopMaxContinuations": 3,
             "earlyStopLastContinuationDelta": 500,
             "earlyStopWouldContinue": true,
+            "earlyStopEligible": true,
             "earlyStopIsSubagent": false
         }
         """.data(using: .utf8)!
@@ -450,6 +451,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
             let maxContinuations,
             let lastContinuationDelta,
             let wouldContinue,
+            let eligible,
             let isSubagent
         ) = event {
             XCTAssertEqual(tabId, "t1")
@@ -466,6 +468,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
             XCTAssertEqual(maxContinuations, 3)
             XCTAssertEqual(lastContinuationDelta, 500)
             XCTAssertTrue(wouldContinue)
+            XCTAssertTrue(eligible)
             XCTAssertFalse(isSubagent)
         } else {
             XCTFail("Expected engineEarlyStopDecisionRequest, got \(event)")
@@ -501,6 +504,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
             _, // maxContinuations
             _, // lastContinuationDelta
             let wouldContinue,
+            let eligible,
             let isSubagent
         ) = event {
             XCTAssertEqual(tabId, "t1")
@@ -512,6 +516,7 @@ final class ContractSyncEngineEventsTests: XCTestCase {
             XCTAssertEqual(cumulativeOutput, 0)
             XCTAssertEqual(budget, 0)
             XCTAssertFalse(wouldContinue)
+            XCTAssertFalse(eligible)
             XCTAssertFalse(isSubagent)
         } else {
             XCTFail("Expected engineEarlyStopDecisionRequest, got \(event)")

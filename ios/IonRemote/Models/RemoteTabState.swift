@@ -84,6 +84,13 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     /// start, completion — never reconnect/heartbeat). The desktop snapshot's
     /// sort key; iOS never sorts, so list order follows implicitly.
     var lastActivityAt: Double?
+    /// Unix ms of the newest real user or assistant message — the last turn
+    /// that actually reached the provider, and so the last turn that wrote this
+    /// conversation's prompt cache. Distinct from `lastActivityAt`, which also
+    /// folds in completion and health clocks; pricing a model switch needs the
+    /// honest turn boundary because a cache's age decides whether its cheap
+    /// read rate still applies. Nil from a desktop that predates the field.
+    var lastMessageAt: Double?
     /// Unix ms of the last running→idle transition (renderer-observed).
     var idleSince: Double?
     /// Immutable creation timestamp — the "Newest created" inbox sort key.

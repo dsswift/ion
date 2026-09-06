@@ -295,6 +295,11 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 // wire shape of `_ctx` (which keys appear, and when) can be pinned by tests
 // without a live subprocess.
 func (h *Host) buildHookEnvelope(ctx *Context, payload interface{}) map[string]interface{} {
+	// Lifecycle observers can fire outside a run. In that case, publish an empty
+	// context block rather than dereferencing a context that does not exist.
+	if ctx == nil {
+		ctx = &Context{}
+	}
 	// Build the _ctx metadata in a locally-typed map so we never repeat an
 	// inline type assertion on wrapped["_ctx"] (which errcheck flags and which
 	// would panic if the shape ever drifted).

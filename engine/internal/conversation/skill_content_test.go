@@ -9,7 +9,7 @@ import (
 
 func TestAddToolResultsPersistsSkillBodyOutsideToolResult(t *testing.T) {
 	conv := CreateConversation("skill-lifecycle", "", "")
-	AddAssistantMessageNoUsage(conv, []types.LlmContentBlock{{Type: "tool_use", ID: "skill-call", Name: "Skill"}})
+	AddAssistantMessageNoUsage(conv, []types.LlmContentBlock{{Type: "tool_use", ID: "skill-call", Name: "Skill"}}, "test-model")
 	AddToolResults(conv, []ToolResultEntry{{
 		ToolUseID: "skill-call", Content: "Loaded skill \"graphify\". Follow its instructions for this task.",
 		SkillInvocation: &types.SkillInvocation{Name: "graphify", Source: "/tmp/graphify/SKILL.md", Content: "full skill body", InvokedAt: 42},

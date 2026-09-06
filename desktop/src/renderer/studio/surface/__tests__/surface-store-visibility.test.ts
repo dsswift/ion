@@ -60,6 +60,7 @@ function resetStore(): void {
     currentConversationId: "tab-1",
     pendingScratchCloseId: null,
     visible: false,
+    surfaceWidth: null,
     hydrated: true,
     diffReveal: null,
   });
@@ -130,6 +131,43 @@ describe("surface-store visibility and persistence", () => {
     expect(useSurfaceStore.getState().conversations["tab-2"]?.visible).toBe(
       true,
     );
+  });
+
+  it("carries live width across a switch in keep mode", () => {
+    const store = useSurfaceStore.getState();
+    store.setWidth(340);
+    store.selectConversation("tab-2");
+    store.setWidth(900);
+    store.selectConversation("tab-1");
+    expect(useSurfaceStore.getState().surfaceWidth).toBe(900);
+  });
+
+  it("still records each conversation's width in keep mode", () => {
+    const store = useSurfaceStore.getState();
+    store.setWidth(340);
+    store.selectConversation("tab-2");
+    store.setWidth(900);
+    expect(useSurfaceStore.getState().conversations["tab-1"]?.width).toBe(
+      340,
+    );
+    expect(useSurfaceStore.getState().conversations["tab-2"]?.width).toBe(
+      900,
+    );
+  });
+
+  it("restores and saves each conversation's own width in per-conversation mode", () => {
+    // The scenario from the feature request: a thin panel in one
+    // conversation, a fully expanded one in another, remembered separately.
+    preferences.studioSurfaceSwitchMode = "per-conversation";
+    const store = useSurfaceStore.getState();
+    store.setWidth(340);
+    store.selectConversation("tab-2");
+    expect(useSurfaceStore.getState().surfaceWidth).toBe(null);
+    store.setWidth(1200);
+    store.selectConversation("tab-1");
+    expect(useSurfaceStore.getState().surfaceWidth).toBe(340);
+    store.selectConversation("tab-2");
+    expect(useSurfaceStore.getState().surfaceWidth).toBe(1200);
   });
 
   it("persists an explicitly selected browser session mode", () => {

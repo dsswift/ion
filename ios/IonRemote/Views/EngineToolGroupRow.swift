@@ -15,10 +15,9 @@ func toolDescriptionText(name: String?, input: String?) -> String? {
         }
         json = parsed
     } catch {
-        DiagnosticLog.log("tool input JSON decode failed", tag: "view.tool", level: .warn, fields: [
-            "tool": name,
-            "error": String(describing: error)
-        ])
+        // Arguments stream incrementally, so incomplete JSON is the normal state
+        // of a running call rather than a failure. The row still names the tool;
+        // its target appears once that key arrives.
         return nil
     }
 

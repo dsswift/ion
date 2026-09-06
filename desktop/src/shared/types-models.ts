@@ -19,6 +19,15 @@ export interface ModelEntry {
   /** Explicit prompt-cache read price per 1k input tokens, when published. */
   costPer1kCacheRead?: number
   supportsCaching?: boolean
+  /**
+   * Prompt-cache lifetime in seconds, as declared by the engine for this model
+   * (mirrors Go ModelEntry.CacheTtlSeconds). A cached prompt is only billable
+   * at the cheap read rate for this long after the write that created it, so
+   * anything pricing a conversation's next turn needs the lifetime as well as
+   * the rates. Absent means the engine declared none; clients must not
+   * substitute a default.
+   */
+  cacheTtlSeconds?: number
   supportsThinking?: boolean
   supportsImages?: boolean
   /**
@@ -112,6 +121,19 @@ export interface ProviderEntry {
   backend?: string
   /** Delegated-CLI install/auth status; present only for providers with a CLI backend option. */
   cli?: ProviderCliStatus
+}
+
+/**
+ * Run backends that delegate the conversation to a CLI subprocess, which owns
+ * its own native session and performs its own compaction. The engine cannot
+ * compact one of these conversations itself — it holds the transcript, but the
+ * live context belongs to the subprocess.
+ */
+export const DELEGATED_CLI_BACKENDS = new Set(['claude-code', 'codex', 'grok', 'cursor'])
+
+/** True when a provider entry routes to a delegated CLI rather than the engine. */
+export function isDelegatedCliBackend(backend: string | undefined): boolean {
+  return backend !== undefined && DELEGATED_CLI_BACKENDS.has(backend)
 }
 
 /** Response shape from the list_models engine command. */

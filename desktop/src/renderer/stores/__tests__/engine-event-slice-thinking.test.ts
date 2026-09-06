@@ -100,17 +100,19 @@ describe('WI-001 — thinking events handled by handleNormalizedEvent', () => {
     expect(msgs[0].content).toBe('hello world')
   })
 
-  it('stream_reset discards trailing assistant text via handleNormalizedEvent', () => {
+  it('stream_reset discards every uncommitted row from the abandoned attempt', () => {
     const { state, slice } = buildHarness()
-    // Seed an in-progress assistant message
     state.conversationPanes.get('tab1').instances[0].messages = [
-      { id: 'a', role: 'assistant', content: 'partial...', sealed: false, timestamp: 1 },
+      { id: 'done', role: 'tool', content: 'ok', toolName: 'Read', toolId: 'done', toolStatus: 'completed', timestamp: 1 },
+      { id: 'write-1', role: 'tool', content: '', toolName: 'Write', toolId: 'write-1', toolInput: '{"file_path":"/partial', toolStatus: 'running', timestamp: 2 },
+      { id: 'a', role: 'assistant', content: 'partial...', sealed: false, timestamp: 3 },
     ]
 
     slice.handleNormalizedEvent('tab1', { type: 'stream_reset' } as any)
 
-    // stream_reset should discard the trailing assistant text
     const msgs = messages(state)
-    expect(msgs.length).toBe(0)
+    expect(msgs).toHaveLength(1)
+    expect(msgs[0].id).toBe('done')
+    expect(state.tabs[0].currentActivity).toBe('Thinking...')
   })
 })

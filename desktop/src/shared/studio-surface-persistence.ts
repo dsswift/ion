@@ -14,9 +14,17 @@ import {
 } from './studio-surface-types'
 import { parseBrowserEmulation } from './studio-browser-types'
 import { normalizeTabs } from './studio-surface-ordering'
+import { STUDIO_LAYOUT_BOUNDS } from './types-studio'
 
 const SINGLETONS = new Set<string>(SINGLETON_ORDER)
 const PINNABLES = new Set<string>(PINNABLE_SINGLETON_IDS)
+
+/** Clamp a persisted per-conversation surface width, or null when absent/invalid. */
+function parseSurfaceWidth(raw: unknown): number | null {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null
+  const bounds = STUDIO_LAYOUT_BOUNDS.surfaceWidth
+  return Math.min(bounds.max, Math.max(bounds.min, raw))
+}
 
 type ParsedSurface = SurfacePersisted | LegacySurfacePersisted
 
@@ -109,7 +117,7 @@ function parseConversation(
   const activeTabId = typeof v.activeTabId === 'string' && selectableIds.has(v.activeTabId)
     ? v.activeTabId
     : (pinnedTabs[0] ?? tabs[0]?.id ?? notification?.id ?? null)
-  return { tabs, activeTabId, visible: v.visible, agentBrowserInstanceId }
+  return { tabs, activeTabId, visible: v.visible, width: parseSurfaceWidth(v.width), agentBrowserInstanceId }
 }
 
 function parseScratchDocument(raw: unknown): ScratchDocument | null {
@@ -240,9 +248,10 @@ export function serializeSurface(
     // not": own tabs, an open panel, a linked browser, or a pointer at
     // something other than a global pin.
     const pointsAtOwnTab = activeTabId !== null && !pinnedTabs.includes(activeTabId as PinnableSingletonId) && activeTabId !== notification?.id
-    const worthKeeping = tabs.length > 0 || state.visible || agentBrowserInstanceId !== null || pointsAtOwnTab
+    const width = parseSurfaceWidth(state.width)
+    const worthKeeping = tabs.length > 0 || state.visible || agentBrowserInstanceId !== null || pointsAtOwnTab || width !== null
     if (!worthKeeping) continue
-    serialized[tabId] = { tabs, activeTabId, visible: state.visible, agentBrowserInstanceId }
+    serialized[tabId] = { tabs, activeTabId, visible: state.visible, width, agentBrowserInstanceId }
   }
   const persistedScratchProjects: Record<string, ScratchProject> = {}
   for (const [projectKey, project] of Object.entries(scratchProjects)) {

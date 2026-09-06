@@ -162,13 +162,16 @@ func (b *ApiBackend) maybeContinueEarlyStop(
 	stopReason string,
 	turn, maxTurns int,
 ) bool {
+	// The engine default may be off, but the hook is the consumer-owned policy
+	// seam that can explicitly turn the mechanism on for this run. Do not return
+	// before calling it. The pre-hook verdict still includes the configured gate,
+	// so a no-op hook response cannot accidentally enable continuation.
 	if !cfg.enabled {
-		utils.LogWithFields(utils.LevelDebug, "backend.runloop", "earlyStop: disabled (skip)", map[string]any{
+		utils.LogWithFields(utils.LevelDebug, "backend.runloop", "earlyStop: engine gate disabled; consulting policy hook", map[string]any{
 			"run_id": run.requestID,
 			"turn":   turn,
 			"source": cfg.source,
 		})
-		return false
 	}
 
 	// Compute current delta (how much this turn produced relative to the
@@ -189,10 +192,13 @@ func (b *ApiBackend) maybeContinueEarlyStop(
 		run.lastContinuationDelta < cfg.diminishingDelta &&
 		currentDelta < cfg.diminishingDelta
 
-	// Tentative engine verdict before any harness hook gets a vote.
-	wouldContinue := pct < cfg.thresholdPct &&
+	// Mechanical eligibility is independent of the engine's default on/off gate.
+	// The hook sees this value so a consumer-owned policy can opt in while still
+	// respecting the threshold, cap, and diminishing-returns safeguards.
+	eligible := pct < cfg.thresholdPct &&
 		run.continuationCount < cfg.maxContinuations &&
 		!diminishing
+	wouldContinue := cfg.enabled && eligible
 
 	// Fire the dedicated hook. Handlers may rewrite ForceContinue,
 	// OverrideBudget, OverrideThresholdPct, or ContinueMessage. The
@@ -215,6 +221,7 @@ func (b *ApiBackend) maybeContinueEarlyStop(
 			MaxContinuations:       cfg.maxContinuations,
 			LastContinuationDelta:  run.lastContinuationDelta,
 			WouldContinue:          wouldContinue,
+			Eligible:               eligible,
 			IsSubagent:             opts.IsSubagent,
 		}
 		var result *EarlyStopDecisionResult
@@ -256,10 +263,10 @@ func (b *ApiBackend) maybeContinueEarlyStop(
 			if result.ForceContinue != nil {
 				wouldContinue = *result.ForceContinue
 			} else {
-				// No explicit force; re-evaluate against the (possibly
-				// updated) budget/threshold so a harness can effectively
-				// "open the gate" by bumping the budget alone.
-				wouldContinue = pct < effThresholdPct &&
+				// No explicit force keeps the configured enabled gate intact.
+				// Budget and threshold overrides tune an enabled mechanism;
+				// they do not silently opt a consumer into it.
+				wouldContinue = cfg.enabled && pct < effThresholdPct &&
 					run.continuationCount < cfg.maxContinuations &&
 					!diminishing
 			}
@@ -286,6 +293,13 @@ func (b *ApiBackend) maybeContinueEarlyStop(
 				"turn":              turn,
 				"pct":               pct,
 				"budget":            effBudget,
+			})
+		case !cfg.enabled:
+			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "earlyStop: policy did not enable continuation", map[string]any{
+				"run_id":   run.requestID,
+				"turn":     turn,
+				"eligible": eligible,
+				"source":   cfg.source,
 			})
 		default:
 			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "earlyStop: at/above threshold or hook vetoed", map[string]any{

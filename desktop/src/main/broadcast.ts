@@ -41,7 +41,7 @@ export function broadcast(channel: string, ...args: unknown[]): void {
       maybeBeacon(event)
     }
   } else if (
-    (channel === 'ion:tab-status-change' || channel === 'ion:enriched-error' || channel === 'ion:settings-changed' || channel === 'ion:themes-changed' || channel === 'ion:engine-reconnected' || channel === IPC.QUESTIONS_STATE || channel === IPC.DEEPLINK_CONFIRM_REQUEST || channel === IPC.DEEPLINK_CONFIRM_SETTLED || channel === IPC.UPDATE_DOWNLOADED || channel === IPC.UPDATE_PROGRESS || channel === IPC.UPDATE_STAGED || channel === IPC.UPDATE_ERROR || channel === IPC.CHART_JUMP || channel === IPC.RESOURCE_CATALOG_CHANGED) &&
+    (channel === 'ion:tab-status-change' || channel === 'ion:enriched-error' || channel === 'ion:settings-changed' || channel === 'ion:themes-changed' || channel === 'ion:engine-reconnected' || channel === IPC.QUESTIONS_STATE || channel === IPC.DEEPLINK_CONFIRM_REQUEST || channel === IPC.DEEPLINK_CONFIRM_SETTLED || channel === IPC.UPDATE_DOWNLOADED || channel === IPC.UPDATE_PROGRESS || channel === IPC.UPDATE_STAGED || channel === IPC.UPDATE_ERROR || channel === IPC.CHART_JUMP || channel === IPC.RESOURCE_CATALOG_CHANGED || channel === IPC.EXPLORER_STATE_CHANGED) &&
     state.studioWindow &&
     !state.studioWindow.isDestroyed()
   ) {
@@ -60,6 +60,10 @@ export function broadcast(channel: string, ...args: unknown[]): void {
     // surface mounted in both presentations. A restore announcement that
     // reached only the Overlay would leave the Studio panel waiting for a
     // later producer action — the same defect this channel was added to fix.
+    //
+    // File-explorer tree state is workbench state both presentations render
+    // from one main-owned snapshot, so the change has to reach the window the
+    // operator is actually using — the same reason a chart jump does.
     //
     // Status transitions, enriched errors, settings changes, theme-pack
     // updates, engine-reconnected signals, Questions state, and update

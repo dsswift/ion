@@ -3,6 +3,7 @@ package session
 import (
 	"fmt"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -13,6 +14,10 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
+
+// runSeq disambiguates run ids minted inside the same millisecond. See the
+// mint site in SendPrompt for why a clock-only id is not an identity.
+var runSeq atomic.Int64
 
 // SendPrompt dispatches a prompt to the session's backend run.
 func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retErr error) {
@@ -90,7 +95,14 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		return err
 	}
 
-	requestID := fmt.Sprintf("%s-%d", key, time.Now().UnixMilli())
+	// A monotonic counter, not the clock alone: two runs of one session that
+	// start inside the same millisecond would otherwise share a run id, and a
+	// run id is an identity, not a label. It keys the active-run map, scopes an
+	// abort, correlates every log line under the run, and de-duplicates the
+	// persisted stop marker — so a collision makes the second run adopt the
+	// first one's history. The counter is process-wide, which is enough:
+	// uniqueness is only required among live runs.
+	requestID := fmt.Sprintf("%s-%d-%d", key, time.Now().UnixMilli(), runSeq.Add(1))
 	// Mint this run's trace ID under the same lock hold that assigns
 	// requestID, so the two identities for one run can never disagree. Scope
 	// is the run because a trace is one logical transaction: every log line
@@ -358,6 +370,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// leave these fields empty. Reset all pending fields at dispatch so a prior
 	// turn can never leak into this one.
 	s.pendingCliAssistantText = ""
+	s.pendingCliUsage = nil
 	s.pendingCliPlanMarker = nil
 	s.cliRunFailedTerminal = false
 	if caps.ContextModel == backend.ContextModelNativeSession {
@@ -369,11 +382,29 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		// transcript verbatim, not just the final text. See
 		// cli_transcript_recorder.go.
 		s.cliTranscript = newCliTranscriptRecorder()
+		// opts.ResolvedSlashCommand is final by this point (resolveSlashIntoOpts /
+		// applyResolvedSlashToOpts and finalizeSlashModelProvenance both run
+		// earlier in this function). Stash it so persistCliTurn can stamp the
+		// same slash provenance the API backend writes via
+		// AddUserMessageWithInvocation.
+		if opts.ResolvedSlashCommand != "" {
+			s.pendingCliSlashInvocation = &conversation.SlashInvocation{
+				Command:        opts.ResolvedSlashCommand,
+				Args:           opts.ResolvedSlashArgs,
+				Source:         opts.ResolvedSlashSource,
+				ModelAlias:     opts.ResolvedSlashModelAlias,
+				ModelEffective: opts.ResolvedSlashModelEffective,
+				Frontmatter:    opts.ResolvedSlashFrontmatter,
+			}
+		} else {
+			s.pendingCliSlashInvocation = nil
+		}
 	} else {
 		s.pendingCliUserTurn = ""
 		s.pendingCliDisplayText = ""
 		s.pendingCliInjectionKind = ""
 		s.cliTranscript = nil
+		s.pendingCliSlashInvocation = nil
 	}
 
 	// G07: Enterprise model enforcement (fast check, under initial lock).
@@ -533,6 +564,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	m.wireDelegatedPermissions(key, &opts)
 	m.wireToolServer(s, key, &opts, extGroup)
 	m.wireAgentToolServer(s, key, &opts)
+	m.wireEnterPlanModeToolServer(s, key, &opts)
 	m.wirePlanModeToolServer(s, key, &opts)
 	m.wireQuestionToolServer(s, key, &opts)
 
@@ -679,8 +711,8 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 
 	// Resume-vs-bridge decision for delegated-CLI backends: resume the
 	// backend's native session when this session holds a still-valid cursor
-	// for it (HeadEntryID == the conversation's LeafID), otherwise bridge by
-	// seeding the prior conversation transcript into the prompt — otherwise
+	// for it (HeadEntryID == the conversation's continuity leaf), otherwise
+	// bridge by seeding the prior conversation transcript into the prompt —
 	// the CLI subprocess receives only the current prompt and the model
 	// loses all context (e.g. a conversation built on the ApiBackend then
 	// continued on claude-code). See native_session.go and

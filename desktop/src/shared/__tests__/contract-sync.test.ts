@@ -168,6 +168,8 @@ describe("Contract sync: EngineEvent dispatch fields", () => {
     "dispatchToolCount",
     "dispatchModel",
     "dispatchParentId",
+    "dispatchResetAfterSeq",
+    "dispatchSeq",
     "dispatchSessionId",
     "dispatchTask",
   ];
@@ -179,6 +181,11 @@ describe("Contract sync: EngineEvent dispatch fields", () => {
       missing,
       `Go EngineEvent is missing dispatch fields consumed by desktop/iOS: ${missing.join(", ")}`,
     ).toEqual([]);
+  });
+
+  it("the early-stop eligibility field is present in the Go EngineEvent manifest", () => {
+    const goFields = new Set(manifest.engineEvent);
+    expect(goFields.has("earlyStopEligible")).toBe(true);
   });
 
   it("the /clear --keep-plan outcome fields are present in the Go EngineEvent manifest", () => {

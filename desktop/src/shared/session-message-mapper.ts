@@ -51,6 +51,8 @@ export function buildMarkerContent(m: SessionLoadMessage): string | null {
         clearedBlocks: m.markerClearedBlocks,
         strategy: m.markerStrategy,
         microOnly: m.markerMicroOnly,
+        trigger: m.markerTrigger,
+        preTokens: m.markerPreTokens,
       });
     case "plan":
       return m.markerPlanOperation === "updated"

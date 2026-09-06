@@ -231,7 +231,7 @@ extension SessionViewModel {
     /// leaves current state untouched; outer non-nil carries a value or an
     /// explicit clear (inner nil).
     @MainActor
-    func handleTabMeta(tabId: String, title: String?, totalCostUsd: Double?, groupId: String?, convFingerprint: String? = nil, lastActivityAt: Double? = nil, lastMessage: String? = nil, messageCount: Int? = nil, pillColor: String?? = nil, pillIcon: String?? = nil) {
+    func handleTabMeta(tabId: String, title: String?, totalCostUsd: Double?, groupId: String?, convFingerprint: String? = nil, lastActivityAt: Double? = nil, lastMessageAt: Double? = nil, lastMessage: String? = nil, messageCount: Int? = nil, pillColor: String?? = nil, pillIcon: String?? = nil) {
         guard let idx = tabs.firstIndex(where: { $0.id == tabId }) else {
             DiagnosticLog.log("tab meta tab not found", tag: "session", level: .debug, fields: [
                 "tab_id": String(tabId.prefix(8))
@@ -272,6 +272,10 @@ extension SessionViewModel {
         }
         if let lastActivityAt {
             tabs[idx].lastActivityAt = lastActivityAt
+            changed = true
+        }
+        if let lastMessageAt {
+            tabs[idx].lastMessageAt = lastMessageAt
             changed = true
         }
         if let lastMessage, lastMessage != tabs[idx].lastMessage {

@@ -45,6 +45,40 @@ func (a *activityRecordingAccessor) activityEvents() []types.EngineEvent {
 	return out
 }
 
+func TestDispatchActivityEmitterStreamReset(t *testing.T) {
+	var mu sync.Mutex
+	var events []types.EngineEvent
+	emitter := NewDispatchActivityEmitter(func(ev types.EngineEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, ev)
+	}, "agent-1", "reviewer")
+	emitter.SetConversationID("child-1")
+	emitter.HandleToolStart("Read", "done")
+	emitter.HandleToolEnd("done", false)
+	emitter.AccumulateText("partial text")
+	emitter.HandleToolStart("Write", "tool-1")
+	emitter.AccumulateText("discard me")
+	emitter.HandleStreamReset()
+	emitter.Close()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(events) != 5 {
+		t.Fatalf("events = %d, want committed tool pair, text, tool_start, stream_reset", len(events))
+	}
+	reset := events[4]
+	if reset.DispatchActivityKind != dispatchActivityStreamReset {
+		t.Fatalf("last kind = %q, want %q", reset.DispatchActivityKind, dispatchActivityStreamReset)
+	}
+	if reset.DispatchResetAfterSeq != 2 {
+		t.Fatalf("reset boundary = %d, want committed seq 2", reset.DispatchResetAfterSeq)
+	}
+	if reset.DispatchAgentID != "agent-1" || reset.DispatchConversationID != "child-1" {
+		t.Fatalf("reset identity = %#v", reset)
+	}
+}
+
 // terminalEmitted reports whether a dispatch_end event has been emitted yet,
 // so the test can assert activity fires while the dispatch is still running.
 func (a *activityRecordingAccessor) terminalEmitted() bool {

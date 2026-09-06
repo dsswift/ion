@@ -7,7 +7,7 @@ const tabs: SurfaceTab[] = [
   { kind: 'file', id: 'file:/repo/a.ts', filePath: '/repo/a.ts', dir: '/repo' },
   { kind: 'browser', id: 'browser:b1', instanceId: 'b1', url: 'https://example.org', title: 'Example', mode: 'browse', sessionMode: 'isolated' },
 ]
-const conversation: SurfaceConversationPersisted = { tabs, activeTabId: 'file:/repo/a.ts', visible: true, agentBrowserInstanceId: 'b1' }
+const conversation: SurfaceConversationPersisted = { tabs, activeTabId: 'file:/repo/a.ts', visible: true, width: null, agentBrowserInstanceId: 'b1' }
 
 describe('surface persistence', () => {
   it('defaults Plan as the only global pin', () => {
@@ -45,6 +45,37 @@ describe('surface persistence', () => {
     expect(validateSurfacePersisted(persisted)).toBe(true)
   })
 
+  it('clamps a persisted conversation width to the surface bounds', () => {
+    const tooNarrow = parseSurfacePersisted({
+      version: 4,
+      pinnedTabs: ['plan'],
+      notification: null,
+      conversations: { alpha: { tabs: [], activeTabId: null, visible: true, width: 10 } },
+      scratchProjects: {},
+    })
+    expect(tooNarrow).toMatchObject({ conversations: { alpha: { width: 320 } } })
+
+    const tooWide = parseSurfacePersisted({
+      version: 4,
+      pinnedTabs: ['plan'],
+      notification: null,
+      conversations: { alpha: { tabs: [], activeTabId: null, visible: true, width: 5000 } },
+      scratchProjects: {},
+    })
+    expect(tooWide).toMatchObject({ conversations: { alpha: { width: 1400 } } })
+  })
+
+  it('treats a missing or malformed width as null, not zero', () => {
+    const parsed = parseSurfacePersisted({
+      version: 4,
+      pinnedTabs: ['plan'],
+      notification: null,
+      conversations: { alpha: { tabs: [], activeTabId: null, visible: true, width: 'wide' } },
+      scratchProjects: {},
+    })
+    expect(parsed).toMatchObject({ conversations: { alpha: { width: null } } })
+  })
+
   it('requires the version 4 Scratch Document map on new writes', () => {
     expect(validateSurfacePersisted({ version: 4, pinnedTabs: ['plan'], notification: null, conversations: {} })).toBe(false)
     expect(validateSurfacePersisted(emptySurfacePersisted())).toBe(true)
@@ -52,7 +83,7 @@ describe('surface persistence', () => {
 
   it('round-trips project-scoped Scratch Documents and strips runtime errors', () => {
     const persisted = serializeSurface(['plan'], null, {
-      alpha: { tabs: [], activeTabId: 'scratch:s1', visible: true, agentBrowserInstanceId: null },
+      alpha: { tabs: [], activeTabId: 'scratch:s1', visible: true, width: null, agentBrowserInstanceId: null },
     }, {
       '/repo': { documents: [{ id: 's1', fileName: 'Untitled-1.md', content: 'notes', savedContent: '', isPreview: false, wordWrap: true, saveError: 'old failure' }] },
     })
@@ -121,7 +152,7 @@ describe('surface persistence', () => {
     // piece of genuine per-conversation state — browser tabs, terminals,
     // files, the open panel — is kept by the cases below.
     const persisted = serializeSurface(['plan'], null, {
-      alpha: { tabs: [], activeTabId: 'plan', visible: false, agentBrowserInstanceId: null },
+      alpha: { tabs: [], activeTabId: 'plan', visible: false, width: null, agentBrowserInstanceId: null },
     })
 
     expect(persisted.conversations.alpha).toBeUndefined()
@@ -164,7 +195,7 @@ describe('surface persistence', () => {
   it('round-trips a conversation dispatch preview', () => {
     const dispatch = { kind: 'dispatch' as const, id: 'dispatch-preview' as const, agentName: 'dev-lead', dispatchId: 'dispatch-1', title: 'Dev Lead' }
     const persisted = serializeSurface(['plan'], null, {
-      alpha: { tabs: [dispatch], activeTabId: dispatch.id, visible: true, agentBrowserInstanceId: null },
+      alpha: { tabs: [dispatch], activeTabId: dispatch.id, visible: true, width: null, agentBrowserInstanceId: null },
     })
 
     expect(parseSurfacePersisted(JSON.parse(JSON.stringify(persisted)))).toEqual(persisted)
@@ -172,7 +203,7 @@ describe('surface persistence', () => {
 
   it('preserves the global notification and excludes it from local records', () => {
     const notification = { kind: 'notification' as const, id: 'notification' as const, resourceKind: 'x', resourceId: 'y' }
-    const persisted = serializeSurface(['plan'], notification, { alpha: { tabs: [...tabs, notification, { kind: 'runtime-panel', id: 'runtime:x', title: 'X' }], activeTabId: 'notification', visible: false, agentBrowserInstanceId: 'b1' } })
+    const persisted = serializeSurface(['plan'], notification, { alpha: { tabs: [...tabs, notification, { kind: 'runtime-panel', id: 'runtime:x', title: 'X' }], activeTabId: 'notification', visible: false, width: null, agentBrowserInstanceId: 'b1' } })
     expect(persisted.notification).toEqual(notification)
     expect(persisted.conversations.alpha?.tabs.map((tab) => tab.kind)).not.toContain('notification')
     expect(persisted.conversations.alpha?.tabs.map((tab) => tab.kind)).not.toContain('runtime-panel')
@@ -182,8 +213,8 @@ describe('surface persistence', () => {
 describe('empty-record pruning', () => {
   const pins = ['plan', 'diff'] as const
 
-  function row(over: Partial<{ tabs: unknown[]; activeTabId: string | null; visible: boolean; agentBrowserInstanceId: string | null }> = {}) {
-    return { tabs: [], activeTabId: null, visible: false, agentBrowserInstanceId: null, ...over } as never
+  function row(over: Partial<{ tabs: unknown[]; activeTabId: string | null; visible: boolean; width: number | null; agentBrowserInstanceId: string | null }> = {}) {
+    return { tabs: [], activeTabId: null, visible: false, width: null, agentBrowserInstanceId: null, ...over } as never
   }
 
   it('drops a record that only points at a global pin', () => {
@@ -211,6 +242,15 @@ describe('empty-record pruning', () => {
     const out = serializeSurface(pins, null, { alpha: row({ visible: true, activeTabId: 'diff' }) })
     expect(Object.keys(out.conversations)).toEqual(['alpha'])
     expect(out.conversations.alpha?.visible).toBe(true)
+  })
+
+  it('keeps a record whose panel was resized', () => {
+    // A conversation resized to a thin panel and never touched again would
+    // otherwise have no tabs, be closed, and point at nothing of its own —
+    // pruned away, and the resize forgotten on the next restart.
+    const out = serializeSurface(pins, null, { alpha: row({ width: 340 }) })
+    expect(Object.keys(out.conversations)).toEqual(['alpha'])
+    expect(out.conversations.alpha?.width).toBe(340)
   })
 
   it('keeps a record pointing at a tab of its own', () => {

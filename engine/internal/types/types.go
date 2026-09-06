@@ -40,9 +40,9 @@ type EngineProfile struct {
 
 // EngineConfig configures a single engine session.
 type EngineConfig struct {
-	ProfileID        string          `json:"profileId"`
-	Extensions       []string        `json:"extensions"`
-	WorkingDirectory string          `json:"workingDirectory"`
+	ProfileID        string   `json:"profileId"`
+	Extensions       []string `json:"extensions"`
+	WorkingDirectory string   `json:"workingDirectory"`
 	// ProjectDirectory identifies the source Project that supplies project-level
 	// policy when WorkingDirectory is a worktree. Empty preserves the historical
 	// working-directory lookup.
@@ -652,6 +652,13 @@ type SessionMessage struct {
 	// structured fields using their existing formatters — the engine emits data,
 	// not display strings. MarkerKind discriminates the three marker families.
 	MarkerKind string `json:"markerKind,omitempty"` // "compaction" | "plan" | "steer"
+	// A native compaction (a delegated CLI compacting its own session) is
+	// reported as MarkerKind=="compaction" with MarkerStrategy=="native".
+	// Reusing the kind is deliberate: to a reader the conversation was
+	// compacted either way, and a client that renders compaction markers
+	// renders this one without knowing the distinction. MarkerStrategy is what
+	// tells a client that Ion's own transcript was NOT truncated, so it can
+	// word the row accordingly.
 
 	// Compaction marker fields (MarkerKind=="compaction"): mirror CompactionData.
 	MarkerMessagesBefore int    `json:"markerMessagesBefore,omitempty"`
@@ -660,6 +667,14 @@ type SessionMessage struct {
 	MarkerStrategy       string `json:"markerStrategy,omitempty"`
 	MarkerMicroOnly      bool   `json:"markerMicroOnly,omitempty"`
 	MarkerSummary        string `json:"markerSummary,omitempty"`
+	// MarkerTrigger and MarkerPreTokens carry a NATIVE compaction's provider
+	// reported detail (MarkerStrategy=="native"): the CLI's own word for why
+	// it compacted ("auto"/"manual", opaque) and the occupancy it counted in
+	// its own session immediately before doing so. Both are the provider's
+	// numbers and are not comparable to Ion's occupancy figure. Absent on an
+	// engine compaction.
+	MarkerTrigger   string `json:"markerTrigger,omitempty"`
+	MarkerPreTokens int    `json:"markerPreTokens,omitempty"`
 
 	// Plan marker fields (MarkerKind=="plan"): mirror PlanMarkerData.
 	MarkerPlanOperation string `json:"markerPlanOperation,omitempty"` // "created" | "updated"

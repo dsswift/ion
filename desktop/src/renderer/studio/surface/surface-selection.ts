@@ -19,6 +19,7 @@ interface SelectionState {
   pinnedTabs: PinnableSingletonId[]
   questionsConversations: Set<string>
   visible: boolean
+  surfaceWidth: number | null
 }
 
 let deps: {
@@ -53,6 +54,13 @@ export function applyConversationSelection<S extends SelectionState>(
     // overwrote the restored value and the panel always came back closed.
     let visible = shouldRememberVisibility() || !state.hydrated ? saved : state.visible
 
+    // Width follows the same restore/keep split as visibility, on the same
+    // preference: 'per-conversation' restores each conversation's own saved
+    // width on entry (a thin panel here, a fully expanded one there); 'keep'
+    // carries whatever width is currently on screen across the switch.
+    const savedWidth = currentConversationId ? state.conversations[currentConversationId]?.width ?? null : null
+    const surfaceWidth = shouldRememberVisibility() || !state.hydrated ? savedWidth : state.surfaceWidth
+
     // Entering a conversation that owes the operator an answer ALWAYS lands on
     // the Questions tab with the pane open, whatever the saved per-conversation
     // focus or visibility mode said. A parked question is the one surface the
@@ -73,13 +81,14 @@ export function applyConversationSelection<S extends SelectionState>(
     }
 
     set({
-      ...project({ ...state, conversations, currentConversationId, visible }),
+      ...project({ ...state, conversations, currentConversationId, visible, surfaceWidth }),
       currentConversationId,
     })
     rDebug('studio.surface', 'conversation selected', {
       tab_id: currentConversationId ?? '',
       active_surface_tab: currentConversationId ? (conversations[currentConversationId]?.activeTabId ?? '') : '',
       visible,
+      surface_width: surfaceWidth ?? -1,
       mode: shouldRememberVisibility() ? 'per-conversation' : 'keep',
       forced_questions: owesAnswer,
     })

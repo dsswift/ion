@@ -15,8 +15,10 @@ const mocks = vi.hoisted(() => ({
     total: 328,
   })),
   resolveBenchContextAcrossRepos: vi.fn(),
+  useWorkspaceRepos: vi.fn(() => ({ repos: [] })),
 }))
 let activeTab = { id: 'tab-1', workingDirectory: '/repo', worktree: null as Record<string, string> | null }
+let workspaceFolders: Record<string, string[]> = {}
 
 vi.mock('../../theme', () => ({
   useColors: () => new Proxy({}, { get: (_target, key) => `var(--${String(key)})` }),
@@ -34,7 +36,7 @@ vi.mock('../../preferences', () => ({
     setGitPanelPaneProportions: vi.fn(),
     gitPanelHeight: null,
     setGitPanelHeight: vi.fn(),
-    workspaceFolders: {},
+    workspaceFolders,
   }),
   getState: () => ({ setGitChangesTreeView: vi.fn(), gitChangesTreeView: false }),
 }))
@@ -59,7 +61,7 @@ vi.mock('../WorktreeOverlapLauncher', () => ({ WorktreeOverlapLauncher: () => nu
 vi.mock('../GitConflictBanner', () => ({ GitConflictBanner: () => null }))
 vi.mock('../git/Sash', () => ({ Sash: () => null }))
 vi.mock('../git/benchContext', () => ({ resolveBenchContextAcrossRepos: mocks.resolveBenchContextAcrossRepos }))
-vi.mock('../../hooks/useWorkspaceRepos', () => ({ useWorkspaceRepos: () => ({ repos: [] }) }))
+vi.mock('../../hooks/useWorkspaceRepos', () => ({ useWorkspaceRepos: mocks.useWorkspaceRepos }))
 vi.mock('../../lib/file-open-router', () => ({ surfaceRouter: () => null }))
 vi.mock('../../rendererLogger', () => ({ rDebug: vi.fn(), rTrace: vi.fn() }))
 vi.mock('../git/paneLayout', () => ({ SECTION_HEADER: 28, computePaneLayout: mocks.computePaneLayout }))
@@ -76,6 +78,8 @@ describe('GitPanel docked layout', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     activeTab = { id: 'tab-1', workingDirectory: '/repo', worktree: null }
+    workspaceFolders = {}
+    mocks.useWorkspaceRepos.mockReturnValue({ repos: [] })
     mocks.resolveBenchContextAcrossRepos.mockReturnValue(null)
     ;(window as unknown as { ion: { gitRefresh: (directory: string) => Promise<void> } }).ion = {
       gitRefresh: vi.fn().mockResolvedValue(undefined),
@@ -107,6 +111,22 @@ describe('GitPanel docked layout', () => {
     render()
     expect(mocks.computePaneLayout).toHaveBeenLastCalledWith(expect.objectContaining({ height: 320, hidden: [] }))
     expect(host.querySelector('[data-testid="git-graph"]')).not.toBeNull()
+  })
+
+  it('a worktree tab reads its project mounted folders', () => {
+    // Keyed by Project, so the git panel shows a worktree the same secondary
+    // repos it shows in the base repo. Keyed by the active directory it saw
+    // none, because nothing ever writes a worktree-path key.
+    workspaceFolders = { '/repo': ['/lib/shared'] }
+    activeTab = {
+      id: 'tab-1',
+      workingDirectory: '/repo/worktree',
+      worktree: { repoPath: '/repo', branchName: 'wt/test', sourceBranch: 'main', worktreePath: '/repo/worktree' },
+    }
+
+    render()
+
+    expect(mocks.useWorkspaceRepos).toHaveBeenLastCalledWith(['/lib/shared'])
   })
 
   it('hides Graph only when directory resolves to integration bench', () => {

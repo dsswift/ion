@@ -168,7 +168,16 @@ function sendWithResponse<T>(
       resolve({ ok: result.ok, error: result.error, data: result.data as T });
     });
 
-    send(bridge, msg);
+    if (!send(bridge, msg)) {
+      clearTimeout(timer);
+      bridge.requestCallbacks.delete(requestId);
+      warn("request_send_failed", {
+        request_id: requestId,
+        cmd: msg.cmd,
+        key: msg.key,
+      });
+      resolve({ ok: false, error: "Engine connection unavailable" });
+    }
   });
 }
 

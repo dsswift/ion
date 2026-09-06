@@ -305,6 +305,11 @@ func storeResult(providerID string, models []types.ModelEntry, err error) {
 				CostPer1kCacheCreation: m.CostPer1kCacheCreation,
 				CostPer1kCacheRead:     m.CostPer1kCacheRead,
 				SupportsCaching:        m.SupportsCaching,
+				// Resolve through the shared helper, not the raw payload: a
+				// gateway routinely publishes cache rates with no lifetime, and
+				// taking the zero verbatim leaves consumers unable to tell a
+				// live prompt cache from an expired one.
+				CacheTtlSeconds:        ResolveCacheTtlSeconds(m.SupportsCaching, m.CacheTtlSeconds),
 				SupportsThinking:       m.SupportsThinking,
 				SupportsImages:         m.SupportsImages,
 				MaxOutputTokens:        m.MaxOutputTokens,
@@ -389,6 +394,9 @@ func mergeDiscoveredInfo(existing, discovered types.ModelInfo) types.ModelInfo {
 	}
 	if discovered.MaxOutputTokens != 0 {
 		merged.MaxOutputTokens = discovered.MaxOutputTokens
+	}
+	if discovered.CacheTtlSeconds != 0 {
+		merged.CacheTtlSeconds = discovered.CacheTtlSeconds
 	}
 	// Capabilities are additive, matching MergeModelInfo: a payload that omits
 	// a flag must not disable a known capability.
@@ -569,6 +577,7 @@ type discoveredModelEntry struct {
 	CostPer1kCacheRead     float64  `json:"costPer1kCacheRead,omitempty"`
 	CostPerImage           float64  `json:"costPerImage,omitempty"`
 	SupportsCaching        bool     `json:"supportsCaching,omitempty"`
+	CacheTtlSeconds        int      `json:"cacheTtlSeconds,omitempty"`
 	SupportsThinking       bool     `json:"supportsThinking,omitempty"`
 	SupportsImages         bool     `json:"supportsImages,omitempty"`
 	ThinkingMode           string   `json:"thinkingMode,omitempty"`
@@ -613,6 +622,7 @@ func doModelsFetch(req *http.Request, providerID string, factory modelFactory) (
 		entry.CostPer1kCacheRead = m.CostPer1kCacheRead
 		entry.CostPerImage = m.CostPerImage
 		entry.SupportsCaching = m.SupportsCaching
+		entry.CacheTtlSeconds = ResolveCacheTtlSeconds(m.SupportsCaching, m.CacheTtlSeconds)
 		entry.SupportsThinking = m.SupportsThinking
 		entry.SupportsImages = m.SupportsImages
 		entry.ThinkingMode = m.ThinkingMode

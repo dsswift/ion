@@ -28,6 +28,31 @@ final class ModelSwitchCostTests: XCTestCase {
         )
     }
 
+    /// A caching model with a 5-minute cache, the shape the engine publishes.
+    private func caching(
+        supportsCaching: Bool? = true,
+        ttlSeconds: Int? = 300
+    ) -> RemoteModelEntry {
+        RemoteModelEntry(
+            id: "claude-fable-5-1",
+            providerId: "example-provider",
+            label: "Fable",
+            contextWindow: 1_000_000,
+            hasAuth: true,
+            costPer1kInput: 0.01,
+            costPer1kCacheCreation: 0.0125,
+            costPer1kCacheRead: 0.00025,
+            supportsCaching: supportsCaching,
+            cacheTtlSeconds: ttlSeconds
+        )
+    }
+
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+    /// Inside the 5-minute cache window.
+    private var warmActivity: Date { now.addingTimeInterval(-60) }
+    /// Past the 5-minute cache window.
+    private var coldActivity: Date { now.addingTimeInterval(-30 * 60) }
+
     // MARK: - Suppression
 
     func test_freshConversationHasNoSwitchCost() {
@@ -150,6 +175,253 @@ final class ModelSwitchCostTests: XCTestCase {
         XCTAssertEqual(ModelSwitchCost.formatTokenCount(1_200), "1K")
         XCTAssertEqual(ModelSwitchCost.formatTokenCount(650_000), "650K")
         XCTAssertEqual(ModelSwitchCost.formatTokenCount(1_500_000), "1.5M")
+    }
+
+    // MARK: - Cache age decides the stay-put rate
+
+    // The cache's age is what makes the stay-put figure true or false. These
+    // are the arms that were wrong before: the estimator priced every stay-put
+    // side at the cache-read rate unconditionally, so an idle conversation was
+    // quoted a saving that had already expired.
+
+    func test_livesCacheIsPricedAtTheReadRate() {
+        let est = ModelSwitchCost.estimate(
+            contextTokens: 169_000,
+            targetModel: opus(),
+            currentModel: caching(),
+            lastActivityAt: warmActivity,
+            now: now
+        )!
+        XCTAssertEqual(est.cacheState, .warm)
+        XCTAssertEqual(est.cachedCostUsd!, 169 * 0.00025, accuracy: 0.000001)
+        XCTAssertEqual(est.idleSeconds!, 60, accuracy: 0.000001)
+        XCTAssertEqual(est.cacheTtlSeconds, 300)
+    }
+
+    func test_expiredCacheIsPricedAtTheCreationRate() {
+        let est = ModelSwitchCost.estimate(
+            contextTokens: 169_000,
+            targetModel: opus(),
+            currentModel: caching(),
+            lastActivityAt: coldActivity,
+            now: now
+        )!
+        XCTAssertEqual(est.cacheState, .expired)
+        // The next turn on the CURRENT model rewrites the whole prompt, exactly
+        // as a switch would. That is the creation rate.
+        XCTAssertEqual(est.cachedCostUsd!, 169 * 0.0125, accuracy: 0.000001)
+        // 50x the figure the read rate would have produced — the size of the
+        // error, and why an approximation here is not acceptable.
+        XCTAssertEqual(est.cachedCostUsd! / (169 * 0.00025), 50, accuracy: 0.000001)
+    }
+
+    func test_switchingCanBeCheaperThanStaying() {
+        // The real case: a 169K conversation idle for half an hour on Fable,
+        // switching to Opus. Fable's rewrite costs more than Opus's does, so
+        // "stay put and save" is backwards.
+        let opus5 = RemoteModelEntry(
+            id: "claude-opus-5",
+            providerId: "example-provider",
+            label: "Opus",
+            contextWindow: 1_000_000,
+            hasAuth: true,
+            costPer1kInput: 0.005,
+            costPer1kCacheCreation: 0.00625,
+            costPer1kCacheRead: 0.0005,
+            supportsCaching: true,
+            cacheTtlSeconds: 300
+        )
+        let est = ModelSwitchCost.estimate(
+            contextTokens: 169_000,
+            targetModel: opus5,
+            currentModel: caching(),
+            lastActivityAt: coldActivity,
+            now: now
+        )!
+        XCTAssertLessThan(est.costUsd, est.cachedCostUsd!)
+    }
+
+    func test_ttlBoundaryIsStillReadable() {
+        let atBoundary = ModelSwitchCost.estimate(
+            contextTokens: 1_000,
+            targetModel: opus(),
+            currentModel: caching(),
+            lastActivityAt: now.addingTimeInterval(-300),
+            now: now
+        )!
+        XCTAssertEqual(atBoundary.cacheState, .warm)
+        let pastBoundary = ModelSwitchCost.estimate(
+            contextTokens: 1_000,
+            targetModel: opus(),
+            currentModel: caching(),
+            lastActivityAt: now.addingTimeInterval(-300.001),
+            now: now
+        )!
+        XCTAssertEqual(pastBoundary.cacheState, .expired)
+    }
+
+    func test_nonCachingModelIsPricedAtItsBaseInputRate() {
+        let noCache = RemoteModelEntry(
+            id: "gpt-4.1",
+            providerId: "example-provider",
+            label: "GPT",
+            contextWindow: 1_000_000,
+            hasAuth: true,
+            costPer1kInput: 0.002,
+            supportsCaching: false
+        )
+        let est = ModelSwitchCost.estimate(
+            contextTokens: 169_000,
+            targetModel: opus(),
+            currentModel: noCache,
+            lastActivityAt: warmActivity,
+            now: now
+        )!
+        XCTAssertEqual(est.cacheState, .unsupported)
+        XCTAssertEqual(est.cachedCostUsd!, 169 * 0.002, accuracy: 0.000001)
+    }
+
+    func test_missingActivityReportsUnknownRatherThanGuessing() {
+        let est = ModelSwitchCost.estimate(
+            contextTokens: 169_000,
+            targetModel: opus(),
+            currentModel: caching(),
+            now: now
+        )!
+        XCTAssertEqual(est.cacheState, .unknown)
+        XCTAssertNil(est.idleSeconds)
+        // The warm rate is the lower bound, and the text must not state it as fact.
+        XCTAssertEqual(est.cachedCostUsd!, 169 * 0.00025, accuracy: 0.000001)
+        XCTAssertTrue(ModelSwitchCost.describe(est).contains("its age could not be determined"))
+    }
+
+    func test_missingTtlReportsUnknownRatherThanGuessing() {
+        let est = ModelSwitchCost.estimate(
+            contextTokens: 169_000,
+            targetModel: opus(),
+            currentModel: caching(ttlSeconds: nil),
+            lastActivityAt: coldActivity,
+            now: now
+        )!
+        XCTAssertEqual(est.cacheState, .unknown)
+    }
+
+    func test_clockSkewIsClampedInsteadOfReportingAFalseExpiry() {
+        let est = ModelSwitchCost.estimate(
+            contextTokens: 1_000,
+            targetModel: opus(),
+            currentModel: caching(),
+            lastActivityAt: now.addingTimeInterval(60),
+            now: now
+        )!
+        XCTAssertEqual(est.cacheState, .warm)
+        XCTAssertEqual(est.idleSeconds!, 0, accuracy: 0.000001)
+    }
+
+    // MARK: - The reason line
+
+    func test_reasonExplainsTheCacheOnlyWhileOneExistsToLose() {
+        let warm = ModelSwitchCost.estimate(
+            contextTokens: 169_000,
+            targetModel: opus(),
+            currentModel: caching(),
+            lastActivityAt: warmActivity,
+            now: now
+        )!
+        XCTAssertTrue(ModelSwitchCost.reason(warm)!.contains("cannot read the cache"))
+
+        // Repeating "the new model cannot read the cache this conversation
+        // built" after that cache expired describes a cache that is not there.
+        let cold = ModelSwitchCost.estimate(
+            contextTokens: 169_000,
+            targetModel: opus(),
+            currentModel: caching(),
+            lastActivityAt: coldActivity,
+            now: now
+        )!
+        XCTAssertNil(ModelSwitchCost.reason(cold))
+    }
+
+    // The dialog must state which option is cheaper. The cache state is an
+    // input the estimator already resolved, not a caveat handed to the operator.
+
+    func test_warmCacheSaysStayingIsCheaper() {
+        let est = ModelSwitchCost.estimate(
+            contextTokens: 169_000,
+            targetModel: opus(),
+            currentModel: caching(),
+            lastActivityAt: warmActivity,
+            now: now
+        )!
+        let text = ModelSwitchCost.describe(est)
+        XCTAssertTrue(text.contains("Staying on the current model is cheaper"))
+        XCTAssertTrue(text.contains("still live"))
+        XCTAssertTrue(text.contains("idle 60s"))
+        XCTAssertTrue(text.contains("saves about $3.13"))
+    }
+
+    func test_expiredCacheSaysSwitchingIsCheaperWhenItIs() {
+        // The reported case: 169K idle 30m on Fable, switching to Opus. Both
+        // sides re-write the prompt, and Opus's rate is lower.
+        let opus5 = RemoteModelEntry(
+            id: "claude-opus-5",
+            providerId: "example-provider",
+            label: "Opus",
+            contextWindow: 1_000_000,
+            hasAuth: true,
+            costPer1kInput: 0.005,
+            costPer1kCacheCreation: 0.00625,
+            costPer1kCacheRead: 0.0005,
+            supportsCaching: true,
+            cacheTtlSeconds: 300
+        )
+        let est = ModelSwitchCost.estimate(
+            contextTokens: 169_000,
+            targetModel: opus5,
+            currentModel: caching(),
+            lastActivityAt: coldActivity,
+            now: now
+        )!
+        let text = ModelSwitchCost.describe(est)
+        XCTAssertTrue(text.contains("Switching is cheaper"))
+        XCTAssertTrue(text.contains("already expired"))
+        XCTAssertTrue(text.contains("idle 30m"))
+        XCTAssertTrue(text.contains("saves about $1.06"))
+        // It must never claim a cache advantage that no longer exists.
+        XCTAssertFalse(text.contains("still live"))
+    }
+
+    func test_expiredCacheStillNamesTheCheaperSide() {
+        let est = ModelSwitchCost.estimate(
+            contextTokens: 169_000,
+            targetModel: opus(),
+            currentModel: caching(),
+            lastActivityAt: coldActivity,
+            now: now
+        )!
+        let text = ModelSwitchCost.describe(est)
+        XCTAssertTrue(text.contains("Staying on the current model is cheaper"))
+        XCTAssertTrue(text.contains("not because of its cache"))
+    }
+
+    func test_hedgesOnlyWhenAnInputWasMissing() {
+        let est = ModelSwitchCost.estimate(
+            contextTokens: 169_000,
+            targetModel: opus(),
+            currentModel: caching(),
+            now: now
+        )!
+        let text = ModelSwitchCost.describe(est)
+        XCTAssertTrue(text.contains("its age could not be determined"))
+        XCTAssertFalse(text.contains("is cheaper"))
+    }
+
+    func test_durationScalesToTheCoarsestTruthfulUnit() {
+        XCTAssertEqual(ModelSwitchCost.formatDuration(45), "45s")
+        XCTAssertEqual(ModelSwitchCost.formatDuration(600), "10m")
+        XCTAssertEqual(ModelSwitchCost.formatDuration(7_200), "2h")
+        XCTAssertEqual(ModelSwitchCost.formatDuration(72 * 3_600), "3d")
+        XCTAssertEqual(ModelSwitchCost.formatDuration(nil), "a while")
     }
 
     func test_descriptionStatesBothCosts() {

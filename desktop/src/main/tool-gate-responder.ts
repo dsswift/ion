@@ -40,6 +40,11 @@ import { ASK_USER_QUESTIONS_TOOL } from './questions/questions-tool-decl'
 import { STUDIO_PLAYWRIGHT_TOOLS } from './studio-playwright/tools'
 import { RENDER_CHART_TOOL, RENDER_CHART_TOOL_NAME, executeRenderChart } from './studio-chart-tool'
 import { publishChartResource, type ChartPublishBridge } from './chart-resource-publish'
+import {
+  CONVERSATION_TELEMETRY_TOOL_NAME,
+  conversationTelemetryTool,
+  executeConversationTelemetry,
+} from './telemetry/conversation-telemetry-tool'
 import { log as _log, warn as _warn, error as _error } from './logger'
 import { readSettings } from './settings-store'
 
@@ -79,8 +84,15 @@ export const GATED_TOOLS = ['Write', 'Edit', 'NotebookEdit', 'Bash', 'ion_scaffo
  * the Studio presentation is active, because both produce output that only the
  * Studio surface can host. Availability is re-asserted on change through
  * studio-client-tool-sync rather than restarting sessions.
+ *
+ * `workingDirectory` selects the ConversationTelemetry variant. That tool is
+ * declared with one name and no parameters in both cases; only its description
+ * differs, because whether a session's work spans a worktree is a fact about
+ * where it is running and not a choice the model should be making. Callers that
+ * have no directory pass none and get the self-scoped wording, which is the
+ * narrower of the two.
  */
-export function toolGateSessionConfig(): ToolGateConfig {
+export function toolGateSessionConfig(workingDirectory = ''): ToolGateConfig {
   const settings = readSettings()
   const studioActive = settings.activeUi === 'studio'
   const browserTools = studioActive && settings.studioPlaywrightEnabled !== false
@@ -106,6 +118,7 @@ export function toolGateSessionConfig(): ToolGateConfig {
         planModeSafe: t.planModeSafe,
       })),
       ...chartTools,
+      conversationTelemetryTool(workingDirectory),
       ASK_USER_QUESTIONS_TOOL,
     ],
     clientToolTimeoutMs: 30000,
@@ -160,7 +173,7 @@ export function wireToolGateResponder(bridge: GateBridge): void {
   log('tool-gate responder wired', {
     gated_tools: GATED_TOOLS,
     client_tools: [...BENCH_CLIENT_TOOLS, ...STUDIO_PLAYWRIGHT_TOOLS].map((t) => t.name)
-      .concat(RENDER_CHART_TOOL_NAME, ASK_USER_QUESTIONS_TOOL.name),
+      .concat(RENDER_CHART_TOOL_NAME, CONVERSATION_TELEMETRY_TOOL_NAME, ASK_USER_QUESTIONS_TOOL.name),
   })
 }
 
@@ -221,16 +234,26 @@ async function respondToolCall(
     : undefined
   const benchTool = BENCH_CLIENT_TOOLS.find((candidate) => candidate.name === req.gateToolName)
   const isChartTool = studioActive && req.gateToolName === RENDER_CHART_TOOL_NAME
+  const isTelemetryTool = req.gateToolName === CONVERSATION_TELEMETRY_TOOL_NAME
   let content: string
   let isError: boolean
   let images: unknown[] | undefined
-  if (!benchTool && !browserTool && !isChartTool) {
+  if (!benchTool && !browserTool && !isChartTool && !isTelemetryTool) {
     content = `client tool ${req.gateToolName} is not provided by this desktop`
     isError = true
     warn('client tool request for unknown tool', { key, tool: req.gateToolName })
   } else {
     try {
-      if (isChartTool) {
+      if (isTelemetryTool) {
+        // Scope and ownership come from the request and the session registry,
+        // never from the model's arguments: which directory the session is
+        // working in decides what the call covers, and the conversation id is
+        // what the self-scoped chain walks from.
+        const conversationId = bridge.activeSessions.get(key)?.conversationId ?? ''
+        const result = executeConversationTelemetry(req.gateCwd ?? '', conversationId)
+        content = result.content
+        isError = result.isError
+      } else if (isChartTool) {
         // A chart belongs to a conversation, not to a tab: the durable
         // conversation id is what survives a tab close and a restart, so the
         // record is keyed on it. Ownership is read from the bridge's session

@@ -123,6 +123,14 @@ export type NormalizedEvent =
       clearedBlocks?: number;
       strategy?: string;
       microOnly?: boolean;
+      /**
+       * Native-compaction detail (strategy === 'native'): a delegated CLI
+       * compacted its OWN session. Ion's transcript is untouched, so the
+       * message-count fields above are absent and these carry what the
+       * provider reported instead.
+       */
+      trigger?: string;
+      preTokens?: number;
     }
   | { type: "tool_stalled"; toolId: string; toolName: string; elapsed: number }
   | {
@@ -411,7 +419,7 @@ export type NormalizedEvent =
       notificationLevel: string;
     }
   // dispatch_activity — a running dispatched (sub-)agent's intra-turn transcript
-  // delta (tool start/end, streamed text), bridged from the engine's
+  // delta (tool start/end, stream reset, streamed text), bridged from the engine's
   // engine_dispatch_activity (event-wiring.ts). Cross-cutting: the agent popup
   // folds it into the per-dispatch transcript cache keyed by
   // dispatchAgentId/conversationId; it must never append to the main conversation
@@ -420,8 +428,9 @@ export type NormalizedEvent =
       type: "dispatch_activity";
       dispatchAgentId: string;
       dispatchConversationId: string;
-      dispatchActivityKind: "text" | "tool_start" | "tool_end";
+      dispatchActivityKind: "text" | "tool_start" | "tool_end" | "stream_reset";
       dispatchSeq: number;
+      dispatchResetAfterSeq?: number;
       toolName?: string;
       toolId?: string;
       dispatchTextDelta?: string;

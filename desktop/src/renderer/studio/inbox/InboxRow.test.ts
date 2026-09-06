@@ -13,7 +13,11 @@ describe('InboxRow status restraint', () => {
     expect(source).not.toContain('contextCapacityStatus')
     expect(source).not.toContain('context-capacity')
     expect(source).not.toContain('useModelStore')
-    expect(source).not.toContain('usePreferencesStore')
+  })
+
+  it('shows the harness badge, mirroring the tab strip', () => {
+    expect(source).toContain('harnessBadgeLabel')
+    expect(source).toContain('abbreviateProfileName')
   })
 
   it('keeps unread state in the title and trailing status', () => {

@@ -41,7 +41,7 @@ func TestBackfillDispatchTranscripts_UsesForegroundAgentToolResult(t *testing.T)
 	parent := conversation.CreateConversation("parent-tool", "", "model")
 	conversation.AddAssistantMessageNoUsage(parent, []types.LlmContentBlock{{
 		Type: "tool_use", ID: "agent-call", Name: "Agent", Input: map[string]any{"prompt": "inspect repository"},
-	}})
+	}}, "test-model")
 	conversation.AddToolResults(parent, []conversation.ToolResultEntry{{ToolUseID: "agent-call", Content: "full tool result output"}})
 	dispatches := []conversation.AgentDispatchData{{
 		AgentName: "worker", AgentID: "dispatch-foreground", Task: "inspect repository", Model: "model-a", Status: "done", ConversationID: "foreground-child-id",

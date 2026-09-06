@@ -182,7 +182,7 @@ func (p *openaiResponsesProvider) doStream(ctx context.Context, opts types.LlmSt
 	}
 
 	rawCh, rawErr := ParseSSEStream(resp.Body)
-	sseCh, sseErr := streamWithIdle(rawCh, rawErr, p.id, opts.Model, "", nil, telemetryCorrelationFromContext(ctx))
+	sseCh, sseErr := streamWithIdle(rawCh, rawErr, p.id, opts.Model, "", streamProgressFromContext(ctx), telemetryCorrelationFromContext(ctx))
 	for sse := range sseCh {
 		if sse.Data == "" {
 			continue

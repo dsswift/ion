@@ -24,7 +24,7 @@ Legacy formats may also exist: `.jsonl` (v1) and `.json` (v0). The engine auto-m
 - **Subsequent lines:** `SessionEntry` objects (`engine/internal/conversation/conversation.go`), each with:
   - `id` — unique entry identifier
   - `parentId` — pointer to parent entry (null for roots)
-  - `type` — one of `message`, `compaction`, `cleared`, `model_change`, `label`, `custom`
+  - `type` — one of `message`, `compaction`, `cleared`, `model_change`, `label`, `custom`, `agent_dispatch`, `dispatch_error`, `plan_marker`, `steer_marker`, `aborted` (see `SessionEntryType` in `engine/internal/conversation/conversation.go`)
   - `timestamp` — Unix millis
   - `data` — type-specific payload (message content, compaction summary, etc.)
 
@@ -33,9 +33,29 @@ remain available for rendering, export, and branch navigation. When the active
 path is rebuilt into `.llm.jsonl`, entries before its latest `cleared` marker are
 excluded; only non-display messages after marker reach model.
 
+An `aborted` entry records that a run was cancelled. The engine is the only
+actor that knows a run was interrupted rather than completed, and without this
+entry a cancelled run and a finished run are the same file. Its payload carries
+`runId`, `source` (`user` for an operator stop, `engine` for a cancel that came
+from inside the run such as a hook or a watchdog), the abort `scope` when the
+operator set one, and the exit `signal`. The entry's own `timestamp` is the
+when. It is history data only: it is not replayed into scrollback and never
+enters LLM context.
+
+A `model_change` entry records that a run served the conversation on a
+different model than the previous run did. Its payload carries `model` and
+`previousModel`; the entry's own `timestamp` is when the switch happened. The
+header's `model` always names the model the conversation ran on MOST RECENTLY,
+so this entry chain is what recovers the model the conversation started on and
+where it moved. Every assistant message entry also carries the `model` that
+served that turn, which is what makes per-model turn and token attribution
+possible without splitting the conversation-level cost. Like `aborted`, this is
+history data only: it is not replayed into scrollback and never enters LLM
+context.
+
 ## `.llm.jsonl` structure
 
-- **Line 1 (header):** JSON object with `"meta": true`, `"id"`, `"version"`, `"model"`, `"system"` (system prompt), `"totalInputTokens"`, `"totalOutputTokens"`, `"lastInputTokens"`, `"lastInputTokensMsgCount"`, `"totalCost"`, `"createdAt"`, and optional `"parentId"`.
+- **Line 1 (header):** JSON object with `"meta": true`, `"id"`, `"version"`, `"model"` (the model the conversation ran on most recently — see the `model_change` entry above), `"system"` (system prompt), `"totalInputTokens"`, `"totalOutputTokens"`, `"lastInputTokens"`, `"lastInputTokensMsgCount"`, `"totalCost"`, `"createdAt"`, and optional `"parentId"`.
 - **Subsequent lines:** `LlmMessage` objects (`engine/internal/types/llm.go`), each with:
   - `role` — `user`, `assistant`, or `system`
   - `content` — string or array of `LlmContentBlock` (text, tool_use, tool_result, image, etc.)

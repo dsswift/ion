@@ -300,19 +300,26 @@ func TestDispatchCompact_CLIPath_ActiveRun(t *testing.T) {
 	}
 }
 
-// TestDispatchCompact_CLIPath_NoActiveRun exercises the informational
-// error path when the backend does NOT implement compactable AND has no
-// active run. The engine_command_result must carry the
-// compact_requires_active_run sentinel so consumers can render a friendly
-// system message.
+// TestDispatchCompact_CLIPath_NoActiveRun pins the idle branch of the
+// delegated-CLI path: with no run in flight there is no stdin pipe, so the
+// engine dispatches "/compact" as an ordinary prompt turn and the CLI runs its
+// own compaction.
+//
+// This branch used to refuse with a compact_requires_active_run error whose
+// message told the user to retype "/compact" as a prompt — refusing the
+// command in precisely the case a user issues it (idle), while naming the
+// exact workaround the engine could perform itself. The CLIs accept the
+// command on their normal input: `compact` appears in the claude CLI's own
+// advertised slash_commands under `-p`.
 func TestDispatchCompact_CLIPath_NoActiveRun(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	mb := newStdinCapturingBackend()
 	mgr := NewManager(mb)
 	_, _ = mgr.StartSession("cli-no-run", defaultConfig())
 
 	mgr.mu.Lock()
 	s := mgr.sessions["cli-no-run"]
-	s.conversationID = "conv-cli-idle"
+	s.conversationID = "1784000000030-aaaaaaaaaaaa"
 	// s.requestID stays "" — no active run.
 	mgr.mu.Unlock()
 
@@ -322,20 +329,35 @@ func TestDispatchCompact_CLIPath_NoActiveRun(t *testing.T) {
 	mb.mu.Lock()
 	writes := append([]stdinWrite{}, mb.writes...)
 	mb.mu.Unlock()
-
 	if len(writes) != 0 {
-		t.Errorf("expected no WriteToStdin calls when run is idle; got %d", len(writes))
+		t.Errorf("expected no WriteToStdin calls when no run is in flight; got %d", len(writes))
+	}
+
+	// The command was dispatched as a run carrying the literal command.
+	// mockBackend.mu guards started; stdinCapturingBackend.mu shadows it and
+	// guards only the stdin writes, so this must name the embedded lock.
+	mb.mockBackend.mu.Lock()
+	started := make([]types.RunOptions, 0, len(mb.started))
+	for _, opts := range mb.started {
+		started = append(started, opts)
+	}
+	mb.mockBackend.mu.Unlock()
+	if len(started) != 1 {
+		t.Fatalf("expected exactly 1 dispatched run for the idle /compact, got %d", len(started))
+	}
+	if started[0].Prompt != "/compact" {
+		t.Errorf("dispatched prompt = %q, want %q", started[0].Prompt, "/compact")
+	}
+	if started[0].ResolveSlash {
+		t.Error("ResolveSlash must stay false: /compact is the CLI's own command, not a file-backed one for the engine to expand")
 	}
 
 	results := ec.byType("engine_command_result")
 	if len(results) != 1 {
 		t.Fatalf("expected exactly 1 engine_command_result, got %d", len(results))
 	}
-	if results[0].event.CommandError != "compact_requires_active_run" {
-		t.Errorf("CommandError = %q, want %q", results[0].event.CommandError, "compact_requires_active_run")
-	}
-	if results[0].event.EventMessage == "" {
-		t.Errorf("expected informational EventMessage on compact_requires_active_run; got empty")
+	if results[0].event.CommandError != "" {
+		t.Errorf("idle /compact on a CLI backend must not refuse; got CommandError=%q", results[0].event.CommandError)
 	}
 }
 

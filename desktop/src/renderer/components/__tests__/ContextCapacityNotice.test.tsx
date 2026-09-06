@@ -37,6 +37,7 @@ describe('ContextCapacityNotice', () => {
         <ContextCapacityNotice
           state="warning"
           colors={colors}
+          servedByCli={false}
           onNewConversation={vi.fn()}
         />,
       )
@@ -51,6 +52,7 @@ describe('ContextCapacityNotice', () => {
         <ContextCapacityNotice
           state="full"
           colors={colors}
+          servedByCli={false}
           onNewConversation={vi.fn()}
         />,
       )
@@ -58,6 +60,30 @@ describe('ContextCapacityNotice', () => {
 
     expect(host.textContent).toContain('Context is full')
     expect(host.textContent).toContain('automatic compaction')
+    expect(host.textContent).toContain('/compact')
+  })
+
+  // On a delegated CLI the engine's automatic compaction never runs for this
+  // conversation — the CLI subprocess owns the live context and compacts on its
+  // own threshold. Promising engine compaction here points the user at a remedy
+  // that will not fire.
+  it('does not promise engine compaction on a CLI-served conversation', () => {
+    act(() => {
+      root.render(
+        <ContextCapacityNotice
+          state="full"
+          colors={colors}
+          servedByCli={true}
+          onNewConversation={vi.fn()}
+        />,
+      )
+    })
+
+    expect(host.textContent).toContain('Context is full')
+    expect(host.textContent).toContain('compacts its own context')
+    expect(host.textContent).not.toContain('The engine will compact')
+    // /compact still works on this backend: the engine dispatches it as a
+    // prompt turn so the CLI runs its own compaction.
     expect(host.textContent).toContain('/compact')
   })
 })

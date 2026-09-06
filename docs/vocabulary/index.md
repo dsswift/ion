@@ -46,6 +46,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 ## Alphabetical index
 
 - [APNs pusher](#term-apns-pusher)
+- [Abort Marker](#term-abort-marker)
 - [Agent](#term-agent)
 - [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
 - [Async delivery](#term-async-delivery)
@@ -64,6 +65,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Context Identity](#term-context-identity)
 - [Conversation](#term-conversation)
 - [Conversation Status Bar](#term-conversation-status-bar)
+- [Conversation Telemetry](#term-conversation-telemetry)
 - [Conversation Terminal Panel](#term-conversation-terminal-panel)
 - [Conversation Timeline Minimap](#term-conversation-timeline-minimap)
 - [Conversation View](#term-conversation-view)
@@ -82,6 +84,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Engine event](#term-engine-event)
 - [Engine profile](#term-engine-profile)
 - [Engine server](#term-engine-server)
+- [Explorer Tree State](#term-explorer-tree-state)
 - [Extension](#term-extension)
 - [Extension SDK](#term-extension-sdk)
 - [Extension context](#term-extension-context)
@@ -99,6 +102,9 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Message forwarding](#term-forwarding)
 - [Mirror store](#term-mirror-store)
 - [Model Boundary](#term-model-boundary)
+- [Model Change Marker](#term-model-change-marker)
+- [Mounted Folder](#term-mounted-folder)
+- [Native Session Compaction](#term-native-session-compaction)
 - [New Conversation Picker](#term-new-conversation-picker)
 - [Normalized event](#term-normalized-event)
 - [Notification](#term-notification)
@@ -109,6 +115,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Permission](#term-permission)
 - [Picker](#term-picker)
 - [Poll](#term-poll)
+- [Project Workspace](#term-project-workspace)
 - [Provider](#term-provider)
 - [Questions Wizard](#term-questions-wizard)
 - [Relay](#term-relay)
@@ -292,6 +299,20 @@ A new path in the conversation tree that starts at an earlier entry. A branch ke
 
 ### runtime-mechanic
 
+#### Abort Marker {#term-abort-marker}
+
+The conversation tree entry that records a cancelled run. It names the run, whether the operator or the engine cancelled it, the abort scope, and the exit signal. Without it a cancelled run and a completed run are the same file on disk.
+
+- **ID:** `abort-marker`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `engine` / `code` / `go`: `EntryAborted` in `engine/internal/conversation/conversation.go`
+  - `engine` / `code` / `go`: `func AppendAbortMarker` in `engine/internal/conversation/abort_marker.go`
+
 #### Backend {#term-backend}
 
 The pluggable implementation that runs one agent loop. The API backend calls a provider directly. Other backends drive an external agent process.
@@ -421,6 +442,35 @@ The decision point where a slash command that declares a model tier either appli
   - `sdk` / `code` / `typescript`: `SlashModelBoundaryInfo` in `engine/extensions/sdk/ion-sdk/types.ts`
   - `sdk` / `code` / `go`: `HookBeforeSlashModelBoundary` in `sdk/go/hook_descriptors.go`
 - **Notes:** The default retains the serving model after history exists. Consumers can override the policy per configuration, request, or hook.
+
+#### Model Change Marker {#term-model-change-marker}
+
+The conversation tree entry that records a run serving the conversation on a different model than the previous run did. It names the new model and the previous one. The conversation header carries only the most recent model, so this entry chain is what recovers where the work started and where it moved.
+
+- **ID:** `model-change-marker`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `engine` / `code` / `go`: `EntryModelChange` in `engine/internal/conversation/conversation.go`
+  - `engine` / `code` / `go`: `func SyncModel` in `engine/internal/conversation/model_sync.go`
+
+#### Native Session Compaction {#term-native-session-compaction}
+
+A delegated CLI compacting its own native session. Distinct from Compaction: Ion's transcript is the source of truth and the native session is a per-provider cache over it, so nothing leaves the Ion conversation and the context path is not truncated.
+
+- **ID:** `native-session-compaction`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `compact boundary`, `provider-side compaction`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type NativeCompactionEvent struct` in `engine/internal/types/normalized_event.go`
+  - `engine` / `code` / `go`: `EntryNativeCompaction` in `engine/internal/conversation/conversation.go`
+  - `desktop` / `code` / `typescript`: `export function buildNativeCompactionMarkerContent` in `desktop/src/shared/compaction-marker.ts`
 
 #### Permission {#term-permission}
 
@@ -863,6 +913,21 @@ A chart the agent renders in a conversation from data it already holds. The mode
   - `ios` / `code` / `swift`: `enum ChartTranscript` in `ios/IonRemote/Models/ChartTranscript.swift`
   - `ios` / `ui` / `swift`: `ChartTranscriptCard` in `ios/IonRemote/Views/ChartTranscriptCard.swift`
 
+#### Conversation Telemetry {#term-conversation-telemetry}
+
+The desktop client tool that measures conversation records on disk and returns counts, timestamps, cost, and file paths, never message text. Its scope follows the session's working directory: every conversation in a registered worktree, or the calling conversation and the chain it was cleared and continued from.
+
+- **ID:** `conversation-telemetry`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `conversationTelemetryTool` in `desktop/src/main/telemetry/conversation-telemetry-tool.ts`
+  - `desktop` / `code` / `typescript`: `selectConversations` in `desktop/src/main/telemetry/conversation-telemetry-select.ts`
+  - `desktop` / `doc` / `markdown`: `ConversationTelemetry` in `docs/tools/reference.md`
+
 #### Desktop {#term-desktop-client}
 
 One client application built on Electron. It owns the session store, persists conversations, answers snapshot polls, and hosts both client presentations.
@@ -936,6 +1001,34 @@ One client application built with SwiftUI. It is a thin client that renders the 
 - **Implementations:**
   - `ios` / `ui` / `swift`: `struct TabListView` in `ios/IonRemote/Views/TabListView.swift`
   - `ios` / `wire` / `swift`: `NormalizedEvent` in `ios/IonRemote/Models/NormalizedEvent.swift`
+
+#### Mounted Folder {#term-mounted-folder}
+
+An additional directory a Project mounts, browsable and editable beside the source directory in the file explorer and the git panel, and inherited by every checkout of that Project.
+
+- **ID:** `mounted-folder`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `workspace folder`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `ui` / `typescript`: `ProjectFoldersSection` in `desktop/src/renderer/components/settings/ProjectFoldersSection.tsx`
+  - `desktop` / `code` / `typescript`: `createWorkspaceFolderActions` in `desktop/src/renderer/preferences-workspace.ts`
+
+#### Project Workspace {#term-project-workspace}
+
+A Project's source directory together with its mounted folders. Every checkout of that Project — the base repo, each worktree, each bench — renders the same set, because the mounted-folder setting is keyed by the Project rather than by the active directory.
+
+- **ID:** `project-workspace`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `resolveProjectDir` in `desktop/src/shared/project-workspace.ts`
+  - `desktop` / `code` / `typescript`: `orderedWorkspaceRoots` in `desktop/src/shared/workspace-roots.ts`
 
 #### Scratch Document {#term-scratch-document}
 
@@ -1498,6 +1591,21 @@ The desktop-owned engine that runs declarative user, project, and enterprise rul
   - `desktop` / `code` / `typescript`: `export function validateUserDefinition` in `desktop/src/shared/automation-catalog.ts`
   - `desktop` / `ui` / `typescript`: `export function AutomationCategory` in `desktop/src/renderer/components/settings/AutomationCategory.tsx`
 
+#### Explorer Tree State {#term-explorer-tree-state}
+
+Which folders are expanded, which root sections are folded shut, and which row is selected in the file explorer. Keyed by absolute root directory, owned by the desktop main process, shared by the Overlay and the Studio, and persisted apart from settings. Expansion and folded roots survive a relaunch; the selected row is shared live only.
+
+- **ID:** `explorer-tree-state`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `ExplorerStateSnapshot` in `desktop/src/shared/explorer-state.ts`
+  - `desktop` / `code` / `typescript`: `loadExplorerState` in `desktop/src/main/explorer-state-store.ts`
+  - `desktop` / `code` / `typescript`: `setupExplorerStateSync` in `desktop/src/renderer/stores/explorer-state-sync.ts`
+
 #### Mirror store {#term-mirror-store}
 
 The Studio presentation's copy of the session store. It reads the same event stream, forwards owner-only mutations, and never persists.
@@ -1695,6 +1803,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Conversation instance | `export interface ProjectedConversationInstance` | `export interface ProjectedConversationInstance` | `export interface ProjectedConversationInstance` | `struct EngineInstanceBar` | None |
 | Conversation status | `StatusDot` | `StatusDot` | `StatusDot` | `TabStatusRollup` | None |
 | Conversation Status Bar | `export function ComposerControls` | `export function ComposerControls` | `export function ComposerControls` | `struct ConversationStatusBar` | None |
+| Conversation Telemetry | `conversationTelemetryTool`, `selectConversations`, `ConversationTelemetry` | `conversationTelemetryTool`, `selectConversations`, `ConversationTelemetry` | `conversationTelemetryTool`, `selectConversations`, `ConversationTelemetry` | None | iOS |
 | Conversation Terminal Panel | `TerminalPanel` | `TerminalPanel`, `StudioCenter` | `TerminalPanel` | None | iOS |
 | Conversation Timeline Minimap | `TimelineMinimap` | `TimelineMinimap` | `TimelineMinimap` | None | iOS |
 | Conversation View | `export function ConversationView` | `export function ConversationView`, `ConversationView` | `export function ConversationView` | `struct ConversationView` | None |
@@ -1706,6 +1815,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Drawer | `StatusDrawer` | `StatusDrawer` | `StatusDrawer` | `ModalSheetBoundary` | None |
 | Engine event | `EngineEvent` | `EngineEvent` | `EngineEvent` | `engine_status` | None |
 | Engine profile | `engineProfileId` | `engineProfileId` | `engineProfileId` | `EngineProfile` | None |
+| Explorer Tree State | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | None | iOS |
 | Guided Questions | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | None | iOS |
 | Inbox | `export function classifyInbox`, `export function InboxPanel` | `export function classifyInbox`, `export function InboxPanel`, `InboxSidebar` | `export function classifyInbox`, `export function InboxPanel` | `InboxRowView` | None |
 | Injection Kind | `export function suppressesInjection` | `export function suppressesInjection` | `export function suppressesInjection` | `enum InjectionPolicy` | None |
@@ -1716,6 +1826,8 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Menu | `export function TabContextMenu` | `export function TabContextMenu` | `export function TabContextMenu` | `struct TabRowContextMenu` | None |
 | Message | None | None | None | `struct Message` | Desktop, Studio, Overlay |
 | Mirror store | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS` | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS`, `waitForTabsSync` | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS` | None | iOS |
+| Mounted Folder | `ProjectFoldersSection`, `createWorkspaceFolderActions` | `ProjectFoldersSection`, `createWorkspaceFolderActions` | `ProjectFoldersSection`, `createWorkspaceFolderActions` | None | iOS |
+| Native Session Compaction | `export function buildNativeCompactionMarkerContent` | `export function buildNativeCompactionMarkerContent` | `export function buildNativeCompactionMarkerContent` | None | iOS |
 | New Conversation Picker | `NewConversationPicker` | `NewConversationPicker` | `NewConversationPicker` | `struct TabListNewTabSheet` | None |
 | Normalized event | None | None | None | `NormalizedEvent` | Desktop, Studio, Overlay |
 | Notification | `export function NotificationsPanel` | `export function NotificationsPanel` | `export function NotificationsPanel` | `struct NotificationsView` | None |
@@ -1723,6 +1835,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Panel | `FloatingPanel` | `FloatingPanel` | `FloatingPanel` | `struct GitPaneView` | None |
 | Permission | `PermissionCard` | `PermissionCard` | `PermissionCard` | `struct PermissionCardView` | None |
 | Picker | `ModelPickerPopover` | `ModelPickerPopover` | `ModelPickerPopover` | `struct ModelPickerSheet` | None |
+| Project Workspace | `resolveProjectDir`, `orderedWorkspaceRoots` | `resolveProjectDir`, `orderedWorkspaceRoots` | `resolveProjectDir`, `orderedWorkspaceRoots` | None | iOS |
 | Questions Wizard | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | None | iOS |
 | Resource | `ResourceViewer` | `ResourceViewer` | `ResourceViewer` | `Resource` | None |
 | Scratch Document | None | `export interface ScratchDocument` | None | None | Overlay, iOS |
@@ -1776,6 +1889,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `client dispatch id` → [Dispatch Alias](#term-dispatch-alias)
 - Alias: `command` → [Slash command](#term-slash-command)
 - Alias: `command envelope` → [Client command](#term-client-command)
+- Alias: `compact boundary` → [Native Session Compaction](#term-native-session-compaction)
 - Alias: `composer` → [Input Bar](#term-input-bar)
 - Alias: `context compaction` → [Compaction](#term-compaction)
 - Alias: `context menu` → [Menu](#term-menu)
@@ -1829,6 +1943,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `ping frame` → [Keepalive](#term-keepalive)
 - Alias: `popover picker` → [Picker](#term-picker)
 - Alias: `profile` → [Engine profile](#term-engine-profile)
+- Alias: `provider-side compaction` → [Native Session Compaction](#term-native-session-compaction)
 - Alias: `push notification` → [Notification](#term-notification)
 - Alias: `push sender` → [APNs pusher](#term-apns-pusher)
 - Alias: `question round` → [Guided Questions](#term-guided-questions)
@@ -1869,6 +1984,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `visualizer` → [Visualizer Canvas](#term-visualizer-canvas)
 - Alias: `wake push` → [Wake notification](#term-wake-notification)
 - Alias: `window title bar` → [Studio Title Bar](#term-studio-title-bar)
+- Alias: `workspace folder` → [Mounted Folder](#term-mounted-folder)
 - Alias: `workspace root` → [Workspace](#term-workspace)
 
 ## Review queue

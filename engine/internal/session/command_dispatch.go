@@ -269,12 +269,17 @@ type compactable interface {
 //
 // Path B — CLI backend (subprocess forwarding):
 //
-//	The Claude Code subprocess owns the conversation. We write the literal
-//	"/compact" string as a stream-json user message to its stdin so the
-//	subprocess executes its own compaction. Only valid while a run is
-//	in flight (the stdin pipe is closed at run-end). When no run is
-//	active we surface an informational error code the consumer can render
-//	as a friendly system message.
+//	The delegated CLI subprocess owns the conversation, so the engine hands
+//	it the literal "/compact" string and lets its own slash dispatcher run
+//	the compaction. How that string is delivered depends on whether a run
+//	is in flight, because the stdin pipe only exists for the life of a run:
+//
+//	  - Run in flight: write it as a stream-json user message to stdin,
+//	    mirroring SteerAgent's message shape.
+//	  - Idle: dispatch it as an ordinary prompt turn, which starts a run
+//	    whose first user message is "/compact". This is the case an
+//	    operator actually types the command in, and the engine performs it
+//	    rather than refusing and asking them to retype the same string.
 //
 // Path C — no conversation:
 //
@@ -421,25 +426,43 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 		return
 	}
 
-	// Path B: the serving backend is a delegated CLI — forward to the
-	// subprocess that owns this conversation. Reached when the resolved
+	// Path B: the serving backend is a delegated CLI — the subprocess that
+	// owns this conversation runs its own /compact. Reached when the resolved
 	// backend for this model does not implement compactable (a plain
 	// ClaudeCodeBackend, or a hybrid session whose model routes to one).
-	// Without an active run there's no stdin pipe to write to, so we
-	// surface an informational error the consumer can render as a
-	// system message ("send /compact as a normal prompt instead").
+	//
+	// Two sub-paths, split on whether a run is in flight:
+	//
+	//   - Run active: write the command down the live stdin pipe (below), so
+	//     the CLI compacts without interrupting the turn.
+	//   - Idle: dispatch "/compact" as an ordinary prompt turn. There is no
+	//     stdin pipe when no run is in flight, and idle is when a user
+	//     actually types /compact — so refusing here refused the command in
+	//     exactly the case it is used. The CLIs accept the command on their
+	//     normal input: `compact` is in the claude CLI's own advertised
+	//     slash_commands under `-p`, and running it there executes the
+	//     compaction and reports back (an empty session answers "Error: No
+	//     messages to compact"). Dispatching it is the engine doing the work
+	//     rather than instructing the user to retype the same string as a
+	//     prompt, which is what this branch used to do.
+	//
+	// ResolveSlash is deliberately left false: the engine must not try to
+	// expand /compact as a file-backed command. The literal string is the
+	// payload the CLI's own dispatcher parses.
 	m.mu.RLock()
 	rid := s.requestID
 	m.mu.RUnlock()
 	if rid == "" {
 		backendType := fmt.Sprintf("%T", serving)
-		utils.LogWithFields(utils.LevelInfo, "session", "compact: serving backend has no engine-side compaction and no active run to forward to", map[string]any{"key": key, "model": model, "backend_type": backendType})
-		m.emit(key, types.EngineEvent{
-			Type:         "engine_command_result",
-			Command:      "compact",
-			CommandError: "compact_requires_active_run",
-			EventMessage: "On this backend, /compact must run inside an active conversation. Send /compact as a normal prompt to forward it to the underlying CLI.",
+		utils.LogWithFields(utils.LevelInfo, "session", "compact: no engine-side compaction and no active run; dispatching /compact as a prompt turn", map[string]any{
+			"key": key, "model": model, "backend_type": backendType, "conversation_id": convID,
 		})
+		if err := m.SendPrompt(key, cliCompactCommand, &PromptOverrides{DisplayText: cliCompactCommand}); err != nil {
+			utils.LogWithFields(utils.LevelWarn, "session", "compact: dispatching /compact as a prompt turn failed", map[string]any{"key": key, "error": err.Error()})
+			m.emitCommandResult(key, "compact", err)
+			return
+		}
+		m.emitCommandResult(key, "compact", nil)
 		return
 	}
 
@@ -454,7 +477,7 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 		"message": map[string]interface{}{
 			"role": "user",
 			"content": []map[string]interface{}{
-				{"type": "text", "text": "/compact"},
+				{"type": "text", "text": cliCompactCommand},
 			},
 		},
 	}
@@ -569,3 +592,8 @@ func (m *Manager) dispatchExport(s *engineSession, key, args string) {
 // predetermined path, or stream it back over their own transport. The
 // engine has no opinion.
 const EngineEventExport = "engine_export"
+
+// cliCompactCommand is the literal a delegated CLI's own slash dispatcher
+// parses to run its native compaction. Named once so the stdin-forwarding
+// path and the idle prompt-dispatch path cannot drift apart.
+const cliCompactCommand = "/compact"

@@ -12,6 +12,135 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// Native-session (delegated-CLI) breakdown accuracy
+// ---------------------------------------------------------------------------
+//
+// A native-session backend (ClaudeCodeBackend, CodexBackend, AcpBackend) never
+// receives Ion's built-in tool schemas — it advertises its own — and never
+// writes a real provider Usage onto its bridged transcript messages
+// (cli_transcript_recorder.go's appendStructuredCliTurn calls
+// AddAssistantMessageNoUsage). Before this fix, ComputeAndEmitContextBreakdown
+// (1) itemized tools.GetToolDefs() as if they had been sent to every backend,
+// inflating the "known" portion with schemas the CLI never saw, and (2) never
+// reconciled — conversation.LastAssistantUsage is always nil on a bridged
+// transcript, so the reconciliation branch was permanently skipped and no
+// "unaccounted" row ever surfaced the CLI's own opaque system prompt / tool
+// definitions, no matter how large the gap.
+
+// TestComputeAndEmitContextBreakdown_NativeSessionOmitsBuiltinTools pins that a
+// native-session session's breakdown carries no "tool" rows for Ion's built-in
+// tools (Read/Write/Bash/...), because those schemas are never transmitted to
+// a delegated-CLI backend. Fails before the fix: every built-in tool appears
+// as its own "tool" category row.
+func TestComputeAndEmitContextBreakdown_NativeSessionOmitsBuiltinTools(t *testing.T) {
+	mb := &nativeCapacityMockBackend{newMockBackend()}
+	mgr := NewManager(mb)
+	mgr.SetConfig(&types.EngineRuntimeConfig{DefaultModel: "claude-opus-4-5"})
+	ec := newEventCollector(mgr)
+
+	cfg := types.EngineConfig{ProfileID: "test", WorkingDirectory: t.TempDir()}
+	if _, err := mgr.StartSession("native-tools", cfg); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	mgr.ComputeAndEmitContextBreakdown("native-tools")
+
+	breakdowns := ec.byType("engine_context_breakdown")
+	if len(breakdowns) == 0 {
+		t.Fatal("expected engine_context_breakdown event, got none")
+	}
+	bd := breakdowns[len(breakdowns)-1].event.ContextBreakdown
+	if bd == nil {
+		t.Fatal("ContextBreakdown payload is nil")
+	}
+
+	for _, cat := range bd.Categories {
+		if cat.Kind == "tool" {
+			t.Errorf("unexpected tool row %q (%d tokens): no MCP/extension tools registered and built-ins are never sent to a native-session backend", cat.Name, cat.Tokens)
+		}
+	}
+}
+
+// TestComputeAndEmitContextBreakdown_NativeSessionReconcilesAgainstOccupancy
+// pins that a native-session session's breakdown reconciles against the
+// engine's own occupancy figure (since the backend never writes a persisted
+// Usage the ordinary reconciliation branch can key on), surfacing the CLI's
+// unrepresented system prompt / built-in tools as an honest "unaccounted" row.
+//
+// Fails before the fix: APIReportedTotal stays 0 and no unaccounted row
+// appears, no matter how large the real occupancy is.
+func TestComputeAndEmitContextBreakdown_NativeSessionReconcilesAgainstOccupancy(t *testing.T) {
+	mb := &nativeCapacityMockBackend{newMockBackend()}
+	mgr := NewManager(mb)
+	mgr.SetConfig(&types.EngineRuntimeConfig{DefaultModel: "claude-opus-4-5"})
+
+	convDir := filepath.Join(os.Getenv("HOME"), ".ion", "conversations")
+	if err := os.MkdirAll(convDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	sessionID := "test-native-reconcile-" + t.Name()
+	// Empty header model, matching the delegated-CLI shape (persistCliTurn
+	// creates conversations with model:"").
+	conv := conversation.CreateConversation(sessionID, "", "")
+	conversation.AddUserMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "Read the repo and summarize it."}})
+	// Bridged transcript shape: no per-message Usage, matching
+	// appendStructuredCliTurn (AddAssistantMessageNoUsage).
+	conversation.AddAssistantMessageNoUsage(conv, []types.LlmContentBlock{
+		{Type: "text", Text: strings.Repeat("This is a long summary of the repository. ", 200)},
+	}, "")
+	if err := conversation.Save(conv, ""); err != nil {
+		t.Fatalf("Save conversation: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Remove(filepath.Join(convDir, sessionID+".llm.jsonl"))  //nolint:errcheck // test cleanup
+		_ = os.Remove(filepath.Join(convDir, sessionID+".tree.jsonl")) //nolint:errcheck // test cleanup
+	})
+
+	ec := newEventCollector(mgr)
+
+	cfg := types.EngineConfig{ProfileID: "test", WorkingDirectory: t.TempDir()}
+	if _, err := mgr.StartSession("native-reconcile", cfg); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	mgr.mu.Lock()
+	if s, ok := mgr.sessions["native-reconcile"]; ok {
+		s.conversationID = sessionID
+	}
+	mgr.mu.Unlock()
+
+	// Precondition: a bridged transcript never carries a real Usage.
+	reloaded, err := conversation.Load(sessionID, "")
+	if err != nil {
+		t.Fatalf("reload conversation: %v", err)
+	}
+	if conversation.LastAssistantUsage(reloaded) != nil {
+		t.Fatal("precondition: bridged transcript must carry no assistant Usage")
+	}
+
+	mgr.ComputeAndEmitContextBreakdown("native-reconcile")
+
+	breakdowns := ec.byType("engine_context_breakdown")
+	if len(breakdowns) == 0 {
+		t.Fatal("expected engine_context_breakdown event, got none")
+	}
+	bd := breakdowns[len(breakdowns)-1].event.ContextBreakdown
+	if bd == nil {
+		t.Fatal("ContextBreakdown payload is nil")
+	}
+
+	if bd.OccupancyTokens == 0 {
+		t.Fatal("OccupancyTokens = 0, want non-zero (estimated from the bridged transcript)")
+	}
+	if bd.APIReportedTotal != bd.OccupancyTokens {
+		t.Errorf("APIReportedTotal = %d, want %d (the session's own occupancy figure, its only available truth)",
+			bd.APIReportedTotal, bd.OccupancyTokens)
+	}
+	if bd.Unaccounted <= 0 {
+		t.Errorf("Unaccounted = %d, want > 0 (the CLI's own system prompt and built-in tools are not itemizable)", bd.Unaccounted)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // ComputeAndEmitContextBreakdown tests
 // ---------------------------------------------------------------------------
 //

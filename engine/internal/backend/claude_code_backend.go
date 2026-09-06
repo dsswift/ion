@@ -66,6 +66,12 @@ type claudeCodeRun struct {
 	// denial — the CLI's own result carries none because the MCP handler
 	// auto-acknowledges the call. See claude_code_questions.go.
 	pendingQuestionDenials []types.PermissionDenial
+	// turnSealed latches once a turn-ending tool (ExitPlanMode, or a question
+	// tool) has been observed and the run has been stopped from taking another
+	// turn. Without it the model keeps calling tools that plan mode revoked and
+	// the CLI answers each with "No such tool available", so the run spends its
+	// remaining turns on refusals. See claude_code_turn_seal.go.
+	turnSealed bool
 }
 
 // ClaudeCodeBackend implements RunBackend by spawning the Claude Code CLI
@@ -402,6 +408,14 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 					sessionID = e.SessionID
 				}
 			case *types.TaskUpdateEvent:
+				// EnterPlanMode is engine-owned in auto mode too (see
+				// wireEnterPlanModeToolServer): scan unconditionally so a
+				// call anywhere in this subprocess's stream flips
+				// run.planMode immediately, with no restart. Must run before
+				// the run.planMode-gated call below so a Write/ExitPlanMode
+				// tool_use arriving in this SAME assistant message is
+				// captured too.
+				b.handleEnterPlanModeAssistant(run, e)
 				// Plan mode: the CLI streams the fully-populated ExitPlanMode
 				// tool_use (its input carries the plan text) in the assistant
 				// message BEFORE the result/denial arrives. Capture it here.
@@ -413,6 +427,11 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 				// streamed tool_use so injectQuestionDenials can surface the
 				// question as a retained denial. See claude_code_questions.go.
 				b.handleQuestionAssistant(run, e)
+				// Both scanners above latch a turn-ending signal. Enforce it:
+				// plan mode has already revoked the mutating tools, so letting
+				// the model take another turn produces only "No such tool
+				// available" refusals until the run exhausts its turn budget.
+				b.sealTurnAfterTerminalTool(run, "assistant stream")
 			case *types.TaskCompleteEvent:
 				if e.SessionID != "" {
 					sessionID = e.SessionID

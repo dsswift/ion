@@ -257,7 +257,7 @@ func (p *bedrockProvider) parseBedrockStream(ctx context.Context, reader io.Read
 	rawCh, rawErr := ParseSSEStream(reader)
 	// Per-event idle deadline + heartbeat (see sse_idle.go): a stream that
 	// returns headers then goes silent is caught fast and retried.
-	sseCh, sseErr := streamWithIdle(rawCh, rawErr, "bedrock", "", "", nil, telemetryCorrelationFromContext(ctx))
+	sseCh, sseErr := streamWithIdle(rawCh, rawErr, "bedrock", "", "", streamProgressFromContext(ctx), telemetryCorrelationFromContext(ctx))
 	for sse := range sseCh {
 		if sse.Data == "" {
 			continue

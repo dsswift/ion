@@ -185,6 +185,25 @@ describe('EngineControlPlane.ensureSession', () => {
     expect(mockBridge.sendPrompt).toHaveBeenCalledOnce()
   })
 
+  it('fails the tab when the prompt cannot reach the engine', async () => {
+    mockBridge.sendPrompt.mockResolvedValue({
+      ok: false,
+      error: 'Engine connection unavailable',
+    })
+
+    const tabId = cp.createTab()
+    const errors: any[] = []
+    cp.on('error', (tid: string, err: any) => errors.push({ tid, err }))
+
+    const result = await cp.submitPrompt(tabId, 'req-1', makeRunOptions())
+
+    expect(result).toEqual({ ok: false, error: 'Engine connection unavailable' })
+    expect(cp.getTabStatus(tabId)?.status).toBe('failed')
+    expect(errors).toHaveLength(1)
+    expect(errors[0].tid).toBe(tabId)
+    expect(errors[0].err.message).toBe('Engine connection unavailable')
+  })
+
   it('surfaces a start failure as a non-ok result without throwing', async () => {
     mockBridge.startSession.mockResolvedValue({ ok: false, error: 'boom' })
     const tabId = cp.createTab()

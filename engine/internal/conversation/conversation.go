@@ -42,6 +42,32 @@ const (
 	// from engine_command_result{command:"clear"}; without this entry there
 	// is no persisted signal for flattenEntries to replay on reload.
 	EntryCleared SessionEntryType = "cleared"
+	// EntryAborted records that a run was cancelled, so the stop survives
+	// reload. The engine is the only actor that knows a run was interrupted
+	// rather than completed; without this entry that fact exists only in the
+	// engine log, which rotates and cannot be joined against a conversation
+	// file. It is history/telemetry data only: it is not replayed into
+	// scrollback and never enters provider-visible context.
+	EntryAborted SessionEntryType = "aborted"
+	// EntryNativeCompaction records that a delegated-CLI backend compacted its
+	// OWN native session. It is deliberately NOT EntryCompaction.
+	//
+	// buildContextPathLocked treats EntryCompaction as a truncation: it drops
+	// every preceding message and replaces them with a boundary. That is right
+	// for an engine compaction, which really did remove those messages from
+	// Ion's context. It would be catastrophic here. A delegated CLI's native
+	// session is a disposable per-provider cache over Ion's transcript, and
+	// Ion's transcript is the source of truth — so letting the cache's own
+	// eviction delete Ion's archive would destroy history Ion still holds, and
+	// the next cross-provider turn would bridge a conversation that had
+	// silently lost its first half.
+	//
+	// This entry therefore carries no context-path semantics at all: it falls
+	// through buildContextPathLocked's default arm and changes nothing about
+	// what the model sees. It exists so the fact survives a reload and reaches
+	// clients as a marker row, exactly like EntryPlanMarker and
+	// EntrySteerMarker.
+	EntryNativeCompaction SessionEntryType = "native_compaction"
 )
 
 // MessageData holds a chat message entry.
@@ -165,6 +191,23 @@ type PlanMarkerData struct {
 	PlanSlug     string `json:"planSlug"`
 }
 
+// NativeCompactionData records a delegated CLI's compaction of its own native
+// session for persistence and replay. It mirrors the live
+// types.NativeCompactionEvent so flattenEntries can replay the marker on
+// historical reload.
+//
+// The numbers are the PROVIDER's, not Ion's: PreTokens is what the CLI counted
+// in its own session and MessagesSummarized is in the CLI's message units.
+// Neither is comparable to Ion's own occupancy figure, and neither is used in
+// any engine decision — they are recorded so a consumer can show what the
+// provider reported.
+type NativeCompactionData struct {
+	Trigger            string `json:"trigger,omitempty"`
+	PreTokens          int    `json:"preTokens,omitempty"`
+	MessagesSummarized int    `json:"messagesSummarized,omitempty"`
+	DurationMs         int64  `json:"durationMs,omitempty"`
+}
+
 // SteerMarkerData records a steer injection event for persistence and replay.
 // It mirrors the live SteerInjectedEvent so flattenEntries can replay a steer
 // marker on historical reload.
@@ -177,6 +220,28 @@ type SteerMarkerData struct {
 // itself — the only signal flattenEntries needs is that a clear occurred
 // at a specific point in the tree so clients can replay the divider.
 type ClearedData struct{}
+
+// AbortedData records a cancelled run for persistence.
+//
+// The entry's own timestamp supplies the when, exactly as ClearedData relies on
+// it. Source separates the two ways a run is cancelled, because they mean
+// different things to anything reading the history: AbortSourceUser is the
+// operator pressing Stop, while AbortSourceEngine is a cancel that arrived from
+// inside the run (a turn or tool hook, a watchdog) with no operator behind it.
+// Scope is empty for an engine-side cancel, which has no abort scope to record.
+type AbortedData struct {
+	RunID  string `json:"runId"`
+	Source string `json:"source"`
+	Scope  string `json:"scope,omitempty"`
+	Signal string `json:"signal,omitempty"`
+}
+
+const (
+	// AbortSourceUser marks a stop the operator asked for.
+	AbortSourceUser = "user"
+	// AbortSourceEngine marks a cancel that originated inside the engine.
+	AbortSourceEngine = "engine"
+)
 
 // ModelChangeData records a model switch.
 type ModelChangeData struct {

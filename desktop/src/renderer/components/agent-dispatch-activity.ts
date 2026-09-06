@@ -7,7 +7,8 @@ import type { Message } from '../../shared/types'
  * sources that must converge without double-rendering (architecture C —
  * push + slow full-snapshot reconcile):
  *
- *  - PUSH: `dispatch_activity` deltas (tool_start / tool_end / text) arrive in
+ *  - PUSH: `dispatch_activity` deltas (tool_start / tool_end / stream_reset /
+ *    text) arrive in
  *    real time. `foldActivity` folds each delta into an ordered entry list,
  *    deduping tool entries by `toolId` (updated in place across start→end) and
  *    streaming text by `dispatchSeq` (a coalesced run shares one seq slot).
@@ -50,8 +51,10 @@ export interface DispatchActivityState {
 /** A `dispatch_activity` normalized event payload (the fields the fold reads). */
 export interface DispatchActivityDelta {
   dispatchConversationId: string
-  dispatchActivityKind: 'text' | 'tool_start' | 'tool_end'
+  dispatchActivityKind: 'text' | 'tool_start' | 'tool_end' | 'stream_reset'
   dispatchSeq: number
+  /** Last committed sequence retained by a stream_reset rollback. */
+  dispatchResetAfterSeq?: number
   toolName?: string
   toolId?: string
   dispatchTextDelta?: string
@@ -76,6 +79,14 @@ export interface FoldResult {
  * "both sides of the conditional" per the logging policy).
  */
 export function foldActivity(prev: DispatchActivityState, delta: DispatchActivityDelta): FoldResult {
+  if (delta.dispatchActivityKind === 'stream_reset') {
+    const entries = Object.fromEntries(
+      Object.entries(prev.entries).filter(([, entry]) => entry.seq <= (delta.dispatchResetAfterSeq ?? 0)),
+    )
+    const order = prev.order.filter((key) => entries[key] !== undefined)
+    return { state: { order, entries }, branch: 'stream-reset' }
+  }
+
   const order = [...prev.order]
   const entries = { ...prev.entries }
 

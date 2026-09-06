@@ -651,7 +651,7 @@ final class ContractSyncTests: XCTestCase {
     let startEvent = try decoder.decode(RemoteEvent.self, from: startJSON)
     guard
       case .engineDispatchActivity(
-        _, _, let agentId, let convId, let kind, let seq, let toolName, let toolId, _, _, let ts) =
+        _, _, let agentId, let convId, let kind, let seq, _, let toolName, let toolId, _, _, let ts) =
         startEvent
     else {
       return XCTFail("Expected engineDispatchActivity (tool_start)")
@@ -670,7 +670,7 @@ final class ContractSyncTests: XCTestCase {
       """.data(using: .utf8)!
     let textEvent = try decoder.decode(RemoteEvent.self, from: textJSON)
     guard
-      case .engineDispatchActivity(_, _, _, _, let tkind, _, _, _, let textDelta, _, let textTs) =
+      case .engineDispatchActivity(_, _, _, _, let tkind, _, _, _, _, let textDelta, _, let textTs) =
         textEvent
     else {
       return XCTFail("Expected engineDispatchActivity (text)")
@@ -685,12 +685,24 @@ final class ContractSyncTests: XCTestCase {
       {"type":"desktop_dispatch_activity","tabId":"t1","dispatchAgentId":"a","dispatchConversationId":"c","dispatchActivityKind":"tool_end","dispatchSeq":3,"toolId":"tool-1","dispatchToolIsError":true}
       """.data(using: .utf8)!
     let endEvent = try decoder.decode(RemoteEvent.self, from: endJSON)
-    guard case .engineDispatchActivity(_, _, _, _, let ekind, _, _, _, _, let isError, _) = endEvent
+    guard case .engineDispatchActivity(_, _, _, _, let ekind, _, _, _, _, _, let isError, _) = endEvent
     else {
       return XCTFail("Expected engineDispatchActivity (tool_end)")
     }
     XCTAssertEqual(ekind, "tool_end")
     XCTAssertTrue(isError)
+
+    // stream reset carries the exact last committed activity sequence.
+    let resetJSON = """
+      {"type":"desktop_dispatch_activity","tabId":"t1","dispatchAgentId":"a","dispatchConversationId":"c","dispatchActivityKind":"stream_reset","dispatchSeq":5,"dispatchResetAfterSeq":2}
+      """.data(using: .utf8)!
+    let resetEvent = try decoder.decode(RemoteEvent.self, from: resetJSON)
+    guard case .engineDispatchActivity(_, _, _, _, let resetKind, _, let resetAfterSeq, _, _, _, _, _) = resetEvent
+    else {
+      return XCTFail("Expected engineDispatchActivity (stream_reset)")
+    }
+    XCTAssertEqual(resetKind, "stream_reset")
+    XCTAssertEqual(resetAfterSeq, 2)
   }
 
   func testEngineMessageEndDecode() throws {
@@ -915,6 +927,7 @@ final class ContractSyncTests: XCTestCase {
       "markerMessagesAfter", "markerMessagesBefore", "markerMicroOnly",
       "markerPlanOperation", "markerPlanSlug",
       "markerStrategy", "markerSummary",
+      "markerPreTokens", "markerTrigger",
       // Tracked but not decoded: the desktop mapper projects a tool
       // row's error state onto `toolStatus` before forwarding to iOS.
       "isError",
@@ -965,6 +978,7 @@ final class ContractSyncTests: XCTestCase {
       "costPer1kCacheCreation": 0.00375,
       "costPer1kCacheRead": 0.0003,
       "supportsCaching": true,
+      "cacheTtlSeconds": 300,
       "supportsThinking": true,
       "supportsImages": true,
     ]
@@ -987,6 +1001,10 @@ final class ContractSyncTests: XCTestCase {
       "costPer1kInput", "costPer1kOutput",
       "costPer1kCacheCreation", "costPer1kCacheRead",
       "supportsCaching", "supportsThinking", "supportsImages",
+      // Prompt-cache lifetime. Consumed: ModelSwitchCost prices the
+      // "stay on this model" side of a switch against it, because a cached
+      // prompt only bills at the cheap read rate while the entry is alive.
+      "cacheTtlSeconds",
       "thinkingMode", "thinkingEfforts",
       // Operator-defined model (engine.json `models` entry) rather than
       // one the provider's catalog reported. Consumed: drives the

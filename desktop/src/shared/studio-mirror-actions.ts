@@ -376,10 +376,19 @@ export const MIRROR_LOCAL_ACTIONS: Record<string, string> = {
     "read-only IPC fetch into a per-window derived cache (the inventory+bench pair)",
   // File explorer / editor (window-local workbench state).
   toggleFileExplorer: "per-window UI",
-  collapseAllExplorer: "per-window UI",
-  setExplorerRootCollapsed: "per-window UI",
-  setFileExplorerExpanded: "per-window UI",
-  setFileExplorerSelected: "per-window UI",
+  collapseAllExplorer: "converges via the main-owned explorer-state funnel",
+  setExplorerRootCollapsed: "converges via the main-owned explorer-state funnel",
+  // Explorer tree state is no longer per-window: main owns the snapshot and
+  // every window publishes to it through the explorer-state funnel, which
+  // persists it and fans the result to both presentations. These stay
+  // mirror-local because each window applies the same accepted snapshot —
+  // forwarding them would route a change through the owner only to have it
+  // arrive back over the very channel that already carries it.
+  setFileExplorerExpanded: "converges via the main-owned explorer-state funnel",
+  setFileExplorerSelected: "converges via the main-owned explorer-state funnel",
+  applyExplorerState: "applies the main-owned snapshot in this window",
+  pruneExplorerExpanded:
+    "drops expansions the directory listing this window just read disproved",
   toggleFileEditor: "per-window UI",
   openFileInEditor: "per-window UI",
   closeFileEditorTab: "per-window UI",

@@ -424,6 +424,7 @@ type EarlyStopDecisionInfo struct {
 	LastContinuationDelta  int    `json:"lastContinuationDelta"`
 	IsSubagent             bool   `json:"isSubagent"`
 	WouldContinue          bool   `json:"wouldContinue"`
+	Eligible               bool   `json:"eligible"`
 }
 
 // EarlyStopDecisionResult overrides the engine's early-stop decision.

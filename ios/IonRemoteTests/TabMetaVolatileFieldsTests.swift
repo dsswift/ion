@@ -29,16 +29,20 @@ final class TabMetaVolatileFieldsTests: XCTestCase {
 
     func testDecodeTabMetaWithVolatileFields() throws {
         let json = """
-        {"type":"desktop_tab_meta","tabId":"t1","convFingerprint":"a1:5,a2:8","lastActivityAt":1700000000123,"lastMessage":"latest reply","messageCount":7}
+        {"type":"desktop_tab_meta","tabId":"t1","convFingerprint":"a1:5,a2:8","lastActivityAt":1700000000123,"lastMessageAt":1700000000100,"lastMessage":"latest reply","messageCount":7}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .tabMeta(let tabId, let title, let cost, let groupId, let fp, let activity, let lastMessage, let count, let pillColor, let pillIcon) = event {
+        if case .tabMeta(let tabId, let title, let cost, let groupId, let fp, let activity, let lastMessageAt, let lastMessage, let count, let pillColor, let pillIcon) = event {
             XCTAssertEqual(tabId, "t1")
             XCTAssertNil(title)
             XCTAssertNil(cost)
             XCTAssertNil(groupId)
             XCTAssertEqual(fp, "a1:5,a2:8")
             XCTAssertEqual(activity, 1_700_000_000_123)
+            // The honest turn boundary rides its own field: a client pricing a
+            // prompt cache cannot use the activity clock, which reconnects and
+            // status re-emissions also stamp.
+            XCTAssertEqual(lastMessageAt, 1_700_000_000_100)
             XCTAssertEqual(lastMessage, "latest reply")
             XCTAssertEqual(count, 7)
             XCTAssertNil(pillColor)
@@ -55,11 +59,12 @@ final class TabMetaVolatileFieldsTests: XCTestCase {
         {"type":"desktop_tab_meta","tabId":"t1","totalCostUsd":0.42}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .tabMeta(let tabId, _, let cost, _, let fp, let activity, let lastMessage, let count, let pillColor, let pillIcon) = event {
+        if case .tabMeta(let tabId, _, let cost, _, let fp, let activity, let lastMessageAt, let lastMessage, let count, let pillColor, let pillIcon) = event {
             XCTAssertEqual(tabId, "t1")
             XCTAssertEqual(cost, 0.42)
             XCTAssertNil(fp)
             XCTAssertNil(activity)
+            XCTAssertNil(lastMessageAt)
             XCTAssertNil(lastMessage)
             XCTAssertNil(count)
             XCTAssertNil(pillColor)
@@ -72,13 +77,14 @@ final class TabMetaVolatileFieldsTests: XCTestCase {
     /// Round-trip: encode carries the volatile fields so the diagnostic /
     /// fixture paths that re-encode events preserve them.
     func testEncodeDecodeRoundTripVolatileFields() throws {
-        let original = RemoteEvent.tabMeta(tabId: "t9", title: nil, totalCostUsd: nil, groupId: nil, convFingerprint: "x1:2", lastActivityAt: 42, lastMessage: "hi", messageCount: 3, pillColor: nil, pillIcon: nil)
+        let original = RemoteEvent.tabMeta(tabId: "t9", title: nil, totalCostUsd: nil, groupId: nil, convFingerprint: "x1:2", lastActivityAt: 42, lastMessageAt: 41, lastMessage: "hi", messageCount: 3, pillColor: nil, pillIcon: nil)
         let data = try JSONEncoder().encode(original)
         let decoded = try decoder.decode(RemoteEvent.self, from: data)
-        if case .tabMeta(let tabId, _, _, _, let fp, let activity, let lastMessage, let count, _, _) = decoded {
+        if case .tabMeta(let tabId, _, _, _, let fp, let activity, let lastMessageAt, let lastMessage, let count, _, _) = decoded {
             XCTAssertEqual(tabId, "t9")
             XCTAssertEqual(fp, "x1:2")
             XCTAssertEqual(activity, 42)
+            XCTAssertEqual(lastMessageAt, 41)
             XCTAssertEqual(lastMessage, "hi")
             XCTAssertEqual(count, 3)
         } else {
@@ -95,7 +101,7 @@ final class TabMetaVolatileFieldsTests: XCTestCase {
         {"type":"desktop_tab_meta","tabId":"t1","pillColor":"#f08c4a","pillIcon":"diamond"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .tabMeta(let tabId, _, _, _, _, _, _, _, let pillColor, let pillIcon) = event {
+        if case .tabMeta(let tabId, _, _, _, _, _, _, _, _, let pillColor, let pillIcon) = event {
             XCTAssertEqual(tabId, "t1")
             XCTAssertEqual(pillColor, "#f08c4a")
             XCTAssertEqual(pillIcon, "diamond")
@@ -106,10 +112,10 @@ final class TabMetaVolatileFieldsTests: XCTestCase {
 
     /// Round-trip: encode/decode preserves pillColor and pillIcon.
     func testEncodeDecodeRoundTripPillFields() throws {
-        let original = RemoteEvent.tabMeta(tabId: "t9", title: nil, totalCostUsd: nil, groupId: nil, convFingerprint: nil, lastActivityAt: nil, lastMessage: nil, messageCount: nil, pillColor: "#4ece78", pillIcon: "star")
+        let original = RemoteEvent.tabMeta(tabId: "t9", title: nil, totalCostUsd: nil, groupId: nil, convFingerprint: nil, lastActivityAt: nil, lastMessageAt: nil, lastMessage: nil, messageCount: nil, pillColor: "#4ece78", pillIcon: "star")
         let data = try JSONEncoder().encode(original)
         let decoded = try decoder.decode(RemoteEvent.self, from: data)
-        if case .tabMeta(let tabId, _, _, _, _, _, _, _, let pillColor, let pillIcon) = decoded {
+        if case .tabMeta(let tabId, _, _, _, _, _, _, _, _, let pillColor, let pillIcon) = decoded {
             XCTAssertEqual(tabId, "t9")
             XCTAssertEqual(pillColor, "#4ece78")
             XCTAssertEqual(pillIcon, "star")

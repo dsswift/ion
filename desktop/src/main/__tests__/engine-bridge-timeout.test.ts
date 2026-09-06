@@ -30,6 +30,30 @@ function makeBridge(): EngineBridge {
   return bridge
 }
 
+describe('EngineBridge send failure', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  it('fails immediately when the socket cannot accept the request', async () => {
+    const bridge = makeBridge()
+    const conn = (bridge as any).conn
+    conn.destroyed = true
+
+    const result = await (bridge as any)._sendWithResult({
+      cmd: 'send_prompt',
+      key: 'tab-1',
+    })
+
+    expect(result).toEqual({ ok: false, error: 'Engine connection unavailable' })
+    expect(bridge.requestCallbacks.size).toBe(0)
+    expect(bridge.consecutiveTimeouts).toBe(0)
+
+    vi.advanceTimersByTime(30000)
+    expect(bridge.consecutiveTimeouts).toBe(0)
+  })
+})
+
 describe('EngineBridge consecutive-timeout reconnect', () => {
   beforeEach(() => {
     vi.useFakeTimers()

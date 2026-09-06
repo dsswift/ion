@@ -210,6 +210,22 @@ func asCompactionData(data any) *CompactionData {
 	return nil
 }
 
+func asNativeCompactionData(data any) *NativeCompactionData {
+	switch d := data.(type) {
+	case NativeCompactionData:
+		return &d
+	case *NativeCompactionData:
+		return d
+	case map[string]any:
+		b, _ := json.Marshal(d) //nolint:errcheck // re-marshal of decoded map; Unmarshal below guards the result
+		var nc NativeCompactionData
+		if json.Unmarshal(b, &nc) == nil {
+			return &nc
+		}
+	}
+	return nil
+}
+
 func asPlanMarkerData(data any) *PlanMarkerData {
 	switch d := data.(type) {
 	case PlanMarkerData:

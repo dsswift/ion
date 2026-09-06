@@ -30,7 +30,7 @@ func TestAppendDispatchError_DurableDisplayOnlyHistory(t *testing.T) {
 	)
 	conv := CreateConversation(conversationID, "system", "model")
 	AddUserMessage(conv, "do work")
-	AddAssistantMessageNoUsage(conv, []types.LlmContentBlock{{Type: "text", Text: "partial progress"}})
+	AddAssistantMessageNoUsage(conv, []types.LlmContentBlock{{Type: "text", Text: "partial progress"}}, "test-model")
 	if err := Save(conv, ""); err != nil {
 		t.Fatalf("initial Save: %v", err)
 	}

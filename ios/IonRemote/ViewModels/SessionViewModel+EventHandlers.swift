@@ -79,8 +79,8 @@ extension SessionViewModel {
         case .tabStatus(let tabId, let status, let resync):
             handleTabStatus(tabId: tabId, status: status, resync: resync)
 
-        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, let lastActivityAt, let lastMessage, let messageCount, let pillColor, let pillIcon):
-            handleTabMeta(tabId: tabId, title: title, totalCostUsd: totalCostUsd, groupId: groupId, convFingerprint: convFingerprint, lastActivityAt: lastActivityAt, lastMessage: lastMessage, messageCount: messageCount, pillColor: pillColor, pillIcon: pillIcon)
+        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, let lastActivityAt, let lastMessageAt, let lastMessage, let messageCount, let pillColor, let pillIcon):
+            handleTabMeta(tabId: tabId, title: title, totalCostUsd: totalCostUsd, groupId: groupId, convFingerprint: convFingerprint, lastActivityAt: lastActivityAt, lastMessageAt: lastMessageAt, lastMessage: lastMessage, messageCount: messageCount, pillColor: pillColor, pillIcon: pillIcon)
 
         case .textChunk(let tabId, let text):
             // desktop_text_chunk is NOT sent by the current desktop: the desktop
@@ -382,8 +382,8 @@ extension SessionViewModel {
                 }
             }
 
-        case .engineDispatchActivity(_, _, let agentId, let conversationId, let kind, let seq, let toolName, let toolId, let textDelta, let isError, let ts):
-            handleDispatchActivity(dispatchAgentId: agentId, conversationId: conversationId, kind: kind, seq: seq, ts: ts, toolName: toolName, toolId: toolId, textDelta: textDelta, isError: isError)
+        case .engineDispatchActivity(_, _, let agentId, let conversationId, let kind, let seq, let resetAfterSeq, let toolName, let toolId, let textDelta, let isError, let ts):
+            handleDispatchActivity(dispatchAgentId: agentId, conversationId: conversationId, kind: kind, seq: seq, resetAfterSeq: resetAfterSeq, ts: ts, toolName: toolName, toolId: toolId, textDelta: textDelta, isError: isError)
 
         case .engineError(let tabId, let instanceId, let message, _):
             handleEngineError(tabId: tabId, instanceId: instanceId, message: message)

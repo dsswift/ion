@@ -27,6 +27,7 @@ import { createGitConflictSlice } from './slices/git-conflict-slice'
 import { createConflictOperationSlice } from './slices/conflict-operation-slice'
 import { trackWorkspaceActions } from './session-store-workspace-operation-ledger'
 import { setupStudioWorktreeSync } from './session-store-worktree-sync'
+import { setupExplorerStateSync } from './explorer-state-sync'
 import { setupStudioConversationTerminalSync } from './session-store-terminal-sync'
 import { createAttachmentsSlice } from './slices/attachments-slice'
 import { createPermissionsSlice } from './slices/permissions-slice'
@@ -187,6 +188,11 @@ export const useSessionStore = create<State>((set, get) => {
 // architecture). The mirror also skips the stuck-tab watchdog and the
 // __ionForceFlushTabs global (both live inside setupPersistence) — healing
 // and flushing are owner duties.
+// Explorer tree state runs in BOTH windows: main owns the snapshot, so this is
+// a convergence funnel like settings, not an owner-only duty. Expanding a
+// folder in the Studio has to reach the Overlay and the file on disk.
+setupExplorerStateSync(useSessionStore)
+
 if (!isMirrorWindow()) {
   setupPersistence(useSessionStore)
   startAutoSettleSweep(useSessionStore)

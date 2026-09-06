@@ -61,6 +61,7 @@ vi.mock('../../../logger', () => ({ log: vi.fn() }))
 vi.mock('../../../broadcast', () => ({ broadcast: vi.fn() }))
 vi.mock('../../../terminal-manager-instance', () => ({ terminalManager: {} }))
 vi.mock('../../../settings-store', () => ({
+  SETTINGS_DIR: '/tmp/ion-planfilepath-test',
   readSettings: vi.fn(() => ({})),
   readClaudeCompat: vi.fn(() => false),
   TABS_FILE: '/tmp/ion-planfilepath-test/tabs.json',

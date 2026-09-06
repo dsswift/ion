@@ -13,6 +13,7 @@
 import './launch-env-init'
 import './state'
 import { migrateStudioSettings } from './settings-migration-studio'
+import { migrateWorkspaceFolders } from './workspace-folder-migration'
 import { wireSessionPlaneEvents, wireEngineBridgeEvents, wireRemoteSessionPlaneForwarding, wireTabFocusHandler, wireMarkResourceReadHandler, wireDeleteResourceHandler, wireResourceGetHandler } from './event-wiring'
 import { registerAllIpc } from './ipc/register'
 import { setupAppLifecycle } from './app-lifecycle'
@@ -23,6 +24,11 @@ import { wireToolGateResponder } from './tool-gate-responder'
 // Legacy atv* → studio* settings rename. MUST run before window creation and
 // IPC registration so every consumer only ever reads the new key names.
 migrateStudioSettings()
+
+// Mounted folders written under a worktree or bench path move onto the Project
+// that owns them. Also before window creation, so the first explorer render
+// reads the corrected map.
+migrateWorkspaceFolders()
 
 // Wire the desktop responder after state initialization. Browser tool handlers
 // import Studio view code, so doing this from state.ts would re-enter state

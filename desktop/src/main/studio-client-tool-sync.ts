@@ -71,9 +71,13 @@ function availabilitySignature(settings: AvailabilityInputs): string {
  * tools the responder will refuse.
  */
 export function syncClientToolDeclarations(reason: string): void {
-  const config = toolGateSessionConfig();
-  const toolNames = config.clientTools?.map((tool) => tool.name) ?? [];
   const sessions = [...engineBridge.activeSessions.entries()];
+  // The declaration is resolved per session rather than once for all of them:
+  // ConversationTelemetry's wording depends on whether that session is working
+  // inside a worktree, so one shared config would re-declare a worktree session
+  // with the plain-directory description.
+  const toolNames =
+    toolGateSessionConfig().clientTools?.map((tool) => tool.name) ?? [];
   if (sessions.length === 0) {
     _log(TAG, "no live sessions to resync", {
       reason,
@@ -91,7 +95,10 @@ export function syncClientToolDeclarations(reason: string): void {
       // Fire-and-forget: the resync must not block the settings write, and a
       // per-session failure is logged rather than propagated.
       void Promise.resolve(
-        engineBridge.startSession(key, { ...entry.config, toolGate: config }),
+        engineBridge.startSession(key, {
+          ...entry.config,
+          toolGate: toolGateSessionConfig(entry.config.workingDirectory),
+        }),
       ).catch((err: unknown) =>
         _warn(TAG, "session tool declaration resync rejected", {
           key,

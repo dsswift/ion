@@ -80,6 +80,9 @@ extension ConversationView {
                 contextPercent: engineInputs.contextPercent,
                 contextTokens: engineInputs.contextTokens,
                 engineContextWindow: engineInputs.engineContextWindow,
+                // The last real turn, which is what wrote the prompt cache the
+                // model-switch estimate prices against.
+                lastTurnAtMs: viewModel.tab(for: tabId)?.lastMessageAt,
                 isRunning: isRunning,
                 permissionMode: viewModel.tab(for: tabId)?.permissionMode,
                 availableModels: viewModel.availableModels,

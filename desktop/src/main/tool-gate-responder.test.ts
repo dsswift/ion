@@ -55,6 +55,23 @@ const chartPublishMock = vi.hoisted(() => ({
 }))
 vi.mock('./chart-resource-publish', () => chartPublishMock)
 
+// The telemetry tool reads the worktree registry and the conversation store to
+// decide its wording, neither of which belongs in a responder unit test. Its
+// own tests cover the variant choice and the payload.
+const telemetryMock = vi.hoisted(() => ({
+  CONVERSATION_TELEMETRY_TOOL_NAME: 'ConversationTelemetry',
+  conversationTelemetryTool: vi.fn((workingDirectory: string) => ({
+    name: 'ConversationTelemetry',
+    description: workingDirectory.startsWith('/wt/')
+      ? 'Measure every conversation in this worktree.'
+      : 'Measure this conversation.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    planModeSafe: true,
+  })),
+  executeConversationTelemetry: vi.fn(() => ({ content: '{"scope":"self"}', isError: false })),
+}))
+vi.mock('./telemetry/conversation-telemetry-tool', () => telemetryMock)
+
 // The session registry now rides on the bridge the responder is wired to,
 // which is what keeps `./state` (and the live EngineBridge it constructs at
 // import time) out of this module's import graph.
@@ -111,7 +128,7 @@ describe('toolGateSessionConfig', () => {
     expect(cfg.enabled).toBe(true)
     expect(cfg.tools).toEqual(GATED_TOOLS)
     expect(cfg.timeoutDecision).toBe('allow')
-    expect(cfg.clientTools?.map((t) => t.name)).toEqual(['BenchMemberFile', 'browser_snapshot', 'RenderChart', 'AskUserQuestions'])
+    expect(cfg.clientTools?.map((t) => t.name)).toEqual(['BenchMemberFile', 'browser_snapshot', 'RenderChart', 'ConversationTelemetry', 'AskUserQuestions'])
     expect(cfg.clientTools?.[0].planModeSafe).toBe(true)
     // The declaration must not carry the execute function — it crosses the wire.
     expect((cfg.clientTools?.[0] as unknown as Record<string, unknown>).execute).toBeUndefined()
@@ -122,6 +139,22 @@ describe('toolGateSessionConfig', () => {
     expect(wizard?.humanWait).toBe(true)
     expect(wizard?.planModeSafe).toBe(true)
     expect(wizard?.inputSchema).toBeDefined()
+  })
+})
+
+describe('ConversationTelemetry declaration', () => {
+  it('declares exactly one telemetry tool per session, worded for that session', () => {
+    const plain = toolGateSessionConfig('/plain/repo').clientTools ?? []
+    const worktree = toolGateSessionConfig('/wt/work').clientTools ?? []
+
+    // One name, never two: the agent must not be given a scope to choose.
+    expect(plain.filter((tool) => tool.name === 'ConversationTelemetry')).toHaveLength(1)
+    expect(worktree.filter((tool) => tool.name === 'ConversationTelemetry')).toHaveLength(1)
+
+    const plainDescription = plain.find((tool) => tool.name === 'ConversationTelemetry')?.description
+    const worktreeDescription = worktree.find((tool) => tool.name === 'ConversationTelemetry')?.description
+    expect(plainDescription).toContain('Measure this conversation')
+    expect(worktreeDescription).toContain('Measure every conversation in this worktree')
   })
 })
 
@@ -275,7 +308,9 @@ describe('wireToolGateResponder — browser tool context', () => {
     for (const name of declared) {
       if (name === 'AskUserQuestions') continue
       const executable = [...toolsMock.BENCH_CLIENT_TOOLS, ...studioToolsMock.STUDIO_PLAYWRIGHT_TOOLS]
-        .some((tool) => tool.name === name) || name === chartToolMock.RENDER_CHART_TOOL_NAME
+        .some((tool) => tool.name === name)
+        || name === chartToolMock.RENDER_CHART_TOOL_NAME
+        || name === telemetryMock.CONVERSATION_TELEMETRY_TOOL_NAME
       expect(executable).toBe(true)
     }
   })

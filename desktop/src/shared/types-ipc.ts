@@ -103,6 +103,12 @@ export const IPC = {
   LOAD_SESSION_LABELS: "ion:load-session-labels",
   GENERATE_TITLE: "ion:generate-title",
 
+  // File-explorer tree state (expansion, folded roots, selection). Main owns
+  // the snapshot so both presentations converge and it survives a relaunch.
+  LOAD_EXPLORER_STATE: "ion:load-explorer-state",
+  PUBLISH_EXPLORER_STATE: "ion:publish-explorer-state",
+  EXPLORER_STATE_CHANGED: "ion:explorer-state-changed",
+
   // Session chains (composite conversation grouping)
   LOAD_SESSION_CHAINS: "ion:load-session-chains",
   SAVE_SESSION_CHAINS: "ion:save-session-chains",

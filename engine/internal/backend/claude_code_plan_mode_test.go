@@ -141,6 +141,76 @@ func TestClaudeCodePlanCapture_FromExitPlanModeArg(t *testing.T) {
 	}
 }
 
+// enterPlanModeAssistant builds a TaskUpdateEvent carrying an EnterPlanMode
+// tool_use, using the MCP-prefixed name the model actually sees on this
+// backend's ToolServer.
+func enterPlanModeAssistant() *types.TaskUpdateEvent {
+	return &types.TaskUpdateEvent{Message: types.AssistantMessagePayload{
+		Content: []types.ContentBlock{
+			{Type: "tool_use", Name: mcpEnterPlanModeToolName, ID: "tu-enter", Input: map[string]any{}},
+		},
+	}}
+}
+
+// TestClaudeCodeEnterPlanMode_FlipsRunPlanModeMidStreamNoRestart is the
+// regression test for the fix: a run starts in auto mode
+// (claudeCodeRun.planMode == false, as claude_code_backend.go's runProcess
+// sets from opts.PlanMode). When the stream shows an EnterPlanMode tool_use,
+// run.planMode must flip to true immediately — and a LATER TaskUpdateEvent in
+// the SAME run carrying ExitPlanMode with a `plan` argument must still be
+// captured, all without ever reconstructing the run. Before this fix,
+// run.planMode was only ever set once at spawn (never mid-stream), so the
+// second event's plan would never be captured on an auto-mode run.
+func TestClaudeCodeEnterPlanMode_FlipsRunPlanModeMidStreamNoRestart(t *testing.T) {
+	b, events := planModeTestBackend()
+	planPath := filepath.Join(t.TempDir(), "mid-stream-plan.md")
+	run := &claudeCodeRun{requestID: "req-enter-exit", planMode: false, planFilePath: planPath}
+
+	// The model calls EnterPlanMode first.
+	b.handleEnterPlanModeAssistant(run, enterPlanModeAssistant())
+	if !run.planMode {
+		t.Fatal("expected run.planMode=true immediately after observing EnterPlanMode in the stream")
+	}
+	if run.planCaptured {
+		t.Fatal("EnterPlanMode alone must not capture a plan")
+	}
+
+	// Later in the SAME run, the model calls ExitPlanMode with its plan —
+	// exactly as it would within one continuous subprocess, no restart.
+	if run.planMode && !run.planCaptured {
+		b.handlePlanModeAssistant(run, exitPlanModeAssistant("# Mid-stream Plan\n\nno restart needed\n"))
+	}
+	if !run.planCaptured {
+		t.Fatal("expected plan to be captured from ExitPlanMode after EnterPlanMode flipped run.planMode mid-stream")
+	}
+	data, err := os.ReadFile(planPath)
+	if err != nil {
+		t.Fatalf("plan file not written: %v", err)
+	}
+	if string(data) != "# Mid-stream Plan\n\nno restart needed\n" {
+		t.Fatalf("plan file content mismatch: %q", string(data))
+	}
+	if run.requestID != "req-enter-exit" {
+		t.Fatalf("run identity must be unchanged (no restart), got requestID=%q", run.requestID)
+	}
+	if len(*events) == 0 {
+		t.Fatal("expected PlanFileWritten + PlanProposal events from the capture")
+	}
+}
+
+// TestClaudeCodeEnterPlanMode_NoopOnceAlreadyInPlanMode verifies
+// handleEnterPlanModeAssistant is a no-op once run.planMode is already true
+// (e.g. a genuine plan-mode-spawned run), so it never re-logs or interferes
+// with a normal plan-mode run's own state.
+func TestClaudeCodeEnterPlanMode_NoopOnceAlreadyInPlanMode(t *testing.T) {
+	b, _ := planModeTestBackend()
+	run := &claudeCodeRun{requestID: "req-already-plan", planMode: true}
+	b.handleEnterPlanModeAssistant(run, enterPlanModeAssistant())
+	if !run.planMode {
+		t.Fatal("expected run.planMode to remain true")
+	}
+}
+
 // TestClaudeCodePlanCapture_FromMcpExitPlanModeArg pins the engine-owned CLI
 // plan path: the read-only model calls the ExitPlanMode tool exposed through the
 // ion-extensions MCP server, so the tool_use block carries the PREFIXED name.

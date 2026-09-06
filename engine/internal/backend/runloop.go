@@ -140,6 +140,12 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// full rationale and the logging of both outcomes.
 	syncConversationWorkingDirectory(conv, opts.ProjectPath, run.requestID)
 
+	// Record the model actually serving this run, and persist a model_change
+	// entry when it differs from the one the conversation last ran on. See
+	// conversation.SyncModel: the header value is load-bearing (context window,
+	// early-stop telemetry) and the switch is otherwise unrecorded on disk.
+	conversation.SyncModel(conv, model, run.requestID)
+
 	// Build system prompt (may rewrite opts.Prompt and opts.PlanModeTools)
 	conv.System = buildSystemPrompt(&opts, conv, hooks, run.requestID, run)
 
@@ -502,6 +508,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// scoring joins on. Nil-safe: WithTelemetryCorrelation returns ctx
 		// unchanged when the block is nil.
 		streamCtx := providers.WithTelemetryCorrelation(ctx, buildTelemCtx(run))
+		streamCtx = providers.WithStreamProgress(streamCtx, run.bumpProgress)
 
 		// Clear the steer-interrupt latch before starting this provider call.
 		// Every steer buffered up to this point has already been drained by the

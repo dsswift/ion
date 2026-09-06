@@ -197,6 +197,7 @@ export type EngineEventAsync =
       earlyStopMaxContinuations: number;
       earlyStopLastContinuationDelta: number;
       earlyStopWouldContinue: boolean;
+      earlyStopEligible: boolean;
       earlyStopIsSubagent?: boolean;
     }
   // engine_llm_call is the lightweight-inference observability event,
@@ -271,8 +272,9 @@ export type EngineEventAsync =
       type: "engine_dispatch_activity";
       dispatchAgentId: string;
       dispatchConversationId: string;
-      dispatchActivityKind: "text" | "tool_start" | "tool_end";
+      dispatchActivityKind: "text" | "tool_start" | "tool_end" | "stream_reset";
       dispatchSeq: number;
+      dispatchResetAfterSeq?: number;
       toolName?: string;
       toolId?: string;
       dispatchTextDelta?: string;

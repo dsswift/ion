@@ -60,6 +60,7 @@ function makeRequestEvent(
     earlyStopMaxContinuations: 3,
     earlyStopLastContinuationDelta: 0,
     earlyStopWouldContinue: true,
+    earlyStopEligible: true,
     earlyStopIsSubagent: false,
     ...overrides,
   }
@@ -73,13 +74,36 @@ describe('decideEarlyStopResponse', () => {
     expect(response.continueMessage).toBeUndefined()
   })
 
-  it('returns no opinion when setting is on but wouldContinue is false', () => {
+  it('opts in when the setting is on but the engine default is off', () => {
     const event = makeRequestEvent({ earlyStopWouldContinue: false })
     const response = decideEarlyStopResponse(event, true)
-    expect(response.forceContinue).toBeUndefined()
-    expect(response.continueMessage).toBeUndefined()
+    expect(response.forceContinue).toBe(true)
+    expect(response.continueMessage).toContain('Keep working')
     expect(response.overrideBudget).toBeUndefined()
     expect(response.overrideThresholdPct).toBeUndefined()
+  })
+
+  it('does not override an exhausted continuation cap', () => {
+    const event = makeRequestEvent({
+      earlyStopWouldContinue: false,
+      earlyStopEligible: false,
+      earlyStopContinuationCount: 3,
+      earlyStopMaxContinuations: 3,
+    })
+    const response = decideEarlyStopResponse(event, true)
+    expect(response).toEqual({})
+  })
+
+  it('does not override a response at the token threshold', () => {
+    const event = makeRequestEvent({
+      earlyStopWouldContinue: false,
+      earlyStopEligible: false,
+      earlyStopCumulativeOutput: 7200,
+      earlyStopBudget: 8000,
+      earlyStopThresholdPct: 90,
+    })
+    const response = decideEarlyStopResponse(event, true)
+    expect(response).toEqual({})
   })
 
   it('supplies a CC-style continueMessage when setting is on and wouldContinue is true', () => {
@@ -165,8 +189,8 @@ describe('wireEarlyStopPolicy', () => {
     readSettingsSpy.mockRestore()
   })
 
-  it('responds with the message when setting is on (default true)', () => {
-    readSettingsSpy.mockReturnValue({})
+  it('responds with the message when setting is on', () => {
+    readSettingsSpy.mockReturnValue({ enableEarlyStopContinuation: true })
     wireEarlyStopPolicy(sessionPlane as any, bridge as any)
 
     sessionPlane.emit('engine_early_stop_decision_request', 'tab-1', makeRequestEvent())
@@ -209,7 +233,7 @@ describe('wireEarlyStopPolicy', () => {
   })
 
   it('detach function stops further responses', () => {
-    readSettingsSpy.mockReturnValue({})
+    readSettingsSpy.mockReturnValue({ enableEarlyStopContinuation: true })
     const detach = wireEarlyStopPolicy(sessionPlane as any, bridge as any)
 
     sessionPlane.emit('engine_early_stop_decision_request', 'tab-4', makeRequestEvent())

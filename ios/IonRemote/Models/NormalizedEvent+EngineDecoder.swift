@@ -219,6 +219,7 @@ extension RemoteEvent {
             let conversationId = try container.decodeIfPresent(String.self, forKey: .dispatchConversationId) ?? ""
             let kind = try container.decodeIfPresent(String.self, forKey: .dispatchActivityKind) ?? ""
             let seq = try container.decodeIfPresent(Int.self, forKey: .dispatchSeq) ?? 0
+            let resetAfterSeq = try container.decodeIfPresent(Int.self, forKey: .dispatchResetAfterSeq)
             let toolName = try container.decodeIfPresent(String.self, forKey: .toolName)
             let toolId = try container.decodeIfPresent(String.self, forKey: .toolId)
             let textDelta = try container.decodeIfPresent(String.self, forKey: .dispatchTextDelta)
@@ -227,7 +228,7 @@ extension RemoteEvent {
             // the full wire shape (Go engine_event.go + desktop both send it);
             // tolerant-absent so legacy payloads without it still decode.
             let ts = try container.decodeIfPresent(Int64.self, forKey: .dispatchActivityTs)
-            return .engineDispatchActivity(tabId: tabId, instanceId: instanceId, agentId: agentId, conversationId: conversationId, kind: kind, seq: seq, toolName: toolName, toolId: toolId, textDelta: textDelta, isError: isError, ts: ts)
+            return .engineDispatchActivity(tabId: tabId, instanceId: instanceId, agentId: agentId, conversationId: conversationId, kind: kind, seq: seq, resetAfterSeq: resetAfterSeq, toolName: toolName, toolId: toolId, textDelta: textDelta, isError: isError, ts: ts)
 
         case .engineError:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -423,6 +424,7 @@ extension RemoteEvent {
             let maxContinuations = try container.decodeIfPresent(Int.self, forKey: .earlyStopMaxContinuations) ?? 0
             let lastContinuationDelta = try container.decodeIfPresent(Int.self, forKey: .earlyStopLastContinuationDelta) ?? 0
             let wouldContinue = try container.decodeIfPresent(Bool.self, forKey: .earlyStopWouldContinue) ?? false
+            let eligible = try container.decodeIfPresent(Bool.self, forKey: .earlyStopEligible) ?? false
             let isSubagent = try container.decodeIfPresent(Bool.self, forKey: .earlyStopIsSubagent) ?? false
             return .engineEarlyStopDecisionRequest(
                 tabId: tabId,
@@ -439,6 +441,7 @@ extension RemoteEvent {
                 maxContinuations: maxContinuations,
                 lastContinuationDelta: lastContinuationDelta,
                 wouldContinue: wouldContinue,
+                eligible: eligible,
                 isSubagent: isSubagent
             )
 

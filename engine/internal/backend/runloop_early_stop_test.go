@@ -949,6 +949,39 @@ func TestMaybeContinueEarlyStop_DiminishingReturnsStops(t *testing.T) {
 	}
 }
 
+func TestMaybeContinueEarlyStop_DisabledStillConsultsPolicyHook(t *testing.T) {
+	b := NewApiBackend()
+	conv := conversation.CreateConversation("test", "", "test-model")
+	conv.Model = "test-model"
+	run := &activeRun{requestID: "rid-policy-opt-in", conv: conv}
+	cfg := effectiveEarlyStopConfig{
+		enabled:          false,
+		budget:           100,
+		thresholdPct:     90,
+		maxContinuations: 3,
+		diminishingDelta: 500,
+		source:           "defaults",
+	}
+	run.cumulativeOutputTokens = 30
+	force := true
+	hooks := RunHooks{OnBeforeEarlyStopDecision: func(info EarlyStopDecisionInfo) *EarlyStopDecisionResult {
+		if info.WouldContinue {
+			t.Fatal("disabled engine gate must be visible to the policy hook")
+		}
+		if !info.Eligible {
+			t.Fatal("mechanically eligible stop must be visible to the policy hook")
+		}
+		return &EarlyStopDecisionResult{ForceContinue: &force, ContinueMessage: "keep working"}
+	}}
+
+	if !b.maybeContinueEarlyStop(run, conv, hooks, types.RunOptions{}, cfg, 30, "end_turn", 1, 0) {
+		t.Fatal("consumer policy could not opt into continuation")
+	}
+	if len(conv.Messages) != 1 || conv.Messages[0].Role != "user" {
+		t.Fatalf("injected messages = %#v, want one user continuation", conv.Messages)
+	}
+}
+
 func TestMaybeContinueEarlyStop_DisabledIsNoOp(t *testing.T) {
 	b := NewApiBackend()
 	conv := conversation.CreateConversation("test", "", "test-model")

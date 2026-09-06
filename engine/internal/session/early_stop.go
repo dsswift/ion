@@ -101,10 +101,11 @@ func (m *Manager) requestEarlyStopDecisionViaWire(
 		EarlyStopMaxContinuations:      info.MaxContinuations,
 		EarlyStopLastContinuationDelta: info.LastContinuationDelta,
 		EarlyStopWouldContinue:         info.WouldContinue,
+		EarlyStopEligible:              info.Eligible,
 		EarlyStopIsSubagent:            info.IsSubagent,
 	})
 
-	utils.LogWithFields(utils.LevelDebug, "session", "requestearlystopdecisionviawire: emitted — awaiting consumer", map[string]any{"early_stop_request_id": requestID, "run_id": info.RunID, "turn_number": info.TurnNumber, "would_continue": info.WouldContinue})
+	utils.LogWithFields(utils.LevelDebug, "session", "requestearlystopdecisionviawire: emitted — awaiting consumer", map[string]any{"early_stop_request_id": requestID, "run_id": info.RunID, "turn_number": info.TurnNumber, "would_continue": info.WouldContinue, "eligible": info.Eligible})
 
 	select {
 	case reply := <-ch:

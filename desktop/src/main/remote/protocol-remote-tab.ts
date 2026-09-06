@@ -194,6 +194,15 @@ export interface RemoteTabState {
    * stated in the PR).
    */
   lastActivityAt?: number
+  /**
+   * Unix ms of the newest real user or assistant message — the last turn that
+   * actually went to the provider, and therefore the last turn that wrote the
+   * conversation's prompt cache. Distinct from `lastActivityAt`, which a
+   * reconnect or a status re-emission also stamps; a client pricing a model
+   * switch needs the honest turn boundary, because a cache's age decides
+   * whether its cheap read rate still applies.
+   */
+  lastMessageAt?: number
   /** Unix ms of the last running→idle transition (renderer-observed). */
   idleSince?: number
   /** Immutable creation timestamp — the "Newest created" inbox sort key. */

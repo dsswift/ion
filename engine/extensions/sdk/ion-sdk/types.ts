@@ -2492,9 +2492,8 @@ export interface BeforePlanModeAutoExitResult {
 
 /**
  * Payload for the `before_early_stop_decision` hook. Fires after the
- * model emits `end_turn` / `stop` and after the engine has updated its
- * cumulative output-token counter, but **before** it evaluates the
- * continuation criteria.
+ * model emits `end_turn` / `stop`, after the engine updates cumulative output
+ * tokens and computes mechanical eligibility.
  *
  * Mirrors `extension.EarlyStopDecisionInfo` in the Go SDK. See the
  * [Early-Stop Continuation](../hooks/reference.md) section and
@@ -2537,10 +2536,15 @@ export interface EarlyStopDecisionInfo {
    */
   lastContinuationDelta: number
   /**
-   * Engine's tentative verdict before this hook runs. Handlers may flip
-   * it via {@link EarlyStopDecisionResult.forceContinue}.
+   * Engine's tentative verdict after its configured enabled gate. Handlers may
+   * flip it via {@link EarlyStopDecisionResult.forceContinue}.
    */
   wouldContinue: boolean
+  /**
+   * True when the threshold, continuation cap, and diminishing-returns
+   * safeguards permit another turn before the configured enabled gate.
+   */
+  eligible: boolean
   /**
    * True when this run is a child agent dispatched by the Agent tool.
    * The engine defaults the feature off for subagents; the hook still

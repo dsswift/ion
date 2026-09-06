@@ -21,8 +21,9 @@ package session
 //   - For a historical session conversation.Load restores the full LLM-visible
 //     message list; the breakdown carries those conversation tokens.
 //
-//   - The emitted breakdown is reconciled against the provider's own reported
-//     usage (conversation.LastAssistantUsage) before emission, mirroring what
+//   - For an engine-owned session (ApiBackend) the emitted breakdown is
+//     reconciled against the provider's own reported usage
+//     (conversation.LastAssistantUsage) before emission, mirroring what
 //     backend.maybeReconcileContextBreakdown does on the in-run path's first
 //     usage event. The itemized per-category sum is an independent estimate; the
 //     provider's input_tokens is truth. Reconciliation records the delta as an
@@ -31,14 +32,24 @@ package session
 //     nothing to reconcile against and emits the itemized total with
 //     APIReportedTotal == 0.
 //
-//   - For a ClaudeCodeBackend session (nil provider) BuildContextBreakdown falls back
-//     to local BPE / char4 and still emits.
+//   - For a native-session (delegated-CLI) session — ClaudeCodeBackend,
+//     CodexBackend, AcpBackend — the provider is nil and BuildContextBreakdown
+//     falls back to local BPE / char4. conversation.LastAssistantUsage is
+//     always nil for these sessions (the bridged transcript carries no
+//     per-message Usage — see cli_transcript_recorder.go), so reconciliation
+//     instead uses the session's own occupancy figure as the provider-truth
+//     baseline. The resulting "unaccounted" row is the CLI's own system
+//     prompt and built-in tool definitions, which Ion never sees and cannot
+//     itemize by name, but can still attribute an honest size to.
 //
-//   - Tool list assembly mirrors wireExternalTools (same sources: built-in
-//     tools.GetToolDefs() + extGroup.Tools() + mcpConns), NOT buildToolDefs
-//     (which requires an activeRun). Plan-mode filtering and provider-side
-//     transforms are not applied here; the raw capability set is the useful
-//     signal for an on-demand breakdown.
+//   - Tool list assembly mirrors wireExternalTools (extGroup.Tools() +
+//     mcpConns), NOT buildToolDefs (which requires an activeRun). Ion's
+//     built-in tools.GetToolDefs() are included ONLY for an engine-owned
+//     session: a native-session backend advertises its own built-ins and
+//     never receives Ion's schemas for them, so including tools.GetToolDefs()
+//     there would itemize tokens that were never actually sent. Plan-mode
+//     filtering and provider-side transforms are not applied here; the raw
+//     capability set is the useful signal for an on-demand breakdown.
 
 import (
 	"context"
@@ -180,10 +191,25 @@ func (m *Manager) ComputeAndEmitContextBreakdownContext(ctx context.Context, key
 	// which is correct for on-demand: no run is in flight).
 	systemPrompt := backend.AssembleSystemPromptOnDemand(&opts, conv)
 
+	// caps.ContextModel distinguishes an engine-owned run (ApiBackend, which
+	// actually sends tools.GetToolDefs() to the provider) from a native-session
+	// run (ClaudeCodeBackend/CodexBackend/AcpBackend, which advertises its OWN
+	// built-in tools and never receives Ion's built-in schemas at all — only
+	// the ion-extensions MCP server's tools, via --mcp-config, are genuinely
+	// Ion's contribution). Including tools.GetToolDefs() unconditionally would
+	// itemize schemas that were never transmitted to a delegated-CLI backend,
+	// inflating the "known" portion of its breakdown with fiction.
+	caps := m.resolvedBackend(opts.Model).Capabilities()
+	isNativeSession := caps.ContextModel == backend.ContextModelNativeSession
+
 	// Assemble the tool list from live session state. Mirrors wireExternalTools
 	// sources (built-in + extension + MCP) without plan-mode filtering or
-	// provider-side transforms.
-	toolDefs := tools.GetToolDefs()
+	// provider-side transforms. Built-ins are omitted for a native-session
+	// backend — see caps.ContextModel comment above.
+	var toolDefs []types.LlmToolDef
+	if !isNativeSession {
+		toolDefs = tools.GetToolDefs()
+	}
 	if snap.extGroup != nil && !snap.extGroup.IsEmpty() {
 		for _, t := range snap.extGroup.Tools() {
 			toolDefs = append(toolDefs, types.LlmToolDef{
@@ -264,7 +290,33 @@ func (m *Manager) ComputeAndEmitContextBreakdownContext(ctx context.Context, key
 	//
 	// The summation is byte-identical to the in-run path's (runloop.go): input +
 	// cache_read + cache_creation is what the model actually carried.
-	if usage := conversation.LastAssistantUsage(conv); usage != nil {
+	//
+	// A native-session backend never writes a real Usage onto its bridged
+	// transcript messages (appendStructuredCliTurn uses
+	// AddAssistantMessageNoUsage — see cli_transcript_recorder.go), so
+	// conversation.LastAssistantUsage is always nil for these sessions and the
+	// branch below never reconciles. Its own reported occupancy IS the
+	// provider's authoritative total (it is the same figure engine_status
+	// carries), so it is the correct reconciliation baseline: the resulting
+	// "unaccounted" row is exactly what the delegated CLI's own system prompt,
+	// native built-in tool definitions, and any transcript-bridging drift
+	// contribute — the portion Ion cannot itemize by name but can still
+	// attribute an honest, labeled size to.
+	if isNativeSession {
+		if occupancy.Tokens > 0 {
+			itemized := bd.TotalTokens
+			providers.ReconcileBreakdown(bd, occupancy.Tokens, 0, 0)
+			utils.LogWithFields(utils.LevelInfo, "session", "computeandemitcontextbreakdown: reconciled native-session breakdown against session occupancy", map[string]any{
+				"key": key, "conversation_id": snap.conversationID, "backend_kind": caps.Kind,
+				"itemized_total": itemized, "api_reported_total": occupancy.Tokens,
+				"unaccounted": bd.Unaccounted,
+			})
+		} else {
+			utils.LogWithFields(utils.LevelInfo, "session", "computeandemitcontextbreakdown: no occupancy yet for native-session backend, emitting unreconciled itemized total", map[string]any{
+				"key": key, "conversation_id": snap.conversationID, "backend_kind": caps.Kind, "itemized_total": bd.TotalTokens,
+			})
+		}
+	} else if usage := conversation.LastAssistantUsage(conv); usage != nil {
 		apiTotal := usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
 		itemized := bd.TotalTokens
 		providers.ReconcileBreakdown(bd, apiTotal, usage.CacheReadInputTokens, usage.CacheCreationInputTokens)

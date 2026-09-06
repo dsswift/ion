@@ -449,8 +449,8 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 	// backend-layer EarlyStopDecisionInfo/Result and the extension-layer
 	// shapes mirrors the BeforeProviderRequestInfo pattern above: the
 	// backend deliberately does not import extension, so structs are
-	// duplicated and translated here. If a field is added on one side and
-	// not the other, the build breaks at this call site.
+	// duplicated and translated here. Contract tests pin the field set across
+	// the engine, SDK, and client mirrors.
 	//
 	// Resolution order INSIDE the callback (most specific first):
 	//  1. Subprocess extension hook (extGroup.FireBeforeEarlyStopDecision).
@@ -478,6 +478,7 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 			MaxContinuations:       info.MaxContinuations,
 			LastContinuationDelta:  info.LastContinuationDelta,
 			WouldContinue:          info.WouldContinue,
+			Eligible:               info.Eligible,
 			IsSubagent:             info.IsSubagent,
 		}
 		if res := extGroup.FireBeforeEarlyStopDecision(ctx, extInfo); res != nil {

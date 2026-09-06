@@ -255,7 +255,7 @@ func TestDispatch_EngineCancelMapsToError(t *testing.T) {
 	t.Setenv("ION_DATA_DIR", t.TempDir())
 	childConv := conversation.CreateConversation("conv-cancelled", "system", "model")
 	conversation.AddUserMessage(childConv, "do work")
-	conversation.AddAssistantMessageNoUsage(childConv, []types.LlmContentBlock{{Type: "text", Text: "partial work before the kill"}})
+	conversation.AddAssistantMessageNoUsage(childConv, []types.LlmContentBlock{{Type: "text", Text: "partial work before the kill"}}, "test-model")
 	if err := conversation.Save(childConv, ""); err != nil {
 		t.Fatalf("seed child conversation: %v", err)
 	}

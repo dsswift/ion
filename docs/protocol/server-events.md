@@ -477,15 +477,17 @@ Signals the completion of a tool execution.
 #### engine_dispatch_activity
 
 Streams a running dispatched (sub-)agent's intra-turn activity to the parent
-session's event stream: a tool call starting, a tool result returning, or a
-chunk of streamed assistant text. The child agent produces these as it works,
-so a consumer can render or audit the live sub-agent transcript **without
+session's event stream: a tool call starting, a tool result returning, a
+provider retry resetting its partial activity, or a chunk of streamed assistant
+text. The child agent produces these as it works, so a consumer can render or
 waiting for the dispatch to complete** — the key difference from the
 `engine_dispatch_start` / `engine_dispatch_end` telemetry pair, which fire only
 at the boundaries.
 
-**Semantics: incremental, append-by-key.** Not a snapshot, not retained, not
-replayed on reconnect (contrast `engine_agent_state`, which *is* a snapshot).
+**Semantics: incremental, append-by-key.** A `stream_reset` delta is a bounded
+rollback: retain entries whose sequence is at or below `dispatchResetAfterSeq`
+and discard later entries from the abandoned attempt. The stream is not a
+snapshot and is not replayed on reconnect (contrast `engine_agent_state`, which *is* a snapshot).
 The file-backed conversation transcript is the authoritative source that heals
 any gap: a consumer that needs the complete or sticky transcript reconciles
 from conversation history (e.g. by loading the child `conversationId`), not from
@@ -502,8 +504,9 @@ reconcile), and key a streaming-text run by `dispatchSeq`.
 | `type`                   | `"engine_dispatch_activity"` | Event type |
 | `dispatchAgentId`        | string  | Parent-side agent id; routes the delta to the right agent/dispatch row. |
 | `dispatchConversationId` | string  | The child conversation id (reconcile key). |
-| `dispatchActivityKind`   | string  | `"tool_start"` \| `"tool_end"` \| `"text"`. |
+| `dispatchActivityKind`   | string  | `"tool_start"` \| `"tool_end"` \| `"text"` \| `"stream_reset"`. |
 | `dispatchSeq`            | number  | Monotonic per-dispatch sequence; orders deltas and keys a text run. |
+| `dispatchResetAfterSeq`  | number (omitempty) | Last committed sequence retained by `stream_reset`; later activity belongs to the abandoned attempt. |
 | `toolName`               | string  | Tool name (`tool_start`). |
 | `toolId`                 | string  | Tool use id (`tool_start` / `tool_end`). |
 | `dispatchTextDelta`      | string  | Streamed text chunk, possibly coalesced (`text`). |
@@ -757,9 +760,8 @@ own transport.
 #### engine_early_stop_decision_request
 
 Wire-protocol surface for the `before_early_stop_decision` extension
-hook. Emitted when the model has just emitted `end_turn` / `stop` below
-the configured output-token target *and* no subprocess extension has
-already expressed an opinion via the in-process hook. Lets socket-only
+hook. Emitted when the model has just emitted `end_turn` / `stop` and no
+subprocess extension has already expressed an opinion via the in-process hook. Lets socket-only
 harnesses (e.g. the desktop's `early-stop-policy.ts`) participate in
 the decision without running a subprocess extension. See
 [ADR-002](../architecture/adr/002-engine-vs-harness-early-stop.md) for
@@ -789,7 +791,8 @@ three-layer disable matrix.
 | `earlyStopContinuationCount`       | int                                   | Number of continuation nudges already injected this run.                                                   |
 | `earlyStopMaxContinuations`        | int                                   | Resolved cap on continuation nudges.                                                                       |
 | `earlyStopLastContinuationDelta`   | int                                   | Output-token delta from the previous continuation. Used by the diminishing-returns guard.                  |
-| `earlyStopWouldContinue`           | bool                                  | Engine's tentative verdict before harness input. Harness response can override either way.                 |
+| `earlyStopWouldContinue`           | bool                                  | Engine's tentative verdict after applying its configured enabled gate. Harness response can override either way. |
+| `earlyStopEligible`                | bool                                  | Whether threshold, continuation cap, and diminishing-returns safeguards permit another turn before the enabled gate. Added additively; older events omit it. |
 | `earlyStopIsSubagent`              | bool                                  | `true` when the run is a child-agent dispatch. The engine's default is off for sub-agents; harness can still force on. |
 
 The matching response client command shape:

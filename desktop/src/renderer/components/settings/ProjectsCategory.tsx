@@ -7,6 +7,7 @@ import { rError } from '../../rendererLogger'
 import { pickDirectoryForSession } from '../../stores/remote-fs-store'
 import { SettingHeading } from './SettingHeading'
 import { SettingSection } from './SettingSection'
+import { ProjectFoldersSection } from './ProjectFoldersSection'
 
 const ASK_VALUE = 'ask'
 const PLAIN_VALUE = 'plain'
@@ -79,7 +80,7 @@ export function ProjectsCategory() {
       <SettingHeading first>Projects</SettingHeading>
       <SettingSection
         label="Project directories"
-        description="Projects are available when you start a new conversation. The starred project opens by default."
+        description="Projects are available when you start a new conversation. The starred project opens by default. Folders mounted on a project appear in every checkout of it, including worktrees and benches."
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {projectEntries.map((project) => {
@@ -135,6 +136,7 @@ export function ProjectsCategory() {
                   {project.dir}
                 </div>
                   {project.managed && <div style={{ marginTop: 5, color: colors.accent, fontSize: 11 }}>Managed by enterprise policy</div>}
+                <ProjectFoldersSection projectDir={project.dir} displayName={project.displayName} disabled={project.managed} />
                 <select
                   aria-label={`${project.displayName} profile`}
                   value={profileValue(project.entry.profileOverride, knownProfileIds)}

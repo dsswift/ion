@@ -23,7 +23,7 @@ func TestLatestUnimplementedPlan(t *testing.T) {
 	t.Run("no plan marker → not found", func(t *testing.T) {
 		conv := CreateConversation("no-plan", "sys", "m")
 		AddUserMessage(conv, "hi")
-		AddAssistantMessageNoUsage(conv, nil)
+		AddAssistantMessageNoUsage(conv, nil, "test-model")
 		if p, s, found := LatestUnimplementedPlan(conv); found {
 			t.Fatalf("expected no plan, got found=%v path=%q slug=%q", found, p, s)
 		}

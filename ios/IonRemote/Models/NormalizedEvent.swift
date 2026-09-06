@@ -31,7 +31,7 @@ enum RemoteEvent: Sendable {
     /// `pillColor` and `pillIcon` use double optionals: outer nil means key was
     /// omitted and state must remain untouched; outer non-nil with inner nil
     /// means desktop explicitly sent JSON null to clear customization.
-    case tabMeta(tabId: String, title: String?, totalCostUsd: Double?, groupId: String?, convFingerprint: String?, lastActivityAt: Double?, lastMessage: String?, messageCount: Int?, pillColor: String??, pillIcon: String??)
+    case tabMeta(tabId: String, title: String?, totalCostUsd: Double?, groupId: String?, convFingerprint: String?, lastActivityAt: Double?, lastMessageAt: Double?, lastMessage: String?, messageCount: Int?, pillColor: String??, pillIcon: String??)
     case textChunk(tabId: String, text: String)
     case toolCall(tabId: String, toolName: String, toolId: String)
     case toolResult(tabId: String, toolId: String, content: String, isError: Bool)
@@ -221,12 +221,12 @@ enum RemoteEvent: Sendable {
     /// (dispatchDepth, dispatchParentId) for tree rendering.
     case engineDispatchEnd(tabId: String, instanceId: String?, dispatchAgent: String, dispatchDepth: Int, dispatchParentId: String, exitCode: Int, elapsed: Double, dispatchId: String, conversationId: String?)
     /// engine_dispatch_activity — a running dispatched (sub-)agent's intra-turn
-    /// transcript delta (tool start/end, streamed text). Folded into the
+    /// transcript delta (tool start/end, stream reset, streamed text). Folded into the
     /// per-dispatch transcript cache keyed by dispatchAgentId (NOT conversationId);
     /// deduped by toolId (tools) and seq (text). Never touches the main
     /// conversation. INCREMENTAL/append-by-key — the file-backed reconcile is
     /// the snapshot authority. Mirrors desktop_dispatch_activity.
-    case engineDispatchActivity(tabId: String, instanceId: String?, agentId: String, conversationId: String, kind: String, seq: Int, toolName: String?, toolId: String?, textDelta: String?, isError: Bool, ts: Int64?)
+    case engineDispatchActivity(tabId: String, instanceId: String?, agentId: String, conversationId: String, kind: String, seq: Int, resetAfterSeq: Int?, toolName: String?, toolId: String?, textDelta: String?, isError: Bool, ts: Int64?)
     case engineError(tabId: String, instanceId: String?, message: String, stderrTail: [String])
     case engineNotify(tabId: String, instanceId: String?, message: String, level: String, metadata: [String: AnyCodable]?)
     case engineDialog(tabId: String, instanceId: String?, dialogId: String, method: String, title: String, options: [String]?, defaultValue: String?)
@@ -234,8 +234,8 @@ enum RemoteEvent: Sendable {
     case engineTextDelta(tabId: String, instanceId: String?, text: String)
     /// desktop_stream_reset: the engine is retrying the turn after a
     /// mid-stream provider failure or reactive compaction. All partial output
-    /// from the interrupted attempt — the trailing streamed assistant text
-    /// and any active thinking row — must be discarded. Mirrors the desktop
+    /// from the interrupted attempt, including streamed assistant text, active
+    /// thinking, and running tool rows, must be discarded. Mirrors the desktop
     /// renderer's stream_reset handling (event-slice.ts).
     case engineStreamReset(tabId: String, instanceId: String?)
     /// `entryId` / `userEntryId` are the canonical persisted tree-entry ids of
@@ -343,6 +343,7 @@ enum RemoteEvent: Sendable {
         maxContinuations: Int,
         lastContinuationDelta: Int,
         wouldContinue: Bool,
+        eligible: Bool,
         isSubagent: Bool
     )
     /// Complete snapshot of extension-registered slash commands for a
@@ -791,7 +792,7 @@ enum RemoteEvent: Sendable {
         // desktop_tab_meta volatile conversation fields (B6-1): pushed by the
         // desktop's poll tick when they change so the full snapshot need not
         // re-ship per streamed delta. Names mirror RemoteTabState.
-        case convFingerprint, lastActivityAt, lastMessage, messageCount
+        case convFingerprint, lastActivityAt, lastMessageAt, lastMessage, messageCount
         case content, transcript, isError, result, costUsd, durationMs, reason, backgroundTaskId
         case task, taskId, requestId, notifyOnComplete, startedAt, elapsedMs, outputPath, tail
         case stoppedBackgroundTaskIds, scope, cancelledRunId, recalledDispatchIds, killedAgentProcessCount
@@ -944,7 +945,7 @@ enum RemoteEvent: Sendable {
         case earlyStopCumulativeOutput, earlyStopBudget, earlyStopThresholdPct
         case earlyStopContinuationCount, earlyStopMaxContinuations
         case earlyStopLastContinuationDelta
-        case earlyStopWouldContinue, earlyStopIsSubagent
+        case earlyStopWouldContinue, earlyStopEligible, earlyStopIsSubagent
         // engine_command_registry / engine_command_result — slash-pipeline
         // wire events. `commands` already declared above (used by the
         // RegistryView and other generic listings); `message` already
@@ -1018,7 +1019,7 @@ enum RemoteEvent: Sendable {
         // timestamp (unix millis), decoded onto the case so the mirror is
         // complete with Go + desktop.
         case dispatchAgentId, dispatchConversationId, dispatchActivityKind
-        case dispatchSeq, dispatchTextDelta, dispatchToolIsError, dispatchActivityTs
+        case dispatchSeq, dispatchResetAfterSeq, dispatchTextDelta, dispatchToolIsError, dispatchActivityTs
         // --- engine_dispatch_start / engine_dispatch_end nesting fields ---
         case dispatchAgent, dispatchDepth, dispatchParentId
         case dispatchExitCode, dispatchElapsed
