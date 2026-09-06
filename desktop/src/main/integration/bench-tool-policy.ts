@@ -74,6 +74,27 @@ export interface GateDenial { reason: string }
 const GATED_TOOLS: ReadonlySet<string> = new Set(['Write', 'write', 'Edit', 'edit', 'NotebookEdit', 'Bash', 'bash', 'ion_scaffold'])
 
 /**
+ * The MCP name prefix the engine puts on tools it bridges into a delegated-CLI
+ * subprocess. The engine's own Bash reaches this gate as
+ * `mcp__ion-extensions__Bash` on a claude-code run and as `Bash` on an API run —
+ * the same tool, writing the same bytes to the same disk. Matching only the bare
+ * name would let a bridged call walk straight past a bench guard.
+ *
+ * Only this prefix is stripped. A third-party MCP server's tool named `Bash` is
+ * not the engine's, and its input schema is its own, so reading its `command`
+ * field under these rules would be a guess.
+ */
+const ENGINE_MCP_TOOL_PREFIX = 'mcp__ion-extensions__'
+
+/**
+ * Return the engine-side tool name for a name that may have been observed on
+ * the MCP wire. Mirrors `permissions.NormalizeToolName` in the engine.
+ */
+export function normalizeToolName(name: string): string {
+  return name.startsWith(ENGINE_MCP_TOOL_PREFIX) ? name.slice(ENGINE_MCP_TOOL_PREFIX.length) : name
+}
+
+/**
  * The git verbs refused inside a bench. Each either creates a commit the next
  * assembly destroys, publishes a synthetic merge, moves the bench branch out
  * from under the assembly's `switch -C`, or anchors a synthetic commit behind
@@ -103,9 +124,10 @@ const HISTORY_WRITING_SUBCOMMANDS: ReadonlySet<string> = new Set([
  * works is worse than a briefly missing bench guard.
  */
 export function evaluateToolGate(req: GateRequest): GateDenial | null {
-  if (!GATED_TOOLS.has(req.toolName)) return null
+  const toolName = normalizeToolName(req.toolName)
+  if (!GATED_TOOLS.has(toolName)) return null
   try {
-    return evaluate(req)
+    return evaluate({ ...req, toolName })
   } catch (err) {
     warn('tool gate evaluation failed, allowing the call', {
       tool: req.toolName, cwd: req.cwd, error: String(err),

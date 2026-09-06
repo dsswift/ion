@@ -13,13 +13,13 @@
 import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 
 vi.mock('../logger', () => ({ log: vi.fn(), warn: vi.fn() }))
 
-import { evaluateToolGate, type GateRequest } from './bench-tool-policy'
+import { evaluateToolGate, normalizeToolName, type GateRequest } from './bench-tool-policy'
 
 let root: string
 let home: string
@@ -172,6 +172,43 @@ describe('bench history rules', () => {
 
   it('passes a dynamic destination (logged, never guessed)', () => {
     expect(evaluateToolGate(bash('cd "$TARGET" && git commit -m x', benchPath + '-unrelated'))).toBeNull()
+  })
+
+  // The engine's own Bash reaches this gate under its MCP bridge name on a
+  // delegated-CLI run and under the bare name on an API run. Same tool, same
+  // bytes, same bench — so the same refusal. Matching only the bare name let a
+  // bridged call walk past the guard entirely.
+  it('refuses the engine\'s bridged Bash exactly as the bare name', () => {
+    const bare = evaluateToolGate(bash('git commit -m x', benchPath))
+    const bridged = evaluateToolGate({ ...bash('git commit -m x', benchPath), toolName: 'mcp__ion-extensions__Bash' })
+    expect(bare).not.toBeNull()
+    expect(bridged, 'a bridged Bash call bypassed the bench gate').not.toBeNull()
+    expect(bridged!.reason).toBe(bare!.reason)
+  })
+
+  // The prefix this gate matches on is the engine's, and the engine is what
+  // decides it. The shared fixture (repo-root assets/mcp-bridge-parity.json) is
+  // pinned to backend.McpServerName by TestMcpBridgeParityFixture, so a rename
+  // there fails on both sides instead of leaving this literal to rot — which
+  // would quietly restore the bypass this whole rule exists to close.
+  it('matches the prefix the engine actually sends', () => {
+    const fixturePath = join(__dirname, '../../../../assets/mcp-bridge-parity.json')
+    const fixture = JSON.parse(readFileSync(fixturePath, 'utf-8')) as { engineMcpToolPrefix: string }
+    expect(normalizeToolName(`${fixture.engineMcpToolPrefix}Bash`)).toBe('Bash')
+    expect(evaluateToolGate({
+      ...bash('git commit -m x', benchPath),
+      toolName: `${fixture.engineMcpToolPrefix}Bash`,
+    })).not.toBeNull()
+  })
+
+  // Only the engine's own bridge is unwrapped. Another MCP server's Bash is a
+  // different tool with its own input schema; reading its `command` under these
+  // rules would be a guess.
+  it('leaves another MCP server\'s tool name alone', () => {
+    expect(normalizeToolName('mcp__other-server__Bash')).toBe('mcp__other-server__Bash')
+    expect(normalizeToolName('mcp__ion-extensions__Bash')).toBe('Bash')
+    expect(normalizeToolName('Bash')).toBe('Bash')
+    expect(evaluateToolGate({ ...bash('git commit -m x', benchPath), toolName: 'mcp__other-server__Bash' })).toBeNull()
   })
 })
 
