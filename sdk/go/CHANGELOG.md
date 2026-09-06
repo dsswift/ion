@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.11](https://github.com/dsswift/ion/compare/sdk/go-v0.1.10...sdk/go-v0.1.11) (2026-09-06)
+
+### Bug Fixes
+
+* **sdk:** recover stalled tool attempts ([ee9fad5](https://github.com/dsswift/ion/commit/ee9fad5f7094e7ad9f179a538f7a1a421c23aeec))
+
 ## [0.1.10](https://github.com/dsswift/ion/compare/sdk/go-v0.1.9...sdk/go-v0.1.10) (2026-09-03)
 
 ### Features

@@ -10,6 +10,33 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.95.0](https://github.com/dsswift/ion/compare/desktop-v1.94.0...desktop-v1.95.0) (2026-09-06)
+
+### Features
+
+* **desktop:** add ConversationTelemetry client tool ([cd21099](https://github.com/dsswift/ion/commit/cd21099176798f8e916f302d460224bca9e9e3a0))
+* **desktop:** attribute telemetry turns to their model ([5ed36dc](https://github.com/dsswift/ion/commit/5ed36dce349aa177c60f5a034c3e5586eb80a96a))
+* **desktop:** report a delegated cli compacting its own session ([528137d](https://github.com/dsswift/ion/commit/528137d9e48a00a76de3a653454612ae82884d27))
+* **desktop:** show harness badge on inbox rows ([17df63d](https://github.com/dsswift/ion/commit/17df63d3e00325a640ea92fdd833d0b48c3e67b7))
+* **desktop:** persist surface panel width per conversation ([1f38742](https://github.com/dsswift/ion/commit/1f387422b04257e0addd066c8a0192bdfbd10fbf))
+* **desktop:** move file and folder creation to right-click ([3d78afa](https://github.com/dsswift/ion/commit/3d78afada992dd98a7425ae2735eed146619d119))
+* **desktop:** key workspace folders by project ([69c11e6](https://github.com/dsswift/ion/commit/69c11e639235e05c9ded64d1c598ee5d1c0302ce))
+* **desktop:** manage project folders in settings ([49f4c1b](https://github.com/dsswift/ion/commit/49f4c1b393257ca7e7dc2a510b9d7c71fdd0659e))
+* **desktop:** share and persist explorer tree state ([0beb75b](https://github.com/dsswift/ion/commit/0beb75bbc6ae3cbc878fde719b5d6b5ec74019ec))
+
+### Bug Fixes
+
+* **desktop:** run /compact on a delegated cli instead of refusing it ([ce9332f](https://github.com/dsswift/ion/commit/ce9332f79e1c20137fe6ea3c90f970ada5029e88))
+* **desktop:** add fork conversation to inbox row menu ([a8e547d](https://github.com/dsswift/ion/commit/a8e547d71f81f2edb390f70b365b2f9dbf15d322))
+* **desktop:** defer already-running notice until ready ([01bcf2c](https://github.com/dsswift/ion/commit/01bcf2c20967311cb6e38458bd0565da5ffad733))
+* **desktop:** recover stalled tool attempts ([d797889](https://github.com/dsswift/ion/commit/d7978893fecf703b4e4cf456775a00ff6716fc57))
+* **desktop:** stream file path before content ([cad2179](https://github.com/dsswift/ion/commit/cad217952dbb2c26b3a6a856636ce54246168ce8))
+* **desktop:** mock isModelCliServed in InputBar rewind test ([cc39a12](https://github.com/dsswift/ion/commit/cc39a12f98f98c045dcda9ee5a59471f2c04a771))
+* **desktop:** price a model switch against cache age ([f81b3c6](https://github.com/dsswift/ion/commit/f81b3c6a9a3e220e5f6a681b7975d4856e682cac))
+* **engine:** prevent nil hook context crash ([c401b65](https://github.com/dsswift/ion/commit/c401b65d36517dd8fb73c3efe100cf363b342883))
+* **desktop:** remap worktree-keyed workspace folders ([f7980e3](https://github.com/dsswift/ion/commit/f7980e38ff30948fd3473444f9567c53ada7f057))
+* **desktop:** stabilize Linux test fixtures ([9372268](https://github.com/dsswift/ion/commit/9372268ee84de8e4413f8ae81dc96e73e6a26d75))
+
 ## [1.94.0](https://github.com/dsswift/ion/compare/desktop-v1.93.1...desktop-v1.94.0) (2026-09-04)
 
 ### Features

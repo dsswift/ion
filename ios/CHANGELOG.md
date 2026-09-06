@@ -10,6 +10,19 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.74.0](https://github.com/dsswift/ion/compare/ios-v1.73.0...ios-v1.74.0) (2026-09-06)
+
+### Features
+
+* **ios:** report a delegated cli compacting its own session ([56c3072](https://github.com/dsswift/ion/commit/56c30727204a1fac974fb5d79fc37286d26d20e2))
+
+### Bug Fixes
+
+* **ios:** recover stalled tool attempts ([aef6690](https://github.com/dsswift/ion/commit/aef669043a634bee48271f647b1ced1987bf369f))
+* **ios:** hide incomplete file writes ([7d8c3c4](https://github.com/dsswift/ion/commit/7d8c3c4ac3753e04603fe7c9e896f24e88cfc117))
+* **ios:** stream file path before content ([7d1f02e](https://github.com/dsswift/ion/commit/7d1f02e36b25dc4c0127ce4a068dd0fd264125b4))
+* **ios:** price a model switch against cache age ([1c92588](https://github.com/dsswift/ion/commit/1c92588a26e00a2ffbbf0808279d5ad2f1d4ffff))
+
 ## [1.73.0](https://github.com/dsswift/ion/compare/ios-v1.72.2...ios-v1.73.0) (2026-09-04)
 
 ### Features

@@ -18,6 +18,35 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.82.0](https://github.com/dsswift/ion/compare/engine-v1.81.0...engine-v1.82.0) (2026-09-06)
+
+### Features
+
+* **engine:** expose EnterPlanMode to claude-code CLI runs ([78cfb8f](https://github.com/dsswift/ion/commit/78cfb8f3ce6ea199648bd8abc46b9426298142d4))
+* **engine:** persist operator stop as a conversation tree entry ([49f06e4](https://github.com/dsswift/ion/commit/49f06e451510f60e9e5f62eb4e39e9387d051e97))
+* **engine:** record the model a run serves ([5763e7d](https://github.com/dsswift/ion/commit/5763e7d99d96c4a712c2301483e6ee911bbdbd3a))
+* **engine:** report a delegated cli compacting its own session ([fd03947](https://github.com/dsswift/ion/commit/fd03947f58635794540955eb0988c98786f55b33))
+* **engine:** add plan file tools for cli plan mode ([ce2a91e](https://github.com/dsswift/ion/commit/ce2a91e0793862e8357476ef40e70aba03915453))
+* **engine:** publish the prompt-cache lifetime per model ([b226cad](https://github.com/dsswift/ion/commit/b226cadec3468a619fabeb2edfe4ac6c8bea2d32))
+
+### Bug Fixes
+
+* **engine:** persist slash provenance for CLI-backed turns ([08ebc63](https://github.com/dsswift/ion/commit/08ebc63e7f7ef71f108199ca09a23b459d05b007))
+* **engine:** mint run ids that cannot collide ([d2be429](https://github.com/dsswift/ion/commit/d2be429d7daa37ab2d310e6e2b6f5cfe5e4f4914))
+* **engine:** record model changes on cli-served runs ([f086827](https://github.com/dsswift/ion/commit/f0868277fc631dad66987a68832abccdb2590f60))
+* **engine:** tag model sync logs to their own subsystem ([4079b7a](https://github.com/dsswift/ion/commit/4079b7ad6ba27d1de84538a9a20d7c5c90900bbe))
+* **engine:** reconcile context breakdown for delegated-CLI backends ([2b06d20](https://github.com/dsswift/ion/commit/2b06d208c89c396428d48f975755dd31440545ed))
+* **engine:** restore context accounting for delegated-cli turns ([d1e584d](https://github.com/dsswift/ion/commit/d1e584d2594b29a041a448b56967d7e2fe8091fd))
+* **engine:** run /compact on a delegated cli instead of refusing it ([19801e6](https://github.com/dsswift/ion/commit/19801e6440f34b21187d5f53e9fb5950f7e04003))
+* **engine:** keep CLI plan mode in the same subprocess ([b77d980](https://github.com/dsswift/ion/commit/b77d980e42d20db60461f4e296ce838e344f898c))
+* **engine:** time out heartbeat-only streams ([08361a4](https://github.com/dsswift/ion/commit/08361a4dd5a930de7635a351d0206451da0cb9d9))
+* **engine:** recover stalled tool attempts ([8729a54](https://github.com/dsswift/ion/commit/8729a54137822f176426e5e82817be0cdcba0ff9))
+* **engine:** separate stream liveness clocks ([7e915fe](https://github.com/dsswift/ion/commit/7e915fea969995322ce9052829bb6b2edace6310))
+* **engine:** stream file path before content ([589a142](https://github.com/dsswift/ion/commit/589a142ec376dc4055bd1b94342e0ec59304669f))
+* **engine:** end turn at plan and question tools ([b08173c](https://github.com/dsswift/ion/commit/b08173cb1b085a0a187434b5146b35f59ed51150))
+* **engine:** correct stale anthropic model pricing ([c8a4a5c](https://github.com/dsswift/ion/commit/c8a4a5c3fbb897ff9141360c96e7ef5821e4b544))
+* **engine:** prevent nil hook context crash ([c401b65](https://github.com/dsswift/ion/commit/c401b65d36517dd8fb73c3efe100cf363b342883))
+
 ## [1.81.0](https://github.com/dsswift/ion/compare/engine-v1.80.2...engine-v1.81.0) (2026-09-04)
 
 ### Features
