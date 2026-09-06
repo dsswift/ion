@@ -78,6 +78,8 @@ jobs:
         run: bash scripts/check-go-toolchains.sh
       - name: Test Go toolchain alignment check
         run: bash scripts/check-go-toolchains.test.sh
+      - name: Test Linux parity gate receipt semantics
+        run: bash scripts/gate-cache.test.sh
 
   file-size:
     runs-on: ubuntu-latest

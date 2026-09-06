@@ -85,6 +85,7 @@ run() {
 run "file-size cap" bash scripts/check-file-sizes.sh
 run "Go toolchain alignment" bash scripts/check-go-toolchains.sh
 run "Go toolchain regression checks" bash scripts/check-go-toolchains.test.sh
+run "Linux parity gate receipt semantics" bash scripts/gate-cache.test.sh
 
 # Vocabulary uses Node built-ins with zero install and always runs because registry path and symbol references can be invalidated by any tree change.
 run "vocabulary registry + drift" make check-vocabulary

@@ -207,6 +207,8 @@ The following gates are **slow** — Docker container spin-up, full-network vuln
 >
 > **When a CI job that runs engine or desktop tests is added to `quality.yml`, mirror it into `make test-linux`.** The gate's value is that it is a faithful subset; a gate that claims CI parity while skipping a job green-lights the exact failures it exists to catch. Two concrete traps: integration tests are behind the `integration` build tag, so `go test ./...` silently skips them rather than failing, and `npm run typecheck` does not catch unused imports or react-hooks violations — those are ESLint rules that CI runs as a separate blocking job.
 
+> **The gates are receipted, and the two halves run on different architectures.** A gate that already passed on the exact current HEAD with a clean worktree is skipped on the next invocation (`scripts/gate-cache.sh`; the receipt lives in git metadata, is per-worktree, and never touches the tree). Any new commit, dirty file, platform change, Dockerfile change, or edit to the gate command in the `Makefile` invalidates it. `ION_GATE_FORCE=1 make test-linux-desktop` reruns regardless. The engine gate stays pinned to `linux/amd64` to match CI, because Go race detection, memory ordering, and cgo/assembly paths are genuinely arch-sensitive. The desktop gate runs the host architecture: with `--ignore-scripts` it builds nothing native, so it is Node executing JavaScript, and the Linux-versus-macOS failures it exists to catch are properties of the kernel and libc rather than the instruction set.
+
 ## Branch workflow
 
 - `main` is protected. All changes merge via pull request — never push directly to `main`.
