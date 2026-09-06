@@ -537,10 +537,11 @@ export function WorkspaceStatusIndicator() {
         }}
       >
         <span
-          className={`w-[7px] h-[7px] rounded-full flex-shrink-0 ${shouldPulse ? "animate-pulse-dot" : ""}`}
+          className={`w-[7px] h-[7px] rounded-full flex-shrink-0 ${shouldPulse ? "ion-dot-live" : ""}`}
           style={{
             background: dotColor,
             display: "block",
+            color: dotColor,
             ...(tier === "waiting"
               ? { boxShadow: `0 0 5px 1px ${colors.statusWaitingChildrenGlow}` }
               : {}),

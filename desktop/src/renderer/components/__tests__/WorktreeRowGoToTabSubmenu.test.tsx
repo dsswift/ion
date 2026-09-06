@@ -201,8 +201,8 @@ describe('WorktreeRowMenu — "Go to tab" submenu', () => {
 
     const running = document.querySelector('[data-testid="worktree-conversation-status-run-1"]')!
     const idle = document.querySelector('[data-testid="worktree-conversation-status-idle-1"]')!
-    expect(running.firstElementChild?.className).toContain('animate-pulse-dot')
-    expect(idle.firstElementChild?.className).not.toContain('animate-pulse-dot')
+    expect(running.firstElementChild?.className).toContain('ion-dot-live')
+    expect(idle.firstElementChild?.className).not.toContain('ion-dot-live')
   })
   it('focuses the clicked conversation and closes the whole menu', async () => {
     // RED before the containerRef fix: the submenu portals as a sibling of

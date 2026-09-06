@@ -68,9 +68,8 @@ import { useActiveEngineAgentRunningCount, useActiveEngineBackgroundShellCount, 
  *
  * Foreground orange beats background yellow because the orchestrator's
  * own activity is the strongest signal — matches the priority cascade
- * in `TabStripShared.getTabStatusColor`. The pulse animation reuses
- * `.animate-pulse-dot`, only the background color differs between the two
- * pulsing branches.
+ * in `TabStripShared.getTabStatusColor`. The live ring reuses
+ * `.ion-dot-live`, only the dot colour differs between the two live branches.
  */
 export function StatusBarEngineState() {
   const colors = useColors()
@@ -129,12 +128,13 @@ export function StatusBarEngineState() {
       style={{ color: colors.textTertiary, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10 }}
     >
       <span
-        className="animate-pulse-dot"
+        className="ion-dot-live"
         style={{
           width: 6,
           height: 6,
           borderRadius: '50%',
           background: dotColor,
+          color: dotColor,
           display: 'inline-block',
           flexShrink: 0,
         }}

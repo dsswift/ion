@@ -75,7 +75,7 @@ describe('DispatchPager status dots', () => {
     const { container, root } = render(lead)
     const dot = dotFor(container, '#1')
     expect(dot.style.background).toBe(colors.running)
-    expect(dot.className).toContain('animate-pulse-dot')
+    expect(dot.className).toContain('ion-dot-live')
     act(() => { root.unmount() })
   })
 
@@ -84,7 +84,7 @@ describe('DispatchPager status dots', () => {
     const { container, root } = render(lead)
     const dot = dotFor(container, '#1')
     expect(dot.style.background).toBe(colors.complete)
-    expect(dot.className).not.toContain('animate-pulse-dot')
+    expect(dot.className).not.toContain('ion-dot-live')
     act(() => { root.unmount() })
   })
 
@@ -98,7 +98,7 @@ describe('DispatchPager status dots', () => {
     const { container, root } = render(lead, [lead, child])
     const dot = dotFor(container, '#1')
     expect(dot.style.background).toBe(colors.waiting)
-    expect(dot.className).toContain('animate-pulse-dot')
+    expect(dot.className).toContain('ion-dot-live')
     expect(dot.style.boxShadow).toContain('#090909')
     act(() => { root.unmount() })
   })

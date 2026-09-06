@@ -142,8 +142,8 @@ export function StatusDot(props: StatusDotAllProps) {
   if (IconComponent) {
     return (
       <span
-        className={`flex-shrink-0 inline-flex items-center justify-center ${pulse ? 'animate-pulse-dot' : ''}`}
-        style={{ width: size, height: size, ...(glow ? { filter: `drop-shadow(0 0 4px ${glowColor})` } : {}) }}
+        className={`flex-shrink-0 inline-flex items-center justify-center ${pulse ? 'ion-dot-live' : ''}`}
+        style={{ width: size, height: size, color: bg, ...(glow ? { filter: `drop-shadow(0 0 4px ${glowColor})` } : {}) }}
       >
         <IconComponent size={size} weight="fill" color={bg} />
       </span>
@@ -152,11 +152,12 @@ export function StatusDot(props: StatusDotAllProps) {
 
   return (
     <span
-      className={`rounded-full flex-shrink-0 ${pulse ? 'animate-pulse-dot' : ''}`}
+      className={`rounded-full flex-shrink-0 ${pulse ? 'ion-dot-live' : ''}`}
       style={{
         width: size,
         height: size,
         background: bg,
+        color: bg,
         ...(glow ? { boxShadow: `0 0 6px 2px ${glowColor}` } : {}),
       }}
     />
@@ -201,9 +202,10 @@ interface GroupStatusDotProps {
 export function GroupStatusDot({ bg, pulse, glow, glowColor }: GroupStatusDotProps) {
   return (
     <span
-      className={`w-[6px] h-[6px] rounded-full flex-shrink-0 ${pulse ? 'animate-pulse-dot' : ''}`}
+      className={`w-[6px] h-[6px] rounded-full flex-shrink-0 ${pulse ? 'ion-dot-live' : ''}`}
       style={{
         background: bg,
+        color: bg,
         ...(glow ? { boxShadow: `0 0 6px 2px ${glowColor}` } : {}),
       }}
     />
@@ -250,18 +252,19 @@ export function StatusDotStack({ foreground, background, ringColor, size = 6 }: 
     width: size,
     height: size,
     background: layer.bg,
+    color: layer.bg,
     ...(layer.glow !== false && layer.glowColor ? { boxShadow: `0 0 6px 2px ${layer.glowColor}` } : {}),
   })
   return (
     <span className="flex-shrink-0 inline-flex items-center" style={{ position: 'relative' }}>
       {/* Background dot — the aggregate */}
       <span
-        className={`rounded-full ${background.pulse ? 'animate-pulse-dot' : ''}`}
+        className={`rounded-full ${background.pulse ? 'ion-dot-live' : ''}`}
         style={{ ...dotStyle(background), position: 'relative', zIndex: 1 }}
       />
       {/* Foreground dot — the subject in focus */}
       <span
-        className={`rounded-full ${foreground.pulse ? 'animate-pulse-dot' : ''}`}
+        className={`rounded-full ${foreground.pulse ? 'ion-dot-live' : ''}`}
         style={{
           ...dotStyle(foreground),
           marginLeft: -Math.round(size / 2),

@@ -108,10 +108,8 @@ export function DropdownTabRow({
       dragControls={dragControls}
       initial={false}
       layout
-      className={`flex items-center gap-1.5 w-full rounded px-2 py-1.5 cursor-pointer ${waitingBorder ? 'animate-border-pulse' : ''}`}
+      className="flex items-center gap-1.5 w-full rounded px-2 py-1.5 cursor-pointer"
       style={{
-        '--border-waiting': waitingBorder ?? 'transparent',
-        '--border-default': defaultBorder,
         // Standard row cascade (pressed > hover > selected > base) via
         // interactiveBg; a user pill color keeps the runtime `${pillColor}NN`
         // alpha-concat pattern, deepening 10 → 18 on hover.
@@ -123,7 +121,7 @@ export function DropdownTabRow({
         fontWeight: isActive ? 500 : 400,
         listStyle: 'none',
         transition: `background ${transitions.base}`,
-      } as React.CSSProperties}
+      }}
       onClick={() => {
         if (isDragging.current) return
         if (!isEditing) {
@@ -165,17 +163,18 @@ export function DropdownTabRow({
           const Icon = PILL_ICON_MAP[tab.pillIcon!]
           return (
             <span
-              className={`flex-shrink-0 inline-flex items-center justify-center ${pulse ? 'animate-pulse-dot' : ''}`}
-              style={{ width: 8, height: 8, ...(glow ? { filter: `drop-shadow(0 0 4px ${glowColor})` } : {}) }}
+              className={`flex-shrink-0 inline-flex items-center justify-center ${pulse ? 'ion-dot-live' : ''}`}
+              style={{ width: 8, height: 8, color: bg, ...(glow ? { filter: `drop-shadow(0 0 4px ${glowColor})` } : {}) }}
             >
               <Icon size={8} weight="fill" color={bg} />
             </span>
           )
         })() : (
           <span
-            className={`w-[6px] h-[6px] rounded-full ${pulse ? 'animate-pulse-dot' : ''}`}
+            className={`w-[6px] h-[6px] rounded-full ${pulse ? 'ion-dot-live' : ''}`}
             style={{
               background: bg,
+              color: bg,
               ...(glow ? { boxShadow: `0 0 6px 2px ${glowColor}` } : {}),
             }}
           />

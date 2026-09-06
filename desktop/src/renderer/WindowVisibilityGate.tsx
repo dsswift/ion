@@ -8,9 +8,9 @@ import { rDebug } from './rendererLogger'
  * no IPC round-trip needed, it's native per-window state.
  *
  * Without this, a hidden or minimized window still ticks every `infinite`
- * CSS animation (pulse-dot, border-pulse, bounce-dot) at the display refresh
+ * CSS animation (spinners, the bench conflict flash) at the display refresh
  * rate forever, which showed up as sustained GPU cost from a window with no
- * pixels on screen. CSS in index.css pauses those animations under
+ * pixels on screen. CSS in index.css pauses every animation under
  * `.ion-window-hidden`.
  */
 export function WindowVisibilityGate(): null {

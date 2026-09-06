@@ -82,13 +82,13 @@ describe('WorktreeConversationStatusDot', () => {
   it('renders idle tab status', () => {
     const dot = render()!
     expect(visual(dot).style.background).toBe(C.idle)
-    expect(visual(dot).className).not.toContain('animate-pulse-dot')
+    expect(visual(dot).className).not.toContain('ion-dot-live')
   })
 
   it('renders foreground running with canonical pulse', () => {
     const dot = render({ status: 'running' })!
     expect(visual(dot).style.background).toBe(C.running)
-    expect(visual(dot).className).toContain('animate-pulse-dot')
+    expect(visual(dot).className).toContain('ion-dot-live')
   })
 
   it('renders unread completion status', () => {
@@ -97,7 +97,7 @@ describe('WorktreeConversationStatusDot', () => {
     // lastCompletionAt flag.
     const dot = render({ lastMessageAt: 2, lastVisitedAt: 1 })!
     expect(visual(dot).style.background).toBe(C.complete)
-    expect(visual(dot).className).not.toContain('animate-pulse-dot')
+    expect(visual(dot).className).not.toContain('ion-dot-live')
   })
 
   it('renders plan-ready status with canonical glow', () => {
@@ -121,7 +121,7 @@ describe('WorktreeConversationStatusDot', () => {
       instances: [{ permissionQueue: [], agentStates: [{ status: 'running' }] }],
     })!
     expect(visual(dot).style.background).toBe(C.children)
-    expect(visual(dot).className).toContain('animate-pulse-dot')
+    expect(visual(dot).className).toContain('ion-dot-live')
     expect(visual(dot).style.boxShadow).toContain('#070707')
   })
 
