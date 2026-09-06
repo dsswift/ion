@@ -46,7 +46,7 @@ func executeBash(ctx context.Context, input map[string]any, cwd string) (*types.
 			utils.LogWithFields(utils.LevelInfo, "tools.bash", "bare sleep refused", map[string]any{
 				"sleep_seconds": secs, "threshold_ms": threshold.Milliseconds(), "background": input["run_in_background"] == true, "count": len(command), "cwd": cwd,
 			})
-			return &types.ToolResult{Content: blockingSleepMessage(secs, threshold, input["run_in_background"] == true, GetTool("TaskGet") != nil), IsError: true}, nil
+			return &types.ToolResult{Content: blockingSleepMessage(secs, threshold, input["run_in_background"] == true, TaskToolsAvailable(ctx)), IsError: true}, nil
 		}
 	}
 
@@ -189,7 +189,7 @@ func executeBashBackground(ctx context.Context, command, cwd string, notify bool
 	content := fmt.Sprintf("Background task started: %s\nOutput file: %s", info.ID, info.OutputPath)
 	if notify {
 		content += "\nCompletion will be delivered to this session when the command finishes — do not poll for it. You may continue with other useful work or start more background commands. If this task is the only remaining work, end your turn; the engine parks the session and resumes it on completion."
-	} else if GetTool("TaskGet") != nil {
+	} else if TaskToolsAvailable(ctx) {
 		content += "\nUse TaskGet to poll status and recent output, TaskStop to terminate."
 	} else {
 		content += "\nRead the output file to inspect progress."

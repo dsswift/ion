@@ -101,10 +101,12 @@ func detectBlockingSleep(command string, threshold time.Duration) (seconds int, 
 // progress — because a refusal that does not say what to do instead just gets
 // retried.
 //
-// taskToolsRegistered reports whether TaskGet is in the tool registry; when it
-// is not (the Task tools are harness opt-in, see optional.go), the progress
-// path is reading the task's output file directly.
-func blockingSleepMessage(seconds int, threshold time.Duration, background, taskToolsRegistered bool) string {
+// taskToolsAvailable reports whether the calling model can reach TaskGet — it
+// is harness opt-in in the global registry and MCP-bridged on a delegated-CLI
+// run, so the answer is resolved by TaskToolsAvailable rather than by a bare
+// registry probe. When it is false the progress path is reading the task's
+// output file directly.
+func blockingSleepMessage(seconds int, threshold time.Duration, background, taskToolsAvailable bool) string {
 	var b strings.Builder
 	mode := "foreground"
 	if background {
@@ -115,7 +117,7 @@ func blockingSleepMessage(seconds int, threshold time.Duration, background, task
 	b.WriteString("To wait for a real command, start that command with `run_in_background: true` and `notify_on_complete: true`. ")
 	b.WriteString("Its result is delivered to this session when it finishes — you do not poll and you do not sleep.\n")
 	b.WriteString("For wait-and-recheck work, use `Poll`: it checks evidence in the background and delivers one terminal verdict.\n")
-	if taskToolsRegistered {
+	if taskToolsAvailable {
 		b.WriteString("TaskGet is available for an explicit one-time status read, not a polling loop.\n")
 	} else {
 		b.WriteString("Read a real task's output file for an explicit one-time progress inspection.\n")
