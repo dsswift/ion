@@ -1,4 +1,4 @@
-.PHONY: default demo desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test test test-all test-linux test-linux-engine test-linux-engine-run test-linux-engine-summary test-linux-desktop test-linux-desktop-run clean check-file-sizes check-contracts check-status-writers check-studio-parity check-logging check-swiftlint check-dashboards check-vocabulary generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop log-level-debug
+.PHONY: default demo desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test test test-all test-linux test-linux-engine test-linux-engine-run test-linux-engine-summary test-linux-desktop test-linux-desktop-run clean check-file-sizes check-contracts check-status-writers check-studio-parity check-logging check-swiftlint check-dashboards check-vocabulary check-issue-closure generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop log-level-debug
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -343,6 +343,12 @@ check-vocabulary:
 # Regenerate the committed vocabulary index from its machine-validated registry. Use this after changing docs/vocabulary/terms.json.
 generate-vocabulary:
 	@node scripts/vocabulary.mjs generate
+
+# Verifies every issue a PR's title/commits reference as "(#N)" actually
+# closes on merge (a real "Fixes #N"/"Closes #N" keyword, not just the link
+# suffix). Pass PR=<number>, or omit to resolve the current branch's PR.
+check-issue-closure:
+	@bash scripts/check-issue-closure.sh $(PR)
 
 # Phase 4 of the state-management overhaul. Prohibits new direct writes
 # to tab.status / inst.statusFields outside the dispatcher chokepoints

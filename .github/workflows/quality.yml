@@ -88,6 +88,20 @@ jobs:
       - name: Check file-size caps
         run: bash scripts/check-file-sizes.sh
 
+  issue-closure:
+    # PR-only: no PR exists on a plain push/schedule/dispatch run to check.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify referenced issues actually close on merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/check-issue-closure.sh "${{ github.event.pull_request.number }}"
+
   vocabulary:
     # Always runs: registry references can point at source in any product scope.
     runs-on: ubuntu-latest
