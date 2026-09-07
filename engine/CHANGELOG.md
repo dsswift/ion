@@ -18,6 +18,20 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.83.0](https://github.com/dsswift/ion/compare/engine-v1.82.0...engine-v1.83.0) (2026-09-07)
+
+### Features
+
+* **engine:** expose engine shell and async tools to CLI runs ([2f0793f](https://github.com/dsswift/ion/commit/2f0793f3336199c1be88c8364be7dfb5f52f07d6))
+* **engine:** park a delegated CLI run on outstanding work ([4149916](https://github.com/dsswift/ion/commit/41499166c76e2daae5b8cee3adddf8a711ea35b3))
+* **engine:** gate the CLI's async modes, don't remove the tools ([a2f94db](https://github.com/dsswift/ion/commit/a2f94dbf73a70db0251876c2ac01605f41ed502b))
+
+### Bug Fixes
+
+* **engine:** log every pre-tool-use hook request ([52981d9](https://github.com/dsswift/ion/commit/52981d9b0d023b47e4ef258bbe1345229afef530))
+* **engine:** write the pre-tool-use hook in the CLI's shape ([b9a7fd9](https://github.com/dsswift/ion/commit/b9a7fd9da6df01967215f112fd36eb20759820c9))
+* **engine:** register outstanding bash task before its watcher ([b705a32](https://github.com/dsswift/ion/commit/b705a32c753e75a0a94b33fe50a66742cda3be32))
+
 ## [1.82.0](https://github.com/dsswift/ion/compare/engine-v1.81.0...engine-v1.82.0) (2026-09-06)
 
 ### Features

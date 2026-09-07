@@ -10,6 +10,17 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.96.0](https://github.com/dsswift/ion/compare/desktop-v1.95.0...desktop-v1.96.0) (2026-09-07)
+
+### Features
+
+* **desktop:** add tool-batching system-prompt addendum ([6c2e0fb](https://github.com/dsswift/ion/commit/6c2e0fb62e3c8b161fdcff2ad649967eb0bcc3d2))
+
+### Bug Fixes
+
+* **desktop:** match the engine's bridged Bash name in bench gate ([209336d](https://github.com/dsswift/ion/commit/209336d3bd5f06e4df63676c4d0c2b14d3a716fa))
+* **desktop:** replace idle status pulses with a static live ring ([20c2b6a](https://github.com/dsswift/ion/commit/20c2b6a10a7c9423fe2aaa4d96271be050d8f484))
+
 ## [1.95.0](https://github.com/dsswift/ion/compare/desktop-v1.94.0...desktop-v1.95.0) (2026-09-06)
 
 ### Features
