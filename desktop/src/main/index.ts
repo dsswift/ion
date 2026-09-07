@@ -18,7 +18,8 @@ import { wireSessionPlaneEvents, wireEngineBridgeEvents, wireRemoteSessionPlaneF
 import { registerAllIpc } from './ipc/register'
 import { setupAppLifecycle } from './app-lifecycle'
 import { wireAutomationRuntime } from './automation/runtime'
-import { engineBridge } from './state'
+import { engineBridge, enterprisePolicyCache } from './state'
+import { installTelemetryHealthConsumer, telemetryHealthNotificationsEnabled } from './telemetry-health'
 import { wireToolGateResponder } from './tool-gate-responder'
 
 // Legacy atv* → studio* settings rename. MUST run before window creation and
@@ -34,6 +35,13 @@ migrateWorkspaceFolders()
 // import Studio view code, so doing this from state.ts would re-enter state
 // before its constants finish initialization.
 wireToolGateResponder(engineBridge)
+
+// Surface telemetry delivery health. Installed here rather than inside the
+// engine bridge so the notification policy (what interrupts the operator)
+// stays a desktop opinion, separate from the engine's reporting.
+installTelemetryHealthConsumer(engineBridge, {
+  enabled: () => telemetryHealthNotificationsEnabled(enterprisePolicyCache.policy),
+})
 
 wireSessionPlaneEvents()
 wireEngineBridgeEvents()
