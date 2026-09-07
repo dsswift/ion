@@ -106,6 +106,7 @@ engine/tests/e2e/testconfig.json
 docs/diagrams/
 docs/responses/
 docs/**/*.html
+docs/retros/
 
 # graphify knowledge graph — a local build cache, not a source artifact.
 #
