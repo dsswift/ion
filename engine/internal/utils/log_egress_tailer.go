@@ -166,6 +166,27 @@ func (t *EgressTailer) handleLine(source string, raw []byte) error {
 	if line == "" {
 		return nil
 	}
+	// A compact telemetry frame expands into one record per event before it
+	// ships. See log_egress_tailer_telemetry.go for why the operational path
+	// cannot carry a frame.
+	if records, isFrame, err := expandTelemetryFrameLine([]byte(line), source); isFrame {
+		if err != nil {
+			LogWithFields(LevelWarn, "log_egress_tailer", "telemetry frame expansion failed dropping line", map[string]any{
+				"source": source,
+				"bytes":  len(line),
+				"error":  err.Error(),
+			})
+			return nil
+		}
+		for _, record := range records {
+			if record.User == "" {
+				record.User = resolvedEgressUser()
+			}
+			// shipTailed has accepted the record when it returns.
+			t.fwd.shipTailed(record)
+		}
+		return nil
+	}
 	var rec egressRecord
 	if err := json.Unmarshal([]byte(line), &rec); err != nil {
 		rec = egressRecord{

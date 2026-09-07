@@ -99,8 +99,9 @@ type egressRecord struct {
 	//
 	// A telemetry event ({name, ts, schema, component, payload, context, ...})
 	// is a DISTINCT shape from an operational log line ({ts, level, msg, ...,
-	// fields}). The engine egress tailer (log_egress_tailer.go) ships
-	// ~/.ion/telemetry.jsonl verbatim, so those events arrive here. These fields
+	// fields}). The engine egress tailer (log_egress_tailer.go) expands each
+	// compact frame in ~/.ion/telemetry.jsonl into one event per record, so
+	// those events arrive here already expanded. These fields
 	// carry the parsed telemetry envelope so the OTLP exporter can map them to
 	// the file-tail-parity attribute set (kind/service/payload/context) instead
 	// of stuffing the raw JSON into Msg — which the remote ion_otlp_unwrap
