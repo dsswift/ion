@@ -8,9 +8,21 @@ import (
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/cost"
 	"github.com/dsswift/ion/engine/internal/providers"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
+
+// imageGenerationCallCost derives an image-generation run's *telemetry.CallCost
+// from cost.ImageCost's own return value, rather than any independent
+// recomputation. Token buckets are zeroed on purpose (image generation bills
+// per image, not per token — see cost.ImageCost's doc), and CostUsd is set
+// even when it computes to 0 (unknown model / no per-image pricing): unlike
+// AssistantMessage's cost=nil case, an image run always attempted a real
+// cost lookup, so the result is a known value, not an absence.
+func imageGenerationCallCost(model string, images int) *telemetry.CallCost {
+	return &telemetry.CallCost{CostUsd: cost.ImageCost(model, images)}
+}
 
 // runImageLoop handles a run whose selected model is an image-generation model
 // (ModelKind == "image"). It replaces the full agent loop for these models
