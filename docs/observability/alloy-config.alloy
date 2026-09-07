@@ -6,6 +6,12 @@
 //   2. ion_telemetry — tails telemetry.jsonl (when enabled) and promotes the
 //                      event name as the low-cardinality "kind" label; all
 //                      numeric/high-cardinality fields go into structured_metadata.
+//                      Also extracts the standalone conversation.* family
+//                      (conv_* keys below) when an operator points
+//                      conversationEvents's httpEndpoint at this same
+//                      telemetry-forwarder — a separate Collector/config from
+//                      telemetry.*, sharing this pipeline only by destination
+//                      choice, not by contract.
 //
 // Label cardinality discipline (see Loki docs):
 //   stage.labels           — only low-cardinality, enumerable values (component, level, tag, kind)
@@ -70,7 +76,8 @@ loki.process "ion_parse" {
 // 2. TELEMETRY PIPELINE — compact-frame forwarder → Loki Push API
 //
 // The engine writes schema-v4 compact frames. The telemetry-forwarder expands
-// v1-v4 file records into one standard telemetry event per Loki Push entry.
+// file records, at any schema at or below its own, into one standard telemetry
+// event per Loki Push entry.
 // Alloy receives those entries through its Loki API endpoint. It must not tail
 // telemetry.jsonl directly: a frame can contain more than one event.
 //
@@ -127,6 +134,27 @@ loki.process "ion_telemetry" {
       "context_session_id"        = "context.session_id",
       "context_extension"         = "context.extension",
       "context_extension_version" = "context.extension_version",
+
+      // conversation.* family (issue #378) — metadata-only payload keys.
+      // Shares this pipeline: an operator who points ConversationEventsConfig's
+      // httpEndpoint at the same telemetry-forwarder gets these extracted
+      // alongside the general telemetry.* family. conv_ prefix avoids
+      // colliding with the general family's own "tool"/"model" keys, since
+      // conversation.tool_call's payload key is "tool_name" (not "tool") and
+      // its meaning (the tool a turn invoked) differs from llm.call's "tool".
+      "conv_conversation_id"      = "payload.conversation_id",
+      "conv_entry_id"             = "payload.entry_id",
+      "conv_run_id"               = "payload.run_id",
+      "conv_dispatch_id"          = "payload.dispatch_id",
+      "conv_tool_use_id"          = "payload.tool_use_id",
+      "conv_tool_name"            = "payload.tool_name",
+      "conv_outcome"              = "payload.outcome",
+      "conv_action"               = "payload.action",
+      "conv_cost_input_tokens"    = "payload.cost.input_tokens",
+      "conv_cost_output_tokens"   = "payload.cost.output_tokens",
+      "conv_cost_read_tokens"     = "payload.cost.cache_read_input_tokens",
+      "conv_cost_creation_tokens" = "payload.cost.cache_creation_input_tokens",
+      "conv_cost_usd"             = "payload.cost.cost_usd",
     }
   }
 
@@ -159,6 +187,19 @@ loki.process "ion_telemetry" {
       "context_session_id"        = "",
       "context_extension"         = "",
       "context_extension_version" = "",
+      "conv_conversation_id"      = "",
+      "conv_entry_id"             = "",
+      "conv_run_id"               = "",
+      "conv_dispatch_id"          = "",
+      "conv_tool_use_id"          = "",
+      "conv_tool_name"            = "",
+      "conv_outcome"              = "",
+      "conv_action"               = "",
+      "conv_cost_input_tokens"    = "",
+      "conv_cost_output_tokens"   = "",
+      "conv_cost_read_tokens"     = "",
+      "conv_cost_creation_tokens" = "",
+      "conv_cost_usd"             = "",
     }
   }
 

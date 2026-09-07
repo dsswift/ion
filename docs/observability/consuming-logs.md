@@ -82,7 +82,7 @@ versioned event stream. Every record self-identifies its schema generation via t
 | `context` | object | when in scope | Correlation: `session_id`, `conversation_id`, `run_id` |
 | `trace_id` | string | omit when no run in flight | W3C trace-context trace-id, 32 lowercase hex. Scoped to one prompt-to-completion run — see § "Correlation model" |
 
-Version history: v2 introduced the unified contract; v3 added `event_id` and the populated-capable `user` carrier; v4 stores compact frames with interned identity and context tables. The telemetry forwarder decodes v1-v4 file records and sends expanded events to consumers.
+Version history: v2 introduced the unified contract; v3 added `event_id` and the populated-capable `user` carrier; v4 stores compact frames with interned identity and context tables. The telemetry forwarder decodes file records at any schema at or below its own and sends expanded events to consumers. Added fields never bump the number; see [`docs/enterprise/telemetry.md`](../enterprise/telemetry.md) § "Schema versioning".
 
 **Core event payloads:**
 
@@ -124,16 +124,19 @@ Beyond the core three, the engine emits additive instrumentation families — tr
 `tool.failure`), context economy (`context.pressure`, `compaction`, `cache.savings`), provider
 market (`provider.ttft`, `provider.stall`, `provider.stream_summary`, `provider.retry`,
 `provider.fallback`), and platform health (`extension.respawn`, `extension.coldstart`,
-`extension.hook_latency`, `client.backpressure`) — plus session lifecycle (`session.start`,
-`session.end`) and `error`. The authoritative by-name list is the constant block in
-`engine/internal/telemetry/telemetry.go`. All payloads follow the same snake_case vocabulary; see
-[`cost-model.md`](cost-model.md) for the cost fields' semantics.
+`extension.hook_latency`, `client.backpressure`). Session and conversation lifecycle is covered by
+the separate, standalone `conversation.*` event family (`conversation.lifecycle`'s `created`,
+`resumed`, `compacted`, `cleared`, `detached`, and `deleted` actions) — see
+[`log-schema.md`](log-schema.md) § "`conversation.*` event family". The authoritative by-name list
+for the `telemetry.*` family is the constant block in `engine/internal/telemetry/telemetry.go`. All
+payloads follow the same snake_case vocabulary; see [`cost-model.md`](cost-model.md) for the cost
+fields' semantics.
 
 **Stability contract:** the telemetry format is **versioned**. Within a schema version, changes
 are additive only. The engine keeps the file append-only across schema transitions and records the
 highest seen schema in `~/.ion/telemetry.schema.json`. Size rotation is independent: it renames the
 live file to `.1`, shifts older archives, and removes the oldest archive beyond `maxFiles`. Consumers
-should use the telemetry forwarder or another v1-v4 decoder instead of assuming every JSONL line is
+should use the telemetry forwarder or another frame-aware decoder instead of assuming every JSONL line is
 an expanded event.
 
 ---
@@ -165,7 +168,7 @@ Rotation means **the local files are diagnostic buffers, not archives**. The liv
 
 ### Option 1 — `jq` against the local files
 
-Zero infrastructure for operational logs. Every operational file is NDJSON, so `jq` is the native query tool. Schema-v4 telemetry frames need the telemetry forwarder or another v1-v4 decoder before event-level filtering.
+Zero infrastructure for operational logs. Every operational file is NDJSON, so `jq` is the native query tool. Telemetry frames need the telemetry forwarder or another frame-aware decoder before event-level filtering.
 
 One conversation, across everything the engine and extensions did:
 
