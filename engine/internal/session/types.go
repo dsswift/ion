@@ -260,6 +260,34 @@ type engineSession struct {
 	// (see NativeSessionCursor.ClientToolSignature). Empty when the run
 	// declared no client tools. Guarded by m.mu; overwritten every dispatch.
 	runClientToolSignature string
+	// convCostTracker pairs backend.RunConfig.OnCallCost's per-turn delivery
+	// with the UsageEvent that closes the same assistant message, for the
+	// root-path conversation.* telemetry wiring (issue #378, child 04) —
+	// mirrors the dispatched-child path's convCostTracker in
+	// extcontext/dispatch_conversation_events.go. Built fresh in
+	// buildRunConfig for every ApiBackend/Hybrid-API-routed run; nil for
+	// every other backend kind, since those never receive a RunConfig at all
+	// (see backend.RunConfig.OnCallCost's own doc comment). Guarded by m.mu.
+	convCostTracker *sessionCostTracker
+	// convUserMsgTracker and convAssistantMsgTracker pair
+	// backend.RunConfig.OnUserMessage / OnAssistantMessage's per-turn text
+	// delivery with the NormalizedEvent that closes the same turn, mirroring
+	// convCostTracker exactly (same record/take shape, same reason for a
+	// dedicated tracker instead of reusing an existing one). Built fresh in
+	// buildRunConfig for every ApiBackend/Hybrid-API-routed run; nil for
+	// every other backend kind. Guarded by m.mu.
+	convUserMsgTracker      *convTextTracker
+	convAssistantMsgTracker *convTextTracker
+	// convToolNames tracks ToolID -> tool call info (name + accumulated
+	// partial-input JSON) from *types.ToolCallEvent/*types.ToolCallUpdateEvent
+	// through to the terminal *types.ToolResultEvent, so conversation.tool_call
+	// can name the tool and attach its decoded input at result time.
+	// Deliberately independent of cliToolMeta/cliToolIndexID below: those are
+	// cleared at ToolCallCompleteEvent (before the terminal result arrives)
+	// to serve the Agent tool_call hook's own lifecycle, and reusing them here
+	// would race that clear. Entries are removed by the same ToolResultEvent
+	// handler that consumes them. Guarded by m.mu.
+	convToolNames map[string]*convToolInfo
 	// pendingCliUserTurn holds the current run's original user prompt (the
 	// display text, before any transcript bridging mutated opts.Prompt) when
 	// the run is served by a native-session (delegated-CLI) backend. Together

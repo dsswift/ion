@@ -108,6 +108,7 @@ func (h *Host) registerHookForwarders() {
 	// Content hooks: forward and return raw result.
 	contentHooks := []string{
 		HookMessageUpdate, HookToolResult, HookElicitationRequest,
+		HookBeforeConversationEvent,
 	}
 	for _, hook := range contentHooks {
 		h.registerContentForwarder(hook)

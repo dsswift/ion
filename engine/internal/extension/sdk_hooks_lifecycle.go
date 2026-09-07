@@ -129,6 +129,39 @@ func (s *SDK) FireSystemInject(ctx *Context, info SystemInjectInfo) (string, boo
 	return text, suppress
 }
 
+// FireBeforeConversationEvent fires the before_conversation_event hook.
+// Handlers may return a map[string]any (or *map[string]any); every non-nil
+// result is merged into one map, in fire order, so a later handler's key
+// wins on collision — the engine's standard before_* merge convention. A
+// handler that returns nil/no value abstains. Returns nil when no handler
+// contributed anything, so callers can skip attaching "extension_metadata"
+// entirely rather than emit an empty object.
+func (s *SDK) FireBeforeConversationEvent(ctx *Context, info BeforeConversationEventInfo) map[string]any {
+	results := s.fire(HookBeforeConversationEvent, ctx, info)
+	var merged map[string]any
+	for _, r := range results {
+		var m map[string]any
+		switch v := r.(type) {
+		case map[string]any:
+			m = v
+		case *map[string]any:
+			if v != nil {
+				m = *v
+			}
+		}
+		if m == nil {
+			continue
+		}
+		if merged == nil {
+			merged = make(map[string]any, len(m))
+		}
+		for k, val := range m {
+			merged[k] = val
+		}
+	}
+	return merged
+}
+
 // FireTurnStart fires the turn_start hook.
 func (s *SDK) FireTurnStart(ctx *Context, info TurnInfo) error {
 	s.fire(HookTurnStart, ctx, info)

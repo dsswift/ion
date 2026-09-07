@@ -2815,6 +2815,37 @@ export interface HookPayloadMap {
   // Run recovery -- fires before the engine re-executes a recovered run
   // after a crash or daemon restart.
   before_run_recovery: BeforeRunRecoveryInfo
+
+  // Conversation telemetry metadata -- fires immediately before the engine
+  // emits each conversation.* telemetry event. Read-only payload; return a
+  // plain object to attach it under the emitted payload's
+  // `extension_metadata` key. Multiple handlers merge key-by-key,
+  // last-writer-wins on a colliding key.
+  before_conversation_event: BeforeConversationEventInfo
+}
+
+/**
+ * Payload for the `before_conversation_event` hook. Fired immediately
+ * before the engine emits each conversation.* telemetry event
+ * (`conversation.user_message`, `conversation.assistant_message`,
+ * `conversation.tool_call`, `conversation.lifecycle`). Read-only: this is
+ * an observation seam, not a rewrite seam — the engine's own content
+ * (`text`, `input`, `output`, correlation IDs) is fixed by the time this
+ * fires. A handler that returns a plain object gets it merged into the
+ * emitted payload under `extension_metadata`, unmodified and
+ * uninterpreted by the engine. A handler that returns nothing abstains.
+ */
+export interface BeforeConversationEventInfo {
+  /** One of the `conversation.*` event name constants. */
+  eventName: string
+  /** Empty when the underlying run has no durable conversation identity yet. */
+  conversationId?: string
+  /** Empty outside an active run (e.g. a stored-conversation delete). */
+  runId?: string
+  /** Empty for a root conversation; set to the dispatch ID for a child. */
+  dispatchId?: string
+  /** Empty when no run is in flight. */
+  traceId?: string
 }
 
 /**

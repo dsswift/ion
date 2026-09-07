@@ -169,6 +169,9 @@ func hookSpecs() map[string]hookSpec {
 		HookBeforePlanModeAutoExit: {Payload: BeforePlanModeAutoExitInfo{}, Result: hookResultStructured, ResultType: BeforePlanModeAutoExitResult{}},
 		HookSystemInject:           {Payload: SystemInjectInfo{}, Result: hookResultString},
 
+		// --- Conversation telemetry metadata ---
+		HookBeforeConversationEvent: {Payload: BeforeConversationEventInfo{}, Result: hookResultContent},
+
 		// --- Context injection ---
 		HookContextInject: {Payload: ContextInjectInfo{}, Result: hookResultString},
 

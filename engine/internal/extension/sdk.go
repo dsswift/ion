@@ -166,6 +166,18 @@ const (
 	HookBeforePlanModeAutoExit = "before_plan_mode_auto_exit"
 	HookSystemInject           = "system_inject"
 
+	// HookBeforeConversationEvent fires immediately before the engine emits
+	// each conversation.* telemetry event (conversation.user_message,
+	// conversation.assistant_message, conversation.tool_call,
+	// conversation.lifecycle). Read-only payload: event name plus the same
+	// correlation IDs already stamped on the event's own context
+	// (conversation/run/dispatch/trace). Handlers may return a map[string]any
+	// that the engine merges — unmodified, uninterpreted — into the emitted
+	// payload's "extension_metadata" key. Multiple handlers merge key-by-key,
+	// last-writer-wins on a colliding key, following the engine's standard
+	// before_* merge convention. A handler that returns nil abstains.
+	HookBeforeConversationEvent = "before_conversation_event"
+
 	// Context injection hooks
 	HookContextInject = "context_inject"
 

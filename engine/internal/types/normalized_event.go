@@ -363,6 +363,15 @@ type UsageEvent struct {
 	// the same identity a history load returns. Empty when the run wrote no
 	// user tree entry.
 	UserEntryID string `json:"userEntryId,omitempty"`
+	// AssistantText carries the completed assistant response text for
+	// backends whose usage signal is also their only assistant-message-
+	// complete signal — currently Codex only (codex_events.go populates it
+	// from the paired item/completed notification's Text field). Empty for
+	// every other backend and for Codex's own non-terminal usage progress
+	// events. Additive field for the conversation.* telemetry family's
+	// content requirement; consumers that don't care about conversation
+	// telemetry can ignore it.
+	AssistantText string `json:"assistantText,omitempty"`
 }
 
 func (UsageEvent) eventType() string { return EventUsage }

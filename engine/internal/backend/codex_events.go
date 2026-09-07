@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/dsswift/ion/engine/internal/codexrpc"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -103,7 +104,14 @@ func translateCodexNotification(run *codexRun, method string, params json.RawMes
 		if err := json.Unmarshal(params, &n); err != nil {
 			utils.LogWithFields(utils.LevelDebug, "backend.codex", "notification decode failed", map[string]any{"method": method, "error": err.Error()})
 		}
-		return []types.NormalizedEvent{{Data: &types.UsageEvent{Usage: codexUsage(n.TokenUsage.Last)}}}, nil
+		// AssistantText carries codex's own assistant-message-complete
+		// signal: codex has no separate TaskUpdateEvent, so run.lastText —
+		// last set from the terminal item/completed "agentMessage" text
+		// above — is the only completed-response text available at usage
+		// time. This is the conversation.* telemetry content requirement
+		// for the codex backend (types.UsageEvent.AssistantText's own doc
+		// comment).
+		return []types.NormalizedEvent{{Data: &types.UsageEvent{Usage: codexUsage(n.TokenUsage.Last), AssistantText: run.lastText}}}, nil
 
 	case codexrpc.NotifPlanDelta:
 		// Streaming plan drafts are deliberately not accumulated: the completed
@@ -213,5 +221,23 @@ func codexUsage(b codexrpc.TokenUsageBreakdown) types.UsageData {
 		InputTokens:          &in,
 		OutputTokens:         &out,
 		CacheReadInputTokens: &cache,
+	}
+}
+
+// codexCallCost maps a codex token-usage breakdown into a *telemetry.CallCost
+// with CostUsd deliberately pinned at 0 rather than omitted (nil). This is
+// the one legitimate real-zero case in the conversation.* cost contract:
+// codex genuinely reports token usage per NotifTokenUsageUpdated, but billing
+// is subscription-metered, not per-call — exactly the same fact already
+// encoded on TaskCompleteEvent.CostUsd below ("subscription-metered; codex
+// reports usage, not cost"). A nil *CallCost would claim "no data available
+// at all", which is false: the token buckets ARE real and known, only the
+// dollar figure is a known zero.
+func codexCallCost(b codexrpc.TokenUsageBreakdown) *telemetry.CallCost {
+	return &telemetry.CallCost{
+		InputTokens:          b.InputTokens,
+		OutputTokens:         b.OutputTokens,
+		CacheReadInputTokens: b.CachedInputTokens,
+		CostUsd:              0,
 	}
 }

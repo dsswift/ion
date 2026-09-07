@@ -6,6 +6,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/permissions"
 	"github.com/dsswift/ion/engine/internal/sandbox"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/workspaces"
@@ -163,6 +164,14 @@ type TelemetryCollector interface {
 	// End is called, giving span-based events the same correlation keys as every
 	// direct Event() call that passes buildTelemCtx(run).
 	StartSpanCtx(name string, attrs, ctx map[string]interface{}) Span
+	// PrivacyLevel returns the configured collection tier — "minimal",
+	// "standard", or "full" — that gates how much content-shaped detail
+	// (tool input params, tool output, LLM prompt/response text) accompanies
+	// the pre-existing telemetry family. Additive method; defaults to
+	// "minimal" when unset. conversation.* telemetry never calls this — it is
+	// fixed at metadata-only regardless of level (see internal/telemetry
+	// ConversationEmitter).
+	PrivacyLevel() string
 }
 
 // Span tracks the lifetime of a telemetry span.
@@ -532,4 +541,67 @@ type RunConfig struct {
 	// When cancelled=false and err=nil, the returned answer is injected as the
 	// AskUserQuestion tool result, and the child run CONTINUES (does not terminate).
 	ChildElicitFn func(question string) (answer string, cancelled bool, err error)
+
+	// OnCallCost delivers the exact per-turn *telemetry.CallCost the run loop
+	// already computes at the cost.TurnCost seam (runloop.go, immediately
+	// after computeCost), so a caller (session-layer conversation.* telemetry
+	// wiring — a sibling child) can consume the exact-cost figure without
+	// re-deriving it from LlmUsage. This is an internal RunConfig callback,
+	// not a new wire event: it crosses the backend.RunConfig seam only.
+	//
+	// Nil is a valid no-op — every invocation site nil-checks before calling,
+	// so a caller that doesn't need per-turn cost (or hasn't been wired yet)
+	// pays nothing. Invoked once per turn that produces LlmUsage, with the
+	// same model string and cost.TurnCost result already used for
+	// run.totalCost / conversation.UpdateCost — never recomputed
+	// independently, so this callback cannot drift from that arithmetic.
+	//
+	// API-routed runs only (ApiBackend and HybridBackend's api route, which
+	// forwards RunConfig unchanged to the inner ApiBackend — see
+	// HybridBackend.StartRunWithConfig). Delegated-CLI backends
+	// (Claude Code, Codex, ACP) never receive a RunConfig at all: Hybrid's
+	// subscription-routed branch falls back to StartRun(requestID, options),
+	// which takes no RunConfig, so this callback has no meaning there.
+	OnCallCost func(model string, cost *telemetry.CallCost)
+
+	// OnUserMessage delivers the run-opening user turn's raw text at the
+	// exact point runloop.go already has it in scope (opts.Prompt) and is
+	// about to emit UserTurnPersistedEvent for it — before any streaming, so
+	// the callback always fires exactly once per run that persists a user
+	// turn. This is the conversation.* telemetry seam for
+	// conversation.user_message's content: the caller (session-layer
+	// wiring) stashes the text and consumes it when the paired
+	// UserTurnPersistedEvent reaches its own NormalizedEvent handler,
+	// mirroring OnCallCost's record/take pattern exactly.
+	//
+	// Nil is a valid no-op — the call site nil-checks before calling.
+	// API-routed runs only, for the same reason as OnCallCost: delegated-CLI
+	// backends never receive a RunConfig.
+	OnUserMessage func(entryID, text string)
+
+	// OnAssistantMessage delivers one completed assistant message's raw text
+	// from the SAME runloop.go code block that already builds assistantBlocks
+	// and invokes OnCallCost (the turn-closing block, immediately after
+	// computeCost). This is the conversation.* telemetry seam for
+	// conversation.assistant_message's content on the ApiBackend/Hybrid-API
+	// route. Nil is a valid no-op; API-routed runs only, same constraint as
+	// OnCallCost.
+	OnAssistantMessage func(model, text string)
+
+	// OnConversationCompacted fires once, after performCompact's
+	// conversation.Save call succeeds for a MUTATING compaction pass (issue
+	// #378, child 04). It never fires for a no-op compaction (nothing
+	// cleared, nothing dropped — see performCompact's noOp guard) and never
+	// fires before Save: the existing telemetry.Compaction event at
+	// runloop_compaction_execute.go emits BEFORE Save, and that ordering
+	// defect is deliberately NOT copied here — conversation.lifecycle's
+	// "compacted" action must observe a durably persisted compaction, per
+	// the conversation.* telemetry family's own contract (frozen contract G:
+	// lifecycle actions fire only after their underlying mutation succeeds).
+	//
+	// Nil is a valid no-op, exactly like OnCallCost above — every invocation
+	// site nil-checks before calling. Takes no arguments: the caller already
+	// knows the conversation id and correlation context from its own RunConfig
+	// closure (session-layer wiring in buildRunConfig / buildManualCompactState).
+	OnConversationCompacted func()
 }
