@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dsswift/ion/docs/observability/conversation-events.schema.json",
+  "title": "Ion conversation.* event stream",
+  "description": "The published contract for Ion's conversation.* audit stream: one JSON object per event, delivered over any configured conversationEvents target (http, file, otel, eventhub). Full-fidelity by design — raw user text, raw assistant text, and raw tool input/output are carried unmodified. Ion performs no redaction, sanitization, or content filtering; downstream processing is the consumer's responsibility. Evolution is additive within a schema major: new optional fields may appear at any time and a consumer MUST ignore unknown ones. A breaking change bumps the `schema` value. ORDERING: events of one conversation are ordered by `ts` parsed as a timestamp (never compared as strings — RFC3339Nano trims trailing zeros, so string order is wrong), then by `payload.seq`, then by `payload.segment.part`. The engine assigns `ts` and `seq` atomically, so the two never disagree within one engine process; `seq` restarts at 1 when the engine restarts and `ts` carries the order across that boundary. SEGMENTATION: an event larger than its transport's maximum message size is delivered as several events that share every envelope field, including `event_id`, and carry `payload.segment`; see that property for reassembly.",
+  "type": "object",
+  "required": ["name", "ts", "schema", "component", "event_id", "payload", "trace_id", "parent_span_id"],
+  "properties": {
+    "name": {
+      "description": "Event type. This is the complete, frozen vocabulary of the family — a consumer may treat any other value as a schema violation.",
+      "enum": [
+        "conversation.user_message",
+        "conversation.assistant_message",
+        "conversation.tool_call",
+        "conversation.lifecycle"
+      ]
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Event creation time, UTC, RFC3339 with nanosecond precision."
+    },
+    "schema": {
+      "type": "integer",
+      "description": "Schema major version. Additive changes keep this value; a breaking change bumps it.",
+      "minimum": 1
+    },
+    "component": {
+      "type": "string",
+      "description": "Emitting surface. Always \"engine\" for this family."
+    },
+    "install_id": {
+      "type": "string",
+      "description": "Device identity: stable per Ion installation. The key that distinguishes the same user running Ion on two machines."
+    },
+    "host": { "type": "string", "description": "Hostname of the emitting machine." },
+    "version": { "type": "string", "description": "Engine build version." },
+    "event_id": {
+      "type": "string",
+      "description": "Event identity: unique per individual event. The deduplication key for a redelivery from the durable retry queue — a replayed batch carries the same event_id it did on its first attempt. A segmented event's parts all carry the same event_id; the deduplication key is then (event_id, payload.segment.part)."
+    },
+    "user": {
+      "type": "string",
+      "description": "User identity, from the enterprise OIDC auth context when one is present. Absent on an unauthenticated install. TRUST MODEL: this value is asserted by the client. Whatever credential the engine used to reach the configured target authorizes the transport — it proves the sender is authorized to write to the destination — but it does not attest this field. No target the engine supports propagates the authenticated sending principal to a consumer. A consumer needing verified attribution must either front the destination with a broker that validates the credential and stamps a verified claim, or reconcile this field against an independent record of the same activity."
+    },
+    "trace_id": {
+      "description": "Trace identity: the W3C Trace Context trace-id (32 lowercase hex characters) of the run that produced this event, joining it to the operational OpenTelemetry trace of the same turn. Always present; empty when the event was produced outside an active traced run, so the key's presence is stable across every event.",
+      "type": "string",
+      "pattern": "^$|^[0-9a-f]{32}$"
+    },
+    "parent_span_id": {
+      "description": "Span identity within the trace. Always present, on the same terms as trace_id; empty until the engine tracks a per-turn span of its own.",
+      "type": "string",
+      "pattern": "^$|^[0-9a-f]{16}$"
+    },
+    "context": {
+      "type": "object",
+      "description": "Correlation dimensions for this event. Keys are omitted rather than emitted empty when they do not apply.",
+      "properties": {
+        "session_id": { "type": "string", "description": "Engine session key." },
+        "conversation_id": {
+          "type": "string",
+          "description": "Conversation identity: durable, and stable across application restarts, so a conversation resumed after a restart continues the same logical conversation in telemetry."
+        },
+        "run_id": { "type": "string", "description": "The run this event belongs to. Absent on events emitted outside a run." },
+        "trace_id": { "type": "string", "description": "Mirrors the envelope trace_id for consumers that read correlation from the context object." },
+        "extension": { "type": "string", "description": "Application context: hosting extension's friendly name. Absent when the conversation is not extension-hosted." },
+        "extension_version": { "type": "string", "description": "Hosting extension's manifest version." },
+        "app_context": {
+          "type": "object",
+          "description": "Application context supplied by the client — the surface the event came from. Keys are client-defined and the engine assigns them no meaning; the Ion desktop sends {client, tab_id}, which is what makes parallel tabs distinguishable in the stream. Absent entirely for a consumer that supplies none. A dispatched sub-agent reports its parent's value, since it runs inside the parent's surface.",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "payload": {
+      "type": "object",
+      "description": "Event-specific content. See the per-event branches in allOf below.",
+      "properties": {
+        "conversation_id": { "type": "string" },
+        "seq": { "type": "integer", "minimum": 1, "description": "Per-conversation sequence number: strictly increasing across every conversation.* event of one conversation_id within one engine process, assigned in the same critical section as the envelope ts. The ordering tiebreaker after ts. Restarts at 1 when the engine restarts. Every part of a segmented event carries the same seq." },
+        "entry_id": { "type": "string", "description": "Conversation-tree entry id. Absent where the backend has not minted one at emission time (delegated-CLI turns mint theirs at run exit)." },
+        "run_id": { "type": "string" },
+        "dispatch_id": { "type": "string", "description": "Set on every event from a dispatched sub-agent; typically absent on the root path." },
+        "extension_metadata": {
+          "type": "object",
+          "description": "Harness-supplied envelope, returned by a before_conversation_event hook handler and carried unmodified and uninterpreted by the engine. This is where an enterprise harness attaches its own context (department, agent-pack version, dispatch chain).",
+          "additionalProperties": true
+        },
+        "segment": {
+          "type": "object",
+          "description": "Present only on a segmented event: one whose original size exceeded the transport\u2019s maximum message size (Event Hubs negotiates one per link) and which was therefore delivered as `parts` events sharing the same event_id. Every part carries the full envelope and every payload field; only the field named by `field` differs, holding one consecutive slice of the original value. A consumer reassembles by ordering the parts by `part`, concatenating `field` across them, and verifying the result is `total_bytes` long with the given sha256. Splits fall on UTF-8 rune boundaries, so every part is itself valid text. Engines configured with the `quarantine` oversize policy never emit this block; the oversize event is kept on the device instead.",
+          "required": ["part", "parts", "field", "total_bytes", "sha256"],
+          "properties": {
+            "part": { "type": "integer", "minimum": 1, "description": "1-based index of this part." },
+            "parts": { "type": "integer", "minimum": 1, "description": "Total number of parts for this event_id." },
+            "field": { "type": "string", "pattern": "^(/([^/~]|~0|~1)*)+$", "description": "RFC 6901 JSON pointer, relative to payload, of the string field that was split — for example `/output` on a tool_call, or `/input/content` on a Write tool\u2019s call." },
+            "total_bytes": { "type": "integer", "minimum": 0, "description": "Byte length of the original, unsplit field value." },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Lowercase hex SHA-256 of the original, unsplit field value, for verifying reassembly." }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["conversation_id", "seq"],
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": { "properties": { "name": { "const": "conversation.user_message" } }, "required": ["name"] },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "text": { "type": "string", "description": "Raw user message text, unmodified. Absent when the message carried no text." }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "name": { "const": "conversation.assistant_message" } }, "required": ["name"] },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "text": { "type": "string", "description": "Raw assistant response text, unmodified." },
+              "model": { "type": "string", "description": "Model that served this response." },
+              "cost": {
+                "type": "object",
+                "description": "Per-call cost accounting. Absent — the whole key, not a zeroed object — when the backend supplied none, so \"no cost reported\" stays distinguishable from \"cost was zero\".",
+                "required": ["input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "cost_usd"],
+                "properties": {
+                  "input_tokens": { "type": "integer", "minimum": 0 },
+                  "output_tokens": { "type": "integer", "minimum": 0 },
+                  "cache_read_input_tokens": { "type": "integer", "minimum": 0, "description": "Tokens served from prompt cache." },
+                  "cache_creation_input_tokens": { "type": "integer", "minimum": 0, "description": "Tokens written to prompt cache." },
+                  "cost_usd": { "type": "number", "minimum": 0, "description": "Computed USD cost for this call." }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "name": { "const": "conversation.tool_call" } }, "required": ["name"] },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "tool_name": { "type": "string" },
+              "tool_use_id": { "type": "string", "description": "Provider-assigned id for this tool invocation." },
+              "outcome": {
+                "description": "Frozen outcome vocabulary.",
+                "enum": ["success", "error", "denied", "blocked"]
+              },
+              "input": {
+                "type": "object",
+                "description": "Raw tool input parameters, unmodified. Absent when the call's partial input did not parse as JSON.",
+                "additionalProperties": true
+              },
+              "output": { "type": "string", "description": "Raw tool result content, unmodified. Both halves are captured: input is what the agent sent, output is what the environment returned." }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "name": { "const": "conversation.lifecycle" } }, "required": ["name"] },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "description": "Frozen lifecycle vocabulary.",
+                "enum": ["created", "resumed", "compacted", "cleared", "detached", "deleted"]
+              }
+            },
+            "required": ["action"]
+          }
+        }
+      }
+    }
+  ]
+}

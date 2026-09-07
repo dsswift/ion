@@ -671,6 +671,31 @@
       "notes": "iOS only today. The Desktop keeps its own pagination and has not adopted prefetch; revisit if the Desktop shows the same scroll-back stutter."
     },
     {
+      "id": "conversation-events",
+      "term": "Conversation events",
+      "definition": "The standalone, metadata-only conversation.* telemetry event family (user_message, assistant_message, tool_call, lifecycle), delivered through its own ConversationEventsConfig collector independent of the general Telemetry pipe.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type ConversationEmitter struct",
+          "path": "engine/internal/telemetry/conversation_emitter.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type ConversationEventsConfig struct",
+          "path": "engine/internal/types/config.go"
+        }
+      ]
+    },
+    {
       "id": "conversation-instance",
       "term": "Conversation instance",
       "definition": "One engine session that a conversation holds. A conversation can carry more than one instance. Clients show a bar to select the active instance.",
@@ -1229,6 +1254,31 @@
           "language": "go",
           "symbol": "type Server struct",
           "path": "engine/internal/server/server.go"
+        }
+      ]
+    },
+    {
+      "id": "event-segment",
+      "term": "Event segment",
+      "definition": "One of the parts a conversation event is delivered as when its size exceeds the transport's negotiated maximum message size. Parts share the original event_id and full envelope and carry a payload.segment block (part, parts, field, total_bytes, sha256) naming the split string field; a consumer reassembles by concatenating the field across parts in part order and keys deduplication on (event_id, part).",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func segmentEvent",
+          "path": "engine/internal/telemetry/telemetry_oversize.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "doc",
+          "language": "json",
+          "symbol": "payload.segment",
+          "path": "docs/observability/conversation-events.schema.json"
         }
       ]
     },
