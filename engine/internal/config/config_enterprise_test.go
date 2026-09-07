@@ -185,6 +185,82 @@ func TestEnforceEnterprise_TelemetryNotForcedWhenEnterpriseDisabled(t *testing.T
 	}
 }
 
+// TestEnforceEnterprise_ConversationEventsForced mirrors
+// TestEnforceEnterprise_TelemetryForced, applied to the standalone
+// ConversationEventsConfig seal (issue #378, child 02). Confirms the seal
+// forces Enabled and Targets independently of the Telemetry seal above —
+// this is a distinct enterprise lock, not a side effect of enabling
+// telemetry.
+func TestEnforceEnterprise_ConversationEventsForced(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ConversationEvents = &types.ConversationEventsConfig{Enabled: false}
+	// Telemetry deliberately left nil/disabled — proves the two seals are
+	// independent.
+
+	enterprise := &types.EnterpriseConfig{
+		ConversationEvents: &types.ConversationEventsConfig{
+			Enabled:      true,
+			Targets:      []string{"https://events.corp"},
+			HttpEndpoint: "https://events.corp/ingest",
+		},
+	}
+
+	result := EnforceEnterprise(cfg, enterprise)
+	if result.ConversationEvents == nil || !result.ConversationEvents.Enabled {
+		t.Fatal("conversationEvents should be forced enabled")
+	}
+	if len(result.ConversationEvents.Targets) != 1 || result.ConversationEvents.Targets[0] != "https://events.corp" {
+		t.Fatal("conversationEvents targets should be set from enterprise")
+	}
+	if result.ConversationEvents.HttpEndpoint != "https://events.corp/ingest" {
+		t.Fatalf("expected httpEndpoint forced, got %q", result.ConversationEvents.HttpEndpoint)
+	}
+	// Telemetry must remain untouched by the ConversationEvents seal.
+	if result.Telemetry != nil && result.Telemetry.Enabled {
+		t.Fatal("telemetry must not be force-enabled by the conversationEvents seal")
+	}
+}
+
+// TestEnforceEnterprise_ConversationEventsNilBecomesEnabled mirrors
+// TestEnforceEnterprise_TelemetryNilBecomesEnabled: a nil user
+// ConversationEvents block is created and enabled when enterprise requires it.
+func TestEnforceEnterprise_ConversationEventsNilBecomesEnabled(t *testing.T) {
+	cfg := DefaultConfig()
+	// cfg.ConversationEvents is nil
+
+	enterprise := &types.EnterpriseConfig{
+		ConversationEvents: &types.ConversationEventsConfig{
+			Enabled: true,
+			Targets: []string{"https://events.corp"},
+		},
+	}
+
+	result := EnforceEnterprise(cfg, enterprise)
+	if result.ConversationEvents == nil {
+		t.Fatal("expected conversationEvents to be created")
+	}
+	if !result.ConversationEvents.Enabled {
+		t.Fatal("expected conversationEvents enabled")
+	}
+}
+
+// TestEnforceEnterprise_ConversationEventsNotForcedWhenEnterpriseDisabled
+// mirrors the Telemetry equivalent: when enterprise does not require
+// conversation events, the user's own setting is left untouched.
+func TestEnforceEnterprise_ConversationEventsNotForcedWhenEnterpriseDisabled(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ConversationEvents = &types.ConversationEventsConfig{Enabled: true}
+
+	enterprise := &types.EnterpriseConfig{
+		ConversationEvents: &types.ConversationEventsConfig{Enabled: false},
+	}
+
+	result := EnforceEnterprise(cfg, enterprise)
+	if result.ConversationEvents == nil || !result.ConversationEvents.Enabled {
+		t.Fatal("user conversationEvents should remain when enterprise conversationEvents is disabled")
+	}
+}
+
 func TestEnforceEnterprise_NetworkEnforcement(t *testing.T) {
 	cfg := DefaultConfig()
 
