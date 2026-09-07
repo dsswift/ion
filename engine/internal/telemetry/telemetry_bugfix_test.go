@@ -38,7 +38,7 @@ func TestFlushToFile_ExpandsTilde(t *testing.T) {
 		FilePath: "~/telemetry.jsonl",
 	})
 
-	c.Event(SessionStart, map[string]any{"sessionId": "s1"}, nil)
+	c.Event(LlmCall, map[string]any{"sessionId": "s1"}, nil)
 	if err := c.Flush(); err != nil {
 		t.Fatalf("Flush: %v", err)
 	}
@@ -49,8 +49,8 @@ func TestFlushToFile_ExpandsTilde(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected telemetry written to expanded path %q, ReadFile failed: %v", want, err)
 	}
-	if !strings.Contains(string(data), SessionStart) {
-		t.Errorf("expected %q event in %q, got: %s", SessionStart, want, string(data))
+	if !strings.Contains(string(data), LlmCall) {
+		t.Errorf("expected %q event in %q, got: %s", LlmCall, want, string(data))
 	}
 
 	// The literal-tilde directory must NOT have been created in the CWD.
@@ -95,7 +95,7 @@ func TestBatchFlush_FailingTargetLogsError(t *testing.T) {
 		BatchSize: 1, // Flush on every event.
 	})
 
-	c.Event(SessionStart, map[string]any{"sessionId": "s1"}, nil)
+	c.Event(LlmCall, map[string]any{"sessionId": "s1"}, nil)
 
 	mu.Lock()
 	got := len(errLines)

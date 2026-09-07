@@ -294,13 +294,9 @@ func (b *ApiBackend) executeTools(
 				}
 			}
 
-			// Telemetry span for tool execution
-			var toolSpan Span
-			if telem != nil {
-				toolSpan = telem.StartSpanCtx("tool.execute", map[string]interface{}{
-					"tool": block.Name,
-				}, buildTelemCtx(run))
-			}
+			// Telemetry span for tool execution (see runloop_tool_telemetry.go
+			// for the privacy-level gating this helper applies).
+			toolSpan := startToolExecuteSpan(telem, run, block.Name, block.Input)
 
 			// Plan-mode gates (extracted to runloop_plan_mode_gates.go to
 			// keep this dispatch loop focused). Each gate either short-
@@ -605,14 +601,9 @@ func (b *ApiBackend) executeTools(
 			// Signal stall timer that the tool has completed.
 			close(toolDone)
 
-			// End tool span
-			if toolSpan != nil {
-				errStr := ""
-				if err != nil {
-					errStr = err.Error()
-				}
-				toolSpan.End(nil, errStr)
-			}
+			// End tool span (see runloop_tool_telemetry.go for the
+			// privacy-level gating this helper applies).
+			endToolExecuteSpan(toolSpan, telem, toolResult, err)
 
 			if err != nil {
 				results[i] = conversation.ToolResultEntry{

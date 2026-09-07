@@ -120,3 +120,107 @@ func TestSpanCtxCorrelationToolExecute(t *testing.T) {
 		t.Errorf("context conversation_id = %v, want %q", got, "conv-span-tool")
 	}
 }
+
+// TestToolExecuteSpan_InputGatedByPrivacyLevel is the regression test for the
+// documented privacy-level contract on tool.execute span start attrs (child
+// 01 §2): "input" must be ABSENT at "minimal" and PRESENT at
+// "standard"/"full". Uses the same unknown-tool short-circuit as
+// TestSpanCtxCorrelationToolExecute so the span opens/closes without a real
+// tool registry.
+func TestToolExecuteSpan_InputGatedByPrivacyLevel(t *testing.T) {
+	cases := []struct {
+		name         string
+		privacyLevel string
+		wantPresent  bool
+	}{
+		{"default (unset) is minimal, omits input", "", false},
+		{"minimal omits input", "minimal", false},
+		{"standard includes input", "standard", true},
+		{"full includes input", "full", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b := NewApiBackend()
+			b.OnNormalized(func(_ string, _ types.NormalizedEvent) {})
+
+			telem := &mockTelemetry{privacyLevel: tc.privacyLevel}
+			run := &activeRun{
+				requestID: "req-span-tool-privacy",
+				conv:      &conversation.Conversation{ID: "conv-span-tool-privacy"},
+				opts:      &types.RunOptions{SessionKey: "sess-span-tool-privacy"},
+				cfg:       &RunConfig{Telemetry: telem},
+			}
+
+			blocks := []types.LlmContentBlock{{
+				Name:  "NoSuchToolPrivacyTest",
+				ID:    "tc-span-tool-privacy",
+				Input: map[string]interface{}{"path": "/etc/secret"},
+			}}
+			if _, err := b.executeTools(context.Background(), run, blocks, t.TempDir()); err != nil {
+				t.Fatal(err)
+			}
+
+			events := telem.eventsByName("tool.execute")
+			if len(events) == 0 {
+				t.Fatal("expected at least one tool.execute event")
+			}
+			_, present := events[0].Payload["input"]
+			if present != tc.wantPresent {
+				t.Errorf("input present = %v, want %v (privacyLevel=%q)", present, tc.wantPresent, tc.privacyLevel)
+			}
+		})
+	}
+}
+
+// TestToolExecuteSpan_OutputGatedByPrivacyLevel is the regression test for the
+// documented privacy-level contract on tool.execute span end attrs (child 01
+// §2): "output" must be ABSENT at "minimal"/"standard" and PRESENT only at
+// "full". The unknown-tool short-circuit populates toolResult.Content
+// ("Unknown tool: ...") before reaching span End, giving a real (non-nil)
+// tool result to gate on.
+func TestToolExecuteSpan_OutputGatedByPrivacyLevel(t *testing.T) {
+	cases := []struct {
+		name         string
+		privacyLevel string
+		wantPresent  bool
+	}{
+		{"default (unset) is minimal, omits output", "", false},
+		{"minimal omits output", "minimal", false},
+		{"standard omits output", "standard", false},
+		{"full includes output", "full", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b := NewApiBackend()
+			b.OnNormalized(func(_ string, _ types.NormalizedEvent) {})
+
+			telem := &mockTelemetry{privacyLevel: tc.privacyLevel}
+			run := &activeRun{
+				requestID: "req-span-tool-output",
+				conv:      &conversation.Conversation{ID: "conv-span-tool-output"},
+				opts:      &types.RunOptions{SessionKey: "sess-span-tool-output"},
+				cfg:       &RunConfig{Telemetry: telem},
+			}
+
+			blocks := []types.LlmContentBlock{{
+				Name:  "NoSuchToolOutputTest",
+				ID:    "tc-span-tool-output",
+				Input: map[string]interface{}{},
+			}}
+			if _, err := b.executeTools(context.Background(), run, blocks, t.TempDir()); err != nil {
+				t.Fatal(err)
+			}
+
+			events := telem.eventsByName("tool.execute")
+			if len(events) == 0 {
+				t.Fatal("expected at least one tool.execute event")
+			}
+			_, present := events[0].Payload["output"]
+			if present != tc.wantPresent {
+				t.Errorf("output present = %v, want %v (privacyLevel=%q)", present, tc.wantPresent, tc.privacyLevel)
+			}
+		})
+	}
+}

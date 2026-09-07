@@ -2,6 +2,7 @@ package backend
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -13,6 +14,43 @@ import (
 // tool.failure, context.pressure, provider.*). Every emission routes through
 // run.cfg.Telemetry (a nil-safe TelemetryCollector) so telemetry-disabled runs
 // pay only a nil check.
+
+// promptTextForTelemetry extracts a plain-text rendering of a turn's outbound
+// messages for the "full" privacy-level llm.call span attribute (LLM prompt
+// content, per docs/enterprise/telemetry.md). Only string content and "text"
+// content blocks are rendered; non-text blocks (tool_use, tool_result, image)
+// are skipped rather than marshaled, since the documented "full" contract is
+// prompt/response *text*, not a full wire dump of every message.
+func promptTextForTelemetry(messages []types.LlmMessage) string {
+	var sb strings.Builder
+	for _, msg := range messages {
+		switch c := msg.Content.(type) {
+		case string:
+			sb.WriteString(c)
+		case []types.LlmContentBlock:
+			for _, blk := range c {
+				if blk.Type == "text" {
+					sb.WriteString(blk.Text)
+				}
+			}
+		}
+	}
+	return sb.String()
+}
+
+// assistantTextForTelemetry extracts a plain-text rendering of the assistant
+// blocks produced by a turn for the "full" privacy-level llm.call span
+// attribute (LLM response content). Mirrors promptTextForTelemetry's
+// text-only extraction rule.
+func assistantTextForTelemetry(blocks []types.LlmContentBlock) string {
+	var sb strings.Builder
+	for _, blk := range blocks {
+		if blk.Type == "text" {
+			sb.WriteString(blk.Text)
+		}
+	}
+	return sb.String()
+}
 
 // buildTelemCtx builds the standard telemetry context block from an active run.
 // Returns nil when run is nil (safe to pass to Collector.Event).
@@ -101,18 +139,27 @@ const telemPreviewLimit = 200
 // branch in executeTools so consumers get a uniform failure signal regardless
 // of which layer rejected the call (permission, sandbox, hook, deadline,
 // unknown tool, or execution error).
+//
+// error_preview is content-shaped (it may echo back user-influenced tool
+// arguments embedded in an error message), so it is gated by the configured
+// privacy level: omitted entirely at "minimal" (the documented floor —
+// truncatePreview is not even called, so no preview string is built only to
+// be discarded), present at "standard"/"full".
 func emitToolFailure(telem TelemetryCollector, run *activeRun, block toolFailureBlock, category, errorPreview string) {
 	if telem == nil {
 		return
 	}
 	// R11: event name is carried by Event.Name at the top level; payload.kind removed.
-	telem.Event("tool.failure", map[string]any{
+	payload := map[string]any{
 		"tool":             block.Name,
 		"tool_use_id":      block.ID,
 		"failure_category": category,
-		"error_preview":    truncatePreview(errorPreview, telemPreviewLimit),
 		"turn":             run.turnCount.Load(),
-	}, buildTelemCtx(run))
+	}
+	if telem.PrivacyLevel() != "minimal" {
+		payload["error_preview"] = truncatePreview(errorPreview, telemPreviewLimit)
+	}
+	telem.Event("tool.failure", payload, buildTelemCtx(run))
 }
 
 // toolFailureBlock is the minimal shape emitToolFailure needs from a tool-use

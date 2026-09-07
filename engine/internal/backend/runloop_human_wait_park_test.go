@@ -212,7 +212,11 @@ func requiredStringSchema(field string) map[string]any {
 func TestExecuteTools_InvalidMachineClientToolNeverRoutes(t *testing.T) {
 	b := NewApiBackend()
 	b.OnNormalized(func(_ string, _ types.NormalizedEvent) {})
-	telem := &mockTelemetry{}
+	// privacyLevel "standard" — this test asserts on the bounded diagnostic
+	// content of error_preview, which is gated to standard/full since child
+	// 01's privacy-level fix (error_preview is omitted at the default
+	// "minimal" level).
+	telem := &mockTelemetry{privacyLevel: "standard"}
 	var routerCalls atomic.Int32
 	run := &activeRun{
 		requestID: "test-invalid-machine",

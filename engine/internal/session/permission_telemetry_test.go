@@ -169,3 +169,65 @@ func TestWirePermissionDecisionTelemetry_LatencyIsFractionalFloat(t *testing.T) 
 		t.Errorf("decision_latency_ms = %v, want >= 0", latency)
 	}
 }
+
+// TestWirePermissionDecisionTelemetry_InputPreviewGatedByPrivacyLevel is the
+// regression test for the live leak documented in baseline.md § 8:
+// input_preview must be ABSENT at the default "minimal" privacy level and
+// PRESENT at "standard"/"full". This test fails against the pre-fix code,
+// which always attached input_preview regardless of level.
+func TestWirePermissionDecisionTelemetry_InputPreviewGatedByPrivacyLevel(t *testing.T) {
+	cases := []struct {
+		name         string
+		privacyLevel string
+		wantPresent  bool
+	}{
+		{"default (unset) is minimal, omits preview", "", false},
+		{"minimal omits preview", "minimal", false},
+		{"standard includes preview", "standard", true},
+		{"full includes preview", "full", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			permEng := permissions.NewEngine(nil)
+			collector := telemetry.NewCollector(types.TelemetryConfig{
+				Enabled:      true,
+				Targets:      []string{},
+				PrivacyLevel: tc.privacyLevel,
+			})
+
+			sess := &engineSession{
+				key:            "sess-privacy",
+				conversationID: "conv-privacy",
+				permEngine:     permEng,
+				telemetry:      collector,
+			}
+
+			m := &Manager{}
+			m.wirePermissionDecisionTelemetry(sess)
+
+			permEng.Check(permissions.CheckInfo{
+				Tool:      "Read",
+				Input:     map[string]interface{}{"path": "/tmp/secret-path"},
+				SessionID: "audit-privacy",
+			})
+
+			events := collector.BufferedEvents()
+			var found *telemetry.Event
+			for i := range events {
+				if events[i].Name == telemetry.PermissionDecision {
+					found = &events[i]
+					break
+				}
+			}
+			if found == nil {
+				t.Fatalf("no %q event found", telemetry.PermissionDecision)
+			}
+
+			_, present := found.Payload["input_preview"]
+			if present != tc.wantPresent {
+				t.Errorf("input_preview present = %v, want %v (privacyLevel=%q)", present, tc.wantPresent, tc.privacyLevel)
+			}
+		})
+	}
+}

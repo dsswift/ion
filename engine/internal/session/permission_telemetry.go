@@ -45,8 +45,15 @@ func (m *Manager) wirePermissionDecisionTelemetry(s *engineSession) {
 			"intent_reason":       entry.Reason,
 			"tier":                entry.Tier,
 			"rule":                entry.Rule,
-			"input_preview":       previewString(entry.Input, 200),
 			"audit_session_id":    entry.SessionID,
+		}
+		// input_preview is content-shaped (the raw tool-call input that was
+		// decided on), so it is gated by the configured privacy level: omitted
+		// entirely at "minimal" (the documented floor — this closes the live
+		// leak where the preview was previously always attached), present at
+		// "standard"/"full".
+		if telem.PrivacyLevel() != "minimal" {
+			payload["input_preview"] = previewString(entry.Input, 200)
 		}
 		ctx := map[string]any{
 			"session_id":      sess.key,

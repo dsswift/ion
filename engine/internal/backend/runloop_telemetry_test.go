@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -243,5 +244,103 @@ func TestBuildTelemCtxOmitsTraceIDWithoutRunContext(t *testing.T) {
 	ctx := buildTelemCtx(run)
 	if got, present := ctx["trace_id"]; present {
 		t.Errorf("buildTelemCtx trace_id = %v, want key omitted without a run context", got)
+	}
+}
+
+// TestEmitToolFailure_ErrorPreviewGatedByPrivacyLevel is the regression test
+// for the live leak documented in baseline.md § 8: error_preview must be
+// ABSENT at the default "minimal" privacy level and PRESENT at
+// "standard"/"full". Fails against the pre-fix code, which always attached
+// error_preview regardless of level.
+func TestEmitToolFailure_ErrorPreviewGatedByPrivacyLevel(t *testing.T) {
+	cases := []struct {
+		name         string
+		privacyLevel string
+		wantPresent  bool
+	}{
+		{"default (unset) is minimal, omits preview", "", false},
+		{"minimal omits preview", "minimal", false},
+		{"standard includes preview", "standard", true},
+		{"full includes preview", "full", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			telem := &mockTelemetry{privacyLevel: tc.privacyLevel}
+			run := &activeRun{
+				requestID: "req-tool-fail",
+				conv:      &conversation.Conversation{ID: "1780000000000-aabbccddeeff"},
+				opts:      &types.RunOptions{SessionKey: "sess-tool-fail"},
+			}
+
+			emitToolFailure(telem, run, toolFailureBlock{Name: "Read", ID: "tool-1"}, "execution_error", "cat /etc/shadow: permission denied")
+
+			found := telem.eventsByName("tool.failure")
+			if len(found) != 1 {
+				t.Fatalf("expected 1 tool.failure event, got %d", len(found))
+			}
+			_, present := found[0].Payload["error_preview"]
+			if present != tc.wantPresent {
+				t.Errorf("error_preview present = %v, want %v (privacyLevel=%q)", present, tc.wantPresent, tc.privacyLevel)
+			}
+		})
+	}
+}
+
+// TestLlmCallSpan_PromptAndResponseGatedByPrivacyLevel is the regression test
+// for the documented privacy-level contract on the llm.call span (child 01
+// §5): "prompt" (start attrs) and "response" (end attrs) must be ABSENT at
+// "minimal"/"standard" and PRESENT only at "full" — the doc's table states
+// "standard adds nothing here"; prompt/response text is full-only. Exercises
+// a real run through StartRunWithConfig so the span is opened/closed by the
+// actual run-loop code path, not a hand-built span.
+func TestLlmCallSpan_PromptAndResponseGatedByPrivacyLevel(t *testing.T) {
+	cases := []struct {
+		name         string
+		privacyLevel string
+		wantPresent  bool
+	}{
+		{"default (unset) is minimal, omits prompt/response", "", false},
+		{"minimal omits prompt/response", "minimal", false},
+		{"standard omits prompt/response", "standard", false},
+		{"full includes prompt/response", "full", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b := NewApiBackend()
+			mock := &mockTelemetry{privacyLevel: tc.privacyLevel}
+			cfg := &RunConfig{Telemetry: mock}
+
+			setupTestProvider([][]types.LlmStreamEvent{
+				textResponse("the answer is 42", 1, 1),
+			})
+			c := collectEvents(b, "req-telem-privacy-"+tc.privacyLevel)
+			b.StartRunWithConfig("req-telem-privacy-"+tc.privacyLevel, types.RunOptions{
+				Prompt:           "what is the answer",
+				ProjectPath:      "/tmp",
+				Model:            testModel,
+				EarlyStopEnabled: testEarlyStopDisabled(),
+			}, cfg)
+
+			if !waitForExit(c, 5*time.Second) {
+				t.Fatal("timed out")
+			}
+
+			events := mock.eventsByName("llm.call")
+			if len(events) == 0 {
+				t.Fatal("expected at least one llm.call event")
+			}
+			e := events[0]
+
+			_, promptPresent := e.Payload["prompt"]
+			if promptPresent != tc.wantPresent {
+				t.Errorf("prompt present = %v, want %v (privacyLevel=%q)", promptPresent, tc.wantPresent, tc.privacyLevel)
+			}
+			_, responsePresent := e.Payload["response"]
+			if responsePresent != tc.wantPresent {
+				t.Errorf("response present = %v, want %v (privacyLevel=%q)", responsePresent, tc.wantPresent, tc.privacyLevel)
+			}
+		})
 	}
 }
