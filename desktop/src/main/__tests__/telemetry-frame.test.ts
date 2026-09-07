@@ -65,6 +65,7 @@ describe('telemetry frame', () => {
         event_id: 'event-1',
         context: { conversation_id: 'conversation-1', session_id: 'session-1' },
         trace_id: 'trace-1',
+        parent_span_id: '',
         payload: { run_cost_usd: 0.01, input_tokens: 42 },
       },
       {
@@ -76,6 +77,8 @@ describe('telemetry frame', () => {
         host: 'host-1',
         version: 'v1.2.3',
         user: 'user@example.com',
+        trace_id: '',
+        parent_span_id: '',
         payload: { tool: 'Read' },
       },
     ])
@@ -102,11 +105,37 @@ describe('telemetry frame', () => {
     expect(decodeTelemetryLine(line)).toEqual(expandTelemetryFrame(frame()))
   })
 
-  it('rejects invalid record and schema values with typed errors', () => {
+  it('rejects a wrong record discriminator and a schema above this decoder', () => {
     expect(() => parseTelemetryFrame({ ...frame(), record: 'wrong.record' }))
       .toThrow(TelemetryFrameRecordError)
-    expect(() => parseTelemetryFrame({ ...frame(), schema: 3 }))
+    expect(() => parseTelemetryFrame({ ...frame(), schema: TELEMETRY_FRAME_VERSION + 1 }))
       .toThrow(TelemetryFrameSchemaError)
+    expect(() => parseTelemetryFrame({ ...frame(), schema: 0 }))
+      .toThrow(TelemetryFrameSchemaError)
+  })
+
+  it('accepts a frame from an engine below this decoder and keeps its schema', () => {
+    // The backward half of a mixed fleet. Exact-equality validation used to
+    // reject this, which took an un-updated engine off the telemetry stream.
+    const older = { ...frame(), schema: TELEMETRY_FRAME_VERSION - 1 }
+
+    const records = expandTelemetryFrame(parseTelemetryFrame(older))
+
+    expect(records[0].schema).toBe(TELEMETRY_FRAME_VERSION - 1)
+    expect(records[0].name).toBe('run.complete')
+  })
+
+  it('keeps known fields when a newer engine adds ones it does not know', () => {
+    const newer = {
+      ...frame(),
+      future_table: [{ k: 'v' }],
+      events: [{ ...frame().events[0], future_event_field: 'x' }],
+    }
+
+    const records = expandTelemetryFrame(parseTelemetryFrame(newer))
+
+    expect(records[0].name).toBe('run.complete')
+    expect(records[0]).not.toHaveProperty('future_event_field')
   })
 
   it('rejects missing required values and invalid table references', () => {
@@ -118,17 +147,21 @@ describe('telemetry frame', () => {
       .toThrow(TelemetryFrameTableReferenceError)
   })
 
-  it('rejects a non-frame schema v4 record', () => {
-    const malformed = {
+  it('passes an expanded event through at any schema number', () => {
+    // A line without the frame discriminator IS an expanded event whatever it
+    // numbers itself. Rejecting schema >= FrameVersion here also made the
+    // engine's own `ion telemetry expand` output unreadable, since expansion
+    // stamps the frame's schema onto every event it emits.
+    const expandedEvent = {
       name: 'run.complete',
       ts: '2026-08-25T12:00:00.000Z',
-      schema: 4,
+      schema: TELEMETRY_FRAME_VERSION,
       level: 'INFO',
       msg: 'run complete',
       component: 'engine',
       payload: {},
     } as EgressRecord
 
-    expect(() => expandTelemetryRecord(malformed)).toThrow(TelemetryFrameSchemaError)
+    expect(expandTelemetryRecord(expandedEvent)).toEqual([expandedEvent])
   })
 })
