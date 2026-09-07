@@ -913,3 +913,23 @@ The hook runs after engine resolves recovery policy and durably increments attem
 | `ranWithinScope` | `bool` | True when the job ran inside its current window (today for daily, this week for weekly) |
 
 When a `schedule_missed` handler is registered, the scheduler does NOT auto-fire the missed slot. Instead it emits `engine_schedule_missed` and fires this hook. The handler can call `ctx.fireSchedule(id)` to backfill, or choose to skip. When no handler is registered, auto-catch-up fires as before (backward-compatible).
+
+## Conversation Event Metadata
+
+| Hook | When | Payload | Return | Effect |
+|------|------|---------|--------|--------|
+| `before_conversation_event` | Immediately before the engine emits each `conversation.*` telemetry event | `BeforeConversationEventInfo{EventName, ConversationID, RunID, DispatchID, TraceID}` | `map[string]any` | Merged, unmodified and uninterpreted by the engine, into the emitted payload's `extension_metadata` key. Multiple handlers merge key-by-key, last-writer-wins on a colliding key. A handler that returns nothing abstains. |
+
+Read-only: this is an observation seam, not a rewrite seam. The engine's own content on the event (`text`, `input`, `output`, and every correlation ID) is already fixed by the time this fires — a handler cannot alter it, only attach additional structured context under `extension_metadata`. Fires from all four `ConversationEmitter` methods (`UserMessage`, `AssistantMessage`, `ToolCall`, `Lifecycle`), so `eventName` is always one of `conversation.user_message`, `conversation.assistant_message`, `conversation.tool_call`, `conversation.lifecycle`.
+
+### Payload Types
+
+**BeforeConversationEventInfo**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `eventName` | `string` | One of the `conversation.*` event name constants. |
+| `conversationId` | `string` | The conversation this event belongs to. |
+| `runId` | `string` | Empty outside an active run (e.g. a stored-conversation delete). |
+| `dispatchId` | `string` | Empty for a root conversation; the dispatch ID for a dispatched child. |
+| `traceId` | `string` | Empty when no run is in flight. |
