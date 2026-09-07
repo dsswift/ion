@@ -6,7 +6,9 @@ import (
 	"fmt"
 )
 
-// DecodeLine decodes a legacy v1-v3 expanded event or one v4 frame line.
+// DecodeLine decodes one expanded event line or one frame line. Both are
+// accepted at any schema number this reader can structurally interpret; see
+// ValidateFrame for the one rejection case.
 func DecodeLine(line []byte) ([]Event, error) {
 	line = bytes.TrimSpace(line)
 	if len(line) == 0 {
@@ -30,9 +32,12 @@ func DecodeLine(line []byte) ([]Event, error) {
 	if err := ValidateEvent(event); err != nil {
 		return nil, err
 	}
-	if event.SchemaVersion >= FrameVersion {
-		return nil, &SchemaError{Schema: event.SchemaVersion}
-	}
+	// No upper bound on an unframed event's schema. A line without a "record"
+	// key IS an expanded event whatever number it carries, and unknown keys
+	// have already been dropped by the decode above. Rejecting schema >=
+	// FrameVersion here also made `ion telemetry expand` output un-re-readable
+	// by this same decoder, since Expand stamps the frame's schema onto every
+	// event it emits.
 	return []Event{event}, nil
 }
 

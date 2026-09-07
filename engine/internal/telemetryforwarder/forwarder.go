@@ -78,16 +78,34 @@ func (f *Forwarder) Poll(ctx context.Context) error {
 	return f.follower.Poll(func(line []byte) error {
 		events, err := telemetryformat.DecodeLine(line)
 		if err != nil {
-			return fmt.Errorf("telemetry forwarder: decode line: %w", err)
+			// A line this build cannot decode is dropped, never retried.
+			// filetail advances its cursor only when this handler returns nil,
+			// so returning the decode error here would re-read the same offset
+			// on every poll and strand every later line in the file behind one
+			// permanently unreadable one. Losing one line is recoverable;
+			// losing the tail of the stream is not.
+			utils.LogWithFields(utils.LevelWarn, "telemetry.forwarder", "telemetry forward dropped undecodable line", map[string]any{
+				"endpoint": f.endpoint,
+				"offset":   f.follower.Cursor().Offset,
+				"bytes":    len(line),
+				"error":    err.Error(),
+			})
+			return f.ack(len(line))
 		}
+		// A push failure is the opposite case: the line is good and the sink is
+		// unavailable, so the error propagates, the cursor stays put, and the
+		// next poll retries the same events.
 		if err := f.push(ctx, events); err != nil {
 			return err
 		}
-		if err := saveCursor(f.cursorPath, nextCursor(f.follower.Cursor(), len(line))); err != nil {
-			return err
-		}
-		return nil
+		return f.ack(len(line))
 	})
+}
+
+// ack advances the durable cursor past a line this forwarder is finished with,
+// whether that line was delivered or dropped.
+func (f *Forwarder) ack(lineLen int) error {
+	return saveCursor(f.cursorPath, nextCursor(f.follower.Cursor(), lineLen))
 }
 
 // Run polls until ctx stops. A missing telemetry file is treated as an idle

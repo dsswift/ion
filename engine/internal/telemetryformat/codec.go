@@ -59,9 +59,12 @@ func Expand(frame Frame) ([]Event, error) {
 	for index, frameEvent := range frame.Events {
 		identity := frame.Identities[frameEvent.Identity]
 		event := Event{
-			Name:          frameEvent.Name,
-			Ts:            frameEvent.Ts,
-			SchemaVersion: FrameVersion,
+			Name: frameEvent.Name,
+			Ts:   frameEvent.Ts,
+			// The producer's schema, not this reader's. Stamping FrameVersion
+			// here would relabel an older frame as current and erase the only
+			// evidence of which engine build emitted it.
+			SchemaVersion: frame.Schema,
 			Component:     identity.Component,
 			InstallID:     identity.InstallID,
 			Host:          identity.Host,
@@ -108,7 +111,21 @@ func ValidateFrame(frame Frame) error {
 	if frame.Record != frameRecord {
 		return &RecordError{Record: frame.Record}
 	}
-	if frame.Schema != FrameVersion {
+	// Forward/backward tolerance, deliberately asymmetric. A frame numbered at
+	// or below FrameVersion is readable: this package never sets
+	// DisallowUnknownFields, so a frame carrying keys a reader predates decodes
+	// into the fields that reader does know and drops the rest. Only a frame
+	// whose number is ABOVE FrameVersion is rejected, and only because that is
+	// the reserved signal for a structural framing change this reader cannot
+	// interpret at all. Adding a field never bumps the number — see
+	// docs/enterprise/telemetry.md § "Schema versioning".
+	//
+	// Exact equality here used to reject both directions, which took a mixed
+	// fleet offline in whichever direction rolled out first.
+	if frame.Schema < 1 {
+		return &ValidationError{Field: "schema", Reason: "must be positive"}
+	}
+	if frame.Schema > FrameVersion {
 		return &SchemaError{Schema: frame.Schema}
 	}
 	for index, identity := range frame.Identities {
