@@ -112,6 +112,24 @@ type EngineConfig struct {
 	// session-level value.
 	ClientWorkspaceContext *ClientWorkspaceContext `json:"clientWorkspaceContext,omitempty"`
 
+	// AppContext is a client-supplied application-context descriptor stamped
+	// onto every conversation.* telemetry event this session emits, under the
+	// event's "app_context" context key.
+	//
+	// The engine assigns no meaning to the keys. A desktop client populates
+	// the surface identity a human would recognize (which tab, which pane);
+	// a CLI or automation consumer populates whatever its own shell is, or
+	// nothing at all. This is deliberately opaque rather than a typed
+	// tab/sub-tab pair: "tab" is one consumer's window model, not an engine
+	// concept, and a typed field would force every other consumer through
+	// that one shape.
+	//
+	// Nil or empty means the emitted events carry no "app_context" key.
+	// A ClientCommand may carry an updated map on a later command; the newest
+	// non-nil value replaces the stored one for the rest of the session, so a
+	// renamed or moved surface is reflected without restarting the session.
+	AppContext map[string]string `json:"appContext,omitempty"`
+
 	// RunRecovery overrides the engine-wide RunRecoveryConfig for this
 	// session. Nil means inherit from EngineRuntimeConfig. A session that
 	// sets Enabled=false disables journaling for its runs regardless of

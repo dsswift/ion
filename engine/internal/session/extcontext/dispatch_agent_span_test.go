@@ -162,3 +162,5 @@ type extAttributionTestAccessor struct {
 
 func (a *extAttributionTestAccessor) ExtensionName() string    { return a.extName }
 func (a *extAttributionTestAccessor) ExtensionVersion() string { return a.extVer }
+
+func (a *extAttributionTestAccessor) AppContext() map[string]string { return nil }

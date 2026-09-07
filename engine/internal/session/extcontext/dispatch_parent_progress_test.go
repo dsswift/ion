@@ -53,6 +53,7 @@ func (a *bumpCountingAccessor) RootContext() context.Context {
 func (a *bumpCountingAccessor) SessionKey() string                       { return "bump-test-session" }
 func (a *bumpCountingAccessor) ExtensionName() string                    { return "" }
 func (a *bumpCountingAccessor) ExtensionVersion() string                 { return "" }
+func (a *bumpCountingAccessor) AppContext() map[string]string            { return nil }
 func (a *bumpCountingAccessor) ConversationID() string                   { return "" }
 func (a *bumpCountingAccessor) RunID() string                            { return "" }
 func (a *bumpCountingAccessor) TraceID() string                          { return "" }
@@ -126,9 +127,10 @@ func (a *bumpCountingAccessor) FireSchedule(_, _ string) error { return nil }
 func (a *bumpCountingAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
 	return nil, nil
 }
-func (a *bumpCountingAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
-func (a *bumpCountingAccessor) RunOnceComplete(_ string, _ bool)              {}
-func (a *bumpCountingAccessor) Telemetry() *telemetry.Collector               { return nil }
+func (a *bumpCountingAccessor) RunOnceCheck(_ string, _ int64) (bool, string)     { return true, "" }
+func (a *bumpCountingAccessor) RunOnceComplete(_ string, _ bool)                  {}
+func (a *bumpCountingAccessor) Telemetry() *telemetry.Collector                   { return nil }
+func (a *bumpCountingAccessor) ConversationEventsTelemetry() *telemetry.Collector { return nil }
 
 // drippingChildBackend emits a configurable number of normalized events then
 // exits, simulating a healthy child agent producing activity. It implements the

@@ -12,6 +12,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/session/agents"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -99,6 +100,26 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		start := time.Now()
 
 		utils.LogWithFields(utils.LevelInfo, "server", "starting dispatch", map[string]any{"agent_name": opts.Name, "task_preview": truncate(opts.Task, 80), "model": opts.Model, "system_prompt_len": len(opts.SystemPrompt), "background": !opts.WaitForCompletion, "plan_mode": opts.PlanMode, "session_key": sa.SessionKey()})
+
+		// conversation.* telemetry (issue #378, child 05): the dispatched-child
+		// adapter onto the same ConversationEmitter core child 03 built. Built
+		// once per dispatch; nil-safe end to end (see
+		// dispatch_conversation_events.go), so every call site below is
+		// unconditional regardless of whether conversation events are enabled.
+		convEmitter := buildDispatchConversationEmitter(sa)
+
+		// conversation.* telemetry (issue #378, child 05): classify this
+		// dispatch's Lifecycle action BEFORE the child run starts (created vs
+		// resumed), so the check reads the pre-run state rather than racing the
+		// child's own first persistence write. opts.SessionID is the exact
+		// value buildDispatchRunOptions later copies onto
+		// RunOptions.ConversationID (dispatch_runopts.go), so checking it here
+		// — before that assembly and before the child.OnNormalized closure
+		// below captures it — is equivalent and lets the closure reference it.
+		// See resolveDispatchConvExisted's doc comment for why this is the
+		// dispatch path's own lifecycle-classification point rather than a
+		// shared StartSession seam.
+		childConvExisted := resolveDispatchConvExisted(opts.SessionID)
 
 		// Determine model and project path.
 		//
@@ -360,6 +381,24 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		}
 		utils.LogWithFields(utils.LevelInfo, "session", "child run config: source=dispatch", map[string]any{"dispatch_default_model": dispatchDefaultModel, "session_key": sa.SessionKey(), "model": model})
 
+		// conversation.* telemetry (issue #378, child 05): wire the exact
+		// per-turn CallCost the run loop already computes (backend.go's
+		// OnCallCost seam, consumed here rather than re-derived from LlmUsage)
+		// so AssistantMessage's cost parameter reuses the existing accumulated
+		// value. costTracker pairs it with the UsageEvent that closes the same
+		// turn (see dispatch_conversation_events.go).
+		costTracker := &convCostTracker{}
+		childCfg.OnCallCost = costTracker.record
+
+		// conversation.* telemetry: wire the per-turn user/assistant message
+		// text trackers, mirroring costTracker exactly. Consumed in the
+		// UserTurnPersistedEvent / UsageEvent cases of the live-progress
+		// switch below.
+		userMsgTracker := &convTextTracker{}
+		childCfg.OnUserMessage = userMsgTracker.record
+		assistantMsgTracker := &convTextTracker{}
+		childCfg.OnAssistantMessage = assistantMsgTracker.record
+
 		// Attribute background Bash tasks started by the dispatched child to
 		// the parent session so StopSession kills them with the session.
 		childCfg.BackgroundTaskOwner = sa.SessionKey()
@@ -578,6 +617,13 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		var cumulativeCost float64
 		// Track active tool names by ID for structured callbacks.
 		toolNames := make(map[string]string)
+		// convToolInput accumulates each in-flight tool call's streamed
+		// partial-input JSON, keyed by ToolID, for conversation.tool_call's
+		// input parameter. Separate from toolNames (which fireLifecycleCallbacks
+		// owns and deletes from on its own schedule) so this accumulator's
+		// lifecycle is independent — drained at the same ToolResultEvent this
+		// file's own switch already handles, guarded by the SAME lifecycleMu.
+		convToolInput := make(map[string]*convToolInfo)
 		// lifecycleMu guards the Phase 2 lifecycle accumulators above
 		// (toolNames, toolCount, accumulatedText, and the cumulative
 		// usage/cost counters). The child's OnNormalized callback is invoked
@@ -660,7 +706,18 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			// because this callback runs concurrently across the parallel tool
 			// errgroup (see lifecycleMu declaration); fireLifecycleCallbacks
 			// mutates the shared accumulator map and scalars.
+			//
+			// convToolName is captured under the SAME lock, BEFORE
+			// fireLifecycleCallbacks runs: on a ToolResultEvent it deletes the
+			// ToolID->ToolName entry from toolNames as part of its own
+			// bookkeeping, and the conversation.tool_call emission below
+			// (issue #378, child 05) needs that name after the delete would
+			// otherwise have removed it.
 			lifecycleMu.Lock()
+			var convToolName string
+			if tr, ok := ev.Data.(*types.ToolResultEvent); ok {
+				convToolName = toolNames[tr.ToolID]
+			}
 			fireLifecycleCallbacks(&opts, ev, agentID, toolNames, &toolCount, &accumulatedText,
 				&cumulativeInputTokens, &cumulativeOutputTokens, &cumulativeCost)
 			currentToolCount := toolCount
@@ -701,6 +758,43 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 						registry.SetChildConvID(agentID, childSessionID)
 					}
 					recordChildConvID(sa, agentID, childSessionID, opts.Name, start)
+
+					// conversation.* telemetry (issue #378, child 05):
+					// conversation.lifecycle for this dispatch's own child
+					// conversation, now that its real id is known. dispatch_id is
+					// always agentID on this path (never empty), unlike the root
+					// path where it is typically omitted — see
+					// ConversationEmitter's dispatch_id doc comment.
+					convEmitter.Lifecycle(dispatchAppCtx(sa), childSessionID, dispatchLifecycleAction(childConvExisted), agentID)
+				}
+			case *types.UserTurnPersistedEvent:
+				// conversation.* telemetry (issue #378, child 05):
+				// conversation.user_message for the child's own run-opening
+				// turn, fired once this event carries the durably-persisted
+				// entry id (mirrors ConversationEmitter.UserMessage's own doc
+				// comment: "after the turn is durably persisted with a real
+				// entry ID").
+				convEmitter.UserMessage(dispatchAppCtx(sa), childSessionID, e.EntryID, childReqID, agentID, userMsgTracker.take())
+			case *types.UsageEvent:
+				// conversation.* telemetry (issue #378, child 05):
+				// conversation.assistant_message, fired only when this usage
+				// event closes a completed assistant message (EntryID set —
+				// see types.UsageEvent's own doc comment: "Empty on usage
+				// events that do not close an assistant message"). The paired
+				// CallCost/text were delivered synchronously just before this
+				// same event, from the SAME runloop.go code block, via
+				// RunConfig.OnCallCost/OnAssistantMessage.
+				if e.EntryID != "" {
+					costModel, cost := costTracker.take()
+					if costModel == "" {
+						costModel = model
+					}
+					convEmitter.AssistantMessage(dispatchAppCtx(sa), childSessionID, e.EntryID, childReqID, agentID, costModel, assistantMsgTracker.take(), cost)
+				} else if e.AssistantText != "" {
+					// Codex reports usage via NotifTokenUsageUpdated with no
+					// EntryID; AssistantText carries codex's own per-turn
+					// assistant-complete signal (codex_events.go).
+					convEmitter.AssistantMessage(dispatchAppCtx(sa), childSessionID, "", childReqID, agentID, model, e.AssistantText, nil)
 				}
 			case *types.TextChunkEvent:
 				// Push the streamed text to the live transcript (coalesced).
@@ -728,10 +822,28 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				textAccum = ""
 				progressMu.Unlock()
 				emitProgress(fmt.Sprintf("Using %s...", e.ToolName))
+				lifecycleMu.Lock()
+				convToolInput[e.ToolID] = &convToolInfo{Name: e.ToolName}
+				lifecycleMu.Unlock()
+			case *types.ToolCallUpdateEvent:
+				lifecycleMu.Lock()
+				if info, ok3 := convToolInput[e.ToolID]; ok3 {
+					info.InputJSON.WriteString(e.PartialInput)
+				}
+				lifecycleMu.Unlock()
 			case *types.ToolResultEvent:
 				// Push the tool-result completion to the live transcript
 				// (status-only; reconcile carries the full result body).
 				activity.HandleToolEnd(e.ToolID, e.IsError)
+
+				lifecycleMu.Lock()
+				var input map[string]any
+				if info, ok3 := convToolInput[e.ToolID]; ok3 {
+					input = decodeToolInput(info.InputJSON.String())
+					delete(convToolInput, e.ToolID)
+				}
+				lifecycleMu.Unlock()
+				convEmitter.ToolCall(dispatchAppCtx(sa), childSessionID, "", e.ToolID, convToolName, childReqID, agentID, telemetry.ToolResultOutcome(e.IsError, e.Content), input, e.Content)
 			case *types.StreamResetEvent:
 				// The provider abandoned this partial attempt. Forward the reset
 				// so parent clients remove tool starts that never executed.

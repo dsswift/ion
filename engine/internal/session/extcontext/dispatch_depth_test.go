@@ -26,14 +26,15 @@ type depthTestAccessor struct {
 	telem      *telemetry.Collector
 }
 
-func (a *depthTestAccessor) SessionKey() string       { return "depth-test" }
-func (a *depthTestAccessor) ConversationID() string   { return "conv-depth" }
-func (a *depthTestAccessor) RunID() string            { return "" }
-func (a *depthTestAccessor) TraceID() string          { return "" }
-func (a *depthTestAccessor) ExtensionName() string    { return "" }
-func (a *depthTestAccessor) ExtensionVersion() string { return "" }
-func (a *depthTestAccessor) WorkingDirectory() string { return "/tmp" }
-func (a *depthTestAccessor) CurrentModel() string     { return "" }
+func (a *depthTestAccessor) SessionKey() string            { return "depth-test" }
+func (a *depthTestAccessor) ConversationID() string        { return "conv-depth" }
+func (a *depthTestAccessor) RunID() string                 { return "" }
+func (a *depthTestAccessor) TraceID() string               { return "" }
+func (a *depthTestAccessor) ExtensionName() string         { return "" }
+func (a *depthTestAccessor) ExtensionVersion() string      { return "" }
+func (a *depthTestAccessor) AppContext() map[string]string { return nil }
+func (a *depthTestAccessor) WorkingDirectory() string      { return "/tmp" }
+func (a *depthTestAccessor) CurrentModel() string          { return "" }
 func (a *depthTestAccessor) Emit(ev types.EngineEvent) {
 	a.mu.Lock()
 	a.events = append(a.events, ev)
@@ -124,8 +125,9 @@ func (a *depthTestAccessor) GetScheduleStatus(_, _ string) ([]extension.Schedule
 func (a *depthTestAccessor) RunOnceCheck(operationID string, debounceMs int64) (bool, string) {
 	return false, ""
 }
-func (a *depthTestAccessor) RunOnceComplete(operationID string, failed bool) {}
-func (a *depthTestAccessor) Telemetry() *telemetry.Collector                 { return a.telem }
+func (a *depthTestAccessor) RunOnceComplete(operationID string, failed bool)   {}
+func (a *depthTestAccessor) Telemetry() *telemetry.Collector                   { return a.telem }
+func (a *depthTestAccessor) ConversationEventsTelemetry() *telemetry.Collector { return nil }
 
 func (a *depthTestAccessor) emittedEvents() []types.EngineEvent {
 	a.mu.Lock()

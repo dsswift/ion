@@ -104,6 +104,14 @@ type ClientCommand struct {
 	// converts it to ToolResult.Images before the result reaches the provider.
 	GateImages []types.ImageAttachment `json:"gateImages,omitempty"`
 
+	// start_session / send_prompt: client-supplied application context
+	// stamped onto this session's conversation.* telemetry events. The
+	// newest non-nil map replaces the stored one, so a client whose surface
+	// moved or was renamed updates it on the next command rather than
+	// restarting the session. See types.EngineConfig.AppContext for why the
+	// shape is an opaque string map rather than typed tab fields.
+	AppContext map[string]string `json:"appContext,omitempty"`
+
 	// oidc_begin_login: which grant flow to start. "pkce" (default when
 	// empty) runs the interactive authorization-code + PKCE flow — the
 	// engine returns an authorization URL for the consumer to open and its

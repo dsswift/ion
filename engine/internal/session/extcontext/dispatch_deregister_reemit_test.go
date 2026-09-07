@@ -109,14 +109,15 @@ func (a *dispatchCountSpyAccessor) RootContext() context.Context {
 	return context.Background()
 }
 
-func (a *dispatchCountSpyAccessor) SessionKey() string       { return "spy-session" }
-func (a *dispatchCountSpyAccessor) ExtensionName() string    { return "" }
-func (a *dispatchCountSpyAccessor) ExtensionVersion() string { return "" }
-func (a *dispatchCountSpyAccessor) ConversationID() string   { return "" }
-func (a *dispatchCountSpyAccessor) RunID() string            { return "" }
-func (a *dispatchCountSpyAccessor) TraceID() string          { return "" }
-func (a *dispatchCountSpyAccessor) WorkingDirectory() string { return "/tmp" }
-func (a *dispatchCountSpyAccessor) CurrentModel() string     { return "" }
+func (a *dispatchCountSpyAccessor) SessionKey() string            { return "spy-session" }
+func (a *dispatchCountSpyAccessor) ExtensionName() string         { return "" }
+func (a *dispatchCountSpyAccessor) ExtensionVersion() string      { return "" }
+func (a *dispatchCountSpyAccessor) AppContext() map[string]string { return nil }
+func (a *dispatchCountSpyAccessor) ConversationID() string        { return "" }
+func (a *dispatchCountSpyAccessor) RunID() string                 { return "" }
+func (a *dispatchCountSpyAccessor) TraceID() string               { return "" }
+func (a *dispatchCountSpyAccessor) WorkingDirectory() string      { return "/tmp" }
+func (a *dispatchCountSpyAccessor) CurrentModel() string          { return "" }
 func (a *dispatchCountSpyAccessor) Emit(ev types.EngineEvent) {
 	a.mu.Lock()
 	a.emitted = append(a.emitted, ev)
@@ -216,9 +217,10 @@ func (a *dispatchCountSpyAccessor) FireSchedule(_, _ string) error { return nil 
 func (a *dispatchCountSpyAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
 	return nil, nil
 }
-func (a *dispatchCountSpyAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
-func (a *dispatchCountSpyAccessor) RunOnceComplete(_ string, _ bool)              {}
-func (a *dispatchCountSpyAccessor) Telemetry() *telemetry.Collector               { return nil }
+func (a *dispatchCountSpyAccessor) RunOnceCheck(_ string, _ int64) (bool, string)     { return true, "" }
+func (a *dispatchCountSpyAccessor) RunOnceComplete(_ string, _ bool)                  {}
+func (a *dispatchCountSpyAccessor) Telemetry() *telemetry.Collector                   { return nil }
+func (a *dispatchCountSpyAccessor) ConversationEventsTelemetry() *telemetry.Collector { return nil }
 
 // TestDeregisterReEmitsDispatchCount is the primary regression test for the
 // nested-dispatch completion race (Bug 1).

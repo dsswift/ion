@@ -133,6 +133,7 @@ func (a *convIDRecordingAccessor) EmitDispatchCountStatus(_ string) {}
 func (a *convIDRecordingAccessor) SessionKey() string                       { return "convid-test-session" }
 func (a *convIDRecordingAccessor) ExtensionName() string                    { return "" }
 func (a *convIDRecordingAccessor) ExtensionVersion() string                 { return "" }
+func (a *convIDRecordingAccessor) AppContext() map[string]string            { return nil }
 func (a *convIDRecordingAccessor) ConversationID() string                   { return "" }
 func (a *convIDRecordingAccessor) RunID() string                            { return "" }
 func (a *convIDRecordingAccessor) TraceID() string                          { return "" }
@@ -198,9 +199,10 @@ func (a *convIDRecordingAccessor) FireSchedule(_, _ string) error { return nil }
 func (a *convIDRecordingAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
 	return nil, nil
 }
-func (a *convIDRecordingAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
-func (a *convIDRecordingAccessor) RunOnceComplete(_ string, _ bool)              {}
-func (a *convIDRecordingAccessor) Telemetry() *telemetry.Collector               { return nil }
+func (a *convIDRecordingAccessor) RunOnceCheck(_ string, _ int64) (bool, string)     { return true, "" }
+func (a *convIDRecordingAccessor) RunOnceComplete(_ string, _ bool)                  {}
+func (a *convIDRecordingAccessor) Telemetry() *telemetry.Collector                   { return nil }
+func (a *convIDRecordingAccessor) ConversationEventsTelemetry() *telemetry.Collector { return nil }
 
 // allConversationIDs returns every conversationIds slice across all agent
 // state entries (not just the first hit). Used by the re-dispatch test to

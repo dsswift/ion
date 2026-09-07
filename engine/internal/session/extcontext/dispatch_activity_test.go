@@ -138,6 +138,7 @@ func (a *activityRecordingAccessor) EmitDispatchCountStatus(_ string) {}
 func (a *activityRecordingAccessor) SessionKey() string                       { return "activity-test-session" }
 func (a *activityRecordingAccessor) ExtensionName() string                    { return "" }
 func (a *activityRecordingAccessor) ExtensionVersion() string                 { return "" }
+func (a *activityRecordingAccessor) AppContext() map[string]string            { return nil }
 func (a *activityRecordingAccessor) ConversationID() string                   { return "" }
 func (a *activityRecordingAccessor) RunID() string                            { return "" }
 func (a *activityRecordingAccessor) TraceID() string                          { return "" }
@@ -204,9 +205,10 @@ func (a *activityRecordingAccessor) FireSchedule(_, _ string) error { return nil
 func (a *activityRecordingAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
 	return nil, nil
 }
-func (a *activityRecordingAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
-func (a *activityRecordingAccessor) RunOnceComplete(_ string, _ bool)              {}
-func (a *activityRecordingAccessor) Telemetry() *telemetry.Collector               { return nil }
+func (a *activityRecordingAccessor) RunOnceCheck(_ string, _ int64) (bool, string)     { return true, "" }
+func (a *activityRecordingAccessor) RunOnceComplete(_ string, _ bool)                  {}
+func (a *activityRecordingAccessor) Telemetry() *telemetry.Collector                   { return nil }
+func (a *activityRecordingAccessor) ConversationEventsTelemetry() *telemetry.Collector { return nil }
 
 // activityChildBackend emits, before any TaskCompleteEvent: SessionInitEvent
 // (the conv id), then a ToolCallEvent + ToolResultEvent pair, then a

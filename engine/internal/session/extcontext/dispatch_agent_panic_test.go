@@ -33,14 +33,15 @@ type panicTestAccessor struct {
 	telem *telemetry.Collector
 }
 
-func (p *panicTestAccessor) SessionKey() string       { return "panic-test-session" }
-func (p *panicTestAccessor) ExtensionName() string    { return "" }
-func (p *panicTestAccessor) ExtensionVersion() string { return "" }
-func (p *panicTestAccessor) ConversationID() string   { return "" }
-func (p *panicTestAccessor) RunID() string            { return "" }
-func (p *panicTestAccessor) TraceID() string          { return "" }
-func (p *panicTestAccessor) WorkingDirectory() string { return "/tmp" }
-func (p *panicTestAccessor) CurrentModel() string     { return "" }
+func (p *panicTestAccessor) SessionKey() string            { return "panic-test-session" }
+func (p *panicTestAccessor) ExtensionName() string         { return "" }
+func (p *panicTestAccessor) ExtensionVersion() string      { return "" }
+func (p *panicTestAccessor) AppContext() map[string]string { return nil }
+func (p *panicTestAccessor) ConversationID() string        { return "" }
+func (p *panicTestAccessor) RunID() string                 { return "" }
+func (p *panicTestAccessor) TraceID() string               { return "" }
+func (p *panicTestAccessor) WorkingDirectory() string      { return "/tmp" }
+func (p *panicTestAccessor) CurrentModel() string          { return "" }
 func (p *panicTestAccessor) Emit(ev types.EngineEvent) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -139,9 +140,10 @@ func (p *panicTestAccessor) FireSchedule(_, _ string) error { return nil }
 func (p *panicTestAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
 	return nil, nil
 }
-func (p *panicTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
-func (p *panicTestAccessor) RunOnceComplete(_ string, _ bool)              {}
-func (p *panicTestAccessor) Telemetry() *telemetry.Collector               { return p.telem }
+func (p *panicTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string)     { return true, "" }
+func (p *panicTestAccessor) RunOnceComplete(_ string, _ bool)                  {}
+func (p *panicTestAccessor) Telemetry() *telemetry.Collector                   { return p.telem }
+func (p *panicTestAccessor) ConversationEventsTelemetry() *telemetry.Collector { return nil }
 
 // TestRecoverBackgroundDispatchPanic_SynthesizesTerminalState is the
 // invariant test for the silent-wedge defect. A background dispatch

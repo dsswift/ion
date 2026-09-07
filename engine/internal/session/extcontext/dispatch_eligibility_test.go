@@ -24,6 +24,7 @@ type eligibilityTestAccessor struct {
 func (a *eligibilityTestAccessor) SessionKey() string                                   { return "elig-test-session" }
 func (a *eligibilityTestAccessor) ExtensionName() string                                { return "" }
 func (a *eligibilityTestAccessor) ExtensionVersion() string                             { return "" }
+func (a *eligibilityTestAccessor) AppContext() map[string]string                        { return nil }
 func (a *eligibilityTestAccessor) EngineConfig() *types.EngineRuntimeConfig             { return a.cfg }
 func (a *eligibilityTestAccessor) ClaudeCompat() bool                                   { return false }
 func (a *eligibilityTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
@@ -106,9 +107,10 @@ func (a *eligibilityTestAccessor) FireSchedule(_, _ string) error { return nil }
 func (a *eligibilityTestAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
 	return nil, nil
 }
-func (a *eligibilityTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
-func (a *eligibilityTestAccessor) RunOnceComplete(_ string, _ bool)              {}
-func (a *eligibilityTestAccessor) Telemetry() *telemetry.Collector               { return nil }
+func (a *eligibilityTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string)     { return true, "" }
+func (a *eligibilityTestAccessor) RunOnceComplete(_ string, _ bool)                  {}
+func (a *eligibilityTestAccessor) Telemetry() *telemetry.Collector                   { return nil }
+func (a *eligibilityTestAccessor) ConversationEventsTelemetry() *telemetry.Collector { return nil }
 
 // registerDispatcher records a depth-1 dispatch named name with id in the
 // registry so NameForID resolves the dispatcher's own name in the guard.
