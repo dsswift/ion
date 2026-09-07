@@ -20,50 +20,14 @@ import type {
 } from "./types-engine";
 import type { ClientToolCallState } from "./types-tool-gate";
 import type { EngineEventAsync } from "./types-engine-event-async";
-import type { EngineEventInjection } from "./types-engine-event-injection";
 import type { EngineEventLifecycle } from "./types-engine-event-lifecycle";
-/**
- * One stage transition of a delegated-CLI login (codex/grok/cursor). Payload of
- * the engine_provider_login event; mirrors Go ProviderLoginUpdate.
- */
-export interface ProviderLoginUpdate {
-  provider: string;
-  backend: string;
-  /** started | await_browser | await_device_code | await_auth_code | completed | failed | cancelled */
-  stage: string;
-  authUrl?: string;
-  userCode?: string;
-  verificationUrl?: string;
-  loginError?: string;
-  loginId?: string;
-}
-
-/**
- * One configured MCP server and what the engine currently knows about it.
- * Carried by the engine_mcp_servers event; mirrors Go McpServerStatus.
- *
- * `connected` and `authenticated` are independent. A server can be connected
- * without authentication (it requires none), or authenticated but not connected
- * (a token is stored and the last connect attempt still failed). Rendering them
- * as one combined "ok" state would hide the case an operator must act on: a
- * stored token that is not getting them in. `lastError` carries the most recent
- * connection failure, which is how a client with no access to the engine host's
- * log file can explain why a configured server is absent.
- */
-export interface McpServerStatus {
-  name: string;
-  /** http | sse | ws | stdio */
-  transport?: string;
-  url?: string;
-  command?: string;
-  connected: boolean;
-  authenticated: boolean;
-  toolCount?: number;
-  protocolVersion?: string;
-  capabilities?: string[];
-  lastError?: string;
-}
-
+import type { EngineEventInjection } from "./types-engine-event-injection";
+import type {
+  EngineEventModel,
+  McpServerStatus,
+  ProviderLoginUpdate,
+} from "./types-engine-event-model";
+export type { McpServerStatus, ProviderLoginUpdate } from "./types-engine-event-model";
 export type EngineEvent =
   | { type: "engine_agent_state"; agents: AgentStateUpdate[] }
   | {
@@ -524,38 +488,6 @@ export type EngineEvent =
       fallbackModel: string;
       fallbackReason: string;
     }
-  // engine_model_tiers is a complete snapshot. Consumers replace, never merge.
-  | {
-      type: "engine_model_tiers";
-      modelTiers: import("./types-model-tiers").ModelTier[];
-    }
-  // engine_capability_unsupported — workflow signal emitted when a requested
-  // feature (e.g. plan mode) is not supported by the backend that would serve
-  // the run; the engine declined the prompt cleanly instead of dispatching a
-  // run that would fail. No run starts and the session stays idle, so clients
-  // render a recoverable message (not a dead engine). Mirrors the underlying
-  // CapabilityUnsupportedEvent NormalizedEvent variant. See CLAUDE.md §
-  // "The typed-event corollary".
-  | {
-      type: "engine_capability_unsupported";
-      capability: string;
-      capabilityBackend: string;
-      capabilityReason: string;
-    }
-  // Extended-thinking events (issue #158). Surface the model's reasoning
-  // activity so consumers can distinguish active reasoning from a stall and
-  // render a "thinking" view. Emitted only when the provider streams reasoning
-  // (Anthropic extended thinking); a thinking block is OPTIONAL per turn.
-  // Boundaries (start/end) always emit; engine_thinking_delta is gated by the
-  // engine's ThinkingConfig.StreamDeltas (default on). See
-  // engine/internal/types/normalized_event.go (Thinking*Event).
-  | { type: "engine_thinking_block_start" }
-  | { type: "engine_thinking_delta"; thinkingText: string }
-  | {
-      type: "engine_thinking_block_end";
-      thinkingTotalTokens?: number;
-      thinkingElapsedSeconds?: number;
-      thinkingRedacted?: boolean;
-    }
+  | EngineEventModel
   | EngineEventLifecycle
   | EngineEventAsync;

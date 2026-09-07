@@ -133,6 +133,29 @@ type Server struct {
 	// backpressure is a transport concern with no session context. Nil when
 	// telemetry is disabled; every emit site guards on nil. Guarded by s.mu.
 	telemetry *telemetry.Collector
+
+	// conversationEventsTelemetry is the standalone collector backing the
+	// conversation.* telemetry family (issue #378). Fully independent of
+	// telemetry above: separate Enabled, separate buffer, separate flush
+	// loop, separate targets — see ConversationEventsConfig's doc comment.
+	// Nil when conversation events are disabled. Guarded by s.mu.
+	conversationEventsTelemetry *telemetry.Collector
+}
+
+// SetConversationEventsTelemetry installs the standalone collector for the
+// conversation.* telemetry family. Nil disables conversation events.
+func (s *Server) SetConversationEventsTelemetry(c *telemetry.Collector) {
+	s.mu.Lock()
+	s.conversationEventsTelemetry = c
+	s.mu.Unlock()
+}
+
+// ConversationEventsTelemetry returns the standalone conversation.* telemetry
+// collector, or nil when conversation events are disabled.
+func (s *Server) ConversationEventsTelemetry() *telemetry.Collector {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.conversationEventsTelemetry
 }
 
 // SetTelemetry installs the process-level telemetry collector used for
@@ -171,10 +194,20 @@ func (s *Server) SetConfig(cfg *types.EngineRuntimeConfig) {
 	if cfg != nil && cfg.Telemetry != nil && cfg.Telemetry.Enabled {
 		collector := telemetry.NewCollector(*cfg.Telemetry)
 		s.SetTelemetry(collector)
+		s.installTelemetryHealthObserver(collector, "telemetry")
 		// Share the process collector with the manager for Manager-level
 		// enforcement audit events (the session-limit rejection fires before
 		// any per-session collector exists).
 		s.manager.SetProcessTelemetry(collector)
+	}
+	// Install the standalone conversation.* telemetry collector (issue #378).
+	// Independent gate from Telemetry above — conversationEvents.enabled
+	// never depends on telemetry.enabled, and vice versa (frozen contract B).
+	if cfg != nil && cfg.ConversationEvents != nil && cfg.ConversationEvents.Enabled {
+		convCollector := telemetry.NewConversationEventsCollector(*cfg.ConversationEvents)
+		s.installTelemetryHealthObserver(convCollector, "conversationEvents")
+		s.SetConversationEventsTelemetry(convCollector)
+		s.manager.SetConversationEventsTelemetry(convCollector)
 	}
 	// Store the config after the collector wiring so the field assignment
 	// below is not racing the SetTelemetry lock above.

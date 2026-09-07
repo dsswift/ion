@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { handlers, bridge } = vi.hoisted(() => ({
+const { handlers, bridge, providerRpc } = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
+  providerRpc: {
+    getDefaultProvider: vi.fn(),
+    setDefaultProvider: vi.fn(),
+  },
   bridge: {
     listModels: vi.fn(),
     listModelTiers: vi.fn(),
@@ -17,6 +21,7 @@ vi.mock('electron', () => ({
 }))
 vi.mock('../state', () => ({ engineBridge: bridge, modelCache: {}, enterprisePolicyCache: {} }))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn() }))
+vi.mock('../engine-bridge-providers', () => providerRpc)
 
 import { IPC } from '../../shared/types'
 import { modelCache } from '../state'
@@ -55,6 +60,34 @@ describe('model tier IPC', () => {
     expect(bridge.listModelTiers).toHaveBeenCalledOnce()
     expect(bridge.setModelTier).toHaveBeenCalledWith(tier)
     expect(bridge.removeModelTier).toHaveBeenCalledWith(tier.name)
+  })
+})
+
+describe('default provider IPC', () => {
+  it('rejects a malformed set payload without calling the bridge', async () => {
+    await expect(invoke(IPC.SET_DEFAULT_PROVIDER, null)).resolves.toEqual({ ok: false, error: 'set_default_provider requires a provider string' })
+    await expect(invoke(IPC.SET_DEFAULT_PROVIDER, { provider: 42 })).resolves.toEqual({ ok: false, error: 'set_default_provider requires a provider string' })
+
+    expect(providerRpc.setDefaultProvider).not.toHaveBeenCalled()
+  })
+
+  it('forwards get and set commands through engine bridge', async () => {
+    providerRpc.getDefaultProvider.mockResolvedValue('dci-marketing')
+    providerRpc.setDefaultProvider.mockResolvedValue({ ok: true })
+
+    await expect(invoke(IPC.GET_DEFAULT_PROVIDER)).resolves.toBe('dci-marketing')
+    await expect(invoke(IPC.SET_DEFAULT_PROVIDER, { provider: 'anthropic' })).resolves.toEqual({ ok: true })
+
+    expect(providerRpc.getDefaultProvider).toHaveBeenCalledOnce()
+    expect(providerRpc.setDefaultProvider).toHaveBeenCalledWith(bridge, 'anthropic')
+  })
+
+  it('passes an empty string through as an explicit clear', async () => {
+    providerRpc.setDefaultProvider.mockResolvedValue({ ok: true })
+
+    await expect(invoke(IPC.SET_DEFAULT_PROVIDER, { provider: '' })).resolves.toEqual({ ok: true })
+
+    expect(providerRpc.setDefaultProvider).toHaveBeenCalledWith(bridge, '')
   })
 })
 

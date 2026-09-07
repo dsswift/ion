@@ -57,7 +57,7 @@ export const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   ],
   session_dead: ["exitCode", "signal", "stderrTail"],
   rate_limit: ["rateLimitType", "resetsAt", "status"],
-  usage: ["entryId", "usage", "userEntryId"],
+  usage: ["assistantText", "entryId", "usage", "userEntryId"],
   permission_request: [
     "options",
     "questionId",
@@ -259,6 +259,7 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
     "toolId",
   ],
   EngineConfig: [
+    "appContext",
     "claudeCompat",
     "clientWorkspaceContext",
     "extensions",

@@ -4,6 +4,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/compaction"
 	"github.com/dsswift/ion/engine/internal/extension"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -19,6 +20,25 @@ func (m *Manager) buildManualCompactState(s *engineSession, key, runID, model st
 	cfg := &backend.RunConfig{}
 	if s.telemetry != nil {
 		cfg.Telemetry = &telemetryAdapter{c: s.telemetry}
+	}
+
+	// conversation.* telemetry (issue #378, child 04): manual /compact
+	// (CompactNow) builds its own RunConfig independent of buildRunConfig, so
+	// it needs its own OnConversationCompacted wiring — same seam, same
+	// after-Save-succeeds ordering. See buildRunConfig's identical wiring for
+	// the full rationale.
+	cfg.OnConversationCompacted = func() {
+		m.mu.RLock()
+		convID := s.conversationID
+		extName := s.extensionName
+		extVersion := s.extensionVersion
+		traceID := s.runTraceID
+		m.mu.RUnlock()
+		if convID == "" {
+			return
+		}
+		ctx := conversationCorrelationCtx(key, convID, extName, extVersion, runID, traceID)
+		m.conversationEmitter().Lifecycle(ctx, convID, telemetry.ActionCompacted, "")
 	}
 	if s.sessionMemory != nil {
 		sm := s.sessionMemory

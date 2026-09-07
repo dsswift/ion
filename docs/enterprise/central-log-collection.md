@@ -40,7 +40,7 @@ the single-sink contract:
 |---|---|---|
 | OTLP collector | An OpenTelemetry collector (Alloy, the upstream OTel Collector, Vector) exposing OTLP/HTTP | Loki, Tempo, Mimir, any OTLP-capable backend |
 | Plain HTTP endpoint | Any HTTPS service accepting POSTed JSON arrays (the `http` egress wire shape) | SIEM ingestion APIs, custom pipelines, serverless functions |
-| Event bus | A managed ingestion intake (e.g. Azure Event Hubs) fronted by its HTTPS ingest API or by a collector translating OTLP into the bus | Fan-out to multiple independent consumers (see the [Orion realization](#orion-enterprise-realization) below) |
+| Event bus | A managed ingestion intake (e.g. Azure Event Hubs, reached directly via the engine's native `eventhub` AMQP target — see [`telemetry.md`](telemetry.md) § "Event Hub target" — or fronted by a collector translating OTLP into the bus) | Fan-out to multiple independent consumers (see the [Orion realization](#orion-enterprise-realization) below) |
 | Object store | A collector or tailer batching lines into object storage (S3, Azure Blob, GCS) | Athena/Synapse-style query-on-archive, compliance retention |
 
 Swapping one sink for another is a configuration change on the fleet, not a change to any Ion
@@ -483,9 +483,11 @@ interface to the next.
 Azure Event Hubs is the single sink. Every Ion Desktop instance in the fleet emits to one
 configurable Event Hub endpoint, injected through the MDM configuration layer (Orion
 ADR-2003) — the same delivery channel as [`mdm.md`](mdm.md), carrying the sealed egress
-config. Event Hub is a transit buffer, not a store: data resides there on the order of days
-(an event-bus retention window, roughly one to seven) while downstream consumers read the
-stream independently.
+config. The engine reaches it directly over native AMQP via the `eventhub` target (see
+[`telemetry.md`](telemetry.md) § "Event Hub target") — no HTTPS-fronted intermediary is
+required, since Event Hubs' own ingest protocol is AMQP. Event Hub is a transit buffer, not
+a store: data resides there on the order of days (an event-bus retention window, roughly one
+to seven) while downstream consumers read the stream independently.
 
 This layer *is* the ADR-6005 decoupling invariant made physical: the engine knows one
 endpoint and nothing else. Multiple consumers — the hot-path writer, the analytical pipeline —

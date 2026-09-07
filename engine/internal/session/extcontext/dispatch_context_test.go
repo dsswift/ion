@@ -26,16 +26,17 @@ type dispatchContextTestAccessor struct {
 	claudeCompat   bool
 }
 
-func (a *dispatchContextTestAccessor) SessionKey() string        { return "ctx-test" }
-func (a *dispatchContextTestAccessor) ExtensionName() string     { return "" }
-func (a *dispatchContextTestAccessor) ExtensionVersion() string  { return "" }
-func (a *dispatchContextTestAccessor) ConversationID() string    { return "conv-ctx" }
-func (a *dispatchContextTestAccessor) RunID() string             { return "" }
-func (a *dispatchContextTestAccessor) TraceID() string           { return "" }
-func (a *dispatchContextTestAccessor) WorkingDirectory() string  { return "/tmp" }
-func (a *dispatchContextTestAccessor) CurrentModel() string      { return "" }
-func (a *dispatchContextTestAccessor) Emit(ev types.EngineEvent) {}
-func (a *dispatchContextTestAccessor) SendAbort()                {}
+func (a *dispatchContextTestAccessor) SessionKey() string            { return "ctx-test" }
+func (a *dispatchContextTestAccessor) ExtensionName() string         { return "" }
+func (a *dispatchContextTestAccessor) ExtensionVersion() string      { return "" }
+func (a *dispatchContextTestAccessor) AppContext() map[string]string { return nil }
+func (a *dispatchContextTestAccessor) ConversationID() string        { return "conv-ctx" }
+func (a *dispatchContextTestAccessor) RunID() string                 { return "" }
+func (a *dispatchContextTestAccessor) TraceID() string               { return "" }
+func (a *dispatchContextTestAccessor) WorkingDirectory() string      { return "/tmp" }
+func (a *dispatchContextTestAccessor) CurrentModel() string          { return "" }
+func (a *dispatchContextTestAccessor) Emit(ev types.EngineEvent)     {}
+func (a *dispatchContextTestAccessor) SendAbort()                    {}
 func (a *dispatchContextTestAccessor) RootContext() context.Context {
 	return context.Background()
 }
@@ -123,8 +124,9 @@ func (a *dispatchContextTestAccessor) GetScheduleStatus(_, _ string) ([]extensio
 func (a *dispatchContextTestAccessor) RunOnceCheck(operationID string, debounceMs int64) (bool, string) {
 	return false, ""
 }
-func (a *dispatchContextTestAccessor) RunOnceComplete(operationID string, failed bool) {}
-func (a *dispatchContextTestAccessor) Telemetry() *telemetry.Collector                 { return nil }
+func (a *dispatchContextTestAccessor) RunOnceComplete(operationID string, failed bool)   {}
+func (a *dispatchContextTestAccessor) Telemetry() *telemetry.Collector                   { return nil }
+func (a *dispatchContextTestAccessor) ConversationEventsTelemetry() *telemetry.Collector { return nil }
 
 // writeAgents writes an AGENTS.md with the given body into dir and returns its path.
 func writeAgents(t *testing.T, dir, body string) string {

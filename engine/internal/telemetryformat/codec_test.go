@@ -51,6 +51,30 @@ func TestCompactExpandRoundTrip(t *testing.T) {
 	}
 }
 
+// TestEvent_TraceIDAndParentSpanID_NeverOmitted pins the 0008 correlation
+// contract: trace_id and parent_span_id are ALWAYS present in an Event's
+// JSON serialization, even when empty — a consumer must be able to rely on
+// the key existing rather than testing for its absence. Before this test's
+// underlying fix, TraceID carried `omitempty` and a run-less event dropped
+// the key entirely.
+func TestEvent_TraceIDAndParentSpanID_NeverOmitted(t *testing.T) {
+	e := Event{Name: "conversation.lifecycle", Payload: map[string]any{}}
+	data, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := raw["trace_id"]; !ok || v != "" {
+		t.Errorf("trace_id = (present=%v, value=%v), want present and empty", ok, v)
+	}
+	if v, ok := raw["parent_span_id"]; !ok || v != "" {
+		t.Errorf("parent_span_id = (present=%v, value=%v), want present and empty", ok, v)
+	}
+}
+
 func TestCompactUsesFirstSeenInternedTables(t *testing.T) {
 	first := testEvent()
 	second := testEvent()
@@ -154,7 +178,8 @@ func TestFrameTypedErrors(t *testing.T) {
 		want  any
 	}{
 		{"record", Frame{Record: "wrong", Schema: 4}, &RecordError{}},
-		{"schema", Frame{Record: frameRecord, Schema: 3}, &SchemaError{}},
+		{"schema above this reader", Frame{Record: frameRecord, Schema: FrameVersion + 1}, &SchemaError{}},
+		{"schema zero", Frame{Record: frameRecord, Schema: 0}, &ValidationError{}},
 		{"identity reference", Frame{Record: frameRecord, Schema: 4, Events: []FrameEvent{{Identity: 0, Name: "event", Ts: "now", Payload: map[string]any{}}}}, &TableReferenceError{}},
 		{"context reference", Frame{Record: frameRecord, Schema: 4, Identities: valid.Identities, Events: []FrameEvent{{Identity: 0, Context: pointer(0), Name: "event", Ts: "now", Payload: map[string]any{}}}}, &TableReferenceError{}},
 	}
@@ -174,6 +199,11 @@ func TestFrameTypedErrors(t *testing.T) {
 				}
 			case *TableReferenceError:
 				var target *TableReferenceError
+				if !errors.As(err, &target) {
+					t.Fatalf("error = %T %v", err, err)
+				}
+			case *ValidationError:
+				var target *ValidationError
 				if !errors.As(err, &target) {
 					t.Fatalf("error = %T %v", err, err)
 				}

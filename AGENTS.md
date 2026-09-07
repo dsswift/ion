@@ -425,6 +425,7 @@ Desktop and iOS are co-equal clients. When a desktop change touches a feature th
 | Inbox view (Studio InboxSidebar / classifier) | Inbox view (TabListView Inbox mode, InboxRowView) | `snapshot.ts` → `RemoteTabState.inboxState`/`unread`/`snoozedUntil`/`settledAt`/`wokeAt`/`lastActivityAt`/`idleSince`. The desktop computes the classification (shared/inbox-classify.ts); clients render, never derive. Inbox actions ride `desktop_tab_settle`/`_unsettle`/`_snooze`/`_unsnooze`/`_mark_unread`. View mode (tabs vs inbox) is per-device on both platforms, never synced. |
 | Guided Questions wizard (QuestionsOverlayHost / Studio QuestionsSurface) | Questions card + full-screen wizard (QuestionsCardView, QuestionsWizardView) | Desktop main's QuestionsCoordinator is the ONE workflow owner. iOS first paint rides `snapshot.ts` → `RemoteTabState.questions`; live updates ride `desktop_questions_state`; mutations ride revisioned `desktop_questions_patch`/`_action` (compare-and-set by revision, stale rolls back) and `desktop_questions_refresh` re-sends targeted state. The display-hint resolver (pills vs radio/checkbox) is one deterministic rule pinned by unit tests on both platforms (`questions-schema.test.ts` / `QuestionsWireTests`). |
 | Theme registry + picker (AppearanceCategory) | Theme picker (SettingsAppearanceView) | Built-in themes are compiled into both clients and pinned identical by the parity fixture (`assets/theme-parity.json`, asserted by `theme-parity.test.ts` on desktop and `ThemeParityTests.swift` on iOS) — a shared-theme palette edit must update the fixture and the Swift theme in the same change. Custom theme packs sync their iOS components via `desktop_theme_manifest` (sendSync + on pack-set change) with lazy asset fetch (`desktop_request_theme_asset`); enterprise lock rides `desktop_settings_snapshot.themePolicy`. Theme selection is per-device (never synced). Authoring guide: `docs/design/theme-packs.md`. |
+| Telemetry delivery health notifications (`installTelemetryHealthConsumer`) | none | Desktop-only today: the engine's `engine_telemetry_health` event drives an Electron `Notification` alerting the operator that a telemetry target is backlogged or critical. iOS has no ViewModel/View consumer. Rationale: telemetry delivery health is an operator/audit-owner concern the desktop is positioned to alert on locally; extend to iOS if a mobile operator-alerting use case emerges. |
 
 ### When to skip iOS
 
@@ -859,38 +860,57 @@ feature branch plus each member's pinned commit on every rebuild. A commit made
 there is destroyed by the next rebuild, and a push would publish a synthetic
 merge of other people's in-flight work. So `commit`, `push`, `pull`, `merge`,
 `rebase`, `cherry-pick`, `revert`, `reset`, `stash`, `tag`, and branch mutation
-are refused by the desktop UI (`desktop/src/main/integration/bench-guard.ts`) and
-by ion-meta's tool gate (`engine/extensions/ion-meta/bench-gate.ts`). Reading,
-building, testing, and staging are unaffected. A fix diagnosed in the bench
-belongs in the member worktree that owns the file: commit it there, then update
-that member in the bench.
+are refused by the desktop (`desktop/src/main/integration/bench-guard.ts`), which
+owns the bench end to end — the engine deliberately carries no bench-specific
+rules. Reading, building, testing, and staging are unaffected. A fix diagnosed in
+the bench belongs in the member worktree that owns the file: commit it there,
+then update that member in the bench.
 
 **A bench refuses edits, and names where they belong.** The history rule above
-covers `commit`/`push`; a bench also refuses `Write`, `Edit`, and `ion_scaffold`
-(`engine/extensions/ion-meta/bench-write-gate.ts`), because an edit made there is
-destroyed by the next rebuild. `Bash` stays open — building and testing are what
-a bench is for, as do staging and discarding. The refusal names the member
-worktree that owns the file, resolved by diffing each member's pinned commit
-against the bench base rather than asking who last touched it: when several
-members change one file, all of them are listed with their changed line ranges
-so the agent can pick by the region it is editing. The git panel matches: in a
-bench it hides Changes and Graph and titles the section `Integration (Bench)`.
+covers `commit`/`push`; a bench also refuses `Write` and `Edit`, because an edit
+made there is destroyed by the next rebuild. `Bash` stays open — building and
+testing are what a bench is for, as do staging and discarding. The refusal names
+the member worktree that owns the file, resolved by diffing each member's pinned
+commit against the bench base rather than asking who last touched it: when
+several members change one file, all of them are listed with their changed line
+ranges so the agent can pick by the region it is editing. The git panel matches:
+in a bench it hides Changes and Graph and titles the section
+`Integration (Bench)`.
 
 **A worktree refuses writes outside itself.** A conversation whose cwd is a
 registered worktree (`~/.ion/worktree-registry.json`) may not write into the base
-repo it was cut from, nor into a sibling worktree of the same repo
-(`engine/extensions/ion-meta/worktree-gate.ts`). This is **not** a cwd jail:
-`/tmp`, `~/.ion`, and unrelated repos all stay writable, and a conversation that
-is not in a worktree is unaffected. The rule exists because cross-worktree writes
-interleave several conversations in one dirty checkout, and review cannot
-attribute the hunks afterwards. A `Bash` call is judged by its command text, not
-only its cwd: every literal `cd` / `pushd` / `git -C` / `--work-tree` destination
-in the chain is checked (`bash-destination.ts`), because a command that `cd`s into
-the base repo and commits there is the exact way two commits once landed on the
-wrong branch. A dynamic destination (`cd "$VAR"`, `cd $(...)`) cannot be resolved,
-so it passes and is logged at WARN rather than guessed at — a refusal requires a
-literal path, which is what makes a false refusal in your own worktree
-impossible.
+repo it was cut from, nor into a sibling worktree of the same repo. This one *is*
+engine-owned, in `engine/internal/workspaces/containment.go`, because it derives
+from one JSON record plus git state and must hold regardless of which extensions
+are loaded. It is **not** a cwd jail: `/tmp`, `~/.ion`, and unrelated repos all
+stay writable, and a conversation that is not in a worktree is unaffected. The
+rule exists because cross-worktree writes interleave several conversations in one
+dirty checkout, and review cannot attribute the hunks afterwards. A `Bash` call
+is judged by its command text, not only its cwd: every literal `cd` / `pushd` /
+`git -C` / `--work-tree` destination in the chain is checked
+(`engine/internal/workspaces/bash.go`), because a command that `cd`s into the
+base repo and commits there is the exact way two commits once landed on the
+wrong branch. A dynamic destination (`cd "$VAR"`, `cd $(...)`) cannot be
+resolved, so it passes and is logged at WARN rather than guessed at — a refusal
+requires a literal path, which is what makes a false refusal in your own
+worktree impossible.
+
+**A project may share specific gitignored paths with its worktrees.** The
+refusal above protects review, so it stops exactly where review does: a path git
+ignores cannot interleave reviewable work, because nothing can stage it. A
+project declares such paths in the committed `.ion/worktree.json` under
+`worktree.sharedPaths`, and the engine allows a write only when the path is
+**both** declared **and** confirmed ignored by `git check-ignore`
+(`engine/internal/workspaces/shared_paths.go`). This is what lets a durable
+artifact that must outlive its worktree — a retrospective, a generated report —
+live beside the code instead of dying at Retire. The authority is the base repo's
+committed manifest, never the worktree's own copy, so widening the allowance is a
+reviewed commit rather than an uncommitted edit inside a sandbox. Git stays
+refused inside a shared path: the exemption exists because git cannot see the
+path, and a git invocation is what would make it seen. Unlike the rest of the
+package, this fails closed — a malformed manifest grants nothing. Reference:
+[`docs/configuration/worktree-json.md`](docs/configuration/worktree-json.md)
+§ "Shared paths".
 
 Closing a conversation never removes a worktree. Removal is only the explicit
 Retire verb, which appraises what would be lost, refuses when the answer is work,

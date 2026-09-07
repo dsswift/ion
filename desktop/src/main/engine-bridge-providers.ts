@@ -89,3 +89,23 @@ export async function removeModelTier(bridge: EngineBridge, name: string): Promi
   log('remove_model_tier', { tier: name })
   return bridge._sendWithResult({ cmd: 'remove_model_tier', text: name })
 }
+
+/**
+ * Read the operator's preferred provider for resolving a BARE model name in a
+ * model tier. An empty string means no preference is configured — the engine
+ * then resolves bare names through its unbiased registry chain. An explicitly
+ * qualified tier value ("provider/model") is never affected by this setting.
+ */
+export async function getDefaultProvider(bridge: EngineBridge): Promise<string> {
+  await bridge.connect()
+  const result = await bridge._sendWithData<{ defaultProvider?: string }>({ cmd: 'get_default_provider' })
+  if (!result.ok) throw new Error(result.error || 'Could not read the default provider')
+  return result.data?.defaultProvider ?? ''
+}
+
+/** Persist the default provider. An empty string clears the preference. */
+export async function setDefaultProvider(bridge: EngineBridge, provider: string): Promise<{ ok: boolean; error?: string }> {
+  await bridge.connect()
+  log('set_default_provider', { provider, cleared: provider === '' })
+  return bridge._sendWithResult({ cmd: 'set_default_provider', text: provider })
+}

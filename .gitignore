@@ -133,3 +133,6 @@ graphify-out/
 # for the current change, not durable project source. The durable outputs are
 # the tracker item and the commits.
 .workbench/
+
+# Conversation pipeline sample: compiled function output.
+samples/conversation-pipeline/function/dist/

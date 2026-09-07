@@ -57,6 +57,21 @@ func (a *sessionAccessor) TraceID() string {
 }
 func (a *sessionAccessor) ExtensionName() string    { return a.s.extensionName }
 func (a *sessionAccessor) ExtensionVersion() string { return a.s.extensionVersion }
+func (a *sessionAccessor) AppContext() map[string]string {
+	a.m.mu.RLock()
+	defer a.m.mu.RUnlock()
+	if len(a.s.config.AppContext) == 0 {
+		return nil
+	}
+	// Copied under the same lock SetAppContext writes behind: a dispatched
+	// child reads this concurrently with a client updating its surface, and
+	// handing out the live map would race that write.
+	cp := make(map[string]string, len(a.s.config.AppContext))
+	for k, v := range a.s.config.AppContext {
+		cp[k] = v
+	}
+	return cp
+}
 func (a *sessionAccessor) WorkingDirectory() string { return a.s.config.WorkingDirectory }
 
 // CallClientTool routes an extension SDK call to a declared client tool. The
@@ -729,6 +744,17 @@ func (a *sessionAccessor) RunOnceComplete(operationID string, failed bool) {
 // disabled). Used by the dispatch path to emit dispatch.agent spans (family 4b).
 func (a *sessionAccessor) Telemetry() *telemetry.Collector {
 	return a.s.telemetry
+}
+
+// ConversationEventsTelemetry returns the standalone conversation.* telemetry
+// collector (issue #378), or nil when conversation events are disabled. This
+// is a separate, Manager-level collector from Telemetry() above — the two
+// families gate independently (Manager.SetConversationEventsTelemetry /
+// Server.SetConfig). The dispatched-child dispatch path (child 05) uses this
+// to construct its own *telemetry.ConversationEmitter, mirroring how the root
+// path (child 04) is expected to construct one from the same Manager method.
+func (a *sessionAccessor) ConversationEventsTelemetry() *telemetry.Collector {
+	return a.m.ConversationEventsTelemetry()
 }
 
 // PluginSessionMessages returns the pre-built <system-reminder> user messages

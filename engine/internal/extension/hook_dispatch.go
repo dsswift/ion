@@ -85,6 +85,12 @@ func (h *Host) FireSystemInject(ctx *Context, info SystemInjectInfo) (string, bo
 	return h.sdk.FireSystemInject(ctx, info)
 }
 
+// FireBeforeConversationEvent fires the before_conversation_event hook on
+// this host's SDK.
+func (h *Host) FireBeforeConversationEvent(ctx *Context, info BeforeConversationEventInfo) map[string]any {
+	return h.sdk.FireBeforeConversationEvent(ctx, info)
+}
+
 func (h *Host) FireContextInject(ctx *Context, info ContextInjectInfo) []ContextEntry {
 	return h.sdk.FireContextInject(ctx, info)
 }

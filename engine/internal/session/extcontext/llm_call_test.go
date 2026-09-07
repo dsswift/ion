@@ -34,14 +34,15 @@ type llmCallTestAccessor struct {
 	rootCtx context.Context
 }
 
-func (a *llmCallTestAccessor) SessionKey() string       { return "test-session" }
-func (a *llmCallTestAccessor) ExtensionName() string    { return "" }
-func (a *llmCallTestAccessor) ExtensionVersion() string { return "" }
-func (a *llmCallTestAccessor) ConversationID() string   { return "" }
-func (a *llmCallTestAccessor) RunID() string            { return "" }
-func (a *llmCallTestAccessor) TraceID() string          { return "" }
-func (a *llmCallTestAccessor) WorkingDirectory() string { return "/tmp" }
-func (a *llmCallTestAccessor) CurrentModel() string     { return "" }
+func (a *llmCallTestAccessor) SessionKey() string            { return "test-session" }
+func (a *llmCallTestAccessor) ExtensionName() string         { return "" }
+func (a *llmCallTestAccessor) ExtensionVersion() string      { return "" }
+func (a *llmCallTestAccessor) AppContext() map[string]string { return nil }
+func (a *llmCallTestAccessor) ConversationID() string        { return "" }
+func (a *llmCallTestAccessor) RunID() string                 { return "" }
+func (a *llmCallTestAccessor) TraceID() string               { return "" }
+func (a *llmCallTestAccessor) WorkingDirectory() string      { return "/tmp" }
+func (a *llmCallTestAccessor) CurrentModel() string          { return "" }
 func (a *llmCallTestAccessor) Emit(ev types.EngineEvent) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -127,9 +128,10 @@ func (a *llmCallTestAccessor) FireSchedule(_, _ string) error { return nil }
 func (a *llmCallTestAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
 	return nil, nil
 }
-func (a *llmCallTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
-func (a *llmCallTestAccessor) RunOnceComplete(_ string, _ bool)              {}
-func (a *llmCallTestAccessor) Telemetry() *telemetry.Collector               { return nil }
+func (a *llmCallTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string)     { return true, "" }
+func (a *llmCallTestAccessor) RunOnceComplete(_ string, _ bool)                  {}
+func (a *llmCallTestAccessor) Telemetry() *telemetry.Collector                   { return nil }
+func (a *llmCallTestAccessor) ConversationEventsTelemetry() *telemetry.Collector { return nil }
 
 // registerMockProvider registers a MockProvider for the given model under
 // a fixed provider id. Returns the mock so the test can inspect recorded

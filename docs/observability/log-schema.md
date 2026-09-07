@@ -181,11 +181,11 @@ A v4 line has this shape:
 
 Each event record contains `i`, optional `c`, `name`, `ts`, optional `event_id`,
 and `payload`. The expanded event is the same public telemetry event shape that
-schemas v1-v3 used: combine the indexed identity and context with the event
+earlier expanded-event schemas used: combine the indexed identity and context with the event
 record, then set its `schema` to `4`.
 
 The compact file format is a storage format, not a dashboard contract. The
-telemetry forwarder decodes v1-v4 lines and posts expanded events to Alloy. It
+telemetry forwarder decodes every line at or below its own schema and posts expanded events to Alloy. It
 keeps the `service="ion-telemetry"`, `service_name="ion-telemetry"`, and `kind`
 labels, plus the structured metadata names that the dashboards use. Existing
 dashboard queries therefore do not change.
@@ -224,6 +224,123 @@ After expansion, every event has these fields:
 | `cache_read_input_tokens` | int | Tokens served from prompt cache. |
 | `cache_creation_input_tokens` | int | Tokens written into prompt cache. |
 
+### `conversation.*` event family (issue #378)
+
+> **Machine-readable contract:**
+> [`conversation-events.schema.json`](conversation-events.schema.json) (JSON
+> Schema 2020-12) is the artifact a downstream consumer validates ingestion
+> against. The prose below supplements it; the schema document governs. Both
+> are held to the emitter by tests that validate real emitted events against
+> the committed schema.
+
+A separate, standalone telemetry pipe from the general `telemetry.*` family
+above — its own `ConversationEventsConfig` (config reference:
+[`docs/enterprise/telemetry.md`](../enterprise/telemetry.md)), its own
+`Collector` instance, and by default its own file
+(`~/.ion/conversation-events.jsonl`), independent of `telemetry.jsonl` and
+never gated on `telemetry.enabled`. This family is a **full-fidelity
+security/audit stream**: raw user message text, raw assistant response text,
+and raw tool input/output travel on it unconditionally — there is no
+`privacyLevel` gate, because it never reads `PrivacyLevel()` at all.
+`payload.cost`, when present, carries numeric token/USD figures.
+
+An ID field omits its key entirely (`omitempty`) when the backend that served
+the turn has no such ID, rather than emitting an empty string — a consumer can
+distinguish "field never applicable to this backend" from "empty string was
+the real value." `trace_id` and `parent_span_id` are the exception, and
+deliberately diverge from the general log-line "omit when not in scope" rule
+above: on this family they are always present, never omitted, even when
+empty — a consumer relies on the key existing rather than testing for its
+absence.
+
+Every event may additionally carry `extension_metadata` — an object an
+extension attached via the `before_conversation_event` hook
+([`docs/hooks/reference.md`](../hooks/reference.md) § "Conversation Event
+Metadata"), merged unmodified and uninterpreted by the engine. Absent when no
+extension is registered or no handler returned anything.
+
+The event `context` may carry `app_context` — the client's own
+application-surface identity, supplied via `EngineConfig.appContext` (or
+refreshed by any later addressed command carrying `appContext`) and stamped
+by the engine without interpreting the keys. This is what makes several
+parallel conversations distinguishable by the surface a human sees them in:
+the Ion desktop sends `{client, tab_id}`. A dispatched sub-agent reports its
+parent session's value, since it runs inside the parent's surface and has
+none of its own. Absent entirely for a consumer that supplies none, which is
+every consumer that does not opt in.
+
+**Ordering and segmentation.** Events of one conversation are ordered by
+`ts` parsed as a timestamp, then by `payload.segment.part`. Never compare
+`ts` as a string: RFC3339Nano trims trailing zeros, so `...06.5Z` sorts after
+`...06.53Z` lexically. An event larger than its transport's maximum message
+size (Event Hubs negotiates one per link) is delivered as several events that
+share every envelope field including `event_id` and carry `payload.segment`
+(`part`, `parts`, `field`, `total_bytes`, `sha256`); a consumer reassembles
+by concatenating the field named by `field` across the parts in `part`
+order. The deduplication key is `event_id`, or `(event_id, segment.part)` when
+the block is present. See [`docs/enterprise/telemetry.md`](../enterprise/telemetry.md)
+§ "Size contract".
+
+**`conversation.user_message`** — emitted once per accepted, durably-persisted
+user turn.
+
+| Payload key | Type | Presence |
+|---|---|---|
+| `conversation_id` | string | Always |
+| `entry_id` | string | Always (the persisted turn's entry id) |
+| `run_id` | string | Always |
+| `dispatch_id` | string | Present (non-empty) only for a dispatched-child run; omitted on the root path |
+| `text` | string | The raw user message content. Omitted only if empty. |
+| `extension_metadata` | object | See above. |
+
+**`conversation.assistant_message`** — emitted once per completed assistant
+message; never for a partial/aborted stream with no completed message.
+
+| Payload key | Type | Presence |
+|---|---|---|
+| `conversation_id` | string | Always |
+| `entry_id` | string | Omitted when the serving backend mints no persisted entry id at completion time (e.g. delegated-CLI backends) |
+| `run_id` | string | Always |
+| `dispatch_id` | string | Present only for a dispatched-child run |
+| `model` | string | Always |
+| `text` | string | The raw assistant response content. Omitted only if empty. |
+| `cost` | object | Omitted entirely (not zeroed) when the backend cannot supply call-level billing (e.g. Claude Code, ACP) |
+| `cost.input_tokens` | int | Present only when `cost` is present |
+| `cost.output_tokens` | int | Present only when `cost` is present |
+| `cost.cache_read_input_tokens` | int | Present only when `cost` is present |
+| `cost.cache_creation_input_tokens` | int | Present only when `cost` is present |
+| `cost.cost_usd` | float | Present only when `cost` is present; `0` for a subscription-metered backend (codex) — a known real value, distinct from an omitted `cost` object |
+| `extension_metadata` | object | See above. |
+
+**`conversation.tool_call`** — emitted once per terminal tool result,
+including errors and policy denials. Never carries a `cost` object — a
+tool-use turn's model cost stays on its `conversation.assistant_message`.
+
+| Payload key | Type | Presence |
+|---|---|---|
+| `conversation_id` | string | Always |
+| `entry_id` | string | Omitted (tool calls carry no tree-entry id) |
+| `tool_use_id` | string | Always |
+| `tool_name` | string | Always |
+| `run_id` | string | Always |
+| `dispatch_id` | string | Present only for a dispatched-child run |
+| `outcome` | string | One of `success`, `error`, `denied`, `blocked` |
+| `input` | object | The tool's decoded call arguments. Omitted when unavailable or unparseable — never fails the emission. |
+| `output` | string | The raw tool result content. Omitted only if empty. |
+| `extension_metadata` | object | See above. |
+
+**`conversation.lifecycle`** — emitted for one of six frozen actions, only
+after the underlying durable mutation succeeds (for `created`, `resumed`,
+`compacted`, `cleared`, `deleted`); `detached` fires on successful live-session
+removal, with no persistence check.
+
+| Payload key | Type | Presence |
+|---|---|---|
+| `conversation_id` | string | Always |
+| `action` | string | One of `created`, `resumed`, `compacted`, `cleared`, `detached`, `deleted` |
+| `dispatch_id` | string | Present only for a dispatched-child conversation |
+| `extension_metadata` | object | See above. |
+
 ### Extension attribution
 
 `context.extension` and `context.extension_version` are optional fields. Alloy
@@ -243,7 +360,7 @@ the oldest archive beyond `maxFiles` is removed. A collector must read the live
 file before its configured archive window expires. The local reference stack
 forwards the live file only; it does not automatically replay `.1` archives.
 
-Legacy v1-v3 expanded lines remain readable by the telemetry forwarder. This
+Legacy expanded-event lines remain readable by the telemetry forwarder. This
 allows one file to contain older expanded events and v4 compact frames during an
 upgrade.
 

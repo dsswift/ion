@@ -61,6 +61,8 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		panic("testDispatchPanicTrigger: forced panic for " + cmd.Cmd)
 	}
 
+	s.applyCommandAppContext(cmd)
+
 	switch cmd.Cmd {
 	case "start_session":
 		if cmd.Config == nil {
@@ -475,6 +477,12 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "remove_model_tier":
 		s.dispatchRemoveModelTier(conn, cmd)
 
+	case "get_default_provider":
+		s.dispatchGetDefaultProvider(conn, cmd)
+
+	case "set_default_provider":
+		s.dispatchSetDefaultProvider(conn, cmd)
+
 	case "get_host_info":
 		s.sendResult(conn, cmd, nil, computeHostInfo())
 
@@ -612,8 +620,11 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 			}
 		}
 		utils.LogWithFields(utils.LevelInfo, "server", "delete stored conversations", map[string]any{"requested_count": len(cmd.SessionIDs), "active_count": len(activeIDs)})
-		deleted, err := conversation.DeleteStoredExact("", cmd.SessionIDs, activeIDs)
-		s.sendResult(conn, cmd, err, map[string]int{"deleted": deleted})
+		deletedIDs, err := conversation.DeleteStoredExact("", cmd.SessionIDs, activeIDs)
+		// conversation.* telemetry (issue #378, child 04): fire "deleted" only
+		// for the IDs actually removed, after the durable removal succeeded.
+		s.manager.EmitConversationsDeleted(deletedIDs)
+		s.sendResult(conn, cmd, err, map[string]int{"deleted": len(deletedIDs)})
 
 	case "delete_stored_sessions":
 		maxAge := cmd.MaxAgeDays
@@ -660,8 +671,14 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 			"count": len(cmd.ExcludeIDs), "turn": len(inMemoryActiveIDs), "max": len(desktopProtectedIDs),
 		})
 
-		deleted, err := conversation.CleanupStored("", maxAge, cmd.ExcludeIDs, activeIDs, cmd.DryRun)
-		s.sendResult(conn, cmd, err, map[string]int{"deleted": deleted})
+		deletedIDs, err := conversation.CleanupStored("", maxAge, cmd.ExcludeIDs, activeIDs, cmd.DryRun)
+		// conversation.* telemetry (issue #378, child 04): CleanupStored
+		// returns the WOULD-delete set on a dry run (see its own doc comment),
+		// so the "deleted" lifecycle event must never fire for one.
+		if !cmd.DryRun {
+			s.manager.EmitConversationsDeleted(deletedIDs)
+		}
+		s.sendResult(conn, cmd, err, map[string]int{"deleted": len(deletedIDs)})
 
 	case "resource_subscribe":
 		s.dispatchResourceSubscribe(conn, cmd)

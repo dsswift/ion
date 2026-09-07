@@ -248,6 +248,34 @@ describe('EngineControlPlane.ensureSession', () => {
     expect(config.clientWorkspaceContext).toBeUndefined()
   })
 
+  it('stamps appContext with the tab identity so telemetry can attribute the surface', async () => {
+    mockBenchCtx.mockReturnValue(null)
+
+    const tabId = cp.createTab()
+    await cp.ensureSession(tabId, {
+      workingDirectory: '/Users/test/regular-project',
+      conversationId: 'conv-appctx',
+    })
+
+    const config = mockBridge.startSession.mock.calls[0][1]
+    expect(config.appContext).toEqual({ client: 'desktop', tab_id: tabId })
+  })
+
+  it('gives parallel tabs distinct appContext so their conversations are distinguishable', async () => {
+    mockBenchCtx.mockReturnValue(null)
+
+    const tabA = cp.createTab()
+    const tabB = cp.createTab()
+    await cp.ensureSession(tabA, { workingDirectory: '/Users/test/p', conversationId: 'conv-a' })
+    await cp.ensureSession(tabB, { workingDirectory: '/Users/test/p', conversationId: 'conv-b' })
+
+    const configA = mockBridge.startSession.mock.calls[0][1]
+    const configB = mockBridge.startSession.mock.calls[1][1]
+    expect(configA.appContext.tab_id).toBe(tabA)
+    expect(configB.appContext.tab_id).toBe(tabB)
+    expect(configA.appContext.tab_id).not.toBe(configB.appContext.tab_id)
+  })
+
   // ── Status resync ─────────────────────────────────────────────────────────
   //
   // Every client of this plane writes an optimistic 'connecting' before asking

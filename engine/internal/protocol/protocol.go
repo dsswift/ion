@@ -104,6 +104,14 @@ type ClientCommand struct {
 	// converts it to ToolResult.Images before the result reaches the provider.
 	GateImages []types.ImageAttachment `json:"gateImages,omitempty"`
 
+	// start_session / send_prompt: client-supplied application context
+	// stamped onto this session's conversation.* telemetry events. The
+	// newest non-nil map replaces the stored one, so a client whose surface
+	// moved or was renamed updates it on the next command rather than
+	// restarting the session. See types.EngineConfig.AppContext for why the
+	// shape is an opaque string map rather than typed tab fields.
+	AppContext map[string]string `json:"appContext,omitempty"`
+
 	// oidc_begin_login: which grant flow to start. "pkce" (default when
 	// empty) runs the interactive authorization-code + PKCE flow — the
 	// engine returns an authorization URL for the consumer to open and its
@@ -490,8 +498,14 @@ var validCommands = map[string]bool{
 	"list_model_tiers":   true,
 	"set_model_tier":     true,
 	"remove_model_tier":  true,
-	"store_credential":   true,
-	"refresh_models":     true,
+	// get_default_provider / set_default_provider: the operator's preferred
+	// provider for resolving a BARE model name. A provider-qualified model
+	// ("provider/model") is never affected. set_default_provider carries the
+	// provider ID in `text`; an empty string clears the preference.
+	"get_default_provider": true,
+	"set_default_provider": true,
+	"store_credential":     true,
+	"refresh_models":       true,
 	// provider_login / provider_login_cancel / provider_logout: delegated-CLI
 	// (codex/claude-code/grok/cursor) interactive auth lifecycle. The engine
 	// drives the CLI login/logout and broadcasts engine_provider_login stage

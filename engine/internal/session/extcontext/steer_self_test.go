@@ -40,17 +40,18 @@ type steerSelfAccessor struct {
 	sendPromptDegraded []bool
 }
 
-func (a *steerSelfAccessor) SessionKey() string           { return "steer-self-test" }
-func (a *steerSelfAccessor) ExtensionName() string        { return "" }
-func (a *steerSelfAccessor) ExtensionVersion() string     { return "" }
-func (a *steerSelfAccessor) ConversationID() string       { return "conv-steer" }
-func (a *steerSelfAccessor) RunID() string                { return "" }
-func (a *steerSelfAccessor) TraceID() string              { return "" }
-func (a *steerSelfAccessor) WorkingDirectory() string     { return "/tmp" }
-func (a *steerSelfAccessor) CurrentModel() string         { return "" }
-func (a *steerSelfAccessor) Emit(ev types.EngineEvent)    {}
-func (a *steerSelfAccessor) SendAbort()                   {}
-func (a *steerSelfAccessor) RootContext() context.Context { return context.Background() }
+func (a *steerSelfAccessor) SessionKey() string            { return "steer-self-test" }
+func (a *steerSelfAccessor) ExtensionName() string         { return "" }
+func (a *steerSelfAccessor) ExtensionVersion() string      { return "" }
+func (a *steerSelfAccessor) AppContext() map[string]string { return nil }
+func (a *steerSelfAccessor) ConversationID() string        { return "conv-steer" }
+func (a *steerSelfAccessor) RunID() string                 { return "" }
+func (a *steerSelfAccessor) TraceID() string               { return "" }
+func (a *steerSelfAccessor) WorkingDirectory() string      { return "/tmp" }
+func (a *steerSelfAccessor) CurrentModel() string          { return "" }
+func (a *steerSelfAccessor) Emit(ev types.EngineEvent)     {}
+func (a *steerSelfAccessor) SendAbort()                    {}
+func (a *steerSelfAccessor) RootContext() context.Context  { return context.Background() }
 
 func (a *steerSelfAccessor) SendPrompt(text string, model string, bash []string) error {
 	return a.SendPromptWithKind(text, model, bash, "")
@@ -157,8 +158,9 @@ func (a *steerSelfAccessor) GetScheduleStatus(_, _ string) ([]extension.Schedule
 func (a *steerSelfAccessor) RunOnceCheck(operationID string, debounceMs int64) (bool, string) {
 	return false, ""
 }
-func (a *steerSelfAccessor) RunOnceComplete(operationID string, failed bool) {}
-func (a *steerSelfAccessor) Telemetry() *telemetry.Collector                 { return nil }
+func (a *steerSelfAccessor) RunOnceComplete(operationID string, failed bool)   {}
+func (a *steerSelfAccessor) Telemetry() *telemetry.Collector                   { return nil }
+func (a *steerSelfAccessor) ConversationEventsTelemetry() *telemetry.Collector { return nil }
 
 func (a *steerSelfAccessor) snapshot() (steerCalls, sendCalls []string) {
 	a.mu.Lock()

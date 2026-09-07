@@ -65,6 +65,17 @@
         "systemPrompt"
       ]
     },
+    "before_conversation_event": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "conversationId",
+        "dispatchId",
+        "eventName",
+        "runId",
+        "traceId"
+      ],
+      "result": "content"
+    },
     "before_early_stop_decision": {
       "payloadKind": "object",
       "payloadFields": [

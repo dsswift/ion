@@ -140,6 +140,10 @@ const (
 	// EventModelTiers is a complete snapshot of configured model tier aliases.
 	// Consumers replace their local view; an empty slice means no tiers exist.
 	EventModelTiers = "engine_model_tiers"
+	// EventDefaultProvider is a complete snapshot of the operator's configured
+	// default provider for bare model names. Consumers replace their local
+	// value; an empty string means no preference is configured.
+	EventDefaultProvider = "engine_default_provider"
 	// Extended-thinking events surface the model's reasoning activity as a
 	// first-class signal (issue #158). The engine receives Anthropic
 	// thinking_delta stream events; these variants make them observable so

@@ -84,6 +84,7 @@ func (a *idTestAccessor) RootContext() context.Context                          
 func (a *idTestAccessor) SessionKey() string                                         { return "id-test-session" }
 func (a *idTestAccessor) ExtensionName() string                                      { return "" }
 func (a *idTestAccessor) ExtensionVersion() string                                   { return "" }
+func (a *idTestAccessor) AppContext() map[string]string                              { return nil }
 func (a *idTestAccessor) ConversationID() string                                     { return "" }
 func (a *idTestAccessor) RunID() string                                              { return "" }
 func (a *idTestAccessor) TraceID() string                                            { return "" }
@@ -148,9 +149,10 @@ func (a *idTestAccessor) FireSchedule(_, _ string) error { return nil }
 func (a *idTestAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
 	return nil, nil
 }
-func (a *idTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
-func (a *idTestAccessor) RunOnceComplete(_ string, _ bool)              {}
-func (a *idTestAccessor) Telemetry() *telemetry.Collector               { return nil }
+func (a *idTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string)     { return true, "" }
+func (a *idTestAccessor) RunOnceComplete(_ string, _ bool)                  {}
+func (a *idTestAccessor) Telemetry() *telemetry.Collector                   { return nil }
+func (a *idTestAccessor) ConversationEventsTelemetry() *telemetry.Collector { return nil }
 
 // --- deterministic child backend ---
 

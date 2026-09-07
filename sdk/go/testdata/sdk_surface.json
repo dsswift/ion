@@ -130,6 +130,7 @@
     "bash_tool_call",
     "bash_tool_result",
     "before_agent_start",
+    "before_conversation_event",
     "before_early_stop_decision",
     "before_plan_mode_auto_exit",
     "before_plan_mode_enter",

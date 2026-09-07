@@ -39,7 +39,7 @@ func TestCollectorEventAndFlush(t *testing.T) {
 		FilePath: fp,
 	})
 
-	c.Event(SessionStart, map[string]any{"sessionId": "s1"}, nil)
+	c.Event(LlmCall, map[string]any{"sessionId": "s1"}, nil)
 	c.Event(LlmCall, map[string]any{"model": "test"}, nil)
 
 	if err := c.Flush(); err != nil {
@@ -128,7 +128,10 @@ func TestBatchFlush(t *testing.T) {
 
 func TestEventNameConstants(t *testing.T) {
 	// Verify all event name constants are non-empty and distinct.
-	names := []string{SessionStart, SessionEnd, LlmCall, ToolExecute, Compaction, ErrorEvent}
+	// SessionStart, SessionEnd, ErrorEvent removed (child 01, issue #378):
+	// confirmed zero production emit sites; conversation.lifecycle (child 03)
+	// is the replacement surface for what they were intended to cover.
+	names := []string{LlmCall, ToolExecute, Compaction}
 	seen := make(map[string]bool)
 	for _, n := range names {
 		if n == "" {
@@ -139,8 +142,8 @@ func TestEventNameConstants(t *testing.T) {
 		}
 		seen[n] = true
 	}
-	if len(names) != 6 {
-		t.Errorf("expected 6 event name constants, got %d", len(names))
+	if len(names) != 3 {
+		t.Errorf("expected 3 event name constants, got %d", len(names))
 	}
 }
 

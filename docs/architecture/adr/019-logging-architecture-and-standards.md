@@ -188,7 +188,7 @@ identity and context tables, and event records that reference those tables. The
 format removes repeated envelope data without changing the expanded event
 contract.
 
-The telemetry forwarder is the compatibility boundary. It decodes legacy v1-v3
+The telemetry forwarder is the compatibility boundary. It decodes every expanded-event and frame record at or below its own schema number, and drops unknown fields rather than the record. It decodes legacy expanded-event
 expanded lines and v4 frames, then posts expanded events to Alloy through
 `loki.source.api`. Alloy keeps the existing `service`, `service_name`, and `kind`
 labels plus the same structured metadata. Grafana dashboards therefore require

@@ -18,6 +18,9 @@
         "link": true
       }
     ],
+    "sharedPaths": [
+      "docs/retros"
+    ],
     "setup": "make bootstrap"
   },
   "bench": {

@@ -858,6 +858,11 @@ type mockTelemetry struct {
 	// specific field values (tier-4 telemetry). events (names only) is kept for
 	// the existing span-wiring smoke tests.
 	captured []capturedTelemEvent
+	// privacyLevel is returned by PrivacyLevel(). Empty defaults to "minimal"
+	// (matching Collector.PrivacyLevel's own default), so existing tests that
+	// never set this field observe minimal-tier gating unless they opt in to
+	// "standard"/"full".
+	privacyLevel string
 }
 
 type capturedTelemEvent struct {
@@ -917,6 +922,15 @@ func (m *mockTelemetry) StartSpan(name string, attrs map[string]interface{}) Spa
 
 func (m *mockTelemetry) StartSpanCtx(name string, attrs, ctx map[string]interface{}) Span {
 	return &mockSpan{name: name, attrs: attrs, ctx: ctx, telem: m}
+}
+
+func (m *mockTelemetry) PrivacyLevel() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.privacyLevel == "" {
+		return "minimal"
+	}
+	return m.privacyLevel
 }
 
 func TestConcurrentMultipleRuns(t *testing.T) {

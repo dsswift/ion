@@ -706,3 +706,28 @@ func TestMergeEnterprisePartial_CustomFieldsOverride(t *testing.T) {
 // ---------------------------------------------------------------------------
 // readJSONFile
 // ---------------------------------------------------------------------------
+
+// TestMergeConfigs_ConversationEventsOverride pins that ConversationEvents
+// survives config-layer merging the same way Telemetry does. Reproduces a
+// real bug: mergeInto had no case for ConversationEvents, so a value set in
+// ~/.ion/engine.json (layer 2+) was silently dropped when merged onto
+// DefaultConfig() (layer 1) — the running engine never saw it despite the
+// file being correctly edited and the process restarting after the edit.
+func TestMergeConfigs_ConversationEventsOverride(t *testing.T) {
+	base := DefaultConfig()
+	overlay := &types.EngineRuntimeConfig{
+		ConversationEvents: &types.ConversationEventsConfig{
+			Enabled:                  true,
+			Targets:                  []string{"eventhub"},
+			EventHubConnectionString: "Endpoint=sb://localhost;UseDevelopmentEmulator=true;",
+			EventHubName:             "conversation-events",
+		},
+	}
+	result := MergeConfigs(nil, base, overlay)
+	if result.ConversationEvents == nil || !result.ConversationEvents.Enabled {
+		t.Fatal("expected conversationEvents to be set and enabled")
+	}
+	if result.ConversationEvents.EventHubName != "conversation-events" {
+		t.Fatalf("expected eventHubName=conversation-events, got %q", result.ConversationEvents.EventHubName)
+	}
+}

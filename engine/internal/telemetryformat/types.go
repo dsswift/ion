@@ -3,7 +3,12 @@ package telemetryformat
 
 const (
 	FrameVersion = 4
-	frameRecord  = "telemetry.frame"
+	// FrameRecord is the "record" discriminator every compact frame line
+	// carries. Exported so a consumer outside this package can tell a frame
+	// line from an expanded-event line before deciding how to decode it.
+	FrameRecord = "telemetry.frame"
+
+	frameRecord = FrameRecord
 )
 
 // Event is one expanded telemetry data point. Its JSON fields match telemetry.Event.
@@ -19,7 +24,15 @@ type Event struct {
 	User          string         `json:"user,omitempty"`
 	Payload       map[string]any `json:"payload"`
 	Context       map[string]any `json:"context,omitempty"`
-	TraceID       string         `json:"trace_id,omitempty"`
+	// TraceID and ParentSpanID are always present, never omitted, even when
+	// empty — an event emitted outside any active run has no trace to
+	// report, but the field's presence must stay stable across every event
+	// so a consumer can rely on the key existing rather than testing for its
+	// absence. ParentSpanID is legitimately empty until the engine tracks a
+	// per-turn span ID of its own; it is present now so its future
+	// population is additive rather than a new key appearing later.
+	TraceID      string `json:"trace_id"`
+	ParentSpanID string `json:"parent_span_id"`
 }
 
 // Frame is a v4 telemetry frame. Identities and Contexts are interned tables.

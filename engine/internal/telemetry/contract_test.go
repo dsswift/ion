@@ -282,7 +282,7 @@ func TestSchemaWriterChangedEvent_Written(t *testing.T) {
 	}
 
 	c := newFileCollector(t, telFile)
-	c.Event(SessionStart, map[string]any{"test": true}, nil)
+	c.Event(LlmCall, map[string]any{"test": true}, nil)
 	if err := c.Flush(); err != nil {
 		t.Fatalf("Flush: %v", err)
 	}

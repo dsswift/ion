@@ -21,7 +21,7 @@ func (e *ProviderLockedModelError) Error() string {
 	if len(e.AllowedModels) == 0 {
 		return fmt.Sprintf("model %q is not allowed: this session is locked to provider %q and has no configured models matching that request", e.Requested, e.SessionProvider)
 	}
-	return fmt.Sprintf("model %q is not allowed: this session is locked to provider %q; choose a model configured for that provider", e.Requested, e.SessionProvider)
+	return fmt.Sprintf("model %q is not allowed: this session is locked to provider %q; choose one of: %s", e.Requested, e.SessionProvider, strings.Join(e.AllowedModels, ", "))
 }
 
 // ResolveModelForOrigin resolves tier aliases first. A tier is deterministic
@@ -33,7 +33,10 @@ func ResolveModelForOrigin(requested, sessionModel string, origin types.ModelOri
 		return "", nil, nil
 	}
 	if tier, ok := LookupTier(requested); ok {
-		return tier.Model, tier.Fallbacks, nil
+		// A tier may be written with a bare model name. Bias it onto the
+		// operator's default provider when that provider serves the model;
+		// an explicitly qualified tier model is never touched.
+		return ApplyDefaultProvider(tier.Model), tier.Fallbacks, nil
 	}
 	if origin != types.ModelOriginAgent {
 		return requested, nil, nil

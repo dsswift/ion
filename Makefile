@@ -1,4 +1,4 @@
-.PHONY: default desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test test test-all test-linux test-linux-engine test-linux-engine-run test-linux-engine-summary test-linux-desktop test-linux-desktop-run clean check-file-sizes check-contracts check-status-writers check-studio-parity check-logging check-swiftlint check-dashboards check-vocabulary generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop log-level-debug
+.PHONY: default demo desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test test test-all test-linux test-linux-engine test-linux-engine-run test-linux-engine-summary test-linux-desktop test-linux-desktop-run clean check-file-sizes check-contracts check-status-writers check-studio-parity check-logging check-swiftlint check-dashboards check-vocabulary generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop log-level-debug
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -294,6 +294,32 @@ test-linux-desktop-run:
 clean:
 	@cd engine && rm -rf bin/ dist/
 	@cd desktop && rm -rf dist/ out/
+
+# The local conversation pipeline sample (samples/conversation-pipeline).
+# Build targets stay pure at this level; the sample's operations live one
+# layer down and are reached as `make demo <verb> [<verb>...]`, e.g.
+#   make demo up
+#   make demo run
+#   make demo transcript CONV=<conversation id>
+#   make demo fold HOT_WINDOW=2m
+# The verbs are forwarded, in order, to the sample's own Makefile, which is
+# the source of truth for what each does (`make demo` alone prints them).
+# Variables given on the command line (CONV=, HOT_WINDOW=) reach it too.
+DEMO_VERBS := help build check up down reset status logs seed list transcript fold run checkpoints
+ifneq ($(filter demo,$(MAKECMDGOALS)),)
+  DEMO_ARGS := $(filter-out demo,$(MAKECMDGOALS))
+  DEMO_UNKNOWN := $(filter-out $(DEMO_VERBS),$(DEMO_ARGS))
+  ifneq ($(DEMO_UNKNOWN),)
+    $(error make demo: unknown verb(s) "$(DEMO_UNKNOWN)"; choose from: $(DEMO_VERBS))
+  endif
+  # Each verb becomes a no-op goal here so make does not look for it at
+  # this level; the sample's Makefile runs the real target.
+  $(foreach v,$(DEMO_ARGS),$(eval $(v): ; @:))
+  .PHONY: $(DEMO_ARGS)
+endif
+
+demo:
+	@$(MAKE) --no-print-directory -C samples/conversation-pipeline $(if $(DEMO_ARGS),$(DEMO_ARGS),help)
 
 # File-architecture guardrails (see docs/architecture/file-organization.md)
 check-file-sizes:

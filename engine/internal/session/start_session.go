@@ -249,6 +249,21 @@ func (m *Manager) startSession(
 
 	m.mu.Unlock()
 
+	// conversation.* telemetry (issue #378, child 04): conversation.lifecycle
+	// fires "resumed" here, immediately, because convExists==true already
+	// proves durable existence (conversation.Exists checked the file above at
+	// line ~173) — no save confirmation is needed for a resume. The mirror
+	// case, "created", cannot fire here: convExists==false means no file
+	// exists yet, so creation is not yet durable. That case fires later, from
+	// flushPendingBinding, once the deferred binding write confirms the first
+	// successful save (see its doc comment). This whole block only runs for a
+	// GENUINELY NEW session object (the idempotent "already exists" branch
+	// above returns earlier without touching either action).
+	if convExists {
+		ctx := conversationCorrelationCtx(key, convID, "", "", "", "")
+		m.conversationEmitter().Lifecycle(ctx, convID, telemetry.ActionResumed, "")
+	}
+
 	// Persist the key->conversationId binding for restart resilience (B2 fix
 	// for issue #230) ONLY for a genuine resume — a conversation whose file
 	// already exists on disk. For a freshly pre-minted id (no file yet) the

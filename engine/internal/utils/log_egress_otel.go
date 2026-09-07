@@ -243,8 +243,9 @@ func otlpAttrsFromRecord(r egressRecord) []otlpLogAttr {
 //
 // Telemetry EVENT records ({name, ts, schema, component, payload, context})
 // are a distinct shape from operational log records ({ts, level, msg, ...,
-// fields}). They arrive here because the egress tailer ships
-// ~/.ion/telemetry.jsonl verbatim (log_egress_tailer.go). Their meaningful data
+// fields}). They arrive here because the egress tailer expands each compact
+// frame in ~/.ion/telemetry.jsonl into one record per event
+// (log_egress_tailer_telemetry.go). Their meaningful data
 // lives in Name (the event kind), Payload.* (cost/tokens/model/duration), and
 // Context.* (extension/conversation/session) — NONE of which the operational
 // attribute mapper (otlpAttrsFromRecord) reads. Mapped through the operational

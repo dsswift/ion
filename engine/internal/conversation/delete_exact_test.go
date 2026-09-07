@@ -14,8 +14,8 @@ func TestDeleteStoredExactRemovesConversationFileSet(t *testing.T) {
 		}
 	}
 	deleted, err := DeleteStoredExact(dir, []string{"gone"}, nil)
-	if err != nil || deleted != 1 {
-		t.Fatalf("DeleteStoredExact() = %d, %v", deleted, err)
+	if err != nil || len(deleted) != 1 || deleted[0] != "gone" {
+		t.Fatalf("DeleteStoredExact() = %v, %v", deleted, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "gone.llm.jsonl")); !os.IsNotExist(err) {
 		t.Fatalf("conversation file remains: %v", err)

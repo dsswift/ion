@@ -70,6 +70,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Conversation Timeline Minimap](#term-conversation-timeline-minimap)
 - [Conversation View](#term-conversation-view)
 - [Conversation backfill](#term-conversation-backfill)
+- [Conversation events](#term-conversation-events)
 - [Conversation instance](#term-conversation-instance)
 - [Conversation persistence](#term-conversation-persistence)
 - [Conversation status](#term-conversation-status)
@@ -84,6 +85,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Engine event](#term-engine-event)
 - [Engine profile](#term-engine-profile)
 - [Engine server](#term-engine-server)
+- [Event segment](#term-event-segment)
 - [Explorer Tree State](#term-explorer-tree-state)
 - [Extension](#term-extension)
 - [Extension SDK](#term-extension-sdk)
@@ -358,6 +360,20 @@ Everything the engine assembles for one model request: the system prompt, the to
   - `desktop` / `ui` / `typescript`: `export function ContextIndicator` in `desktop/src/renderer/components/StatusBarContextIndicator.tsx`
   - `ios` / `ui` / `swift`: `ContextUsageRing` in `ios/IonRemote/Views/ContextUsageRing.swift`
 
+#### Conversation events {#term-conversation-events}
+
+The standalone, metadata-only conversation.* telemetry event family (user_message, assistant_message, tool_call, lifecycle), delivered through its own ConversationEventsConfig collector independent of the general Telemetry pipe.
+
+- **ID:** `conversation-events`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type ConversationEmitter struct` in `engine/internal/telemetry/conversation_emitter.go`
+  - `engine` / `code` / `go`: `type ConversationEventsConfig struct` in `engine/internal/types/config.go`
+
 #### Conversation persistence {#term-conversation-persistence}
 
 The on-disk record of a conversation. The engine writes an NDJSON file pair: the durable entry tree and the model-visible message list.
@@ -426,6 +442,20 @@ The headless process that accepts consumer connections, owns session lifecycle, 
 - **Contract:** `public-wire`
 - **Implementations:**
   - `engine` / `code` / `go`: `type Server struct` in `engine/internal/server/server.go`
+
+#### Event segment {#term-event-segment}
+
+One of the parts a conversation event is delivered as when its size exceeds the transport's negotiated maximum message size. Parts share the original event_id and full envelope and carry a payload.segment block (part, parts, field, total_bytes, sha256) naming the split string field; a consumer reassembles by concatenating the field across parts in part order and keys deduplication on (event_id, part).
+
+- **ID:** `event-segment`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func segmentEvent` in `engine/internal/telemetry/telemetry_oversize.go`
+  - `engine` / `doc` / `json`: `payload.segment` in `docs/observability/conversation-events.schema.json`
 
 #### Model Boundary {#term-model-boundary}
 

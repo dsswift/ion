@@ -236,6 +236,27 @@ func (g *ExtensionGroup) FireBeforePrompt(ctx *Context, prompt string) (string, 
 	return prompt, systemPrompt, nil
 }
 
+// FireBeforeConversationEvent chains the before_conversation_event hook
+// through each host, merging every host's returned map key-by-key —
+// last-writer-wins on a colliding key across hosts, matching the
+// per-handler merge semantics inside SDK.FireBeforeConversationEvent.
+func (g *ExtensionGroup) FireBeforeConversationEvent(ctx *Context, info BeforeConversationEventInfo) map[string]any {
+	var merged map[string]any
+	for _, h := range g.hosts {
+		m := h.FireBeforeConversationEvent(ctx, info)
+		if m == nil {
+			continue
+		}
+		if merged == nil {
+			merged = make(map[string]any, len(m))
+		}
+		for k, v := range m {
+			merged[k] = v
+		}
+	}
+	return merged
+}
+
 // FireInput chains the prompt string through each host.
 func (g *ExtensionGroup) FireInput(ctx *Context, prompt string) (string, error) {
 	for _, h := range g.hosts {

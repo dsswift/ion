@@ -243,6 +243,50 @@ type EngineEvent struct {
 	FallbackModel          string `json:"fallbackModel,omitempty"`
 	FallbackReason         string `json:"fallbackReason,omitempty"`
 
+	// engine_telemetry_health — delivery health of a configured telemetry
+	// egress target (issue #379). Emitted on escalation across the
+	// 50/75/85/95 fractions of the configured soft-warning threshold, on
+	// recovery back to a drained queue, and immediately on a critical
+	// condition. It is a complete snapshot of one target: a consumer
+	// replaces its view for that target rather than accumulating deltas.
+	//
+	// This is the engine telling a consumer whether its telemetry is
+	// actually arriving. Without it, a queue silently growing through a
+	// multi-hour outage is indistinguishable from a healthy one, and the
+	// operator finds out when a downstream query returns nothing. Consumers
+	// may raise a notification, page, chart the backlog, or ignore it — the
+	// engine has no opinion (see AGENTS.md § "The typed-event corollary").
+	TelemetryTarget            string `json:"telemetryTarget,omitempty"`
+	TelemetryQueuedBatches     int    `json:"telemetryQueuedBatches,omitempty"`
+	TelemetryQueuedEvents      int    `json:"telemetryQueuedEvents,omitempty"`
+	TelemetryQueuedBytes       int64  `json:"telemetryQueuedBytes,omitempty"`
+	TelemetryOldestAgeMs       int64  `json:"telemetryOldestAgeMs,omitempty"`
+	TelemetrySoftWarnBytes     int64  `json:"telemetrySoftWarnBytes,omitempty"`
+	TelemetryPercentOfSoftWarn int    `json:"telemetryPercentOfSoftWarn,omitempty"`
+	TelemetryCrossedThreshold  int    `json:"telemetryCrossedThreshold,omitempty"`
+	// TelemetryHealthy is present even when false (no omitempty): "the
+	// target is unhealthy" is the whole point of the event, and a consumer
+	// must be able to read it rather than infer it from an absent key.
+	TelemetryHealthy   bool   `json:"telemetryHealthy"`
+	TelemetryLastError string `json:"telemetryLastError,omitempty"`
+	// TelemetryCritical marks durability actually lost — today, a queue
+	// write that failed because the disk is full, so the batch is neither
+	// delivered nor persisted.
+	TelemetryCritical bool `json:"telemetryCritical,omitempty"`
+	// TelemetryStuck is true when the oldest undelivered batch has waited
+	// past TelemetryStuckAfterMs, at any backlog size; reported on each
+	// transition. TelemetryMaxAttempts is the highest redelivery attempt of
+	// any queued batch.
+	TelemetryStuck        bool  `json:"telemetryStuck,omitempty"`
+	TelemetryStuckAfterMs int64 `json:"telemetryStuckAfterMs,omitempty"`
+	TelemetryMaxAttempts  int   `json:"telemetryMaxAttempts,omitempty"`
+	// TelemetryQuarantinedEvents/Bytes count, cumulatively, events written to
+	// the target's quarantine file instead of sent — content the transport
+	// could never carry under the configured oversize policy. Preserved on
+	// disk, absent from the stream; every increase is reported.
+	TelemetryQuarantinedEvents int   `json:"telemetryQuarantinedEvents,omitempty"`
+	TelemetryQuarantinedBytes  int64 `json:"telemetryQuarantinedBytes,omitempty"`
+
 	// engine_capability_unsupported — workflow signal emitted when a
 	// requested feature (e.g. plan mode) is not supported by the backend
 	// that would serve the run, and the engine declined the prompt cleanly
@@ -450,6 +494,12 @@ type EngineEvent struct {
 	// replace their local view with this payload; every entry carries a list of
 	// fallback models, including an empty list for a tier without fallbacks.
 	ModelTiers []ModelTierEntry `json:"modelTiers,omitempty"`
+
+	// engine_default_provider — the operator's preferred provider for resolving
+	// a BARE model name. A pointer so "" (preference explicitly cleared) is
+	// distinguishable from absent (this event carries no such field). Consumers
+	// replace their local value with this payload. Nil on every other event.
+	DefaultProvider *string `json:"defaultProvider,omitempty"`
 
 	// engine_command_registry — complete snapshot of slash commands exposed by
 	// the session's currently-loaded extensions. Emitted at session_start (after

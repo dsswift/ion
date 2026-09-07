@@ -222,6 +222,55 @@ func (m *Manager) buildRunConfig(
 		runCfg.Telemetry = &telemetryAdapter{c: telemCollector}
 	}
 
+	// conversation.* telemetry (issue #378, child 04): wire the exact
+	// per-turn CallCost the run loop already computes (backend.go's
+	// OnCallCost seam) so the root-path AssistantMessage emission
+	// (emitConversationEvents in conversation_events.go) reuses the existing
+	// accumulated value instead of re-deriving it from LlmUsage — mirrors the
+	// dispatch path's identical wiring in dispatch_agent.go. A fresh tracker
+	// per run: stashed on the session so the UsageEvent handler (a separate
+	// call into handleNormalizedEvent) can pair with it, and cleared on take()
+	// so a later UsageEvent with no preceding OnCallCost cannot replay a
+	// stale value from a prior turn.
+	convTracker := &sessionCostTracker{}
+	runCfg.OnCallCost = convTracker.record
+	m.mu.Lock()
+	s.convCostTracker = convTracker
+	m.mu.Unlock()
+
+	// conversation.* telemetry (issue #378, child 04): fire
+	// conversation.lifecycle("compacted") strictly after performCompact's
+	// conversation.Save succeeds. Captures conversationID once here (compact
+	// runs later, mid-run, when s.conversationID is already confirmed for
+	// every run that reaches performCompact).
+	runCfg.OnConversationCompacted = func() {
+		m.mu.RLock()
+		convID := s.conversationID
+		extName := s.extensionName
+		extVersion := s.extensionVersion
+		traceID := s.runTraceID
+		extGroup := s.extGroup
+		m.mu.RUnlock()
+		if convID == "" {
+			return
+		}
+		ctx := conversationCorrelationCtx(key, convID, extName, extVersion, requestID, traceID)
+		m.conversationEmitterFor(extGroup, m.newExtContext(s, key)).Lifecycle(ctx, convID, telemetry.ActionCompacted, "")
+	}
+
+	// conversation.* telemetry: wire the per-turn user/assistant message text
+	// trackers (mirrors convCostTracker above exactly). Consumed in the
+	// UserTurnPersistedEvent / UsageEvent branches of emitConversationEvents
+	// (conversation_events.go).
+	userMsgTracker := &convTextTracker{}
+	runCfg.OnUserMessage = userMsgTracker.record
+	assistantMsgTracker := &convTextTracker{}
+	runCfg.OnAssistantMessage = assistantMsgTracker.record
+	m.mu.Lock()
+	s.convUserMsgTracker = userMsgTracker
+	s.convAssistantMsgTracker = assistantMsgTracker
+	m.mu.Unlock()
+
 	m.wireExternalTools(s, key, extGroup, mcpConns, runCfg)
 	runCfg.McpConnections = append([]*mcp.Connection(nil), mcpConns...)
 	// Client-declared tools (EngineConfig.ToolGate.ClientTools) are NOT wired

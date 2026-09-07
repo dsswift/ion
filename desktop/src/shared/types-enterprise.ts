@@ -96,6 +96,15 @@ export interface EnterprisePolicy {
     projects?: Array<{ directory: string; name?: string; default?: boolean; profileName?: string; profileLocked?: boolean }>
   }
   /**
+   * Suppresses the desktop's operator notifications for
+   * engine_telemetry_health observations (issue #379). The desktop still
+   * logs every observation regardless of this flag; it only controls
+   * whether a Notification interrupts the operator. Read per-event by
+   * `installTelemetryHealthConsumer`, not captured once, so a policy change
+   * takes effect immediately.
+   */
+  disableTelemetryHealthNotifications?: boolean
+  /**
    * Opaque client-config namespace. Desktop-specific constraints live under
    * customFields['ion-desktop'] by convention; the engine passes this
    * through without validating or interpreting it.

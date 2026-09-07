@@ -60,6 +60,26 @@ function appendNotice(set: StoreSet, tabId: string, content: string): void {
 }
 
 /**
+ * Resolve the model to attach to a `send_prompt`/`send_command` wire message.
+ *
+ * Always the conversation's ambient model (an explicit override, else the
+ * desktop's preferred model) — including for slash commands. A slash
+ * command's own frontmatter `model:` field wins server-side when present
+ * (prompt_dispatch.go prefers the resolved frontmatter tier over this
+ * override), so sending the ambient model here never fights it. Omitting it
+ * for slash commands instead left the engine falling back to engine.json's
+ * global `defaultModel` whenever a command had no frontmatter model of its
+ * own — silently switching provider away from what the conversation had
+ * been using.
+ */
+export function resolvePromptModel(
+  instance: PromptModelSelection,
+  preferredModel: string | null | undefined,
+): string | undefined {
+  return instance?.modelOverride || preferredModel || undefined;
+}
+
+/**
  * Resolve a per-conversation thinking preference only when this renderer knows
  * the model that will serve the prompt. Slash frontmatter resolves in engine
  * after this dispatch, so its ambient model must not rewrite the preference.
@@ -602,12 +622,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           prompt: fullPrompt,
           projectPath: resolvedPath,
           sessionId: tab.conversationId || undefined,
-          // A slash command owns its model through command frontmatter. Never
-          // send conversation picker/default state as send_prompt.model here:
-          // engine resolves the command selector and records the serving model.
-          model: isSlashPrompt
-            ? undefined
-            : sendInst?.modelOverride || preferredModel || undefined,
+          model: resolvePromptModel(sendInst, preferredModel),
           addDirs:
             tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
           appendSystemPrompt: effectiveSystemPrompt,
@@ -891,11 +906,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           prompt,
           projectPath: resolvedPath,
           sessionId: tab.conversationId || undefined,
-          // Slash frontmatter owns model selection for every client. Do not send
-          // conversation picker/default state as send_prompt.model on this path.
-          model: isSlashPrompt
-            ? undefined
-            : remoteInst?.modelOverride || preferredModel || undefined,
+          model: resolvePromptModel(remoteInst, preferredModel),
           addDirs:
             tab.additionalDirs.length > 0 ? tab.additionalDirs : undefined,
           source: "remote",

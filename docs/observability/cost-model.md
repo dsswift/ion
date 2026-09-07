@@ -37,7 +37,7 @@ async trigger. A run may span many LLM turns and may dispatch sub-agent runs.
 This is what the engine emits as:
 - `StatusFields.runCostUsd` (engine_status wire field)
 - `SessionStatus.runCostUsd` (engine_session_status wire field)
-- `run.complete` telemetry payload's `runCostUsd` and `costUsd` keys
+- `run.complete` telemetry payload's `run_cost_usd` key
 
 For the `CliBackend` (Claude Code CLI subprocess), run cost is delta-normalized:
 the CLI reports a cumulative session total, and the engine subtracts the
@@ -73,17 +73,15 @@ This is what the engine emits as:
 
 | Key | Scope | Notes |
 |---|---|---|
-| `runCostUsd` | Per-run | Canonical name |
-| `costUsd` | Per-run | Alias; kept for compat |
-| `aggregateCostUsd` | Full conversation | Dispatch-tree walk |
+| `run_cost_usd` | Per-run | Canonical name |
+| `aggregate_cost_usd` | Full conversation | Dispatch-tree walk |
 
 ### Alloy structured_metadata (after alloy-config.alloy extraction)
 
 | Key | Source field | Notes |
 |---|---|---|
-| `run_cost_usd` | `payload.runCostUsd` | Canonical cost for dashboard queries |
-| `cost_usd` | `payload.costUsd` | Compat alias |
-| `agg_cost_usd` | `payload.aggregateCostUsd` | Conversation-scope |
+| `run_cost_usd` | `payload.run_cost_usd` | Canonical cost for dashboard queries |
+| `agg_cost_usd` | `payload.aggregate_cost_usd` | Conversation-scope |
 
 ## Dashboard recipe
 

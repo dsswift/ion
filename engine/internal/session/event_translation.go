@@ -30,6 +30,13 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 
 	utils.LogWithFields(utils.LevelDebug, "session", "normalized event: type=%t", map[string]any{"key": key, "run_id": runID, "data": event.Data})
 
+	// conversation.* telemetry (issue #378, child 04): root-path counterpart
+	// of the dispatched-child wiring (child 05). Unconditional — never gated
+	// on s.extGroup, unlike the G34 tool-hook switch below — so a
+	// conversation.* event fires for every root-owned Conversation regardless
+	// of whether an extension is attached. See conversation_events.go.
+	m.emitConversationEvents(key, runID, event)
+
 	// Look up session once for all downstream hook firing.
 	m.mu.RLock()
 	s, sOk := m.sessions[key]

@@ -143,6 +143,9 @@ const (
 	// Cross-session messaging.
 	HookNameSessionMessage = "session_message"
 
+	// Conversation telemetry.
+	HookNameBeforeConversationEvent = "before_conversation_event"
+
 	// Run recovery.
 	HookNameBeforeRunRecovery = "before_run_recovery"
 )

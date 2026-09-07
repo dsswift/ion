@@ -26,6 +26,7 @@ type agentDiscoveryTestAccessor struct {
 func (a *agentDiscoveryTestAccessor) SessionKey() string                       { return "test-session" }
 func (a *agentDiscoveryTestAccessor) ExtensionName() string                    { return "" }
 func (a *agentDiscoveryTestAccessor) ExtensionVersion() string                 { return "" }
+func (a *agentDiscoveryTestAccessor) AppContext() map[string]string            { return nil }
 func (a *agentDiscoveryTestAccessor) ConversationID() string                   { return "" }
 func (a *agentDiscoveryTestAccessor) RunID() string                            { return "" }
 func (a *agentDiscoveryTestAccessor) TraceID() string                          { return "" }
@@ -111,9 +112,10 @@ func (a *agentDiscoveryTestAccessor) FireSchedule(_, _ string) error { return ni
 func (a *agentDiscoveryTestAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
 	return nil, nil
 }
-func (a *agentDiscoveryTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
-func (a *agentDiscoveryTestAccessor) RunOnceComplete(_ string, _ bool)              {}
-func (a *agentDiscoveryTestAccessor) Telemetry() *telemetry.Collector               { return nil }
+func (a *agentDiscoveryTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string)     { return true, "" }
+func (a *agentDiscoveryTestAccessor) RunOnceComplete(_ string, _ bool)                  {}
+func (a *agentDiscoveryTestAccessor) Telemetry() *telemetry.Collector                   { return nil }
+func (a *agentDiscoveryTestAccessor) ConversationEventsTelemetry() *telemetry.Collector { return nil }
 
 // writeAgentFile creates a minimal .md agent file in dir/agents/<name>.md
 // with valid frontmatter.

@@ -37,6 +37,7 @@ func (noopSA) RunID() string                                                    
 func (noopSA) TraceID() string                                                   { return "" }
 func (noopSA) ExtensionName() string                                             { return "" }
 func (noopSA) ExtensionVersion() string                                          { return "" }
+func (noopSA) AppContext() map[string]string                                     { return nil }
 func (noopSA) WorkingDirectory() string                                          { return "" }
 func (noopSA) CurrentModel() string                                              { return "" }
 func (noopSA) Emit(_ types.EngineEvent)                                          {}
@@ -99,6 +100,7 @@ func (noopSA) FireSchedule(_, _ string) error                               { re
 func (noopSA) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
 	return nil, nil
 }
-func (noopSA) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
-func (noopSA) RunOnceComplete(_ string, _ bool)              {}
-func (noopSA) Telemetry() *telemetry.Collector               { return nil }
+func (noopSA) RunOnceCheck(_ string, _ int64) (bool, string)     { return true, "" }
+func (noopSA) RunOnceComplete(_ string, _ bool)                  {}
+func (noopSA) Telemetry() *telemetry.Collector                   { return nil }
+func (noopSA) ConversationEventsTelemetry() *telemetry.Collector { return nil }

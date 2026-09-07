@@ -30,7 +30,7 @@ func TestCleanupStored(t *testing.T) {
 	writeTestConv(t, dir, "old-active", oldTime)
 
 	t.Run("dry run counts correctly", func(t *testing.T) {
-		count, err := CleanupStored(dir, 14, []string{"old-excluded"}, []string{"old-active"}, true)
+		ids, err := CleanupStored(dir, 14, []string{"old-excluded"}, []string{"old-active"}, true)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -39,8 +39,8 @@ func TestCleanupStored(t *testing.T) {
 		// old-excluded is skipped (in excludeIDs)
 		// old-active is skipped (in activeSessionIDs)
 		// recent-conv is too new
-		if count != 2 {
-			t.Errorf("expected 2, got %d", count)
+		if len(ids) != 2 {
+			t.Errorf("expected 2, got %d", len(ids))
 		}
 		// Verify no files were actually deleted
 		if _, err := os.Stat(filepath.Join(dir, "old-conv-1.llm.jsonl")); err != nil {
@@ -66,12 +66,12 @@ func TestCleanupStored(t *testing.T) {
 			}
 		}
 
-		count, err := CleanupStored(dir, 14, []string{"old-excluded"}, []string{"old-active"}, false)
+		ids, err := CleanupStored(dir, 14, []string{"old-excluded"}, []string{"old-active"}, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if count != 2 {
-			t.Errorf("expected 2 deleted, got %d", count)
+		if len(ids) != 2 {
+			t.Errorf("expected 2 deleted, got %d", len(ids))
 		}
 		// old-conv-1 and old-conv-2 should be gone
 		for _, id := range []string{"old-conv-1", "old-conv-2"} {
@@ -104,22 +104,22 @@ func TestCleanupStored(t *testing.T) {
 
 	t.Run("empty directory is fine", func(t *testing.T) {
 		emptyDir := t.TempDir()
-		count, err := CleanupStored(emptyDir, 14, nil, nil, false)
+		ids, err := CleanupStored(emptyDir, 14, nil, nil, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if count != 0 {
-			t.Errorf("expected 0, got %d", count)
+		if len(ids) != 0 {
+			t.Errorf("expected 0, got %d", len(ids))
 		}
 	})
 
 	t.Run("nonexistent directory is fine", func(t *testing.T) {
-		count, err := CleanupStored("/nonexistent/path", 14, nil, nil, false)
+		ids, err := CleanupStored("/nonexistent/path", 14, nil, nil, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if count != 0 {
-			t.Errorf("expected 0, got %d", count)
+		if len(ids) != 0 {
+			t.Errorf("expected 0, got %d", len(ids))
 		}
 	})
 }

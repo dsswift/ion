@@ -334,6 +334,9 @@ func (m *Manager) applyConfigDefaults(opts *types.RunOptions) {
 	}
 	if opts.Model == "" {
 		opts.Model = m.config.DefaultModel
+		utils.LogWithFields(utils.LevelInfo, "session", "no model specified for run, applied engine.json defaultModel", map[string]any{
+			"default_model": m.config.DefaultModel,
+		})
 	}
 	if opts.MaxTurns <= 0 && m.config.Limits.MaxTurns != nil {
 		opts.MaxTurns = *m.config.Limits.MaxTurns
@@ -481,6 +484,16 @@ func resolveModelTier(opts *types.RunOptions) {
 	}
 	if len(fallbacks) > 0 && len(opts.FallbackChain) == 0 {
 		opts.FallbackChain = fallbacks
+	}
+	// Central seam for every top-level run: whether the model arrived as an
+	// explicit override, a tier alias, or the engine.json default, a bare name
+	// is biased onto the operator's configured default provider here. An
+	// already-qualified model is returned unchanged.
+	if requalified := modelconfig.ApplyDefaultProvider(opts.Model); requalified != opts.Model {
+		utils.LogWithFields(utils.LevelInfo, "session.model", "model requalified onto default provider", map[string]any{"model": opts.Model, "requalified": requalified})
+		opts.Model = requalified
+	} else {
+		utils.LogWithFields(utils.LevelDebug, "session.model", "model left as resolved (no default-provider requalification)", map[string]any{"model": opts.Model})
 	}
 }
 

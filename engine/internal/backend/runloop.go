@@ -7,6 +7,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/providers"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -167,22 +168,10 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// first provider call. Delivery events follow only after a successful save.
 	runUserEntryID := b.persistInitialDeliveryEntries(run, conv, &opts)
 
-	// Announce the persisted user turn's canonical entry id NOW — before any
-	// streaming — so consumers can re-key their optimistic user row
-	// immediately. message_end carries the same id (UserEntryID), but a run
-	// that is cancelled or fails mid-stream never reaches a message_end, and
-	// the un-re-keyed optimistic row then duplicates against the persisted
-	// turn on the next history load. This emission covers every run outcome.
-	// Re-key signal only: id, never content (the engine does not echo user
-	// turns — see the comment above appendInboundUserMessage).
-	if runUserEntryID != "" {
-		b.emit(run, types.NormalizedEvent{Data: &types.UserTurnPersistedEvent{
-			EntryID:             runUserEntryID,
-			SlashModelAlias:     opts.ResolvedSlashModelAlias,
-			SlashModelEffective: opts.ResolvedSlashModelEffective,
-			SlashFrontmatter:    opts.ResolvedSlashFrontmatter,
-		}})
-	}
+	// See deliverConversationUserMessage and announceUserTurnPersisted
+	// (runloop_conversation_events.go).
+	deliverConversationUserMessage(run, runUserEntryID, opts.Prompt)
+	b.announceUserTurnPersisted(run, opts, runUserEntryID)
 
 	// Resolve limits. Engine ships unopinionated: maxTurns/maxBudget <= 0 means
 	// "no cap" -- the agent loop runs until the LLM emits a terminal stop or
@@ -488,10 +477,20 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		}
 		var llmSpan Span
 		if telem != nil {
-			llmSpan = telem.StartSpanCtx("llm.call", map[string]interface{}{
+			// Span start attrs are gated by the configured privacy level
+			// (docs/enterprise/telemetry.md): "minimal"/"standard" carry only
+			// model/turn; "full" also attaches the outbound prompt text. The
+			// level is checked before rendering the prompt text, not merely
+			// before attaching it, so no prompt copy is built at
+			// minimal/standard only to be discarded.
+			spanAttrs := map[string]interface{}{
 				"model": model,
 				"turn":  turn,
-			}, buildTelemCtx(run))
+			}
+			if telem.PrivacyLevel() == "full" {
+				spanAttrs["prompt"] = truncatePreview(promptTextForTelemetry(messages), telemPreviewLimit)
+			}
+			llmSpan = telem.StartSpanCtx("llm.call", spanAttrs, buildTelemCtx(run))
 		}
 
 		// Fire the before_provider_request extension hook immediately before
@@ -537,14 +536,21 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// request. Drop them before persisting assistant output or next turn.
 		conversation.DiscardEphemeralToolImages(conv)
 
-		// End LLM telemetry span
+		// End LLM telemetry span. Response text is attached only at "full"
+		// (the documented contract: LLM response content is full-only),
+		// checked before rendering so no response copy is built at
+		// minimal/standard only to be discarded.
 		if llmSpan != nil {
 			errStr := ""
 			if streamErr != nil {
 				errStr = streamErr.Error()
 			}
 			// R7: snake_case telemetry payload keys.
-			llmSpan.End(map[string]interface{}{"stop_reason": stopReason}, errStr)
+			endAttrs := map[string]interface{}{"stop_reason": stopReason}
+			if telem != nil && telem.PrivacyLevel() == "full" {
+				endAttrs["response"] = truncatePreview(assistantTextForTelemetry(assistantBlocks), telemPreviewLimit)
+			}
+			llmSpan.End(endAttrs, errStr)
 		}
 
 		if streamErr != nil {
@@ -661,6 +667,31 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			costUsd := computeCost(model, *turnUsage)
 			run.totalCost += costUsd
 			conversation.UpdateCost(conv, costUsd)
+
+			// Deliver the same already-computed cost to the conversation.*
+			// telemetry seam (RunConfig.OnCallCost), attaching rather than
+			// recomputing so this can never drift from the totalCost /
+			// UpdateCost arithmetic just above. Nil-safe: OnCallCost is nil
+			// until a sibling child wires it, and delegated-CLI backends
+			// never carry a RunConfig here at all.
+			if run.cfg != nil && run.cfg.OnCallCost != nil {
+				utils.LogWithFields(utils.LevelDebug, "backend.runloop", "RunConfig.OnCallCost delivered", map[string]any{
+					"run_id":   run.requestID,
+					"turn":     turn,
+					"model":    model,
+					"cost_usd": costUsd,
+				})
+				run.cfg.OnCallCost(model, &telemetry.CallCost{
+					InputTokens:              turnUsage.InputTokens,
+					OutputTokens:             turnUsage.OutputTokens,
+					CacheReadInputTokens:     turnUsage.CacheReadInputTokens,
+					CacheCreationInputTokens: turnUsage.CacheCreationInputTokens,
+					CostUsd:                  costUsd,
+				})
+			}
+
+			// See deliverConversationAssistantMessage (runloop_conversation_events.go).
+			deliverConversationAssistantMessage(run, model, assistantBlocks)
 
 			// Accumulate per-run token totals for TaskCompleteEvent.Usage.
 			run.cumulativeInputTokens += turnUsage.InputTokens

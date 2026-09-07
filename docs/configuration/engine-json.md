@@ -525,7 +525,7 @@ Network transport configuration.
 
 ## telemetry
 
-Telemetry collection and export. The file target writes schema-v4 compact frames. This reduces repeated identity and correlation data; the telemetry forwarder expands v1-v4 records for Alloy and other consumers.
+Telemetry collection and export. The file target writes schema-v4 compact frames. This reduces repeated identity and correlation data; the telemetry forwarder expands both frame and expanded-event records for Alloy and other consumers, at any schema at or below its own.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|

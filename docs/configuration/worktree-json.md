@@ -42,6 +42,7 @@ has to put them there.
         "staleWhen": ["package-lock.json"]
       }
     ],
+    "sharedPaths": ["docs/retros"],
     "setup": "make bootstrap"
   },
   "bench": {
@@ -57,6 +58,7 @@ has to put them there.
 |---|---|---|
 | `version` | int | Manifest format version. Must be `1`. An unrecognised version disables provisioning rather than risking a misread. |
 | `worktree.seed` | array | Directories to materialise. See below. |
+| `worktree.sharedPaths` | string[] | Gitignored base-repo directories a worktree conversation may write into. See "Shared paths" below. |
 | `worktree.setup` | string | Your project's own idempotent setup command, run once after all seeding. |
 | `bench.verify` | string | Project-declared command that decides whether a bench merge resolution produces an acceptable tree. See "Bench verification" below. |
 | `bench.verifyTimeoutMs` | int | Timeout for `bench.verify` in milliseconds. Optional; a sane default applies when absent. |
@@ -141,6 +143,73 @@ optional caches stay optional.
 This lets worktrees read the primary checkout's maintained graph while their
 `graphify-out/cache/` query stamps stay local. Only the primary checkout may
 rebuild the graph; `make graph` refuses in a worktree. `make graph-refresh` only creates or validates the primary graph link for compatibility and never rebuilds there.
+
+## Shared paths
+
+A conversation running in a worktree may not write into the base repository it
+was cut from. That rule exists because such writes interleave several
+conversations' work in one dirty checkout and review cannot attribute the hunks
+afterwards. It is enforced by the engine, in `internal/workspaces`.
+
+The rule has an exact boundary, and `sharedPaths` is where a project declares
+it. A path git **ignores** cannot interleave reviewable work: no `git add -A`
+will stage it, no diff will show it, no commit can carry it. The refusal
+protects review, so where there is nothing to review it protects nothing.
+
+The motivating case is a durable operator artifact that belongs beside the code
+but must outlive the worktree that produced it — a retrospective, a generated
+report, a local analysis run. Written inside the worktree it dies at Retire; the
+base repo is the only location that survives.
+
+```json
+"worktree": {
+  "sharedPaths": ["docs/retros"]
+}
+```
+
+**Both conditions are required.** A declared path is writable only when the
+engine also confirms `git check-ignore` reports it ignored:
+
+- Declaration alone is not enough. A project could declare a tracked directory
+  and reintroduce the interleaving the guard prevents, so the ignore check is
+  the engine's own verification rather than a matter of trust.
+- Being ignored alone is not enough. That would silently widen the gate to
+  every ignored path in the repo — `node_modules`, build caches, `.env` — which
+  no project asked for.
+
+Declaration is the opt-in; the ignore check is the proof the opt-in is safe.
+
+**The authority is the base repo's committed manifest, never the worktree's
+copy.** The manifest is committed, so every worktree carries one — and reading
+that copy would be a hole straight through the guard: a conversation could
+declare the whole repo shared from inside its own sandbox. Widening the
+allowance is therefore a reviewed commit on the source branch, not an
+uncommitted edit in a working tree.
+
+**Git stays refused inside a shared path.** A shared path is exempt from the
+write refusal precisely because git cannot see it. A git invocation is the one
+operation that would make it seen, so a `Bash` segment that runs git in a
+shared base-repo directory is still refused. Writing, reading, and rendering
+there are unaffected.
+
+**Rejected declarations.** Each is logged at WARN in `~/.ion/engine.jsonl` with
+the reason, because a declaration that silently does nothing is
+indistinguishable from a broken guard:
+
+| Declaration | Why it is rejected |
+|---|---|
+| An absolute path (`/etc`) | Declarations are repo-relative. |
+| A `..` escape (`../outside`) | Would hand out write access outside the repository. |
+| The repo root (`.`) | A blanket exemption is the opposite of a narrow allowance. |
+| A path git does not ignore | Fails the ignore check above. |
+
+**Unlike provisioning, this fails closed.** An unreadable or malformed manifest
+yields no shared paths and the pre-existing refusal stands. Failing open would
+let a corrupt file silently disable containment.
+
+Sibling worktrees are never shared. A gitignored path inside another
+conversation's checkout is that conversation's private build state, not a shared
+artifact directory.
 
 ## Rules
 

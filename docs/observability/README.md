@@ -16,7 +16,7 @@ dev run -d
 
 Open http://localhost:3000. Grafana opens with Ion data already flowing. No manual datasource setup, no dashboard import. Everything is pre-provisioned.
 
-`dev run` is the single entry point for the stack. The `observability` profile is the default, so no profile argument is needed. The telemetry schema gate is removed: telemetry is version-forward, and the telemetry forwarder expands v1-v4 records before they reach Alloy. Each expanded event carries `schema` in `structured_metadata`, so schema-filtered queries need no dashboard change.
+`dev run` is the single entry point for the stack. The `observability` profile is the default, so no profile argument is needed. The telemetry schema gate is removed: telemetry is version-forward, and the telemetry forwarder expands every record at or below its own schema before it reaches Alloy. Each expanded event carries `schema` in `structured_metadata`, so schema-filtered queries need no dashboard change.
 
 > **Pinned versions are known-good.** Bump them only after running `docker compose pull` — not just `docker compose config`, which validates syntax but does not check whether the image tag actually exists on Docker Hub.
 
@@ -28,10 +28,16 @@ Open http://localhost:3000. Grafana opens with Ion data already flowing. No manu
 | Loki | `grafana/loki:3.7.3` | 3100 | Log storage and query backend |
 | Alloy | `grafana/alloy:v1.17.1` | 12345 | Log collection agent (HTTP UI) |
 | mount-refresher | `busybox:1.37.0` (built) | — | macOS bind-mount cache refresher (see § Tailer wedge) |
-| telemetry-forwarder | Built from `engine/Dockerfile.telemetry-forwarder` | — | Expands v1-v4 telemetry records and sends events to Alloy |
+| telemetry-forwarder | Built from `engine/Dockerfile.telemetry-forwarder` | — | Expands telemetry records and sends events to Alloy |
 | Tempo | `grafana/tempo:2.10.7` | 4317/4318 | Trace storage (optional, see below) |
+| Event Hub emulator | `mcr.microsoft.com/azure-messaging/eventhubs-emulator:latest` | 5672 (AMQP), 9092, 5300 (health) | Local Azure Event Hubs broker, for `conversationEvents.targets: ["eventhub"]` |
+| azurite | `mcr.microsoft.com/azure-storage/azurite:latest` | 10000-10002 | Metadata/blob storage the Event Hub emulator requires |
 
 > **Version pins:** The compose files are the source of truth. Update a pin only after the image pull succeeds.
+
+## Local Event Hub emulator
+
+Part of the default `observability` profile — `dev run` brings it up along with everything else, so `conversationEvents.targets: ["eventhub"]` can be exercised end to end with no extra command. See [`eventhub-emulator.md`](eventhub-emulator.md) for the connection string and the `conversationEvents` config block that points the engine at it. To see the stream consumed — captured to blob, indexed in Cosmos DB, reconstructed as a transcript, and folded to an archive — run [`samples/conversation-pipeline/`](../../samples/conversation-pipeline/README.md).
 
 
 ## Dashboard story-packs
@@ -183,7 +189,7 @@ All cost and token accounting happens at `run.complete`. The other two event typ
 
 The telemetry file stores one schema-v4 compact frame per JSONL line. Frames intern
 repeated identity and correlation values and contain one or more events. The
-`telemetry-forwarder` decodes v1-v4 records and posts the expanded events to
+`telemetry-forwarder` decodes records at any schema at or below its own and posts the expanded events to
 Alloy's `loki.source.api` listener. The label and structured-metadata names stay
 the same, so dashboard behavior does not change.
 
@@ -256,9 +262,9 @@ Alloy runs two separate pipelines:
 
 It parses JSON and promotes three fields as Loki stream labels: `component`, `level`, `tag`. The `level` label carries the full five-level enum — `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR` (TRACE and DEBUG appear only when a surface has them enabled; the default minimum is INFO). All other fields — `session_id`, `conversation_id`, `trace_id`, `msg` — stay in the log body and are queried with `| json`.
 
-**Telemetry pipeline** (`ion_telemetry`) receives expanded events from `telemetry-forwarder`, which reads `~/.ion/telemetry.jsonl` and decodes v1-v4 records. It promotes two labels:
+**Telemetry pipeline** (`ion_telemetry`) receives expanded events from `telemetry-forwarder`, which reads `~/.ion/telemetry.jsonl` and decodes records at any schema at or below its own. It promotes two labels:
 - `service="ion-telemetry"` and `service_name="ion-telemetry"` (constant, set by the telemetry forwarder)
-- `kind` — the event name: `llm.call`, `tool.execute`, `run.complete`, `session.start`, `session.end`, `compaction`, `error`
+- `kind` — the event name: `llm.call`, `tool.execute`, `run.complete`, `compaction`, and the additive instrumentation families (see [`consuming-logs.md`](consuming-logs.md)). Session/conversation lifecycle is `conversation.lifecycle` — one of the separate, standalone `conversation.*` family's event names (see [`log-schema.md`](log-schema.md) § "`conversation.*` event family"); this pipeline extracts its payload keys too when `conversationEvents`'s HTTP target is pointed at the same telemetry-forwarder.
 
 All numeric and high-cardinality fields go into structured metadata (not labels): `model`, `cost_usd`, `duration_ms`, `num_turns`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`, `stop_reason`, `tool`.
 

@@ -1,5 +1,5 @@
 /**
- * telemetry-frame.ts — expansion for compact telemetry schema v4 frames.
+ * telemetry-frame.ts — expansion for compact telemetry frames.
  *
  * Telemetry v4 stores shared identity and context data in tables. The tailer
  * expands a frame before egress so existing telemetry consumers still receive
@@ -37,7 +37,8 @@ export interface TelemetryFrameEvent {
 
 export interface TelemetryFrame {
   record: typeof TELEMETRY_FRAME_RECORD
-  schema: typeof TELEMETRY_FRAME_VERSION
+  /** The producer's schema, which may be below this decoder's version. */
+  schema: number
   identities: TelemetryFrameIdentity[]
   contexts: TelemetryFrameContext[]
   events: TelemetryFrameEvent[]
@@ -152,7 +153,30 @@ function parseEvent(value: unknown, index: number): TelemetryFrameEvent {
 }
 
 /**
- * Parses and validates a v4 frame. This accepts unknown input because JSONL
+ * Enforces the one version rule both decoders share.
+ *
+ * Tolerance is deliberately asymmetric. A frame numbered at or below this
+ * decoder's version is readable: unknown keys are simply not read, so a frame
+ * carrying fields this build predates yields the fields it does know. Only a
+ * number ABOVE the local version is refused, because that is the reserved
+ * signal for a structural framing change — adding a field never bumps it.
+ *
+ * Exact equality here used to reject both directions, which took whichever side
+ * of a mixed fleet rolled out first off the telemetry stream. Mirrors
+ * ValidateFrame in engine/internal/telemetryformat/codec.go; both are pinned by
+ * assets/telemetry-frame-parity.json.
+ */
+function assertReadableSchema(schema: unknown): void {
+  if (typeof schema !== 'number' || !Number.isInteger(schema) || schema < 1) {
+    throw new TelemetryFrameSchemaError(schema)
+  }
+  if (schema > TELEMETRY_FRAME_VERSION) {
+    throw new TelemetryFrameSchemaError(schema)
+  }
+}
+
+/**
+ * Parses and validates a compact frame. This accepts unknown input because JSONL
  * input is untrusted at the file boundary; all map values remain `unknown`.
  */
 export function parseTelemetryFrame(value: unknown): TelemetryFrame {
@@ -160,16 +184,14 @@ export function parseTelemetryFrame(value: unknown): TelemetryFrame {
   if (frame.record !== TELEMETRY_FRAME_RECORD) {
     throw new TelemetryFrameRecordError(frame.record)
   }
-  if (frame.schema !== TELEMETRY_FRAME_VERSION) {
-    throw new TelemetryFrameSchemaError(frame.schema)
-  }
+  assertReadableSchema(frame.schema)
 
   const identities = requiredArray(frame.identities, 'identities').map(parseIdentity)
   const contexts = requiredArray(frame.contexts, 'contexts').map(parseContext)
   const events = requiredArray(frame.events, 'events').map(parseEvent)
   const parsed: TelemetryFrame = {
     record: TELEMETRY_FRAME_RECORD,
-    schema: TELEMETRY_FRAME_VERSION,
+    schema: frame.schema as number,
     identities,
     contexts,
     events,
@@ -183,9 +205,7 @@ export function validateTelemetryFrame(frame: TelemetryFrame): void {
   if (frame.record !== TELEMETRY_FRAME_RECORD) {
     throw new TelemetryFrameRecordError(frame.record)
   }
-  if (frame.schema !== TELEMETRY_FRAME_VERSION) {
-    throw new TelemetryFrameSchemaError(frame.schema)
-  }
+  assertReadableSchema(frame.schema)
   for (const [index, identity] of frame.identities.entries()) {
     requiredString(identity.component, `identities[${index}].component`)
   }
@@ -217,17 +237,25 @@ export function expandTelemetryFrame(frame: TelemetryFrame): EgressRecord[] {
     const expanded: ValueMap = {
       name: event.name,
       ts: event.ts,
-      schema: TELEMETRY_FRAME_VERSION,
+      // The producer's schema, not this decoder's. Stamping the local version
+      // would relabel an older frame as current and erase the only evidence of
+      // which engine build emitted it.
+      schema: frame.schema,
       component: identity.component,
       install_id: identity.install_id,
       host: identity.host,
       version: identity.version,
       payload: event.payload,
+      // Always present, never omitted, even when empty — a consumer relies on
+      // the key existing rather than testing for its absence. parent_span_id is
+      // legitimately empty until a per-turn span id is tracked. Matches the Go
+      // decoder's Event, which declares both without omitempty.
+      trace_id: context?.trace_id ?? '',
+      parent_span_id: '',
     }
     if (identity.user !== undefined) expanded.user = identity.user
     if (event.event_id !== undefined) expanded.event_id = event.event_id
     if (context?.context !== undefined) expanded.context = context.context
-    if (context?.trace_id !== undefined) expanded.trace_id = context.trace_id
     return expanded as EgressRecord
   })
 }
@@ -238,18 +266,18 @@ export function isTelemetryFrame(value: unknown): boolean {
 }
 
 /**
- * Expands a compact v4 frame, or passes one legacy v1-v3 event through intact.
- * A legacy record that declares schema v4 is refused because v4 must use the
- * frame shape; this avoids silently treating a corrupt compact record as data.
+ * Expands a compact frame, or passes an expanded event through intact.
+ *
+ * A line without the frame discriminator IS an expanded event, whatever schema
+ * number it declares. There is no upper bound on that path: the frame shape is
+ * identified by its `record` key, not by its number, and rejecting a
+ * high-numbered expanded event made the engine's own `ion telemetry expand`
+ * output unreadable here.
  */
 export function expandTelemetryRecord(record: EgressRecord): EgressRecord[] {
   const rawRecord: ValueMap = record
   if (isTelemetryFrame(rawRecord)) {
     return expandTelemetryFrame(parseTelemetryFrame(rawRecord))
-  }
-  const schema = rawRecord.schema
-  if (typeof schema === 'number' && schema >= TELEMETRY_FRAME_VERSION) {
-    throw new TelemetryFrameSchemaError(schema)
   }
   return [record]
 }

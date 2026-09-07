@@ -13,12 +13,16 @@ import (
 // CleanupStored removes conversation files that are older than maxAgeDays
 // (by file mtime) and not in the excludeIDs set. Conversations with custom
 // labels (user-renamed) are preserved. When dryRun is true, no files are
-// deleted but the count of would-be-deleted conversations is returned.
+// deleted but the IDs that WOULD be deleted are still returned (so a caller
+// can report the count via len()) — the caller must not treat a dry-run
+// result as a real deletion for any purpose, including conversation.*
+// telemetry (issue #378, child 04): a dry-run never fires
+// conversation.lifecycle("deleted"), since nothing was actually removed.
 //
 // activeSessionIDs is an additional server-side safety guard: conversations
 // with IDs matching any active engine session are never deleted, independent
 // of the client-supplied excludeIDs.
-func CleanupStored(dir string, maxAgeDays int, excludeIDs []string, activeSessionIDs []string, dryRun bool) (int, error) {
+func CleanupStored(dir string, maxAgeDays int, excludeIDs []string, activeSessionIDs []string, dryRun bool) ([]string, error) {
 	if dir == "" {
 		dir = DefaultConversationsDir()
 	}
@@ -40,9 +44,9 @@ func CleanupStored(dir string, maxAgeDays int, excludeIDs []string, activeSessio
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return 0, nil
+			return nil, nil
 		}
-		return 0, fmt.Errorf("read conversations dir: %w", err)
+		return nil, fmt.Errorf("read conversations dir: %w", err)
 	}
 
 	// Collect unique conversation IDs from .llm.jsonl files (canonical for
@@ -98,19 +102,19 @@ func CleanupStored(dir string, maxAgeDays int, excludeIDs []string, activeSessio
 
 	if dryRun {
 		utils.LogWithFields(utils.LevelInfo, "conversation.cleanup", "dry-run would delete", map[string]any{"count": len(toDelete)})
-		return len(toDelete), nil
+		return toDelete, nil
 	}
 
-	deleted := 0
+	deleted := make([]string, 0, len(toDelete))
 	for _, id := range toDelete {
 		if err := deleteConversationFiles(dir, id); err != nil {
 			utils.LogWithFields(utils.LevelError, "conversation.cleanup", "delete failed", map[string]any{"conversation_id": id, "error": err.Error()})
 			continue
 		}
-		deleted++
+		deleted = append(deleted, id)
 	}
 
-	utils.LogWithFields(utils.LevelInfo, "conversation.cleanup", "done", map[string]any{"count": deleted})
+	utils.LogWithFields(utils.LevelInfo, "conversation.cleanup", "done", map[string]any{"count": len(deleted)})
 	return deleted, nil
 }
 

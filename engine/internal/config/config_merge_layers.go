@@ -147,6 +147,9 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if src.Telemetry != nil {
 		dst.Telemetry = src.Telemetry
 	}
+	if src.ConversationEvents != nil {
+		dst.ConversationEvents = src.ConversationEvents
+	}
 	if src.Compaction != nil {
 		dst.Compaction = src.Compaction
 	}

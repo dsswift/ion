@@ -319,6 +319,12 @@ var HookScheduleDeregistered = Hook[AsyncRegistrationInfo, NoResult]{Name: HookN
 // the engine was down.
 var HookScheduleMissed = Hook[ScheduleMissedInfo, NoResult]{Name: HookNameScheduleMissed}
 
+// --- Conversation telemetry ---
+
+// HookBeforeConversationEvent fires immediately before a conversation telemetry
+// event is emitted. Return a map to attach extension metadata to the event.
+var HookBeforeConversationEvent = Hook[BeforeConversationEventInfo, json.RawMessage]{Name: HookNameBeforeConversationEvent}
+
 // --- Run recovery ---
 
 // HookBeforeRunRecovery fires before the engine resumes a journaled run.
@@ -397,6 +403,7 @@ func allHookDescriptors() []descriptorInfo {
 		descriptorOf(HookScheduleRegistered), descriptorOf(HookScheduleDeregistered),
 		descriptorOf(HookScheduleMissed),
 
+		descriptorOf(HookBeforeConversationEvent),
 		descriptorOf(HookBeforeRunRecovery),
 		descriptorOf(HookSessionMessage),
 	}
