@@ -309,7 +309,6 @@ func TestServer_PinnedSessionNotReaped(t *testing.T) {
 	}
 }
 
-
 // TestServer_DisconnectReapsOrphanedSession is the end-to-end regression test
 // for the FD-leak fix: a client starts a session, then disconnects without
 // sending stop_session. After the grace window the server must reap the
