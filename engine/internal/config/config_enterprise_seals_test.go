@@ -447,3 +447,40 @@ func TestMergeEnterprisePartial_ExtensionAllowlist(t *testing.T) {
 		t.Errorf("overlay entry hash must survive: got %q", result.ExtensionAllowlist[1].SHA256)
 	}
 }
+
+// TestEnterpriseSealForwardsEventHubDestination pins that a sealed
+// conversation-events policy can actually deliver. Forwarding "enabled" and
+// the target without the destination produced a policy that forced the
+// eventhub target on with nowhere to send, so every flush failed into the
+// retry queue — enforcement that cannot enforce anything.
+func TestEnterpriseSealForwardsEventHubDestination(t *testing.T) {
+	enterprise := &types.EnterpriseConfig{
+		ConversationEvents: &types.ConversationEventsConfig{
+			Enabled:               true,
+			Targets:               []string{"eventhub"},
+			EventHubNamespace:     "orion.servicebus.windows.net",
+			EventHubName:          "conversation-events",
+			EventHubTokenScope:    "https://eventhubs.azure.net/.default",
+			EventHubTokenAudience: "aud",
+		},
+	}
+	result := MergeConfigs(enterprise, DefaultConfig())
+	result = EnforceEnterprise(result, enterprise)
+
+	ce := result.ConversationEvents
+	if ce == nil || !ce.Enabled {
+		t.Fatal("enterprise did not force conversation events on")
+	}
+	if ce.EventHubNamespace != "orion.servicebus.windows.net" {
+		t.Errorf("namespace = %q, want the enterprise value — without it the sealed target has nowhere to send", ce.EventHubNamespace)
+	}
+	if ce.EventHubName != "conversation-events" {
+		t.Errorf("hub name = %q, want conversation-events", ce.EventHubName)
+	}
+	if ce.EventHubTokenScope != "https://eventhubs.azure.net/.default" {
+		t.Errorf("token scope = %q, want the enterprise value", ce.EventHubTokenScope)
+	}
+	if ce.EventHubTokenAudience != "aud" {
+		t.Errorf("token audience = %q, want aud", ce.EventHubTokenAudience)
+	}
+}
