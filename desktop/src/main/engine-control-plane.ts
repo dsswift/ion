@@ -16,9 +16,9 @@ import { cancelRequest, cancelTabRun, abortTabDispatch } from './engine-control-
 import * as historyReads from './engine-control-plane-history'
 import { dispatchOrderingBaseline } from './engine-control-plane-idle-ordering'
 import { resolveSessionThinkingConfig } from './settings-store'
-import { resolveClaudeCompat, resolveRunRecoveryConfig } from './engine-control-plane-config'
+import { resolveClaudeCompat } from './engine-control-plane-config'
 import { toolGateSessionConfig } from './tool-gate-responder'
-import { benchClientWorkspaceContext } from './integration/bench-prompt-context'
+import { buildSessionConfig } from './engine-control-plane-session-config'
 import {
   respondToPermission as respondToPermissionImpl,
   respondToElicitation as respondToElicitationImpl,
@@ -277,30 +277,14 @@ export class EngineControlPlane extends EventEmitter {
       return { ok: true }
     }
 
-    const config: EngineConfig = {
-      profileId: 'default',
-      extensions: opts.extensions || [],
+    const config = buildSessionConfig(tabId, {
       workingDirectory: opts.workingDirectory,
       sessionId: opts.conversationId || tab.conversationId || undefined,
+      extensions: opts.extensions,
       model: opts.model,
       maxTokens: opts.maxTokens,
-      // Session thinking default. Resolved HERE rather than threaded from the
-      // caller so every start site gets it — the relocate, cwd-reconcile, and
-      // eager-restore paths all call ensureSession without a thinking opinion,
-      // and a caller-threaded value would silently omit it on those three. An
-      // explicit opts.thinking still wins for a caller that has one.
-      thinking: opts.thinking ?? resolveSessionThinkingConfig(),
-      claudeCompat: resolveClaudeCompat(),
-      // Desktop preference owns plain desktop conversations. Extension-backed
-      // sessions keep the engine default until their harness selects policy.
-      ...(opts.extensions?.length ? {} : { runRecovery: resolveRunRecoveryConfig() }),
-      // Client tool gate: bench containment policy + bench client tools. Declared
-      // on every session because bench involvement can begin mid-session; policy
-      // resolves the workspace fresh per call. The working directory selects the
-      // ConversationTelemetry variant, which is a per-session declaration.
-      toolGate: toolGateSessionConfig(opts.workingDirectory),
-      clientWorkspaceContext: benchClientWorkspaceContext(opts.workingDirectory) ?? undefined,
-    }
+      thinking: opts.thinking,
+    })
     log('ensure_session: starting', { tab_id: tabId, session_id: config.sessionId ?? 'new', dir: config.workingDirectory, client_ws_ctx: config.clientWorkspaceContext?.kind ?? 'none' })
     const result = await this.bridge.startSession(tabId, config)
     if (!result.ok) {
