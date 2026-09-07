@@ -46,7 +46,7 @@ func executeBash(ctx context.Context, input map[string]any, cwd string) (*types.
 			utils.LogWithFields(utils.LevelInfo, "tools.bash", "bare sleep refused", map[string]any{
 				"sleep_seconds": secs, "threshold_ms": threshold.Milliseconds(), "background": input["run_in_background"] == true, "count": len(command), "cwd": cwd,
 			})
-			return &types.ToolResult{Content: blockingSleepMessage(secs, threshold, input["run_in_background"] == true, GetTool("TaskGet") != nil), IsError: true}, nil
+			return &types.ToolResult{Content: blockingSleepMessage(secs, threshold, input["run_in_background"] == true, TaskToolsAvailable(ctx)), IsError: true}, nil
 		}
 	}
 
@@ -166,6 +166,10 @@ func executeBashBackground(ctx context.Context, command, cwd string, notify bool
 		notify = false
 	}
 
+	// Registration onto the session's outstanding set (when notify is set)
+	// happens inside startBackgroundBashTask, before its completion watcher
+	// goroutine exists — see the comment there for why that ordering is
+	// load-bearing rather than cosmetic.
 	info, err := startBackgroundBashTask(ctx, bg, command, cwd, ExecOptions{
 		Env: bashExecutionEnv(ctx),
 	}, notify)
@@ -173,23 +177,10 @@ func executeBashBackground(ctx context.Context, command, cwd string, notify bool
 		return &types.ToolResult{Content: fmt.Sprintf("Error: %s", err), IsError: true}, nil
 	}
 
-	if notify {
-		if reg := OutstandingRegistrarFromContext(ctx); reg != nil {
-			reg(info.ID, command)
-			utils.LogWithFields(utils.LevelInfo, "tools.bash", "background task added to session outstanding set", map[string]any{
-				"task_id": info.ID, "session_id": owner,
-			})
-		} else {
-			utils.LogWithFields(utils.LevelWarn, "tools.bash", "notify_on_complete task has no outstanding registrar; completion will notify but the session will not hold for it", map[string]any{
-				"task_id": info.ID, "session_id": owner,
-			})
-		}
-	}
-
 	content := fmt.Sprintf("Background task started: %s\nOutput file: %s", info.ID, info.OutputPath)
 	if notify {
 		content += "\nCompletion will be delivered to this session when the command finishes — do not poll for it. You may continue with other useful work or start more background commands. If this task is the only remaining work, end your turn; the engine parks the session and resumes it on completion."
-	} else if GetTool("TaskGet") != nil {
+	} else if TaskToolsAvailable(ctx) {
 		content += "\nUse TaskGet to poll status and recent output, TaskStop to terminate."
 	} else {
 		content += "\nRead the output file to inspect progress."

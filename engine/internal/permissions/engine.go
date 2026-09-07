@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // Engine evaluates permission checks against a policy.
@@ -80,6 +81,21 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 	// return path below routes through e.audit(info, result, checkStart).
 	checkStart := time.Now()
 
+	// Unwrap the engine's own MCP bridge prefix once, here, so every rail below
+	// — the shell rails, isWriteTool, matchTool, and the audit record — speaks
+	// one vocabulary. A delegated-CLI run reaches this function with
+	// "mcp__ion-extensions__Bash" for the same tool an API run calls "Bash";
+	// without this, every name-matching rail below silently stops matching on
+	// that backend and an operator's `Bash` rule quietly covers half their
+	// conversations. See permissions/tool_names.go for why only this engine's
+	// prefix is unwrapped.
+	if normalized := NormalizeToolName(info.Tool); normalized != info.Tool {
+		utils.LogWithFields(utils.LevelDebug, "permissions", "unwrapped engine mcp tool name for policy matching", map[string]any{
+			"wire_tool": info.Tool, "tool": normalized,
+		})
+		info.Tool = normalized
+	}
+
 	// In allow mode, skip all checks -- harness engineer opted out of engine-level enforcement
 	if e.policy.Mode == "allow" {
 		result := &CheckResult{Decision: "allow", Reason: "default allow", Layer: "allow_mode"}
@@ -88,7 +104,7 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 	}
 
 	// Check dangerous patterns for bash tool (deny/ask modes only)
-	if info.Tool == "bash" || info.Tool == "Bash" {
+	if IsBashToolName(info.Tool) {
 		if cmd, ok := info.Input["command"].(string); ok {
 			if dangerous, reason := IsDangerousCommand(cmd); dangerous {
 				result := &CheckResult{
@@ -177,7 +193,7 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 		}
 	case "ask":
 		// Auto-approve safe commands in ask mode
-		if info.Tool == "bash" || info.Tool == "Bash" {
+		if IsBashToolName(info.Tool) {
 			if cmd, ok := info.Input["command"].(string); ok {
 				if IsSafeBashCommand(cmd) {
 					result = &CheckResult{

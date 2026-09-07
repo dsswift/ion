@@ -105,6 +105,7 @@ import { ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER } from './prompt
 import { emitRemoteMessageAdded } from './prompt-pipeline-renderer'
 import { TURN_GROUPING_GUIDANCE } from './turn-grouping-guidance'
 import { ASK_USER_QUESTIONS_GUIDANCE } from './questions/questions-tool-decl'
+import { TOOL_BATCHING_GUIDANCE } from './tool-batching-guidance'
 import { notifyQuestionsPromptDispatched, registerQuestionsPromptSink } from './questions/questions-wiring'
 import { benchClientWorkspaceContext } from './integration/bench-prompt-context'
 
@@ -303,6 +304,7 @@ function handleBashShortcut(p: IncomingPrompt): boolean {
 const SYSTEM_PROMPT_ADDENDA: readonly string[] = [
   TURN_GROUPING_GUIDANCE,
   ASK_USER_QUESTIONS_GUIDANCE,
+  TOOL_BATCHING_GUIDANCE,
 ]
 
 /** Append every missing addendum, in order. Returns the updated text. */

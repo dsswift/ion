@@ -285,7 +285,7 @@ describe('AgentPanel row visual (pill + standardized dot, no suffix)', () => {
       (s) => s.style.background === 'var(--statusComplete)',
     )
     expect(dot).toBeTruthy()
-    expect(dot!.className).not.toContain('animate-pulse-dot')
+    expect(dot!.className).not.toContain('ion-dot-live')
     // The removed running suffix must not appear on the row.
     expect(container.textContent).not.toContain('responding')
     act(() => { root.unmount() })
@@ -313,7 +313,7 @@ describe('AgentPanel row visual (pill + standardized dot, no suffix)', () => {
       (s) => s.style.background === 'var(--statusWaitingChildren)',
     )
     expect(dot).toBeTruthy()
-    expect(dot!.className).toContain('animate-pulse-dot')
+    expect(dot!.className).toContain('ion-dot-live')
     act(() => { root.unmount() })
   })
 
@@ -347,8 +347,8 @@ describe('AgentPanel row visual (pill + standardized dot, no suffix)', () => {
     const yellow = spans.find((s) => s.style.background === 'var(--statusWaitingChildren)')
     expect(green).toBeTruthy()
     expect(yellow).toBeTruthy()
-    expect(yellow!.className).toContain('animate-pulse-dot')
-    expect(green!.className).not.toContain('animate-pulse-dot')
+    expect(yellow!.className).toContain('ion-dot-live')
+    expect(green!.className).not.toContain('ion-dot-live')
 
     // The header must agree with the dots: the tree is not finished.
     expect(spans.some((s) => s.textContent?.includes('1 active'))).toBe(true)

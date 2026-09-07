@@ -150,11 +150,12 @@ export function AgentRow({
             />
           ) : (
             <span
-              className={`rounded-full flex-shrink-0${dotModel.dot.pulse ? " animate-pulse-dot" : ""}`}
+              className={`rounded-full flex-shrink-0${dotModel.dot.pulse ? " ion-dot-live" : ""}`}
               style={{
                 width: 8,
                 height: 8,
                 background: dotModel.dot.bg,
+                color: dotModel.dot.bg,
                 ...(dotModel.dot.glowColor
                   ? { boxShadow: `0 0 6px 2px ${dotModel.dot.glowColor}` }
                   : {}),

@@ -130,10 +130,8 @@ export function GroupPill({
     <>
       <div
         ref={pillRef}
-        className={`group flex items-center gap-1.5 cursor-pointer select-none flex-shrink-0 ion-focusable ${waitingBorder ? 'animate-border-pulse' : ''}`}
+        className="group flex items-center gap-1.5 cursor-pointer select-none flex-shrink-0 ion-focusable"
         style={{
-          '--border-waiting': waitingBorder ?? 'transparent',
-          '--border-default': isActive ? colors.tabActiveBorder : 'transparent',
           // Active group pill keeps the dedicated tabActive treatment;
           // inactive pills answer to the pointer (pressed > hover > base).
           background: isActive
@@ -151,7 +149,7 @@ export function GroupPill({
           fontSize: 12,
           color: isActive ? colors.textPrimary : colors.textTertiary,
           fontWeight: isActive ? 500 : 400,
-        } as React.CSSProperties}
+        }}
         {...pillState.handlers}
         onMouseDown={(e) => {
           // Merge with the pointer-state hook: mark pressed, then run the

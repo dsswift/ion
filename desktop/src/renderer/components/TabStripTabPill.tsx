@@ -176,12 +176,8 @@ export function TabPill({
         {...pillState.handlers}
         className={`group flex items-center gap-1.5 cursor-pointer select-none ion-focusable ${
           isEditing ? '' : 'max-w-[240px]'
-        } ${waitingBorder ? 'animate-border-pulse' : ''}`}
+        }`}
         style={{
-          '--border-waiting': waitingBorder ?? 'transparent',
-          '--border-default': tab.pillColor
-            ? `${tab.pillColor}${isActive ? '40' : '25'}`
-            : isActive ? colors.tabActiveBorder : 'transparent',
           // Background cascade: the active pill keeps its dedicated
           // tabActive/tabActiveBorder treatment; inactive pills answer to the
           // pointer (pressed > hover > transparent). A user pill color keeps
@@ -205,7 +201,7 @@ export function TabPill({
           fontSize: 12,
           color: isActive ? colors.textPrimary : colors.textTertiary,
           fontWeight: isActive ? 500 : 400,
-        } as React.CSSProperties}
+        }}
       >
       <span
         className="flex-shrink-0 inline-flex"

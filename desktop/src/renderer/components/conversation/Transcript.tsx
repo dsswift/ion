@@ -230,12 +230,13 @@ export function Transcript({
                   }}
                 >
                   <span
-                    className="animate-pulse-dot"
+                    className="ion-dot-live"
                     style={{
                       width: 6,
                       height: 6,
                       borderRadius: "50%",
                       background: colors.statusRunning,
+                      color: colors.statusRunning,
                       display: "inline-block",
                       flexShrink: 0,
                     }}

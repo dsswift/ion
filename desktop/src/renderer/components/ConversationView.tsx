@@ -443,10 +443,10 @@ export function ConversationView({ tabId }: ConversationViewProps) {
                 {isRunning ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: colors.textTertiary }}>
                     <span
-                      className="animate-pulse-dot"
+                      className="ion-dot-live"
                       style={{
                         width: 6, height: 6, borderRadius: '50%',
-                        background: colors.statusRunning, display: 'inline-block',
+                        background: colors.statusRunning, color: colors.statusRunning, display: 'inline-block',
                       }}
                     />
                     <span data-testid="conversation-activity-indicator">{orchestratorActivityWithShells}</span>

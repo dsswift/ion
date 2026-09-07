@@ -316,3 +316,36 @@ func TestBashRunInBackground_NoTaskToolsStillReturnsPath(t *testing.T) {
 		t.Errorf("expected file-read hint, got %q", result.Content)
 	}
 }
+
+// TestBashRunInBackground_ContextFlagNamesTaskGet pins the bridged-CLI arm of
+// the same decision. The task tools are harness opt-in in the global registry
+// and MCP-bridged on a delegated-CLI run, so a registry probe answers "no" for
+// a model that can in fact call TaskGet. The context flag is what makes the
+// message tell that model the truth.
+//
+// Revert-check: restore the `GetTool("TaskGet") != nil` probe and this goes red
+// while the sibling test above still passes — the two together pin both arms.
+func TestBashRunInBackground_ContextFlagNamesTaskGet(t *testing.T) {
+	clearBashTasks(t)
+	UnregisterTaskTools()     // the registry says no...
+	defer RegisterTaskTools() // restore TestMain's registration for later tests
+
+	// ...but this context is a bridged CLI run, where they are reachable.
+	ctx := WithTaskToolsAvailable(context.Background())
+	result, err := ExecuteTool(ctx, "Bash", map[string]any{
+		"command":           "echo bridged-check",
+		"run_in_background": true,
+	}, t.TempDir())
+	if err != nil {
+		t.Fatalf("ExecuteTool: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	if !strings.Contains(result.Content, "TaskGet") {
+		t.Errorf("expected the TaskGet hint on a bridged context, got %q", result.Content)
+	}
+	if strings.Contains(result.Content, "Read the output file") {
+		t.Errorf("file-read fallback must not appear when TaskGet is reachable: %q", result.Content)
+	}
+}

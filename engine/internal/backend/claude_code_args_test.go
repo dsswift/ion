@@ -64,19 +64,46 @@ func TestBuildClaudeArgs_PlanModeReadOnly(t *testing.T) {
 	}
 }
 
-// TestBuildClaudeArgs_AutoModeNoDisallow verifies a normal (non-plan) run keeps
-// bypassPermissions with no --disallowedTools and no injected plan prompt.
-func TestBuildClaudeArgs_AutoModeNoDisallow(t *testing.T) {
+// TestBuildClaudeArgs_AutoModeKeepsNativeTools pins that an ordinary run gets
+// its full native tool list. Tool removal is tool-level: stripping background
+// Bash would strip foreground Bash with it, and the CLI's refusal for a removed
+// tool ("Bash is disabled for this session") is terminal-sounding and not ours
+// to reword, so the model reads it as "there is no shell" and stops. The async
+// modes are refused at the PreToolUse hook instead (cli_async_gate.go), which
+// can see the arguments and can word its own refusal.
+//
+// Revert-check: reinstate an always-on --disallowedTools and this goes red.
+func TestBuildClaudeArgs_AutoModeKeepsNativeTools(t *testing.T) {
 	args := buildClaudeArgs(types.RunOptions{Model: "claude-sonnet-4-5"})
 
 	if got := flagValue(args, "--permission-mode"); got != "bypassPermissions" {
 		t.Fatalf("auto mode --permission-mode = %q, want bypassPermissions", got)
 	}
 	if hasFlag(args, "--disallowedTools") {
-		t.Error("auto mode must not pass --disallowedTools")
+		t.Errorf("auto mode passed --disallowedTools %q; removal is reserved for the plan-mode boundary", flagValue(args, "--disallowedTools"))
 	}
 	if strings.Contains(flagValue(args, "--append-system-prompt"), "[PLAN MODE]") {
 		t.Error("auto mode must not inject the plan prompt")
+	}
+}
+
+// TestBuildClaudeArgs_AutoModeAdvertisesAgent pins that the default advisory
+// allowlist names Agent again. It was dropped while Agent was being removed
+// wholesale; the gate now refuses only its background mode, so a foreground
+// dispatch is legitimate and the allowlist must not contradict that.
+func TestBuildClaudeArgs_AutoModeAdvertisesAgent(t *testing.T) {
+	for _, hookPath := range []string{"", "/tmp/ion-settings-test.json"} {
+		args := buildClaudeArgs(types.RunOptions{Model: "claude-sonnet-4-5", HookSettingsPath: hookPath})
+		allowed := flagValue(args, "--allowedTools")
+		found := false
+		for _, name := range strings.Split(allowed, ",") {
+			if name == "Agent" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("--allowedTools %q omits Agent (hookSettingsPath=%q)", allowed, hookPath)
+		}
 	}
 }
 

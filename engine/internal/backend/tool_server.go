@@ -277,6 +277,25 @@ func (ts *ToolServer) HasTool(name string) bool {
 	return ok
 }
 
+// InvokeTool runs a registered tool's handler directly, exactly as an inbound
+// MCP call would. It reports false when no such tool is registered.
+//
+// This is the seam that makes a registration testable end to end. HasTool proves
+// a name is present; only invoking the handler proves what was registered under
+// that name — a wrapper the registration is supposed to apply (a permission
+// guard, a context stamp) is invisible to a presence check, so a regression that
+// dropped it would leave every HasTool assertion green.
+func (ts *ToolServer) InvokeTool(ctx context.Context, name string, input map[string]interface{}) (*types.ToolResult, bool, error) {
+	ts.mu.Lock()
+	entry, ok := ts.tools[name]
+	ts.mu.Unlock()
+	if !ok {
+		return nil, false, nil
+	}
+	res, err := entry.handler(ctx, input)
+	return res, true, err
+}
+
 // mcpBridgeInvocation returns the command and args a delegated CLI runs to reach
 // this ToolServer's Unix socket over stdio. It self-execs the Ion engine binary
 // (os.Executable) as `ion mcp-bridge --socket <path>`, which pumps stdio<->socket

@@ -1,0 +1,5 @@
+{
+  "_comment": "Cross-language pin for the engine's MCP bridge tool-name prefix. Generated and verified by engine/internal/backend TestMcpBridgeParityFixture; read by desktop/src/main/integration/bench-tool-policy.test.ts. Every surface that inspects a tool name must recognise the bridged form, so a rename of backend.McpServerName has to reach all of them at once.",
+  "mcpServerName": "ion-extensions",
+  "engineMcpToolPrefix": "mcp__ion-extensions__"
+}

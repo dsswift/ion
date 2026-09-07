@@ -1,8 +1,9 @@
 /**
  * Tests for `applyHarnessSystemPromptAddenda` — the helper that injects
- * harness-owned system-prompt addenda (currently just
- * `TURN_GROUPING_GUIDANCE`) at the converging dispatch point of the
- * prompt pipeline.
+ * harness-owned system-prompt addenda at the converging dispatch point
+ * of the prompt pipeline. The addenda themselves are an ordered list; the
+ * cases below assert the joined block, per-addendum idempotency, and the
+ * ordering, so adding a fourth addendum fails here until it is declared.
  *
  * What this file covers
  * ─────────────────────
@@ -136,10 +137,15 @@ import { processIncomingPrompt } from '../prompt-pipeline'
 import { _resetAwaitersForTests } from '../command-await'
 import { TURN_GROUPING_GUIDANCE } from '../turn-grouping-guidance'
 import { ASK_USER_QUESTIONS_GUIDANCE } from '../questions/questions-tool-decl'
+import { TOOL_BATCHING_GUIDANCE } from '../tool-batching-guidance'
 
 // The full ordered addendum block the pipeline appends (see
 // SYSTEM_PROMPT_ADDENDA in prompt-pipeline.ts).
-const ALL_ADDENDA = `${TURN_GROUPING_GUIDANCE}\n\n${ASK_USER_QUESTIONS_GUIDANCE}`
+const ALL_ADDENDA = [
+  TURN_GROUPING_GUIDANCE,
+  ASK_USER_QUESTIONS_GUIDANCE,
+  TOOL_BATCHING_GUIDANCE,
+].join('\n\n')
 
 beforeEach(() => {
   mocks.sendCommandMock.mockReset()
@@ -194,9 +200,9 @@ describe('processIncomingPrompt — harness system-prompt addenda (turn-grouping
 
   it('is idempotent — does not double-append when re-invoked on already-guidance-tailed input', async () => {
     // The iOS-engine path bounces through the renderer once. Without the
-    // endsWith() guard, the guidance would appear twice. This simulates the
-    // second invocation directly (guidance already present on RunOptions) and
-    // asserts no duplication.
+    // per-addendum includes() guard, every block would appear twice. This
+    // simulates the second invocation directly (guidance already present on
+    // RunOptions) and asserts no duplication.
     const alreadyTailed = `voice mode\n\n${ALL_ADDENDA}`
     await processIncomingPrompt({
       tabId: 'tab-1',
@@ -216,12 +222,15 @@ describe('processIncomingPrompt — harness system-prompt addenda (turn-grouping
     expect(turnOccurrences).toBe(1)
     const questionsOccurrences = sentAppendSystemPrompt.split(ASK_USER_QUESTIONS_GUIDANCE).length - 1
     expect(questionsOccurrences).toBe(1)
+    const batchingOccurrences = sentAppendSystemPrompt.split(TOOL_BATCHING_GUIDANCE).length - 1
+    expect(batchingOccurrences).toBe(1)
   })
 
   it('per-addendum idempotency: a partially-tailed input gains only the missing addendum', async () => {
     // The old single .endsWith() guard could not protect anything but the
     // LAST block; this pins the ordered-list refactor: input already carrying
-    // the turn-grouping guidance gains ONLY the questions guidance.
+    // the turn-grouping guidance gains only the blocks it is missing, in
+    // declaration order.
     const partiallyTailed = `voice mode\n\n${TURN_GROUPING_GUIDANCE}`
     await processIncomingPrompt({
       tabId: 'tab-1',
@@ -233,7 +242,48 @@ describe('processIncomingPrompt — harness system-prompt addenda (turn-grouping
       runOptions: { prompt: 'hello', projectPath: '/tmp', extensions: ['ext-a'], appendSystemPrompt: partiallyTailed },
     })
     const sent = mocks.submitPromptMock.mock.calls[0][2].appendSystemPrompt
-    expect(sent).toBe(`${partiallyTailed}\n\n${ASK_USER_QUESTIONS_GUIDANCE}`)
+    expect(sent).toBe(`${partiallyTailed}\n\n${ASK_USER_QUESTIONS_GUIDANCE}\n\n${TOOL_BATCHING_GUIDANCE}`)
+  })
+
+  it('sends the tool-batching guidance, telling the model to group independent calls', async () => {
+    // The behaviour this addendum exists to correct: a model with no
+    // instruction on the subject emits one tool call per assistant message,
+    // which on an editing task costs one full-context round trip per edit.
+    // Assert the block is actually dispatched and carries both of its
+    // directives -- batch independent calls, and edit whole regions.
+    await processIncomingPrompt({
+      tabId: 'tab-1',
+      text: 'hello',
+      reqId: 'req-addenda-batching',
+      source: 'desktop',
+      hasExtensions: true,
+      instanceId: 'inst-x',
+      runOptions: { prompt: 'hello', projectPath: '/tmp', extensions: ['ext-a'] },
+    })
+    const sent = mocks.submitPromptMock.mock.calls[0][2].appendSystemPrompt
+    expect(sent).toContain(TOOL_BATCHING_GUIDANCE)
+    expect(TOOL_BATCHING_GUIDANCE).toContain('Independent tool calls belong in one message')
+    expect(TOOL_BATCHING_GUIDANCE).toContain('Edit at the altitude of the change')
+  })
+
+  it('keeps the tool-batching guidance byte-identical across calls so it stays cacheable', async () => {
+    // The addendum sits in the prompt-cache prefix only while it is
+    // byte-identical every turn. A templated or per-turn-varying block would
+    // move it outside the prefix and bill it on every call.
+    const send = async (reqId: string): Promise<string> => {
+      mocks.submitPromptMock.mockClear()
+      await processIncomingPrompt({
+        tabId: 'tab-1',
+        text: 'hello',
+        reqId,
+        source: 'desktop',
+        hasExtensions: true,
+        instanceId: 'inst-x',
+        runOptions: { prompt: 'hello', projectPath: '/tmp', extensions: ['ext-a'] },
+      })
+      return mocks.submitPromptMock.mock.calls[0][2].appendSystemPrompt
+    }
+    expect(await send('req-cache-1')).toBe(await send('req-cache-2'))
   })
 
   it('appends the guidance to runOptions.appendSystemPrompt for desktop CLI prompts', async () => {

@@ -1,4 +1,4 @@
-.PHONY: default desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test test test-all test-linux test-linux-engine test-linux-engine-summary test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-studio-parity check-logging check-swiftlint check-dashboards check-vocabulary generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop log-level-debug
+.PHONY: default desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test test test-all test-linux test-linux-engine test-linux-engine-run test-linux-engine-summary test-linux-desktop test-linux-desktop-run clean check-file-sizes check-contracts check-status-writers check-studio-parity check-logging check-swiftlint check-dashboards check-vocabulary generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop log-level-debug
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -165,8 +165,36 @@ GO_VERSION := $(shell awk '/^toolchain go/ {sub(/^toolchain go/, ""); print; fou
 # Both are pure execution-speed changes — `make test-linux-engine` /
 # `make test-linux-desktop` / `make test-linux` keep their existing names and
 # pass/fail semantics, so no other caller needs to change.
+# Platform selection. The engine gate stays pinned to linux/amd64: CI runs on
+# ubuntu-latest, and Go race detection, memory ordering, and any assembly or
+# cgo path are genuinely architecture-sensitive, so matching CI's arch is part
+# of what that gate buys.
+#
+# The desktop gate is not. Its whole command (see test-linux-desktop-run) is
+# `npm ci --ignore-scripts && eslint && tsc && vitest` — with scripts ignored
+# nothing native is ever built, so it is Node executing JavaScript. What the
+# gate exists to catch is Linux-versus-macOS (path semantics, inotify timing,
+# locale, eager electron requires under --ignore-scripts), and every one of
+# those is a property of the kernel and libc rather than the instruction set.
+# Emulating amd64 for it on an ARM host taxed every instruction to re-verify
+# something the host arch already proves, so the desktop gate runs native.
+#
+# --platform is still passed explicitly rather than left to Docker's default,
+# because DOCKER_DEFAULT_PLATFORM in the environment would otherwise silently
+# put the emulation back.
+HOST_ARCH := $(shell uname -m)
+ifeq ($(filter $(HOST_ARCH),arm64 aarch64),)
+DESKTOP_ARCH := amd64
+else
+DESKTOP_ARCH := arm64
+endif
+ENGINE_PLATFORM := linux/amd64
+DESKTOP_PLATFORM := linux/$(DESKTOP_ARCH)
+
+# The desktop tag carries its arch so a native image can never be confused
+# with an emulated one left behind by an earlier run.
 ENGINE_IMAGE := ion-test-linux-engine:$(GO_VERSION)
-DESKTOP_IMAGE := ion-test-linux-desktop:22
+DESKTOP_IMAGE := ion-test-linux-desktop:22-$(DESKTOP_ARCH)
 
 # Linked-worktree support: a git worktree's .git is a *file* pointing at an
 # absolute host path under the base repo's .git/worktrees/<name>, which lives
@@ -193,12 +221,15 @@ test-linux: test-linux-engine test-linux-desktop
 	@echo "✅ test-linux: engine unit+integration race, desktop lint+typecheck+test green on Linux (CI parity)"
 
 test-linux-engine:
+	@bash scripts/gate-cache.sh check engine $(ENGINE_PLATFORM) || $(MAKE) --no-print-directory test-linux-engine-run
+
+test-linux-engine-run:
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
 	@echo "▶ engine: building prebaked Linux parity image ($(ENGINE_IMAGE))"
-	@docker build --platform linux/amd64 --build-arg GO_VERSION=$(GO_VERSION) \
+	@docker build --platform $(ENGINE_PLATFORM) --build-arg GO_VERSION=$(GO_VERSION) \
 		-t $(ENGINE_IMAGE) -f scripts/docker/test-linux-engine.Dockerfile scripts/docker
 	@echo "▶ engine: go test -race ./... + integration on linux/amd64 ($(ENGINE_IMAGE))"
-	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src $(GIT_WORKTREE_MOUNT) \
+	@docker run --rm --platform $(ENGINE_PLATFORM) -v "$(PWD)":/src $(GIT_WORKTREE_MOUNT) \
 		-v ion-golang-mod-cache:/home/ionci/go -v ion-golang-build-cache:/home/ionci/gocache \
 		-w /src/engine $(ENGINE_IMAGE) \
 		bash -c "chmod -R a+rX /src 2>/dev/null || true && \
@@ -217,6 +248,7 @@ test-linux-engine:
 		                      cd /src/sdk/go && \
 		                      GOPATH=/home/ionci/go GOCACHE=/home/ionci/gocache \
 		                      go test -race ./...'"
+	@bash scripts/gate-cache.sh save engine $(ENGINE_PLATFORM)
 
 # test-linux-engine-summary runs the same suite as test-linux-engine but pipes
 # output through grep so only pass/fail lines reach the terminal. Total output
@@ -226,10 +258,10 @@ test-linux-engine:
 test-linux-engine-summary:
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
 	@echo "▶ engine: building prebaked Linux parity image ($(ENGINE_IMAGE))"
-	@docker build --platform linux/amd64 --build-arg GO_VERSION=$(GO_VERSION) \
+	@docker build --platform $(ENGINE_PLATFORM) --build-arg GO_VERSION=$(GO_VERSION) \
 		-t $(ENGINE_IMAGE) -f scripts/docker/test-linux-engine.Dockerfile scripts/docker
 	@echo "▶ engine: go test -race ./... on linux/amd64 ($(ENGINE_IMAGE)) [summary]"
-	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src $(GIT_WORKTREE_MOUNT) \
+	@docker run --rm --platform $(ENGINE_PLATFORM) -v "$(PWD)":/src $(GIT_WORKTREE_MOUNT) \
 		-v ion-golang-mod-cache:/home/ionci/go -v ion-golang-build-cache:/home/ionci/gocache \
 		-w /src/engine $(ENGINE_IMAGE) \
 		bash -c "chmod -R a+rX /src 2>/dev/null || true && \
@@ -242,11 +274,14 @@ test-linux-engine-summary:
 		                      exit \$${PIPESTATUS[0]}'"
 
 test-linux-desktop:
+	@bash scripts/gate-cache.sh check desktop $(DESKTOP_PLATFORM) || $(MAKE) --no-print-directory test-linux-desktop-run
+
+test-linux-desktop-run:
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
 	@echo "▶ desktop: building prebaked Linux parity image ($(DESKTOP_IMAGE))"
-	@docker build --platform linux/amd64 -t $(DESKTOP_IMAGE) -f scripts/docker/test-linux-desktop.Dockerfile scripts/docker
+	@docker build --platform $(DESKTOP_PLATFORM) -t $(DESKTOP_IMAGE) -f scripts/docker/test-linux-desktop.Dockerfile scripts/docker
 	@echo "▶ desktop: npm ci --ignore-scripts && npm run lint && npm run typecheck && npm test on linux ($(DESKTOP_IMAGE))"
-	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src -v /src/desktop/node_modules $(GIT_WORKTREE_MOUNT) \
+	@docker run --rm --platform $(DESKTOP_PLATFORM) -v "$(PWD)":/src -v /src/desktop/node_modules $(GIT_WORKTREE_MOUNT) \
 		-v ion-npm-cache:/home/ionci/.npm \
 		-w /src/desktop $(DESKTOP_IMAGE) \
 		bash -c "chmod -R a+rX /src 2>/dev/null || true && \
@@ -254,6 +289,7 @@ test-linux-desktop:
 		         git config --global --add safe.directory /src && \
 		         git config --global --add safe.directory \"$(GIT_COMMON_DIR)\" && \
 		         su ionci -c 'cd /src/desktop && npm ci --ignore-scripts && npm run lint && npm run typecheck && npm test'"
+	@bash scripts/gate-cache.sh save desktop $(DESKTOP_PLATFORM)
 
 clean:
 	@cd engine && rm -rf bin/ dist/

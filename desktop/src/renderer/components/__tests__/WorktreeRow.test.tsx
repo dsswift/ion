@@ -228,8 +228,8 @@ describe('WorktreeRow — hover card', () => {
 
     const running = document.querySelector('[data-testid="worktree-conversation-status-a"]')!
     const idle = document.querySelector('[data-testid="worktree-conversation-status-b"]')!
-    expect(running.firstElementChild?.className).toContain('animate-pulse-dot')
-    expect(idle.firstElementChild?.className).not.toContain('animate-pulse-dot')
+    expect(running.firstElementChild?.className).toContain('ion-dot-live')
+    expect(idle.firstElementChild?.className).not.toContain('ion-dot-live')
   })
   it('says so plainly when no conversation is open there', () => {
     render({ entry: entry(), openConversations: [] })
