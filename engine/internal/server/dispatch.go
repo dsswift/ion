@@ -475,6 +475,12 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "remove_model_tier":
 		s.dispatchRemoveModelTier(conn, cmd)
 
+	case "get_default_provider":
+		s.dispatchGetDefaultProvider(conn, cmd)
+
+	case "set_default_provider":
+		s.dispatchSetDefaultProvider(conn, cmd)
+
 	case "get_host_info":
 		s.sendResult(conn, cmd, nil, computeHostInfo())
 

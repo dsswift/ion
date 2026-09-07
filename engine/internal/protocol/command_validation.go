@@ -149,6 +149,12 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "text")
 	case "set_model_tier":
 		return hasNonEmptyString(raw, "text") && hasNonEmptyString(raw, "model") && (!hasField(raw, "fallbacks") || hasArray(raw, "fallbacks"))
+	case "get_default_provider":
+		return true
+	case "set_default_provider":
+		// `text` must be present but may be empty: an empty string is the
+		// explicit "clear the preference" instruction, not a malformed command.
+		return hasString(raw, "text")
 	case "store_credential":
 		return hasNonEmptyString(raw, "provider") && hasString(raw, "credential")
 	case "provider_login", "provider_login_cancel", "provider_logout":

@@ -490,8 +490,14 @@ var validCommands = map[string]bool{
 	"list_model_tiers":   true,
 	"set_model_tier":     true,
 	"remove_model_tier":  true,
-	"store_credential":   true,
-	"refresh_models":     true,
+	// get_default_provider / set_default_provider: the operator's preferred
+	// provider for resolving a BARE model name. A provider-qualified model
+	// ("provider/model") is never affected. set_default_provider carries the
+	// provider ID in `text`; an empty string clears the preference.
+	"get_default_provider": true,
+	"set_default_provider": true,
+	"store_credential":     true,
+	"refresh_models":       true,
 	// provider_login / provider_login_cancel / provider_logout: delegated-CLI
 	// (codex/claude-code/grok/cursor) interactive auth lifecycle. The engine
 	// drives the CLI login/logout and broadcasts engine_provider_login stage

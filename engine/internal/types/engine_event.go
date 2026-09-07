@@ -451,6 +451,12 @@ type EngineEvent struct {
 	// fallback models, including an empty list for a tier without fallbacks.
 	ModelTiers []ModelTierEntry `json:"modelTiers,omitempty"`
 
+	// engine_default_provider — the operator's preferred provider for resolving
+	// a BARE model name. A pointer so "" (preference explicitly cleared) is
+	// distinguishable from absent (this event carries no such field). Consumers
+	// replace their local value with this payload. Nil on every other event.
+	DefaultProvider *string `json:"defaultProvider,omitempty"`
+
 	// engine_command_registry — complete snapshot of slash commands exposed by
 	// the session's currently-loaded extensions. Emitted at session_start (after
 	// extensions wire up) and on every subsequent change to the command map

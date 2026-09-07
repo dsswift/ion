@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -102,5 +103,49 @@ func TestResolveModelTier_CallerProvidedChainNotOverwritten(t *testing.T) {
 
 	if len(opts.FallbackChain) != 1 || opts.FallbackChain[0] != "gpt-5.2" {
 		t.Errorf("caller chain stomped: %v", opts.FallbackChain)
+	}
+}
+
+// TestResolveModelTier_AppliesDefaultProvider: the central model seam biases a
+// bare resolved model onto the operator's configured default provider, so a
+// tier written with a bare name bills through the selected gateway.
+func TestResolveModelTier_AppliesDefaultProvider(t *testing.T) {
+	dir := t.TempDir()
+	ionDir := filepath.Join(dir, ".ion")
+	if err := os.MkdirAll(ionDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", dir)
+
+	cfg := map[string]any{
+		"defaultProvider": "seam-defprov",
+		"tiers":           map[string]any{"standard": "seam-bare-model"},
+	}
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ionDir, "models.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	providers.RegisterModel("seam-bare-model", types.ModelInfo{ProviderID: "anthropic"})
+	providers.RegisterModel("seam-defprov/seam-bare-model", types.ModelInfo{ProviderID: "seam-defprov"})
+	t.Cleanup(func() {
+		providers.UnregisterModel("seam-bare-model")
+		providers.UnregisterModel("seam-defprov/seam-bare-model")
+	})
+
+	opts := &types.RunOptions{Model: "standard"}
+	resolveModelTier(opts)
+	if opts.Model != "seam-defprov/seam-bare-model" {
+		t.Fatalf("Model = %q, want seam-defprov/seam-bare-model", opts.Model)
+	}
+
+	// An explicitly qualified model is never rerouted.
+	explicit := &types.RunOptions{Model: "anthropic/seam-explicit"}
+	resolveModelTier(explicit)
+	if explicit.Model != "anthropic/seam-explicit" {
+		t.Fatalf("qualified Model = %q, want anthropic/seam-explicit", explicit.Model)
 	}
 }
