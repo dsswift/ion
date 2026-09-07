@@ -334,6 +334,9 @@ func (m *Manager) applyConfigDefaults(opts *types.RunOptions) {
 	}
 	if opts.Model == "" {
 		opts.Model = m.config.DefaultModel
+		utils.LogWithFields(utils.LevelInfo, "session", "no model specified for run, applied engine.json defaultModel", map[string]any{
+			"default_model": m.config.DefaultModel,
+		})
 	}
 	if opts.MaxTurns <= 0 && m.config.Limits.MaxTurns != nil {
 		opts.MaxTurns = *m.config.Limits.MaxTurns
