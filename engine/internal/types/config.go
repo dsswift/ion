@@ -111,12 +111,15 @@ type EnterpriseConfig struct {
 	// PluginForceInstalled lists plugin sources the engine must install on boot.
 	// Merged with the user-layer forceInstalled list. Enterprise-declared plugins
 	// bypass user allowlist checks — the enterprise controls what it mandates.
-	PluginForceInstalled []string                 `json:"pluginForceInstalled,omitempty"`
-	ToolRestrictions     *ToolRestrictions        `json:"toolRestrictions,omitempty"`
-	Permissions          *PermissionPolicy        `json:"permissions,omitempty"`
-	Telemetry            *TelemetryConfig         `json:"telemetry,omitempty"`
-	Network              *NetworkConfig           `json:"network,omitempty"`
-	Sandbox              *SandboxEnterpriseConfig `json:"sandbox,omitempty"`
+	PluginForceInstalled []string          `json:"pluginForceInstalled,omitempty"`
+	ToolRestrictions     *ToolRestrictions `json:"toolRestrictions,omitempty"`
+	Permissions          *PermissionPolicy `json:"permissions,omitempty"`
+	Telemetry            *TelemetryConfig  `json:"telemetry,omitempty"`
+	// ConversationEvents seals the standalone conversation.* telemetry family
+	// on, independent of Telemetry's own seal (see EnforceEnterprise).
+	ConversationEvents *ConversationEventsConfig `json:"conversationEvents,omitempty"`
+	Network            *NetworkConfig            `json:"network,omitempty"`
+	Sandbox            *SandboxEnterpriseConfig  `json:"sandbox,omitempty"`
 	// NewConversationDefaults sets organisation-wide defaults for new-conversation
 	// working directory and engine profile. When nil, clients use the per-user
 	// defaultBaseDirectory and defaultEngineProfileId preferences. Overlay
@@ -160,8 +163,16 @@ type EnterpriseConfig struct {
 	// ceiling, not a mandate, matching the sealed-ceiling pattern used by
 	// ResourceLimits and the plan-mode Bash allowlist. Nil means no enterprise
 	// thinking policy; the merged user/project value stands.
-	Thinking     *ThinkingPolicyConfig `json:"thinking,omitempty"`
-	CustomFields map[string]any        `json:"customFields,omitempty"`
+	Thinking *ThinkingPolicyConfig `json:"thinking,omitempty"`
+	// DisableTelemetryHealthNotifications suppresses the desktop's operator
+	// notifications for engine_telemetry_health observations (issue #379).
+	// The desktop still logs every observation regardless of this flag — an
+	// operator's audit trail of degraded/recovered telemetry targets is
+	// unaffected. This only controls whether a Notification interrupts them.
+	// Read per-event by the desktop consumer rather than captured once, so a
+	// policy change takes effect immediately.
+	DisableTelemetryHealthNotifications bool           `json:"disableTelemetryHealthNotifications,omitempty"`
+	CustomFields                        map[string]any `json:"customFields,omitempty"`
 }
 
 // EnterpriseLimits holds enterprise-sealed ceilings that mirror `limits` keys
@@ -290,13 +301,16 @@ type EngineRuntimeConfig struct {
 	Auth                    *AuthConfig                    `json:"auth,omitempty"`
 	Network                 *NetworkConfig                 `json:"network,omitempty"`
 	Telemetry               *TelemetryConfig               `json:"telemetry,omitempty"`
-	Compaction              *CompactionConfig              `json:"compaction,omitempty"`
-	Security                *SecurityConfig                `json:"security,omitempty"`
-	Enterprise              *EnterpriseConfig              `json:"enterprise,omitempty"`
-	FeatureFlags            *FeatureFlagsConfig            `json:"featureFlags,omitempty"`
-	Relay                   *RelayConfig                   `json:"relay,omitempty"`
-	Timeouts                *TimeoutsConfig                `json:"timeouts,omitempty"`
-	WebSearch               *WebSearchConfig               `json:"webSearch,omitempty"`
+	// ConversationEvents is a sibling of Telemetry, not nested under it — see
+	// ConversationEventsConfig's doc comment for why (issue #378).
+	ConversationEvents *ConversationEventsConfig `json:"conversationEvents,omitempty"`
+	Compaction         *CompactionConfig         `json:"compaction,omitempty"`
+	Security           *SecurityConfig           `json:"security,omitempty"`
+	Enterprise         *EnterpriseConfig         `json:"enterprise,omitempty"`
+	FeatureFlags       *FeatureFlagsConfig       `json:"featureFlags,omitempty"`
+	Relay              *RelayConfig              `json:"relay,omitempty"`
+	Timeouts           *TimeoutsConfig           `json:"timeouts,omitempty"`
+	WebSearch          *WebSearchConfig          `json:"webSearch,omitempty"`
 	// Shell controls how the Bash tool selects the shell used to execute
 	// commands. Pointer so engine.json can fully omit the block and inherit
 	// the default (non-login bash -c). When Shell.UseLoginShell is true, the
@@ -1134,6 +1148,176 @@ type TelemetryConfig struct {
 	// downstream and wants the local file kept whole sets this; nothing else
 	// in the engine trims it afterwards.
 	DisableRotation bool `json:"disableRotation,omitempty"`
+
+	// HttpRetryQueueMaxMB optionally caps the on-disk retry queue the "http"
+	// target falls back to when a POST fails (see telemetry_retry_queue.go).
+	//
+	// Zero — the default — means UNBOUNDED. This carries an audit stream, and
+	// a dropped batch is a hole in the record exactly when the downstream was
+	// unreachable. A positive value opts into a hard cap: entries beyond it
+	// are dropped oldest-first and every drop logs a WARN with the count, so
+	// the loss is visible, but it is loss. Prefer watching the backlog signal
+	// (RetryQueueSoftWarnMB) over capping.
+	HttpRetryQueueMaxMB int `json:"httpRetryQueueMaxMB,omitempty"`
+
+	// RetryQueueSoftWarnMB is the advisory backlog threshold shared by every
+	// target's retry queue. It never drops anything; crossing fractions of it
+	// escalates the telemetry-health signal so a growing queue is visible
+	// long before a disk fills. Zero means the compiled default (500 MB).
+	RetryQueueSoftWarnMB int `json:"retryQueueSoftWarnMB,omitempty"`
+
+	// EventHubConnectionString is the Azure Event Hubs connection string for
+	// the "eventhub" target (issue #378). Supports
+	// "UseDevelopmentEmulator=true" for local testing against the Event Hubs
+	// Docker emulator. There is no sensible zero-value default — an operator
+	// enabling the "eventhub" target must set this explicitly.
+	EventHubConnectionString string `json:"eventHubConnectionString,omitempty"`
+
+	// EventHubName is the target Event Hub name. Required when
+	// EventHubConnectionString does not itself carry an EntityPath.
+	EventHubName string `json:"eventHubName,omitempty"`
+
+	// EventHubNamespace selects secretless authentication: the fully
+	// qualified namespace host (e.g. "orion-events.servicebus.windows.net")
+	// reached with a token minted by the engine's configured identity,
+	// instead of a connection string.
+	//
+	// This exists because a connection string is a shared secret, and a
+	// fleet deployment puts the same one on every managed device: any holder
+	// can write to the hub, revoking one means rotating all of them, and
+	// nothing distinguishes senders. A token-authenticated namespace ships
+	// no secret at all — the device authenticates as whoever (or whatever)
+	// the engine's identity provider says it is, and authorization is an
+	// RBAC role assignment that can be revoked for one principal without
+	// touching the rest.
+	//
+	// The identity used is the engine's existing one (auth.identityProvider):
+	// a signed-in user on a desktop install, or a machine identity
+	// (azure_managed_identity / federated_assertion) on a headless one. Both
+	// resolve through the same token provider, so this field needs no
+	// per-deployment variation.
+	EventHubNamespace string `json:"eventHubNamespace,omitempty"`
+
+	// EventHubTokenScope is the OAuth scope requested for the Event Hub
+	// token. Defaults to DefaultEventHubTokenScope.
+	//
+	// This is NOT the same scope as a custom API the operator may already
+	// authenticate against (Logging.EgressTokenScope, say): Event Hubs is a
+	// distinct resource and rejects a token audienced to anything else. The
+	// app registration therefore needs delegated permission to the Event
+	// Hubs API in addition to whatever its own API requires.
+	EventHubTokenScope string `json:"eventHubTokenScope,omitempty"`
+
+	// EventHubTokenAudience is an explicit audience for identity providers
+	// that bind grants to one rather than encoding the resource in the scope
+	// string. Empty uses the provider's default.
+	EventHubTokenAudience string `json:"eventHubTokenAudience,omitempty"`
+
+	// EventHubRetryQueueMaxMB optionally caps the on-disk retry queue the
+	// "eventhub" target falls back to when a send fails, mirroring
+	// HttpRetryQueueMaxMB. Zero — the default — means unbounded.
+	EventHubRetryQueueMaxMB int `json:"eventHubRetryQueueMaxMB,omitempty"`
+
+	// RetryQueueStuckAfterMinutes is how long the oldest undelivered batch
+	// may wait before the target is reported stuck in the telemetry-health
+	// signal — at any backlog size. Size-based escalation alone once let a
+	// small, permanently undeliverable batch fail for hours in silence.
+	// Zero means the compiled default (15 minutes).
+	RetryQueueStuckAfterMinutes int `json:"retryQueueStuckAfterMinutes,omitempty"`
+
+	// EventHubMaxMessageBytes overrides the per-message size the "eventhub"
+	// target fits events to. Zero — the default — negotiates the limit from
+	// the AMQP link, which is always preferred; set this only to enforce a
+	// smaller limit than the service allows, or as the fallback when the
+	// link cannot be negotiated at all.
+	EventHubMaxMessageBytes int `json:"eventHubMaxMessageBytes,omitempty"`
+
+	// OversizeEventPolicy is what the "eventhub" target does with an event
+	// larger than the transport's maximum message size:
+	//
+	//   "segment" (default) — split the payload's largest string field
+	//   across parts that share the event_id and carry a "segment" block,
+	//   so nothing is lost and a consumer reassembles.
+	//   "quarantine" — write the event whole to a quarantine file beside
+	//   the retry queue and never send it.
+	//
+	// An event that cannot be delivered under either policy is quarantined
+	// rather than retried, and every quarantine is reported through the
+	// telemetry-health signal. See docs/enterprise/telemetry.md.
+	OversizeEventPolicy string `json:"oversizeEventPolicy,omitempty"`
+}
+
+// ConversationEventsConfig controls the standalone conversation.* telemetry
+// family (conversation.user_message, conversation.assistant_message,
+// conversation.tool_call, conversation.lifecycle — issue #378). It is a
+// sibling of TelemetryConfig on EngineRuntimeConfig, NOT nested under it: an
+// operator can enable conversation events while general telemetry.enabled
+// stays false (and vice versa), routing each family to a fully independent
+// destination (e.g. general telemetry -> Application Insights via OTLP,
+// conversation events -> a separate Event Hub). Every field mirrors its
+// TelemetryConfig equivalent field-for-field so the two configs read as
+// siblings, not near-duplicates with drifted names — but no value is ever
+// inherited from TelemetryConfig; each field is independently defaulted (see
+// normalizeConversationEventsConfig in internal/telemetry).
+//
+// This family carries no PrivacyLevel field: conversation.* is metadata-only
+// unconditionally (never message text, tool input values, or tool output
+// values), so there is nothing for a privacy level to gate.
+type ConversationEventsConfig struct {
+	Enabled         bool              `json:"enabled"`
+	Targets         []string          `json:"targets,omitempty"`
+	HttpEndpoint    string            `json:"httpEndpoint,omitempty"`
+	HttpHeaders     map[string]string `json:"httpHeaders,omitempty"`
+	FilePath        string            `json:"filePath,omitempty"`
+	BatchSize       int               `json:"batchSize,omitempty"`
+	FlushIntervalMs int64             `json:"flushIntervalMs,omitempty"`
+	Otel            *OtelConfig       `json:"otel,omitempty"`
+
+	// MaxSizeMB is the size cap on the "file" target before rename-rotate
+	// rotation, mirroring TelemetryConfig.MaxSizeMB. Zero means use the
+	// compiled default (20 MB).
+	MaxSizeMB int `json:"maxSizeMB,omitempty"`
+
+	// MaxFiles is the number of rotated archives retained alongside the live
+	// conversation-events file, mirroring TelemetryConfig.MaxFiles. Zero means
+	// use the compiled default (3).
+	MaxFiles int `json:"maxFiles,omitempty"`
+
+	// HttpRetryQueueMaxMB mirrors TelemetryConfig.HttpRetryQueueMaxMB for the
+	// conversation-events collector's own "http" target. Zero means use the
+	// compiled default (20 MB).
+	HttpRetryQueueMaxMB int `json:"httpRetryQueueMaxMB,omitempty"`
+
+	// EventHubConnectionString and EventHubName mirror TelemetryConfig's
+	// "eventhub" target fields for this fully independent config block — see
+	// TelemetryConfig.EventHubConnectionString.
+	EventHubConnectionString string `json:"eventHubConnectionString,omitempty"`
+	EventHubName             string `json:"eventHubName,omitempty"`
+
+	// EventHubNamespace, EventHubTokenScope, and EventHubTokenAudience
+	// mirror TelemetryConfig's secretless token-authentication fields — see
+	// TelemetryConfig.EventHubNamespace for why a fleet deployment should
+	// prefer them over a shared connection string.
+	EventHubNamespace     string `json:"eventHubNamespace,omitempty"`
+	EventHubTokenScope    string `json:"eventHubTokenScope,omitempty"`
+	EventHubTokenAudience string `json:"eventHubTokenAudience,omitempty"`
+
+	// EventHubRetryQueueMaxMB mirrors TelemetryConfig.EventHubRetryQueueMaxMB.
+	// Zero means unbounded; see TelemetryConfig.HttpRetryQueueMaxMB.
+	EventHubRetryQueueMaxMB int `json:"eventHubRetryQueueMaxMB,omitempty"`
+
+	// RetryQueueSoftWarnMB mirrors TelemetryConfig.RetryQueueSoftWarnMB.
+	// Zero means the compiled default (500 MB).
+	RetryQueueSoftWarnMB int `json:"retryQueueSoftWarnMB,omitempty"`
+
+	// RetryQueueStuckAfterMinutes, EventHubMaxMessageBytes, and
+	// OversizeEventPolicy mirror the TelemetryConfig fields of the same
+	// names — see there for semantics. They matter most on this block: the
+	// conversation.* family carries unbounded tool output, so it is the
+	// stream whose events actually meet the transport's size limit.
+	RetryQueueStuckAfterMinutes int    `json:"retryQueueStuckAfterMinutes,omitempty"`
+	EventHubMaxMessageBytes     int    `json:"eventHubMaxMessageBytes,omitempty"`
+	OversizeEventPolicy         string `json:"oversizeEventPolicy,omitempty"`
 }
 
 // TelemetryEvent is a structured telemetry span or point event.
