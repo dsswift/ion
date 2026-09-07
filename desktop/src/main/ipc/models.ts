@@ -3,6 +3,11 @@ import { IPC } from '../../shared/types'
 import { log as _log, debug as _debug } from '../logger'
 import { engineBridge, modelCache, enterprisePolicyCache } from '../state'
 import { broadcast } from '../broadcast'
+// The default-provider RPCs are called on the provider module directly rather
+// than through a thin EngineBridge method pair: engine-bridge.ts sits exactly
+// at the 600-line cap, and the repo rule is to extract new code to a sibling
+// module rather than grow a file that is already at its limit.
+import { getDefaultProvider, setDefaultProvider } from '../engine-bridge-providers'
 import { getModelDisplayLabel, getProviderDisplayName } from '../../shared/types-models'
 import type { ModelEntry, ProviderEntry } from '../../shared/types-models'
 import type { ModelTier } from '../../shared/types-model-tiers'
@@ -101,6 +106,11 @@ function isModelTier(value: unknown): value is ModelTier {
     && Array.isArray(tier.fallbacks) && tier.fallbacks.every((fallback) => typeof fallback === 'string')
 }
 
+function isDefaultProviderPayload(value: unknown): value is { provider: string } {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+    && typeof (value as Record<string, unknown>).provider === 'string'
+}
+
 function isTierNamePayload(value: unknown): value is { name: string } {
   return !!value && typeof value === 'object' && !Array.isArray(value)
     && typeof (value as Record<string, unknown>).name === 'string'
@@ -139,6 +149,31 @@ export function registerModelsIpc(): void {
     debug('IPC REMOVE_MODEL_TIER', { tier: name })
     const result = await engineBridge.removeModelTier(name)
     if (!result.ok) log('model_tiers: remove failed', { tier: name, error: result.error ?? 'unknown' })
+    return result
+  })
+
+  ipcMain.handle(IPC.GET_DEFAULT_PROVIDER, async () => {
+    debug('IPC GET_DEFAULT_PROVIDER')
+    try {
+      const provider = await getDefaultProvider(engineBridge)
+      debug('default_provider: snapshot read', { provider, configured: provider !== '' })
+      return provider
+    } catch (err) {
+      log('default_provider: read failed', { error: (err as Error).message })
+      throw err
+    }
+  })
+
+  ipcMain.handle(IPC.SET_DEFAULT_PROVIDER, async (_e, payload: unknown) => {
+    if (!isDefaultProviderPayload(payload)) {
+      log('default_provider: set rejected malformed payload')
+      return { ok: false, error: 'set_default_provider requires a provider string' }
+    }
+    const { provider } = payload
+    debug('IPC SET_DEFAULT_PROVIDER', { provider, cleared: provider === '' })
+    const result = await setDefaultProvider(engineBridge, provider)
+    if (!result.ok) log('default_provider: set failed', { provider, error: result.error ?? 'unknown' })
+    else log('default_provider: set', { provider, cleared: provider === '' })
     return result
   })
 
@@ -187,10 +222,18 @@ export function registerModelsIpc(): void {
     return result
   })
 
-  engineBridge.on('event', (_key: string, event: { type?: string; modelTiers?: ModelTier[] }) => {
-    if (event.type !== 'engine_model_tiers') return
-    log('model_tiers: snapshot received', { count: event.modelTiers?.length ?? 0 })
-    broadcast(IPC.MODEL_TIERS_UPDATED)
+  engineBridge.on('event', (_key: string, event: { type?: string; modelTiers?: ModelTier[]; defaultProvider?: string }) => {
+    if (event.type === 'engine_model_tiers') {
+      log('model_tiers: snapshot received', { count: event.modelTiers?.length ?? 0 })
+      broadcast(IPC.MODEL_TIERS_UPDATED)
+      return
+    }
+    if (event.type === 'engine_default_provider') {
+      // Complete snapshot. The renderer re-reads through the IPC channel
+      // rather than trusting a pushed payload, matching the tiers pattern.
+      log('default_provider: snapshot received', { provider: event.defaultProvider ?? '' })
+      broadcast(IPC.DEFAULT_PROVIDER_UPDATED)
+    }
   })
 
   // Auto-fetch models when engine reconnects

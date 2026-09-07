@@ -257,6 +257,16 @@ export interface IonEngineApi {
   setModelTier(tier: ModelTier): Promise<{ ok: boolean; error?: string }>;
   removeModelTier(name: string): Promise<{ ok: boolean; error?: string }>;
   onModelTiersUpdated(callback: () => void): () => void;
+  /**
+   * The operator's preferred provider for resolving a BARE model name in a
+   * tier. Empty string means no preference is configured.
+   */
+  getDefaultProvider(): Promise<string>;
+  /** Persist the default provider; an empty string clears the preference. */
+  setDefaultProvider(
+    provider: string,
+  ): Promise<{ ok: boolean; error?: string }>;
+  onDefaultProviderUpdated(callback: () => void): () => void;
   storeCredential(
     provider: string,
     credential: string,

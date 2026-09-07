@@ -430,6 +430,9 @@ export const IPC = {
   SET_MODEL_TIER: "ion:set-model-tier",
   REMOVE_MODEL_TIER: "ion:remove-model-tier",
   MODEL_TIERS_UPDATED: "ion:model-tiers-updated",
+  GET_DEFAULT_PROVIDER: "ion:get-default-provider",
+  SET_DEFAULT_PROVIDER: "ion:set-default-provider",
+  DEFAULT_PROVIDER_UPDATED: "ion:default-provider-updated",
   STORE_CREDENTIAL: "ion:store-credential",
   REFRESH_MODELS: "ion:refresh-models",
 

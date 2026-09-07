@@ -529,6 +529,16 @@ export type EngineEvent =
       type: "engine_model_tiers";
       modelTiers: import("./types-model-tiers").ModelTier[];
     }
+  // engine_default_provider is a complete snapshot of the operator's preferred
+  // provider for resolving a BARE (unqualified) model name in a tier. An
+  // explicitly qualified model ("provider/model") is never affected by it.
+  // Go models the field as *string with omitempty, so an empty string means
+  // "preference explicitly cleared" and undefined means the event carried no
+  // such field. Consumers replace, never merge.
+  | {
+      type: "engine_default_provider";
+      defaultProvider?: string;
+    }
   // engine_capability_unsupported — workflow signal emitted when a requested
   // feature (e.g. plan mode) is not supported by the backend that would serve
   // the run; the engine declined the prompt cleanly instead of dispatching a

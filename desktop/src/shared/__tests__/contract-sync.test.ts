@@ -206,6 +206,18 @@ describe("Contract sync: EngineEvent dispatch fields", () => {
     ).toBe(true);
   });
 
+  it("the engine_default_provider field is present in the Go EngineEvent manifest", () => {
+    // engine_default_provider carries the operator's preferred provider for
+    // resolving a bare model name (mirrored in types-engine-event.ts and read
+    // by the AI Models settings control). Its absence means the engine stopped
+    // publishing the preference, leaving the control unable to seed or refresh.
+    const goFields = new Set(manifest.engineEvent);
+    expect(
+      goFields.has("defaultProvider"),
+      "Go EngineEvent is missing the defaultProvider field",
+    ).toBe(true);
+  });
+
   it("the engine_dispatch_lost payload field is present in the Go EngineEvent manifest", () => {
     // engine_dispatch_lost carries a nested DispatchLostPayload under the
     // `dispatchLost` key (mirrored in types-engine-event.ts). Its absence

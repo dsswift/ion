@@ -58,6 +58,9 @@ export type EngineIpcApi = Pick<
   | "setModelTier"
   | "removeModelTier"
   | "onModelTiersUpdated"
+  | "getDefaultProvider"
+  | "setDefaultProvider"
+  | "onDefaultProviderUpdated"
   | "storeCredential"
   | "refreshModels"
   | "providerLogin"
@@ -158,6 +161,14 @@ export const engineApi: EngineIpcApi = {
   onModelTiersUpdated: (callback) => {
     ipcRenderer.on(IPC.MODEL_TIERS_UPDATED, callback);
     return () => ipcRenderer.removeListener(IPC.MODEL_TIERS_UPDATED, callback);
+  },
+  getDefaultProvider: () => ipcRenderer.invoke(IPC.GET_DEFAULT_PROVIDER),
+  setDefaultProvider: (provider) =>
+    ipcRenderer.invoke(IPC.SET_DEFAULT_PROVIDER, { provider }),
+  onDefaultProviderUpdated: (callback) => {
+    ipcRenderer.on(IPC.DEFAULT_PROVIDER_UPDATED, callback);
+    return () =>
+      ipcRenderer.removeListener(IPC.DEFAULT_PROVIDER_UPDATED, callback);
   },
   storeCredential: (provider, credential) =>
     ipcRenderer.invoke(IPC.STORE_CREDENTIAL, { provider, credential }),

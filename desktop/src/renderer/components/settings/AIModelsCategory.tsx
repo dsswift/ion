@@ -8,6 +8,7 @@ import { EngineCategory } from './EngineCategory'
 import { ProvidersCategory } from './ProvidersCategory'
 import { BashAllowlistEditor } from './BashAllowlistEditor'
 import { ModelTiersSection } from './ModelTiersSection'
+import { DefaultProviderSection } from './DefaultProviderSection'
 import { useAllowedModels } from '../../stores/use-allowed-models'
 import { useModelStore } from '../../stores/model-store'
 import { getProviderDisplayName } from '../../../shared/types-models'
@@ -197,6 +198,8 @@ export function AIModelsCategory() {
       </SettingSection>
 
       <ModelTiersSection />
+
+      <DefaultProviderSection />
 
       <SettingHeading>Extended Thinking</SettingHeading>
 
