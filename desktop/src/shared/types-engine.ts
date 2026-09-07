@@ -188,6 +188,15 @@ export interface EngineConfig {
    */
   toolGate?: ToolGateConfig
   clientWorkspaceContext?: ClientWorkspaceContext
+  /**
+   * Client-supplied application context stamped onto every conversation.*
+   * telemetry event this session emits, under the event's `app_context`
+   * context key. The engine assigns no meaning to the keys — the desktop
+   * populates the surface identity a human would recognize (which tab, which
+   * conversation instance within it). Omitted entirely when the desktop has
+   * no surface identity to report, so events keep their prior shape.
+   */
+  appContext?: Record<string, string>
   runRecovery?: RunRecoveryConfig
 }
 
