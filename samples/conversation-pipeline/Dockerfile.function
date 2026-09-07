@@ -1,0 +1,12 @@
+# The ingest function, packaged the way it would be deployed: the official
+# Functions host image with the built app at the script root. The image is
+# amd64-only upstream; on Apple silicon Docker runs it under emulation,
+# which is slow to start and fine to run.
+FROM --platform=linux/amd64 mcr.microsoft.com/azure-functions/node:4-node20
+ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
+    AzureFunctionsJobHost__Logging__Console__IsEnabled=true
+WORKDIR /home/site/wwwroot
+COPY function/package.json function/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY function/ ./
+RUN npm run build && npm prune --omit=dev

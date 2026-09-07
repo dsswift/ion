@@ -1,0 +1,20 @@
+{
+  "name": "ion-conversation-ingest",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Event Hub triggered Azure Function that writes Ion conversation events into the Cosmos DB hot store, one document per delivered message.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "func start"
+  },
+  "dependencies": {
+    "@azure/cosmos": "^4.5.0",
+    "@azure/functions": "^4.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "typescript": "^5.7.0"
+  }
+}
