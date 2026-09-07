@@ -11,6 +11,10 @@ version: 4
 # this var to their own home directory path.
 vars:
   ion_logs_dir: /Users/josh/.ion
+  # Accepts the Microsoft Software License Terms for the Event Hubs emulator
+  # image (https://github.com/Azure/azure-event-hubs-emulator-installer/blob/main/EMULATOR_EULA.md).
+  # This is the operator's own opt-in local dev profile, never deployed.
+  accept_eula: "Y"
 
 # =============================================================================
 # SERVICES
@@ -135,6 +139,142 @@ services:
       volumes:
         - tempo-data:/var/tempo
 
+  # Local Event Hub emulator — lets conversationEvents.targets: ["eventhub"]
+  # be exercised end to end without a real Azure subscription. Speaks AMQP
+  # only (no HTTPS ingest), which is why the engine's eventhub target uses
+  # the azeventhubs SDK rather than the http target. Needs the azurite
+  # sidecar below for its metadata/blob storage. See
+  # docs/observability/eventhub-emulator.md for the connection string and
+  # conversationEvents config block that points the engine at this.
+  eventhub-emulator:
+    tier: docker
+    compose:
+      image: mcr.microsoft.com/azure-messaging/eventhubs-emulator:latest
+      ports:
+        - "5672:5672" # AMQP
+        - "9092:9092" # Kafka-compatible (unused, part of the image's default exposure)
+        - "5300:5300" # health check
+      volumes:
+        - ./docs/observability/eventhub-emulator-config.json:/Eventhubs_Emulator/ConfigFiles/Config.json:ro
+      environment:
+        - BLOB_SERVER=azurite
+        - METADATA_SERVER=azurite
+        - ACCEPT_EULA=${var.accept_eula}
+      depends_on:
+        - azurite
+
+  # Storage backend the Event Hubs emulator requires for metadata/blob state.
+  azurite:
+    tier: docker
+    compose:
+      image: mcr.microsoft.com/azure-storage/azurite:latest
+      ports:
+        - "10000:10000"
+        - "10001:10001"
+        - "10002:10002"
+
+  # ---------------------------------------------------------------------------
+  # Conversation pipeline sample (samples/conversation-pipeline) — profile
+  # `pipeline`. A self-contained consumer of the conversation.* stream: its
+  # own Event Hubs emulator (port 5673, so it runs beside the observability
+  # emulator on 5672) with `capture` and `ingest` consumer groups, Azurite,
+  # the Cosmos DB emulator, a capture writer standing in for Event Hubs
+  # Capture, and an Event Hub-triggered Azure Function writing the Cosmos
+  # hot index. The Go commands (seed, transcript, fold) run on the host via
+  # `make demo <verb>` and talk to the published ports. See the sample's
+  # README.md for the runbook and the Azure mapping.
+  pipeline-eventhub:
+    tier: docker
+    compose:
+      image: mcr.microsoft.com/azure-messaging/eventhubs-emulator:latest
+      ports:
+        - "5673:5672" # AMQP
+      volumes:
+        - ./samples/conversation-pipeline/eventhub-config.json:/Eventhubs_Emulator/ConfigFiles/Config.json:ro
+      environment:
+        - BLOB_SERVER=pipeline-azurite
+        - METADATA_SERVER=pipeline-azurite
+        - ACCEPT_EULA=${var.accept_eula}
+      depends_on:
+        - pipeline-azurite
+
+  # Storage for the pipeline: the emulator's metadata, the capture and
+  # archive containers, and the ingest function's checkpoints.
+  pipeline-azurite:
+    tier: docker
+    compose:
+      image: mcr.microsoft.com/azure-storage/azurite:latest
+      ports:
+        - "10100:10000" # blob
+        - "10101:10001" # queue
+        - "10102:10002" # table
+      volumes:
+        - pipeline-azurite-data:/data
+
+  # Cosmos DB emulator (Linux, vnext), HTTP gateway so no certificate dance.
+  # Data Explorer at http://localhost:1234.
+  pipeline-cosmos:
+    tier: docker
+    compose:
+      image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+      ports:
+        - "8081:8081" # gateway
+        - "1234:1234" # data explorer
+      environment:
+        - PROTOCOL=http
+        - ENABLE_EXPLORER=true
+      volumes:
+        - pipeline-cosmos-data:/data
+
+  # Stand-in for Event Hubs Capture: reads the hub on the `capture` consumer
+  # group and writes Avro files in Capture's layout to the capture container.
+  pipeline-capture:
+    tier: docker
+    compose:
+      build:
+        context: ./samples/conversation-pipeline
+        dockerfile: Dockerfile.capture
+      environment:
+        - EVENTHUB_CONNECTION_STRING=Endpoint=sb://pipeline-eventhub;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;
+        - EVENTHUB_NAME=conversation-events
+        - EVENTHUB_NAMESPACE=emulatorns1
+        - CAPTURE_CONSUMER_GROUP=capture
+        - CAPTURE_CONTAINER=capture
+        - CAPTURE_WINDOW_SECONDS=20
+        - BLOB_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://pipeline-azurite:10000/devstoreaccount1;
+      depends_on:
+        - pipeline-eventhub
+        - pipeline-azurite
+
+  # The ingest function in the official Functions host image (amd64 only
+  # upstream; the Dockerfile pins the platform). Reads the hub on the
+  # `ingest` consumer group and upserts one Cosmos document per message.
+  # http://localhost:7071/ answers 200 once the host is up.
+  pipeline-ingest:
+    tier: docker
+    compose:
+      build:
+        context: ./samples/conversation-pipeline
+        dockerfile: Dockerfile.function
+      platform: linux/amd64
+      ports:
+        - "7071:80"
+      environment:
+        - FUNCTIONS_WORKER_RUNTIME=node
+        - AzureWebJobsStorage=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://pipeline-azurite:10000/devstoreaccount1;QueueEndpoint=http://pipeline-azurite:10001/devstoreaccount1;TableEndpoint=http://pipeline-azurite:10002/devstoreaccount1;
+        - EventHubConnection=Endpoint=sb://pipeline-eventhub;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;
+        - EVENTHUB_NAME=conversation-events
+        - EVENTHUB_CONSUMER_GROUP=ingest
+        - COSMOS_ENDPOINT=http://pipeline-cosmos:8081/
+        - COSMOS_KEY=C2y6yHQvUrCCxVMhcVoGjHAyB6C5yKl4OO3JJDIdjKxOP4BhQvpxiDyuYyMK9+gXCcrjKa5vXczV14MK1pIZ3g==
+        - COSMOS_DATABASE=conversations
+        - COSMOS_CONTAINER=events
+        - HOT_TTL_SECONDS=604800
+      depends_on:
+        - pipeline-eventhub
+        - pipeline-azurite
+        - pipeline-cosmos
+
 # =============================================================================
 # GRAPH
 # =============================================================================
@@ -188,6 +328,12 @@ graph:
     visualization:
       label: "Visualization"
       services: [grafana]
+    eventhub:
+      label: "Event Hub Emulator"
+      services: [eventhub-emulator, azurite]
+    pipeline:
+      label: "Conversation Pipeline Sample"
+      services: [pipeline-eventhub, pipeline-azurite, pipeline-cosmos, pipeline-capture, pipeline-ingest]
 
 # =============================================================================
 # GLOBAL CONFIGURATION
@@ -203,7 +349,7 @@ config:
 
 profiles:
   observability:
-    description: "Local observability stack: Alloy, Loki, Grafana, Tempo"
+    description: "Local observability stack: Alloy, Loki, Grafana, Tempo, Event Hub emulator"
     services:
       alloy:
         tier: docker
@@ -216,6 +362,28 @@ profiles:
       grafana:
         tier: docker
       tempo:
+        tier: docker
+      eventhub-emulator:
+        tier: docker
+      azurite:
+        tier: docker
+
+  pipeline:
+    description: "Conversation pipeline sample: Event Hubs emulator, Azurite, Cosmos DB emulator, capture writer, ingest function"
+    # Its own compose project, so deploying it never treats the observability
+    # profile's containers as orphans, and both stacks run side by side.
+    # Containers are named ion-demo-<service>.
+    compose_project: ion-demo
+    services:
+      pipeline-eventhub:
+        tier: docker
+      pipeline-azurite:
+        tier: docker
+      pipeline-cosmos:
+        tier: docker
+      pipeline-capture:
+        tier: docker
+      pipeline-ingest:
         tier: docker
 
 # =============================================================================
