@@ -18,6 +18,31 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.84.0](https://github.com/dsswift/ion/compare/engine-v1.83.0...engine-v1.84.0) (2026-09-07)
+
+### Features
+
+* **engine:** allow declared gitignored shared paths from worktrees ([2263ebf](https://github.com/dsswift/ion/commit/2263ebf9d0a85d8cf17eadadfc642a5c3fa4ad45))
+* **engine:** add switchable default provider for bare models ([5529a45](https://github.com/dsswift/ion/commit/5529a45bc288111244d91e33b46edd7450224fdc))
+* **engine:** add standalone ConversationEventsConfig and collector ([7e78e14](https://github.com/dsswift/ion/commit/7e78e1424f087b18bd5070b36704efcf3a40a592))
+* **engine:** add per-backend cost adapters for conversation events ([41dc6f8](https://github.com/dsswift/ion/commit/41dc6f8d7153ba1d2d1b70e05e1af59e342cdeaa))
+* **engine:** wire conversation.* events into root sessions ([f106e99](https://github.com/dsswift/ion/commit/f106e99c9cbdd3fb2139afe9d917b6c7a7ad717e))
+* **engine:** grow conversation.* telemetry to full-fidelity audit stream ([388a496](https://github.com/dsswift/ion/commit/388a49690fd3322c4d9617cdc640643793ff4903))
+* **engine:** add eventhub telemetry target (#378) ([c909c46](https://github.com/dsswift/ion/commit/c909c4697dd5098ecc77101fb06e5904961909c9))
+* **engine:** stamp client app context on conversation events (#378) ([da53d89](https://github.com/dsswift/ion/commit/da53d89dc8ed932144d87688dd27bd27c309688a))
+* **engine:** emit telemetry delivery health as a typed event (#379) ([7249208](https://github.com/dsswift/ion/commit/724920822de9b38d20693e8df10f1cc81f31624d))
+* **engine:** authenticate the eventhub target without a secret (#378) ([76a6b08](https://github.com/dsswift/ion/commit/76a6b08f40e9e235a48a1830ff4bd1d6abf09e58))
+* **engine:** fit stream events to the transport and order them (#378) ([7fd5894](https://github.com/dsswift/ion/commit/7fd5894c01a511f5be050e984ed5bb3109425d57))
+* **engine:** add telemetry-health notification enterprise seal (#379) ([4df5e33](https://github.com/dsswift/ion/commit/4df5e330fb482c25210fcab70126dac8d3e9949f))
+
+### Bug Fixes
+
+* **engine:** log when defaultModel fills an unset run model ([dc962ec](https://github.com/dsswift/ion/commit/dc962ec253c3de104f25a7b11c84c5d74b076c7b))
+* **engine:** enforce privacyLevel contract on telemetry family ([4ae614d](https://github.com/dsswift/ion/commit/4ae614d87870047e0119c1090a9b98dbe399a193))
+* **engine:** carry ConversationEvents across config layers (#378) ([8106e36](https://github.com/dsswift/ion/commit/8106e36c6f50950eb9bdd78b577bdf16a41155ec))
+* **engine:** tolerate telemetry schema skew across a mixed fleet ([610b770](https://github.com/dsswift/ion/commit/610b770a97bb4ab941aedfb97e890115b2ab78f2))
+* **engine:** expand telemetry frames before egress ships them ([20e761b](https://github.com/dsswift/ion/commit/20e761b21436486ae4d39f4a45e3a5ce1ac1da43))
+
 ## [1.83.0](https://github.com/dsswift/ion/compare/engine-v1.82.0...engine-v1.83.0) (2026-09-07)
 
 ### Features

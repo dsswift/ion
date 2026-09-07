@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.12](https://github.com/dsswift/ion/compare/sdk/go-v0.1.11...sdk/go-v0.1.12) (2026-09-07)
+
+### Bug Fixes
+
+* **repo:** clear final parity gate failures ([0cc7e56](https://github.com/dsswift/ion/commit/0cc7e56f39cfc3e7c31e7cbb02482f1655d83f56))
+
 ## [0.1.11](https://github.com/dsswift/ion/compare/sdk/go-v0.1.10...sdk/go-v0.1.11) (2026-09-06)
 
 ### Bug Fixes

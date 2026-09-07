@@ -10,6 +10,23 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.97.0](https://github.com/dsswift/ion/compare/desktop-v1.96.0...desktop-v1.97.0) (2026-09-07)
+
+### Features
+
+* **desktop:** add Default Provider setting for bare model tiers ([4ac953e](https://github.com/dsswift/ion/commit/4ac953ecd64ee2360aff7b7dfebab275c6615970))
+* **desktop:** stamp client app context on conversation events (#378) ([9ac8768](https://github.com/dsswift/ion/commit/9ac8768d2b2fe37a321c3cb04a7093d2198278bb))
+* **desktop:** send tab identity as conversation-event app context (#378) ([6bd941b](https://github.com/dsswift/ion/commit/6bd941b3a8b7c5ed24097b326a37abe8e2799234))
+* **desktop:** surface telemetry delivery health to the operator (#379) ([36c4fc5](https://github.com/dsswift/ion/commit/36c4fc521b538b818b9e19eb69df8fefef999c3d))
+* **desktop:** notify on stuck and quarantined telemetry (#379) ([ce52a26](https://github.com/dsswift/ion/commit/ce52a2609a463975be2e56d87167ac2db34ef154))
+* **desktop:** honor the telemetry-health notification enterprise seal (#379) ([ad106ae](https://github.com/dsswift/ion/commit/ad106ae2139518fb0374d6dcc561c80edc9edc7e))
+
+### Bug Fixes
+
+* **desktop:** keep conversation model on slash commands ([5678e0d](https://github.com/dsswift/ion/commit/5678e0db67fdcf9e736c1fc4afee4a4f22a29f1f))
+* **desktop:** match the engine's telemetry frame version rule ([8264811](https://github.com/dsswift/ion/commit/82648112e7c2c3b9e37b3edbf3e3ba1f805db20d))
+* **repo:** clear final parity gate failures ([0cc7e56](https://github.com/dsswift/ion/commit/0cc7e56f39cfc3e7c31e7cbb02482f1655d83f56))
+
 ## [1.96.0](https://github.com/dsswift/ion/compare/desktop-v1.95.0...desktop-v1.96.0) (2026-09-07)
 
 ### Features
