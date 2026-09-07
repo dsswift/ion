@@ -9,6 +9,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/durablefile"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -146,6 +147,24 @@ func (m *Manager) flushPendingBinding(key, convID string) {
 	}
 	m.mu.Unlock()
 	utils.LogWithFields(utils.LevelInfo, "session", "flushpendingbinding: wrote deferred binding for (file now present)", map[string]any{"key": key, "conversation_id": convID})
+
+	// conversation.* telemetry (issue #378, child 04): conversation.lifecycle
+	// fires "created" here — the exact point a freshly-minted session's first
+	// successful save is confirmed (the conversation.Exists check just above
+	// this function's early return). StartSession itself cannot claim
+	// creation is durable: at session-start time the conversation file does
+	// not exist yet (that is precisely what bindingPending defers). This is
+	// the mirror of the "resumed" firing in start_session.go, which fires
+	// immediately because a resume's durable existence is already proven.
+	m.mu.RLock()
+	var extName, extVersion string
+	if s2, ok2 := m.sessions[key]; ok2 {
+		extName = s2.extensionName
+		extVersion = s2.extensionVersion
+	}
+	m.mu.RUnlock()
+	ctx := conversationCorrelationCtx(key, convID, extName, extVersion, "", "")
+	m.conversationEmitter().Lifecycle(ctx, convID, telemetry.ActionCreated, "")
 }
 
 // resolveConversationID decides which conversation a StartSession should use,

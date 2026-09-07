@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -180,6 +181,25 @@ func (m *Manager) clearConversationCore(conversationID, preferKey string) (clear
 		"conversation_id": conversationID, "clear_entry_id": res.clearEntryID,
 		"session_key": res.sessionKey, "denied_cleared": res.deniedCleared, "wiped": res.wiped,
 	})
+
+	// conversation.* telemetry (issue #378, child 04): conversation.lifecycle
+	// fires "cleared" only when the LLM-visible history wipe actually
+	// happened (fileResult.wiped) — a pre-minted conversation with no
+	// backing file yet (clearConversationFile's ErrNotFound branch) is a
+	// semantic success with nothing mutated, so it fires nothing.
+	if res.wiped {
+		m.mu.RLock()
+		var extName, extVersion string
+		if res.sessionKey != "" {
+			if s, ok := m.sessions[res.sessionKey]; ok {
+				extName = s.extensionName
+				extVersion = s.extensionVersion
+			}
+		}
+		m.mu.RUnlock()
+		ctx := conversationCorrelationCtx(res.sessionKey, conversationID, extName, extVersion, "", "")
+		m.conversationEmitter().Lifecycle(ctx, conversationID, telemetry.ActionCleared, "")
+	}
 	return res, nil
 }
 

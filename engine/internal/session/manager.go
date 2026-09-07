@@ -118,6 +118,16 @@ type Manager struct {
 	// own process collector. Guarded by m.mu.
 	procTelemetry *telemetry.Collector
 
+	// conversationEventsTelemetry is the standalone collector backing the
+	// conversation.* telemetry family (issue #378), fully independent of
+	// procTelemetry/every session's own general-telemetry collector. Set via
+	// SetConversationEventsTelemetry from the server's SetConfig. Nil when
+	// conversation events are disabled. The emitter core (internal/telemetry
+	// ConversationEmitter, child 03) is constructed from this collector; root
+	// and dispatched-child wiring (children 04/05) read it via
+	// ConversationEventsTelemetry. Guarded by m.mu.
+	conversationEventsTelemetry *telemetry.Collector
+
 	// engineBuildIdentity is the engine binary's build identity (set via
 	// ldflags). Propagated to extension Hosts so the init handshake can
 	// validate that the SDK subprocess was built from the same release.
@@ -139,6 +149,26 @@ func (m *Manager) SetProcessTelemetry(c *telemetry.Collector) {
 	m.mu.Lock()
 	m.procTelemetry = c
 	m.mu.Unlock()
+}
+
+// SetConversationEventsTelemetry installs the standalone collector backing
+// the conversation.* telemetry family (issue #378). Nil disables
+// conversation events. Set from the server's SetConfig, independent of
+// SetProcessTelemetry/general telemetry — the two families gate separately.
+func (m *Manager) SetConversationEventsTelemetry(c *telemetry.Collector) {
+	m.mu.Lock()
+	m.conversationEventsTelemetry = c
+	m.mu.Unlock()
+}
+
+// ConversationEventsTelemetry returns the standalone conversation.*
+// telemetry collector, or nil when conversation events are disabled. Root
+// and dispatched-child wiring (children 04/05) use this to construct their
+// *telemetry.ConversationEmitter.
+func (m *Manager) ConversationEventsTelemetry() *telemetry.Collector {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.conversationEventsTelemetry
 }
 
 func (m *Manager) SetConfig(cfg *types.EngineRuntimeConfig) {
@@ -455,6 +485,15 @@ func (m *Manager) StopSession(key string) error {
 		key:              key, session: s,
 	}
 
+	// conversation.* telemetry (issue #378, child 04): conversation.lifecycle
+	// fires "detached" here, after the live session is successfully removed
+	// from m.sessions below. No persistence check — detachment doesn't imply
+	// durable persistence, unlike "deleted", which fires only after the
+	// durable files are actually removed (see DeleteStoredExact's wiring).
+	convID := s.conversationID
+	extName := s.extensionName
+	extVersion := s.extensionVersion
+
 	delete(m.sessions, key)
 
 	// Drop this session's skill registrations (see session_skills.go). Done
@@ -476,6 +515,11 @@ func (m *Manager) StopSession(key string) error {
 	}
 
 	m.mu.Unlock()
+
+	if convID != "" {
+		ctx := conversationCorrelationCtx(key, convID, extName, extVersion, "", "")
+		m.conversationEmitter().Lifecycle(ctx, convID, telemetry.ActionDetached, "")
+	}
 
 	m.finishStoppedSession(resources)
 	return nil

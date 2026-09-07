@@ -156,6 +156,13 @@ func (b *ApiBackend) performCompact(p performCompactParams) error {
 		if p.cp.resetMemoryTracking != nil {
 			p.cp.resetMemoryTracking(conversation.EstimateTokens(p.conv.Messages))
 		}
+		// conversation.* telemetry (issue #378, child 04): fire strictly AFTER
+		// Save succeeds — the opposite ordering from the telemetry.Compaction
+		// event above, which fires before Save. See OnConversationCompacted's
+		// doc comment on RunConfig for why this order is load-bearing.
+		if p.run.cfg != nil && p.run.cfg.OnConversationCompacted != nil {
+			p.run.cfg.OnConversationCompacted()
+		}
 	}
 	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "compact COMPLETE", map[string]any{
 		"trigger": p.trigger, "tokens_before": tokensBefore, "tokens_after": tokensAfter,
