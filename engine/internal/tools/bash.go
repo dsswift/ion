@@ -166,24 +166,15 @@ func executeBashBackground(ctx context.Context, command, cwd string, notify bool
 		notify = false
 	}
 
+	// Registration onto the session's outstanding set (when notify is set)
+	// happens inside startBackgroundBashTask, before its completion watcher
+	// goroutine exists — see the comment there for why that ordering is
+	// load-bearing rather than cosmetic.
 	info, err := startBackgroundBashTask(ctx, bg, command, cwd, ExecOptions{
 		Env: bashExecutionEnv(ctx),
 	}, notify)
 	if err != nil {
 		return &types.ToolResult{Content: fmt.Sprintf("Error: %s", err), IsError: true}, nil
-	}
-
-	if notify {
-		if reg := OutstandingRegistrarFromContext(ctx); reg != nil {
-			reg(info.ID, command)
-			utils.LogWithFields(utils.LevelInfo, "tools.bash", "background task added to session outstanding set", map[string]any{
-				"task_id": info.ID, "session_id": owner,
-			})
-		} else {
-			utils.LogWithFields(utils.LevelWarn, "tools.bash", "notify_on_complete task has no outstanding registrar; completion will notify but the session will not hold for it", map[string]any{
-				"task_id": info.ID, "session_id": owner,
-			})
-		}
 	}
 
 	content := fmt.Sprintf("Background task started: %s\nOutput file: %s", info.ID, info.OutputPath)

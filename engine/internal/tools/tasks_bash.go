@@ -218,6 +218,31 @@ func startBackgroundBashTask(ctx context.Context, ops BackgroundBashOperations, 
 		"task_id": taskID, "pid": handle.PID, "path": handle.OutputPath, "session_id": owner, "notify_on_complete": notifyOnComplete,
 	})
 
+	// The session's outstanding-set registration must happen-before the
+	// completion watcher below can possibly fire: a command that exits before
+	// this function returns (echo-fast, or just an unlucky scheduler) would
+	// otherwise race the drain in onBackgroundTaskComplete against the
+	// registrar call the caller used to make after this function returned.
+	// Whichever lost the race left a wrong result — either the task vanished
+	// from the outstanding set before the caller ever observed it (the
+	// completion drained a not-yet-registered entry), or it never left the
+	// set at all (the registrar added an entry the completion had already
+	// tried and failed to drain, so nothing will ever drain it again). Calling
+	// the registrar here, before the watcher goroutine exists, makes the
+	// ordering happens-before by construction instead of by luck.
+	if notifyOnComplete {
+		if reg := OutstandingRegistrarFromContext(ctx); reg != nil {
+			reg(taskID, command)
+			utils.LogWithFields(utils.LevelInfo, "tools.bash", "background task added to session outstanding set", map[string]any{
+				"task_id": taskID, "session_id": owner,
+			})
+		} else {
+			utils.LogWithFields(utils.LevelWarn, "tools.bash", "notify_on_complete task has no outstanding registrar; completion will notify but the session will not hold for it", map[string]any{
+				"task_id": taskID, "session_id": owner,
+			})
+		}
+	}
+
 	// Stamp terminal status when the process exits. TaskStop / owner cleanup
 	// set status "stopped" first; don't overwrite a stop with "completed".
 	go func() {
