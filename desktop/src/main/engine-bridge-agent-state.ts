@@ -16,7 +16,7 @@ export function agentStateFingerprint(agents: AgentStateUpdate[]): string {
 }
 
 export function rosterNeedsFullRecovery(event: EngineEvent): event is Extract<EngineEvent, { type: 'engine_agent_state' }> {
-  return event.type === 'engine_agent_state' && event.agents.some(agent => agent.metadata?._truncated === true || Array.isArray(agent.metadata?._truncatedKeys))
+  return event.type === 'engine_agent_state' && event.agents.some((agent: AgentStateUpdate) => agent.metadata?._truncated === true || Array.isArray(agent.metadata?._truncatedKeys))
 }
 
 export function installAgentStateRecovery(bridge: EngineBridge): void {

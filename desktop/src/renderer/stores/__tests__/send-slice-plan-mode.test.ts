@@ -307,10 +307,9 @@ describe('prompt_sync parity — setPermissionMode before prompt', () => {
     expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'plan', 'prompt_sync', '/plans/p.md')
   })
 
-  it('lets slash frontmatter select its tier over an automatic plan model', () => {
-    // A plan-mode model is an ambient default, not an operator's per-prompt
-    // selection. Omitting it allows `/create-pr`'s `model: standard` frontmatter
-    // to resolve through models.json instead of being forced to the plan model.
+  it('carries the ambient model while slash frontmatter selects its tier', () => {
+    // The plan-mode model is an ambient default, not a per-prompt selection.
+    // The engine still lets `/create-pr`'s frontmatter select its own tier.
     const { state } = buildHarness(makeTab(), {
       permissionMode: 'plan',
       modelOverride: 'gpt-5.6-sol',
@@ -322,11 +321,11 @@ describe('prompt_sync parity — setPermissionMode before prompt', () => {
     expect(mockPrompt).toHaveBeenCalledWith(
       'tab-1',
       expect.any(String),
-      expect.objectContaining({ model: undefined }),
+      expect.objectContaining({ model: 'gpt-5.6-sol' }),
     )
   })
 
-  it('keeps effort unmodified when slash frontmatter owns the model', () => {
+  it('keeps effort unmodified while slash frontmatter selects the model', () => {
     // Sol's effort-based capability would rewrite adaptive to off in the old
     // renderer path. The final slash tier may target an adaptive model instead,
     // so this directive must survive until the engine resolves that final model.
@@ -342,11 +341,11 @@ describe('prompt_sync parity — setPermissionMode before prompt', () => {
     expect(mockPrompt).toHaveBeenCalledWith(
       'tab-1',
       expect.any(String),
-      expect.objectContaining({ model: undefined, thinkingEffort: 'adaptive' }),
+      expect.objectContaining({ model: 'gpt-5.6-sol', thinkingEffort: 'adaptive' }),
     )
   })
 
-  it('omits a preferred ambient model for a slash command', () => {
+  it('carries a preferred ambient model for a slash command', () => {
     preferenceState.preferredModel = 'gpt-5.6-sol'
     const { state } = buildHarness(makeTab(), { modelOverrideSource: null })
 
@@ -355,11 +354,11 @@ describe('prompt_sync parity — setPermissionMode before prompt', () => {
     expect(mockPrompt).toHaveBeenCalledWith(
       'tab-1',
       expect.any(String),
-      expect.objectContaining({ model: undefined }),
+      expect.objectContaining({ model: 'gpt-5.6-sol' }),
     )
   })
 
-  it('does not treat a legacy unmarked model as explicit for a slash command', () => {
+  it('carries a legacy unmarked model for a slash command', () => {
     const { state } = buildHarness(makeTab(), {
       modelOverride: 'gpt-5.6-sol',
       modelOverrideSource: null,
@@ -370,13 +369,14 @@ describe('prompt_sync parity — setPermissionMode before prompt', () => {
     expect(mockPrompt).toHaveBeenCalledWith(
       'tab-1',
       expect.any(String),
-      expect.objectContaining({ model: undefined }),
+      expect.objectContaining({ model: 'gpt-5.6-sol' }),
     )
   })
 
-  it('omits an operator-selected model for a slash command', () => {
-    // Command frontmatter owns slash execution. The conversation picker remains
-    // the default for ordinary prompts but cannot override the command tier.
+  it('carries an operator-selected model for a slash command', () => {
+    // Command frontmatter still owns slash execution in the engine. The
+    // conversation picker remains the default for ordinary prompts and is sent
+    // as the ambient fallback when the command has no model field.
     const { state } = buildHarness(makeTab(), {
       modelOverride: 'gpt-5.6-sol',
       modelOverrideSource: 'user',
@@ -387,26 +387,11 @@ describe('prompt_sync parity — setPermissionMode before prompt', () => {
     expect(mockPrompt).toHaveBeenCalledWith(
       'tab-1',
       expect.any(String),
-      expect.objectContaining({ model: undefined }),
-    )
-  })
-
-  it('continues to send an automatic model for an ordinary prompt', () => {
-    const { state } = buildHarness(makeTab(), {
-      modelOverride: 'gpt-5.6-sol',
-      modelOverrideSource: 'automatic',
-    })
-
-    state.submit('tab-1', 'review current changes')
-
-    expect(mockPrompt).toHaveBeenCalledWith(
-      'tab-1',
-      expect.any(String),
       expect.objectContaining({ model: 'gpt-5.6-sol' }),
     )
   })
 
-  it('keeps iOS slash effort unmodified until engine resolves its tier', () => {
+  it('keeps the ambient model on an iOS slash prompt', () => {
     modelsById.set('gpt-5.6-sol', { thinkingMode: 'reasoning_effort', thinkingEfforts: ['low'] })
     const { state } = buildHarness(makeTab(), {
       modelOverride: 'gpt-5.6-sol',
@@ -419,11 +404,11 @@ describe('prompt_sync parity — setPermissionMode before prompt', () => {
     expect(mockPrompt).toHaveBeenCalledWith(
       'tab-1',
       expect.any(String),
-      expect.objectContaining({ model: undefined, source: 'remote', thinkingEffort: 'adaptive' }),
+      expect.objectContaining({ model: 'gpt-5.6-sol', source: 'remote', thinkingEffort: 'adaptive' }),
     )
   })
 
-  it('applies same slash precedence to an iOS prompt', () => {
+  it('applies the same ambient model precedence to an iOS prompt', () => {
     const { state } = buildHarness(makeTab(), {
       permissionMode: 'plan',
       modelOverride: 'gpt-5.6-sol',
@@ -435,7 +420,7 @@ describe('prompt_sync parity — setPermissionMode before prompt', () => {
     expect(mockPrompt).toHaveBeenCalledWith(
       'tab-1',
       expect.any(String),
-      expect.objectContaining({ model: undefined, source: 'remote' }),
+      expect.objectContaining({ model: 'gpt-5.6-sol', source: 'remote' }),
     )
   })
 })

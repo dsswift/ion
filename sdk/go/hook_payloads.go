@@ -117,6 +117,17 @@ type SessionMessageInfo struct {
 	Payload          map[string]any `json:"payload"`
 }
 
+// BeforeConversationEventInfo is the payload for before_conversation_event.
+// It identifies the conversation telemetry event about to be emitted. The
+// engine leaves correlation fields empty when the underlying run has no value.
+type BeforeConversationEventInfo struct {
+	EventName      string `json:"eventName"`
+	ConversationID string `json:"conversationId,omitempty"`
+	RunID          string `json:"runId,omitempty"`
+	DispatchID     string `json:"dispatchId,omitempty"`
+	TraceID        string `json:"traceId,omitempty"`
+}
+
 // --- Content ---
 
 // MessageUpdateInfo is the payload for message_update.
