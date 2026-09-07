@@ -74,6 +74,9 @@ type Checker struct {
 	// canonical memoizes symlink resolution for the record's ROOTS, which are
 	// re-read on every gated call but only change when the record changes.
 	canonical canonicalCache
+	// shared memoizes each repo's declared, gitignored shared roots, keyed by
+	// the manifest's mtime. See shared_paths.go.
+	shared sharedPathCache
 }
 
 // NewChecker returns a Checker over the default registry (~/.ion records).
@@ -197,6 +200,16 @@ func (c *Checker) checkWriteTarget(target string, containment Containment) *Refu
 		return nil
 	}
 	if c.within(canonicalTarget, wc.RepoPath) {
+		// A path the project declared shared AND git ignores carries none of the
+		// interleaving risk this refusal exists to prevent: git cannot stage it,
+		// so no commit can mix it into another conversation's work. See
+		// shared_paths.go for why both conditions are required.
+		if c.isSharedTarget(canonicalTarget, wc) {
+			utils.LogWithFields(utils.LevelInfo, logTag, "base repo write allowed by declared shared path", map[string]any{
+				"target": canonicalTarget, "worktree": wc.WorktreePath, "repo": wc.RepoPath,
+			})
+			return nil
+		}
 		return &Refusal{
 			Kind:   RefusalBaseRepo,
 			Target: canonicalTarget,
@@ -268,6 +281,19 @@ func (c *Checker) checkBashSegment(seg bashSegment, containment Containment, cwd
 	// or a sibling is the exact way a command escapes isolation.
 	if segDir != "" && !c.within(segDir, wc.WorktreePath) {
 		if c.within(segDir, wc.RepoPath) {
+			// A declared, gitignored shared directory is a legitimate working
+			// directory for a command that writes an artifact there (rendering a
+			// report, for instance). It is NOT a licence to run git in the base
+			// repo: a shared path is exempt from the write refusal because git
+			// cannot see it, and a git invocation is precisely the operation that
+			// would make it seen. So the exemption applies only to segments that
+			// invoke no git at all.
+			if len(seg.GitOperations) == 0 && c.isSharedTarget(segDir, wc) {
+				utils.LogWithFields(utils.LevelInfo, logTag, "base repo bash segment allowed by declared shared path", map[string]any{
+					"dir": segDir, "worktree": wc.WorktreePath, "repo": wc.RepoPath,
+				})
+				return nil
+			}
 			return &Refusal{
 				Kind:   RefusalBaseRepo,
 				Target: segDir,
