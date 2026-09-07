@@ -2,17 +2,15 @@
 package telemetry
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/durablefile"
-	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/telemetryformat"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -20,12 +18,9 @@ import (
 
 // Event name constants.
 const (
-	SessionStart = "session.start"
-	SessionEnd   = "session.end"
-	LlmCall      = "llm.call"
-	ToolExecute  = "tool.execute"
-	Compaction   = "compaction"
-	ErrorEvent   = "error"
+	LlmCall     = "llm.call"
+	ToolExecute = "tool.execute"
+	Compaction  = "compaction"
 	// RunComplete is emitted once per run at the session layer (in the
 	// TaskCompleteEvent handler) so every backend — including ClaudeCodeBackend,
 	// which emits no per-call spans — gets uniform run-level telemetry
@@ -166,6 +161,23 @@ type Collector struct {
 	stopCh      chan struct{}
 	flushDone   chan struct{}
 	closeOnce   sync.Once
+
+	// httpRetry is non-nil only when "http" is a configured target. See
+	// telemetry_retry_queue.go.
+	httpRetry *retryQueue
+
+	// eventHubSender/eventHubRetry are non-nil only when "eventhub" is a
+	// configured target. See telemetry_eventhub.go. eventHubOversize and
+	// eventHubMaxOverride are the size contract's resolved policy and the
+	// operator's optional explicit limit (telemetry_oversize.go).
+	eventHubSender      eventHubSender
+	eventHubRetry       *retryQueue
+	eventHubOversize    oversizePolicy
+	eventHubMaxOverride int
+
+	// sequencer stamps conversation.* events with a per-conversation seq
+	// taken atomically with their ts. See conversation_sequence.go.
+	sequencer *conversationSequencer
 }
 
 // SetOtelBridge attaches an OpenTelemetry bridge to the collector.
@@ -253,6 +265,15 @@ func NewCollector(config types.TelemetryConfig) *Collector {
 		loggedFlushErrs: make(map[string]bool),
 		stopCh:          make(chan struct{}),
 		flushDone:       make(chan struct{}),
+		sequencer:       newConversationSequencer(),
+	}
+
+	if config.Enabled && hasHTTPTarget(config.Targets) {
+		setupHTTPTarget(c, config)
+	}
+
+	if config.Enabled && hasEventHubTarget(config.Targets) {
+		setupEventHubTarget(c, config)
 	}
 
 	if config.Enabled && hasOtelTarget(config.Targets) && config.Otel != nil && config.Otel.Enabled && config.Otel.Endpoint != "" {
@@ -326,7 +347,7 @@ func hasOtelTarget(targets []string) bool {
 func hasFlushableTarget(targets []string, otelConfigured bool) bool {
 	for _, t := range targets {
 		switch t {
-		case "file", "stdout", "http":
+		case "file", "stdout", "http", "eventhub":
 			return true
 		case "otel":
 			if otelConfigured {
@@ -345,6 +366,15 @@ func (c *Collector) flushLoop() {
 	for {
 		select {
 		case <-c.flushTicker.C:
+			// Retry queued http batches BEFORE flushing newly-buffered
+			// events, so a long outage doesn't let the queue grow forever
+			// behind fresh traffic that keeps succeeding.
+			if c.httpRetry != nil {
+				c.httpRetry.drainAndRetry()
+			}
+			if c.eventHubRetry != nil {
+				c.eventHubRetry.drainAndRetry()
+			}
 			if err := c.Flush(); err != nil {
 				c.LogFlushError(err)
 			}
@@ -374,6 +404,11 @@ func (c *Collector) Close() {
 		c.mu.Unlock()
 		if bridge != nil {
 			if err := bridge.Close(); err != nil {
+				c.LogFlushError(err)
+			}
+		}
+		if c.eventHubSender != nil {
+			if err := c.eventHubSender.Close(context.Background()); err != nil {
 				c.LogFlushError(err)
 			}
 		}
@@ -423,9 +458,18 @@ func (c *Collector) Event(name string, payload, ctx map[string]any) {
 	if !c.config.Enabled {
 		return
 	}
+	// ts and, for conversation.* events, seq are taken together so the two
+	// orderings a consumer may sort by can never disagree.
+	ts, seq := c.sequencer.stamp(name, payload)
+	if seq > 0 {
+		payload["seq"] = seq
+		if isTerminalLifecycle(name, payload) {
+			c.sequencer.forget(payload["conversation_id"].(string)) //nolint:errcheck // stamp already proved it is a non-empty string
+		}
+	}
 	e := Event{
 		Name:          name,
-		Ts:            time.Now().UTC().Format(time.RFC3339Nano),
+		Ts:            ts.Format(time.RFC3339Nano),
 		SchemaVersion: TelemetrySchemaVersion,
 		Component:     "engine",
 		InstallID:     resolvedInstallID(),
@@ -495,6 +539,18 @@ func (c *Collector) StartSpan(name string, attrs map[string]any) *SpanHandle {
 	return c.StartSpanCtx(name, attrs, nil)
 }
 
+// PrivacyLevel returns the collector's configured privacy level, defaulting
+// to "minimal" when unset. This mirrors normalizeTelemetryConfig's own
+// default pattern (see above) so an operator who never sets privacyLevel
+// gets the most conservative collection tier rather than an empty string
+// that call sites would have to special-case.
+func (c *Collector) PrivacyLevel() string {
+	if c.config.PrivacyLevel == "" {
+		return "minimal"
+	}
+	return c.config.PrivacyLevel
+}
+
 // StartSpanCtx begins a timed span with an explicit correlation context.
 // ctx is stored on the handle and forwarded to Collector.Event when End is
 // called, so the emitted event carries session_id and conversation_id just
@@ -557,6 +613,21 @@ func (c *Collector) Flush() error {
 		case "http":
 			if err := flushToHTTP(events, c.config.HttpEndpoint, c.config.HttpHeaders); err != nil {
 				lastErr = err
+				// Durable delivery (root-cause fix for the drop-on-failure
+				// gap docs/enterprise/telemetry.md claimed didn't exist):
+				// persist the batch to the on-disk retry queue instead of
+				// discarding it. c.httpRetry is non-nil whenever "http" is
+				// configured (see NewCollector).
+				if c.httpRetry != nil {
+					c.httpRetry.enqueue(events)
+					c.httpRetry.reportHealth(false, err.Error())
+				}
+			}
+		case "eventhub":
+			// flushEventHubTarget applies the same durable-delivery guarantee
+			// as "http" (enqueue to c.eventHubRetry on failure).
+			if err := flushEventHubTarget(c, events); err != nil {
+				lastErr = err
 			}
 		}
 	}
@@ -615,35 +686,6 @@ func flushToStdout(events []Event) error {
 		if err := enc.Encode(e); err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-func flushToHTTP(events []Event, endpoint string, headers map[string]string) error {
-	if endpoint == "" {
-		return fmt.Errorf("telemetry HTTP endpoint not configured")
-	}
-	body, err := json.Marshal(events)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-	resp, err := network.GetHTTPClient().Do(req)
-	if err != nil {
-		return err
-	}
-	if err := resp.Body.Close(); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "telemetry", "http post response body close failed", map[string]any{"error": err.Error()})
-	}
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("telemetry HTTP POST returned status %d", resp.StatusCode)
 	}
 	return nil
 }

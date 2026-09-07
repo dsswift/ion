@@ -295,6 +295,7 @@
       "toolName"
     ],
     "usage": [
+      "assistantText",
       "entryId",
       "usage",
       "userEntryId"
@@ -536,6 +537,22 @@
     "summary",
     "taskSuspendAwaitingCount",
     "taskSuspendAwaitingTaskCount",
+    "telemetryCritical",
+    "telemetryCrossedThreshold",
+    "telemetryHealthy",
+    "telemetryLastError",
+    "telemetryMaxAttempts",
+    "telemetryOldestAgeMs",
+    "telemetryPercentOfSoftWarn",
+    "telemetryQuarantinedBytes",
+    "telemetryQuarantinedEvents",
+    "telemetryQueuedBatches",
+    "telemetryQueuedBytes",
+    "telemetryQueuedEvents",
+    "telemetrySoftWarnBytes",
+    "telemetryStuck",
+    "telemetryStuckAfterMs",
+    "telemetryTarget",
     "text",
     "thinkingElapsedSeconds",
     "thinkingRedacted",
@@ -616,6 +633,7 @@
       "name"
     ],
     "EngineConfig": [
+      "appContext",
       "claudeCompat",
       "clientWorkspaceContext",
       "extensions",

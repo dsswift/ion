@@ -240,6 +240,60 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		}
 	}
 
+	// ConversationEvents: same one-way seal pattern as Telemetry above,
+	// applied to the fully independent conversation.* config block (issue
+	// #378). This is a separate seal from Telemetry's — an enterprise can
+	// force conversation events on without ever enabling general telemetry,
+	// and vice versa, matching the standalone-collector decision.
+	if enterprise.ConversationEvents != nil && enterprise.ConversationEvents.Enabled {
+		if result.ConversationEvents == nil {
+			result.ConversationEvents = &types.ConversationEventsConfig{}
+		}
+		result.ConversationEvents.Enabled = true
+		if len(enterprise.ConversationEvents.Targets) > 0 {
+			result.ConversationEvents.Targets = enterprise.ConversationEvents.Targets
+		}
+		if enterprise.ConversationEvents.HttpEndpoint != "" {
+			result.ConversationEvents.HttpEndpoint = enterprise.ConversationEvents.HttpEndpoint
+		}
+		if enterprise.ConversationEvents.Otel != nil {
+			result.ConversationEvents.Otel = enterprise.ConversationEvents.Otel
+		}
+		// Event Hub destination. Without these an enterprise could force the
+		// "eventhub" target on but supply nowhere to send, so every flush
+		// would fail into the retry queue — a sealed policy that cannot
+		// actually deliver.
+		//
+		// The namespace/scope fields carry no secret, which is what makes
+		// them safe to distribute through an MDM channel that lands on every
+		// managed device: the device authenticates with its own identity and
+		// authorization is an RBAC assignment. The connection string is
+		// forwarded too, because an operator may have a deployment that needs
+		// it, but doing so puts one shared secret on every device in the
+		// fleet — see types.TelemetryConfig.EventHubNamespace.
+		if enterprise.ConversationEvents.EventHubNamespace != "" {
+			result.ConversationEvents.EventHubNamespace = enterprise.ConversationEvents.EventHubNamespace
+		}
+		if enterprise.ConversationEvents.EventHubName != "" {
+			result.ConversationEvents.EventHubName = enterprise.ConversationEvents.EventHubName
+		}
+		if enterprise.ConversationEvents.EventHubTokenScope != "" {
+			result.ConversationEvents.EventHubTokenScope = enterprise.ConversationEvents.EventHubTokenScope
+		}
+		if enterprise.ConversationEvents.EventHubTokenAudience != "" {
+			result.ConversationEvents.EventHubTokenAudience = enterprise.ConversationEvents.EventHubTokenAudience
+		}
+		if enterprise.ConversationEvents.EventHubConnectionString != "" {
+			result.ConversationEvents.EventHubConnectionString = enterprise.ConversationEvents.EventHubConnectionString
+		}
+		// The oversize policy is a fidelity decision — segment keeps every
+		// byte in the stream, quarantine keeps it only on the device — so an
+		// enterprise that seals the stream gets to seal that choice too.
+		if enterprise.ConversationEvents.OversizeEventPolicy != "" {
+			result.ConversationEvents.OversizeEventPolicy = enterprise.ConversationEvents.OversizeEventPolicy
+		}
+	}
+
 	// Logging egress: if enterprise forces egress targets on, users cannot
 	// disable them. Only egress fields are enforced; local-file settings
 	// (Format, MaxSizeMB, OutputMode, LogDir) are not overridden here.
