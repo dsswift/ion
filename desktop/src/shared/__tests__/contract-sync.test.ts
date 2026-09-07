@@ -206,6 +206,34 @@ describe("Contract sync: EngineEvent dispatch fields", () => {
     ).toBe(true);
   });
 
+  it("the engine_telemetry_health fields consumed by the desktop are present in the Go EngineEvent manifest", () => {
+    // main/telemetry-health.ts reads these to decide whether to notify the
+    // operator and how to word it. A missing field means the engine stopped
+    // reporting a delivery condition the desktop surfaces.
+    const goFields = new Set(manifest.engineEvent);
+    const consumed = [
+      "telemetryTarget",
+      "telemetryQueuedEvents",
+      "telemetryQueuedBytes",
+      "telemetryOldestAgeMs",
+      "telemetryPercentOfSoftWarn",
+      "telemetryCrossedThreshold",
+      "telemetryHealthy",
+      "telemetryLastError",
+      "telemetryCritical",
+      "telemetryStuck",
+      "telemetryStuckAfterMs",
+      "telemetryMaxAttempts",
+      "telemetryQuarantinedEvents",
+      "telemetryQuarantinedBytes",
+    ];
+    const missing = consumed.filter((f) => !goFields.has(f));
+    expect(
+      missing,
+      `Go EngineEvent is missing telemetry health fields: ${missing.join(", ")}`,
+    ).toEqual([]);
+  });
+
   it("the engine_default_provider field is present in the Go EngineEvent manifest", () => {
     // engine_default_provider carries the operator's preferred provider for
     // resolving a bare model name (mirrored in types-engine-event.ts and read

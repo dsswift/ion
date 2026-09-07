@@ -273,6 +273,12 @@ export type NormalizedEvent =
       cost?: number;
       entryId?: string;
       userEntryId?: string;
+      /**
+       * Completed assistant response text on the usage event that closes a
+       * message, for backends that report it only there (Codex). Empty for
+       * every other backend and for non-terminal usage progress events.
+       */
+      assistantText?: string;
     }
   // user_turn_persisted — the run-opening user turn's canonical persisted
   // tree-entry id, emitted before streaming so the optimistic user row can be

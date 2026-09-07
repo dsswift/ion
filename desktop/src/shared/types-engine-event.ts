@@ -524,6 +524,41 @@ export type EngineEvent =
       fallbackModel: string;
       fallbackReason: string;
     }
+  // engine_telemetry_health — delivery health of one telemetry egress
+  // target. A complete snapshot for that target: replace, never merge.
+  // Emitted on escalation across the 50/75/85/95 fractions of the
+  // configured soft-warning threshold, on recovery to a drained queue,
+  // and immediately on a critical condition (durability actually lost —
+  // a queue write that failed because the disk is full).
+  //
+  // This is how the desktop learns its telemetry has stopped arriving.
+  // Without it a queue growing silently through a multi-hour outage looks
+  // identical to a healthy one, and the operator finds out when a
+  // downstream query returns nothing.
+  | {
+      type: "engine_telemetry_health";
+      telemetryTarget: string;
+      telemetryQueuedBatches?: number;
+      telemetryQueuedEvents?: number;
+      telemetryQueuedBytes?: number;
+      telemetryOldestAgeMs?: number;
+      telemetrySoftWarnBytes?: number;
+      /** Not clamped: an unbounded queue past its advisory threshold reports above 100. */
+      telemetryPercentOfSoftWarn?: number;
+      /** The escalation step this observation represents (50/75/85/95), absent when not a crossing. */
+      telemetryCrossedThreshold?: number;
+      /** Always present, including when false — "unhealthy" is the point of the event. */
+      telemetryHealthy: boolean;
+      telemetryLastError?: string;
+      telemetryCritical?: boolean;
+      /** The oldest undelivered batch has waited past telemetryStuckAfterMs, at any size. Reported on each transition. */
+      telemetryStuck?: boolean;
+      telemetryStuckAfterMs?: number;
+      telemetryMaxAttempts?: number;
+      /** Cumulative events written to the target's quarantine file instead of sent — on disk, absent from the stream. */
+      telemetryQuarantinedEvents?: number;
+      telemetryQuarantinedBytes?: number;
+    }
   // engine_model_tiers is a complete snapshot. Consumers replace, never merge.
   | {
       type: "engine_model_tiers";
