@@ -18,6 +18,8 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.84.1](https://github.com/dsswift/ion/compare/engine-v1.84.0...engine-v1.84.1) (2026-09-07)
+
 ## [1.84.0](https://github.com/dsswift/ion/compare/engine-v1.83.0...engine-v1.84.0) (2026-09-07)
 
 ### Features
