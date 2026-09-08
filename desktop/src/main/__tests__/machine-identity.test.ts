@@ -8,6 +8,8 @@ vi.mock('child_process', () => ({
 // Mock logger to avoid file I/O.
 vi.mock('../logger', () => ({
   log: vi.fn(),
+  debug: vi.fn(),
+  warn: vi.fn(),
 }))
 
 import { execFile } from 'child_process'
@@ -138,6 +140,81 @@ describe('loadMachineIdentity', () => {
       expect(id.mdmDeviceId).toBe('')
       expect(id.mdmSerial).toBe('')
       expect(id.host.length).toBeGreaterThan(0)
+    } finally {
+      Object.defineProperty(process, 'platform', { value: origPlatform, configurable: true })
+    }
+  })
+})
+
+describe('loadMachineIdentity — win32', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    const mod = await import('../machine-identity')
+    mod._resetMachineIdentityForTest()
+  })
+
+  /** A reg query mock keyed on the value name (the last argv entry after '/v'). */
+  function makeRegMock(values: Record<string, string>) {
+    return vi.fn(
+      (
+        file: string,
+        args: string[],
+        _opts: unknown,
+        cb: (err: Error | null, result: { stdout: string }) => void,
+      ) => {
+        if (file !== 'reg') {
+          cb(new Error(`unexpected command: ${file}`), { stdout: '' })
+          return
+        }
+        const valueName = args[args.indexOf('/v') + 1]
+        const value = values[valueName]
+        if (value === undefined) {
+          cb(new Error(`ERROR: The system was unable to find the specified registry key or value.`), { stdout: '' })
+          return
+        }
+        cb(null, { stdout: `    ${valueName}    REG_SZ    ${value}\n` })
+      },
+    )
+  }
+
+  it('populates all three fields from the registry', async () => {
+    ;(execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      makeRegMock({
+        MachineGuid: 'AABBCCDD-1122-3344-5566-778899AABBCC',
+        MDMDeviceID: 'intune-device-abc',
+        MDMSerialNumber: 'SER123456',
+      }),
+    )
+    const { loadMachineIdentity } = await import('../machine-identity')
+    const origPlatform = process.platform
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    try {
+      const id = await loadMachineIdentity()
+      expect(id.machineId).toBe('AABBCCDD-1122-3344-5566-778899AABBCC')
+      expect(id.mdmDeviceId).toBe('intune-device-abc')
+      expect(id.mdmSerial).toBe('SER123456')
+      expect(id.host.length).toBeGreaterThan(0)
+    } finally {
+      Object.defineProperty(process, 'platform', { value: origPlatform, configurable: true })
+    }
+  })
+
+  it('a failing MDMDeviceID query yields empty string and still populates machineId', async () => {
+    ;(execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      makeRegMock({
+        MachineGuid: 'AABBCCDD-1122-3344-5566-778899AABBCC',
+        // MDMDeviceID and MDMSerialNumber deliberately absent (not enrolled).
+      }),
+    )
+    const { loadMachineIdentity, _resetMachineIdentityForTest } = await import('../machine-identity')
+    _resetMachineIdentityForTest()
+    const origPlatform = process.platform
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    try {
+      const id = await loadMachineIdentity()
+      expect(id.machineId).toBe('AABBCCDD-1122-3344-5566-778899AABBCC')
+      expect(id.mdmDeviceId).toBe('')
+      expect(id.mdmSerial).toBe('')
     } finally {
       Object.defineProperty(process, 'platform', { value: origPlatform, configurable: true })
     }
