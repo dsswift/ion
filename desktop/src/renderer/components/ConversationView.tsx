@@ -90,6 +90,12 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   })
   const tabStatus = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.status)
   const lastResult = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.lastResult ?? null)
+  // /compact (manual or proactive) never touches tabStatus: the engine
+  // dispatches it as a fire-and-forget command, not a chat turn, so it
+  // never flips to 'running'. isCompacting is the only signal that a
+  // compaction is in flight — without it the transcript goes dark for
+  // the full duration and only shows the boundary marker on completion.
+  const isCompacting = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.isCompacting ?? false)
   const permissionDenied = useSessionStore(s => {
     const p = s.conversationPanes.get(tabId)
     const inst = p?.activeInstanceId ? p.instances.find(i => i.id === p.activeInstanceId) : null
@@ -111,7 +117,11 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   const hasRunningChildren = runningChildCount > 0
   const backgroundTaskCount = activeBackgroundTasks.length
   const hasBackgroundTasks = backgroundTaskCount > 0
-  const activityOverlayVisible = isRunning || hasRunningChildren || hasBackgroundTasks
+  // Compaction has nothing to interrupt via this row (no orchestrator run,
+  // no dispatched children, no background shells), so it earns the overlay
+  // and the activity label but not the Stop control.
+  const showInterrupt = isRunning || hasRunningChildren || hasBackgroundTasks
+  const activityOverlayVisible = showInterrupt || isCompacting
   const suppressPlanCard = resolvePlanCardSuppression({
     toolNames: permissionDenied?.tools.map((t) => t.toolName),
     hasRunningChildren,
@@ -227,7 +237,9 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   const isThinking = isRunning && messages.some(
     (message) => message.role === 'thinking' && message.thinkingActive,
   )
-  const orchestratorActivityLabel = workingMessage || (isThinking ? 'Thinking…' : 'Running…')
+  const orchestratorActivityLabel = isCompacting
+    ? 'Compacting…'
+    : workingMessage || (isThinking ? 'Thinking…' : 'Running…')
   const orchestratorActivityWithShells = backgroundTaskCount > 0
     ? `${orchestratorActivityLabel} · ${backgroundTaskCount} background shell${backgroundTaskCount === 1 ? '' : 's'}`
     : orchestratorActivityLabel
@@ -440,20 +452,24 @@ export function ConversationView({ tabId }: ConversationViewProps) {
                   display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
                 }}
               >
-                {isRunning ? (
+                {(isRunning || isCompacting) ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: colors.textTertiary }}>
                     <span
                       className="ion-dot-live"
                       style={{
                         width: 6, height: 6, borderRadius: '50%',
-                        background: colors.statusRunning, color: colors.statusRunning, display: 'inline-block',
+                        background: isCompacting ? colors.statusCompacting : colors.statusRunning,
+                        color: isCompacting ? colors.statusCompacting : colors.statusRunning,
+                        display: 'inline-block',
                       }}
                     />
                     <span data-testid="conversation-activity-indicator">{orchestratorActivityWithShells}</span>
                   </div>
                 ) : <span />}
                 <div data-testid="conversation-interrupt-row" style={{ pointerEvents: 'auto' }}>
-                  <InterruptButton onInterrupt={handleAbort} onStopAll={handleStopAll} isRunning={isRunning} runningChildCount={runningChildCount} backgroundTaskCount={backgroundTaskCount} />
+                  {showInterrupt && (
+                    <InterruptButton onInterrupt={handleAbort} onStopAll={handleStopAll} isRunning={isRunning} runningChildCount={runningChildCount} backgroundTaskCount={backgroundTaskCount} />
+                  )}
                 </div>
               </div>
             </motion.div>

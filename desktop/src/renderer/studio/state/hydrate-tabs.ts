@@ -81,15 +81,24 @@ export function tabsFromSnapshot(
   liveTabStatus?: Record<string, string>,
   existingTabs?: readonly TabState[],
   queuedAttachments?: Record<string, FileAttachment[]>,
+  /** Owner-published live compaction flags — same live-not-persisted
+   *  category as liveTabStatus. Without this, a re-sync during a
+   *  compaction (triggered by anything else touching the tab, e.g. the
+   *  lastEventAt stamp on every normalized event) resets isCompacting to
+   *  its default false, flashing the live indicator off after ~1s even
+   *  though the compaction is still running. */
+  liveIsCompacting?: Record<string, boolean>,
 ): HydratedTabs {
   const existingById = new Map((existingTabs ?? []).map((t) => [t.id, t]))
   const tabs: TabState[] = []
   for (const st of snapshot.tabs) {
     if (!st.id) continue // owner ids are the join key; a row without one is unusable
     const status = (liveTabStatus?.[st.id] ?? existingById.get(st.id)?.status ?? 'idle') as TabState['status']
+    const isCompacting = liveIsCompacting?.[st.id] ?? existingById.get(st.id)?.isCompacting ?? false
     tabs.push({
       ...makeLocalTab(),
       status,
+      isCompacting,
       id: st.id,
       conversationId: st.conversationId ?? null,
       lastKnownSessionId: st.lastKnownSessionId || st.conversationId || null,

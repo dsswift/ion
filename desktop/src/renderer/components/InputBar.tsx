@@ -81,8 +81,13 @@ export function InputBar() {
   const isImageModel = effectiveModelId !== '' && findModel(effectiveModelId)?.modelKind === 'image'
   const isBusy = tab?.status === 'running' || tab?.status === 'connecting'
   const isConnecting = tab?.status === 'connecting' || !tabsReady
+  // There is no way to steer a compaction in progress — a queued prompt
+  // cannot interrupt or redirect it — so sending is refused outright rather
+  // than queued (see shared/prompt-acceptance.ts, the same predicate submit()
+  // enforces authoritatively).
+  const isCompacting = tab?.isCompacting ?? false
   const hasContent = input.trim().length > 0 || (tab?.attachments?.length ?? 0) > 0
-  const canSend = !!tab && !isConnecting && hasContent
+  const canSend = !!tab && !isConnecting && !isCompacting && hasContent
   const attachments = tab?.attachments || []
   const showSlashMenu = slashFilter !== null && !isConnecting
   const [discoveredCommands, setDiscoveredCommands] = useState<DiscoveredCommand[]>([])
@@ -413,9 +418,11 @@ export function InputBar() {
             ? 'Recording... ✓ to confirm, ✕ to cancel'
             : voiceState === 'transcribing'
               ? 'Transcribing...'
-              : isBusy
-                ? 'Type to queue a message...'
-                : 'Ask Ion anything...'
+              : isCompacting
+                ? 'Compacting… try again in a moment'
+                : isBusy
+                  ? 'Type to queue a message...'
+                  : 'Ask Ion anything...'
 
   const sendVisible = canSend && voiceState !== 'recording'
 

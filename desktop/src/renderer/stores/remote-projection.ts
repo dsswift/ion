@@ -401,6 +401,7 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
     queuedPrompts: t.queuedPrompts || [],
     isTerminalOnly: t.isTerminalOnly || undefined,
     inputLocked: t.inputLocked || undefined,
+    isCompacting: t.isCompacting || undefined,
     inputLockReason: t.inputLockReason || undefined,
     tabRole: t.tabRole || undefined,
     hasEngineExtension: tabHasExtensions(t) || undefined,

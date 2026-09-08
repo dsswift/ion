@@ -11,6 +11,7 @@ export type PromptRefusalReason =
   | 'tabs-not-ready'
   | 'connecting'
   | 'input-locked'
+  | 'compacting'
 
 export interface PromptRefusal {
   reason: PromptRefusalReason
@@ -26,6 +27,13 @@ export interface PromptAcceptanceTab {
   /** Capacity fields are display telemetry only. The engine owns admission. */
   contextTokens?: number | null
   contextLimit?: number | null
+  /**
+   * True while the engine is compacting this conversation (manual or
+   * proactive). There is no way to steer a compaction in progress — it is
+   * not a turn a queued prompt could interrupt or redirect — so a prompt
+   * submitted during one is refused outright rather than queued.
+   */
+  isCompacting?: boolean
 }
 
 export interface PromptAcceptanceInput {
@@ -43,6 +51,7 @@ export function promptRefusal(input: PromptAcceptanceInput): PromptRefusal | nul
   if (!tab) return { reason: 'no-tab', detail: 'no active conversation resolved' }
   if (tabsReady === false) return { reason: 'tabs-not-ready', detail: 'tab state has not finished restoring' }
   if (tab.status === 'connecting') return { reason: 'connecting', detail: 'session is still connecting' }
+  if (tab.isCompacting) return { reason: 'compacting', detail: 'conversation is being compacted' }
 
   if (tab.inputLocked) {
     const terminal = tab.inputLockReason === 'landed-worktree' || tab.inputLockReason === 'settled'

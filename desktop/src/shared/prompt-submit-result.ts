@@ -60,6 +60,8 @@ export function promptRefusalMessage(reason: PromptRefusalReason | 'no-tab'): st
       return 'Not sent: this conversation is locked and accepts no new input. Your text was kept.'
     case 'tabs-not-ready':
       return 'Not sent: conversations are still being restored. Your text was kept — send it again in a moment.'
+    case 'compacting':
+      return 'Not sent: the conversation is being compacted. Your text was kept — send it again once compaction finishes.'
     case 'no-tab':
       return 'Not sent: no active conversation. Your text was kept.'
   }

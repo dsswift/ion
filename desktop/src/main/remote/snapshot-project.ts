@@ -34,6 +34,7 @@ export interface RendererTabInput {
   queuedPrompts?: string[]
   isTerminalOnly?: boolean
   inputLocked?: boolean
+  isCompacting?: boolean
   inputLockReason?: 'automated-workflow' | 'landed-worktree' | 'settled' | null
   tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis' | null
   hasEngineExtension?: boolean
@@ -140,6 +141,7 @@ export function projectRendererTab(
     queuedPrompts: t.queuedPrompts || [],
     isTerminalOnly: t.isTerminalOnly || undefined,
     inputLocked: t.inputLocked || undefined,
+    isCompacting: t.isCompacting || undefined,
     inputLockReason: t.inputLockReason || undefined,
     tabRole: t.tabRole || undefined,
     hasEngineExtension: t.hasEngineExtension || undefined,

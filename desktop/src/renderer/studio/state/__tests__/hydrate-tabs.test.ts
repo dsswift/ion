@@ -237,3 +237,27 @@ describe('live tab statuses (workspace-indicator parity)', () => {
     expect(second.tabs.find((t) => t.id === 'tab-a')!.status).toBe('running')
   })
 })
+
+describe('live compaction indicator (compaction-status parity)', () => {
+  // Regression pin: /compact never rides the persisted PersistedTabState
+  // snapshot (isCompacting is live-only, like status), so a sync that
+  // doesn't carry it must not silently reset a live "Compacting…" indicator
+  // to false. This is exactly what a debounced owner→mirror push (fired by
+  // nothing more than any other tab's normalized event) used to do,
+  // flashing the indicator off ~1s after it opened.
+  it('owner-published liveIsCompacting is authoritative', () => {
+    const s = snapshot()
+    const { tabs } = tabsFromSnapshot(s, undefined, undefined, undefined, { 'tab-a': true, 'tab-b': false })
+    expect(tabs.find((t) => t.id === 'tab-a')!.isCompacting).toBe(true)
+    expect(tabs.find((t) => t.id === 'tab-b')!.isCompacting).toBe(false)
+  })
+
+  it('without published compaction flags, a re-sync preserves the mirror flag', () => {
+    const s = snapshot()
+    const first = tabsFromSnapshot(s, undefined, undefined, undefined, { 'tab-a': true })
+    // Later sync arrives without the live map (defensive): the mirror's own
+    // event-driven isCompacting survives instead of resetting to false.
+    const second = tabsFromSnapshot(s, undefined, first.tabs)
+    expect(second.tabs.find((t) => t.id === 'tab-a')!.isCompacting).toBe(true)
+  })
+})

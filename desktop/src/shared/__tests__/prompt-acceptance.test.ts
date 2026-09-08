@@ -26,6 +26,17 @@ describe('promptRefusal', () => {
     expect(promptRefusal({ tab: { status: 'connecting' } })?.reason).toBe('connecting')
   })
 
+  it('refuses while the conversation is being compacted — there is no way to steer it', () => {
+    expect(promptRefusal({ tab: { status: 'idle', isCompacting: true } })?.reason).toBe('compacting')
+  })
+
+  it('refuses compaction even on an otherwise-running tab (CLI-backend manual /compact)', () => {
+    // The delegated-CLI backends dispatch /compact as an ordinary turn, so
+    // status is 'running' for the whole compaction — isCompacting is the only
+    // signal distinguishing it from a steerable turn.
+    expect(promptRefusal({ tab: { status: 'running', isCompacting: true } })?.reason).toBe('compacting')
+  })
+
   it('refuses before tab state has finished restoring', () => {
     expect(promptRefusal({ tab: { status: 'idle' }, tabsReady: false })?.reason).toBe('tabs-not-ready')
   })
@@ -67,6 +78,12 @@ describe('promptRefusal', () => {
     expect(promptRefusal({
       tab: { status: 'idle', inputLocked: true, contextTokens: 100, contextLimit: 100 },
     })?.reason).toBe('input-locked')
+  })
+
+  it('orders compacting refusal before the lock check', () => {
+    expect(promptRefusal({
+      tab: { status: 'idle', isCompacting: true, inputLocked: true, inputLockReason: 'conflict-fix' },
+    })?.reason).toBe('compacting')
   })
 
   it('orders refusals so the most fundamental one is reported', () => {

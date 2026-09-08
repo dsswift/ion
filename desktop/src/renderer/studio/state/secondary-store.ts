@@ -152,7 +152,8 @@ export function hydrateTabsFromSync(snapshot: unknown): void {
   const typed = snapshot as PersistedTabState
   const liveTabStatus = (snapshot as { liveTabStatus?: Record<string, string> }).liveTabStatus
   const queuedAttachments = (snapshot as { queuedAttachments?: Record<string, FileAttachment[]> }).queuedAttachments
-  const { tabs, settledHistory, activeTabId } = tabsFromSnapshot(typed, liveTabStatus, useSessionStore.getState().tabs, queuedAttachments)
+  const liveIsCompacting = (snapshot as { liveIsCompacting?: Record<string, boolean> }).liveIsCompacting
+  const { tabs, settledHistory, activeTabId } = tabsFromSnapshot(typed, liveTabStatus, useSessionStore.getState().tabs, queuedAttachments, liveIsCompacting)
   useSessionStore.setState((s) => ({
     tabs,
     settledHistory,

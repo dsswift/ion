@@ -1,12 +1,10 @@
 /**
- * submit() refuses input-locked conversations — the enforcement half of the
- * conflict-assist lock.
+ * submit() refuses a prompt while the conversation is being compacted.
  *
- * The InputBar hides itself on a locked tab, but the guard must live in
- * submit() so no other entry point (remote command from iOS, queued prompt,
- * future caller) can route around it. The lock is applied AFTER the
- * machine-sent conflict-fix prompt, so exactly one submission passes and
- * everything after is dropped without side effects.
+ * There is no way to steer a compaction in progress — it is not a turn a
+ * queued prompt could interrupt or redirect — so a send during one is
+ * refused outright by the same shared predicate (shared/prompt-acceptance.ts)
+ * the input-locked case uses, not silently queued behind the run.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
@@ -74,7 +72,7 @@ function makeTab(overrides: Partial<TabState> = {}): TabState {
     lastKnownSessionId: null,
     status: 'idle',
     activeRequestId: null,
-    lastEventAt: null,    lastActivityAt: null,    idleSince: null,    lastCompletionAt: null,    settledOverride: null,    settledAt: null,    snoozedUntil: null,    snoozedAt: null,    lastVisitedAt: null,    manualUnread: false,
+    lastEventAt: null, lastActivityAt: null, idleSince: null, lastCompletionAt: null, settledOverride: null, settledAt: null, snoozedUntil: null, snoozedAt: null, lastVisitedAt: null, manualUnread: false,
     currentActivity: '',
     attachments: [],
     title: 'New Tab',
@@ -149,9 +147,9 @@ beforeEach(() => {
   mockPrompt.mockReset().mockResolvedValue(undefined)
 })
 
-describe('submit() on an input-locked conversation', () => {
+describe('submit() on a conversation being compacted', () => {
   it('drops the prompt: nothing reaches the wire', () => {
-    const { state } = buildHarness(makeTab({ inputLocked: true }))
+    const { state } = buildHarness(makeTab({ isCompacting: true }))
 
     state.submit('tab-1', 'a follow-up the operator typed')
 
@@ -159,10 +157,7 @@ describe('submit() on an input-locked conversation', () => {
   })
 
   it('tells the operator, in the conversation, that nothing was sent', () => {
-    // A refusal used to be a WARN line and nothing else: the text vanished
-    // from a composer that looked merely busy, with no explanation anywhere
-    // the operator was looking. The notice is the feedback.
-    const { state } = buildHarness(makeTab({ inputLocked: true }))
+    const { state } = buildHarness(makeTab({ isCompacting: true }))
 
     state.submit('tab-1', 'a follow-up the operator typed')
 
@@ -171,86 +166,57 @@ describe('submit() on an input-locked conversation', () => {
     expect(main?.messages ?? []).toHaveLength(1)
     expect(main?.messages[0].role).toBe('system')
     expect(main?.messages[0].content).toContain('Not sent')
-    // The operator must not be left wondering whether to retype.
     expect(main?.messages[0].content).toContain('kept')
   })
 
   it('returns the refusal so a mirror caller can restore the text', () => {
-    // submit() is a FORWARDED action. When the Studio presentation is active
-    // the InputBar's pre-check reads MIRROR state while this guard reads OWNER
-    // state, so the refusal has to travel back for the text to be restored.
-    const { state } = buildHarness(makeTab({ inputLocked: true }))
+    const { state } = buildHarness(makeTab({ isCompacting: true }))
 
     const result = state.submit('tab-1', 'a follow-up the operator typed')
 
     expect(result).toEqual({
       accepted: false,
-      reason: 'input-locked',
+      reason: 'compacting',
       message: expect.stringContaining('Not sent'),
     })
   })
 
-  it('reports acceptance when the prompt is admitted', () => {
-    const { state } = buildHarness(makeTab({ inputLocked: false }))
+  it('refuses even when status is running — the CLI backend dispatches /compact as an ordinary turn', () => {
+    // The delegated-CLI backends have no CompactNow, so dispatchCompact's
+    // idle sub-path runs /compact as a real turn: status is 'running' for
+    // the whole compaction. isCompacting is the only signal a prompt during
+    // it cannot be treated as an ordinary mid-turn steer.
+    const { state } = buildHarness(makeTab({ status: 'running', isCompacting: true }))
 
-    const result = state.submit('tab-1', 'a normal prompt')
+    const result = state.submit('tab-1', 'a follow-up the operator typed')
 
-    expect(result).toEqual({ accepted: true })
+    expect(mockPrompt).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ accepted: false, reason: 'compacting' })
   })
 
-  it('an unlocked tab still submits (the guard reads the flag, not the flow)', () => {
-    // Red if the guard were inverted or over-broad: the same harness with
-    // inputLocked=false must pass the prompt through to window.ion.prompt.
-    const { state } = buildHarness(makeTab({ inputLocked: false }))
+  it('an idle, non-compacting tab still submits (the guard reads the flag, not the flow)', () => {
+    const { state } = buildHarness(makeTab({ isCompacting: false }))
 
     state.submit('tab-1', 'a normal prompt')
 
     expect(mockPrompt).toHaveBeenCalledTimes(1)
   })
 
-  it('adds no notice when the prompt is accepted', () => {
-    const { state } = buildHarness(makeTab({ inputLocked: false }))
-
-    state.submit('tab-1', 'a normal prompt')
-
-    const pane = state.conversationPanes.get('tab-1')
-    const main = pane?.instances.find((i: { id: string }) => i.id === 'main')
-    const notices = (main?.messages ?? []).filter(
-      (m: { role: string; content: string }) => m.role === 'system' && m.content.includes('Not sent'),
-    )
-    expect(notices).toHaveLength(0)
-  })
-
-  it('an unlocked full-context tab still reaches the engine for automatic compaction', () => {
-    const tab = makeTab({ inputLocked: false, contextTokens: 911_135, contextWindow: 1_000_000 })
-    const { state } = buildHarness(tab)
-
-    state.submit('tab-1', 'resume')
-
-    expect(mockPrompt).toHaveBeenCalledTimes(1)
-    expect(mockPrompt).toHaveBeenCalledWith(
-      'tab-1',
-      expect.any(String),
-      expect.objectContaining({ prompt: 'resume' }),
-    )
-  })
-
-  it('submitRemotePrompt is guarded too: an iOS prompt cannot route around the lock', () => {
-    // The desktop is the authority on what reaches the engine — iOS hides its
-    // input bar and guards its own submit, but the wire path must refuse
-    // regardless of what the client sends.
-    const { state } = buildHarness(makeTab({ inputLocked: true }))
+  it('submitRemotePrompt is guarded too: an iOS prompt cannot route around the compaction refusal', () => {
+    const { state } = buildHarness(makeTab({ isCompacting: true }))
 
     state.submitRemotePrompt('tab-1', 'a prompt relayed from the phone')
 
     expect(mockPrompt).not.toHaveBeenCalled()
   })
 
-  it('submitRemotePrompt posts a visible notice too, not just a log line', () => {
-    // Regression: this path used to warn-and-return with nothing posted to
-    // the conversation. A phone operator relayed through it has no other way
-    // to learn their message was refused — a silent drop reads as "sent".
-    const { state } = buildHarness(makeTab({ inputLocked: true }))
+  it('submitRemotePrompt posts a visible notice — a log line is not feedback the phone can see', () => {
+    // submitRemotePrompt has no caller to return a refusal to (iOS fires and
+    // forgets), so a silent drop here means the phone operator's message just
+    // vanishes with nothing anywhere they're looking. The notice is a normal
+    // system message, so it reaches iOS through the same sync as any other
+    // conversation content — no separate wire field required.
+    const { state } = buildHarness(makeTab({ isCompacting: true }))
 
     state.submitRemotePrompt('tab-1', 'a prompt relayed from the phone')
 
