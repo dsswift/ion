@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -18,9 +17,13 @@ import (
 // LoadEnterpriseConfig loads enterprise configuration from platform-appropriate sources.
 //
 // Sources checked in order:
-//  1. ION_ENTERPRISE_CONFIG env var (path to JSON file, all platforms)
+//  1. ION_ENTERPRISE_CONFIG env var (path to JSON file, all platforms; wins outright)
 //  2. macOS: /Library/Managed Preferences/com.ion.engine.plist
 //  3. Linux: /etc/ion/config.json + /etc/ion/config.d/*.json
+//  4. Windows: %ProgramData%\Ion\enterprise-config.json + enterprise-config.d\*.json,
+//     then HKLM\SOFTWARE\Policies\IonEngine overlaid on top (values decoded by
+//     EnterpriseConfig field name; see enterprise_registry_decode.go). HKCU is
+//     never read.
 func LoadEnterpriseConfig() *types.EnterpriseConfig {
 	return loadEnterpriseConfig(runtime.GOOS)
 }
@@ -113,50 +116,7 @@ func readLinux() *types.EnterpriseConfig {
 	return cfg
 }
 
-// readWindows reads enterprise config from the Windows registry.
-// Uses the same registry path as MDM (HKLM\SOFTWARE\Policies\IonEngine).
-// Tries "Config" first (TS compatibility), then falls back to "ConfigJson".
-func readWindows() *types.EnterpriseConfig {
-	for _, valueName := range []string{"Config", "ConfigJson"} {
-		cfg := readWindowsRegistryValue(valueName)
-		if cfg != nil {
-			return cfg
-		}
-	}
-	return nil
-}
 
-// readWindowsRegistryValue queries a single REG_SZ value from the IonEngine registry key.
-func readWindowsRegistryValue(valueName string) *types.EnterpriseConfig {
-	cmd := exec.Command("reg", "query", `HKLM\SOFTWARE\Policies\IonEngine`, "/v", valueName)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
-
-	// Parse the REG_SZ value from reg query output.
-	// Format: "    <valueName>    REG_SZ    {json...}"
-	lines := strings.Split(string(out), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if !strings.Contains(line, "REG_SZ") {
-			continue
-		}
-		parts := strings.SplitN(line, "REG_SZ", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		jsonStr := strings.TrimSpace(parts[1])
-		var cfg types.EnterpriseConfig
-		if err := json.Unmarshal([]byte(jsonStr), &cfg); err != nil {
-			utils.LogWithFields(utils.LevelInfo, "config.enterprise", "failed to parse windows registry value", map[string]any{"path": valueName, "error": err.Error()})
-			return nil
-		}
-		utils.LogWithFields(utils.LevelInfo, "config.enterprise", "loaded config from windows registry", map[string]any{"path": valueName})
-		return &cfg
-	}
-	return nil
-}
 
 // mergeEnterprisePartial does a shallow merge of enterprise config (later wins for scalars/slices).
 func mergeEnterprisePartial(base, overlay *types.EnterpriseConfig) *types.EnterpriseConfig {

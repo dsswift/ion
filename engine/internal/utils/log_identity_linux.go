@@ -18,9 +18,11 @@ func loadPlatformMachineIdentity() platformIdentity {
 		id = strings.TrimSpace(string(b))
 	}
 
-	// Read MDM settings from the Linux managed-settings JSON (same source as
-	// config.loadPlatformMDM on linux, but read directly here to avoid an
-	// import cycle — utils must not import config).
+	// Read MDM settings from the Linux managed-settings JSON (a separate,
+	// legacy managed-settings location read directly here to avoid an
+	// import cycle — utils must not import config. This is distinct from
+	// the enterprise config sources config.LoadEnterpriseConfig reads on
+	// linux, which are /etc/ion/config.json + config.d).
 	var mdmID, mdmSerial string
 	if b, err := os.ReadFile(filepath.Join(linuxMDMDir, "managed-settings.json")); err == nil {
 		var m map[string]interface{}
