@@ -238,7 +238,10 @@ export function planPathFromHistory(
       try {
         const input = JSON.parse(m.toolInput);
         const fp = input.file_path;
-        if (typeof fp === "string" && /\/\.ion\/plans\/[^/]+\.md$/.test(fp))
+        // Separator-agnostic: file_path came from whichever platform wrote
+        // it, and a Windows path joins with backslashes, which a
+        // forward-slash-only pattern silently never matches.
+        if (typeof fp === "string" && /[/\\]\.ion[/\\]plans[/\\][^/\\]+\.md$/.test(fp))
           return fp;
       } catch {
         // Not JSON tool input — skip.

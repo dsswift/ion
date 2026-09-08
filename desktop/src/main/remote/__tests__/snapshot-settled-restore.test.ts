@@ -1,8 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 
-const tabsFile = vi.hoisted(() => '/tmp/ion-settled-snapshot-tabs.json')
-const worktreePath = '/tmp/ion-settled-snapshot-worktree'
+// A literal /tmp path resolves under Windows' drive-relative rules (e.g.
+// D:\tmp) rather than a real writable directory, so the fixture uses the
+// platform temp dir instead of assuming a POSIX layout. Required inline
+// (not via the top-level `join`/`tmpdir` imports) because vi.hoisted's
+// callback is hoisted above every import statement in the compiled output.
+const tabsFile = vi.hoisted(() =>
+  require('path').join(require('os').tmpdir(), 'ion-settled-snapshot-tabs.json'),
+)
+const worktreePath = join(tmpdir(), 'ion-settled-snapshot-worktree')
 
 vi.mock('../../settings-store', () => ({ TABS_FILE: tabsFile }))
 vi.mock('../../machine-identity', () => ({ getMachineIdentity: () => null }))

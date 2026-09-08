@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const source = readFileSync(join(__dirname, 'InboxRow.tsx'), 'utf8')
+// Normalized to LF: a Windows checkout of a text file with core.autocrlf
+// can read back with \r\n, which breaks every multi-line literal below
+// ("<div\n      {...handlers}") that embeds a bare \n.
+const source = readFileSync(join(__dirname, 'InboxRow.tsx'), 'utf8').replace(/\r\n/g, '\n')
 
 describe('InboxRow status restraint', () => {
   it('does not render a separate unread dot', () => {

@@ -323,11 +323,19 @@ describe("studio:open", () => {
 });
 
 describe("studio:get-settings studioEnabled derivation (single-UI exclusivity)", () => {
-  it("returns studioEnabled: false when studio is not the active UI", () => {
-    vi.mocked(readSettings).mockReturnValueOnce({ studioTheme: "ion-works" });
-    const result = invoke(IPC.STUDIO_GET_SETTINGS) as Record<string, unknown>;
-    expect(result.studioEnabled).toBe(false);
-  });
+  // surface-launch.ts clamps activeUi to 'studio' unconditionally on win32 --
+  // the Overlay glass has no Windows equivalent, so an overlay-resolving
+  // settings combination is not reachable there regardless of what these
+  // mocks request. That branch is pinned directly in surface-launch.test.ts;
+  // these four cases only make sense off win32.
+  it.skipIf(process.platform === "win32")(
+    "returns studioEnabled: false when studio is not the active UI",
+    () => {
+      vi.mocked(readSettings).mockReturnValueOnce({ studioTheme: "ion-works" });
+      const result = invoke(IPC.STUDIO_GET_SETTINGS) as Record<string, unknown>;
+      expect(result.studioEnabled).toBe(false);
+    },
+  );
 
   it("returns studioEnabled: true when studio is the active UI (gate + preference)", () => {
     vi.mocked(readSettings).mockReturnValueOnce({
@@ -339,25 +347,31 @@ describe("studio:get-settings studioEnabled derivation (single-UI exclusivity)",
     expect(result.studioEnabled).toBe(true);
   });
 
-  it("returns studioEnabled: false when the gate is on but overlay is active", () => {
-    vi.mocked(readSettings).mockReturnValueOnce({
-      studioTheme: "ion-works",
-      studioBeta: true,
-      activeUi: "overlay",
-    });
-    const result = invoke(IPC.STUDIO_GET_SETTINGS) as Record<string, unknown>;
-    expect(result.studioEnabled).toBe(false);
-  });
+  it.skipIf(process.platform === "win32")(
+    "returns studioEnabled: false when the gate is on but overlay is active",
+    () => {
+      vi.mocked(readSettings).mockReturnValueOnce({
+        studioTheme: "ion-works",
+        studioBeta: true,
+        activeUi: "overlay",
+      });
+      const result = invoke(IPC.STUDIO_GET_SETTINGS) as Record<string, unknown>;
+      expect(result.studioEnabled).toBe(false);
+    },
+  );
 
-  it("legacy overlay-only surfacePolicy still resolves overlay", () => {
-    vi.mocked(readSettings).mockReturnValueOnce({
-      studioTheme: "ion-works",
-      studioBeta: true,
-      surfacePolicy: "overlay-only",
-    });
-    const result = invoke(IPC.STUDIO_GET_SETTINGS) as Record<string, unknown>;
-    expect(result.studioEnabled).toBe(false);
-  });
+  it.skipIf(process.platform === "win32")(
+    "legacy overlay-only surfacePolicy still resolves overlay",
+    () => {
+      vi.mocked(readSettings).mockReturnValueOnce({
+        studioTheme: "ion-works",
+        studioBeta: true,
+        surfacePolicy: "overlay-only",
+      });
+      const result = invoke(IPC.STUDIO_GET_SETTINGS) as Record<string, unknown>;
+      expect(result.studioEnabled).toBe(false);
+    },
+  );
 });
 
 
