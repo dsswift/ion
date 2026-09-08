@@ -145,4 +145,17 @@ export interface IonDesktopPolicyFields {
     ui: string
     locked?: boolean
   }
+  /**
+   * Enterprise Tab Strip policy for Ion Studio. `visible` is the managed
+   * value; `locked: true` additionally disables the Settings toggle.
+   * Absent/false `locked` means a managed DEFAULT the user may override,
+   * and their override survives every later launch.
+   *
+   * Studio only — the Overlay always keeps its compact Tab Strip, which is
+   * the only conversation switcher that surface has.
+   */
+  tabStripPolicy?: {
+    visible: boolean
+    locked?: boolean
+  }
 }

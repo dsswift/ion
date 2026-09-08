@@ -7,9 +7,16 @@ interface SettingToggleProps {
   checked: boolean
   onChange: (next: boolean) => void
   warning?: string
+  /**
+   * Renders the control as enforced: the switch stops responding and dims,
+   * and the reason is shown beneath the description. Used where enterprise
+   * policy owns the value, so the setting stays visible and explains itself
+   * rather than vanishing.
+   */
+  lockedReason?: string
 }
 
-export function SettingToggle({ label, description, checked, onChange, warning }: SettingToggleProps) {
+export function SettingToggle({ label, description, checked, onChange, warning, lockedReason }: SettingToggleProps) {
   const colors = useColors()
 
   return (
@@ -32,7 +39,7 @@ export function SettingToggle({ label, description, checked, onChange, warning }
           {label}
         </span>
         <div
-          onClick={() => onChange(!checked)}
+          onClick={() => { if (!lockedReason) onChange(!checked) }}
           style={{
             width: 32,
             height: 18,
@@ -40,7 +47,8 @@ export function SettingToggle({ label, description, checked, onChange, warning }
             background: checked ? colors.accent : colors.surfaceSecondary,
             position: 'relative',
             transition: 'background 0.15s',
-            cursor: 'pointer',
+            cursor: lockedReason ? 'not-allowed' : 'pointer',
+            opacity: lockedReason ? 0.5 : 1,
             flexShrink: 0,
           }}
         >
@@ -68,6 +76,19 @@ export function SettingToggle({ label, description, checked, onChange, warning }
       >
         {description}
       </p>
+      {lockedReason && (
+        <p
+          style={{
+            color: colors.textTertiary,
+            fontSize: 11,
+            margin: '2px 0 0',
+            lineHeight: 1.4,
+            fontStyle: 'italic',
+          }}
+        >
+          {lockedReason}
+        </p>
+      )}
       {checked && warning && (
         <p
           style={{
