@@ -121,6 +121,22 @@ export interface FileEditorTab {
    */
   readError?: string;
   /**
+   * True once this tab's content has been read from disk (or the read failed
+   * and was recorded).
+   *
+   * Load-completion was previously inferred from `content === '' &&
+   * savedContent === ''`, which is indistinguishable from a genuinely EMPTY
+   * file. A new or empty file therefore never satisfied "already loaded": the
+   * load effect re-ran on every keystroke -- `activeFile` is in its dependency
+   * list -- and each read returned "" and overwrote the character just typed.
+   * The file could not be edited at all, and the log showed dozens of
+   * fsReadFile calls in one millisecond, every one content_len:0.
+   *
+   * An explicit flag says what the inference was guessing at. Runtime-only --
+   * never persisted, so a restored tab reloads from disk as before.
+   */
+  isLoaded?: boolean;
+  /**
    * Per-tab word-wrap override. Absent means the tab follows the global
    * `editorWordWrap` preference default; toggleEditorWordWrap flips away from
    * that effective value on first use, then alternates the override directly.
