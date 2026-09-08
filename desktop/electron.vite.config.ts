@@ -147,6 +147,18 @@ export default defineConfig({
   renderer: {
     root: resolve(__dirname, "src/renderer"),
     plugins: [react(), tailwindcss()],
+    // The graph layout worker (studio/graph/graph-layout.worker.ts) is a
+    // module worker that imports ForceAtlas2's CommonJS internals. The dev
+    // server's dependency scanner does not crawl into `new Worker(new URL())`
+    // entries, so those deps are named here or the worker's first import
+    // 404s in dev while the production bundle is fine.
+    optimizeDeps: {
+      include: [
+        "graphology-layout-forceatlas2/iterate",
+        "graphology-layout-forceatlas2/defaults",
+        "graphology-layout-forceatlas2/helpers",
+      ],
+    },
     build: {
       outDir: resolve(__dirname, "dist/renderer"),
       rollupOptions: {

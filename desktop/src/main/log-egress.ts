@@ -29,6 +29,8 @@ import { log as _log } from './logger'
 import { EgressForwarder, DEFAULT_FLUSH_INTERVAL_MS } from './log-egress-forwarder'
 import { noopHeaderProvider } from './log-egress-types'
 import type { EgressRecord, EgressConfig, AuthHeaderProvider } from './log-egress-types'
+
+export type EgressSource = 'engine' | 'settings'
 import { _resetSpoolStateForTest } from './log-egress-spool'
 
 // The types and the forwarder live in sibling modules; re-exported here so
@@ -72,7 +74,11 @@ export function getEgressUser(): string | undefined {
   return _egressUser
 }
 
-let activeForwarder: EgressForwarder | null = null
+const activeForwarders = new Map<EgressSource, { forwarder: EgressForwarder; shipOwnRecords: boolean }>()
+
+function getForwarder(source: EgressSource): EgressForwarder | null {
+  return activeForwarders.get(source)?.forwarder ?? null
+}
 
 /**
  * Shipping-responsibility gate for the desktop's OWN records (matrix
@@ -96,26 +102,26 @@ let _shipOwnRecords = true
 export function configureEgress(
   cfg?: EgressConfig,
   getAuthHeaders: AuthHeaderProvider = noopHeaderProvider,
-  opts?: { shipOwnRecords?: boolean },
+  opts?: { shipOwnRecords?: boolean; source?: EgressSource },
 ): void {
-  if (activeForwarder) {
-    // Drain the old forwarder asynchronously. flush() failures are logged by
-    // logFlushError; a rejection of close() itself (e.g. the shutdown promise)
-    // would otherwise be silent, so log it explicitly.
-    activeForwarder.close().catch((err) => {
-      log('egress forwarder close failed during reconfigure', { error: String(err) })
+  const source = opts?.source ?? 'settings'
+  const existing = getForwarder(source)
+  if (existing) {
+    existing.close().catch((err) => {
+      log('egress forwarder close failed during reconfigure', { source, error: String(err) })
     })
-    activeForwarder = null
+    activeForwarders.delete(source)
   }
-  _shipOwnRecords = opts?.shipOwnRecords ?? true
+  const shipOwnRecords = opts?.shipOwnRecords ?? true
   if (!cfg || cfg.egressTargets.length === 0) return
-  activeForwarder = new EgressForwarder(cfg, getAuthHeaders)
+  activeForwarders.set(source, { forwarder: new EgressForwarder(cfg, getAuthHeaders), shipOwnRecords })
   log('egress forwarder configured', {
+    source,
     targets: cfg.egressTargets,
     endpoint: cfg.egressEndpoint,
     flush_interval_ms: cfg.egressFlushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS,
     batch_size: cfg.egressBatchSize ?? 0,
-    ship_own_records: _shipOwnRecords,
+    ship_own_records: shipOwnRecords,
   })
 }
 
@@ -128,8 +134,9 @@ export function configureEgress(
  * Stamps the user-attribution field (F4) when an Entra identity is present.
  */
 export function shipToEgress(rec: EgressRecord): void {
-  if (!activeForwarder || !_shipOwnRecords) return
-  enqueueRecord(rec)
+  for (const { forwarder, shipOwnRecords } of activeForwarders.values()) {
+    if (shipOwnRecords) enqueueRecord(forwarder, rec)
+  }
 }
 
 /**
@@ -138,19 +145,17 @@ export function shipToEgress(rec: EgressRecord): void {
  * desktop assigned only tailed sources still ships them.
  */
 export function shipTailedToEgress(rec: EgressRecord): void {
-  if (!activeForwarder) return
-  enqueueRecord(rec)
+  for (const { forwarder } of activeForwarders.values()) enqueueRecord(forwarder, rec)
 }
 
-function enqueueRecord(rec: EgressRecord): void {
-  if (!activeForwarder) return
+function enqueueRecord(forwarder: EgressForwarder, rec: EgressRecord): void {
   // Stamp a per-record event_id when absent (downstream-dedup key). Byte-shape
   // parity with the engine forwarder, which stamps at its own enqueue funnel.
   const stamped: EgressRecord = rec.event_id ? rec : { ...rec, event_id: genEventID() }
   if (_egressUser && !stamped.user) {
-    activeForwarder.ship({ ...stamped, user: _egressUser })
+    forwarder.ship({ ...stamped, user: _egressUser })
   } else {
-    activeForwarder.ship(stamped)
+    forwarder.ship(stamped)
   }
 }
 
@@ -168,10 +173,9 @@ function genEventID(): string {
  * line that reached the file also reached the egress sink.
  */
 export async function closeEgress(): Promise<void> {
-  if (!activeForwarder) return
-  const f = activeForwarder
-  activeForwarder = null
-  await f.close()
+  const forwarders = [...activeForwarders.values()].map(({ forwarder }) => forwarder)
+  activeForwarders.clear()
+  await Promise.all(forwarders.map((forwarder) => forwarder.close()))
 }
 
 /**
@@ -179,8 +183,7 @@ export async function closeEgress(): Promise<void> {
  * in tests; production code uses closeEgress() for the final drain.
  */
 export async function flushEgress(): Promise<void> {
-  if (!activeForwarder) return
-  await activeForwarder.flush()
+  await Promise.all([...activeForwarders.values()].map(({ forwarder }) => forwarder.flush()))
 }
 
 /**
@@ -188,17 +191,20 @@ export async function flushEgress(): Promise<void> {
  * bound. Returns 0 when no forwarder is configured.
  */
 export function _getBufferLengthForTest(): number {
-  return activeForwarder?._bufferLengthForTest() ?? 0
+  return [...activeForwarders.values()].reduce(
+    (total, { forwarder }) => total + forwarder._bufferLengthForTest(),
+    0,
+  )
 }
 
 /**
  * TEST ONLY. Reset module-level forwarder state between test cases.
  */
 export function _resetEgressForTest(): void {
-  if (activeForwarder) {
-    activeForwarder.close().catch(() => {}) // silent-ok: test-only reset helper (_resetEgressForTest)
-    activeForwarder = null
+  for (const { forwarder } of activeForwarders.values()) {
+    forwarder.close().catch((err) => log('egress test reset close failed', { error: String(err) }))
   }
+  activeForwarders.clear()
   _egressUser = undefined
   _shipOwnRecords = true
   _resetSpoolStateForTest()

@@ -262,6 +262,7 @@ describe('EgressForwarder', () => {
     expect(body.some((r) => r.msg === 'test-message')).toBe(true)
   })
 
+
   it('E7: close drains remaining buffer', async () => {
     const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200, body: null })
     const origFetch = global.fetch
@@ -287,10 +288,8 @@ describe('EgressForwarder', () => {
     await closeEgress()
     global.fetch = origFetch
 
-    // close() must have triggered a flush.
     expect(mockFetch).toHaveBeenCalledTimes(1)
   })
-
   // F (#310): every record shipped through the funnel is stamped with a
   // unique event_id; a record that already carries one keeps it.
   it('stamps a unique event_id on every shipped record', async () => {

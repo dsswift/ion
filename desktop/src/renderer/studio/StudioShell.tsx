@@ -32,7 +32,7 @@ import { usePreferencesStore } from "../preferences";
 import { rDebug, rInfo } from "../rendererLogger";
 import { contentRouter } from "../lib/file-open-router";
 import { IPC } from "../../shared/types";
-import { getDispatches, meta, mostRecentDispatch } from "../components/agent-panel-helpers";
+import { openDispatchPreview } from "./open-dispatch-preview";
 import { toggleActivePermissionMode } from "../shortcuts/shared-command-handlers";
 import { handleNewConversationShortcut, isEditorZoomTarget, isPreviewZoomTarget } from "../hooks/useKeyboardShortcuts"
 import { SETTINGS_DEFAULTS } from "../preferences-types";
@@ -63,6 +63,7 @@ import { useCommandShortcuts } from "./keymap/useStudioKeymap";
 import { useSurfaceStore } from "./surface/surface-store";
 import { useSurfacePersistOnUnload } from "./surface/surface-persist";
 import { useStudioBrowserCommands } from "./surface/studio-browser-commands";
+import { useStudioGraphCommands } from "./graph/studio-graph-commands";
 import { canvasTabHandlers } from "./surface/canvas-tab-handlers";
 import { initSurfaceConversationSync } from "./surface/surface-conversation-sync";
 import { initQuestionsSurfaceSync } from "./surface/questions-surface-sync";
@@ -71,6 +72,7 @@ import { ControlsPopover } from "./visualizer/ControlsPopover";
 import { useStudioControlsBus } from "./state/controls-bus";
 import { GIT_PANEL_WIDTH } from "../components/panelGeometry";
 import { useWindowWidth } from '../hooks/useWindowGeometry'
+import { useGraphStore } from "./graph/graph-store";
 import { resolveStudioResponsiveLayout } from '../responsive-layout'
 import { useResourceBootstrap } from "../hooks/useResourceBootstrap";
 import { CommandPalette } from "../components/CommandPalette";
@@ -125,6 +127,24 @@ export function StudioShell(): React.JSX.Element {
   useEffect(() => hydrateQuestions(), []);
   useEffect(() => initQuestionsSurfaceSync(), []);
 
+  // Graph View "+" menu availability: resolve config.corpusRoots.length > 0
+  // for the active conversation's project whenever it changes. This is a
+  // config-only probe (checkAvailability), not a corpus subscribe — the
+  // menu must reflect availability before the surface is ever opened.
+  // '~' is a real path (the home directory) and must be expanded before
+  // probing — checkAvailability skips bare '~' on the assumption it is a
+  // placeholder, so we resolve it here.
+  const activeWorkingDirectory = useSessionStore(
+    (s) => s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory ?? null,
+  );
+  const homePath = useSessionStore((s) => s.staticInfo?.homePath ?? null);
+  useEffect(() => {
+    if (!activeWorkingDirectory) return;
+    const resolved = activeWorkingDirectory === '~' ? (homePath ?? null) : activeWorkingDirectory;
+    if (!resolved) return;
+    void useGraphStore.getState().checkAvailability(resolved);
+  }, [activeWorkingDirectory, homePath]);
+
   const { layout, hydrated, patch } = useStudioLayout();
   useEffect(() => {
     const openWebApplication = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
@@ -142,6 +162,7 @@ export function StudioShell(): React.JSX.Element {
     return () => window.ion.off(IPC.STUDIO_OPEN_WEB_APPLICATION, openWebApplication)
   }, [])
   const surfaceVisible = useSurfaceStore((s) => s.visible);
+  const surfaceMaximized = useSurfaceStore((s) => s.maximized && s.visible);
   // Per-conversation width, or null when this conversation has never been
   // resized — falls back to the global default below.
   const conversationSurfaceWidth = useSurfaceStore((s) => s.surfaceWidth);
@@ -155,6 +176,7 @@ export function StudioShell(): React.JSX.Element {
   // Main drives browser tab creation, closing, reveal, and emulation through a
   // correlated command channel, answered exactly once per command.
   useStudioBrowserCommands();
+  useStudioGraphCommands();
 
   // Surface state is written on a debounce, which a quit can outrun.
   useSurfacePersistOnUnload();
@@ -185,9 +207,11 @@ export function StudioShell(): React.JSX.Element {
   const narrowPrimary = requestedLeftVisible && narrowPane === "left"
     ? "left"
     : surfaceVisible && narrowPane === "surface" ? "surface" : "center";
-  const showLeft = requestedLeftVisible && (responsive.mode !== "narrow" || narrowPrimary === "left");
-  const showCenter = responsive.mode !== "narrow" || narrowPrimary === "center";
-  const showSurface = surfaceVisible && (responsive.mode !== "narrow" || narrowPrimary === "surface");
+  // A maximised surface is the whole shell: the sidebar and the conversation
+  // step aside until it is restored, whatever the responsive mode says.
+  const showLeft = !surfaceMaximized && requestedLeftVisible && (responsive.mode !== "narrow" || narrowPrimary === "left");
+  const showCenter = !surfaceMaximized && (responsive.mode !== "narrow" || narrowPrimary === "center");
+  const showSurface = surfaceVisible && (surfaceMaximized || responsive.mode !== "narrow" || narrowPrimary === "surface");
 
   // The owner's active tab is authoritative; mirror-store highlight follows
   // the same push the canvas retargets on.
@@ -227,6 +251,7 @@ export function StudioShell(): React.JSX.Element {
         if (responsive.mode === "narrow" && surfaceVisible) setNarrowPane("surface");
         else useSurfaceStore.getState().toggleVisible();
       },
+      "studio.layout.surfaceMaximize": () => useSurfaceStore.getState().toggleMaximized(),
       // Every canvas tab's toggle, one rule, from the surface module that owns
       // the tab↔command map the tab pills also read.
       ...canvasTabHandlers(),
@@ -428,32 +453,7 @@ export function StudioShell(): React.JSX.Element {
       useSurfaceStore.getState().setVisible(true);
   });
 
-  // A dispatch preview is one conversation-local surface tab. Reopening it
-  // updates that tab's subject instead of creating another runtime panel.
-  const onAgentClick = (_tabId: string, agentName: string): void => {
-    if (agentName === "__manager__") return;
-    const state = useSessionStore.getState();
-    const pane = state.conversationPanes.get(state.activeTabId);
-    const instance = pane?.instances.find((item) => item.id === pane.activeInstanceId);
-    const agent = instance?.agentStates.find((item) => item.name === agentName);
-    if (!agent) {
-      rDebug("studio.surface", "dispatch preview agent was not found", {
-        agent: agentName,
-        tab_id: state.activeTabId,
-      });
-      return;
-    }
-    const dispatch = mostRecentDispatch(getDispatches(agent));
-    if (!dispatch?.id) {
-      rDebug("studio.surface", "dispatch preview agent has no dispatch", {
-        agent: agentName,
-        tab_id: state.activeTabId,
-      });
-      return;
-    }
-    const title = meta(agent, "displayName", agent.name);
-    contentRouter()?.openDispatch?.(agent.name, dispatch.id, title);
-  };
+  const onAgentClick = (_tabId: string, agentName: string): void => openDispatchPreview(agentName);
 
   // Render nothing until the persisted layout is read: flashing default
   // geometry and then snapping to the restored one reads as a glitch.
@@ -530,7 +530,9 @@ export function StudioShell(): React.JSX.Element {
             <StudioSurface
               onFocusCapture={() => { setLastFocusedColumn("surface"); setNarrowPane("surface") }}
               onMouseDownCapture={() => { setLastFocusedColumn("surface"); setNarrowPane("surface") }}
-              liveWidth={responsive.surfaceWidth}
+              liveWidth={surfaceMaximized ? windowWidth : responsive.surfaceWidth}
+              maximized={surfaceMaximized}
+              onToggleMaximized={() => useSurfaceStore.getState().toggleMaximized()}
               onLiveResize={setLiveSurfaceWidth}
               onCommitWidth={(w) => {
                 setLiveSurfaceWidth(null);
