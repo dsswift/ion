@@ -213,6 +213,16 @@ type NativeCompactionData struct {
 // marker on historical reload.
 type SteerMarkerData struct {
 	MessageLength int `json:"messageLength"`
+	// Kind and MachineAuthored mirror the injected message's own classification
+	// (MessageData.InjectionKind / MachineAuthored) at the moment the marker is
+	// written. Without them, a consumer reading the marker in isolation cannot
+	// tell a human mid-turn steer from an engine-to-engine one (a background
+	// dispatch completion, a check-in) without re-deriving it from the adjacent
+	// message entry — a fragile, order-dependent lookup this marker exists to
+	// avoid. Additive (omitempty): absent on legacy rows, which read as a
+	// human steer, matching their pre-existing behavior.
+	Kind            string `json:"kind,omitempty"`
+	MachineAuthored bool   `json:"machineAuthored,omitempty"`
 }
 
 // ClearedData records a /clear checkpoint for persistence and replay.

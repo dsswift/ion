@@ -125,7 +125,9 @@ func (b *ApiBackend) injectSteer(run *activeRun, conv *conversation.Conversation
 	// Appended before the existing Save so it rides the same write.
 	if conv.Entries != nil {
 		conversation.AppendEntry(conv, conversation.EntrySteerMarker, conversation.SteerMarkerData{
-			MessageLength: len(steerMsg.text),
+			MessageLength:   len(steerMsg.text),
+			Kind:            steerMsg.kind,
+			MachineAuthored: types.InjectionKind(steerMsg.kind).IsMachineToMachine(),
 		})
 	}
 	if err := conversation.Save(conv, ""); err != nil {

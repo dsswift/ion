@@ -414,7 +414,9 @@ func appendDegradedSteerMarker(conv *conversation.Conversation, opts *types.RunO
 		return
 	}
 	conversation.AppendEntry(conv, conversation.EntrySteerMarker, conversation.SteerMarkerData{
-		MessageLength: len(opts.Prompt),
+		MessageLength:   len(opts.Prompt),
+		Kind:            opts.InjectionKind,
+		MachineAuthored: types.InjectionKind(opts.InjectionKind).IsMachineToMachine(),
 	})
 	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "append: persisted steer marker for degraded steer delivery", map[string]any{
 		"conversation_id": conv.ID,

@@ -350,6 +350,20 @@ func findUserMessageEntry(t *testing.T, conv *conversation.Conversation) convers
 	return conversation.MessageData{}
 }
 
+// findSteerMarkerEntry returns the first steer marker's decoded payload.
+// steerMarkerDataOf (runloop_steer_degraded_test.go, same package) handles
+// both the in-process and post-round-trip Data shapes.
+func findSteerMarkerEntry(t *testing.T, conv *conversation.Conversation) conversation.SteerMarkerData {
+	t.Helper()
+	for _, e := range conv.Entries {
+		if e.Type == conversation.EntrySteerMarker {
+			return steerMarkerDataOf(t, e)
+		}
+	}
+	t.Fatalf("no steer marker entry found among %d entries", len(conv.Entries))
+	return conversation.SteerMarkerData{}
+}
+
 // TestDrainSteer_MachineSteerPersistsKind is the root-cause-3 regression. A
 // steer carrying a kind must persist as that kind and be marked machine
 // authored. Reverting drainSteer to AddUserMessage turns this red.
@@ -373,6 +387,17 @@ func TestDrainSteer_MachineSteerPersistsKind(t *testing.T) {
 	}
 	if !md.MachineAuthored {
 		t.Error("persisted MachineAuthored = false on a checkin steer, want true")
+	}
+
+	sd := findSteerMarkerEntry(t, conv)
+	if sd.Kind != string(types.InjectionKindCheckIn) {
+		t.Errorf("steer marker Kind = %q, want %q. A consumer reading the marker in "+
+			"isolation (e.g. a telemetry scan) cannot classify this as machine-originated "+
+			"without it.", sd.Kind, types.InjectionKindCheckIn)
+	}
+	if !sd.MachineAuthored {
+		t.Error("steer marker MachineAuthored = false on a checkin steer, want true — " +
+			"this is what lets a telemetry scan exclude it from a real operator steer count")
 	}
 }
 
@@ -399,6 +424,14 @@ func TestDrainSteer_ClientSteerStaysUnclassified(t *testing.T) {
 	}
 	if md.MachineAuthored {
 		t.Error("client steer persisted MachineAuthored = true; a human steer is a user turn")
+	}
+
+	sd := findSteerMarkerEntry(t, conv)
+	if sd.Kind != "" {
+		t.Errorf("client steer marker Kind = %q, want empty", sd.Kind)
+	}
+	if sd.MachineAuthored {
+		t.Error("client steer marker MachineAuthored = true; a real operator steer count would drop it")
 	}
 }
 
