@@ -294,6 +294,19 @@ export const IPC = {
   FS_UNWATCH_FILE: "ion:fs-unwatch-file",
   FS_FILE_CHANGED: "ion:fs-file-changed",
 
+  // Graph View
+  GRAPH_VIEW_GET_CONFIG: "ion:graph-view-get-config",
+  GRAPH_VIEW_SET_USER_CONFIG: "ion:graph-view-set-user-config",
+  GRAPH_VIEW_CONFIG_CHANGED: "ion:graph-view-config-changed",
+  GRAPH_CORPUS_SUBSCRIBE: "ion:graph-corpus-subscribe",
+  GRAPH_CORPUS_UNSUBSCRIBE: "ion:graph-corpus-unsubscribe",
+  GRAPH_CORPUS_DELTA: "ion:graph-corpus-delta",
+  // Correlated main -> Studio graph tool commands; answered on RESULT by callId.
+  // The graph store lives in the Studio renderer, so an agent's graph tool
+  // call is a request the renderer applies and acknowledges.
+  STUDIO_GRAPH_COMMAND: "studio:graph-command",
+  STUDIO_GRAPH_COMMAND_RESULT: "studio:graph-command-result",
+
   // Fonts
 
   // Terminal PTY
