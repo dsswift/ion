@@ -44,7 +44,7 @@ jobs:
         uses: actions/github-script@v9.0.0
         with:
           script: |
-            for (const name of ['engine-test (macos-14)', 'engine-test (ubuntu-latest)']) {
+            for (const name of ['engine-test (macos-14)', 'engine-test (ubuntu-latest)', 'engine-test (windows-latest)']) {
               await github.rest.checks.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -87,6 +87,10 @@ jobs:
       - uses: actions/checkout@v7
       - name: Check file-size caps
         run: bash scripts/check-file-sizes.sh
+      # A committed build artifact renders in review as "Bin 0 -> 33644032
+      # bytes" and scrolls past. Catch it here rather than in a later cleanup.
+      - name: Check no tracked binaries
+        run: bash scripts/check-no-binaries.sh
 
   issue-closure:
     # PR-only: no PR exists on a plain push/schedule/dispatch run to check.
@@ -101,6 +105,43 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/check-issue-closure.sh "${{ github.event.pull_request.number }}"
+
+  # Windows Group Policy template drift. Always runs: the template's registry
+  # contract is asserted against docs/enterprise/mdm.md, so a docs-only edit
+  # that drops a documented value name is exactly the change this catches.
+  admx:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: ADMX/ADML and registry-contract drift
+        run: make check-admx
+
+  # The Windows entry points a Windows contributor runs first. Always runs: a
+  # PowerShell syntax error is otherwise only found when the script executes, on
+  # a machine nobody here is watching. The ubuntu runner ships pwsh.
+  windows-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: PowerShell entry points parse and behave
+        run: make check-windows-scripts
+
+  # The same helper tests under Windows PowerShell 5.1, which is what an SSH
+  # session and a plain Start-Menu PowerShell give you on Windows 11. Its
+  # error semantics differ from pwsh 7 in ways that have already broken a
+  # build: 5.1 turns a native command's stderr into a terminating error, so a
+  # `go: downloading ...` progress line failed the whole run. Only this leg
+  # tells the two apart.
+  windows-scripts-ps51:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: IonBuild helpers under Windows PowerShell 5.1
+        shell: powershell
+        run: .\scripts\windows\IonBuild.test.ps1
+      - name: IonBuild helpers under PowerShell 7
+        shell: pwsh
+        run: .\scripts\windows\IonBuild.test.ps1
 
   vocabulary:
     # Always runs: registry references can point at source in any product scope.
@@ -259,9 +300,13 @@ jobs:
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.engine == 'true'
     strategy:
+      # Windows is a supported target, so its unit and integration suites gate
+      # every engine PR alongside Linux and macOS. windows-latest bills at 2x
+      # a Linux minute; that is the price of catching path-semantics, process-
+      # tree and registry regressions before a release rather than after.
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-14]
+        os: [ubuntu-latest, macos-14, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -396,6 +441,34 @@ jobs:
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm ci --ignore-scripts
+      - name: Type-check
+        working-directory: desktop
+        run: npm run typecheck
+      - name: Run tests
+        working-directory: desktop
+        run: npm test
+
+  # Desktop unit tests on a native Windows host. The suite carries win32-pinned
+  # arms (path delimiter, modifier keys, engine address, scheduled-task
+  # supervisor, machine identity, install dispatch) whose production behaviour
+  # only exists on Windows; running them on Linux alone proves the mock, not
+  # the platform. windows-latest bills at 2x a Linux minute, and this job is
+  # gated on desktop changes so it does not run on every PR.
+  desktop-test-windows:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
       - name: Setup Node
