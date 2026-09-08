@@ -3,6 +3,7 @@ import { IPC } from '../../shared/types'
 import { isStartupReport } from '../../shared/startup-state'
 import {
   authenticateStartup,
+  cancelStartupAuthentication,
   getStartupState,
   isSplashSender,
   quitStartup,
@@ -28,6 +29,10 @@ export function registerStartupIpc(): void {
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
+  })
+  ipcMain.on(IPC.STARTUP_CANCEL_AUTHENTICATION, (event) => {
+    if (!isSplashSender(event.sender)) return
+    cancelStartupAuthentication()
   })
   ipcMain.on(IPC.STARTUP_RELAUNCH, (event) => {
     if (!isSplashSender(event.sender)) return

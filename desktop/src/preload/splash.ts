@@ -10,6 +10,7 @@ const api = {
     return () => ipcRenderer.removeListener(IPC.STARTUP_STATE, handler)
   },
   authenticate: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke(IPC.STARTUP_AUTHENTICATE),
+  cancelAuthentication: (): void => ipcRenderer.send(IPC.STARTUP_CANCEL_AUTHENTICATION),
   relaunch: (): void => ipcRenderer.send(IPC.STARTUP_RELAUNCH),
   quit: (): void => ipcRenderer.send(IPC.STARTUP_QUIT),
 }

@@ -37,6 +37,20 @@ export function SplashApp({ state }: Props): React.JSX.Element {
               >
                 {state.authenticationBusy ? 'Waiting for browser…' : 'Sign in'}
               </button>
+              {/* The engine's PKCE flow cannot be cancelled -- it holds a
+                  loopback listener for five minutes. A user who closed the
+                  browser or was handed a provider error has no other way back
+                  to a usable button, so this resets the desktop's own view and
+                  lets them start a fresh attempt. */}
+              {state.authenticationBusy && (
+                <button
+                  className="splash-auth-cancel"
+                  type="button"
+                  onClick={() => window.ionStartup.cancelAuthentication()}
+                >
+                  Cancel
+                </button>
+              )}
               {state.authenticationError && <div className="splash-auth-error" role="alert">{state.authenticationError}</div>}
             </div>
           ) : (
