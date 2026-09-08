@@ -25,7 +25,8 @@ func cmdRecord(flags map[string]string) {
 	}
 	defer func() { f.Close() }() //nolint:errcheck // best-effort close on read-only recording sink during teardown
 
-	conn, err := net.Dial(dialNetwork(), socketPath())
+	sock := socketPathOrExit()
+	conn, err := net.Dial(dialNetwork(sock), sock)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Connection error: %s\n", err)
 		os.Exit(1)
@@ -67,7 +68,8 @@ func cmdRecord(flags map[string]string) {
 }
 
 func cmdRpc() {
-	conn, err := net.Dial(dialNetwork(), socketPath())
+	sock := socketPathOrExit()
+	conn, err := net.Dial(dialNetwork(sock), sock)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Connection error: %s\n", err)
 		os.Exit(1)

@@ -83,11 +83,11 @@ func applyMemoryLimit(cfg *types.EngineRuntimeConfig) int64 {
 		// The Go runtime already parsed GOMEMLIMIT at startup. Read the effective
 		// value back without changing it, so the monitor and log reflect reality.
 		effective := debug.SetMemoryLimit(-1)
-		utils.LogWithFields(utils.LevelInfo, "memlimit", "applymemorylimit: mb (, runtime owns it; not overriding)", map[string]any{"effective_bytes_per_mi_b": effective/bytesPerMiB, "source": source, "env_val": envVal})
+		utils.LogWithFields(utils.LevelInfo, "memlimit", "applymemorylimit: mb (, runtime owns it; not overriding)", map[string]any{"effective_bytes_per_mi_b": effective / bytesPerMiB, "source": source, "env_val": envVal})
 		return effective
 	}
 
 	debug.SetMemoryLimit(bytes)
-	utils.LogWithFields(utils.LevelInfo, "memlimit", "applymemorylimit: mb (soft gc ceiling; not a hard cap)", map[string]any{"bytes_bytes_per_mi_b": bytes/bytesPerMiB, "source": source})
+	utils.LogWithFields(utils.LevelInfo, "memlimit", "applymemorylimit: mb (soft gc ceiling; not a hard cap)", map[string]any{"bytes_bytes_per_mi_b": bytes / bytesPerMiB, "source": source})
 	return bytes
 }

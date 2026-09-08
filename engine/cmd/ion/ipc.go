@@ -15,7 +15,7 @@ func connectAndSend(sock string, msg map[string]interface{}) (map[string]interfa
 	reqID := nextRequestID()
 	msg["requestId"] = reqID
 
-	conn, err := net.Dial(dialNetwork(), sock)
+	conn, err := net.Dial(dialNetwork(sock), sock)
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect to engine at %s: %w", sock, err)
 	}
@@ -51,7 +51,7 @@ func connectAndSend(sock string, msg map[string]interface{}) (map[string]interfa
 // returns true if the deadline fired (caller should exit 124). A zero deadline
 // means "no limit".
 func attachStream(sock string, key string, deadline time.Duration) (timedOut bool) {
-	conn, err := net.Dial(dialNetwork(), sock)
+	conn, err := net.Dial(dialNetwork(sock), sock)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Connection error: %s\n", err)
 		os.Exit(1)
@@ -84,7 +84,7 @@ func attachStream(sock string, key string, deadline time.Duration) (timedOut boo
 // if the deadline fired (caller should abort and exit 124). A zero deadline
 // means "no limit".
 func streamUntilIdle(sock, key string, deadline time.Duration) (timedOut bool) {
-	conn, err := net.Dial(dialNetwork(), sock)
+	conn, err := net.Dial(dialNetwork(sock), sock)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error connecting to stream: %s\n", err)
 		return false

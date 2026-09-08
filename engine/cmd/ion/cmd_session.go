@@ -35,7 +35,7 @@ func cmdStart(flags map[string]string, listFlags map[string][]string) {
 		cfg["extensions"] = resolved
 	}
 
-	result, err := connectAndSend(socketPath(), map[string]interface{}{
+	result, err := connectAndSend(socketPathOrExit(), map[string]interface{}{
 		"cmd":    "start_session",
 		"key":    key,
 		"config": cfg,
@@ -49,11 +49,11 @@ func cmdStart(flags map[string]string, listFlags map[string][]string) {
 }
 
 func cmdAttach(flags map[string]string) {
-	attachStream(socketPath(), flags["key"], 0)
+	attachStream(socketPathOrExit(), flags["key"], 0)
 }
 
 func cmdStatus() {
-	result, err := connectAndSend(socketPath(), map[string]interface{}{
+	result, err := connectAndSend(socketPathOrExit(), map[string]interface{}{
 		"cmd": "list_sessions",
 	})
 	if err != nil {
@@ -83,7 +83,7 @@ func cmdStop(flags map[string]string) {
 	if k := flags["key"]; k != "" {
 		msg["key"] = k
 	}
-	result, err := connectAndSend(socketPath(), msg)
+	result, err := connectAndSend(socketPathOrExit(), msg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
@@ -93,7 +93,7 @@ func cmdStop(flags map[string]string) {
 }
 
 func cmdShutdown() {
-	result, err := connectAndSend(socketPath(), map[string]interface{}{
+	result, err := connectAndSend(socketPathOrExit(), map[string]interface{}{
 		"cmd": "shutdown",
 	})
 	if err != nil {
@@ -105,7 +105,7 @@ func cmdShutdown() {
 }
 
 func cmdHealth() {
-	result, err := connectAndSend(socketPath(), map[string]interface{}{
+	result, err := connectAndSend(socketPathOrExit(), map[string]interface{}{
 		"cmd": "health",
 	})
 	if err != nil {

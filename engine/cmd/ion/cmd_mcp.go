@@ -300,7 +300,7 @@ func waitForMcpAuth(name string) bool {
 // failure mid-poll is treated as "not yet" rather than fatal: the daemon may be
 // briefly busy, and the enclosing deadline bounds the wait.
 func mcpServerAuthenticated(name string) bool {
-	response, err := connectAndSend(socketPath(), map[string]interface{}{"cmd": "mcp_list"})
+	response, err := connectAndSend(socketPathOrExit(), map[string]interface{}{"cmd": "mcp_list"})
 	if err != nil {
 		return false
 	}
@@ -337,7 +337,7 @@ func cmdMcpLogout(args []string) {
 // map lives in engine.json, and refusing to add one because no daemon happens to
 // be running would be an arbitrary obstacle.
 func mcpSend(msg map[string]interface{}) map[string]interface{} {
-	sock := socketPath()
+	sock := socketPathOrExit()
 	ensureServer(sock)
 
 	response, err := connectAndSend(sock, msg)
