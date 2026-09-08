@@ -561,6 +561,7 @@
 		AGPNK0000000000000001 /* AgentPanelNameKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGPNK0000000000000002 /* AgentPanelNameKeyTests.swift */; };
 		AGDAT00000000000000001 /* AgentDispatchAttributionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGDAT00000000000000002 /* AgentDispatchAttributionTests.swift */; };
 		AGDMT00000000000000001 /* AgentDotModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGDMT00000000000000002 /* AgentDotModelTests.swift */; };
+		FSENTRYDECT0000000001 /* FsEntryDecodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FSENTRYDECT0000000002 /* FsEntryDecodeTests.swift */; };
 		RESMETAT00000000000001 /* ResourceMetadataDecodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RESMETAT00000000000002 /* ResourceMetadataDecodeTests.swift */; };
 		CHRTSPECT00000000000001 /* ChartSpecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHRTSPECT00000000000002 /* ChartSpecTests.swift */; };
 		CHRTTRNT000000000000001 /* ChartTranscriptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHRTTRNT000000000000002 /* ChartTranscriptTests.swift */; };
@@ -1163,6 +1164,7 @@
 		AGPNK0000000000000002 /* AgentPanelNameKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPanelNameKeyTests.swift; sourceTree = "<group>"; };
 		AGDAT00000000000000002 /* AgentDispatchAttributionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDispatchAttributionTests.swift; sourceTree = "<group>"; };
 		AGDMT00000000000000002 /* AgentDotModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDotModelTests.swift; sourceTree = "<group>"; };
+		FSENTRYDECT0000000002 /* FsEntryDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FsEntryDecodeTests.swift; sourceTree = "<group>"; };
 		RESMETAT00000000000002 /* ResourceMetadataDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourceMetadataDecodeTests.swift; sourceTree = "<group>"; };
 		CHRTSPECT00000000000002 /* ChartSpecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartSpecTests.swift; sourceTree = "<group>"; };
 		CHRTTRNT000000000000002 /* ChartTranscriptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartTranscriptTests.swift; sourceTree = "<group>"; };
@@ -1794,6 +1796,7 @@
 				AGPNK0000000000000002 /* AgentPanelNameKeyTests.swift */,
 				AGDAT00000000000000002 /* AgentDispatchAttributionTests.swift */,
 				AGDMT00000000000000002 /* AgentDotModelTests.swift */,
+				FSENTRYDECT0000000002 /* FsEntryDecodeTests.swift */,
 				RESMETAT00000000000002 /* ResourceMetadataDecodeTests.swift */,
 				CHRTSPECT00000000000002 /* ChartSpecTests.swift */,
 				CHRTTRNT000000000000002 /* ChartTranscriptTests.swift */,
@@ -2635,6 +2638,7 @@
 				AGPNK0000000000000001 /* AgentPanelNameKeyTests.swift in Sources */,
 				AGDAT00000000000000001 /* AgentDispatchAttributionTests.swift in Sources */,
 				AGDMT00000000000000001 /* AgentDotModelTests.swift in Sources */,
+				FSENTRYDECT0000000001 /* FsEntryDecodeTests.swift in Sources */,
 				RESMETAT00000000000001 /* ResourceMetadataDecodeTests.swift in Sources */,
 				CHRTSPECT00000000000001 /* ChartSpecTests.swift in Sources */,
 				CHRTTRNT000000000000001 /* ChartTranscriptTests.swift in Sources */,

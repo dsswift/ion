@@ -9,6 +9,12 @@ struct FsEntry: Codable, Identifiable, Sendable {
     let isDirectory: Bool
     let size: Int
     let modifiedMs: Double
+    /// True when the desktop considers this entry hidden: a leading dot on
+    /// every platform, plus the Windows FILE_ATTRIBUTE_HIDDEN bit (how
+    /// AppData, ProgramData, and most system folders are marked, none of
+    /// which carry a dot). Optional so a listing from an older desktop
+    /// build, which omits the key, simply reads as "not hidden".
+    let isHidden: Bool?
 
     var id: String { path }
 

@@ -97,6 +97,10 @@ struct FileExplorerRowView: View {
             .padding(.horizontal, IonSpace.contentGap)
             .padding(.vertical, IonSpace.compactGap)
             .contentShape(Rectangle())
+            // Matches the desktop's dimming for the same fact
+            // (FileExplorerTreeRow.tsx: opacity 0.55 when isHidden) — a
+            // dotfile, or a path Windows marks with the hidden attribute.
+            .opacity(entry.isHidden == true ? 0.55 : 1.0)
         }
         .buttonStyle(.plain)
         .contextMenu { copyMenuItems }
@@ -135,6 +139,7 @@ struct FileExplorerRowView: View {
             .padding(.horizontal, IonSpace.contentGap)
             .padding(.vertical, IonSpace.compactGap)
             .contentShape(Rectangle())
+            .opacity(entry.isHidden == true ? 0.55 : 1.0)
         }
         .buttonStyle(.plain)
         .contextMenu { copyMenuItems }
