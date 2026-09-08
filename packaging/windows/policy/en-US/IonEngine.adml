@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  IonEngine.adml — English (en-US) display strings for IonEngine.admx.
+
+  Every $(string.*) and $(presentation.*) reference in the ADMX resolves
+  here. scripts/ci/validate-admx.py fails the build when one does not, and
+  when an ADMX valueName is not documented in docs/enterprise/mdm.md.
+-->
+<policyDefinitionResources revision="1.0" schemaVersion="1.0">
+  <displayName>Ion Engine</displayName>
+  <description>Administrative template for Ion Engine enterprise configuration.</description>
+  <resources>
+    <stringTable>
+      <string id="SUPPORTED_IonEngine">Ion Engine 1.0 or later, Windows 10 or later</string>
+
+      <string id="IonEngine">Ion Engine</string>
+      <string id="IonEngine_Explain">Enterprise configuration for Ion Engine.
+
+Every setting in this category writes a value under HKEY_LOCAL_MACHINE\SOFTWARE\Policies\IonEngine. The engine reads that key at startup and merges it over the ProgramData configuration files (C:\ProgramData\Ion\enterprise-config.json and enterprise-config.d\*.json). Enterprise values are sealed: user and project configuration cannot weaken them.
+
+The engine reads the machine hive only. It never reads the per-user hive, so a user cannot author their own policy.
+
+Restart the Ion Engine scheduled task (or sign out and back in) for changed values to take effect.</string>
+
+      <string id="AllowedModels">Allowed models</string>
+      <string id="AllowedModels_Explain">Restricts the LLM models Ion may use to the listed model IDs.
+
+Enter one model ID per line, for example:
+claude-sonnet-4-6
+claude-haiku-4-5-20251001
+
+Leave the policy Not Configured to allow every model the configured providers offer.</string>
+
+      <string id="BlockedModels">Blocked models</string>
+      <string id="BlockedModels_Explain">Blocks the listed LLM model IDs even when they would otherwise be allowed.
+
+Enter one model ID per line. A model listed here is refused regardless of the Allowed models policy.</string>
+
+      <string id="AllowedProviders">Allowed providers</string>
+      <string id="AllowedProviders_Explain">Restricts Ion to the listed LLM provider keys, for example anthropic or openai.
+
+Enter one provider key per line. Leave Not Configured to allow every configured provider.</string>
+
+      <string id="McpAllowlist">Allowed MCP servers</string>
+      <string id="McpAllowlist_Explain">Restricts Ion to the listed MCP server names.
+
+Enter one server name per line. Leave Not Configured to allow every configured MCP server.</string>
+
+      <string id="McpDenylist">Blocked MCP servers</string>
+      <string id="McpDenylist_Explain">Blocks the listed MCP server names.
+
+Enter one server name per line. A server listed here is refused regardless of the Allowed MCP servers policy.</string>
+
+      <string id="Auth">Identity and authentication</string>
+      <string id="Auth_Explain">Enterprise-owned identity configuration, entered as a single-line JSON object.
+
+Example:
+{"identityProvider":"corp","requireOperatorIdentity":true,"oauth":{"corp":{"issuerUrl":"https://login.corp.example.com/tenant/v2.0","clientId":"managed-public-client-id","scopes":["openid","profile","offline_access"]}}}
+
+requireOperatorIdentity is a sealed startup gate: the engine refuses to start a session or send a prompt until the selected interactive provider holds a usable grant. Do not combine it with an OAuth entry that uses machineIdentity — a machine source has no operator sign-in flow.</string>
+
+      <string id="Permissions">Permission policy</string>
+      <string id="Permissions_Explain">Permission mode and rules, entered as a single-line JSON object.
+
+Example:
+{"mode":"ask"}
+
+The enterprise value is a ceiling. A user or project configuration may make permissions stricter, never looser.</string>
+
+      <string id="Telemetry">Telemetry</string>
+      <string id="Telemetry_Explain">Telemetry collection and export configuration, entered as a single-line JSON object.
+
+Example:
+{"enabled":true,"targets":["http"],"httpEndpoint":"https://siem.corp.example.com/ingest/ion"}</string>
+
+      <string id="Network">Network</string>
+      <string id="Network_Explain">Proxy, custom certificate authority, and TLS configuration, entered as a single-line JSON object.
+
+Example:
+{"proxy":{"httpProxy":"http://proxy.corp.example.com:8080","noProxy":"localhost,127.0.0.1"}}</string>
+
+      <string id="Limits">Limits</string>
+      <string id="Limits_Explain">Enterprise ceilings for settings that also exist under "limits" in engine.json, entered as a single-line JSON object.
+
+Example:
+{"planModeAllowedBashCommands":["git log","git diff","gh pr view","ls"]}</string>
+
+      <string id="ConfigJson">Full enterprise configuration (JSON)</string>
+      <string id="ConfigJson_Explain">The whole enterprise configuration as one JSON object. Its keys are merged at the root of the enterprise configuration, so this is how you set any block that has no dedicated policy of its own.
+
+Enter the JSON across as many lines as you like; the engine joins the lines before parsing.
+
+Every other policy in this category is applied on top of this one, so a dedicated policy wins over the same key set here.
+
+Three settings have no dedicated policy because they are nested fields, and are set here:
+
+requireOperatorIdentity — {"auth":{"requireOperatorIdentity":true}}
+disableAutoUpdate — {"customFields":{"ion-desktop":{"disableAutoUpdate":true}}}
+activeUi — {"customFields":{"ion-desktop":{"activeUiPolicy":"studio"}}}</string>
+    </stringTable>
+    <presentationTable>
+      <presentation id="AllowedModels">
+        <multiTextBox refId="AllowedModels_Value">One model ID per line</multiTextBox>
+      </presentation>
+      <presentation id="BlockedModels">
+        <multiTextBox refId="BlockedModels_Value">One model ID per line</multiTextBox>
+      </presentation>
+      <presentation id="AllowedProviders">
+        <multiTextBox refId="AllowedProviders_Value">One provider key per line</multiTextBox>
+      </presentation>
+      <presentation id="McpAllowlist">
+        <multiTextBox refId="McpAllowlist_Value">One MCP server name per line</multiTextBox>
+      </presentation>
+      <presentation id="McpDenylist">
+        <multiTextBox refId="McpDenylist_Value">One MCP server name per line</multiTextBox>
+      </presentation>
+      <presentation id="Auth">
+        <textBox refId="Auth_Value">
+          <label>JSON object</label>
+        </textBox>
+      </presentation>
+      <presentation id="Permissions">
+        <textBox refId="Permissions_Value">
+          <label>JSON object</label>
+        </textBox>
+      </presentation>
+      <presentation id="Telemetry">
+        <textBox refId="Telemetry_Value">
+          <label>JSON object</label>
+        </textBox>
+      </presentation>
+      <presentation id="Network">
+        <textBox refId="Network_Value">
+          <label>JSON object</label>
+        </textBox>
+      </presentation>
+      <presentation id="Limits">
+        <textBox refId="Limits_Value">
+          <label>JSON object</label>
+        </textBox>
+      </presentation>
+      <presentation id="ConfigJson">
+        <multiTextBox refId="ConfigJson_Value">JSON object, one or more lines</multiTextBox>
+      </presentation>
+    </presentationTable>
+  </resources>
+</policyDefinitionResources>

@@ -1,0 +1,45 @@
+{
+  "_comment": "Placeholders only, and the SHAPE this tool requires. New-IonPolicyPackage.ps1 refuses to package this file: every value below matches a placeholder pattern, and it also checks that every field here is present in whatever config you point -ConfigPath at. Keep the real one wherever your tenant configuration lives, not in this repository.",
+  "allowedProviders": [
+    "REPLACE_ME-provider-id"
+  ],
+  "providers": {
+    "REPLACE_ME-provider-id": {
+      "displayName": "REPLACE_ME Gateway",
+      "baseURL": "https://gateway.example.com",
+      "authHeader": "x-api-key"
+    }
+  },
+  "auth": {
+    "identityProvider": "entra",
+    "requireOperatorIdentity": true,
+    "oauth": {
+      "entra": {
+        "issuerUrl": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0",
+        "authorizationUrl": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/oauth2/v2.0/authorize",
+        "tokenUrl": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/oauth2/v2.0/token",
+        "clientId": "00000000-0000-0000-0000-000000000000",
+        "redirectUri": "http://localhost/callback",
+        "usePkce": true,
+        "scopes": [
+          "openid",
+          "profile",
+          "offline_access"
+        ]
+      }
+    }
+  },
+  "customFields": {
+    "ion-desktop": {
+      "disableAutoUpdate": true,
+      "themePolicy": {
+        "themeId": "REPLACE_ME-theme-id",
+        "locked": true
+      },
+      "activeUiPolicy": {
+        "ui": "studio",
+        "locked": true
+      }
+    }
+  }
+}

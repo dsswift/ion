@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  IonEngine.admx — Group Policy administrative template for Ion Engine
+  enterprise configuration on Windows.
+
+  Every policy here writes a value under HKLM\SOFTWARE\Policies\IonEngine.
+  The engine's Windows enterprise reader addresses registry values by
+  reflecting over the EnterpriseConfig struct's json tags, so a value name
+  that matches a field name (case-insensitively) is decoded into that field.
+  See engine/internal/config/enterprise_registry_decode.go and
+  docs/enterprise/mdm.md.
+
+  Machine class only. The engine reads HKEY_LOCAL_MACHINE and never the
+  per-user hive (enterprise_windows.go: windowsPolicyRoot =
+  registry.LOCAL_MACHINE), because policy must not be self-authored. A User
+  class here would offer administrators a setting the engine ignores.
+
+  Value kinds follow the reader's decoding table:
+    list fields    -> REG_MULTI_SZ, one entry per line (multiText)
+    object fields  -> REG_SZ holding a JSON object (text)
+    ConfigJson     -> REG_MULTI_SZ holding a JSON object; the reader joins
+                      the lines with newlines before parsing, so an admin can
+                      paste formatted JSON across several lines.
+
+  Neither gpedit nor Intune validates JSON syntax. A malformed value is
+  rejected by the engine's reader, which logs the value name and the parse
+  error at WARN and keeps every other value.
+-->
+<policyDefinitions revision="1.0" schemaVersion="1.0">
+  <policyNamespaces>
+    <target prefix="ionengine" namespace="Ion.Policies.IonEngine" />
+    <using prefix="windows" namespace="Microsoft.Policies.Windows" />
+  </policyNamespaces>
+  <resources minRequiredRevision="1.0" />
+  <supportedOn>
+    <definitions>
+      <definition name="SUPPORTED_IonEngine" displayName="$(string.SUPPORTED_IonEngine)" />
+    </definitions>
+  </supportedOn>
+  <categories>
+    <category name="IonEngine" displayName="$(string.IonEngine)" explainText="$(string.IonEngine_Explain)" />
+  </categories>
+  <policies>
+    <policy name="AllowedModels" class="Machine" displayName="$(string.AllowedModels)" explainText="$(string.AllowedModels_Explain)" key="SOFTWARE\Policies\IonEngine" presentation="$(presentation.AllowedModels)">
+      <parentCategory ref="IonEngine" />
+      <supportedOn ref="SUPPORTED_IonEngine" />
+      <elements>
+        <multiText id="AllowedModels_Value" valueName="AllowedModels" required="true" />
+      </elements>
+    </policy>
+    <policy name="BlockedModels" class="Machine" displayName="$(string.BlockedModels)" explainText="$(string.BlockedModels_Explain)" key="SOFTWARE\Policies\IonEngine" presentation="$(presentation.BlockedModels)">
+      <parentCategory ref="IonEngine" />
+      <supportedOn ref="SUPPORTED_IonEngine" />
+      <elements>
+        <multiText id="BlockedModels_Value" valueName="BlockedModels" required="true" />
+      </elements>
+    </policy>
+    <policy name="AllowedProviders" class="Machine" displayName="$(string.AllowedProviders)" explainText="$(string.AllowedProviders_Explain)" key="SOFTWARE\Policies\IonEngine" presentation="$(presentation.AllowedProviders)">
+      <parentCategory ref="IonEngine" />
+      <supportedOn ref="SUPPORTED_IonEngine" />
+      <elements>
+        <multiText id="AllowedProviders_Value" valueName="AllowedProviders" required="true" />
+      </elements>
+    </policy>
+    <policy name="McpAllowlist" class="Machine" displayName="$(string.McpAllowlist)" explainText="$(string.McpAllowlist_Explain)" key="SOFTWARE\Policies\IonEngine" presentation="$(presentation.McpAllowlist)">
+      <parentCategory ref="IonEngine" />
+      <supportedOn ref="SUPPORTED_IonEngine" />
+      <elements>
+        <multiText id="McpAllowlist_Value" valueName="McpAllowlist" required="true" />
+      </elements>
+    </policy>
+    <policy name="McpDenylist" class="Machine" displayName="$(string.McpDenylist)" explainText="$(string.McpDenylist_Explain)" key="SOFTWARE\Policies\IonEngine" presentation="$(presentation.McpDenylist)">
+      <parentCategory ref="IonEngine" />
+      <supportedOn ref="SUPPORTED_IonEngine" />
+      <elements>
+        <multiText id="McpDenylist_Value" valueName="McpDenylist" required="true" />
+      </elements>
+    </policy>
+    <policy name="Auth" class="Machine" displayName="$(string.Auth)" explainText="$(string.Auth_Explain)" key="SOFTWARE\Policies\IonEngine" presentation="$(presentation.Auth)">
+      <parentCategory ref="IonEngine" />
+      <supportedOn ref="SUPPORTED_IonEngine" />
+      <elements>
+        <text id="Auth_Value" valueName="Auth" required="true" />
+      </elements>
+    </policy>
+    <policy name="Permissions" class="Machine" displayName="$(string.Permissions)" explainText="$(string.Permissions_Explain)" key="SOFTWARE\Policies\IonEngine" presentation="$(presentation.Permissions)">
+      <parentCategory ref="IonEngine" />
+      <supportedOn ref="SUPPORTED_IonEngine" />
+      <elements>
+        <text id="Permissions_Value" valueName="Permissions" required="true" />
+      </elements>
+    </policy>
+    <policy name="Telemetry" class="Machine" displayName="$(string.Telemetry)" explainText="$(string.Telemetry_Explain)" key="SOFTWARE\Policies\IonEngine" presentation="$(presentation.Telemetry)">
+      <parentCategory ref="IonEngine" />
+      <supportedOn ref="SUPPORTED_IonEngine" />
+      <elements>
+        <text id="Telemetry_Value" valueName="Telemetry" required="true" />
+      </elements>
+    </policy>
+    <policy name="Network" class="Machine" displayName="$(string.Network)" explainText="$(string.Network_Explain)" key="SOFTWARE\Policies\IonEngine" presentation="$(presentation.Network)">
+      <parentCategory ref="IonEngine" />
+      <supportedOn ref="SUPPORTED_IonEngine" />
+      <elements>
+        <text id="Network_Value" valueName="Network" required="true" />
+      </elements>
+    </policy>
+    <policy name="Limits" class="Machine" displayName="$(string.Limits)" explainText="$(string.Limits_Explain)" key="SOFTWARE\Policies\IonEngine" presentation="$(presentation.Limits)">
+      <parentCategory ref="IonEngine" />
+      <supportedOn ref="SUPPORTED_IonEngine" />
+      <elements>
+        <text id="Limits_Value" valueName="Limits" required="true" />
+      </elements>
+    </policy>
+    <policy name="ConfigJson" class="Machine" displayName="$(string.ConfigJson)" explainText="$(string.ConfigJson_Explain)" key="SOFTWARE\Policies\IonEngine" presentation="$(presentation.ConfigJson)">
+      <parentCategory ref="IonEngine" />
+      <supportedOn ref="SUPPORTED_IonEngine" />
+      <elements>
+        <multiText id="ConfigJson_Value" valueName="ConfigJson" required="true" />
+      </elements>
+    </policy>
+  </policies>
+</policyDefinitions>
