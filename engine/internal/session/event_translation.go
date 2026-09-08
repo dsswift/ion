@@ -176,6 +176,10 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 
 	m.emit(key, ee)
 
+	// Closes a pending manual-compact indicator on the CLI's own
+	// compact_boundary frame — see manual_compact_indicator.go.
+	m.closeManualCompactStdinOnNativeCompaction(key, event)
+
 	// Record a turn-boundary park. TaskSuspendEvent carrying task IDs means
 	// the run ended because this session still has background commands
 	// running; the session must remember that so a completion can revive it.
@@ -467,7 +471,8 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// one-shot marker under the lock below and consumed by the abort-marker
 	// write further down, which is the first point after the backend's final
 	// save where the entry survives.
-	var operatorStop bool
+	// manualCompactClosed — see consumeManualCompactRunExitLocked below.
+	var operatorStop, manualCompactClosed bool
 	var operatorScope AbortScope
 	m.mu.Lock()
 	// Authoritative terminal point: clear the runID -> key routing binding
@@ -499,38 +504,15 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 			s.operatorAbortRunID = ""
 			s.operatorAbortScope = ""
 		}
+		// See manual_compact_indicator.go.
+		manualCompactClosed = consumeManualCompactRunExitLocked(s, runID)
 		// Ion's durable conversation-file identity, captured under the lock
 		// for use in persistTerminalDispatches below. This is NOT the
 		// backend-reported sessionID (which is claude's UUID for the CLI
 		// backend and has no Ion files).
 		ionConvID = s.conversationID
-		// Preserve completed agent states (done/error/cancelled) so their
-		// conversation history survives for post-run inspection and tab
-		// persistence. Also preserve running states that correspond to active
-		// background dispatches — those agents are legitimately still running.
-		// Only clear running states that are stale (no live dispatch backing them).
-		//
-		// Preservation keys on BOTH the live dispatch IDs and names. The ID set
-		// covers engine-managed dispatch slots at every depth (the agent-state
-		// store keys those slots by their unique dispatch ID, and a nested
-		// depth-2+ dispatch's name collapses under name-only keying, so it would
-		// be swept and its terminal UpdateStateByID would land nowhere — the
-		// "agent stuck running" defect). The name set covers extension-roster
-		// rows that carry no engine dispatch ID. bgCount is the count of live
-		// dispatch instances (by ID), not distinct names.
-		if s.dispatchRegistry != nil {
-			activeIDs := s.dispatchRegistry.ActiveIDs()
-			activeNames := s.dispatchRegistry.ActiveNames()
-			bgCount = len(activeIDs)
-			if len(activeIDs) > 0 || len(activeNames) > 0 {
-				utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: preserving live dispatch(es) by", map[string]any{"bg_count": bgCount, "run_id": activeIDs, "model": activeNames})
-				s.agents.ClearRunningStatesExceptIDsOrNames(activeIDs, activeNames)
-			} else {
-				s.agents.ClearRunningStates()
-			}
-		} else {
-			s.agents.ClearRunningStates()
-		}
+		// See preserveDispatchStatesLocked in run_exit_dispatch_preserve.go.
+		bgCount = preserveDispatchStatesLocked(s)
 		// Decide whether to capture the backend-reported sessionID as a
 		// native-session cursor — the backend-native resume handle for the
 		// next run on the same kind (claude UUID / codex thread / ACP
@@ -582,6 +564,10 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		}
 	}
 	m.mu.Unlock()
+
+	if manualCompactClosed {
+		m.emit(key, manualCompactCloseEvent())
+	}
 
 	// Persist any terminal dispatch entries to the conversation file.
 	// This runs AFTER the backend's final save (which fires before OnExit)

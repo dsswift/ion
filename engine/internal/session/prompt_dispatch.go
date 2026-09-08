@@ -718,6 +718,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// loses all context (e.g. a conversation built on the ApiBackend then
 	// continued on claude-code). See native_session.go and
 	// cli_history_seed.go. Runs after opts.Prompt is finalized.
+	opts.SkipCliHistorySeed = overrides != nil && overrides.SkipCliHistorySeed
 	m.resolveCliContinuity(s, &opts)
 
 	// Dispatch to backend. ApiBackend uses the per-run config built above so

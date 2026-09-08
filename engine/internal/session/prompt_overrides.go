@@ -154,6 +154,20 @@ type PromptOverrides struct {
 
 	// BackgroundWork carries engine-owned completion metadata for an injected turn.
 	BackgroundWork types.BackgroundWorkInfo
+
+	// SkipCliHistorySeed forbids resolveCliContinuity from prepending a
+	// prior-conversation transcript onto this prompt when no valid native
+	// cursor exists (cli_history_seed.go). Set by dispatchCompact's idle
+	// sub-path: the delegated-CLI backend's own slash dispatcher only
+	// recognizes "/compact" when it is the ENTIRE prompt text, and the
+	// history bridge — designed for ordinary conversational continuity —
+	// otherwise buries the literal command after a large context preamble,
+	// so the CLI treats the whole thing as one ordinary chat message and
+	// answers it instead of compacting (issue: /compact "responded instead
+	// of compacting" on a session with no prior native-CLI turn). Resuming a
+	// still-valid native cursor is unaffected either way — that path never
+	// reaches the seed step. False for every other caller.
+	SkipCliHistorySeed bool
 }
 
 func clonePromptOverrides(in *PromptOverrides) *PromptOverrides {

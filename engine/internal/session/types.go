@@ -405,10 +405,33 @@ type engineSession struct {
 	//      consult this flag — otherwise a prompt submitted mid-compaction
 	//      would start a real run that clobbers the compaction's save. See
 	//      dispatchCompact and SendPrompt.
-	compactInFlight   bool
-	hasExitedPlanMode bool // set when ExitPlanMode fires; enables reentry detection
-	promptQueue       []pendingPrompt
-	maxQueueDepth     int // default 32
+	compactInFlight bool
+	// manualCompactRunID names the run dispatchCompact's Path-B idle sub-path
+	// started (SendPrompt("/compact") when no run was already in flight — the
+	// delegated-CLI backend has no CompactNow, so the engine dispatches the
+	// literal command as an ordinary turn instead). The engine has no
+	// visibility into the CLI's own compaction progress beyond its
+	// compact_boundary frame (-> engine_native_compaction -> a closing
+	// engine_compacting), so this run's own exit is the guaranteed backstop:
+	// a session with nothing to compact can finish that turn without ever
+	// producing a boundary frame, and without this the live indicator would
+	// stay open forever. handleRunExit compares it against the exiting runID
+	// and only honors a match, mirroring orchestratorAbortRunID above — a
+	// marker left by an earlier run can never close a later one's indicator.
+	// One-shot. Guarded by m.mu.
+	manualCompactRunID string
+	// manualCompactStdinActive is true while a manual /compact was forwarded
+	// into an ALREADY-RUNNING turn's stdin (dispatchCompact Path B,
+	// run-active sub-path). That write neither starts nor ends a run, so
+	// there is no run-exit boundary to hang the close on; handleNormalizedEvent
+	// clears it when the CLI's own compact_boundary frame arrives
+	// (NativeCompactionEvent), and handleRunExit clears it as a backstop if
+	// the run ends first (abort, crash) without ever producing one. Guarded
+	// by m.mu.
+	manualCompactStdinActive bool
+	hasExitedPlanMode        bool // set when ExitPlanMode fires; enables reentry detection
+	promptQueue              []pendingPrompt
+	maxQueueDepth            int // default 32
 	// rootDispatchCompletions is the FIFO durable outbox for top-level child
 	// terminal results. A delivery stays here until a classified prompt is
 	// accepted by the normal session path; queue backpressure never drops it.
