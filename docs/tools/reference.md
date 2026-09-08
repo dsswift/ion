@@ -403,6 +403,53 @@ traversal and symlink escapes are refused. Screenshots return an image result
 when no filename is given. See
 [ADR-030](../architecture/adr/030-embedded-browser-surface.md).
 
+### Studio graph tools
+
+Ion's desktop provides graph tools over the same path whenever Ion Studio is
+the active interface. They drive the Graph View the operator is looking at, so
+an agent can walk the operator through their corpus instead of describing it:
+open the graph, find nodes, point at them, move the camera, change filters and
+scope, and load a saved view. They are desktop surface, not engine tools.
+
+The agent thinks in node ids, never in pixels. There is no raw pan or zoom;
+every camera move is "look at these nodes" or "show everything", and every
+node argument is an id exactly as `graph_search` or `graph_node` returned it.
+
+**Lifecycle and reading.** `graph_open` opens or reveals the Graph View for
+the conversation's working directory and returns its state; call it first.
+`graph_state` returns the summary every command also carries: node, edge, and
+visible counts, the selection, the agent highlight, scope, filters, channel
+bindings, saved view names, and the discovered front-matter fields.
+`graph_search` (`query`, `limit?`) finds nodes by label, id, or path.
+`graph_node` (`nodeId`) describes one node and every edge touching it.
+
+**Pointing.** `graph_highlight` (`nodeIds`, `camera?`) draws the nodes as
+highlighted, keeps their neighbours at full strength, dims the rest, and moves
+the camera (`focus` zooms to one node or fits several, `fit` frames them,
+`none` leaves the view alone). The operator's own selection is untouched, and
+their next click on the stage clears the highlight. `graph_clear_highlight`
+removes it. `graph_peek` (`nodeId?`) opens the Quick Peek card beside a node,
+or closes it when the id is omitted. `graph_fit` frames everything visible.
+
+**View changes.** `graph_filter` (`filters`) replaces the rule list; each rule
+names a dimension, a mode of `include` or `exclude`, and categorical `values`
+or numeric `min`/`max`. `graph_scope` (`mode`, `anchorId?`, `depth?`) shows
+the whole corpus or one node's neighborhood. `graph_load_view` (`name`) loads
+a saved view.
+
+Two behaviours differ from the browser tools:
+
+- **The graph follows the visible conversation.** The Graph View shows the
+  working directory of the conversation on screen. A background conversation
+  can read and drive a graph already open for its own directory, but
+  `graph_open` refuses to reveal or build a graph for a conversation that is
+  not on screen, and every tool refuses a directory other than the one on
+  stage, naming which one is.
+- **A move is acknowledged once it lands.** A command that moves the camera
+  answers after the render layer confirms the animation finished and any
+  running layout settled. If that takes too long the command still succeeds
+  and carries a `note` saying what was left pending.
+
 ## Optional Tools
 
 These tools are not registered by default. Call `RegisterTaskTools()` from harness code to enable them. See [Task Tools](task-tools.md) for details.

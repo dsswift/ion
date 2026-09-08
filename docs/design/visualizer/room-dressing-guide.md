@@ -27,7 +27,7 @@ How the procedural office generator furnishes rooms. This guide defines the zone
 ### Department room
 
 - Required: one head desk for the lead (desk + chair + pc, distinct position, facing the room), one desk cluster sized to the specialist count (desk + chair + pc per seat), one whiteboard or kanban wall item.
-- Optional weighted: server-rack, bookshelf, plant-small/plant-large, bin, wall clock, paintings.
+- Optional weighted: server-rack, bookshelf, plant-small/plant-large, wall clock, paintings.
 - Carpet: tintable carpet region under the desk cluster, tinted with the department accent.
 - The head desk faces the cluster so the lead "oversees" the team.
 
@@ -40,7 +40,7 @@ How the procedural office generator furnishes rooms. This guide defines the zone
 ### Mail room
 
 - Required: mail-station against a wall, one outbox-desk or package-stack.
-- Optional: notice-board, bin, plant-small.
+- Optional: notice-board, plant-small.
 - Positioned adjacent to the corridor near the manager's office: dispatch envelopes flow from here in the visualization's fiction.
 
 ### Break room
@@ -51,7 +51,7 @@ How the procedural office generator furnishes rooms. This guide defines the zone
 
 ### Corridor
 
-- Kept clear by default. Optional sparse decor (plant-small, notice-board on walls, bin) at low density, never narrowing the walkable width below two tiles.
+- Kept clear by default. Optional sparse decor (plant-small, notice-board on walls) at low density, never narrowing the walkable width below two tiles.
 
 ## Template weighting model
 

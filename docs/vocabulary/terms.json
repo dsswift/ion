@@ -937,6 +937,42 @@
       "notes": "One Desktop component, mounted in both the Overlay and the Studio presentation."
     },
     {
+      "id": "corpus-index",
+      "term": "Corpus Index",
+      "definition": "The main-process data layer for Graph View: a recursive scan of every configured corpus root that parses each Markdown file's YAML front matter and body links into one flat, vocabulary-free node/edge table. Live-watched, so an edited file re-indexes only itself rather than the whole corpus.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export async function scanCorpus",
+          "path": "desktop/src/main/graph-view/corpus-scan.ts"
+        }
+      ]
+    },
+    {
+      "id": "corpus-root",
+      "term": "Corpus Root",
+      "definition": "One configured directory Graph View scans for Markdown documents. The effective corpus is the union of every configured root \u2014 the operator's primary repository plus zero or more bundle roots or other directories they add. Roots are additive and never collide; an empty or missing root is silently ignored.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "interface CorpusRootConfig",
+          "path": "desktop/src/shared/graph-view-types.ts"
+        }
+      ]
+    },
+    {
       "id": "cost",
       "term": "Cost",
       "definition": "The money value of model use, computed from token counts and image counts for one turn or one whole conversation.",
@@ -1161,6 +1197,24 @@
           "language": "swift",
           "symbol": "ModalSheetBoundary",
           "path": "ios/IonRemote/Views/ModalSheetBoundary.swift"
+        }
+      ]
+    },
+    {
+      "id": "editor-anchor",
+      "term": "Editor Anchor",
+      "definition": "The file a conversation most recently had open in its editor, recorded when that file tab is activated. Graph View opens on this document's neighborhood rather than on the whole corpus. Recorded on activation rather than read at open time because the graph and the editor are tabs in one strip: opening the graph makes the graph the active tab, so reading the active tab can never find a document. Per conversation, memory-only, and forgotten when the last tab showing that file closes.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function recordTabActivation",
+          "path": "desktop/src/renderer/studio/surface/editor-anchor.ts"
         }
       ]
     },
@@ -1425,6 +1479,98 @@
           "language": "go",
           "symbol": "type forwardAck struct",
           "path": "relay/relay.go"
+        }
+      ]
+    },
+    {
+      "id": "graph-agent-highlight",
+      "term": "Graph Agent Highlight",
+      "definition": "The set of Graph View nodes an agent has asked the operator to look at through the graph tools. Drawn exactly like the selection and folded into the emphasis set, but kept apart from the operator's selection so an agent's \"look here\" never overwrites what the operator picked. Cleared by the operator's next click on the stage.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "agentHighlightNodeIds",
+          "path": "desktop/src/renderer/studio/graph/graph-store-types.ts"
+        }
+      ],
+      "notes": "Set by the graph_highlight client tool (desktop/src/main/studio-graph/tools.ts) through the Studio graph command seam."
+    },
+    {
+      "id": "graph-anchor-node",
+      "term": "Graph Anchor Node",
+      "definition": "A virtual Graph View node drawn for one distinct value of a promoted note-descriptive property (an ownership scope, a directory), gathering the documents that carry it. An anchor is a cluster centre, not a connector: it produces no cross-cutting edge and is a third visual class beside documents and topics. Promotion is a view-time layer toggle; a value carried by too few documents or by nearly all of them is suppressed and reported rather than drawn.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function buildAnchorNodes",
+          "path": "desktop/src/shared/graph-model-anchors.ts"
+        }
+      ],
+      "notes": "Promoted fields are configured under `promotedFields` (desktop/src/shared/graph-view-types.ts); the depth and split options there decide which part of a value becomes the anchor."
+    },
+    {
+      "id": "graph-session",
+      "term": "Graph Session",
+      "definition": "One directory's live Graph View state: its model, settled layout, camera, selection, filters, bindings, and pins. Keyed by directory rather than by conversation, so two conversations open on the same checkout share one session and a worktree gets its own. Parked in memory when the operator navigates away and resumed whole on return, so a graph never replays its opening layout; released when the graph tab is closed and no other conversation still has one open on that directory. Never written to disk.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function parkSession",
+          "path": "desktop/src/renderer/studio/graph/session-park.ts"
+        }
+      ]
+    },
+    {
+      "id": "graph-view",
+      "term": "Graph View",
+      "definition": "An Ion Studio surface that renders a Markdown corpus as a graph of documents and the relationships between them, driven entirely by the corpus's own YAML front matter and body links. No metadata vocabulary is hardcoded: node identity, labels, grouping, edges, encoding channels, and filters are all bound at runtime by the operator. Read-only and Studio-only.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function GraphSurface",
+          "path": "desktop/src/renderer/studio/graph/GraphSurface.tsx"
+        }
+      ]
+    },
+    {
+      "id": "graph-view-minimap",
+      "term": "Graph View Minimap",
+      "definition": "A Studio-only overview canvas in the corner of the Graph View stage that draws every visible node as a dot and the current viewport as a rectangle. Clicking it centres the camera on that point. It is present only while the viewport shows less than the whole graph.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function GraphMinimap",
+          "path": "desktop/src/renderer/studio/graph/minimap/GraphMinimap.tsx"
         }
       ]
     },
@@ -2948,6 +3094,24 @@
           "language": "swift",
           "symbol": "struct TabListView",
           "path": "ios/IonRemote/Views/TabListView.swift"
+        }
+      ]
+    },
+    {
+      "id": "tag-treatment",
+      "term": "Tag Treatment",
+      "definition": "How Graph View's configured tag field participates in the graph, chosen by the operator from three values that are behaviourally distinct. 'off' withholds the field entirely, so it can be neither encoded nor filtered on. 'filter' (the default) makes it filterable and bindable without adding any node. 'nodes' additionally folds the field into the group fields for that build, giving each distinct tag value its own graph node. A tag field is list-valued, so filters and categorical encodings resolve it by member rather than by the joined array.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export type TagTreatment",
+          "path": "desktop/src/shared/graph-view-types.ts"
         }
       ]
     },
