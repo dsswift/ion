@@ -3,7 +3,6 @@
 package procctl
 
 import (
-	"os"
 	"os/exec"
 	"syscall"
 
@@ -70,14 +69,5 @@ func KillTree(cmd *exec.Cmd) error {
 	return syscall.Kill(-pgid, syscall.SIGKILL)
 }
 
-// Alive reports whether a process with pid exists, using signal 0.
-func Alive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	return proc.Signal(syscall.Signal(0)) == nil
-}
+// Alive reports whether a process with pid exists and has not exited.
+// Platform-specific implementations also treat exited-but-unreaped zombies as dead.

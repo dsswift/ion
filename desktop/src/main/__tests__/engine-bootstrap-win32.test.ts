@@ -36,7 +36,7 @@ vi.mock('child_process', () => ({
     const cmd = [file, ...args].join(' ')
     execOrder.push({ kind: 'execFile', cmd })
     const done = typeof _opts === 'function' ? (_opts as typeof cb) : cb
-    done?.(null, '', '')
+    done?.(null, file === 'whoami.exe' ? '"testbox\\\\testuser","S-1-5-21-99-1001"\\r\\n' : '', '')
   }),
   execFileSync: vi.fn((file: string, args: string[]) => {
     execOrder.push({ kind: 'execFileSync', cmd: [file, ...args].join(' ') })
@@ -65,9 +65,7 @@ vi.mock('fs', () => ({
   chmodSync: vi.fn(),
 }))
 
-// userInfo backs the task principal's username fallback, which install()
-// reaches on every registration. A mock without it throws before the
-// assertions below ever run.
+// whoami.exe supplies the task principal SID used by every registration.
 vi.mock('os', () => ({ homedir: () => '/Users/testuser', userInfo: () => ({ username: 'testuser' }) }))
 
 vi.mock('../utils/atomicWrite', () => ({

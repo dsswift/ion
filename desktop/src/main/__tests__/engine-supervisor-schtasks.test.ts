@@ -34,8 +34,7 @@ vi.mock('child_process', () => ({
 }))
 
 let fakeFs: Record<string, string | Buffer> = {}
-// whoami.exe supplies the SID the task principal is scoped to; flip this to
-// exercise the username fallback.
+// whoami.exe supplies the SID the task principal is scoped to.
 let whoamiFails = false
 /** The legacy "Ion Engine" task's XML definition, or null when none exists. */
 let legacyTaskXml: string | null = null
