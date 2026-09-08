@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // millisToDuration converts a millisecond count to a time.Duration.
@@ -28,7 +30,7 @@ func defaultSchedulerPersistDir() string {
 	if v := os.Getenv("ION_DATA_DIR"); v != "" {
 		return filepath.Join(v, "scheduler")
 	}
-	home, err := os.UserHomeDir()
+	home, err := utils.UserHomeDir()
 	if err != nil || home == "" {
 		return ""
 	}

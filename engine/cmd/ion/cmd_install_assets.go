@@ -42,7 +42,7 @@ func cmdInstallAssets() {
 		os.Exit(1)
 	}
 
-	home, err := os.UserHomeDir()
+	home, err := utils.UserHomeDir()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "install-assets: home dir: %v\n", err)
 		os.Exit(1)

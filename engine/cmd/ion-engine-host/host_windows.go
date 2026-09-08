@@ -72,7 +72,7 @@ func confineToJob(pid int) (windows.Handle, error) {
 }
 
 func runHost(enginePath string, args []string) int {
-	home, err := os.UserHomeDir()
+	home, err := utils.UserHomeDir()
 	if err != nil {
 		utils.LogWithFields(utils.LevelError, "engine-host", "could not resolve the user home directory", map[string]any{"error": utils.ErrStr(err)})
 		return 1

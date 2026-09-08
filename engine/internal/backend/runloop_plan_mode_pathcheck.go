@@ -1,9 +1,10 @@
 package backend
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // planDirsForWorkingDir returns the set of recognized plan directories for a
@@ -21,7 +22,7 @@ import (
 // An empty workingDir produces only the home entry. The function never
 // returns nil; at minimum it returns the home plans directory.
 func planDirsForWorkingDir(workingDir string) []string {
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	homePlans := filepath.Join(home, ".ion", "plans")
 
 	if workingDir != "" {

@@ -56,7 +56,7 @@ type credentialFile struct {
 // NewFileStore creates a FileStore at ~/.ion/credentials.enc with its
 // keyfile at ~/.ion/credentials.key.
 func NewFileStore() *FileStore {
-	home, err := os.UserHomeDir()
+	home, err := utils.UserHomeDir()
 	if err != nil {
 		utils.LogWithFields(utils.LevelInfo, "auth.filestore", "cannot determine home dir", map[string]any{"error": err.Error()})
 		home = "."

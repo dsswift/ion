@@ -46,6 +46,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // planSlugAdjectives — ~100 entries.
@@ -212,7 +213,7 @@ func allocateNewPlanFilePath(caps backend.BackendCapabilities, workingDir string
 	if caps.PlanFileProjectScoped && workingDir != "" {
 		plansDir = filepath.Join(workingDir, ".ion", "plans")
 	} else {
-		home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+		home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 		plansDir = filepath.Join(home, ".ion", "plans")
 	}
 	// MkdirAll is idempotent; ignore the error here. If it failed

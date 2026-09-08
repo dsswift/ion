@@ -61,7 +61,7 @@ type ClientStore struct {
 // NewClientStore creates a registration store backed by
 // ~/.ion/mcp-clients.json.
 func NewClientStore() *ClientStore {
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home degrades to a relative path; Get/Set log their own failures
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home degrades to a relative path; Get/Set log their own failures
 	storePath := filepath.Join(home, ".ion", "mcp-clients.json")
 
 	store := &ClientStore{
@@ -157,7 +157,7 @@ var (
 )
 
 func getClientStore() *ClientStore {
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home matches NewClientStore fallback
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home matches NewClientStore fallback
 	path := filepath.Join(home, ".ion", "mcp-clients.json")
 
 	globalClientStoreMu.Lock()

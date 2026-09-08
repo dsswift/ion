@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // LoadModelsConfig reads models.json for every call so external edits take
@@ -23,7 +24,7 @@ func LoadModelsConfig() map[string]interface{} {
 // enough information to refuse replacing a corrupt or unreadable config file.
 // A missing file is an intentional empty configuration and may be created.
 func loadModelsConfigErr() (map[string]interface{}, error) {
-	home, err := os.UserHomeDir()
+	home, err := utils.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("resolve home directory: %w", err)
 	}

@@ -47,7 +47,7 @@ func StartEgressTailer(sources []string, fwd *EgressForwarder) *EgressTailer {
 	if fwd == nil {
 		return nil
 	}
-	home, err := os.UserHomeDir()
+	home, err := UserHomeDir()
 	if err != nil {
 		Error("log_egress_tailer", "cannot determine home dir; tailer disabled: "+err.Error())
 		return nil

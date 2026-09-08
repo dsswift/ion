@@ -29,7 +29,7 @@ import (
 // This generalizes the claude-specific discovery the claude-code backend
 // shipped so every delegated CLI resolves the same way.
 func Find(name string, extra []string) (string, error) {
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	candidates := installCandidates(name, os.Getenv, home)
 	candidates = append(candidates, extra...)
 	for _, p := range candidates {

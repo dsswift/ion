@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // ResolvedExtensionPlan is the filesystem-only result of resolving an
@@ -21,7 +23,7 @@ type ResolvedExtensionPlan struct {
 // directory to its conventional entry point. It does not spawn a process.
 func ResolveExtensionPath(extensionPath string) (string, error) {
 	if strings.HasPrefix(extensionPath, "~/") {
-		home, err := os.UserHomeDir()
+		home, err := utils.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("resolve home for extension path: %w", err)
 		}

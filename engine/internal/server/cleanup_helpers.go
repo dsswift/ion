@@ -22,7 +22,7 @@ import (
 //
 // homeDir is the path to ~/.ion (the same directory that contains
 // session-chains.json / session-labels.json and their legacy per-backend
-// twins). When empty, it falls back to os.UserHomeDir() + "/.ion".
+// twins). When empty, it falls back to utils.UserHomeDir() + "/.ion".
 //
 // Missing files contribute zero IDs (never an error). Malformed JSON is
 // logged at Error level and the file is skipped, but the cleanup must
@@ -30,7 +30,7 @@ import (
 // strictly safer than aborting the cleanup with zero guards.
 func loadDesktopProtectedIDs(homeDir string) []string {
 	if homeDir == "" {
-		home, err := os.UserHomeDir()
+		home, err := utils.UserHomeDir()
 		if err != nil {
 			utils.LogWithFields(utils.LevelError, "server", "load desktop protected ids cannot resolve home dir", map[string]any{"error": err.Error()})
 			return nil

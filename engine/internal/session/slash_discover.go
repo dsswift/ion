@@ -41,7 +41,7 @@ func (m *Manager) DiscoverSlashCommands(workingDir string, claudeCompat bool) []
 // The `.ion` roots are the product's defaults and always walked; the `.claude`
 // roots are skipped entirely when claudeCompat is false.
 func discoverSlashCommands(workingDir string, claudeCompat bool) []types.SlashCommandListing {
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 
 	type root struct {
 		dir    string

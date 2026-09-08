@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"sync/atomic"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 var requestCounter int64
@@ -30,7 +32,7 @@ func ionDataDir() string {
 	if v := os.Getenv("ION_DATA_DIR"); v != "" {
 		return v
 	}
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home falls back to a relative .ion path
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home falls back to a relative .ion path
 	return filepath.Join(home, ".ion")
 }
 

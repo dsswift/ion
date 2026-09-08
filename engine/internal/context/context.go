@@ -16,6 +16,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // WalkerConfig controls how context files are discovered.
@@ -69,7 +71,7 @@ func (c WalkerConfig) resolvePatterns() []string {
 // where ~/.ion/commands is always probed and ~/.claude/commands is gated.
 // Returns nil when the home directory cannot be resolved.
 func (c WalkerConfig) homeRoots() []string {
-	home, err := os.UserHomeDir()
+	home, err := utils.UserHomeDir()
 	if err != nil || home == "" {
 		return nil
 	}

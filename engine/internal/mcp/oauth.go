@@ -58,7 +58,7 @@ type OAuthStore struct {
 
 // NewOAuthStore creates a token store backed by ~/.ion/mcp-tokens.json.
 func NewOAuthStore() *OAuthStore {
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	storePath := filepath.Join(home, ".ion", "mcp-tokens.json")
 
 	store := &OAuthStore{
@@ -254,7 +254,7 @@ var (
 )
 
 func getOAuthStore() *OAuthStore {
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home matches NewOAuthStore fallback
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home matches NewOAuthStore fallback
 	path := filepath.Join(home, ".ion", "mcp-tokens.json")
 
 	globalOAuthStoreMu.Lock()

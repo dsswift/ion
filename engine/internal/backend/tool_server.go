@@ -13,10 +13,11 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/dsswift/ion/engine/internal/durablefile"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // McpServerName is the MCP server name used in config and --allowedTools.
@@ -81,7 +82,7 @@ func socketToken(sessionID string) string {
 
 // NewToolServer creates a tool server for the given session.
 func NewToolServer(sessionID string) *ToolServer {
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	sockDir := filepath.Join(home, ".ion", "mcp")
 	os.MkdirAll(sockDir, 0o700) //nolint:errcheck // dir creation; failure surfaces on listen below
 
@@ -323,7 +324,7 @@ func mcpBridgeInvocation(sockPath string) (command string, args []string) {
 
 // McpConfigPath writes MCP config JSON for the Claude CLI --mcp-config flag.
 func (ts *ToolServer) McpConfigPath(sessionID string) (string, error) {
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	configDir := filepath.Join(home, ".ion", "mcp")
 
 	bridgeCmd, bridgeArgs := mcpBridgeInvocation(ts.sockPath)

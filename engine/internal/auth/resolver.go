@@ -375,7 +375,7 @@ func (r *Resolver) ListStored() []StoredCredential {
 	}
 
 	// Legacy credentials.json
-	home, err := os.UserHomeDir()
+	home, err := utils.UserHomeDir()
 	if err == nil {
 		path := filepath.Join(home, ".ion", "credentials.json")
 		if data, err := os.ReadFile(path); err == nil {
@@ -414,7 +414,7 @@ func resolveFromEnv(provider string) string {
 // credentialsFile is a JSON file at ~/.ion/credentials.json with
 // structure: { "provider_name": "api_key_value", ... }
 func resolveFromCredentialsFile(provider string) string {
-	home, err := os.UserHomeDir()
+	home, err := utils.UserHomeDir()
 	if err != nil {
 		return ""
 	}

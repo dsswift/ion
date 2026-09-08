@@ -99,7 +99,7 @@ func (r *Registry) dir() string {
 	if r.ionDir != "" {
 		return r.ionDir
 	}
-	home, err := os.UserHomeDir()
+	home, err := utils.UserHomeDir()
 	if err != nil {
 		utils.LogWithFields(utils.LevelWarn, logTag, "cannot resolve home dir, workspace records unreadable", map[string]any{"error": err.Error()})
 		return ""

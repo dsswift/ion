@@ -1,8 +1,9 @@
 package session
 
 import (
-	"os"
 	"path/filepath"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // PlanDirsForWorkingDir returns the set of valid plan directories for a
@@ -33,7 +34,7 @@ import (
 // The function never returns a nil slice; at minimum it returns the home
 // plans directory. An empty workingDir produces only the home entry.
 func PlanDirsForWorkingDir(workingDir string) []string {
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	homePlans := filepath.Join(home, ".ion", "plans")
 
 	if workingDir != "" {

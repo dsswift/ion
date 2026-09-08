@@ -32,7 +32,7 @@ import (
 )
 
 func cmdServe(flags map[string]string) {
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home falls back to a relative .ion dir
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home falls back to a relative .ion dir
 	ionDir := filepath.Join(home, ".ion")
 	if err := os.MkdirAll(ionDir, 0o700); err != nil {
 		utils.LogWithFields(utils.LevelError, "main", "failed to create ion data dir", map[string]any{"path": ionDir, "error": utils.ErrStr(err)})
