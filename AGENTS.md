@@ -152,6 +152,70 @@ Full lifecycle context, including where the graph sits relative to `/align`, `/s
 
 Hooks are managed by husky and install themselves: root `package.json` has `"prepare": "husky"`, so `npm install` — or `make bootstrap`, which wraps it — points `core.hooksPath` at `.husky/_` with no manual step. The pre-push hook runs the file-size cap plus change-scoped lint, build, typecheck, and test gates. Husky invokes hooks with `sh -e`, which ignores the shebang and is dash on Linux, so `.husky/pre-push` is a dash-safe one-line delegator and the bash gate body lives in `scripts/pre-push.sh` — edit the gates there. Bypass with `--no-verify` only when intentional. If `core.hooksPath` has been manually overridden in a clone, `make hooks` repairs it.
 
+## Windows VM testing — sync before every build
+
+**This section applies only when a Windows VM is open for testing.** Ordinary
+development and testing happen on macOS and never involve the VM. Nothing here
+fires unless the conversation is actively exercising Windows behavior on a live
+machine.
+
+When it does apply, the rule is absolute:
+
+> **Run `make sync-windows-vm` before every VM build. No exceptions, no
+> per-file copies.**
+
+The VM builds from `C:\dev\ion`, which is a *copy*, not a checkout. It has no
+git remote and pulls nothing. Every change made on the Mac reaches it only
+because someone pushed it there, and a build that runs against a stale copy
+produces a result that looks authoritative and is worthless.
+
+### Why a hand-picked file list is forbidden
+
+`scp`-ing the files you just edited is the obvious shortcut and it is the exact
+thing that fails. Twice in one session it produced a false negative:
+
+- A fix was committed, verified on macOS, and reported done. The VM was never
+  updated, the operator's agent retested, and it reported the defect unfixed —
+  correctly, because it was measuring the previous binary.
+- The second occurrence exposed a longer-running drift: the VM's tree was
+  missing a source file that **predated the branch entirely**. Per-file copying
+  had been leaving it inconsistent for an unknown number of iterations, so even
+  a correct diff-based sync would not have repaired it.
+
+`git diff` names only what the current branch touched. It cannot name what an
+earlier partial sync missed. That is why the sync ships every tracked file
+under `engine/`, `desktop/`, `packaging/`, and `scripts/` every time — a few
+seconds of transfer in exchange for eliminating the failure mode.
+
+### The loop
+
+```bash
+make sync-windows-vm                                    # always first
+ssh <vm> 'cd C:\dev\ion; .\make.ps1 installer'         # build there
+```
+
+Then verify the artifact carries the change before asking anyone to test it:
+
+```bash
+# Does the built engine actually contain the fix?
+ssh <vm> 'powershell -NoProfile -Command "Select-String -Path \"C:\dev\ion\desktop\release\win-arm64-unpacked\resources\engine\ion.exe\" -Pattern <a-string-your-change-added> -SimpleMatch -Quiet"'
+```
+
+**A source-level check is not verification.** Confirming the code is right in
+`git`, or that a macro is present in a script, says nothing about what the
+packaged binary contains. Grep the built artifact for a string your change
+introduced. This session shipped four consecutive "fixed" reports for the
+installer status text that displayed nothing, each verified at the source level
+only.
+
+### Reporting a result
+
+State which binary was tested and when it was built. "The fix is in" is not a
+result; "the engine built at 09:55 contains `<marker>` and the retest passes"
+is. When the operator's agent reports a defect as unfixed, **check whether the
+VM has the fix before re-diagnosing** — that check takes one command and would
+have saved two full diagnostic rounds here.
+
 ## Forbidden commands
 
 **Never run `make desktop`.** It builds a local `.pkg`, asks the running desktop to drain active work, and opens macOS Installer. Installing and relaunching the new desktop can replace the bundled engine and restart the daemon, which ends the engine process hosting this conversation after its work drains. The user runs `make desktop` manually when ready. If a desktop rebuild is needed, tell the user to run it.
