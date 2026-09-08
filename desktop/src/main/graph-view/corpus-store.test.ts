@@ -72,10 +72,26 @@ afterEach(() => {
 })
 
 describe('subscription refcounts', () => {
-  it('acquires one config watch for the first subscriber and releases it after the last', async () => {
+  it('does not acquire a config watch for an empty corpus', async () => {
     mkdirSync(tmpRoot, { recursive: true })
     vi.spyOn(configStore, 'getGraphViewConfig').mockReturnValue(baseConfig([]))
     const watchProject = vi.spyOn(configStore, 'watchProject')
+    const unwatchProject = vi.spyOn(configStore, 'unwatchProject')
+
+    await subscribeCorpus(tmpRoot)
+    await subscribeCorpus(tmpRoot)
+    expect(watchProject).not.toHaveBeenCalled()
+
+    const { unsubscribeCorpus } = await import('./corpus-store')
+    unsubscribeCorpus(tmpRoot)
+    unsubscribeCorpus(tmpRoot)
+    expect(unwatchProject).not.toHaveBeenCalled()
+  })
+
+  it('acquires one config watch for the first non-empty subscriber and releases it after the last', async () => {
+    mkdirSync(tmpRoot, { recursive: true })
+    vi.spyOn(configStore, 'getGraphViewConfig').mockReturnValue(baseConfig([tmpRoot]))
+    const watchProject = vi.spyOn(configStore, 'watchProject').mockImplementation(() => undefined)
     const unwatchProject = vi.spyOn(configStore, 'unwatchProject')
 
     await subscribeCorpus(tmpRoot)
