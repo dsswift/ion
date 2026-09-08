@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -25,17 +24,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
-
-// DefaultSocketPath returns the platform-appropriate default socket/listen address.
-// On Unix: ~/.ion/engine.sock (Unix domain socket)
-// On Windows: 127.0.0.1:21017 (TCP loopback, since Go doesn't natively support named pipes)
-func DefaultSocketPath() string {
-	if runtime.GOOS == "windows" {
-		return "127.0.0.1:21017"
-	}
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
-	return filepath.Join(home, ".ion", "engine.sock")
-}
 
 // broadcastWriteDeadline is how long a single per-client write may take before
 // the drainer treats the connection as dead and evicts it. Configurable via
@@ -118,6 +106,20 @@ type Server struct {
 	lanes     *commandLanes
 	lifecycle *dispatchLifecycle
 	clientSeq atomic.Uint64
+
+	// peerAuth authorizes each accepted connection against the engine's own
+	// user, for the one transport that has no other owner check: the Windows
+	// default loopback TCP listener. Nil for a Unix socket and for a listen
+	// address the operator chose explicitly (see unauthenticatedPeerReason).
+	// Set once in Start, before the accept loop begins, and never written
+	// afterwards.
+	peerAuth *localPeerAuthorizer
+
+	// unauthenticatedPeerReason, when non-empty, records why this listener
+	// serves peers it has not identified -- an operator who set
+	// ION_SOCKET_PATH to a LAN address is asking for exactly that, and the
+	// reason is logged rather than assumed.
+	unauthenticatedPeerReason string
 
 	// ownership binds live session keys to the client connections that
 	// claimed them, reaping a session a grace window after its last owning
@@ -312,6 +314,12 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 // TCP always binds to tcp4 to avoid macOS dual-stack quirks where Go's
 // default "tcp" might bind only to [::1].
 func (s *Server) Start() error {
+	// Before anything binds. A listener that comes up without the
+	// authorization it needs is already reachable by the wrong user.
+	if err := s.installPeerAuthorization(); err != nil {
+		return err
+	}
+
 	var ln net.Listener
 	var err error
 
@@ -363,6 +371,52 @@ func (s *Server) Start() error {
 	utils.LogWithFields(utils.LevelInfo, "server", "listening", map[string]any{"path": s.socketPath})
 
 	go s.acceptLoop()
+	return nil
+}
+
+// AllowUnauthenticatedPeers records that this listen address was chosen by the
+// operator rather than defaulted, and that connections to it are therefore not
+// subject to local-peer authorization.
+//
+// This is what keeps ION_SOCKET_PATH working as it always has: a LAN or relay
+// listener exists so that a client on another machine -- necessarily a
+// different token, frequently a different account -- can connect. Applying the
+// same-user check there would refuse every peer the operator set the address up
+// to serve.
+//
+// It has no effect on a Unix socket (which is authorized by path) and it is
+// never set for the Windows default address. Must be called before Start.
+func (s *Server) AllowUnauthenticatedPeers(reason string) {
+	s.unauthenticatedPeerReason = reason
+}
+
+// installPeerAuthorization decides whether this listener needs local-peer
+// authorization and, when it does, builds it.
+//
+// The condition is narrow on purpose: the Windows default loopback listener is
+// the only transport in the engine that carries no owner information of its
+// own. It is also fail-closed -- an authorizer that cannot be built stops the
+// engine rather than falling through to an unauthenticated listener, because a
+// silent downgrade here is indistinguishable from the vulnerability it
+// replaces.
+func (s *Server) installPeerAuthorization() error {
+	if runtime.GOOS != "windows" || !looksLikeHostPort(s.socketPath) {
+		return nil
+	}
+	if s.unauthenticatedPeerReason != "" {
+		utils.LogWithFields(utils.LevelInfo, "server", "serving unauthenticated peers on an operator-chosen address", map[string]any{
+			"path": s.socketPath, "reason": s.unauthenticatedPeerReason,
+		})
+		return nil
+	}
+	a, err := newLocalPeerAuthorizer()
+	if err != nil {
+		return fmt.Errorf("cannot authorize local clients on %s: %w", s.socketPath, err)
+	}
+	s.peerAuth = a
+	utils.LogWithFields(utils.LevelInfo, "server", "local peer authorization enabled", map[string]any{
+		"path": s.socketPath, "engine_sid": a.selfSID,
+	})
 	return nil
 }
 
@@ -492,6 +546,12 @@ func (s *Server) acceptLoop() {
 			}
 		}
 
+		// Identity first: nothing is registered, tuned, or read from a
+		// connection the engine has not established belongs to its own user.
+		if !s.authorizeAccepted(conn) {
+			continue
+		}
+
 		tuneSocketBuffer(conn)
 
 		cw := &clientWriter{
@@ -521,7 +581,7 @@ func (s *Server) acceptLoop() {
 // filling the 8 KB pipe faster than the client can drain it and causing
 // the 5 s write-deadline eviction. 256 KB absorbs the startup burst
 // without requiring the client to keep up in real time. The same tuning
-// is applied to the Windows TCP loopback listener (see DefaultSocketPath),
+// is applied to the Windows TCP loopback listener,
 // where an identical burst reaches the client over a different transport.
 const socketBufferSize = 256 * 1024
 
