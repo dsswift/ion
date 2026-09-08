@@ -970,6 +970,18 @@ export interface FsEntry {
   isDirectory: boolean;
   size: number;
   modifiedMs: number;
+  /**
+   * True when the OS considers this entry hidden.
+   *
+   * A leading dot on every platform, plus the Windows FILE_ATTRIBUTE_HIDDEN
+   * bit — which is how AppData, ProgramData and most system folders are
+   * marked, none of which carry a dot. Node's fs.Stats does not expose that
+   * bit, so the main process derives it while it already holds the entry
+   * (see ipc/files.ts); a renderer cannot compute it from the name alone.
+   *
+   * Optional so an older cached listing simply reads as "not hidden".
+   */
+  isHidden?: boolean;
 }
 
 // ─── Engine-host filesystem (browsed via the engine, may be remote) ───

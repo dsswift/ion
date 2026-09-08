@@ -6,7 +6,10 @@ const source = readFileSync(resolve(import.meta.dirname, 'StudioLeftSidebar.tsx'
 
 describe('StudioLeftSidebar chrome', () => {
   it('puts workspace status before dock tabs and replaces close with Settings', () => {
-    expect(source.indexOf('<WorkspaceStatusIndicator />')).toBeLessThan(source.indexOf('{VIEWS.map'))
+    // `views`, not `VIEWS`: the dock filters its tab list (Git is offered
+    // only where there is a repository), so the render maps the filtered
+    // array while VIEWS remains the unfiltered source.
+    expect(source.indexOf('<WorkspaceStatusIndicator />')).toBeLessThan(source.indexOf('{views.map'))
     expect(source).toContain('<OpenSettingsButton />')
     expect(source).not.toContain('aria-label="Close sidebar"')
   })
