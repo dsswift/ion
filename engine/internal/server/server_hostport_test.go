@@ -25,6 +25,11 @@ func TestLooksLikeHostPort(t *testing.T) {
 		{"/colon:path", false},  // absolute path with colon
 		{"./colon:path", false}, // relative path with colon
 
+		// Windows absolute paths — the drive-letter colon must not be
+		// mistaken for a host:port separator
+		{`C:\Users\josh\.ion\engine.sock`, false},
+		{`d:/temp/ion-test/test.sock`, false},
+
 		// Windows named pipe path (no colon, starts with \\)
 		// Not applicable here since we only test the function logic
 	}

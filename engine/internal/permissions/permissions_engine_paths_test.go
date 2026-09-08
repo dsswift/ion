@@ -1,7 +1,6 @@
 package permissions
 
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -135,10 +134,10 @@ func TestEngine_DangerousPatterns(t *testing.T) {
 // =============================================================================
 
 func TestEngine_SensitivePaths(t *testing.T) {
-	home := os.Getenv("HOME")
-	if home == "" {
-		home = "/root"
-	}
+	// See TestIsSensitivePath's comment: homeDir(), not a test-local
+	// HOME/root fallback, so the constructed paths match what
+	// IsSensitivePath will actually resolve on this host.
+	home := homeDir()
 
 	// Use "ask" mode with wildcard allow rule so sensitive path checks run
 	// but non-sensitive paths still resolve to allow (via rule match).

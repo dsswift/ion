@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -35,6 +36,16 @@ func TestWrite_Mode(t *testing.T) {
 
 	if err := Write(path, []byte("secret"), 0o600); err != nil {
 		t.Fatalf("Write failed: %v", err)
+	}
+
+	// Windows has no POSIX permission bits for chmod to set; a non-read-only
+	// file always reports 0o666 there regardless of the mode passed in. See
+	// engine/internal/utils/owneronly_windows.go for the real (ACL-based)
+	// owner-only mechanism on that platform -- Write itself, like
+	// AtomicWriteFile, does not call it; callers that need real owner-only
+	// enforcement on Windows opt in explicitly.
+	if runtime.GOOS == "windows" {
+		return
 	}
 
 	info, err := os.Stat(path)
@@ -346,15 +357,25 @@ func TestWrite_TempEncodesPID(t *testing.T) {
 	}
 }
 
+// deadPID starts a real process, waits for it to exit, and returns its PID.
+// Re-execs this test binary with -test.run=^$ (matches no test, so it exits
+// almost immediately) rather than naming a POSIX utility like "true": that
+// utility does not exist on Windows, and the property under test is just "a
+// PID nothing is running under anymore," which any process satisfies once
+// it has exited.
 func deadPID(t *testing.T) int {
 	t.Helper()
-	cmd := exec.Command("true")
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+	cmd := exec.Command(exe, "-test.run=^$")
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start 'true': %v", err)
+		t.Fatalf("start helper process: %v", err)
 	}
 	pid := cmd.Process.Pid
 	if err := cmd.Wait(); err != nil {
-		t.Fatalf("wait 'true': %v", err)
+		t.Fatalf("wait helper process: %v", err)
 	}
 	return pid
 }

@@ -4,19 +4,44 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
-const (
-	repoPath   = "/repo/project"
-	minePath   = "/wt/project-aaa"
-	sibling    = "/wt/project-bbb"
-	prefixTwin = "/wt/project-aaa0" // shares MINE as a string prefix; different worktree
-	otherRepo  = "/repo/other"
+// These are synthetic paths: every containment comparison in this package is
+// pure string/filepath logic over registry entries, and none of these
+// directories are ever created on disk. They must still satisfy
+// filepath.IsAbs on the platform running the test -- on Windows that means
+// carrying a drive letter, because a driveless rooted path like "/repo/project"
+// is NOT absolute by Go's Windows definition (Windows distinguishes a
+// volume-relative root from a fully qualified path). Without a drive letter,
+// extractTargetPath and absolutize treat the fixture as relative and silently
+// join it onto cwd instead of comparing it as a destination in its own right,
+// which is what let every refusal in this package silently stop firing on
+// Windows: bash_test.go, containment_test.go, prompt_context_test.go,
+// registry_fixture_test.go, shared_checker_test.go, shared_paths_test.go,
+// worktree_commits_test.go, worktree_diff_test.go, and
+// worktree_query_fixture_test.go all key off these same constants.
+var (
+	repoPath   = testAbsPath("repo", "project")
+	minePath   = testAbsPath("wt", "project-aaa")
+	sibling    = testAbsPath("wt", "project-bbb")
+	prefixTwin = minePath + "0" // shares MINE as a string prefix; different worktree
+	otherRepo  = testAbsPath("repo", "other")
 )
+
+// testAbsPath builds a platform-absolute synthetic path from segments,
+// joined with the platform's own separator so it round-trips through
+// filepath.Clean/filepath.IsAbs the same way a real path would.
+func testAbsPath(segments ...string) string {
+	if runtime.GOOS == "windows" {
+		return `C:\` + filepath.Join(segments...)
+	}
+	return "/" + filepath.Join(segments...)
+}
 
 func writeWorktreeRegistry(t *testing.T, dir string, entries []WorktreeEntry) {
 	t.Helper()
@@ -200,8 +225,21 @@ func TestWorkspaceFailsOpenOnCorruptRegistry(t *testing.T) {
 
 func TestWorkspaceIgnoresMalformedEntriesWithoutDiscardingGoodOnes(t *testing.T) {
 	dir := t.TempDir()
-	raw := `{"version":1,"entries":[null,{"worktreePath":"","repoPath":"/repo"},{"worktreePath":"` + minePath + `"},{"worktreePath":"` + minePath + `","repoPath":"` + repoPath + `"}]}`
-	if err := os.WriteFile(filepath.Join(dir, "worktree-registry.json"), []byte(raw), 0o644); err != nil {
+	// Marshaled, not hand-built: minePath/repoPath carry backslashes on
+	// Windows, and splicing them into a raw JSON string literal produces
+	// invalid escape sequences that fail to parse -- silently discarding the
+	// one entry this test exists to prove survives.
+	entries := []map[string]any{
+		nil,
+		{"worktreePath": "", "repoPath": "/repo"},
+		{"worktreePath": minePath},
+		{"worktreePath": minePath, "repoPath": repoPath},
+	}
+	raw, err := json.Marshal(map[string]any{"version": 1, "entries": entries})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "worktree-registry.json"), raw, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	c := NewCheckerAt(dir)

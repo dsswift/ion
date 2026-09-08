@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -90,11 +91,27 @@ func newTestServer(t *testing.T, mb *mockBackend) *Server {
 	return srv
 }
 
+// shortTempRoot returns a short temp root to stay within the ~104-byte Unix
+// socket path limit on macOS (also enforced by Windows' AF_UNIX
+// implementation). "/tmp" is used directly rather than os.TempDir() because
+// macOS's real temp root (/var/folders/<...>/T/) is long enough on its own to
+// overrun the limit; "/tmp" is not a valid path on Windows at all
+// (os.MkdirTemp fails outright there, as opposed to merely running long), so
+// os.TempDir() is used there instead -- Windows CI runners already resolve
+// it to a short 8.3-style path (C:\Users\RUNNER~1\AppData\Local\Temp) for
+// exactly this reason.
+func shortTempRoot() string {
+	if runtime.GOOS == "windows" {
+		return os.TempDir()
+	}
+	return "/tmp"
+}
+
 // newShortPathTestServer is like newTestServer but places the socket under
-// /tmp to stay within the ~104-byte Unix socket path limit on macOS.
+// shortTempRoot() (see its doc comment for why "/tmp" alone is not enough).
 func newShortPathTestServer(t *testing.T, mb *mockBackend) *Server {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "ion-test-")
+	dir, err := os.MkdirTemp(shortTempRoot(), "ion-test-")
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}

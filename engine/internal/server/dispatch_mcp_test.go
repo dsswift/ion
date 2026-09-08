@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // findMcpEvent scans NDJSON lines for the given engine_mcp_* event type.
@@ -56,7 +57,7 @@ func findMcpEvent(t *testing.T, lines []string, eventType string) *types.EngineE
 // HOME's engine.json, so assertions check what was actually persisted.
 func readEngineConfigServers(t *testing.T) map[string]any {
 	t.Helper()
-	home, err := os.UserHomeDir()
+	home, err := utils.UserHomeDir()
 	if err != nil {
 		t.Fatalf("resolve HOME: %v", err)
 	}

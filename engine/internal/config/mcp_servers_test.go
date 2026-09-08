@@ -13,6 +13,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -439,6 +440,16 @@ func TestWriteRawConfig_FileModeIsOwnerOnly(t *testing.T) {
 
 	if err := AddMcpServer("srv", types.McpServerConfig{Type: "http", URL: "https://example.test/mcp"}); err != nil {
 		t.Fatalf("AddMcpServer: %v", err)
+	}
+
+	// Windows has no POSIX permission bits for chmod to set; a non-read-only
+	// file always reports 0o666 there regardless of the mode requested. Real
+	// owner-only enforcement on that platform is RestrictToOwner (an ACL
+	// restriction, called by writeRawConfig right after this write), pinned
+	// directly by owneronly_windows_test.go; there is no POSIX-bit assertion
+	// to make here on that platform.
+	if runtime.GOOS == "windows" {
+		return
 	}
 
 	info, err := os.Stat(path)

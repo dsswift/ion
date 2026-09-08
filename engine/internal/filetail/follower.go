@@ -97,7 +97,7 @@ func (f *Follower) open() error {
 	if f.file != nil {
 		return nil
 	}
-	file, err := os.Open(f.path)
+	file, err := openShared(f.path)
 	if err != nil {
 		return err
 	}
@@ -188,7 +188,7 @@ func (f *Follower) drain(handler LineHandler) error {
 }
 
 func (f *Follower) pathReplaced() (bool, error) {
-	pathFile, err := os.Open(f.path)
+	pathFile, err := openShared(f.path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil

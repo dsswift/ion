@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // ---------------------------------------------------------------------------
@@ -316,7 +317,7 @@ func TestAllocateNewPlanFilePath_HomeDir(t *testing.T) {
 		PlanFileProjectScoped: false,
 	}
 	path := allocateNewPlanFilePath(caps, workDir)
-	home, _ := os.UserHomeDir()
+	home, _ := utils.UserHomeDir()
 	wantPrefix := filepath.Join(home, ".ion", "plans")
 	if !strings.HasPrefix(path, wantPrefix) {
 		t.Errorf("allocateNewPlanFilePath(api, workDir) = %q, want prefix %q", path, wantPrefix)
@@ -348,7 +349,7 @@ func TestAllocateNewPlanFilePath_ProjectScopedEmptyWorkDir(t *testing.T) {
 		PlanFileProjectScoped: true,
 	}
 	path := allocateNewPlanFilePath(caps, "")
-	home, _ := os.UserHomeDir()
+	home, _ := utils.UserHomeDir()
 	wantPrefix := filepath.Join(home, ".ion", "plans")
 	if !strings.HasPrefix(path, wantPrefix) {
 		t.Errorf("allocateNewPlanFilePath(claude-code, empty) = %q, want home prefix %q", path, wantPrefix)

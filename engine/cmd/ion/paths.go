@@ -17,10 +17,25 @@ var requestCounter int64
 // than a Unix domain socket path. Used to enable TCP listen/dial on any
 // platform via ION_SOCKET_PATH=host:port.
 func looksLikeHostPort(path string) bool {
-	if len(path) == 0 || path[0] == '/' || path[0] == '.' {
+	// A Windows absolute path's drive-letter colon (e.g. "C:\Users\...")
+	// otherwise satisfies the contains-":" check below and misroutes the
+	// address into TCP mode instead of a Unix domain socket. See the
+	// matching check in internal/server/socket_addr.go.
+	if len(path) == 0 || path[0] == '/' || path[0] == '.' || isWindowsDriveAbsolutePath(path) {
 		return false
 	}
 	return strings.Contains(path, ":")
+}
+
+// isWindowsDriveAbsolutePath reports whether path starts with a drive
+// letter followed by ":\" or ":/" (e.g. "C:\...", "d:/...").
+func isWindowsDriveAbsolutePath(path string) bool {
+	if len(path) < 3 {
+		return false
+	}
+	c := path[0]
+	isLetter := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+	return isLetter && path[1] == ':' && (path[2] == '\\' || path[2] == '/')
 }
 
 // ionDataDir returns the root data directory for this engine instance.

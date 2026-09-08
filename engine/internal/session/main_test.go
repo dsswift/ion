@@ -27,22 +27,35 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	// A temp HOME for the package, deliberately created under /tmp with a SHORT
-	// prefix. This HOME is the base for the CLI tool server's Unix socket at
+	// A temp HOME for the package, deliberately created under a SHORT temp
+	// root. This HOME is the base for the CLI tool server's Unix socket at
 	// ~/.ion/mcp/sock-<64-hex-digest>, so the total path must stay inside the
-	// ~104-byte sun_path limit or the socket cannot bind. The fixed suffix costs
-	// 74 bytes, which leaves very little room: macOS's default temp root
+	// ~104-byte sun_path limit or the socket cannot bind (also enforced by
+	// Windows' AF_UNIX implementation). The fixed suffix costs 74 bytes,
+	// which leaves very little room: macOS's default temp root
 	// (/var/folders/<...>/T/) overruns it on its own, and even "/tmp" with a
 	// verbose prefix lands at 111. "ionh-" keeps it near 99. Same constraint
 	// internal/server's newShortPathTestServer works around.
 	//
+	// "/tmp" is not a valid path on Windows at all, and os.TempDir() there
+	// (%TEMP%, typically C:\Users\<user>\AppData\Local\Temp) is 30+ bytes on
+	// its own -- combined with "ionh-<random>" and the fixed 74-byte MCP
+	// socket suffix, that overruns the limit regardless of how short the
+	// random suffix is kept, and none of %TEMP%'s own path segments are long
+	// enough to have a shorter 8.3 form to claw back. windowsShortTempRoot
+	// picks a genuinely shorter root there; shortenWindowsPath then also
+	// shortens the created leaf directory's own name as a second margin. See
+	// main_test_windows.go's doc comments for the exact byte accounting.
+	//
 	// Not t.TempDir(): TestMain has no *testing.T, so the directory is created
 	// and removed explicitly.
-	tmpHome, err := os.MkdirTemp("/tmp", "ionh-")
+	root := windowsShortTempRoot()
+	tmpHome, err := os.MkdirTemp(root, "ionh-")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "session tests: cannot create temp HOME: %v\n", err)
 		os.Exit(1)
 	}
+	tmpHome = shortenWindowsPath(tmpHome)
 
 	originalHome, hadHome := os.LookupEnv("HOME")
 	if err := os.Setenv("HOME", tmpHome); err != nil {

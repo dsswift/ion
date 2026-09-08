@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -326,7 +327,12 @@ func TestLocalBashOperationsTimeout_ParentCancelNotAttributed(t *testing.T) {
 func TestLocalBashOperationsEnv(t *testing.T) {
 	ops := &LocalBashOperations{}
 
-	result, err := ops.Exec(context.Background(), "echo $MY_TEST_ENV_VAR", os.TempDir(), ExecOptions{
+	// PowerShell reads an environment variable via $env:NAME, not $NAME.
+	command := "echo $MY_TEST_ENV_VAR"
+	if runtime.GOOS == "windows" {
+		command = "echo $env:MY_TEST_ENV_VAR"
+	}
+	result, err := ops.Exec(context.Background(), command, os.TempDir(), ExecOptions{
 		Env: map[string]string{"MY_TEST_ENV_VAR": "env_value_42"},
 	})
 	if err != nil {
@@ -859,15 +865,27 @@ func TestBoolFromInput(t *testing.T) {
 }
 
 func TestResolvePath(t *testing.T) {
+	// Driveless rooted literals like "/usr/bin/file" are not absolute by
+	// Go's Windows definition (filepath.IsAbs requires a drive letter or a
+	// UNC root there), so resolvePath's absolute-path branch never engages
+	// for them on that platform and it silently joins them onto cwd instead
+	// -- these fixtures carry a drive letter on Windows so they exercise the
+	// same branch resolvePath's real (Windows) callers hit.
+	tmp, home := "/tmp", "/home/user"
+	usrBinFile, homeFooBar, homeTestGo := "/usr/bin/file", "/home/user/foo/bar.txt", "/home/user/test.go"
+	if runtime.GOOS == "windows" {
+		tmp, home = `C:\tmp`, `C:\home\user`
+		usrBinFile, homeFooBar, homeTestGo = `C:\usr\bin\file`, `C:\home\user\foo\bar.txt`, `C:\home\user\test.go`
+	}
 	tests := []struct {
 		name     string
 		cwd      string
 		path     string
 		expected string
 	}{
-		{"absolute stays absolute", "/tmp", "/usr/bin/file", "/usr/bin/file"},
-		{"relative resolved", "/home/user", "foo/bar.txt", "/home/user/foo/bar.txt"},
-		{"dot path", "/home/user", "./test.go", "/home/user/test.go"},
+		{"absolute stays absolute", tmp, usrBinFile, usrBinFile},
+		{"relative resolved", home, "foo/bar.txt", homeFooBar},
+		{"dot path", home, "./test.go", homeTestGo},
 	}
 
 	for _, tc := range tests {

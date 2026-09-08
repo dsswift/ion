@@ -3,6 +3,7 @@ package session
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/session/agents"
@@ -10,6 +11,36 @@ import (
 	"github.com/dsswift/ion/engine/internal/session/pending"
 	"github.com/dsswift/ion/engine/internal/types"
 )
+
+// waitForRecoveryQueueIdle polls until the recovery coordinator has no
+// in-flight job, or the deadline passes. enqueueRecovery starts the
+// dispatched run on its own goroutine, so a test that returns immediately
+// after triggering it races that goroutine against its own t.TempDir()
+// cleanup -- POSIX tolerates removing a directory entry an unrelated
+// goroutine still has open, Windows does not ("directory is not empty"),
+// so the race is silent there and a real failure here.
+func waitForRecoveryQueueIdle(t *testing.T, m *Manager) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		m.mu.Lock()
+		c := m.recoveryCoordinator
+		m.mu.Unlock()
+		if c == nil {
+			return
+		}
+		c.mu.Lock()
+		idle := c.active == 0 && len(c.jobs) == 0
+		c.mu.Unlock()
+		if idle {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("recovery queue did not go idle before deadline")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
 
 func recoveryTestManager(t *testing.T, enabled bool) (*Manager, *engineSession, []types.EngineEvent) {
 	t.Helper()
@@ -169,6 +200,10 @@ func TestRecoverInterruptedRun_MarksAttemptBeforeDispatch(t *testing.T) {
 	if journal := conversation.ActiveRunRecovery(loaded); journal == nil || journal.AttemptCount != 1 {
 		t.Fatalf("recovery attempt was not durably recorded: %+v", journal)
 	}
+	// The mark-before-dispatch property is already proven above; this only
+	// lets the background dispatch goroutine settle before the test's
+	// t.TempDir() cleanup runs. See waitForRecoveryQueueIdle's doc comment.
+	waitForRecoveryQueueIdle(t, m)
 }
 
 func TestStopSession_ClearsJournalOnExplicitStop(t *testing.T) {

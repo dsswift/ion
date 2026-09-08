@@ -3,6 +3,7 @@ package session
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -357,6 +358,15 @@ func TestResolveSlashCommand_SkillBodyCarriesBaseDirectory(t *testing.T) {
 // TestResolveSlashCommand_ColonNameSkipsSkillRoots pins that colon-delimited
 // names (e2e:setup) never probe the flat skill roots.
 func TestResolveSlashCommand_ColonNameSkipsSkillRoots(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// NTFS reserves ":" for alternate data streams, so a directory
+		// literally named "e2e:setup" cannot be created at all there --
+		// the pathological input this test constructs to prove
+		// resolveSlashCommand rejects it is one the filesystem itself
+		// already refuses to hold, which is a stronger guarantee than
+		// this test can assert on that platform.
+		t.Skip("NTFS refuses a colon in a directory name; the pathological fixture cannot exist there")
+	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	work := t.TempDir()

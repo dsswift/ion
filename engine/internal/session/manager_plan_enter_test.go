@@ -1,7 +1,7 @@
 package session
 
 import (
-	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -9,6 +9,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // ---------------------------------------------------------------------------
@@ -421,8 +422,8 @@ func TestRequestPlanModeEnter_HybridApiServed_UsesHomeDir(t *testing.T) {
 		t.Fatal("expected a non-empty planFilePath")
 	}
 
-	home, _ := os.UserHomeDir()
-	wantPrefix := home + "/.ion/plans/"
+	home, _ := utils.UserHomeDir()
+	wantPrefix := filepath.Join(home, ".ion", "plans") + string(filepath.Separator)
 
 	// Before the fix: planFilePath was under cfg.WorkingDirectory (project dir).
 	// After the fix: planFilePath must be under ~/.ion/plans/.

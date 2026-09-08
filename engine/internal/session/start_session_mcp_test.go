@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // mcpTestServer stands up a minimal MCP server that answers initialize and
@@ -66,7 +67,7 @@ func mcpTestServer(t *testing.T, toolName string) *httptest.Server {
 // HOME. Callers must have already pointed HOME at a temp dir.
 func writeUserEngineConfig(t *testing.T, content string) {
 	t.Helper()
-	home, err := os.UserHomeDir()
+	home, err := utils.UserHomeDir()
 	if err != nil {
 		t.Fatalf("resolve HOME: %v", err)
 	}

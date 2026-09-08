@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 func TestComputeHostInfoShape(t *testing.T) {
@@ -24,7 +26,19 @@ func TestComputeHostInfoShape(t *testing.T) {
 }
 
 func TestResolveBrowsePath(t *testing.T) {
-	home, _ := os.UserHomeDir()
+	// utils.UserHomeDir(), not the raw stdlib: it honors $HOME on every
+	// platform (production's resolveBrowsePath uses it too), while
+	// os.UserHomeDir() reads only %USERPROFILE% on Windows -- a test-isolated
+	// HOME would silently mismatch what's under test.
+	home, _ := utils.UserHomeDir()
+	// "/tmp" is not absolute by Go's Windows definition (no drive letter),
+	// so resolveBrowsePath's IsAbs branch never engages for it there.
+	absPath, absCleaned := "/tmp", "/tmp"
+	absNested, absNestedCleaned := "/tmp/./foo", "/tmp/foo"
+	if runtime.GOOS == "windows" {
+		absPath, absCleaned = `C:\tmp`, `C:\tmp`
+		absNested, absNestedCleaned = `C:\tmp\.\foo`, `C:\tmp\foo`
+	}
 
 	tests := []struct {
 		in      string
@@ -34,8 +48,8 @@ func TestResolveBrowsePath(t *testing.T) {
 		{"", home, false},
 		{"~", home, false},
 		{"~/Documents", filepath.Join(home, "Documents"), false},
-		{"/tmp", "/tmp", false},
-		{"/tmp/./foo", "/tmp/foo", false},
+		{absPath, absCleaned, false},
+		{absNested, absNestedCleaned, false},
 		{"relative/path", "", true},
 		{"./also-relative", "", true},
 	}
@@ -124,7 +138,7 @@ func TestListDirectoryResolvesHomeShortcut(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listDirectory(~) err: %v", err)
 	}
-	home, _ := os.UserHomeDir()
+	home, _ := utils.UserHomeDir()
 	if resp["path"] != home {
 		t.Errorf("~ resolved to %v want %v", resp["path"], home)
 	}

@@ -219,6 +219,14 @@ func (s *OAuthStore) save() {
 	}
 	if err := utils.AtomicWriteFile(s.path, data, 0o600); err != nil {
 		utils.LogWithFields(utils.LevelInfo, "mcp.oauth", "save write failed", map[string]any{"path": s.path, "error": err.Error()})
+		return
+	}
+	// On Windows the 0o600 above is not a permission -- see RestrictToOwner.
+	// This store holds OAuth access/refresh tokens, so a failure to narrow
+	// the ACL is worth logging even though save() has no error return to
+	// escalate it through.
+	if err := utils.RestrictToOwner(s.path); err != nil {
+		utils.LogWithFields(utils.LevelError, "mcp.oauth", "restrict to owner failed", map[string]any{"path": s.path, "error": err.Error()})
 	}
 }
 

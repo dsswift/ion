@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -19,13 +20,28 @@ import (
 	"github.com/dsswift/ion/engine/internal/workspaces"
 )
 
+// testAbsPath builds a platform-absolute synthetic path from segments. These
+// registry fixtures are pure string/filepath comparisons -- nothing on disk
+// -- but they must still satisfy filepath.IsAbs on the platform running the
+// test: a driveless rooted literal like "/repo/project" is not absolute by
+// Go's Windows definition, which silently defeats extractTargetPath's
+// absolute-path branch and the containment refusal never fires. See
+// internal/workspaces/containment_test.go's testAbsPath for the full
+// explanation.
+func testAbsPath(segments ...string) string {
+	if runtime.GOOS == "windows" {
+		return `C:\` + filepath.Join(segments...)
+	}
+	return "/" + filepath.Join(segments...)
+}
+
 // workspaceRunFixture builds a registry with one worktree and returns a
 // checker over it plus the paths involved.
 func workspaceRunFixture(t *testing.T) (checker *workspaces.Checker, worktree, repo string) {
 	t.Helper()
 	dir := t.TempDir()
-	repo = "/repo/project"
-	worktree = "/wt/project-aaa"
+	repo = testAbsPath("repo", "project")
+	worktree = testAbsPath("wt", "project-aaa")
 	payload := map[string]any{"version": 1, "entries": []map[string]any{
 		{"worktreePath": worktree, "repoPath": repo},
 	}}
@@ -139,8 +155,8 @@ func TestExecuteTools_WorkspaceContainmentPassesOwnWorktree(t *testing.T) {
 // inside the conversation's own worktree.
 func TestExecuteTools_WorkspaceContainmentRefusesLandedWorktreeWrite(t *testing.T) {
 	dir := t.TempDir()
-	repo := "/repo/project"
-	worktree := "/wt/project-landed"
+	repo := testAbsPath("repo", "project")
+	worktree := testAbsPath("wt", "project-landed")
 	payload := map[string]any{"version": 1, "entries": []map[string]any{
 		{"worktreePath": worktree, "repoPath": repo, "landedAt": 1700000500000},
 	}}

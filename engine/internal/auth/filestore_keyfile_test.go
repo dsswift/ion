@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -183,8 +184,13 @@ func TestFileStore_KeyfileCreatedWithPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("keyfile not created: %v", err)
 	}
-	if mode := stat.Mode() & 0o777; mode != 0o600 {
-		t.Errorf("expected keyfile mode 0600, got %04o", mode)
+	// See TestFileStore_FilePermissions: Windows has no POSIX permission bits
+	// for chmod to set. Real owner-only enforcement there is RestrictToOwner,
+	// pinned by owneronly_windows_test.go.
+	if runtime.GOOS != "windows" {
+		if mode := stat.Mode() & 0o777; mode != 0o600 {
+			t.Errorf("expected keyfile mode 0600, got %04o", mode)
+		}
 	}
 
 	key, err := readKeyfile(fs.keyPath)

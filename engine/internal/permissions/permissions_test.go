@@ -189,10 +189,13 @@ func TestIsDangerousCommand_NormalizesPipes(t *testing.T) {
 // =============================================================================
 
 func TestIsSensitivePath(t *testing.T) {
-	home := os.Getenv("HOME")
-	if home == "" {
-		home = "/root"
-	}
+	// homeDir(), not a test-local HOME/root fallback: IsSensitivePath
+	// resolves each ~/-pattern through homeDir() (HOME, then USERPROFILE,
+	// then /root), and a fixture that picks HOME alone falls back to /root
+	// on a host where only USERPROFILE is set -- constructing test paths
+	// that homeDir() would never actually produce, so IsSensitivePath
+	// correctly reports every one of them as not sensitive.
+	home := homeDir()
 
 	tests := []struct {
 		name      string

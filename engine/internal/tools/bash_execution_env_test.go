@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"runtime"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -18,8 +19,16 @@ func TestBashExecutionEnvCarriesSourceSession(t *testing.T) {
 }
 
 func TestBashExecutionEnvCarriesSourceSessionIntoChild(t *testing.T) {
+	// printf has no equivalent on Windows PowerShell 5.1 (the shell Bash
+	// actually runs there -- see bash.go's tool description), and its
+	// point here is specifically the no-trailing-newline output printf
+	// gives on POSIX; [Console]::Out.Write is the same for PowerShell.
+	command := `printf %s "$ION_SESSION_ID"`
+	if runtime.GOOS == "windows" {
+		command = `[Console]::Out.Write($env:ION_SESSION_ID)`
+	}
 	ctx := utils.WithSessionID(context.Background(), "source-session")
-	result, err := executeBash(ctx, map[string]any{"command": "printf %s \"$ION_SESSION_ID\""}, t.TempDir())
+	result, err := executeBash(ctx, map[string]any{"command": command}, t.TempDir())
 	if err != nil {
 		t.Fatalf("executeBash returned error: %v", err)
 	}

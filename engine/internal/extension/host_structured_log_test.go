@@ -55,6 +55,11 @@ func TestExtensionLogNotificationStructured(t *testing.T) {
 	utils.ConfigureLogging(&types.LoggingConfig{LogDir: dir, OutputMode: "file"})
 	t.Cleanup(func() {
 		utils.SetLevel(utils.LevelInfo)
+		// Reconfiguring elsewhere closes engine.jsonl in dir (ConfigureLogging
+		// closes the previous file handle before opening the new one). Without
+		// this, the handle outlives the test, and on Windows that blocks
+		// t.TempDir()'s own cleanup from removing dir.
+		utils.ConfigureLogging(&types.LoggingConfig{LogDir: os.TempDir(), OutputMode: "file"})
 	})
 
 	h := NewHost()
@@ -125,6 +130,9 @@ func TestExtensionLogUnboundOmitsIDs(t *testing.T) {
 	utils.ConfigureLogging(&types.LoggingConfig{LogDir: dir, OutputMode: "file"})
 	t.Cleanup(func() {
 		utils.SetLevel(utils.LevelInfo)
+		// See TestExtensionLogNotificationStructured: closes engine.jsonl in
+		// dir before t.TempDir()'s own cleanup tries to remove it.
+		utils.ConfigureLogging(&types.LoggingConfig{LogDir: os.TempDir(), OutputMode: "file"})
 	})
 
 	h := NewHost()

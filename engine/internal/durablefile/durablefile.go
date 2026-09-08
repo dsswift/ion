@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -64,13 +65,47 @@ func Write(path string, data []byte, mode os.FileMode) error {
 		return fmt.Errorf("durablefile: close temp: %w", err)
 	}
 
-	if err := os.Rename(tmpPath, path); err != nil {
+	if err := renameWithRetry(tmpPath, path); err != nil {
 		cleanup()
 		return fmt.Errorf("durablefile: rename %s -> %s: %w", tmpPath, path, err)
 	}
 
 	syncDir(dir)
 	return nil
+}
+
+// renameWithRetry renames src over dst, retrying a bounded number of times
+// on Windows before giving up.
+//
+// POSIX rename atomically replaces an existing destination regardless of who
+// else has it open. Windows does not: MoveFileEx can fail with "Access is
+// denied" when the destination is momentarily held open by anything else --
+// most commonly real-time antivirus scanning a file that was just written or
+// just replaced, which this function's own concurrent callers produce simply
+// by writing normally. That failure is transient by nature (the other holder
+// releases the handle within milliseconds), so this is not the same class of
+// error MkdirAll/CreateTemp/Write above return unconditionally -- retrying a
+// POSIX rename failure would just mask a real problem, since POSIX has no
+// equivalent transient-lock failure mode for a same-directory rename.
+// TestWrite_ParallelWriters pins this: 50 goroutines racing to replace one
+// file reproduced the failure on every run before this retry existed.
+func renameWithRetry(src, dst string) error {
+	if runtime.GOOS != "windows" {
+		return os.Rename(src, dst)
+	}
+	const maxAttempts = 20
+	backoff := 5 * time.Millisecond
+	var err error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if err = os.Rename(src, dst); err == nil {
+			return nil
+		}
+		time.Sleep(backoff)
+		if backoff < 100*time.Millisecond {
+			backoff *= 2
+		}
+	}
+	return err
 }
 
 // syncDir opens a directory and calls Sync to flush the rename to durable storage.

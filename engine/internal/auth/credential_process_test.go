@@ -2,20 +2,95 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
 
-func TestCredentialProcessSource_Acquire_Success(t *testing.T) {
-	script := writeTestScript(t, `#!/bin/sh
-echo '{"Version":1,"AccessToken":"proc-token-abc","ExpirationEpoch":1800000000}'
-`)
+// These tests exercise CredentialProcessSource against a real child process,
+// because the property under test is real subprocess behavior: env vars
+// reaching the child, exit codes, stderr capture, timeouts, and output-size
+// limits. A shell script (#!/bin/sh) can express all of that on POSIX, but
+// Windows cannot execute one directly regardless of shebang -- CreateProcess
+// refuses a .sh file outright ("%1 is not a valid Win32 application"), so a
+// script fixture leaves the entire credential_process mechanism untested
+// there. Instead these use the standard Go test-helper-process pattern (the
+// same one net/http and os/exec use in their own suites): the test binary
+// re-execs itself with -test.run=TestHelperProcess, and TestHelperProcess
+// reads a mode argument after "--" to decide what to print/exit/sleep. That
+// binary is directly executable on every platform Go supports.
+func helperCommand(t *testing.T, mode string) []string {
+	t.Helper()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+	return []string{exe, "-test.run=TestHelperProcess", "--", mode}
+}
 
+// TestHelperProcess is not a real test. It only does anything when re-exec'd
+// by helperCommand with a "--" marker and a mode argument; a normal `go test`
+// invocation has neither, so it returns immediately as a no-op. See
+// helperCommand's doc comment for why this pattern exists.
+func TestHelperProcess(t *testing.T) {
+	mode := helperProcessMode()
+	if mode == "" {
+		return
+	}
+	switch mode {
+	case "success":
+		fmt.Println(`{"Version":1,"AccessToken":"proc-token-abc","ExpirationEpoch":1800000000}`)
+	case "iso8601":
+		fmt.Println(`{"Version":1,"AccessToken":"iso-token","Expiration":"2030-01-01T00:00:00Z"}`)
+	case "no-expiry":
+		fmt.Println(`{"Version":1,"AccessToken":"no-expiry-token"}`)
+	case "env-check":
+		if os.Getenv("ION_TOKEN_RESOURCE") == "test-resource" && os.Getenv("ION_TOKEN_SCOPE") == "test-scope" {
+			fmt.Println(`{"Version":1,"AccessToken":"env-ok","ExpirationEpoch":1800000000}`)
+		} else {
+			fmt.Fprintln(os.Stderr, "bad env")
+			os.Exit(1)
+		}
+	case "wrong-version":
+		fmt.Println(`{"Version":2,"AccessToken":"token"}`)
+	case "empty-token":
+		fmt.Println(`{"Version":1,"AccessToken":""}`)
+	case "process-fail":
+		fmt.Fprintln(os.Stderr, "something went wrong")
+		os.Exit(1)
+	case "sleep30":
+		time.Sleep(30 * time.Second)
+	case "invalid-json":
+		fmt.Println("not json at all")
+	case "oversized":
+		buf := make([]byte, 1048577)
+		for i := range buf {
+			buf[i] = 'A'
+		}
+		os.Stdout.Write(buf) //nolint:errcheck // best-effort write in a test helper subprocess
+	case "ok":
+		fmt.Println("ok")
+	}
+	os.Exit(0)
+}
+
+// helperProcessMode returns the mode argument after a "--" marker in
+// os.Args, or "" when this process was not invoked by helperCommand (i.e.
+// this is the top-level `go test` run, not a re-exec'd helper).
+func helperProcessMode() string {
+	for i, arg := range os.Args {
+		if arg == "--" && i+1 < len(os.Args) {
+			return os.Args[i+1]
+		}
+	}
+	return ""
+}
+
+func TestCredentialProcessSource_Acquire_Success(t *testing.T) {
 	src, err := NewCredentialProcessSource(CredentialProcessConfig{
-		Command:   []string{script},
+		Command:   helperCommand(t, "success"),
 		TimeoutMs: 5000,
 	})
 	if err != nil {
@@ -35,12 +110,8 @@ echo '{"Version":1,"AccessToken":"proc-token-abc","ExpirationEpoch":1800000000}'
 }
 
 func TestCredentialProcessSource_Acquire_ISO8601Expiry(t *testing.T) {
-	script := writeTestScript(t, `#!/bin/sh
-echo '{"Version":1,"AccessToken":"iso-token","Expiration":"2030-01-01T00:00:00Z"}'
-`)
-
 	src, err := NewCredentialProcessSource(CredentialProcessConfig{
-		Command: []string{script},
+		Command: helperCommand(t, "iso8601"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -56,12 +127,8 @@ echo '{"Version":1,"AccessToken":"iso-token","Expiration":"2030-01-01T00:00:00Z"
 }
 
 func TestCredentialProcessSource_Acquire_NoExpiry(t *testing.T) {
-	script := writeTestScript(t, `#!/bin/sh
-echo '{"Version":1,"AccessToken":"no-expiry-token"}'
-`)
-
 	src, err := NewCredentialProcessSource(CredentialProcessConfig{
-		Command: []string{script},
+		Command: helperCommand(t, "no-expiry"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -74,17 +141,8 @@ echo '{"Version":1,"AccessToken":"no-expiry-token"}'
 }
 
 func TestCredentialProcessSource_Acquire_ReceivesEnvVars(t *testing.T) {
-	script := writeTestScript(t, `#!/bin/sh
-if [ "$ION_TOKEN_RESOURCE" = "test-resource" ] && [ "$ION_TOKEN_SCOPE" = "test-scope" ]; then
-  echo '{"Version":1,"AccessToken":"env-ok","ExpirationEpoch":1800000000}'
-else
-  echo "bad env" >&2
-  exit 1
-fi
-`)
-
 	src, err := NewCredentialProcessSource(CredentialProcessConfig{
-		Command: []string{script},
+		Command: helperCommand(t, "env-check"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -100,12 +158,8 @@ fi
 }
 
 func TestCredentialProcessSource_Acquire_WrongVersion(t *testing.T) {
-	script := writeTestScript(t, `#!/bin/sh
-echo '{"Version":2,"AccessToken":"token"}'
-`)
-
 	src, err := NewCredentialProcessSource(CredentialProcessConfig{
-		Command: []string{script},
+		Command: helperCommand(t, "wrong-version"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -121,12 +175,8 @@ echo '{"Version":2,"AccessToken":"token"}'
 }
 
 func TestCredentialProcessSource_Acquire_EmptyToken(t *testing.T) {
-	script := writeTestScript(t, `#!/bin/sh
-echo '{"Version":1,"AccessToken":""}'
-`)
-
 	src, err := NewCredentialProcessSource(CredentialProcessConfig{
-		Command: []string{script},
+		Command: helperCommand(t, "empty-token"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -142,13 +192,8 @@ echo '{"Version":1,"AccessToken":""}'
 }
 
 func TestCredentialProcessSource_Acquire_ProcessFails(t *testing.T) {
-	script := writeTestScript(t, `#!/bin/sh
-echo "something went wrong" >&2
-exit 1
-`)
-
 	src, err := NewCredentialProcessSource(CredentialProcessConfig{
-		Command: []string{script},
+		Command: helperCommand(t, "process-fail"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -167,12 +212,8 @@ exit 1
 }
 
 func TestCredentialProcessSource_Acquire_Timeout(t *testing.T) {
-	script := writeTestScript(t, `#!/bin/sh
-exec sleep 30
-`)
-
 	src, err := NewCredentialProcessSource(CredentialProcessConfig{
-		Command:   []string{script},
+		Command:   helperCommand(t, "sleep30"),
 		TimeoutMs: 1000,
 	})
 	if err != nil {
@@ -195,12 +236,8 @@ exec sleep 30
 }
 
 func TestCredentialProcessSource_Acquire_InvalidJSON(t *testing.T) {
-	script := writeTestScript(t, `#!/bin/sh
-echo 'not json at all'
-`)
-
 	src, err := NewCredentialProcessSource(CredentialProcessConfig{
-		Command: []string{script},
+		Command: helperCommand(t, "invalid-json"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -216,12 +253,8 @@ echo 'not json at all'
 }
 
 func TestCredentialProcessSource_Acquire_OutputExceedsLimit(t *testing.T) {
-	script := writeTestScript(t, `#!/bin/sh
-dd if=/dev/zero bs=1048577 count=1 2>/dev/null | tr '\0' 'A'
-`)
-
 	src, err := NewCredentialProcessSource(CredentialProcessConfig{
-		Command: []string{script},
+		Command: helperCommand(t, "oversized"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -261,12 +294,8 @@ func TestCredentialProcessSource_RelativePath(t *testing.T) {
 }
 
 func TestCredentialProcessSource_TimeoutClamping(t *testing.T) {
-	script := writeTestScript(t, `#!/bin/sh
-echo ok
-`)
-
 	src, err := NewCredentialProcessSource(CredentialProcessConfig{
-		Command:   []string{script},
+		Command:   helperCommand(t, "ok"),
 		TimeoutMs: 500,
 	})
 	if err != nil {
@@ -277,7 +306,7 @@ echo ok
 	}
 
 	src, err = NewCredentialProcessSource(CredentialProcessConfig{
-		Command:   []string{script},
+		Command:   helperCommand(t, "ok"),
 		TimeoutMs: 200000,
 	})
 	if err != nil {
@@ -371,14 +400,4 @@ func TestBoundedBuffer(t *testing.T) {
 	if b.Len() != 10 {
 		t.Fatalf("expected 10 bytes stored, got %d", b.Len())
 	}
-}
-
-func writeTestScript(t *testing.T, content string) string {
-	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "script.sh")
-	if err := os.WriteFile(path, []byte(content), 0700); err != nil {
-		t.Fatalf("write test script: %v", err)
-	}
-	return path
 }

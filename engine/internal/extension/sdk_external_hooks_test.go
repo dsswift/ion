@@ -1,6 +1,7 @@
 package extension
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 
@@ -9,6 +10,16 @@ import (
 
 // Ensure types import is used
 var _ = types.ToolResult{}
+
+// trueCmd returns a command array that succeeds silently on the current
+// platform. "true" does not exist on Windows; "cmd /c exit 0" is the same
+// succeed-silently shape there.
+func trueCmd() []interface{} {
+	if runtime.GOOS == "windows" {
+		return []interface{}{"cmd", "/c", "exit 0"}
+	}
+	return []interface{}{"true"}
+}
 
 func TestExternalHookManager_NewEmpty(t *testing.T) {
 	mgr := NewExternalHookManager(nil)
@@ -83,7 +94,7 @@ func TestExternalHookManager_FireAwaited(t *testing.T) {
 	mgr := NewExternalHookManager(map[string]interface{}{
 		"test_event": []interface{}{
 			map[string]interface{}{
-				"command": []interface{}{"true"},
+				"command": trueCmd(),
 				"await":   true,
 				"timeout": float64(5000),
 			},
@@ -100,7 +111,7 @@ func TestExternalHookManager_PayloadTruncation(t *testing.T) {
 	mgr := NewExternalHookManager(map[string]interface{}{
 		"big_event": []interface{}{
 			map[string]interface{}{
-				"command": []interface{}{"true"},
+				"command": trueCmd(),
 				"await":   true,
 				"timeout": float64(5000),
 			},
@@ -170,7 +181,7 @@ func TestExternalHookManager_EmptyConfig(t *testing.T) {
 func TestExternalHookManager_FireAndForget(t *testing.T) {
 	mgr := NewExternalHookManager(map[string]interface{}{
 		"test_event": []interface{}{
-			[]interface{}{"true"},
+			trueCmd(),
 		},
 	})
 
@@ -185,12 +196,12 @@ func TestExternalHookManager_MultipleHooksPerEvent(t *testing.T) {
 	mgr := NewExternalHookManager(map[string]interface{}{
 		"on_error": []interface{}{
 			map[string]interface{}{
-				"command": []interface{}{"true"},
+				"command": trueCmd(),
 				"await":   true,
 				"timeout": float64(5000),
 			},
 			map[string]interface{}{
-				"command": []interface{}{"true"},
+				"command": trueCmd(),
 				"await":   true,
 				"timeout": float64(5000),
 			},

@@ -139,7 +139,7 @@ func TestBroadcastEvictsDeadClient(t *testing.T) {
 // does not stall delivery to other listeners or to socket clients.
 func TestOnBroadcastListenerIsolation(t *testing.T) {
 	mb := newMockBackend()
-	dir, err := os.MkdirTemp("/tmp", "ion-iso-")
+	dir, err := os.MkdirTemp(shortTempRoot(), "ion-iso-")
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}

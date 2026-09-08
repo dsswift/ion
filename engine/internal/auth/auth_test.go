@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -547,6 +548,16 @@ func TestFileStore_FilePermissions(t *testing.T) {
 
 	if err := fs.SetKey("perm-test", "sk-perms"); err != nil {
 		t.Fatal(err)
+	}
+
+	// Windows has no POSIX permission bits for chmod to set -- a non-read-only
+	// file always reports 0o666 there regardless of the mode passed to
+	// AtomicWriteFile. Real owner-only enforcement on that platform is
+	// RestrictToOwner (an ACL restriction), called by writeFile right after
+	// this write and pinned directly by owneronly_windows_test.go; there is
+	// no POSIX-bit assertion to make here on that platform.
+	if runtime.GOOS == "windows" {
+		return
 	}
 
 	stat, err := os.Stat(fs.path)

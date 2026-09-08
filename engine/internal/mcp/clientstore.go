@@ -118,6 +118,14 @@ func (s *ClientStore) save() {
 	}
 	if err := utils.AtomicWriteFile(s.path, data, 0o600); err != nil {
 		utils.LogWithFields(utils.LevelError, "mcp.clients", "save write failed", map[string]any{"path": s.path, "error": err.Error()})
+		return
+	}
+	// On Windows the 0o600 above is not a permission -- see RestrictToOwner.
+	// This store can hold a registered client's secret, so a failure to
+	// narrow the ACL is worth logging even though save() has no error return
+	// to escalate it through.
+	if err := utils.RestrictToOwner(s.path); err != nil {
+		utils.LogWithFields(utils.LevelError, "mcp.clients", "restrict to owner failed", map[string]any{"path": s.path, "error": err.Error()})
 	}
 }
 

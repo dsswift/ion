@@ -74,8 +74,14 @@ func TestBashTool(t *testing.T) {
 func TestBashToolTimeout(t *testing.T) {
 	ctx := context.Background()
 
+	// Bash runs via Windows PowerShell 5.1 there (see bash.go), not a POSIX
+	// shell -- `while true; do ...; done` is a parse error under it.
+	command := "while true; do sleep 1; done"
+	if runtime.GOOS == "windows" {
+		command = "while ($true) { Start-Sleep -Seconds 1 }"
+	}
 	result, err := ExecuteTool(ctx, "Bash", map[string]any{
-		"command": "while true; do sleep 1; done",
+		"command": command,
 		"timeout": float64(200), // 200ms timeout
 	}, os.TempDir())
 	if err != nil {
@@ -120,8 +126,15 @@ func TestBashToolExitCodes(t *testing.T) {
 }
 
 func TestBashToolStderr(t *testing.T) {
+	// PowerShell 5.1 has no `&&`, and Write-Error routes through PowerShell's
+	// error-record machinery rather than a plain stderr byte stream;
+	// [Console]::Error.WriteLine matches the POSIX version's plain `>&2`.
+	command := "echo out_msg && echo err_msg >&2"
+	if runtime.GOOS == "windows" {
+		command = "echo out_msg; [Console]::Error.WriteLine('err_msg')"
+	}
 	result, _ := ExecuteTool(context.Background(), "Bash", map[string]any{
-		"command": "echo out_msg && echo err_msg >&2",
+		"command": command,
 	}, os.TempDir())
 	if result.IsError {
 		t.Fatalf("unexpected error: %s", result.Content)
@@ -152,8 +165,14 @@ func TestBashToolWorkingDirectory(t *testing.T) {
 }
 
 func TestBashToolEmptyOutput(t *testing.T) {
+	// `true` does not exist on Windows PowerShell 5.1; `exit 0` is the same
+	// succeed-silently shape.
+	command := "true"
+	if runtime.GOOS == "windows" {
+		command = "exit 0"
+	}
 	result, _ := ExecuteTool(context.Background(), "Bash", map[string]any{
-		"command": "true",
+		"command": command,
 	}, os.TempDir())
 	if result.IsError {
 		t.Fatalf("unexpected error: %s", result.Content)
@@ -174,8 +193,14 @@ func TestBashToolMissingCommand(t *testing.T) {
 }
 
 func TestBashToolMultilineCommand(t *testing.T) {
+	// PowerShell 5.1 has no `&&`; `;` sequences unconditionally, which is
+	// equivalent here since none of these three echoes can fail.
+	command := "echo line1 && echo line2 && echo line3"
+	if runtime.GOOS == "windows" {
+		command = "echo line1; echo line2; echo line3"
+	}
 	result, _ := ExecuteTool(context.Background(), "Bash", map[string]any{
-		"command": "echo line1 && echo line2 && echo line3",
+		"command": command,
 	}, os.TempDir())
 	if result.IsError {
 		t.Fatalf("unexpected error: %s", result.Content)
@@ -189,7 +214,12 @@ func TestBashToolEnvVars(t *testing.T) {
 	ops := &LocalBashOperations{}
 	ctx := context.Background()
 
-	result, err := ops.Exec(ctx, "echo $TEST_VAR_XYZ", os.TempDir(), ExecOptions{
+	// PowerShell reads an environment variable via $env:NAME, not $NAME.
+	command := "echo $TEST_VAR_XYZ"
+	if runtime.GOOS == "windows" {
+		command = "echo $env:TEST_VAR_XYZ"
+	}
+	result, err := ops.Exec(ctx, command, os.TempDir(), ExecOptions{
 		Env: map[string]string{"TEST_VAR_XYZ": "custom_value_123"},
 	})
 	if err != nil {
@@ -201,8 +231,15 @@ func TestBashToolEnvVars(t *testing.T) {
 }
 
 func TestBashToolPipedCommands(t *testing.T) {
+	// `tr` does not exist on Windows PowerShell 5.1; -replace is the same
+	// character-substitution transform. -Command auto-prints the value of an
+	// unassigned expression, mirroring what the POSIX pipe's stdout shows.
+	command := "echo 'hello world' | tr ' ' '_'"
+	if runtime.GOOS == "windows" {
+		command = "'hello world' -replace ' ', '_'"
+	}
 	result, _ := ExecuteTool(context.Background(), "Bash", map[string]any{
-		"command": "echo 'hello world' | tr ' ' '_'",
+		"command": command,
 	}, os.TempDir())
 	if result.IsError {
 		t.Fatalf("unexpected error: %s", result.Content)

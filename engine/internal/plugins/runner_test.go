@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"os"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -22,12 +23,18 @@ func TestRunHookCommand_Echo(t *testing.T) {
 }
 
 func TestRunHookCommand_PluginRootEnv(t *testing.T) {
-	// Verify CLAUDE_PLUGIN_ROOT is set in the environment.
-	// Use double quotes so splitCommand (which handles double quotes, not single)
-	// passes "echo $CLAUDE_PLUGIN_ROOT" as one argument to sh -c.
+	// Verify CLAUDE_PLUGIN_ROOT is set in the environment. runCommand already
+	// runs the whole string through the platform shell (bash -c / powershell
+	// -Command), so an explicit "sh -c" wrapper is redundant on POSIX and
+	// outright broken on Windows (no "sh" on PATH there); PowerShell also
+	// reads an environment variable via $env:NAME, not $NAME.
+	command := "echo $CLAUDE_PLUGIN_ROOT"
+	if runtime.GOOS == "windows" {
+		command = "echo $env:CLAUDE_PLUGIN_ROOT"
+	}
 	entry := PluginHookEntry{
 		Type:    "command",
-		Command: `sh -c "echo $CLAUDE_PLUGIN_ROOT"`,
+		Command: command,
 		Timeout: 5,
 	}
 	out, err := RunHookCommand(entry, "/my/plugin/root", nil)
@@ -75,14 +82,22 @@ func TestRunHookCommand_NonZeroExit(t *testing.T) {
 }
 
 func TestRunHookCommand_PluginRootExpansion(t *testing.T) {
-	// Write a small script that prints its own path.
+	// Write a small script that prints its own path. A #!/bin/sh script has
+	// no interpreter association on Windows (there is no shebang support at
+	// the OS level), so the script itself -- not just the command that
+	// invokes it -- is platform-specific: a .ps1 there, matching what a real
+	// plugin author would actually ship for a Windows-targeted hook.
 	dir := t.TempDir()
-	scriptPath := dir + "/greet.sh"
-	os.WriteFile(scriptPath, []byte("#!/bin/sh\necho from-plugin"), 0o755)
+	scriptName, scriptBody := "greet.sh", "#!/bin/sh\necho from-plugin"
+	if runtime.GOOS == "windows" {
+		scriptName, scriptBody = "greet.ps1", "Write-Output from-plugin"
+	}
+	scriptPath := dir + "/" + scriptName
+	os.WriteFile(scriptPath, []byte(scriptBody), 0o755)
 
 	entry := PluginHookEntry{
 		Type:    "command",
-		Command: "${CLAUDE_PLUGIN_ROOT}/greet.sh",
+		Command: "${CLAUDE_PLUGIN_ROOT}/" + scriptName,
 		Timeout: 5,
 	}
 	out, err := RunHookCommand(entry, dir, nil)
