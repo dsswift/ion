@@ -15,6 +15,8 @@ import { Tooltip } from '../../components/git/Tooltip'
 import { useGraphStore } from './graph-store'
 import type { CorpusRootStatus } from '../../../shared/graph-corpus-types'
 
+const EMPTY_ROOTS: CorpusRootStatus[] = []
+
 export function watchChipText(watchState: 'unavailable' | 'partial', roots: CorpusRootStatus[]): { label: string; detail: string | null } {
   if (watchState === 'unavailable') {
     return { label: 'Live updates off — point-in-time read', detail: null }
@@ -27,7 +29,7 @@ export function watchChipText(watchState: 'unavailable' | 'partial', roots: Corp
 export function GraphWatchChip(): React.JSX.Element | null {
   const colors = useColors()
   const watchState = useGraphStore((s) => s.watchState)
-  const roots = useGraphStore((s) => s.snapshot?.roots ?? [])
+  const roots = useGraphStore((s) => s.snapshot?.roots ?? EMPTY_ROOTS)
   if (watchState !== 'unavailable' && watchState !== 'partial') return null
 
   const { label, detail } = watchChipText(watchState, roots)

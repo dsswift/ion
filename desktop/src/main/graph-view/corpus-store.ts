@@ -161,13 +161,13 @@ export async function subscribeCorpus(projectPath: string): Promise<CorpusSnapsh
   }
 
   const config = getGraphViewConfig(projectPath)
-  watchProject(projectPath)
   if (config.corpusRoots.length === 0) {
     debug('graph_view: corpus subscribe skipped', { projectPath, reason: 'no-corpus-roots' })
     corpusCache.set(projectPath, { snapshot: EMPTY_SNAPSHOT, refCount: 1, config })
     return EMPTY_SNAPSHOT
   }
 
+  watchProject(projectPath)
   log('graph_view: corpus scan started', { projectPath, rootCount: config.corpusRoots.length })
   const scanned = await scanCorpus(config)
   const w = getWatcher()

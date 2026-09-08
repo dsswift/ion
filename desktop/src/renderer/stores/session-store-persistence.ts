@@ -100,7 +100,7 @@ function persistTabs(useSessionStore: Store): void {
         ...(t.executionMachineId ? { executionMachineId: t.executionMachineId } : {}),
         ...(t.groupId ? { groupId: t.groupId } : {}),
         ...(t.groupPinned ? { groupPinned: true } : {}),
-        ...(t.queuedPrompts.length > 0 ? { queuedPrompts: t.queuedPrompts } : {}),
+        ...(t.queuedPrompts?.length ? { queuedPrompts: t.queuedPrompts } : {}),
         // Staged attachments ride with the draft text they belong to. Stripped
         // of the base64 preview so a tray of images cannot bloat the file the
         // 100 ms debounce rewrites; the preview is rebuilt from `path` on
