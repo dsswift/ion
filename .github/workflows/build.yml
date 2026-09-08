@@ -448,3 +448,214 @@ jobs:
         if: always()
         run: |
           security delete-keychain build.keychain-db 2>/dev/null || true
+
+  # Windows desktop release. Separate job from build-desktop because the NSIS
+  # installer, the engine's windows build, and the Intune packaging all need a
+  # Windows host — electron-builder can technically cross-build NSIS from macOS
+  # via wine, but nothing else here can, and a native runner is also what makes
+  # the smoke test below meaningful.
+  #
+  # Authenticode signing is decided by scripts/ci/resolve-windows-signing.ps1
+  # before anything is built. With WINDOWS_CERT_PFX_BASE64 configured the
+  # installer is signed and a signing failure fails the job; with
+  # ION_REQUIRE_WINDOWS_SIGNING=true and no certificate the job stops rather
+  # than publishing an unsigned release; with neither, the build proceeds and
+  # every artifact is labelled UNSIGNED in its provenance manifest. There is no
+  # path that publishes an unsigned installer while claiming otherwise.
+  build-desktop-windows:
+    if: contains(fromJSON(inputs.release_report).components, 'desktop')
+    strategy:
+      # x64 is the supported target. arm64 is a best-effort cross-build that
+      # is neither verified nor supported, so its failure must not sink the
+      # x64 row.
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Get version
+        id: version
+        shell: bash
+        env:
+          RELEASE_REPORT: ${{ inputs.release_report }}
+        run: |
+          VERSION=$(echo "${RELEASE_REPORT}" | jq -r '.releases[] | select(.component=="desktop") | .new_version')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: engine/go.mod
+          cache-dependency-path: engine/go.sum
+
+      - name: Build engine for Windows
+        working-directory: engine
+        shell: bash
+        env:
+          ION_VERSION: ${{ steps.version.outputs.version }}
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          # No cgo: the Local Network warmup probe is darwin-only, so the
+          # windows build is pure Go and cross-arch needs no toolchain.
+          # main.version is stamped for the same observability reason as the
+          # mac job — an unstamped binary reports "dev" in every support log.
+          case "$TARGET_ARCH" in
+            x64) GOARCH=amd64 ;;
+            arm64) GOARCH=arm64 ;;
+            *) echo "unknown arch $TARGET_ARCH"; exit 1 ;;
+          esac
+          CGO_ENABLED=0 GOOS=windows GOARCH="$GOARCH" \
+            go build -ldflags "-s -w -X main.version=${ION_VERSION}" -o ion.exe ./cmd/ion/
+          ls -l ion.exe
+          # The GUI-subsystem launcher the Scheduled Task runs. -H windowsgui
+          # is what keeps a console window off the user's screen; see
+          # engine/cmd/ion-engine-host.
+          CGO_ENABLED=0 GOOS=windows GOARCH="$GOARCH" \
+            go build -ldflags "-s -w -H windowsgui" -o ion-engine-host.exe ./cmd/ion-engine-host/
+          ls -l ion-engine-host.exe
+
+      - name: Copy engine and task template to desktop resources
+        shell: bash
+        run: |
+          mkdir -p desktop/resources/engine/extensions
+          cp engine/ion.exe desktop/resources/engine/ion.exe
+          cp engine/ion-engine-host.exe desktop/resources/engine/ion-engine-host.exe
+          cp -R engine/extensions/sdk desktop/resources/engine/extensions/sdk
+          cp -R sdk/go desktop/resources/engine/extensions/sdk-go
+          # The Scheduled Task template; engine-supervisor-schtasks.ts
+          # substitutes the per-user paths at registration time.
+          cp packaging/windows/ion-engine-task.xml desktop/resources/engine/ion-engine-task.xml
+
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Set desktop release version
+        working-directory: desktop
+        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version
+
+      - name: Build app
+        working-directory: desktop
+        env:
+          ION_DESKTOP_VERSION: ${{ steps.version.outputs.version }}
+        run: npx electron-vite build --mode production
+
+      - name: Resolve the Windows signing identity
+        id: signing
+        shell: pwsh
+        env:
+          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+          ION_REQUIRE_WINDOWS_SIGNING: ${{ vars.ION_REQUIRE_WINDOWS_SIGNING }}
+        run: pwsh -File scripts/ci/resolve-windows-signing.ps1
+
+      - name: Build the NSIS installer
+        working-directory: desktop
+        env:
+          CI: "true"
+          # The bundled nsis7z plugin cannot decode 7-Zip's ARM64 branch
+          # filter, so an unpinned filter yields an ARM64 installer that omits
+          # every executable and still exits 0. Get-IonSevenZipFilter in
+          # scripts/windows/IonBuild.ps1 carries the same value for local
+          # builds and explains it in full.
+          ELECTRON_BUILDER_7Z_FILTER: BCJ
+          # CSC_LINK is empty when no certificate is configured, which is
+          # electron-builder's own "do not sign" signal.
+          CSC_LINK: ${{ steps.signing.outputs.certificateFile }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        # When CSC_LINK is set, signing is attempted and a failure fails this
+        # step. The gate above has already refused the case where signing was
+        # required and absent, so there is no path from here to an unsigned
+        # release that claims to be signed.
+        run: npx electron-builder --win --${{ matrix.arch }} --publish never
+
+      - name: Verify the release version
+        working-directory: desktop
+        shell: bash
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          node scripts/check-release-version.js "$V" \
+            "release/Ion-Setup-$V-${{ matrix.arch }}.exe" "release/latest.yml"
+
+      - name: Package for Intune and stamp the detection script
+        if: matrix.arch == 'x64'
+        shell: pwsh
+        run: |
+          pwsh -File scripts/ci/make-intunewin.ps1 `
+            -InstallerPath "desktop/release/Ion-Setup-${{ steps.version.outputs.version }}-x64.exe" `
+            -OutputDir "desktop/release/intune"
+
+      - name: Zip the Group Policy templates
+        if: matrix.arch == 'x64'
+        shell: bash
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          cd packaging/windows/policy
+          7z a "../../../desktop/release/Ion-PolicyTemplates-$V.zip" IonEngine.admx en-US
+
+      # Provenance for every asset a fleet will install. The manifest reads
+      # each file's real SHA-256 and its real Authenticode status off the file
+      # rather than from the build's intent, and refuses to call a build from
+      # a dirty tree reproducible. Without it, an installer downloaded from a
+      # release page cannot be tied to a commit at all.
+      - name: Write the artifact provenance manifest
+        if: matrix.arch == 'x64'
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          pwsh -File scripts/ci/Write-IonArtifactManifest.ps1 `
+            -Path @(
+              "desktop/release/Ion-Setup-$v-x64.exe",
+              "desktop/release/intune/Ion-Setup-$v-x64.intunewin",
+              "desktop/release/intune/Detect-Ion.ps1",
+              "desktop/release/Ion-PolicyTemplates-$v.zip"
+            ) `
+            -OutputPath "desktop/release/Ion-Artifacts-$v-x64.json" `
+            -Version $v -Arch x64 -BuildType '${{ steps.signing.outputs.buildType }}'
+
+      - name: Intune-shaped smoke test
+        if: matrix.arch == 'x64'
+        shell: pwsh
+        run: |
+          pwsh -File scripts/ci/windows-smoke.ps1 `
+            -InstallerPath "desktop/release/Ion-Setup-${{ steps.version.outputs.version }}-x64.exe" `
+            -DetectScriptPath "desktop/release/intune/Detect-Ion.ps1"
+
+      - name: Upload the installer to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        working-directory: desktop
+        run: |
+          TAG="desktop-v${{ steps.version.outputs.version }}"
+          for f in release/*.exe release/*.blockmap; do
+            [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber -R "${{ github.repository }}"
+          done
+
+      # latest.yml, the Intune package and the policy templates come from the
+      # x64 row only. Both arch rows write a release/latest.yml listing just
+      # their own installer, so uploading both would leave whichever finished
+      # last as the update feed for every Windows user. x64 is the supported
+      # target, so x64 owns the feed.
+      - name: Upload the update feed and management assets
+        if: matrix.arch == 'x64'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        working-directory: desktop
+        run: |
+          TAG="desktop-v${{ steps.version.outputs.version }}"
+          for f in release/latest.yml release/intune/*.intunewin \
+                   release/intune/Detect-Ion.ps1 release/Ion-PolicyTemplates-*.zip \
+                   release/Ion-Artifacts-*.json release/Ion-Artifacts-*.sha256; do
+            [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber -R "${{ github.repository }}"
+          done
