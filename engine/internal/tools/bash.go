@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -10,16 +11,34 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// BashTool returns a ToolDef that executes bash commands via the pluggable
+// BashTool returns a ToolDef that executes shell commands via the pluggable
 // BashOperations backend.
+//
+// The description names the actual interpreter, including its VERSION.
+//
+// ShellConfig.Resolve runs `powershell -NoProfile -Command` on Windows and
+// `bash -c` elsewhere, but the description said "bash" on every platform -- so
+// a model on Windows spent tool calls discovering that `uname`, `which`, and
+// `&&` behave nothing like it was told.
+//
+// The version matters as much as the name. Bare `powershell` always resolves
+// to Windows PowerShell 5.1 (System32\WindowsPowerShell\v1.0), never to
+// pwsh 7, even on a machine where pwsh is installed and on PATH -- measured on
+// a Windows 11 endpoint carrying both 5.1 and 7.6.5. A model that assumes 7
+// writes a ternary or `?.` and gets a bare `Unexpected token '?'` parse error,
+// which reads as a broken tool rather than a version mismatch. Naming 5.1 and
+// listing the 7-only constructs is what prevents that guess.
+//
+// The tool name stays "Bash" because it is a published contract; only the
+// prose is corrected.
 func BashTool() *types.ToolDef {
 	return &types.ToolDef{
 		Name:        "Bash",
-		Description: "Execute a bash command and return its output. Bare sleep commands at or above the configured threshold are refused in foreground and background modes. For a real command, use run_in_background with notify_on_complete; use Poll only for inference-driven wait-and-recheck work, never to watch a command you started here.",
+		Description: bashToolDescription(),
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"command":            map[string]any{"type": "string", "description": "The bash command to execute"},
+				"command":            map[string]any{"type": "string", "description": bashCommandDescription()},
 				"timeout":            map[string]any{"type": "number", "description": "Timeout in milliseconds (default: 120000). Values above the engine's configured maximum are clamped. Ignored when run_in_background is true."},
 				"run_in_background":  map[string]any{"type": "boolean", "description": "Run the command in the background and return immediately with a task ID and output file path. Set notify_on_complete with it unless you truly never need the result. Read the output file for progress; TaskGet and TaskStop are available only when the harness registered the Task tools. Use for real long-lived commands, not bare sleep."},
 				"notify_on_complete": map[string]any{"type": "boolean", "description": "Only meaningful with run_in_background. Deliver this command's result back to the session when it finishes, instead of requiring polling. This is the cheapest way to wait: it costs no inference, unlike Poll. You may start further work or start more background commands. When this task is the only remaining work, end your turn; the engine parks the session and resumes it when the command completes."},
@@ -186,4 +205,26 @@ func executeBashBackground(ctx context.Context, command, cwd string, notify bool
 		content += "\nRead the output file to inspect progress."
 	}
 	return &types.ToolResult{Content: content, BackgroundTaskID: info.ID}, nil
+}
+
+// bashToolDescription states which interpreter actually runs the command.
+//
+// Kept as one sentence prepended to the shared prose so the platform fact is
+// the first thing the model reads, and so the rest of the contract (sleep
+// refusal, background mode) stays identical across platforms.
+func bashToolDescription() string {
+	const shared = " Bare sleep commands at or above the configured threshold are refused in foreground and background modes. For a real command, use run_in_background with notify_on_complete; use Poll only for inference-driven wait-and-recheck work, never to watch a command you started here."
+	if runtime.GOOS == "windows" {
+		return "Execute a Windows PowerShell 5.1 command and return its output. This runs through `powershell -NoProfile -Command` (powershell.exe, the built-in Desktop edition), NOT pwsh 7 and NOT a POSIX shell. Two consequences. First: `uname`, `which`, `grep`, and `&&`/`2>&1` semantics are unavailable or different -- use cmdlets (Get-ChildItem, Select-String, Get-Content, Test-Path) and `;` or `-and` for sequencing. Second: PowerShell 7 syntax is a parse error here even when pwsh is installed on the machine -- no ternary `? :`, no null-conditional `?.`, no `ConvertFrom-Json -AsHashtable`, no `&&`/`||` operators. Write 5.1-compatible commands, or call `pwsh -NoProfile -Command '...'` explicitly when you need 7 and have verified it exists." + shared
+	}
+	return "Execute a bash command and return its output." + shared
+}
+
+// bashCommandDescription names the interpreter on the parameter too, because
+// some clients surface parameter help without the tool description.
+func bashCommandDescription() string {
+	if runtime.GOOS == "windows" {
+		return "The command to execute, in Windows PowerShell 5.1 syntax (runs via powershell -NoProfile -Command; not pwsh 7, not a POSIX shell)"
+	}
+	return "The bash command to execute"
 }

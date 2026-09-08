@@ -17,7 +17,7 @@ import (
 func ReadTool() *types.ToolDef {
 	return &types.ToolDef{
 		Name:        "Read",
-		Description: "Read a file from the filesystem. Returns file content with line numbers.",
+		Description: "Read a file from the filesystem. Returns file content with line numbers. Reads the file fresh on every call — there is no cache. Tool calls you issue in one block run in PARALLEL, so a Read batched alongside an Edit or Write of the same file races it and may return the pre-edit content. To see the result of a write, issue the Read in a LATER block.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

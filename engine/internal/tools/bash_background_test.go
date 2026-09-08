@@ -14,24 +14,6 @@ import (
 	"time"
 )
 
-// clearBashTasks removes all Kind=="bash" tasks between tests (the registry
-// is package-global).
-func clearBashTasks(t *testing.T) {
-	t.Helper()
-	t.Cleanup(func() {
-		tasksMu.Lock()
-		for id, task := range tasks {
-			if task.Kind == "bash" {
-				if task.stop != nil {
-					task.stop()
-				}
-				delete(tasks, id)
-			}
-		}
-		tasksMu.Unlock()
-	})
-}
-
 // waitForTaskStatus polls until the task reaches a terminal status or times out.
 func waitForTaskStatus(t *testing.T, taskID string, want string, timeout time.Duration) *TaskInfo {
 	t.Helper()

@@ -129,661 +129,657 @@ func (b *ApiBackend) executeTools(
 		return results, nil
 	}
 
-	for i, block := range toolUseBlocks {
-		i, block := i, block
-		g.Go(func() error {
-			// Install ambient logging for this child goroutine so every
-			// utils.Log/Debug/Info/Warn/Error call inside the tool-execution
-			// closure (and inside the tools it dispatches to) auto-stamps
-			// session_id/conversation_id. gCtx descends from the run's ctx,
-			// which carries the correlation IDs (errgroup.WithContext
-			// propagates context values). Without this, child goroutines have
-			// distinct goroutine IDs and no ambient entry, so their log lines
-			// emit without correlation.
-			defer installAmbientLogging(gCtx)()
+	// One tool call's full execution, callable either concurrently or in
+	// sequence. The dispatch below decides which; nothing in here cares.
+	runOne := func(i int, block types.LlmContentBlock) error {
+		// Install ambient logging for this child goroutine so every
+		// utils.Log/Debug/Info/Warn/Error call inside the tool-execution
+		// closure (and inside the tools it dispatches to) auto-stamps
+		// session_id/conversation_id. gCtx descends from the run's ctx,
+		// which carries the correlation IDs (errgroup.WithContext
+		// propagates context values). Without this, child goroutines have
+		// distinct goroutine IDs and no ambient entry, so their log lines
+		// emit without correlation.
+		defer installAmbientLogging(gCtx)()
 
-			// Validate client-declared tool input before any engine policy,
-			// hook, parking, or client routing can act on the call.
-			if b.validateClientToolCall(run, block, results, i) {
-				return nil
-			}
+		// Validate client-declared tool input before any engine policy,
+		// hook, parking, or client routing can act on the call.
+		if b.validateClientToolCall(run, block, results, i) {
+			return nil
+		}
 
-			// Permission check (Step 3)
-			if permEng != nil {
-				// Classify first so the tier flows into the permission engine
-				// (for tier_rules matching) and onto the permission_request
-				// hook payload (for audit/observation). The classifier may
-				// invoke an LLM, so race against gCtx so a hung classifier
-				// can't wedge this goroutine.
-				var tier string
-				if permClassifyFn != nil {
-					t, hookErr := runHookCtx(gCtx, func() string {
-						return permClassifyFn(block.Name, block.Input)
-					})
-					if hookErr != nil {
-						return hookErr
-					}
-					tier = t
-				}
-				checkResult := permEng.Check(permissions.CheckInfo{
-					Tool:  block.Name,
-					Input: block.Input,
-					Cwd:   cwd,
-					Tier:  tier,
-				})
-				if permReqFn != nil {
-					payload := map[string]interface{}{
-						"tool_name": block.Name,
-						"input":     block.Input,
-						"decision":  checkResult.Decision,
-					}
-					if tier != "" {
-						payload["tier"] = tier
-					}
-					if _, hookErr := runHookCtx(gCtx, func() struct{} {
-						permReqFn(run.requestID, payload)
-						return struct{}{}
-					}); hookErr != nil {
-						return hookErr
-					}
-				}
-				if checkResult.Decision == "deny" {
-					if permDenyFn != nil {
-						if _, hookErr := runHookCtx(gCtx, func() struct{} {
-							permDenyFn(run.requestID, map[string]interface{}{
-								"tool_name": block.Name,
-								"input":     block.Input,
-								"reason":    checkResult.Reason,
-							})
-							return struct{}{}
-						}); hookErr != nil {
-							return hookErr
-						}
-					}
-					results[i] = conversation.ToolResultEntry{
-						ToolUseID: block.ID,
-						Content:   "Permission denied: " + checkResult.Reason,
-						IsError:   true,
-					}
-					emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "permission_denied", checkResult.Reason)
-					b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
-						ToolID:  block.ID,
-						Content: results[i].Content,
-						IsError: true,
-					}})
-					return nil
-				}
-			}
-
-			// Workspace containment (beside the permission check, before hooks
-			// and execution). See checkWorkspaceContainment for the policy.
-			if done := b.checkWorkspaceContainment(gCtx, run, wsChecker, block, cwd, permDenyFn, telem, results, i); done {
-				return nil
-			}
-
-			// Client tool gate (opt-in per session via EngineConfig.ToolGate).
-			// After the engine's own checks — a call they refuse never pays
-			// the client round-trip — and before sandbox wrapping and the
-			// extension tool_call hook, so the session owner's refusal
-			// preempts extension processing. Sibling names let the client
-			// evaluate turn-isolation policies. See checkToolGate.
-			if done := b.checkToolGate(gCtx, run, gateFn, block, cwd, siblingToolNames(toolUseBlocks, i), permDenyFn, telem, results, i); done {
-				return nil
-			}
-
-			// Sandbox validation + wrapping for Bash (Step 3). See
-			// checkAndWrapSandbox for the policy; a block records the result
-			// and stops processing this tool.
-			if done := b.checkAndWrapSandbox(run, sbCfg, &block, telem, results, i); done {
-				return nil
-			}
-
-			// Call onToolCall hook (extension hook). Race against gCtx so a
-			// hung extension subprocess can't wedge this goroutine; the run's
-			// per-tool timeout (TimeoutsConfig.ToolDefault, 60min default) is
-			// the outer backstop.
-			if hookFn != nil {
-				type hookRet struct {
-					result *ToolCallResult
-					err    error
-				}
-				ret, hookErr := runHookCtx(gCtx, func() hookRet {
-					r, e := hookFn(ToolCallInfo{
-						ToolName: block.Name,
-						ToolID:   block.ID,
-						Input:    block.Input,
-					})
-					return hookRet{r, e}
+		// Permission check (Step 3)
+		if permEng != nil {
+			// Classify first so the tier flows into the permission engine
+			// (for tier_rules matching) and onto the permission_request
+			// hook payload (for audit/observation). The classifier may
+			// invoke an LLM, so race against gCtx so a hung classifier
+			// can't wedge this goroutine.
+			var tier string
+			if permClassifyFn != nil {
+				t, hookErr := runHookCtx(gCtx, func() string {
+					return permClassifyFn(block.Name, block.Input)
 				})
 				if hookErr != nil {
 					return hookErr
 				}
-				result, err := ret.result, ret.err
-				if err != nil {
-					results[i] = conversation.ToolResultEntry{
-						ToolUseID: block.ID,
-						Content:   "Hook error: " + err.Error(),
-						IsError:   true,
-					}
-					emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "hook_error", err.Error())
-					return nil
-				}
-				if result != nil && result.Block {
-					results[i] = conversation.ToolResultEntry{
-						ToolUseID: block.ID,
-						Content:   "Blocked: " + result.Reason,
-						IsError:   true,
-					}
-					emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "hook_blocked", result.Reason)
-					b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
-						ToolID:  block.ID,
-						Content: "Blocked: " + result.Reason,
-						IsError: true,
-					}})
-					return nil
-				}
+				tier = t
 			}
-
-			// Pre-tool hook
-			if perToolHook != nil {
+			checkResult := permEng.Check(permissions.CheckInfo{
+				Tool:  block.Name,
+				Input: block.Input,
+				Cwd:   cwd,
+				Tier:  tier,
+			})
+			if permReqFn != nil {
+				payload := map[string]interface{}{
+					"tool_name": block.Name,
+					"input":     block.Input,
+					"decision":  checkResult.Decision,
+				}
+				if tier != "" {
+					payload["tier"] = tier
+				}
 				if _, hookErr := runHookCtx(gCtx, func() struct{} {
-					perToolHook(block.Name, block.Input, "before") //nolint:errcheck // pre-tool hook fired for observation; rewrite/err not consumed on this path
+					permReqFn(run.requestID, payload)
 					return struct{}{}
 				}); hookErr != nil {
 					return hookErr
 				}
 			}
-
-			// Telemetry span for tool execution (see runloop_tool_telemetry.go
-			// for the privacy-level gating this helper applies).
-			toolSpan := startToolExecuteSpan(telem, run, block.Name, block.Input)
-
-			// Plan-mode gates (extracted to runloop_plan_mode_gates.go to
-			// keep this dispatch loop focused). Each gate either short-
-			// circuits this per-tool goroutine (returning handled=true,
-			// after setting results[i] and emitting any ToolResultEvent)
-			// or proceeds. The Write gate additionally latches
-			// planWriteOverwrite for the post-execution overwrite
-			// warning that the Write tool-result append below depends on.
-			var planWriteOverwrite bool
-			var planWriteRedirectNotice string
-			var planWriteToCanonical bool
-			var planFileHadContentBefore bool
-			{
-				gateRes := applyPlanModeWriteGate(run, block, results, i, cwd, b.emit)
-				if gateRes.handled {
-					return nil
+			if checkResult.Decision == "deny" {
+				if permDenyFn != nil {
+					if _, hookErr := runHookCtx(gCtx, func() struct{} {
+						permDenyFn(run.requestID, map[string]interface{}{
+							"tool_name": block.Name,
+							"input":     block.Input,
+							"reason":    checkResult.Reason,
+						})
+						return struct{}{}
+					}); hookErr != nil {
+						return hookErr
+					}
 				}
-				planWriteOverwrite = gateRes.planWriteOverwrite
-				planWriteRedirectNotice = gateRes.redirectNotice
-				planWriteToCanonical = gateRes.planWriteToCanonical
-				planFileHadContentBefore = gateRes.planFileHadContentBefore
-				if applyPlanModeBashGate(run, block, results, i, b.emit) {
-					return nil
+				results[i] = conversation.ToolResultEntry{
+					ToolUseID: block.ID,
+					Content:   "Permission denied: " + checkResult.Reason,
+					IsError:   true,
 				}
-				if interceptExitPlanMode(run, block, results, i, hooks, b.emit) {
-					return nil
-				}
-				if interceptEnterPlanMode(run, block, results, i, hooks, b.emit) {
-					return nil
-				}
-			}
-
-			// Intercept human-wait client tools (AskUserQuestions and any
-			// other ClientToolDef.HumanWait declaration): PARK the run —
-			// retained denial + terminate, the AskUserQuestion sentinel
-			// treatment. Full reasoning in runloop_human_wait_park.go.
-			if b.parkHumanWaitClientTool(run, block, results, i) {
+				emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "permission_denied", checkResult.Reason)
+				b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
+					ToolID:  block.ID,
+					Content: results[i].Content,
+					IsError: true,
+				}})
 				return nil
 			}
+		}
 
-			// Intercept AskUserQuestion sentinel — available in all runs, not
-			// just plan mode. Record a PermissionDenial so consumers can surface
-			// the question, then terminate the run. The user's answer arrives
-			// as the next prompt in the same session.
-			if block.Name == tools.AskUserQuestionName {
-				utils.LogWithFields(utils.LevelInfo, "backend.runloop", "ask_user", map[string]any{
-					"run_id":   run.requestID,
-					"question": block.Input["question"],
+		// Workspace containment (beside the permission check, before hooks
+		// and execution). See checkWorkspaceContainment for the policy.
+		if done := b.checkWorkspaceContainment(gCtx, run, wsChecker, block, cwd, permDenyFn, telem, results, i); done {
+			return nil
+		}
+
+		// Client tool gate (opt-in per session via EngineConfig.ToolGate).
+		// After the engine's own checks — a call they refuse never pays
+		// the client round-trip — and before sandbox wrapping and the
+		// extension tool_call hook, so the session owner's refusal
+		// preempts extension processing. Sibling names let the client
+		// evaluate turn-isolation policies. See checkToolGate.
+		if done := b.checkToolGate(gCtx, run, gateFn, block, cwd, siblingToolNames(toolUseBlocks, i), permDenyFn, telem, results, i); done {
+			return nil
+		}
+
+		// Sandbox validation + wrapping for Bash (Step 3). See
+		// checkAndWrapSandbox for the policy; a block records the result
+		// and stops processing this tool.
+		if done := b.checkAndWrapSandbox(run, sbCfg, &block, telem, results, i); done {
+			return nil
+		}
+
+		// Call onToolCall hook (extension hook). Race against gCtx so a
+		// hung extension subprocess can't wedge this goroutine; the run's
+		// per-tool timeout (TimeoutsConfig.ToolDefault, 60min default) is
+		// the outer backstop.
+		if hookFn != nil {
+			type hookRet struct {
+				result *ToolCallResult
+				err    error
+			}
+			ret, hookErr := runHookCtx(gCtx, func() hookRet {
+				r, e := hookFn(ToolCallInfo{
+					ToolName: block.Name,
+					ToolID:   block.ID,
+					Input:    block.Input,
 				})
+				return hookRet{r, e}
+			})
+			if hookErr != nil {
+				return hookErr
+			}
+			result, err := ret.result, ret.err
+			if err != nil {
+				results[i] = conversation.ToolResultEntry{
+					ToolUseID: block.ID,
+					Content:   "Hook error: " + err.Error(),
+					IsError:   true,
+				}
+				emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "hook_error", err.Error())
+				return nil
+			}
+			if result != nil && result.Block {
+				results[i] = conversation.ToolResultEntry{
+					ToolUseID: block.ID,
+					Content:   "Blocked: " + result.Reason,
+					IsError:   true,
+				}
+				emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "hook_blocked", result.Reason)
+				b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
+					ToolID:  block.ID,
+					Content: "Blocked: " + result.Reason,
+					IsError: true,
+				}})
+				return nil
+			}
+		}
 
-				// If this run has a ChildElicitFn, it is a dispatched child.
-				// Route the question to the dispatcher via elicitation (blocks
-				// until answered). This is the "AskUserQuestion symmetrization":
-				// dispatched children block-and-resume like elicitations instead
-				// of terminating the run.
-				if run.cfg != nil && run.cfg.ChildElicitFn != nil {
-					question, _ := block.Input["question"].(string) //nolint:errcheck // missing arg -> empty string
-					utils.LogWithFields(utils.LevelInfo, "backend.runloop", "ask_user routing to dispatcher via ChildElicitFn", map[string]any{
-						"run_id": run.requestID,
+		// Pre-tool hook
+		if perToolHook != nil {
+			if _, hookErr := runHookCtx(gCtx, func() struct{} {
+				perToolHook(block.Name, block.Input, "before") //nolint:errcheck // pre-tool hook fired for observation; rewrite/err not consumed on this path
+				return struct{}{}
+			}); hookErr != nil {
+				return hookErr
+			}
+		}
+
+		// Telemetry span for tool execution. Privacy-gated attributes are
+		// assembled by the shared helper so standard/full telemetry retains
+		// the input and output contract.
+		toolSpan := startToolExecuteSpan(telem, run, block.Name, block.Input)
+
+		// Plan-mode gates (extracted to runloop_plan_mode_gates.go to
+		// keep this dispatch loop focused). Each gate either short-
+		// circuits this per-tool goroutine (returning handled=true,
+		// after setting results[i] and emitting any ToolResultEvent)
+		// or proceeds. The Write gate additionally latches
+		// planWriteOverwrite for the post-execution overwrite
+		// warning that the Write tool-result append below depends on.
+		var planWriteOverwrite bool
+		var planWriteRedirectNotice string
+		var planWriteToCanonical bool
+		var planFileHadContentBefore bool
+		{
+			gateRes := applyPlanModeWriteGate(run, block, results, i, cwd, b.emit)
+			if gateRes.handled {
+				return nil
+			}
+			planWriteOverwrite = gateRes.planWriteOverwrite
+			planWriteRedirectNotice = gateRes.redirectNotice
+			planWriteToCanonical = gateRes.planWriteToCanonical
+			planFileHadContentBefore = gateRes.planFileHadContentBefore
+			if applyPlanModeBashGate(run, block, results, i, b.emit) {
+				return nil
+			}
+			if interceptExitPlanMode(run, block, results, i, hooks, b.emit) {
+				return nil
+			}
+			if interceptEnterPlanMode(run, block, results, i, hooks, b.emit) {
+				return nil
+			}
+		}
+
+		// Intercept human-wait client tools (AskUserQuestions and any
+		// other ClientToolDef.HumanWait declaration): PARK the run —
+		// retained denial + terminate, the AskUserQuestion sentinel
+		// treatment. Full reasoning in runloop_human_wait_park.go.
+		if b.parkHumanWaitClientTool(run, block, results, i) {
+			return nil
+		}
+
+		// Intercept AskUserQuestion sentinel — available in all runs, not
+		// just plan mode. Record a PermissionDenial so consumers can surface
+		// the question, then terminate the run. The user's answer arrives
+		// as the next prompt in the same session.
+		if block.Name == tools.AskUserQuestionName {
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "ask_user", map[string]any{
+				"run_id":   run.requestID,
+				"question": block.Input["question"],
+			})
+
+			// If this run has a ChildElicitFn, it is a dispatched child.
+			// Route the question to the dispatcher via elicitation (blocks
+			// until answered). This is the "AskUserQuestion symmetrization":
+			// dispatched children block-and-resume like elicitations instead
+			// of terminating the run.
+			if run.cfg != nil && run.cfg.ChildElicitFn != nil {
+				question, _ := block.Input["question"].(string) //nolint:errcheck // missing arg -> empty string
+				utils.LogWithFields(utils.LevelInfo, "backend.runloop", "ask_user routing to dispatcher via ChildElicitFn", map[string]any{
+					"run_id": run.requestID,
+				})
+				answer, cancelled, err := run.cfg.ChildElicitFn(question)
+				if err != nil || cancelled {
+					// Dispatcher couldn't answer (session torn down or
+					// cancelled). Terminate the child run via the standard
+					// PermissionDenial path so consumers see a uniform
+					// outcome.
+					utils.LogWithFields(utils.LevelInfo, "backend.runloop", "ask_user dispatcher unavailable ; terminating", map[string]any{
+						"run_id":    run.requestID,
+						"cancelled": cancelled,
+						"error":     utils.ErrStr(err),
 					})
-					answer, cancelled, err := run.cfg.ChildElicitFn(question)
-					if err != nil || cancelled {
-						// Dispatcher couldn't answer (session torn down or
-						// cancelled). Terminate the child run via the standard
-						// PermissionDenial path so consumers see a uniform
-						// outcome.
-						utils.LogWithFields(utils.LevelInfo, "backend.runloop", "ask_user dispatcher unavailable ; terminating", map[string]any{
-							"run_id":    run.requestID,
-							"cancelled": cancelled,
-							"error":     utils.ErrStr(err),
-						})
-						run.mu.Lock()
-						run.exitPlanMode = true
-						run.permissionDenials = append(run.permissionDenials, types.PermissionDenial{
-							ToolName:  block.Name,
-							ToolUseID: block.ID,
-							ToolInput: block.Input,
-						})
-						run.mu.Unlock()
-						results[i] = conversation.ToolResultEntry{
-							ToolUseID: block.ID,
-							Content:   "Question could not be answered (dispatcher unavailable). Proceeding with best judgment.",
-							IsError:   false,
-						}
-						b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
-							ToolID:  block.ID,
-							Content: "Question could not be answered (dispatcher unavailable). Proceeding with best judgment.",
-							IsError: false,
-						}})
-						return nil
-					}
-					// Dispatcher answered. Inject the answer as the tool result.
-					// The child run CONTINUES (no PermissionDenial, no terminate).
-					content := answer
-					if content == "" {
-						content = "(no answer provided — proceed with best judgment)"
-					}
-					utils.LogWithFields(utils.LevelInfo, "backend.runloop", "ask_user dispatcher answered; injecting result and continuing", map[string]any{
-						"run_id": run.requestID,
+					run.mu.Lock()
+					run.exitPlanMode = true
+					run.permissionDenials = append(run.permissionDenials, types.PermissionDenial{
+						ToolName:  block.Name,
+						ToolUseID: block.ID,
+						ToolInput: block.Input,
 					})
+					run.mu.Unlock()
 					results[i] = conversation.ToolResultEntry{
 						ToolUseID: block.ID,
-						Content:   content,
+						Content:   "Question could not be answered (dispatcher unavailable). Proceeding with best judgment.",
 						IsError:   false,
 					}
 					b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
 						ToolID:  block.ID,
-						Content: content,
+						Content: "Question could not be answered (dispatcher unavailable). Proceeding with best judgment.",
 						IsError: false,
 					}})
 					return nil
 				}
-
-				// Standard path: record a PermissionDenial so consumers can
-				// surface the question, then terminate the run. The user's
-				// answer arrives as the next prompt in the same session.
-				run.mu.Lock()
-				run.exitPlanMode = true
-				run.permissionDenials = append(run.permissionDenials, types.PermissionDenial{
-					ToolName:  block.Name,
-					ToolUseID: block.ID,
-					ToolInput: block.Input,
+				// Dispatcher answered. Inject the answer as the tool result.
+				// The child run CONTINUES (no PermissionDenial, no terminate).
+				content := answer
+				if content == "" {
+					content = "(no answer provided — proceed with best judgment)"
+				}
+				utils.LogWithFields(utils.LevelInfo, "backend.runloop", "ask_user dispatcher answered; injecting result and continuing", map[string]any{
+					"run_id": run.requestID,
 				})
-				run.mu.Unlock()
 				results[i] = conversation.ToolResultEntry{
 					ToolUseID: block.ID,
-					Content:   "Question sent to user. Awaiting response.",
+					Content:   content,
 					IsError:   false,
 				}
 				b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
 					ToolID:  block.ID,
-					Content: "Question sent to user. Awaiting response.",
+					Content: content,
 					IsError: false,
 				}})
 				return nil
 			}
 
-			// Stall detection: emit ToolStalledEvent periodically while the
-			// tool runs longer than the stall threshold. The first event fires
-			// at stallThreshold, then repeats every stallThreshold until the
-			// tool completes. Consumers that run liveness watchdogs use these
-			// events to distinguish "still working" from "dead" for tabs that
-			// are legitimately running long tools.
-			//
-			// The stall advisory is emitted via emitWithoutProgress, NOT emit:
-			// it is the engine signalling the *absence* of progress, so it must
-			// not bump run.lastProgressAt. If it did, a wedged but deadline-
-			// exempt Agent/dispatch tool (see the AgentToolName branch below)
-			// would reset the run-progress watchdog clock every tick and never
-			// trip the run-stall backstop — the exact incident in conversation
-			// 1782012033034-37d617d3d9ab. See emitWithoutProgress in
-			// api_backend.go for the full rationale.
-			// Capture the threshold locally so the goroutine doesn't race
-			// with tests that reassign the package-level var.
-			stallThreshold := toolStallThreshold
-			if run.cfg != nil && run.cfg.Timeouts != nil {
-				stallThreshold = run.cfg.Timeouts.ToolStall()
+			// Standard path: record a PermissionDenial so consumers can
+			// surface the question, then terminate the run. The user's
+			// answer arrives as the next prompt in the same session.
+			run.mu.Lock()
+			run.exitPlanMode = true
+			run.permissionDenials = append(run.permissionDenials, types.PermissionDenial{
+				ToolName:  block.Name,
+				ToolUseID: block.ID,
+				ToolInput: block.Input,
+			})
+			run.mu.Unlock()
+			results[i] = conversation.ToolResultEntry{
+				ToolUseID: block.ID,
+				Content:   "Question sent to user. Awaiting response.",
+				IsError:   false,
 			}
-			toolDone := make(chan struct{})
-			go func() {
-				ticker := time.NewTicker(stallThreshold)
-				defer ticker.Stop()
-				ticks := 0
-				for {
-					select {
-					case <-ticker.C:
-						ticks++
-						b.emitWithoutProgress(run, types.NormalizedEvent{Data: &types.ToolStalledEvent{
-							ToolID:   block.ID,
-							ToolName: block.Name,
-							Elapsed:  float64(ticks) * stallThreshold.Seconds(),
-						}})
-					case <-toolDone:
-						return
-					}
-				}
-			}()
+			b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
+				ToolID:  block.ID,
+				Content: "Question sent to user. Awaiting response.",
+				IsError: false,
+			}})
+			return nil
+		}
 
-			// Route to built-in, extension, or MCP tool (Step 5).
-			// Each tool call is bounded by the configured tool timeout. A tool
-			// that observes ctx will cancel cleanly; a tool that ignores ctx will
-			// be left running but its result is dropped, and executeTools
-			// returns once errgroup's children all return.
-			toolTimeout := defaultToolTimeout
-			if run.cfg != nil && run.cfg.Timeouts != nil {
-				toolTimeout = run.cfg.Timeouts.ToolDefault()
-			}
-
-			// Agent dispatch now returns immediately by default. Explicit waits use
-			// this same finite deadline, so no tool can strand a conversation.
-			var toolCtx context.Context
-			var toolCancel context.CancelFunc
-			var toolSuspender *types.DeadlineSuspenderHandle
-			toolCtx, toolCancel = context.WithCancel(gCtx)
-			ds := types.NewDeadlineSuspender(toolTimeout, toolCancel)
-			toolSuspender = ds
-			toolCtx = types.WithDeadlineSuspender(toolCtx, ds)
-			defer toolCancel()
-			defer toolSuspender.Stop()
-
-			// Inject timeouts config into context for individual tools to read.
-			if run.cfg != nil && run.cfg.Timeouts != nil {
-				toolCtx = types.WithTimeouts(toolCtx, run.cfg.Timeouts)
-			}
-
-			// Inject shell config so the Bash tool can run commands through the
-			// user's login shell when EngineRuntimeConfig.Shell.UseLoginShell
-			// is set. Nil-safe: omitted config leaves the default bash -c path.
-			if run.cfg != nil && run.cfg.Shell != nil {
-				toolCtx = types.WithShellConfig(toolCtx, run.cfg.Shell)
-			}
-
-			// Install the per-run touched-path sink so path-bearing tools can
-			// record the paths they resolve (drives read-triggered nested
-			// context loading). The sink is nil-safe and self-locking; tools
-			// call types.RecordTouchedPath(ctx, resolvedPath). Drained between
-			// turns by drainNestedContext.
-			if run.touchedSink != nil {
-				toolCtx = types.WithTouchedPathSink(toolCtx, run.touchedSink)
-			}
-
-			if run.cfg != nil && len(run.cfg.McpConnections) > 0 {
-				toolCtx = mcp.WithConnections(toolCtx, run.cfg.McpConnections)
-			}
-
-			var toolResult *types.ToolResult
-			var err error
-
-			// Tracks whether a tool.failure telemetry event has already fired for
-			// this block on a fall-through path (unknown_tool, deadline_exceeded).
-			// Those branches set IsError=true and emit, then fall through to the
-			// shared result-assembly block below — the guard stops that block from
-			// double-emitting for the same failure.
-			failureEmitted := false
-
-			if tools.GetTool(block.Name) != nil {
-				toolCtx = tools.WithBackgroundToolID(toolCtx, block.ID)
-				toolResult, err = tools.ExecuteTool(toolCtx, block.Name, block.Input, cwd)
-			} else if mcpRouter != nil {
-				// mcpRouter does not yet take ctx; race its return against
-				// toolCtx so a hung MCP server cannot wedge the run.
-				type mcpRet struct {
-					result *types.ToolResult
-					err    error
-				}
-				resCh := make(chan mcpRet, 1)
-				go func() {
-					// This inner goroutine has its own goroutine ID, so it
-					// needs its own ambient install to keep MCP router log
-					// lines correlated. gCtx is captured in the closure.
-					defer installAmbientLogging(gCtx)()
-					routed, routeErr := mcpRouter(toolCtx, block.Name, block.Input)
-					resCh <- mcpRet{routed, routeErr}
-				}()
+		// Stall detection: emit ToolStalledEvent periodically while the
+		// tool runs longer than the stall threshold. The first event fires
+		// at stallThreshold, then repeats every stallThreshold until the
+		// tool completes. Consumers that run liveness watchdogs use these
+		// events to distinguish "still working" from "dead" for tabs that
+		// are legitimately running long tools.
+		//
+		// The stall advisory is emitted via emitWithoutProgress, NOT emit:
+		// it is the engine signalling the *absence* of progress, so it must
+		// not bump run.lastProgressAt. If it did, a wedged but deadline-
+		// exempt Agent/dispatch tool (see the AgentToolName branch below)
+		// would reset the run-progress watchdog clock every tick and never
+		// trip the run-stall backstop — the exact incident in conversation
+		// 1782012033034-37d617d3d9ab. See emitWithoutProgress in
+		// api_backend.go for the full rationale.
+		// Capture the threshold locally so the goroutine doesn't race
+		// with tests that reassign the package-level var.
+		stallThreshold := toolStallThreshold
+		if run.cfg != nil && run.cfg.Timeouts != nil {
+			stallThreshold = run.cfg.Timeouts.ToolStall()
+		}
+		toolDone := make(chan struct{})
+		go func() {
+			ticker := time.NewTicker(stallThreshold)
+			defer ticker.Stop()
+			ticks := 0
+			for {
 				select {
-				case r := <-resCh:
-					if r.err != nil {
-						err = r.err
-					} else if r.result != nil {
-						// Consume the full ToolResult directly so Images
-						// (vision output from an extension/MCP tool) survive
-						// into the ToolResultEntry rather than being flattened
-						// to (content, isErr).
-						toolResult = r.result
-					} else {
-						// Nil result with nil error is the empty-successful
-						// case: substitute an empty result.
-						toolResult = &types.ToolResult{}
-					}
-				case <-toolCtx.Done():
-					err = toolCtx.Err()
-				}
-			} else {
-				toolResult = &types.ToolResult{
-					Content: fmt.Sprintf("Unknown tool: %s", block.Name),
-					IsError: true,
-				}
-				emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "unknown_tool", toolResult.Content)
-				failureEmitted = true
-			}
-
-			// Surface per-tool deadline as a tool-result error rather than
-			// failing the whole run, so the LLM sees a clear "this tool timed
-			// out" message and can adapt. Two cases produce the deadline
-			// result: a classic WithTimeout ctx (built-in tools) reporting
-			// DeadlineExceeded, and the DeadlineSuspender (extension/MCP tools)
-			// having fired its own deadline — the suspender cancels via
-			// WithCancel, so its ctx.Err() is Canceled, not DeadlineExceeded,
-			// and we must consult Fired() to distinguish a deadline from a
-			// genuine lifecycle abort.
-			deadlineHit := toolCtx.Err() == context.DeadlineExceeded || toolSuspender.Fired()
-			if err != nil && deadlineHit {
-				err = nil
-				toolResult = &types.ToolResult{
-					Content: fmt.Sprintf("Error: tool %q exceeded %s deadline. Narrow the request or split it into smaller calls.", block.Name, toolTimeout),
-					IsError: true,
-				}
-				emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "deadline_exceeded", toolResult.Content)
-				failureEmitted = true
-			}
-
-			// Signal stall timer that the tool has completed.
-			close(toolDone)
-
-			// End tool span (see runloop_tool_telemetry.go for the
-			// privacy-level gating this helper applies).
-			endToolExecuteSpan(toolSpan, telem, toolResult, err)
-
-			if err != nil {
-				results[i] = conversation.ToolResultEntry{
-					ToolUseID: block.ID,
-					Content:   "Error: " + err.Error(),
-					IsError:   true,
-				}
-				emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "tool_error", err.Error())
-			} else {
-				results[i] = conversation.ToolResultEntry{
-					ToolUseID:       block.ID,
-					Content:         toolResult.Content,
-					IsError:         toolResult.IsError,
-					Images:          toolResult.Images,
-					EphemeralImages: toolResult.EphemeralImages,
-					SkillInvocation: toolResult.SkillInvocation,
-				}
-				// A tool that returns IsError=true with no Go-level error is the
-				// dominant real-failure path: Bash non-zero exit, Edit
-				// old_string-not-found, missing required args, etc. all return
-				// {IsError: true}, nil. Without this emission those failures land in
-				// tool.execute but never in tool.failure, so the failure signal is
-				// silently lost for every tool that reports failure by result flag
-				// rather than by returning an error. Guard against double-emitting
-				// for the unknown_tool / deadline_exceeded fall-through paths, which
-				// already emitted above. toolResult is non-nil here: this else
-				// branch runs only when err == nil, and every path that leaves err
-				// nil assigns a non-nil toolResult (the block above dereferences it).
-				if toolResult.IsError && !failureEmitted {
-					emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "execution_error", toolResult.Content)
+				case <-ticker.C:
+					ticks++
+					b.emitWithoutProgress(run, types.NormalizedEvent{Data: &types.ToolStalledEvent{
+						ToolID:   block.ID,
+						ToolName: block.Name,
+						Elapsed:  float64(ticks) * stallThreshold.Seconds(),
+					}})
+				case <-toolDone:
+					return
 				}
 			}
+		}()
 
-			// Worktree attachment check: a Bash command in a registered
-			// worktree may have left HEAD detached or an operation mid-flight
-			// (the conflicted-rebase case). Report it in the result the model
-			// reads next, while the context to fix it is still live.
-			b.noteWorktreeAttachment(run, wsChecker, block.Name, cwd, results, i)
+		// Route to built-in, extension, or MCP tool (Step 5).
+		// Each tool call is bounded by the configured tool timeout. A tool
+		// that observes ctx will cancel cleanly; a tool that ignores ctx will
+		// be left running but its result is dropped, and executeTools
+		// returns once errgroup's children all return.
+		toolTimeout := defaultToolTimeout
+		if run.cfg != nil && run.cfg.Timeouts != nil {
+			toolTimeout = run.cfg.Timeouts.ToolDefault()
+		}
 
-			// Append a warning when Write replaced existing plan content.
-			// This nudges the LLM to use Edit for future modifications.
-			if planWriteOverwrite && !results[i].IsError {
-				results[i].Content += "\n\nWARNING: You used Write to replace the entire plan file. " +
-					"Previous plan content was overwritten. If you intended to modify specific sections, " +
-					"use the Edit tool next time. If you unintentionally removed existing deliverables, " +
-					"re-read the conversation history to recover them."
-				utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "plan_file_overwritten", map[string]any{
-					"run_id":    run.requestID,
-					"plan_file": run.planFilePath,
-				})
+		// Agent dispatch now returns immediately by default. Explicit waits use
+		// this same finite deadline, so no tool can strand a conversation.
+		var toolCtx context.Context
+		var toolCancel context.CancelFunc
+		var toolSuspender *types.DeadlineSuspenderHandle
+		toolCtx, toolCancel = context.WithCancel(gCtx)
+		ds := types.NewDeadlineSuspender(toolTimeout, toolCancel)
+		toolSuspender = ds
+		toolCtx = types.WithDeadlineSuspender(toolCtx, ds)
+		defer toolCancel()
+		defer toolSuspender.Stop()
+
+		// Inject timeouts config into context for individual tools to read.
+		if run.cfg != nil && run.cfg.Timeouts != nil {
+			toolCtx = types.WithTimeouts(toolCtx, run.cfg.Timeouts)
+		}
+
+		// Inject shell config so the Bash tool can run commands through the
+		// user's login shell when EngineRuntimeConfig.Shell.UseLoginShell
+		// is set. Nil-safe: omitted config leaves the default bash -c path.
+		if run.cfg != nil && run.cfg.Shell != nil {
+			toolCtx = types.WithShellConfig(toolCtx, run.cfg.Shell)
+		}
+
+		// Install the per-run touched-path sink so path-bearing tools can
+		// record the paths they resolve (drives read-triggered nested
+		// context loading). The sink is nil-safe and self-locking; tools
+		// call types.RecordTouchedPath(ctx, resolvedPath). Drained between
+		// turns by drainNestedContext.
+		if run.touchedSink != nil {
+			toolCtx = types.WithTouchedPathSink(toolCtx, run.touchedSink)
+		}
+
+		if run.cfg != nil && len(run.cfg.McpConnections) > 0 {
+			toolCtx = mcp.WithConnections(toolCtx, run.cfg.McpConnections)
+		}
+
+		var toolResult *types.ToolResult
+		var err error
+
+		// Tracks whether a tool.failure telemetry event has already fired for
+		// this block on a fall-through path (unknown_tool, deadline_exceeded).
+		// Those branches set IsError=true and emit, then fall through to the
+		// shared result-assembly block below — the guard stops that block from
+		// double-emitting for the same failure.
+		failureEmitted := false
+
+		if tools.GetTool(block.Name) != nil {
+			toolCtx = tools.WithBackgroundToolID(toolCtx, block.ID)
+			toolResult, err = tools.ExecuteTool(toolCtx, block.Name, block.Input, cwd)
+		} else if mcpRouter != nil {
+			// mcpRouter does not yet take ctx; race its return against
+			// toolCtx so a hung MCP server cannot wedge the run.
+			type mcpRet struct {
+				result *types.ToolResult
+				err    error
 			}
-
-			// When applyPlanModeWriteGate rewrote a stray plan-shaped target to
-			// the canonical plan file, the physical write already succeeded
-			// (block.Input["file_path"] was rewritten in-place so the tool ran
-			// against the canonical path). But returning success would leave
-			// the model believing its wrong path is valid, causing repeated
-			// stray writes on every subsequent turn. Return an error instead:
-			// the model treats errors as mistakes requiring correction, reads
-			// the canonical path from the message, and retries with it. The
-			// content IS on disk; the error is purely a behavioral correction
-			// signal, not a data-loss report.
-			if planWriteRedirectNotice != "" && !results[i].IsError {
-				wrongPath, _ := block.Input["file_path"].(string) //nolint:errcheck // missing arg -> empty string
-				msg := fmt.Sprintf(
-					"Plan mode: %s targeted %q — that path is not the plan file for this session "+
-						"and the engine redirected the write to the canonical plan file (%s). "+
-						"Do NOT use that path again. Always target %s directly. "+
-						"The content was written to the canonical file. Resubmit targeting %s.",
-					block.Name, wrongPath, run.planFilePath, run.planFilePath, run.planFilePath)
-				results[i].Content = msg
-				results[i].IsError = true
-				utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "redirect_as_error", map[string]any{
-					"run_id":    run.requestID,
-					"wrong":     wrongPath,
-					"canonical": run.planFilePath,
-				})
-			}
-
-			// Emit the plan-file-written marker AFTER a Write/Edit to the
-			// canonical plan file. This is the accurate trigger for the
-			// "plan created / updated" conversation marker: the file now exists
-			// on disk with content, so the marker lands at the true point in
-			// the transcript and any link to the plan resolves. The
-			// created-vs-updated discriminator comes from the file's prior
-			// state captured pre-execution by the gate (planFileHadContentBefore).
-			// Plan-mode entry no longer drives this marker — entry happens
-			// before any file exists.
-			//
-			// For redirected writes: the physical file WAS written successfully
-			// (the redirect executed the tool against the canonical path), so
-			// the marker should still fire — the plan file genuinely changed.
-			// The error result above is a behavioral correction signal, not a
-			// data-loss indicator. We fire the marker when planWriteToCanonical
-			// is set and the underlying tool execution succeeded (no Go-level
-			// error), regardless of the IsError flag on the result.
-			//
-			// For non-redirect errors (the tool itself reported failure — e.g.
-			// Edit's old_string-not-found): results[i].IsError is true AND
-			// planWriteRedirectNotice is empty, so the marker is correctly skipped.
-			markerEligible := planWriteToCanonical && (!results[i].IsError || planWriteRedirectNotice != "")
-			if markerEligible {
-				op := "created"
-				if planFileHadContentBefore {
-					op = "updated"
+			resCh := make(chan mcpRet, 1)
+			go func() {
+				// This inner goroutine has its own goroutine ID, so it
+				// needs its own ambient install to keep MCP router log
+				// lines correlated. gCtx is captured in the closure.
+				defer installAmbientLogging(gCtx)()
+				routed, routeErr := mcpRouter(toolCtx, block.Name, block.Input)
+				resCh <- mcpRet{routed, routeErr}
+			}()
+			select {
+			case r := <-resCh:
+				if r.err != nil {
+					err = r.err
+				} else if r.result != nil {
+					// Consume the full ToolResult directly so Images
+					// (vision output from an extension/MCP tool) survive
+					// into the ToolResultEntry rather than being flattened
+					// to (content, isErr).
+					toolResult = r.result
+				} else {
+					// Nil result with nil error is the empty-successful
+					// case: substitute an empty result.
+					toolResult = &types.ToolResult{}
 				}
-				utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "plan_file_written", map[string]any{
-					"run_id":    run.requestID,
-					"op":        op,
-					"plan_file": run.planFilePath,
-				})
-				b.emit(run, types.NormalizedEvent{Data: &types.PlanFileWrittenEvent{
+			case <-toolCtx.Done():
+				err = toolCtx.Err()
+			}
+		} else {
+			toolResult = &types.ToolResult{
+				Content: fmt.Sprintf("Unknown tool: %s", block.Name),
+				IsError: true,
+			}
+			emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "unknown_tool", toolResult.Content)
+			failureEmitted = true
+		}
+
+		// Surface per-tool deadline as a tool-result error rather than
+		// failing the whole run, so the LLM sees a clear "this tool timed
+		// out" message and can adapt. Two cases produce the deadline
+		// result: a classic WithTimeout ctx (built-in tools) reporting
+		// DeadlineExceeded, and the DeadlineSuspender (extension/MCP tools)
+		// having fired its own deadline — the suspender cancels via
+		// WithCancel, so its ctx.Err() is Canceled, not DeadlineExceeded,
+		// and we must consult Fired() to distinguish a deadline from a
+		// genuine lifecycle abort.
+		deadlineHit := toolCtx.Err() == context.DeadlineExceeded || toolSuspender.Fired()
+		if err != nil && deadlineHit {
+			err = nil
+			toolResult = &types.ToolResult{
+				Content: fmt.Sprintf("Error: tool %q exceeded %s deadline. Narrow the request or split it into smaller calls.", block.Name, toolTimeout),
+				IsError: true,
+			}
+			emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "deadline_exceeded", toolResult.Content)
+			failureEmitted = true
+		}
+
+		// Signal stall timer that the tool has completed.
+		close(toolDone)
+
+		// End tool span with privacy-gated output attributes.
+		endToolExecuteSpan(toolSpan, telem, toolResult, err)
+
+		if err != nil {
+			results[i] = conversation.ToolResultEntry{
+				ToolUseID: block.ID,
+				Content:   "Error: " + err.Error(),
+				IsError:   true,
+			}
+			emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "tool_error", err.Error())
+		} else {
+			results[i] = conversation.ToolResultEntry{
+				ToolUseID:       block.ID,
+				Content:         toolResult.Content,
+				IsError:         toolResult.IsError,
+				Images:          toolResult.Images,
+				EphemeralImages: toolResult.EphemeralImages,
+				SkillInvocation: toolResult.SkillInvocation,
+			}
+			// A tool that returns IsError=true with no Go-level error is the
+			// dominant real-failure path: Bash non-zero exit, Edit
+			// old_string-not-found, missing required args, etc. all return
+			// {IsError: true}, nil. Without this emission those failures land in
+			// tool.execute but never in tool.failure, so the failure signal is
+			// silently lost for every tool that reports failure by result flag
+			// rather than by returning an error. Guard against double-emitting
+			// for the unknown_tool / deadline_exceeded fall-through paths, which
+			// already emitted above. toolResult is non-nil here: this else
+			// branch runs only when err == nil, and every path that leaves err
+			// nil assigns a non-nil toolResult (the block above dereferences it).
+			if toolResult.IsError && !failureEmitted {
+				emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "execution_error", toolResult.Content)
+			}
+		}
+
+		// Worktree attachment check: a Bash command in a registered
+		// worktree may have left HEAD detached or an operation mid-flight
+		// (the conflicted-rebase case). Report it in the result the model
+		// reads next, while the context to fix it is still live.
+		b.noteWorktreeAttachment(run, wsChecker, block.Name, cwd, results, i)
+
+		// Append a warning when Write replaced existing plan content.
+		// This nudges the LLM to use Edit for future modifications.
+		if planWriteOverwrite && !results[i].IsError {
+			results[i].Content += "\n\nWARNING: You used Write to replace the entire plan file. " +
+				"Previous plan content was overwritten. If you intended to modify specific sections, " +
+				"use the Edit tool next time. If you unintentionally removed existing deliverables, " +
+				"re-read the conversation history to recover them."
+			utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "plan_file_overwritten", map[string]any{
+				"run_id":    run.requestID,
+				"plan_file": run.planFilePath,
+			})
+		}
+
+		// When applyPlanModeWriteGate rewrote a stray plan-shaped target to
+		// the canonical plan file, the physical write already succeeded
+		// (block.Input["file_path"] was rewritten in-place so the tool ran
+		// against the canonical path). But returning success would leave
+		// the model believing its wrong path is valid, causing repeated
+		// stray writes on every subsequent turn. Return an error instead:
+		// the model treats errors as mistakes requiring correction, reads
+		// the canonical path from the message, and retries with it. The
+		// content IS on disk; the error is purely a behavioral correction
+		// signal, not a data-loss report.
+		if planWriteRedirectNotice != "" && !results[i].IsError {
+			wrongPath, _ := block.Input["file_path"].(string) //nolint:errcheck // missing arg -> empty string
+			msg := fmt.Sprintf(
+				"Plan mode: %s targeted %q — that path is not the plan file for this session "+
+					"and the engine redirected the write to the canonical plan file (%s). "+
+					"Do NOT use that path again. Always target %s directly. "+
+					"The content was written to the canonical file. Resubmit targeting %s.",
+				block.Name, wrongPath, run.planFilePath, run.planFilePath, run.planFilePath)
+			results[i].Content = msg
+			results[i].IsError = true
+			utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "redirect_as_error", map[string]any{
+				"run_id":    run.requestID,
+				"wrong":     wrongPath,
+				"canonical": run.planFilePath,
+			})
+		}
+
+		// Emit the plan-file-written marker AFTER a Write/Edit to the
+		// canonical plan file. This is the accurate trigger for the
+		// "plan created / updated" conversation marker: the file now exists
+		// on disk with content, so the marker lands at the true point in
+		// the transcript and any link to the plan resolves. The
+		// created-vs-updated discriminator comes from the file's prior
+		// state captured pre-execution by the gate (planFileHadContentBefore).
+		// Plan-mode entry no longer drives this marker — entry happens
+		// before any file exists.
+		//
+		// For redirected writes: the physical file WAS written successfully
+		// (the redirect executed the tool against the canonical path), so
+		// the marker should still fire — the plan file genuinely changed.
+		// The error result above is a behavioral correction signal, not a
+		// data-loss indicator. We fire the marker when planWriteToCanonical
+		// is set and the underlying tool execution succeeded (no Go-level
+		// error), regardless of the IsError flag on the result.
+		//
+		// For non-redirect errors (the tool itself reported failure — e.g.
+		// Edit's old_string-not-found): results[i].IsError is true AND
+		// planWriteRedirectNotice is empty, so the marker is correctly skipped.
+		markerEligible := planWriteToCanonical && (!results[i].IsError || planWriteRedirectNotice != "")
+		if markerEligible {
+			op := "created"
+			if planFileHadContentBefore {
+				op = "updated"
+			}
+			utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "plan_file_written", map[string]any{
+				"run_id":    run.requestID,
+				"op":        op,
+				"plan_file": run.planFilePath,
+			})
+			b.emit(run, types.NormalizedEvent{Data: &types.PlanFileWrittenEvent{
+				Operation:    op,
+				PlanFilePath: run.planFilePath,
+				PlanSlug:     types.PlanSlugFromPath(run.planFilePath),
+			}})
+			// Persist a plan marker so the "plan created / updated" marker
+			// survives reload (PlanFileWrittenEvent is not persisted).
+			if run.conv != nil && run.conv.Entries != nil {
+				conversation.AppendEntry(run.conv, conversation.EntryPlanMarker, conversation.PlanMarkerData{
 					Operation:    op,
 					PlanFilePath: run.planFilePath,
 					PlanSlug:     types.PlanSlugFromPath(run.planFilePath),
-				}})
-				// Persist a plan marker so the "plan created / updated" marker
-				// survives reload (PlanFileWrittenEvent is not persisted).
-				if run.conv != nil && run.conv.Entries != nil {
-					conversation.AppendEntry(run.conv, conversation.EntryPlanMarker, conversation.PlanMarkerData{
-						Operation:    op,
-						PlanFilePath: run.planFilePath,
-						PlanSlug:     types.PlanSlugFromPath(run.planFilePath),
+				})
+				if err := conversation.Save(run.conv, ""); err != nil {
+					utils.LogWithFields(utils.LevelInfo, "backend.runloop", "plan_marker: failed to save", map[string]any{
+						"error": utils.ErrStr(err),
 					})
-					if err := conversation.Save(run.conv, ""); err != nil {
-						utils.LogWithFields(utils.LevelInfo, "backend.runloop", "plan_marker: failed to save", map[string]any{
-							"error": utils.ErrStr(err),
-						})
-					}
 				}
 			}
+		}
 
-			// Fire file_changed hook for write/edit tools
-			if fileChangedFn != nil && !results[i].IsError {
-				var p string
-				var changeKind string
-				switch block.Name {
-				case "Write", "write":
-					if v, ok := block.Input["file_path"].(string); ok {
-						p, changeKind = v, "write"
-					}
-				case "Edit", "edit":
-					if v, ok := block.Input["file_path"].(string); ok {
-						p, changeKind = v, "edit"
-					}
+		// Fire file_changed hook for write/edit tools
+		if fileChangedFn != nil && !results[i].IsError {
+			var p string
+			var changeKind string
+			switch block.Name {
+			case "Write", "write":
+				if v, ok := block.Input["file_path"].(string); ok {
+					p, changeKind = v, "write"
 				}
-				if p != "" {
-					if _, hookErr := runHookCtx(gCtx, func() struct{} {
-						fileChangedFn(run.requestID, p, changeKind)
-						return struct{}{}
-					}); hookErr != nil {
-						return hookErr
-					}
+			case "Edit", "edit":
+				if v, ok := block.Input["file_path"].(string); ok {
+					p, changeKind = v, "edit"
 				}
 			}
-
-			// Post-tool hook
-			if perToolHook != nil {
+			if p != "" {
 				if _, hookErr := runHookCtx(gCtx, func() struct{} {
-					perToolHook(block.Name, results[i], "after") //nolint:errcheck // post-tool hook fired for observation; rewrite/err not consumed on this path
+					fileChangedFn(run.requestID, p, changeKind)
 					return struct{}{}
 				}); hookErr != nil {
 					return hookErr
 				}
 			}
+		}
 
-			// Publish the finished result (see runloop_tool_result.go).
-			b.emitToolResult(run, block.ID, &toolResultPayload{
-				Content:          results[i].Content,
-				IsError:          results[i].IsError,
-				Images:           results[i].Images,
-				BackgroundTaskID: results[i].BackgroundTaskID,
-			})
+		// Post-tool hook
+		if perToolHook != nil {
+			if _, hookErr := runHookCtx(gCtx, func() struct{} {
+				perToolHook(block.Name, results[i], "after") //nolint:errcheck // post-tool hook fired for observation; rewrite/err not consumed on this path
+				return struct{}{}
+			}); hookErr != nil {
+				return hookErr
+			}
+		}
 
-			return nil
+		// Publish the finished result (see runloop_tool_result.go).
+		b.emitToolResult(run, block.ID, &toolResultPayload{
+			Content:          results[i].Content,
+			IsError:          results[i].IsError,
+			Images:           results[i].Images,
+			BackgroundTaskID: results[i].BackgroundTaskID,
 		})
+
+		return nil
 	}
 
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-	return results, nil
+	return b.dispatchTools(g, toolUseBlocks, runOne, results)
 }

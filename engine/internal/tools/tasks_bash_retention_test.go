@@ -1,5 +1,10 @@
 package tools
 
+// NOTE: clearBashTasks lives in bash_background_test.go, which is !windows.
+// This file is platform-neutral, so it carries its own reset rather than
+// inheriting that constraint -- retention behaviour is exactly what wants
+// covering on Windows.
+
 import (
 	"os"
 	"path/filepath"

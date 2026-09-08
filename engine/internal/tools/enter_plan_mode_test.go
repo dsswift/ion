@@ -12,11 +12,11 @@ import (
 // each run.
 //
 // This test pins three properties of the engine side of the contract:
-//   1. The no-arg default is short and contains no harness policy.
-//   2. The forbidden harness-specific phrases that used to live in the
-//      engine (commits 89084038 / 7e61687b) are not present.
-//   3. The WithDescription constructor forwards the harness string
-//      verbatim and falls back to the engine default on empty input.
+//  1. The no-arg default is short and contains no harness policy.
+//  2. The forbidden harness-specific phrases that used to live in the
+//     engine (commits 89084038 / 7e61687b) are not present.
+//  3. The WithDescription constructor forwards the harness string
+//     verbatim and falls back to the engine default on empty input.
 func TestEnterPlanModeDefaultDescriptionIsNeutral(t *testing.T) {
 	td := EnterPlanModeTool()
 	desc := td.Description

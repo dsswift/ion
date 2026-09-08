@@ -1,9 +1,16 @@
+//go:build !windows
+
+// Sleep-gate tests drive real POSIX shell commands (sleep, exit) and share
+// clearBashTasks with bash_background_test.go, which is !windows for the same
+// reason. Without the constraint the whole package failed to build on Windows
+// on `undefined: clearBashTasks` -- so every test in it, including ones that
+// are platform-neutral, could not run there.
+
 package tools
 
 import (
 	"context"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -17,52 +24,6 @@ import (
 // slept in the foreground anyway. The tests below pin BOTH directions: the
 // blocking shapes are refused (and not executed), and every ambiguous shape
 // still runs, because a false positive here has no workaround.
-
-// recordingOps is a BashOperations stub that records every invocation. It is
-// how the "blocked" tests prove no process was spawned — asserting only on the
-// message would pass against a gate that logs a refusal and executes anyway.
-type recordingOps struct {
-	mu       sync.Mutex
-	calls    []ExecOptions
-	commands []string
-	result   *ExecResult
-	err      error
-}
-
-func (r *recordingOps) Exec(_ context.Context, command, _ string, opts ExecOptions) (*ExecResult, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.calls = append(r.calls, opts)
-	r.commands = append(r.commands, command)
-	if r.result != nil || r.err != nil {
-		return r.result, r.err
-	}
-	return &ExecResult{Stdout: "stub-ran"}, nil
-}
-
-func (r *recordingOps) callCount() int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return len(r.calls)
-}
-
-func (r *recordingOps) lastOptions(t *testing.T) ExecOptions {
-	t.Helper()
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if len(r.calls) == 0 {
-		t.Fatal("backend was never invoked")
-	}
-	return r.calls[len(r.calls)-1]
-}
-
-// installRecordingOps swaps in the stub backend for the duration of a test.
-func installRecordingOps(t *testing.T, ops *recordingOps) {
-	t.Helper()
-	prev := GetBashOperations()
-	SetBashOperations(ops)
-	t.Cleanup(func() { SetBashOperations(prev) })
-}
 
 func TestDetectBlockingSleep_BlockedShapes(t *testing.T) {
 	threshold := 2 * time.Second
