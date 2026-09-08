@@ -25,6 +25,8 @@ Enterprise config is designed for IT admins who need to enforce organizational p
 | Telemetry | Enforce telemetry collection and export destinations | [Telemetry](telemetry.md) |
 | New-conversation defaults | Mandate working directory and engine profile for new conversations; optionally lock to prevent user override | [New-conversation policy](new-conversation-policy.md) |
 
+A complete, working file to copy — with what each block enforces and which keys silently do nothing — is in [Reference config](reference-config.md).
+
 ## Enterprise config structure
 
 ```json

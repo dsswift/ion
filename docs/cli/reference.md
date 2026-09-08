@@ -16,7 +16,7 @@ If no command is specified, Ion defaults to `serve`.
 
 ### `ion serve`
 
-Start the engine daemon. Listens on a Unix domain socket (`~/.ion/engine.sock`) or TCP (`127.0.0.1:21017` on Windows).
+Start the engine daemon. Listens on a Unix domain socket (`~/.ion/engine.sock`) or, on Windows, TCP on `127.0.0.1` at a per-user port derived from the signed-in user's SID.
 
 ```bash
 ion serve
@@ -431,7 +431,7 @@ This makes `ion prompt` fully self-contained for one-shot use. For persistent se
 | Platform | Path |
 |----------|------|
 | macOS / Linux | `~/.ion/engine.sock` (Unix domain socket) |
-| Windows | `127.0.0.1:21017` (TCP) |
+| Windows | `127.0.0.1:<per-user port>` (TCP, derived from the user's SID; `51000-54999`) |
 
 ## Exit codes
 

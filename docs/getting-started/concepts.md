@@ -193,7 +193,7 @@ See the [configuration reference](../configuration/) for the full schema.
 
 ## Protocol
 
-All communication between clients and the engine uses NDJSON (newline-delimited JSON) over a Unix domain socket (`~/.ion/engine.sock`) or TCP (`127.0.0.1:21017` on Windows).
+All communication between clients and the engine uses NDJSON (newline-delimited JSON) over a Unix domain socket (`~/.ion/engine.sock`) or, on Windows, TCP on `127.0.0.1` at a per-user port derived from the signed-in user's SID.
 
 **Client to engine**: a set of command types (e.g., `start_session`, `send_prompt`, `stop_session`, `shutdown`).
 

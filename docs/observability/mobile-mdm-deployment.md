@@ -123,6 +123,39 @@ Intune custom attribute substitution variables for macOS profiles vary by MDM ve
 
 ---
 
+## Windows — Registry policy
+
+On Windows the same two keys are registry values under the engine's policy key,
+`HKLM\SOFTWARE\Policies\IonEngine`:
+
+| Value name | Type | Data |
+|------------|------|------|
+| `MDMDeviceID` | `REG_SZ` | Your MDM's device identifier |
+| `MDMSerialNumber` | `REG_SZ` | Hardware serial number as the MDM console knows it |
+
+Deliver them the same way you deliver any other Ion policy: through the
+`IonEngine.admx` template's key, an Intune platform script, or Group Policy
+preferences. Intune's Win32 and script surfaces do not expand `{{deviceid}}`
+substitutions the way managed app config does, so write the values from a
+script that reads them from the device, or push them per device group.
+
+```powershell
+New-Item -Path "HKLM:\SOFTWARE\Policies\IonEngine" -Force | Out-Null
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\IonEngine" -Name "MDMDeviceID" -Value "<device id>"
+Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\IonEngine" -Name "MDMSerialNumber" -Value "<serial>"
+```
+
+The desktop reads both at startup (`machine-identity.ts`) alongside
+`MachineGuid` from `HKLM\SOFTWARE\Microsoft\Cryptography`, which supplies
+`machine_id` on this platform. Both names are reserved in the engine's
+enterprise reader: it skips them rather than reporting them as unknown policy
+values.
+
+Neither value is required. A device that is not enrolled simply reports empty
+`mdm_device_id` and `mdm_serial`, logged at DEBUG rather than WARN.
+
+---
+
 ## What appears in Grafana after enrollment
 
 Once enrolled devices are sending logs through Ion's egress pipeline:

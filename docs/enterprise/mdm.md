@@ -10,10 +10,17 @@ Enterprise configuration can be deployed through platform-native device manageme
 
 ## Source resolution order
 
-The engine checks for enterprise config in this order and uses the first source it finds:
+The engine checks `ION_ENTERPRISE_CONFIG` first on every platform. When that variable names a readable JSON file, that file is the whole enterprise config and no platform source is consulted.
 
-1. `ION_ENTERPRISE_CONFIG` environment variable (all platforms, checked first)
-2. Platform-native source (see below)
+Otherwise the engine reads its platform-native source:
+
+| Platform | Source |
+|----------|--------|
+| macOS | `/Library/Managed Preferences/com.ion.engine.plist` |
+| Windows | `%ProgramData%\Ion\enterprise-config.json` + `enterprise-config.d\*.json`, then `HKLM\SOFTWARE\Policies\IonEngine` overlaid on top |
+| Linux | `/etc/ion/config.json` + `/etc/ion/config.d/*.json` |
+
+Within a platform the listed sources are merged, not raced: a later source overlays the earlier ones field by field.
 
 ## macOS: Managed Preferences
 
@@ -103,47 +110,91 @@ After the profile is installed, verify the engine reads it:
 defaults read com.ion.engine
 ```
 
-## Windows: Group Policy (Registry)
+## Windows: registry policy and ProgramData
 
-The engine reads from the Windows Registry under the policies key.
+The engine reads two Windows sources and merges them, in this order:
 
-### Registry path
+1. `%ProgramData%\Ion\enterprise-config.json` -- main file
+2. `%ProgramData%\Ion\enterprise-config.d\*.json` -- drop-in overrides, merged alphabetically
+3. `HKEY_LOCAL_MACHINE\SOFTWARE\Policies\IonEngine` -- registry policy, overlaid on top
 
-```
-HKLM\SOFTWARE\Policies\IonEngine
-```
+Registry policy wins over the ProgramData files. The machine hive is the only hive read: the engine never reads `HKEY_CURRENT_USER`, so a user cannot author their own policy.
 
-### Registry structure
+### Value names are field names
 
-Enterprise config maps to registry values under the `IonEngine` key. Complex structures (objects, arrays) are stored as JSON string values.
+The reader addresses registry values by reflecting over the engine's `EnterpriseConfig` struct. Any field's JSON name is a valid value name, matched case-insensitively -- there is no hand-maintained list to fall behind the schema.
 
-| Value name | Type | Example |
-|------------|------|---------|
-| `AllowedModels` | `REG_SZ` (JSON array) | `["claude-sonnet-4-6"]` |
-| `BlockedModels` | `REG_SZ` (JSON array) | `[]` |
-| `AllowedProviders` | `REG_SZ` (JSON array) | `["anthropic"]` |
-| `Auth` | `REG_SZ` (JSON object) | `{"identityProvider":"corp","requireOperatorIdentity":true,"oauth":{"corp":{"issuerUrl":"...","clientId":"..."}}}` |
+| Value name | Registry type | Example data |
+|------------|---------------|--------------|
+| `AllowedModels` | `REG_MULTI_SZ` | `claude-sonnet-4-6` / `claude-haiku-4-5-20251001` (one per line) |
+| `BlockedModels` | `REG_MULTI_SZ` | one model ID per line |
+| `AllowedProviders` | `REG_MULTI_SZ` | `anthropic` |
+| `McpAllowlist` | `REG_MULTI_SZ` | `filesystem` / `github` |
+| `McpDenylist` | `REG_MULTI_SZ` | one server name per line |
+| `Auth` | `REG_SZ` (JSON object) | `{"identityProvider":"corp","requireOperatorIdentity":true}` |
 | `Permissions` | `REG_SZ` (JSON object) | `{"mode":"ask"}` |
 | `Telemetry` | `REG_SZ` (JSON object) | `{"enabled":true}` |
-| `Network` | `REG_SZ` (JSON object) | `{"proxy":{"httpProxy":"..."}}` |
-| `ConfigJson` | `REG_SZ` (JSON object) | `{"limits":{"planModeAllowedBashCommands":["git log"]}}` |
+| `Network` | `REG_SZ` (JSON object) | `{"proxy":{"httpProxy":"http://proxy.corp.example.com:8080"}}` |
+| `Limits` | `REG_SZ` (JSON object) | `{"planModeAllowedBashCommands":["git log","git diff"]}` |
+| `ConfigJson` | `REG_MULTI_SZ` or `REG_SZ` (JSON object) | the whole enterprise config as one object |
 
-`ConfigJson` is the general-purpose escape hatch: its keys are merged into the enterprise config root, so it is how you set nested blocks that have no dedicated registry value of their own. The plan-mode Bash ceiling is one of these — set it via `ConfigJson` rather than expecting a `Limits` value name.
+### Value typing rules
 
-### Group Policy template
+The reader accepts more than one registry type per field and converts:
 
-Deploy via a custom ADMX template or a configuration management tool (Intune, SCCM) that writes registry values.
+| Registry type | List field | Object field | Text field | Boolean field |
+|---------------|------------|--------------|------------|---------------|
+| `REG_SZ` / `REG_EXPAND_SZ` | JSON array text | JSON object text | verbatim | JSON `true` / `false` |
+| `REG_MULTI_SZ` | one entry per line | lines joined with newlines, then parsed as JSON | lines joined with newlines | lines joined, then parsed |
+| `REG_DWORD` / `REG_QWORD` | rejected | rejected | decimal text | non-zero is true |
+
+An unrecognized value name is logged at `WARN` (`unknown enterprise policy value name`) and ignored. A recognized value that fails to decode is logged at `WARN` (`enterprise policy value skipped`) and skipped -- every other value still applies. `MDMDeviceID` and `MDMSerialNumber` are reserved: the desktop reads them for machine identity, and the engine skips them rather than reporting them as unknown.
+
+### `ConfigJson` is the escape hatch
+
+`ConfigJson` (alias: `Config`) holds a whole enterprise config object whose keys are merged at the root. Every other value overlays it, so a dedicated value name wins over the same key inside `ConfigJson`.
+
+Use it for nested fields that have no top-level value name of their own:
+
+| Setting | `ConfigJson` shape |
+|---------|--------------------|
+| Require operator sign-in | `{"auth":{"requireOperatorIdentity":true}}` |
+| Disable the desktop auto-updater | `{"customFields":{"ion-desktop":{"disableAutoUpdate":true}}}` |
+| Pin the desktop presentation | `{"customFields":{"ion-desktop":{"activeUiPolicy":"studio"}}}` |
+
+### Setting policy with PowerShell
 
 ```powershell
-# Example: set via PowerShell
-New-Item -Path "HKLM:\SOFTWARE\Policies\IonEngine" -Force
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\IonEngine" `
-  -Name "AllowedModels" `
-  -Value '["claude-sonnet-4-6","claude-haiku-4-5-20251001"]'
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\IonEngine" `
-  -Name "Permissions" `
-  -Value '{"mode":"ask"}'
+New-Item -Path "HKLM:\SOFTWARE\Policies\IonEngine" -Force | Out-Null
+New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\IonEngine" `
+  -Name "AllowedModels" -PropertyType MultiString `
+  -Value @("claude-sonnet-4-6", "claude-haiku-4-5-20251001") -Force | Out-Null
+New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\IonEngine" `
+  -Name "Permissions" -PropertyType String `
+  -Value '{"mode":"ask"}' -Force | Out-Null
+New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\IonEngine" `
+  -Name "ConfigJson" -PropertyType MultiString `
+  -Value @('{"customFields":{"ion-desktop":{"disableAutoUpdate":true}}}') -Force | Out-Null
 ```
+
+`packaging/windows/intune/Set-IonPolicy.ps1` is a ready-to-assign version of this for tenants that deliver policy as an Intune platform script rather than through ADMX.
+
+### Group Policy / Intune template
+
+`packaging/windows/policy/IonEngine.admx` and `policy/en-US/IonEngine.adml` ship with every desktop release as `Ion-PolicyTemplates-<version>.zip`. They give administrators a real settings UI for the values above.
+
+- **Domain Central Store:** copy `IonEngine.admx` to `\\<domain>\SYSVOL\<domain>\Policies\PolicyDefinitions\` and `en-US\IonEngine.adml` to the `en-US` subfolder. The settings appear under Computer Configuration > Administrative Templates > Ion Engine.
+- **Intune ADMX ingestion:** Devices > Configuration > Import ADMX, upload the `.admx` and its `.adml`, then create a Settings Catalog profile from the imported template.
+
+The template is Machine class only, matching the hive the engine reads.
+
+### Verification
+
+```powershell
+reg query HKLM\SOFTWARE\Policies\IonEngine
+```
+
+The engine logs `loaded enterprise config from windows registry` and a `windows registry policy read` summary line to `%USERPROFILE%\.ion\engine.jsonl` on startup. Restart the Ion Engine scheduled task for a policy change to take effect.
 
 ## Linux: System config files
 
@@ -245,7 +296,7 @@ sudo chown root:root /etc/ion/config.json
 
 On macOS, Managed Preferences are protected by the system and do not need manual permission changes.
 
-## Desktop app distribution (signed .pkg)
+## Desktop app distribution, macOS (signed .pkg)
 
 The sections above deliver engine *configuration*. This section covers pushing the Ion **desktop application** binary itself to managed Macs. Self-service users install the signed, notarized package and update through the app's built-in auto-updater; managed fleets pin the version and push the same installer package.
 
@@ -292,3 +343,145 @@ The release pipeline signs and notarizes the package when these repository secre
 | `APPLE_API_KEY` / `APPLE_API_KEY_ID` / `APPLE_API_ISSUER` | App Store Connect API key (base64-encoded `.p8`) — notarization for both the app and the pkg |
 
 All signing and notarization secrets are required for a desktop release. CI stops before upload if the Installer certificate is absent, if notarization fails, or if Gatekeeper rejects the package.
+
+## Desktop app distribution, Windows (.intunewin)
+
+The Windows equivalent of the `.pkg` section above. Each desktop release
+publishes `Ion-Setup-<version>-x64.intunewin` -- the NSIS installer already
+wrapped by the Microsoft Win32 Content Prep Tool -- plus the version-stamped
+`Detect-Ion.ps1` it pairs with and `Ion-PolicyTemplates-<version>.zip`.
+
+x64 is the supported target. An `arm64` installer is published as a
+best-effort cross-build; it is neither verified nor supported.
+
+### Win32 app settings
+
+| Setting | Value |
+|---------|-------|
+| Install command | `Ion-Setup-<version>-x64.exe /S /allusers` |
+| Uninstall command | `"%ProgramFiles%\Ion\Uninstall Ion.exe" /allusers /S` |
+| Install behavior | System |
+| Detection rule | Custom detection script -- upload the stamped `Detect-Ion.ps1`. Run as 32-bit: No. |
+| Return codes | `0` = Success |
+
+`/allusers` is what forces the per-machine install into `%ProgramFiles%\Ion`.
+Without it the assisted installer installs per-user, which under a
+System-context Intune deployment means into the SYSTEM profile.
+
+### Per-machine app, per-user engine
+
+The Win32 app lands the binaries for the whole device. It does not start
+anything. The engine supervisor is a **per-user** Scheduled Task named
+`Ion Engine (<SID>)`, registered on that user's first launch of Ion. The name
+carries the account's SID because a task name is machine-global: a single
+shared `Ion Engine` would be one registration for every account on a
+multi-session host. Releases that predate this registered that shared name,
+and the first launch after an upgrade retires it for the current user.
+
+So each signed-in user gets their own engine, their own `%USERPROFILE%\.ion`
+data directory, and their own loopback port derived from their own SID (in
+`51000-54999`). That split is deliberate: conversations, credentials, and logs
+are per-user data, and a machine-wide engine would share them across everyone
+on the device.
+
+There is **no shared fallback address at any layer**. A fixed port would let a
+second user's desktop attach to the first user's engine -- their
+conversations, their credentials, their file access -- with nothing on screen
+to say so. When the SID cannot be read, the engine refuses to start and the
+desktop reports that it has no address, rather than either picking one.
+
+The per-user port is an addressing decision, not an authorization one: it
+stops two engines colliding, and it does not stop another signed-in user
+scanning the range. Authorization is the engine's, which checks each loopback
+peer's process token against its own user and refuses a connection from a
+different account.
+
+To check a device, name the exact task or enumerate -- `schtasks /TN` takes an
+exact name and has no wildcard syntax:
+
+```powershell
+$sid = ([Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
+schtasks /Query /TN "Ion Engine ($sid)" /V /FO LIST
+Get-ScheduledTask | Where-Object TaskName -like 'Ion Engine*' | Format-List TaskName, State
+```
+
+### Uninstall
+
+The uninstaller removes every Ion Engine scheduled task on the machine, not
+just the one belonging to whoever ran it -- tasks live in
+`C:\Windows\System32\Tasks` rather than in a profile, so an elevated
+uninstall reaches accounts that are signed out and accounts whose profile
+container is not mounted. A task is removed only when its name is one Ion
+registers **and** its registered action proves it launches Ion from an
+installed Ion directory; anything else is skipped and logged.
+
+Nothing in a user profile is touched. `%USERPROFILE%\.ion` holds
+conversations, credentials and settings and survives uninstall.
+`%ProgramData%\Ion` holds administrator-authored policy and survives too.
+
+If an uninstall ran without sufficient rights, the same code is left on the
+device at `%ProgramData%\Ion\Remove-IonEngineTasks.ps1` and an administrator
+runs it directly to finish the job. `-Detect` reports what remains without
+removing anything, which makes it usable as an Intune remediation-detection
+script.
+
+### Pin the version, disable the updater
+
+Same reasoning as the macOS section: a managed fleet owns the version
+lifecycle, so the desktop must not self-update. On Windows the kill switch
+arrives as registry policy rather than a plist -- through the ADMX
+`ConfigJson` setting, or `Set-IonPolicy.ps1`:
+
+```json
+{"customFields":{"ion-desktop":{"disableAutoUpdate":true}}}
+```
+
+With that set the desktop skips its update check and its install path
+entirely, and new versions arrive only when you assign them.
+
+### Deliver policy as its own app
+
+Policy changes more often than the application does, so it ships as a second
+Win32 app -- the Ion Enterprise Policy package -- declared as a **dependency**
+of Ion Studio with "Automatically install" set to Yes. Intune applies a
+dependency before the app that declares it, which is what makes the engine
+find its configuration on first launch rather than starting unmanaged. It also
+means a scope list changes without redeploying the application, and a policy
+change rolls back on its own.
+
+The package writes only the values it declares, records what it owns outside
+the policy key, verifies every value by reading it back, and on uninstall
+removes only what it placed. It also carries the theme pack the policy's
+`themePolicy` locks, installed under `%ProgramData%\Ion\themes\<id>`: a
+device that applied a locked theme policy without the pack would fall back to
+a built-in theme and still report itself compliant.
+
+Build it with `packaging/windows/intune/policy/New-IonPolicyIntuneWin.ps1`,
+which produces the `.intunewin`, the stamped detector and a provenance
+manifest in one step. The tool refuses any config carrying a credential
+(machine policy under HKLM is readable by every account on the device), an
+unfilled placeholder, a missing production field, or a theme pack that is not
+the one the policy locks.
+
+### Signature and provenance
+
+Signing is decided before the build, and there is no path that publishes an
+unsigned installer while claiming otherwise:
+
+| Configuration | Outcome |
+|---|---|
+| A code-signing certificate is configured | The installer is signed; a signing failure fails the release. |
+| Signing is required and no certificate is configured | The release stops before building. |
+| Neither | The build proceeds and every artifact is labelled unsigned in its provenance manifest. |
+
+Every release publishes `Ion-Artifacts-<version>-x64.json` and a matching
+`.sha256`. Each artifact's SHA-256 and Authenticode status are read off the
+file rather than taken from the build's intent, and a build from a dirty tree
+is labelled `test-build` and `reproducible: false`. Verify the hash of what
+you received against the manifest before assigning it.
+
+An unsigned installer run by hand still hits SmartScreen. An Intune
+System-context install does not prompt either way.
+
+Full step-by-step, including the manual repackaging command and the policy
+app's settings: `packaging/windows/intune/README.md`.

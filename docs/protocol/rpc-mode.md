@@ -106,4 +106,4 @@ For a persistent connection that sends multiple commands over time, keep the `io
 - The engine must be running before `ion rpc` connects. If the socket does not exist, `ion rpc` exits with an error.
 - All output on stdout is valid NDJSON. Diagnostic messages go to stderr.
 - The RPC process exits when the engine disconnects or when stdin is closed.
-- On Windows, `ion rpc` connects via TCP to `127.0.0.1:21017` instead of a Unix socket.
+- On Windows, `ion rpc` connects via TCP to `127.0.0.1` on a per-user port instead of a Unix socket. The port is derived from the signed-in user's SID and lands in `51000-54999`; there is no fixed port and no shared fallback. `ION_SOCKET_PATH` overrides it.
