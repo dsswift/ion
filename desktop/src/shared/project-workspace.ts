@@ -16,6 +16,7 @@
  * test — see repo-containment.ts for the sibling-prefix bug that rule exists
  * to kill.
  */
+import { isAbsolutePath } from './paths'
 import { isWithinRepo } from './repo-containment'
 import { normalizeWorkspacePath } from './workspace-roots'
 
@@ -65,7 +66,11 @@ export function resolveProjectDir(
   if (worktree?.repoPath) return normalizeWorkspacePath(worktree.repoPath)
   if (!directory) return null
   const dir = normalizeWorkspacePath(directory)
-  if (!dir.startsWith('/')) return dir
+  // A relative or placeholder value ('~') cannot be matched against a repo
+  // root, so it is returned as-is. Absolute must include the Windows forms, or
+  // every Windows conversation returned here and skipped worktree and bench
+  // resolution entirely.
+  if (!isAbsolutePath(dir)) return dir
 
   for (const wt of sources.worktrees) {
     if (wt.repoPath && isWithinRepo(dir, normalizeWorkspacePath(wt.worktreePath))) {

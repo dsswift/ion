@@ -31,6 +31,7 @@ import { useWorkspaceRepos } from '../hooks/useWorkspaceRepos'
 import { surfaceRouter } from '../lib/file-open-router'
 import { Sash } from './git/Sash'
 import { rDebug, rTrace } from '../rendererLogger'
+import { pathSegments } from '../../shared/paths'
 
 /** Panel-header icon button (close, refresh, tree/list toggle). */
 function PanelIconButton({
@@ -324,7 +325,7 @@ export function GitPanel({
           <span className="text-[10px] font-medium" style={{ color: colors.textTertiary }}>
             Git
             <span style={{ color: colors.textMuted, marginLeft: 4 }}>
-              {directory.split('/').filter(Boolean).pop() || '~'}
+              {pathSegments(directory).pop() || '~'}
             </span>
           </span>
         </div>

@@ -26,24 +26,44 @@ function runExecFile(bin: string, args: string[], timeout: number): Promise<stri
   })
 }
 
+/**
+ * Locate a whisper binary.
+ *
+ * Every well-known location here is Homebrew's, and the PATH probe ran
+ * `/bin/zsh -lc`. On Windows none of those paths exist and zsh is absent, so
+ * the probe threw for each candidate and the operator got a "Whisper not
+ * found. Install with: brew install ..." message naming a package manager
+ * that does not exist on their machine.
+ *
+ * The well-known list and the PATH probe are now per-platform. A Windows
+ * install is still expected to be on PATH -- there is no canonical install
+ * location to guess at -- so the probe is what finds it.
+ */
 async function findWhisperBin(): Promise<string> {
-  const candidates = [
-    '/opt/homebrew/bin/whisperkit-cli',
-    '/usr/local/bin/whisperkit-cli',
-    '/opt/homebrew/bin/whisper-cli',
-    '/usr/local/bin/whisper-cli',
-    '/opt/homebrew/bin/whisper',
-    '/usr/local/bin/whisper',
-    join(homedir(), '.local/bin/whisper'),
-  ]
+  const names = ['whisperkit-cli', 'whisper-cli', 'whisper']
 
-  for (const c of candidates) {
-    if (existsSync(c)) return c
+  if (process.platform !== 'win32') {
+    const candidates = [
+      '/opt/homebrew/bin/whisperkit-cli',
+      '/usr/local/bin/whisperkit-cli',
+      '/opt/homebrew/bin/whisper-cli',
+      '/usr/local/bin/whisper-cli',
+      '/opt/homebrew/bin/whisper',
+      '/usr/local/bin/whisper',
+      join(homedir(), '.local/bin/whisper'),
+    ]
+    for (const c of candidates) {
+      if (existsSync(c)) return c
+    }
   }
 
-  for (const name of ['whisperkit-cli', 'whisper-cli', 'whisper']) {
+  for (const name of names) {
     try {
-      const found = await runExecFile('/bin/zsh', ['-lc', `whence -p ${name}`], 5000).then((s) => s.trim())
+      // `whence -p` is a zsh builtin; `where.exe` is the Windows equivalent
+      // and returns one path per line, so only the first is taken.
+      const found = process.platform === 'win32'
+        ? await runExecFile('where.exe', [name], 5000).then((s) => s.split(/\r?\n/)[0]?.trim() ?? '')
+        : await runExecFile('/bin/zsh', ['-lc', `whence -p ${name}`], 5000).then((s) => s.trim())
       if (found) return found
     } catch { /* silent-ok: probe next whisper candidate when this lookup fails */ }
   }
@@ -62,9 +82,10 @@ export function registerTranscribeIpc(): void {
       const whisperBin = await findWhisperBin()
 
       if (!whisperBin) {
-        const hint = process.arch === 'arm64'
-          ? 'brew install whisperkit-cli   (or: brew install whisper-cpp)'
-          : 'brew install whisper-cpp'
+        // The instruction has to name a package manager the operator actually
+        // has. Telling a Windows user to run `brew install` is a dead end
+        // dressed as guidance.
+        const hint = whisperInstallHint()
         return {
           error: `Whisper not found. Install with:\n  ${hint}`,
           transcript: null,
@@ -151,4 +172,17 @@ export function registerTranscribeIpc(): void {
       cleanupDir(opDir)
     }
   })
+}
+
+/** Install guidance for the current platform. */
+function whisperInstallHint(): string {
+  if (process.platform === 'win32') {
+    return 'winget install whisper-cpp   (or put whisper-cli on your PATH)'
+  }
+  if (process.platform === 'linux') {
+    return 'your package manager\'s whisper-cpp   (or put whisper-cli on your PATH)'
+  }
+  return process.arch === 'arm64'
+    ? 'brew install whisperkit-cli   (or: brew install whisper-cpp)'
+    : 'brew install whisper-cpp'
 }

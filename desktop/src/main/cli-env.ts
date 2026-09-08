@@ -1,5 +1,6 @@
 import { execFileSync } from 'child_process'
 import { accessSync, constants, statSync } from 'fs'
+import { delimiter, join } from 'path'
 import { log as _log, warn as _warn } from './logger'
 import { stripPrivilegeEscalation, PRIVILEGE_ESCALATION_VAR } from './launch-env'
 
@@ -14,7 +15,7 @@ let cachedPath: string | null = null
 
 function appendPathEntries(target: string[], seen: Set<string>, rawPath: string | undefined): void {
   if (!rawPath) return
-  for (const entry of rawPath.split(':')) {
+  for (const entry of rawPath.split(delimiter)) {
     const p = entry.trim()
     if (!p || seen.has(p)) continue
     seen.add(p)
@@ -43,8 +44,15 @@ interface PathProbe {
  *
  * `args` stays an argv array. `execFileSync` invokes the target shell directly,
  * leaving `$PATH` unexpanded until that shell evaluates `echo $PATH`.
+ *
+ * Windows has no login-shell concept to probe (there is no `.zshrc`/`.bashrc`
+ * equivalent a background process can source), so this returns no probes
+ * there — the fallback entries below carry the Windows tool directories
+ * instead.
  */
-function pathProbes(shell = process.env.SHELL): PathProbe[] {
+function pathProbes(shell = process.env.SHELL, platform: NodeJS.Platform = process.platform): PathProbe[] {
+  if (platform === 'win32') return []
+
   const shells = [shell, '/bin/zsh', '/bin/bash'].filter(
     (candidate): candidate is string => Boolean(candidate),
   )
@@ -67,7 +75,7 @@ function pathProbes(shell = process.env.SHELL): PathProbe[] {
 /** Split a PATH string into a set of its non-empty entries. */
 function pathEntrySet(raw: string): Set<string> {
   const set = new Set<string>()
-  for (const entry of raw.split(':')) {
+  for (const entry of raw.split(delimiter)) {
     const p = entry.trim()
     if (p) set.add(p)
   }
@@ -90,6 +98,23 @@ function discoveredNewEntries(current: string, discovered: string): boolean {
   return false
 }
 
+/**
+ * The fallback PATH entries to append after the inherited process PATH,
+ * before any probe runs — common tool install locations this platform's
+ * default environment routinely omits.
+ */
+function fallbackEntries(platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): string {
+  if (platform === 'win32') {
+    return [
+      env.APPDATA ? join(env.APPDATA, 'npm') : '',
+      env.USERPROFILE ? join(env.USERPROFILE, '.local', 'bin') : '',
+      join(env.ProgramFiles ?? 'C:\\Program Files', 'nodejs'),
+      join(env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'cmd'),
+    ].filter((p) => p.length > 0).join(delimiter)
+  }
+  return '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'
+}
+
 export function getCliPath(): string {
   if (cachedPath) return cachedPath
 
@@ -99,12 +124,18 @@ export function getCliPath(): string {
   // Start from current process PATH.
   appendPathEntries(ordered, seen, process.env.PATH)
 
-  // Add common binary locations used on macOS (Homebrew + system).
-  appendPathEntries(ordered, seen, '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin')
+  // Add common binary locations this platform's default environment omits.
+  appendPathEntries(ordered, seen, fallbackEntries())
+  log('PATH fallback set', { platform: process.platform, entries: pathEntrySet(fallbackEntries()).size })
 
-  const baseline = ordered.join(':')
+  const baseline = ordered.join(delimiter)
 
   const probes = pathProbes()
+  if (probes.length === 0) {
+    log('PATH probing skipped', { platform: process.platform })
+    cachedPath = baseline
+    return cachedPath
+  }
 
   for (const probe of probes) {
     let discovered: string
@@ -131,12 +162,12 @@ export function getCliPath(): string {
       continue
     }
 
-    const existing = ordered.join(':')
+    const existing = ordered.join(delimiter)
     ordered.length = 0
     seen.clear()
     appendPathEntries(ordered, seen, discovered)
     appendPathEntries(ordered, seen, existing)
-    cachedPath = ordered.join(':')
+    cachedPath = ordered.join(delimiter)
     log('PATH discovered', {
       probe: probe.label,
       entries_added: ordered.length - pathEntrySet(existing).size,
@@ -145,11 +176,11 @@ export function getCliPath(): string {
     return cachedPath
   }
 
-  // Every probe failed or added nothing. The process PATH plus the macOS
+  // Every probe failed or added nothing. The process PATH plus the platform
   // defaults above is still a usable PATH, so fall back to it rather than
   // failing — but say so, because this is the state in which "command not
   // found" reports become likely.
-  cachedPath = ordered.join(':')
+  cachedPath = ordered.join(delimiter)
   warn('every PATH probe failed or discovered nothing; using process PATH', {
     probes: probes.length,
     entries_total: ordered.length,

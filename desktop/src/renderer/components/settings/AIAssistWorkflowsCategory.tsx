@@ -10,6 +10,7 @@ import { rInfo, rWarn } from '../../rendererLogger'
 import { useColors } from '../../theme'
 import { SettingHeading } from './SettingHeading'
 import { SettingSection } from './SettingSection'
+import { DEFAULT_MONO_FONT } from '../../typography'
 
 export function AIAssistWorkflowsCategory() {
   return (
@@ -67,7 +68,7 @@ function WorkflowEditor({ workflowId }: { workflowId: AiAssistWorkflowId }) {
           width: '100%', minHeight: 170, resize: 'vertical', boxSizing: 'border-box',
           padding: 10, borderRadius: 8, border: `1px solid ${validationError ? colors.statusError : colors.containerBorder}`,
           background: colors.surfacePrimary, color: colors.textPrimary, fontSize: 12,
-          fontFamily: 'Menlo, Monaco, monospace', lineHeight: 1.45, outline: 'none',
+          fontFamily: DEFAULT_MONO_FONT, lineHeight: 1.45, outline: 'none',
         }}
       />
       <div style={{ marginTop: 6, color: validationError ? colors.statusError : colors.textTertiary, fontSize: 11 }}>

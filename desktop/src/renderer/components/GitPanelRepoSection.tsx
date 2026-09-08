@@ -24,6 +24,7 @@ import { GitChangesSection } from './GitChangesSection'
 import { CommitForm } from './git/CommitForm'
 import { SECTION_HEADER } from './git/paneLayout'
 import { rDebug, rError } from '../rendererLogger'
+import { pathSegments } from '../../shared/paths'
 
 function HeaderIconButton({
   title,
@@ -108,7 +109,7 @@ export function GitPanelRepoSection(props: GitPanelRepoSectionProps): React.JSX.
     }
   }, [commitCommand, directory, activeTabId])
 
-  const baseName = directory.split('/').filter(Boolean).pop() || directory
+  const baseName = pathSegments(directory).pop() || directory
   const { hover, pressed, handlers } = useInteractiveState()
 
   return (

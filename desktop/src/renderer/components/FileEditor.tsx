@@ -17,6 +17,7 @@ import { FileEditorPreview } from './FileEditorPreview'
 import { FileEditorCodeMirror, CursorPosition } from './FileEditorCodeMirror'
 import { FileEditorStatusBar } from './FileEditorStatusBar'
 import { rTrace, rError } from '../rendererLogger'
+import { pathSegments } from '../../shared/paths'
 
 interface FileEditorProps {
   dir: string
@@ -75,7 +76,7 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
 
   if (typeof document === 'undefined') return null
 
-  const baseDirName = dir.split('/').pop() || dir
+  const baseDirName = pathSegments(dir).pop() || dir
   const headerTitle = [
     baseDirName,
     tabTitle,

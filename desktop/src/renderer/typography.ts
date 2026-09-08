@@ -3,7 +3,7 @@ export const FONT_SIZE_MAX = 24
 export const UI_ZOOM_MIN = 0.5
 export const UI_ZOOM_MAX = 2
 export const UI_ZOOM_STEP = 0.1
-export const DEFAULT_MONO_FONT = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace'
+export const DEFAULT_MONO_FONT = 'ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Code", Consolas, monospace'
 
 function finite(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback

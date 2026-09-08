@@ -2,6 +2,7 @@ import React, { useRef, useCallback } from 'react'
 import { Reorder, useDragControls } from 'framer-motion'
 import { X, PencilSimple, PushPin } from '@phosphor-icons/react'
 import { useColors } from '../theme'
+import { pathSegments } from '../../shared/paths'
 import { usePreferencesStore } from '../preferences'
 import type { TabState } from '../../shared/types'
 import { PILL_ICON_MAP, getTabStatusColor, getWaitingState, abbreviateProfileName } from './TabStripShared'
@@ -78,7 +79,7 @@ export function DropdownTabRow({
   const isRunning = tab.status === 'running' || tab.status === 'connecting'
   const isEditing = editingTabId === tab.id
   const displayTitle = tab.customTitle || tab.title
-  const dirName = tab.workingDirectory?.split('/').pop() || ''
+  const dirName = tab.workingDirectory ? pathSegments(tab.workingDirectory).pop() ?? '' : ''
 
   // Harness badge label — mirrors the pill's subscription. Subscribe narrowly
   // so the row only re-renders when engine profiles change, not on every

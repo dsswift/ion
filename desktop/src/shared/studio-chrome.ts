@@ -4,6 +4,12 @@
  * Main positions macOS traffic lights with these coordinates. Renderer reserves
  * matching space before interactive controls. Keeping both values here prevents
  * a native control from overlapping renderer chrome after a future adjustment.
+ *
+ * On Windows the 140px right inset (WINDOW_CONTROL_OVERLAY_INSET) reserves
+ * the Window Controls Overlay (minimize, maximize, close) drawn by
+ * `titleBarOverlay`. It is a fixed estimate; measuring
+ * `windowControlsOverlay.getTitlebarAreaRect()` at runtime is the future
+ * replacement once a Studio-Windows visual pass revisits this geometry.
  */
 export const STUDIO_TITLE_BAR_HEIGHT = 38;
 

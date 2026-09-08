@@ -27,7 +27,9 @@
  * sibling whose name merely begins with the root matches. Both arguments must
  * be absolute paths in the same normalised form — this compares strings and
  * resolves nothing, because every caller already holds resolved paths from git
- * or from the worktree registry.
+ * or from the worktree registry. Either separator counts as a boundary, since
+ * a Windows path reaches this from both git (forward slashes) and Node
+ * (backslashes) within one session.
  *
  * Empty inputs are false rather than universally true: "no directory" is not a
  * place, and a permissive answer here would attribute every alert to a repo
@@ -35,5 +37,10 @@
  */
 export function isWithinRepo(dir: string, root: string): boolean {
   if (!dir || !root) return false
-  return dir === root || dir.startsWith(root + '/')
+  // Both separators are accepted because a Windows path arrives as either:
+  // git reports forward slashes, the worktree registry and Node's join give
+  // backslashes, and the two are mixed within one session. Testing only '/'
+  // meant C:\repo\sub was never inside C:\repo, so worktree containment,
+  // project resolution and conflict attribution were all dead on Windows.
+  return dir === root || dir.startsWith(root + '/') || dir.startsWith(root + '\\')
 }

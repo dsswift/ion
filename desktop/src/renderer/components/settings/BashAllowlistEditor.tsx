@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react'
 import { Plus, Trash, ArrowUp, ArrowDown } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
+import { DEFAULT_MONO_FONT } from '../../typography'
 
 /**
  * Editor for a `string[]` preference rendered as an Apple-style flat
@@ -130,7 +131,7 @@ export function BashAllowlistEditor({
               flex: 1,
               padding: '4px 8px',
               fontSize: 13,
-              fontFamily: 'Menlo, Monaco, monospace',
+              fontFamily: DEFAULT_MONO_FONT,
               background: colors.surfacePrimary,
               color: colors.textPrimary,
               border: `1px solid ${colors.inputBorder}`,

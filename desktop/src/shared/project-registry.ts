@@ -6,6 +6,7 @@
  * machine-local and never leave the Desktop except in the paired-client
  * routing snapshot.
  */
+import { isAbsolutePath } from './paths'
 
 export type ProjectProfileOverride =
   | { kind: 'ask' }
@@ -68,13 +69,22 @@ function validOverride(value: unknown): ProjectProfileOverride | undefined {
   return undefined
 }
 
-/** Validate a raw disk value into a clean controlled registry. */
-export function sanitizeProjectRegistry(raw: unknown): ProjectRegistry {
+/**
+ * Validate a raw disk value into a clean controlled registry. onReject, when
+ * given, is called with each entry key this function drops for being
+ * non-absolute — `shared/` has no logger of its own, so a renderer or main
+ * caller wires this to its own log function rather than the guard silently
+ * discarding the entry.
+ */
+export function sanitizeProjectRegistry(raw: unknown, onReject?: (entry: string) => void): ProjectRegistry {
   if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return {}
   const out: ProjectRegistry = {}
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     const dir = normalizeProjectDir(key)
-    if (!dir.startsWith('/') || isManagedWorkspacePath(dir) || value == null || typeof value !== 'object' || Array.isArray(value)) continue
+    if (!isAbsolutePath(dir) || isManagedWorkspacePath(dir) || value == null || typeof value !== 'object' || Array.isArray(value)) {
+      if (!isAbsolutePath(dir)) onReject?.(key)
+      continue
+    }
     const entry = value as Record<string, unknown>
     const profileOverride = validOverride(entry.profileOverride)
     out[dir] = {
@@ -150,7 +160,7 @@ export function effectiveProjects(registry: ProjectRegistry, managed: readonly M
   }
   for (const policy of managedByDir.values()) {
     const dir = normalizeProjectDir(policy.directory)
-    if (!dir.startsWith('/') || isManagedWorkspacePath(dir)) continue
+    if (!isAbsolutePath(dir) || isManagedWorkspacePath(dir)) continue
     const existing = merged.get(dir)
     if (existing) {
       merged.set(dir, { ...existing, managed: true, displayName: policy.name?.trim() || existing.displayName, profileAction: policy.profileAction ?? existing.profileAction, ...(policy.profileId ? { profileId: policy.profileId } : {}), ...(policy.profileSource ? { profileSource: policy.profileSource } : {}) })
@@ -186,7 +196,7 @@ export function migrateProjectRegistry(rawProjects: unknown, legacyDefaultBaseDi
     return [dir, { ...rest, isDefault: false }]
   }))
   const legacy = typeof legacyDefaultBaseDirectory === 'string' ? normalizeProjectDir(legacyDefaultBaseDirectory) : ''
-  if (!legacy || !legacy.startsWith('/') || isManagedWorkspacePath(legacy)) return registry
+  if (!legacy || !isAbsolutePath(legacy) || isManagedWorkspacePath(legacy)) return registry
   const existing = registry[legacy]
   const next: ProjectRegistry = {
     ...registry,

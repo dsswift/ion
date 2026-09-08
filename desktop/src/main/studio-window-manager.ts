@@ -19,6 +19,7 @@
  */
 import { app, BrowserWindow } from "electron";
 import { join } from "path";
+import { existsSync } from "fs";
 import type { StudioUserMessageEcho, StudioHistoryReplace } from "../shared/types-studio";
 import { IPC } from "../shared/types";
 import {
@@ -51,8 +52,26 @@ import {
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log("studio", msg, fields);
 }
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug("studio", msg, fields);
+}
 
 setStudioBrowserWindowResolver(() => state.studioWindow);
+
+/**
+ * Resolves the Studio window's icon path for the current platform (.ico on
+ * win32, .icns elsewhere). Returns undefined (letting Electron fall back to
+ * its default icon) when the platform-appropriate file is missing from the
+ * packaged resources, logging why rather than silently shipping no icon.
+ */
+function resolveWindowIcon(): string | undefined {
+  const iconPath = join(__dirname, "../../resources", process.platform === "win32" ? "icon.ico" : "icon.icns");
+  if (!existsSync(iconPath)) {
+    _warn("studio", "window icon missing", { path: iconPath, platform: process.platform });
+    return undefined;
+  }
+  return iconPath;
+}
 
 const STUDIO_DEFAULT_WIDTH = 960;
 const STUDIO_DEFAULT_HEIGHT = 640;
@@ -180,7 +199,10 @@ function rearmOverlayClickThrough(reason: string): void {
  * Cmd-Tab entry). Closing the Studio window reverts to accessory. No-op off macOS.
  */
 export function applyStudioActivationPolicy(studioOpen: boolean): void {
-  if (process.platform !== "darwin") return;
+  if (process.platform !== "darwin") {
+    debug("studio_window: activation policy skipped", { platform: process.platform });
+    return;
+  }
   let allowed = true;
   try {
     allowed = readSettings().studioDockPresence !== false;
@@ -435,7 +457,7 @@ export function openStudioWindow(source = "unknown", reveal = true): void {
     title: "Ion",
     show: false,
     backgroundColor: "#14161c",
-    icon: join(__dirname, "../../resources/icon.icns"),
+    icon: resolveWindowIcon(),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       contextIsolation: true,

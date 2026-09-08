@@ -7,6 +7,7 @@ import { rInfo } from '../rendererLogger'
 import { useSessionStore } from '../stores/sessionStore'
 import { isMirrorWindow } from '../lib/window-role'
 import type { DeepLinkConfirmRequest } from '../../shared/types'
+import { DEFAULT_MONO_FONT } from '../typography'
 
 /**
  * Approval gate for an untrusted `ion://` deep link.
@@ -229,7 +230,7 @@ function Field({
         style={{
           fontSize: 12,
           color: colors.textPrimary,
-          fontFamily: mono ? 'Menlo, Monaco, monospace' : undefined,
+          fontFamily: mono ? DEFAULT_MONO_FONT : undefined,
           background: mono ? colors.surfaceSecondary : undefined,
           border: mono ? `1px solid ${colors.borderSubtle}` : undefined,
           borderRadius: mono ? 6 : undefined,

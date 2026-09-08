@@ -59,11 +59,13 @@ describe('file-open gesture consistency', () => {
     }
   })
 
-  it('keeps every file click gated on cmd', () => {
+  it('keeps every file click gated on the platform mod key', () => {
     // Without this an ordinary click in a transcript would start opening
-    // files; ⇧ and ⌥ only choose WHERE, never whether.
+    // files; ⇧ and ⌥ only choose WHERE, never whether. isModKey is Cmd on
+    // macOS, Ctrl elsewhere (mod-key.ts) — the gate itself must be
+    // platform-aware, not a bare metaKey check that never fires on Windows.
     const links = read('src/renderer/hooks/useNavigableLinks.tsx')
-    expect(links).toContain('if (!e.metaKey) return')
-    expect(read('src/renderer/components/TerminalInstance.tsx')).toContain('if (!event.metaKey) return')
+    expect(links).toContain('if (!isModKey(e)) return')
+    expect(read('src/renderer/components/TerminalInstance.tsx')).toContain('if (!isModKey(event)) return')
   })
 })
