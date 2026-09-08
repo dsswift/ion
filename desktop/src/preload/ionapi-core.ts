@@ -284,7 +284,7 @@ export interface IonCoreApi {
     cwdFellBack: boolean;
   }>;
   /** Active-UI picker: current resolution + enterprise lock state. */
-  getActiveUi(): Promise<{ activeUi: "overlay" | "studio"; locked: boolean }>;
+  getActiveUi(): Promise<{ activeUi: "overlay" | "studio"; locked: boolean; lockReason: "policy" | "platform" | null }>;
   /** Set the active conversation UI (live switch, no restart). False = rejected/locked. */
   setActiveUi(ui: "overlay" | "studio"): Promise<boolean>;
   terminalActiveTabs(): Promise<string[]>;

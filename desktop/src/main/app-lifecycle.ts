@@ -12,6 +12,7 @@ import { createWindow, installContentSecurityPolicy, snapshotWindowState, showWi
 import { focusStudioWindow, isStudioWindowOpen } from './studio-window-manager'
 import { focusWorktreeOverlapWindow } from './worktree-overlap-window'
 import { resolveSurfacePlan } from './surface-launch'
+import { handleWindowAllClosed } from './window-all-closed'
 import { restoreStudioTerminals } from './studio-terminal-persistence'
 import { requestPermissions } from './permissions-preflight'
 import { claimSingleInstance, setupDeepLinks, consumeLaunchUrl, bindDeepLinkRenderer } from './deeplink-setup'
@@ -32,6 +33,7 @@ import {
   readSettings,
 } from './settings-store'
 import { ensureEngineDaemon, restartEngineDaemon } from './engine-bootstrap'
+import { supervisorFor } from './engine-supervisor'
 import { pruneOperationDirs } from './utils/temp-dir'
 import { claimEngineEgressForDesktop } from './engine-egress-claim'
 import { getOperatorIdentityState, ensureEntraAuthConfig } from './oauth/entra-auth'
@@ -205,11 +207,17 @@ export function setupAppLifecycle(): void {
     const backendConfigChanged = ensureHybridBackendConfig()
 
     // Ensure the engine daemon is installed, current, and running before
-    // creating the window. The bootstrap is idempotent: writes/refreshes the
-    // LaunchAgent plist, copies the binary if version-mismatched, runs
-    // install-assets, and kickstarts the daemon. On non-macOS this is a no-op.
+    // creating the window. The bootstrap is idempotent: registers/refreshes
+    // the platform supervisor (a launchd LaunchAgent on darwin, a Scheduled
+    // Task on win32), copies the binary if content-mismatched, runs
+    // install-assets, and starts the daemon. Logs a WARN and returns on a
+    // platform with no supervisor mechanism.
     await ensureEngineDaemon()
-    reportStartup({ source: 'main', sequence: 2, status: 'Starting Ion engine…' })
+    reportStartup({
+      source: 'main',
+      sequence: 2,
+      status: supervisorFor() ? 'Starting Ion engine…' : 'Connecting to Ion engine…',
+    })
     if (backendConfigChanged) {
       await restartEngineDaemon()
     }
@@ -277,6 +285,9 @@ export function setupAppLifecycle(): void {
     // only its visibility is governed here.
     const surfacePlan = resolveSurfacePlan(readSettings(), enterprisePolicyCache.policy)
     log('surface plan resolved', { ...surfacePlan })
+    if (surfacePlan.lockedBy === 'platform') {
+      log('surface plan clamped to studio by platform', { platform: process.platform })
+    }
     startStartup(surfacePlan)
     reportStartup({ source: 'main', sequence: 3, status: 'Checking identity…' })
 
@@ -456,9 +467,5 @@ export function setupAppLifecycle(): void {
 
   installQuitHandlers(flushRendererTabs)
 
-  app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-      app.quit()
-    }
-  })
+  app.on('window-all-closed', handleWindowAllClosed)
 }

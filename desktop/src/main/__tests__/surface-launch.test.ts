@@ -88,4 +88,26 @@ describe('resolveSurfacePlan (single-UI exclusivity)', () => {
     expect(resolveSurfacePlan({ activeUi: 'studio', studioShortcut: 'rm -rf /' }).studioShortcut).toBe('')
     expect(resolveSurfacePlan({ activeUi: 'overlay', studioShortcut: 'CommandOrControl+Shift+V' }).studioShortcut).toBe('')
   })
+
+  it('win32 with activeUi overlay → studio, lockedBy platform, overlayEnabled false', () => {
+    const plan = resolveSurfacePlan({ activeUi: 'overlay' }, null, 'win32')
+    expect(plan.activeUi).toBe('studio')
+    expect(plan.lockedBy).toBe('platform')
+    expect(plan.overlayEnabled).toBe(false)
+    expect(plan.studioEnabled).toBe(true)
+    expect(plan.showOverlayOnLaunch).toBe(false)
+    expect(plan.openStudioOnLaunch).toBe(true)
+  })
+
+  it('win32 with locked policy overlay → still studio, lockedBy platform (platform outranks policy)', () => {
+    const plan = resolveSurfacePlan({ activeUi: 'studio' }, policyBlob('overlay', true), 'win32')
+    expect(plan.activeUi).toBe('studio')
+    expect(plan.lockedBy).toBe('platform')
+  })
+
+  it('darwin unchanged: the default platform parameter preserves every existing assertion above', () => {
+    const plan = resolveSurfacePlan({ activeUi: 'overlay' }, null, 'darwin')
+    expect(plan.activeUi).toBe('overlay')
+    expect(plan.lockedBy).toBe(null)
+  })
 })

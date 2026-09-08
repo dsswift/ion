@@ -296,6 +296,24 @@ export function createWindow(showOnReady = true): void {
   }
 }
 
+/**
+ * Bring the active conversation UI back to the front.
+ *
+ * This is what a tray left-click means. Which surface that is depends on the
+ * surface plan, so the tray never has to know: Studio on Windows, the Overlay
+ * where it is active.
+ */
+export function surfaceActiveUi(reason: string): void {
+  const plan = resolveSurfacePlan(readSettings(), enterprisePolicyCache.policy)
+  if (plan.activeUi === 'studio') {
+    openStudioWindow(reason)
+    log('tray: surfaced active ui', { active_ui: 'studio', reason })
+    return
+  }
+  showWindow(reason)
+  log('tray: surfaced active ui', { active_ui: 'overlay', reason })
+}
+
 export function showActiveUiSettings(): void {
   const plan = resolveSurfacePlan(readSettings(), enterprisePolicyCache.policy)
   if (plan.activeUi === 'overlay') {
@@ -328,6 +346,20 @@ export function createTray(): void {
   trayIcon.setTemplateImage(true)
   state.tray = new Tray(trayIcon)
   state.tray.setToolTip('Ion')
+  // On Windows and Linux a tray context menu opens on right-click only; a
+  // left-click raises 'click' and nothing else, so without this handler the
+  // icon is inert. That matters more here than it looks: window-all-closed
+  // keeps Ion resident precisely because a tray exists to bring it back, so an
+  // inert icon plus a closed Studio window leaves a running app with no way
+  // into it and a second launch that only hands off to the instance already
+  // holding the lock. macOS opens the menu on left-click itself and is left
+  // alone.
+  if (process.platform === 'darwin') {
+    log('tray: left-click opens the context menu (platform default)', { platform: process.platform })
+  } else {
+    state.tray.on('click', () => { surfaceActiveUi('tray click') })
+    log('tray: left-click surfaces the active ui', { platform: process.platform })
+  }
   // Single-UI exclusivity: only the ACTIVE conversation UI gets a tray
   // launcher — the inactive UI's item is ABSENT, never greyed. The tray is
   // rebuilt on every live activeUi switch (active-ui.ts).
@@ -345,14 +377,14 @@ export function createTray(): void {
       { type: 'separator' },
       // Force-restart the persistent engine daemon so it re-reads engine.json.
       // The engine reads its config once at process start; a config change needs
-      // an explicit restart. This recycles the daemon in place (kickstart -k)
-      // without quitting the desktop or booting the daemon out — launchd
-      // respawns it immediately with fresh config. Distinct from Quit All (which
+      // an explicit restart. This recycles the daemon in place without quitting
+      // the desktop or booting the daemon out. Distinct from Quit All (which
       // boots the daemon out) and Quit Desktop (which leaves it running).
       { label: 'Restart Engine', click: () => {
-        // Awaited off the click handler: restartEngineDaemon shells out to
-        // launchctl, which is async so the main thread (and every renderer IPC
-        // reply) stays live while it runs. void + catch because a menu click
+        // Awaited off the click handler: restartEngineDaemon drives whichever
+        // supervisor this platform uses (launchd on macOS, the Scheduled Task
+        // on Windows), which is async, so the main thread and every renderer
+        // IPC reply stay live while it runs. void + catch because a menu click
         // handler cannot itself be async without floating the promise.
         void restartEngineDaemon()
           .then((ok) => { log('tray: restart engine requested', { issued: ok }) })

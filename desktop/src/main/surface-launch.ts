@@ -37,8 +37,11 @@ export interface SurfacePlan {
   overlayEnabled: boolean
   /** Global shortcut for the Studio toggle ('' = none registered). */
   studioShortcut: string
-  /** The enforced policy, when locked (picker lock state). */
-  lockedBy: 'policy' | null
+  /** What clamped the plan, when clamped: an enterprise policy lock, or the
+   *  platform itself (win32, where the Overlay glass is a non-goal and
+   *  Studio is the only conversation interface). Platform outranks policy —
+   *  a locked policy naming 'overlay' still yields Studio on win32. */
+  lockedBy: 'policy' | 'platform' | null
 }
 
 /** Electron accelerator shape, loosely: token(+token)* — never arbitrary text. */
@@ -60,7 +63,26 @@ function requestedUi(settings: Record<string, unknown>): ActiveUi | null {
 export function resolveSurfacePlan(
   settings: Record<string, unknown>,
   enterprisePolicy?: EnterprisePolicy | null,
+  platform: NodeJS.Platform = process.platform,
 ): SurfacePlan {
+  // Windows: the Overlay glass is a non-goal (a macOS-shaped transparent
+  // window with no Windows equivalent). Studio is the only conversation
+  // interface there, and the clamp outranks even a locked enterprise
+  // policy naming 'overlay' — there is nowhere else for it to go.
+  if (platform === 'win32') {
+    const rawShortcut = typeof settings.studioShortcut === 'string' ? settings.studioShortcut : DEFAULT_STUDIO_SHORTCUT
+    const studioShortcut = ACCELERATOR_RE.test(rawShortcut) ? rawShortcut : ''
+    return {
+      activeUi: 'studio',
+      showOverlayOnLaunch: false,
+      openStudioOnLaunch: true,
+      studioEnabled: true,
+      overlayEnabled: false,
+      studioShortcut,
+      lockedBy: 'platform',
+    }
+  }
+
   const policy = deriveEnterpriseActiveUiPolicy(enterprisePolicy)
 
   let activeUi: ActiveUi

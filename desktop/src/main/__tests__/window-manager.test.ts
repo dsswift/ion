@@ -40,6 +40,9 @@ const { mockSetAlwaysOnTop, _mockSetVisibleOnAllWorkspaces, mockWindowInstance }
   return { mockSetAlwaysOnTop, _mockSetVisibleOnAllWorkspaces, mockWindowInstance }
 })
 
+const mockTrayOn = vi.fn()
+const mockOpenStudioWindow = vi.fn()
+
 vi.mock('electron', () => {
   // BrowserWindow must be a real constructor function so `new BrowserWindow()`
   // works. The constructor ignores its arguments and returns the shared mock
@@ -71,7 +74,7 @@ vi.mock('electron', () => {
     Menu: { buildFromTemplate: vi.fn((template: any) => template) },
     nativeImage: { createFromPath: vi.fn().mockReturnValue({ setTemplateImage: vi.fn() }) },
     Tray: vi.fn().mockImplementation(function () {
-      return { setToolTip: vi.fn(), setContextMenu: vi.fn(), isDestroyed: vi.fn().mockReturnValue(false), destroy: vi.fn() }
+      return { setToolTip: vi.fn(), setContextMenu: vi.fn(), on: mockTrayOn, isDestroyed: vi.fn().mockReturnValue(false), destroy: vi.fn() }
     }),
     dialog: { showMessageBoxSync: vi.fn().mockReturnValue(2) },
     ipcMain: { on: vi.fn(), handle: vi.fn() },
@@ -108,7 +111,7 @@ vi.mock('../engine-bootstrap', () => ({
 
 const mockReassertPolicy = vi.hoisted(() => vi.fn())
 vi.mock('../studio-window-manager', () => ({
-  openStudioWindow: vi.fn(),
+  openStudioWindow: mockOpenStudioWindow,
   reassertStudioActivationPolicy: mockReassertPolicy,
 }))
 
@@ -181,6 +184,42 @@ describe('window-manager createTray()', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockSurfacePlan.mockReturnValue({ activeUi: 'overlay', overlayEnabled: true, studioEnabled: false })
+  })
+
+  // window-all-closed keeps Ion resident whenever a tray exists, on the premise
+  // that the tray can bring it back. On Windows and Linux a context menu opens
+  // on right-click only, so without a 'click' handler the icon is inert and a
+  // closed Studio window leaves a running app with no way into it.
+  it('surfaces the active UI on a tray left-click off darwin', async () => {
+    const original = process.platform
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    mockSurfacePlan.mockReturnValue({ activeUi: 'studio', overlayEnabled: false, studioEnabled: true })
+    try {
+      const { createTray } = await import('../window-manager')
+      createTray()
+
+      const click = mockTrayOn.mock.calls.find((c) => c[0] === 'click')
+      expect(click).toBeDefined()
+
+      click![1]()
+      expect(mockOpenStudioWindow).toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(process, 'platform', { value: original, configurable: true })
+    }
+  })
+
+  // macOS opens the context menu on left-click itself; a handler there would be
+  // a second, conflicting meaning for the same gesture.
+  it('leaves the darwin left-click to the platform', async () => {
+    const original = process.platform
+    Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
+    try {
+      const { createTray } = await import('../window-manager')
+      createTray()
+      expect(mockTrayOn.mock.calls.find((c) => c[0] === 'click')).toBeUndefined()
+    } finally {
+      Object.defineProperty(process, 'platform', { value: original, configurable: true })
+    }
   })
 
   it('exposes a "Restart Engine" item that recycles the daemon (kickstart -k) without quitting', async () => {
