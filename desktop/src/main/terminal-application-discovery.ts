@@ -2,6 +2,11 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import type { TerminalActivity, TerminalWebApplication } from '../shared/terminal-activity'
 import { discoverDockerApplications } from './terminal-container-discovery'
+import { log as _log } from './logger'
+
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('terminal', msg, fields)
+}
 
 const execFileAsync = promisify(execFile)
 const CACHE_TTL_MS = 15_000
@@ -35,7 +40,16 @@ export function configureTerminalWebApplicationDiscoveryForTests(overrides: {
   inFlight = null
 }
 
+let win32SkipLogged = false
+
 export function discoverTerminalWebApplications(activities: readonly TerminalActivity[]): Promise<Map<string, TerminalWebApplication[]>> {
+  if (process.platform === 'win32') {
+    if (!win32SkipLogged) {
+      log('terminal web application discovery skipped on win32')
+      win32SkipLogged = true
+    }
+    return Promise.resolve(new Map())
+  }
   if (inFlight) return inFlight
   inFlight = scan(activities).finally(() => { inFlight = null })
   return inFlight

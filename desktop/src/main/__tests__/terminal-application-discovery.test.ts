@@ -61,4 +61,18 @@ describe('Terminal Web Application discovery', () => {
     expect(await discoverTerminalWebApplications([activity])).toEqual(new Map())
     expect(probeWeb).toHaveBeenCalledTimes(2)
   })
+
+  it('win32: returns empty without calling the listener lister', async () => {
+    const originalPlatform = process.platform
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+    const listListeners = vi.fn(async () => listenerOutput())
+    configureTerminalWebApplicationDiscoveryForTests({ listListeners })
+    try {
+      const applications = await discoverTerminalWebApplications([activity])
+      expect(applications).toEqual(new Map())
+      expect(listListeners).not.toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+    }
+  })
 })

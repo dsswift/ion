@@ -2,11 +2,12 @@ import { IPC } from '../shared/types'
 import { getCliEnv } from './cli-env'
 import { PRIVILEGE_ESCALATION_VAR } from './launch-env'
 import { getDeepLinkToken } from './deeplink/token'
-import { homedir, userInfo } from 'os'
-import { join } from 'path'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
+import { homedir } from 'os'
+import { join, delimiter } from 'path'
 import { terminalProcessTree, parseProcessTree } from './terminal-process-tree'
+import { readUnixProcessTable } from './terminal-process-tree-unix'
+import { readWindowsProcessTable, parseCimProcessTree } from './terminal-process-tree-windows'
+import { resolveShell } from './terminal-shell'
 import { discoverTerminalWebApplications } from './terminal-application-discovery'
 import type { TerminalActivity } from '../shared/terminal-activity'
 import { splitTerminalActivityKey } from '../shared/terminal-activity'
@@ -14,20 +15,6 @@ import { existsSync } from 'fs'
 import { terminalScrollback } from './state'
 import { debug as _debug, log as _log, warn as _warn } from './logger'
 import type { IPty } from 'node-pty'
-
-/**
- * A Studio pane is a login AND interactive shell, so it reads both the login
- * files and the interactive rc file (`.zprofile` then `.zshrc`).
- *
- * These arguments are correct but were never the cause of a pane that loaded
- * none of the operator's setup. A shell obeys them only when it is not running
- * PRIVILEGED; an inherited `APPLE_PKGKIT_ESCALATING_ROOT` makes it skip every
- * user startup file with these exact arguments, a real PTY, and the right
- * shell. That variable is cleared at startup — see launch-env.ts. Do not treat
- * a "missing setup" report as a shell-argument question: check the
- * `privileged_shell_marker` field on the `starting terminal pty` log line.
- */
-const INTERACTIVE_LOGIN_ARGS = ['-il']
 
 /**
  * The Zsh startup files a login+interactive shell reads, in the order it reads
@@ -85,17 +72,6 @@ export type PtySpawner = (
   args: string[],
   options: { name: string; cols: number; rows: number; cwd: string; env: Record<string, string> },
 ) => IPty
-
-const execFileAsync = promisify(execFile)
-
-/** Read one complete process table for every live terminal. */
-async function readProcessTable(): Promise<string> {
-  const { stdout } = await execFileAsync('/bin/ps', ['-eo', 'pid=,ppid=,comm='], {
-    timeout: 1_000,
-    maxBuffer: 512 * 1024,
-  })
-  return stdout
-}
 
 /** Lifecycle record for a terminal key (D2 attach model). */
 export interface TerminalLifecycle {
@@ -201,7 +177,7 @@ export class TerminalManager {
     const requested = cwd === '~' ? homedir() : cwd
     const cwdFellBack = !existsSync(requested)
     const resolvedCwd = cwdFellBack ? homedir() : requested
-    const loginShell = this.resolveLoginShell()
+    const shell = resolveShell()
 
     // Conversation identity, injected into the PTY environment.
     //
@@ -225,7 +201,7 @@ export class TerminalManager {
       ION_DESKTOP_DEEPLINK_TOKEN: getDeepLinkToken(),
     }) as Record<string, string>
 
-    const ptyEnv: Record<string, string> = { ...env, SHELL: loginShell }
+    const ptyEnv: Record<string, string> = { ...env, SHELL: shell.shell }
 
     // Startup evidence, written BEFORE the spawn.
     //
@@ -243,10 +219,17 @@ export class TerminalManager {
     // changes which files the shell reads: ZDOTDIR relocates them entirely,
     // HOME decides where they are looked up, and USER/LOGNAME decide which
     // account the shell believes it is.
+    //
+    // startup_files_present only means something for a zsh shell (it is the
+    // interactive-rc probe from resolveLoginShell's Unix path); a Windows
+    // shell family has no equivalent concept, so the field is null there
+    // rather than a misleading empty array.
     log('starting terminal pty', {
       key,
-      shell: loginShell,
-      shell_args: INTERACTIVE_LOGIN_ARGS,
+      shell: shell.shell,
+      shell_args: shell.args,
+      shell_family: shell.family,
+      shell_reason: shell.reason,
       requested_cwd: requested,
       resolved_cwd: resolvedCwd,
       cwd_fell_back: cwdFellBack,
@@ -258,17 +241,19 @@ export class TerminalManager {
       env_term: ptyEnv.TERM,
       env_term_program: ptyEnv.TERM_PROGRAM ?? null,
       env_lang: ptyEnv.LANG ?? null,
-      env_path_entries: ptyEnv.PATH ? ptyEnv.PATH.split(':').length : 0,
+      env_path_entries: ptyEnv.PATH ? ptyEnv.PATH.split(delimiter).length : 0,
       env_path: ptyEnv.PATH,
       privileged_shell_marker: ptyEnv[PRIVILEGE_ESCALATION_VAR] !== undefined,
-      startup_files_present: presentZshStartupFiles(ptyEnv.ZDOTDIR || ptyEnv.HOME || homedir()),
+      startup_files_present: shell.family === 'zsh' ? presentZshStartupFiles(ptyEnv.ZDOTDIR || ptyEnv.HOME || homedir()) : null,
     })
 
     let term: IPty
     try {
-      // Studio terminals are interactive login shells, so the shell reads both
-      // its login files and its interactive rc file (.zprofile + .zshrc).
-      term = spawn(loginShell, INTERACTIVE_LOGIN_ARGS, {
+      // Studio terminals are interactive login shells on unix, so the shell
+      // reads both its login files and its interactive rc file (.zprofile +
+      // .zshrc). On Windows there is no login-shell concept; shell.args
+      // carries only what suppresses the PowerShell banner.
+      term = spawn(shell.shell, shell.args, {
         name: 'xterm-256color',
         cols: 80,
         rows: 24,
@@ -280,8 +265,8 @@ export class TerminalManager {
       // place the operator's "the terminal did nothing" can be explained.
       warn('terminal pty failed to start', {
         key,
-        shell: loginShell,
-        shell_args: INTERACTIVE_LOGIN_ARGS,
+        shell: shell.shell,
+        shell_args: shell.args,
         cwd: resolvedCwd,
         error: String(err),
       })
@@ -290,7 +275,7 @@ export class TerminalManager {
 
     log('terminal pty started', {
       key,
-      shell: loginShell,
+      shell: shell.shell,
       pid: term.pid,
       cwd: resolvedCwd,
       cwd_fell_back: cwdFellBack,
@@ -316,7 +301,7 @@ export class TerminalManager {
     this.sessions.set(key, term)
     if (this.legacyProcessProbe) {
       const ids = splitTerminalActivityKey(key)
-      if (this.legacyProcessProbe(term, loginShell)) {
+      if (this.legacyProcessProbe(term, shell.shell)) {
         this.publishActivity({ key, ...ids, active: true, processLabel: null, processIds: [term.pid], applications: [] })
       }
     }
@@ -325,40 +310,6 @@ export class TerminalManager {
     // A fresh run's transcript starts clean (a respawn after exit would
     // otherwise repeat the dead run's history ahead of the new shell).
     terminalScrollback.delete(key)
-  }
-
-
-  /**
-   * The shell to start a pane with: the account's login shell.
-   *
-   * Read from the account record rather than `$SHELL`, because `$SHELL` is
-   * inherited from whatever launched Ion and is wrong exactly when it matters
-   * — a package-installer launch supplies `SHELL=/bin/sh`. The account record
-   * is the operator's real configured shell in every launch path.
-   */
-  private resolveLoginShell(): string {
-    try {
-      const accountShell = userInfo().shell?.trim()
-      if (accountShell) {
-        debug('resolved account login shell', {
-          account_shell: accountShell,
-          inherited_shell: process.env.SHELL ?? null,
-        })
-        return accountShell
-      }
-      warn('account record has no shell; using the default shell', {
-        fallback_shell: '/bin/zsh',
-        inherited_shell: process.env.SHELL ?? null,
-      })
-      return '/bin/zsh'
-    } catch (err: unknown) {
-      warn('could not read the account record; using the default shell', {
-        fallback_shell: '/bin/zsh',
-        inherited_shell: process.env.SHELL ?? null,
-        error: String(err),
-      })
-      return '/bin/zsh'
-    }
   }
 
   write(key: string, data: string): void {
@@ -413,7 +364,9 @@ export class TerminalManager {
             }
           }
         } else {
-          const snapshot = parseProcessTree(await readProcessTable())
+          const snapshot = process.platform === 'win32'
+            ? parseCimProcessTree(await readWindowsProcessTable())
+            : parseProcessTree(await readUnixProcessTable())
           const nextActivities: TerminalActivity[] = []
           for (const [key, term] of this.sessions) {
             const tree = terminalProcessTree(snapshot, term.pid)
@@ -461,11 +414,36 @@ export class TerminalManager {
     this.activityTimer = null
   }
 
+  /**
+   * Apply a renderer-measured size to the PTY.
+   *
+   * Logged on every branch because a PTY that never resizes is invisible
+   * otherwise: it spawns at 80x24 and simply stays there, which presents as
+   * "the terminal wraps at the wrong width" with nothing in the log to
+   * distinguish "no resize arrived" from "a resize arrived with bad numbers".
+   * That ambiguity cost a full diagnostic round on Windows, where a
+   * macOS-only default font made xterm measure absurd columns.
+   */
   resize(key: string, cols: number, rows: number): void {
+    const session = this.sessions.get(key)
+    if (!session) {
+      debug('terminal resize skipped; no live pty', { key, cols, rows })
+      return
+    }
+    // A zero or absurd measurement means the renderer measured a hidden or
+    // unstyled element. Applying it would wedge the PTY at a useless width,
+    // so it is refused and named rather than silently forwarded.
+    if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 2 || rows < 2) {
+      warn('terminal resize refused; implausible dimensions', { key, cols, rows })
+      return
+    }
     try {
-      this.sessions.get(key)?.resize(cols, rows)
-    } catch {
-      // Ignore resize errors on dead PTYs
+      session.resize(cols, rows)
+      debug('terminal resized', { key, cols, rows })
+    } catch (err: unknown) {
+      // A dead PTY is the ordinary case here (the process exited between the
+      // renderer measuring and this call), so this is not an error.
+      debug('terminal resize failed; pty likely exited', { key, cols, rows, error: String(err) })
     }
   }
 
