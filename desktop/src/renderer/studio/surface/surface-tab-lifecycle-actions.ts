@@ -23,6 +23,7 @@ import {
   closePanelIfEmptied,
 } from "./surface-store-project";
 import { scratchTabsForProject } from "./surface-scratch";
+import { recordTabActivation } from "./editor-anchor";
 import type { SurfaceState } from "./surface-store";
 
 type SetSurface = (partial: Partial<SurfaceState>) => void;
@@ -75,6 +76,11 @@ export function createSurfaceTabLifecycleActions({
         const hasQuestions =
           !!state.currentConversationId &&
           state.questionsConversations.has(state.currentConversationId);
+        // Record the anchor before the membership guard: only a file tab
+        // moves it, so activating the graph leaves the last document in
+        // place. That is what lets Graph View open on what the operator was
+        // reading rather than on itself.
+        recordTabActivation(state.currentConversationId, state.tabs.find((t) => t.id === id));
         return visibleSurfaceTabs(
           state.pinnedTabs,
           state.notification,

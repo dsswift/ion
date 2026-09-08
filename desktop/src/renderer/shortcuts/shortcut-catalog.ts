@@ -59,6 +59,7 @@ export const SHORTCUT_CATALOG: readonly ShortcutEntry[] = [
 
   { id: 'studio.layout.sidebar', group: 'Studio', description: 'Toggle left sidebar', defaultBinding: 'Mod+b', views: ['studio'] },
   { id: 'studio.layout.surface', group: 'Studio', description: 'Toggle canvas panel', defaultBinding: 'Mod+Alt+b', views: ['studio'] },
+  { id: 'studio.layout.surfaceMaximize', group: 'Studio', description: 'Maximize canvas panel', defaultBinding: 'Mod+Alt+Shift+b', views: ['studio'] },
 
   // Canvas tabs form one family: Mod+Alt+<digit>. Mod alone selects a REGION
   // (sidebar view, canvas visibility); adding Alt reaches INTO the canvas, the
@@ -71,6 +72,7 @@ export const SHORTCUT_CATALOG: readonly ShortcutEntry[] = [
   { id: 'studio.surface.status', group: 'Studio', description: 'Toggle status canvas tab', defaultBinding: 'Mod+Alt+4', views: ['studio'] },
   { id: 'studio.surface.files', group: 'Studio', description: 'Toggle explorer canvas tab', defaultBinding: 'Mod+Alt+5', views: ['studio'] },
   { id: 'studio.surface.gitpanel', group: 'Studio', description: 'Toggle git canvas tab', defaultBinding: 'Mod+Alt+6', views: ['studio'] },
+  { id: 'studio.surface.graph', group: 'Studio', description: 'Toggle graph canvas tab', defaultBinding: 'Mod+Alt+8', views: ['studio'] },
   { id: 'studio.surface.notification', group: 'Studio', description: 'Toggle notification canvas tab', defaultBinding: 'Mod+Alt+7', views: ['studio'] },
 
   { id: 'studio.tab.slot1', group: 'Studio', description: 'Select conversation 1', defaultBinding: 'Mod+Ctrl+1', views: ['studio'] },
