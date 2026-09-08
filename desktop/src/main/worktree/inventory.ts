@@ -20,7 +20,7 @@
  * joins those records onto what `git worktree list` reports, and re-exports
  * the registry surface so existing import paths keep working.
  */
-import { log as _log, warn as _warn } from '../logger'
+import { debug as _debug, log as _log, warn as _warn } from '../logger'
 import { runGit } from '../git-runner'
 import { parseWorktreeList } from './integrate'
 import {
@@ -35,6 +35,7 @@ import type { WorktreeInventoryEntry } from '../../shared/types'
 
 const TAG = 'worktree.inventory'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
+function debug(msg: string, fields?: Record<string, unknown>): void { _debug(TAG, msg, fields) }
 function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
 
 // The registry (the durable per-worktree record: source branch, base, title,
@@ -105,6 +106,17 @@ export interface WorktreeInventoryResult {
   /** Every listed checkout path (main, bench, features) — the alias set. */
   aliasPaths: string[]
   entries: WorktreeInventoryEntry[]
+  /**
+   * True when the path is simply not a git repository, as opposed to a repo
+   * whose listing failed.
+   *
+   * The two look identical in the result — no canonical path, no entries —
+   * but they must be cached differently. A transient failure against a real
+   * repo must not be cached, or the empty answer outlives the problem. "Not
+   * a repo" is a stable fact about the directory and must be, or every poll
+   * re-runs git against a directory that will never become one.
+   */
+  notARepository: boolean
 }
 
 /** `inventoryWorktrees` with the canonical/alias identity attached. */
@@ -116,8 +128,19 @@ export async function inventoryWorktreesDetailed(
   try {
     listed = parseWorktreeList(await runGit(repoPath, ['worktree', 'list', '--porcelain']))
   } catch (err) {
-    warn('could not list worktrees', { repo_path: repoPath, error: String(err) })
-    return { canonicalRepoPath: null, aliasPaths: [], entries: [] }
+    // git says "not a git repository" for a plain directory. That is an
+    // ordinary answer about a conversation opened somewhere that is not a
+    // checkout -- a home directory, a scratch folder -- not a fault, so it is
+    // logged at debug and cached by the caller. Anything else is a real
+    // failure worth a warning: git missing, permissions, a corrupt repo.
+    const message = String(err)
+    const notARepository = /not a git repository/i.test(message)
+    if (notARepository) {
+      debug('path is not a git repository; no worktrees to list', { repo_path: repoPath })
+    } else {
+      warn('could not list worktrees', { repo_path: repoPath, error: message })
+    }
+    return { canonicalRepoPath: null, aliasPaths: [], entries: [], notARepository }
   }
 
   // The cache-scope key for this crawl. NOT the caller's `repoPath`, which may
@@ -272,5 +295,6 @@ export async function inventoryWorktreesDetailed(
     canonicalRepoPath: listed[0]?.path ?? null,
     aliasPaths: listed.map((w) => w.path),
     entries,
+    notARepository: false,
   }
 }

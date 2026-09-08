@@ -24,6 +24,7 @@ import type {
   StudioLayout,
   StudioSidebarView,
 } from "../../shared/types-studio";
+import { useActiveGitRepo } from "../hooks/useActiveGitRepo";
 
 export interface StudioLeftSidebarProps {
   layout: StudioLayout;
@@ -51,6 +52,21 @@ export function StudioLeftSidebar(
   const colors = useColors();
   const view = props.layout.leftSidebarView;
   const activeTabId = useSessionStore((s) => s.activeTabId);
+  // Git is offered only where there is a repository to show. Against a plain
+  // directory the panel has nothing to display and reaching it starts a
+  // 5s `git worktree list` poll that fails every time.
+  const { isRepo } = useActiveGitRepo();
+  const views = React.useMemo(
+    () => (isRepo ? VIEWS : VIEWS.filter((v) => v.id !== "git")),
+    [isRepo],
+  );
+
+  // A conversation switched from a repo to a plain directory leaves the dock
+  // pointed at a view that is no longer offered. Falling back to Explorer
+  // keeps the dock on something real instead of rendering an empty Git panel.
+  React.useEffect(() => {
+    if (!isRepo && view === "git") props.onSelectView("explorer");
+  }, [isRepo, view, props]);
 
   return (
     <div
@@ -82,7 +98,7 @@ export function StudioLeftSidebar(
         }}
       >
         <WorkspaceStatusIndicator />
-        {VIEWS.map((v) => (
+        {views.map((v) => (
           <DockViewTab
             key={v.id}
             label={v.label}
@@ -112,7 +128,7 @@ export function StudioLeftSidebar(
           >
             No active conversation.
           </div>
-        ) : view === "explorer" ? (
+        ) : view === "explorer" || !isRepo ? (
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
             <FileExplorer docked onClose={props.onClose} />
           </div>

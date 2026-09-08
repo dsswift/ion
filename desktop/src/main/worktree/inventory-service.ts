@@ -83,10 +83,19 @@ export async function getWorktreeInventory(
     const result = await inventoryWorktreesDetailed(repoPath)
     if (result.canonicalRepoPath) {
       storeInventory(result.canonicalRepoPath, result.aliasPaths, result.entries)
+    } else if (result.notARepository) {
+      // A plain directory is a stable fact, so cache the empty answer under
+      // the caller's own path. Without this the 5s freshness poll re-spawns
+      // `git worktree list` against a directory that will never become a
+      // repository, forever -- which is what a conversation opened in a home
+      // directory produced.
+      storeInventory(repoPath, [repoPath], [])
+      debug('path is not a repository; caching the empty inventory', { repo_path: repoPath })
     } else {
-      // Listing failed (not a repo, git unavailable). Nothing cached: the
-      // empty answer must not be re-served for a repo that recovers.
-      warn('inventory crawl returned no canonical path; result not cached', { repo_path: repoPath })
+      // A real failure against something that may be a repo: git missing,
+      // permissions, a corrupt index. Nothing cached, because the empty
+      // answer must not outlive the problem.
+      warn('inventory crawl failed; result not cached', { repo_path: repoPath })
     }
     return result.entries
   })()

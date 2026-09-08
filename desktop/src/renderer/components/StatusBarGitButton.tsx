@@ -15,10 +15,16 @@ export function GitButton({ directory }: { directory: string }) {
   const { hover, pressed, handlers } = useInteractiveState()
 
   const repo = useRepoState(directory)
+  // Same rule as the Studio dock: no repository, no Git affordance. The
+  // button would otherwise open a panel with nothing in it and start the
+  // worktree poll spawning git against a plain directory every five seconds.
+  const isRepo = repo?.isGitRepo === true
   const gitBranch = repo?.branch ?? ''
   const gitFileCount = repo?.files.length ?? 0
   const gitAhead = repo?.ahead ?? 0
   const gitBehind = repo?.behind ?? 0
+
+  if (!isRepo) return null
 
   return (
     <button
