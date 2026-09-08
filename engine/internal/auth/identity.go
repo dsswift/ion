@@ -295,11 +295,21 @@ func (m *IdentityManager) pkceConfig() (PKCEFlowConfig, error) {
 		return PKCEFlowConfig{}, fmt.Errorf("identity: oauth config for provider %q is missing clientId, authorizationUrl, or tokenUrl (set them explicitly or configure issuerUrl for discovery)", m.provider)
 	}
 
+	// Only one resource's scopes may be requested in a single interactive
+	// login; the rest are minted per-resource from the refresh token
+	// afterwards. See splitLoginScopes.
+	loginScopes, deferredScopes := splitLoginScopes(m.cfg.Scopes)
+	if len(deferredScopes) > 0 {
+		utils.LogWithFields(utils.LevelInfo, "auth.identity", "login requests one resource; remaining scopes are minted on demand", map[string]any{
+			"provider": m.provider, "requested": loginScopes, "deferred": deferredScopes,
+		})
+	}
+
 	pkceCfg := PKCEFlowConfig{
 		ClientID:       m.cfg.ClientID,
 		AuthURL:        m.cfg.AuthorizationURL,
 		TokenURL:       m.cfg.TokenURL,
-		Scope:          strings.Join(m.cfg.Scopes, " "),
+		Scope:          strings.Join(loginScopes, " "),
 		Audience:       m.cfg.Audience,
 		AudienceParam:  m.cfg.AudienceParameter,
 		ExpectedIssuer: m.cfg.IssuerURL,
@@ -350,7 +360,14 @@ func (m *IdentityManager) BeginDeviceLogin() (*DeviceLogin, error) {
 		return nil, fmt.Errorf("identity: provider %q has no deviceAuthorizationUrl configured (or discoverable via issuerUrl)", m.provider)
 	}
 
-	scope := strings.Join(m.cfg.Scopes, " ")
+	// Same single-resource constraint as the PKCE flow above.
+	loginScopes, deferredScopes := splitLoginScopes(m.cfg.Scopes)
+	if len(deferredScopes) > 0 {
+		utils.LogWithFields(utils.LevelInfo, "auth.identity", "device login requests one resource; remaining scopes are minted on demand", map[string]any{
+			"provider": m.provider, "requested": loginScopes, "deferred": deferredScopes,
+		})
+	}
+	scope := strings.Join(loginScopes, " ")
 	result, err := InitiateDeviceFlow(m.cfg.ClientID, m.cfg.DeviceAuthorizationURL, scope, m.cfg.Audience, m.cfg.AudienceParameter)
 	if err != nil {
 		return nil, fmt.Errorf("identity: initiate device flow: %w", err)
