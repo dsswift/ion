@@ -41,6 +41,46 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# -- 64-bit guard --------------------------------------------------------------
+# Intune launches a Win32 app's command line from a 32-bit agent process, so a
+# bare `powershell.exe` resolves to the SysWOW64 host. Inside that host every
+# write under HKLM\SOFTWARE\Ion is redirected to HKLM\SOFTWARE\WOW6432Node\Ion,
+# while HKLM\SOFTWARE\Policies is a shared key that is NOT redirected and
+# %ProgramData% is the filesystem and so is never redirected at all.
+#
+# That combination is worse than an outright failure. A 32-bit run applies every
+# policy value correctly, lays the theme pack down correctly, records its
+# ownership in a hive nothing reads, and exits 0. Detection runs 64-bit, finds no
+# ownership record, and reports the app installed-but-not-detected. Intune shows
+# 0x87D1041C, and any app that names this one as a dependency is never attempted.
+#
+# Re-launching under the native host fixes it once, here, rather than teaching
+# every registry call in this script about redirection and hoping the next call
+# added remembers. PROCESSOR_ARCHITEW6432 exists only inside a 32-bit process on
+# 64-bit Windows, which makes it the exact test. SysNative is the alias that maps
+# a 32-bit process back to the real System32.
+
+if ($env:PROCESSOR_ARCHITEW6432) {
+  $native = Join-Path $env:SystemRoot 'SysNative\WindowsPowerShell\v1.0\powershell.exe'
+  if (-not (Test-Path -LiteralPath $native)) {
+    [Console]::Error.WriteLine("Uninstall-IonPolicy: running 32-bit and $native is missing, so it would read an empty ownership record and remove nothing while reporting success.")
+    exit 1
+  }
+  $argv = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
+  if ($WhatIfOnly) { $argv += '-WhatIfOnly' }
+  & $native @argv
+  exit $LASTEXITCODE
+}
+
+# The redirected record a 32-bit install may have left. It is removed on every
+# uninstall, before the ownership check below decides there is nothing to do,
+# because a device whose only record lives there must still end up clean.
+$RedirectedOwnershipKey = 'HKLM:\SOFTWARE\WOW6432Node\Ion\PolicyPackage'
+if (Test-Path -LiteralPath $RedirectedOwnershipKey) {
+  Remove-Item -LiteralPath $RedirectedOwnershipKey -Recurse -Force -ErrorAction SilentlyContinue
+  Write-IonPolicyLog "removed a stale ownership record at $RedirectedOwnershipKey written by a 32-bit install"
+}
+
 $PolicyKey = 'HKLM:\SOFTWARE\Policies\IonEngine'
 $OwnershipKey = 'HKLM:\SOFTWARE\Ion\PolicyPackage'
 

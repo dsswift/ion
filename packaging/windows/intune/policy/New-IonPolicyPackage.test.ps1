@@ -622,6 +622,64 @@ foreach ($pair in @(
     "$($pair.Name) reaches only the machine-scope theme root under ProgramData"
 }
 
+# -- The 64-bit guard ---------------------------------------------------------
+# Regression cover for a defect that reached three production session hosts on
+# 2026-09-08. Intune ran Install-IonPolicy.ps1 through the 32-bit PowerShell
+# host, so HKLM\SOFTWARE\Ion was redirected into WOW6432Node while
+# HKLM\SOFTWARE\Policies (a shared key) and %ProgramData% were not. The policy
+# values and the theme landed correctly, the ownership record landed where
+# detection never looks, and the installer exited 0. Intune reported
+# 0x87D1041C, installed-but-not-detected, and the application that names this
+# package as a dependency was never attempted at all.
+#
+# These assertions pin the two properties that would have prevented it: the
+# guard exists, and it runs BEFORE anything writes to the registry. A guard
+# placed after the first write is the same defect with more code.
+
+foreach ($pair in @(
+  @{ Text = $install;   Name = 'Install' },
+  @{ Text = $uninstall; Name = 'Uninstall' }
+)) {
+  Assert-Equal $true ($pair.Text -match [regex]::Escape('$env:PROCESSOR_ARCHITEW6432')) `
+    "$($pair.Name) detects a 32-bit host by the one variable that only exists in one"
+  Assert-Equal $true ($pair.Text -match [regex]::Escape("SysNative\WindowsPowerShell\v1.0\powershell.exe")) `
+    "$($pair.Name) re-launches through SysNative, which maps a 32-bit process back to the real System32"
+  Assert-Equal $true ($pair.Text -match [regex]::Escape('exit $LASTEXITCODE')) `
+    "$($pair.Name) propagates the re-launched exit code rather than reporting its own success"
+  Assert-Equal $true ($pair.Text -match [regex]::Escape('WOW6432Node\Ion\PolicyPackage')) `
+    "$($pair.Name) clears a stale ownership record left by a 32-bit install"
+
+  # Ordering. The guard is only worth anything if it precedes every write.
+  # Comments are stripped first: the header of Install-IonPolicy.ps1 discusses
+  # New-ItemProperty by name, above the guard, and an ordering check that
+  # counted prose would fail on the documentation rather than on the code.
+  $code = Remove-IonComment $pair.Text
+  $guardAt = $code.IndexOf('$env:PROCESSOR_ARCHITEW6432')
+  Assert-Equal $true ($guardAt -ge 0) "$($pair.Name) has a guard to order against"
+  foreach ($write in @('New-ItemProperty', 'Remove-ItemProperty', 'New-Item -Path')) {
+    $writeAt = $code.IndexOf($write)
+    if ($writeAt -ge 0) {
+      Assert-Equal $true ($guardAt -lt $writeAt) `
+        "$($pair.Name) runs the 64-bit guard before its first $write"
+    }
+  }
+}
+
+# The guard must refuse rather than continue when SysNative is unreachable. A
+# fallback to the 32-bit path would recreate the exact defect while looking
+# defensive.
+Assert-Equal $true ($install -match 'Refusing rather than reporting a success nothing can detect') `
+  'Install refuses a 32-bit run it cannot escape instead of writing where detection cannot look'
+
+# The published command line is the second half of the fix. Neither half is
+# load-bearing alone, and a package whose printed guidance still says bare
+# powershell.exe would put the next operator straight back into the defect.
+$packager = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'New-IonPolicyPackage.ps1') -Raw
+Assert-Equal $true ($packager -match [regex]::Escape('%SystemRoot%\SysNative\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File Install-IonPolicy.ps1')) `
+  'The packager prints a 64-bit install command line'
+Assert-Equal $true ($packager -match [regex]::Escape('%SystemRoot%\SysNative\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File Uninstall-IonPolicy.ps1')) `
+  'The packager prints a 64-bit uninstall command line'
+
 if ($script:failures -gt 0) {
   Write-Host "`n$($script:failures) failure(s)" -ForegroundColor Red
   exit 1

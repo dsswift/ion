@@ -626,7 +626,10 @@ Write-Output "  theme: $themeId $themeVersion -> %ProgramData%\Ion\themes\$theme
 foreach ($f in $themeRecords) {
   Write-Output "    $($f.path)  $($f.sha256)  $($f.size) bytes"
 }
-Write-Output '  install:   powershell.exe -NoProfile -ExecutionPolicy Bypass -File Install-IonPolicy.ps1'
-Write-Output '  uninstall: powershell.exe -NoProfile -ExecutionPolicy Bypass -File Uninstall-IonPolicy.ps1'
+# %SystemRoot%\SysNative resolves to the real System32 from the 32-bit agent
+# process Intune uses, and is simply absent from a 64-bit one. The scripts carry
+# their own guard as well, so neither half is load-bearing alone.
+Write-Output '  install:   %SystemRoot%\SysNative\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File Install-IonPolicy.ps1'
+Write-Output '  uninstall: %SystemRoot%\SysNative\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File Uninstall-IonPolicy.ps1'
 Write-Output '  detection: Detect-IonPolicy.ps1 (custom script rule)'
 exit 0

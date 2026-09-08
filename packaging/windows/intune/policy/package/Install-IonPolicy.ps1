@@ -73,6 +73,38 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# -- 64-bit guard --------------------------------------------------------------
+# Intune launches a Win32 app's command line from a 32-bit agent process, so a
+# bare `powershell.exe` resolves to the SysWOW64 host. Inside that host every
+# write under HKLM\SOFTWARE\Ion is redirected to HKLM\SOFTWARE\WOW6432Node\Ion,
+# while HKLM\SOFTWARE\Policies is a shared key that is NOT redirected and
+# %ProgramData% is the filesystem and so is never redirected at all.
+#
+# That combination is worse than an outright failure. A 32-bit run applies every
+# policy value correctly, lays the theme pack down correctly, records its
+# ownership in a hive nothing reads, and exits 0. Detection runs 64-bit, finds no
+# ownership record, and reports the app installed-but-not-detected. Intune shows
+# 0x87D1041C, and any app that names this one as a dependency is never attempted.
+#
+# Re-launching under the native host fixes it once, here, rather than teaching
+# every registry call in this script about redirection and hoping the next call
+# added remembers. PROCESSOR_ARCHITEW6432 exists only inside a 32-bit process on
+# 64-bit Windows, which makes it the exact test. SysNative is the alias that maps
+# a 32-bit process back to the real System32.
+
+if ($env:PROCESSOR_ARCHITEW6432) {
+  $native = Join-Path $env:SystemRoot 'SysNative\WindowsPowerShell\v1.0\powershell.exe'
+  if (-not (Test-Path -LiteralPath $native)) {
+    [Console]::Error.WriteLine("Install-IonPolicy: running 32-bit and $native is missing, so the ownership record would land under WOW6432Node where detection cannot see it. Refusing rather than reporting a success nothing can detect.")
+    exit 1
+  }
+  $argv = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
+  if ($PolicyFile) { $argv += @('-PolicyFile', $PolicyFile) }
+  if ($WhatIfOnly) { $argv += '-WhatIfOnly' }
+  & $native @argv
+  exit $LASTEXITCODE
+}
+
 # The engine's policy key. Not configurable: it is the engine's contract, and
 # a package that wrote somewhere else would apply nothing while reporting
 # success. See engine/internal/config/enterprise_windows.go.
@@ -343,6 +375,17 @@ try {
 # The install is complete, so the previous pack is finally disposable. Deleting
 # it any earlier would leave a failed install with no pack to go back to.
 Remove-Item -LiteralPath $retiredDir -Recurse -Force -ErrorAction SilentlyContinue
+
+# A package installed by a 32-bit host before the guard above existed recorded
+# its ownership under the redirected hive, where detection never looked. Remove
+# it now that this run has written the real record, so a device that received
+# such a build stops carrying a second, invisible claim of ownership. Only this
+# package ever writes that key, so removing it takes nothing that is not ours.
+$RedirectedOwnershipKey = 'HKLM:\SOFTWARE\WOW6432Node\Ion\PolicyPackage'
+if (Test-Path -LiteralPath $RedirectedOwnershipKey) {
+  Remove-Item -LiteralPath $RedirectedOwnershipKey -Recurse -Force -ErrorAction SilentlyContinue
+  Write-IonPolicyLog "removed a stale ownership record at $RedirectedOwnershipKey written by a 32-bit install"
+}
 
 Write-IonPolicyLog "recorded ownership of $($declared.Count) value(s) and theme $themeId at $OwnershipKey"
 Write-IonPolicyLog 'restart the Ion Engine scheduled task for the change to take effect'
