@@ -25,6 +25,13 @@ vi.mock('../../../stores/sessionStore', () => {
 vi.mock('../../../components/git/Tooltip', () => ({
   Tooltip: ({ children }: { children: React.ReactNode }) => React.createElement('span', null, children),
 }))
+// SurfacePanel imports GraphSurface (which imports sigma, a WebGL renderer)
+// purely to mount it for the 'graph' singleton tab. This suite exercises
+// StudioBrowserHost only, never the graph surface, and jsdom has no WebGL2
+// context — so sigma's module-level capability probe throws on import.
+// Stub the whole module rather than polyfill WebGL for a surface this file
+// never renders.
+vi.mock('../../graph/GraphSurface', () => ({ GraphSurface: () => null }))
 
 import { useSurfaceStore } from '../surface-store'
 import { StudioBrowserHost } from '../SurfacePanel'

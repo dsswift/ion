@@ -41,6 +41,25 @@ export interface IonEngineApi {
   fsUnwatchFile(filePath: string): Promise<{ ok: boolean; error?: string }>;
   onFileChanged(callback: (filePath: string) => void): () => void;
 
+  // ─── Graph View ───
+  graphViewGetConfig(projectPath: string): Promise<import("../shared/graph-view-types").GraphViewConfig>;
+  graphViewSetUserConfig(
+    patch: Partial<Omit<import("../shared/graph-view-types").GraphViewConfig, "savedViews">> & {
+      /** Stored without `source` — that tag is a load-time annotation the resolver applies on read, never persisted. */
+      savedViews?: import("../shared/graph-view-types").GraphViewSavedView[];
+    },
+  ): Promise<{ ok: boolean; error?: string }>;
+  onGraphViewConfigChanged(
+    callback: (projectPath: string, config: import("../shared/graph-view-types").GraphViewConfig) => void,
+  ): () => void;
+  graphCorpusSubscribe(
+    projectPath: string,
+  ): Promise<import("../shared/graph-corpus-types").CorpusSnapshot>;
+  graphCorpusUnsubscribe(projectPath: string): Promise<{ ok: boolean }>;
+  onGraphCorpusDelta(
+    callback: (projectPath: string, delta: import("../shared/graph-corpus-types").CorpusDelta) => void,
+  ): () => void;
+
   // ─── Engine operations ───
   engineStart(
     key: string,

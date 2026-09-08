@@ -58,12 +58,17 @@ export function scheduleToggleSnapshots(toggleId: number, phase: 'show' | 'hide'
   }
 }
 
-function getContentSecurityPolicy(): string {
+export function getContentSecurityPolicy(): string {
   const isDev = !!process.env.ELECTRON_RENDERER_URL
   if (isDev) {
     return [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      // Graph View's force-directed layout runs off the main thread through
+      // graphology-layout-forceatlas2's supervisor, which builds its worker
+      // from a blob: URL. `default-src 'self'` alone refuses that, so
+      // worker-src grants exactly the one additional scheme layout needs.
+      "worker-src 'self' blob:",
       "style-src 'self' 'unsafe-inline'",
       "connect-src 'self' ws://localhost:*",
       "img-src 'self' data: blob:",
@@ -77,6 +82,8 @@ function getContentSecurityPolicy(): string {
   return [
     "default-src 'self'",
     "script-src 'self'",
+    // See the dev-branch comment above: required by Graph View's layout worker.
+    "worker-src 'self' blob:",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "media-src 'self' data: blob:",

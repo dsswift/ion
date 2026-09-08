@@ -49,6 +49,35 @@ export const systemApi = {
     return () => ipcRenderer.removeListener(IPC.FS_FILE_CHANGED, handler);
   },
 
+  // ─── Graph View ───
+  graphViewGetConfig: (projectPath) =>
+    ipcRenderer.invoke(IPC.GRAPH_VIEW_GET_CONFIG, { projectPath }),
+  graphViewSetUserConfig: (patch) =>
+    ipcRenderer.invoke(IPC.GRAPH_VIEW_SET_USER_CONFIG, { patch }),
+  onGraphViewConfigChanged: (callback) => {
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      projectPath: string,
+      config: import("../shared/graph-view-types").GraphViewConfig,
+    ) => callback(projectPath, config);
+    ipcRenderer.on(IPC.GRAPH_VIEW_CONFIG_CHANGED, handler);
+    return () =>
+      ipcRenderer.removeListener(IPC.GRAPH_VIEW_CONFIG_CHANGED, handler);
+  },
+  graphCorpusSubscribe: (projectPath) =>
+    ipcRenderer.invoke(IPC.GRAPH_CORPUS_SUBSCRIBE, { projectPath }),
+  graphCorpusUnsubscribe: (projectPath) =>
+    ipcRenderer.invoke(IPC.GRAPH_CORPUS_UNSUBSCRIBE, { projectPath }),
+  onGraphCorpusDelta: (callback) => {
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      projectPath: string,
+      delta: import("../shared/graph-corpus-types").CorpusDelta,
+    ) => callback(projectPath, delta);
+    ipcRenderer.on(IPC.GRAPH_CORPUS_DELTA, handler);
+    return () => ipcRenderer.removeListener(IPC.GRAPH_CORPUS_DELTA, handler);
+  },
+
   // ─── OS facilities ───
   copyPngToClipboard: (png: ArrayBuffer) =>
     ipcRenderer.invoke(IPC.COPY_PNG_TO_CLIPBOARD, png),

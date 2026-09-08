@@ -11,6 +11,7 @@ import { registerSessionsListIpc } from "./sessions-list";
 import { registerFileDialogIpc } from "./file-dialog";
 import { registerAttachmentsIpc } from "./attachments";
 import { registerFilesIpc } from "./files";
+import { registerGraphViewIpc } from "./graph-view";
 import { registerGitIpc } from "./git";
 import { registerGitExtrasIpc } from "./git-extras";
 import { registerGitRebaseIpc } from "./git-rebase";
@@ -56,6 +57,7 @@ export function registerAllIpc(): void {
   registerFileDialogIpc();
   registerAttachmentsIpc();
   registerFilesIpc();
+  registerGraphViewIpc();
   registerGitIpc();
   registerGitExtrasIpc();
   registerGitRebaseIpc();

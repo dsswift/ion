@@ -16,6 +16,7 @@ import { useColors } from '../../theme'
 import { useSurfaceStore } from './surface-store'
 import { SurfaceTabStrip } from './SurfaceTabStrip'
 import { VisualizerSurface } from './tabs/VisualizerSurface'
+import { GraphSurface } from '../graph/GraphSurface'
 import { PlanSurface } from './tabs/PlanSurface'
 import { FileSurface } from './tabs/FileSurface'
 import { ScratchSurface } from './tabs/ScratchSurface'
@@ -55,6 +56,7 @@ function bodyFor(tab: SurfaceTab, active: boolean, conversationTabId: string, on
   switch (tab.kind) {
     case 'singleton':
       if (tab.id === 'visualizer') return <VisualizerSurface key={tab.id} active={active} onAgentClick={onAgentClick} />
+      if (tab.id === 'graph') return <GraphSurface key={tab.id} active={active} />
       if (!active) return null
       if (tab.id === 'plan') return <PlanSurface key={tab.id} />
       if (tab.id === 'status') return <StatusSurface key={tab.id} />

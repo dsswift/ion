@@ -8,7 +8,7 @@
 import React, { useEffect, useRef } from 'react'
 import { usePopoverLayer } from '../../components/PopoverLayer'
 import { createPortal } from 'react-dom'
-import { ChartBar, FileText, FolderOpen, GitBranch, GitDiff, Globe, NotePencil, TerminalWindow } from '@phosphor-icons/react'
+import { ChartBar, FileText, FolderOpen, GitBranch, GitDiff, Globe, GraphIcon, NotePencil, TerminalWindow } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { useAnchoredPopover } from '../../hooks/useAnchoredPopover'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
@@ -16,12 +16,19 @@ import { transitions } from '../../theme-tokens'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useSurfaceStore, type SurfaceState } from './surface-store'
 import { scrollableMenuStyle } from '../../menu-viewport'
+import { useGraphStore } from '../graph/graph-store'
+
+interface AddEntryContext {
+  graphViewAvailable: boolean
+}
 
 interface AddEntry {
   id: string
   label: string
   icon: React.ComponentType<{ size?: number }>
   create: (store: SurfaceState, activeCwd: string) => void
+  /** Omitted means always available — every pre-existing entry is unaffected. */
+  available?: (ctx: AddEntryContext) => boolean
 }
 
 /** Future surface kinds are one entry here. */
@@ -34,6 +41,13 @@ export const SURFACE_ADD_ENTRIES: readonly AddEntry[] = [
   { id: 'gitpanel', label: 'Git', icon: GitBranch, create: (s) => s.openSingleton('gitpanel') },
   { id: 'browser', label: 'Browser', icon: Globe, create: (s) => s.openBrowserTab('', 'browse') },
   { id: 'terminal', label: 'Terminal', icon: TerminalWindow, create: (s, cwd) => s.openTerminalTab(cwd) },
+  {
+    id: 'graph',
+    label: 'Graph',
+    icon: GraphIcon,
+    create: (s) => s.openSingleton('graph'),
+    available: (ctx) => ctx.graphViewAvailable,
+  },
 ]
 
 function MenuButton({
@@ -78,6 +92,9 @@ export function SurfaceAddMenu({ x, y, onClose }: { x: number; y: number; onClos
   const layer = usePopoverLayer()
   const menuRef = useRef<HTMLDivElement>(null)
   const activeCwd = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory ?? '~')
+  const graphViewAvailable = useGraphStore((s) => s.available)
+  const ctx: AddEntryContext = { graphViewAvailable }
+  const visibleEntries = SURFACE_ADD_ENTRIES.filter((entry) => entry.available?.(ctx) !== false)
 
   useEffect(() => {
     const handleClick = (e: MouseEvent): void => {
@@ -94,7 +111,7 @@ export function SurfaceAddMenu({ x, y, onClose }: { x: number; y: number; onClos
     }
   }, [onClose])
 
-  const pos = useAnchoredPopover({ x, y }, { deps: [SURFACE_ADD_ENTRIES.length] })
+  const pos = useAnchoredPopover({ x, y }, { deps: [visibleEntries.length] })
 
   const menu = (
     <div
@@ -120,7 +137,7 @@ export function SurfaceAddMenu({ x, y, onClose }: { x: number; y: number; onClos
         pointerEvents: 'auto',
       }}
     >
-      {SURFACE_ADD_ENTRIES.map((entry) => (
+      {visibleEntries.map((entry) => (
         <MenuButton
           key={entry.id}
           label={entry.label}
