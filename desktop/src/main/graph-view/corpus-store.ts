@@ -190,7 +190,7 @@ export function unsubscribeCorpus(projectPath: string): void {
   entry.refCount--
   if (entry.refCount <= 0) {
     getWatcher().stop(projectPath)
-    unwatchProject(projectPath)
+    if (entry.config.corpusRoots.length > 0) unwatchProject(projectPath)
     corpusCache.delete(projectPath)
   }
 }
