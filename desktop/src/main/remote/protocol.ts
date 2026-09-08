@@ -379,7 +379,7 @@ export type RemoteEvent =
   | { type: 'desktop_git_unstage_result'; directory: string; ok: boolean; error?: string }
   | { type: 'desktop_git_commit_files_response'; directory: string; hash: string; files: Array<{ path: string; status: string; oldPath?: string }>; stats: { filesChanged: number; insertions: number; deletions: number } }
   | { type: 'desktop_git_commit_file_diff_response'; hash: string; path: string; diff: string; fileName: string; isBinary: boolean }
-  | { type: 'desktop_fs_dir_listing'; directory: string; entries: Array<{ name: string; path: string; isDirectory: boolean; size: number; modifiedMs: number }>; error?: string }
+  | { type: 'desktop_fs_dir_listing'; directory: string; entries: Array<{ name: string; path: string; isDirectory: boolean; size: number; modifiedMs: number; isHidden?: boolean }>; error?: string }
   | { type: 'desktop_fs_file_content'; filePath: string; content: string | null; error?: string }
   | { type: 'desktop_fs_image_content'; filePath: string; dataUrl: string | null; error?: string }
   | { type: 'desktop_fs_write_result'; filePath: string; ok: boolean; error?: string }
