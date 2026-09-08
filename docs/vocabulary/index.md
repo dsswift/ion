@@ -85,6 +85,8 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Dispatch Split Pane](#term-dispatch-split-pane)
 - [Drawer](#term-drawer)
 - [Editor Anchor](#term-editor-anchor)
+- [Engine Host Launcher](#term-engine-host-launcher)
+- [Engine Supervisor](#term-engine-supervisor)
 - [Engine event](#term-engine-event)
 - [Engine profile](#term-engine-profile)
 - [Engine server](#term-engine-server)
@@ -1749,6 +1751,36 @@ The desktop-owned engine that runs declarative user, project, and enterprise rul
   - `desktop` / `code` / `typescript`: `export function validateUserDefinition` in `desktop/src/shared/automation-catalog.ts`
   - `desktop` / `ui` / `typescript`: `export function AutomationCategory` in `desktop/src/renderer/components/settings/AutomationCategory.tsx`
 
+#### Engine Host Launcher {#term-engine-host-launcher}
+
+The Windows-only launcher the Engine Supervisor's Scheduled Task runs instead of the engine binary, so the engine daemon never puts a console window on screen. Task Scheduler always allocates a console for a console-subsystem image and offers no way to suppress it, and where the default terminal is Windows Terminal the visible window belongs to that process while the daemon can only reach the pseudoconsole host's already-invisible window. The launcher is linked for the GUI subsystem, so Windows gives it no console at all, and it starts the engine with CREATE_NO_WINDOW so the engine gets none either. It lives for as long as the engine, confines it to a kill-on-close job object, exits with its exit code, and captures its standard streams to the same two files the macOS LaunchAgent redirects to. It has no macOS counterpart because launchd never attaches a terminal.
+
+- **ID:** `engine-host-launcher`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `engine` / `code` / `go`: `runHost` in `engine/cmd/ion-engine-host/host_windows.go`
+  - `desktop` / `code` / `typescript`: `resolveTaskAction` in `desktop/src/main/engine-supervisor-schtasks.ts`
+  - `desktop` / `code` / `typescript`: `findBundledHost` in `desktop/src/main/engine-binary-install.ts`
+
+#### Engine Supervisor {#term-engine-supervisor}
+
+The operating system service that keeps one user's engine daemon running independently of the desktop: a launchd LaunchAgent on macOS, a per-user Scheduled Task named "Ion Engine (<SID>)" on Windows. The desktop registers it, starts and stops it, and reads its state; it is what makes quitting the desktop leave the engine up and makes the engine present again at the next sign-in. A platform with no supervisor implementation resolves to none, and the desktop reports the engine as unmanaged rather than pretending to supervise it.
+
+- **ID:** `engine-supervisor`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `supervisorFor` in `desktop/src/main/engine-supervisor.ts`
+  - `desktop` / `code` / `typescript`: `launchdSupervisor` in `desktop/src/main/engine-supervisor-launchd.ts`
+  - `desktop` / `code` / `typescript`: `schtasksSupervisor` in `desktop/src/main/engine-supervisor-schtasks.ts`
+
 #### Explorer Tree State {#term-explorer-tree-state}
 
 Which folders are expanded, which root sections are folded shut, and which row is selected in the file explorer. Keyed by absolute root directory, owned by the desktop main process, shared by the Overlay and the Studio, and persisted apart from settings. Expansion and folded roots survive a relaunch; the selected row is shared live only.
@@ -1975,7 +2007,9 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Drawer | `StatusDrawer` | `StatusDrawer` | `StatusDrawer` | `ModalSheetBoundary` | None |
 | Editor Anchor | `export function recordTabActivation` | `export function recordTabActivation` | `export function recordTabActivation` | None | iOS |
 | Engine event | `EngineEvent` | `EngineEvent` | `EngineEvent` | `engine_status` | None |
+| Engine Host Launcher | `resolveTaskAction`, `findBundledHost` | `resolveTaskAction`, `findBundledHost` | `resolveTaskAction`, `findBundledHost` | None | iOS |
 | Engine profile | `engineProfileId` | `engineProfileId` | `engineProfileId` | `EngineProfile` | None |
+| Engine Supervisor | `supervisorFor`, `launchdSupervisor`, `schtasksSupervisor` | `supervisorFor`, `launchdSupervisor`, `schtasksSupervisor` | `supervisorFor`, `launchdSupervisor`, `schtasksSupervisor` | None | iOS |
 | Explorer Tree State | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | None | iOS |
 | Graph Agent Highlight | `agentHighlightNodeIds` | `agentHighlightNodeIds` | `agentHighlightNodeIds` | None | iOS |
 | Graph Anchor Node | `export function buildAnchorNodes` | `export function buildAnchorNodes` | `export function buildAnchorNodes` | None | iOS |
