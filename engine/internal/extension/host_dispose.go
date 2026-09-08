@@ -4,6 +4,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/procctl"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -46,15 +47,25 @@ func (h *Host) disposeInternal() {
 		_ = h.stdin.Close() //nolint:errcheck // best-effort dispose teardown
 		h.stdin = nil
 	}
+	cmd := h.cmd
 	// Captured before the kill so the reap diagnostics below can name the
 	// process even though h.process is cleared here.
 	pid := 0
 	if h.process != nil {
 		pid = h.process.Pid
-		_ = h.process.Kill() //nolint:errcheck // best-effort dispose teardown
+		if cmd != nil {
+			if err := procctl.KillTree(cmd); err != nil {
+				utils.LogWithFields(utils.LevelInfo, "extension", "disposeInternal: kill tree failed", map[string]any{
+					"extension": h.name,
+					"pid":       pid,
+					"error":     err.Error(),
+				})
+			}
+		} else {
+			_ = h.process.Kill() //nolint:errcheck // best-effort dispose teardown
+		}
 		h.process = nil
 	}
-	cmd := h.cmd
 	h.cmd = nil
 	h.stdout = nil
 	exitDone := h.exitDone
@@ -82,11 +93,13 @@ func (h *Host) disposeInternal() {
 		if exitDone == nil {
 			if h.waitClaimed.CompareAndSwap(false, true) {
 				_ = cmd.Wait() //nolint:errcheck // best-effort dispose teardown
+				procctl.Release(cmd)
 			}
 		} else if h.waitClaimed.CompareAndSwap(false, true) {
 			// We own the reap. Wait is bounded by the process already having
 			// been killed above, so this does not need the safety-net timeout.
 			_ = cmd.Wait() //nolint:errcheck // best-effort dispose teardown
+			procctl.Release(cmd)
 			utils.LogWithFields(utils.LevelDebug, "extension", "disposeInternal: reaped subprocess directly (no reader-side capture was running)", map[string]any{
 				"extension": h.name,
 			})

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+
+	"github.com/dsswift/ion/engine/internal/procctl"
 )
 
 func TestAcquireAndRelease(t *testing.T) {
@@ -154,12 +156,12 @@ func TestWithLock_FnError(t *testing.T) {
 
 func TestIsProcessAlive(t *testing.T) {
 	// Our own PID should be alive
-	if !isProcessAlive(os.Getpid()) {
+	if !procctl.Alive(os.Getpid()) {
 		t.Fatal("our own process should be alive")
 	}
 
 	// A very high PID should not be alive
-	if isProcessAlive(99999999) {
+	if procctl.Alive(99999999) {
 		t.Fatal("PID 99999999 should not be alive")
 	}
 }

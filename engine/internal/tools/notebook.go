@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,7 +11,9 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/durablefile"
+	"github.com/dsswift/ion/engine/internal/procctl"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // notebookCell represents a single Jupyter notebook cell.
@@ -222,7 +225,22 @@ func executeNotebook(ctx context.Context, input map[string]any, cwd string) (*ty
 		cmd.Dir = cwd
 		configureProcGroup(cmd)
 		cmd.WaitDelay = 5 * time.Second
-		out, err := cmd.CombinedOutput()
+		var combined bytes.Buffer
+		cmd.Stdout = &combined
+		cmd.Stderr = &combined
+		startErr := cmd.Start()
+		if startErr != nil {
+			err = startErr
+		} else {
+			if afterErr := procctl.AfterStart(cmd); afterErr != nil {
+				utils.LogWithFields(utils.LevelWarn, "tools.notebook", "process tree tracking degraded", map[string]any{
+					"error": afterErr.Error(),
+				})
+			}
+			err = cmd.Wait()
+			procctl.Release(cmd)
+		}
+		out := combined.Bytes()
 		if err != nil {
 			return &types.ToolResult{
 				Content: fmt.Sprintf("Cell %d error:\n%s", idx, string(out)),

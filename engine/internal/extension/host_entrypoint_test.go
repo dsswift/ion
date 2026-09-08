@@ -3,6 +3,7 @@ package extension
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -66,20 +67,20 @@ func TestResolveExtensionEntry_CandidateOrder(t *testing.T) {
 
 	t.Run("executable_main_resolves", func(t *testing.T) {
 		dir := t.TempDir()
-		mustWriteExecutable(t, filepath.Join(dir, "main"), "#!/bin/sh\nexit 0\n")
+		mustWriteExecutable(t, filepath.Join(dir, nativeEntryName), "#!/bin/sh\nexit 0\n")
 		entry, err := resolveExtensionEntry(dir)
 		if err != nil {
 			t.Fatalf("resolveExtensionEntry: %v", err)
 		}
-		if filepath.Base(entry) != "main" {
-			t.Errorf("entry = %s, want main", entry)
+		if filepath.Base(entry) != nativeEntryName {
+			t.Errorf("entry = %s, want %s", entry, nativeEntryName)
 		}
 	})
 
 	t.Run("index_ts_beats_main", func(t *testing.T) {
 		dir := t.TempDir()
 		mustWrite(t, filepath.Join(dir, "index.ts"), "// idx")
-		mustWriteExecutable(t, filepath.Join(dir, "main"), "#!/bin/sh\nexit 0\n")
+		mustWriteExecutable(t, filepath.Join(dir, nativeEntryName), "#!/bin/sh\nexit 0\n")
 		entry, err := resolveExtensionEntry(dir)
 		if err != nil {
 			t.Fatalf("resolveExtensionEntry: %v", err)
@@ -89,21 +90,24 @@ func TestResolveExtensionEntry_CandidateOrder(t *testing.T) {
 		}
 	})
 
-	t.Run("non_executable_main_does_not_resolve", func(t *testing.T) {
+	t.Run("non_executable_main_does_not_resolve_on_unix", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("windows has no exec-bit concept; a plain main.exe always resolves")
+		}
 		dir := t.TempDir()
-		mustWrite(t, filepath.Join(dir, "main"), "not executable")
+		mustWrite(t, filepath.Join(dir, nativeEntryName), "not executable")
 		_, err := resolveExtensionEntry(dir)
 		if err == nil {
 			t.Fatal("expected error: a non-executable main must not resolve")
 		}
-		if !strings.Contains(err.Error(), "main") {
-			t.Errorf("error should name main among probed candidates, got %q", err.Error())
+		if !strings.Contains(err.Error(), nativeEntryName) {
+			t.Errorf("error should name %s among probed candidates, got %q", nativeEntryName, err.Error())
 		}
 	})
 
 	t.Run("main_directory_does_not_resolve", func(t *testing.T) {
 		dir := t.TempDir()
-		if err := os.MkdirAll(filepath.Join(dir, "main"), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(dir, nativeEntryName), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		_, err := resolveExtensionEntry(dir)

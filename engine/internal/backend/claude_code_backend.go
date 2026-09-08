@@ -4,18 +4,18 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/cliprobe"
 	"github.com/dsswift/ion/engine/internal/normalizer"
+	"github.com/dsswift/ion/engine/internal/procctl"
 	"github.com/dsswift/ion/engine/internal/rpcstdio"
 	"github.com/dsswift/ion/engine/internal/stream"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -148,23 +148,26 @@ func (b *ClaudeCodeBackend) Cancel(requestID string) bool {
 		return true
 	}
 
-	// Send SIGINT (graceful) on Unix, Kill directly on Windows
-	if runtime.GOOS == "windows" {
-		proc.Kill() //nolint:errcheck // process teardown
+	if err := procctl.Interrupt(run.cmd); err != nil {
+		if errors.Is(err, procctl.ErrNoGracefulSignal) {
+			utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "no graceful interrupt on this platform, killing tree", map[string]any{
+				"request_id": requestID,
+			})
+		} else {
+			utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "interrupt failed, killing tree", map[string]any{
+				"error": utils.ErrStr(err),
+			})
+		}
+		if killErr := procctl.KillTree(run.cmd); killErr != nil {
+			utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "kill tree after failed interrupt", map[string]any{
+				"error": utils.ErrStr(killErr),
+			})
+		}
 		run.cancel()
 		return true
 	}
 
-	if err := proc.Signal(syscall.SIGINT); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "SIGINT failed, killing", map[string]any{
-			"error": utils.ErrStr(err),
-		})
-		proc.Kill() //nolint:errcheck // process teardown after failed SIGINT
-		run.cancel()
-		return true
-	}
-
-	// Escalate to SIGKILL after 5 seconds
+	// Escalate to SIGKILL (tree-wide) after 5 seconds
 	go func() {
 		timer := time.NewTimer(5 * time.Second)
 		defer timer.Stop()
@@ -175,10 +178,14 @@ func (b *ClaudeCodeBackend) Cancel(requestID string) bool {
 		_, stillActive := b.activeRuns[requestID]
 		b.mu.Unlock()
 		if stillActive {
-			utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "process did not exit after SIGINT, sending SIGKILL", map[string]any{
+			utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "process did not exit after SIGINT, killing tree", map[string]any{
 				"request_id": requestID,
 			})
-			proc.Signal(syscall.SIGKILL) //nolint:errcheck // force-kill on timeout
+			if killErr := procctl.KillTree(run.cmd); killErr != nil {
+				utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "kill tree after timeout failed", map[string]any{
+					"error": utils.ErrStr(killErr),
+				})
+			}
 			run.cancel()
 		}
 	}()
@@ -277,6 +284,7 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 	}
 
 	cmd := exec.CommandContext(ctx, claudePath, args...)
+	procctl.Configure(cmd)
 
 	// When MCP tools are wired, disable tool search so all bridged tools
 	// appear in the model's upfront tool list. ENABLE_TOOL_SEARCH defaults
@@ -335,6 +343,11 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 		b.emitError(run.requestID, fmt.Errorf("failed to start claude CLI: %w", err))
 		b.emitExit(run.requestID, intPtr(1), nil, "")
 		return
+	}
+	if err := procctl.AfterStart(cmd); err != nil {
+		utils.LogWithFields(utils.LevelWarn, "backend.claude_code", "process tree tracking degraded", map[string]any{
+			"error": utils.ErrStr(err),
+		})
 	}
 
 	utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "process started", map[string]any{
@@ -494,6 +507,7 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 
 	// Wait for process to exit
 	waitErr := cmd.Wait()
+	procctl.Release(cmd)
 
 	exitCode := 0
 	if waitErr != nil {

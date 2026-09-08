@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/procctl"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -92,7 +93,20 @@ func (l *LocalBashOperations) Exec(ctx context.Context, command, cwd string, opt
 	// contribute to a gradual climb until os.Pipe fails with EMFILE).
 	logFdPressure()
 
-	err := cmd.Run()
+	// Start + AfterStart + Wait, rather than cmd.Run(), so procctl can
+	// attach its Windows Job Object (or confirm the unix process group)
+	// immediately after the process exists. AfterStart must run before any
+	// cancellation could race a KillTree against an unassigned job.
+	err := cmd.Start()
+	if err == nil {
+		defer procctl.Release(cmd)
+		if afterErr := procctl.AfterStart(cmd); afterErr != nil {
+			utils.LogWithFields(utils.LevelWarn, "tools.bash", "process tree tracking degraded", map[string]any{
+				"error": afterErr.Error(),
+			})
+		}
+		err = cmd.Wait()
+	}
 
 	result := &ExecResult{
 		Stdout: stdout.String(),

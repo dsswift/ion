@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/procctl"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -95,10 +97,14 @@ func (r *ProcessRegistry) IsAlive(name string) bool {
 	if json.Unmarshal(data, &info) != nil {
 		return false
 	}
-	return isProcessAlive(info.PID)
+	return procctl.Alive(info.PID)
 }
 
-// Terminate sends SIGTERM to a registered process, then SIGKILL after 5s.
+// Terminate stops a registered process. On unix it sends SIGTERM, waits up
+// to 5s, then SIGKILL. Windows has no SIGTERM equivalent that a process can
+// catch, so it waits the same 5s grace period and then force-kills via
+// procctl.KillTree — giving any Windows consumer's own cleanup logic (if it
+// polls for shutdown) the same window unix processes get.
 func (r *ProcessRegistry) Terminate(name string) error {
 	path := filepath.Join(r.dir, name+".pid")
 	data, err := os.ReadFile(path)
@@ -109,7 +115,7 @@ func (r *ProcessRegistry) Terminate(name string) error {
 	if err := json.Unmarshal(data, &info); err != nil {
 		return err
 	}
-	if !isProcessAlive(info.PID) {
+	if !procctl.Alive(info.PID) {
 		r.Deregister(name)
 		return nil
 	}
@@ -118,6 +124,20 @@ func (r *ProcessRegistry) Terminate(name string) error {
 		r.Deregister(name)
 		return err
 	}
+	if runtime.GOOS == "windows" {
+		utils.LogWithFields(utils.LevelInfo, "procregistry", "terminate: no sigterm on windows, killing after grace", map[string]any{"name": name, "pid": info.PID})
+		go func() {
+			time.Sleep(5 * time.Second)
+			if procctl.Alive(info.PID) {
+				if err := proc.Kill(); err != nil {
+					utils.LogWithFields(utils.LevelInfo, "procregistry", "terminate: kill after grace failed", map[string]any{"model": name, "run_id": info.PID, "error": err})
+				}
+				utils.LogWithFields(utils.LevelInfo, "procregistry", "killed pid after grace", map[string]any{"model": name, "run_id": info.PID})
+			}
+			r.Deregister(name)
+		}()
+		return nil
+	}
 	// SIGTERM
 	if err := proc.Signal(syscall.SIGTERM); err != nil {
 		utils.LogWithFields(utils.LevelInfo, "procregistry", "terminate : sigterm to pid failed", map[string]any{"model": name, "run_id": info.PID, "error": err})
@@ -125,7 +145,7 @@ func (r *ProcessRegistry) Terminate(name string) error {
 	// Wait up to 5s, then SIGKILL
 	go func() {
 		time.Sleep(5 * time.Second)
-		if isProcessAlive(info.PID) {
+		if procctl.Alive(info.PID) {
 			if err := proc.Signal(syscall.SIGKILL); err != nil {
 				utils.LogWithFields(utils.LevelInfo, "procregistry", "terminate : sigkill to pid failed", map[string]any{"model": name, "run_id": info.PID, "error": err})
 			}
@@ -155,7 +175,7 @@ func (r *ProcessRegistry) CleanStale() int {
 		if json.Unmarshal(data, &info) != nil {
 			continue
 		}
-		if !isProcessAlive(info.PID) {
+		if !procctl.Alive(info.PID) {
 			pidPath := filepath.Join(r.dir, entry.Name())
 			if err := os.Remove(pidPath); err != nil && !os.IsNotExist(err) {
 				utils.LogWithFields(utils.LevelInfo, "procregistry", "cleanstale: remove failed", map[string]any{"run_id": pidPath, "error": err})
@@ -165,16 +185,4 @@ func (r *ProcessRegistry) CleanStale() int {
 		}
 	}
 	return cleaned
-}
-
-func isProcessAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	// Signal 0 checks if process exists without killing it
-	return proc.Signal(syscall.Signal(0)) == nil
 }

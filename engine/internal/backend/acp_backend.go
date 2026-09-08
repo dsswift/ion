@@ -132,7 +132,12 @@ func defaultAcpLauncher(spec acpSpec, h acp.Handlers) (*acp.Client, func(), erro
 		return nil, nil, err
 	}
 	client := acp.NewClientFromRPC(proc.Client, spec.kind, h)
-	return client, proc.Kill, nil
+	stop := func() {
+		if err := proc.KillTree(); err != nil {
+			utils.LogWithFields(utils.LevelInfo, "backend.acp", "kill tree on stop", map[string]any{"error": utils.ErrStr(err)})
+		}
+	}
+	return client, stop, nil
 }
 
 // SetPermissionAskCallback installs the session's permission-ask bridge.

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/filelock"
+	"github.com/dsswift/ion/engine/internal/procctl"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -145,7 +146,7 @@ func ReapDeadTemps(dir string) (int, error) {
 		if !ok {
 			continue
 		}
-		if pidAlive(pid) {
+		if procctl.Alive(pid) {
 			continue
 		}
 		p := filepath.Join(dir, e.Name())

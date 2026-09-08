@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"sync"
 
+	"github.com/dsswift/ion/engine/internal/procctl"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -71,6 +72,7 @@ func Spawn(ctx context.Context, binPath string, args []string, env []string, opt
 	} else {
 		cmd.Env = os.Environ()
 	}
+	procctl.Configure(cmd)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -87,6 +89,9 @@ func Spawn(ctx context.Context, binPath string, args []string, env []string, opt
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start %s: %w", binPath, err)
+	}
+	if err := procctl.AfterStart(cmd); err != nil {
+		utils.LogWithFields(utils.LevelWarn, "rpcstdio", "process tree tracking degraded", map[string]any{"tag": opts.Tag, "bin": binPath, "error": err.Error()})
 	}
 	utils.LogWithFields(utils.LevelInfo, "rpcstdio", "process spawned", map[string]any{"tag": opts.Tag, "bin": binPath, "args": args, "pid": cmd.Process.Pid})
 
@@ -107,6 +112,7 @@ func Spawn(ctx context.Context, binPath string, args []string, env []string, opt
 	}
 	go func() {
 		p.waitErr = cmd.Wait()
+		procctl.Release(cmd)
 		utils.LogWithFields(utils.LevelInfo, "rpcstdio", "process exited", map[string]any{"tag": opts.Tag, "bin": binPath, "error": errString(p.waitErr)})
 		p.exitOnce.Do(func() { close(p.exited) })
 	}()
@@ -129,6 +135,17 @@ func (p *Process) Kill() {
 		p.cmd.Process.Kill() //nolint:errcheck // process teardown
 	}
 	p.Client.Close() //nolint:errcheck // resource close
+}
+
+// KillTree ends the process's whole subprocess tree (via its Job Object on
+// Windows; via its process group on unix) and closes the Client. Prefer this
+// over Kill for a spawned command that may itself spawn children — the codex
+// and ACP backends' stop functions use it so a cancelled run does not leave
+// a shim's grandchild running.
+func (p *Process) KillTree() error {
+	err := procctl.KillTree(p.cmd)
+	p.Client.Close() //nolint:errcheck // resource close
+	return err
 }
 
 // StderrTail returns the retained stderr lines for diagnostics.
