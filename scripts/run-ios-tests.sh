@@ -21,39 +21,27 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")/../ios" && pwd)"
 # shellcheck source=scripts/ios-test-retry.sh
 source "$(dirname "$0")/ios-test-retry.sh"
+# shellcheck source=scripts/ios-simulator-selection.sh
+source "$(dirname "$0")/ios-simulator-selection.sh"
 cd "$PROJECT_DIR"
 
 SIMULATOR_UDID=""
 
 # Pick a destination unless one was explicitly provided.
 if [[ -z "${IOS_TEST_DESTINATION:-}" ]]; then
-  # Parse `xcrun simctl list devices available` and pick the newest iPhone
-  # entry. The list is grouped by runtime in version order, so the last
-  # match wins. Format example:
-  #   -- iOS 26.5 --
-  #       iPhone 17 (UDID) (Shutdown)
-  # macOS ships BSD awk, which doesn't honor `\s` — use `[[:space:]]` instead.
-  DEVICE_LINE="$(
-    xcrun simctl list devices available \
-      | awk '/^-- iOS / { rt=$0 } /^[[:space:]]+iPhone/ { print rt "|" $0 }' \
-      | tail -1
-  )"
-  if [[ -z "$DEVICE_LINE" ]]; then
-    echo "❌ No available iPhone simulator found (xcrun simctl list devices)." >&2
+  # Parse JSON so stale simulator records whose data directories are gone are
+  # ignored. `simctl list` still prints those records as available, but Xcode
+  # cannot boot them.
+  DEVICE_INFO="$(select_ios_simulator)"
+  if [[ -z "$DEVICE_INFO" ]]; then
+    echo "❌ No usable iPhone simulator found (xcrun simctl list devices available)." >&2
     echo "   Install one via Xcode → Settings → Components." >&2
     exit 1
   fi
-  # DEVICE_LINE looks like "-- iOS 26.5 --|    iPhone 17 (UDID) (Shutdown)".
-  # Extract the runtime version and the device name (everything between the
-  # leading whitespace and the " (UDID) (State)" trailer).
-  DEVICE_RUNTIME="$(echo "$DEVICE_LINE" | sed -E 's/^-- iOS ([0-9.]+) --\|.*/\1/')"
-  DEVICE_NAME="$(echo "$DEVICE_LINE" | sed -E 's/^.*\|[[:space:]]+(.+) \(([0-9A-Fa-f-]+)\) \([^)]+\)[[:space:]]*$/\1/')"
-  SIMULATOR_UDID="$(echo "$DEVICE_LINE" | sed -E 's/^.*\|[[:space:]]+.+ \(([0-9A-Fa-f-]+)\) \([^)]+\)[[:space:]]*$/\1/')"
-  if [[ -z "$DEVICE_RUNTIME" || -z "$DEVICE_NAME" || -z "$SIMULATOR_UDID" || "$DEVICE_LINE" == "$DEVICE_NAME" || "$DEVICE_LINE" == "$SIMULATOR_UDID" ]]; then
-    echo "❌ Could not parse simulator info from line:" >&2
-    echo "   $DEVICE_LINE" >&2
-    exit 1
-  fi
+  DEVICE_RUNTIME="${DEVICE_INFO%%|*}"
+  REMAINDER="${DEVICE_INFO#*|}"
+  DEVICE_NAME="${REMAINDER%%|*}"
+  SIMULATOR_UDID="${REMAINDER#*|}"
   IOS_TEST_DESTINATION="platform=iOS Simulator,id=${SIMULATOR_UDID}"
   echo "→ ios-test using: ${DEVICE_NAME} (iOS ${DEVICE_RUNTIME}, ${IOS_TEST_DESTINATION})"
 fi
