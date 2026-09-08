@@ -136,6 +136,33 @@ func TestResolveCliContinuity_BridgesWhenNoCursor(t *testing.T) {
 	}
 }
 
+// TestResolveCliContinuity_SkipsSeedForLiteralPrompt is the regression test
+// for the reported bug: a manual /compact dispatched to a delegated-CLI
+// backend with no valid native cursor "responded instead of compacting". The
+// history bridge prepended a <prior-conversation> transcript ahead of the
+// literal "/compact", so the CLI's slash dispatcher — which only recognizes a
+// message as a command when it IS the entire prompt — saw one ordinary chat
+// message and answered it. SkipCliHistorySeed (set by dispatchCompact's idle
+// sub-path) must leave the literal prompt untouched on this exact branch.
+func TestResolveCliContinuity_SkipsSeedForLiteralPrompt(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeSeedConv(t, "seedconv-compact")
+
+	mgr := NewManager(backend.NewClaudeCodeBackend())
+	s := &engineSession{key: "k-compact", conversationID: "seedconv-compact"}
+	opts := types.RunOptions{Model: "claude-opus-4-8", Prompt: "/compact", SkipCliHistorySeed: true}
+
+	mgr.resolveCliContinuity(s, &opts)
+
+	if opts.Prompt != "/compact" {
+		t.Fatalf("literal /compact must reach the CLI's slash dispatcher unmodified, got %q", opts.Prompt)
+	}
+	if opts.CliResumeSessionID != "" {
+		t.Fatalf("no cursor exists, resume must stay empty, got %q", opts.CliResumeSessionID)
+	}
+}
+
 func TestResolveCliContinuity_ResumesOnValidCursor(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

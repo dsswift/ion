@@ -453,26 +453,40 @@ extension ConversationView {
 
     // MARK: - Actions
 
+    /// Whether the engine is compacting this tab's conversation. Mirrors the
+    /// desktop InputBar's `isCompacting` gate: there is no way to steer a
+    /// compaction in progress, so the send button disables the same way it
+    /// does for `isInputLocked`, and `SessionViewModel.submit` refuses the
+    /// attempt too. Reads the snapshot field, so the phone and the desktop
+    /// agree from the first frame.
+    var isCompactingTab: Bool {
+        viewModel.tab(for: tabId)?.isCompacting == true
+    }
+
     var cannotSend: Bool {
         ConversationView.computeCannotSend(
             promptText: promptText,
             attachmentCount: pendingAttachments.count,
             hasUploading: hasUploading,
-            contextCapacityState: contextCapacityState
+            contextCapacityState: contextCapacityState,
+            isCompacting: isCompactingTab
         )
     }
 
     /// Pure submit-button gate. Context capacity is accepted for an explicit
     /// contract check but does not block: the engine owns admission and can run
-    /// automatic compaction before its provider request.
+    /// automatic compaction before its provider request. `isCompacting` DOES
+    /// block: unlike context pressure, a compaction in progress cannot be
+    /// steered by sending, so queuing behind it would only mislead the user.
     static func computeCannotSend(
         promptText: String,
         attachmentCount: Int,
         hasUploading: Bool,
-        contextCapacityState _: ConversationStatusBar.ContextCapacityState
+        contextCapacityState _: ConversationStatusBar.ContextCapacityState,
+        isCompacting: Bool = false
     ) -> Bool {
         let empty = promptText.trimmingCharacters(in: .whitespaces).isEmpty
-        return (empty && attachmentCount == 0) || hasUploading
+        return (empty && attachmentCount == 0) || hasUploading || isCompacting
     }
 
     /// Re-sync history when we recover from a transient disconnect

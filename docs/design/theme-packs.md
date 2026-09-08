@@ -16,7 +16,7 @@ A pack may include either component or both. Only the `ios` component (plus its 
 
 ## Built-in themes
 
-Four themes are compiled into both clients and never ride the wire: `ion-dark`, `ion-light`, `ion-classic`, and `jarvis-hud`. Ion Dark, Ion Light, and Ion Classic are pixel-identical across desktop and iOS, pinned by the parity fixture (`assets/theme-parity.json`) that both test suites assert against. Jarvis HUD is one theme with two deliberately different platform parts: the desktop renders the HUD palette (`palette-hud.ts`) while iOS renders the Arc Reactor treatment (animated ring background, scan-line activity indicator). These four ids are **reserved** — a pack claiming one is refused at load.
+The built-in themes are compiled into both clients and never ride the wire: `ion-dark`, `ion-light`, `ion-classic`, and `jarvis-hud`. Ion Dark, Ion Light, and Ion Classic are pixel-identical across desktop and iOS, pinned by the parity fixture (`assets/theme-parity.json`) that both test suites assert against. Jarvis HUD is one theme with two deliberately different platform parts: the desktop renders the HUD palette (`palette-hud.ts`) while iOS renders the Arc Reactor treatment (animated ring background, scan-line activity indicator). These ids are **reserved** — a pack claiming one is refused at load.
 
 Theme selection is **per device**: the desktop's theme is the `selectedTheme` setting, the iOS theme is the phone's local Appearance preference. Selections are never force-synced (see [Enterprise enforcement](#enterprise-enforcement) for the exception).
 
@@ -56,7 +56,7 @@ On Windows the system root is `%PROGRAMDATA%\Ion\themes`; on Linux, `/etc/ion/th
                                       // built-in id to inherit every omitted required token.
     "preferredColorScheme": "dark",  // optional; omitted = follow the system
     "tokens": {                       // every required IOS_THEME_TOKEN_KEYS entry, #RRGGBB or #RRGGBBAA
-                                      // (except the 8 code-syntax tokens below, which are optional —
+                                      // (except the code-syntax tokens below, which are optional —
                                       // omitted ones fall back to readable theme-derived defaults on iOS).
                                       // Omit any required token only when a `base` is named.
       "accent": "#FF6600FF",

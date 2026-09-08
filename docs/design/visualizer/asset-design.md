@@ -1,6 +1,6 @@
 # Agent Team Visualizer Asset Design: "Ion Works"
 
-Design authority for every visual asset in the Agent Team Visualizer's shipped theme pack. Sprite production does not begin on any asset until its spec in this document is complete. Every generated asset is reviewed against its "expected look" line before it enters the pack.
+Design authority for every visual asset in the Agent Team Visualizer's shipped theme pack. An asset belongs in the pack only when it matches the palette, geometry, and look this document specifies for its id.
 
 ## Theme statement
 
@@ -104,29 +104,29 @@ Every glowing element (screens, status LEDs, energy details, the coffee-bar neon
 - Role silhouettes:
   - **manager**: blazer with visible lapels, upright posture, distinct hair shape. Reads as "in charge" at a glance.
   - **lead**: senior look; layered top (cardigan/vest), holds a tablet in idle.
-  - **specialist**: six planned variants differing in hair silhouette, top style, and one personal accessory (headphones, glasses, cap, mug, lanyard, hoodie-up).
+  - **specialist**: variants differing in hair silhouette, top style, and one personal accessory (headphones, glasses, cap, mug, lanyard, hoodie-up).
 
-### Character roster (designed now; produced across two passes)
+### Character roster
 
-| Id | Roles | Pass | Expected look |
-|---|---|---|---|
-| `mgr-blazer` | manager | 1* | Navy-slate blazer, confident stance, short combed hair |
-| `lead-cardigan` | lead, specialist | 2 | Warm cardigan over shirt, tablet in hand |
-| `spec-headphones` | specialist | 2 | Over-ear headphones, hoodie |
-| `spec-glasses` | specialist | 2 | Round glasses, tucked shirt |
-| `spec-cap` | specialist | 2 | Backwards cap, tee |
-| `spec-mug` | specialist | 2 | Carries a paper-white mug in idle |
-| `spec-lanyard` | specialist | 2 | Badge lanyard, rolled sleeves |
-| `spec-hoodie` | specialist | 2 | Hood up, relaxed slouch |
+| Id | Roles | Look |
+|---|---|---|
+| `mgr-blazer` | manager | Navy-slate blazer, confident stance, short combed hair |
+| `lead-cardigan` | lead, specialist | Warm cardigan over shirt, tablet in hand |
+| `spec-headphones` | specialist | Over-ear headphones, hoodie |
+| `spec-glasses` | specialist | Round glasses, tucked shirt |
+| `spec-cap` | specialist | Backwards cap, tee |
+| `spec-mug` | specialist | Carries a paper-white mug in idle |
+| `spec-lanyard` | specialist | Badge lanyard, rolled sleeves |
+| `spec-hoodie` | specialist | Hood up, relaxed slouch |
 
-*Pass 1 ships a single tintable character with `roles: ["manager", "lead", "specialist"]` so every seat can be cast from one sheet, differentiated by accent tinting, until the full roster lands. The Pass 1 character uses the `mgr-blazer` look.
+A character declares every role it can fill, so one tintable sheet can cast several seat kinds — `lead-cardigan` serves both leads and specialists, differentiated by accent tinting.
 
 ## Pets
 
-| Id | Pass | Behavior | Expected look |
-|---|---|---|---|
-| `volt-cat` | 1 | wander | Small cat in ion-cyan/graphite tones, glowing cyan eyes, tail tip glows |
-| `robo-vac` | 2 | wander | Flat round vacuum robot, single ion-blue status LED, subtle motion lines |
+| Id | Behavior | Look |
+|---|---|---|
+| `volt-cat` | wander | Small cat in ion-cyan/graphite tones, glowing cyan eyes, tail tip glows |
+| `robo-vac` | wander | Flat round vacuum robot, single ion-blue status LED, subtle motion lines |
 
 Pet animations: `idle` (1), `walk-down` / `walk-up` / `walk-right` (2 frames each, left mirrored).
 
@@ -136,87 +136,86 @@ Category values: `work`, `mail`, `relax`, `manager`, `decor`. Footprints in tile
 
 ### Work zone
 
-| Id | Footprint | Rotation | States/frames | Pass | Expected look |
-|---|---|---|---|---|---|
-| `desk` | 2x1 | 2-way | - | 1 | Birch top, graphite legs, cable notch |
-| `standing-desk` | 2x1 | 2-way | - | 2 | Taller silhouette, visible lift column |
-| `pc` | 1x1 (on surface) | none | on/off | 1 | Monitor with ion-cyan screen when on, dark when off |
-| `dual-monitor` | 2x1 (on surface) | none | on/off | 2 | Two angled ion-cyan screens |
-| `chair-ergo` | 1x1 | 3-way-mirror | - | 1 | Graphite frame, fabric-blue seat, headrest |
-| `chair-wood` | 1x1 | 3-way-mirror | - | 2 | Simple birch chair |
-| `server-rack` | 1x1 (tall, 16x32) | none | 2 frames animated | 1 | Graphite cabinet, blinking ion-blue LED column |
-| `whiteboard` | 2x1 wall | none | - | 1 | Paper-white board, abstract ion-blue diagram marks |
-| `kanban-board` | 2x1 wall | none | - | 2 | Three columns of tiny colored cards |
-| `bookshelf` | 1x1 (tall, 16x32) | none | - | 2 | Birch shelf, book spines in muted palette tones |
+| Id | Footprint | Rotation | States/frames | Look |
+|---|---|---|---|---|
+| `desk` | 2x1 | 2-way | - | Birch top, graphite legs, cable notch |
+| `standing-desk` | 2x1 | 2-way | - | Taller silhouette, visible lift column |
+| `pc` | 1x1 (on surface) | none | on/off | Monitor with ion-cyan screen when on, dark when off |
+| `dual-monitor` | 2x1 (on surface) | none | on/off | Two angled ion-cyan screens |
+| `chair-ergo` | 1x1 | 3-way-mirror | - | Graphite frame, fabric-blue seat, headrest |
+| `chair-wood` | 1x1 | 3-way-mirror | - | Simple birch chair |
+| `server-rack` | 1x1 (tall, 16x32) | none | 2 frames animated | Graphite cabinet, blinking ion-blue LED column |
+| `whiteboard` | 2x1 wall | none | - | Paper-white board, abstract ion-blue diagram marks |
+| `kanban-board` | 2x1 wall | none | - | Three columns of tiny colored cards |
+| `bookshelf` | 1x1 (tall, 16x32) | none | - | Birch shelf, book spines in muted palette tones |
 
 ### Mail zone
 
-| Id | Footprint | Rotation | States/frames | Pass | Expected look |
-|---|---|---|---|---|---|
-| `mail-station` | 2x1 (tall, 32x32) | none | - | 1 | Pigeonhole grid, paper-white envelopes visible |
-| `package-stack` | 1x1 | none | - | 2 | Two stacked parcels, birch-pale tape |
-| `outbox-desk` | 2x1 | 2-way | - | 2 | Desk with tray of outgoing envelopes |
-| `notice-board` | 2x1 wall | none | - | 2 | Cork tone with pinned notes |
+| Id | Footprint | Rotation | States/frames | Look |
+|---|---|---|---|---|
+| `mail-station` | 2x1 (tall, 32x32) | none | - | Pigeonhole grid, paper-white envelopes visible |
+| `package-stack` | 1x1 | none | - | Two stacked parcels, birch-pale tape |
+| `outbox-desk` | 2x1 | 2-way | - | Desk with tray of outgoing envelopes |
+| `notice-board` | 2x1 wall | none | - | Cork tone with pinned notes |
 
 ### Relax zone
 
-| Id | Footprint | Rotation | States/frames | Pass | Expected look |
-|---|---|---|---|---|---|
-| `sofa` | 2x1 | 3-way-mirror | - | 1 | Fabric-blue two-seater, two seat tiles |
-| `coffee-bar` | 2x1 (tall, 32x32) | none | 2 frames animated | 2 | Counter with machine, steam wisp, violet neon "ION" sign |
-| `espresso-machine` | 1x1 (on surface) | none | 2 frames animated | 2 | Chrome body, drip animation |
-| `coffee-table` | 1x1 | none | - | 2 | Low birch table, two mugs |
-| `small-table` | 1x1 | none | - | 2 | Round cafe table |
-| `bench` | 2x1 | 3-way-mirror | - | 2 | Cushioned bench, fabric-red cushions |
-| `arcade-cabinet` | 1x1 (tall, 16x32) | none | 2 frames animated | 2 | Graphite cabinet, animated ion screen |
-| `water-cooler` | 1x1 (tall, 16x24) | none | - | 2 | Blue bottle, paper cups |
-| `snack-shelf` | 1x1 (tall, 16x32) | none | - | 2 | Shelf with colorful snack boxes |
+| Id | Footprint | Rotation | States/frames | Look |
+|---|---|---|---|---|
+| `sofa` | 2x1 | 3-way-mirror | - | Fabric-blue two-seater, two seat tiles |
+| `coffee-bar` | 2x1 (tall, 32x32) | none | 2 frames animated | Counter with machine, steam wisp, violet neon "ION" sign |
+| `espresso-machine` | 1x1 (on surface) | none | 2 frames animated | Chrome body, drip animation |
+| `coffee-table` | 1x1 | none | - | Low birch table, two mugs |
+| `small-table` | 1x1 | none | - | Round cafe table |
+| `bench` | 2x1 | 3-way-mirror | - | Cushioned bench, fabric-red cushions |
+| `arcade-cabinet` | 1x1 (tall, 16x32) | none | 2 frames animated | Graphite cabinet, animated ion screen |
+| `water-cooler` | 1x1 (tall, 16x24) | none | - | Blue bottle, paper cups |
+| `snack-shelf` | 1x1 (tall, 16x32) | none | - | Shelf with colorful snack boxes |
 
 ### Manager's office
 
-| Id | Footprint | Rotation | States/frames | Pass | Expected look |
-|---|---|---|---|---|---|
-| `exec-desk` | 3x1 | 2-way | - | 1 | Wide dark-birch desk, leather inlay, name plate |
-| `exec-chair` | 1x1 | 3-way-mirror | - | 2 | High-back graphite chair |
-| `large-painting` | 2x1 wall | none | - | 2 | Abstract ion-gradient artwork, birch frame |
-| `plasma-globe` | 1x1 (on surface) | none | 2 frames animated | 2 | Glass sphere, ion-magenta filaments |
-| `trophy-shelf` | 2x1 wall | none | - | 2 | Small trophies and framed awards |
+| Id | Footprint | Rotation | States/frames | Look |
+|---|---|---|---|---|
+| `exec-desk` | 3x1 | 2-way | - | Wide dark-birch desk, leather inlay, name plate |
+| `exec-chair` | 1x1 | 3-way-mirror | - | High-back graphite chair |
+| `large-painting` | 2x1 wall | none | - | Abstract ion-gradient artwork, birch frame |
+| `plasma-globe` | 1x1 (on surface) | none | 2 frames animated | Glass sphere, ion-magenta filaments |
+| `trophy-shelf` | 2x1 wall | none | - | Small trophies and framed awards |
 
 ### Decor
 
-| Id | Footprint | Rotation | States/frames | Pass | Expected look |
-|---|---|---|---|---|---|
-| `plant-small` | 1x1 | none | - | 1 | Terracotta pot, three-leaf sprout |
-| `plant-large` | 1x1 (tall, 16x32) | none | - | 2 | Floor plant, layered foliage |
-| `plant-hanging` | 1x1 wall | none | - | 2 | Wall-mounted trailing plant |
-| `wall-clock` | 1x1 wall | none | 2 frames animated | 2 | Round clock, ticking second hand |
-| `painting-a` | 1x1 wall | none | - | 2 | Small abstract piece, cyan family |
-| `painting-b` | 1x1 wall | none | - | 2 | Small abstract piece, violet family |
-| `floor-lamp` | 1x1 (tall, 16x32) | none | on/off | 2 | Slim graphite pole, warm glow when on |
-| `bin` | 1x1 | none | - | 2 | Slate waste bin, crumpled paper |
+| Id | Footprint | Rotation | States/frames | Look |
+|---|---|---|---|---|
+| `plant-small` | 1x1 | none | - | Terracotta pot, three-leaf sprout |
+| `plant-large` | 1x1 (tall, 16x32) | none | - | Floor plant, layered foliage |
+| `plant-hanging` | 1x1 wall | none | - | Wall-mounted trailing plant |
+| `wall-clock` | 1x1 wall | none | 2 frames animated | Round clock, ticking second hand |
+| `painting-a` | 1x1 wall | none | - | Small abstract piece, cyan family |
+| `painting-b` | 1x1 wall | none | - | Small abstract piece, violet family |
+| `floor-lamp` | 1x1 (tall, 16x32) | none | on/off | Slim graphite pole, warm glow when on |
 
 ## Floors
 
 Single 16x16 tiles. Tintable floors are drawn in neutral slate and tinted at runtime with the department accent.
 
-| Id | Pass | Tintable | Expected look |
-|---|---|---|---|
-| `plank-birch` | 1 | no | Warm birch planks, subtle grain |
-| `carpet-neutral` | 1 | yes | Low-pile carpet, slate weave texture |
-| `plank-dark` | 2 | no | Wainscot-brown planks |
-| `tile-slate` | 2 | no | Cool slate tiles with grout lines |
-| `concrete` | 2 | no | Smooth graphite concrete, hairline cracks |
+| Id | Tintable | Look |
+|---|---|---|
+| `plank-birch` | no | Warm birch planks, subtle grain |
+| `carpet-neutral` | yes | Low-pile carpet, slate weave texture |
+| `plank-dark` | no | Wainscot-brown planks |
+| `tile-slate` | no | Cool slate tiles with grout lines |
+| `concrete` | no | Smooth graphite concrete, hairline cracks |
 
-The proposal's department-tinted carpet variants are realized at runtime by tinting `carpet-neutral`; no per-department carpet PNGs exist.
+Department-tinted carpet is realized at runtime by tinting `carpet-neutral`; no per-department carpet PNGs exist.
 
 ## Walls
 
 Auto-tiling sets: one horizontal strip of 16 tiles (256x16 px), indexed by 4-bit adjacency mask (bit 1 = wall to the north, 2 = east, 4 = south, 8 = west). Wall tiles are 16x16 and drawn with interior-facing trim.
 
-| Id | Pass | Expected look |
-|---|---|---|
-| `graphite-panel` | 1 | Graphite-700 panels, thin ion-blue trim line at two-thirds height |
-| `plaster-wainscot` | 2 | Warm plaster upper, birch wainscot lower |
+| Id | Look |
+|---|---|
+| `graphite-panel` | Graphite-700 panels, thin ion-blue trim line at two-thirds height |
+| `plaster-wainscot` | Warm plaster upper, birch wainscot lower |
 
 Door trim on department rooms is a 1 px tint region on the doorway tiles, tinted with the department accent at runtime.
 
@@ -224,12 +223,14 @@ Door trim on department rooms is a 1 px tint region on the doorway tiles, tinted
 
 16x16 px, paper-white fill, ink outline, tail bottom-left. Each is one PNG.
 
-| Id | Pass | Content |
-|---|---|---|
-| `waiting` | 1 | status-green checkmark |
-| `permission` | 1 | Three status-amber dots |
-| `error` | 1 | status-red exclamation mark |
-| `dispatch` | 1 | Small envelope, birch-pale with graphite fold lines |
+| Id | Content |
+|---|---|
+| `waiting` | status-green checkmark |
+| `permission` | Three status-amber dots |
+| `error` | status-red exclamation mark |
+| `dispatch` | Small envelope, birch-pale with graphite fold lines |
+| `plan` | Slate ruled-document glyph — a plan awaiting approval |
+| `question` | Ion-cyan question mark — a question awaiting an answer |
 
 ## Room dressing
 

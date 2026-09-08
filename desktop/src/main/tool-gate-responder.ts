@@ -38,6 +38,7 @@ import { evaluateToolGate } from './integration/bench-tool-policy'
 import { BENCH_CLIENT_TOOLS } from './integration/bench-agent-tools'
 import { ASK_USER_QUESTIONS_TOOL } from './questions/questions-tool-decl'
 import { STUDIO_PLAYWRIGHT_TOOLS } from './studio-playwright/tools'
+import { STUDIO_GRAPH_TOOLS } from './studio-graph/tools'
 import { RENDER_CHART_TOOL, RENDER_CHART_TOOL_NAME, executeRenderChart } from './studio-chart-tool'
 import { publishChartResource, type ChartPublishBridge } from './chart-resource-publish'
 import {
@@ -80,10 +81,11 @@ export const GATED_TOOLS = ['Write', 'Edit', 'NotebookEdit', 'Bash', 'ion_scaffo
  * call. The engine's fast path keeps non-matching tools free, and the policy
  * returns allow immediately for a cwd with no bench involvement.
  *
- * Studio-only tools (the browser set and RenderChart) are included only while
- * the Studio presentation is active, because both produce output that only the
- * Studio surface can host. Availability is re-asserted on change through
- * studio-client-tool-sync rather than restarting sessions.
+ * Studio-only tools (the browser set, the graph set, and RenderChart) are
+ * included only while the Studio presentation is active, because all three
+ * produce output that only the Studio surface can host. Availability is
+ * re-asserted on change through studio-client-tool-sync rather than
+ * restarting sessions.
  *
  * `workingDirectory` selects the ConversationTelemetry variant. That tool is
  * declared with one name and no parameters in both cases; only its description
@@ -99,6 +101,9 @@ export function toolGateSessionConfig(workingDirectory = ''): ToolGateConfig {
     ? STUDIO_PLAYWRIGHT_TOOLS
     : []
   const chartTools = studioActive ? [RENDER_CHART_TOOL] : []
+  // The Graph View is a Studio singleton surface, so the graph tools share
+  // the chart tools' gate exactly: Studio active, nothing else.
+  const graphTools = studioActive ? STUDIO_GRAPH_TOOLS : []
   return {
     enabled: true,
     tools: GATED_TOOLS,
@@ -112,6 +117,12 @@ export function toolGateSessionConfig(workingDirectory = ''): ToolGateConfig {
         planModeSafe: t.planModeSafe,
       })),
       ...browserTools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+        planModeSafe: t.planModeSafe,
+      })),
+      ...graphTools.map((t) => ({
         name: t.name,
         description: t.description,
         inputSchema: t.inputSchema,
@@ -172,7 +183,7 @@ export function wireToolGateResponder(bridge: GateBridge): void {
   })
   log('tool-gate responder wired', {
     gated_tools: GATED_TOOLS,
-    client_tools: [...BENCH_CLIENT_TOOLS, ...STUDIO_PLAYWRIGHT_TOOLS].map((t) => t.name)
+    client_tools: [...BENCH_CLIENT_TOOLS, ...STUDIO_PLAYWRIGHT_TOOLS, ...STUDIO_GRAPH_TOOLS].map((t) => t.name)
       .concat(RENDER_CHART_TOOL_NAME, CONVERSATION_TELEMETRY_TOOL_NAME, ASK_USER_QUESTIONS_TOOL.name),
   })
 }
@@ -232,13 +243,16 @@ async function respondToolCall(
   const browserTool = studioActive && settings.studioPlaywrightEnabled !== false
     ? STUDIO_PLAYWRIGHT_TOOLS.find((candidate) => candidate.name === req.gateToolName)
     : undefined
+  const graphTool = studioActive
+    ? STUDIO_GRAPH_TOOLS.find((candidate) => candidate.name === req.gateToolName)
+    : undefined
   const benchTool = BENCH_CLIENT_TOOLS.find((candidate) => candidate.name === req.gateToolName)
   const isChartTool = studioActive && req.gateToolName === RENDER_CHART_TOOL_NAME
   const isTelemetryTool = req.gateToolName === CONVERSATION_TELEMETRY_TOOL_NAME
   let content: string
   let isError: boolean
   let images: unknown[] | undefined
-  if (!benchTool && !browserTool && !isChartTool && !isTelemetryTool) {
+  if (!benchTool && !browserTool && !graphTool && !isChartTool && !isTelemetryTool) {
     content = `client tool ${req.gateToolName} is not provided by this desktop`
     isError = true
     warn('client tool request for unknown tool', { key, tool: req.gateToolName })
@@ -271,14 +285,15 @@ async function respondToolCall(
           await publishChartResource(bridge, key, result.publish.op, result.publish.record)
         }
       } else {
-        // The two remaining families take different execution inputs and that
+        // The remaining families take different execution inputs and that
         // difference is meaningful: a bench tool needs only the cwd, while a
-        // browser tool must be told WHICH conversation is calling and whether
-        // the caller is the model or trusted extension code. Ownership and
-        // origin are supplied here, never accepted from the model's arguments.
+        // browser or graph tool must be told WHICH conversation is calling and
+        // whether the caller is the model or trusted extension code. Ownership
+        // and origin are supplied here, never accepted from the model's
+        // arguments.
         const result = benchTool
           ? await benchTool.execute((req.gateToolInput ?? {}) as Record<string, unknown>, req.gateCwd ?? '')
-          : await browserTool!.execute((req.gateToolInput ?? {}) as Record<string, unknown>, {
+          : await (browserTool ?? graphTool)!.execute((req.gateToolInput ?? {}) as Record<string, unknown>, {
             sessionKey: key,
             cwd: req.gateCwd ?? '',
             origin: req.gateOrigin === 'extension' ? 'extension' : 'model',

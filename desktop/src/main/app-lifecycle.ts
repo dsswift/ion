@@ -1,6 +1,7 @@
+declare const __ION_DESKTOP_VERSION__: string
+
 import { app, BrowserWindow, dialog, Menu, powerMonitor, screen } from 'electron'
-import { existsSync, writeFileSync } from 'fs'
-import { readFileSync } from 'fs'
+import { writeFileSync } from 'fs'
 import { join } from 'path'
 import { log as _log, error as _error, initLoggerMachineIdentity } from './logger'
 import { applyConfiguredLogLevel } from './log-level'
@@ -27,22 +28,20 @@ import {
   legacyTabsFileForBackend,
   legacySessionChainsFileForBackend,
   legacySessionLabelsFileForBackend,
-  ENGINE_CONFIG_FILE,
   ensureHybridBackendConfig,
   readSettings,
 } from './settings-store'
 import { ensureEngineDaemon, restartEngineDaemon } from './engine-bootstrap'
 import { pruneOperationDirs } from './utils/temp-dir'
 import { claimEngineEgressForDesktop } from './engine-egress-claim'
-import { configureEgress, setEgressUser, type EgressConfig, type AuthHeaderProvider } from './log-egress'
-import { startEgressTailers } from './log-egress-tailer'
-import { getAccessToken, getOperatorIdentityState, getSignedInIdentity, ensureEntraAuthConfig } from './oauth/entra-auth'
+import { getOperatorIdentityState, ensureEntraAuthConfig } from './oauth/entra-auth'
 import { getEnterprisePolicy, getEnterprisePolicyNewConversationDefaults } from './engine-bridge-fs'
 import { initAutoUpdater } from './updater'
 import { startWatchdog, setWatchdogSuspended } from './watchdog'
 import { renewRelaysAfterWake } from './remote/transport-wake'
 import { createStartupWindow } from './startup-window'
 import { installQuitHandlers } from './app-lifecycle-quit'
+import { initEgressFromEngineConfig, initEgressFromSettingsConfig } from './app-lifecycle-egress'
 import { failStartup, isStartupRevealed, reportStartup, requireStartupAuthentication, startStartup } from './startup-coordinator'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -51,147 +50,6 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 
 function error(msg: string, fields?: Record<string, unknown>): void {
   _error('main', msg, fields)
-}
-
-/**
- * Read egress config from engine.json (logging.egressTargets / egressEndpoint etc.)
- * and configure the desktop egress forwarder.
- *
- * Nil/absent egress config = complete no-op (default installs unchanged). Enterprise
- * enforcement (EnforceEnterprise in the engine) can seal egress on via
- * enterprise.logging.egressTargets; the desktop respects whatever the merged
- * engine.json contains.
- */
-function initEgressFromEngineConfig(): void {
-  if (!existsSync(ENGINE_CONFIG_FILE)) return
-  try {
-    const raw = JSON.parse(readFileSync(ENGINE_CONFIG_FILE, 'utf-8')) as Record<string, unknown>
-    const logging = raw.logging as Record<string, unknown> | undefined
-    if (!logging) return
-
-    const targets = logging.egressTargets as string[] | undefined
-    if (!Array.isArray(targets) || targets.length === 0) return
-
-    const cfg: EgressConfig = {
-      egressTargets: targets,
-      egressEndpoint: typeof logging.egressEndpoint === 'string' ? logging.egressEndpoint : undefined,
-      egressHeaders: typeof logging.egressHeaders === 'object' && logging.egressHeaders !== null
-        ? logging.egressHeaders as Record<string, string>
-        : undefined,
-      egressBatchSize: typeof logging.egressBatchSize === 'number' ? logging.egressBatchSize : undefined,
-      egressFlushIntervalMs: typeof logging.egressFlushIntervalMs === 'number' ? logging.egressFlushIntervalMs : undefined,
-      egressOtel: typeof logging.egressOtel === 'object' && logging.egressOtel !== null
-        ? logging.egressOtel as import('./log-egress').EgressOtelConfig
-        : undefined,
-    }
-
-    // Shipping-responsibility matrix: the desktop's share is
-    // logging.egressClientShipSources. Unset preserves the legacy
-    // single-collection-point default (the desktop ships everything).
-    const rawClientSources = logging.egressClientShipSources
-    const clientSources: string[] = Array.isArray(rawClientSources)
-      ? (rawClientSources as string[])
-      : ['desktop', 'engine', 'ios', 'telemetry']
-    if (clientSources.length === 0) {
-      log('app_lifecycle: matrix assigns the desktop no sources; egress left to the engine', { targets })
-      return
-    }
-
-    // OIDC header provider: called at every flush for a fresh token. The
-    // engine owns the grant and mints ephemeral access tokens on demand
-    // (oidc_token). Returns {} when signed out / unconfigured, so egress
-    // still functions against a no-auth sink and simply receives 401 from
-    // an authenticated sink until the user completes sign-in.
-    const oidcHeaderProvider: AuthHeaderProvider = async () => {
-      try {
-        const token = await getAccessToken()
-        if (token) return { Authorization: `Bearer ${token}` }
-      } catch {
-        // Non-fatal: fall through to unauthenticated egress.
-      }
-      return {} as Record<string, string>
-    }
-
-    configureEgress(cfg, oidcHeaderProvider, {
-      shipOwnRecords: clientSources.includes('desktop'),
-    })
-    // F4: populate user-attribution field on egress records. Read the signed-in
-    // identity (from the engine's snapshot) so the field is set before the first
-    // flush. If not signed in yet, the field remains absent (omitted by default).
-    getSignedInIdentity().then((identity) => {
-      if (identity) setEgressUser(identity.user)
-    }).catch((err) => log("app_lifecycle: egress user identity read failed", { error: String(err) }))
-    startEgressTailers(clientSources)
-    log('app_lifecycle: egress configured', { targets, sources: clientSources })
-  } catch (err) {
-    log('app_lifecycle: egress config read failed (non-fatal)', {
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
-}
-
-/**
- * Read egress config from settings.json (logging.egressTargets / egressOtel etc.)
- * and configure the desktop egress forwarder.
- *
- * This is the desktop-owned shipping path, separate from the engine's own
- * egress config in engine.json. When configured here, the desktop ships all
- * four local log sources (desktop, engine, iOS, telemetry) to the specified
- * endpoint under its own authenticated identity. The engine ships nothing unless
- * it has its own egressTargets set in engine.json — the two are independent.
- *
- * Nil/absent logging block = complete no-op.
- */
-function initEgressFromSettingsConfig(): void {
-  try {
-    const raw = readSettings()
-    const logging = raw.logging as Record<string, unknown> | undefined
-    if (!logging) return
-
-    const targets = logging.egressTargets as string[] | undefined
-    if (!Array.isArray(targets) || targets.length === 0) return
-
-    const cfg: EgressConfig = {
-      egressTargets: targets,
-      egressEndpoint: typeof logging.egressEndpoint === 'string' ? logging.egressEndpoint : undefined,
-      egressHeaders: typeof logging.egressHeaders === 'object' && logging.egressHeaders !== null
-        ? logging.egressHeaders as Record<string, string>
-        : undefined,
-      egressBatchSize: typeof logging.egressBatchSize === 'number' ? logging.egressBatchSize : undefined,
-      egressFlushIntervalMs: typeof logging.egressFlushIntervalMs === 'number' ? logging.egressFlushIntervalMs : undefined,
-      egressOtel: typeof logging.egressOtel === 'object' && logging.egressOtel !== null
-        ? logging.egressOtel as import('./log-egress').EgressOtelConfig
-        : undefined,
-    }
-
-    // OIDC header provider: called at every flush for a fresh token.
-    // Returns {} when signed out / unconfigured — egress still functions
-    // against a no-auth sink and receives 401 from an authenticated sink
-    // until the user completes sign-in.
-    const oidcHeaderProvider: AuthHeaderProvider = async () => {
-      try {
-        const token = await getAccessToken()
-        if (token) return { Authorization: `Bearer ${token}` }
-      } catch {
-        // Non-fatal: fall through to unauthenticated egress.
-      }
-      return {} as Record<string, string>
-    }
-
-    // Desktop always ships all four local sources when settings egress is enabled.
-    // No shipping matrix needed: the desktop is the sole shipper for these files
-    // in this deployment; the engine is configured separately via engine.json.
-    configureEgress(cfg, oidcHeaderProvider, { shipOwnRecords: true })
-    getSignedInIdentity().then((identity) => {
-      if (identity) setEgressUser(identity.user)
-    }).catch((err) => log("app_lifecycle: egress user identity read failed", { error: String(err) }))
-    startEgressTailers(['desktop', 'engine', 'ios', 'telemetry'])
-    log('app_lifecycle: settings egress configured', { targets })
-  } catch (err) {
-    log('app_lifecycle: settings egress config read failed (non-fatal)', {
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
 }
 
 /**
@@ -274,6 +132,22 @@ export function setupAppLifecycle(): void {
   // packaged build has no DevTools, which makes desktop.jsonl the only
   // diagnostic channel — a filtered-out line reads as "the code never ran".
   applyConfiguredLogLevel()
+
+  // Log build identity as the very first line the operator or an agent will
+  // see when diagnosing from desktop.jsonl. `__ION_DESKTOP_VERSION__` is a
+  // build-time define (electron.vite.config.ts): dev builds bake in the short
+  // git SHA and a dirty-tree flag, release builds carry the release-please
+  // version. Without this line, a bug that reproduces identically after a
+  // rebuild is indistinguishable from a rebuild that silently installed the
+  // wrong branch/commit — the exact ambiguity that stalled the Graph View
+  // sigma-mount investigation until a manual `git log` comparison caught it.
+  log('desktop starting', {
+    appVersion: __ION_DESKTOP_VERSION__,
+    electron: process.versions.electron,
+    node: process.versions.node,
+    platform: process.platform,
+    arch: process.arch,
+  })
 
   // Seed the resource catalog with persisted charts BEFORE any renderer can
   // read it. Charts are files on disk keyed by conversation id, so this needs

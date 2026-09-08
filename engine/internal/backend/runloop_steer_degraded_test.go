@@ -59,8 +59,16 @@ func TestAppendInbound_DegradedSteer_PersistsMarker(t *testing.T) {
 			}
 		case conversation.EntrySteerMarker:
 			steerMarkers++
-			if sd := steerMarkerDataOf(t, e); sd.MessageLength != len(prompt) {
+			sd := steerMarkerDataOf(t, e)
+			if sd.MessageLength != len(prompt) {
 				t.Errorf("steer marker MessageLength = %d, want %d", sd.MessageLength, len(prompt))
+			}
+			if sd.Kind != string(types.InjectionKindCheckIn) {
+				t.Errorf("steer marker Kind = %q, want %q — a telemetry scan reading only the "+
+					"marker needs this to exclude a degraded machine steer", sd.Kind, types.InjectionKindCheckIn)
+			}
+			if !sd.MachineAuthored {
+				t.Error("steer marker MachineAuthored = false on a degraded checkin steer, want true")
 			}
 		}
 	}
@@ -88,6 +96,10 @@ func TestAppendInbound_DegradedSteer_KindlessStillMarks(t *testing.T) {
 	for _, e := range conv.Entries {
 		if e.Type == conversation.EntrySteerMarker {
 			steerMarkers++
+			sd := steerMarkerDataOf(t, e)
+			if sd.MachineAuthored {
+				t.Error("a kindless (human) degraded steer marker must not read as machine-authored")
+			}
 		}
 	}
 	if steerMarkers != 1 {

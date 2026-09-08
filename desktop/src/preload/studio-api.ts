@@ -10,6 +10,7 @@ import { ipcRenderer, webUtils } from 'electron'
 import { IPC } from '../shared/types'
 import type { BrowserSessionMode } from '../shared/studio-surface-types'
 import type { StudioBrowserCommandEnvelope, StudioBrowserCommandResult } from '../shared/studio-browser-types'
+import type { StudioGraphCommandEnvelope, StudioGraphCommandResult } from '../shared/studio-graph-types'
 import type { StudioConversationTerminalPublish, StudioConversationTerminalSnapshot } from '../shared/studio-conversation-terminal-sync'
 import type { StudioGetStateResult, StudioHistoryReplace, StudioRawPackBundle, StudioSettings, StudioTabListEntry, StudioTabState, StudioThemeListEntry, StudioUserMessageEcho, StudioWorktreeSnapshot } from '../shared/types-studio'
 
@@ -73,6 +74,15 @@ export interface StudioApi {
   onStudioBrowserCommand(callback: (envelope: StudioBrowserCommandEnvelope) => void): () => void
   /** Answer one browser command. */
   studioBrowserCommandResult(result: StudioBrowserCommandResult): void
+  /**
+   * Receive correlated graph tool commands from main. Same contract as the
+   * browser commands: the handler MUST answer exactly once through
+   * `studioGraphCommandResult` with the same callId, or main resolves the
+   * command as a timeout refusal.
+   */
+  onStudioGraphCommand(callback: (envelope: StudioGraphCommandEnvelope) => void): () => void
+  /** Answer one graph tool command. */
+  studioGraphCommandResult(result: StudioGraphCommandResult): void
   /**
    * A link the operator cmd-clicked inside a Surface browser guest. Chromium
    * reports it as a new-tab disposition, which the webview policy denies as a
@@ -205,6 +215,12 @@ export const studioApi: StudioApi = {
     return () => ipcRenderer.removeListener(IPC.STUDIO_BROWSER_COMMAND, handler)
   },
   studioBrowserCommandResult: (result) => ipcRenderer.send(IPC.STUDIO_BROWSER_COMMAND_RESULT, result),
+  onStudioGraphCommand: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, envelope: StudioGraphCommandEnvelope) => callback(envelope)
+    ipcRenderer.on(IPC.STUDIO_GRAPH_COMMAND, handler)
+    return () => ipcRenderer.removeListener(IPC.STUDIO_GRAPH_COMMAND, handler)
+  },
+  studioGraphCommandResult: (result) => ipcRenderer.send(IPC.STUDIO_GRAPH_COMMAND_RESULT, result),
   onStudioBrowserOpenUrl: (callback) => {
     const handler = (_e: Electron.IpcRendererEvent, url: string) => callback(url)
     ipcRenderer.on(IPC.STUDIO_BROWSER_OPEN_URL, handler)

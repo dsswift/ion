@@ -115,10 +115,23 @@ export interface ConversationTelemetry {
    * Mid-turn operator additions. NOT course corrections: a steer is context the
    * operator forgot in the opening prompt, or a task appended while the agent
    * is already working. Read it as prompt completeness, never as agent error.
+   *
+   * Excludes machine-authored steers (a background dispatch completion, a
+   * check-in) — see machineSteerCount. The engine persists a steer marker's
+   * origin (SteerMarkerData.machineAuthored), so this is a real classification
+   * read from the record, not a guess from message content.
    */
   steerCount: number
   steerTimestamps: number[]
   steerMessageLengths: number[]
+  /**
+   * Steers the engine injected on its own — a background dispatch completion
+   * arriving mid-turn, a check-in — never counted in steerCount because they
+   * carry no operator intent. Kept visible rather than dropped: a conversation
+   * with heavy background-dispatch use should not read as having zero steer
+   * activity at all.
+   */
+  machineSteerCount: number
 
   slashCommands: TelemetrySlashCommand[]
   planMarkers: TelemetryPlanMarker[]
@@ -157,6 +170,7 @@ export interface TelemetryTotals {
   assistantTurns: number
   courseCorrections: number
   steers: number
+  machineSteers: number
   toolCalls: number
   toolErrors: number
   dispatches: number

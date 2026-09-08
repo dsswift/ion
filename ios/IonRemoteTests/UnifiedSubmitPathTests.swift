@@ -98,6 +98,23 @@ final class UnifiedSubmitPathTests: XCTestCase {
         XCTAssertTrue(vm.conversationMessages("settled").isEmpty)
     }
 
+    /// There is no way to steer a compaction in progress, so submit() refuses
+    /// the same way it refuses an input-locked tab — mirroring the desktop's
+    /// promptRefusal('compacting'). The input bar disables Send for this too
+    /// (ConversationView+InputBar.computeCannotSend); this pins the guard
+    /// that covers every other entry point.
+    func testCompactingTabRejectsSubmitWithoutOptimisticMessage() {
+        let vm = SessionViewModel()
+        var tab = makeTab(id: "compacting", engine: false)
+        tab.isCompacting = true
+        vm.tabs = [tab]
+
+        vm.submit(tabId: "compacting", text: "must not send")
+
+        XCTAssertEqual(vm.tabs.first?.status, .idle)
+        XCTAssertTrue(vm.conversationMessages("compacting").isEmpty)
+    }
+
     /// The DATA seam: an extension-backed tab carries an `instanceId`, a plain
     /// tab does not. This is the only per-tab difference in the submit path.
     func testResolveSubmitInstanceIdIsTheOnlyPerTabDifference() {

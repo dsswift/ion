@@ -119,6 +119,13 @@ export interface RemoteTabState {
   /** Input-locked conversation (auto-generated conflict fix): clients must
    *  not offer a prompt input for this tab. See TabState.inputLocked. */
   inputLocked?: boolean
+  /**
+   * True while the engine is compacting this conversation (manual or
+   * proactive). There is no way to steer a compaction in progress, so
+   * clients must refuse a send rather than queue it — mirrors the desktop
+   * InputBar's `!isCompacting` gate on `canSend`. See TabState.isCompacting.
+   */
+  isCompacting?: boolean
   /** Why the tab is locked. `landed-worktree` is a sealed review session and
    * `settled` is a cold Inbox history record. */
   inputLockReason?: 'automated-workflow' | 'landed-worktree' | 'settled'

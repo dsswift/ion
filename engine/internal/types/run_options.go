@@ -347,6 +347,12 @@ type RunOptions struct {
 	// TemporaryAutoFromPlan is an in-process workflow marker. The session remains
 	// in plan mode while this one command run receives auto-mode tools.
 	TemporaryAutoFromPlan bool `json:"-"`
+	// SkipCliHistorySeed forbids resolveCliContinuity from bridging the prior
+	// conversation into Prompt when no valid native-CLI cursor exists. Set for
+	// the manual /compact dispatch, whose literal command text must reach the
+	// delegated CLI's own slash dispatcher unmodified. In-process run field;
+	// see session.PromptOverrides.SkipCliHistorySeed for the full rationale.
+	SkipCliHistorySeed bool `json:"-"`
 
 	// ResolvedSlashCommand / ResolvedSlashArgs / ResolvedSlashSource carry the
 	// raw slash invocation after the session layer has resolved+expanded it.

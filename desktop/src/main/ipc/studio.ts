@@ -33,6 +33,7 @@ import { validForwardedAction } from "../../shared/studio-mirror-actions";
 import { registerStudioWorktreeSyncIpc } from './studio-worktree-sync'
 import { registerStudioSettingsIpc } from './studio-settings'
 import { registerStudioBrowserIpc } from './studio-browser'
+import { registerStudioGraphIpc } from './studio-graph'
 import { registerStudioTabsSyncIpc } from './studio-tabs-sync'
 import { registerStudioConversationTerminalSyncIpc } from './studio-terminal-sync'
 
@@ -84,6 +85,7 @@ let studioCallSeq = 0;
 export function registerStudioIpc(): void {
   registerStudioWorktreeSyncIpc();
   registerStudioBrowserIpc();
+  registerStudioGraphIpc();
   registerStudioTabsSyncIpc();
   registerStudioConversationTerminalSyncIpc();
   ipcMain.handle(

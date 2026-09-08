@@ -39,7 +39,7 @@ human-readable contract behind them.
 | Pointer-state hook | `useInteractiveState()` / `interactiveBg()` in `hooks/useInteractiveState.ts` |
 
 `ColorPalette` is a mapped type over `darkColors` — a token added to the dark
-palette will not compile until it exists in all four palettes. Theme selection
+palette will not compile until it exists in every palette. Theme selection
 is single-axis: every built-in theme declares its scheme via
 `forcedColorScheme` and the theme picker is the only control (there is no
 separate dark/light toggle). Jarvis HUD and Ion Classic (the preserved
@@ -233,7 +233,7 @@ CSS zoom creates viewport-pixel and zoomed-CSS coordinate spaces. `viewport-zoom
 
 - **Do** read every color from `useColors()`; the scan test is the enforcement.
 - **Do** add `.ion-focusable` to every new `<button>` and focusable control.
-- **Do** put new tokens in all four palettes and pin HUD's and Classic's values.
+- **Do** put new tokens in every palette and pin HUD's and Classic's values.
 - **Don't** hand-encode hex/rgba in components — including "just this shadow."
   Shadows have tokens (`cardShadow`, `containerShadow`, `popoverShadow`).
 - **Don't** concatenate alpha onto token hex strings (`colors.accent + '22'`);

@@ -18,6 +18,9 @@ export interface StudioSurfaceProps {
   onLiveResize: (w: number) => void;
   onCommitWidth: (w: number) => void;
   onClose: () => void;
+  /** The pane is the whole shell: no resize seam, no left border. */
+  maximized?: boolean;
+  onToggleMaximized?: () => void;
   onFocusCapture?: () => void;
   onMouseDownCapture?: () => void;
   onAgentClick?: (tabId: string, agentName: string) => void;
@@ -41,20 +44,20 @@ export function StudioSurface(props: StudioSurfaceProps): React.JSX.Element {
       onFocusCapture={props.onFocusCapture}
       onMouseDownCapture={props.onMouseDownCapture}
       style={{
-        width: props.liveWidth,
+        width: props.maximized ? "100%" : props.liveWidth,
         maxWidth: '100%',
         minWidth: 0,
         flexShrink: 0,
         display: "flex",
         flexDirection: "column",
-        borderLeft: `1px solid ${colors.containerBorder}`,
+        borderLeft: props.maximized ? "none" : `1px solid ${colors.containerBorder}`,
         background: colors.containerBg,
         position: "relative",
         minHeight: 0,
       }}
     >
-      {/* Left-edge resize handle. */}
-      <div
+      {/* Left-edge resize handle; a maximised pane has no edge to drag. */}
+      {!props.maximized && <div
         {...handleProps}
         style={{
           ...handleProps.style,
@@ -67,8 +70,29 @@ export function StudioSurface(props: StudioSurfaceProps): React.JSX.Element {
           background: dragging ? colors.accent : "transparent",
           opacity: dragging ? 0.4 : 1,
         }}
-      />
-      {/* Pane chrome: close button rides above the tab strip's right edge. */}
+      />}
+      {/* Pane chrome: maximise and close ride above the tab strip's right edge. */}
+      {props.onToggleMaximized && (
+        <button
+          onClick={props.onToggleMaximized}
+          style={{
+            position: "absolute",
+            top: 6,
+            right: 28,
+            zIndex: 3,
+            border: "none",
+            background: "transparent",
+            color: colors.textTertiary,
+            cursor: "pointer",
+            fontSize: 13,
+            lineHeight: 1,
+          }}
+          aria-label={props.maximized ? "Restore surface panel" : "Maximize surface panel"}
+          aria-pressed={props.maximized === true}
+        >
+          {props.maximized ? "⤡" : "⤢"}
+        </button>
+      )}
       <button
         onClick={props.onClose}
         style={{

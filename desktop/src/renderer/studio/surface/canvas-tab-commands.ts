@@ -20,6 +20,7 @@ export const CANVAS_TAB_COMMANDS: Readonly<Record<CanvasTabId, string>> = {
   status: 'studio.surface.status',
   files: 'studio.surface.files',
   gitpanel: 'studio.surface.gitpanel',
+  graph: 'studio.surface.graph',
   notification: 'studio.surface.notification',
 }
 

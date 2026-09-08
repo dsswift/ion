@@ -56,6 +56,13 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     /// Distinguishes machine workflow locks from sealed landed-worktree review.
     /// Older desktops omit it, which preserves the established automated-fix copy.
     var inputLockReason: String?
+    /// True while the engine is compacting this conversation (manual or
+    /// proactive). There is no way to steer a compaction in progress, so the
+    /// send button disables the same way it does for `inputLocked` — see
+    /// `ConversationView+InputBar.isCompacting` and
+    /// `SessionViewModel.submit`'s guard. Nil decodes false (older desktops
+    /// omit the field entirely).
+    var isCompacting: Bool?
     var hasEngineExtension: Bool?
     /// True when any terminal instance owned by this conversation has a live
     /// foreground process. Snapshot data supplies the first-paint value; live

@@ -457,11 +457,36 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 		utils.LogWithFields(utils.LevelInfo, "session", "compact: no engine-side compaction and no active run; dispatching /compact as a prompt turn", map[string]any{
 			"key": key, "model": model, "backend_type": backendType, "conversation_id": convID,
 		})
-		if err := m.SendPrompt(key, cliCompactCommand, &PromptOverrides{DisplayText: cliCompactCommand}); err != nil {
+		// This backend has no CompactNow to report progress on, so open the
+		// same live indicator Path A opens before its async goroutine starts.
+		// The CLI's own compact_boundary frame closes it in the common case
+		// (translated to engine_native_compaction, which desktop already
+		// renders as a closing engine_compacting); manualCompactRunID below
+		// is the backstop for a turn that ends without ever producing one.
+		m.emit(key, manualCompactOpenEvent())
+		// SkipCliHistorySeed: on a session with no valid native-CLI cursor
+		// (this branch, by definition — a valid cursor takes the resume path
+		// inside resolveCliContinuity, untouched either way), the history
+		// bridge would prepend a transcript block ahead of the literal
+		// "/compact" text. The CLI's slash dispatcher only recognizes a
+		// message as a command when it IS the whole prompt, so a buried
+		// "/compact" was answered as an ordinary chat message instead of
+		// triggering compaction.
+		if err := m.SendPrompt(key, cliCompactCommand, &PromptOverrides{DisplayText: cliCompactCommand, SkipCliHistorySeed: true}); err != nil {
 			utils.LogWithFields(utils.LevelWarn, "session", "compact: dispatching /compact as a prompt turn failed", map[string]any{"key": key, "error": err.Error()})
+			m.emit(key, manualCompactCloseEvent())
 			m.emitCommandResult(key, "compact", err)
 			return
 		}
+		// SendPrompt assigns s.requestID synchronously before returning
+		// (prompt_dispatch.go), so this is the exact run the indicator just
+		// opened for — record it under the lock so handleRunExit can close
+		// the indicator on a match and nothing else's exit can.
+		m.mu.Lock()
+		if s2, ok2 := m.sessions[key]; ok2 {
+			s2.manualCompactRunID = s2.requestID
+		}
+		m.mu.Unlock()
 		m.emitCommandResult(key, "compact", nil)
 		return
 	}
@@ -481,8 +506,20 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 			},
 		},
 	}
+	// This write lands mid-turn: it neither starts nor ends a run, so there
+	// is no run-exit boundary to hang the close on. Record the pending state
+	// under the lock before the write goes out, so the CLI's compact_boundary
+	// frame — handled in handleNormalizedEvent — has something to close.
+	m.mu.Lock()
+	s.manualCompactStdinActive = true
+	m.mu.Unlock()
+	m.emit(key, manualCompactOpenEvent())
 	if err := m.backend.WriteToStdin(rid, stdinMsg); err != nil {
 		utils.LogWithFields(utils.LevelInfo, "session", "compact: writetostdin failed", map[string]any{"key": key, "error": err.Error()})
+		m.mu.Lock()
+		s.manualCompactStdinActive = false
+		m.mu.Unlock()
+		m.emit(key, manualCompactCloseEvent())
 		m.emitCommandResult(key, "compact", err)
 		return
 	}

@@ -107,8 +107,42 @@ function installCssEscapeStub(): void {
   g.CSS = { escape }
 }
 
+// Neither jsdom nor plain Node define `WebGL(2)RenderingContext`. Sigma's own
+// module-scope code (not just its constructor) reads GL enum constants off
+// them to build byte-size/draw-mode lookup tables, so merely *importing*
+// `sigma` or `sigma/rendering` — e.g. to test a node-program registration
+// map — throws `ReferenceError: WebGL2RenderingContext is not defined`
+// before any test body runs. The real enum values are used so the lookup
+// tables Sigma builds from them are correct, in case a future test starts
+// asserting on them.
+function installWebGLRenderingContextStubs(): void {
+  const g = globalThis as unknown as { WebGL2RenderingContext?: unknown; WebGLRenderingContext?: unknown }
+  if (typeof g.WebGL2RenderingContext === 'undefined') {
+    g.WebGL2RenderingContext = {
+      BOOL: 0x8b56,
+      BYTE: 0x1400,
+      UNSIGNED_BYTE: 0x1401,
+      SHORT: 0x1402,
+      UNSIGNED_SHORT: 0x1403,
+      INT: 0x1404,
+      UNSIGNED_INT: 0x1405,
+      FLOAT: 0x1406,
+    }
+  }
+  if (typeof g.WebGLRenderingContext === 'undefined') {
+    g.WebGLRenderingContext = {
+      POINTS: 0x0000,
+      LINES: 0x0001,
+      TRIANGLES: 0x0004,
+      COLOR_BUFFER_BIT: 0x4000,
+      FRAMEBUFFER: 0x8d40,
+    }
+  }
+}
+
 installTestHome()
 installLocalStorageShim()
 installScrollIntoViewStub()
 installResizeObserverStub()
 installCssEscapeStub()
+installWebGLRenderingContextStubs()

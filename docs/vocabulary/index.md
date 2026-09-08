@@ -74,6 +74,8 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Conversation instance](#term-conversation-instance)
 - [Conversation persistence](#term-conversation-persistence)
 - [Conversation status](#term-conversation-status)
+- [Corpus Index](#term-corpus-index)
+- [Corpus Root](#term-corpus-root)
 - [Cost](#term-cost)
 - [Desktop](#term-desktop-client)
 - [Desktop Automation](#term-desktop-automation)
@@ -82,6 +84,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Dispatch Alias](#term-dispatch-alias)
 - [Dispatch Split Pane](#term-dispatch-split-pane)
 - [Drawer](#term-drawer)
+- [Editor Anchor](#term-editor-anchor)
 - [Engine event](#term-engine-event)
 - [Engine profile](#term-engine-profile)
 - [Engine server](#term-engine-server)
@@ -90,6 +93,11 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Extension](#term-extension)
 - [Extension SDK](#term-extension-sdk)
 - [Extension context](#term-extension-context)
+- [Graph Agent Highlight](#term-graph-agent-highlight)
+- [Graph Anchor Node](#term-graph-anchor-node)
+- [Graph Session](#term-graph-session)
+- [Graph View](#term-graph-view)
+- [Graph View Minimap](#term-graph-view-minimap)
 - [Guided Questions](#term-guided-questions)
 - [Harness](#term-harness)
 - [Hook](#term-hook)
@@ -142,6 +150,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Surface](#term-surface)
 - [Tab](#term-tab)
 - [Tab Strip](#term-tab-strip)
+- [Tag Treatment](#term-tag-treatment)
 - [Telemetry](#term-telemetry)
 - [Terminal](#term-terminal)
 - [Terminal Activity](#term-terminal-activity)
@@ -958,6 +967,32 @@ The desktop client tool that measures conversation records on disk and returns c
   - `desktop` / `code` / `typescript`: `selectConversations` in `desktop/src/main/telemetry/conversation-telemetry-select.ts`
   - `desktop` / `doc` / `markdown`: `ConversationTelemetry` in `docs/tools/reference.md`
 
+#### Corpus Index {#term-corpus-index}
+
+The main-process data layer for Graph View: a recursive scan of every configured corpus root that parses each Markdown file's YAML front matter and body links into one flat, vocabulary-free node/edge table. Live-watched, so an edited file re-indexes only itself rather than the whole corpus.
+
+- **ID:** `corpus-index`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `export async function scanCorpus` in `desktop/src/main/graph-view/corpus-scan.ts`
+
+#### Corpus Root {#term-corpus-root}
+
+One configured directory Graph View scans for Markdown documents. The effective corpus is the union of every configured root — the operator's primary repository plus zero or more bundle roots or other directories they add. Roots are additive and never collide; an empty or missing root is silently ignored.
+
+- **ID:** `corpus-root`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `interface CorpusRootConfig` in `desktop/src/shared/graph-view-types.ts`
+
 #### Desktop {#term-desktop-client}
 
 One client application built on Electron. It owns the session store, persists conversations, answers snapshot polls, and hosts both client presentations.
@@ -972,6 +1007,73 @@ One client application built on Electron. It owns the session store, persists co
   - `desktop` / `code` / `typescript`: `export type WindowRole` in `desktop/src/renderer/lib/window-role.ts`
   - `desktop` / `code` / `typescript`: `export interface TabState` in `desktop/src/shared/types-session.ts`
 - **Notes:** Desktop is ONE client with two presentations: the Overlay and the Studio. Never call the presentations separate clients.
+
+#### Editor Anchor {#term-editor-anchor}
+
+The file a conversation most recently had open in its editor, recorded when that file tab is activated. Graph View opens on this document's neighborhood rather than on the whole corpus. Recorded on activation rather than read at open time because the graph and the editor are tabs in one strip: opening the graph makes the graph the active tab, so reading the active tab can never find a document. Per conversation, memory-only, and forgotten when the last tab showing that file closes.
+
+- **ID:** `editor-anchor`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `export function recordTabActivation` in `desktop/src/renderer/studio/surface/editor-anchor.ts`
+
+#### Graph Agent Highlight {#term-graph-agent-highlight}
+
+The set of Graph View nodes an agent has asked the operator to look at through the graph tools. Drawn exactly like the selection and folded into the emphasis set, but kept apart from the operator's selection so an agent's "look here" never overwrites what the operator picked. Cleared by the operator's next click on the stage.
+
+- **ID:** `graph-agent-highlight`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `agentHighlightNodeIds` in `desktop/src/renderer/studio/graph/graph-store-types.ts`
+- **Notes:** Set by the graph_highlight client tool (desktop/src/main/studio-graph/tools.ts) through the Studio graph command seam.
+
+#### Graph Anchor Node {#term-graph-anchor-node}
+
+A virtual Graph View node drawn for one distinct value of a promoted note-descriptive property (an ownership scope, a directory), gathering the documents that carry it. An anchor is a cluster centre, not a connector: it produces no cross-cutting edge and is a third visual class beside documents and topics. Promotion is a view-time layer toggle; a value carried by too few documents or by nearly all of them is suppressed and reported rather than drawn.
+
+- **ID:** `graph-anchor-node`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `export function buildAnchorNodes` in `desktop/src/shared/graph-model-anchors.ts`
+- **Notes:** Promoted fields are configured under `promotedFields` (desktop/src/shared/graph-view-types.ts); the depth and split options there decide which part of a value becomes the anchor.
+
+#### Graph Session {#term-graph-session}
+
+One directory's live Graph View state: its model, settled layout, camera, selection, filters, bindings, and pins. Keyed by directory rather than by conversation, so two conversations open on the same checkout share one session and a worktree gets its own. Parked in memory when the operator navigates away and resumed whole on return, so a graph never replays its opening layout; released when the graph tab is closed and no other conversation still has one open on that directory. Never written to disk.
+
+- **ID:** `graph-session`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `export function parkSession` in `desktop/src/renderer/studio/graph/session-park.ts`
+
+#### Graph View {#term-graph-view}
+
+An Ion Studio surface that renders a Markdown corpus as a graph of documents and the relationships between them, driven entirely by the corpus's own YAML front matter and body links. No metadata vocabulary is hardcoded: node identity, labels, grouping, edges, encoding channels, and filters are all bound at runtime by the operator. Read-only and Studio-only.
+
+- **ID:** `graph-view`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `ui` / `typescript`: `export function GraphSurface` in `desktop/src/renderer/studio/graph/GraphSurface.tsx`
 
 #### Guided Questions {#term-guided-questions}
 
@@ -1072,6 +1174,19 @@ An unsaved Studio document stored by source-project identity. It appears across 
 - **Contract:** `internal`
 - **Implementations:**
   - `studio` / `code` / `typescript`: `export interface ScratchDocument` in `desktop/src/shared/studio-surface-types.ts`
+
+#### Tag Treatment {#term-tag-treatment}
+
+How Graph View's configured tag field participates in the graph, chosen by the operator from three values that are behaviourally distinct. 'off' withholds the field entirely, so it can be neither encoded nor filtered on. 'filter' (the default) makes it filterable and bindable without adding any node. 'nodes' additionally folds the field into the group fields for that build, giving each distinct tag value its own graph node. A tag field is list-valued, so filters and categorical encodings resolve it by member rather than by the joined array.
+
+- **ID:** `tag-treatment`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `export type TagTreatment` in `desktop/src/shared/graph-view-types.ts`
 
 #### Worktree {#term-worktree}
 
@@ -1205,6 +1320,19 @@ A region that slides in from an edge and holds detail for the current conversati
 - **Implementations:**
   - `desktop` / `ui` / `typescript`: `StatusDrawer` in `desktop/src/renderer/components/StatusDrawer.tsx`
   - `ios` / `ui` / `swift`: `ModalSheetBoundary` in `ios/IonRemote/Views/ModalSheetBoundary.swift`
+
+#### Graph View Minimap {#term-graph-view-minimap}
+
+A Studio-only overview canvas in the corner of the Graph View stage that draws every visible node as a dot and the current viewport as a rectangle. Clicking it centres the camera on that point. It is present only while the viewport shows less than the whole graph.
+
+- **ID:** `graph-view-minimap`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `studio` / `ui` / `typescript`: `export function GraphMinimap` in `desktop/src/renderer/studio/graph/minimap/GraphMinimap.tsx`
 
 #### Input Bar {#term-input-bar}
 
@@ -1837,15 +1965,23 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Conversation Terminal Panel | `TerminalPanel` | `TerminalPanel`, `StudioCenter` | `TerminalPanel` | None | iOS |
 | Conversation Timeline Minimap | `TimelineMinimap` | `TimelineMinimap` | `TimelineMinimap` | None | iOS |
 | Conversation View | `export function ConversationView` | `export function ConversationView`, `ConversationView` | `export function ConversationView` | `struct ConversationView` | None |
+| Corpus Index | `export async function scanCorpus` | `export async function scanCorpus` | `export async function scanCorpus` | None | iOS |
+| Corpus Root | `interface CorpusRootConfig` | `interface CorpusRootConfig` | `interface CorpusRootConfig` | None | iOS |
 | Cost | None | None | None | `StatusDrawerBreakdown` | Desktop, Studio, Overlay |
 | Desktop Automation | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationCategory` | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationCategory` | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationCategory` | None | iOS |
 | Desktop | `export type WindowRole`, `export interface TabState` | `export type WindowRole`, `export interface TabState` | `export type WindowRole`, `export interface TabState` | None | iOS |
 | Dialog | `SettingsDialog` | `SettingsDialog` | `SettingsDialog` | `struct EngineDialogSheet` | None |
 | Dispatch Split Pane | None | `DispatchSplitPane` | None | None | Overlay, iOS |
 | Drawer | `StatusDrawer` | `StatusDrawer` | `StatusDrawer` | `ModalSheetBoundary` | None |
+| Editor Anchor | `export function recordTabActivation` | `export function recordTabActivation` | `export function recordTabActivation` | None | iOS |
 | Engine event | `EngineEvent` | `EngineEvent` | `EngineEvent` | `engine_status` | None |
 | Engine profile | `engineProfileId` | `engineProfileId` | `engineProfileId` | `EngineProfile` | None |
 | Explorer Tree State | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | None | iOS |
+| Graph Agent Highlight | `agentHighlightNodeIds` | `agentHighlightNodeIds` | `agentHighlightNodeIds` | None | iOS |
+| Graph Anchor Node | `export function buildAnchorNodes` | `export function buildAnchorNodes` | `export function buildAnchorNodes` | None | iOS |
+| Graph Session | `export function parkSession` | `export function parkSession` | `export function parkSession` | None | iOS |
+| Graph View | `export function GraphSurface` | `export function GraphSurface` | `export function GraphSurface` | None | iOS |
+| Graph View Minimap | None | `export function GraphMinimap` | None | None | Overlay, iOS |
 | Guided Questions | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | None | iOS |
 | Inbox | `export function classifyInbox`, `export function InboxPanel` | `export function classifyInbox`, `export function InboxPanel`, `InboxSidebar` | `export function classifyInbox`, `export function InboxPanel` | `InboxRowView` | None |
 | Injection Kind | `export function suppressesInjection` | `export function suppressesInjection` | `export function suppressesInjection` | `enum InjectionPolicy` | None |
@@ -1880,6 +2016,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Surface | None | `export interface SurfaceState` | None | None | Overlay, iOS |
 | Tab | `export interface TabState` | `export interface TabState` | `export interface TabState` | `struct TabRowView` | None |
 | Tab Strip | `export function TabStrip` | `export function TabStrip`, `TabStrip` | `export function TabStrip` | `struct TabListView` | None |
+| Tag Treatment | `export type TagTreatment` | `export type TagTreatment` | `export type TagTreatment` | None | iOS |
 | Terminal | `export function TerminalPanel` | `export function TerminalPanel` | `export function TerminalPanel` | `ConversationTerminalView` | None |
 | Terminal Activity | `export interface TerminalActivity` | `export interface TerminalActivity` | `export interface TerminalActivity` | `TerminalInstanceBar` | None |
 | Transcript | `MessageBubble` | `MessageBubble` | `MessageBubble` | `struct Transcript` | None |

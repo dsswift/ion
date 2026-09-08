@@ -100,7 +100,7 @@ function persistTabs(useSessionStore: Store): void {
         ...(t.executionMachineId ? { executionMachineId: t.executionMachineId } : {}),
         ...(t.groupId ? { groupId: t.groupId } : {}),
         ...(t.groupPinned ? { groupPinned: true } : {}),
-        ...(t.queuedPrompts.length > 0 ? { queuedPrompts: t.queuedPrompts } : {}),
+        ...(t.queuedPrompts?.length ? { queuedPrompts: t.queuedPrompts } : {}),
         // Staged attachments ride with the draft text they belong to. Stripped
         // of the base64 preview so a tray of images cannot bloat the file the
         // 100 ms debounce rewrites; the preview is rebuilt from `path` on
@@ -234,7 +234,10 @@ function persistTabs(useSessionStore: Store): void {
   // the main process, which caches it and forwards it to the Studio mirror.
   // Live statuses ride ALONGSIDE (they are runtime state, not persisted to
   // disk) — without them the mirror would hydrate every tab as idle and the
-  // workspace indicator would miss running conversations.
+  // workspace indicator would miss running conversations. isCompacting is the
+  // same category: without liveIsCompacting, this same debounced push (fired
+  // by nothing more than the lastEventAt stamp on every normalized event)
+  // resets a live "Compacting…" indicator to false moments after it opened.
   // Queued attachments are deliberately transient: copying their data URLs into
   // tabs.json would retain arbitrary user content after send. Studio still needs
   // them before send, so project the live queue only into the owner→mirror push.
@@ -244,6 +247,7 @@ function persistTabs(useSessionStore: Store): void {
     ...data,
     revision: Date.now(),
     liveTabStatus: Object.fromEntries(tabs.map((t) => [t.id, t.status])),
+    liveIsCompacting: Object.fromEntries(tabs.map((t) => [t.id, t.isCompacting])),
     queuedAttachments,
   })
 

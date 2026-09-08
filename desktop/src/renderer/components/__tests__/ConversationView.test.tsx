@@ -25,7 +25,7 @@ vi.mock('../../preferences', () => ({
 vi.mock('../../theme', () => ({
   useColors: () => ({
     textTertiary: '#888888', accent: '#3366ff', containerBg: '#101013', statusRunning: '#d97757',
-    statusWaitingChildren: '#cc9900',
+    statusWaitingChildren: '#cc9900', statusCompacting: '#7c9cd9',
   }),
 }))
 vi.mock('../../rendererLogger', () => ({ rDebug: vi.fn(), rInfo: vi.fn(), rError: vi.fn() }))
@@ -111,9 +111,10 @@ function setConversation(
   status: string,
   runningChildren: number,
   messages: Array<Record<string, unknown>> = [],
+  isCompacting = false,
 ): void {
   const tabId = 'tab-1'
-  state.tabs = [{ id: tabId, status, queuedPrompts: [], lastResult: null }]
+  state.tabs = [{ id: tabId, status, queuedPrompts: [], lastResult: null, isCompacting }]
   const statusFields = runningChildren < 0 ? {
     activeBackgroundTasks: [{ taskId: 'task-1', command: 'sleep 30', startedAt: 1 }],
   } : undefined
@@ -215,6 +216,31 @@ describe('ConversationView composer activity row', () => {
     const transcript = container.querySelector('[data-testid="conversation-transcript"]') as HTMLElement | null
     expect(transcript?.style.paddingBottom).toBe('64px')
     expect(interruptRow?.textContent).not.toContain('Waiting for agent')
+    act(() => { root.unmount() })
+  })
+
+  // Regression pin: /compact is dispatched as a fire-and-forget engine
+  // command, never a chat turn, so tabStatus stays 'idle' for its whole
+  // duration. isCompacting is the only signal available — without reading
+  // it here, the transcript went dark until the boundary marker landed.
+  it('shows a compacting indicator while idle, with no Stop control', () => {
+    setConversation('idle', 0, [], true)
+    const { container, root } = renderConversation()
+
+    const activityRow = container.querySelector('[data-testid="conversation-activity-row"]')
+    const interruptRow = container.querySelector('[data-testid="conversation-interrupt-row"]')
+    expect(activityRow).toBeTruthy()
+    expect(container.querySelector('[data-testid="conversation-activity-indicator"]')?.textContent)
+      .toContain('Compacting…')
+    expect(interruptRow?.querySelector('[data-testid="interrupt-button"]')).toBeNull()
+    act(() => { root.unmount() })
+  })
+
+  it('has nothing to interrupt and hides both when idle and not compacting', () => {
+    setConversation('idle', 0)
+    const { container, root } = renderConversation()
+
+    expect(container.querySelector('[data-testid="conversation-activity-row"]')).toBeNull()
     act(() => { root.unmount() })
   })
 })

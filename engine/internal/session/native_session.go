@@ -84,6 +84,19 @@ func (m *Manager) resolveCliContinuity(s *engineSession, opts *types.RunOptions)
 			reason = "client_tool_signature_mismatch"
 		}
 	}
+	if opts.SkipCliHistorySeed {
+		// The caller's literal prompt must reach the CLI's own slash dispatcher
+		// unmodified (dispatchCompact's manual /compact) — bridging would bury
+		// it after a transcript preamble and the CLI would answer it as an
+		// ordinary chat message instead of running its own compaction. A fresh
+		// native session with nothing to compact yet is the CLI's own honest
+		// "nothing to compact" response, not a defect in this decision.
+		utils.LogWithFields(utils.LevelInfo, "session.native_session", "no valid native session, skipping history bridge for literal prompt", map[string]any{
+			"key": s.key, "conversation_id": convID, "kind": caps.Kind, "reason": reason,
+			"cursor_head": cursor.HeadEntryID, "live_leaf": leaf,
+		})
+		return
+	}
 	utils.LogWithFields(utils.LevelInfo, "session.native_session", "no valid native session, bridging from transcript", map[string]any{
 		"key": s.key, "conversation_id": convID, "kind": caps.Kind, "reason": reason,
 		"cursor_head": cursor.HeadEntryID, "live_leaf": leaf,

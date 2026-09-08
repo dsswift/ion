@@ -725,6 +725,12 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           reason: refusal.reason,
           detail: refusal.detail,
         });
+        // Same rule as submit(): a log line is not feedback. This path has no
+        // caller to return a refusal to (iOS fires and forgets), so the
+        // notice in the conversation — which syncs to iOS through the normal
+        // message pipeline — is the ONLY way the phone operator learns their
+        // message was not sent instead of it silently vanishing.
+        get().appendSystemNotice(tab.id, promptRefusalMessage(refusal.reason));
         return;
       }
 

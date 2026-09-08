@@ -113,6 +113,8 @@ export interface ProjectedRendererTab {
   isTerminalOnly?: boolean
   /** Input-locked conversation (auto-generated conflict fix, sealed landed worktree, or settled). */
   inputLocked?: boolean
+  /** True while the engine is compacting this conversation. Mirrors TabState.isCompacting. */
+  isCompacting?: boolean
   inputLockReason?: 'automated-workflow' | 'landed-worktree' | 'settled' | null
   /** Explicit tab lifecycle role. See TabState.tabRole. */
   tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis'

@@ -49,6 +49,19 @@ extension SessionViewModel {
             return
         }
 
+        // There is no way to steer a compaction in progress — it is not a
+        // turn a queued prompt could interrupt or redirect. The input bar
+        // already disables Send for this (ConversationView+InputBar.cannotSend);
+        // this guard covers every other entry point (voice, keyboard shortcut,
+        // future callers), mirroring the desktop's submit() guard. The desktop
+        // refuses too — this just avoids an optimistic bubble for a message
+        // that will be dropped.
+        if tab(for: tabId)?.isCompacting == true {
+            DiagnosticLog.log("submit blocked: conversation is being compacted", tag: "session", level: .warn,
+                              fields: ["tab_id": String(tabId.prefix(8))])
+            return
+        }
+
         // DATA, not a type branch: nil for a plain CLI tab (no instanceId on
         // the wire ⇒ desktop CLI pipeline), the active conversation-instance id
         // for an extension-backed tab (instanceId present ⇒ desktop engine

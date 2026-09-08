@@ -43,6 +43,7 @@ function schedulePersist(get: () => SurfaceState): void {
   scheduleSurfacePersist(get);
 }
 import { createQuestionsSurfaceActions } from "./surface-questions-actions";
+import { createSurfacePaneActions } from "./surface-pane-actions";
 import {
   nextActiveAfterClose,
   nextTerminalTitle,
@@ -106,6 +107,14 @@ export interface SurfaceState {
   selectConversation(tabId: string | null): void;
   setVisible(visible: boolean): void;
   toggleVisible(): void;
+  /**
+   * The pane fills the whole shell, hiding the sidebar and the conversation.
+   * Window-local and never persisted: a maximised canvas is a moment of
+   * attention, not a layout the operator wants back on relaunch.
+   */
+  maximized: boolean;
+  setMaximized(maximized: boolean): void;
+  toggleMaximized(): void;
   /** Commit the surface panel's resized width for the current conversation. */
   setWidth(width: number): void;
   openSingleton(id: SingletonId): void;
@@ -283,6 +292,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
   currentConversationId: null,
   pendingScratchCloseId: null,
   visible: false,
+  maximized: false,
   surfaceWidth: null,
   hydrated: false,
   diffReveal: null,
@@ -294,48 +304,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
   selectConversation: (currentConversationId) =>
     applyConversationSelection(set, get, currentConversationId),
 
-  setVisible: (visible) => {
-    const state = get();
-    // Pane close is refused while the current conversation has a live
-    // guided-questions workflow requiring input: hiding the canvas would
-    // bury the one surface the run is blocked on.
-    if (
-      !visible &&
-      state.currentConversationId &&
-      state.questionsConversations.has(state.currentConversationId)
-    ) {
-      rDebug(
-        "studio.surface",
-        "canvas hide refused: questions workflow requires input",
-        { tab_id: state.currentConversationId },
-      );
-      return;
-    }
-    // Recorded in BOTH modes. The mode decides how a tab SWITCH reads this
-    // (see surface-selection.ts), not whether the panel's state is ever
-    // written — and conflating the two meant 'preserve' always reopened the
-    // app with the panel closed, however the operator left it.
-    if (state.currentConversationId) {
-      updateCurrent(set, get, (current) => ({ ...current, visible }));
-      set({ visible });
-    } else {
-      set({ visible });
-    }
-  },
-
-  toggleVisible: () => get().setVisible(!get().visible),
-
-  setWidth: (width) => {
-    const state = get();
-    // Recorded in both modes, same as setVisible: the switch mode decides how
-    // a conversation SWITCH reads this, never whether a resize is remembered.
-    if (state.currentConversationId) {
-      updateCurrent(set, get, (current) => ({ ...current, width }));
-      set({ surfaceWidth: width });
-    } else {
-      set({ surfaceWidth: width });
-    }
-  },
+  ...createSurfacePaneActions(set, get, updateCurrent),
 
   openSingleton: (id) => {
     const state = get();

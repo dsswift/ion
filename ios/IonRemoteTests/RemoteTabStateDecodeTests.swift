@@ -190,6 +190,24 @@ final class RemoteTabStateDecodeTests: XCTestCase {
             "inputLockReason should be nil when key is absent (falls through to automated-workflow copy)")
     }
 
+    // MARK: - isCompacting (live "Compacting…" indicator)
+
+    func testIsCompactingDecodesTrue() throws {
+        let data = minimalTab(extra: #""isCompacting": true"#)
+        let tab = try decoder.decode(RemoteTabState.self, from: data)
+        XCTAssertEqual(tab.isCompacting, true,
+            "isCompacting should decode from the 'isCompacting' JSON key")
+    }
+
+    /// A desktop that omits the field (every idle tab, and every pre-fix
+    /// desktop) must decode as not-compacting, not fail the payload.
+    func testIsCompactingNilWhenAbsent() throws {
+        let data = minimalTab()
+        let tab = try decoder.decode(RemoteTabState.self, from: data)
+        XCTAssertNil(tab.isCompacting,
+            "isCompacting should be nil when key is absent (back-compat, reads as not compacting)")
+    }
+
     // MARK: - createdAt (the "Newest created" inbox sort key)
 
     func testCreatedAtDecodes() throws {

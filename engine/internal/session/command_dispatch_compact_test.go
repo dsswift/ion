@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -298,6 +299,102 @@ func TestDispatchCompact_CLIPath_ActiveRun(t *testing.T) {
 	if results[0].event.CommandError != "" {
 		t.Errorf("expected success; got CommandError=%q", results[0].event.CommandError)
 	}
+
+	// This backend has no CompactNow to report progress, so dispatching into
+	// an active run's stdin must still open the same live indicator Path A
+	// opens — otherwise the desktop shows nothing until the CLI's own
+	// compact_boundary frame lands, minutes later on a large context.
+	compacting := ec.byType("engine_compacting")
+	if len(compacting) != 1 {
+		t.Fatalf("expected exactly 1 engine_compacting event, got %d", len(compacting))
+	}
+	if !compacting[0].event.CompactingActive {
+		t.Error("engine_compacting active must be true when the stdin write opens the indicator")
+	}
+	mgr.mu.RLock()
+	stdinActive := s.manualCompactStdinActive
+	mgr.mu.RUnlock()
+	if !stdinActive {
+		t.Error("manualCompactStdinActive must be true after the stdin write succeeds, so a later compact_boundary (or the run's own exit) has something to close")
+	}
+}
+
+// TestDispatchCompact_CLIPath_ActiveRun_NativeCompactionClosesIndicator pins
+// the precise close for the stdin-forward sub-path: the CLI's own
+// compact_boundary frame (normalized to NativeCompactionEvent) is what marks
+// this particular manual compaction done, since the write neither starts nor
+// ends a run. handleNormalizedEvent must clear manualCompactStdinActive when
+// it observes one — desktop already renders engine_native_compaction itself
+// as the closing indicator (engine-control-plane-stream.ts), so this is pure
+// engine bookkeeping: without it a later, unrelated run exit would emit a
+// second, spurious close.
+func TestDispatchCompact_CLIPath_ActiveRun_NativeCompactionClosesIndicator(t *testing.T) {
+	mb := newStdinCapturingBackend()
+	mgr := NewManager(mb)
+	_, _ = mgr.StartSession("cli-compact-native-close", defaultConfig())
+
+	mgr.mu.Lock()
+	s := mgr.sessions["cli-compact-native-close"]
+	s.conversationID = "conv-cli-native-close"
+	s.requestID = "run-native-close"
+	mgr.mu.Unlock()
+
+	mgr.SendCommand("cli-compact-native-close", "compact", "")
+
+	mgr.mu.RLock()
+	if !s.manualCompactStdinActive {
+		mgr.mu.RUnlock()
+		t.Fatal("manualCompactStdinActive must be true after dispatch, before the boundary frame arrives")
+	}
+	mgr.mu.RUnlock()
+
+	mgr.handleNormalizedEvent("run-native-close", types.NormalizedEvent{
+		Data: &types.NativeCompactionEvent{Trigger: "manual"},
+	})
+
+	mgr.mu.RLock()
+	stdinActive := s.manualCompactStdinActive
+	mgr.mu.RUnlock()
+	if stdinActive {
+		t.Error("manualCompactStdinActive must be cleared once the CLI's compact_boundary frame is observed")
+	}
+}
+
+// TestDispatchCompact_CLIPath_ActiveRun_RunExitBackstopClosesIndicator pins
+// the backstop for the stdin-forward sub-path: if the run ends (abort,
+// crash) before the CLI ever produces a compact_boundary frame, the live
+// indicator must not stay open forever.
+func TestDispatchCompact_CLIPath_ActiveRun_RunExitBackstopClosesIndicator(t *testing.T) {
+	mb := newStdinCapturingBackend()
+	mgr := NewManager(mb)
+	_, _ = mgr.StartSession("cli-compact-exit-backstop", defaultConfig())
+
+	mgr.mu.Lock()
+	s := mgr.sessions["cli-compact-exit-backstop"]
+	s.conversationID = "conv-cli-exit-backstop"
+	s.requestID = "run-exit-backstop"
+	mgr.mu.Unlock()
+
+	ec := newEventCollector(mgr)
+	mgr.SendCommand("cli-compact-exit-backstop", "compact", "")
+
+	mgr.handleRunExit("run-exit-backstop", intPtr(1), nil, "conv-cli-exit-backstop")
+
+	mgr.mu.RLock()
+	stdinActive := s.manualCompactStdinActive
+	mgr.mu.RUnlock()
+	if stdinActive {
+		t.Error("manualCompactStdinActive must be cleared when the run it was forwarded into exits, even without a boundary frame")
+	}
+
+	closes := ec.byType("engine_compacting")
+	// One open (at dispatch) plus one close (at run exit).
+	if len(closes) != 2 {
+		t.Fatalf("expected 2 engine_compacting events (open + backstop close), got %d", len(closes))
+	}
+	if closes[1].event.CompactingActive {
+		t.Error("the run-exit backstop event must report active=false")
+	}
 }
 
 // TestDispatchCompact_CLIPath_NoActiveRun pins the idle branch of the
@@ -358,6 +455,135 @@ func TestDispatchCompact_CLIPath_NoActiveRun(t *testing.T) {
 	}
 	if results[0].event.CommandError != "" {
 		t.Errorf("idle /compact on a CLI backend must not refuse; got CommandError=%q", results[0].event.CommandError)
+	}
+
+	// This backend has no CompactNow to report progress, and dispatching
+	// "/compact" as an ordinary turn never touches tabStatus specially — the
+	// live indicator is the only signal a consumer gets that this run IS the
+	// compaction, not an ordinary turn.
+	compacting := ec.byType("engine_compacting")
+	if len(compacting) != 1 {
+		t.Fatalf("expected exactly 1 engine_compacting event, got %d", len(compacting))
+	}
+	if !compacting[0].event.CompactingActive {
+		t.Error("engine_compacting active must be true before the idle /compact turn is dispatched")
+	}
+
+	var runID string
+	mb.mockBackend.mu.Lock()
+	for id := range mb.started {
+		runID = id
+	}
+	mb.mockBackend.mu.Unlock()
+
+	mgr.mu.RLock()
+	gotRunID := s.manualCompactRunID
+	mgr.mu.RUnlock()
+	if gotRunID != runID {
+		t.Errorf("manualCompactRunID = %q, want the dispatched run's id %q", gotRunID, runID)
+	}
+}
+
+// TestDispatchCompact_CLIPath_NoActiveRun_RunExitClosesIndicator pins the
+// backstop close for the idle sub-path: a session with nothing to compact can
+// finish the /compact turn ("Error: No messages to compact") without the CLI
+// ever emitting a compact_boundary frame, so the run's own exit — not just
+// the (absent) boundary frame — must close the live indicator.
+func TestDispatchCompact_CLIPath_NoActiveRun_RunExitClosesIndicator(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	mb := newStdinCapturingBackend()
+	mgr := NewManager(mb)
+	_, _ = mgr.StartSession("cli-no-run-exit", defaultConfig())
+
+	mgr.mu.Lock()
+	s := mgr.sessions["cli-no-run-exit"]
+	s.conversationID = "1784000000031-bbbbbbbbbbbb"
+	mgr.mu.Unlock()
+
+	ec := newEventCollector(mgr)
+	mgr.SendCommand("cli-no-run-exit", "compact", "")
+
+	var runID string
+	mb.mockBackend.mu.Lock()
+	for id := range mb.started {
+		runID = id
+	}
+	mb.mockBackend.mu.Unlock()
+	if runID == "" {
+		t.Fatal("expected the idle /compact to have dispatched a run")
+	}
+
+	mgr.handleRunExit(runID, intPtr(0), nil, "1784000000031-bbbbbbbbbbbb")
+
+	mgr.mu.RLock()
+	gotRunID := s.manualCompactRunID
+	mgr.mu.RUnlock()
+	if gotRunID != "" {
+		t.Errorf("manualCompactRunID must be cleared once the run it names exits; still %q", gotRunID)
+	}
+
+	closes := ec.byType("engine_compacting")
+	// One open (at dispatch) plus one close (at run exit).
+	if len(closes) != 2 {
+		t.Fatalf("expected 2 engine_compacting events (open + close), got %d", len(closes))
+	}
+	if closes[1].event.CompactingActive {
+		t.Error("the run-exit close event must report active=false")
+	}
+}
+
+// nativeSessionMockBackend reports the delegated-CLI native-session
+// capability so a test can exercise the REAL resolveCliContinuity /
+// seedCliHistory pipeline. mockBackend's default Capabilities() reports
+// ContextModelEngineOwned, under which that pipeline is an unconditional
+// no-op — the wrong double for pinning a bug that lives inside it.
+type nativeSessionMockBackend struct {
+	*mockBackend
+}
+
+func (m *nativeSessionMockBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{Kind: "claude-code", ContextModel: backend.ContextModelNativeSession, Resume: true}
+}
+
+// TestDispatchCompact_CLIPath_NoActiveRun_LiteralPromptSurvivesRealHistory is
+// the end-to-end regression test for the reported bug: a manual /compact on a
+// CLI-backend session with real prior conversation history and no valid
+// native cursor "responded instead of compacting". dispatchCompact's idle
+// sub-path must reach the backend with the prompt "/compact" verbatim —
+// unlike TestDispatchCompact_CLIPath_NoActiveRun (whose mock reports
+// ContextModelEngineOwned and never touches the history bridge at all), this
+// uses a backend capable enough to route through resolveCliContinuity for
+// real, against a conversation with actual prior turns to bridge.
+func TestDispatchCompact_CLIPath_NoActiveRun_LiteralPromptSurvivesRealHistory(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	mb := &nativeSessionMockBackend{mockBackend: newMockBackend()}
+	mgr := NewManager(mb)
+	_, _ = mgr.StartSession("cli-compact-real-history", defaultConfig())
+
+	const convID = "1784000000032-cccccccccccc"
+	conv := conversation.CreateConversation(convID, "system", "claude-opus-4-8")
+	conversation.AddUserMessage(conv, "what is the capital of France?")
+	conversation.AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "Paris."}}, types.LlmUsage{})
+	if err := conversation.Save(conv, ""); err != nil {
+		t.Fatalf("save conv: %v", err)
+	}
+
+	mgr.mu.Lock()
+	s := mgr.sessions["cli-compact-real-history"]
+	s.conversationID = convID
+	mgr.mu.Unlock()
+
+	mgr.SendCommand("cli-compact-real-history", "compact", "")
+
+	mb.mu.Lock()
+	var prompt string
+	for _, opts := range mb.started {
+		prompt = opts.Prompt
+	}
+	mb.mu.Unlock()
+
+	if prompt != "/compact" {
+		t.Fatalf("literal /compact must reach the CLI's slash dispatcher unmodified despite real prior history, got %q", prompt)
 	}
 }
 

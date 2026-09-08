@@ -181,6 +181,39 @@ one per resolved scope, per § "Scope resolution".
 
 Never mix two resolved scopes in one commit.
 
+**A feature is a milestone, not a source commit.** The grouping in §4 is the
+entire point of `/squash` — everything after it is mechanical. Getting it
+wrong produces a plan that satisfies I1 and I2 while completely failing the
+actual instruction, and both invariants stay green the whole time, so nothing
+downstream catches it.
+
+A feature is what the branch's author would name if asked "what did you
+build" — not what they'd name if asked "what did I type into `git commit -m`
+at 2am." A single logical capability (the renderer, the interaction layer,
+the agent tools, the persistence layer) is **one** feature, no matter how many
+source commits, follow-up fixes, false starts, or polish passes it took to
+land it. A later commit that fixes, tunes, or extends something already
+grouped is the **same** feature continuing — it does not start a new group,
+and it does not get to stay separate just because it arrived as a separate
+source commit.
+
+Do not resolve the ambiguity toward more, smaller groups because that reading
+is easier to verify or lower-risk to execute. "Preserve close to the original
+commit structure" is not a safe default here — it is the specific failure
+mode this rule exists to name. The instruction is to squash; a plan is only
+finished when it has actually attempted that, not when it has found a
+technically-defensible reason not to.
+
+Before emitting the plan, sanity-check the grouping: for each proposed
+feature, could it be described in one sentence as an independently reviewable
+unit of work? If the honest description of two adjacent groups is "these are
+the same thing, one is just a later commit," merge them. A result commit
+count that sits close to the source commit count on a branch built around one
+coherent capability means this step did not run — re-group before proceeding,
+in the same turn. This is never a question to the operator: regroup and
+continue, exactly as commit count, subjects, and grouping are already
+negotiable per the invariants above.
+
 Detect shared files:
 
 ```bash

@@ -37,6 +37,19 @@ const studioToolsMock = vi.hoisted(() => ({
 }))
 vi.mock('./studio-playwright/tools', () => studioToolsMock)
 
+const graphToolsMock = vi.hoisted(() => ({
+  STUDIO_GRAPH_TOOLS: [
+    {
+      name: 'graph_state',
+      description: 'read the Graph View',
+      inputSchema: { type: 'object' },
+      planModeSafe: true,
+      execute: vi.fn(async (): Promise<{ content: string; isError: boolean }> => ({ content: '{"nodeCount":3}', isError: false })),
+    },
+  ],
+}))
+vi.mock('./studio-graph/tools', () => graphToolsMock)
+
 const chartToolMock = vi.hoisted(() => ({
   RENDER_CHART_TOOL: {
     name: 'RenderChart',
@@ -128,7 +141,7 @@ describe('toolGateSessionConfig', () => {
     expect(cfg.enabled).toBe(true)
     expect(cfg.tools).toEqual(GATED_TOOLS)
     expect(cfg.timeoutDecision).toBe('allow')
-    expect(cfg.clientTools?.map((t) => t.name)).toEqual(['BenchMemberFile', 'browser_snapshot', 'RenderChart', 'ConversationTelemetry', 'AskUserQuestions'])
+    expect(cfg.clientTools?.map((t) => t.name)).toEqual(['BenchMemberFile', 'browser_snapshot', 'graph_state', 'RenderChart', 'ConversationTelemetry', 'AskUserQuestions'])
     expect(cfg.clientTools?.[0].planModeSafe).toBe(true)
     // The declaration must not carry the execute function — it crosses the wire.
     expect((cfg.clientTools?.[0] as unknown as Record<string, unknown>).execute).toBeUndefined()
@@ -307,12 +320,51 @@ describe('wireToolGateResponder — browser tool context', () => {
     const declared = toolGateSessionConfig().clientTools?.map((tool) => tool.name) ?? []
     for (const name of declared) {
       if (name === 'AskUserQuestions') continue
-      const executable = [...toolsMock.BENCH_CLIENT_TOOLS, ...studioToolsMock.STUDIO_PLAYWRIGHT_TOOLS]
+      const executable = [...toolsMock.BENCH_CLIENT_TOOLS, ...studioToolsMock.STUDIO_PLAYWRIGHT_TOOLS, ...graphToolsMock.STUDIO_GRAPH_TOOLS]
         .some((tool) => tool.name === name)
         || name === chartToolMock.RENDER_CHART_TOOL_NAME
         || name === telemetryMock.CONVERSATION_TELEMETRY_TOOL_NAME
       expect(executable).toBe(true)
     }
+  })
+})
+
+describe('wireToolGateResponder — graph tools', () => {
+  let bridge: FakeBridge
+  const graphExecute = graphToolsMock.STUDIO_GRAPH_TOOLS[0]!.execute
+  beforeEach(() => {
+    bridge = new FakeBridge()
+    wireToolGateResponder(bridge)
+    graphExecute.mockClear()
+    settingsMock.readSettings.mockReturnValue({ activeUi: 'studio', studioPlaywrightEnabled: true })
+  })
+
+  it('executes a graph tool with the session identity, never the model\'s arguments', async () => {
+    bridge.fire('tab-1', gateEvent({ gateKind: 'tool', gateToolName: 'graph_state', gateToolInput: { conversationId: 'forged' }, gateCwd: '/proj' }))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(graphExecute).toHaveBeenCalledWith(
+      { conversationId: 'forged' },
+      expect.objectContaining({ sessionKey: 'tab-1', cwd: '/proj', origin: 'model' }),
+    )
+    expect(bridge.sent[0]).toMatchObject({ gateRequestId: 'tool-gate-1', gateContent: '{"nodeCount":3}', gateIsError: false })
+  })
+
+  it('declares and executes graph tools only while Studio is active', async () => {
+    settingsMock.readSettings.mockReturnValue({ activeUi: 'overlay', studioPlaywrightEnabled: true })
+    expect(toolGateSessionConfig().clientTools?.map((t) => t.name)).not.toContain('graph_state')
+    bridge.fire('tab-1', gateEvent({ gateKind: 'tool', gateToolName: 'graph_state' }))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(graphExecute).not.toHaveBeenCalled()
+    expect(bridge.sent[0]).toMatchObject({ gateIsError: true })
+  })
+
+  it('stays declared when the browser preference is off, because the gate is Studio alone', () => {
+    settingsMock.readSettings.mockReturnValue({ activeUi: 'studio', studioPlaywrightEnabled: false })
+    const names = toolGateSessionConfig().clientTools?.map((t) => t.name) ?? []
+    expect(names).toContain('graph_state')
+    expect(names).not.toContain('browser_snapshot')
   })
 })
 

@@ -245,4 +245,19 @@ describe('submit() on an input-locked conversation', () => {
 
     expect(mockPrompt).not.toHaveBeenCalled()
   })
+
+  it('submitRemotePrompt posts a visible notice too, not just a log line', () => {
+    // Regression: this path used to warn-and-return with nothing posted to
+    // the conversation. A phone operator relayed through it has no other way
+    // to learn their message was refused — a silent drop reads as "sent".
+    const { state } = buildHarness(makeTab({ inputLocked: true }))
+
+    state.submitRemotePrompt('tab-1', 'a prompt relayed from the phone')
+
+    const pane = state.conversationPanes.get('tab-1')
+    const main = pane?.instances.find((i: { id: string }) => i.id === 'main')
+    expect(main?.messages ?? []).toHaveLength(1)
+    expect(main?.messages[0].role).toBe('system')
+    expect(main?.messages[0].content).toContain('Not sent')
+  })
 })
