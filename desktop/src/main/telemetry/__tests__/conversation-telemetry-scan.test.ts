@@ -201,6 +201,28 @@ describe('conversation telemetry scan', () => {
     expect(record?.courseCorrections).toBe(0)
   })
 
+  it('excludes a machine-authored steer marker from steerCount', () => {
+    const dir = tempDir()
+    writeConversation(dir, 'conv-machine-steer', [
+      prompt('start'),
+      // A background dispatch completion arriving mid-turn: the engine
+      // persists this the same way as a human steer, but marks it
+      // machineAuthored. Reverting the scan's machineAuthored check makes
+      // this fixture inflate steerCount to 2, which is the exact bug found
+      // reading raw transcripts for the 2026-09-07 Graph View retro — a
+      // conversation's "10 steers" turned out to be 10 background bash-task
+      // completions, not operator input.
+      { type: 'steer_marker', data: { messageLength: 900, kind: 'background_task_completion', machineAuthored: true } },
+      { type: 'steer_marker', data: { messageLength: 40 } },
+      prompt('next'),
+    ])
+
+    const record = scanConversation('conv-machine-steer', { conversationsDir: dir })
+    expect(record?.steerCount).toBe(1)
+    expect(record?.steerMessageLengths).toEqual([40])
+    expect(record?.machineSteerCount).toBe(1)
+  })
+
   it('does not count an engine-side cancel as an operator redirect', () => {
     const dir = tempDir()
     writeConversation(dir, 'conv-engine-stop', [

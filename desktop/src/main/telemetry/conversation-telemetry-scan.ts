@@ -147,6 +147,10 @@ function num(data: Record<string, unknown> | undefined, key: string): number {
   return typeof value === 'number' ? value : 0
 }
 
+function bool(data: Record<string, unknown> | undefined, key: string): boolean {
+  return data?.[key] === true
+}
+
 /**
  * Entries to measure: the active leaf path, plus every entry the engine
  * recorded detached from it. Order is chronological so timeline fields
@@ -254,6 +258,7 @@ function emptyRecord(
     steerCount: 0,
     steerTimestamps: [],
     steerMessageLengths: [],
+    machineSteerCount: 0,
     slashCommands: [],
     planMarkers: [],
     models: [],
@@ -360,9 +365,19 @@ function measure(record: ConversationTelemetry, entries: TreeEntry[]): void {
         break
       }
       case 'steer_marker':
-        record.steerCount += 1
-        record.steerTimestamps.push(entry.timestamp)
-        record.steerMessageLengths.push(num(entry.data, 'messageLength'))
+        // machineAuthored distinguishes a human mid-turn correction from an
+        // engine-injected one (a background dispatch completion, a check-in)
+        // that happened to arrive while a run was live. Both persist as a
+        // steer_marker entry; only the former is operator intent. Read from
+        // the marker's own persisted classification (SteerMarkerData in the
+        // engine), not inferred from message content or position.
+        if (bool(entry.data, 'machineAuthored')) {
+          record.machineSteerCount += 1
+        } else {
+          record.steerCount += 1
+          record.steerTimestamps.push(entry.timestamp)
+          record.steerMessageLengths.push(num(entry.data, 'messageLength'))
+        }
         break
       case 'plan_marker': {
         const marker: TelemetryPlanMarker = {

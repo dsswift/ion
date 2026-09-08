@@ -45,7 +45,9 @@ const SHARED_DESCRIPTION =
   + 'Read `courseCorrections` and `stops` as operator redirects: a recorded stop followed by a fresh prompt. '
   + 'Do NOT read `steerCount` as a course correction — a steer is context the operator added mid-turn, '
   + 'either something missing from the opening prompt or a task appended while work was already running. '
-  + 'It measures prompt completeness, not agent error.'
+  + 'It measures prompt completeness, not agent error. '
+  + '`steerCount` already excludes machine-authored steers (a background dispatch completion, a check-in '
+  + 'arriving mid-turn) — those are counted separately in `machineSteerCount` and carry no operator intent.'
 
 export const SELF_SCOPED_DESCRIPTION =
   'Measure this conversation. Covers the conversation you are running in and the chain it was cleared and continued from. '
@@ -179,6 +181,7 @@ function totalsOf(conversations: ConversationTelemetry[]): TelemetryTotals {
     assistantTurns: 0,
     courseCorrections: 0,
     steers: 0,
+    machineSteers: 0,
     toolCalls: 0,
     toolErrors: 0,
     dispatches: 0,
@@ -195,6 +198,7 @@ function totalsOf(conversations: ConversationTelemetry[]): TelemetryTotals {
     totals.assistantTurns += record.assistantTurnCount
     totals.courseCorrections += record.courseCorrections
     totals.steers += record.steerCount
+    totals.machineSteers += record.machineSteerCount
     totals.toolCalls += sumValues(record.toolCalls)
     totals.toolErrors += sumValues(record.toolErrors)
     totals.dispatches += record.dispatches.count
