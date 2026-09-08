@@ -159,11 +159,17 @@ func (f *EgressForwarder) rewriteSpoolFromOffsetLocked(offset int64) (kept int64
 	if err != nil {
 		return 0, 0, fmt.Errorf("spool open for rewrite: %w", err)
 	}
-	defer func() {
+	srcClosed := false
+	closeSrc := func() {
+		if srcClosed {
+			return
+		}
+		srcClosed = true
 		if closeErr := src.Close(); closeErr != nil {
 			Error("log_egress", fmt.Sprintf("spool source close failed during rewrite: %v", closeErr))
 		}
-	}()
+	}
+	defer closeSrc()
 
 	dropped = offset
 	needsRealign := false
@@ -206,6 +212,13 @@ func (f *EgressForwarder) rewriteSpoolFromOffsetLocked(offset int64) (kept int64
 	}
 
 	kept, copyErr := io.CopyBuffer(dst, r, make([]byte, spoolCopyBufferBytes))
+	// src must be closed before anything below renames or removes
+	// f.spoolPath: Windows refuses to rename or delete a file that still has
+	// an open handle, which is exactly what the deferred close (running only
+	// at function return, after those calls) left open. This bit every path
+	// below that touches f.spoolPath -- the rename here, and both removals
+	// in the kept==0 branch.
+	closeSrc()
 	closeErr := dst.Close()
 	if copyErr != nil {
 		if rmErr := os.Remove(tmpPath); rmErr != nil {
