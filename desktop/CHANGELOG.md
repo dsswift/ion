@@ -10,6 +10,25 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.98.0](https://github.com/dsswift/ion/compare/desktop-v1.97.2...desktop-v1.98.0) (2026-09-08)
+
+### Features
+
+* **desktop:** add Graph View core engine ([90a0d4a](https://github.com/dsswift/ion/commit/90a0d4add8a56656e7763b5b4eda6f790a5b076e))
+* **desktop:** add Graph View interaction and camera controls ([9307a87](https://github.com/dsswift/ion/commit/9307a8757ef8af8ccdc14bf905bda859355579af))
+* **desktop:** add Graph View presentation and layered rendering ([b0a814c](https://github.com/dsswift/ion/commit/b0a814cba22a2897bd9306f62ea03f17a3800cff))
+* **desktop:** add agent graph tools for the Graph View ([df7e4c8](https://github.com/dsswift/ion/commit/df7e4c857b21c34f52e80fea7973f8e2a1e9f917))
+* **desktop:** show live compaction status and block sending ([18f544b](https://github.com/dsswift/ion/commit/18f544befe9bac88f5042d8306e924ec83950ba3))
+
+### Bug Fixes
+
+* **desktop:** stabilize Graph View rendering, layout, and lifecycle ([98fe4ca](https://github.com/dsswift/ion/commit/98fe4ca0efa191ea407a0df751ae7ba746333b6b))
+* **desktop:** exclude machine steers from ConversationTelemetry ([68cc124](https://github.com/dsswift/ion/commit/68cc124100052167b48dddc0987a53fe5aae534d))
+* **desktop:** remove unused graph view import ([faaf8a4](https://github.com/dsswift/ion/commit/faaf8a4f3b4f58440a885d21cc5ec26ce0f02384))
+* **desktop:** stabilize graph view parity tests ([0606845](https://github.com/dsswift/ion/commit/0606845bd3bee2c04e97264f929e484938adc0cd))
+* **desktop:** align corpus watch test with empty roots ([077c229](https://github.com/dsswift/ion/commit/077c229a73aee9466558bd9e40d72b3f873accf3))
+* **desktop:** skip empty corpus watch cleanup ([dfef085](https://github.com/dsswift/ion/commit/dfef085374002e23a386cacbc0ebab7af0e1bb97))
+
 ## [1.97.2](https://github.com/dsswift/ion/compare/desktop-v1.97.1...desktop-v1.97.2) (2026-09-07)
 
 ## [1.97.1](https://github.com/dsswift/ion/compare/desktop-v1.97.0...desktop-v1.97.1) (2026-09-07)

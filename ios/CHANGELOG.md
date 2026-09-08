@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.75.0](https://github.com/dsswift/ion/compare/ios-v1.74.0...ios-v1.75.0) (2026-09-08)
+
+### Features
+
+* **ios:** disable send while a conversation is compacting ([74a0c68](https://github.com/dsswift/ion/commit/74a0c682f0368c1971db745a8fc85cdd5b13bdd9))
+
 ## [1.74.0](https://github.com/dsswift/ion/compare/ios-v1.73.0...ios-v1.74.0) (2026-09-06)
 
 ### Features

@@ -18,6 +18,13 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.84.2](https://github.com/dsswift/ion/compare/engine-v1.84.1...engine-v1.84.2) (2026-09-08)
+
+### Bug Fixes
+
+* **engine:** persist steer marker kind and origin ([e92fa45](https://github.com/dsswift/ion/commit/e92fa458c0ff726972da772ba91bd9fac2a611c1))
+* **engine:** make manual /compact reliable for CLI backends ([b5a7568](https://github.com/dsswift/ion/commit/b5a7568ba90edd8cb5d855bdb1ac5f76d4c25e07))
+
 ## [1.84.1](https://github.com/dsswift/ion/compare/engine-v1.84.0...engine-v1.84.1) (2026-09-07)
 
 ## [1.84.0](https://github.com/dsswift/ion/compare/engine-v1.83.0...engine-v1.84.0) (2026-09-07)
