@@ -10,6 +10,8 @@
  *  - reRegisterSessions generation cancellation (batch aborts when
  *    _reRegisterGeneration advances mid-flight)
  *  - scheduleReconnect timer respecting reconnectDisabled at fire time
+ *  - a persistently failing reconnect re-asserting the supervisor instead of
+ *    retrying a socket nobody is going to bind
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
@@ -64,6 +66,11 @@ vi.mock('fs', () => ({ existsSync: vi.fn(() => false), readFileSync: vi.fn(() =>
 vi.mock('child_process', () => ({ spawn: vi.fn(), execSync: vi.fn(() => '') }))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
+// vi.mock factories are hoisted above module scope, so the spy has to be
+// created with vi.hoisted to exist by the time the factory runs.
+const { mockRestartEngineDaemon } = vi.hoisted(() => ({ mockRestartEngineDaemon: vi.fn(async () => true) }))
+vi.mock('../engine-bootstrap', () => ({ restartEngineDaemon: mockRestartEngineDaemon }))
+
 import { createConnection } from 'net'
 import { EngineBridge } from '../engine-bridge'
 import { scheduleReconnect } from '../engine-bridge-connection'
@@ -74,6 +81,7 @@ let bridge: EngineBridge
 
 beforeEach(() => {
   vi.useFakeTimers()
+  mockRestartEngineDaemon.mockClear()
   connectResults = []
   defaultReachable = false
   lastCreatedConn = null
@@ -201,6 +209,54 @@ describe('scheduleReconnect timer respects reconnectDisabled', () => {
 
     // No connect attempt was made: no new socket was created.
     expect(lastCreatedConn).toBeNull()
+  })
+})
+
+// ── Reconnect alone cannot recover a daemon that is gone ──
+
+describe('supervisor re-assert during a long outage', () => {
+  // Reconnecting assumes the daemon is up and only its address is not bound
+  // yet. When the daemon is actually gone nothing else brings it back:
+  // startup asks the supervisor once, and on Windows a `schtasks /Run` while
+  // the previous instance is still shutting down is a no-op whose readiness
+  // probe the outgoing process answers. Both then exit, and without this the
+  // loop retries a dead address forever.
+  it('asks the supervisor to restart the engine once reconnects keep failing', async () => {
+    bridge.reconnectAttempts = 3
+    connectResults = [false]
+
+    scheduleReconnect(bridge)
+    await vi.advanceTimersByTimeAsync(10000)
+
+    expect(mockRestartEngineDaemon).toHaveBeenCalled()
+  })
+
+  // The supervisor call shells out, and a genuinely slow start must not be
+  // interrupted by a second one.
+  it('does not re-assert again while still in cooldown', async () => {
+    bridge.reconnectAttempts = 3
+    connectResults = [false, false]
+
+    scheduleReconnect(bridge)
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(mockRestartEngineDaemon).toHaveBeenCalledTimes(1)
+
+    // The next tick of the same outage must not shell out again.
+    scheduleReconnect(bridge)
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(mockRestartEngineDaemon).toHaveBeenCalledTimes(1)
+  })
+
+  // The ordinary case -- the engine still binding its address right after a
+  // start -- must be covered by plain reconnects, not by restarting it again.
+  it('leaves an early reconnect to plain retries', async () => {
+    bridge.reconnectAttempts = 0
+    connectResults = [false]
+
+    scheduleReconnect(bridge)
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(mockRestartEngineDaemon).not.toHaveBeenCalled()
   })
 })
 

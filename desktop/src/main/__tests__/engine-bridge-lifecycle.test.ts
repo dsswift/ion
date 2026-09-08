@@ -1,41 +1,28 @@
 /**
  * engine-bridge-lifecycle.test.ts — daemon stop mechanics.
  *
- * The engine is a persistent launchd daemon that outlives the desktop. Only the
- * paths that intentionally STOP the engine (Quit All, backend switch/relaunch)
- * call shutdownAndWait, which must:
+ * The engine is a persistent daemon under a per-user supervisor that outlives
+ * the desktop. Only the paths that intentionally STOP the engine (Quit All,
+ * backend switch/relaunch) call shutdownAndWait, which must:
  *   1. Send the graceful `shutdown` command, then
- *   2. `launchctl bootout` the agent so KeepAlive does not respawn it — the
- *      daemon stays down until the next desktop launch re-bootstraps it, and
- *      that fresh start re-reads engine.json.
+ *   2. Stop it through its supervisor, because on every platform a supervisor
+ *      exists to bring the process back: launchd respawns a booted-in agent,
+ *      and a Windows Scheduled Task is simply still registered and running.
  *
  * "Quit Desktop" does NOT call this path (verified in window-manager wiring),
  * so the daemon is left running with background schedules + iOS/relay intact.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-const execSyncCalls: string[] = []
+const stopEngineDaemon = vi.hoisted(() => vi.fn(async () => true))
 
-vi.mock('child_process', () => ({
-  execSync: vi.fn((cmd: string) => {
-    execSyncCalls.push(cmd)
-    return ''
-  }),
-}))
+vi.mock('../engine-bootstrap', () => ({ stopEngineDaemon }))
 
-vi.mock('fs', () => ({
-  // Socket disappears immediately so shutdownAndWait's wait loop exits fast.
-  existsSync: vi.fn(() => false),
-}))
-
-vi.mock('os', () => ({
-  homedir: () => '/Users/testuser',
-}))
-
-vi.mock('../logger', () => ({
-  log: vi.fn(),
-  warn: vi.fn(),
+vi.mock('../engine-address', () => ({
+  resolveEngineAddress: () => ({ kind: 'tcp', host: '127.0.0.1', port: 21017 }),
+  // Engine refuses connections immediately so the wait loop exits fast.
+  probeEngine: vi.fn(async () => false),
 }))
 
 import { shutdownAndWait } from '../engine-bridge-lifecycle'
@@ -57,41 +44,41 @@ function makeFakeBridge() {
 }
 
 beforeEach(() => {
-  execSyncCalls.length = 0
   vi.clearAllMocks()
-  Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
+})
+
+afterEach(() => {
+  Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
 })
 
 describe('shutdownAndWait (engine-stopping path)', () => {
-  it('sends shutdown then boots the daemon out so KeepAlive cannot respawn it', async () => {
+  // The regression this pins: the supervisor stop used to be an inline
+  // `launchctl bootout` behind a darwin check, so on Windows Quit All stopped
+  // nothing. The Scheduled Task kept the engine serving after the desktop
+  // exited, and since engine.json is read once at start, an operator who quit,
+  // edited config and relaunched was still talking to the old daemon.
+  it.each(['darwin', 'win32', 'linux'])(
+    'sends shutdown then stops the daemon through its supervisor on %s',
+    async (platform) => {
+      Object.defineProperty(process, 'platform', { value: platform, configurable: true })
+      const bridge = makeFakeBridge()
+
+      await shutdownAndWait(bridge, 100)
+
+      expect((bridge as any)._sentMessages).toEqual([{ cmd: 'shutdown' }])
+      expect(stopEngineDaemon).toHaveBeenCalledTimes(1)
+      // Reconnect is disabled so the bridge does not fight the intentional stop.
+      expect(bridge.reconnectDisabled).toBe(true)
+    },
+  )
+
+  // The desktop must still exit when the stop fails, or a broken supervisor
+  // registration becomes a desktop that cannot be quit.
+  it('completes even when the supervisor stop fails', async () => {
+    stopEngineDaemon.mockResolvedValueOnce(false)
     const bridge = makeFakeBridge()
 
-    await shutdownAndWait(bridge, 100)
-
-    // Graceful shutdown command sent first.
-    expect((bridge as any)._sentMessages).toEqual([{ cmd: 'shutdown' }])
-    // launchctl bootout issued so the next launch brings up a FRESH daemon
-    // that re-reads engine.json.
-    const bootoutCall = execSyncCalls.find((c) => c.includes('launchctl bootout'))
-    expect(bootoutCall).toBeDefined()
-    expect(bootoutCall).toContain('com.ion.engine.plist')
-    // It must NOT kickstart -k here: this path STOPS the engine, it does not
-    // recycle it in place.
-    expect(execSyncCalls.some((c) => c.includes('kickstart'))).toBe(false)
-    // Reconnect is disabled so the bridge does not fight the intentional stop.
-    expect(bridge.reconnectDisabled).toBe(true)
-  })
-
-  it('does not run launchctl on non-darwin platforms', async () => {
-    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
-    const bridge = makeFakeBridge()
-
-    await shutdownAndWait(bridge, 100)
-
-    // Still sends the graceful shutdown, but no launchctl on non-macOS.
-    expect((bridge as any)._sentMessages).toEqual([{ cmd: 'shutdown' }])
-    expect(execSyncCalls.length).toBe(0)
-
-    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+    await expect(shutdownAndWait(bridge, 100)).resolves.toBeUndefined()
+    expect(bridge.connected).toBe(false)
   })
 })

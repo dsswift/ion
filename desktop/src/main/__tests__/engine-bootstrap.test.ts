@@ -115,9 +115,17 @@ vi.mock('os', () => ({
   homedir: () => '/Users/testuser',
 }))
 
+vi.mock('../utils/atomicWrite', () => ({
+  atomicWriteFileSync: vi.fn((p: string, content: string) => {
+    writtenFiles[p] = content
+    fakeFs[p] = content
+  }),
+}))
+
 vi.mock('../logger', () => ({
   log: vi.fn(),
   error: vi.fn(),
+  warn: vi.fn(),
 }))
 
 const originalPlatform = process.platform
@@ -422,7 +430,7 @@ describe('engine-bootstrap', () => {
     expect(kickstartCall).not.toContain('-k')
   })
 
-  it('is a no-op on non-darwin platforms', async () => {
+  it('is a no-op on linux (no supervisor mechanism, logs WARN)', async () => {
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
     platformOverride = 'linux'
 
@@ -450,7 +458,7 @@ describe('restartEngineDaemon', () => {
     expect(execSyncCalls.some((c) => c.includes('bootout'))).toBe(false)
   })
 
-  it('is a no-op on non-darwin platforms', async () => {
+  it('is a no-op on linux (no supervisor mechanism, logs WARN)', async () => {
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
     platformOverride = 'linux'
 

@@ -1,15 +1,5 @@
-import { execSync } from 'child_process'
-import { existsSync } from 'fs'
-import { join } from 'path'
-import { homedir } from 'os'
 import type { EngineBridge } from './engine-bridge'
-import { log as _log, warn as _warn } from './logger'
-
-function log(msg: string, fields?: Record<string, unknown>): void { _log('engine-bridge', msg, fields) }
-function warn(msg: string, fields?: Record<string, unknown>): void { _warn('engine-bridge', msg, fields) }
-
-const ION_HOME = join(homedir(), '.ion')
-const SOCKET_PATH = join(ION_HOME, 'engine.sock')
+import { resolveEngineAddress, probeEngine } from './engine-address'
 
 /**
  * Drop the desktop's socket to the engine daemon.
@@ -57,23 +47,32 @@ export async function shutdownAndWait(bridge: EngineBridge, timeoutMs = 3000): P
 
   bridge._send({ cmd: 'shutdown' })
 
-  if (process.platform === 'darwin') {
-    try {
-      const uid = process.getuid?.() ?? 501
-      const plistPath = join(homedir(), 'Library', 'LaunchAgents', 'com.ion.engine.plist')
-      execSync(`launchctl bootout gui/${uid} ${plistPath}`, { timeout: 5000 })
-      log('launchctl bootout succeeded')
-    } catch (err: any) {
-      // 3 = "No such process" (already unloaded). Not an error.
-      if (err.status !== 3) {
-        warn('engine_bridge: launchctl bootout failed', { error: err.message })
-      }
-    }
-  }
+  // Ask the supervisor to stop the daemon, whatever the supervisor is on this
+  // platform. The `shutdown` command above asks the engine to exit, but on
+  // every platform a supervisor exists precisely to bring it back -- launchd
+  // respawns a booted-in agent, and a Windows Scheduled Task is simply still
+  // registered and running. Only the supervisor verb makes the stop stick.
+  //
+  // This used to be an inline `launchctl bootout` behind a darwin check, so
+  // Quit All stopped nothing at all on Windows: the engine kept serving after
+  // the desktop exited, and because engine.json is read once at start, a
+  // config edit between quit and relaunch was silently ignored by the
+  // still-running daemon.
+  // Imported lazily: engine-bootstrap reaches the supervisor implementations
+  // and through them child_process, and pulling that into this module's static
+  // graph makes every engine-bridge test carry a supervisor's dependencies.
+  // This path runs once, at quit, so the cost is irrelevant.
+  const { stopEngineDaemon } = await import('./engine-bootstrap')
+  await stopEngineDaemon()
 
+  // Wait until the engine stops accepting connections. A unix socket file
+  // existing proves nothing about liveness (and there is no file at all for
+  // the win32 TCP address), so this polls the same connect-probe the
+  // readiness wait uses, rather than checking for a path.
+  const addr = resolveEngineAddress()
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    if (!existsSync(SOCKET_PATH)) break
+    if (!(await probeEngine(addr))) break
     await new Promise(r => setTimeout(r, 50))
   }
 
