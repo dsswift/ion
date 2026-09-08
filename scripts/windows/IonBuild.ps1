@@ -417,9 +417,16 @@ function Resolve-IonDesktopVersion {
     # Named explicitly, because a synced tree that also has git metadata is the
     # exact shape that produced a wrong version before, and the log is where
     # anyone re-diagnosing it will look.
+    #
+    # Invoke-IonNative -AllowFailure, not a raw `&` call: git writes "fatal:
+    # not a git repository" to stderr when $Root has no .git, and under
+    # $ErrorActionPreference = 'Stop' on Windows PowerShell 5.1 that stderr
+    # write is itself a terminating error even with a `*> $null` redirect --
+    # the same trap Invoke-IonNative and the scheduled-task check above exist
+    # to avoid.
     if (Test-IonCommand 'git') {
-      & git -C $Root rev-parse --git-dir *> $null
-      if ($LASTEXITCODE -eq 0) {
+      $gitDirCode = Invoke-IonNative 'git' @('-C', $Root, 'rev-parse', '--git-dir') -AllowFailure
+      if ($gitDirCode -eq 0) {
         Write-IonInfo 'this tree also has git metadata; the sync stamp is authoritative and git was not consulted'
       }
     }
@@ -428,8 +435,7 @@ function Resolve-IonDesktopVersion {
 
   $hasGit = $false
   if (Test-IonCommand 'git') {
-    & git -C $Root rev-parse --git-dir *> $null
-    $hasGit = ($LASTEXITCODE -eq 0)
+    $hasGit = ((Invoke-IonNative 'git' @('-C', $Root, 'rev-parse', '--git-dir') -AllowFailure) -eq 0)
   }
 
   if ($hasGit) {
