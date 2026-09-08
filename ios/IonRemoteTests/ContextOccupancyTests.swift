@@ -284,6 +284,27 @@ final class ContextOccupancyTests: XCTestCase {
         ))
     }
 
+    /// Unlike context pressure (which never blocks — the engine owns
+    /// admission and can auto-compact), a compaction already in progress
+    /// blocks outright: there is no way to steer it by sending, so the send
+    /// button disables the same way it does for an input-locked tab.
+    func test_computeCannotSend_blocksWhileCompacting() {
+        XCTAssertTrue(ConversationView.computeCannotSend(
+            promptText: "a follow-up",
+            attachmentCount: 0,
+            hasUploading: false,
+            contextCapacityState: .normal,
+            isCompacting: true
+        ))
+        XCTAssertFalse(ConversationView.computeCannotSend(
+            promptText: "a follow-up",
+            attachmentCount: 0,
+            hasUploading: false,
+            contextCapacityState: .normal,
+            isCompacting: false
+        ))
+    }
+
     func test_contextCapacityUsesSelectedModelInsteadOfPriorEngineWindow() {
         let models = [
             RemoteModelEntry(
