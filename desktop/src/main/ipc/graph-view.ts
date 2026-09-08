@@ -17,7 +17,6 @@ import { persistAndBroadcastSettings } from '../settings-broadcast'
 import {
   getGraphViewConfig,
   invalidateAndBroadcastAll,
-  watchProject,
 } from '../graph-view/config-store'
 import { resolveGraphViewConfig } from '../graph-view/config-resolve'
 import { GRAPH_VIEW_PROJECT_FIELDS, isGraphViewAvailable, type GraphViewConfig } from '../../shared/graph-view-types'
