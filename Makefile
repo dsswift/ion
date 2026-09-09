@@ -543,16 +543,25 @@ graph-refresh:
 	@guard="$$(bash scripts/graphify-worktree-guard.sh)" || exit $$?; \
 	if [ "$${guard%% *}" = "worktree" ]; then \
 		primary="$${guard#* }/graphify-out/graph.json"; local="graphify-out/graph.json"; \
+		marker="graphify-out/.graph-link-source"; \
 		if [ ! -f "$$primary" ]; then \
 			echo "▶ graphify: primary checkout has no graph; worktree link remains absent"; \
 		elif [ -L "$$local" ] && [ "$$(readlink "$$local" | sed 's/\\\\/\//g')" = "$$primary" ]; then \
 			echo "▶ graphify: primary graph link already present"; \
+		elif [ ! -L "$$local" ] && [ -f "$$marker" ] && [ "$$(cat "$$marker")" = "$$primary" ]; then \
+			cp "$$primary" "$$local"; \
+			echo "▶ graphify: primary graph link already present (refreshed provisioned copy)"; \
 		elif [ -e "$$local" ] || [ -L "$$local" ]; then \
 			echo "Refused: $$local exists but is not the primary graph link; refusing to replace local data." >&2; \
 			exit 1; \
 		else \
-			mkdir -p graphify-out; ln -s "$$primary" "$$local"; \
-			echo "▶ graphify: linked primary graph for worktree queries"; \
+			mkdir -p graphify-out; \
+			if ln -s "$$primary" "$$local" 2>/dev/null && [ -L "$$local" ]; then \
+				echo "▶ graphify: linked primary graph for worktree queries"; \
+			else \
+				rm -f "$$local"; cp "$$primary" "$$local"; printf '%s' "$$primary" > "$$marker"; \
+				echo "▶ graphify: linked primary graph for worktree queries (copied — this platform's ln -s does not create a real symlink)"; \
+			fi; \
 		fi; \
 	elif ! command -v graphify >/dev/null 2>&1; then \
 		echo "⚠️  graphify not on PATH — nothing to refresh."; \
