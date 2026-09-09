@@ -432,9 +432,17 @@ function absolutize(path: string, base: string): string {
  * Whether a token's value cannot be known statically: variable expansion,
  * command substitution, backticks, tilde (whose expansion depends on the
  * executing user), or glob characters.
+ *
+ * The tilde check is anchored to the token's start, matching real shell
+ * semantics: `~`/`~user` only expands there, never mid-word. An unanchored
+ * check treats every Windows short (8.3) path as dynamic and silently drops
+ * it -- `RUNNER~1`, `PROGRA~1`, and any other DOS-generated short name
+ * contain a literal `~` by construction, and GitHub Actions' own hosted
+ * Windows runners set %TEMP% through exactly such a segment. Same fix as
+ * the engine-side isDynamicToken (internal/workspaces/bash.go).
  */
 function isDynamicToken(tok: string): boolean {
-  return /[$`~*?]/.test(tok)
+  return /[$`*?]/.test(tok) || tok.startsWith('~')
 }
 
 function normalizeGroupingToken(token: string): string {
