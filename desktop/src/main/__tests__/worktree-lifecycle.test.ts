@@ -15,7 +15,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync, readdirSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { join, normalize } from 'path'
 
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
@@ -504,8 +504,12 @@ describe('worktree list parsing', () => {
     const entries = parseWorktreeList(raw)
 
     expect(entries).toHaveLength(2)
-    expect(entries[0]).toEqual({ path: '/repo', head: 'abc123', branch: 'main' })
-    expect(entries[1]).toEqual({ path: '/wt/a', head: 'def456', branch: '' })
+    // parseWorktreeList normalizes the parsed path to native separators (git
+    // always reports forward slashes, even on Windows) -- these fixture
+    // literals are POSIX-shaped either way, so the expectation goes through
+    // the same normalize() rather than hardcoding the pre-Windows-fix form.
+    expect(entries[0]).toEqual({ path: normalize('/repo'), head: 'abc123', branch: 'main' })
+    expect(entries[1]).toEqual({ path: normalize('/wt/a'), head: 'def456', branch: '' })
   })
 })
 
