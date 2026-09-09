@@ -136,19 +136,29 @@ func (b *ClaudeCodeBackend) IsRunning(requestID string) bool {
 func (b *ClaudeCodeBackend) Cancel(requestID string) bool {
 	b.mu.Lock()
 	run, ok := b.activeRuns[requestID]
+	var cmd *exec.Cmd
+	if ok {
+		cmd = run.cmd
+	}
 	b.mu.Unlock()
 
 	if !ok {
 		return false
 	}
 
-	proc := run.cmd.Process
-	if proc == nil {
+	// cmd is nil during the window between StartRun registering the run and
+	// runProcess assigning run.cmd (spawn happens on its own goroutine) --
+	// there is no process yet to signal, so cancelling the run's context is
+	// the whole story. Racing this exact window against the write above (a
+	// nil *exec.Cmd dereferenced at run.cmd.Process) is what crashed here on
+	// Windows CI, where CLI spawn latency makes the window wide enough to
+	// hit in practice.
+	if cmd == nil || cmd.Process == nil {
 		run.cancel()
 		return true
 	}
 
-	if err := procctl.Interrupt(run.cmd); err != nil {
+	if err := procctl.Interrupt(cmd); err != nil {
 		if errors.Is(err, procctl.ErrNoGracefulSignal) {
 			utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "no graceful interrupt on this platform, killing tree", map[string]any{
 				"request_id": requestID,
@@ -158,7 +168,7 @@ func (b *ClaudeCodeBackend) Cancel(requestID string) bool {
 				"error": utils.ErrStr(err),
 			})
 		}
-		if killErr := procctl.KillTree(run.cmd); killErr != nil {
+		if killErr := procctl.KillTree(cmd); killErr != nil {
 			utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "kill tree after failed interrupt", map[string]any{
 				"error": utils.ErrStr(killErr),
 			})
@@ -181,7 +191,7 @@ func (b *ClaudeCodeBackend) Cancel(requestID string) bool {
 			utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "process did not exit after SIGINT, killing tree", map[string]any{
 				"request_id": requestID,
 			})
-			if killErr := procctl.KillTree(run.cmd); killErr != nil {
+			if killErr := procctl.KillTree(cmd); killErr != nil {
 				utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "kill tree after timeout failed", map[string]any{
 					"error": utils.ErrStr(killErr),
 				})
@@ -300,7 +310,9 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 		cmd.Dir = opts.ProjectPath
 	}
 
+	b.mu.Lock()
 	run.cmd = cmd
+	b.mu.Unlock()
 
 	// Pipe stdin for bidirectional stream-json communication
 	stdinPipe, err := cmd.StdinPipe()
