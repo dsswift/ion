@@ -30,6 +30,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { normalizeSlashes } from '../../shared/paths'
 
 const MAIN_DIR = join(__dirname, '..')
 /** The funnel itself, and the low-level pusher it is built on. */
@@ -61,7 +62,13 @@ describe('user-turn echo funnel', () => {
   it('no direct notifyStudioUserMessageEcho call outside the funnel', () => {
     const offenders: string[] = []
     for (const file of collectTs(MAIN_DIR)) {
-      const name = file.slice(MAIN_DIR.length + 1)
+      // Relative name for offender/user reporting, forward-slash always:
+      // `file` comes from join(), which resolves to native (backslash)
+      // separators on win32, but the exact-match assertion below compares
+      // against forward-slash literals -- normalize once here so a
+      // subdirectory file (questions/questions-rehydrate.ts) reads the
+      // same way on every platform.
+      const name = normalizeSlashes(file.slice(MAIN_DIR.length + 1))
       if (ALLOWED_FILES.has(name)) continue
       const src = readFileSync(file, 'utf8')
       for (const { n, text } of codeLines(src)) {
@@ -78,7 +85,8 @@ describe('user-turn echo funnel', () => {
   it("no direct desktop_message_added send with role 'user' outside the funnel", () => {
     const offenders: string[] = []
     for (const file of collectTs(MAIN_DIR)) {
-      const name = file.slice(MAIN_DIR.length + 1)
+      // Forward-slash always: see the first loop's comment above.
+      const name = normalizeSlashes(file.slice(MAIN_DIR.length + 1))
       if (ALLOWED_FILES.has(name)) continue
       const src = readFileSync(file, 'utf8')
       const lines = src.split('\n')
@@ -109,7 +117,8 @@ describe('user-turn echo funnel', () => {
     // with the echo path.
     const users: string[] = []
     for (const file of collectTs(MAIN_DIR)) {
-      const name = file.slice(MAIN_DIR.length + 1)
+      // Forward-slash always: see the first loop's comment above.
+      const name = normalizeSlashes(file.slice(MAIN_DIR.length + 1))
       const src = readFileSync(file, 'utf8')
       // Comment lines are excluded: several files legitimately explain the
       // policy in prose, and flagging prose would train the next author to
