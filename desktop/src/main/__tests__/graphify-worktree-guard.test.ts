@@ -2,10 +2,11 @@
 import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { execFileSync } from 'child_process'
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'fs'
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { normalizeSlashes } from '../../shared/paths'
+import { realpathSyncPortable as realpathSync } from '../fs-realpath'
 
 const PROJECT_ROOT = join(__dirname, '..', '..', '..', '..')
 const GUARD = join(PROJECT_ROOT, 'scripts', 'graphify-worktree-guard.sh')
