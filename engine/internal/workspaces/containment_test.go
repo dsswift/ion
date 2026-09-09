@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -439,6 +440,35 @@ func TestLandedWorktreeReasonIncludesBranch(t *testing.T) {
 	}
 	if !contains(r.Reason, "wt/mine") {
 		t.Errorf("reason must include branch name: %s", r.Reason)
+	}
+}
+
+// TestIsWithinFoldsCaseOnWindows pins the fix for a real containment gap: on
+// Windows, filepath.EvalSymlinks can return a directory in different casing
+// than the string that named it (an NTFS volume is case-insensitive but
+// case-preserving, and different Win32 APIs surface different casing for the
+// identical on-disk directory). A case-sensitive prefix check would then
+// treat two spellings of the same directory as unrelated, silently failing to
+// recognize a write as contained -- exactly the class of bug this package
+// exists to prevent. Off Windows this is a no-op: POSIX filesystems are
+// case-sensitive, so two different-case strings really do name different
+// paths there and must NOT be folded together.
+func TestIsWithinFoldsCaseOnWindows(t *testing.T) {
+	root := testAbsPath("Repo", "Project")
+	// A same-directory child spelled in a DIFFERENT case than root, the exact
+	// shape of the bug: two Win32 APIs returning different casing for the
+	// identical on-disk directory.
+	differentCase := strings.ToLower(root) + string(filepath.Separator) + "file.go"
+
+	got := isWithin(differentCase, root)
+	if runtime.GOOS == "windows" {
+		if !got {
+			t.Errorf("isWithin(%q, %q) = false, want true: Windows paths must compare case-insensitively", differentCase, root)
+		}
+	} else {
+		if got {
+			t.Errorf("isWithin(%q, %q) = true, want false: POSIX paths must compare case-sensitively", differentCase, root)
+		}
 	}
 }
 

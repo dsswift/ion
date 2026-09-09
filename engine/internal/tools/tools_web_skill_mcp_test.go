@@ -351,8 +351,13 @@ func TestLocalBashOperationsWorkingDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(result.Stdout, dir) {
-		t.Errorf("expected cwd %q in output, got %q", dir, result.Stdout)
+	// windowsLongPath: see its doc comment (longpath_windows_test.go). On
+	// Windows, t.TempDir() names the directory in its 8.3 short form while
+	// the spawned shell reports its cwd in the long form; both name the
+	// same directory.
+	want := windowsLongPath(dir)
+	if !strings.Contains(result.Stdout, want) {
+		t.Errorf("expected cwd %q in output, got %q", want, result.Stdout)
 	}
 }
 

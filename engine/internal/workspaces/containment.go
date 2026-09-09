@@ -3,6 +3,7 @@ package workspaces
 import (
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -355,10 +356,22 @@ func isWithin(path, root string) bool {
 	if path == "" || root == "" {
 		return false
 	}
-	if path == root {
+	cmpPath, cmpRoot := path, root
+	if runtime.GOOS == "windows" {
+		// NTFS is case-insensitive (case-preserving): the same directory can
+		// be spelled with different casing depending on which API produced
+		// the string (a raw registered path vs. one round-tripped through
+		// filepath.EvalSymlinks, which resolves to the on-disk casing). A
+		// case-sensitive prefix check would then silently fail to recognize
+		// two spellings of the identical directory as contained, so every
+		// comparison here folds case on Windows -- the one platform where
+		// two byte-different strings can name the same path.
+		cmpPath, cmpRoot = strings.ToLower(path), strings.ToLower(root)
+	}
+	if cmpPath == cmpRoot {
 		return true
 	}
-	return strings.HasPrefix(path, root+string(filepath.Separator))
+	return strings.HasPrefix(cmpPath, cmpRoot+string(filepath.Separator))
 }
 
 func isBash(tool string) bool { return tool == "Bash" || tool == "bash" }

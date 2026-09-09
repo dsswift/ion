@@ -159,8 +159,12 @@ func TestBashToolWorkingDirectory(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error: %s", result.Content)
 	}
-	if !strings.Contains(result.Content, dir) {
-		t.Errorf("expected pwd to show %q, got %q", dir, result.Content)
+	// windowsLongPath: see its doc comment. On Windows, t.TempDir() names the
+	// directory in its 8.3 short form while the spawned shell reports its cwd
+	// in the long form; both name the same directory.
+	want := windowsLongPath(dir)
+	if !strings.Contains(result.Content, want) {
+		t.Errorf("expected pwd to show %q, got %q", want, result.Content)
 	}
 }
 
