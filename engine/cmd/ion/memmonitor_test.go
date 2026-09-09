@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -70,21 +69,15 @@ func TestSampleAndLogMemory_LogsFootprintAndSessions(t *testing.T) {
 func TestSampleAndLogMemory_EscalatesPastHighWater(t *testing.T) {
 	get := captureLogs(t)
 
-	// Force the warn branch: pick a limit small enough that current HeapAlloc is
-	// already >= warnFraction * limit. Reading MemStats first gives a real heap
-	// figure to derive a tiny limit from.
-	var heapNow uint64
-	{
-		var ms runtime.MemStats
-		runtime.ReadMemStats(&ms)
-		heapNow = ms.HeapAlloc
-	}
-	// limit chosen so heapNow >= 0.85 * limit  ⇔  limit <= heapNow / 0.85.
-	limit := int64(float64(heapNow) / (memMonitorWarnFraction + 0.05))
-	if limit <= 0 {
-		limit = 1
-	}
-	sampleAndLogMemory(limit, func() int { return 3 })
+	// Force the warn branch deterministically: sampleAndLogMemory reads its
+	// own fresh MemStats snapshot internally, so a limit derived from an
+	// earlier separate read (as this test used to do) races the allocator --
+	// a GC between the two reads can drop HeapAlloc enough to fall back
+	// under warnFraction*limit, exactly the flake observed on Windows CI.
+	// limitBytes=1 sidesteps the race entirely: any running Go program's
+	// HeapAlloc is far above 0.85 bytes, so the escalation fires regardless
+	// of the exact heap size sampleAndLogMemory happens to read.
+	sampleAndLogMemory(1, func() int { return 3 })
 
 	lines := get()
 	if !containsSubstr(lines, "HIGH MEMORY") {
