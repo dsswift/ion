@@ -23,7 +23,16 @@ func (m *Manager) deliverRootDispatchResult(key string, result extension.Dispatc
 	}
 	m.mu.Lock()
 	if s, ok := m.sessions[key]; ok {
+		if _, stopped := s.stoppedRootDispatchIDs[result.DispatchID]; stopped {
+			delete(s.rootDispatchIDs, result.DispatchID)
+			m.mu.Unlock()
+			utils.LogWithFields(utils.LevelInfo, "session.dispatch_delivery", "root dispatch completion discarded after session stop", map[string]any{
+				"session_id": key, "dispatch_id": result.DispatchID, "model": result.Name,
+			})
+			return
+		}
 		s.rootDispatchCompletions = append(s.rootDispatchCompletions, record)
+		delete(s.rootDispatchIDs, result.DispatchID)
 		if err := persistRootDispatchOutbox(s.conversationID, s.rootDispatchCompletions); err != nil {
 			s.rootDispatchCompletions = s.rootDispatchCompletions[:len(s.rootDispatchCompletions)-1]
 			m.mu.Unlock()
@@ -45,6 +54,39 @@ func (m *Manager) deliverRootDispatchResult(key string, result extension.Dispatc
 	}
 	m.mu.Unlock()
 	m.retryRootDispatchCompletions(key)
+}
+
+func (m *Manager) discardStoppedRootDispatchCompletions(key string, dispatchIDs map[string]bool, reason string) {
+	m.mu.Lock()
+	s, ok := m.sessions[key]
+	if !ok {
+		m.mu.Unlock()
+		return
+	}
+	s.rootDispatchesStopped = true
+	if s.stoppedRootDispatchIDs == nil {
+		s.stoppedRootDispatchIDs = make(map[string]struct{}, len(dispatchIDs))
+	}
+	for dispatchID := range s.rootDispatchIDs {
+		s.stoppedRootDispatchIDs[dispatchID] = struct{}{}
+	}
+	for dispatchID := range dispatchIDs {
+		s.stoppedRootDispatchIDs[dispatchID] = struct{}{}
+	}
+	dropped := len(s.rootDispatchCompletions)
+	s.rootDispatchCompletions = nil
+	conversationID := s.conversationID
+	m.mu.Unlock()
+
+	if err := persistRootDispatchOutbox(conversationID, nil); err != nil {
+		utils.LogWithFields(utils.LevelError, "session.dispatch_delivery", "could not clear root dispatch completion outbox after session stop", map[string]any{
+			"session_id": key, "conversation_id": conversationID, "reason": reason, "error": err.Error(),
+		})
+		return
+	}
+	utils.LogWithFields(utils.LevelInfo, "session.dispatch_delivery", "fenced root dispatch completions after session stop", map[string]any{
+		"session_id": key, "conversation_id": conversationID, "reason": reason, "recalled_dispatches": len(dispatchIDs), "dropped_completions": dropped,
+	})
 }
 
 // retryRootDispatchCompletions delivers FIFO head only. A successful SendPrompt

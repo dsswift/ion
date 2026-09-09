@@ -56,6 +56,16 @@ func (m *Manager) abortAllDescendants(key, reason string) {
 	hasExt := s.extGroup != nil && !s.extGroup.IsEmpty()
 	m.mu.RUnlock()
 
+	// Fence terminal callbacks before recall removes the registry entries. A
+	// recalled child can finish after the stop and invoke the root completion
+	// delivery fallback. Without this identity fence, that callback queues a new
+	// prompt and restarts a conversation the operator explicitly stopped.
+	var dispatchIDs map[string]bool
+	if s.dispatchRegistry != nil {
+		dispatchIDs = s.dispatchRegistry.ActiveIDs()
+	}
+	m.discardStoppedRootDispatchCompletions(key, dispatchIDs, reason)
+
 	// Recall live background dispatches. Each recall cancels the dispatch's
 	// context and cascades to its descendants; the dispatch's own exit path
 	// emits its terminal state and deregisters it.

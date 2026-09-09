@@ -436,6 +436,20 @@ type engineSession struct {
 	// terminal results. A delivery stays here until a classified prompt is
 	// accepted by the normal session path; queue backpressure never drops it.
 	rootDispatchCompletions []rootDispatchCompletion
+	// rootDispatchIDs tracks top-level child dispatches from launch through their
+	// final callback. A child deregisters before invoking its root callback, so
+	// this survives the registry-to-callback gap that a full stop must fence.
+	rootDispatchIDs map[string]struct{}
+	// rootDispatchesStopped keeps TrackRootDispatch on the stopped side of the
+	// fence when a dispatch races with cancellation and is launched after the
+	// initial stopped identity snapshot. A new user run clears only this flag;
+	// stopped identities remain until their callbacks are discarded.
+	rootDispatchesStopped bool
+	// stoppedRootDispatchIDs records child dispatches recalled by a full session
+	// stop. Their terminal callbacks may arrive after cancellation, including
+	// after the root accepts later user work, but must never reawaken that stopped
+	// work tree.
+	stoppedRootDispatchIDs map[string]struct{}
 
 	// Wired subsystems (populated in StartSession)
 	extGroup            *extension.ExtensionGroup

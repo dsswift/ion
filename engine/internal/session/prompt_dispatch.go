@@ -95,6 +95,13 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		return err
 	}
 
+	// A new operator prompt reopens root child delivery after a previous full
+	// stop. The identities already fenced by that stop remain fenced, so a late
+	// callback cannot attach itself to this new work tree.
+	if overrides == nil || overrides.InjectionKind == "" {
+		s.rootDispatchesStopped = false
+	}
+
 	// A monotonic counter, not the clock alone: two runs of one session that
 	// start inside the same millisecond would otherwise share a run id, and a
 	// run id is an identity, not a label. It keys the active-run map, scopes an
