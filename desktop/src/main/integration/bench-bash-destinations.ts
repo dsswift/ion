@@ -31,16 +31,26 @@
  * allowed — that is the caller's policy.
  */
 // This module parses BASH COMMAND TEXT, not real filesystem paths on the host
-// OS. A shell command string uses POSIX '/' separators and POSIX absolute-path
-// semantics regardless of whether the engine itself is running on Windows —
-// `cd /repo && git commit` is a bash script fragment, and `/repo` is a POSIX
-// absolute path whether the daemon interpreting it later runs on darwin,
-// linux, or (via WSL/git-bash) windows. Using the platform-default `node:path`
-// here would resolve through `path.win32` on a Windows CI runner, so
-// `isAbsolute('/repo')` and `join`/`normalize` would silently reinterpret a
-// POSIX path as a Windows one. Import the POSIX implementation explicitly so
-// this module's behavior is identical on every host OS.
-import { basename, isAbsolute, join, normalize, sep } from 'node:path/posix'
+// OS. A shell command's SYNTAX (quoting, `&&`/`;` splitting, `cd`/`git -C`
+// tokens) is POSIX regardless of host OS -- `cd X && git commit` is a bash
+// script fragment on darwin, linux, and (via git-bash on Windows) win32
+// alike. Using the platform-default `node:path` here would resolve through
+// `path.win32` on a Windows CI runner, so `join`/`normalize` would silently
+// reinterpret a POSIX-shaped destination as a Windows one. Import the POSIX
+// implementation explicitly for that.
+//
+// The DESTINATION a command names is a different question: on a real
+// Windows deployment, the model receives Windows-native absolute paths
+// (`C:\Users\...`) in its context (cwd, file listings) and naturally embeds
+// them verbatim in a `cd` argument -- `cd C:\Users\...\bench && git commit`
+// is exactly what a Windows agent turn produces, and it is not a POSIX
+// absolute path (`isAbsolute` from path/posix requires a leading `/`). So
+// absolute-path DETECTION uses the host-OS-independent isAbsolutePath
+// helper (shared/paths.ts, already handles POSIX `/`, UNC `\\\\`, and a
+// drive letter), while segment splitting/join/normalize stay POSIX for the
+// syntax reasons above.
+import { basename, join, normalize, sep } from 'node:path/posix'
+import { isAbsolutePath } from '../../shared/paths'
 
 /** Merge-driver classification for one segment. */
 export type MergeDriver = '' | 'continue' | 'abort'
@@ -423,7 +433,7 @@ function clean(p: string): string {
 
 function absolutize(path: string, base: string): string {
   const stripped = path.replace(/^["']+|["']+$/g, '')
-  if (isAbsolute(stripped)) return clean(stripped)
+  if (isAbsolutePath(stripped)) return clean(stripped)
   if (base === '') return ''
   return clean(join(base, stripped))
 }
