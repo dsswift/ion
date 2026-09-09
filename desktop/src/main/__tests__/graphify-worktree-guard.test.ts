@@ -5,6 +5,7 @@ import { execFileSync } from 'child_process'
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { normalizeSlashes } from '../../shared/paths'
 
 const PROJECT_ROOT = join(__dirname, '..', '..', '..', '..')
 const GUARD = join(PROJECT_ROOT, 'scripts', 'graphify-worktree-guard.sh')
@@ -17,8 +18,19 @@ function git(cwd: string, args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })
 }
 
+// The guard is real POSIX shell tooling invoked via git-bash on Windows CI.
+// Its underlying git plumbing (`git rev-parse --show-toplevel`, `git worktree
+// list --porcelain`) always reports forward-slash paths, even on Windows --
+// exactly like `git worktree list --porcelain` did in the bench/worktree
+// path-normalization fix (parseWorktreeList in worktree/integrate.ts). The
+// `repo`/`worktree` fixture paths below are built with Node's `path.join`,
+// which resolves to native (backslash) separators on win32. Normalize the
+// guard's stdout before comparing so both sides describe the same path
+// regardless of which side used which separator convention -- the shell
+// script itself stays untouched, matching the "normalize the comparison,
+// don't force POSIX tooling to emit backslashes" guidance.
 function runGuard(cwd: string): string {
-  return execFileSync('bash', [GUARD], { cwd, encoding: 'utf-8' }).trim()
+  return normalizeSlashes(execFileSync('bash', [GUARD], { cwd, encoding: 'utf-8' }).trim())
 }
 
 beforeEach(() => {
@@ -44,15 +56,15 @@ afterEach(() => {
 
 describe('graphify-worktree-guard', () => {
   it('identifies primary checkout and linked worktree with primary path', () => {
-    expect(runGuard(repo)).toBe(`primary ${repo}`)
-    expect(runGuard(worktree)).toBe(`worktree ${repo}`)
+    expect(runGuard(repo)).toBe(`primary ${normalizeSlashes(repo)}`)
+    expect(runGuard(worktree)).toBe(`worktree ${normalizeSlashes(repo)}`)
   })
 
   it('keeps primary ownership when primary HEAD is detached', () => {
     git(repo, ['checkout', '--detach'])
 
-    expect(runGuard(repo)).toBe(`primary ${repo}`)
-    expect(runGuard(worktree)).toBe(`worktree ${repo}`)
+    expect(runGuard(repo)).toBe(`primary ${normalizeSlashes(repo)}`)
+    expect(runGuard(worktree)).toBe(`worktree ${normalizeSlashes(repo)}`)
   })
 
   it('allows primary mutation but refuses every graph mutation target in a worktree', () => {
@@ -90,7 +102,7 @@ echo "$@" >> "${log}"
     expect(make(worktree, 'graph-refresh').output).toContain('link already present')
     const rebuild = make(worktree, 'graph')
     expect(rebuild.ok).toBe(false)
-    expect(rebuild.output).toContain(`primary checkout ${repo}`)
+    expect(rebuild.output).toContain(`primary checkout ${normalizeSlashes(repo)}`)
     expect(make(worktree, 'graph-ensure').ok).toBe(true)
   })
 })
