@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { homedir } from "os";
+import { join } from "path";
 
 const readSettingsMock = vi.fn();
 const writeSettingsMock = vi.fn();
@@ -253,12 +255,17 @@ describe("migrateStudioSettings", () => {
 
   it("theme packs: legacy ~/.ion/atv moves to ~/.ion/studio once", () => {
     readSettingsMock.mockReturnValue({});
-    existsSyncMock.mockImplementation((p: string) => p.endsWith("/.ion/atv"));
+    // Production builds oldRoot with join(homedir(), ".ion", "atv"), which
+    // resolves with native separators on win32 -- a forward-slash literal
+    // here never matches there, so both sides use join() too.
+    const oldRoot = join(homedir(), ".ion", "atv");
+    const newRoot = join(homedir(), ".ion", "studio");
+    existsSyncMock.mockImplementation((p: string) => p === oldRoot);
     migrateStudioSettings();
     expect(renameSyncMock).toHaveBeenCalledTimes(1);
     const [from, to] = renameSyncMock.mock.calls[0] as [string, string];
-    expect(from.endsWith("/.ion/atv")).toBe(true);
-    expect(to.endsWith("/.ion/studio")).toBe(true);
+    expect(from).toBe(oldRoot);
+    expect(to).toBe(newRoot);
   });
 
   it("theme packs: never overwrites an existing new root", () => {

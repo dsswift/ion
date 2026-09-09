@@ -23,7 +23,13 @@ function listenerOutput(): string {
 afterEach(() => configureTerminalWebApplicationDiscoveryForTests({}))
 
 describe('Terminal Web Application discovery', () => {
-  it('attributes a confirmed nested listener to its owning Terminal', async () => {
+  // Discovery shells out to lsof, which does not exist on win32;
+  // discoverTerminalWebApplications() already returns an empty Map there
+  // before ever calling the configured listener lister (see the "win32:"
+  // test below, which pins that short-circuit). The three tests that follow
+  // exercise the POSIX scan path itself via a fake lsof-format listener
+  // lister, so they have nothing to assert on win32.
+  it.skipIf(process.platform === 'win32')('attributes a confirmed nested listener to its owning Terminal', async () => {
     const snapshot = parseProcessTree(['98127 97544 /bin/zsh', '98238 98127 npm run dev', '98265 98238 node'].join('\n'))
     expect(terminalProcessTree(snapshot, 98127)).toEqual({
       active: true,
@@ -42,7 +48,7 @@ describe('Terminal Web Application discovery', () => {
     })])
   })
 
-  it('accepts a redirect confirmation', async () => {
+  it.skipIf(process.platform === 'win32')('accepts a redirect confirmation', async () => {
     configureTerminalWebApplicationDiscoveryForTests({
       listListeners: async () => listenerOutput(),
       probeWeb: async (url) => url === 'https://localhost:5173',
@@ -53,7 +59,7 @@ describe('Terminal Web Application discovery', () => {
     expect(applications.get(activity.key)?.[0]?.url).toBe('https://localhost:5173')
   })
 
-  it('does not create a Web Application for non-HTML or unreachable listeners', async () => {
+  it.skipIf(process.platform === 'win32')('does not create a Web Application for non-HTML or unreachable listeners', async () => {
     const probeWeb = vi.fn(async () => false)
     configureTerminalWebApplicationDiscoveryForTests({ listListeners: async () => listenerOutput(), probeWeb })
 
