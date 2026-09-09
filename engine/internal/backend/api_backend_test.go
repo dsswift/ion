@@ -579,9 +579,20 @@ func TestIsRunningDuringAndAfter(t *testing.T) {
 		t.Fatal("timed out")
 	}
 
-	// After exit, run should be removed
-	if b.IsRunning("req-running") {
-		t.Error("expected IsRunning false after completion")
+	// emitExit (which unblocks waitForExit above via the OnExit callback) and
+	// removeRun are separate statements in the run loop, not one atomic step,
+	// so there is a genuine window between "exit signal observed" and "run
+	// removed from the registry" -- the same race documented and polled for
+	// in TestCancelWatchdogForcesExitWhenRunGoroutineWedges. Poll instead of
+	// checking once immediately after waitForExit returns.
+	deadline := time.After(2 * time.Second)
+	for b.IsRunning("req-running") {
+		select {
+		case <-deadline:
+			t.Fatal("expected IsRunning false after completion")
+		default:
+			time.Sleep(5 * time.Millisecond)
+		}
 	}
 }
 
