@@ -7,7 +7,10 @@ const state = vi.hoisted(() => ({
 }))
 
 vi.mock('fs', () => ({
-  existsSync: vi.fn((path: string) => path.endsWith('/.ion') ? state.ionExists : false),
+  // The real store builds this path with `join()`, which is platform-native
+  // (`\project\.ion` on Windows, `/project/.ion` elsewhere). Matching on the
+  // basename alone keeps the mock correct on every host OS.
+  existsSync: vi.fn((path: string) => path.endsWith('.ion') ? state.ionExists : false),
   readFileSync: vi.fn(() => '{}'),
   watch: vi.fn((path: string, callback: (event: string, filename: string | Buffer | null) => void) => {
     state.callbacks.set(path, callback)

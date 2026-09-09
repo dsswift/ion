@@ -11,6 +11,7 @@
  * as bench-guard.test.ts).
  */
 import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { saveHomeEnv, setHomeEnv, restoreHomeEnv, type SavedHomeEnv } from '../../test/home-env'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -25,7 +26,7 @@ let root: string
 let home: string
 let repo: string
 let benchPath: string
-const savedHome = process.env.HOME
+let savedHome: SavedHomeEnv
 
 function git(dir: string, args: string[]): string {
   return execFileSync('git', args, { cwd: dir, encoding: 'utf-8' })
@@ -95,10 +96,11 @@ function write(target: string, cwd: string): GateRequest {
 }
 
 beforeEach(() => {
+  savedHome = saveHomeEnv()
   root = mkdtempSync(join(tmpdir(), 'ion-toolpolicy-'))
   home = join(root, 'home')
   mkdirSync(join(home, '.ion'), { recursive: true })
-  process.env.HOME = home
+  setHomeEnv(home)
   repo = join(root, 'source', 'project')
   benchPath = join(root, 'integration', 'project-main')
   initRepo(benchPath)
@@ -109,7 +111,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  process.env.HOME = savedHome
+  restoreHomeEnv(savedHome)
   removeGitFixture(root)
 })
 

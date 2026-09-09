@@ -13,7 +13,16 @@ import { execFileSync } from 'child_process'
 import { createHash } from 'crypto'
 import { createConnection, Socket } from 'net'
 import { homedir } from 'os'
-import { join } from 'path'
+// This module's non-win32 branch (below) always builds a POSIX path — it
+// describes where the ENGINE (darwin/linux only, never win32) binds its unix
+// socket, a target-platform fact independent of whatever OS is running this
+// code right now. `resolveEngineAddress` accepts an explicit `platform`
+// parameter precisely so callers (and this file's own tests) can ask "what
+// would a darwin engine use" while running on Windows. The platform-native
+// `join` would answer that question with backslashes on a Windows dev/CI
+// machine, which is simply wrong for a path the darwin/linux engine will
+// read. `path/posix` keeps the answer correct regardless of the host OS.
+import { join } from 'path/posix'
 import { log as _log, warn as _warn } from './logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void { _log('engine-address', msg, fields) }

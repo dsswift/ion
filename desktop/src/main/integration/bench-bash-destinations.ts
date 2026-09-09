@@ -30,7 +30,17 @@
  * verbs does it invoke". It has no opinion about whether that location is
  * allowed — that is the caller's policy.
  */
-import { basename, isAbsolute, join, normalize, sep } from 'node:path'
+// This module parses BASH COMMAND TEXT, not real filesystem paths on the host
+// OS. A shell command string uses POSIX '/' separators and POSIX absolute-path
+// semantics regardless of whether the engine itself is running on Windows —
+// `cd /repo && git commit` is a bash script fragment, and `/repo` is a POSIX
+// absolute path whether the daemon interpreting it later runs on darwin,
+// linux, or (via WSL/git-bash) windows. Using the platform-default `node:path`
+// here would resolve through `path.win32` on a Windows CI runner, so
+// `isAbsolute('/repo')` and `join`/`normalize` would silently reinterpret a
+// POSIX path as a Windows one. Import the POSIX implementation explicitly so
+// this module's behavior is identical on every host OS.
+import { basename, isAbsolute, join, normalize, sep } from 'node:path/posix'
 
 /** Merge-driver classification for one segment. */
 export type MergeDriver = '' | 'continue' | 'abort'

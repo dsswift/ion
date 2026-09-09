@@ -36,6 +36,7 @@ vi.hoisted(() => {
   const home = fs.mkdtempSync(p.join(os.tmpdir(), 'ion-egress-home-entra-'))
   fs.mkdirSync(p.join(home, '.ion'), { recursive: true })
   process.env.HOME = home
+  process.env.USERPROFILE = home
 })
 
 // ---------------------------------------------------------------------------

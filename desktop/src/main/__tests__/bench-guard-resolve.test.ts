@@ -65,6 +65,7 @@ beforeEach(async () => {
   handlers.clear()
   home = mkdtempSync(join(tmpdir(), 'ion-benchresolve-'))
   process.env.HOME = home
+  process.env.USERPROFILE = home
   bench = join(home, 'integration', 'project-josh')
   mkdirSync(join(home, '.ion'), { recursive: true })
   writeFileSync(

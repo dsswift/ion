@@ -7,9 +7,32 @@
 // write ~/.ion. Keep one temporary home per worker process so setup files and
 // test modules agree on every lazy state path. Read-only real-data smoke tests
 // use ION_REAL_HOME explicitly.
-import { mkdirSync, mkdtempSync, rmSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { homedir, tmpdir } from "os";
 import { join } from "path";
+
+// Many main-process tests spin up a real, throwaway git repository in a temp
+// directory and assert on the exact bytes it produces (a committed blob's
+// content, a diff, a merge result). Those repos inherit whatever global git
+// config the git binary finds via HOME/USERPROFILE — and on a Windows runner
+// (or any machine with `core.autocrlf=true`, which is git for Windows'
+// installer default), git rewrites LF to CRLF on checkout and normalizes on
+// commit, so a file written with `writeFileSync(path, 'base\n')` reads back
+// as `'base\r\n'` after the repo round-trips it through an add/commit/checkout
+// cycle. That is a genuine cross-platform git behavior difference, not a test
+// bug, and it is not something ~30 individual fixtures should each work
+// around with their own `git config core.autocrlf false` call: this setup
+// file already isolates HOME/USERPROFILE to a fresh directory per worker, so
+// it is the one place a global `.gitconfig` can pin deterministic line-ending
+// behavior for every git repo any test creates, on every platform, in one
+// spot. `core.eol=lf` pairs with autocrlf=false so `git config core.eol`
+// itself doesn't reintroduce a platform default for repos that read it back.
+function installTestGitConfig(home: string): void {
+  writeFileSync(
+    join(home, ".gitconfig"),
+    "[core]\n\tautocrlf = false\n\teol = lf\n",
+  );
+}
 
 function installTestHome(): void {
   const existing = process.env.ION_VITEST_HOME;
@@ -22,6 +45,7 @@ function installTestHome(): void {
   const realHome = homedir();
   const testHome = mkdtempSync(join(tmpdir(), "ion-vitest-home-"));
   mkdirSync(join(testHome, ".ion"), { recursive: true });
+  installTestGitConfig(testHome);
   process.env.ION_REAL_HOME = realHome;
   process.env.ION_VITEST_HOME = testHome;
   process.env.HOME = testHome;

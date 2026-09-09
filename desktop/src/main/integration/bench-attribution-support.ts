@@ -313,9 +313,18 @@ export function withinRoot(canonicalPath: string, root: string): boolean {
   return isWithin(canonicalPath, canonicalizePath(root)) || isWithin(canonicalPath, normalize(root))
 }
 
-/** A `..` PATH SEGMENT, checked per segment so `notes..txt` is not a traversal. */
+/**
+ * A `..` PATH SEGMENT, checked per segment so `notes..txt` is not a
+ * traversal. `joinRaw` deliberately concatenates with the platform `sep`
+ * without cleaning the caller-supplied relative spelling, so a Windows target
+ * built from a POSIX-style request (`'../escape.txt'`) ends up with BOTH
+ * separators present in one string: the native `\` at the join point and the
+ * caller's own `/` inside the untouched remainder. Splitting on only one
+ * separator misses the `..` in the other, so both are treated as segment
+ * boundaries here regardless of host OS.
+ */
 export function hasDotDotSegment(path: string): boolean {
-  return path.split(sep).some((s) => s === '..') || path.split('/').some((s) => s === '..')
+  return path.split(/[\\/]/).some((s) => s === '..')
 }
 
 /**

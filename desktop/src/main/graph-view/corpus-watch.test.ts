@@ -269,7 +269,13 @@ describe('per-root watch state', () => {
 })
 
 describe('unreadable directory during a directory-create expansion', () => {
-  it('logs WARN for the unreadable subtree and still flushes the readable siblings', async () => {
+  // chmod 0o000 simulates an unreadable directory through POSIX permission
+  // bits. Windows has no such bit-based model (it uses ACLs), so chmod is a
+  // near no-op there and the directory stays readable — the scenario this
+  // test exists to create cannot occur on that platform. Mirrors the existing
+  // precedent for OS-permission-dependent tests (e.g.
+  // src/main/deeplink/__tests__/handoff.test.ts, token.test.ts).
+  it.skipIf(process.platform === 'win32')('logs WARN for the unreadable subtree and still flushes the readable siblings', async () => {
     const fake = createFakeParcel()
     mkdirSync(tmpRoot, { recursive: true })
     const created = join(tmpRoot, 'created')

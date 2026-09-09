@@ -17,24 +17,24 @@ import { mkdirSync, rmSync, existsSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { loadEngineConversationMessages } from '../session-meta'
+import { saveHomeEnv, setHomeEnv, restoreHomeEnv, type SavedHomeEnv } from '../../test/home-env'
 
 const PNG_B64 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString('base64')
 
 let testHome: string
 let convDir: string
-let originalHome: string | undefined
+let savedHome: SavedHomeEnv
 
 beforeEach(() => {
   testHome = join(tmpdir(), `session-meta-img-${Date.now()}-${Math.random().toString(36).slice(2)}`)
   convDir = join(testHome, '.ion', 'conversations')
   mkdirSync(convDir, { recursive: true })
-  originalHome = process.env.HOME
-  process.env.HOME = testHome
+  savedHome = saveHomeEnv()
+  setHomeEnv(testHome)
 })
 
 afterEach(() => {
-  if (originalHome === undefined) delete process.env.HOME
-  else process.env.HOME = originalHome
+  restoreHomeEnv(savedHome)
   if (existsSync(testHome)) rmSync(testHome, { recursive: true, force: true })
 })
 

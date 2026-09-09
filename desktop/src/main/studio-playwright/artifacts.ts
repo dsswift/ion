@@ -11,7 +11,7 @@
  * which is what a traversal would have to escape through.
  */
 import { mkdir, realpath } from 'node:fs/promises'
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 /** Generated artifacts land here when the caller names no file. */
 export const DEFAULT_ARTIFACT_DIR = '.ion/browser'
@@ -86,7 +86,12 @@ export async function resolveArtifactPath(
   }
 
   const absolute = join(realParent, target.slice(parent.length + 1) || defaultArtifactName(fallback.kind, fallback.extension))
-  return { absolute, relative: relative(root, absolute) }
+  // `relative` is the model-visible link, not a filesystem operand — callers
+  // (and the doc/screenshot-reference conventions agents follow) write
+  // forward-slash paths regardless of host OS, so the display value is
+  // normalized to match rather than leaking the native `\` separator on
+  // Windows.
+  return { absolute, relative: relative(root, absolute).split(sep).join('/') }
 }
 
 /** Validate caller-supplied input paths (uploads) against the same root. */
