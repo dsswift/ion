@@ -23,8 +23,9 @@
  * Rejection is a separate, explicit decision made by the caller.
  */
 import { execFileSync } from 'child_process'
-import { lstatSync, realpathSync } from 'fs'
+import { lstatSync } from 'fs'
 import { basename, dirname, isAbsolute, join, normalize, relative, sep } from 'path'
+import { realpathSyncPortable as realpathSync } from '../fs-realpath'
 import type { IntegrationMember, IntegrationWorkspace } from '../../shared/types'
 import { lookupWorktreeTitle } from '../worktree/registry'
 import { loadWorkspaces } from './bench-store'

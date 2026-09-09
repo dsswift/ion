@@ -23,7 +23,10 @@ let root: string
 let repo: string
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'ion-bench-source-conflict-')))
+  // realpath.native: macOS resolves /var's symlink and Windows expands a
+  // short (8.3) TEMP path to the long form git itself reports; plain
+  // realpathSync does not perform the Windows expansion.
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ion-bench-source-conflict-')))
   process.env.ION_TEST_HOME_BENCH_SOURCE_CONFLICT = join(root, 'home')
   repo = join(root, 'repo')
   execFileSync('git', ['init', '-b', 'main', repo], { encoding: 'utf-8' })

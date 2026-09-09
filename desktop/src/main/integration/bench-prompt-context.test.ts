@@ -11,6 +11,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+// repoPath/benchPath below are fixed POSIX-style literals standing in for a
+// record's stored paths, not real filesystem paths -- the module under test
+// is pure record projection with no fs access. Joining a subdirectory onto
+// them must use the POSIX joiner regardless of host OS: the native `join`
+// used for the real (mkdtemp'd) `home` fixture below would rewrite
+// '/bench/project-main/desktop/src' with backslashes on Windows, which then
+// no longer starts with the literal '/bench/project-main' the record stores.
+import { join as posixJoin } from 'path/posix'
 
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
@@ -79,7 +87,7 @@ describe('containment', () => {
 
   it('resolves a bench subdirectory as the bench', () => {
     writeRecord({ lastAssembly: 'assembled' })
-    expect(benchPromptContext(join(benchPath, 'desktop', 'src'))).toContain(BENCH_CONTEXT_MARKER)
+    expect(benchPromptContext(posixJoin(benchPath, 'desktop', 'src'))).toContain(BENCH_CONTEXT_MARKER)
   })
 
   // The sibling-prefix trap: a bare startsWith would attribute
@@ -109,7 +117,7 @@ describe('bench prose', () => {
       ],
     })
 
-    const prose = benchPromptContext(join(benchPath, 'desktop', 'src'))
+    const prose = benchPromptContext(posixJoin(benchPath, 'desktop', 'src'))
 
     expect(prose).toContain(BENCH_CONTEXT_MARKER)
     for (const want of [benchPath, 'ion/bench/main', 'aaaa1111..1111', '/wt/first', 'destroyed']) {

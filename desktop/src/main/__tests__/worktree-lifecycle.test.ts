@@ -78,7 +78,7 @@ function makeWorktree(name: string, from = 'main', file = `${name}.txt`): { path
 beforeEach(() => {
   // realpath: on macOS /var is a symlink to /private/var, and git reports
   // resolved paths — so the fixture must use the resolved root to compare.
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'ion-wt-')))
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ion-wt-')))
   process.env.ION_TEST_HOME_WT_LIFECYCLE = join(root, 'home')
   repo = makeRepo()
 })

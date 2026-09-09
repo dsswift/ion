@@ -35,11 +35,12 @@
  * See docs/architecture/adr/024-integration-workspace.md § "The bench refuses
  * history writes".
  */
-import { sep, isAbsolute, resolve } from 'path'
+import { isAbsolute, resolve } from 'path'
 import { existsSync } from 'fs'
 import { execFileSync } from 'child_process'
 import { loadWorkspaces } from './bench-store'
 import { log as _log, warn as _warn } from '../logger'
+import { normalizeSlashes } from '../../shared/paths'
 
 const TAG = 'bench.guard'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
@@ -61,16 +62,24 @@ export interface BenchRefusal {
  * refusal in the place the operator is doing real work is worse than the guard
  * not firing, so the check is exact-or-separator-prefixed, never bare.
  *
+ * Both sides are slash-normalized before comparing. `directory` reaches this
+ * function from git IPC callers (native `path.join` separators) while
+ * `ws.benchPath` is whatever the record happened to store it as — normalizing
+ * to `/` on both sides is what keeps `startsWith` correct regardless of which
+ * one used which separator convention (see `shared/paths.ts:normalizeSlashes`).
+ *
  * Exported because `bench-ops.isBenchDirectory` delegates here: the main
  * process must not carry two different answers to "is this a bench".
  */
 export function resolveBenchFor(directory: string): string | null {
   if (!directory) return null
+  const normalizedDirectory = normalizeSlashes(directory)
   try {
     for (const ws of loadWorkspaces()) {
       if (!ws.benchPath) continue
-      if (directory === ws.benchPath) return ws.benchPath
-      if (directory.startsWith(ws.benchPath + sep)) return ws.benchPath
+      const normalizedBench = normalizeSlashes(ws.benchPath)
+      if (normalizedDirectory === normalizedBench) return ws.benchPath
+      if (normalizedDirectory.startsWith(normalizedBench + '/')) return ws.benchPath
     }
   } catch (err) {
     // loadWorkspaces already handles a missing or corrupt file by returning an

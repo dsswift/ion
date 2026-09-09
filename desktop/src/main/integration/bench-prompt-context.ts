@@ -23,8 +23,8 @@
  * explain what is true and what is refused; the harness decides what to do
  * about it.
  */
-import { sep } from 'path'
 import { loadWorkspaces } from './bench-store'
+import { normalizeSlashes } from '../../shared/paths'
 import { lookupWorktreeTitle } from '../worktree/registry'
 import { debug as _debug } from '../logger'
 import type { IntegrationMember, IntegrationWorkspace } from '../../shared/types'
@@ -126,12 +126,18 @@ export interface MemberContext {
  * `…/project-josh` — attributing an unrelated directory to a bench. The check
  * is exact-or-separator-prefixed, never bare (same discipline as
  * bench-guard.ts `resolveBenchFor`).
+ *
+ * Both sides are slash-normalized before comparing, same reasoning and
+ * mechanism as `bench-guard.ts:resolveBenchFor` — `directory` and the
+ * record's `benchPath` do not always share one separator convention.
  */
 function workspaceContaining(directory: string): IntegrationWorkspace | null {
+  const normalizedDirectory = normalizeSlashes(directory)
   for (const ws of loadWorkspaces()) {
     if (!ws.benchPath) continue
-    if (directory === ws.benchPath) return ws
-    if (directory.startsWith(ws.benchPath + sep)) return ws
+    const normalizedBench = normalizeSlashes(ws.benchPath)
+    if (normalizedDirectory === normalizedBench) return ws
+    if (normalizedDirectory.startsWith(normalizedBench + '/')) return ws
   }
   return null
 }

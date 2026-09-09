@@ -94,9 +94,13 @@ async function enroll(wt: { path: string; branch: string }): Promise<Integration
 }
 
 beforeEach(() => {
-  // realpath: macOS /var is a symlink to /private/var and git reports the
-  // resolved form.
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'ion-bench-conflict-')))
+  // realpath.native: macOS /var is a symlink to /private/var, and Windows
+  // CI runners can hand out a short (8.3) TEMP path (`RUNNER~1`) that
+  // git's own path resolution expands to the long form -- git reports the
+  // resolved form either way, so the fixture root must match it.
+  // fs.realpathSync (non-native) does not perform that Windows expansion;
+  // .native calls the OS API that does.
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ion-bench-conflict-')))
   process.env.ION_TEST_HOME_BENCH_CONFLICT = join(root, 'home')
   repo = makeRepo()
 })

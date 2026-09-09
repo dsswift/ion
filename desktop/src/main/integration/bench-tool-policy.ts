@@ -33,7 +33,8 @@
  * exactly as it would without the carve-out, the conservative direction for a
  * permission widening.
  */
-import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { realpathSyncPortable as realpathSync } from '../fs-realpath'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path'
 import { loadWorkspaces } from './bench-store'

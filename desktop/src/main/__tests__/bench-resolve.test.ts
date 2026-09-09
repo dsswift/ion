@@ -71,7 +71,10 @@ function recordResolution(ws: IntegrationWorkspace, content: string): void {
 }
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'ion-bench-resolve-')))
+  // realpath.native: macOS resolves /var's symlink and Windows expands a
+  // short (8.3) TEMP path to the long form git itself reports; plain
+  // realpathSync does not perform the Windows expansion.
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ion-bench-resolve-')))
   process.env.ION_TEST_HOME_BENCH_RESOLVE = join(root, 'home')
   repo = join(root, 'repo')
   execFileSync('git', ['init', '-b', 'main', repo])
