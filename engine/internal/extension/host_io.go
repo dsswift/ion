@@ -223,7 +223,12 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 		return raw, err
 	}
 
-	latencyMs := float64(time.Since(start).Microseconds()) / 1000.0
+	// float64(dur) / float64(time.Millisecond), not dur.Microseconds()/1000.0:
+	// Microseconds() truncates to a whole microsecond before the division, so
+	// any round-trip under 1us reports exactly 0ms instead of a small nonzero
+	// value -- observed on real Windows CI, where subprocess IPC latency for
+	// this hook occasionally lands under that truncation floor.
+	latencyMs := float64(time.Since(start)) / float64(time.Millisecond)
 	hookKind := strings.TrimPrefix(method, "hook/")
 
 	// blocked is read precisely from the RPC result, not heuristically: the
