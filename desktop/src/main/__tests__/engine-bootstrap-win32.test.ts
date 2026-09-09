@@ -101,6 +101,18 @@ const bootstrapDir = path.join(__dirname, '..')
 const taskTemplatePath = path.resolve(bootstrapDir, '..', '..', '..', 'packaging', 'windows', 'ion-engine-task.xml')
 const bundledBinaryWin32Path = path.resolve(bootstrapDir, '..', '..', '..', 'engine', 'bin', 'ion.exe')
 
+// Matches the mocked os.homedir() below. Production builds destBinary,
+// ionHome, and the registered task-xml path via path.join(home, ...), which
+// resolves with NATIVE separators (the real host's path implementation is
+// selected at module-load time and does not follow the process.platform
+// override in beforeEach). A hardcoded forward-slash literal here silently
+// stops matching the join()-built keys production actually reads/writes on
+// a win32 CI runner.
+const HOME = '/Users/testuser'
+const destBinaryWin32Path = () => path.join(HOME, '.ion', 'bin', 'ion.exe')
+const ionHomePath = () => path.join(HOME, '.ion')
+const taskXmlDestPath = () => path.join(ionHomePath(), 'ion-engine-task.xml')
+
 const FAST = {
   kickstartTimeoutMs: 50,
   kickstartAttempts: 3,
@@ -116,7 +128,7 @@ describe('ensureEngineDaemon — win32 dispatch', () => {
 
   it('on hash mismatch: stops the task, copies, runs install-assets, creates the task, then runs', async () => {
     fakeFs[bundledBinaryWin32Path] = 'bundled-binary-bytes'
-    const destBinary = '/Users/testuser/.ion/bin/ion.exe'
+    const destBinary = destBinaryWin32Path()
     fakeFs[destBinary] = 'old-binary-bytes'
 
     await ensureEngineDaemon(FAST)
@@ -147,7 +159,7 @@ describe('ensureEngineDaemon — win32 dispatch', () => {
   // IgnoreNew makes a no-op.
   it('on hash mismatch: forces the restart so the new binary is what runs', async () => {
     fakeFs[bundledBinaryWin32Path] = 'new-version-bytes'
-    const destBinary = '/Users/testuser/.ion/bin/ion.exe'
+    const destBinary = destBinaryWin32Path()
     fakeFs[destBinary] = 'old-version-bytes'
 
     await ensureEngineDaemon(FAST)
@@ -166,11 +178,11 @@ describe('ensureEngineDaemon — win32 dispatch', () => {
 
   it('on hash match: skips the copy, ensures registration, then runs (no /End)', async () => {
     fakeFs[bundledBinaryWin32Path] = 'identical-bytes'
-    const destBinary = '/Users/testuser/.ion/bin/ion.exe'
+    const destBinary = destBinaryWin32Path()
     fakeFs[destBinary] = 'identical-bytes'
     // Task already registered with the exact rendered content.
-    const rendered = fakeFs[taskTemplatePath].replaceAll('$ION_BIN', destBinary).replaceAll('$ION_HOME', '/Users/testuser/.ion')
-    fakeFs['/Users/testuser/.ion/ion-engine-task.xml'] = rendered
+    const rendered = fakeFs[taskTemplatePath].replaceAll('$ION_BIN', destBinary).replaceAll('$ION_HOME', ionHomePath())
+    fakeFs[taskXmlDestPath()] = rendered
 
     await ensureEngineDaemon(FAST)
 
