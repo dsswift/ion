@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { execFileSync } from 'child_process'
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { join, delimiter } from 'path'
 import { normalizeSlashes } from '../../shared/paths'
 import { realpathSyncPortable as realpathSync } from '../fs-realpath'
 
@@ -85,7 +85,7 @@ describe('graphify-worktree-guard', () => {
 echo "$@" >> "${log}"
 `)
     chmodSync(fakeGraphify, 0o755)
-    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` }
+    const env = { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}` }
     const make = (cwd: string, target: string): { ok: boolean; output: string } => {
       try {
         return { ok: true, output: execFileSync('make', ['-f', join(PROJECT_ROOT, 'Makefile'), target], { cwd, env, encoding: 'utf-8' }) }

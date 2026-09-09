@@ -545,7 +545,7 @@ graph-refresh:
 		primary="$${guard#* }/graphify-out/graph.json"; local="graphify-out/graph.json"; \
 		if [ ! -f "$$primary" ]; then \
 			echo "▶ graphify: primary checkout has no graph; worktree link remains absent"; \
-		elif [ -L "$$local" ] && [ "$$(readlink "$$local")" = "$$primary" ]; then \
+		elif [ -L "$$local" ] && [ "$$(readlink "$$local" | sed 's/\\\\/\//g')" = "$$primary" ]; then \
 			echo "▶ graphify: primary graph link already present"; \
 		elif [ -e "$$local" ] || [ -L "$$local" ]; then \
 			echo "Refused: $$local exists but is not the primary graph link; refusing to replace local data." >&2; \
