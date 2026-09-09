@@ -2,7 +2,7 @@
 import { removeGitFixture } from '../../test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { execFileSync } from 'child_process'
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs'
+import { chmodSync, copyFileSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, delimiter } from 'path'
 import { normalizeSlashes } from '../../shared/paths'
@@ -100,7 +100,33 @@ echo "$@" >> "${log}"
     const refresh = make(worktree, 'graph-refresh')
     expect(refresh.ok).toBe(true)
     expect(refresh.output).toContain('linked primary graph')
-    expect(make(worktree, 'graph-refresh').output).toContain('link already present')
+    const second = make(worktree, 'graph-refresh')
+    if (!second.output.includes('link already present')) {
+      // Diagnostic dump: this has been unexpectedly failing on real Windows
+      // CI (never reproduced locally), and the failure output alone doesn't
+      // say whether ln -s created a real symlink there at all -- git-bash's
+      // coreutils ln needs either an elevated process or Developer Mode to
+      // create a real NTFS symlink; without it, `ln -s` can silently produce
+      // something readlink/`-L` do not recognize as a symlink, which would
+      // explain the "not the primary graph link" refusal on the second call.
+      const local = join(worktree, 'graphify-out', 'graph.json')
+      let lstatInfo = 'lstat failed'
+      try {
+        const st = lstatSync(local)
+        lstatInfo = `isSymbolicLink=${st.isSymbolicLink()} isFile=${st.isFile()} size=${st.size}`
+      } catch (err) {
+        lstatInfo = `lstat threw: ${String(err)}`
+      }
+      let linkTarget = 'readlink failed'
+      try {
+        linkTarget = readlinkSync(local)
+      } catch (err) {
+        linkTarget = `readlink threw: ${String(err)}`
+      }
+      throw new Error(
+        `expected 'link already present' in second graph-refresh output\n  output=${second.output}\n  local=${local}\n  lstat=${lstatInfo}\n  readlink=${linkTarget}`,
+      )
+    }
     const rebuild = make(worktree, 'graph')
     expect(rebuild.ok).toBe(false)
     expect(rebuild.output).toContain(`primary checkout ${normalizeSlashes(repo)}`)
