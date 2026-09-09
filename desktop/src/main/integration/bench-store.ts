@@ -31,6 +31,7 @@ import { log as _log, warn as _warn } from '../logger'
 import { setWorktreeStage, lookupWorktreeStage } from '../worktree/registry'
 import { legacyReviewToStage } from '../../shared/types-git'
 import type { IntegrationWorkspace, IntegrationMember, PinState, MergeOutcome } from '../../shared/types'
+import { pathSegments } from '../../shared/paths'
 
 const TAG = 'bench.store'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
@@ -70,7 +71,13 @@ export function workspaceKey(repoPath: string, sourceBranch: string): string {
  * character collapses to `-`.
  */
 export function benchSlug(repoPath: string, sourceBranch: string): string {
-  const repoName = repoPath.split('/').filter(Boolean).pop() || 'repo'
+  // Splitting on '/' alone leaves a Windows-native backslash path (repoPath
+  // built with Node's join()) as one whole segment, so .pop() returns the
+  // entire absolute path -- e.g. "C:\Users\...\repo" -- instead of "repo".
+  // benchPathFor then embeds that full path as a slug, joining a Windows
+  // drive letter mid-path into ".ion/integration/<slug>" and producing an
+  // invalid path git rejects with "could not create leading directories".
+  const repoName = pathSegments(repoPath).pop() || 'repo'
   const branchSlug = sourceBranch.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'branch'
   return `${repoName}-${branchSlug}`
 }
