@@ -211,6 +211,26 @@ func TestWorkspaceBashDynamicDestinationsPass(t *testing.T) {
 	}
 }
 
+// A tilde embedded MID-TOKEN is not shell tilde-expansion -- real shells only
+// expand `~`/`~user` at the very start of a word. This is the exact shape of
+// a Windows 8.3 short name (RUNNER~1, PROGRA~1, ...), which GitHub Actions'
+// own hosted Windows runners produce in %TEMP% by default. Treating it as
+// dynamic silently dropped the cd destination and let a base-repo git
+// refusal pass with no warning on real Windows CI.
+func TestWorkspaceBashMidTokenTildeIsNotDynamic(t *testing.T) {
+	c := worktreeChecker(t)
+
+	shortNameSubdir := filepath.Join(repoPath, "RUNNER~1")
+	cmd := "cd " + shortNameSubdir + " && git commit -m x"
+	r := c.Check("Bash", bashInput(cmd), minePath)
+	if r == nil {
+		t.Fatalf("expected a refusal for cd into a base-repo path containing a mid-token tilde, got nil (dest=%+v)", resolveBashDestinations(cmd, minePath))
+	}
+	if r.Kind != RefusalBaseRepo {
+		t.Fatalf("expected RefusalBaseRepo, got %q", r.Kind)
+	}
+}
+
 func TestWorkspaceBashDynamicDestinationSurfacesHint(t *testing.T) {
 	dest := resolveBashDestinations(`cd "$TARGET" && git commit -m x`, minePath)
 	if dest.UnresolvedHint == "" {

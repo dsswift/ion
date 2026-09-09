@@ -2,7 +2,6 @@ package workspaces
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -217,26 +216,7 @@ func TestSharedPathRefusesGitInSharedDir(t *testing.T) {
 	cmd := "cd " + shared + " && git add -A && git commit -m x"
 	r := c.Check("Bash", bashInput(cmd), worktree)
 	if r == nil {
-		// Diagnostic dump: this refusal has been unexpectedly nil on a real
-		// Windows CI runner (never reproduced on darwin or on an ARM64
-		// Windows VM), so a plain "expected refused" leaves no way to tell
-		// segment resolution apart from containment classification without a
-		// fresh CI round-trip. Dump both.
-		dest := resolveBashDestinations(cmd, worktree)
-		var segs []string
-		for _, s := range dest.Segments {
-			segs = append(segs, fmt.Sprintf("{Dir:%q GitOps:%v}", s.Dir, s.GitSubcommands))
-		}
-		containment := c.Resolve(worktree)
-		wc := containment.Worktree
-		var wcDump string
-		if wc == nil {
-			wcDump = "<nil>"
-		} else {
-			wcDump = fmt.Sprintf("{WorktreePath:%q RepoPath:%q}", wc.WorktreePath, wc.RepoPath)
-		}
-		t.Fatalf("expected git in a shared base-repo dir to be refused\n  shared=%q\n  worktree=%q\n  repo=%q\n  segments=%v\n  containment.Worktree=%s\n  canonical(shared)=%q\n  canonical(repo)=%q\n  canonical(worktree)=%q",
-			shared, worktree, repo, segs, wcDump, canonicalizePath(shared), canonicalizePath(repo), canonicalizePath(worktree))
+		t.Fatal("expected git in a shared base-repo dir to be refused")
 	}
 	if r.Kind != RefusalBaseRepo {
 		t.Fatalf("expected RefusalBaseRepo, got %q", r.Kind)

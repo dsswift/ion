@@ -281,8 +281,19 @@ func absolutize(path, base string) string {
 // isDynamicToken reports whether a token's value cannot be known statically:
 // variable expansion, command substitution, backticks, tilde (whose expansion
 // depends on the executing user), or glob characters.
+//
+// The tilde check is anchored to the token's start, matching real shell
+// semantics: `~`/`~user` only expands there, never mid-word. An unanchored
+// check treats every Windows short (8.3) path as dynamic and silently drops
+// it -- `RUNNER~1`, `PROGRA~1`, and any other DOS-generated short name
+// contain a literal `~` by construction, and GitHub Actions' own hosted
+// Windows runners set %TEMP% through exactly such a segment. That turned an
+// entire class of containment refusal into a silent no-op on Windows CI:
+// resolveBashDestinations dropped the `cd` destination as "unresolved" and
+// every command chained after it inherited an empty Dir, so a `cd
+// <shared-dir> && git commit` inside the base repo passed with no refusal.
 func isDynamicToken(tok string) bool {
-	return strings.ContainsAny(tok, "$`~*?")
+	return strings.ContainsAny(tok, "$`*?") || strings.HasPrefix(tok, "~")
 }
 
 func normalizeGroupingToken(token string) string {
