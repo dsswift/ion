@@ -2,8 +2,25 @@
  * Live active-UI switch (F3): flipping activeUi closes the active UI,
  * opens the other, re-registers shortcuts, rebuilds the tray — and the
  * owner window object is never recreated (uninterrupted renderer).
+ *
+ * This entire file exercises overlay<->studio switching, which is
+ * impossible on win32 in production: surface-launch.ts unconditionally
+ * clamps to Studio there (the Overlay glass is a non-goal on that
+ * platform), so there is no overlay state to switch away from.
+ * getActiveUiPlan()/applyActiveUiSwitch() resolve against the real
+ * process.platform with no test-injectable override, so the whole suite
+ * pins it to 'darwin' for its duration rather than inheriting whatever OS
+ * happens to run the tests.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest'
+
+const originalPlatform = process.platform
+beforeAll(() => {
+  Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
+})
+afterAll(() => {
+  Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+})
 
 const mocks = vi.hoisted(() => ({
   unregisterAll: vi.fn(),
