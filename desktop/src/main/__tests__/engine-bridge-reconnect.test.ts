@@ -63,7 +63,14 @@ vi.mock('net', () => ({
   }),
 }))
 vi.mock('fs', () => ({ existsSync: vi.fn(() => false), readFileSync: vi.fn(() => '') }))
-vi.mock('child_process', () => ({ spawn: vi.fn(), execSync: vi.fn(() => '') }))
+// execFileSync: see engine-bridge-connect.test.ts's identical mock for why
+// this is required for the retry ladder to reach net.createConnection on
+// win32 (currentUserSid() shells out to whoami.exe there).
+vi.mock('child_process', () => ({
+  spawn: vi.fn(),
+  execSync: vi.fn(() => ''),
+  execFileSync: vi.fn(() => '"host\\user","S-1-5-21-111111111-222222222-333333333-1001"'),
+}))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
 // vi.mock factories are hoisted above module scope, so the spy has to be

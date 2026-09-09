@@ -53,6 +53,17 @@ vi.mock('fs', () => ({
 vi.mock('child_process', () => ({
   spawn: vi.fn(),
   execSync: vi.fn(() => ''),
+  // engine-address.ts's win32 branch derives the engine's TCP port from
+  // currentUserSid(), which shells out to whoami.exe via execFileSync. On
+  // real Windows CI (unlike darwin/linux, which never calls this) an
+  // unmocked execFileSync throws, currentUserSid() catches it and returns
+  // null, ENGINE_ADDRESS resolves to 'unavailable', and connectToEngine()
+  // throws synchronously on every ladder attempt WITHOUT ever reaching
+  // net.createConnection -- so connectAttempts stays 0 while the bridge
+  // still rejects with a "not reachable" message, masking the real retry
+  // ladder these tests exist to pin. A well-formed `whoami /user /fo csv`
+  // line lets currentUserSid() succeed so resolution reaches net.createConnection.
+  execFileSync: vi.fn(() => '"host\\user","S-1-5-21-111111111-222222222-333333333-1001"'),
 }))
 vi.mock('../logger', () => ({
   log: vi.fn(),
