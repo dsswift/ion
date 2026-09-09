@@ -872,6 +872,57 @@ func TestMaybeContinueEarlyStop_AppendsUserMessage(t *testing.T) {
 	}
 }
 
+// TestMaybeContinueEarlyStop_ClassifiesInjectedEntryAsSystemSteer pins the
+// bug fixed alongside this test: the persisted continuation entry must carry
+// InjectionKindSystemSteer / MachineAuthored=true so desktop's and iOS's
+// suppression policies (shared/injection-policy.ts, InjectionPolicy.swift)
+// hide it from the transcript on a history reload, exactly as they already
+// hide it during live streaming. Before the fix, injectSystemMessage's
+// persist branch called the plain (unclassified) conversation.AddUserMessage,
+// so the entry's InjectionKind/MachineAuthored were the zero value and every
+// client rendered the continuation nudge as an ordinary user message on
+// reload.
+func TestMaybeContinueEarlyStop_ClassifiesInjectedEntryAsSystemSteer(t *testing.T) {
+	b := NewApiBackend()
+	conv := conversation.CreateConversation("test", "", "test-model")
+	conv.Model = "test-model"
+	run := &activeRun{requestID: "rid-classify", conv: conv}
+	cfg := effectiveEarlyStopConfig{
+		enabled:          true,
+		budget:           100,
+		thresholdPct:     90,
+		maxContinuations: 3,
+		diminishingDelta: 500,
+		source:           "test",
+	}
+	run.cumulativeOutputTokens = 30 // 30% — below threshold
+
+	hooks := RunHooks{
+		OnBeforeEarlyStopDecision: func(_ EarlyStopDecisionInfo) *EarlyStopDecisionResult {
+			return &EarlyStopDecisionResult{ContinueMessage: "test: keep working"}
+		},
+	}
+
+	cont := b.maybeContinueEarlyStop(run, conv, hooks, types.RunOptions{}, cfg, 30, "end_turn", 1, 0)
+	if !cont {
+		t.Fatal("expected continuation, got stop")
+	}
+	if len(conv.Entries) == 0 {
+		t.Fatal("expected a persisted entry for the injected continuation")
+	}
+	entry := conv.Entries[len(conv.Entries)-1]
+	md, ok := entry.Data.(conversation.MessageData)
+	if !ok {
+		t.Fatalf("expected last entry to be MessageData, got %T", entry.Data)
+	}
+	if md.InjectionKind != string(types.InjectionKindSystemSteer) {
+		t.Errorf("InjectionKind: want %q, got %q", types.InjectionKindSystemSteer, md.InjectionKind)
+	}
+	if !md.MachineAuthored {
+		t.Error("MachineAuthored: want true, got false — client suppression policies would leak this nudge into the transcript on reload")
+	}
+}
+
 // TestMaybeContinueEarlyStop_NoMessageSkips locks in the new contract: when
 // the engine is willing to continue but no hook supplies a ContinueMessage,
 // it skips the injection and falls through to stop. The engine ships no
