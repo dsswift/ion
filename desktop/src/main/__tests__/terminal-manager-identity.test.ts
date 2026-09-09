@@ -121,7 +121,13 @@ describe('TerminalManager PTY identity', () => {
     expect(spawnedEnv(1).ION_DESKTOP_TAB_ID).toBe('tab-abc')
   })
 
-  it('uses the account interactive login shell even when inherited SHELL is /bin/sh', () => {
+  // The account interactive-login-shell resolution these four tests exercise
+  // (os.userInfo().shell, SHELL, ZDOTDIR, "-il" args) is a POSIX-only concept:
+  // TerminalManager resolves pwsh.exe/cmd.exe on win32 instead, so mocking
+  // os.userInfo() to return '/bin/zsh' never reaches the code path under
+  // test there (same platform-only-behavior precedent as
+  // cli-env.test.ts/secret-store.test.ts).
+  it.skipIf(process.platform === 'win32')('uses the account interactive login shell even when inherited SHELL is /bin/sh', () => {
     vi.mocked(os.userInfo).mockReturnValue({ shell: '/bin/zsh' } as os.UserInfo<string>)
     const inheritedShell = process.env.SHELL
     process.env.SHELL = '/bin/sh'
@@ -149,7 +155,7 @@ describe('TerminalManager PTY identity', () => {
    * on disk (a privileged shell). They are asserted at INFO because the default
    * log level discards DEBUG, and a discarded line is not evidence.
    */
-  it('records the shell, arguments, and shell-selecting environment at INFO', () => {
+  it.skipIf(process.platform === 'win32')('records the shell, arguments, and shell-selecting environment at INFO', () => {
     vi.mocked(os.userInfo).mockReturnValue({ shell: '/bin/zsh' } as os.UserInfo<string>)
     new TerminalManager(() => {}, recordingSpawner()).create('tab-abc:inst-123', '/repo')
 
@@ -168,7 +174,7 @@ describe('TerminalManager PTY identity', () => {
     }
   })
 
-  it('records whether the shell was told to skip the user startup files', () => {
+  it.skipIf(process.platform === 'win32')('records whether the shell was told to skip the user startup files', () => {
     vi.mocked(os.userInfo).mockReturnValue({ shell: '/bin/zsh' } as os.UserInfo<string>)
     new TerminalManager(() => {}, recordingSpawner()).create('tab-abc:inst-123', '/repo')
 
@@ -180,7 +186,7 @@ describe('TerminalManager PTY identity', () => {
     expect(Array.isArray(line?.fields?.startup_files_present)).toBe(true)
   })
 
-  it('reports the result of the spawn, not only the attempt', () => {
+  it.skipIf(process.platform === 'win32')('reports the result of the spawn, not only the attempt', () => {
     vi.mocked(os.userInfo).mockReturnValue({ shell: '/bin/zsh' } as os.UserInfo<string>)
     new TerminalManager(() => {}, recordingSpawner()).create('tab-abc:inst-123', '/repo')
 
