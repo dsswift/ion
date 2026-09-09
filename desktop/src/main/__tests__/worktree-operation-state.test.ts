@@ -37,6 +37,7 @@ import { probeOperationState, unmergedPaths } from '../git/operation-state'
 import { captureContribution, contributedTreeHash } from '../integration/bench-snapshot'
 import { syncWorktreeFromSource } from '../worktree/integrate'
 import { refreshStaleness, updateMember, ensureWorkspace, addMember } from '../integration/bench-ops'
+import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })
@@ -136,7 +137,7 @@ describe('probeOperationState — reading git state via --git-path', () => {
     // ls-files --unmerged prints one line per stage (up to 3 per path).
     expect(await unmergedPaths(wt.path)).toEqual(['shared.txt'])
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('inventory — a mid-rebase worktree stays visible (Defect A)', () => {
   it('keeps the entry with its branch, operation, and conflicted paths', async () => {
@@ -190,7 +191,7 @@ describe('inventory — a mid-rebase worktree stays visible (Defect A)', () => {
     // The real worktree is still present from both vantage points.
     expect(fromWorktree.find((e) => e.worktreePath === wt.path)).toBeDefined()
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('bench capture — the branch ref, not HEAD (Defect B)', () => {
   it('captures the branch tip mid-rebase, not the transient rebase HEAD', async () => {
@@ -246,4 +247,4 @@ describe('bench capture — the branch ref, not HEAD (Defect B)', () => {
     expect(after.pinnedSha).toBe(git(wt.path, 'rev-parse', wt.branch).trim())
     expect(after.pinnedBaseSha).not.toBe(after.pinnedSha)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)

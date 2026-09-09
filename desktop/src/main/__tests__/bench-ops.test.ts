@@ -189,7 +189,7 @@ describe('member management', () => {
     expect(existsSync(a.path)).toBe(true)
     expect(git(repo, 'branch', '--list', a.branch).trim()).toContain(a.branch)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('targeted recorded-resolution recovery', () => {
   it('forgets only requested member recording and persists fresh conflict reassembly', async () => {
@@ -215,7 +215,7 @@ describe('targeted recorded-resolution recovery', () => {
     expect(recovered.workspace).toMatchObject({ lastAssembly: 'failed', lastAssemblyFailure: 'conflict' })
     expect(recovered.workspace!.members.find((member) => member.branchName === c.branch)!.merge).toBe('conflicted')
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('rebuild never advances a pin', () => {
   // THE core guarantee, at the ops layer.
@@ -275,7 +275,7 @@ describe('rebuild never advances a pin', () => {
     expect(readFileSync(join(benchPath(), 'a.txt'), 'utf-8')).toBe('a v2\n')
     expect(readFileSync(join(benchPath(), 'b.txt'), 'utf-8')).toBe('b v2\n')
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('staleness reporting', () => {
   it('marks a member behind once its committed content moves past the pin', async () => {
@@ -373,7 +373,7 @@ describe('staleness reporting', () => {
 
     expect((await refreshStaleness(repo, FEATURE))!.members[0].pin).toBe('behind')
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('work-stage auto-advance on pin change', () => {
   it('a bug stage survives an Update that re-pins identical content', async () => {
@@ -456,7 +456,7 @@ describe('work-stage auto-advance on pin change', () => {
 
     expect(lookupWorktreeStage(a.path)).toBeNull()
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('merge order', () => {
   it('moves a member to a new position, and order is array order', async () => {
