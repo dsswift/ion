@@ -123,7 +123,7 @@ func TestHybridBackend_ApiRoutedRunStreamsTextThroughInnerApi(t *testing.T) {
 		t.Logf("IsRunning false immediately after StartRun — run completed synchronously (acceptable)")
 	}
 
-	hc.waitForExit(t, 5*time.Second)
+	hc.waitForExit(t, mockRunExitTimeout)
 
 	if h.IsRunning(rid) {
 		t.Fatalf("expected IsRunning false after exit (routing table should be pruned)")

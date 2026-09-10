@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/providers"
@@ -40,7 +39,7 @@ func TestApiBackendMultiTurn(t *testing.T) {
 		ProjectPath: tmpDir,
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	events := be.getNormalized()
 
@@ -91,7 +90,7 @@ func TestApiBackendSimpleText(t *testing.T) {
 		Model:  "mock-model",
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	events := be.getNormalized()
 
@@ -132,7 +131,7 @@ func TestApiBackendUnknownTool(t *testing.T) {
 		Model:  "mock-model",
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	events := be.getNormalized()
 
@@ -177,7 +176,7 @@ func TestApiBackendIsRunning(t *testing.T) {
 		Model:  "mock-model",
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	if b.IsRunning("run-check") {
 		t.Error("expected IsRunning=false after completion")
@@ -198,7 +197,7 @@ func TestProviderReceivesFormattedMessages(t *testing.T) {
 		Model:  "mock-model",
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	calls := mp.Calls()
 	if len(calls) == 0 {
@@ -238,7 +237,7 @@ func TestProviderErrorResultsInErrorEvent(t *testing.T) {
 		Model:  "mock-model",
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	be.mu.Lock()
 	errCount := len(be.errors)
@@ -272,7 +271,7 @@ func TestApiBackendWriteTool(t *testing.T) {
 		ProjectPath: tmpDir,
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	data, err := os.ReadFile(outFile)
 	if err != nil {

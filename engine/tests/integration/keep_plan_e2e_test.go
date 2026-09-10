@@ -23,7 +23,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -85,7 +84,7 @@ func TestKeepPlanEndToEnd(t *testing.T) {
 		Model:          "mock-model",
 		ConversationID: convID,
 	})
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	// Verify run 1 produced a text chunk (sanity check — proves the backend
 	// wrote history and the mock provider is wired correctly).
@@ -157,7 +156,7 @@ func TestKeepPlanEndToEnd(t *testing.T) {
 		Model:          "mock-model",
 		ConversationID: convID,
 	})
-	be2.waitForExit(t, 5*time.Second)
+	be2.waitForExit(t, mockRunExitTimeout)
 
 	// ── The core assertion: what did the LLM actually receive on run 2? ───────
 	// MockProvider.Calls() records the LlmStreamOptions for every Stream() call.

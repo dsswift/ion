@@ -18,6 +18,17 @@ import (
 	"github.com/dsswift/ion/engine/tests/helpers"
 )
 
+// mockRunExitTimeout bounds how long a test waits for a mock-backend run to
+// emit its exit event. These runs hit no real network, but the whole
+// integration package runs under `go test -race ./...` where other files in
+// the same binary spawn real git/node/PowerShell subprocesses; on Windows CI
+// that contention is enough to push a 5s bound over on a bare mock run
+// (TestApiBackendSimpleTextResponse, TestApiBackendTaskCompleteUsage, and
+// TestHybridBackend_ApiRoutedRunStreamsTextThroughInnerApi all failed at
+// exactly ~5.00-5.01s in CI while passing locally). 15s matches the margin
+// already proven sufficient by this package's other waitForExit calls.
+const mockRunExitTimeout = 15 * time.Second
+
 func setupMockProvider(t *testing.T) *helpers.MockProvider {
 	t.Helper()
 	providers.ResetRegistries()
@@ -105,7 +116,7 @@ func TestApiBackendSimpleTextResponse(t *testing.T) {
 		ConversationID: filepath.Join(convDir, "conv-text"),
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	events := be.getNormalized()
 
@@ -151,7 +162,7 @@ func TestApiBackendTaskCompleteUsage(t *testing.T) {
 		ConversationID: filepath.Join(convDir, "conv-usage"),
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	events := be.getNormalized()
 	var tc *types.TaskCompleteEvent
@@ -205,7 +216,7 @@ func TestApiBackendToolCallLoop(t *testing.T) {
 		ProjectPath: tmpDir,
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	events := be.getNormalized()
 
@@ -263,7 +274,7 @@ func TestApiBackendMaxTurns(t *testing.T) {
 		MaxTurns: 2,
 	})
 
-	be.waitForExit(t, 10*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	events := be.getNormalized()
 
@@ -313,7 +324,7 @@ func TestApiBackendCancellation(t *testing.T) {
 		t.Error("expected Cancel to return true")
 	}
 
-	be.waitForExit(t, 10*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	// Verify the run is no longer active
 	if b.IsRunning("run-cancel") {
@@ -339,7 +350,7 @@ func TestApiBackendProviderError(t *testing.T) {
 		Model:  "mock-model",
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	be.mu.Lock()
 	errCount := len(be.errors)
@@ -380,7 +391,7 @@ func TestApiBackendToolCallHook(t *testing.T) {
 		Model:  "mock-model",
 	}, cfg)
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	events := be.getNormalized()
 
@@ -415,7 +426,7 @@ func TestApiBackendConversationPersistence(t *testing.T) {
 		ConversationID: conversationID,
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	// The conversation should have been saved to
 	// ~/.ion/conversations/<conversationID>.jsonl. Load it back to verify.
@@ -487,7 +498,7 @@ func TestApiBackendPlanMode(t *testing.T) {
 		PlanFilePath:  "/tmp/test-plan.md",
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	// Verify the provider was called with the right system prompt containing PLAN MODE
 	calls := mp.Calls()
@@ -550,7 +561,7 @@ func TestApiBackendPlanModeDefaultTools(t *testing.T) {
 		PlanFilePath: "/tmp/default-plan.md",
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	calls := mp.Calls()
 	if len(calls) == 0 {
@@ -611,7 +622,7 @@ func TestApiBackendPlanModeWriteGate(t *testing.T) {
 		PlanFilePath: planFile,
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	// Check that the tool result was an error mentioning plan mode
 	events := be.getNormalized()
@@ -646,7 +657,7 @@ func TestApiBackendPlanModeExitPlanMode(t *testing.T) {
 		PlanFilePath: "/tmp/exit-plan.md",
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	// The model calling ExitPlanMode is a *proposal*, not a confirmed mode
 	// change. The engine must NOT emit PlanModeChangedEvent{Enabled:false}
