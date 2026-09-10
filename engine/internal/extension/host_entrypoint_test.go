@@ -155,6 +155,13 @@ func TestHostLoad_DirectoryResolvesEntryPoint(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "index.js"), minimalExtensionSrc)
 
 	h := NewHost()
+	// Registered before the select, not after: t.Fatal on the timeout branch
+	// below calls runtime.Goexit() immediately, which would skip a Cleanup
+	// registered afterward -- leaving the background goroutine's still-Loading
+	// subprocess (and its open handle on a file under t.TempDir()) to outlive
+	// the test. That is what turned a single timeout into a second, unrelated
+	// failure: "TempDir RemoveAll cleanup: ... being used by another process."
+	t.Cleanup(func() { h.Dispose() })
 	done := make(chan error, 1)
 	go func() { done <- h.Load(dir, &ExtensionConfig{ExtensionDir: dir, WorkingDirectory: dir}) }()
 	select {
@@ -162,10 +169,15 @@ func TestHostLoad_DirectoryResolvesEntryPoint(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Load(directory) failed: %v", err)
 		}
-	case <-time.After(30 * time.Second):
+	case <-time.After(90 * time.Second):
+		// 90s, not 30s: this passes in under a second in isolation (verified
+		// on real Windows), but real Windows CI hit 31.79s under go test
+		// -race ./... contention -- many packages spawning node/PowerShell
+		// subprocesses concurrently, plus the race detector's own per-access
+		// overhead slowing an already-cold node startup. The 30s bound was
+		// exercising CI scheduling noise, not this code path.
 		t.Fatal("Load timed out")
 	}
-	t.Cleanup(func() { h.Dispose() })
 
 	if h.Name() != "entry-test" {
 		t.Errorf("init handshake did not complete: name = %q", h.Name())

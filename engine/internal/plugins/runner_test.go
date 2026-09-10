@@ -11,7 +11,15 @@ func TestRunHookCommand_Echo(t *testing.T) {
 	entry := PluginHookEntry{
 		Type:    "command",
 		Command: "echo hello",
-		Timeout: 5,
+		// 30s, matching EffectiveTimeout's own unset-value default: a timeout
+		// here is a bound against a genuinely hung command, not something
+		// this test is measuring, and RunHookCommand returns "", nil on
+		// DeadlineExceeded with no error surfaced -- a too-tight bound fails
+		// silently as "got empty string" with no hint it was ever a timeout.
+		// Observed on real Windows CI: PowerShell/node cold-start under
+		// go test -race ./... contention exceeded a 5s budget that passed
+		// every local run.
+		Timeout: 30,
 	}
 	out, err := RunHookCommand(entry, "/tmp", nil)
 	if err != nil {
@@ -35,7 +43,15 @@ func TestRunHookCommand_PluginRootEnv(t *testing.T) {
 	entry := PluginHookEntry{
 		Type:    "command",
 		Command: command,
-		Timeout: 5,
+		// 30s, matching EffectiveTimeout's own unset-value default: a timeout
+		// here is a bound against a genuinely hung command, not something
+		// this test is measuring, and RunHookCommand returns "", nil on
+		// DeadlineExceeded with no error surfaced -- a too-tight bound fails
+		// silently as "got empty string" with no hint it was ever a timeout.
+		// Observed on real Windows CI: PowerShell/node cold-start under
+		// go test -race ./... contention exceeded a 5s budget that passed
+		// every local run.
+		Timeout: 30,
 	}
 	out, err := RunHookCommand(entry, "/my/plugin/root", nil)
 	if err != nil {
@@ -70,7 +86,15 @@ func TestRunHookCommand_NonZeroExit(t *testing.T) {
 	entry := PluginHookEntry{
 		Type:    "command",
 		Command: `sh -c "exit 1"`,
-		Timeout: 5,
+		// 30s, matching EffectiveTimeout's own unset-value default: a timeout
+		// here is a bound against a genuinely hung command, not something
+		// this test is measuring, and RunHookCommand returns "", nil on
+		// DeadlineExceeded with no error surfaced -- a too-tight bound fails
+		// silently as "got empty string" with no hint it was ever a timeout.
+		// Observed on real Windows CI: PowerShell/node cold-start under
+		// go test -race ./... contention exceeded a 5s budget that passed
+		// every local run.
+		Timeout: 30,
 	}
 	out, err := RunHookCommand(entry, "/tmp", nil)
 	if err != nil {
@@ -98,7 +122,15 @@ func TestRunHookCommand_PluginRootExpansion(t *testing.T) {
 	entry := PluginHookEntry{
 		Type:    "command",
 		Command: "${CLAUDE_PLUGIN_ROOT}/" + scriptName,
-		Timeout: 5,
+		// 30s, matching EffectiveTimeout's own unset-value default: a timeout
+		// here is a bound against a genuinely hung command, not something
+		// this test is measuring, and RunHookCommand returns "", nil on
+		// DeadlineExceeded with no error surfaced -- a too-tight bound fails
+		// silently as "got empty string" with no hint it was ever a timeout.
+		// Observed on real Windows CI: PowerShell/node cold-start under
+		// go test -race ./... contention exceeded a 5s budget that passed
+		// every local run.
+		Timeout: 30,
 	}
 	out, err := RunHookCommand(entry, dir, nil)
 	if err != nil {
@@ -132,7 +164,15 @@ process.stdin.on('end', () => {
 	entry := PluginHookEntry{
 		Type:    "command",
 		Command: "node " + script,
-		Timeout: 5,
+		// 30s, matching EffectiveTimeout's own unset-value default: a timeout
+		// here is a bound against a genuinely hung command, not something
+		// this test is measuring, and RunHookCommand returns "", nil on
+		// DeadlineExceeded with no error surfaced -- a too-tight bound fails
+		// silently as "got empty string" with no hint it was ever a timeout.
+		// Observed on real Windows CI: PowerShell/node cold-start under
+		// go test -race ./... contention exceeded a 5s budget that passed
+		// every local run.
+		Timeout: 30,
 	}
 	out, err := RunHookCommandWithStdin(entry, dir, nil, `{"prompt":"hello-from-test"}`)
 	if err != nil {
@@ -149,7 +189,15 @@ func TestRunHookCommandWithStdin_EmptyStdin(t *testing.T) {
 	entry := PluginHookEntry{
 		Type:    "command",
 		Command: "echo ok",
-		Timeout: 5,
+		// 30s, matching EffectiveTimeout's own unset-value default: a timeout
+		// here is a bound against a genuinely hung command, not something
+		// this test is measuring, and RunHookCommand returns "", nil on
+		// DeadlineExceeded with no error surfaced -- a too-tight bound fails
+		// silently as "got empty string" with no hint it was ever a timeout.
+		// Observed on real Windows CI: PowerShell/node cold-start under
+		// go test -race ./... contention exceeded a 5s budget that passed
+		// every local run.
+		Timeout: 30,
 	}
 	out, err := RunHookCommandWithStdin(entry, "/tmp", nil, "")
 	if err != nil {
