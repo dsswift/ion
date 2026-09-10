@@ -310,6 +310,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+      # Same rationale as desktop-test-windows: the extension host and
+      # workspaces suites spawn many short-lived node.exe/git.exe/
+      # powershell.exe subprocesses, and Defender's real-time scan of every
+      # process launch is what dominates wall-clock on Windows for that
+      # pattern. Ephemeral runner, no effect on what the tests verify.
+      - name: Disable Windows Defender real-time scanning
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
@@ -471,6 +480,17 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+      # This suite's git/worktree/bench fixtures spawn thousands of short-lived
+      # git.exe/node.exe/powershell.exe subprocesses. Windows Defender's
+      # real-time protection intercepts and scans every new process launch by
+      # default, and that per-launch scan cost is what dominates wall-clock on
+      # a subprocess-spawn-heavy suite -- npm test alone is ~95% of this job's
+      # 14+ minutes. Disabling it is a pure CI-environment tweak (the runner is
+      # ephemeral and destroyed after the job) with no effect on what the
+      # tests verify.
+      - name: Disable Windows Defender real-time scanning
+        shell: pwsh
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
