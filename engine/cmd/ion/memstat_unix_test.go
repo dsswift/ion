@@ -10,8 +10,8 @@ import (
 
 func TestMemTotalFromProcMeminfo(t *testing.T) {
 	tests := []struct {
-		name     string
-		content  string
+		name      string
+		content   string
 		wantBytes uint64
 	}{
 		{
@@ -24,23 +24,23 @@ Buffers:          512000 kB
 			wantBytes: 16384000 * 1024,
 		},
 		{
-			name: "meminfo with leading whitespace in value",
-			content: "MemTotal:       32768000 kB\nMemFree: 1000 kB\n",
+			name:      "meminfo with leading whitespace in value",
+			content:   "MemTotal:       32768000 kB\nMemFree: 1000 kB\n",
 			wantBytes: 32768000 * 1024,
 		},
 		{
-			name:     "missing MemTotal",
-			content:  "MemFree:         8192000 kB\n",
+			name:      "missing MemTotal",
+			content:   "MemFree:         8192000 kB\n",
 			wantBytes: 0,
 		},
 		{
-			name:     "empty file",
-			content:  "",
+			name:      "empty file",
+			content:   "",
 			wantBytes: 0,
 		},
 		{
-			name:     "malformed MemTotal line",
-			content:  "MemTotal:\n",
+			name:      "malformed MemTotal line",
+			content:   "MemTotal:\n",
 			wantBytes: 0,
 		},
 	}

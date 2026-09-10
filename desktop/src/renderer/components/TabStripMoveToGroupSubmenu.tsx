@@ -8,6 +8,7 @@ import { usePopoverLayer } from './PopoverLayer'
 import { usePreferencesStore, getEffectiveTabGroups } from '../preferences'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
 import { scrollableMenuStyle } from '../menu-viewport'
+import { pathSegments } from '../../shared/paths'
 
 interface MoveToGroupSubmenuProps {
   anchor: { x: number; y: number }
@@ -104,7 +105,7 @@ export function MoveToGroupSubmenu({
     const dirMap = new Map<string, string>()
     for (const t of tabs) {
       const key = t.workingDirectory || '~'
-      if (!dirMap.has(key)) dirMap.set(key, key.split('/').pop() || key)
+      if (!dirMap.has(key)) dirMap.set(key, pathSegments(key).pop() || key)
     }
     targets = Array.from(dirMap.entries())
       .filter(([dir]) => `auto-${dir}` !== currentGroupId)

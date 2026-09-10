@@ -39,15 +39,22 @@ release/
 # bundle being committed again (see the orphaned index-*.js removed in history).
 desktop/index-*.js
 
-# Go binaries
+# Go binaries. The bare names are what `go build` drops in the package
+# directory; the .exe forms are the Windows cross-builds. Enforced by
+# `make check-no-binaries`, because a stray `git add -A` will otherwise commit
+# a 30MB executable that no review catches.
 engine/bin/
 engine/mcpserver
+engine/ion
+engine/ion.exe
+engine/ion-engine-host
+engine/ion-engine-host.exe
+relay/relay
+relay/relay.exe
 desktop/resources/engine/
 
 # Gap analysis working files
 engine/.gap-analysis/
-engine/ion
-relay/relay
 
 # OS artifacts
 .DS_Store
@@ -136,3 +143,8 @@ graphify-out/
 
 # Conversation pipeline sample: compiled function output.
 samples/conversation-pipeline/function/dist/
+
+# Python bytecode from repo scripts (scripts/ci/*.py)
+__pycache__/
+*.pyc
+.ion-sync-stamp.json

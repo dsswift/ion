@@ -18,6 +18,7 @@
 
 import { expandHome } from '../git/ignore-paths'
 import { debug as _debug, warn as _warn } from '../logger'
+import { isAbsolutePath } from '../../shared/paths'
 import {
   GRAPH_VIEW_DEFAULTS,
   GRAPH_VIEW_PROJECT_FIELDS,
@@ -198,7 +199,7 @@ export function normalizeRoots(list: unknown, scope: 'project' | 'user'): Corpus
       continue
     }
     const expanded = expandHome(rawPath)
-    if (!expanded.startsWith('/')) {
+    if (!isAbsolutePath(expanded)) {
       warn('graph_view: corpus root entry dropped', { scope, reason: 'not-absolute', raw: rawPath })
       continue
     }

@@ -55,6 +55,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   expandToolResults: saved.expandToolResults,
   terminalFontFamily: saved.terminalFontFamily,
   terminalFontSize: saved.terminalFontSize,
+  showHiddenFiles: saved.showHiddenFiles,
   closeExplorerOnFileOpen: saved.closeExplorerOnFileOpen,
   openMarkdownInPreview: saved.openMarkdownInPreview,
   editorWordWrap: saved.editorWordWrap,
@@ -251,6 +252,10 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setTerminalFontSize: (size) => {
     set({ terminalFontSize: clampFontSize(size) })
+    saveSettings(getAllSettings(get))
+  },
+  setShowHiddenFiles: (show) => {
+    set({ showHiddenFiles: show })
     saveSettings(getAllSettings(get))
   },
   setCloseExplorerOnFileOpen: (enabled) => {

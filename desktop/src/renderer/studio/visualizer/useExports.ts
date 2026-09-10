@@ -10,6 +10,7 @@ import { useColors } from '../../theme'
 import type { AgentCache, StudioActiveState } from './state/agent-cache'
 import { postcardFooter } from './export/postcard'
 import { clipReducer, CLIP_SECONDS, type ClipState } from './export/clip'
+import { DEFAULT_MONO_FONT } from '../../typography'
 
 export interface ExportDeps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>
@@ -72,7 +73,7 @@ export function useExports({ canvasRef, activeRef, cacheRef, seed, clip, setClip
     ctx.fillStyle = colors.containerBg
     ctx.fillRect(0, canvas.height, out.width, footerH)
     ctx.fillStyle = colors.textTertiary
-    ctx.font = '12px Menlo, Monaco, monospace'
+    ctx.font = `12px ${DEFAULT_MONO_FONT}`
     const stats = active ? cacheRef.current?.statsFor(active.tabId) : null
     const footer = postcardFooter({
       agentCount: active?.agents.length ?? 0,

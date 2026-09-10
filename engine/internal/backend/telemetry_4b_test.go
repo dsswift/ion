@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"errors"
+	"runtime"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -221,10 +222,16 @@ func TestToolFailureSuccessNoEmit(t *testing.T) {
 		conv:      &conversation.Conversation{ID: "conv-ok"},
 		cfg:       &RunConfig{Telemetry: telem},
 	}
+	// "true" does not exist on Windows PowerShell 5.1 (see bash.go's tool
+	// description); "exit 0" is the same succeed-silently shape there.
+	command := "true"
+	if runtime.GOOS == "windows" {
+		command = "exit 0"
+	}
 	blocks := []types.LlmContentBlock{{
 		Name:  "Bash",
 		ID:    "tc-ok",
-		Input: map[string]interface{}{"command": "true"},
+		Input: map[string]interface{}{"command": command},
 	}}
 	if _, err := b.executeTools(context.Background(), run, blocks, t.TempDir()); err != nil {
 		t.Fatal(err)

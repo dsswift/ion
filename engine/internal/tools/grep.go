@@ -8,10 +8,14 @@ import (
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// GrepTool returns a ToolDef that searches file contents using ripgrep (rg),
-// falling back to grep -rn if rg is not available.
+// GrepTool returns a ToolDef that searches file contents. It prefers ripgrep
+// (rg), falls back to grep -rn, and finally to an in-process Go search when
+// neither binary is on PATH -- which is the case on a stock Windows machine,
+// where the tool previously failed outright with
+// `exec: "grep": executable file not found in %PATH%`.
 func GrepTool() *types.ToolDef {
 	return &types.ToolDef{
 		Name:        "Grep",
@@ -54,12 +58,19 @@ func executeGrep(ctx context.Context, input map[string]any, cwd string) (*types.
 	cmdCtx, cancel := context.WithTimeout(ctx, globTimeout)
 	defer cancel()
 
-	// Try ripgrep first, fall back to grep.
-	rgPath, rgErr := exec.LookPath("rg")
-	if rgErr == nil {
+	// Prefer ripgrep, then grep, then the in-process search.
+	//
+	// The native path is last because rg is faster on a large tree and honours
+	// .gitignore. It exists so the tool always answers: a machine with neither
+	// binary installed is a supported machine, not a broken one.
+	if rgPath, rgErr := exec.LookPath("rg"); rgErr == nil {
 		return execRipgrep(cmdCtx, rgPath, pattern, searchPath, glob, outputMode, cwd)
 	}
-	return execGrepFallback(cmdCtx, pattern, searchPath, glob, outputMode, cwd)
+	if _, grepErr := exec.LookPath("grep"); grepErr == nil {
+		return execGrepFallback(cmdCtx, pattern, searchPath, glob, outputMode, cwd)
+	}
+	utils.Debug("Grep", "no rg or grep on PATH; using the in-process search")
+	return grepNative(cmdCtx, pattern, searchPath, glob, outputMode, cwd)
 }
 
 func execRipgrep(ctx context.Context, rgPath, pattern, searchPath, glob, outputMode, cwd string) (*types.ToolResult, error) {

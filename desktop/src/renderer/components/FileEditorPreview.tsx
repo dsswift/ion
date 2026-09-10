@@ -8,6 +8,7 @@ import { EDITABLE_EXTS } from '../hooks/useNavigableLinks'
 import { REMARK_PLUGINS } from './FileEditorShared'
 import { TableScrollWrapper } from './conversation/markdownRenderers'
 import { openClickedLink } from '../lib/open-link'
+import { DEFAULT_MONO_FONT } from '../typography'
 
 interface FileEditorPreviewProps {
   dir: string
@@ -192,7 +193,7 @@ export function FileEditorPreview({ dir, tabId, activeFile }: FileEditorPreviewP
               margin: 0,
               padding: '8px 12px',
               borderTop: `1px solid ${colors.containerBorder}`,
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+              fontFamily: DEFAULT_MONO_FONT,
               fontSize: 'var(--ion-data-code-font-size, 13px)',
               lineHeight: 1.5,
               color: colors.textSecondary,

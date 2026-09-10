@@ -1,11 +1,15 @@
-import { ipcMain } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 import { IPC } from '../../shared/types'
-import { log as _log } from '../logger'
+import { debug as _debug, log as _log } from '../logger'
 import { terminalManager } from '../terminal-manager-instance'
 import { restoredStudioExitCodes } from '../studio-terminal-persistence'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('main', msg, fields)
 }
 
 export function registerTerminalIpc(): void {
@@ -18,7 +22,24 @@ export function registerTerminalIpc(): void {
     terminalManager.write(key, data)
   })
 
-  ipcMain.on(IPC.TERMINAL_RESIZE, (_event, { key, cols, rows }: { key: string; cols: number; rows: number }) => {
+  // Two renderer windows mount a terminal against ONE pty: the Overlay stays
+  // alive and hidden while Studio is the active UI, because it owns the
+  // session store. Both fit their own xterm and publish the result, so the
+  // last writer wins regardless of which window is on screen -- the visible
+  // pane fit 104 columns and the hidden one 55, and 55 is what the pty kept.
+  //
+  // The arbitration belongs HERE, not in the renderer. A hidden Electron
+  // window is hidden by BrowserWindow.hide(), which does not set
+  // document.hidden and leaves layout fully intact, so a renderer-side check
+  // cannot tell it is off screen -- a guard written there logged zero
+  // suppressions while the wrong size kept landing. The main process holds
+  // the BrowserWindow and can simply ask.
+  ipcMain.on(IPC.TERMINAL_RESIZE, (event, { key, cols, rows }: { key: string; cols: number; rows: number }) => {
+    const sender = BrowserWindow.fromWebContents(event.sender)
+    if (sender && !sender.isVisible()) {
+      debug('terminal resize ignored; sender window is hidden', { key, cols, rows })
+      return
+    }
     terminalManager.resize(key, cols, rows)
   })
 

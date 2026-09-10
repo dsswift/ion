@@ -3,6 +3,7 @@ package skills
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -113,6 +114,13 @@ func TestLoadSkillDirectory_SubdirWithoutSkillMdSkipped(t *testing.T) {
 func TestLoadSkillDirectory_SubdirMalformedSkillMdSkipped(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Skip("running as root: file permission restrictions do not apply, chmod-based test cannot exercise the unreadable-file path")
+	}
+	if runtime.GOOS == "windows" {
+		// Windows chmod only toggles the read-only attribute; 0o000 does not
+		// make a file unreadable to its own owner there the way it does on
+		// POSIX, so the file this test relies on being unreadable stays
+		// readable and is loaded as a (malformed) skill instead of skipped.
+		t.Skip("Windows has no POSIX permission bits for chmod to make a file genuinely unreadable")
 	}
 	root := t.TempDir()
 

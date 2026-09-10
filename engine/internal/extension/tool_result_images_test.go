@@ -2,6 +2,7 @@ package extension
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,7 +21,16 @@ func TestParseToolResultWithImagesStructured(t *testing.T) {
 		t.Fatalf("write temp image: %v", err)
 	}
 
-	raw := []byte(`{"content":"here is the chart","images":[{"path":"` + imgPath + `","mediaType":"image/png"}]}`)
+	// Marshaled, not hand-built: imgPath carries backslashes on Windows, and
+	// splicing it into a raw JSON string literal produces invalid escape
+	// sequences that fail to parse.
+	raw, err := json.Marshal(map[string]any{
+		"content": "here is the chart",
+		"images":  []map[string]any{{"path": imgPath, "mediaType": "image/png"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	result, ok := parseToolResultWithImages(raw, "test-ext")
 	if !ok {
 		t.Fatal("parseToolResultWithImages returned ok=false for a structured images response")
@@ -70,10 +80,18 @@ func TestParseToolResultWithImagesSkipsBadEntries(t *testing.T) {
 	}
 	missing := filepath.Join(dir, "does-not-exist.png")
 
-	raw := []byte(`{"content":"mixed","images":[` +
-		`{"path":"","mediaType":"image/png"},` +
-		`{"path":"` + missing + `","mediaType":"image/png"},` +
-		`{"path":"` + good + `","mediaType":"image/png"}]}`)
+	// Marshaled, not hand-built: see TestParseToolResultWithImagesStructured.
+	raw, err := json.Marshal(map[string]any{
+		"content": "mixed",
+		"images": []map[string]any{
+			{"path": "", "mediaType": "image/png"},
+			{"path": missing, "mediaType": "image/png"},
+			{"path": good, "mediaType": "image/png"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	result, ok := parseToolResultWithImages(raw, "test-ext")
 	if !ok {

@@ -169,3 +169,69 @@ func TestReplaceDirContents_RemovesOrphans(t *testing.T) {
 		t.Error("orphaned file survived the replace")
 	}
 }
+
+// TestReplaceDirContents_NoAsideLeftBehind asserts a normal replace leaves no
+// "<dst>.old-*" directory once it returns: the aside move-and-remove
+// sequence is transparent to the caller in the common case where nothing
+// held the destination open.
+func TestReplaceDirContents_NoAsideLeftBehind(t *testing.T) {
+	src := t.TempDir()
+	parent := t.TempDir()
+	dst := filepath.Join(parent, "sdk")
+
+	if err := os.WriteFile(filepath.Join(src, "runtime.ts"), []byte("fresh"), 0o644); err != nil {
+		t.Fatalf("seed src: %v", err)
+	}
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		t.Fatalf("seed dst: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dst, "runtime.ts"), []byte("stale"), 0o644); err != nil {
+		t.Fatalf("seed dst file: %v", err)
+	}
+
+	if err := replaceDirContents(src, dst); err != nil {
+		t.Fatalf("replaceDirContents: %v", err)
+	}
+
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		t.Fatalf("read parent: %v", err)
+	}
+	for _, e := range entries {
+		if e.Name() != "sdk" {
+			t.Errorf("unexpected leftover entry in parent dir: %s", e.Name())
+		}
+	}
+}
+
+// TestReplaceDirContents_ReapsLeftoverAsideTree asserts a pre-existing
+// "<dst>.old-*" directory from a previous run whose aside removal failed
+// (e.g. a held-open file on Windows) is swept on the next replace call.
+func TestReplaceDirContents_ReapsLeftoverAsideTree(t *testing.T) {
+	src := t.TempDir()
+	parent := t.TempDir()
+	dst := filepath.Join(parent, "sdk")
+
+	if err := os.WriteFile(filepath.Join(src, "runtime.ts"), []byte("fresh"), 0o644); err != nil {
+		t.Fatalf("seed src: %v", err)
+	}
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		t.Fatalf("seed dst: %v", err)
+	}
+
+	stale := dst + ".old-1"
+	if err := os.MkdirAll(stale, 0o755); err != nil {
+		t.Fatalf("seed stale aside dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(stale, "leftover.ts"), []byte("leftover"), 0o644); err != nil {
+		t.Fatalf("seed stale aside file: %v", err)
+	}
+
+	if err := replaceDirContents(src, dst); err != nil {
+		t.Fatalf("replaceDirContents: %v", err)
+	}
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Error("leftover aside directory from a previous run was not reaped")
+	}
+}

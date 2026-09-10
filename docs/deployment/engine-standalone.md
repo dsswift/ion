@@ -46,7 +46,7 @@ This starts the engine daemon and listens on:
 | Platform | Transport | Address |
 |----------|-----------|---------|
 | Unix/macOS | Unix socket | `~/.ion/engine.sock` |
-| Windows | TCP | `127.0.0.1:21017` |
+| Windows | TCP | `127.0.0.1:<per-user port>` |
 
 The daemon writes a PID lock to `~/.ion/engine.pid` to prevent duplicate instances. Logs go to `~/.ion/engine.log`.
 
@@ -187,7 +187,7 @@ The engine creates and uses `~/.ion/` as its data directory:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ION_DATA_DIR` | `~/.ion` | Root data directory for this engine instance. Redirects `conversations/`, `scheduler/`, socket, PID lock, and exit-sentinel to `ION_DATA_DIR/…`. Use to run multiple engine instances on the same machine without path collisions. |
-| `ION_SOCKET_PATH` | `ION_DATA_DIR/engine.sock` | Override the Unix socket path. On Windows defaults to `127.0.0.1:21017`. |
+| `ION_SOCKET_PATH` | `ION_DATA_DIR/engine.sock` | Override the Unix socket path. On Windows the default is `127.0.0.1` at a per-user port derived from the signed-in user's SID. |
 | `ION_PID_PATH` | `ION_DATA_DIR/engine.pid` | Override the PID lock file path. |
 | `ION_EXIT_PATH` | `ION_DATA_DIR/engine.exit` | Override the exit-sentinel file path. |
 

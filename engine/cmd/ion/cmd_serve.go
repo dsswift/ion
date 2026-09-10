@@ -31,13 +31,26 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-func cmdServe() {
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home falls back to a relative .ion dir
+func cmdServe(flags map[string]string) {
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home falls back to a relative .ion dir
 	ionDir := filepath.Join(home, ".ion")
 	if err := os.MkdirAll(ionDir, 0o700); err != nil {
 		utils.LogWithFields(utils.LevelError, "main", "failed to create ion data dir", map[string]any{"path": ionDir, "error": utils.ErrStr(err)})
 	}
 	utils.LogWithFields(utils.LevelInfo, "main", "=== engine process start ===", map[string]any{"run_id": os.Getpid(), "version": version})
+
+	// Hide the console immediately when supervised, before anything else
+	// runs, so there is no visible flash of a window on Windows. The
+	// outcome is logged further below, after ConfigureLogging applies the
+	// configured logLevel — logging it here would drop the DEBUG line
+	// ("supervised flag ignored on this platform") on every platform whose
+	// engine.json has not yet been read.
+	supervised := flags["supervised"] != ""
+	var consoleHideErr error
+	var consoleOutcome string
+	if supervised {
+		consoleOutcome, consoleHideErr = hideOwnConsole()
+	}
 
 	// Read back any pre-existing exit breadcrumb so the prior exit is
 	// observable in the log immediately after startup. Then write our own
@@ -47,6 +60,20 @@ func cmdServe() {
 
 	cfg := config.LoadConfig("")
 	utils.LogWithFields(utils.LevelInfo, "main", "config loaded", map[string]any{"backend": cfg.Backend, "model": cfg.DefaultModel, "count": len(cfg.Providers), "max": len(cfg.McpServers)})
+
+	// Report the supervised-flag outcome now that LoadConfig has applied
+	// engine.json's logLevel (config.go calls SetLevelFromString during load),
+	// so the DEBUG branch below is not silently dropped by the pre-config
+	// default level.
+	if supervised {
+		if consoleHideErr != nil {
+			utils.LogWithFields(utils.LevelWarn, "main", "supervised mode: could not hide console", map[string]any{"error": utils.ErrStr(consoleHideErr)})
+		} else if runtime.GOOS == "windows" {
+			utils.LogWithFields(utils.LevelInfo, "main", "supervised mode console check", map[string]any{"outcome": consoleOutcome})
+		} else {
+			utils.Debug("main", "supervised flag ignored on this platform")
+		}
+	}
 
 	// Reconcile plugins: install any force-installed sources, enforce enterprise
 	// allowlist/denylist against the registry. Runs synchronously so that all
@@ -217,8 +244,29 @@ func cmdServe() {
 		}
 	})
 
-	sock := socketPath()
+	sock, sockErr := resolveSocketPath()
+	if sockErr != nil {
+		// No fallback address. On a multi-session host an engine that cannot
+		// name its own user would otherwise land on the same fixed port as
+		// every other such engine, and the next desktop to connect would
+		// reach whichever one bound first. Refusing to start is the only
+		// outcome that cannot cross-wire two people.
+		utils.LogWithFields(utils.LevelError, "main", "cannot resolve this user's engine address", map[string]any{
+			"error": sockErr.Error(),
+		})
+		fmt.Fprintf(os.Stderr, "Error: %s\n", sockErr)
+		fmt.Fprintln(os.Stderr, "The engine will not listen on a shared address. Set ION_SOCKET_PATH to name one explicitly.")
+		os.Exit(1)
+	}
 	srv := server.NewServer(sock, b)
+	if os.Getenv("ION_SOCKET_PATH") != "" {
+		// The operator named this address, which is how a LAN or relay
+		// listener is set up. Local-peer authorization is a same-user check
+		// and would refuse every remote client such a listener exists to
+		// serve, so it is not armed here. The default Windows address never
+		// takes this branch.
+		srv.AllowUnauthenticatedPeers("ION_SOCKET_PATH names the listen address")
+	}
 
 	srv.SetConfig(cfg)
 	srv.SetVersion(version)

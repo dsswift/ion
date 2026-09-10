@@ -38,7 +38,7 @@ func InstallID() string {
 // loadOrMintInstallID reads ~/.ion/install_id, minting a fresh UUID v4 if
 // absent (or the file is empty/unreadable).
 func loadOrMintInstallID() string {
-	home, err := os.UserHomeDir()
+	home, err := UserHomeDir()
 	if err != nil {
 		return ""
 	}

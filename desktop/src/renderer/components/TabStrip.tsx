@@ -25,6 +25,7 @@ import { TabPill } from './TabStripTabPill'
 import { WorkspaceStatusIndicator } from './WorkspaceStatusIndicator'
 import { useRenameTabWorktree } from '../hooks/useRenameTabWorktree'
 import { rError } from '../rendererLogger'
+import { pathSegments } from '../../shared/paths'
 
 export type TabStripPresentation = 'overlay' | 'studio'
 
@@ -306,7 +307,7 @@ export function TabStrip({ presentation = 'overlay' }: { presentation?: TabStrip
         {dirMenuTabId && (() => {
           const menuTab = tabs.find((t) => t.id === dirMenuTabId)
           if (!menuTab?.workingDirectory) return null
-          const dirName = menuTab.workingDirectory.split('/').pop() || menuTab.workingDirectory
+          const dirName = pathSegments(menuTab.workingDirectory).pop() || menuTab.workingDirectory
           return (
             <DirContextMenu
               key="dir-context-menu"

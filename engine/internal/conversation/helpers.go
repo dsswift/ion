@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // DefaultConversationsDir returns the root directory for conversation storage.
@@ -25,7 +26,7 @@ func DefaultConversationsDir() string {
 	if v := os.Getenv("ION_DATA_DIR"); v != "" {
 		return filepath.Join(v, "conversations")
 	}
-	home, err := os.UserHomeDir()
+	home, err := utils.UserHomeDir()
 	if err != nil || home == "" {
 		return ""
 	}

@@ -14,6 +14,7 @@ export function FileExplorerTreeRow({
   expanded,
   selected,
   isGitIgnored,
+  isHidden,
   onToggle,
   onClick,
   onContextMenu,
@@ -24,6 +25,8 @@ export function FileExplorerTreeRow({
   expanded: boolean
   selected: boolean
   isGitIgnored?: boolean
+  /** A dotfile, or a path Windows marks with the hidden attribute. */
+  isHidden?: boolean
   onToggle: () => void
   /** Receives the click so ⇧/⌥ modifiers reach the open-intent rules. */
   onClick: (event: React.MouseEvent) => void
@@ -50,7 +53,15 @@ export function FileExplorerTreeRow({
         background: interactiveBg(colors, { hover, pressed, selected }),
         borderRadius: selected ? 4 : 0,
         gap: 4,
-        opacity: isGitIgnored ? 0.45 : undefined,
+        // Two independent facts, two independent channels, so all four
+        // combinations stay readable:
+        //   normal            -> tracked, visible
+        //   amber             -> git-ignored
+        //   dimmed            -> hidden (dotfile or Windows hidden attribute)
+        //   dimmed + amber    -> hidden AND git-ignored
+        // Opacity previously encoded git-ignored, which collided with hidden
+        // and left the operator unable to tell the two apart.
+        opacity: isHidden ? 0.55 : undefined,
         transition: `background ${transitions.base}`,
       }}
     >
@@ -73,7 +84,9 @@ export function FileExplorerTreeRow({
         style={{
           fontSize: 12,
           fontWeight: selected ? 500 : undefined,
-          color: isGitIgnored ? colors.textTertiary : colors.textPrimary,
+          // gitUntracked is the palette's existing amber and is defined in
+          // every theme, so this needs no new token and no iOS parity change.
+          color: isGitIgnored ? colors.gitUntracked : colors.textPrimary,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',

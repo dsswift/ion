@@ -2,7 +2,6 @@ package session
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	ionconfig "github.com/dsswift/ion/engine/internal/config"
@@ -211,7 +210,7 @@ func (m *Manager) startSession(
 	// nil registry — downstream call sites (extcontext.go) already guard
 	// with `if reg := sa.ProcRegistry(); reg != nil`, so extensions that
 	// would have used it degrade to no-op instead of silently failing.
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	pidsDir := filepath.Join(home, ".ion", "agent-pids")
 	if reg, err := extension.NewProcessRegistry(pidsDir); err != nil {
 		utils.LogWithFields(utils.LevelInfo, "session", "startsession : process registry unavailable", map[string]any{"key": key, "error": err})

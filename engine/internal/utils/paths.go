@@ -2,6 +2,26 @@ package utils
 
 import "os"
 
+// UserHomeDir resolves the user's home directory, honoring $HOME on every
+// platform (including Windows) before falling back to os.UserHomeDir's
+// native resolution (%USERPROFILE% there).
+//
+// Go's os.UserHomeDir ignores HOME entirely on Windows -- it reads only
+// %USERPROFILE%. That is invisible on macOS and Linux, where HOME already is
+// the native mechanism, but on Windows it silently defeats every test's
+// t.Setenv("HOME", t.TempDir()) isolation: the test believes it redirected
+// the engine into a throwaway directory, while every call site that resolves
+// home via the stdlib directly keeps reading the CI runner's real profile.
+// Route every home-directory resolution through this function instead of
+// os.UserHomeDir so that isolation actually isolates on every platform the
+// engine ships for.
+func UserHomeDir() (string, error) {
+	if home := os.Getenv("HOME"); home != "" {
+		return home, nil
+	}
+	return os.UserHomeDir()
+}
+
 // ExpandHomePath expands a leading "~" in a filesystem path to the user's home
 // directory. A bare "~" becomes the home dir; "~/foo" becomes "<home>/foo".
 // Any other input (absolute, relative, empty, or a "~" that is not the first
@@ -20,7 +40,7 @@ func ExpandHomePath(path string) string {
 	if len(path) == 0 || path[0] != '~' {
 		return path
 	}
-	home, err := os.UserHomeDir()
+	home, err := UserHomeDir()
 	if err != nil {
 		return path
 	}

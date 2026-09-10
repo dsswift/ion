@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/dsswift/ion/engine/internal/procctl"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -32,7 +33,7 @@ func Acquire(path string) (*Lock, error) {
 	if data, err := os.ReadFile(lockPath); err == nil {
 		pidStr := strings.TrimSpace(string(data))
 		if lockPid, err := strconv.Atoi(pidStr); err == nil {
-			if isProcessAlive(lockPid) {
+			if procctl.Alive(lockPid) {
 				return nil, fmt.Errorf("filelock: locked by PID %d", lockPid)
 			}
 		}
@@ -99,5 +100,3 @@ func WithLock(path string, fn func() error) error {
 	}()
 	return fn()
 }
-
-// isProcessAlive is implemented per-platform in filelock_unix.go and filelock_windows.go.

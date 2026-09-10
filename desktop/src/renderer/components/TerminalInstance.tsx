@@ -6,10 +6,12 @@ import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
 import { LINK_RE, isCmdHeld, EDITABLE_EXTS } from '../hooks/useNavigableLinks'
-import { rDebug, rWarn } from '../rendererLogger'
+import { rDebug, rTrace, rWarn } from '../rendererLogger'
 import { openClickedLink } from '../lib/open-link'
 import { fileOpenIntent, isRenderableHtml, type FileClickModifiers } from '../lib/open-file-intent'
 import { surfaceRouter } from '../lib/file-open-router'
+import { isModKey } from '../platform/mod-key'
+import { isAbsolutePath, joinPath } from '../../shared/paths'
 import '@xterm/xterm/css/xterm.css'
 
 interface TerminalEntry {
@@ -45,9 +47,29 @@ function installTerminalListeners(): void {
     entry.terminal.reset()
     void window.ion.terminalCreate(key, entry.cwd).then(() => {
       const dims = entry.fitAddon.proposeDimensions()
-      if (dims) window.ion.terminalResize(key, dims.cols, dims.rows)
+      if (dims && isViewerVisible(entry.hostEl)) {
+        window.ion.terminalResize(key, dims.cols, dims.rows)
+      }
     }).catch((err) => rWarn('terminal', 'terminal recreate failed', { key, error: String(err) }))
   })
+}
+
+/**
+ * Whether this container currently occupies space.
+ *
+ * Scoped to THIS window's layout, deliberately. Which of the two windows is on
+ * screen is decided in the main process (ipc/terminal.ts): an Electron window
+ * hidden with BrowserWindow.hide() keeps document.hidden false and its layout
+ * fully intact, so a renderer cannot tell it is off screen. A guard that tried
+ * logged zero suppressions while the wrong size kept reaching the pty.
+ *
+ * What a renderer CAN see is its own collapsed container -- a closed panel or
+ * a background tab measuring a handful of columns -- which the main process
+ * cannot distinguish from a genuine measurement.
+ */
+function isViewerVisible(container: HTMLElement): boolean {
+  const rect = container.getBoundingClientRect()
+  return rect.width > 0 && rect.height > 0
 }
 
 export function destroyTerminalInstance(key: string): void {
@@ -121,7 +143,7 @@ function registerTerminalLinks(terminal: Terminal, cwd: string, tabId: string): 
           text: trimmed,
           decorations,
           activate(event: MouseEvent, linkText: string) {
-            if (!event.metaKey) return
+            if (!isModKey(event)) return
             if (isUrl) {
               // The real event is forwarded, not a synthesized one: the ⌘ gate
               // above satisfies the surface route, and ⌥ still reaches the
@@ -154,7 +176,7 @@ async function openTerminalFile(path: string, cwd: string, tabId: string, event?
   const homeDir = useSessionStore.getState().staticInfo?.homePath
     || '/Users/' + (process.env.USER || 'user')
   const expanded = path.startsWith('~/') ? homeDir + path.slice(1) : path
-  const resolved = expanded.startsWith('/') ? expanded : cwd + '/' + expanded
+  const resolved = isAbsolutePath(expanded) ? expanded : joinPath(cwd, expanded)
   const { exists } = await window.ion.fsExists(resolved)
   if (!exists) {
     rDebug('terminal.link', 'file does not exist, ignoring cmd-click', { raw_path: path, resolved })
@@ -233,7 +255,7 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
       // Keyboard handling: Cmd+C, Cmd+V, Cmd+A, Alt/Cmd+Arrow navigation
       terminal.attachCustomKeyEventHandler((ev) => {
         if (ev.type !== 'keydown') return true
-        const isMeta = ev.metaKey
+        const isMeta = isModKey(ev)
 
         if (isMeta && ev.key === 'v') {
           return true // let Electron menu role handle paste
@@ -324,7 +346,9 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
           entry!.historyPending = false
           for (const chunk of entry!.pendingChunks) entry!.terminal.write(chunk)
           entry!.pendingChunks.length = 0
-          if (dims) window.ion.terminalResize(key, dims.cols, dims.rows)
+          if (dims && isViewerVisible(entry!.hostEl)) {
+            window.ion.terminalResize(key, dims.cols, dims.rows)
+          }
           rDebug('terminal', 'conversation terminal viewer attached', {
             key,
             running: info.running,
@@ -346,7 +370,22 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
       window.ion.terminalWrite(key, data)
     })
 
-    // Resize observer
+    // Resize observer.
+    //
+    // The Overlay renderer stays alive and hidden while Studio is the active
+    // UI (it owns the session store), and BOTH presentations mount
+    // TerminalPanel against the SAME pty key. So two viewers fit one pty, and
+    // the last resize wins regardless of which window the operator can see.
+    //
+    // Measured on Windows: the visible Studio pane fit 207 columns, then the
+    // hidden Overlay fit 55 and that is what the pty kept — the pane rendered
+    // at roughly a quarter of its width. It presents as a font or a fit bug,
+    // which is where two rounds of diagnosis went.
+    //
+    // Which WINDOW may drive the pty is arbitrated in the main process, which
+    // is the only side that can see an Electron window is hidden. This guard
+    // covers the other half: a container in this window that currently has no
+    // size, whose measurement the main process could not tell from a real one.
     let rafId = 0
     const ro = new ResizeObserver(() => {
       cancelAnimationFrame(rafId)
@@ -354,9 +393,16 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
         if (!entry) return
         entry.fitAddon.fit()
         const dims = entry.fitAddon.proposeDimensions()
-        if (dims) {
-          window.ion.terminalResize(key, dims.cols, dims.rows)
+        if (!dims) return
+        if (!isViewerVisible(container)) {
+          rTrace('terminal', 'resize suppressed; container has no size', {
+            key,
+            cols: dims.cols,
+            rows: dims.rows,
+          })
+          return
         }
+        window.ion.terminalResize(key, dims.cols, dims.rows)
       })
     })
     ro.observe(container)
@@ -394,8 +440,10 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
     entry.terminal.options.fontFamily = terminalFontFamily
     entry.terminal.options.fontSize = terminalFontSize
     entry.fitAddon.fit()
+    // Only the visible viewer publishes: this effect runs in the hidden
+    // window too, and its measurement would overwrite the visible one's.
     const dims = entry.fitAddon.proposeDimensions()
-    if (dims) {
+    if (dims && isViewerVisible(entry.hostEl)) {
       window.ion.terminalResize(key, dims.cols, dims.rows)
     }
   }, [key, terminalFontFamily, terminalFontSize])
@@ -406,7 +454,7 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
     if (!entry) return
     entry.fitAddon.fit()
     const dims = entry.fitAddon.proposeDimensions()
-    if (dims) {
+    if (dims && isViewerVisible(entry.hostEl)) {
       window.ion.terminalResize(key, dims.cols, dims.rows)
     }
   }, [key, uiZoom])

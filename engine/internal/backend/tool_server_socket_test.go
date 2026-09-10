@@ -3,6 +3,7 @@ package backend
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -72,10 +73,7 @@ func TestSocketPathSanitization(t *testing.T) {
 
 			// The basename (filename portion) must contain none of the
 			// dangerous characters — the digest is [0-9a-f] only.
-			base := sockPath
-			if i := strings.LastIndex(sockPath, "/"); i >= 0 {
-				base = sockPath[i+1:]
-			}
+			base := filepath.Base(sockPath)
 			for _, bad := range []string{":", ",", "/", " "} {
 				if strings.Contains(base, bad) {
 					t.Errorf("socket basename %q contains forbidden %q", base, bad)
@@ -102,10 +100,7 @@ func TestSocketPathSanitization(t *testing.T) {
 			}
 			for _, bad := range []string{":", ",", " "} {
 				// The filename (digest) portion carries no raw-key characters.
-				argBase := arg
-				if i := strings.LastIndex(arg, "/"); i >= 0 {
-					argBase = arg[i+1:]
-				}
+				argBase := filepath.Base(arg)
 				if strings.Contains(argBase, bad) {
 					t.Errorf("bridge socket filename %q contains forbidden %q", argBase, bad)
 				}

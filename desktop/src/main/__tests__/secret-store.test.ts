@@ -156,8 +156,14 @@ describe('keyfile encryption (tier 2, enc:v3:)', () => {
   it('creates the keyfile with 0600 permissions and a 32-byte hex key', () => {
     encryptForDisk('force-keyfile-creation')
     expect(existsSync(testKeyfile)).toBe(true)
-    const mode = statSync(testKeyfile).mode & 0o777
-    expect(mode).toBe(0o600)
+    // Node's chmod on Windows only toggles the read-only attribute; a
+    // non-read-only file always reports 0o666 regardless of the mode passed
+    // to writeFileSync, so there is no POSIX-permission-bit assertion to make
+    // there (same precedent as deeplink/__tests__/token.test.ts).
+    if (process.platform !== 'win32') {
+      const mode = statSync(testKeyfile).mode & 0o777
+      expect(mode).toBe(0o600)
+    }
     const key = Buffer.from(readFileSync(testKeyfile, 'utf-8').trim(), 'hex')
     expect(key.length).toBe(32)
   })

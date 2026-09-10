@@ -25,6 +25,7 @@ import { createWorktreeRefreshActions } from "./worktree-inventory-refresh";
 import { inboxActivityOrder } from "../../studio/inbox/inbox-collapse";
 import { usePreferencesStore } from '../../preferences'
 import { landFlagsForStrategy } from '../../../shared/worktree-land-strategy'
+import { pathSegments } from '../../../shared/paths'
 
 export function createWorktreeInventorySlice(
   set: StoreSet,
@@ -215,7 +216,7 @@ export function createWorktreeInventorySlice(
           get().recordConflictAlert(result.conflictDirectory, {
             source: 'land',
             operationState: result.conflictDirectory === entry.worktreePath ? 'rebasing' : 'merging',
-            label: result.conflictDirectory === entry.worktreePath ? entry.title || entry.label : result.conflictDirectory.split('/').filter(Boolean).pop(),
+            label: result.conflictDirectory === entry.worktreePath ? entry.title || entry.label : pathSegments(result.conflictDirectory).pop(),
           })
         }
         await get().refreshWorkspaceViews(repoPath)

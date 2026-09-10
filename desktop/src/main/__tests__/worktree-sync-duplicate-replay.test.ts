@@ -30,9 +30,14 @@ import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
-const warnMock = vi.fn()
-const logMock = vi.fn()
+// vi.mock factories are hoisted above every top-level statement, including
+// this file's own `const` declarations -- referencing an outer const from
+// inside the factory hits it before its initializer has run (a TDZ
+// "Cannot access before initialization"). vi.hoisted() lifts the declaration
+// itself alongside the mock call so the factory sees an initialized value.
+const { warnMock, logMock } = vi.hoisted(() => ({ warnMock: vi.fn(), logMock: vi.fn() }))
 vi.mock('../logger', () => ({
   log: (...args: unknown[]) => logMock(...args),
   debug: vi.fn(),
@@ -156,13 +161,21 @@ function landContentOnFeature(sha: string, label: string): void {
   git(repo, 'worktree', 'remove', '--force', holder)
 }
 
-/** Every commit's patch-id in a range, for duplicate detection. */
+/**
+ * Every commit's patch-id in a range, for duplicate detection.
+ *
+ * Piped via two execFileSync calls (git show's stdout fed as git patch-id's
+ * stdin), not a shelled-out `sh -c "a | b"` string: /bin/sh does not exist
+ * on Windows, and this had been silently unreachable there until the
+ * suite-level vi.mock TDZ crash it was masked behind got fixed.
+ */
 function patchIds(cwd: string, range: string): string[] {
   return git(cwd, 'log', '--format=%H', range)
     .split('\n')
     .filter(Boolean)
     .map((sha) => {
-      const out = execFileSync('/bin/sh', ['-c', `git show ${sha} | git patch-id --stable`], { cwd, encoding: 'utf-8' })
+      const show = execFileSync('git', ['show', sha], { cwd, encoding: 'utf-8' })
+      const out = execFileSync('git', ['patch-id', '--stable'], { cwd, encoding: 'utf-8', input: show })
       return out.trim().split(/\s+/)[0] ?? ''
     })
     .filter(Boolean)
@@ -176,7 +189,10 @@ function duplicatePatchIds(cwd: string, range: string): string[] {
 }
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'ion-wtdup-')))
+  // realpath.native: macOS resolves /var's symlink and Windows expands a
+  // short (8.3) TEMP path to the long form git itself reports; plain
+  // realpathSync does not perform the Windows expansion.
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ion-wtdup-')))
   process.env.ION_TEST_HOME_WT_DUP = join(root, 'home')
   repo = makeRepo()
   warnMock.mockClear()
@@ -434,7 +450,7 @@ describe('repeated sync does not replay commits the source branch already has', 
     expect(git(wt.path, 'rev-parse', 'HEAD').trim()).toBe(git(repo, 'rev-parse', FEATURE).trim())
     expect(git(wt.path, 'status', '--porcelain').trim()).toBe('')
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('replay plan fails open — a commit is never dropped on absent evidence', () => {
   it('picks everything and warns when the range cannot be read', async () => {
@@ -477,7 +493,7 @@ describe('replay plan fails open — a commit is never dropped on absent evidenc
     expect(result.ok).toBe(true)
     expect(git(wt.path, 'log', '--format=%s', `${FEATURE}..HEAD`).trim()).toBe('h: one')
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('patchIdsIn', () => {
   it('returns null rather than a partial map when the range is unreadable', async () => {
@@ -499,4 +515,4 @@ describe('patchIdsIn', () => {
     const groups = [...(map ?? new Map<string, string[]>()).values()]
     expect(groups.some((shas) => shas.length === 2)).toBe(true)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)

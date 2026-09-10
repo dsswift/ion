@@ -8,10 +8,16 @@ import { SettingSection } from './SettingSection'
 import { SettingHeading } from './SettingHeading'
 import { useManualReorder } from '../../hooks/useManualReorder'
 import type { TabGroupMode, TabGroup } from '../../../shared/types'
+import { deriveEnterpriseTabStripPolicy } from '../../../shared/enterprise-tab-strip-policy'
 
 export function TabsPanelsCategory() {
   const colors = useColors()
   const studioTabStripVisible = usePreferencesStore((s) => s.studioTabStripVisible)
+  // A locked policy owns the value; an unlocked one only seeded the default
+  // at boot and the user may change it freely from here.
+  const tabStripPolicy = deriveEnterpriseTabStripPolicy(
+    usePreferencesStore((s) => s.enterprisePolicy),
+  )
   const setStudioTabStripVisible = usePreferencesStore((s) => s.setStudioTabStripVisible)
   const expandOnTabSwitch = usePreferencesStore((s) => s.expandOnTabSwitch)
   const setExpandOnTabSwitch = usePreferencesStore((s) => s.setExpandOnTabSwitch)
@@ -154,6 +160,7 @@ export function TabsPanelsCategory() {
         description="Show conversation and group tabs at the top of Ion Studio. The Overlay is not affected."
         checked={studioTabStripVisible}
         onChange={setStudioTabStripVisible}
+        lockedReason={tabStripPolicy?.locked ? 'Set by your organization.' : undefined}
       />
 
       <SettingToggle

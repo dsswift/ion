@@ -99,13 +99,19 @@ export function registerSettingsIpc(): void {
     const plan = resolveSurfacePlan(readSettings(), enterprisePolicyCache.policy)
     return {
       activeUi: plan.activeUi,
-      locked: plan.lockedBy === 'policy',
+      locked: plan.lockedBy !== null,
+      lockReason: plan.lockedBy,
     }
   })
 
   ipcMain.handle(IPC.SET_ACTIVE_UI, (_event, ui: unknown) => {
     if (ui !== 'overlay' && ui !== 'studio') {
       warn('set_active_ui: invalid value', { ui: String(ui).slice(0, 32) })
+      return false
+    }
+    const plan = resolveSurfacePlan(readSettings(), enterprisePolicyCache.policy)
+    if (plan.lockedBy === 'platform') {
+      log('setActiveUi refused: platform lock', { platform: process.platform, requested: ui })
       return false
     }
     const prev = readSettings()

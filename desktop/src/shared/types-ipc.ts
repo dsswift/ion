@@ -579,6 +579,7 @@ export const IPC = {
   STARTUP_GET_STATE: "startup:get-state",
   STARTUP_STATE: "startup:state",
   STARTUP_AUTHENTICATE: "startup:authenticate",
+  STARTUP_CANCEL_AUTHENTICATION: "startup:cancel-authentication",
   STARTUP_RELAUNCH: "startup:relaunch",
   STARTUP_QUIT: "startup:quit",
 } as const;

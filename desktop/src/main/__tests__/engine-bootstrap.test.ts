@@ -115,9 +115,17 @@ vi.mock('os', () => ({
   homedir: () => '/Users/testuser',
 }))
 
+vi.mock('../utils/atomicWrite', () => ({
+  atomicWriteFileSync: vi.fn((p: string, content: string) => {
+    writtenFiles[p] = content
+    fakeFs[p] = content
+  }),
+}))
+
 vi.mock('../logger', () => ({
   log: vi.fn(),
   error: vi.fn(),
+  warn: vi.fn(),
 }))
 
 const originalPlatform = process.platform
@@ -195,6 +203,17 @@ const bootstrapDir = path.join(__dirname, '..')
 const plistTemplatePath = path.resolve(bootstrapDir, '..', '..', '..', 'packaging', 'launchd', 'com.ion.engine.plist')
 const bundledBinaryPath = path.resolve(bootstrapDir, '..', '..', '..', 'engine', 'bin', 'ion')
 
+// Matches the mocked os.homedir() below. Production computes destBinary and
+// plistDest via path.join(home, ...), which resolves with NATIVE separators
+// (the real host's path implementation is selected at module-load time and
+// does not follow the process.platform override in beforeEach). A hardcoded
+// forward-slash literal here would silently stop matching the join()-built
+// keys production actually reads/writes on a win32 CI runner -- these
+// helpers keep the test's expected paths built the exact same way.
+const HOME = '/Users/testuser'
+const destBinaryPath = () => path.join(HOME, '.ion', 'bin', 'ion')
+const plistDestPath = () => path.join(HOME, 'Library', 'LaunchAgents', 'com.ion.engine.plist')
+
 import { ensureEngineDaemon, restartEngineDaemon, PLIST_LABEL } from '../engine-bootstrap'
 describe('engine-bootstrap', () => {
   it('substitutes $HOME in the plist template', async () => {
@@ -202,13 +221,13 @@ describe('engine-bootstrap', () => {
     fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>\n<string>$HOME/.ion/engine.sock</string>'
 
     // Provide the destination binary so install-assets runs.
-    const destBinary = '/Users/testuser/.ion/bin/ion'
+    const destBinary = destBinaryPath()
     fakeFs[destBinary] = 'binary'
 
     await ensureEngineDaemon()
 
     // Find the written plist.
-    const plistDest = '/Users/testuser/Library/LaunchAgents/com.ion.engine.plist'
+    const plistDest = plistDestPath()
     expect(writtenFiles[plistDest]).toBeDefined()
     expect(writtenFiles[plistDest]).not.toContain('$HOME')
     expect(writtenFiles[plistDest]).toContain('/Users/testuser/.ion/bin/ion')
@@ -219,7 +238,7 @@ describe('engine-bootstrap', () => {
     fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
     fakeFs[bundledBinaryPath] = 'bundled-binary-bytes'
 
-    const destBinary = '/Users/testuser/.ion/bin/ion'
+    const destBinary = destBinaryPath()
     fakeFs[destBinary] = 'old-binary-bytes'
 
     await ensureEngineDaemon()
@@ -246,7 +265,7 @@ describe('engine-bootstrap', () => {
     fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
     fakeFs[bundledBinaryPath] = 'identical-bytes'
 
-    const destBinary = '/Users/testuser/.ion/bin/ion'
+    const destBinary = destBinaryPath()
     fakeFs[destBinary] = 'identical-bytes'
 
     await ensureEngineDaemon()
@@ -270,13 +289,13 @@ describe('engine-bootstrap', () => {
     fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
     fakeFs[bundledBinaryPath] = 'NEW-engine-with-the-features'
 
-    const destBinary = '/Users/testuser/.ion/bin/ion'
+    const destBinary = destBinaryPath()
     fakeFs[destBinary] = 'OLD-engine-different-bytes'
 
     // Pre-write the plist dest with the exact rendered content so the plist is
     // UNCHANGED this run — the binary content is the ONLY thing that differs, so
     // the force-restart can only come from binaryUpdated.
-    const plistDest = '/Users/testuser/Library/LaunchAgents/com.ion.engine.plist'
+    const plistDest = plistDestPath()
     fakeFs[plistDest] = '<string>/Users/testuser/.ion/bin/ion</string>'
 
     // Both binaries report the SAME version string — the exact condition that
@@ -312,7 +331,7 @@ describe('engine-bootstrap', () => {
     fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
     fakeFs[bundledBinaryPath] = 'bundled-binary-bytes'
 
-    const destBinary = '/Users/testuser/.ion/bin/ion'
+    const destBinary = destBinaryPath()
     fakeFs[destBinary] = 'old-binary-bytes'
 
     await ensureEngineDaemon()
@@ -338,7 +357,7 @@ describe('engine-bootstrap', () => {
     fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
     fakeFs[bundledBinaryPath] = 'bundled-binary-bytes'
 
-    const destBinary = '/Users/testuser/.ion/bin/ion'
+    const destBinary = destBinaryPath()
     fakeFs[destBinary] = 'old-binary-bytes'
 
     await ensureEngineDaemon()
@@ -354,7 +373,7 @@ describe('engine-bootstrap', () => {
   it('force-restarts with kickstart -k when the plist was (re)written', async () => {
     fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
 
-    const destBinary = '/Users/testuser/.ion/bin/ion'
+    const destBinary = destBinaryPath()
     fakeFs[destBinary] = 'binary'
 
     // No pre-existing plist dest in fakeFs, so the plist is written this run
@@ -375,12 +394,12 @@ describe('engine-bootstrap', () => {
     fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
     fakeFs[bundledBinaryPath] = 'bundled-binary-bytes'
 
-    const destBinary = '/Users/testuser/.ion/bin/ion'
+    const destBinary = destBinaryPath()
     fakeFs[destBinary] = 'old-binary-bytes'
 
     // Pre-write the plist dest with the exact rendered content so the plist is
     // UNCHANGED this run — the only change is the binary copy (binaryUpdated=true).
-    const plistDest = '/Users/testuser/Library/LaunchAgents/com.ion.engine.plist'
+    const plistDest = plistDestPath()
     fakeFs[plistDest] = '<string>/Users/testuser/.ion/bin/ion</string>'
 
     await ensureEngineDaemon()
@@ -396,13 +415,13 @@ describe('engine-bootstrap', () => {
     fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
     fakeFs[bundledBinaryPath] = 'identical-bytes'
 
-    const destBinary = '/Users/testuser/.ion/bin/ion'
+    const destBinary = destBinaryPath()
     fakeFs[destBinary] = 'identical-bytes'
 
     // Pre-write the plist dest with the EXACT rendered content so Step 1 skips
     // the write (plistChanged=false). Binary content matches so Step 2 skips the
     // copy (binaryUpdated=false). The persistent daemon must be left running.
-    const plistDest = '/Users/testuser/Library/LaunchAgents/com.ion.engine.plist'
+    const plistDest = plistDestPath()
     fakeFs[plistDest] = '<string>/Users/testuser/.ion/bin/ion</string>'
 
     await ensureEngineDaemon()
@@ -422,7 +441,7 @@ describe('engine-bootstrap', () => {
     expect(kickstartCall).not.toContain('-k')
   })
 
-  it('is a no-op on non-darwin platforms', async () => {
+  it('is a no-op on linux (no supervisor mechanism, logs WARN)', async () => {
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
     platformOverride = 'linux'
 
@@ -450,7 +469,7 @@ describe('restartEngineDaemon', () => {
     expect(execSyncCalls.some((c) => c.includes('bootout'))).toBe(false)
   })
 
-  it('is a no-op on non-darwin platforms', async () => {
+  it('is a no-op on linux (no supervisor mechanism, logs WARN)', async () => {
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
     platformOverride = 'linux'
 
@@ -510,8 +529,8 @@ describe('ensureEngineDaemon — daemon readiness', () => {
     // isolating these tests to the kickstart/verify behavior.
     fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
     fakeFs[bundledBinaryPath] = 'identical-bytes'
-    fakeFs['/Users/testuser/.ion/bin/ion'] = 'identical-bytes'
-    fakeFs['/Users/testuser/Library/LaunchAgents/com.ion.engine.plist'] = '<string>/Users/testuser/.ion/bin/ion</string>'
+    fakeFs[destBinaryPath()] = 'identical-bytes'
+    fakeFs[plistDestPath()] = '<string>/Users/testuser/.ion/bin/ion</string>'
   }
 
   it('retries kickstart when launchctl transiently fails (ETIMEDOUT regression)', async () => {

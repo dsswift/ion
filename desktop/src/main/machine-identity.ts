@@ -4,19 +4,30 @@
  *
  * host:        os.hostname() — always present, reflects the machine Electron
  *              is running on (not the Alloy collector).
- * machine_id:  IOPlatformUUID on macOS, empty on other platforms.
+ * machine_id:  IOPlatformUUID on macOS, MachineGuid on Windows, empty
+ *              elsewhere.
  * mdm_device_id / mdm_serial: from /Library/Managed Preferences/com.ion.engine.plist
- *              when the machine is enrolled in MDM (e.g. Intune). Absent otherwise.
+ *              on macOS, or the MDMDeviceID / MDMSerialNumber registry values
+ *              under HKLM\SOFTWARE\Policies\IonEngine on Windows (the same
+ *              two names the engine reserves as non-config metadata,
+ *              manifest contract C5), when the machine is enrolled in MDM
+ *              (e.g. Intune). Absent otherwise.
  */
 import { hostname } from 'os'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { log as _log } from './logger'
+import { log as _log, debug as _debug, warn as _warn } from './logger'
 
 const execFileAsync = promisify(execFile)
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('machine_identity', msg, fields)
+}
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('machine_identity', msg, fields)
+}
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('machine_identity', msg, fields)
 }
 
 export interface MachineIdentity {
@@ -63,6 +74,36 @@ async function readMdmPlist(): Promise<{ mdmDeviceId: string; mdmSerial: string 
 }
 
 /**
+ * Reads one REG_SZ value via `reg query`. warnOnFailure controls whether a
+ * miss is logged at WARN (MachineGuid, which should always exist) or DEBUG
+ * (the two MDM values, absent on every non-enrolled machine — the normal
+ * case).
+ */
+async function regQuery(key: string, value: string, warnOnFailure: boolean): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync('reg', ['query', key, '/v', value], { timeout: 5000, windowsHide: true })
+    const m = new RegExp(`^\\s*${value}\\s+REG_SZ\\s+(.+?)\\s*$`, 'm').exec(stdout)
+    return m?.[1] ?? ''
+  } catch (err) {
+    if (warnOnFailure) {
+      warn('reg query failed', { key, value, error: String(err) })
+    } else {
+      debug('reg query found nothing (not enrolled)', { key, value })
+    }
+    return ''
+  }
+}
+
+async function readWindowsIdentity(): Promise<{ machineId: string; mdmDeviceId: string; mdmSerial: string }> {
+  const [machineId, mdmDeviceId, mdmSerial] = await Promise.all([
+    regQuery('HKLM\\SOFTWARE\\Microsoft\\Cryptography', 'MachineGuid', true),
+    regQuery('HKLM\\SOFTWARE\\Policies\\IonEngine', 'MDMDeviceID', false),
+    regQuery('HKLM\\SOFTWARE\\Policies\\IonEngine', 'MDMSerialNumber', false),
+  ])
+  return { machineId, mdmDeviceId, mdmSerial }
+}
+
+/**
  * Load machine identity once. Subsequent calls return the cached result.
  * Non-fatal: errors in subprocess reads return partial identity (host always set).
  */
@@ -79,7 +120,11 @@ export async function loadMachineIdentity(): Promise<MachineIdentity> {
       mdmDeviceId: mdm.mdmDeviceId,
       mdmSerial: mdm.mdmSerial,
     }
+  } else if (process.platform === 'win32') {
+    const identity = await readWindowsIdentity()
+    cached = { host, ...identity }
   } else {
+    log('machine identity: platform has no identity source', { platform: process.platform })
     cached = { host, machineId: '', mdmDeviceId: '', mdmSerial: '' }
   }
 

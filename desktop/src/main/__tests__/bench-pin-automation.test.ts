@@ -36,7 +36,10 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'ion-bench-automation-')))
+  // realpath.native: macOS resolves /var's symlink and Windows expands a
+  // short (8.3) TEMP path to the long form git itself reports; plain
+  // realpathSync does not perform the Windows expansion.
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ion-bench-automation-')))
   storeDir = join(root, 'home')
   execFileSync('mkdir', ['-p', join(storeDir, '.ion')])
   process.env.ION_TEST_HOME_BENCH_AUTOMATION = storeDir

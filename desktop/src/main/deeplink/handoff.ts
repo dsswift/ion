@@ -97,8 +97,15 @@ export function consumeHandoff(id: string): HandoffResult {
       unlinkSync(path)
       return { kind: 'error', reason: `handoff file too large (${st.size} bytes)` }
     }
-    // Group/other must have no access at all.
-    if ((st.mode & 0o077) !== 0) {
+    // Group/other must have no access at all. Not checkable on Windows: a
+    // non-read-only file always reports mode 0o666 there regardless of what
+    // was passed to chmod/writeFileSync (Windows has no POSIX permission
+    // bits), so this bit-check would refuse every handoff file unconditionally
+    // rather than only the genuinely permissive ones. Real owner-only
+    // enforcement for this file does not yet exist on Windows (would need an
+    // ACL restriction, as engine/internal/utils/owneronly_windows.go does for
+    // the Go side).
+    if (process.platform !== 'win32' && (st.mode & 0o077) !== 0) {
       unlinkSync(path)
       return { kind: 'error', reason: 'handoff file is not private (expected 0600)' }
     }

@@ -10,6 +10,8 @@
  * `os` modules. Both slash kinds are accepted because persisted and remote data
  * can originate on another platform.
  */
+import { isAbsolutePath } from './paths'
+
 const SEPARATOR = /[\\/]+/
 const TILDE_ION_ROOT = ['~', '.ion']
 const ABSOLUTE_ION_ROOT = ['.ion']
@@ -17,10 +19,6 @@ const EPHEMERAL_ROOTS = new Set(['worktrees', 'integration'])
 
 function pathSegments(path: string): string[] {
   return path.trim().split(SEPARATOR).filter(Boolean)
-}
-
-function isAbsolutePath(path: string): boolean {
-  return path.startsWith('/') || path.startsWith('\\') || /^[A-Za-z]:[\\/]/.test(path)
 }
 
 /**

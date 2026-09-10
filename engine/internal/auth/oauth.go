@@ -531,6 +531,19 @@ func exchangeCodeForToken(cfg PKCEFlowConfig, code, verifier, redirectURI string
 		"code_verifier": {verifier},
 		"redirect_uri":  {redirectURI},
 	}
+	// The same scope the authorization request carried. RFC 6749 makes scope
+	// optional on this grant -- the code already encodes what was consented --
+	// and providers that infer it accept its absence. Microsoft Entra does
+	// not: when the authorization request names a resource scope, omitting
+	// scope here fails the exchange with
+	// "AADSTS28003: Provided value for the input parameter scope cannot be
+	// empty when requesting an access token using the provided authorization
+	// code". The user has already signed in and consented at that point, so
+	// the failure lands after a successful browser round trip and reads like
+	// a broken app registration rather than a malformed request.
+	if cfg.Scope != "" {
+		form.Set("scope", cfg.Scope)
+	}
 	if cfg.ClientSecret != "" {
 		form.Set("client_secret", cfg.ClientSecret)
 	}

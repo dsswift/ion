@@ -22,6 +22,8 @@ import type { FsEntry } from '../../shared/types'
 import { surfaceRouter } from '../lib/file-open-router'
 import { fileOpenIntent, type FileClickModifiers } from '../lib/open-file-intent'
 import { rDebug, rInfo, rWarn, rError } from '../rendererLogger'
+import { normalizeSlashes, pathSegments } from '../../shared/paths'
+import { usePreferencesStore } from '../preferences'
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff'])
 
@@ -58,6 +60,7 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
     [explorerStates, rootDir],
   )
 
+  const showHiddenFiles = usePreferencesStore((s) => s.showHiddenFiles)
   const [dirCache, setDirCache] = useState<Map<string, FsEntry[]>>(new Map())
   const [ignoredPaths, setIgnoredPaths] = useState<Set<string>>(new Set())
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
@@ -220,18 +223,31 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
     setRenaming(null)
   }, [])
 
+  // Separator-agnostic, because the two sides disagree on Windows: git
+  // reports `node_modules/` with forward slashes, and the main process joins
+  // that onto the root with Node's `join`, which uses backslashes. Comparing
+  // the raw strings meant no Windows path ever matched, so nothing in the tree
+  // was ever dimmed as ignored -- hidden and ignored directories rendered
+  // identically to source folders.
   const isIgnored = useCallback((filePath: string) => {
-    if (ignoredPaths.has(filePath)) return true
-    if (ignoredPaths.has(filePath + '/')) return true
-    for (const p of ignoredPaths) {
-      if (p.endsWith('/') && filePath.startsWith(p)) return true
-      if (!p.endsWith('/') && filePath.startsWith(p + '/')) return true
+    const target = normalizeSlashes(filePath)
+    for (const raw of ignoredPaths) {
+      const p = normalizeSlashes(raw)
+      // git marks a directory with a trailing slash. Strip it so the
+      // directory ITSELF matches, then re-add it as the boundary so only
+      // genuine descendants match and a same-prefix sibling does not.
+      const base = p.endsWith('/') ? p.slice(0, -1) : p
+      if (target === base) return true
+      if (target.startsWith(base + '/')) return true
     }
     return false
   }, [ignoredPaths])
 
   const renderTree = useCallback((dirPath: string, depth: number): React.ReactNode[] => {
-    const entries = dirCache.get(dirPath) || []
+    // Filtered at render, not at fetch, so toggling the preference re-renders
+    // from the existing cache instead of re-reading every open directory.
+    const allEntries = dirCache.get(dirPath) || []
+    const entries = showHiddenFiles ? allEntries : allEntries.filter((e) => !e.isHidden)
     const nodes: React.ReactNode[] = []
     const inlineInput = props.inlineCreate
 
@@ -273,6 +289,7 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
             expanded={isExpanded}
             selected={isSelected}
             isGitIgnored={isIgnored(entry.path)}
+            isHidden={entry.isHidden}
             onToggle={() => handleToggleDir(entry)}
             onClick={(e) => handleFileClick(entry, e)}
             onContextMenu={(e) => handleContextMenu(e, entry, depth)}
@@ -287,9 +304,9 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
     }
 
     return nodes
-  }, [dirCache, explorerState, props.inlineCreate, props.onInlineCreateDone, renaming, handleInlineSubmit, handleRenameSubmit, handleRenameCancel, handleToggleDir, handleFileClick, handleContextMenu, isIgnored, colors])
+  }, [dirCache, explorerState, props.inlineCreate, props.onInlineCreateDone, renaming, handleInlineSubmit, handleRenameSubmit, handleRenameCancel, handleToggleDir, handleFileClick, handleContextMenu, isIgnored, showHiddenFiles, colors])
 
-  const baseName = rootDir.split('/').pop() || rootDir
+  const baseName = pathSegments(rootDir).pop() || rootDir
   const parentPath = rootDir.slice(0, rootDir.length - baseName.length).replace(/\/$/, '')
 
   return (

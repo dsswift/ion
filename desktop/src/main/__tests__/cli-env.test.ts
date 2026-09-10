@@ -81,7 +81,14 @@ afterEach(() => {
   else process.env.TMPDIR = originalTmpdir
 })
 
-describe('getCliPath — probe invocation form', () => {
+// `getCliPath()` deliberately returns no probes on win32 (`pathProbes()` in
+// `cli-env.ts` short-circuits to `[]` there — Windows has no login-shell
+// startup-file concept to probe). Every test below drives behavior through a
+// mocked `execFileSync` probe result, which never fires on win32, so these
+// pin POSIX-only shell-probing behavior. Same platform-only-behavior skip
+// pattern as `secret-store.test.ts` (POSIX file permissions) and the
+// zsh-specific subtests in `terminal-manager-identity.test.ts`.
+describe.skipIf(process.platform === 'win32')('getCliPath — probe invocation form', () => {
   it('passes an ARGV ARRAY, never a shell command string', () => {
     mocks.execFileSync.mockReturnValue(REAL_PATH)
 
@@ -135,7 +142,9 @@ describe('getCliPath — probe invocation form', () => {
   })
 })
 
-describe('getCliPath — probe result validation', () => {
+// Same win32 rationale as the block above: every case here asserts on
+// probe-discovered PATH content, which requires the POSIX-only probe path.
+describe.skipIf(process.platform === 'win32')('getCliPath — probe result validation', () => {
   it('rejects a probe that discovers nothing and tries the next', () => {
     // First probe returns exactly the PATH we already had — the signature of
     // the original bug. Exit code 0, plausible output, zero information.
@@ -181,7 +190,10 @@ describe('getCliPath — probe result validation', () => {
   })
 })
 
-describe('getCliPath — result shape', () => {
+// Same win32 rationale: these assert on the shape of a probe-discovered PATH
+// (POSIX `:`-joined literals, POSIX fallback entries), which never applies
+// on win32 — `getCliPath()` returns the win32 fallback set directly there.
+describe.skipIf(process.platform === 'win32')('getCliPath — result shape', () => {
   it('puts discovered entries before process and fallback entries', () => {
     mocks.execFileSync.mockReturnValue(REAL_PATH)
 
@@ -248,7 +260,9 @@ describe('getCliPath — result shape', () => {
 })
 
 describe('getCliEnv', () => {
-  it('supplies the discovered PATH and strips CLAUDECODE', () => {
+  // Both assert PATH contains a probe-discovered entry, which requires the
+  // POSIX-only probe path (see the win32 rationale above the probe describes).
+  it.skipIf(process.platform === 'win32')('supplies the discovered PATH and strips CLAUDECODE', () => {
     mocks.execFileSync.mockReturnValue(REAL_PATH)
     process.env.CLAUDECODE = '1'
 
@@ -259,7 +273,7 @@ describe('getCliEnv', () => {
     delete process.env.CLAUDECODE
   })
 
-  it('applies an overlay without losing the discovered PATH', () => {
+  it.skipIf(process.platform === 'win32')('applies an overlay without losing the discovered PATH', () => {
     mocks.execFileSync.mockReturnValue(REAL_PATH)
 
     const env = getCliEnv({ ION_DESKTOP_TAB_ID: 'tab-a' })

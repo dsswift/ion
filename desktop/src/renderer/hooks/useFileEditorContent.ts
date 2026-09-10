@@ -27,7 +27,10 @@ export function useFileEditorContent({
       rDebug('file-editor', 'no active file, skipping load')
       return
     }
-    if (activeFile.filePath && activeFile.content === '' && activeFile.savedContent === '') {
+    // `isLoaded`, not an empty-content guess. An empty file is a real file:
+    // inferring "not yet loaded" from empty content made every keystroke
+    // re-run this effect and overwrite the typed character with "".
+    if (activeFile.filePath && !activeFile.isLoaded) {
       // Initial load for newly opened files
       rDebug('file-editor', 'initial load', { file_id: activeFile.id, path: activeFile.filePath })
       window.ion.fsReadFile(activeFile.filePath).then((result) => {
@@ -42,7 +45,7 @@ export function useFileEditorContent({
               ...current,
               files: current.files.map((f) =>
                 f.id === activeFile.id
-                  ? { ...f, content: result.content!, savedContent: result.content!, isDirty: false, readError: undefined }
+                  ? { ...f, content: result.content!, savedContent: result.content!, isDirty: false, isLoaded: true, readError: undefined }
                   : f
               ),
             })
@@ -63,15 +66,33 @@ export function useFileEditorContent({
               ...current,
               files: current.files.map((f) =>
                 f.id === activeFile.id
-                  ? { ...f, isReadOnly: true, readError: `Could not read ${activeFile.filePath}` }
+                  ? { ...f, isReadOnly: true, isLoaded: true, readError: `Could not read ${activeFile.filePath}` }
                   : f
               ),
             })
             return { fileEditorStates: states }
           })
         }
-      }).catch((err) => rError('file-editor', 'initial file load failed', { path: activeFile.filePath, error: String(err) }))
-    } else if (activeFile.filePath && !activeFile.isDirty && activeFile.content !== '') {
+      }).catch((err) => {
+        // Mark the attempt complete even on rejection. Leaving isLoaded unset
+        // would re-run this effect on the next render and spin.
+        rError('file-editor', 'initial file load failed', { path: activeFile.filePath, error: String(err) })
+        useSessionStore.setState((s) => {
+          const states = new Map(s.fileEditorStates)
+          const current = states.get(dir)
+          if (!current) return {}
+          states.set(dir, {
+            ...current,
+            files: current.files.map((f) =>
+              f.id === activeFile.id
+                ? { ...f, isReadOnly: true, isLoaded: true, readError: `Could not read ${activeFile.filePath}` }
+                : f
+            ),
+          })
+          return { fileEditorStates: states }
+        })
+      })
+    } else if (activeFile.filePath && !activeFile.isDirty) {
       // Background tab refresh: re-read from disk when switching to a non-dirty file
       window.ion.fsReadFile(activeFile.filePath).then((result) => {
         if (result.content !== null && result.content !== activeFile.savedContent) {

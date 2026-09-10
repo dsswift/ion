@@ -15,6 +15,8 @@
  * is doing.
  */
 
+import { isAbsolutePath } from './paths'
+
 /** Everything the explorer shares between windows. */
 export interface ExplorerStateSnapshot {
   version: 1
@@ -40,9 +42,14 @@ export const EMPTY_EXPLORER_STATE: ExplorerStateSnapshot = {
  * A usable path key: absolute, and free of the null byte and line breaks that
  * make a string unsafe to hand back to a filesystem caller. Matches the rule
  * `isValidProjectPath` applies at the IPC boundary.
+ *
+ * "Absolute" goes through the shared helper so a Windows drive path or UNC
+ * share qualifies. A bare `startsWith('/')` here silently dropped every
+ * persisted Windows root, which is how the explorer restored zero roots on
+ * that platform even after the IPC validator was corrected.
  */
 function isUsablePath(value: unknown): value is string {
-  return typeof value === 'string' && value.startsWith('/') && !/[\0\r\n]/.test(value)
+  return typeof value === 'string' && isAbsolutePath(value) && !/[\0\r\n]/.test(value)
 }
 
 function absolutePaths(value: unknown): string[] {

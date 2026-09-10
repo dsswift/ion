@@ -8,7 +8,7 @@
  * these three functions decide what merges; they prepare the ground and clean
  * up after a failure the loop has already detected.
  */
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, rmSync } from 'fs'
 import { runGit } from '../git-runner'
 import { log as _log, warn as _warn } from '../logger'
 import { integrationRoot } from './bench-store'
@@ -39,6 +39,24 @@ export async function ensureBenchWorktree(ws: IntegrationWorkspace): Promise<voi
     // stale registration so the add below succeeds.
     log('bench worktree registered but missing on disk, pruning', { bench_path: ws.benchPath })
     await runGit(ws.repoPath, ['worktree', 'prune'])
+  }
+
+  if (!registered && existsSync(ws.benchPath)) {
+    // The mirror image of the case above: the directory is on disk but git
+    // has no worktree registration for it (its `.git/worktrees/<name>` entry
+    // was removed or never existed — e.g. a prior `worktree remove` deleted
+    // the registration and the tracked tree but left a Finder-dropped
+    // `.DS_Store` behind, or the registration was pruned independently while
+    // the directory survived). `git worktree add` refuses to target a
+    // non-empty directory, so without this the bench is permanently wedged:
+    // every assembly re-derives the same unregistered, non-empty path and
+    // fails with "already exists". The bench has no durable content by
+    // design (see the module header — it is always recomputed from the
+    // source tip and the pinned member list), so an unregistered directory
+    // is exactly the "deleted outside Ion" case the self-healing comment
+    // above already promises, just approached from the other direction.
+    log('bench worktree directory present but not registered, clearing', { bench_path: ws.benchPath })
+    rmSync(ws.benchPath, { recursive: true, force: true })
   }
 
   mkdirSync(integrationRoot(), { recursive: true })

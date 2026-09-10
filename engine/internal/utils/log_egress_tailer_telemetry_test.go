@@ -26,6 +26,12 @@ func tailOneFile(t *testing.T, contents string) []egressRecord {
 		stopCh:     make(chan struct{}),
 		doneCh:     make(chan struct{}),
 	}
+	// pollFile leaves the underlying file handle open across polls (normal
+	// tailing behavior — the production Run() loop closes it via
+	// closeFollowers() on shutdown). This helper never runs that loop, so
+	// without an explicit close the handle outlives the test; on Windows
+	// that leaves t.TempDir()'s own cleanup unable to remove the file.
+	t.Cleanup(tailer.closeFollowers)
 	tailer.pollFile("telemetry", path)
 
 	forwarder.mu.Lock()

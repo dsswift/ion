@@ -119,7 +119,7 @@ func parseSlashInvocation(text string) (name, args string, ok bool) {
 // a default. The engine owns no opinion on the flag — it honors whatever the
 // consumer hands it (here, via the session's EngineConfig).
 func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*ResolvedSlash, bool) {
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	filePath := strings.ReplaceAll(name, ":", string(filepath.Separator)) + ".md"
 	flatName := !strings.Contains(name, ":")
 

@@ -1,4 +1,5 @@
 import type { EffectiveProjectEntry, ProjectDisplayEntry } from '../../shared/project-registry'
+import { isAbsolutePath } from '../../shared/paths'
 
 export interface DirectoryBrowseQuery {
   parentPath: string
@@ -9,7 +10,7 @@ export interface DirectoryBrowseQuery {
 /** True when the input explicitly addresses a directory instead of a project. */
 export function isDirectoryBrowseQuery(query: string): boolean {
   const value = query.trim()
-  return value === '~' || value.startsWith('~/') || value.startsWith('/')
+  return value === '~' || value.startsWith('~/') || isAbsolutePath(value)
 }
 
 /**

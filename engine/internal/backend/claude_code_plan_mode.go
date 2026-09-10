@@ -283,7 +283,10 @@ func isClaudePlansFilePath(path, runPlanFilePath string) bool {
 	if runPlanFilePath != "" && path == runPlanFilePath {
 		return true
 	}
-	return strings.Contains(path, "/plans/") && strings.HasSuffix(path, ".md")
+	// Separator-agnostic: path came from whatever platform wrote it, and a
+	// Windows path joins with backslashes, which a forward-slash-only check
+	// silently never matches.
+	return (strings.Contains(path, "/plans/") || strings.Contains(path, `\plans\`)) && strings.HasSuffix(path, ".md")
 }
 
 // handlePlanModeResult processes the CLI's result event for a plan-mode run,

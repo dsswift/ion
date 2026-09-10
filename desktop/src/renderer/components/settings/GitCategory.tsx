@@ -7,6 +7,7 @@ import { SettingSection } from './SettingSection'
 import { SettingHeading } from './SettingHeading'
 import { BashAllowlistEditor } from './BashAllowlistEditor'
 import type { GitOpsMode, WorktreeCompletionStrategy } from '../../../shared/types'
+import { DEFAULT_MONO_FONT } from '../../typography'
 
 export function GitCategory() {
   const colors = useColors()
@@ -179,7 +180,7 @@ export function GitCategory() {
             width: '100%',
             padding: '7px 10px',
             fontSize: 13,
-            fontFamily: 'Menlo, Monaco, monospace',
+            fontFamily: DEFAULT_MONO_FONT,
             background: colors.surfacePrimary,
             color: colors.textPrimary,
             border: `1px solid ${colors.containerBorder}`,

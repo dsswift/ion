@@ -109,7 +109,11 @@ describe('consumeHandoff', () => {
     expect(existsSync(p)).toBe(false)
   })
 
-  it('refuses a group/world-accessible file', async () => {
+  // Not checkable on Windows: chmod there only toggles the read-only
+  // attribute, so 0o644 and 0o600 produce the identical reported mode
+  // (0o666) -- there is no "more permissive" state for this test to create.
+  // See handoff.ts's consumeHandoff for the matching production skip.
+  it.skipIf(process.platform === 'win32')('refuses a group/world-accessible file', async () => {
     const p = writeHandoff({ action: 'prompt', dir: '/repo', text: 'hi' })
     chmodSync(p, 0o644)
     const { consumeHandoff } = await import('../handoff')
@@ -184,7 +188,11 @@ describe('ensureHandoffDir', () => {
     ensureHandoffDir()
 
     expect(existsSync(HANDOFF_DIR)).toBe(true)
-    expect(statSync(HANDOFF_DIR).mode & 0o777).toBe(0o700)
+    // Windows has no POSIX permission bits for chmod to set; see the
+    // equivalent skip and rationale in handoff.ts's consumeHandoff.
+    if (process.platform !== 'win32') {
+      expect(statSync(HANDOFF_DIR).mode & 0o777).toBe(0o700)
+    }
   })
 
   it('is idempotent', async () => {

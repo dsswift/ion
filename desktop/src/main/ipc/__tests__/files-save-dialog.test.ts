@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { join } from 'path'
 import { IPC } from '../../../shared/types'
 
 const {
@@ -10,6 +11,7 @@ const {
   showWindow,
   log,
   warn,
+  DOWNLOADS_DIR,
 } = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
   showSaveDialog: vi.fn(async () => ({ canceled: true, filePath: undefined as string | undefined })),
@@ -19,10 +21,11 @@ const {
   showWindow: vi.fn(),
   log: vi.fn(),
   warn: vi.fn(),
+  DOWNLOADS_DIR: '/Users/example/Downloads',
 }))
 
 vi.mock('electron', () => ({
-  app: { getPath: vi.fn(() => '/Users/example/Downloads') },
+  app: { getPath: vi.fn(() => DOWNLOADS_DIR) },
   BrowserWindow: { fromWebContents },
   dialog: { showSaveDialog },
   ipcMain: { handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => handlers.set(channel, handler)) },
@@ -59,7 +62,7 @@ describe('filesystem save dialog', () => {
     await save({ defaultFileName: 'release-plan-20270305-0907.md' })
 
     expect(showSaveDialog).toHaveBeenCalledWith(studioWindow, {
-      defaultPath: '/Users/example/Downloads/release-plan-20270305-0907.md',
+      defaultPath: join(DOWNLOADS_DIR, 'release-plan-20270305-0907.md'),
     })
     expect(overlayWindow.hide).not.toHaveBeenCalled()
     expect(showWindow).not.toHaveBeenCalled()

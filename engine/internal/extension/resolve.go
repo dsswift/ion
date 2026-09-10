@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // ResolvedExtensionPlan is the filesystem-only result of resolving an
@@ -21,7 +23,7 @@ type ResolvedExtensionPlan struct {
 // directory to its conventional entry point. It does not spawn a process.
 func ResolveExtensionPath(extensionPath string) (string, error) {
 	if strings.HasPrefix(extensionPath, "~/") {
-		home, err := os.UserHomeDir()
+		home, err := utils.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("resolve home for extension path: %w", err)
 		}
@@ -46,7 +48,9 @@ func ResolveExtensionPath(extensionPath string) (string, error) {
 }
 
 // ResolveExtensionEntry maps an extension directory to its conventional entry
-// point without loading it.
+// point without loading it. The native (compiled binary) entry name and its
+// validity check are platform-specific: unix requires the exec bit on `main`;
+// windows requires only that `main.exe` exists (there is no exec-bit concept).
 func ResolveExtensionEntry(extDir string) (string, error) {
 	for _, name := range extensionEntryCandidates {
 		candidate := filepath.Join(extDir, name)
@@ -54,11 +58,11 @@ func ResolveExtensionEntry(extDir string) (string, error) {
 			return candidate, nil
 		}
 	}
-	native := filepath.Join(extDir, nativeExtensionEntry)
-	if info, err := os.Stat(native); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+	native := filepath.Join(extDir, nativeEntryName)
+	if info, err := os.Stat(native); err == nil && !info.IsDir() && nativeEntryOK(info) {
 		return native, nil
 	}
-	candidates := append(append([]string{}, extensionEntryCandidates...), nativeExtensionEntry+" (executable)")
+	candidates := append(append([]string{}, extensionEntryCandidates...), nativeEntryName+nativeEntryLabelSuffix)
 	return "", fmt.Errorf("no extension entry point in %s (looked for %s)", extDir, strings.Join(candidates, ", "))
 }
 

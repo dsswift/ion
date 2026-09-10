@@ -1,0 +1,41 @@
+{
+  "allowedProviders": [
+    "gateway"
+  ],
+  "providers": {
+    "gateway": {
+      "displayName": "Corporate Gateway",
+      "baseURL": "https://ai.example.com",
+      "authHeader": "x-api-key"
+    }
+  },
+  "auth": {
+    "identityProvider": "entra",
+    "requireOperatorIdentity": true,
+    "oauth": {
+      "entra": {
+        "issuerUrl": "https://login.microsoftonline.com/<tenant-id>/v2.0",
+        "authorizationUrl": "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/authorize",
+        "tokenUrl": "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token",
+        "deviceAuthorizationUrl": "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/devicecode",
+        "clientId": "<application-client-id>",
+        "redirectUri": "http://localhost/callback",
+        "usePkce": true,
+        "scopes": [
+          "openid",
+          "profile",
+          "offline_access",
+          "api://<application-client-id>/Telemetry.Write"
+        ]
+      }
+    }
+  },
+  "customFields": {
+    "ion-desktop": {
+      "disableAutoUpdate": true,
+      "tabStripPolicy": {
+        "visible": false
+      }
+    }
+  }
+}

@@ -2,6 +2,7 @@ package helpers
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -224,22 +225,16 @@ func TextResponse(text string) []types.LlmStreamEvent {
 func ToolCallResponse(toolName, toolID string, input map[string]interface{}) []types.LlmStreamEvent {
 	stopReason := "tool_use"
 
-	// Build partial JSON from input
-	inputJSON := "{"
-	first := true
-	for k, v := range input {
-		if !first {
-			inputJSON += ","
-		}
-		first = false
-		switch val := v.(type) {
-		case string:
-			inputJSON += `"` + k + `":"` + val + `"`
-		default:
-			inputJSON += `"` + k + `":` + formatValue(val)
-		}
+	// json.Marshal, not string concatenation: a string value containing a
+	// character JSON must escape (a Windows path's backslashes, an embedded
+	// quote) produced invalid JSON, which the real parser this simulates
+	// (runloop_stream.go) coerces to an empty input map on failure -- silently
+	// dropping every argument, including a file_path a test relies on.
+	rawInput, err := json.Marshal(input)
+	if err != nil {
+		panic("ToolCallResponse: marshal input: " + err.Error())
 	}
-	inputJSON += "}"
+	inputJSON := string(rawInput)
 
 	return []types.LlmStreamEvent{
 		{
@@ -294,24 +289,6 @@ func MultiTurnResponse(text1 string, toolName string, toolInput map[string]inter
 	return
 }
 
-func formatValue(v interface{}) string {
-	switch val := v.(type) {
-	case string:
-		return `"` + val + `"`
-	case int:
-		return IntToStr(val)
-	case float64:
-		return floatToStr(val)
-	case bool:
-		if val {
-			return "true"
-		}
-		return "false"
-	default:
-		return `"unknown"`
-	}
-}
-
 // IntToStr converts an integer to a string without fmt dependency.
 func IntToStr(n int) string {
 	if n == 0 {
@@ -335,12 +312,6 @@ func IntToStr(n int) string {
 		return "-" + string(digits)
 	}
 	return string(digits)
-}
-
-func floatToStr(f float64) string {
-	// Simple conversion for test data
-	n := int(f)
-	return IntToStr(n)
 }
 
 // MockBackend implements backend.RunBackend for testing server and session manager.

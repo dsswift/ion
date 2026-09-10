@@ -1,7 +1,6 @@
 package session
 
 import (
-	"os"
 	"path/filepath"
 
 	"github.com/dsswift/ion/engine/internal/extension"
@@ -83,7 +82,7 @@ func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *ext
 	// (logs, conversations, sockets, state files) triggers watcher events —
 	// a feedback loop that generates hundreds of thousands of spurious log
 	// lines per log rotation and wastes CPU.
-	if home, err := os.UserHomeDir(); err == nil {
+	if home, err := utils.UserHomeDir(); err == nil {
 		ionHome := filepath.Clean(filepath.Join(home, ".ion"))
 		cwdClean := filepath.Clean(s.config.WorkingDirectory)
 		if cwdClean == ionHome {

@@ -5,6 +5,7 @@
  * `CorpusDelta` broadcast.
  */
 
+import { sep } from 'path'
 import { log as _log, debug as _debug } from '../logger'
 import { broadcast } from '../broadcast'
 import { IPC } from '../../shared/types-ipc'
@@ -144,7 +145,9 @@ function onRootWatchState(projectPath: string, rootPath: string, state: CorpusRo
 function getKnownPathsUnderPrefix(projectPath: string, directoryPath: string): string[] {
   const entry = corpusCache.get(projectPath)
   if (!entry) return []
-  const prefix = directoryPath.endsWith('/') ? directoryPath : `${directoryPath}/`
+  // Real filesystem paths: judge containment with the platform separator, not
+  // a hardcoded '/' that never matches a Windows path joined with '\'.
+  const prefix = directoryPath.endsWith(sep) ? directoryPath : `${directoryPath}${sep}`
   return entry.snapshot.documents.filter((d) => d.path.startsWith(prefix)).map((d) => d.path)
 }
 

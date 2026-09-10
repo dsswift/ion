@@ -34,6 +34,18 @@ const MESSAGE_ID_PATTERN = /^[a-zA-Z0-9_:.-]{1,128}$/
 export function registerSystemIpc(): void {
   ipcMain.handle(IPC.LIST_FONTS, async () => {
     if (state.cachedFonts) return state.cachedFonts
+    // Enumeration is AppleScript via osascript, which exists only on macOS.
+    // Off darwin it throws and lands in the catch below, where the fallback
+    // list was three macOS families -- so the Windows font picker offered
+    // Menlo, Monaco and Courier New, two of which cannot render there.
+    if (process.platform !== 'darwin') {
+      state.cachedFonts = fallbackFontFamilies()
+      debug('system: font enumeration unavailable off darwin; using platform defaults', {
+        platform: process.platform,
+        count: state.cachedFonts.length,
+      })
+      return state.cachedFonts
+    }
     try {
       const script = `
 use framework "AppKit"
@@ -62,7 +74,7 @@ return output`
       // Font enumeration failed; fall back to a safe default set, but log so
       // the fallback (and any AppleScript failure) is visible.
       debug('system: font enumeration failed; using defaults', { error: String(err) })
-      return ['Menlo', 'Monaco', 'Courier New']
+      return fallbackFontFamilies()
     }
   })
 
@@ -154,4 +166,22 @@ return output`
     log('system: chart jump routed', { tab_id: tabId, chart_id: chartId, message_id: messageId })
   })
 
+}
+
+/**
+ * Monospace families to offer when the system cannot be enumerated.
+ *
+ * Every entry must actually exist on the platform it is offered for, or the
+ * picker lists a font that silently falls back to something proportional.
+ * Windows ships Consolas and Courier New with the OS and Cascadia Code /
+ * Cascadia Mono with Windows Terminal; macOS ships Menlo, Monaco and SF Mono.
+ */
+function fallbackFontFamilies(): string[] {
+  if (process.platform === 'win32') {
+    return ['Cascadia Code', 'Cascadia Mono', 'Consolas', 'Courier New', 'Lucida Console']
+  }
+  if (process.platform === 'linux') {
+    return ['DejaVu Sans Mono', 'Liberation Mono', 'Ubuntu Mono', 'monospace']
+  }
+  return ['Menlo', 'Monaco', 'SF Mono', 'Courier New']
 }

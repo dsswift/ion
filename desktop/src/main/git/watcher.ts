@@ -83,7 +83,16 @@ const GIT_META_FILES = new Set([
   'CHERRY_PICK_HEAD', 'REBASE_HEAD', 'index', 'packed-refs', 'config',
 ])
 
-function classifyGitMetaChange(path: string): GitWatchEvent['kind'] | null {
+/**
+ * Classifies a raw filesystem-watcher path into the git-metadata change kind
+ * it represents. rawPath is normalized to forward slashes first: Parcel
+ * delivers backslash-separated paths on Windows, and every check below
+ * (basename split, `/refs/` substring) assumes '/' — without the
+ * normalization every event on Windows would misclassify as null and the
+ * git panel would never refresh.
+ */
+export function classifyGitMetaChange(rawPath: string): GitWatchEvent['kind'] | null {
+  const path = rawPath.replaceAll('\\', '/')
   const basename = path.split('/').pop() || ''
   if (basename === 'HEAD' || basename === 'MERGE_HEAD' ||
       basename === 'CHERRY_PICK_HEAD' || basename === 'REBASE_HEAD') {

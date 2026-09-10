@@ -30,7 +30,27 @@
  * verbs does it invoke". It has no opinion about whether that location is
  * allowed — that is the caller's policy.
  */
-import { basename, isAbsolute, join, normalize, sep } from 'node:path'
+// This module parses BASH COMMAND TEXT, not real filesystem paths on the host
+// OS. A shell command's SYNTAX (quoting, `&&`/`;` splitting, `cd`/`git -C`
+// tokens) is POSIX regardless of host OS -- `cd X && git commit` is a bash
+// script fragment on darwin, linux, and (via git-bash on Windows) win32
+// alike. Using the platform-default `node:path` here would resolve through
+// `path.win32` on a Windows CI runner, so `join`/`normalize` would silently
+// reinterpret a POSIX-shaped destination as a Windows one. Import the POSIX
+// implementation explicitly for that.
+//
+// The DESTINATION a command names is a different question: on a real
+// Windows deployment, the model receives Windows-native absolute paths
+// (`C:\Users\...`) in its context (cwd, file listings) and naturally embeds
+// them verbatim in a `cd` argument -- `cd C:\Users\...\bench && git commit`
+// is exactly what a Windows agent turn produces, and it is not a POSIX
+// absolute path (`isAbsolute` from path/posix requires a leading `/`). So
+// absolute-path DETECTION uses the host-OS-independent isAbsolutePath
+// helper (shared/paths.ts, already handles POSIX `/`, UNC `\\\\`, and a
+// drive letter), while segment splitting/join/normalize stay POSIX for the
+// syntax reasons above.
+import { basename, join, normalize, sep } from 'node:path/posix'
+import { isAbsolutePath } from '../../shared/paths'
 
 /** Merge-driver classification for one segment. */
 export type MergeDriver = '' | 'continue' | 'abort'
@@ -413,7 +433,7 @@ function clean(p: string): string {
 
 function absolutize(path: string, base: string): string {
   const stripped = path.replace(/^["']+|["']+$/g, '')
-  if (isAbsolute(stripped)) return clean(stripped)
+  if (isAbsolutePath(stripped)) return clean(stripped)
   if (base === '') return ''
   return clean(join(base, stripped))
 }
@@ -422,9 +442,17 @@ function absolutize(path: string, base: string): string {
  * Whether a token's value cannot be known statically: variable expansion,
  * command substitution, backticks, tilde (whose expansion depends on the
  * executing user), or glob characters.
+ *
+ * The tilde check is anchored to the token's start, matching real shell
+ * semantics: `~`/`~user` only expands there, never mid-word. An unanchored
+ * check treats every Windows short (8.3) path as dynamic and silently drops
+ * it -- `RUNNER~1`, `PROGRA~1`, and any other DOS-generated short name
+ * contain a literal `~` by construction, and GitHub Actions' own hosted
+ * Windows runners set %TEMP% through exactly such a segment. Same fix as
+ * the engine-side isDynamicToken (internal/workspaces/bash.go).
  */
 function isDynamicToken(tok: string): boolean {
-  return /[$`~*?]/.test(tok)
+  return /[$`*?]/.test(tok) || tok.startsWith('~')
 }
 
 function normalizeGroupingToken(token: string): string {

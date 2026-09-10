@@ -277,8 +277,12 @@ func TestSDKContractManifest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read golden file (run with -update to create): %v", err)
 	}
+	// Normalized: a Windows checkout of this file under core.autocrlf reads
+	// back with \r\n, while the freshly marshaled manifest always uses \n.
+	// That is a checkout artifact, not a contract drift.
+	normalizedWant := strings.ReplaceAll(string(want), "\r\n", "\n")
 
-	if string(data) != string(want) {
+	if string(data) != normalizedWant {
 		t.Errorf("SDK contract manifest has drifted from %s\n"+
 			"Run: cd engine && go test ./internal/extension/ -run TestSDKContractManifest -update\n"+
 			"Then update the client SDKs: sdk/go (Go descriptors in hooks.go) and\n"+

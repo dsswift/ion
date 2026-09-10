@@ -16,14 +16,15 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "dist": "bash scripts/build-dev-app.sh",
+    "dist": "node scripts/build-dev-app.js",
+    "dist:win": "electron-vite build --mode production && electron-builder --win --publish never",
     "pkg": "bash scripts/build-pkg.sh",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint 'src/**/*.{ts,tsx}'",
     "doctor": "bash scripts/doctor.sh",
-    "postinstall": "electron-builder install-app-deps && bash scripts/patch-dev-icon.sh && bash scripts/patch-zustand.sh && bash ../scripts/setup-claude-symlinks.sh"
+    "postinstall": "electron-builder install-app-deps && node scripts/postinstall.js"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -107,21 +108,14 @@
       "dist/renderer/**/*",
       "resources/**/*",
       "!resources/engine/**/*",
-      "package.json"
+      "package.json",
+      "!**/*.pdb"
+    ],
+    "asarUnpack": [
+      "**/node_modules/node-pty/**",
+      "**/node_modules/@parcel/watcher*/**"
     ],
     "extraResources": [
-      {
-        "from": "scripts/install-worker.sh",
-        "to": "install-worker.sh"
-      },
-      {
-        "from": "resources/engine/ion",
-        "to": "engine/ion"
-      },
-      {
-        "from": "resources/engine/com.ion.engine.plist",
-        "to": "engine/com.ion.engine.plist"
-      },
       {
         "from": "resources/engine/extensions",
         "to": "engine/extensions"
@@ -144,6 +138,20 @@
       "entitlements": "resources/entitlements.mac.plist",
       "entitlementsInherit": "resources/entitlements.mac.plist",
       "notarize": false,
+      "extraResources": [
+        {
+          "from": "scripts/install-worker.sh",
+          "to": "install-worker.sh"
+        },
+        {
+          "from": "resources/engine/ion",
+          "to": "engine/ion"
+        },
+        {
+          "from": "resources/engine/com.ion.engine.plist",
+          "to": "engine/com.ion.engine.plist"
+        }
+      ],
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Ion uses your microphone to transcribe voice input locally with Whisper.",
         "NSAppleEventsUsageDescription": "Ion uses AppleScript to detect available monospace fonts on your system.",
@@ -156,6 +164,39 @@
           "_ion._tcp"
         ]
       }
+    },
+    "win": {
+      "icon": "resources/icon.ico",
+      "target": [
+        {
+          "target": "nsis"
+        }
+      ],
+      "artifactName": "Ion-Setup-${version}-${arch}.${ext}",
+      "extraResources": [
+        {
+          "from": "resources/engine/ion.exe",
+          "to": "engine/ion.exe"
+        },
+        {
+          "from": "resources/engine/ion-engine-host.exe",
+          "to": "engine/ion-engine-host.exe"
+        },
+        {
+          "from": "resources/engine/ion-engine-task.xml",
+          "to": "engine/ion-engine-task.xml"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "guid": "7b1e4b3a-5d2c-4c7e-9f0a-2e6d8c1b4a53",
+      "include": "../packaging/windows/installer.nsh",
+      "shortcutName": "Ion"
     },
     "afterSign": "scripts/notarize.js",
     "publish": {
@@ -195,6 +236,7 @@
           "brace-expansion": "^5.0.9"
         }
       }
-    }
+    },
+    "js-yaml": "^4.3.2"
   }
 }

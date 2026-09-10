@@ -187,7 +187,7 @@ func stringsFromRaw(raw interface{}) []string {
 }
 
 func modelsConfigPath() string {
-	home, err := os.UserHomeDir()
+	home, err := utils.UserHomeDir()
 	if err != nil {
 		return ""
 	}

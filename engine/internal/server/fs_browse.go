@@ -29,7 +29,7 @@ const listDirectoryMaxEntries = 5000
 // The values are immutable for the lifetime of the daemon, so it caches once.
 func computeHostInfo() map[string]interface{} {
 	hostInfoOnce.Do(func() {
-		home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+		home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 		username := ""
 		if u, err := user.Current(); err == nil {
 			username = u.Username
@@ -141,14 +141,14 @@ func listDirectory(path string, showHidden bool) (map[string]interface{}, error)
 // the engine's host. Returns an error if the path is relative.
 func resolveBrowsePath(path string) (string, error) {
 	if path == "" || path == "~" {
-		home, err := os.UserHomeDir()
+		home, err := utils.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("home directory unavailable: %w", err)
 		}
 		return home, nil
 	}
 	if strings.HasPrefix(path, "~/") {
-		home, err := os.UserHomeDir()
+		home, err := utils.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("home directory unavailable: %w", err)
 		}

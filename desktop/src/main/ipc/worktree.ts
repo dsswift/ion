@@ -9,6 +9,7 @@ import { workStageDescriptor, type WorkStage } from "../../shared/types-git";
 import { isValidProjectPath } from "../ipc-validation";
 import { runGit } from "../git-runner";
 import { registerWorktreeGitIpc } from "./worktree-git";
+import { parseWorktreeList } from "../worktree/integrate";
 import {
   lookupWorktreeRegistration,
   registerWorktree,
@@ -385,27 +386,12 @@ export function registerWorktreeIpc(): void {
     IPC.GIT_WORKTREE_LIST,
     async (_event, { repoPath }: { repoPath: string }) => {
       try {
+        // Parsed by the one shared porcelain parser (worktree/integrate.ts)
+        // rather than a second inline copy, so the Windows forward-slash
+        // normalization it applies to the `worktree` path covers this IPC
+        // listing too instead of drifting from it.
         const raw = await runGit(repoPath, ["worktree", "list", "--porcelain"]);
-        const worktrees: Array<{ path: string; branch: string; head: string }> =
-          [];
-        const blocks = raw.trim().split("\n\n");
-        for (const block of blocks) {
-          if (!block.trim()) continue;
-          const lines = block.trim().split("\n");
-          let wtPath = "";
-          let head = "";
-          let branch = "";
-          for (const line of lines) {
-            if (line.startsWith("worktree "))
-              wtPath = line.slice("worktree ".length);
-            else if (line.startsWith("HEAD "))
-              head = line.slice("HEAD ".length);
-            else if (line.startsWith("branch "))
-              branch = line.slice("branch refs/heads/".length);
-          }
-          if (wtPath) worktrees.push({ path: wtPath, branch, head });
-        }
-        return { worktrees };
+        return { worktrees: parseWorktreeList(raw) };
       } catch {
         return { worktrees: [] };
       }

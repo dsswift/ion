@@ -104,7 +104,12 @@ func defaultCodexLauncher(h codexrpc.Handlers) (*codexrpc.Client, func(), error)
 		return nil, nil, err
 	}
 	client := codexrpc.NewClientFromRPC(proc.Client, h)
-	return client, proc.Kill, nil
+	stop := func() {
+		if err := proc.KillTree(); err != nil {
+			utils.LogWithFields(utils.LevelInfo, "backend.codex", "kill tree on stop", map[string]any{"error": utils.ErrStr(err)})
+		}
+	}
+	return client, stop, nil
 }
 
 // SetPermissionAskCallback installs the session's permission-ask bridge so

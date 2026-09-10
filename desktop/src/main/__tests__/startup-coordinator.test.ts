@@ -134,6 +134,98 @@ describe('startup coordinator', () => {
     })
   })
 
+  // The reveal gate refuses while mode is 'authentication'. Both ready reports
+  // can land before signIn() settles -- the main-process wait loop polls the
+  // engine every 250ms and proceeds on the engine's view of the grant, which
+  // flips the moment the token exchange completes. Observed on Windows: owner
+  // ready 19:03:06.645, studio ready 19:03:07.081, both refused, then
+  // authentication completed 19:03:07.736 with nothing left to retry the
+  // reveal. The splash sat on "Signed in. Preparing your workspace…" over a
+  // fully booted app, and quitting was the only way out.
+  it('reveals when the surface became ready during the sign-in', async () => {
+    const c = await freshCoordinator()
+    c.startStartup(overlayPlan)
+    c.requireStartupAuthentication()
+
+    let release: ((v: { user: string }) => void) | undefined
+    signIn.mockImplementationOnce(() => new Promise((resolve) => { release = resolve }))
+    const pending = c.authenticateStartup()
+
+    // The surface finishes booting while the gate is still up.
+    c.reportStartup({ source: 'owner', sequence: 1, status: 'Ion is ready', ready: true }, owner)
+    expect(c.isStartupRevealed()).toBe(false)
+
+    release?.({ user: 'someone@example.com' })
+    await pending
+
+    expect(c.isStartupRevealed()).toBe(true)
+    expect(splash.destroy).toHaveBeenCalled()
+  })
+
+  // The engine's PKCE flow has no cancel: it holds a loopback listener open
+  // and times out after five minutes, and nothing in that window tells the
+  // desktop the user gave up. A user who closes the browser tab, or is handed
+  // a provider error page, sat on a disabled "Waiting for browser…" button for
+  // the full five minutes with quitting the app as the only way out.
+  it('cancelling a sign-in attempt restores a usable gate', async () => {
+    const c = await freshCoordinator()
+    c.startStartup(overlayPlan)
+    c.requireStartupAuthentication()
+
+    let release: (() => void) | undefined
+    signIn.mockImplementationOnce(() => new Promise((resolve) => {
+      release = () => resolve({ user: 'someone@example.com' })
+    }))
+    const pending = c.authenticateStartup()
+    expect(c.getStartupState().authenticationBusy).toBe(true)
+
+    c.cancelStartupAuthentication()
+
+    expect(c.getStartupState()).toMatchObject({
+      mode: 'authentication',
+      authenticationBusy: false,
+      authenticationError: null,
+      status: 'Sign in to continue',
+    })
+    // Still gated: cancelling abandons the attempt, it does not sign anyone in.
+    expect(c.isStartupRevealed()).toBe(false)
+
+    release?.()
+    await pending
+  })
+
+  // A second attempt has to be possible, or the cancel button only changes the
+  // label on a dead end.
+  it('allows a fresh attempt after a cancel', async () => {
+    const c = await freshCoordinator()
+    c.startStartup(overlayPlan)
+    c.requireStartupAuthentication()
+
+    let release: (() => void) | undefined
+    signIn.mockImplementationOnce(() => new Promise((resolve) => {
+      release = () => resolve({ user: 'someone@example.com' })
+    }))
+    const abandoned = c.authenticateStartup()
+    c.cancelStartupAuthentication()
+
+    await c.authenticateStartup()
+
+    expect(signIn).toHaveBeenCalledTimes(2)
+    expect(c.getStartupState()).toMatchObject({ mode: 'loading', authenticationBusy: false })
+
+    release?.()
+    await abandoned
+  })
+
+  it('ignores a cancel when no sign-in gate is active', async () => {
+    const c = await freshCoordinator()
+    c.startStartup(overlayPlan)
+
+    c.cancelStartupAuthentication()
+
+    expect(c.getStartupState().mode).not.toBe('authentication')
+  })
+
   it('rejects a report whose sender is not the source window', async () => {
     const c = await freshCoordinator()
     c.startStartup(overlayPlan)

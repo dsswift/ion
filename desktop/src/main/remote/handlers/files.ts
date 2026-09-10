@@ -6,6 +6,8 @@ import { atomicWriteFileSync } from '../../utils/atomicWrite'
 import { log as _log } from '../../logger'
 import { state } from '../../state'
 import { isValidProjectPath } from '../../ipc-validation'
+import { windowsHiddenNames } from '../../ipc/files'
+import type { FsEntry } from '../../../shared/types'
 import type { RemoteCommand } from '../protocol'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -20,14 +22,24 @@ export async function handleFsListDir(cmd: Extract<RemoteCommand, { type: 'deskt
       return
     }
     const dirents = readdirSync(directory, { withFileTypes: true })
-    const entries: Array<{ name: string; path: string; isDirectory: boolean; size: number; modifiedMs: number }> = []
+    const entries: FsEntry[] = []
+    const winHidden = windowsHiddenNames(directory)
     for (const d of dirents) {
       if (d.name === '.DS_Store') continue
       if (!includeHidden && d.name.startsWith('.')) continue
       const fullPath = join(directory, d.name)
       try {
         const st = statSync(fullPath)
-        entries.push({ name: d.name, path: fullPath, isDirectory: d.isDirectory(), size: st.size, modifiedMs: st.mtimeMs })
+        entries.push({
+          name: d.name,
+          path: fullPath,
+          isDirectory: d.isDirectory(),
+          size: st.size,
+          modifiedMs: st.mtimeMs,
+          // Same fact the local IPC listing (ipc/files.ts) computes, reused
+          // rather than reimplemented — see windowsHiddenNames.
+          isHidden: d.name.startsWith('.') || winHidden.has(d.name),
+        })
       } catch { /* silent-ok: skip entries that vanish or are unreadable mid-listing */ }
     }
     entries.sort((a, b) => {

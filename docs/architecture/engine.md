@@ -105,7 +105,7 @@ The engine emits several typed events that consumers must handle with specific s
 
 ## Socket protocol
 
-The engine listens on `~/.ion/engine.sock` (Unix) or `127.0.0.1:21017` (Windows/TCP).
+The engine listens on `~/.ion/engine.sock` (Unix) or, on Windows, on `127.0.0.1` at a per-user TCP port derived from the signed-in user's SID (`51000-54999`).
 
 **Wire format**: newline-delimited JSON (NDJSON). One JSON object per line, terminated by `\n`.
 

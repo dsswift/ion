@@ -24,6 +24,8 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import { tmpdir } from 'os'
+import { saveHomeEnv, setHomeEnv, restoreHomeEnv } from '../../test/home-env'
 
 const MAIN = join(__dirname, '..')
 
@@ -86,16 +88,24 @@ describe('bench-store exposes resolvers, not frozen constants', () => {
     const mod = await import('../integration/bench-store')
     const before = mod.workspacesFile()
 
-    const original = process.env.HOME
+    // os.homedir() reads USERPROFILE on win32 and HOME elsewhere, so both
+    // must move together for this probe to isolate anything on every
+    // platform (see src/test/home-env.ts). The probe value itself must be a
+    // literal `join()` would leave untouched: a POSIX-style '/tmp/...'
+    // string gets its slashes normalized to backslashes by path.win32.join,
+    // so asserting containment of the ORIGINAL forward-slash spelling would
+    // fail on Windows even though the resolver re-ran correctly. Assert
+    // against what join() actually does to the probe value instead.
+    const saved = saveHomeEnv()
+    const probe = join(tmpdir(), 'ion-lazy-path-probe')
     try {
-      process.env.HOME = '/tmp/ion-lazy-path-probe'
+      setHomeEnv(probe)
       // A frozen const would return the same string here; a resolver reflects
       // the change. This is the property that keeps tests off the real ~/.ion.
       expect(mod.workspacesFile()).not.toBe(before)
-      expect(mod.workspacesFile()).toContain('/tmp/ion-lazy-path-probe')
+      expect(mod.workspacesFile()).toContain(join(probe, '.ion'))
     } finally {
-      if (original === undefined) delete process.env.HOME
-      else process.env.HOME = original
+      restoreHomeEnv(saved)
     }
   })
 })

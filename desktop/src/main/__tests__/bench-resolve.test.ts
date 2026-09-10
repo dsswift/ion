@@ -4,6 +4,7 @@ import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, readFileSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 vi.mock('os', async () => {
@@ -71,7 +72,10 @@ function recordResolution(ws: IntegrationWorkspace, content: string): void {
 }
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'ion-bench-resolve-')))
+  // realpath.native: macOS resolves /var's symlink and Windows expands a
+  // short (8.3) TEMP path to the long form git itself reports; plain
+  // realpathSync does not perform the Windows expansion.
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ion-bench-resolve-')))
   process.env.ION_TEST_HOME_BENCH_RESOLVE = join(root, 'home')
   repo = join(root, 'repo')
   execFileSync('git', ['init', '-b', 'main', repo])
@@ -148,4 +152,4 @@ describe('prepareConflictResolution', () => {
     expect(result).toMatchObject({ ok: true, benchPath: ws.benchPath, branchName: 'wt/c' })
     expect(git(ws.benchPath, 'diff', '--name-only', '--diff-filter=U').trim()).toBe('shared.txt')
   })
-})
+}, GIT_FIXTURE_TIMEOUT)

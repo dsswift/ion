@@ -30,7 +30,7 @@ func bindingsPath() string {
 	if v := os.Getenv("ION_SESSION_BINDINGS_PATH"); v != "" {
 		return v
 	}
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	return filepath.Join(home, ".ion", "session-bindings.json")
 }
 

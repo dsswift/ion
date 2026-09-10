@@ -40,7 +40,7 @@ func startMemoryMonitor(limitBytes int64, sessionCount func() int) {
 			sampleAndLogMemory(limitBytes, sessionCount)
 		}
 	}()
-	utils.LogWithFields(utils.LevelInfo, "memmonitor", "started: %b", map[string]any{"mem_monitor_interval": memMonitorInterval, "mem_monitor_warn_fraction_100": memMonitorWarnFraction*100, "limit_bytes_int64": limitBytes/int64(memMonitorBytesPerMiB)})
+	utils.LogWithFields(utils.LevelInfo, "memmonitor", "started: %b", map[string]any{"mem_monitor_interval": memMonitorInterval, "mem_monitor_warn_fraction_100": memMonitorWarnFraction * 100, "limit_bytes_int64": limitBytes / int64(memMonitorBytesPerMiB)})
 }
 
 // sampleAndLogMemory reads a MemStats sample and logs it. Extracted from the

@@ -13,6 +13,18 @@ terminal pane or start a conversation.
 Opening an `ion://` link launches Ion if it is not already running, then performs
 the request.
 
+### Scheme registration
+
+Ion registers the scheme itself, at startup, for the signed-in user -- not from
+an installer script. On Windows that means `HKCU\Software\Classes\ion`, written
+on first launch and rewritten on every launch, so a per-machine deployment still
+leaves each user's own registration to their first run of Ion. Uninstalling the
+app does not remove the key; a stale key simply points at an executable that is
+no longer there, and the next install overwrites it.
+
+On macOS the equivalent registration is Launch Services, driven by the app
+bundle rather than a registry key.
+
 :::info Desktop only
 This is a desktop surface. The engine has no PTYs and no conversation panes, so
 there is no `ion://` handler on iOS or in the engine daemon.
@@ -136,7 +148,13 @@ A file that breaks any of these is refused and deleted.
 ## Trust
 
 Ion decides how to handle a request by whether it carries a valid **capability
-token** from `~/.ion/deeplink.token` (mode `600`, created on first run).
+token** from `~/.ion/deeplink.token`, created on first run.
+
+The file is written mode `600` on macOS and Linux. Windows has no POSIX mode,
+so there the token's protection comes from the profile ACL that
+`%USERPROFILE%\.ion` inherits -- the signed-in user, SYSTEM, and
+administrators. The property the trust model needs is the same on both: a
+process running as another non-administrator user cannot read it.
 
 | | Behaviour |
 |---|---|

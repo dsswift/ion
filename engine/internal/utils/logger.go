@@ -523,7 +523,7 @@ func initLogger() {
 	// SetTestSink (which fires in logAtFull before initLogger runs). The
 	// default lazy path must go nowhere near ~/.ion.
 	if testing.Testing() {
-		home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+		home, _ := UserHomeDir() //nolint:errcheck // empty home handled by caller
 		ionDir := filepath.Join(home, ".ion")
 		if logDir == "" || logDir == ionDir {
 			h := slog.NewJSONHandler(io.Discard, &slog.HandlerOptions{
@@ -536,7 +536,7 @@ func initLogger() {
 	}
 
 	if logDir == "" {
-		home, err := os.UserHomeDir()
+		home, err := UserHomeDir()
 		if err != nil {
 			return
 		}

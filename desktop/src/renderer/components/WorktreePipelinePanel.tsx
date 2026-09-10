@@ -24,11 +24,12 @@ import { ConfirmDialog } from './git/ConfirmDialog'
 import { rError } from '../rendererLogger'
 import type { WorktreeInventoryEntry } from '../../shared/types'
 import type { WorktreePipelineState } from '../stores/session-store-types'
+import { pathSegments } from '../../shared/paths'
 
 /** Display name for a worktree path within the pipeline's outcome list. */
 function nameOf(p: WorktreePipelineState, worktreePath: string): string {
   const o = p.outcomes.find((x) => x.worktreePath === worktreePath)
-  return o?.title || o?.branchName || worktreePath.split('/').filter(Boolean).pop() || worktreePath
+  return o?.title || o?.branchName || pathSegments(worktreePath).pop() || worktreePath
 }
 
 /** The running phases, for the banner's one-line description. */

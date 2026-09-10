@@ -243,5 +243,15 @@ func writeRawConfig(path string, raw map[string]any) error {
 		return fmt.Errorf("encode %s: %w", path, err)
 	}
 	data = append(data, '\n')
-	return utils.AtomicWriteFile(path, data, 0o600)
+	if err := utils.AtomicWriteFile(path, data, 0o600); err != nil {
+		return err
+	}
+	// On Windows the 0o600 above is not a permission -- see RestrictToOwner.
+	// engine.json holds provider credentials and enterprise state, so a
+	// failure to narrow the ACL is worth surfacing to the caller rather than
+	// only logging.
+	if err := utils.RestrictToOwner(path); err != nil {
+		return fmt.Errorf("restrict %s to owner: %w", path, err)
+	}
+	return nil
 }

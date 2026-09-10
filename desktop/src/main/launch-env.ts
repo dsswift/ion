@@ -1,10 +1,14 @@
 import { userInfo } from 'os'
 import { existsSync } from 'fs'
+import { join } from 'path'
 import { execFileSync } from 'child_process'
-import { log as _log, warn as _warn } from './logger'
+import { log as _log, debug as _debug, warn as _warn } from './logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('launch-env', msg, fields)
+}
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('launch-env', msg, fields)
 }
 function warn(msg: string, fields?: Record<string, unknown>): void {
   _warn('launch-env', msg, fields)
@@ -158,20 +162,53 @@ export function planLaunchEnvironmentSanitization(
     }
   }
 
+  // Windows has no TMPDIR; the equivalent dangling-temp-dir failure mode is
+  // TEMP or TMP pointing at a directory that no longer exists (a per-user
+  // temp folder deleted by a prior cleanup, or a stale value carried over
+  // from a different session). Both variables are checked because Node's
+  // own os.tmpdir() falls back from TEMP to TMP to a hardcoded path.
+  if (process.platform === 'win32') {
+    for (const key of ['TEMP', 'TMP'] as const) {
+      const v = env[key]
+      if (v && !dirExists(v)) {
+        const replacement = resolveUserTempDir()
+        if (replacement) {
+          correct[key] = { from: v, to: replacement, reason: 'dangling-tmpdir' }
+        } else {
+          remove.push(key)
+        }
+      }
+    }
+  }
+
   return { contaminated, privileged, markers: [...markers], remove, correct }
 }
 
 /**
  * The per-user temporary directory, asked of the OS rather than reconstructed.
  *
- * `os.tmpdir()` cannot be used here: it reads `$TMPDIR` first, which is the
- * exact value being repaired. `getconf DARWIN_USER_TEMP_DIR` is the primitive
- * that produced that value in the first place. Returns null off macOS and on
- * any failure, in which case the caller drops `TMPDIR` and children fall back
- * to `/tmp`.
+ * `os.tmpdir()` cannot be used here: it reads `$TMPDIR`/`%TEMP%` first, which
+ * is the exact value being repaired.
+ *
+ * darwin: `getconf DARWIN_USER_TEMP_DIR` is the primitive that produced that
+ * value in the first place.
+ * win32: `%LOCALAPPDATA%\Temp` is the per-user temp directory Windows itself
+ * creates and normally points TEMP/TMP at.
+ * Elsewhere: not resolved (returns null); the caller drops the dangling
+ * variable and children fall back to the platform default (`/tmp` on
+ * linux).
  */
 function resolveUserTempDir(): string | null {
-  if (process.platform !== 'darwin') return null
+  if (process.platform === 'win32') {
+    const localAppData = process.env.LOCALAPPDATA
+    if (!localAppData) return null
+    const candidate = join(localAppData, 'Temp')
+    return existsSync(candidate) ? candidate : null
+  }
+  if (process.platform !== 'darwin') {
+    debug('temp dir resolution skipped', { platform: process.platform })
+    return null
+  }
   try {
     const resolved = execFileSync('getconf', ['DARWIN_USER_TEMP_DIR'], {
       encoding: 'utf-8',

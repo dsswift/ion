@@ -79,11 +79,14 @@ describe('EngineBridge connect-only contract', () => {
   it('connects to engine.sock (daemon socket), not desktop.sock', () => {
     const fs = require('fs')
     const path = require('path')
-    // The socket path lives in the connection module; neither file may
-    // reference the legacy desktop.sock.
+    // The address resolution lives in engine-address.ts (manifest contract
+    // C1); engine-bridge.ts and engine-bridge-connection.ts must not
+    // reference the legacy desktop.sock, nor hardcode the socket name
+    // themselves — they resolve through the shared module instead.
     const bridgeSrc = fs.readFileSync(path.join(__dirname, '..', 'engine-bridge.ts'), 'utf-8')
     const connSrc = fs.readFileSync(path.join(__dirname, '..', 'engine-bridge-connection.ts'), 'utf-8')
-    expect(connSrc).toContain("'engine.sock'")
+    const addressSrc = fs.readFileSync(path.join(__dirname, '..', 'engine-address.ts'), 'utf-8')
+    expect(addressSrc).toContain("'engine.sock'")
     expect(bridgeSrc).not.toContain("'desktop.sock'")
     expect(connSrc).not.toContain("'desktop.sock'")
   })

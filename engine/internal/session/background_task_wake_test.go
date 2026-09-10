@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
@@ -83,11 +84,18 @@ func TestBackgroundTaskLifecycle_PreservesNonNotifyingStart(t *testing.T) {
 	t.Cleanup(func() { tools.StopBackgroundTasksForOwner(key) })
 	ctx := tools.WithBackgroundTaskOwner(context.Background(), key)
 
+	// os.TempDir(), not t.TempDir(): this starts a genuinely long-running
+	// detached process (StopBackgroundTasksForOwner signals it in the
+	// cleanup above but does not wait for it to exit -- see its doc
+	// comment). On Windows, RemoveAll on a directory that is still a live
+	// process's working directory fails with "used by another process";
+	// POSIX allows it. os.TempDir() is never deleted by this test, so the
+	// process's actual exit time cannot race a directory removal.
 	if _, err := tools.ExecuteTool(ctx, "Bash", map[string]any{
 		"command":            `sh -c "sleep 60"`,
 		"run_in_background":  true,
 		"notify_on_complete": false,
-	}, t.TempDir()); err != nil {
+	}, os.TempDir()); err != nil {
 		t.Fatalf("start non-notifying background task: %v", err)
 	}
 

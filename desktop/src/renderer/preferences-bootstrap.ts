@@ -12,7 +12,9 @@ import { applyTheme, onThemeRegistryChanged, registerCustomThemes } from './them
 import type { PreferencesState } from './preferences-types'
 import type { CustomThemeForRenderer } from '../shared/theme-pack-types'
 import { deriveEnterpriseThemePolicy } from '../shared/enterprise-theme-policy'
+import { deriveEnterpriseTabStripPolicy } from '../shared/enterprise-tab-strip-policy'
 import { loadPersistedSettings } from './preferences-persist'
+import { hasAppliedManagedDefault, markManagedDefaultApplied } from './managed-defaults'
 import { rError, rInfo } from './rendererLogger'
 
 type PreferencesStore = UseBoundStore<StoreApi<PreferencesState>>
@@ -87,7 +89,17 @@ export function bootstrapPreferences(store: PreferencesStore, savedThemeId: stri
   // Full enterprise policy blob (D-004): model allowlist (D-011) and every
   // other renderer-side enterprise constraint ride this. Same non-fatal
   // semantics as the new-conversation policy above.
-  window.ion?.getEnterprisePolicyFull?.()?.then?.((policy) => {
+  // Sequenced after disk hydration on purpose: the tab-strip managed default
+  // asks whether the user has ever set the key, and persistedSettingKeys is
+  // only populated once loadPersistedSettings has read settings.json. Racing
+  // the two would let the policy see an empty set and overwrite a real user
+  // choice. The theme branch below is unaffected either way -- it reads
+  // localStorage, which is synchronous.
+  void (preferencesReady ?? Promise.resolve())
+    .catch(() => {
+      // Hydration already logs its own failure; the policy must still apply.
+    })
+    .then(() => window.ion?.getEnterprisePolicyFull?.())?.then?.((policy) => {
     store.getState().setEnterprisePolicy(policy)
     // Enterprise theme policy: locked → the enforced theme renders now and
     // the picker disables (AppearanceCategory reads the same derivation);
@@ -100,6 +112,39 @@ export function bootstrapPreferences(store: PreferencesStore, savedThemeId: stri
     } else if (themePolicy && !localStorage.getItem('ion_selectedTheme')) {
       rInfo('preferences', 'enterprise managed default theme applied', { theme_id: themePolicy.themeId })
       store.getState().setSelectedTheme(themePolicy.themeId)
+    }
+
+    // Enterprise Tab Strip policy, same two-branch shape as the theme above.
+    // Locked applies on every launch; unlocked is a managed DEFAULT honoured
+    // only while this profile has never set the toggle itself, so a user who
+    // turns the strip back on keeps it through every later launch.
+    //
+    // "Never set it" is the key being absent from settings.json rather than a
+    // separate marker: loadPersistedSettings falls back to SETTINGS_DEFAULTS
+    // for a missing key, and setStudioTabStripVisible writes the whole
+    // settings object, so the key exists from the first time the user
+    // touches it and never before.
+    const tabStripPolicy = deriveEnterpriseTabStripPolicy(policy)
+    if (tabStripPolicy) {
+      if (tabStripPolicy.locked) {
+        rInfo('preferences', 'enterprise tab strip lock active', { visible: tabStripPolicy.visible })
+        store.getState().setStudioTabStripVisible(tabStripPolicy.visible)
+      } else if (!hasAppliedManagedDefault('tabStrip')) {
+        // Managed default: apply once, then never again, so a user who turns
+        // the strip back on keeps it. The marker is an explicit record of
+        // having applied it -- NOT the presence of studioTabStripVisible in
+        // settings.json. The desktop writes the whole settings object on
+        // every save, so that key exists (87 of them do) from the first time
+        // any unrelated preference is written, which would have made this
+        // branch a no-op on every real profile.
+        rInfo('preferences', 'enterprise managed default tab strip applied', { visible: tabStripPolicy.visible })
+        store.getState().setStudioTabStripVisible(tabStripPolicy.visible)
+        markManagedDefaultApplied('tabStrip')
+      } else {
+        rInfo('preferences', 'enterprise tab strip default already applied; leaving the user value', {
+          policy_visible: tabStripPolicy.visible,
+        })
+      }
     }
   })?.catch?.(() => {
     // Engine not yet ready or no enterprise config — leave null.

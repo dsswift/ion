@@ -7,6 +7,7 @@ import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
 import type { EngineDirListing } from '../../shared/types'
+import { DEFAULT_MONO_FONT } from '../typography'
 
 /**
  * Modal directory picker that browses the engine host's filesystem via the
@@ -161,7 +162,7 @@ export function RemoteDirectoryPicker() {
                 style={{
                   fontSize: 12,
                   color: colors.textPrimary,
-                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                  fontFamily: DEFAULT_MONO_FONT,
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',

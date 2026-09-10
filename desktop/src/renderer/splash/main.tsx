@@ -10,6 +10,7 @@ declare global {
       getState: () => Promise<StartupState>
       onState: (callback: (state: StartupState) => void) => () => void
       authenticate: () => Promise<{ ok: boolean; error?: string }>
+      cancelAuthentication: () => void
       relaunch: () => void
       quit: () => void
     }

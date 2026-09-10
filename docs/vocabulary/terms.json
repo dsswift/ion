@@ -1255,6 +1255,38 @@
       "notes": "Published wire contract. See ADR-008 for prefix ownership."
     },
     {
+      "id": "engine-host-launcher",
+      "term": "Engine Host Launcher",
+      "definition": "The Windows-only launcher the Engine Supervisor's Scheduled Task runs instead of the engine binary, so the engine daemon never puts a console window on screen. Task Scheduler always allocates a console for a console-subsystem image and offers no way to suppress it, and where the default terminal is Windows Terminal the visible window belongs to that process while the daemon can only reach the pseudoconsole host's already-invisible window. The launcher is linked for the GUI subsystem, so Windows gives it no console at all, and it starts the engine with CREATE_NO_WINDOW so the engine gets none either. It lives for as long as the engine, confines it to a kill-on-close job object, exits with its exit code, and captures its standard streams to the same two files the macOS LaunchAgent redirects to. It has no macOS counterpart because launchd never attaches a terminal.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "runHost",
+          "path": "engine/cmd/ion-engine-host/host_windows.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "resolveTaskAction",
+          "path": "desktop/src/main/engine-supervisor-schtasks.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "findBundledHost",
+          "path": "desktop/src/main/engine-binary-install.ts"
+        }
+      ]
+    },
+    {
       "id": "engine-profile",
       "term": "Engine profile",
       "definition": "A named set of extensions and defaults that a conversation loads at start. A profile name is portable across machines; its profile ID is local to one machine. An empty profile means a conversation with no extensions.",
@@ -1308,6 +1340,38 @@
           "language": "go",
           "symbol": "type Server struct",
           "path": "engine/internal/server/server.go"
+        }
+      ]
+    },
+    {
+      "id": "engine-supervisor",
+      "term": "Engine Supervisor",
+      "definition": "The operating system service that keeps one user's engine daemon running independently of the desktop: a launchd LaunchAgent on macOS, a per-user Scheduled Task named \"Ion Engine (<SID>)\" on Windows. The desktop registers it, starts and stops it, and reads its state; it is what makes quitting the desktop leave the engine up and makes the engine present again at the next sign-in. A platform with no supervisor implementation resolves to none, and the desktop reports the engine as unmanaged rather than pretending to supervise it.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "supervisorFor",
+          "path": "desktop/src/main/engine-supervisor.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "launchdSupervisor",
+          "path": "desktop/src/main/engine-supervisor-launchd.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "schtasksSupervisor",
+          "path": "desktop/src/main/engine-supervisor-schtasks.ts"
         }
       ]
     },
@@ -2410,7 +2474,7 @@
     {
       "id": "project-workspace",
       "term": "Project Workspace",
-      "definition": "A Project's source directory together with its mounted folders. Every checkout of that Project — the base repo, each worktree, each bench — renders the same set, because the mounted-folder setting is keyed by the Project rather than by the active directory.",
+      "definition": "A Project's source directory together with its mounted folders. Every checkout of that Project \u2014 the base repo, each worktree, each bench \u2014 renders the same set, because the mounted-folder setting is keyed by the Project rather than by the active directory.",
       "domain": "clients",
       "kind": "product-concept",
       "status": "canonical",

@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // boolFlags lists flags that never consume the next argument as a value.
@@ -119,7 +121,7 @@ func isEnvVarName(s string) bool {
 // resolveExtensionPath expands ~ and resolves to an absolute path.
 func resolveExtensionPath(path string) string {
 	if strings.HasPrefix(path, "~") {
-		home, err := os.UserHomeDir()
+		home, err := utils.UserHomeDir()
 		if err == nil {
 			path = filepath.Join(home, path[1:])
 		}

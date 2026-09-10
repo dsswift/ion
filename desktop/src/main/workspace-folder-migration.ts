@@ -16,6 +16,7 @@ import { loadRegistry } from "./worktree/registry";
 import { loadWorkspaces } from "./integration/bench-store";
 import { readSettings, writeSettings } from "./settings-store";
 import { log as _log, warn as _warn } from "./logger";
+import { isAbsolutePath } from "../shared/paths";
 import { normalizeWorkspacePath } from "../shared/workspace-roots";
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -75,7 +76,10 @@ export function remapWorkspaceFolders(
       // The repo root is never a mounted folder of itself: a worktree-keyed
       // list could legitimately hold the base repo, which becomes a duplicate
       // of the primary root once the key moves onto that repo.
-      if (!folder.startsWith("/") || folder === to || merged.includes(folder)) continue;
+      // isAbsolutePath, not startsWith("/"): a bare slash test discarded every
+      // Windows folder during migration, silently emptying the mounted-folder
+      // list on that platform.
+      if (!isAbsolutePath(folder) || folder === to || merged.includes(folder)) continue;
       merged.push(folder);
     }
     next[to] = merged;

@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore, getEffectiveTabGroups } from '../preferences'
 import type { TabState, TabGroupMode, TabGroup } from '../../shared/types'
+import { pathSegments } from '../../shared/paths'
 
 export interface TabGroupView {
   groupId: string
@@ -60,7 +61,7 @@ function buildAutoGroups(tabs: TabState[], activeTabId: string, autoGroupOrder: 
       // Single-tab "groups" render as normal pills
       ungrouped.push(...dirTabs)
     } else {
-      const label = dir.split('/').pop() || dir
+      const label = pathSegments(dir).pop() || dir
       const selectedTab = dirTabs.find((t) => t.id === activeTabId)
       groups.push({
         groupId: `auto-${dir}`,

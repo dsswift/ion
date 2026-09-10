@@ -16,10 +16,11 @@ import { SettingSection } from './SettingSection'
 import { rError } from '../../rendererLogger'
 
 type ActiveUi = 'overlay' | 'studio'
+type LockReason = 'policy' | 'platform' | null
 
 export function InterfacePicker(): React.JSX.Element | null {
   const colors = useColors()
-  const [state, setState] = useState<{ activeUi: ActiveUi; locked: boolean } | null>(null)
+  const [state, setState] = useState<{ activeUi: ActiveUi; locked: boolean; lockReason: LockReason } | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -54,9 +55,11 @@ export function InterfacePicker(): React.JSX.Element | null {
     <SettingSection
       label="Interface"
       description={
-        state.locked
-          ? 'The active interface is managed by your organization.'
-          : 'Which conversation interface Ion presents. Switching applies immediately — conversations keep running.'
+        state.lockReason === 'platform'
+          ? 'Studio is the only conversation interface on Windows.'
+          : state.lockReason === 'policy'
+            ? 'The active interface is managed by your organization.'
+            : 'Which conversation interface Ion presents. Switching applies immediately — conversations keep running.'
       }
     >
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, minWidth: 0 }}>

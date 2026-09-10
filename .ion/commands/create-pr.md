@@ -1,6 +1,6 @@
 ---
 clears-conversation: true
-description: Push the current branch and open a pull request into main with a structured description derived from the branch's commits and issue references.
+description: Push the current branch and open a pull request into main with a structured description derived from the branch's commits and the open issues it resolves.
 model: fast
 ---
 
@@ -12,6 +12,11 @@ You are running the `/create-pr` command. Your job is to push the current featur
 - Only run `git push` as part of this command. No other `git push` outside this flow.
 - Never merge to `main`. The PR is opened — the user merges.
 - Do not create a PR with failing CI. If CI is already known to be failing, stop and report. **Run the Linux parity gate (Step 3) before pushing** so a Linux-only failure is caught locally — not after burning paid Actions minutes on a red PR.
+- **Never open a PR without resolving issue closure (Step 7).** Search the open
+  issues and match them against the branch — do not merely copy the references the
+  commits happen to carry. A branch that implements an open issue's work and ships
+  without a `Fixes #N` / `Closes #N` line in the body leaves that issue open
+  forever, and CI does not catch it.
 - **Zero tolerance for identifiable failures — pre-existing included.** Every test failure, lint error, or build break that the parity gate (or any other check run during this command) surfaces MUST be fixed before the PR is opened. "Pre-existing on main", "not caused by this branch", and "unrelated to these changes" are **forbidden dispositions** — if the failure is visible before the PR exists, it blocks the PR. The full CI suite (`quality.yml`: engine race + integration, desktop typecheck + tests, relay, iOS, lints) must be expected green, and any locally reproducible failure in that set is in scope to fix now, regardless of age or origin.
 
 ---
@@ -152,15 +157,54 @@ git log main..{branch} --no-merges --format="### %s%n%n%b"
 
 If there are zero commits ahead of `main`, abort: "Nothing to open a PR for — branch is even with `main`."
 
-Also collect issue references from commit bodies:
+---
+
+## Step 7: Resolve issue closure
+
+**Mandatory. Never skipped, never inferred from silence.** A PR that ships an open
+issue's work without a closing keyword leaves that issue open after it merges, and
+nothing downstream catches it: `scripts/check-issue-closure.sh` only validates
+`(#N)` references that already exist, so a branch carrying zero references passes
+the gate while closing nothing. This has shipped twice.
+
+First, collect what the commits already carry:
 
 ```bash
-git log main..{branch} --no-merges --format="%b" | grep -E "Fixes|Closes"
+git log main..{branch} --no-merges --format="%s%n%b" \
+  | grep -oiE '\(#[0-9]+\)|\b(fix(e[sd])?|close[sd]?|resolve[sd]?)[[:space:]]+#[0-9]+'
 ```
+
+Then — **regardless of whether that returned anything** — list the open issues and
+match them against the branch:
+
+```bash
+gh issue list --state open --limit 100 --json number,title --jq '.[] | "#\(.number) \(.title)"'
+```
+
+Read the branch's commit subjects and bodies against those titles. An issue is a
+match when the branch implements the behavior the issue asks for, **whether or not
+any commit mentions its number**. A branch that adds a graph view closes the open
+issue asking for a graph view even when no commit said `(#397)`.
+
+Present the result before writing the body:
+
+```
+Issues this PR closes:
+  #397  [desktop] Add a configurable metadata-driven graph view   (matched: Graph View commits)
+  #380  [sdk] Carry child conversation identifier on dispatch     (explicit: Closes #380 in commit body)
+
+Add any I missed, or reply "none" to confirm.
+```
+
+Wait for the answer. Every confirmed number becomes a closing keyword in the body
+(Step 9).
+
+If the search finds no match and the commits carry no references, do not continue
+silently — say `No open issue matches this branch.` and get confirmation first.
 
 ---
 
-## Step 7: Generate the PR title
+## Step 8: Generate the PR title
 
 Analyze the commits and write the PR title.
 
@@ -173,7 +217,7 @@ Rules:
 
 ---
 
-## Step 8: Generate the PR body
+## Step 9: Generate the PR body
 
 Write a concise PR description:
 
@@ -194,19 +238,25 @@ Write a concise PR description:
 Rules:
 - Write for the repo maintainer, collaborators, and public. No selling — just inform.
 - Be informative, not exhaustive. A clear summary and a clean list is enough.
-- If any commit body contains `Fixes #N` or `Closes #N`, include that trailer at the very end of the body, on its own line. Collect all such references:
+- **Every issue confirmed in Step 7 gets a closing keyword at the very end of the
+  body, one per line.** This is what actually closes the issue on merge — a `(#N)`
+  in the title or a commit subject is only a link and closes nothing. Use `Fixes`
+  for bug work and `Closes` for feature work:
 
 ```
 Fixes #142
 Closes #138
 ```
 
+- Do not open the PR without this trailer unless Step 7 confirmed there is no
+  matching issue.
+
 - Do not include raw commit hashes in the body.
 - Do not repeat the summary in the changes list.
 
 ---
 
-## Step 9: Create the PR
+## Step 10: Create the PR
 
 ```bash
 gh pr create --base main --title "{title}" --body "{body}"
@@ -214,7 +264,7 @@ gh pr create --base main --title "{title}" --body "{body}"
 
 ---
 
-## Step 10: Report
+## Step 11: Report
 
 ```
 ✅ PR #{number} created: {URL}

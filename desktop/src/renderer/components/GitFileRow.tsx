@@ -8,6 +8,7 @@ import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState
 import { transitions } from '../theme-tokens'
 import { Chevron } from './Chevron'
 import { useCmdHeld, useNavigableText } from '../hooks/useNavigableLinks'
+import { isModKey } from '../platform/mod-key'
 import { Tooltip } from './git/Tooltip'
 import { rError } from '../rendererLogger'
 import type { GitChangedFile } from '../../shared/types'
@@ -56,7 +57,7 @@ export function FileRow({
         transition: `background ${transitions.base}`,
       }}
       onClick={(e) => {
-        if (e.metaKey) {
+        if (isModKey(e)) {
           e.preventDefault()
           onOpenFile(directory + '/' + file.path, e).catch((err) => rError('git-file-row', 'open file failed', { error: String(err) }))
           return

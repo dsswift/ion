@@ -4,19 +4,45 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
-const (
-	repoPath   = "/repo/project"
-	minePath   = "/wt/project-aaa"
-	sibling    = "/wt/project-bbb"
-	prefixTwin = "/wt/project-aaa0" // shares MINE as a string prefix; different worktree
-	otherRepo  = "/repo/other"
+// These are synthetic paths: every containment comparison in this package is
+// pure string/filepath logic over registry entries, and none of these
+// directories are ever created on disk. They must still satisfy
+// filepath.IsAbs on the platform running the test -- on Windows that means
+// carrying a drive letter, because a driveless rooted path like "/repo/project"
+// is NOT absolute by Go's Windows definition (Windows distinguishes a
+// volume-relative root from a fully qualified path). Without a drive letter,
+// extractTargetPath and absolutize treat the fixture as relative and silently
+// join it onto cwd instead of comparing it as a destination in its own right,
+// which is what let every refusal in this package silently stop firing on
+// Windows: bash_test.go, containment_test.go, prompt_context_test.go,
+// registry_fixture_test.go, shared_checker_test.go, shared_paths_test.go,
+// worktree_commits_test.go, worktree_diff_test.go, and
+// worktree_query_fixture_test.go all key off these same constants.
+var (
+	repoPath   = testAbsPath("repo", "project")
+	minePath   = testAbsPath("wt", "project-aaa")
+	sibling    = testAbsPath("wt", "project-bbb")
+	prefixTwin = minePath + "0" // shares MINE as a string prefix; different worktree
+	otherRepo  = testAbsPath("repo", "other")
 )
+
+// testAbsPath builds a platform-absolute synthetic path from segments,
+// joined with the platform's own separator so it round-trips through
+// filepath.Clean/filepath.IsAbs the same way a real path would.
+func testAbsPath(segments ...string) string {
+	if runtime.GOOS == "windows" {
+		return `C:\` + filepath.Join(segments...)
+	}
+	return "/" + filepath.Join(segments...)
+}
 
 func writeWorktreeRegistry(t *testing.T, dir string, entries []WorktreeEntry) {
 	t.Helper()
@@ -200,8 +226,21 @@ func TestWorkspaceFailsOpenOnCorruptRegistry(t *testing.T) {
 
 func TestWorkspaceIgnoresMalformedEntriesWithoutDiscardingGoodOnes(t *testing.T) {
 	dir := t.TempDir()
-	raw := `{"version":1,"entries":[null,{"worktreePath":"","repoPath":"/repo"},{"worktreePath":"` + minePath + `"},{"worktreePath":"` + minePath + `","repoPath":"` + repoPath + `"}]}`
-	if err := os.WriteFile(filepath.Join(dir, "worktree-registry.json"), []byte(raw), 0o644); err != nil {
+	// Marshaled, not hand-built: minePath/repoPath carry backslashes on
+	// Windows, and splicing them into a raw JSON string literal produces
+	// invalid escape sequences that fail to parse -- silently discarding the
+	// one entry this test exists to prove survives.
+	entries := []map[string]any{
+		nil,
+		{"worktreePath": "", "repoPath": "/repo"},
+		{"worktreePath": minePath},
+		{"worktreePath": minePath, "repoPath": repoPath},
+	}
+	raw, err := json.Marshal(map[string]any{"version": 1, "entries": entries})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "worktree-registry.json"), raw, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	c := NewCheckerAt(dir)
@@ -401,6 +440,35 @@ func TestLandedWorktreeReasonIncludesBranch(t *testing.T) {
 	}
 	if !contains(r.Reason, "wt/mine") {
 		t.Errorf("reason must include branch name: %s", r.Reason)
+	}
+}
+
+// TestIsWithinFoldsCaseOnWindows pins the fix for a real containment gap: on
+// Windows, filepath.EvalSymlinks can return a directory in different casing
+// than the string that named it (an NTFS volume is case-insensitive but
+// case-preserving, and different Win32 APIs surface different casing for the
+// identical on-disk directory). A case-sensitive prefix check would then
+// treat two spellings of the same directory as unrelated, silently failing to
+// recognize a write as contained -- exactly the class of bug this package
+// exists to prevent. Off Windows this is a no-op: POSIX filesystems are
+// case-sensitive, so two different-case strings really do name different
+// paths there and must NOT be folded together.
+func TestIsWithinFoldsCaseOnWindows(t *testing.T) {
+	root := testAbsPath("Repo", "Project")
+	// A same-directory child spelled in a DIFFERENT case than root, the exact
+	// shape of the bug: two Win32 APIs returning different casing for the
+	// identical on-disk directory.
+	differentCase := strings.ToLower(root) + string(filepath.Separator) + "file.go"
+
+	got := isWithin(differentCase, root)
+	if runtime.GOOS == "windows" {
+		if !got {
+			t.Errorf("isWithin(%q, %q) = false, want true: Windows paths must compare case-insensitively", differentCase, root)
+		}
+	} else {
+		if got {
+			t.Errorf("isWithin(%q, %q) = true, want false: POSIX paths must compare case-sensitively", differentCase, root)
+		}
 	}
 }
 

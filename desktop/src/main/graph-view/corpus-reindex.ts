@@ -10,6 +10,7 @@
  */
 
 import { existsSync, readFileSync, statSync } from 'fs'
+import { sep } from 'path'
 import { warn as _warn } from '../logger'
 import { parseMarkdownDocument } from './markdown-parse'
 import { MAX_FILE_BYTES } from './corpus-scan'
@@ -25,11 +26,16 @@ export interface ComputedDelta {
   removedPaths: string[]
 }
 
-/** The longest configured root path that is a prefix of `path`, or `null`. */
+/**
+ * The longest configured root path that is a prefix of `path`, or `null`.
+ * Corpus roots and pending paths are real filesystem paths (not shell-command
+ * text), so containment must be judged with the platform's own separator —
+ * a hardcoded `/` never matches a Windows path joined with `\`.
+ */
 function longestMatchingRoot(path: string, roots: GraphViewConfig['corpusRoots']): string | null {
   let best: string | null = null
   for (const root of roots) {
-    if (path === root.path || path.startsWith(root.path.endsWith('/') ? root.path : root.path + '/')) {
+    if (path === root.path || path.startsWith(root.path.endsWith(sep) ? root.path : root.path + sep)) {
       if (best === null || root.path.length > best.length) best = root.path
     }
   }

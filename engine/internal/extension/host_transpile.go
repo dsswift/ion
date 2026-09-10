@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/cliprobe"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -59,18 +60,9 @@ func (h *Host) transpileTS(tsPath string, manifest *Manifest) (string, error) {
 	// `await` in extension code, which Node 20 supports natively.
 	outPath := filepath.Join(buildDir, fmt.Sprintf("ext-%d.mjs", time.Now().UnixNano()))
 
-	esbuildBin := "esbuild"
-	// Look in common locations when esbuild isn't in PATH (daemon mode)
-	if _, err := exec.LookPath(esbuildBin); err != nil {
-		for _, candidate := range []string{
-			"/opt/homebrew/bin/esbuild",
-			"/usr/local/bin/esbuild",
-		} {
-			if _, err := os.Stat(candidate); err == nil {
-				esbuildBin = candidate
-				break
-			}
-		}
+	esbuildBin, err := cliprobe.FindToolchain("esbuild")
+	if err != nil {
+		return "", fmt.Errorf("esbuild not found: %w\n(install with: npm i -g esbuild)", err)
 	}
 	args := []string{
 		tsPath,

@@ -2,6 +2,7 @@ import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State, FileEditorTab } from '../session-store-types'
 import { editorDirForTab, isEditableByDefault, nextEditorFileId, nextUntitledName } from '../session-store-helpers'
 import { rDebug } from '../../rendererLogger'
+import { pathSegments } from '../../../shared/paths'
 
 export function createFileEditorSlice(set: StoreSet, _get: StoreGet): Partial<State> {
   return {
@@ -62,7 +63,7 @@ export function createFileEditorSlice(set: StoreSet, _get: StoreGet): Partial<St
           rDebug('file-editor', 'file already open, activating', { file_id: existing.id })
           states.set(resolvedDir, { ...current, activeFileId: existing.id })
         } else {
-          const fileName = filePath.split('/').pop() || filePath
+          const fileName = pathSegments(filePath).pop() || filePath
           const ext = fileName.includes('.') ? '.' + fileName.split('.').pop()!.toLowerCase() : ''
           const isMd = ext === '.md'
           const id = nextEditorFileId()
@@ -176,7 +177,7 @@ export function createFileEditorSlice(set: StoreSet, _get: StoreGet): Partial<St
           ...current,
           files: current.files.map((f) =>
             f.id === fileId
-              ? { ...f, filePath, fileName: filePath.split('/').pop() || filePath, savedContent: f.content, isDirty: false }
+              ? { ...f, filePath, fileName: pathSegments(filePath).pop() || filePath, savedContent: f.content, isDirty: false }
               : f
           ),
         })

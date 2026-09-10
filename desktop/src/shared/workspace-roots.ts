@@ -11,6 +11,7 @@
  * instead of looking up a key of its own that nothing ever writes.
  * No cross-project pollution of explorer trees or git watchers.
  */
+import { isAbsolutePath } from './paths'
 
 /** Normalize a workspace path: trim, strip trailing slashes (keep root '/'). */
 export function normalizeWorkspacePath(p: string): string {
@@ -54,7 +55,7 @@ export function orderedWorkspaceRoots(
   for (const entry of raw) {
     if (typeof entry !== 'string') continue
     const dir = normalizeWorkspacePath(entry)
-    if (dir.length === 0 || !dir.startsWith('/')) continue
+    if (dir.length === 0 || !isAbsolutePath(dir)) continue
     if (seen.has(dir)) continue
     seen.add(dir)
     secondary.push(dir)
@@ -63,18 +64,23 @@ export function orderedWorkspaceRoots(
   return { primary, secondary }
 }
 
-/** Validate a raw disk value into a clean Record<primaryDir, string[]>. */
-export function sanitizeWorkspaceFolders(raw: unknown): Record<string, string[]> {
+/** Validate a raw disk value into a clean Record<primaryDir, string[]>. onReject
+ *  is called for each dropped key/entry (a non-absolute primary or root),
+ *  since this module has no logger of its own. */
+export function sanitizeWorkspaceFolders(raw: unknown, onReject?: (entry: string) => void): Record<string, string[]> {
   if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return {}
   const out: Record<string, string[]> = {}
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!Array.isArray(value)) continue
     const primary = normalizeWorkspacePath(key)
-    if (!primary.startsWith('/')) continue
+    if (!isAbsolutePath(primary)) {
+      onReject?.(key)
+      continue
+    }
     const dirs = value
       .filter((v): v is string => typeof v === 'string')
       .map(normalizeWorkspacePath)
-      .filter((v, i, arr) => v.startsWith('/') && v !== primary && arr.indexOf(v) === i)
+      .filter((v, i, arr) => isAbsolutePath(v) && v !== primary && arr.indexOf(v) === i)
     if (dirs.length > 0) out[primary] = dirs
   }
   return out

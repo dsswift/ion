@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/dsswift/ion/engine/internal/procctl"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -102,7 +103,7 @@ func (t *tailBuffer) String() string {
 // backgroundOutputDir returns the directory for background task output files
 // (~/.ion/tasks), creating it if needed.
 func backgroundOutputDir() (string, error) {
-	home, err := os.UserHomeDir()
+	home, err := utils.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home dir: %w", err)
 	}
@@ -151,9 +152,14 @@ func (l *LocalBashOperations) StartBackground(ctx context.Context, command, cwd 
 	logFdPressure()
 
 	if err := cmd.Start(); err != nil {
-		outFile.Close()          //nolint:errcheck // best-effort cleanup on spawn failure
+		outFile.Close()           //nolint:errcheck // best-effort cleanup on spawn failure
 		os.Remove(outFile.Name()) //nolint:errcheck // best-effort cleanup on spawn failure
 		return nil, fmt.Errorf("start background command: %w", err)
+	}
+	if afterErr := procctl.AfterStart(cmd); afterErr != nil {
+		utils.LogWithFields(utils.LevelWarn, "tools.bash", "background process tree tracking degraded", map[string]any{
+			"pid": cmd.Process.Pid, "error": afterErr.Error(),
+		})
 	}
 
 	done := make(chan struct{})
@@ -171,6 +177,7 @@ func (l *LocalBashOperations) StartBackground(ctx context.Context, command, cwd 
 
 	go func() {
 		waitErr := cmd.Wait()
+		procctl.Release(cmd)
 		exit := 0
 		if waitErr != nil {
 			if exitErr, ok := waitErr.(*exec.ExitError); ok {

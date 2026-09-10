@@ -3,6 +3,7 @@ package utils
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -54,6 +55,16 @@ func TestAtomicWriteFile_CreatesParentDirs(t *testing.T) {
 }
 
 func TestAtomicWriteFile_SetsPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Go's Chmod on Windows only toggles the read-only attribute; a
+		// non-read-only file always reports 0666 regardless of the mode
+		// passed in, because Windows has no POSIX permission bits to set.
+		// See owneronly_windows.go's RestrictToOwner, which is the real
+		// owner-only mechanism on this platform and is asserted by
+		// owneronly_windows_test.go -- there is no chmod-based assertion to
+		// make here.
+		t.Skip("Windows has no POSIX permission bits for Chmod to set; see RestrictToOwner")
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "perms.json")
 
@@ -90,6 +101,15 @@ func TestAtomicWriteFile_NoTempLeftOnSuccess(t *testing.T) {
 }
 
 func TestAtomicWriteFile_OriginalSurvivesOnBadDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// os.MkdirAll(dir, 0o000) does not restrict the owning process on
+		// Windows -- the mode bits map only to the read-only attribute, so a
+		// directory "chmod 0" is still fully writable by the process that
+		// created it. There is no directory-permission mechanism here to
+		// exercise a write failure with; the file survives because the write
+		// never fails.
+		t.Skip("Windows has no POSIX directory permission bits to restrict a write with")
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "survive.json")
 	if err := os.WriteFile(path, []byte("original"), 0o644); err != nil {

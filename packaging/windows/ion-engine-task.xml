@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<!--
+  ion-engine-task.xml — Ion Engine Scheduled Task template (Windows)
+  ====================================================================
+  This file is a TEMPLATE. The desktop substitutes $ION_BIN (the executable
+  the task runs), $ION_ARGS (its arguments), $ION_USER (the account the task
+  belongs to) and $ION_HOME (%USERPROFILE%\.ion) before writing the rendered
+  copy to %USERPROFILE%\.ion\ion-engine-task.xml and registering it with
+  `schtasks /Create /TN "Ion Engine" /XML <file> /F`.
+
+  This is the Windows equivalent of the macOS launchd LaunchAgent
+  (packaging/launchd/com.ion.engine.plist) — same role, same per-user
+  scope, same "the desktop installs and drives it, never runs the engine
+  as a child process" contract.
+
+  - LogonTrigger starts the engine at sign-in, mirroring RunAtLoad.
+  - RestartOnFailure (3 attempts, 1-minute interval) mirrors KeepAlive.
+  - InteractiveToken + LeastPrivilege runs the task in the user's own
+    interactive session (not SYSTEM), which is what the Windows Credential
+    Manager / DPAPI-backed credential store needs.
+  - MultipleInstancesPolicy=IgnoreNew: a second `schtasks /Run` while the
+    engine is already running is a safe no-op, matching launchd's
+    single-instance KeepAlive semantics.
+  - The battery flags are both false: the engine is a lightweight daemon,
+    not the kind of background work Windows power management should ever
+    throttle or stop.
+  - Hidden=true hides this task's row in the Task Scheduler UI. It does NOT
+    hide the window its action opens, and neither can the daemon itself:
+    Task Scheduler always allocates a console for a console-subsystem image,
+    and where the default terminal is Windows Terminal that console is a
+    ConPTY whose visible window belongs to WindowsTerminal.exe, while
+    GetConsoleWindow() reaches only the OpenConsole.exe pseudoconsole window.
+    Hiding that one succeeds and changes nothing on screen. So the action
+    runs ion-engine-host.exe, which is linked for the GUI subsystem and gets
+    no console at all, and which starts the engine with CREATE_NO_WINDOW so
+    the engine gets none either. $ION_ARGS carries the engine path and its
+    arguments. See engine/cmd/ion-engine-host.
+-->
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Ion Engine daemon (per-user). Managed by Ion Desktop.</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <UserId>$ION_USER</UserId>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>$ION_USER</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <RestartOnFailure>
+      <Interval>PT1M</Interval>
+      <Count>3</Count>
+    </RestartOnFailure>
+    <Hidden>true</Hidden>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>$ION_BIN</Command>
+      <Arguments>$ION_ARGS</Arguments>
+      <WorkingDirectory>$ION_HOME</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>

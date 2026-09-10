@@ -775,8 +775,12 @@ func writeEventFixture(t *testing.T, sessA, sessB *dispatchSessionResults) {
 	if err != nil {
 		t.Fatalf("read fixture (run with -update to create): %v", err)
 	}
+	// Normalized: a Windows checkout of this fixture under core.autocrlf
+	// reads back with \r\n, while the freshly built fixture always uses \n.
+	// That is a checkout artifact, not a fixture drift.
+	normalizedWant := strings.ReplaceAll(string(want), "\r\n", "\n")
 
-	if string(data) != string(want) {
+	if string(data) != normalizedWant {
 		t.Errorf("dispatch event fixture has drifted from %s\n"+
 			"Run: cd engine && go test -tags integration ./tests/integration/ -run TestDispatchArchitecture -update\n"+
 			"Then review the diff and re-transcribe the desktop and iOS fixtures:\n"+

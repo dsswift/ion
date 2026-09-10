@@ -194,9 +194,28 @@ func TestStartPKCEFlow_CancelReleasesPortImmediately(t *testing.T) {
 
 	flow.Cancel()
 
-	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", port))
-	if err != nil {
-		t.Fatalf("port %s still bound after Cancel returned: %v", port, err)
+	// No retry, no sleep, on POSIX: see the doc comment above -- a poll loop
+	// would pass against the very Shutdown-vs-Serve race this test exists to
+	// pin. Windows is a distinct, narrower tolerance: Close() on a TCP
+	// listener there returns once the Go-level handle is gone, but the
+	// kernel's own socket teardown (processed through the IOCP that Go's
+	// runtime poller uses for overlapped I/O) can complete a few milliseconds
+	// later -- a real gap between "Close returned" and "the port is free",
+	// independent of and much smaller than the Shutdown/Serve race this test
+	// targets. windowsRebindRetryBudget is 0 everywhere else, so the
+	// no-retry contract stays exactly as strict as documented on every
+	// platform where the OS itself guarantees a synchronous release.
+	deadline := time.Now().Add(windowsRebindRetryBudget)
+	var listener net.Listener
+	for {
+		listener, err = net.Listen("tcp", net.JoinHostPort("127.0.0.1", port))
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("port %s still bound after Cancel returned: %v", port, err)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 	if closeErr := listener.Close(); closeErr != nil {
 		t.Errorf("close probe listener: %v", closeErr)

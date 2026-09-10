@@ -42,6 +42,7 @@ vi.hoisted(() => {
   const home = fs.mkdtempSync(p.join(os.tmpdir(), 'ion-egress-home-main-'))
   fs.mkdirSync(p.join(home, '.ion'), { recursive: true })
   process.env.HOME = home
+  process.env.USERPROFILE = home
 })
 
 // We need to control the file system calls in the tailer. We'll test the

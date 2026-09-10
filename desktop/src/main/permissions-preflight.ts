@@ -9,7 +9,10 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 }
 
 export async function requestPermissions(): Promise<void> {
-  if (process.platform !== 'darwin') return
+  if (process.platform !== 'darwin') {
+    log('permissions_preflight: skipped', { platform: process.platform })
+    return
+  }
 
   try {
     const micStatus = systemPreferences.getMediaAccessStatus('microphone')

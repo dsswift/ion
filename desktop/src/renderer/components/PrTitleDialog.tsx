@@ -5,6 +5,7 @@ import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
+import { DEFAULT_MONO_FONT } from '../typography'
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
 
@@ -107,7 +108,7 @@ export function PrTitleDialog({ defaultTitle, onSubmit, onSkipForever, onCancel 
               width: '100%',
               padding: '8px 10px',
               fontSize: 13,
-              fontFamily: 'Menlo, Monaco, monospace',
+              fontFamily: DEFAULT_MONO_FONT,
               background: 'transparent',
               border: `1px solid ${colors.inputBorder}`,
               borderRadius: 8,

@@ -64,6 +64,10 @@ func TestEgressTailerTelemetryBody(t *testing.T) {
 		stopCh:     make(chan struct{}),
 		doneCh:     make(chan struct{}),
 	}
+	// See closeFollowers doc: pollFile leaves the file handle open across
+	// polls, and only Run()'s shutdown closes it. Without this the handle
+	// outlives the test, which blocks t.TempDir()'s own cleanup on Windows.
+	t.Cleanup(tailer.closeFollowers)
 
 	tailer.pollFile("telemetry", logPath)
 
@@ -151,6 +155,7 @@ func TestEgressTailerNonJSONLine(t *testing.T) {
 		stopCh:     make(chan struct{}),
 		doneCh:     make(chan struct{}),
 	}
+	t.Cleanup(tailer.closeFollowers)
 
 	tailer.pollFile("engine", logPath)
 
@@ -176,7 +181,16 @@ func TestEgressTailerLoadsLegacyNumericCursors(t *testing.T) {
 	dir := t.TempDir()
 	cursorPath := filepath.Join(dir, "cursors.json")
 	path := filepath.Join(dir, "desktop.jsonl")
-	if err := os.WriteFile(cursorPath, []byte(`{"`+path+`":42}`), 0o600); err != nil {
+	// Marshaled, not hand-built: a Windows path contains backslashes, and
+	// splicing it into a raw JSON string literal produces invalid escape
+	// sequences (\U, \A, \L, ...) that fail to unmarshal as either the
+	// current or legacy cursor shape -- silently taking the "cursor file
+	// unreadable" branch on every Windows run.
+	legacy, err := json.Marshal(map[string]int64{path: 42})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cursorPath, legacy, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	tailer := &EgressTailer{

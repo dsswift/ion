@@ -5,21 +5,34 @@ import { IPC } from '../../shared/types'
 import { state, fileWatchers, recentlyWrittenPaths } from '../state'
 import { broadcast } from '../broadcast'
 import { showWindow } from '../window-manager'
+import { execFileSync } from 'child_process'
+import type { FsEntry } from '../../shared/types'
 import { isValidProjectPath } from '../ipc-validation'
-import { log, warn } from '../logger'
+import { debug, log, warn } from '../logger'
 
 export function registerFilesIpc(): void {
   ipcMain.handle(IPC.FS_READ_DIR, async (_event, { directory }: { directory: string }) => {
     if (!isValidProjectPath(directory)) return { entries: [], error: 'Invalid path' }
     try {
       const dirents = readdirSync(directory, { withFileTypes: true })
-      const entries: Array<{ name: string; path: string; isDirectory: boolean; size: number; modifiedMs: number }> = []
+      const entries: FsEntry[] = []
+      const winHidden = windowsHiddenNames(directory)
       for (const d of dirents) {
         if (d.name === '.DS_Store') continue
         const fullPath = join(directory, d.name)
         try {
           const st = statSync(fullPath)
-          entries.push({ name: d.name, path: fullPath, isDirectory: d.isDirectory(), size: st.size, modifiedMs: st.mtimeMs })
+          entries.push({
+            name: d.name,
+            path: fullPath,
+            isDirectory: d.isDirectory(),
+            size: st.size,
+            modifiedMs: st.mtimeMs,
+            // A dot prefix on every platform, plus the Windows hidden
+            // attribute — AppData and ProgramData carry no dot but are hidden,
+            // and a renderer cannot see that bit.
+            isHidden: d.name.startsWith('.') || winHidden.has(d.name),
+          })
         } catch { /* silent-ok: skip entries that vanish or are unreadable mid-listing */ }
       }
       entries.sort((a, b) => {
@@ -218,4 +231,49 @@ export function registerFilesIpc(): void {
     }
     return { ok: true }
   })
+}
+
+/**
+ * Names in `directory` carrying the Windows hidden attribute.
+ *
+ * Node's fs.Stats does not expose FILE_ATTRIBUTE_HIDDEN, and most hidden
+ * Windows paths have no leading dot — AppData, ProgramData, and the legacy
+ * junctions are all marked by the attribute alone. Without this they rendered
+ * identically to ordinary source folders.
+ *
+ * One PowerShell call per listing rather than one per entry, and empty on
+ * every non-Windows platform (where the dot prefix is the whole convention).
+ * A failure returns empty rather than throwing: losing the dimming on a
+ * directory is a cosmetic degradation, while failing the listing would empty
+ * the tree.
+ *
+ * Exported so the desktop↔iOS remote listing handler
+ * (`remote/handlers/files.ts`) computes the same `isHidden` bit rather than
+ * reimplementing the probe — the remote wire is a second consumer of the
+ * same fact, not a second definition of it.
+ */
+export function windowsHiddenNames(directory: string): Set<string> {
+  if (process.platform !== 'win32') return new Set()
+  try {
+    const out = execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-Command',
+        // -Force includes hidden entries; the Hidden attribute test is what
+        // selects them. Names only, one per line.
+        `Get-ChildItem -LiteralPath '${directory.replace(/'/g, "''")}' -Force -ErrorAction SilentlyContinue | ` +
+          'Where-Object { $_.Attributes -band [System.IO.FileAttributes]::Hidden } | ' +
+          'ForEach-Object { $_.Name }',
+      ],
+      { encoding: 'utf-8', timeout: 5000, windowsHide: true },
+    )
+    return new Set(out.split(/\r?\n/).map((n) => n.trim()).filter(Boolean))
+  } catch (err) {
+    debug('fs', 'windows hidden-attribute probe failed; entries render unhidden', {
+      directory,
+      error: String(err),
+    })
+    return new Set()
+  }
 }

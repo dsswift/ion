@@ -42,6 +42,7 @@
  * Every decision branch logs, so a refusal is diagnosable from
  * ~/.ion/desktop.jsonl alone.
  */
+import { normalize as normalizePath } from 'path'
 import { runGit } from '../git-runner'
 import { repositoryManager } from '../git/repositoryManager'
 import { log as _log, warn as _warn } from '../logger'
@@ -65,6 +66,15 @@ export interface WorktreeListEntry {
 /**
  * Parse `git worktree list --porcelain`. Shared by the land preflight and the
  * bench, so the porcelain format is understood in exactly one place.
+ *
+ * git always reports the `worktree` path with forward slashes, even on
+ * Windows, while every path this desktop constructs itself goes through
+ * `path.join` and comes out with native (`\`) separators. Normalizing here —
+ * the one place the porcelain format is parsed — means every consumer that
+ * compares a listed path against a `path.join`-built path (bench worktree
+ * identity, branch-to-worktree lookup, inventory keys) gets a native-style
+ * path without having to remember to normalize itself. `path.normalize` is a
+ * no-op for the separator on POSIX, so this changes nothing on macOS/Linux.
  */
 export function parseWorktreeList(raw: string): WorktreeListEntry[] {
   const worktrees: WorktreeListEntry[] = []
@@ -74,7 +84,7 @@ export function parseWorktreeList(raw: string): WorktreeListEntry[] {
     let head = ''
     let branch = ''
     for (const line of block.trim().split('\n')) {
-      if (line.startsWith('worktree ')) path = line.slice('worktree '.length)
+      if (line.startsWith('worktree ')) path = normalizePath(line.slice('worktree '.length))
       else if (line.startsWith('HEAD ')) head = line.slice('HEAD '.length)
       else if (line.startsWith('branch ')) branch = line.slice('branch refs/heads/'.length)
     }

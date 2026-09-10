@@ -32,7 +32,6 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -247,7 +246,7 @@ func newEgressForwarder(cfg types.LoggingConfig) *EgressForwarder {
 	}
 
 	// Locate the spool alongside ~/.ion/engine.jsonl.
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	home, _ := UserHomeDir() //nolint:errcheck // empty home handled by caller
 	spoolPath := filepath.Join(home, ".ion", ".engine-egress-spool.jsonl")
 
 	f := &EgressForwarder{

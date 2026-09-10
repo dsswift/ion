@@ -21,6 +21,18 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, beforeAll, beforeEach, describe, it, expect, vi } from 'vitest'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+
+// isModKey's IS_MAC is computed once at module-import time from
+// window.ion.platform, which is set in beforeAll below — too late for a
+// module-graph import. Mock it directly to the darwin (metaKey) behavior
+// this suite's MouseEvent stubs already assume (metaKey: true).
+vi.mock('../../platform/mod-key', () => ({
+  isModKey: (e: { metaKey: boolean; ctrlKey: boolean }) => e.metaKey,
+  isModHeld: (e: { metaKey: boolean; ctrlKey: boolean }) => e.metaKey,
+  IS_MAC: true,
+  MOD_KEY_LABEL: '⌘',
+}))
+
 import { segmentText, NavigableLink, NavigableCode, LinkSegment, remarkNavigableLinks, useNavigableText } from '../useNavigableLinks'
 import { registerSurfaceFileRouter } from '../../lib/file-open-router'
 import { useSessionStore } from '../../stores/sessionStore'
@@ -38,6 +50,7 @@ let unregisterRouter: (() => void) | null = null
 
 beforeAll(() => {
   ;(globalThis as any).window.ion = {
+    platform: 'darwin',
     openExternal: (url: string) => { externalOpens.push(url); return Promise.resolve() },
     fsExists,
     fsOpenNative,

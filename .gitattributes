@@ -1,0 +1,20 @@
+# Normalize line endings for text files to LF, both in the repository and in
+# every working tree that checks it out — including a Windows CI runner or
+# contributor machine where git's own installer default is
+# `core.autocrlf=true`.
+#
+# Without this, a file git considers text (source, config, packaging scripts)
+# round-trips through Windows checkout as CRLF even though it was authored and
+# committed as LF. That silently breaks anything that reads the file's exact
+# bytes: desktop/src/main/__tests__/windows-installer-nsh.test.ts locates NSIS
+# macros in packaging/windows/installer.nsh with a literal LF-terminated
+# search string (`!macro customInstall\n`), and a CRLF checkout makes every
+# such lookup fail to find a macro that is genuinely present in the file.
+#
+# `text=auto` defers to git's own text/binary heuristic per path, so this
+# cannot corrupt a binary asset (image, font, archive, compiled binary) that
+# happens to live anywhere in the tree — only paths git already classifies as
+# text are affected. `eol=lf` pins the working-tree representation to LF on
+# every platform, so the same bytes are read back regardless of which OS
+# checked the repository out.
+* text=auto eol=lf

@@ -27,8 +27,10 @@ var hostnameFn = os.Hostname
 
 // FileStore is an encrypted file-based credential store at ~/.ion/credentials.enc.
 //
-// Encryption uses AES-256-GCM keyed by a random 256-bit key persisted in a
-// 0600 keyfile (~/.ion/credentials.key) next to the store. The keyfile is
+// Encryption uses AES-256-GCM keyed by a random 256-bit key persisted in an
+// owner-only keyfile (~/.ion/credentials.key) next to the store. Owner-only
+// means mode 0600 on Unix and a single-entry DACL on Windows, where a mode is
+// not a permission at all (see utils.RestrictToOwner). The keyfile is
 // created on first use. This provides basic obfuscation, not strong security --
 // it prevents casual reading of credentials from disk but won't stop a
 // determined attacker with local access (who could read the keyfile too).
@@ -54,7 +56,7 @@ type credentialFile struct {
 // NewFileStore creates a FileStore at ~/.ion/credentials.enc with its
 // keyfile at ~/.ion/credentials.key.
 func NewFileStore() *FileStore {
-	home, err := os.UserHomeDir()
+	home, err := utils.UserHomeDir()
 	if err != nil {
 		utils.LogWithFields(utils.LevelInfo, "auth.filestore", "cannot determine home dir", map[string]any{"error": err.Error()})
 		home = "."
@@ -177,6 +179,13 @@ func (fs *FileStore) readFile() (*credentialFile, bool, error) {
 		return nil, false, fmt.Errorf("read credentials file: %w", err)
 	}
 
+	// Same reason as the keyfile: a store written before the permissions were
+	// tightened keeps its inherited ACL until something rewrites it, and a
+	// store that is only ever read is never rewritten. Idempotent.
+	if err := utils.RestrictToOwner(fs.path); err != nil {
+		utils.LogWithFields(utils.LevelError, "auth.filestore", "could not restrict the existing credentials file to its owner", map[string]any{"error": err.Error(), "path": fs.path})
+	}
+
 	// File content is hex-encoded ciphertext
 	ciphertext, err := hex.DecodeString(string(data))
 	if err != nil {
@@ -216,6 +225,14 @@ func (fs *FileStore) writeFile(creds *credentialFile) error {
 	if err := utils.AtomicWriteFile(fs.path, []byte(encoded), 0o600); err != nil {
 		return fmt.Errorf("write credentials file: %w", err)
 	}
+	// On Windows the 0o600 above is not a permission -- see RestrictToOwner.
+	// A failure to narrow the ACL leaves the ciphertext readable by local
+	// administrators, which is worth an error rather than a warning: the
+	// caller is storing a secret and should be told the storage is not
+	// private.
+	if err := utils.RestrictToOwner(fs.path); err != nil {
+		return fmt.Errorf("restrict credentials file to owner: %w", err)
+	}
 
 	return nil
 }
@@ -237,6 +254,17 @@ func (fs *FileStore) keyfilePath() string {
 func (fs *FileStore) loadOrCreateKeyfile() ([]byte, error) {
 	keyPath := fs.keyfilePath()
 	if key, err := readKeyfile(keyPath); err == nil {
+		// Narrow an already-existing keyfile too, not just one this call
+		// creates. A keyfile written before the permissions were tightened --
+		// or by an older build -- keeps the profile directory's inherited ACL
+		// forever, because the creation path below is the only other place
+		// this runs and it never executes again. Idempotent, so the common
+		// case re-applies a DACL that is already correct.
+		if err := utils.RestrictToOwner(keyPath); err != nil {
+			// Not fatal: the key is readable and the engine works. Logged at
+			// ERROR because the store is not as private as it claims.
+			utils.LogWithFields(utils.LevelError, "auth.filestore", "could not restrict the existing keyfile to its owner", map[string]any{"error": err.Error(), "keyPath": keyPath})
+		}
 		return key, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		// Present but malformed/unreadable. Do not overwrite -- an existing
@@ -270,6 +298,12 @@ func (fs *FileStore) loadOrCreateKeyfile() ([]byte, error) {
 	}
 	if err := f.Close(); err != nil {
 		return nil, fmt.Errorf("close keyfile: %w", err)
+	}
+	// The keyfile decrypts the store sitting next to it, so a readable
+	// keyfile makes the encryption decorative. Narrow it before returning
+	// the key that is about to be used.
+	if err := utils.RestrictToOwner(keyPath); err != nil {
+		return nil, fmt.Errorf("restrict keyfile to owner: %w", err)
 	}
 
 	utils.LogWithFields(utils.LevelInfo, "auth.filestore", "created credential keyfile", map[string]any{"keyPath": keyPath})

@@ -33,7 +33,7 @@ func RegistryPath() string {
 	if registryPathOverride != "" {
 		return registryPathOverride
 	}
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	return filepath.Join(home, ".ion", "plugins", "installed_plugins.json")
 }
 

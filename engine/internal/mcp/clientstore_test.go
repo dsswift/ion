@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -63,6 +64,18 @@ func TestClientStore_FileModeIsOwnerOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat store: %v", err)
 	}
+
+	// Windows has no POSIX permission bits for chmod/MkdirAll to set -- a
+	// non-read-only file always reports 0o666 there and a directory 0o777,
+	// regardless of the mode requested. Real owner-only enforcement for the
+	// file on that platform is RestrictToOwner (an ACL restriction, called by
+	// save() right after this write), pinned directly by
+	// owneronly_windows_test.go; there is no POSIX-bit assertion to make
+	// here on that platform.
+	if runtime.GOOS == "windows" {
+		return
+	}
+
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Errorf("store file mode = %o, want 600; it can hold a client_secret", perm)
 	}

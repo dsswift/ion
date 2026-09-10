@@ -3,6 +3,7 @@ package telemetry
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -68,7 +69,16 @@ func TestFlushToFile_ExpandsTilde(t *testing.T) {
 func TestBatchFlush_FailingTargetLogsError(t *testing.T) {
 	// A path under a nonexistent root directory: os.OpenFile can neither create
 	// the parent nor the file, so flushToFile returns an error on every flush.
+	// "/nonexistent-root/..." is not absolute by Go's Windows definition (no
+	// drive letter), so there it resolves relative to the working
+	// directory's own drive -- a location that can actually succeed to
+	// create rather than guaranteed to fail. "<" is illegal in an NTFS
+	// filename in any position, which guarantees the same unconditional
+	// failure "/nonexistent-root" is meant to guarantee on POSIX.
 	badPath := "/nonexistent-root/bad-path/telemetry.jsonl"
+	if runtime.GOOS == "windows" {
+		badPath = `C:\<bad>\telemetry.jsonl`
+	}
 
 	var mu sync.Mutex
 	var errLines []string

@@ -6,10 +6,19 @@ import { describe, expect, it } from 'vitest'
 const REPOSITORY_ROOT = resolve(__dirname, '../../../../..')
 const DESKTOP_ROOT = resolve(REPOSITORY_ROOT, 'desktop')
 
+// npm ships as a .cmd shim on Windows; execFileSync bypasses the shell that
+// would otherwise resolve the bare "npm" through PATHEXT, so ENOENT is the
+// result of naming the wrong file, not a missing install. Naming npm.cmd
+// directly isn't enough on its own: Windows refuses to CreateProcess a .bat
+// or .cmd file at all without shell: true (Node reports that refusal as
+// EINVAL), regardless of which name was passed.
+const NPM_BIN = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+
 function npmConfig(cwd: string, key: string): string {
-  return execFileSync('npm', ['config', 'get', key], {
+  return execFileSync(NPM_BIN, ['config', 'get', key], {
     cwd,
     encoding: 'utf-8',
+    shell: process.platform === 'win32',
   }).trim()
 }
 

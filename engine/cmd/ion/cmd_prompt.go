@@ -56,7 +56,7 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 		timeout = d
 	}
 
-	sock := socketPath()
+	sock := socketPathOrExit()
 	serverStarted := ensureServer(sock)
 
 	key := flags["key"]

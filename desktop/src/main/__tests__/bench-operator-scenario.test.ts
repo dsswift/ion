@@ -57,7 +57,10 @@ let root: string
 let repo: string
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'ion-scenario-')))
+  // realpath.native: macOS resolves /var's symlink and Windows expands a
+  // short (8.3) TEMP path to the long form git itself reports; plain
+  // realpathSync does not perform the Windows expansion.
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ion-scenario-')))
   process.env.ION_TEST_HOME_BENCH_SCENARIO = join(root, 'home')
 
   // ── Beat 1: start from main, branch to josh ───────────────────────────────

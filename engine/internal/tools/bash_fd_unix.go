@@ -24,8 +24,8 @@ func logFdPressure() {
 	count := countOpenFds()
 
 	utils.LogWithFields(utils.LevelDebug, "tools.bash", "fd pressure", map[string]any{
-		"open_fds":  count,
-		"fd_limit":  soft,
+		"open_fds": count,
+		"fd_limit": soft,
 	})
 }
 

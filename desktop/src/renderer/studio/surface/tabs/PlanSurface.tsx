@@ -20,6 +20,7 @@ import { Tooltip } from '../../../components/git/Tooltip'
 import { useInteractiveState, interactiveBg } from '../../../hooks/useInteractiveState'
 import { PlanActionsMenu } from './PlanActionsMenu'
 import { planExportFileName } from './plan-export'
+import { DEFAULT_MONO_FONT } from '../../../typography'
 
 type PlanState =
   | { kind: 'empty' }
@@ -220,7 +221,7 @@ export function PlanSurface(): React.JSX.Element {
             marginLeft: 7,
             overflow: 'hidden',
             color: colors.textTertiary,
-            fontFamily: 'Menlo, Monaco, monospace',
+            fontFamily: DEFAULT_MONO_FONT,
             fontSize: 10,
             fontWeight: 400,
             textOverflow: 'ellipsis',

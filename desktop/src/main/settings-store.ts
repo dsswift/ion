@@ -47,8 +47,20 @@ export const SETTINGS_DEFAULTS = {
   showDirLabel: true,
   preferredOpenWith: "cli",
   expandToolResults: false,
-  terminalFontFamily: "Menlo, Monaco, monospace",
+  // Must stay in sync with DEFAULT_MONO_FONT in renderer/typography.ts. This
+  // was a macOS-only stack ("Menlo, Monaco, monospace"): on Windows none of
+  // those fonts exist, so the browser substituted a PROPORTIONAL fallback.
+  // xterm derives its column count from measured character width, so a
+  // proportional font made every column far too wide and the terminal wrapped
+  // at roughly a third of its pane. Cascadia Code ships with Windows Terminal
+  // and Consolas with Windows itself.
+  terminalFontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Code", Consolas, monospace',
   terminalFontSize: 13,
+  // Show dotfiles and OS-hidden entries in the file explorer. Off by default
+  // so a tree opens on the operator's own files rather than on AppData and
+  // .git. Hidden entries render dimmed when shown, so the distinction stays
+  // visible rather than being all-or-nothing.
+  showHiddenFiles: false,
   allowSettingsEdits: false,
   // Claude Code compatibility is a migration feature, not a default: .claude
   // roots (commands, skills, CLAUDE.md context) load only when the user

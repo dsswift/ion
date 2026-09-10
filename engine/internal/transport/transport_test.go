@@ -5,16 +5,28 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
 )
 
-// shortSockPath creates a short Unix socket path under /tmp to avoid the
-// 108-character limit on Unix socket paths.
+// shortSockPath creates a short Unix socket path to avoid the 108-character
+// limit on the sockaddr_un sun_path field (also enforced by Windows'
+// AF_UNIX implementation). "/tmp" is used directly rather than os.TempDir()
+// because macOS's real temp root (/var/folders/<...>/T/) is long enough on
+// its own to overrun the limit; "/tmp" is not a valid absolute path on
+// Windows at all, so os.TempDir() is used there instead -- Windows CI
+// runners already resolve it to a short 8.3-style path
+// (C:\Users\RUNNER~1\AppData\Local\Temp) for exactly this reason.
 func shortSockPath(t *testing.T, name string) string {
 	t.Helper()
-	path := fmt.Sprintf("/tmp/ion-test-%s-%d.sock", name, os.Getpid())
+	dir := "/tmp"
+	if runtime.GOOS == "windows" {
+		dir = os.TempDir()
+	}
+	path := filepath.Join(dir, fmt.Sprintf("ion-test-%s-%d.sock", name, os.Getpid()))
 	t.Cleanup(func() { os.Remove(path) })
 	os.Remove(path) // Remove stale socket if present.
 	return path

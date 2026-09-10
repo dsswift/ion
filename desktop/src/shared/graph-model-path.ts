@@ -1,34 +1,42 @@
 /**
- * Minimal, pure POSIX path helpers.
+ * Path helpers for Graph View's renderer-side model.
  *
- * `graph-model-edges.ts` runs in the renderer (this module lives in
- * `shared/` but is renderer-executed per the program design), so it cannot
- * import Node's `path` module — Vite externalizes it for the browser
- * target and the build fails. Corpus paths are always absolute POSIX paths
- * (the main-process scanner joins with `/` on every supported platform),
- * so a small POSIX-only implementation is exact, not an approximation.
+ * Node's `path` module cannot be imported by the renderer, so these helpers
+ * normalize both native separator styles to forward slashes. That gives the
+ * corpus scanner and link resolver one stable path representation on macOS
+ * and Windows.
  */
 
+import { isAbsolutePath as isNativeAbsolutePath } from './paths'
+
 export function isAbsolutePath(p: string): boolean {
-  return p.startsWith('/')
+  return isNativeAbsolutePath(p)
 }
 
 export function dirnamePath(p: string): string {
-  const idx = p.lastIndexOf('/')
+  const normalized = p.replace(/\\/g, '/')
+  const idx = normalized.lastIndexOf('/')
   if (idx < 0) return '.'
   if (idx === 0) return '/'
-  return p.slice(0, idx)
+  return normalized.slice(0, idx)
 }
 
 export function joinPaths(...segments: string[]): string {
-  const joined = segments.filter((s) => s.length > 0).join('/')
+  const joined = segments
+    .map((segment) => segment.replace(/\\/g, '/'))
+    .filter((s) => s.length > 0)
+    .join('/')
   return normalizePath(joined)
 }
 
-/** Collapse `.`, `..`, and repeated slashes. Preserves a leading `/`. */
+/** Collapse `.`, `..`, and repeated slashes. Preserves an absolute prefix. */
 export function normalizePath(p: string): string {
-  const absolute = isAbsolutePath(p)
-  const parts = p.split('/').filter((part) => part.length > 0 && part !== '.')
+  const normalized = p.replace(/\\/g, '/')
+  const drive = /^([A-Za-z]:)(?:\/|$)/.exec(normalized)?.[1] ?? ''
+  const unc = normalized.startsWith('//')
+  const absolute = isAbsolutePath(normalized)
+  const withoutPrefix = drive ? normalized.slice(2) : unc ? normalized.slice(2) : normalized
+  const parts = withoutPrefix.split('/').filter((part) => part.length > 0 && part !== '.')
   const out: string[] = []
   for (const part of parts) {
     if (part === '..') {
@@ -39,5 +47,7 @@ export function normalizePath(p: string): string {
     }
   }
   const result = out.join('/')
+  if (drive) return `${drive}/${result}`
+  if (unc) return `//${result}`
   return absolute ? `/${result}` : result || '.'
 }

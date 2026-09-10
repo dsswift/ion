@@ -140,6 +140,37 @@ export function requireStartupAuthentication(): void {
   log('startup', 'required operator authentication gate active')
 }
 
+/**
+ * Abandon an in-flight sign-in attempt and return the gate to its idle state.
+ *
+ * The engine's PKCE flow has no cancel: it holds a loopback listener open and
+ * times out after five minutes. Nothing in that window tells the desktop the
+ * user gave up -- and a user who closes the browser tab, or is handed an error
+ * page by the provider, has done exactly that. Before this existed the splash
+ * sat on a disabled "Waiting for browser…" button for the full five minutes
+ * with no way back, so the only way to retry was to quit the application.
+ *
+ * This resets the desktop's own view so the button is usable again. The
+ * engine's abandoned attempt expires on its own; a fresh authenticate() starts
+ * a new flow with a new listener, and whichever completes first signs the
+ * operator in.
+ */
+export function cancelStartupAuthentication(): void {
+  if (stateValue.mode !== 'authentication') {
+    log('startup', 'authentication cancel ignored; gate is not active', { mode: stateValue.mode })
+    return
+  }
+  stateValue = {
+    ...stateValue,
+    sequence: stateValue.sequence + 1,
+    authenticationBusy: false,
+    authenticationError: null,
+    status: 'Sign in to continue',
+  }
+  publish()
+  log('startup', 'required operator authentication cancelled by user')
+}
+
 export async function authenticateStartup(): Promise<void> {
   if (stateValue.mode !== 'authentication') {
     throw new Error('startup authentication is not required')
@@ -168,6 +199,16 @@ export async function authenticateStartup(): Promise<void> {
     }
     publish()
     log('startup', 'required operator authentication completed', { user: identity.user })
+    // The gate blocks reveal while mode is 'authentication', and both ready
+    // reports can arrive before this promise settles: the main-process wait
+    // loop polls the engine every 250ms and proceeds on the engine's own view
+    // of the grant, which becomes signed-in the moment the token exchange
+    // completes -- while signIn() is still finishing its own bookkeeping.
+    // Observed on Windows: owner ready at 19:03:06.645 and studio ready at
+    // 19:03:07.081, both refused, then this line at 19:03:07.736 with nothing
+    // left to call maybeReveal. The splash sat on "Signed in. Preparing your
+    // workspace…" over a fully booted application.
+    maybeReveal()
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err)
     stateValue = {

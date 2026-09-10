@@ -16,7 +16,10 @@ const IDENTITY = process.env.APPLE_SIGNING_IDENTITY || "Ion Local Dev";
 const ENTITLEMENTS = path.join(__dirname, "..", "resources", "entitlements.mac.plist");
 
 exports.default = async function afterPack(context) {
-  if (process.platform !== "darwin") return;
+  if (context.electronPlatformName !== "darwin") {
+    console.log("  afterPack: non-darwin target, codesign skipped");
+    return;
+  }
 
   const appPath = path.join(
     context.appOutDir,

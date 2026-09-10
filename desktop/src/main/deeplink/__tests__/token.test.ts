@@ -49,8 +49,16 @@ describe('deep-link token', () => {
     expect(token).toHaveLength(64) // 32 random bytes as hex
     const onDisk = readFileSync(DEEPLINK_TOKEN_FILE, 'utf-8').trim()
     expect(onDisk).toBe(token)
-    // 0o777 masks off the file-type bits, leaving the permission bits.
-    expect(statSync(DEEPLINK_TOKEN_FILE).mode & 0o777).toBe(0o600)
+    // Node's chmod on Windows only toggles the read-only attribute; a
+    // non-read-only file always reports 0o666, regardless of the mode passed
+    // to writeFileSync. There is no POSIX-permission-bit assertion to make
+    // here on that platform — real owner-only enforcement for this file is
+    // not yet implemented on Windows (would need an ACL restriction, as
+    // engine/internal/utils/owneronly_windows.go does for the Go side).
+    if (process.platform !== 'win32') {
+      // 0o777 masks off the file-type bits, leaving the permission bits.
+      expect(statSync(DEEPLINK_TOKEN_FILE).mode & 0o777).toBe(0o600)
+    }
   })
 
   it('reuses the existing token across calls', async () => {
@@ -76,7 +84,11 @@ describe('deep-link token', () => {
     const { getDeepLinkToken } = await import('../token')
     getDeepLinkToken()
 
-    expect(statSync(path).mode & 0o777).toBe(0o600)
+    // See the first test's comment: Windows has no POSIX permission bits for
+    // chmod to re-assert.
+    if (process.platform !== 'win32') {
+      expect(statSync(path).mode & 0o777).toBe(0o600)
+    }
   })
 
   it('replaces a truncated token file rather than trusting it', async () => {
@@ -101,7 +113,13 @@ describe('deep-link token', () => {
     expect(isTrustedToken(null)).toBe(false)
   })
 
-  it('fails CLOSED when the token cannot be established', async () => {
+  // chmodSync(dir, 0o500) does not restrict the owning process on Windows --
+  // the mode bits map only to the read-only attribute, and a directory's
+  // read-only attribute does not block writes into it. There is no
+  // directory-permission mechanism here to make minting fail with; the same
+  // reason engine/internal/utils/atomicwrite_test.go skips its equivalent
+  // restricted-directory case on that platform.
+  it.skipIf(process.platform === 'win32')('fails CLOSED when the token cannot be established', async () => {
     // An unwritable ~/.ion: minting throws, so nothing can be trusted.
     const ionDir = join(fakeHome, '.ion')
     chmodSync(ionDir, 0o500)

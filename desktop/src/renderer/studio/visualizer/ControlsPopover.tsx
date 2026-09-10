@@ -13,6 +13,7 @@ import { CaretRight, Copy, ArrowClockwise, SpeakerHigh, SpeakerSlash } from '@ph
 import { useViewportClamp } from '../../hooks/useViewportClamp'
 import { useColors } from '../../theme'
 import { useStudioControlsBus } from '../state/controls-bus'
+import { DEFAULT_MONO_FONT } from '../../typography'
 
 export function ControlsPopover(): React.JSX.Element | null {
   const colors = useColors()
@@ -109,7 +110,7 @@ export function ControlsPopover(): React.JSX.Element | null {
                   border: `1px solid ${colors.containerBorder}`,
                   borderRadius: 6,
                   padding: '3px 6px',
-                  fontFamily: 'Menlo, Monaco, monospace',
+                  fontFamily: DEFAULT_MONO_FONT,
                   fontSize: 11,
                 }}
               />

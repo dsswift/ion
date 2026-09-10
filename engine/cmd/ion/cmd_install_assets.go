@@ -6,6 +6,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // cmdInstallAssets replicates the SDK section of commands/install.command for
@@ -38,7 +42,7 @@ func cmdInstallAssets() {
 		os.Exit(1)
 	}
 
-	home, err := os.UserHomeDir()
+	home, err := utils.UserHomeDir()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "install-assets: home dir: %v\n", err)
 		os.Exit(1)
@@ -122,18 +126,61 @@ func findAssetRoot(startDir string) (string, error) {
 // Returns a non-nil error if src does not exist (the install.command uses an
 // `if [[ -d "$SRC" ]]` guard; we treat a missing source as an error so
 // callers know the asset was not bundled).
-// replaceDirContents deletes dst then copies src into place, so the
-// destination is an exact mirror of the source. Used for engine-shipped
-// assets (the SDK) where merge-copy semantics would leave orphaned
-// files behind across upgrades.
+// replaceDirContents makes dst an exact mirror of src, so upgrades never
+// leave orphaned files behind. On Windows a stale file held open by a live
+// extension host cannot simply be RemoveAll'd (the OS refuses to delete an
+// open file), so the existing tree is moved aside first — a rename succeeds
+// even while a file inside it is open — and the aside copy is removed
+// best-effort afterward. A held-open file leaves an "<dst>.old-*" directory
+// that the next call to this function reaps.
 func replaceDirContents(src, dst string) error {
 	if _, err := os.Stat(src); err != nil {
 		return fmt.Errorf("source %q not found: %w", src, err)
 	}
-	if err := os.RemoveAll(dst); err != nil {
-		return fmt.Errorf("remove stale %q: %w", dst, err)
+
+	aside := ""
+	if _, err := os.Stat(dst); err == nil {
+		aside = fmt.Sprintf("%s.old-%d", dst, time.Now().UnixNano())
+		if err := os.Rename(dst, aside); err != nil {
+			return fmt.Errorf("move aside %q: %w", dst, err)
+		}
+		utils.LogWithFields(utils.LevelInfo, "main", "install-assets: moved existing tree aside", map[string]any{"dst": dst, "aside": aside})
 	}
-	return copyDirContents(src, dst)
+
+	if err := copyDirContents(src, dst); err != nil {
+		return err
+	}
+
+	if aside != "" {
+		if err := os.RemoveAll(aside); err != nil {
+			utils.LogWithFields(utils.LevelWarn, "main", "install-assets: aside tree not removed (held open); next run retries", map[string]any{"aside": aside, "error": utils.ErrStr(err)})
+		} else {
+			utils.Log("main", "install-assets: aside tree removed")
+		}
+	}
+	reapAsideTrees(filepath.Dir(dst), filepath.Base(dst)+".old-")
+	return nil
+}
+
+// reapAsideTrees best-effort removes any leftover "<prefix>*" directories in
+// dir from a previous replaceDirContents call whose aside removal failed
+// (the file that was held open at the time is very likely free by now).
+func reapAsideTrees(dir, prefix string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), prefix) {
+			continue
+		}
+		p := filepath.Join(dir, e.Name())
+		if err := os.RemoveAll(p); err != nil {
+			utils.LogWithFields(utils.LevelDebug, "main", "install-assets: leftover aside tree still held open", map[string]any{"path": p, "error": utils.ErrStr(err)})
+			continue
+		}
+		utils.LogWithFields(utils.LevelInfo, "main", "install-assets: reaped leftover aside tree", map[string]any{"path": p})
+	}
 }
 
 func copyDirContents(src, dst string) error {

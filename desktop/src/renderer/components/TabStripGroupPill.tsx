@@ -16,6 +16,7 @@ import { InactiveGroupMenu } from './TabStripInactiveGroupMenu'
 import { GroupPickerDropdown } from './TabStripGroupPickerDropdown'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { rError } from '../rendererLogger'
+import { pathSegments } from '../../shared/paths'
 
 interface GroupPillProps {
   group: TabGroupView
@@ -243,7 +244,7 @@ export function GroupPill({
               cursor: 'default',
             }}
           >
-            {selectedTab.workingDirectory.split('/').pop() || selectedTab.workingDirectory}
+            {pathSegments(selectedTab.workingDirectory).pop() || selectedTab.workingDirectory}
           </span>
         )}
         {isActive && selectedTab && (

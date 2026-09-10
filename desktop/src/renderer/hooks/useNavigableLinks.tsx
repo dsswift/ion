@@ -8,6 +8,8 @@ import { surfaceRouter } from '../lib/file-open-router'
 import { fileOpenIntent, isRenderableHtml, type FileClickModifiers } from '../lib/open-file-intent'
 import { segmentText, EDITABLE_EXTS, type TextSegment } from './link-segments'
 import { readNavigableKind } from './remarkNavigableLinks'
+import { isModKey } from '../platform/mod-key'
+import { isAbsolutePath, joinPath } from '../../shared/paths'
 
 // The pure pieces live in their own modules so the remark plugin stays loadable
 // without React, the theme, or the session store (this file imports all three,
@@ -89,7 +91,7 @@ export const LinkSegment = React.memo(function LinkSegment({
           cursor: cmdHeld ? 'pointer' : undefined,
         }}
         onClick={(e) => {
-          if (!e.metaKey) return
+          if (!isModKey(e)) return
           e.preventDefault()
           e.stopPropagation()
           onOpenFile(segment.value, e)
@@ -113,7 +115,7 @@ export const LinkSegment = React.memo(function LinkSegment({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={(e) => {
-        if (!e.metaKey) return
+        if (!isModKey(e)) return
         e.preventDefault()
         e.stopPropagation()
         if (isUrl) onOpenUrl(segment.value, e)
@@ -176,7 +178,7 @@ export function useNavigableText() {
   const onOpenFile = useCallback(async (path: string, event?: FileClickModifiers) => {
     const homeDir = useSessionStore.getState().staticInfo?.homePath || '/Users/' + (process.env.USER || 'user')
     const expanded = path.startsWith('~/') ? homeDir + path.slice(1) : path
-    const resolved = expanded.startsWith('/') ? expanded : workingDir + '/' + expanded
+    const resolved = isAbsolutePath(expanded) ? expanded : joinPath(workingDir, expanded)
     rDebug('navigable-links', 'checking file target', { raw_path: path, resolved })
     let exists = false
     try {
@@ -306,7 +308,7 @@ export const NavigableLink = React.memo(function NavigableLink({
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onClick={(e) => {
-          if (!e.metaKey) return
+          if (!isModKey(e)) return
           e.preventDefault()
           e.stopPropagation()
           if (navigableKind === 'url') onOpenUrl(target, e)

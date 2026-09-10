@@ -107,8 +107,22 @@ func TestCallHook_EmitsRealAttribution(t *testing.T) {
 	if !ok {
 		t.Fatalf("latency_ms is %T, want float64", p["latency_ms"])
 	}
-	if lat <= 0 {
-		t.Errorf("latency_ms = %v, want > 0", lat)
+	// >= 0, not > 0: this is a real subprocess round-trip (stdin write, the
+	// Node extension's readline handler, stdout write, this host's reader
+	// goroutine), never a synchronous fast path, so it always consumes real
+	// wall-clock time -- but "real" is not the same as "resolvable by this
+	// clock". On real windows-latest CI this reported exactly 0 even after
+	// switching the division to nanosecond precision (ruling out truncation,
+	// see host_io.go's latencyMs computation), which means time.Since(start)
+	// itself measured zero elapsed monotonic time on that platform for a
+	// round-trip this fast -- a genuine clock-resolution floor, not a
+	// production bug. The property this test actually needs to guard is
+	// "the attribution payload carries a sane, non-negative number", which a
+	// clock-resolution-limited zero still satisfies; a negative value would
+	// indicate a real computation bug (clock skew, wraparound) and must
+	// still fail.
+	if lat < 0 {
+		t.Errorf("latency_ms = %v, want >= 0", lat)
 	}
 	if turn, ok := p["turn"].(int64); !ok || turn != 3 {
 		t.Errorf("turn = %v (%T), want int64(3)", p["turn"], p["turn"])

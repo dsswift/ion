@@ -38,7 +38,7 @@ func main() {
 					panic(r) // re-panic to preserve non-zero exit
 				}
 			}()
-			cmdServe()
+			cmdServe(flags)
 		}()
 	case "start":
 		cmdStart(flags, listFlags)

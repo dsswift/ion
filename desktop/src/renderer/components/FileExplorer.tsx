@@ -18,7 +18,7 @@
  * (fileExplorerRootCollapsed, MIRROR_LOCAL).
  */
 import React, { useState, useCallback, useMemo } from 'react'
-import { X, ArrowsClockwise, ArrowsInLineVertical, Folders } from '@phosphor-icons/react'
+import { X, ArrowsClockwise, ArrowsInLineVertical, Eye, EyeSlash, Folders } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
@@ -31,6 +31,7 @@ import { orderedWorkspaceRoots } from '../../shared/workspace-roots'
 import { useProjectDir } from '../hooks/useProjectDir'
 import { Tooltip } from './git/Tooltip'
 import { rDebug, rError } from '../rendererLogger'
+import { pathSegments } from '../../shared/paths'
 
 /**
  * Header icon button (close X, Add Folder to Workspace, Refresh, Collapse All).
@@ -93,6 +94,8 @@ export function FileExplorer({
   const rootCollapsed = useSessionStore((s) => s.fileExplorerRootCollapsed)
   const { collapseAllExplorer, toggleFileExplorer, setExplorerRootCollapsed } = useSessionStore.getState()
   const workspaceFolders = usePreferencesStore((s) => s.workspaceFolders)
+  const showHiddenFiles = usePreferencesStore((s) => s.showHiddenFiles)
+  const setShowHiddenFiles = usePreferencesStore((s) => s.setShowHiddenFiles)
   const addWorkspaceFolder = usePreferencesStore((s) => s.addWorkspaceFolder)
   const removeWorkspaceFolder = usePreferencesStore((s) => s.removeWorkspaceFolder)
 
@@ -202,7 +205,7 @@ export function FileExplorer({
               whiteSpace: 'nowrap',
             }}
           >
-            {roots.secondary.length > 0 ? 'WORKSPACE' : (primary.split('/').pop()?.toUpperCase() || 'PROJECT')}
+            {roots.secondary.length > 0 ? 'WORKSPACE' : (pathSegments(primary).pop()?.toUpperCase() || 'PROJECT')}
           </span>
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
@@ -210,6 +213,14 @@ export function FileExplorer({
             // Explorer-wide only. Anything scoped to one folder is a right-click
             // action on that folder, not a header button with an invisible target.
             { Icon: Folders, title: 'Add Folder to Workspace', action: handleAddFolder },
+            // Explorer-wide, so it belongs here rather than on a folder's
+            // context menu. The label states the resulting action, not the
+            // current state, so it reads unambiguously either way.
+            {
+              Icon: showHiddenFiles ? EyeSlash : Eye,
+              title: showHiddenFiles ? 'Hide Hidden Files' : 'Show Hidden Files',
+              action: () => setShowHiddenFiles(!showHiddenFiles),
+            },
             { Icon: ArrowsClockwise, title: 'Refresh', action: () => setRefreshNonce((n) => n + 1) },
             { Icon: ArrowsInLineVertical, title: 'Collapse All', action: () => allRoots.forEach((r) => collapseAllExplorer(r)) },
           ].map(({ Icon, title, action }) => (

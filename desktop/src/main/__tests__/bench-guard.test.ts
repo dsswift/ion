@@ -77,6 +77,7 @@ beforeEach(async () => {
 
   home = mkdtempSync(join(tmpdir(), 'ion-benchguard-'))
   process.env.HOME = home
+  process.env.USERPROFILE = home
   mkdirSync(join(home, '.ion'), { recursive: true })
   writeFileSync(
     join(home, '.ion', 'integration-workspaces.json'),

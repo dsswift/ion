@@ -10,7 +10,7 @@ import "golang.org/x/sys/windows"
 // The Windows setsockopt wrapper takes a windows.Handle rather than the int the
 // Unix syscall package takes, which is why this is a per-platform file. The
 // tuning is not Unix-only in purpose: on Windows the engine listens on TCP
-// loopback (see DefaultSocketPath), and the same event burst that motivated the
+// loopback, and the same event burst that motivated the
 // larger buffer applies to that listener.
 func setSocketBuffers(fd uintptr, size int) error {
 	h := windows.Handle(fd)

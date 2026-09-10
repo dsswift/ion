@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // WalkAgentFiles returns absolute paths to .md files in the directories
@@ -21,7 +23,7 @@ func WalkAgentFiles(opts WalkOptions) ([]string, error) {
 	}
 
 	if opts.IncludeUserDir {
-		home, err := os.UserHomeDir()
+		home, err := utils.UserHomeDir()
 		if err == nil {
 			dirs = append(dirs, filepath.Join(home, ".ion", "agents"))
 		}

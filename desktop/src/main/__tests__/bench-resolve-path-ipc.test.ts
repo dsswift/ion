@@ -30,6 +30,7 @@ beforeEach(async () => {
   handlers.clear()
   home = mkdtempSync(join(tmpdir(), 'ion-bench-path-'))
   process.env.HOME = home
+  process.env.USERPROFILE = home
   repo = join(home, 'repo')
   bench = join(home, 'integration', 'project-main')
   mkdirSync(join(home, '.ion'), { recursive: true })

@@ -50,7 +50,10 @@ const FEATURE = 'josh'
 
 beforeEach(() => {
   handlers.clear()
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'ion-wtrebase-')))
+  // realpath.native: macOS resolves /var's symlink and Windows expands a
+  // short (8.3) TEMP path to the long form git itself reports; plain
+  // realpathSync does not perform the Windows expansion.
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ion-wtrebase-')))
   process.env.ION_TEST_HOME_WT_REBASE = join(root, 'home')
 
   // An upstream so the handler's `git fetch origin` has something to talk to.

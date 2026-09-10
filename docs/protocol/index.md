@@ -13,7 +13,7 @@ Ion Engine runs as a background daemon and communicates with clients over a sock
 | Platform        | Transport          | Address                    |
 |-----------------|--------------------|----------------------------|
 | macOS / Linux   | Unix domain socket | `~/.ion/engine.sock`       |
-| Windows         | TCP loopback       | `127.0.0.1:21017`          |
+| Windows         | TCP loopback       | `127.0.0.1:<per-user port>` |
 
 The engine creates the socket when it starts (`ion serve`) and removes it on shutdown. If a stale socket file exists from a previous crash, the engine detects it by attempting a connection. If the connection fails, the stale file is removed and a new listener is created.
 

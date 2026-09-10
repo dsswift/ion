@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/dsswift/ion/engine/internal/procctl"
 )
 
 // TestHostDispose_NoRaceWithCaptureExitStatus is a regression test for the
@@ -94,8 +96,16 @@ func TestHostDispose_LiveProcessKill_NoHang(t *testing.T) {
 	}
 
 	cmd := exec.Command(sleepPath, "60")
+	// Configure exactly as spawnAndInit does: without it, the child shares
+	// this test process's own process group, and disposeInternal's
+	// procctl.KillTree (which now signals the whole group) would kill the
+	// test runner itself instead of just the sleep child.
+	procctl.Configure(cmd)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start sleep: %v", err)
+	}
+	if err := procctl.AfterStart(cmd); err != nil {
+		t.Fatalf("AfterStart: %v", err)
 	}
 
 	// Construct a Host with the minimal fields disposeInternal reads.

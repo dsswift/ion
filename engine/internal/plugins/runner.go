@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -49,14 +50,26 @@ func runCommand(cmdStr, pluginRoot string, timeout time.Duration, extraEnv []str
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	parts := splitCommand(cmdStr)
-	if len(parts) == 0 {
+	if strings.TrimSpace(cmdStr) == "" {
 		return "", fmt.Errorf("empty hook command")
 	}
 
-	cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
+	// Run through the engine's standard shell resolution (bash -c on POSIX,
+	// powershell -NoProfile -Command on Windows -- the same mechanism the
+	// Bash tool uses), not a raw exec of the whitespace-split first token.
+	// A plugin author's hook command routinely assumes real shell semantics
+	// -- $VAR expansion, a builtin like `echo` that is not a standalone
+	// binary on Windows, quoting more elaborate than splitCommand's
+	// double-quote-only tokenizer understands -- and the previous
+	// exec.CommandContext(parts[0], parts[1:]...) never had any of that; it
+	// happened to look like it worked on POSIX only because `echo` and
+	// `true` there are also real binaries on PATH; there is no such
+	// standalone binary on Windows.
+	var shellCfg *types.ShellConfig
+	shell, args, _ := shellCfg.Resolve(cmdStr)
+	cmd := exec.CommandContext(ctx, shell, args...)
 
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	claudeDir := filepath.Join(home, ".claude")
 	ionDir := filepath.Join(home, ".ion")
 
@@ -93,7 +106,10 @@ func runCommand(cmdStr, pluginRoot string, timeout time.Duration, extraEnv []str
 		return "", nil
 	}
 
-	return strings.TrimRight(stdout.String(), "\n"), nil
+	// PowerShell's own output (and many Windows-native commands) ends lines
+	// with CRLF; trimming only "\n" leaves a stray trailing "\r" that a POSIX
+	// shell's LF-only output never produces.
+	return strings.TrimRight(stdout.String(), "\r\n"), nil
 }
 
 // splitCommand splits a shell-style command string on whitespace, respecting

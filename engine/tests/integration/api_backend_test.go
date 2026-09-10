@@ -18,6 +18,23 @@ import (
 	"github.com/dsswift/ion/engine/tests/helpers"
 )
 
+// mockRunExitTimeout bounds how long a test waits for a mock-backend run to
+// emit its exit event. 15s matches the margin already proven sufficient by
+// this package's other waitForExit calls -- a generous ceiling for a run
+// that hits no real network, not a value tuned against a specific failure.
+//
+// (An earlier version of this comment attributed a Windows CI failure of
+// TestApiBackendSimpleTextResponse/TestApiBackendTaskCompleteUsage/
+// TestHybridBackend_ApiRoutedRunStreamsTextThroughInnerApi at ~5.00-5.01s to
+// contention and "fixed" it by raising this bound to 15s. That was wrong: a
+// real Windows VM run at 15s failed identically, and a diagnostic goroutine
+// dump showed the actual cause -- those three call sites passed a full
+// filesystem path as RunOptions.ConversationID, which is embedded verbatim
+// into a durablefile lock-file name; the "C:" drive prefix made every mkdir
+// attempt fail with a syntax error that no amount of retrying or waiting
+// fixes. See the isolation comments at each call site for the real fix.)
+const mockRunExitTimeout = 15 * time.Second
+
 func setupMockProvider(t *testing.T) *helpers.MockProvider {
 	t.Helper()
 	providers.ResetRegistries()
@@ -98,14 +115,25 @@ func TestApiBackendSimpleTextResponse(t *testing.T) {
 	b := backend.NewApiBackend()
 	be := newBackendCollector(b)
 
-	convDir := t.TempDir()
+	// Isolate HOME: conversation.Save("", ...) ignores the run's convDir
+	// entirely and always resolves DefaultConversationsDir() from HOME
+	// (internal/conversation/helpers.go), so without this the run's final
+	// save writes into the real operator's ~/.ion/conversations.
+	t.Setenv("HOME", t.TempDir())
 	b.StartRun("run-text", types.RunOptions{
-		Prompt:         "Say hello",
-		Model:          "mock-model",
-		ConversationID: filepath.Join(convDir, "conv-text"),
+		Prompt: "Say hello",
+		Model:  "mock-model",
+		// ConversationID must be a bare identifier, never a filesystem path
+		// (see RunOptions.ConversationID's doc comment): it is embedded
+		// verbatim into a lock-file name (durablefile), and a path value
+		// containing "C:" broke that name on Windows -- every acquire
+		// attempt failed with "filename... syntax is incorrect", retried
+		// for the full bound, and never completed. Confirmed on a real
+		// Windows VM with a diagnostic dump of the actual mkdir error.
+		ConversationID: "conv-text",
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	events := be.getNormalized()
 
@@ -144,14 +172,15 @@ func TestApiBackendTaskCompleteUsage(t *testing.T) {
 	b := backend.NewApiBackend()
 	be := newBackendCollector(b)
 
-	convDir := t.TempDir()
+	// See the isolation comment in TestApiBackendSimpleTextResponse above.
+	t.Setenv("HOME", t.TempDir())
 	b.StartRun("run-usage", types.RunOptions{
 		Prompt:         "test usage",
 		Model:          "mock-model",
-		ConversationID: filepath.Join(convDir, "conv-usage"),
+		ConversationID: "conv-usage",
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	events := be.getNormalized()
 	var tc *types.TaskCompleteEvent
@@ -205,7 +234,7 @@ func TestApiBackendToolCallLoop(t *testing.T) {
 		ProjectPath: tmpDir,
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	events := be.getNormalized()
 
@@ -263,7 +292,7 @@ func TestApiBackendMaxTurns(t *testing.T) {
 		MaxTurns: 2,
 	})
 
-	be.waitForExit(t, 10*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	events := be.getNormalized()
 
@@ -313,7 +342,7 @@ func TestApiBackendCancellation(t *testing.T) {
 		t.Error("expected Cancel to return true")
 	}
 
-	be.waitForExit(t, 10*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	// Verify the run is no longer active
 	if b.IsRunning("run-cancel") {
@@ -339,7 +368,7 @@ func TestApiBackendProviderError(t *testing.T) {
 		Model:  "mock-model",
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	be.mu.Lock()
 	errCount := len(be.errors)
@@ -380,7 +409,7 @@ func TestApiBackendToolCallHook(t *testing.T) {
 		Model:  "mock-model",
 	}, cfg)
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	events := be.getNormalized()
 
@@ -415,7 +444,7 @@ func TestApiBackendConversationPersistence(t *testing.T) {
 		ConversationID: conversationID,
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	// The conversation should have been saved to
 	// ~/.ion/conversations/<conversationID>.jsonl. Load it back to verify.
@@ -487,7 +516,7 @@ func TestApiBackendPlanMode(t *testing.T) {
 		PlanFilePath:  "/tmp/test-plan.md",
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	// Verify the provider was called with the right system prompt containing PLAN MODE
 	calls := mp.Calls()
@@ -550,7 +579,7 @@ func TestApiBackendPlanModeDefaultTools(t *testing.T) {
 		PlanFilePath: "/tmp/default-plan.md",
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	calls := mp.Calls()
 	if len(calls) == 0 {
@@ -611,7 +640,7 @@ func TestApiBackendPlanModeWriteGate(t *testing.T) {
 		PlanFilePath: planFile,
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	// Check that the tool result was an error mentioning plan mode
 	events := be.getNormalized()
@@ -646,7 +675,7 @@ func TestApiBackendPlanModeExitPlanMode(t *testing.T) {
 		PlanFilePath: "/tmp/exit-plan.md",
 	})
 
-	be.waitForExit(t, 5*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	// The model calling ExitPlanMode is a *proposal*, not a confirmed mode
 	// change. The engine must NOT emit PlanModeChangedEvent{Enabled:false}

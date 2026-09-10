@@ -77,7 +77,7 @@ func TestAgentSpawnerChildRunCompletes(t *testing.T) {
 		Model:  "mock-model",
 	})
 
-	be.waitForExit(t, 10*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	events := be.getNormalized()
 
@@ -163,7 +163,7 @@ func TestAgentSpawnerConcurrentChildRuns(t *testing.T) {
 		Model:  "mock-model",
 	})
 
-	be.waitForExit(t, 10*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -208,7 +208,7 @@ func TestAgentSpawnerChildError(t *testing.T) {
 		Model:  "mock-model",
 	})
 
-	be.waitForExit(t, 10*time.Second)
+	be.waitForExit(t, mockRunExitTimeout)
 
 	events := be.getNormalized()
 

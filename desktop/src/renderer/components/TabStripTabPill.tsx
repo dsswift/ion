@@ -15,6 +15,7 @@ import { useQuestionsStore } from '../stores/questions-store'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { StatusDot } from './TabStripStatusDot'
 import { InlineRenameInput } from './TabStripInlineRenameInput'
+import { pathSegments } from '../../shared/paths'
 
 interface TabPillProps {
   tab: TabState
@@ -277,7 +278,7 @@ export function TabPill({
             onOpenDirMenu(tab.id, { x: e.clientX, y: e.clientY })
           }}
         >
-          {tab.workingDirectory.split('/').pop() || tab.workingDirectory}
+          {pathSegments(tab.workingDirectory).pop() || tab.workingDirectory}
         </span>
       )}
       {isEditing ? (

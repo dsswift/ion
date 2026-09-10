@@ -1,4 +1,4 @@
-.PHONY: default demo desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test test test-all test-linux test-linux-engine test-linux-engine-run test-linux-engine-summary test-linux-desktop test-linux-desktop-run clean check-file-sizes check-contracts check-status-writers check-studio-parity check-logging check-swiftlint check-dashboards check-vocabulary check-issue-closure generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop log-level-debug
+.PHONY: sync-windows-vm default demo desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test test test-all test-linux test-linux-engine test-linux-engine-run test-linux-engine-summary test-linux-desktop test-linux-desktop-run clean check-file-sizes check-contracts check-status-writers check-studio-parity check-logging check-admx check-windows-scripts check-swiftlint check-dashboards check-vocabulary check-issue-closure generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop log-level-debug
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -41,6 +41,24 @@ desktop:
 # `make desktop`, this only produces the artifact under desktop/release/.
 desktop-pkg:
 	@cd desktop && npm run dist && npm run pkg
+
+# Push this checkout's tracked source to a Windows test VM.
+#
+# Only relevant while a Windows VM is open for testing; ordinary macOS work
+# never needs it. Ships every tracked file under engine/, desktop/, packaging/
+# and scripts/ as one archive rather than a hand-picked diff, because a
+# per-file copy left the VM's tree missing files and produced two false
+# "still broken" retests against a stale binary.
+#
+# Override the target with ION_WIN_VM_HOST / ION_WIN_VM_PATH.
+sync-windows-vm:
+	@bash scripts/sync-windows-vm.sh
+
+# Build the Windows NSIS installer for local testing (windows-mvp program).
+# Produces desktop/release/Ion-Setup-<version>-x64.exe. Windows-only —
+# electron-builder's NSIS target requires the win32 host toolchain.
+desktop-win:
+	@cd desktop && npm run dist:win
 
 relay:
 	@cd relay && docker build --platform linux/amd64 -t ion-relay:latest .
@@ -325,6 +343,12 @@ demo:
 check-file-sizes:
 	@bash scripts/check-file-sizes.sh
 
+# Compiled executables must never be tracked. An ignore rule only covers paths
+# someone anticipated; this checks what is actually in the index.
+.PHONY: check-no-binaries
+check-no-binaries:
+	@bash scripts/check-no-binaries.sh
+
 # Dashboards-as-code drift + structural-overcount gate. Regenerates every
 # provisioned Grafana dashboard JSON and queries.md from the canonical query
 # module and byte-diffs against the committed files; also re-runs the
@@ -368,6 +392,22 @@ check-studio-parity:
 check-contracts:
 	@cd engine && go test ./internal/types/ -run TestContractManifest
 	@cd engine && go test ./internal/extension/ -run TestSDKContractManifest
+
+# Windows Group Policy template gate.
+# Cross-checks packaging/windows/policy/IonEngine.admx against its en-US ADML
+# (every $(string.*)/$(presentation.*) reference resolves, every element has a
+# presentation control) and against docs/enterprise/mdm.md (every registry
+# value name the template writes is documented). Runs the validator's own
+# regression suite too, so a broken validator cannot pass silently.
+# The Windows entry points (bootstrap.ps1, make.ps1) have no Makefile to guard
+# them, and a PowerShell syntax error only surfaces when the script runs -- on
+# Windows, usually on someone else's machine.
+check-windows-scripts:
+	@bash scripts/ci/validate-powershell.sh
+
+check-admx:
+	@python3 scripts/ci/validate-admx.py
+	@bash scripts/ci/validate-admx.test.sh
 
 # ADR-019 logging-standards enforcement gate.
 # Scans emitter call sites for interpolated messages, console.* in the renderer,
@@ -503,16 +543,25 @@ graph-refresh:
 	@guard="$$(bash scripts/graphify-worktree-guard.sh)" || exit $$?; \
 	if [ "$${guard%% *}" = "worktree" ]; then \
 		primary="$${guard#* }/graphify-out/graph.json"; local="graphify-out/graph.json"; \
+		marker="graphify-out/.graph-link-source"; \
 		if [ ! -f "$$primary" ]; then \
 			echo "▶ graphify: primary checkout has no graph; worktree link remains absent"; \
-		elif [ -L "$$local" ] && [ "$$(readlink "$$local")" = "$$primary" ]; then \
+		elif [ -L "$$local" ] && [ "$$(readlink "$$local" | sed 's/\\\\/\//g')" = "$$primary" ]; then \
 			echo "▶ graphify: primary graph link already present"; \
+		elif [ ! -L "$$local" ] && [ -f "$$marker" ] && [ "$$(cat "$$marker")" = "$$primary" ]; then \
+			cp "$$primary" "$$local"; \
+			echo "▶ graphify: primary graph link already present (refreshed provisioned copy)"; \
 		elif [ -e "$$local" ] || [ -L "$$local" ]; then \
 			echo "Refused: $$local exists but is not the primary graph link; refusing to replace local data." >&2; \
 			exit 1; \
 		else \
-			mkdir -p graphify-out; ln -s "$$primary" "$$local"; \
-			echo "▶ graphify: linked primary graph for worktree queries"; \
+			mkdir -p graphify-out; \
+			if ln -s "$$primary" "$$local" 2>/dev/null && [ -L "$$local" ]; then \
+				echo "▶ graphify: linked primary graph for worktree queries"; \
+			else \
+				rm -f "$$local"; cp "$$primary" "$$local"; printf '%s' "$$primary" > "$$marker"; \
+				echo "▶ graphify: linked primary graph for worktree queries (copied — this platform's ln -s does not create a real symlink)"; \
+			fi; \
 		fi; \
 	elif ! command -v graphify >/dev/null 2>&1; then \
 		echo "⚠️  graphify not on PATH — nothing to refresh."; \

@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/cliprobe"
+	"github.com/dsswift/ion/engine/internal/procctl"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -149,24 +151,20 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 	var cmd *exec.Cmd
 	binExt := filepath.Ext(binPath)
 	if binExt == ".js" || binExt == ".mjs" || binExt == ".cjs" {
-		nodeBin := "node"
-		// Look in common locations when node isn't in PATH (daemon mode)
-		if _, err := exec.LookPath(nodeBin); err != nil {
-			for _, candidate := range []string{
-				"/opt/homebrew/bin/node",
-				"/usr/local/bin/node",
-			} {
-				if _, serr := os.Stat(candidate); serr == nil {
-					nodeBin = candidate
-					break
-				}
-			}
+		nodeBin, err := cliprobe.FindToolchain("node")
+		if err != nil {
+			utils.LogWithFields(utils.LevelError, "extension.host", "node not found; extension cannot start", map[string]any{
+				"extension": h.name,
+				"error":     err.Error(),
+			})
+			return err
 		}
 		cmd = exec.Command(nodeBin, "--enable-source-maps", binPath)
 	} else {
 		cmd = exec.Command(binPath)
 	}
 	cmd.Dir = extensionDir
+	procctl.Configure(cmd)
 
 	// Resolve external runtime requires (e.g. native modules) from the
 	// extension's own node_modules. Other env vars are inherited.
@@ -199,6 +197,12 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 	if err := cmd.Start(); err != nil {
 		_ = stdin.Close() //nolint:errcheck // best-effort cleanup on spawn-failure path
 		return fmt.Errorf("start extension: %w", err)
+	}
+	if err := procctl.AfterStart(cmd); err != nil {
+		utils.LogWithFields(utils.LevelWarn, "extension.host", "process tree tracking degraded", map[string]any{
+			"extension": h.name,
+			"error":     err.Error(),
+		})
 	}
 
 	// Capture subprocess stderr into a ring buffer and log each line.
@@ -479,6 +483,7 @@ func (h *Host) captureExitStatus() {
 		return
 	}
 	err := cmd.Wait()
+	procctl.Release(cmd)
 	if err == nil {
 		h.lastExitCode.Store(0)
 		return
@@ -510,12 +515,6 @@ var extensionEntryCandidates = []string{
 	"extension.mjs",
 	"index.mjs",
 }
-
-// nativeExtensionEntry is the conventional entry-point name for extensions
-// compiled to a native binary (Go, Rust, C, ...). It is probed after every
-// script candidate: a directory shipping both a script and a compiled binary
-// is a source tree, and the script is the authored entry point.
-const nativeExtensionEntry = "main"
 
 // resolveExtensionEntry preserves the package-private helper used by existing
 // callers while routing all resolution through the exported preflight seam.

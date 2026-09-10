@@ -125,12 +125,12 @@ func ExpandTilde(path string) string {
 }
 
 func globalConfigPath() string {
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	return filepath.Join(home, ".ion", "engine.json")
 }
 
 func settingsPath() string {
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	return filepath.Join(home, ".ion", "settings.json")
 }
 

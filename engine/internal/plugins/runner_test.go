@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"os"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -10,7 +11,15 @@ func TestRunHookCommand_Echo(t *testing.T) {
 	entry := PluginHookEntry{
 		Type:    "command",
 		Command: "echo hello",
-		Timeout: 5,
+		// 30s, matching EffectiveTimeout's own unset-value default: a timeout
+		// here is a bound against a genuinely hung command, not something
+		// this test is measuring, and RunHookCommand returns "", nil on
+		// DeadlineExceeded with no error surfaced -- a too-tight bound fails
+		// silently as "got empty string" with no hint it was ever a timeout.
+		// Observed on real Windows CI: PowerShell/node cold-start under
+		// go test -race ./... contention exceeded a 5s budget that passed
+		// every local run.
+		Timeout: 30,
 	}
 	out, err := RunHookCommand(entry, "/tmp", nil)
 	if err != nil {
@@ -22,13 +31,27 @@ func TestRunHookCommand_Echo(t *testing.T) {
 }
 
 func TestRunHookCommand_PluginRootEnv(t *testing.T) {
-	// Verify CLAUDE_PLUGIN_ROOT is set in the environment.
-	// Use double quotes so splitCommand (which handles double quotes, not single)
-	// passes "echo $CLAUDE_PLUGIN_ROOT" as one argument to sh -c.
+	// Verify CLAUDE_PLUGIN_ROOT is set in the environment. runCommand already
+	// runs the whole string through the platform shell (bash -c / powershell
+	// -Command), so an explicit "sh -c" wrapper is redundant on POSIX and
+	// outright broken on Windows (no "sh" on PATH there); PowerShell also
+	// reads an environment variable via $env:NAME, not $NAME.
+	command := "echo $CLAUDE_PLUGIN_ROOT"
+	if runtime.GOOS == "windows" {
+		command = "echo $env:CLAUDE_PLUGIN_ROOT"
+	}
 	entry := PluginHookEntry{
 		Type:    "command",
-		Command: `sh -c "echo $CLAUDE_PLUGIN_ROOT"`,
-		Timeout: 5,
+		Command: command,
+		// 30s, matching EffectiveTimeout's own unset-value default: a timeout
+		// here is a bound against a genuinely hung command, not something
+		// this test is measuring, and RunHookCommand returns "", nil on
+		// DeadlineExceeded with no error surfaced -- a too-tight bound fails
+		// silently as "got empty string" with no hint it was ever a timeout.
+		// Observed on real Windows CI: PowerShell/node cold-start under
+		// go test -race ./... contention exceeded a 5s budget that passed
+		// every local run.
+		Timeout: 30,
 	}
 	out, err := RunHookCommand(entry, "/my/plugin/root", nil)
 	if err != nil {
@@ -63,7 +86,15 @@ func TestRunHookCommand_NonZeroExit(t *testing.T) {
 	entry := PluginHookEntry{
 		Type:    "command",
 		Command: `sh -c "exit 1"`,
-		Timeout: 5,
+		// 30s, matching EffectiveTimeout's own unset-value default: a timeout
+		// here is a bound against a genuinely hung command, not something
+		// this test is measuring, and RunHookCommand returns "", nil on
+		// DeadlineExceeded with no error surfaced -- a too-tight bound fails
+		// silently as "got empty string" with no hint it was ever a timeout.
+		// Observed on real Windows CI: PowerShell/node cold-start under
+		// go test -race ./... contention exceeded a 5s budget that passed
+		// every local run.
+		Timeout: 30,
 	}
 	out, err := RunHookCommand(entry, "/tmp", nil)
 	if err != nil {
@@ -75,15 +106,31 @@ func TestRunHookCommand_NonZeroExit(t *testing.T) {
 }
 
 func TestRunHookCommand_PluginRootExpansion(t *testing.T) {
-	// Write a small script that prints its own path.
+	// Write a small script that prints its own path. A #!/bin/sh script has
+	// no interpreter association on Windows (there is no shebang support at
+	// the OS level), so the script itself -- not just the command that
+	// invokes it -- is platform-specific: a .ps1 there, matching what a real
+	// plugin author would actually ship for a Windows-targeted hook.
 	dir := t.TempDir()
-	scriptPath := dir + "/greet.sh"
-	os.WriteFile(scriptPath, []byte("#!/bin/sh\necho from-plugin"), 0o755)
+	scriptName, scriptBody := "greet.sh", "#!/bin/sh\necho from-plugin"
+	if runtime.GOOS == "windows" {
+		scriptName, scriptBody = "greet.ps1", "Write-Output from-plugin"
+	}
+	scriptPath := dir + "/" + scriptName
+	os.WriteFile(scriptPath, []byte(scriptBody), 0o755)
 
 	entry := PluginHookEntry{
 		Type:    "command",
-		Command: "${CLAUDE_PLUGIN_ROOT}/greet.sh",
-		Timeout: 5,
+		Command: "${CLAUDE_PLUGIN_ROOT}/" + scriptName,
+		// 30s, matching EffectiveTimeout's own unset-value default: a timeout
+		// here is a bound against a genuinely hung command, not something
+		// this test is measuring, and RunHookCommand returns "", nil on
+		// DeadlineExceeded with no error surfaced -- a too-tight bound fails
+		// silently as "got empty string" with no hint it was ever a timeout.
+		// Observed on real Windows CI: PowerShell/node cold-start under
+		// go test -race ./... contention exceeded a 5s budget that passed
+		// every local run.
+		Timeout: 30,
 	}
 	out, err := RunHookCommand(entry, dir, nil)
 	if err != nil {
@@ -117,7 +164,15 @@ process.stdin.on('end', () => {
 	entry := PluginHookEntry{
 		Type:    "command",
 		Command: "node " + script,
-		Timeout: 5,
+		// 30s, matching EffectiveTimeout's own unset-value default: a timeout
+		// here is a bound against a genuinely hung command, not something
+		// this test is measuring, and RunHookCommand returns "", nil on
+		// DeadlineExceeded with no error surfaced -- a too-tight bound fails
+		// silently as "got empty string" with no hint it was ever a timeout.
+		// Observed on real Windows CI: PowerShell/node cold-start under
+		// go test -race ./... contention exceeded a 5s budget that passed
+		// every local run.
+		Timeout: 30,
 	}
 	out, err := RunHookCommandWithStdin(entry, dir, nil, `{"prompt":"hello-from-test"}`)
 	if err != nil {
@@ -134,7 +189,15 @@ func TestRunHookCommandWithStdin_EmptyStdin(t *testing.T) {
 	entry := PluginHookEntry{
 		Type:    "command",
 		Command: "echo ok",
-		Timeout: 5,
+		// 30s, matching EffectiveTimeout's own unset-value default: a timeout
+		// here is a bound against a genuinely hung command, not something
+		// this test is measuring, and RunHookCommand returns "", nil on
+		// DeadlineExceeded with no error surfaced -- a too-tight bound fails
+		// silently as "got empty string" with no hint it was ever a timeout.
+		// Observed on real Windows CI: PowerShell/node cold-start under
+		// go test -race ./... contention exceeded a 5s budget that passed
+		// every local run.
+		Timeout: 30,
 	}
 	out, err := RunHookCommandWithStdin(entry, "/tmp", nil, "")
 	if err != nil {

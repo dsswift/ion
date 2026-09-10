@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 var (
@@ -325,7 +327,7 @@ func LoadClaudeSkillsDirectory(dir string) ([]*Skill, error) {
 // directory must use IonSkillPathsFor instead; this zero-argument form is kept
 // for callers with no directory context.
 func IonSkillPaths() SkillPaths {
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	return SkillPaths{
 		User:       filepath.Join(home, ".ion", "skills"),
 		Project:    filepath.Join(".", ".ion", "skills"),
@@ -338,7 +340,7 @@ func IonSkillPaths() SkillPaths {
 // workingDir is empty the Project field is empty (no project root to probe) —
 // callers skip loading it.
 func IonSkillPathsFor(workingDir string) SkillPaths {
-	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	project := ""
 	if workingDir != "" {
 		project = filepath.Join(workingDir, ".ion", "skills")

@@ -4,6 +4,7 @@
  * Pure functions used by IPC handlers to validate untrusted input
  * from the renderer process before any side effects.
  */
+import { isAbsolutePath } from '../shared/paths'
 
 /** UUID v4 pattern -- only accepts canonical lowercase/uppercase hex UUIDs */
 const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -11,11 +12,20 @@ const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 /**
  * Validate a projectPath for use in filesystem operations.
  * Rejects null bytes, carriage returns, newlines, and non-absolute paths.
+ *
+ * "Absolute" is platform-aware, via the shared helper: a leading '/', a
+ * Windows drive letter ('C:\' or 'C:/'), or a UNC share ('\\server\share').
+ *
+ * This previously tested `path.startsWith('/')` directly, which rejects every
+ * Windows path. Twelve IPC surfaces gate on this function -- the file
+ * explorer, file read/write, git, worktrees, sessions -- so on Windows the
+ * explorer listed a real directory as empty and inline file creation silently
+ * did nothing: `C:\Users\josh` failed the check and every handler returned
+ * its empty-or-error shape before touching the disk.
  */
 export function isValidProjectPath(path: string): boolean {
   if (/[\0\r\n]/.test(path)) return false
-  if (!path.startsWith('/')) return false
-  return true
+  return isAbsolutePath(path)
 }
 
 /**

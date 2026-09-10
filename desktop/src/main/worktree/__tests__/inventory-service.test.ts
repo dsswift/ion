@@ -32,7 +32,7 @@ function entry(path: string): WorktreeInventoryEntry {
 }
 
 function result(canonical: string, aliases: string[], paths: string[]): WorktreeInventoryResult {
-  return { canonicalRepoPath: canonical, aliasPaths: aliases, entries: paths.map(entry) }
+  return { canonicalRepoPath: canonical, aliasPaths: aliases, entries: paths.map(entry), notARepository: false }
 }
 
 beforeEach(() => {
@@ -88,7 +88,7 @@ describe('getWorktreeInventory', () => {
   })
 
   it('does not cache a failed listing', async () => {
-    crawlMock.mockResolvedValueOnce({ canonicalRepoPath: null, aliasPaths: [], entries: [] })
+    crawlMock.mockResolvedValueOnce({ canonicalRepoPath: null, aliasPaths: [], entries: [], notARepository: false })
     expect(await getWorktreeInventory('/broken')).toEqual([])
 
     // A repo that recovers must be re-crawled, not served the empty failure.

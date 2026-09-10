@@ -120,6 +120,33 @@ func TestCliBackendBuildArgs(t *testing.T) {
 	var _ RunBackend = b
 }
 
+// TestCancelBeforeSpawnDoesNotPanic pins the fix for a nil-pointer crash
+// observed on Windows CI: StartRun registers the run into activeRuns before
+// runProcess (its own goroutine) assigns run.cmd, so a Cancel that lands in
+// that window previously dereferenced a nil *exec.Cmd at run.cmd.Process.
+// Cancel must treat "no process yet" the same way it already treats "process
+// registered but not started" -- cancel the run's context and report success.
+func TestCancelBeforeSpawnDoesNotPanic(t *testing.T) {
+	cancelled := false
+	run := &claudeCodeRun{
+		requestID: "test-run",
+		cancel:    func() { cancelled = true },
+		stderr:    rpcstdio.NewRingBuffer(5),
+		// cmd is deliberately nil: the window this test pins.
+	}
+
+	b := &ClaudeCodeBackend{
+		activeRuns: map[string]*claudeCodeRun{"test-run": run},
+	}
+
+	if ok := b.Cancel("test-run"); !ok {
+		t.Error("Cancel should report success for a run with no process yet")
+	}
+	if !cancelled {
+		t.Error("Cancel should cancel the run's context when there is no process to signal")
+	}
+}
+
 func TestCliRunFieldsPresent(t *testing.T) {
 	run := &claudeCodeRun{
 		requestID: "test",

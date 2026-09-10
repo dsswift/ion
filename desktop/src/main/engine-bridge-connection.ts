@@ -4,21 +4,21 @@
  * (file-size cap); operates on the bridge instance via the same
  * module-package seam as the other engine-bridge-*.ts siblings.
  *
- * The engine is a persistent launchd daemon — the desktop never spawns it;
- * this module only connects to its socket.
+ * The engine is a persistent daemon (a launchd LaunchAgent on macOS, a
+ * per-user Scheduled Task on Windows) — the desktop never spawns it; this
+ * module only connects to its address.
  */
-import { createConnection, Socket } from 'net'
-import { join } from 'path'
-import { homedir } from 'os'
+import { Socket } from 'net'
 import { log as _log, warn as _warn } from './logger'
+import { resolveEngineAddress, describeEngineAddress, connectToEngine, supervisorHint } from './engine-address'
 import type { EngineBridge } from './engine-bridge'
 
 const TAG = 'EngineBridge'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
 function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
 
-const ION_HOME = join(homedir(), '.ion')
-export const SOCKET_PATH = join(ION_HOME, 'engine.sock')
+/** The resolved local engine address (unix socket, or TCP loopback on win32). */
+export const ENGINE_ADDRESS = resolveEngineAddress()
 
 /**
  * When ION_DESKTOP_ENGINE_SOCKET is set to "host:port", the bridge connects
@@ -35,6 +35,25 @@ export const IS_REMOTE = REMOTE_SOCKET.includes(':')
  * outlived the window but the daemon is now mid-start.
  */
 export const LADDER_FAST_FAIL_WINDOW_MS = 30000
+
+/**
+ * How many background reconnect attempts must fail before the supervisor is
+ * asked to bring the engine back. Low enough that a dead daemon is recovered
+ * in seconds, high enough that the ordinary case -- the engine still binding
+ * its address after a start -- is covered by plain reconnects.
+ */
+export const SUPERVISOR_REASSERT_AFTER_ATTEMPTS = 3
+
+/** Minimum gap between two supervisor re-assertions during one outage. */
+export const SUPERVISOR_REASSERT_COOLDOWN_MS = 30000
+
+/**
+ * When each bridge last asked the supervisor to bring the engine back. Held
+ * here rather than on the bridge because re-asserting is entirely this
+ * module's concern -- the same reason reconnectAttempts is documented as
+ * package-internal.
+ */
+const lastSupervisorReassertAt = new WeakMap<EngineBridge, number>()
 
 export async function doConnect(bridge: EngineBridge): Promise<void> {
   if (bridge.reconnectDisabled) {
@@ -69,13 +88,14 @@ export async function doConnect(bridge: EngineBridge): Promise<void> {
   // One immediate attempt was already made above; that is enough per caller.
   if (bridge.lastLadderFailureAt && Date.now() - bridge.lastLadderFailureAt < LADDER_FAST_FAIL_WINDOW_MS) {
     scheduleReconnect(bridge)
-    warn('connect_fast_fail: engine down, reconnect in progress', { socket: SOCKET_PATH })
-    throw new Error(`Engine daemon not reachable at ${SOCKET_PATH} (reconnect in progress).`)
+    warn('connect_fast_fail: engine down, reconnect in progress', { socket: describeEngineAddress(ENGINE_ADDRESS) })
+    throw new Error(`Engine daemon not reachable at ${describeEngineAddress(ENGINE_ADDRESS)} (reconnect in progress).`)
   }
 
-  // Retry with backoff. The daemon should already be running via launchd;
-  // these retries cover the window between launchctl kickstart and the
-  // engine binding the socket.
+  // Retry with backoff. The daemon should already be running via the
+  // supervisor (launchd on macOS, a Scheduled Task on Windows); these
+  // retries cover the window between supervisor start and the engine
+  // binding its address.
   const delays = [500, 1000, 2000, 4000]
   for (let i = 0; i < delays.length; i++) {
     await new Promise<void>((resolve) => setTimeout(resolve, delays[i]))
@@ -95,9 +115,8 @@ export async function doConnect(bridge: EngineBridge): Promise<void> {
   bridge.lastLadderFailureAt = Date.now()
   scheduleReconnect(bridge)
   throw new Error(
-    `Engine daemon not reachable at ${SOCKET_PATH}. ` +
-    'Ensure the Ion Engine LaunchAgent is installed and running ' +
-    '(launchctl print gui/${UID}/com.ion.engine).',
+    `Engine daemon not reachable at ${describeEngineAddress(ENGINE_ADDRESS)}. ` +
+    `Ensure the Ion Engine supervisor is running (${supervisorHint()}).`,
   )
 }
 
@@ -107,9 +126,9 @@ function connectSocket(bridge: EngineBridge): Promise<void> {
     if (IS_REMOTE) {
       const [host, portStr] = REMOTE_SOCKET.split(':')
       const port = parseInt(portStr, 10)
-      conn = createConnection({ host, port })
+      conn = connectToEngine({ kind: 'tcp', host, port })
     } else {
-      conn = createConnection(SOCKET_PATH)
+      conn = connectToEngine(ENGINE_ADDRESS)
     }
 
     conn.on('connect', () => {
@@ -174,6 +193,46 @@ function connectSocket(bridge: EngineBridge): Promise<void> {
   })
 }
 
+/**
+ * Ask the supervisor to bring the engine back when reconnecting alone is not
+ * going to work.
+ *
+ * Reconnecting assumes the daemon is running and only its address is not up
+ * yet. That assumption breaks whenever the daemon is genuinely gone, and
+ * nothing else re-asserts it: startup asks the supervisor exactly once, and a
+ * `schtasks /Run` is a no-op while a task is still running, so a start issued
+ * during the previous daemon's shutdown does nothing and the readiness probe
+ * can be answered by the outgoing process. Both instances then exit and the
+ * reconnect loop retries a socket that no one is ever going to bind.
+ *
+ * Re-asserting is rate-limited rather than done on every tick: the supervisor
+ * call shells out, and a genuinely slow start should not be interrupted by a
+ * second one.
+ */
+async function reassertSupervisorIfStale(bridge: EngineBridge): Promise<void> {
+  if (IS_REMOTE) return
+  if (bridge.reconnectAttempts < SUPERVISOR_REASSERT_AFTER_ATTEMPTS) return
+  const last = lastSupervisorReassertAt.get(bridge)
+  if (last !== undefined && Date.now() - last < SUPERVISOR_REASSERT_COOLDOWN_MS) {
+    log('engine_daemon: supervisor re-assert skipped, still in cooldown', { since_ms: Date.now() - last })
+    return
+  }
+  lastSupervisorReassertAt.set(bridge, Date.now())
+  log('engine_daemon: reconnect is not recovering, re-asserting the supervisor', {
+    attempts: bridge.reconnectAttempts,
+  })
+  try {
+    // Imported lazily so the bootstrap module -- which reaches child_process,
+    // the supervisors and the installed-binary layout -- stays out of the
+    // static graph of every module that merely opens a socket.
+    const { restartEngineDaemon } = await import('./engine-bootstrap')
+    const ok = await restartEngineDaemon()
+    log('engine_daemon: supervisor re-assert finished', { restarted: ok })
+  } catch (err) {
+    warn('engine_daemon: supervisor re-assert failed', { error: String(err) })
+  }
+}
+
 export function scheduleReconnect(bridge: EngineBridge): void {
   if (bridge.reconnectDisabled) return
   if (bridge.reconnectTimer) return
@@ -185,6 +244,7 @@ export function scheduleReconnect(bridge: EngineBridge): void {
     void (async () => {
       bridge.reconnectTimer = null
       if (bridge.reconnectDisabled || bridge.connected) return
+      await reassertSupervisorIfStale(bridge)
       try {
         await bridge.connect()
       } catch {
