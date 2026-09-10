@@ -351,8 +351,10 @@ func lastPrompt(t *testing.T, mb *mockBackend) string {
 // requestID to decide between the mid-turn steer path and the wake path, so a
 // completion arriving while parked took the steer branch, landed on a run that
 // had already returned, and was dropped. The session was never woken for it.
-// Observed live as "completion delivered to active run via steer" logged six
-// seconds AFTER "session parked on outstanding background commands".
+// Observed live as a steer attempt logged six seconds AFTER "session parked on
+// outstanding background commands". It read as a success at the time, because
+// the steer log claimed delivery before checking the outcome; it now logs
+// "steer refused the completion; trying the idle paths" on that branch.
 //
 // Asserts the invariant the wake path depends on: after a park, the session is
 // genuinely idle.

@@ -31,6 +31,6 @@ func (m *Manager) enqueueIfBusy(s *engineSession, key, text string, overrides *P
 		pp.overrides = &ovCopy
 	}
 	s.promptQueue = append(s.promptQueue, pp)
-	utils.LogWithFields(utils.LevelInfo, "session", "prompt queued for ( in queue)", map[string]any{"key": key, "count": len(s.promptQueue)})
+	utils.LogWithFields(utils.LevelInfo, "session", "prompt queued behind the active run", map[string]any{"key": key, "count": len(s.promptQueue)})
 	return false, nil
 }
