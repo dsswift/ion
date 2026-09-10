@@ -76,7 +76,7 @@
     "graphology-metrics": "2.4.2",
     "immer": "^11.1.18",
     "node-pty": "^1.1.0",
-    "playwright-core": "1.62.1",
+    "playwright-core": "1.63.0",
     "react-chartjs-2": "5.3.1",
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^16.1.1",
