@@ -159,6 +159,33 @@ development and testing happen on macOS and never involve the VM. Nothing here
 fires unless the conversation is actively exercising Windows behavior on a live
 machine.
 
+### When to reach for the VM
+
+A local (macOS) test run cannot prove a Windows-specific fix works. Two
+failure classes are invisible on macOS by construction:
+
+- **Windows-only code paths** (no `/bin/sh`, backslash vs. forward-slash
+  paths, short-form `RUNNER~1`-style paths, PowerShell instead of a POSIX
+  shell). The bug never triggers on macOS because the code path itself
+  doesn't exist there.
+- **Contention-driven timeouts.** Windows CI runs the full suite at once
+  under the race detector, so hundreds of tests spawn `git`/`node`/
+  `powershell` subprocesses concurrently on one machine. Running the single
+  failing test in isolation — on macOS or on the VM — never recreates that
+  pile-up, so a passing isolated run does not prove the timeout won't
+  recur under real CI load.
+
+**Use the local Windows VM (Parallels, reachable over SSH) specifically to
+diagnose a Windows CI/CD failure when a macOS run cannot verify the fix** —
+confirm the failing test/behavior reproduces there, apply the fix, confirm
+it now passes there. This is a diagnostic tool for a specific failure, not a
+routine step: **do not build or run the Windows test suite on the VM for
+every Windows-touching change.** Reach for it only when CI has already
+failed on Windows and the fix needs Windows-real verification before you
+call it done. For contention timeouts specifically, running the isolated
+test on the VM still won't recreate CI's full-suite pile-up — say so rather
+than implying an isolated VM pass proves the timeout is gone for good.
+
 When it does apply, the rule is absolute:
 
 > **Run `make sync-windows-vm` before every VM build. No exceptions, no
