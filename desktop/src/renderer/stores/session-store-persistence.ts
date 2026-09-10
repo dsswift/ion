@@ -35,6 +35,10 @@ function persistExternalContent(useSessionStore: Store): void {
     const content = collectExternalInstanceMessages(pane)
     if (!content) continue
     markTabContentWritten(t.id, inst.messages)
+    if (typeof window.ion?.saveTabContent !== 'function') {
+      rError('session.persist', 'saveTabContent bridge unavailable; external content lost')
+      continue
+    }
     void window.ion.saveTabContent(t.id, content.instanceId, content.messages)
   }
 }
@@ -105,7 +109,14 @@ function persistTabs(useSessionStore: Store): void {
         // of the base64 preview so a tray of images cannot bloat the file the
         // 100 ms debounce rewrites; the preview is rebuilt from `path` on
         // restore (shared/staged-attachments.ts).
-        ...(t.attachments.length > 0 ? { attachments: persistableAttachments(t.attachments) } : {}),
+        //
+        // Optional chaining, matching every other field above: this function
+        // is reachable from a debounced setTimeout that can fire against a
+        // tab object built by test scaffolding (or any future caller) that
+        // does not carry every SessionTab field, even though the type
+        // declares `attachments` required. A bare `.length` crashed with
+        // "Cannot read properties of undefined" when that happened.
+        ...(t.attachments?.length ? { attachments: persistableAttachments(t.attachments) } : {}),
         // Context occupancy: kept at tab level for backward compatibility
         // with files written before the pane carried these scalars. The
         // authoritative copy now lives on the persisted instance (see
@@ -215,7 +226,7 @@ function persistTabs(useSessionStore: Store): void {
     planGeometry,
     agentDetailGeometry,
   }
-  const saveTabs = window.ion.saveTabs
+  const saveTabs = window.ion?.saveTabs
   if (typeof saveTabs !== 'function') {
     rError('session.persist', 'saveTabs bridge unavailable; restored session may be lost')
   } else {
@@ -243,7 +254,7 @@ function persistTabs(useSessionStore: Store): void {
   // them before send, so project the live queue only into the owner→mirror push.
   // Empty arrays are kept to clear a previously staged mirror rail immediately.
   const queuedAttachments = Object.fromEntries(tabs.map((t) => [t.id, t.attachments]))
-  window.ion.studioPublishTabsSync?.({
+  window.ion?.studioPublishTabsSync?.({
     ...data,
     revision: Date.now(),
     liveTabStatus: Object.fromEntries(tabs.map((t) => [t.id, t.status])),

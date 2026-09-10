@@ -273,8 +273,9 @@ func (b *ApiBackend) cancelWatchdog(run *activeRun, grace time.Duration) {
 		"request_id": run.requestID,
 		"grace":      grace,
 	})
+	// emitExit now removes the run itself before notifying listeners; no
+	// separate call needed here (removeRun is idempotent regardless).
 	b.emitExit(run.requestID, intPtr(0), strPtr("cancelled-forced"), sessionID)
-	b.removeRun(run.requestID)
 }
 
 // GetContextUsage returns the context usage for an active run, or nil if not found.
@@ -656,6 +657,19 @@ func (b *ApiBackend) emitExit(runID string, code *int, signal *string, sessionID
 	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "emit exit", map[string]any{
 		"run_id": runID, "status": codeStr, "reason": sigStr, "session_id": sessionID,
 	})
+
+	// Clear activeRuns (and release the run's conversation ownership) before
+	// notifying the registered listener. runLoop's own deferred removeRun
+	// still runs after this function returns -- removeRun is explicitly
+	// idempotent (see its doc comment) precisely so this ordering is safe.
+	// Without this, IsRunning(runID) could still report true for a window
+	// after emitExit's callback observed the exit, because emitExit is called
+	// from deep inside runLoop's body while the deferred removeRun only runs
+	// once the function itself returns; an external caller reacting
+	// synchronously to the exit callback (or polling immediately after)
+	// could catch that window.
+	b.removeRun(runID)
+
 	b.mu.Lock()
 	fn := b.onExit
 	b.mu.Unlock()

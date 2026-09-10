@@ -203,6 +203,46 @@ describe('session-store-persistence — staged attachments', () => {
 
     expect(lastSavedTabs()[0]).not.toHaveProperty('attachments')
   })
+
+  // Regression: a tab reaching persistTabs without an `attachments` array
+  // (the debounced setTimeout in setupPersistence can fire against state
+  // built by a caller that does not carry every SessionTab field) crashed
+  // with "Cannot read properties of undefined (reading 'length')" on a bare
+  // `t.attachments.length` -- every sibling field above it uses `?.`.
+  it('does not throw when a tab has no attachments field at all', () => {
+    const store = makeStoreStub({ tabs: [makeTab({ conversationId: null })] })
+    setupPersistence(store)
+    expect(() => {
+      store.setState({ tabs: [makeTab({ conversationId: 'conv-1', attachments: undefined })] })
+    }).not.toThrow()
+
+    expect(lastSavedTabs()[0]).not.toHaveProperty('attachments')
+  })
+
+  // Regression: the debounced setTimeout persistTabs schedules for a
+  // non-immediate change can fire after window.ion is gone (e.g. a torn-down
+  // bridge, or -- in the test suite -- a leaked timer from an earlier file
+  // firing during a later one that never set up window.ion). `window.ion.
+  // saveTabs` crashed with "Cannot read properties of undefined (reading
+  // 'saveTabs')" before reaching the existing "bridge unavailable" guard,
+  // which only checked `typeof saveTabs !== 'function'` and assumed
+  // `window.ion` itself was always present.
+  it('does not throw when window.ion is gone by the time the debounce fires', () => {
+    vi.useFakeTimers()
+    try {
+      const store = makeStoreStub({ tabs: [makeTab({ conversationId: 'conv-1' })] })
+      setupPersistence(store)
+      // A tracked-field change with no conversationId capture takes the
+      // debounced path instead of the immediate-flush path.
+      store.setState({ tabs: [makeTab({ conversationId: 'conv-1', status: 'running' })] })
+
+      ;(globalThis as any).window.ion = undefined
+
+      expect(() => vi.advanceTimersByTime(150)).not.toThrow()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 // ─── Rewind ──────────────────────────────────────────────────────────────────

@@ -612,7 +612,16 @@ jobs:
         shell: pwsh
         run: |
           $v = '${{ steps.version.outputs.version }}'
-          pwsh -File scripts/ci/Write-IonArtifactManifest.ps1 `
+          # Dot-invoked in this session (`& scripts/ci/...ps1`), not
+          # `pwsh -File ...` as a child process: an external process
+          # invocation flattens the -Path array onto a plain command line,
+          # and pwsh -File's own script-parameter binder does not reliably
+          # rebind that flattened list back onto a single [string[]]
+          # parameter -- it silently stopped consuming after the first few
+          # elements and then failed to bind the last path as a stray
+          # positional argument. Invoking in-process keeps -Path a real
+          # PowerShell array object end to end.
+          & scripts/ci/Write-IonArtifactManifest.ps1 `
             -Path @(
               "desktop/release/Ion-Setup-$v-x64.exe",
               "desktop/release/intune/Ion-Setup-$v-x64.intunewin",

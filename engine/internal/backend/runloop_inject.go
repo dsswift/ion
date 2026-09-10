@@ -77,7 +77,16 @@ func (b *ApiBackend) injectSystemMessage(
 	if transient {
 		conversation.AddTransientUserMessage(conv, text)
 	} else {
-		conversation.AddUserMessage(conv, text)
+		// Classify as InjectionKindSystemSteer, not plain AddUserMessage: this
+		// is exactly the "engine- or harness-authored steering message ...
+		// a turn-limit warning, a max-token continuation" the kind's doc
+		// comment describes (injection_kind.go). AddUserMessage leaves the
+		// persisted entry with no InjectionKind/MachineAuthored classification,
+		// so desktop's and iOS's suppression policies (which both key off that
+		// flag) cannot tell this turn apart from one the operator typed — it
+		// reappears as an ordinary user bubble on every history reload even
+		// though the live event path is unaffected by the operator.
+		conversation.AddUserMessageWithKind(conv, text, string(types.InjectionKindSystemSteer))
 		if err := conversation.Save(conv, ""); err != nil {
 			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after system inject", map[string]any{
 				"error": utils.ErrStr(err),
