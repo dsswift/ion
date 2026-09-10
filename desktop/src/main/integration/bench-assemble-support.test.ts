@@ -4,6 +4,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { classifyMergeFailure, ensureBenchWorktree } from '../integration/bench-assemble-support'
+import { realpathSyncPortable } from '../fs-realpath'
+import { normalizeSlashes } from '../../shared/paths'
 import type { IntegrationWorkspace } from '../../shared/types'
 
 function git(cwd: string, ...args: string[]): string {
@@ -70,7 +72,10 @@ describe('ensureBenchWorktree', () => {
   // non-empty directory and fails with "already exists". Every subsequent
   // assembly hit the identical failure, wedging the bench permanently.
   it('clears an unregistered, non-empty bench directory before recreating it', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'ion-bench-worktree-'))
+    // realpathSyncPortable: Windows expands a short (8.3) TEMP path segment
+    // (RUNNER~1) to the long form (runneradmin) that `git worktree list
+    // --porcelain` itself reports; plain mkdtempSync does not.
+    const root = realpathSyncPortable(mkdtempSync(join(tmpdir(), 'ion-bench-worktree-')))
     roots.push(root)
 
     const repoPath = join(root, 'repo')
@@ -89,7 +94,10 @@ describe('ensureBenchWorktree', () => {
     const benchPath = join(root, 'integration', 'ion-main')
     mkdirSync(benchPath, { recursive: true })
     writeFileSync(join(benchPath, '.DS_Store'), '')
-    expect(git(repoPath, 'worktree', 'list', '--porcelain')).not.toContain(benchPath)
+    // git worktree list --porcelain always reports forward-slash paths, even
+    // on Windows, while benchPath is built with Node's path.join (backslash
+    // there) -- normalize both sides so the comparison holds cross-platform.
+    expect(git(repoPath, 'worktree', 'list', '--porcelain')).not.toContain(normalizeSlashes(benchPath))
 
     const ws = {
       repoPath,
@@ -104,6 +112,6 @@ describe('ensureBenchWorktree', () => {
     await ensureBenchWorktree(ws)
 
     const listed = git(repoPath, 'worktree', 'list', '--porcelain')
-    expect(listed).toContain(benchPath)
+    expect(listed).toContain(normalizeSlashes(benchPath))
   })
 })

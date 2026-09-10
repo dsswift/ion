@@ -161,13 +161,21 @@ function landContentOnFeature(sha: string, label: string): void {
   git(repo, 'worktree', 'remove', '--force', holder)
 }
 
-/** Every commit's patch-id in a range, for duplicate detection. */
+/**
+ * Every commit's patch-id in a range, for duplicate detection.
+ *
+ * Piped via two execFileSync calls (git show's stdout fed as git patch-id's
+ * stdin), not a shelled-out `sh -c "a | b"` string: /bin/sh does not exist
+ * on Windows, and this had been silently unreachable there until the
+ * suite-level vi.mock TDZ crash it was masked behind got fixed.
+ */
 function patchIds(cwd: string, range: string): string[] {
   return git(cwd, 'log', '--format=%H', range)
     .split('\n')
     .filter(Boolean)
     .map((sha) => {
-      const out = execFileSync('/bin/sh', ['-c', `git show ${sha} | git patch-id --stable`], { cwd, encoding: 'utf-8' })
+      const show = execFileSync('git', ['show', sha], { cwd, encoding: 'utf-8' })
+      const out = execFileSync('git', ['patch-id', '--stable'], { cwd, encoding: 'utf-8', input: show })
       return out.trim().split(/\s+/)[0] ?? ''
     })
     .filter(Boolean)
