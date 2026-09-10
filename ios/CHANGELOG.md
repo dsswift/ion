@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.76.0](https://github.com/dsswift/ion/compare/ios-v1.75.0...ios-v1.76.0) (2026-09-10)
+
+### Features
+
+* **ios:** dim hidden files in the remote file explorer ([77cb6ab](https://github.com/dsswift/ion/commit/77cb6ab2e141ad8f5d12aaf9a3a4a89086c219c3))
+
 ## [1.75.0](https://github.com/dsswift/ion/compare/ios-v1.74.0...ios-v1.75.0) (2026-09-08)
 
 ### Features

@@ -18,6 +18,41 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.85.0](https://github.com/dsswift/ion/compare/engine-v1.84.2...engine-v1.85.0) (2026-09-10)
+
+### Features
+
+* **engine:** add procctl process-tree control for unix and windows ([144b940](https://github.com/dsswift/ion/commit/144b940b04ace16220552bb0cbe9ee33976d4d88))
+* **engine:** resolve engine address, supervise, and serve windows with no console ([465ba89](https://github.com/dsswift/ion/commit/465ba898be4378038764756d10c028d5afab8e15))
+* **engine:** authorize windows loopback clients by peer identity ([3cc7ad9](https://github.com/dsswift/ion/commit/3cc7ad952df9a2e6d7be99129fc49702667726c8))
+* **engine:** enterprise tab strip policy for ion studio ([d2f8ee7](https://github.com/dsswift/ion/commit/d2f8ee7ba49f67d61971e4e6be8adc728ef30676))
+
+### Bug Fixes
+
+* **engine:** read windows credentials without spawning powershell ([ae369c0](https://github.com/dsswift/ion/commit/ae369c0eee59a4328f39f7d95d7ed4b896332150))
+* **engine:** read windows enterprise policy from registry and programdata ([01e3a58](https://github.com/dsswift/ion/commit/01e3a585678ae4ebc8892c49ddc1d69701009c16))
+* **engine:** send correct scope and resource on interactive login ([2602431](https://github.com/dsswift/ion/commit/260243136b68873a9682a649043c027de347438c))
+* **engine:** order tool calls and make grep and read reliable ([18db9b8](https://github.com/dsswift/ion/commit/18db9b8f65734ae46f2ec146aa38b9b75d788fbd))
+* **desktop:** restore cross-platform parity checks ([1ea5e46](https://github.com/dsswift/ion/commit/1ea5e460c8537dc44d9e0f8625343e3d9ed66e2c))
+* **engine:** make utils and workspaces tests pass on windows ([67ce432](https://github.com/dsswift/ion/commit/67ce432a99a8b7ac5fbfeaf93c985e9b13413b02))
+* **engine:** honor HOME on windows so test isolation isolates ([18aefc4](https://github.com/dsswift/ion/commit/18aefc4b90c23cae24cff8caf642df10dd9b089f))
+* **engine:** fix remaining windows test failures across engine pkgs ([db53b05](https://github.com/dsswift/ion/commit/db53b0507db48f6111f49ac1f87f65dab6106901))
+* **engine:** fix real windows-latest CI failures beyond the ARM64 VM ([1500677](https://github.com/dsswift/ion/commit/150067718871df40457d4c8c34815b5150bc6249))
+* **engine:** add diagnostics for shared-path git-refusal Windows fail ([2a339f9](https://github.com/dsswift/ion/commit/2a339f96cc581fe17c2cd66a5ee7a40f4cfe324b))
+* **engine:** stop treating a mid-token tilde as dynamic ([8c552d9](https://github.com/dsswift/ion/commit/8c552d91a75dc3d418319a30fe72c56f2707314d))
+* **engine:** poll for run removal in TestIsRunningDuringAndAfter ([7aea493](https://github.com/dsswift/ion/commit/7aea493ce79559bbec84598a254374407cd6ae34))
+* **engine:** tolerate Windows' async socket teardown in PKCE test ([296bbea](https://github.com/dsswift/ion/commit/296bbeaa7fe0d67c75af7dc0cc4ac7dff5e9ae4d))
+* **engine:** fix nil-deref race in ClaudeCodeBackend.Cancel ([0536ff7](https://github.com/dsswift/ion/commit/0536ff7c868e1f2a3cbfe82b3f256fade6ddd954))
+* **engine:** build ToolCallResponse's JSON with json.Marshal ([a390771](https://github.com/dsswift/ion/commit/a390771d684e310e2cd7ba9568977b83b8362785))
+* **engine:** fix integration TestBashToolWorkingDirectory on win32 ([a2181c6](https://github.com/dsswift/ion/commit/a2181c60740586e993a25897a7d398fddf9569e7))
+* **engine:** gate longpath test helpers behind the integration tag ([f24c636](https://github.com/dsswift/ion/commit/f24c6360814dbdc9f702ecd600a8d5a620cd7637))
+* **engine:** remove racy double-read in memmonitor test ([2b98f00](https://github.com/dsswift/ion/commit/2b98f0008156b6873c64b76c3d1e84fd4df0dac3))
+* **engine:** fix truncation in hook_latency measurement ([0489c91](https://github.com/dsswift/ion/commit/0489c91dff3dd718845dd0528ff0e96b0512f7a2))
+* **engine:** accept clock-resolution-limited zero hook latency ([e95e28d](https://github.com/dsswift/ion/commit/e95e28dbb780173583de286925188e78f41f6815))
+* **engine:** raise Windows-CI-contended test timeouts, fix leak ([5c11b77](https://github.com/dsswift/ion/commit/5c11b7756f3266ba33513a24e999a43831db1779))
+* **engine:** raise mock-backend exit timeout for Windows CI ([d536ccf](https://github.com/dsswift/ion/commit/d536ccf329587fcd28c6dcee65d8ec6a29acc3dc))
+* **engine:** stop passing filesystem paths as ConversationID ([b69808e](https://github.com/dsswift/ion/commit/b69808ea548f37c6d149e09e66956b73d64c3487))
+
 ## [1.84.2](https://github.com/dsswift/ion/compare/engine-v1.84.1...engine-v1.84.2) (2026-09-08)
 
 ### Bug Fixes

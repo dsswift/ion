@@ -10,6 +10,54 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.99.0](https://github.com/dsswift/ion/compare/desktop-v1.98.0...desktop-v1.99.0) (2026-09-10)
+
+### Features
+
+* **desktop:** resolve engine address, supervise, and serve windows with no console ([e910913](https://github.com/dsswift/ion/commit/e91091364a439464bab7c889fe3cf7840575af54))
+* **desktop:** force studio and keep tray residency on windows ([4c9c981](https://github.com/dsswift/ion/commit/4c9c98143c4e63275e6d925394f5779eff6ddaad))
+* **desktop:** machine identity from the windows registry ([6f6bf3a](https://github.com/dsswift/ion/commit/6f6bf3ae4a9a8898687623e6bd0766fde887b157))
+* **desktop:** package and deliver ion for windows via nsis and intune ([0e7cbc9](https://github.com/dsswift/ion/commit/0e7cbc98a4f932a2d5cb8bd133043e03b7479c80))
+* **desktop:** let the user cancel a stuck sign-in ([c72a7ba](https://github.com/dsswift/ion/commit/c72a7baf1ecbeb7c0f0c7663038e081762073e26))
+* **desktop:** enterprise tab strip policy for ion studio ([4c20bdf](https://github.com/dsswift/ion/commit/4c20bdf13f0890ec05f8b026a1fbcc0048a666f4))
+* **desktop:** offer git only where there is a repository ([f27b02c](https://github.com/dsswift/ion/commit/f27b02cf84535c8ef2fb9d5c23488b62573a4f4b))
+* **desktop:** distinguish hidden from git-ignored in the explorer ([d757329](https://github.com/dsswift/ion/commit/d757329341782b88046321c58fc53f85c0af7920))
+* **desktop:** mirror hidden-file dimming to the ios remote client ([e3173d0](https://github.com/dsswift/ion/commit/e3173d03e20ed5ed7e171048d8b3d255c11dd012))
+
+### Bug Fixes
+
+* **desktop:** platform-correct paths, fonts, modifier keys and ipc validation ([6261f9a](https://github.com/dsswift/ion/commit/6261f9ac2e2a823efdb45e7a982b447957627ebb))
+* **desktop:** make the windows terminal shell, font and resize correct ([b20e521](https://github.com/dsswift/ion/commit/b20e52106a3bb819afed6fc4bb71ce25dad3c8b5))
+* **desktop:** record managed defaults outside the settings object ([0346d7f](https://github.com/dsswift/ion/commit/0346d7f8f3c522d8743ca98c7c32cbc22b6a9f98))
+* **desktop:** let an empty file be edited ([b245502](https://github.com/dsswift/ion/commit/b24550228b2ec2122dbc6147904148947f387f95))
+* **desktop:** restore cross-platform parity checks ([1ea5e46](https://github.com/dsswift/ion/commit/1ea5e460c8537dc44d9e0f8625343e3d9ed66e2c))
+* **desktop:** make the desktop test suite pass on windows ([a73fb91](https://github.com/dsswift/ion/commit/a73fb91ee04820049f93aa88f9e258740e31e0b6))
+* **desktop:** fix remaining windows desktop-test failures ([d16cd0c](https://github.com/dsswift/ion/commit/d16cd0c7df0316b9364c8777719f1e9d741b9a51))
+* **desktop:** fix desktop-test-windows CI failures ([6dc8950](https://github.com/dsswift/ion/commit/6dc8950fc2ac1ffd7e9f44305508c592902e00b5))
+* **desktop:** bump js-yaml to 4.3.2 to clear high-severity audit ([caadc10](https://github.com/dsswift/ion/commit/caadc10c185d78fbe66f89323fede0f91b5d0b14))
+* **desktop:** fix bench/worktree path-normalization on Windows ([bcfd806](https://github.com/dsswift/ion/commit/bcfd806dfd526494a1bd83a7103416cac73d0f77))
+* **desktop:** skip POSIX-only cli-env probe tests on win32 ([c6a8963](https://github.com/dsswift/ion/commit/c6a89630dd0e22a84a38e96124da64ab549d039b))
+* **desktop:** build engine-bootstrap test path literals via join() ([2f08fca](https://github.com/dsswift/ion/commit/2f08fca5c2d7c36f70efd1162d95ba82a2ad9247))
+* **desktop:** normalize graphify guard test path comparisons ([33762cb](https://github.com/dsswift/ion/commit/33762cb789b94521a33e10190953823be4c89e44))
+* **desktop:** normalize funnel-scan paths for win32 comparison ([444f622](https://github.com/dsswift/ion/commit/444f6223f5e77637ad3a05deae057128f0e016b5))
+* **desktop:** skip POSIX-only permission/shell tests on win32 ([afee67d](https://github.com/dsswift/ion/commit/afee67de392bfab8dfcb6ec8f6c2cbb948d62f78))
+* **desktop:** fix win32 terminal-discovery and settings-migration tests ([f754de0](https://github.com/dsswift/ion/commit/f754de034e0f1d7bb804f5803f945d2ac7c9dd79))
+* **desktop:** pin non-win32 platform in surface/active-ui tests ([1a219d8](https://github.com/dsswift/ion/commit/1a219d860383db11dc461fea15ad14a89f4fc62c))
+* **desktop:** mock execFileSync so engine-bridge tests reach net on win32 ([107b7da](https://github.com/dsswift/ion/commit/107b7da2d3cff0c3b359e956597330a49644647d))
+* **desktop:** stop treating a mid-token tilde as dynamic ([225476b](https://github.com/dsswift/ion/commit/225476be4ee4b13a5fc9a28ad1c704703ef13500))
+* **desktop:** use realpathSync.native in graphify-worktree-guard test ([fbe2ce5](https://github.com/dsswift/ion/commit/fbe2ce524655c025b9387687a0ab6afdfadfc2c3))
+* **desktop:** normalize expected paths in worktree-lifecycle test ([e6d1ddb](https://github.com/dsswift/ion/commit/e6d1ddb300fe8b24bed3f1bb022d42a3bd36af2e))
+* **desktop:** recognize Windows-native absolute paths in bash commands ([6878004](https://github.com/dsswift/ion/commit/68780042cab7e4da306f34dec1056c41e0341ed3))
+* **repo:** fix Windows PATH delimiter and symlink-target comparison ([09fdaeb](https://github.com/dsswift/ion/commit/09fdaeb992c55e45453645ce2ea1e6fd7c78e22c))
+* **desktop:** dump symlink diagnostics on graph-refresh mismatch ([201a4fe](https://github.com/dsswift/ion/commit/201a4fea838b41a90e45fb11081bb869d1a34405))
+* **desktop:** apply GIT_FIXTURE_TIMEOUT to all real-git describe blocks ([79b82ee](https://github.com/dsswift/ion/commit/79b82eebe70eb9cb83341da02ce621366c8fd1d9))
+* **repo:** fall back to a provenance marker when ln -s can't symlink ([5ab8310](https://github.com/dsswift/ion/commit/5ab83102525af375cdc974cb1d16eaae9e771bc3))
+* **desktop:** split benchSlug on both path separators ([02f7cd9](https://github.com/dsswift/ion/commit/02f7cd9b2b84b221496288c1633dfaddab91f2cc))
+* **desktop:** clear an unregistered bench directory before recreating it ([4062986](https://github.com/dsswift/ion/commit/406298638176318ac63c47ad86c2707898fc9b6c))
+* **desktop:** apply GIT_FIXTURE_TIMEOUT to bench-resolve.test.ts ([6468499](https://github.com/dsswift/ion/commit/6468499aac31c825d88c6ebf6c3da32e22096c80))
+* **desktop:** fix TDZ crash and apply timeout in duplicate-replay test ([a5b43c9](https://github.com/dsswift/ion/commit/a5b43c9779b9df76089767fd10e4b1d4eb05967e))
+* **desktop:** use portable git piping and path forms for Windows ([7f99f48](https://github.com/dsswift/ion/commit/7f99f48657a05cc8bbd13ff1b727db880f4cd69e))
+
 ## [1.98.0](https://github.com/dsswift/ion/compare/desktop-v1.97.2...desktop-v1.98.0) (2026-09-08)
 
 ### Features
