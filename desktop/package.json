@@ -69,7 +69,7 @@
     "codemirror": "^6.0.2",
     "diff": "^9.0.0",
     "electron-updater": "^6.8.9",
-    "framer-motion": "^12.42.2",
+    "framer-motion": "^13.2.0",
     "graphology": "0.26.0",
     "graphology-communities-louvain": "2.0.2",
     "graphology-layout-forceatlas2": "0.10.1",
