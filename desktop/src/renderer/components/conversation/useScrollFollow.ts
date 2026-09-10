@@ -27,6 +27,7 @@ export function useScrollFollow(deps: unknown[]) {
   const contentRef = useRef<HTMLDivElement>(null)
   const isNearBottomRef = useRef(true)
   const touchYRef = useRef<number | null>(null)
+  const lastScrollTopRef = useRef<number | null>(null)
   /**
    * Set while a deliberate navigation (a chart jump, a search hit) owns the
    * viewport. Tail-following is suppressed for its duration.
@@ -119,7 +120,19 @@ export function useScrollFollow(deps: unknown[]) {
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
     const nearBottom = distanceFromBottom < threshold
 
-    if (nearBottom) {
+    // The tail band is 80px wide, so any scroll-up gesture starts inside it
+    // while tailing. Distance alone can't tell "just left the tail" apart
+    // from "scrolled back down toward it" — direction of travel can. Without
+    // this, the very next scroll frame after pauseFollowing() (wheel notch,
+    // touch drag, a smooth-scroll minimap jump) still measures < threshold
+    // and re-arms tailing before the gesture escapes the band, which is what
+    // made a mouse wheel need several notches to "escape" and made a minimap
+    // jump starting near the tail snap straight back.
+    const previousScrollTop = lastScrollTopRef.current
+    lastScrollTopRef.current = el.scrollTop
+    const movingAwayFromBottom = previousScrollTop !== null && el.scrollTop < previousScrollTop
+
+    if (nearBottom && !movingAwayFromBottom) {
       if (!isNearBottomRef.current) {
         rDebug('conversation.scroll', 'conversation tailing resumed', {
           distance_from_bottom: distanceFromBottom,

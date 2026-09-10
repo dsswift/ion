@@ -60,7 +60,13 @@ const scrollFollow = vi.hoisted(() => ({
 vi.mock('../conversation/useScrollFollow', () => ({
   useScrollFollow: () => scrollFollow,
 }))
-vi.mock('../conversation/TimelineMinimap', () => ({ TimelineMinimap: () => null }))
+const timelineMinimapProps: Array<Record<string, unknown>> = []
+vi.mock('../conversation/TimelineMinimap', () => ({
+  TimelineMinimap: (props: Record<string, unknown>) => {
+    timelineMinimapProps.push(props)
+    return null
+  },
+}))
 vi.mock('../conversation/TimelineMinimap.logic', () => ({ deriveTimelineMinimapItems: () => [] }))
 // One derived timeline whose anchor deliberately differs from any gate id.
 vi.mock('../conversation/chart-revisions', () => ({
@@ -263,6 +269,29 @@ describe('ConversationView agent panel wiring', () => {
   it('forwards its own tabId to AgentPanel', () => {
     const { root } = renderConversation()
     expect(agentPanelProps.at(-1)?.tabId).toBe('tab-1')
+    act(() => { root.unmount() })
+  })
+})
+
+// Regression pin: the minimap tick jump uses the same virtualizer-jump
+// mechanism as the chart jump above, which needed `beginNavigation` (a hard
+// lock) instead of `pauseFollowing` (a plain flag) because the virtualizer's
+// own scroll fires handleScroll and can land inside the tail band, re-arming
+// tailing and snapping the view back before the jump completes. Wiring the
+// minimap to `pauseFollowing` reproduces that exact bug: a tick click while
+// tailing at the bottom gets silently undone.
+describe('ConversationView minimap navigation wiring', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    timelineMinimapProps.length = 0
+    setConversation('idle', 0)
+  })
+  afterEach(() => { document.body.replaceChildren() })
+
+  it('gives the minimap beginNavigation, not pauseFollowing', () => {
+    const { root } = renderConversation()
+    expect(timelineMinimapProps.at(-1)?.onNavigate).toBe(scrollFollow.beginNavigation)
+    expect(timelineMinimapProps.at(-1)?.onNavigate).not.toBe(scrollFollow.pauseFollowing)
     act(() => { root.unmount() })
   })
 })
