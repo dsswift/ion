@@ -203,6 +203,21 @@ describe('session-store-persistence — staged attachments', () => {
 
     expect(lastSavedTabs()[0]).not.toHaveProperty('attachments')
   })
+
+  // Regression: a tab reaching persistTabs without an `attachments` array
+  // (the debounced setTimeout in setupPersistence can fire against state
+  // built by a caller that does not carry every SessionTab field) crashed
+  // with "Cannot read properties of undefined (reading 'length')" on a bare
+  // `t.attachments.length` -- every sibling field above it uses `?.`.
+  it('does not throw when a tab has no attachments field at all', () => {
+    const store = makeStoreStub({ tabs: [makeTab({ conversationId: null })] })
+    setupPersistence(store)
+    expect(() => {
+      store.setState({ tabs: [makeTab({ conversationId: 'conv-1', attachments: undefined })] })
+    }).not.toThrow()
+
+    expect(lastSavedTabs()[0]).not.toHaveProperty('attachments')
+  })
 })
 
 // ─── Rewind ──────────────────────────────────────────────────────────────────
