@@ -620,6 +620,14 @@ func (b *ApiBackend) executeTools(
 				Images:          toolResult.Images,
 				EphemeralImages: toolResult.EphemeralImages,
 				SkillInvocation: toolResult.SkillInvocation,
+				// The asynchronous-work correlation key. Bash sets it for a
+				// run_in_background task, Agent for a dispatch, Poll for a poll.
+				// Dropping it here severed the key from BOTH consumers of this
+				// value: the ToolResultEvent emitted below (so no client could
+				// bind a transcript tool row to its live task) and the persisted
+				// tool row (so a reload fell through to the content-parsing
+				// legacy path in types.ParseCanonicalBashStartResult).
+				BackgroundTaskID: toolResult.BackgroundTaskID,
 			}
 			// A tool that returns IsError=true with no Go-level error is the
 			// dominant real-failure path: Bash non-zero exit, Edit

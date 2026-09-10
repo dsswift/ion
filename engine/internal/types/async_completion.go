@@ -119,9 +119,15 @@ func (BackgroundWorkDeliveredEvent) eventType() string { return EventBackgroundW
 //	Output file: <path>
 //	...
 //
-// Legacy tool results persisted before BackgroundTaskID existed carry the ID
-// only in content. This parser is strict: it matches the engine's own format
-// and rejects arbitrary user text.
+// Two callers need it. Tool results persisted before BackgroundTaskID existed
+// carry the ID only in content, so reloaded history recovers it here. And a
+// DELEGATED backend (a CLI the engine drives rather than a provider it calls)
+// reports tool results on its own protocol, which has no field for an Ion task
+// ID — see ParseCanonicalAsyncStartResult for why decoding it back out of the
+// content is exact rather than a guess.
+//
+// This parser is strict: it matches the engine's own format and rejects
+// arbitrary user text.
 func ParseCanonicalBashStartResult(content string) (string, bool) {
 	const prefix = "Background task started: "
 	if !strings.HasPrefix(content, prefix) {
@@ -137,4 +143,99 @@ func ParseCanonicalBashStartResult(content string) (string, bool) {
 		return "", false
 	}
 	return id, true
+}
+
+// ParseCanonicalPollStartResult recovers a poll ID from the canonical
+// start-result format the Poll tool writes:
+//
+//	Poll started: <ID>
+//	<fixed guidance prose>
+//
+// Same strictness as the Bash parser above: the prefix is engine-authored and
+// a result that does not carry it is rejected rather than guessed at.
+func ParseCanonicalPollStartResult(content string) (string, bool) {
+	const prefix = "Poll started: "
+	if !strings.HasPrefix(content, prefix) {
+		return "", false
+	}
+	rest := content[len(prefix):]
+	nl := strings.IndexByte(rest, '\n')
+	if nl <= 0 {
+		return "", false
+	}
+	return rest[:nl], true
+}
+
+// ParseCanonicalAsyncStartResult recovers the asynchronous-work ID from any
+// tool result the ENGINE ITSELF authored to announce started async work.
+//
+// This is a DECODE of engine-written output, not an inference about text the
+// model or a user produced. executeBashBackground and the Poll tool format
+// these strings from a fixed template with the ID interpolated in; reading it
+// back out is lossless and total for exactly those templates.
+//
+// It exists because the ID cannot survive a delegated backend any other way.
+// On the engine's own runloop the value rides types.ToolResult.BackgroundTaskID
+// straight into the emitted ToolResultEvent. A delegated CLI backend breaks
+// that: the tool executes inside the engine, but its result travels out over
+// MCP, through the CLI, and back in on the CLI's own stream — and neither hop
+// has a field for an Ion task ID. The MCP response carries no Ion metadata, and
+// the CLI's tool_result block carries only tool_use_id, content, and is_error.
+//
+// A SYNCHRONOUS Agent result is deliberately absent: its content is the child's
+// own output, not a template, so there is nothing exact to decode -- and it
+// needs nothing, because a synchronous dispatch is already finished when the
+// result appears. Only the asynchronous announcement is a template, and that is
+// the one that has a live dispatch to correlate with.
+func ParseCanonicalAsyncStartResult(content string) (string, bool) {
+	if id, ok := ParseCanonicalBashStartResult(content); ok {
+		return id, true
+	}
+	if id, ok := ParseCanonicalPollStartResult(content); ok {
+		return id, true
+	}
+	return ParseCanonicalDispatchStartResult(content)
+}
+
+// canonicalDispatchStart is the exact announcement an asynchronous dispatch
+// returns, split at the ID so the producer and the parser below cannot drift
+// apart. A recovery keyed on a string literal the producer keeps privately is
+// one careless reword away from silently returning nothing, which is the
+// failure this pairing removes rather than documents.
+const (
+	canonicalDispatchStartPrefix = "Agent dispatched asynchronously. Dispatch ID: "
+	canonicalDispatchStartSuffix = "Continue working or end your turn; the engine will deliver this agent's terminal result automatically."
+)
+
+// FormatCanonicalDispatchStart renders the announcement the model reads when a
+// dispatch is started in the background. It is deliberately minimal and
+// factual: the engine says what it did and what it will do, and takes no
+// position on what the model should work on meanwhile.
+func FormatCanonicalDispatchStart(dispatchID string) string {
+	return canonicalDispatchStartPrefix + dispatchID + ". " + canonicalDispatchStartSuffix
+}
+
+// ParseCanonicalDispatchStartResult recovers a dispatch ID from the canonical
+// announcement FormatCanonicalDispatchStart produced:
+//
+//	Agent dispatched asynchronously. Dispatch ID: <ID>. Continue working ...
+//
+// Unlike the Bash and Poll templates this one is a single line, so the ID is
+// bounded by the sentence break rather than a newline. Both the prefix and the
+// text that follows the ID are matched, which is what keeps the sentence break
+// from being a guess: a dispatch ID contains no ". " sequence, and a result
+// that does not continue with the template's next sentence is rejected.
+func ParseCanonicalDispatchStartResult(content string) (string, bool) {
+	if !strings.HasPrefix(content, canonicalDispatchStartPrefix) {
+		return "", false
+	}
+	rest := content[len(canonicalDispatchStartPrefix):]
+	end := strings.Index(rest, ". ")
+	if end <= 0 {
+		return "", false
+	}
+	if rest[end+2:] != canonicalDispatchStartSuffix {
+		return "", false
+	}
+	return rest[:end], true
 }

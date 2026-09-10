@@ -717,9 +717,11 @@ func (m *Manager) wireClientToolServer(s *engineSession, key string, opts *types
 // tool-orphaned — the root-model-called gap this closes.
 //
 // parentModel is the CLI run's model, used as the child model fallback (matches
-// the API spawner's capturedModel). The dispatch is foreground/synchronous: the
-// spawner blocks until the child completes, matching the ion_agent tool's
-// synchronous result contract.
+// the API spawner's capturedModel). The dispatch honours the call's
+// wait_for_completion input: set, the spawner blocks until the child completes
+// and returns its output; omitted, the dispatch runs in the background and the
+// spawner returns its canonical announcement immediately. The engine delivers
+// the terminal result by waking the session, so the turn is free to end.
 func (m *Manager) buildAgentToolHandler(s *engineSession, key, parentModel string) backend.ToolHandler {
 	spawner := m.buildRootAgentSpawner(s, key, parentModel, s.extGroup, nil, nil)
 	return func(ctx context.Context, input map[string]interface{}) (*types.ToolResult, error) {
