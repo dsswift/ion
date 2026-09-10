@@ -10,6 +10,13 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.99.1](https://github.com/dsswift/ion/compare/desktop-v1.99.0...desktop-v1.99.1) (2026-09-10)
+
+### Bug Fixes
+
+* **desktop:** guard persistTabs against a tab with no attachments ([2b21a91](https://github.com/dsswift/ion/commit/2b21a9164fe0524ef9dba0c6f97afa7e9b27e8ce))
+* **desktop:** guard window.ion in the debounced persist path ([7b6392f](https://github.com/dsswift/ion/commit/7b6392f1b280521a32597df5d13476645ef7fec8))
+
 ## [1.99.0](https://github.com/dsswift/ion/compare/desktop-v1.98.0...desktop-v1.99.0) (2026-09-10)
 
 ### Features

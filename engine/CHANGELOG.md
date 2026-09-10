@@ -18,6 +18,13 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.85.1](https://github.com/dsswift/ion/compare/engine-v1.85.0...engine-v1.85.1) (2026-09-10)
+
+### Bug Fixes
+
+* **engine:** classify persisted early-stop/steer injections ([276d6de](https://github.com/dsswift/ion/commit/276d6de544c170bb8acfcd9dd76093cb5c7aed12))
+* **engine:** remove a run from activeRuns before its exit fires ([8c493c7](https://github.com/dsswift/ion/commit/8c493c7d428954a979a9d047ba182f7930aafb26))
+
 ## [1.85.0](https://github.com/dsswift/ion/compare/engine-v1.84.2...engine-v1.85.0) (2026-09-10)
 
 ### Features
