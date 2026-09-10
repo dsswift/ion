@@ -19,14 +19,20 @@ import (
 )
 
 // mockRunExitTimeout bounds how long a test waits for a mock-backend run to
-// emit its exit event. These runs hit no real network, but the whole
-// integration package runs under `go test -race ./...` where other files in
-// the same binary spawn real git/node/PowerShell subprocesses; on Windows CI
-// that contention is enough to push a 5s bound over on a bare mock run
-// (TestApiBackendSimpleTextResponse, TestApiBackendTaskCompleteUsage, and
-// TestHybridBackend_ApiRoutedRunStreamsTextThroughInnerApi all failed at
-// exactly ~5.00-5.01s in CI while passing locally). 15s matches the margin
-// already proven sufficient by this package's other waitForExit calls.
+// emit its exit event. 15s matches the margin already proven sufficient by
+// this package's other waitForExit calls -- a generous ceiling for a run
+// that hits no real network, not a value tuned against a specific failure.
+//
+// (An earlier version of this comment attributed a Windows CI failure of
+// TestApiBackendSimpleTextResponse/TestApiBackendTaskCompleteUsage/
+// TestHybridBackend_ApiRoutedRunStreamsTextThroughInnerApi at ~5.00-5.01s to
+// contention and "fixed" it by raising this bound to 15s. That was wrong: a
+// real Windows VM run at 15s failed identically, and a diagnostic goroutine
+// dump showed the actual cause -- those three call sites passed a full
+// filesystem path as RunOptions.ConversationID, which is embedded verbatim
+// into a durablefile lock-file name; the "C:" drive prefix made every mkdir
+// attempt fail with a syntax error that no amount of retrying or waiting
+// fixes. See the isolation comments at each call site for the real fix.)
 const mockRunExitTimeout = 15 * time.Second
 
 func setupMockProvider(t *testing.T) *helpers.MockProvider {
@@ -109,11 +115,22 @@ func TestApiBackendSimpleTextResponse(t *testing.T) {
 	b := backend.NewApiBackend()
 	be := newBackendCollector(b)
 
-	convDir := t.TempDir()
+	// Isolate HOME: conversation.Save("", ...) ignores the run's convDir
+	// entirely and always resolves DefaultConversationsDir() from HOME
+	// (internal/conversation/helpers.go), so without this the run's final
+	// save writes into the real operator's ~/.ion/conversations.
+	t.Setenv("HOME", t.TempDir())
 	b.StartRun("run-text", types.RunOptions{
-		Prompt:         "Say hello",
-		Model:          "mock-model",
-		ConversationID: filepath.Join(convDir, "conv-text"),
+		Prompt: "Say hello",
+		Model:  "mock-model",
+		// ConversationID must be a bare identifier, never a filesystem path
+		// (see RunOptions.ConversationID's doc comment): it is embedded
+		// verbatim into a lock-file name (durablefile), and a path value
+		// containing "C:" broke that name on Windows -- every acquire
+		// attempt failed with "filename... syntax is incorrect", retried
+		// for the full bound, and never completed. Confirmed on a real
+		// Windows VM with a diagnostic dump of the actual mkdir error.
+		ConversationID: "conv-text",
 	})
 
 	be.waitForExit(t, mockRunExitTimeout)
@@ -155,11 +172,12 @@ func TestApiBackendTaskCompleteUsage(t *testing.T) {
 	b := backend.NewApiBackend()
 	be := newBackendCollector(b)
 
-	convDir := t.TempDir()
+	// See the isolation comment in TestApiBackendSimpleTextResponse above.
+	t.Setenv("HOME", t.TempDir())
 	b.StartRun("run-usage", types.RunOptions{
 		Prompt:         "test usage",
 		Model:          "mock-model",
-		ConversationID: filepath.Join(convDir, "conv-usage"),
+		ConversationID: "conv-usage",
 	})
 
 	be.waitForExit(t, mockRunExitTimeout)

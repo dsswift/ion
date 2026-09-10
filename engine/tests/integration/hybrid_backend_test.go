@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -106,12 +105,22 @@ func TestHybridBackend_ApiRoutedRunStreamsTextThroughInnerApi(t *testing.T) {
 	h := backend.NewHybridBackend()
 	hc := newHybridCollector(h)
 
-	convDir := t.TempDir()
+	// Isolate HOME: conversation.Save("", ...) always resolves
+	// DefaultConversationsDir() from HOME regardless of any per-test
+	// directory (internal/conversation/helpers.go), so without this the
+	// run's final save writes into the real operator's ~/.ion/conversations.
+	// ConversationID must also be a bare identifier, never a filesystem
+	// path -- it is embedded verbatim into a lock-file name (durablefile),
+	// and a path value containing "C:" broke that name on Windows (every
+	// acquire attempt failed with "filename... syntax is incorrect" and
+	// retried for the full bound without ever completing). Confirmed on a
+	// real Windows VM with a diagnostic dump of the actual mkdir error.
+	t.Setenv("HOME", t.TempDir())
 	rid := "hybrid-api-run"
 	h.StartRun(rid, types.RunOptions{
 		Prompt:         "say hi",
 		Model:          "mock-hybrid-api",
-		ConversationID: filepath.Join(convDir, "conv-api"),
+		ConversationID: "conv-api",
 	})
 
 	// While the run is in flight, the hybrid's routing table should know
