@@ -30,9 +30,14 @@ import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
-const warnMock = vi.fn()
-const logMock = vi.fn()
+// vi.mock factories are hoisted above every top-level statement, including
+// this file's own `const` declarations -- referencing an outer const from
+// inside the factory hits it before its initializer has run (a TDZ
+// "Cannot access before initialization"). vi.hoisted() lifts the declaration
+// itself alongside the mock call so the factory sees an initialized value.
+const { warnMock, logMock } = vi.hoisted(() => ({ warnMock: vi.fn(), logMock: vi.fn() }))
 vi.mock('../logger', () => ({
   log: (...args: unknown[]) => logMock(...args),
   debug: vi.fn(),
@@ -437,7 +442,7 @@ describe('repeated sync does not replay commits the source branch already has', 
     expect(git(wt.path, 'rev-parse', 'HEAD').trim()).toBe(git(repo, 'rev-parse', FEATURE).trim())
     expect(git(wt.path, 'status', '--porcelain').trim()).toBe('')
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('replay plan fails open — a commit is never dropped on absent evidence', () => {
   it('picks everything and warns when the range cannot be read', async () => {
@@ -480,7 +485,7 @@ describe('replay plan fails open — a commit is never dropped on absent evidenc
     expect(result.ok).toBe(true)
     expect(git(wt.path, 'log', '--format=%s', `${FEATURE}..HEAD`).trim()).toBe('h: one')
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('patchIdsIn', () => {
   it('returns null rather than a partial map when the range is unreadable', async () => {
@@ -502,4 +507,4 @@ describe('patchIdsIn', () => {
     const groups = [...(map ?? new Map<string, string[]>()).values()]
     expect(groups.some((shas) => shas.length === 2)).toBe(true)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
