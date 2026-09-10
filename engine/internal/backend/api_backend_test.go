@@ -462,71 +462,6 @@ func TestCancelReturnsFalseForUnknown(t *testing.T) {
 // ctx, like the unfixed doublestar Glob walk): activeRuns still contains an
 // entry, but the run goroutine never returns. The cancel watchdog must
 // emit a synthetic exit so the desktop can return the tab to idle.
-func TestCancelWatchdogForcesExitWhenRunGoroutineWedges(t *testing.T) {
-	b := NewApiBackend()
-
-	// Manually populate activeRuns to simulate a wedged run with no real
-	// goroutine. Cancel will call run.cancel() (no-op since context is not
-	// observed by anyone), then the watchdog should still fire.
-	_, cancelFn := context.WithCancel(context.Background())
-	wedged := &activeRun{
-		requestID: "req-wedged",
-		cancel:    cancelFn,
-		startTime: time.Now(),
-		// conv intentionally nil — exercises the "no session ID" branch
-		// of cancelWatchdog.
-	}
-	b.mu.Lock()
-	b.activeRuns["req-wedged"] = wedged
-	b.mu.Unlock()
-
-	c := collectEvents(b, "req-wedged")
-
-	if !b.Cancel("req-wedged") {
-		t.Fatal("Cancel returned false for active run")
-	}
-
-	// Watchdog grace is 5s; allow generous slack.
-	if !waitForExit(c, 7*time.Second) {
-		t.Fatal("Cancel watchdog did not force exit within grace period")
-	}
-
-	// Verify the synthetic signal so future audits can grep for forced exits.
-	c.mu.Lock()
-	gotSignal := ""
-	if c.exitSignal != nil {
-		gotSignal = *c.exitSignal
-	}
-	c.mu.Unlock()
-	if gotSignal != "cancelled-forced" {
-		t.Errorf("expected exit signal %q, got %q", "cancelled-forced", gotSignal)
-	}
-
-	// activeRuns must become empty after the watchdog runs. emitExit (which
-	// unblocks waitForExit above via the OnExit callback) and removeRun are
-	// two separate statements in cancelWatchdog, not one atomic step, so
-	// there is a genuine window between "exit signal observed" and "run
-	// removed from the registry". Poll for the removal instead of checking
-	// once immediately after waitForExit returns — an immediate single check
-	// is exactly what raced and failed under heavier goroutine scheduling
-	// (observed on the macOS CI runner).
-	deadline := time.After(2 * time.Second)
-	for {
-		b.mu.Lock()
-		_, stillThere := b.activeRuns["req-wedged"]
-		b.mu.Unlock()
-		if !stillThere {
-			break
-		}
-		select {
-		case <-deadline:
-			t.Fatal("watchdog left run in activeRuns")
-		default:
-			time.Sleep(5 * time.Millisecond)
-		}
-	}
-}
-
 func TestCancelReturnsTrueAndStopsRun(t *testing.T) {
 	// Create a provider that blocks by sleeping in the stream goroutine
 	blockingProvider := &slowMockProvider{
@@ -561,40 +496,10 @@ func TestCancelReturnsTrueAndStopsRun(t *testing.T) {
 	}
 }
 
-func TestIsRunningDuringAndAfter(t *testing.T) {
-	setupTestProvider([][]types.LlmStreamEvent{
-		textResponse("quick", 10, 5),
-	})
-
-	b := NewApiBackend()
-	c := collectEvents(b, "req-running")
-	b.StartRun("req-running", types.RunOptions{
-		Prompt:           "test",
-		ProjectPath:      "/tmp",
-		Model:            testModel,
-		EarlyStopEnabled: testEarlyStopDisabled(),
-	})
-
-	if !waitForExit(c, 5*time.Second) {
-		t.Fatal("timed out")
-	}
-
-	// emitExit (which unblocks waitForExit above via the OnExit callback) and
-	// removeRun are separate statements in the run loop, not one atomic step,
-	// so there is a genuine window between "exit signal observed" and "run
-	// removed from the registry" -- the same race documented and polled for
-	// in TestCancelWatchdogForcesExitWhenRunGoroutineWedges. Poll instead of
-	// checking once immediately after waitForExit returns.
-	deadline := time.After(2 * time.Second)
-	for b.IsRunning("req-running") {
-		select {
-		case <-deadline:
-			t.Fatal("expected IsRunning false after completion")
-		default:
-			time.Sleep(5 * time.Millisecond)
-		}
-	}
-}
+// TestIsRunningDuringAndAfter, TestIsRunningFalseInsideExitCallback, and
+// TestCancelWatchdogForcesExitWhenRunGoroutineWedges live in
+// api_backend_exit_ordering_test.go (extracted to stay under the file-size
+// cap; they pin one cohesive invariant about emitExit/removeRun ordering).
 
 func TestOnNormalizedReceivesEvents(t *testing.T) {
 	setupTestProvider([][]types.LlmStreamEvent{
