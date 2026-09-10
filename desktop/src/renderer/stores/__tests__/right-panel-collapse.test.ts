@@ -24,7 +24,7 @@
  * drawer branch -- statusDrawerOpen simply stays true.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // ─── Mutable preference stub ──────────────────────────────────────────────────
 //
@@ -134,6 +134,19 @@ beforeEach(() => {
       saveSessionChains: vi.fn(() => Promise.resolve()),
     },
   }
+  // Every setState here fires setupPersistence's real subscriber, which
+  // schedules a genuine 100ms setTimeout for the debounced tabs.json write
+  // (session-store-persistence.ts). None of these tests waits for it, so
+  // without fake timers it leaks past the end of this file and fires while a
+  // later, unrelated test file is running -- against a `window` that file
+  // owns, not this one.
+  vi.useFakeTimers()
+})
+
+afterEach(() => {
+  // Discards any pending debounce timer rather than letting it fire once
+  // real timers are restored.
+  vi.useRealTimers()
 })
 
 /** Drive the expanded -> collapsed transition the subscriber watches for. */

@@ -35,6 +35,10 @@ function persistExternalContent(useSessionStore: Store): void {
     const content = collectExternalInstanceMessages(pane)
     if (!content) continue
     markTabContentWritten(t.id, inst.messages)
+    if (typeof window.ion?.saveTabContent !== 'function') {
+      rError('session.persist', 'saveTabContent bridge unavailable; external content lost')
+      continue
+    }
     void window.ion.saveTabContent(t.id, content.instanceId, content.messages)
   }
 }
@@ -222,7 +226,7 @@ function persistTabs(useSessionStore: Store): void {
     planGeometry,
     agentDetailGeometry,
   }
-  const saveTabs = window.ion.saveTabs
+  const saveTabs = window.ion?.saveTabs
   if (typeof saveTabs !== 'function') {
     rError('session.persist', 'saveTabs bridge unavailable; restored session may be lost')
   } else {
@@ -250,7 +254,7 @@ function persistTabs(useSessionStore: Store): void {
   // them before send, so project the live queue only into the owner→mirror push.
   // Empty arrays are kept to clear a previously staged mirror rail immediately.
   const queuedAttachments = Object.fromEntries(tabs.map((t) => [t.id, t.attachments]))
-  window.ion.studioPublishTabsSync?.({
+  window.ion?.studioPublishTabsSync?.({
     ...data,
     revision: Date.now(),
     liveTabStatus: Object.fromEntries(tabs.map((t) => [t.id, t.status])),

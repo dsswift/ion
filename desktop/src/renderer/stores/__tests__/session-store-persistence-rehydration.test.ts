@@ -15,7 +15,7 @@
  *      AND on subsequent conversationId changes (engine restart path — Fix B).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // Mock preferences BEFORE any module that imports it (session-store-persistence
 // imports usePreferencesStore transitively via scanForStuckTabs).
@@ -149,6 +149,17 @@ beforeEach(() => {
       saveSessionChains: vi.fn(() => Promise.resolve()),
     },
   }
+  // A tracked-field setState schedules a genuine 100ms debounce timer
+  // (session-store-persistence.ts). None of these tests waits for it, so
+  // without fake timers it leaks past this file and fires during a later,
+  // unrelated test file against a `window` that file owns, not this one.
+  vi.useFakeTimers()
+})
+
+afterEach(() => {
+  // Discards any pending debounce timer rather than letting it fire once
+  // real timers are restored.
+  vi.useRealTimers()
 })
 
 function saveCallCount(): number {
