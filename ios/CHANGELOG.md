@@ -10,6 +10,16 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.77.0](https://github.com/dsswift/ion/compare/ios-v1.76.0...ios-v1.77.0) (2026-09-11)
+
+### Features
+
+* **ios:** show a scrollback notice when a dispatch is lost ([3bbe524](https://github.com/dsswift/ion/commit/3bbe5243fae9f53a262dd3e9980c73ff15429543))
+
+### Bug Fixes
+
+* **ios:** keep the background task toolId through the event case ([ac415d0](https://github.com/dsswift/ion/commit/ac415d0805dfba9f553c808869069c239e05905e))
+
 ## [1.76.0](https://github.com/dsswift/ion/compare/ios-v1.75.0...ios-v1.76.0) (2026-09-10)
 
 ### Features

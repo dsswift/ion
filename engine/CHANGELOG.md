@@ -18,6 +18,13 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.85.2](https://github.com/dsswift/ion/compare/engine-v1.85.1...engine-v1.85.2) (2026-09-11)
+
+### Bug Fixes
+
+* **engine:** recover background task and dispatch ids ([67035ce](https://github.com/dsswift/ion/commit/67035ce69d39d7c28b44ea9119d2ed20c70bd38a))
+* **engine:** stop two session logs from misreporting what happened ([34b3a8a](https://github.com/dsswift/ion/commit/34b3a8a137420fc29d23a40e877f37a1cced841a))
+
 ## [1.85.1](https://github.com/dsswift/ion/compare/engine-v1.85.0...engine-v1.85.1) (2026-09-10)
 
 ### Bug Fixes

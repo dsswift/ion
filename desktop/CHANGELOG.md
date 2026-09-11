@@ -10,6 +10,18 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.100.0](https://github.com/dsswift/ion/compare/desktop-v1.99.1...desktop-v1.100.0) (2026-09-11)
+
+### Features
+
+* **desktop:** show a scrollback notice when a dispatch is lost ([29beacd](https://github.com/dsswift/ion/commit/29beacd52d6a0a82c1cc9ce5d756ef03b0e65bcd))
+
+### Bug Fixes
+
+* **desktop:** carry the background task toolId to the renderer ([dafe955](https://github.com/dsswift/ion/commit/dafe95551ce282df6b43e915daefd4727d065526))
+* **desktop:** probe active tab directory for the git panel ([9883d0f](https://github.com/dsswift/ion/commit/9883d0f8a54f489718a08e43304129f1aef37e18))
+* **desktop:** fix minimap tick jump and wheel-scroll tail lock ([936f625](https://github.com/dsswift/ion/commit/936f6255fde86002c5bcaaf4ddd6ac4a07132d5d))
+
 ## [1.99.1](https://github.com/dsswift/ion/compare/desktop-v1.99.0...desktop-v1.99.1) (2026-09-10)
 
 ### Bug Fixes
