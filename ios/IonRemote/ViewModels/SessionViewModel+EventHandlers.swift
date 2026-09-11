@@ -253,6 +253,9 @@ extension SessionViewModel {
                 handleEngineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength, clientMessageId: clientMessageId, entryId: entryId)
             }
 
+        case .engineDispatchLost(let tabId, let instanceId, let lost):
+            handleEngineDispatchLost(tabId: tabId, instanceId: instanceId, agentName: lost.agentName)
+
         case .engineSteerDegraded(let tabId, let instanceId, let messageLength, _, let machineAuthored):
             if machineAuthored != true {
                 handleEngineSteerDegraded(tabId: tabId, instanceId: instanceId, messageLength: messageLength)

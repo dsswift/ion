@@ -157,6 +157,9 @@ extension DiagnosticLog {
             log("EVENT: engineRunRecovery tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") recoveryId=\(recoveryId.prefix(8)) phase=\(phase) attempt=\(attempt ?? 0)/\(maxAttempts ?? 0)", tag: "session", level: .info)
         case .engineSteerInjected(let tabId, let instId, let messageLength, let clientMessageId, let entryId, let kind, let machineAuthored):
             log("EVENT: engineSteerInjected tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength) clientMsgId=\(clientMessageId?.prefix(8) ?? "nil") entryId=\(entryId?.prefix(8) ?? "nil") kind=\(kind ?? "") machineAuthored=\(machineAuthored ?? false)", tag: "session", level: .info)
+        case .engineDispatchLost(let tabId, let instId, let lost):
+            log("EVENT: engineDispatchLost tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") dispatchId=\(lost.dispatchId) agent=\(lost.agentName)", tag: "session", level: .warn)
+
         case .engineSteerDegraded(let tabId, let instId, let messageLength, let kind, let machineAuthored):
             log("EVENT: engineSteerDegraded tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength) kind=\(kind ?? "") machineAuthored=\(machineAuthored ?? false)", tag: "session", level: .info)
         case .engineSteerInterruptedStream(let tabId, let instId, let blocksKept, let queuedSteers):

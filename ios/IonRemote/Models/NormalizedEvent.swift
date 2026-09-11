@@ -170,6 +170,10 @@ enum RemoteEvent: Sendable {
     /// no run-loop checkpoint drained it. Clients may render the same
     /// confirmation without mutating any live-steer pending-bubble state.
     case engineSteerDegraded(tabId: String, instanceId: String?, messageLength: Int, kind: String?, machineAuthored: Bool?)
+
+    /// A dispatch that was running when the engine process died. Unrecoverable
+    /// after restart; one per orphan, emitted during dispatch-state rehydration.
+    case engineDispatchLost(tabId: String, instanceId: String?, lost: DispatchLostPayload)
     /// A steer arrived while the model was streaming assistant text and the
     /// engine ended that provider call early so the steer applies on the next
     /// turn rather than after the model finishes composing.
@@ -667,6 +671,7 @@ enum RemoteEvent: Sendable {
         case engineRunRecovery = "desktop_run_recovery"
         case engineSteerInjected = "desktop_steer_injected"
         case engineSteerDegraded = "desktop_steer_degraded"
+        case engineDispatchLost = "desktop_dispatch_lost"
         case engineSteerInterruptedStream = "desktop_steer_interrupted_stream"
         case engineRewindResult = "desktop_engine_rewind_result"
         case enginePromptInjected = "desktop_prompt_injected"
@@ -795,6 +800,7 @@ enum RemoteEvent: Sendable {
         case convFingerprint, lastActivityAt, lastMessageAt, lastMessage, messageCount
         case content, transcript, isError, result, costUsd, durationMs, reason, backgroundTaskId
         case task, taskId, requestId, notifyOnComplete, startedAt, elapsedMs, outputPath, tail
+        case dispatchLost  // desktop_dispatch_lost payload envelope
         case stoppedBackgroundTaskIds, scope, cancelledRunId, recalledDispatchIds, killedAgentProcessCount
         // desktop_tab_meta pill customization fields: pushed by the desktop
         // when the user sets a custom pill color/icon (desktop_set_pill_color/

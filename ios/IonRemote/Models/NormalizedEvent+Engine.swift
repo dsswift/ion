@@ -134,6 +134,13 @@ extension RemoteEvent {
             try container.encodeIfPresent(machineAuthored, forKey: .steerMachineAuthored)
             return true
 
+        case .engineDispatchLost(let tabId, let instanceId, let lost):
+            try container.encode(TypeKey.engineDispatchLost, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(lost, forKey: .dispatchLost)
+            return true
+
         case .engineSteerDegraded(let tabId, let instanceId, let messageLength, let kind, let machineAuthored):
             try container.encode(TypeKey.engineSteerDegraded, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
