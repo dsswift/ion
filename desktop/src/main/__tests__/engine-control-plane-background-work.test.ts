@@ -30,3 +30,39 @@ describe('handleStreamSignalEvent — background_work_delivered', () => {
     expect(ctx.emit).not.toHaveBeenCalled()
   })
 })
+
+// The live start event is the client's FIRST notice that a task exists, and at
+// that instant the transcript tool row has no backgroundTaskId of its own — the
+// tool_result carrying it has not arrived. `toolId` is therefore the only key
+// that can bind the task to its row on first paint, and BackgroundWorkGroup
+// matches on it (see BackgroundWorkGroup.test.tsx, "matches a start event to
+// its tool row before tool-end provides a task id").
+//
+// The mapping used to rebuild the payload field by field and omit toolId, so
+// that fallback had nothing to match and the live Bash group stayed hidden.
+//
+// Revert-check: drop `toolId: task.toolId` from the engine_background_task_started
+// arm in engine-control-plane-stream.ts and this goes red.
+describe('handleStreamSignalEvent — background_task_started', () => {
+  it('carries toolId through to the renderer event', () => {
+    const ctx = { emit: vi.fn() } as any
+    expect(handleStreamSignalEvent(ctx, 'tab', {} as any, {
+      type: 'engine_background_task_started',
+      backgroundTaskStarted: {
+        taskId: 'bash-1-1789041447216',
+        toolId: 'call_8iNFYklf0rjCXGkzXYH99C2v',
+        command: 'make test-linux-engine',
+        startedAt: 10,
+        notifyOnComplete: true,
+      },
+    } as any)).toBe(true)
+    expect(ctx.emit).toHaveBeenCalledWith('event', 'tab', {
+      type: 'background_task_started',
+      taskId: 'bash-1-1789041447216',
+      toolId: 'call_8iNFYklf0rjCXGkzXYH99C2v',
+      command: 'make test-linux-engine',
+      startedAt: 10,
+      notifyOnComplete: true,
+    })
+  })
+})

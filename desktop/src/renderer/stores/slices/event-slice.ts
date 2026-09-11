@@ -458,6 +458,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               );
               tasks.push({
                 taskId: event.taskId,
+                toolId: event.toolId,
                 command: event.command,
                 startedAt: event.startedAt,
                 notifyOnComplete: event.notifyOnComplete,
@@ -862,6 +863,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
             case "dialog":
             case "message_end":
             case "user_turn_persisted":
+            case "dispatch_lost":
             case "extension_died":
             case "extension_respawned":
             case "extension_dead_permanent":

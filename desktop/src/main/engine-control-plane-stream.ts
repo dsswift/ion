@@ -225,6 +225,22 @@ export function handleStreamSignalEvent(
       } as NormalizedEvent);
       return true;
 
+    case "engine_dispatch_lost": {
+      const lost = event.dispatchLost;
+      // No payload means the engine sent a bare announcement it cannot
+      // attribute. Rendering "agent was lost" with no agent is worse than
+      // silence, and there is nothing for a consumer to act on.
+      if (!lost) return true;
+      log("dispatch_lost", { tab_id: tabId, dispatch_id: lost.dispatchId, agent: lost.agentName });
+      ctx.emit("event", tabId, {
+        type: "dispatch_lost",
+        dispatchId: lost.dispatchId,
+        agentName: lost.agentName,
+        childConversationId: lost.childConversationId,
+      } as NormalizedEvent);
+      return true;
+    }
+
     case "engine_background_task_started": {
       const task = event.backgroundTaskStarted;
       if (!task) return true;
@@ -232,6 +248,12 @@ export function handleStreamSignalEvent(
       ctx.emit("event", tabId, {
         type: "background_task_started",
         taskId: task.taskId,
+        // The originating tool-use id. This is the ONLY correlation key the
+        // client has at first paint: the tool row's own backgroundTaskId does
+        // not arrive until the tool_result event, and a status snapshot may be
+        // several hundred ms behind. Dropping it here left the live Bash group
+        // unable to bind the task to its transcript row.
+        toolId: task.toolId,
         command: task.command,
         startedAt: task.startedAt,
         notifyOnComplete: task.notifyOnComplete,

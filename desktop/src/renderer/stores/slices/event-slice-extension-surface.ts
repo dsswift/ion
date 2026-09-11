@@ -16,6 +16,7 @@ import { nextMsgId } from '../session-store-helpers'
 import { rInfo, rTrace, rWarn } from '../../rendererLogger'
 import { logTabStatusPatch } from './tab-status-transition'
 import { isPendingUserCardDenial } from '../../../shared/pending-card'
+import { formatDispatchLostDivider } from '../../../shared/clear-divider'
 
 /**
  * Mutable context shared with the parent reducer for one event. The parent
@@ -353,6 +354,32 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
           }
         }
       }
+      return true
+
+    case 'dispatch_lost':
+      // A dispatch that was running when the engine died. The agent panel
+      // already shows the row errored from the rehydrated snapshot, but a
+      // conversation that was waiting on this agent otherwise just goes
+      // quiet — the operator sees a turn that ended and no reason why.
+      //
+      // Scrollback rather than an ephemeral notification: the loss is a fact
+      // about this conversation's history, and it stays legible while the
+      // operator decides whether to redispatch. Not deduped against a
+      // previous announcement, because the engine re-announces only while
+      // the orphan is still unacknowledged — a repeat means it is still
+      // unresolved, which is worth saying again.
+      ctx.messages = [
+        ...ctx.messages,
+        {
+          id: nextMsgId(),
+          role: 'system',
+          content: formatDispatchLostDivider(new Date(), event.agentName),
+          timestamp: Date.now(),
+        },
+      ]
+      rWarn('event.dispatch_lost', 'dispatch lost, notice added to scrollback', {
+        tab_id: tabId, dispatch_id: event.dispatchId, agent: event.agentName,
+      })
       return true
 
     case 'extension_died':

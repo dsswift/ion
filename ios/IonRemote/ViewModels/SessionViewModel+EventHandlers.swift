@@ -224,11 +224,11 @@ extension SessionViewModel {
             _ = instanceId // unused post-#256, bare tabId is the key
             activeTools[tabId]?[toolId]?.isStalled = true
 
-        case .engineBackgroundTaskStarted(let tabId, let instanceId, let taskId, let command, let startedAt, let notifyOnComplete):
+        case .engineBackgroundTaskStarted(let tabId, let instanceId, let taskId, let toolId, let command, let startedAt, let notifyOnComplete):
             handleBackgroundTaskStarted(
                 tabId: tabId,
                 instanceId: instanceId,
-                task: BackgroundTaskState(taskId: taskId, command: command, startedAt: startedAt, notifyOnComplete: notifyOnComplete)
+                task: BackgroundTaskState(taskId: taskId, toolId: toolId, command: command, startedAt: startedAt, notifyOnComplete: notifyOnComplete)
             )
 
         case .engineBackgroundTaskTerminal(let tabId, let instanceId, let taskId, let status, _, _, _, _, _):
@@ -252,6 +252,9 @@ extension SessionViewModel {
             if machineAuthored != true {
                 handleEngineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength, clientMessageId: clientMessageId, entryId: entryId)
             }
+
+        case .engineDispatchLost(let tabId, let instanceId, let lost):
+            handleEngineDispatchLost(tabId: tabId, instanceId: instanceId, agentName: lost.agentName)
 
         case .engineSteerDegraded(let tabId, let instanceId, let messageLength, _, let machineAuthored):
             if machineAuthored != true {

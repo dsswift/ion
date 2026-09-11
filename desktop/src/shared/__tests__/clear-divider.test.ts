@@ -27,6 +27,8 @@ import {
   isSteerAppliedDivider,
   buildClearDividerRemoteEvent,
   buildDividerRemoteEvent,
+  formatDispatchLostDivider,
+  isDispatchLostDivider,
 } from '../clear-divider'
 
 describe('formatClearDivider', () => {
@@ -337,5 +339,27 @@ describe('buildDividerRemoteEvent', () => {
     const legacy = buildClearDividerRemoteEvent('tab-abc:inst-xyz', at)
     const general = buildDividerRemoteEvent('tab-abc:inst-xyz', formatClearDivider(at), at)
     expect(legacy).toEqual(general)
+  })
+})
+
+describe('formatDispatchLostDivider', () => {
+  // Pinned identical to the iOS builder in SessionViewModel+DispatchLost.swift
+  // (asserted there by DispatchLostWireTests). A conversation open on both
+  // devices must read the same, so a reword here is a two-platform change.
+  it('names the agent and the restart', () => {
+    const at = new Date(2026, 8, 10, 13, 0)
+    const text = formatDispatchLostDivider(at, 'agent-2')
+    expect(text).toContain('agent-2 was lost when the engine restarted at')
+    expect(isDispatchLostDivider(text)).toBe(true)
+  })
+
+  it('falls back to a generic noun when the engine could not attribute the orphan', () => {
+    const text = formatDispatchLostDivider(new Date(2026, 8, 10, 13, 0), '')
+    expect(text).toContain('agent was lost when the engine restarted at')
+    expect(isDispatchLostDivider(text)).toBe(true)
+  })
+
+  it('does not match an unrelated divider', () => {
+    expect(isDispatchLostDivider(formatSteerAppliedDivider(new Date(), 12))).toBe(false)
   })
 })

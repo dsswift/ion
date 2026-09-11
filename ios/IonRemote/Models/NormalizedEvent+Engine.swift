@@ -70,12 +70,12 @@ extension RemoteEvent {
             try container.encode(elapsed, forKey: .elapsed)
             return true
 
-        case .engineBackgroundTaskStarted(let tabId, let instanceId, let taskId, let command, let startedAt, let notifyOnComplete):
+        case .engineBackgroundTaskStarted(let tabId, let instanceId, let taskId, let toolId, let command, let startedAt, let notifyOnComplete):
             try container.encode(TypeKey.engineBackgroundTaskStarted, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(
-                BackgroundTaskState(taskId: taskId, command: command, startedAt: startedAt, notifyOnComplete: notifyOnComplete),
+                BackgroundTaskState(taskId: taskId, toolId: toolId, command: command, startedAt: startedAt, notifyOnComplete: notifyOnComplete),
                 forKey: .task
             )
             return true
@@ -132,6 +132,13 @@ extension RemoteEvent {
             try container.encodeIfPresent(entryId, forKey: .steerEntryId)
             try container.encodeIfPresent(kind, forKey: .steerKind)
             try container.encodeIfPresent(machineAuthored, forKey: .steerMachineAuthored)
+            return true
+
+        case .engineDispatchLost(let tabId, let instanceId, let lost):
+            try container.encode(TypeKey.engineDispatchLost, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(lost, forKey: .dispatchLost)
             return true
 
         case .engineSteerDegraded(let tabId, let instanceId, let messageLength, let kind, let machineAuthored):

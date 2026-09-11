@@ -74,6 +74,7 @@ extension RemoteEvent {
                 tabId: try container.decode(String.self, forKey: .tabId),
                 instanceId: try container.decodeIfPresent(String.self, forKey: .instanceId),
                 taskId: payload.taskId,
+                toolId: payload.toolId,
                 command: payload.command,
                 startedAt: payload.startedAt,
                 notifyOnComplete: payload.notifyOnComplete
@@ -135,6 +136,13 @@ extension RemoteEvent {
             let kind = try container.decodeIfPresent(String.self, forKey: .steerKind)
             let machineAuthored = try container.decodeIfPresent(Bool.self, forKey: .steerMachineAuthored)
             return .engineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength, clientMessageId: clientMessageId, entryId: entryId, kind: kind, machineAuthored: machineAuthored)
+
+        case .engineDispatchLost:
+            return .engineDispatchLost(
+                tabId: try container.decode(String.self, forKey: .tabId),
+                instanceId: try container.decodeIfPresent(String.self, forKey: .instanceId),
+                lost: try container.decode(DispatchLostPayload.self, forKey: .dispatchLost)
+            )
 
         case .engineSteerDegraded:
             let tabId = try container.decode(String.self, forKey: .tabId)

@@ -248,7 +248,10 @@ func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentMode
 		}
 		if !waitForCompletion {
 			tools.SetDispatchID(ctx, result.DispatchID)
-			return fmt.Sprintf("Agent dispatched asynchronously. Dispatch ID: %s. Continue working or end your turn; the engine will deliver this agent's terminal result automatically.", result.DispatchID), nil
+			// Rendered from types so the announcement and the parser that
+			// recovers the ID back out of it on a delegated backend share one
+			// source of truth (types.ParseCanonicalDispatchStartResult).
+			return types.FormatCanonicalDispatchStart(result.DispatchID), nil
 		}
 		utils.LogWithFields(utils.LevelDebug, "session", "agent spawner returning", map[string]any{"model": agentName, "exit_code": result.ExitCode, "count": len(result.Output), "input_tokens": result.InputTokens, "output_tokens": result.OutputTokens})
 		// Usage suffix: model-facing per-dispatch token/cost accounting. The

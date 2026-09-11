@@ -144,7 +144,6 @@ export function ConversationView({ tabId }: ConversationViewProps) {
     handleTouchMove,
     handlePointerMove,
     handleKeyDown,
-    pauseFollowing,
     beginNavigation,
     scrollToBottom,
   } = useScrollFollow([
@@ -358,7 +357,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
           items={minimapItems}
           scrollRef={scrollRef}
           virtualMessageJumpRef={virtualMessageJumpRef}
-          onNavigate={pauseFollowing}
+          onNavigate={beginNavigation}
         />
         <div
           ref={scrollRef}

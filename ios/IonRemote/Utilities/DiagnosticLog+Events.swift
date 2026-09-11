@@ -145,7 +145,7 @@ extension DiagnosticLog {
 
         case .engineToolStalled(let tabId, let instId, let toolId, let toolName, _):
             log("EVENT: engineToolStalled tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") tool=\(toolName) toolId=\(toolId.prefix(8))", tag: "session", level: .info)
-        case .engineBackgroundTaskStarted(let tabId, _, let taskId, _, _, let notify):
+        case .engineBackgroundTaskStarted(let tabId, _, let taskId, _, _, _, let notify):
             log("background task started event", tag: "session", fields: ["tab_id": tabId, "task_id": taskId, "status": notify ? "notify" : "detached"])
         case .engineBackgroundTaskTerminal(let tabId, _, let taskId, let status, _, _, _, _, _):
             log("background task terminal event", tag: "session", fields: ["tab_id": tabId, "task_id": taskId, "status": status])
@@ -157,6 +157,9 @@ extension DiagnosticLog {
             log("EVENT: engineRunRecovery tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") recoveryId=\(recoveryId.prefix(8)) phase=\(phase) attempt=\(attempt ?? 0)/\(maxAttempts ?? 0)", tag: "session", level: .info)
         case .engineSteerInjected(let tabId, let instId, let messageLength, let clientMessageId, let entryId, let kind, let machineAuthored):
             log("EVENT: engineSteerInjected tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength) clientMsgId=\(clientMessageId?.prefix(8) ?? "nil") entryId=\(entryId?.prefix(8) ?? "nil") kind=\(kind ?? "") machineAuthored=\(machineAuthored ?? false)", tag: "session", level: .info)
+        case .engineDispatchLost(let tabId, let instId, let lost):
+            log("EVENT: engineDispatchLost tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") dispatchId=\(lost.dispatchId) agent=\(lost.agentName)", tag: "session", level: .warn)
+
         case .engineSteerDegraded(let tabId, let instId, let messageLength, let kind, let machineAuthored):
             log("EVENT: engineSteerDegraded tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") messageLength=\(messageLength) kind=\(kind ?? "") machineAuthored=\(machineAuthored ?? false)", tag: "session", level: .info)
         case .engineSteerInterruptedStream(let tabId, let instId, let blocksKept, let queuedSteers):

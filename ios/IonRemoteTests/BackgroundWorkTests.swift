@@ -267,15 +267,23 @@ final class BackgroundWorkTests: XCTestCase {
         let encoder = JSONEncoder()
 
         let started = try decoder.decode(RemoteEvent.self, from: #"{"type":"desktop_background_task_started","tabId":"tab-1","instanceId":"main","task":{"taskId":"bg-1","toolId":"tool-1","command":"sleep 10","startedAt":123,"notifyOnComplete":false}}"#.data(using: .utf8)!)
-        guard case .engineBackgroundTaskStarted(_, _, let taskId, let command, let startedAt, let notify) = started else {
+        guard case .engineBackgroundTaskStarted(_, _, let taskId, let toolId, let command, let startedAt, let notify) = started else {
             return XCTFail("expected started event")
         }
         XCTAssertEqual(taskId, "bg-1")
+        // The originating tool-use id is the only key binding this task to its
+        // transcript row before the tool result carrying backgroundTaskId
+        // arrives. The case decoded the full BackgroundTaskState and then
+        // flattened it into associated values that had no slot for toolId, so
+        // the id was read off the wire and thrown away — and re-encoding
+        // reproduced a payload missing it.
+        XCTAssertEqual(toolId, "tool-1")
         XCTAssertEqual(command, "sleep 10")
         XCTAssertEqual(startedAt, 123)
         XCTAssertFalse(notify)
         let startedJSON = try JSONSerialization.jsonObject(with: encoder.encode(started)) as! [String: Any]
         XCTAssertNotNil(startedJSON["task"])
+        XCTAssertEqual((startedJSON["task"] as? [String: Any])?["toolId"] as? String, "tool-1")
         XCTAssertNil(startedJSON["backgroundTaskStarted"])
 
         let terminal = try decoder.decode(RemoteEvent.self, from: #"{"type":"desktop_background_task_terminal","tabId":"tab-1","instanceId":"main","taskId":"bg-1","status":"stopped","exitCode":-1,"elapsedMs":50,"command":"sleep 10","outputPath":"/tmp/bg-1.out","tail":"stopped"}"#.data(using: .utf8)!)

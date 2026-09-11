@@ -211,17 +211,17 @@ func (m *Manager) onBackgroundTaskComplete(c tools.TaskCompletion) {
 		// which is the only place the entryID is available.
 		work := buildBackgroundWorkInfo(c, "steer", remaining)
 		outcome := m.SteerAgentWithBackgroundWork(key, "", payload, BackgroundTaskCompletionInjectionKind, work)
-		utils.LogWithFields(utils.LevelInfo, "session.bgtask", "completion delivered to active run via steer", map[string]any{
-			"task_id": c.TaskID, "session_id": key, "delivery": "steer", "outcome": outcome.String(),
-		})
 		if outcome.Delivered() {
+			utils.LogWithFields(utils.LevelInfo, "session.bgtask", "completion delivered to active run via steer", map[string]any{
+				"task_id": c.TaskID, "session_id": key, "delivery": "steer", "outcome": outcome.String(),
+			})
 			return
 		}
+		utils.LogWithFields(utils.LevelInfo, "session.bgtask", "steer refused the completion; trying the idle paths", map[string]any{
+			"task_id": c.TaskID, "session_id": key, "delivery": "steer", "outcome": outcome.String(),
+		})
 		// The run ended between the status read and the steer. Fall through to
 		// the idle paths rather than dropping the completion.
-		utils.LogWithFields(utils.LevelInfo, "session.bgtask", "steer not delivered; falling through to idle delivery", map[string]any{
-			"task_id": c.TaskID, "session_id": key, "outcome": outcome.String(),
-		})
 	}
 
 	switch mode {

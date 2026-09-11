@@ -231,3 +231,24 @@ export function buildDividerRemoteEvent(
     },
   }
 }
+
+/**
+ * Format the divider system message inserted into scrollback when the engine
+ * reports that a dispatch was lost.
+ *
+ * A dispatch is "lost" when the engine process died while it was running: the
+ * child is unrecoverable, and the engine announces one of these per orphan
+ * during dispatch-state rehydration. The operator otherwise has no way to learn
+ * that an agent stopped — the agent panel marks the row errored, but a
+ * conversation that was waiting on that agent simply goes quiet.
+ */
+export function formatDispatchLostDivider(at: Date, agentName: string): string {
+  const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  const who = agentName || 'agent'
+  return `── ${who} was lost when the engine restarted at ${time} ──`
+}
+
+/** Sentinel-prefix check for dispatch-lost dividers. */
+export function isDispatchLostDivider(content: string): boolean {
+  return content.startsWith('── ') && content.includes('was lost when the engine restarted')
+}

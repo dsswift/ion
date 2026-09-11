@@ -152,6 +152,42 @@ describe('useScrollFollow', () => {
     hook.unmount()
   })
 
+  it('does not re-arm tailing mid-gesture when a scroll-up starts inside the tail band', () => {
+    // Regression for a mouse wheel needing several notches to "escape" the
+    // tail lock: scrolling up from the bottom starts inside the 80px band,
+    // so a naive distance check re-arms tailing on the very next scroll
+    // frame — before the gesture clears the band — and the frame that
+    // finally clears it then gets forced straight back to the bottom.
+    const hook = renderScrollHook([0])
+    const div = document.createElement('div')
+    Object.defineProperty(div, 'scrollHeight', { value: 1_000, configurable: true })
+    Object.defineProperty(div, 'scrollTop', { value: 600, writable: true, configurable: true })
+    Object.defineProperty(div, 'clientHeight', { value: 400, configurable: true })
+    ;(hook.current.scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = div
+
+    // Establish the tailing baseline at the bottom.
+    act(() => { hook.current.handleScroll() })
+    expect(hook.current.isNearBottomRef.current).toBe(true)
+
+    // A wheel notch scrolls up a little, still inside the 80px band
+    // (distance = 1000 - 550 - 400 = 50).
+    div.scrollTop = 550
+    act(() => {
+      hook.current.handleWheel({ deltaY: -1 } as WheelEvent<HTMLDivElement>)
+      hook.current.handleScroll()
+    })
+    expect(hook.current.isNearBottomRef.current).toBe(false)
+
+    // The gesture continues and clears the band (distance = 100).
+    div.scrollTop = 500
+    act(() => { hook.current.handleScroll() })
+
+    expect(hook.current.isNearBottomRef.current).toBe(false)
+    expect(hook.current.showScrollBtn).toBe(true)
+    expect(div.scrollTop).toBe(500)
+    hook.unmount()
+  })
+
   it('starts with showScrollBtn=false', () => {
     const hook = renderScrollHook([0])
     expect(hook.current.showScrollBtn).toBe(false)

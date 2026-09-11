@@ -265,11 +265,26 @@ func normalizeUser(raw json.RawMessage) []types.NormalizedEvent {
 		if block.Type == "tool_result" {
 			// Content within a tool_result can also be a string or array.
 			contentStr := extractContentString(block.Content)
+			// Recover the asynchronous-work ID the delegated CLI could not
+			// carry. A background Bash command, a Poll, or an asynchronous
+			// agent dispatch starts INSIDE the engine, but its result leaves
+			// over MCP and comes back on the CLI's stream, and neither hop has
+			// a field for an Ion task or dispatch ID --
+			// the block above is the whole shape the CLI reports. Without this
+			// the row loses its only link to the live task and renders as an
+			// instantly-finished tool, while the engine holds the session open
+			// for a command the transcript says already ended.
+			//
+			// The decode is exact: the content being read is the engine's own
+			// fixed template with the ID interpolated in, and the parser
+			// rejects anything that is not that template.
+			bgID, _ := types.ParseCanonicalAsyncStartResult(contentStr)
 			events = append(events, types.NormalizedEvent{
 				Data: &types.ToolResultEvent{
-					ToolID:  block.ToolUseID,
-					Content: contentStr,
-					IsError: block.IsError,
+					ToolID:           block.ToolUseID,
+					Content:          contentStr,
+					IsError:          block.IsError,
+					BackgroundTaskID: bgID,
 				},
 			})
 		}
