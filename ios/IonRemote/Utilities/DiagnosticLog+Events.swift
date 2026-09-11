@@ -145,7 +145,7 @@ extension DiagnosticLog {
 
         case .engineToolStalled(let tabId, let instId, let toolId, let toolName, _):
             log("EVENT: engineToolStalled tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") tool=\(toolName) toolId=\(toolId.prefix(8))", tag: "session", level: .info)
-        case .engineBackgroundTaskStarted(let tabId, _, let taskId, _, _, let notify):
+        case .engineBackgroundTaskStarted(let tabId, _, let taskId, _, _, _, let notify):
             log("background task started event", tag: "session", fields: ["tab_id": tabId, "task_id": taskId, "status": notify ? "notify" : "detached"])
         case .engineBackgroundTaskTerminal(let tabId, _, let taskId, let status, _, _, _, _, _):
             log("background task terminal event", tag: "session", fields: ["tab_id": tabId, "task_id": taskId, "status": status])

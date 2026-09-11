@@ -74,6 +74,7 @@ extension RemoteEvent {
                 tabId: try container.decode(String.self, forKey: .tabId),
                 instanceId: try container.decodeIfPresent(String.self, forKey: .instanceId),
                 taskId: payload.taskId,
+                toolId: payload.toolId,
                 command: payload.command,
                 startedAt: payload.startedAt,
                 notifyOnComplete: payload.notifyOnComplete

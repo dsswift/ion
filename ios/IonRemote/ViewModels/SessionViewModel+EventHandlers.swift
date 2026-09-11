@@ -224,11 +224,11 @@ extension SessionViewModel {
             _ = instanceId // unused post-#256, bare tabId is the key
             activeTools[tabId]?[toolId]?.isStalled = true
 
-        case .engineBackgroundTaskStarted(let tabId, let instanceId, let taskId, let command, let startedAt, let notifyOnComplete):
+        case .engineBackgroundTaskStarted(let tabId, let instanceId, let taskId, let toolId, let command, let startedAt, let notifyOnComplete):
             handleBackgroundTaskStarted(
                 tabId: tabId,
                 instanceId: instanceId,
-                task: BackgroundTaskState(taskId: taskId, command: command, startedAt: startedAt, notifyOnComplete: notifyOnComplete)
+                task: BackgroundTaskState(taskId: taskId, toolId: toolId, command: command, startedAt: startedAt, notifyOnComplete: notifyOnComplete)
             )
 
         case .engineBackgroundTaskTerminal(let tabId, let instanceId, let taskId, let status, _, _, _, _, _):

@@ -601,7 +601,7 @@ enum RemoteEvent: Sendable {
     /// Targeted result for an iOS per-task Stop request.
     case backgroundTaskStopResult(requestId: String, taskId: String, status: String, error: String?)
     /// Incremental lifecycle for every session-owned background Bash task.
-    case engineBackgroundTaskStarted(tabId: String, instanceId: String?, taskId: String, command: String, startedAt: Int64, notifyOnComplete: Bool)
+    case engineBackgroundTaskStarted(tabId: String, instanceId: String?, taskId: String, toolId: String?, command: String, startedAt: Int64, notifyOnComplete: Bool)
     case engineBackgroundTaskTerminal(tabId: String, instanceId: String?, taskId: String, status: String, exitCode: Int?, elapsedMs: Int?, command: String?, outputPath: String?, tail: String?)
     case engineSessionWorkStopped(
         tabId: String,
