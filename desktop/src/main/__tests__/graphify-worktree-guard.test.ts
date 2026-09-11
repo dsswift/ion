@@ -89,7 +89,13 @@ echo "$@" >> "${log}"
 }
 
 describe('graphify-worktree-guard', () => {
-  it('identifies primary checkout and linked worktree with primary path', () => {
+  // Windows CI runs the full suite under the race detector with hundreds of
+  // tests spawning git/node/powershell subprocesses concurrently
+  // (AGENTS.md § "Windows VM testing" documents the class). This test's two
+  // `git`/`bash` subprocess launches can starve under that contention past
+  // the suite's default 15s budget even though neither call hangs; a longer
+  // per-test budget absorbs the pile-up without masking a real hang.
+  it('identifies primary checkout and linked worktree with primary path', { timeout: 30_000 }, () => {
     expect(runGuard(repo)).toBe(`primary ${normalizeSlashes(repo)}`)
     expect(runGuard(worktree)).toBe(`worktree ${normalizeSlashes(repo)}`)
   })
