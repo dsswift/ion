@@ -458,6 +458,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               );
               tasks.push({
                 taskId: event.taskId,
+                toolId: event.toolId,
                 command: event.command,
                 startedAt: event.startedAt,
                 notifyOnComplete: event.notifyOnComplete,

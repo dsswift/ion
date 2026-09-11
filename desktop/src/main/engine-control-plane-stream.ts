@@ -232,6 +232,12 @@ export function handleStreamSignalEvent(
       ctx.emit("event", tabId, {
         type: "background_task_started",
         taskId: task.taskId,
+        // The originating tool-use id. This is the ONLY correlation key the
+        // client has at first paint: the tool row's own backgroundTaskId does
+        // not arrive until the tool_result event, and a status snapshot may be
+        // several hundred ms behind. Dropping it here left the live Bash group
+        // unable to bind the task to its transcript row.
+        toolId: task.toolId,
         command: task.command,
         startedAt: task.startedAt,
         notifyOnComplete: task.notifyOnComplete,

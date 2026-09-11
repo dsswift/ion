@@ -465,6 +465,9 @@ export type NormalizedEvent =
   | {
       type: "background_task_started";
       taskId: string;
+      /** Originating tool-use id, correlating this task with its transcript
+       *  tool row before the tool_result carrying backgroundTaskId arrives. */
+      toolId?: string;
       command: string;
       startedAt: number;
       notifyOnComplete?: boolean;
