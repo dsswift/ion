@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.100.1](https://github.com/dsswift/ion/compare/desktop-v1.100.0...desktop-v1.100.1) (2026-09-11)
+
+### Bug Fixes
+
+* **desktop:** extend timeout for contention-prone worktree guard test ([e34d19e](https://github.com/dsswift/ion/commit/e34d19eb862af83ed7af7073fe7d4ff3beddb1f1))
+
 ## [1.100.0](https://github.com/dsswift/ion/compare/desktop-v1.99.1...desktop-v1.100.0) (2026-09-11)
 
 ### Features
