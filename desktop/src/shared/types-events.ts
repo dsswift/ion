@@ -463,6 +463,15 @@ export type NormalizedEvent =
       modelBreakdown?: import("./types-engine").ModelBreakdown[];
     }
   | {
+      /** A dispatch that was running when the engine died is unrecoverable.
+       *  One per orphan, on restart. The client renders a scrollback notice;
+       *  the durable ack loop belongs to the extension that owns the hook. */
+      type: "dispatch_lost";
+      dispatchId: string;
+      agentName: string;
+      childConversationId?: string;
+    }
+  | {
       type: "background_task_started";
       taskId: string;
       /** Originating tool-use id, correlating this task with its transcript
