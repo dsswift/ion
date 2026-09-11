@@ -75,6 +75,22 @@ function Assert([bool] $condition, [string] $message) {
   Write-Host "  ok: $message"
 }
 
+# schtasks /Query reflects Task Scheduler's own state machine, not the
+# engine's. The socket wait above proves the engine process is alive, but
+# schtasks can still report the task's last-known state as "Ready" for a
+# short window after the run it tracks has already started -- polling
+# closes that window instead of asserting on a single, unretried read.
+function Wait-TaskStatus([string] $pattern, [int] $timeoutSeconds) {
+  $deadline = (Get-Date).AddSeconds($timeoutSeconds)
+  $state = $null
+  while ($true) {
+    $state = (schtasks /Query /TN $TaskName /FO LIST /V 2>&1 | Select-String -Pattern '^\s*Status:' | Select-Object -First 1)
+    if ("$state" -match $pattern) { return $state }
+    if ((Get-Date) -ge $deadline) { return $state }
+    Start-Sleep -Seconds 1
+  }
+}
+
 # --- 1. Enterprise policy, written before the app ever runs -----------------
 Step 'writing enterprise policy to HKLM'
 $configJson = "{`"allowedModels`":[`"$SmokeModel`"],`"customFields`":{`"ion-desktop`":{`"disableAutoUpdate`":true}}}"
@@ -124,8 +140,9 @@ while ((Get-Date) -lt $deadline) {
 Assert $listening "engine is listening on 127.0.0.1:$EnginePort within 60s"
 
 Step 'checking the scheduled-task supervisor'
-$taskState = (schtasks /Query /TN $TaskName /FO LIST /V 2>&1 | Select-String -Pattern '^\s*Status:' | Select-Object -First 1)
+schtasks /Query /TN $TaskName /FO LIST /V 2>&1 | Out-Null
 Assert ($LASTEXITCODE -eq 0) "schtasks found the `"$TaskName`" task"
+$taskState = Wait-TaskStatus 'Running' 30
 Assert ("$taskState" -match 'Running') "task status is Running (got: $taskState)"
 
 Step 'running ion.exe health'
@@ -182,7 +199,7 @@ Assert ((Select-String -Path $desktopLog -Pattern 'auto-update disabled by enter
 Step 'quitting the desktop'
 Get-Process -Name 'Ion' -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 5
-$stateAfterQuit = (schtasks /Query /TN $TaskName /FO LIST /V 2>&1 | Select-String -Pattern '^\s*Status:' | Select-Object -First 1)
+$stateAfterQuit = Wait-TaskStatus 'Running' 30
 Assert ("$stateAfterQuit" -match 'Running') "task still Running after the desktop quits (got: $stateAfterQuit)"
 
 # --- 9. Silent uninstall ----------------------------------------------------
