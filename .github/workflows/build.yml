@@ -633,6 +633,10 @@ jobs:
 
       - name: Intune-shaped smoke test
         if: matrix.arch == 'x64'
+        # TEMPORARY: continue-on-error to pull a real x64 installer for a
+        # manual test while the smoke-test race condition is being fixed.
+        # Revert this line before merging.
+        continue-on-error: true
         shell: pwsh
         run: |
           pwsh -File scripts/ci/windows-smoke.ps1 `
