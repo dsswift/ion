@@ -1578,6 +1578,11 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		}
 
 		if !opts.WaitForCompletion {
+			if currentDispatchId == "" && !opts.Detached {
+				if tracker, ok := sa.(RootDispatchTracker); ok {
+					tracker.TrackRootDispatch(agentID)
+				}
+			}
 			// Register in the dispatch registry for recall support, child-run
 			// steering, and the carry-forward allowlist. See registerDispatch.
 			registerDispatch(registry, agentID, opts.Name, func() {

@@ -152,10 +152,15 @@ Assert (Test-Path -LiteralPath $engineExe) "bundled engine at $engineExe"
 Assert ($LASTEXITCODE -eq 0) "ion.exe health exit code is 0 (got $LASTEXITCODE)"
 
 # --- 5. The engine console must stay hidden ---------------------------------
-Step 'checking the engine owns no visible window'
-$visible = Get-Process -Name 'ion' -ErrorAction SilentlyContinue |
+# The visible Ion.exe desktop window is expected and correct; only the
+# headless ion-engine-host.exe (the Scheduled Task target, see
+# engine/cmd/ion-engine-host and the -H windowsgui build flag) must own no
+# window. Checking 'ion' here matched the desktop process itself and made
+# this assertion fail on every successful build.
+Step 'checking the engine host owns no visible window'
+$visible = Get-Process -Name 'ion-engine-host' -ErrorAction SilentlyContinue |
   Where-Object { $_.MainWindowHandle -ne 0 }
-Assert ($null -eq $visible) 'no ion.exe process owns a visible window'
+Assert ($null -eq $visible) 'no ion-engine-host.exe process owns a visible window'
 
 # --- 6. The engine actually read the registry policy ------------------------
 Step 'reading enterprise policy back over the NDJSON socket'
