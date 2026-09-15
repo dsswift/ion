@@ -203,14 +203,27 @@ Assert ((Select-String -Path $engineLog -Pattern 'loaded enterprise config from 
 # that sequence to the engine socket becoming ready, so asserting on it
 # immediately is a race, not a check -- poll instead, the same way step 8
 # polls the scheduled task instead of asserting on a single read.
+#
+# $ErrorActionPreference = 'Stop' is set for the whole script, so a file read
+# against desktop.jsonl while the desktop process still has it open for
+# writing can throw an IO exception (sharing violation) instead of just
+# failing to match. An uncaught throw here would abort the loop on its first
+# iteration and skip the remaining wait entirely, which is indistinguishable
+# from the earlier unpolled assert -- exactly the failure this loop exists to
+# remove. Swallow a transient read error and keep polling; only a timeout
+# after the full window is a real failure.
 $desktopLog = Join-Path $IonHome 'desktop.jsonl'
 $logDeadline = (Get-Date).AddSeconds(30)
 $sawKillSwitch = $false
 while ((Get-Date) -lt $logDeadline) {
-  if ((Test-Path -LiteralPath $desktopLog) -and
-      ((Select-String -Path $desktopLog -Pattern 'auto-update disabled by enterprise policy' -Quiet) -eq $true)) {
-    $sawKillSwitch = $true
-    break
+  try {
+    if ((Test-Path -LiteralPath $desktopLog) -and
+        ((Select-String -Path $desktopLog -Pattern 'auto-update disabled by enterprise policy' -Quiet -ErrorAction Stop) -eq $true)) {
+      $sawKillSwitch = $true
+      break
+    }
+  } catch {
+    Write-Host "  (desktop log read failed, retrying: $($_.Exception.Message))"
   }
   Start-Sleep -Seconds 1
 }
