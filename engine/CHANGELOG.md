@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.85.3](https://github.com/dsswift/ion/compare/engine-v1.85.2...engine-v1.85.3) (2026-09-15)
+
+### Bug Fixes
+
+* **engine:** stop recalled dispatch callbacks ([f78b90a](https://github.com/dsswift/ion/commit/f78b90ac6b5e6200b3145f69cbc460d21200ddda))
+
 ## [1.85.2](https://github.com/dsswift/ion/compare/engine-v1.85.1...engine-v1.85.2) (2026-09-11)
 
 ### Bug Fixes
