@@ -98,7 +98,7 @@ afterEach(() => {
 import { ensureEngineDaemon } from '../engine-bootstrap'
 
 const bootstrapDir = path.join(__dirname, '..')
-const taskTemplatePath = path.resolve(bootstrapDir, '..', '..', '..', 'packaging', 'windows', 'ion-engine-task.xml')
+const taskTemplatePath = path.resolve(bootstrapDir, '..', '..', 'packaging-windows', 'ion-engine-task.xml')
 const bundledBinaryWin32Path = path.resolve(bootstrapDir, '..', '..', '..', 'engine', 'bin', 'ion.exe')
 
 // Matches the mocked os.homedir() below. Production builds destBinary,

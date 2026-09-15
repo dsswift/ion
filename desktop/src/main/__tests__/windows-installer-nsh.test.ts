@@ -1,5 +1,5 @@
 /**
- * Structural tests for packaging/windows/installer.nsh.
+ * Structural tests for desktop/packaging-windows/installer.nsh.
  *
  * NSIS cannot be run here, so these assert the shape of the branches that
  * decide whether a managed install is safe. That is worth pinning precisely
@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import path from 'path'
 
-const nshPath = path.resolve(__dirname, '..', '..', '..', '..', 'packaging', 'windows', 'installer.nsh')
+const nshPath = path.resolve(__dirname, '..', '..', '..', 'packaging-windows', 'installer.nsh')
 const nsh = readFileSync(nshPath, 'utf-8')
 
 /** The body of one !macro <name> ... !macroend block. */

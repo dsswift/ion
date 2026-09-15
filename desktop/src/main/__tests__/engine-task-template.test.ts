@@ -11,7 +11,7 @@ import { join } from 'node:path'
 // strips every comment before substituting, so a "--" in the documentation
 // cannot reach schtasks. That the rendered definition is comment-free is
 // pinned in engine-supervisor-schtasks.test.ts, where the rendering happens.
-const TEMPLATE = join(__dirname, '..', '..', '..', '..', 'packaging', 'windows', 'ion-engine-task.xml')
+const TEMPLATE = join(__dirname, '..', '..', '..', 'packaging-windows', 'ion-engine-task.xml')
 
 describe('ion-engine-task.xml', () => {
   const xml = readFileSync(TEMPLATE, 'utf-8')

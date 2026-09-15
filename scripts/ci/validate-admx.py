@@ -25,8 +25,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-ADMX_PATH = ROOT / "packaging" / "windows" / "policy" / "IonEngine.admx"
-ADML_PATH = ROOT / "packaging" / "windows" / "policy" / "en-US" / "IonEngine.adml"
+ADMX_PATH = ROOT / "desktop" / "packaging-windows" / "policy" / "IonEngine.admx"
+ADML_PATH = ROOT / "desktop" / "packaging-windows" / "policy" / "en-US" / "IonEngine.adml"
 MDM_DOC_PATH = ROOT / "docs" / "enterprise" / "mdm.md"
 
 

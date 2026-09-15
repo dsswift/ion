@@ -48,7 +48,7 @@ function Build-IonEngine {
   Write-IonInfo 'ion-engine-host.exe'
 
   Write-IonStep 'staging engine resources'
-  Copy-Item (Join-Path $Root 'packaging\windows\ion-engine-task.xml') `
+  Copy-Item (Join-Path $Root 'desktop\packaging-windows\ion-engine-task.xml') `
             (Join-Path $engineDir 'ion-engine-task.xml') -Force
   Write-IonInfo 'ion-engine-task.xml'
 
@@ -338,7 +338,7 @@ function Invoke-IonClean {
 
   This is a developer verb, not a user-facing one. It requires elevation on
   purpose. A per-user install is refused while a per-machine install exists
-  (see packaging/windows/installer.nsh), so this is the only way past that
+  (see desktop/packaging-windows/installer.nsh), so this is the only way past that
   refusal -- and gating it behind administrator rights is what stops someone on
   a managed device from cloning the repo and stepping around their fleet's
   managed copy, while leaving a developer with local admin free to reset their

@@ -255,7 +255,7 @@ Assert-Equal $true ($desktopScript -match "(?s)patch-nsis-arm64\.js.*?electron-b
 # what its extractor produced, so without a check of our own any future silent
 # drop is again indistinguishable from a clean install.
 
-$nsh = Get-Content (Join-Path $PSScriptRoot '..\..\packaging\windows\installer.nsh') -Raw
+$nsh = Get-Content (Join-Path $PSScriptRoot '..\..\desktop\packaging-windows\installer.nsh') -Raw
 Assert-Equal $true ($nsh -match '!macro verifyAppPayload') 'installer.nsh verifies the payload'
 Assert-Equal $true ($nsh -match '\$INSTDIR\\\$\{APP_EXECUTABLE_FILENAME\}') `
   'the verification looks for the real application executable'
@@ -280,7 +280,7 @@ Assert-Equal $true ($sync -match 'git ls-files') `
   'the sync enumerates every tracked file'
 Assert-Equal $false ($sync -match 'git diff --name-only') `
   'the sync does not ship only the current diff'
-foreach ($root in @('engine', 'desktop', 'packaging', 'scripts')) {
+foreach ($root in @('engine', 'desktop', 'scripts')) {
   Assert-Equal $true ($sync -match "\b$root\b") "the sync covers $root"
 }
 # Named individually because the VM builds by running make.ps1, which arrived

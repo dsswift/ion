@@ -177,11 +177,11 @@ New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\IonEngine" `
   -Value @('{"customFields":{"ion-desktop":{"disableAutoUpdate":true}}}') -Force | Out-Null
 ```
 
-`packaging/windows/intune/Set-IonPolicy.ps1` is a ready-to-assign version of this for tenants that deliver policy as an Intune platform script rather than through ADMX.
+`desktop/packaging-windows/intune/Set-IonPolicy.ps1` is a ready-to-assign version of this for tenants that deliver policy as an Intune platform script rather than through ADMX.
 
 ### Group Policy / Intune template
 
-`packaging/windows/policy/IonEngine.admx` and `policy/en-US/IonEngine.adml` ship with every desktop release as `Ion-PolicyTemplates-<version>.zip`. They give administrators a real settings UI for the values above.
+`desktop/packaging-windows/policy/IonEngine.admx` and `policy/en-US/IonEngine.adml` ship with every desktop release as `Ion-PolicyTemplates-<version>.zip`. They give administrators a real settings UI for the values above.
 
 - **Domain Central Store:** copy `IonEngine.admx` to `\\<domain>\SYSVOL\<domain>\Policies\PolicyDefinitions\` and `en-US\IonEngine.adml` to the `en-US` subfolder. The settings appear under Computer Configuration > Administrative Templates > Ion Engine.
 - **Intune ADMX ingestion:** Devices > Configuration > Import ADMX, upload the `.admx` and its `.adml`, then create a Settings Catalog profile from the imported template.
@@ -456,7 +456,7 @@ removes only what it placed. It also carries the theme pack the policy's
 device that applied a locked theme policy without the pack would fall back to
 a built-in theme and still report itself compliant.
 
-Build it with `packaging/windows/intune/policy/New-IonPolicyIntuneWin.ps1`,
+Build it with `desktop/packaging-windows/intune/policy/New-IonPolicyIntuneWin.ps1`,
 which produces the `.intunewin`, the stamped detector and a provenance
 manifest in one step. The tool refuses any config carrying a credential
 (machine policy under HKLM is readable by every account on the device), an
@@ -484,4 +484,4 @@ An unsigned installer run by hand still hits SmartScreen. An Intune
 System-context install does not prompt either way.
 
 Full step-by-step, including the manual repackaging command and the policy
-app's settings: `packaging/windows/intune/README.md`.
+app's settings: `desktop/packaging-windows/intune/README.md`.

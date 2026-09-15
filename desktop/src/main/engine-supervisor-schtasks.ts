@@ -53,8 +53,8 @@ export const LEGACY_TASK_NAME = 'Ion Engine'
  *
  * The `Ion Engine (` prefix is what lets an administrator enumerate every
  * user's task on a host without knowing any SID -- the uninstall and
- * remediation paths in packaging/windows/ depend on it, so it is not a
- * cosmetic choice.
+ * remediation paths in desktop/packaging-windows/ depend on it, so it is not
+ * a cosmetic choice.
  */
 export function taskNameForSid(sid: string): string {
   return `${LEGACY_TASK_NAME} (${sid})`
@@ -69,13 +69,13 @@ function sleep(ms: number): Promise<void> {
 /**
  * Locate the task XML template. Checked in order:
  *   1. Packaged app: resources/engine/ion-engine-task.xml
- *   2. Dev monorepo: <repo>/packaging/windows/ion-engine-task.xml
+ *   2. Dev monorepo: <repo>/desktop/packaging-windows/ion-engine-task.xml
  */
 export function findTaskTemplate(): string | null {
   const candidates = [
     process.resourcesPath ? join(process.resourcesPath, 'engine', TASK_TEMPLATE_FILENAME) : null,
-    join(__dirname, '..', '..', '..', 'packaging', 'windows', TASK_TEMPLATE_FILENAME),
-    join(__dirname, '..', '..', '..', '..', 'packaging', 'windows', TASK_TEMPLATE_FILENAME),
+    join(__dirname, '..', '..', 'packaging-windows', TASK_TEMPLATE_FILENAME),
+    join(__dirname, '..', '..', '..', 'packaging-windows', TASK_TEMPLATE_FILENAME),
   ]
   for (const c of candidates) {
     if (c && existsSync(c)) return c
