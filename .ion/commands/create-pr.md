@@ -17,6 +17,7 @@ You are running the `/create-pr` command. Your job is to push the current featur
   commits happen to carry. A branch that implements an open issue's work and ships
   without a `Fixes #N` / `Closes #N` line in the body leaves that issue open
   forever, and CI does not catch it.
+- Open a real PR, never a draft. Drafts do not get review coverage.
 - **Zero tolerance for identifiable failures — pre-existing included.** Every test failure, lint error, or build break that the parity gate (or any other check run during this command) surfaces MUST be fixed before the PR is opened. "Pre-existing on main", "not caused by this branch", and "unrelated to these changes" are **forbidden dispositions** — if the failure is visible before the PR exists, it blocks the PR. The full CI suite (`quality.yml`: engine race + integration, desktop typecheck + tests, relay, iOS, lints) must be expected green, and any locally reproducible failure in that set is in scope to fix now, regardless of age or origin.
 
 ---
@@ -49,6 +50,31 @@ If there are uncommitted changes, stop:
 
 ---
 
+## Step 2b: Rebase onto the latest `main` and read the diff
+
+```bash
+git fetch origin main
+git rebase origin/main
+```
+
+The parity gate then tests what `main` will actually receive. On a conflict,
+resolve it when both sides make the intent plain, then continue the rebase. When
+the right resolution needs a decision, run `git rebase --abort` and stop with the
+conflicting files named.
+
+Then read what the PR will carry:
+
+```bash
+git diff origin/main...HEAD --stat
+git diff origin/main...HEAD
+```
+
+Check the whole diff against what the commits say they do. Debug output, stray
+files, edits unrelated to the goal, and secret values do not ship. Fix them in a
+commit first, then start again from Step 2.
+
+---
+
 ## Step 3: Linux parity gate (catch Linux-only CI failures before pushing)
 
 CI runs `engine-test` (`go test -race ./...`) and `desktop-test` (`npm test`) on **`ubuntu-latest`**. Local development is on macOS, so OS-sensitive failures — path semantics, file-watcher timing, locale, goroutine starvation under the Linux race detector, eager `require('electron')` under `npm ci --ignore-scripts` — pass locally and only fail in CI. This step runs the **same commands CI runs, in Linux containers**, so those failures surface here instead of on the PR.
@@ -56,7 +82,7 @@ CI runs `engine-test` (`go test -race ./...`) and `desktop-test` (`npm test`) on
 ### 3a. Determine touched components
 
 ```bash
-git diff main..HEAD --name-only
+git diff origin/main...HEAD --name-only
 ```
 
 - If any path starts with `engine/`, the **engine** gate applies.
@@ -124,8 +150,12 @@ the same full simulator suite also runs nightly and by manual dispatch.
 ## Step 4: Push the branch
 
 ```bash
-git push -u origin {branch}
+git push --force-with-lease -u origin {branch}
 ```
+
+The rebase in Step 2b rewrites a branch that was pushed before, so a plain push
+would be rejected. `--force-with-lease` refuses when the remote holds commits this
+machine has not seen.
 
 If the push fails, report the error and stop.
 
@@ -151,8 +181,8 @@ If an open PR already exists:
 Gather the commits on this branch:
 
 ```bash
-git log main..{branch} --oneline --no-merges
-git log main..{branch} --no-merges --format="### %s%n%n%b"
+git log origin/main..HEAD --oneline --no-merges
+git log origin/main..HEAD --no-merges --format="### %s%n%n%b"
 ```
 
 If there are zero commits ahead of `main`, abort: "Nothing to open a PR for — branch is even with `main`."
@@ -170,7 +200,7 @@ the gate while closing nothing. This has shipped twice.
 First, collect what the commits already carry:
 
 ```bash
-git log main..{branch} --no-merges --format="%s%n%b" \
+git log origin/main..HEAD --no-merges --format="%s%n%b" \
   | grep -oiE '\(#[0-9]+\)|\b(fix(e[sd])?|close[sd]?|resolve[sd]?)[[:space:]]+#[0-9]+'
 ```
 
@@ -206,38 +236,65 @@ silently — say `No open issue matches this branch.` and get confirmation first
 
 ## Step 8: Generate the PR title
 
-Analyze the commits and write the PR title.
+A title lands in `main`'s history: in the merge commit, or as the commit subject
+on a squash merge. Follow the convention recent merged PRs and the log show:
 
-Rules:
-- If there is a single commit, use its subject line as the PR title.
-- If there are multiple commits that all implement the same change across components (e.g. one engine commit and one desktop commit), write a title that captures the unified feature — use the shared subject as a base.
-- If there are multiple distinct changes, write a descriptive title that tells reviewers what the PR does at a glance. No character limit on PR titles — be as descriptive as needed.
-- If the commits reference a GitHub issue (`#N`), include it in the title: `Wire agent_start / agent_end hooks (#126)`.
-- Do not force conventional-commit format on the PR title. PR titles are human-readable summaries, not commit subjects.
+```bash
+gh pr list --state merged --limit 20 --json title --jq '.[].title'
+git log origin/main --no-merges --format=%s -20
+```
+
+Use conventional-commit format with a scope, as commits in this repo do.
+
+Say what changes for the person using Ion, and why it matters. Never list the
+areas the diff touched.
+
+- One commit: start from its subject. Rewrite it when it only names areas.
+- Several commits for one change across components: name that change.
+- Several distinct changes: name what the PR achieves as a whole.
+- If the commits reference a GitHub issue (`#N`), include it in the title.
+
+BAD
+> ❌ fix: Windows release manifest, tab persistence, and injection classification
+
+GOOD
+> ✅ fix(engine): stop recalled dispatch callbacks from restarting stopped sessions
 
 ---
 
 ## Step 9: Generate the PR body
 
-Write a concise PR description:
+Read each issue confirmed in Step 7. Its description of the problem feeds the
+body:
+
+```bash
+gh issue view {N} --json title,body
+```
+
+Open with the problem in plain words, as a user saw it. Take it from those issues
+and the commit bodies. Then say briefly how this PR fixes it. Never lead with an
+inventory of files, functions, or internal names.
 
 ```markdown
-## Summary
+{The problem, as a user saw it. One to three sentences.}
 
-{1-3 sentence overview of what this PR does and why}
+{How this fixes it. A few sentences. Name the components when several are touched: engine, desktop, ios, relay.}
 
-## Changes
-
-{bulleted list of changes, grouped by scope if multiple scopes are touched}
-
-- **engine:** description
-- **desktop:** description
-- **ios:** description
+Fixes #N
 ```
+
+BAD
+> ❌ Track root-level dispatch identities from launch through their terminal
+> callback (`rootDispatchIDs`), since the dispatch registry deregisters before
+> invoking that callback.
+
+GOOD, the same PR written for a reader:
+> ✅ Stopping a session did not always stick. A background agent that finished
+> after the stop could start the conversation again. Now a stopped session stays
+> stopped.
 
 Rules:
 - Write for the repo maintainer, collaborators, and public. No selling — just inform.
-- Be informative, not exhaustive. A clear summary and a clean list is enough.
 - **Every issue confirmed in Step 7 gets a closing keyword at the very end of the
   body, one per line.** This is what actually closes the issue on merge — a `(#N)`
   in the title or a commit subject is only a link and closes nothing. Use `Fixes`
@@ -252,7 +309,6 @@ Closes #138
   matching issue.
 
 - Do not include raw commit hashes in the body.
-- Do not repeat the summary in the changes list.
 
 ---
 
@@ -261,6 +317,8 @@ Closes #138
 ```bash
 gh pr create --base main --title "{title}" --body "{body}"
 ```
+
+Never pass `--draft`.
 
 ---
 
