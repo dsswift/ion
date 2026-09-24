@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.77.1](https://github.com/dsswift/ion/compare/ios-v1.77.0...ios-v1.77.1) (2026-09-24)
+
+### Bug Fixes
+
+* **ios:** publish reconnect state before socket close ([d8d62f4](https://github.com/dsswift/ion/commit/d8d62f49baaf73944e10d297b7f2c8d56471b406))
+
 ## [1.77.0](https://github.com/dsswift/ion/compare/ios-v1.76.0...ios-v1.77.0) (2026-09-11)
 
 ### Features

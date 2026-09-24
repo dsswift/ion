@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.100.2](https://github.com/dsswift/ion/compare/desktop-v1.100.1...desktop-v1.100.2) (2026-09-24)
+
+### Bug Fixes
+
+* **desktop:** move Windows packaging under desktop/ ([b8280d7](https://github.com/dsswift/ion/commit/b8280d7a4a3082773e91c2af6e5feb9b2a4c020c))
+
 ## [1.100.1](https://github.com/dsswift/ion/compare/desktop-v1.100.0...desktop-v1.100.1) (2026-09-11)
 
 ### Bug Fixes
