@@ -7,7 +7,7 @@
 # round-trips through Windows checkout as CRLF even though it was authored and
 # committed as LF. That silently breaks anything that reads the file's exact
 # bytes: desktop/src/main/__tests__/windows-installer-nsh.test.ts locates NSIS
-# macros in packaging/windows/installer.nsh with a literal LF-terminated
+# macros in desktop/packaging-windows/installer.nsh with a literal LF-terminated
 # search string (`!macro customInstall\n`), and a CRLF checkout makes every
 # such lookup fail to find a macro that is genuinely present in the file.
 #

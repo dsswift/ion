@@ -1,0 +1,53 @@
+name: Rebuild Windows Desktop
+
+# A one-click button for "rebuild the Windows installer from the latest main
+# for the current desktop version, no new release." This exists for the case
+# where the desktop version did not change (a CI/test fix, a re-run after a
+# transient failure) but a fresh Windows build is still needed: the automatic
+# Release workflow only fires on a change under desktop/**, engine/**, etc.,
+# and only produces a new build when release-please actually bumps a version.
+#
+# This does not create a new release or bump any version. It rebuilds the
+# Windows x64/arm64 installer for the version already recorded in
+# release-please-manifest.json and uploads it to that version's existing
+# GitHub Release, exactly the same upload target build-desktop-windows always
+# uses. If that release does not exist yet, this fails at the upload step
+# with a clear error instead of silently creating a malformed one.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    outputs:
+      release_report: ${{ steps.report.outputs.release_report }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Read the current desktop version
+        id: report
+        shell: bash
+        run: |
+          VERSION=$(jq -r '.desktop' release-please-manifest.json)
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+            echo "::error::release-please-manifest.json has no desktop version"
+            exit 1
+          fi
+          echo "Rebuilding desktop v${VERSION} for Windows (no version bump, no new release)"
+          # Synthetic release report shaped exactly like release-damnit's
+          # real output, so build.yml's existing desktop job runs unmodified.
+          REPORT=$(jq -n --arg v "$VERSION" '{
+            releases: [{component: "desktop", path: "desktop", old_version: $v, new_version: $v, bump_type: "none", tag_name: ("desktop-v" + $v), linked_bump: false, commits: []}],
+            components: ["desktop"],
+            summary: {total_releases: 0, total_commits: 0, by_bump_type: {major: 0, minor: 0, patch: 0}}
+          }')
+          echo "release_report=${REPORT}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: rebuild
+    uses: ./.github/workflows/build.yml
+    with:
+      release_report: ${{ needs.rebuild.outputs.release_report }}
+    secrets: inherit

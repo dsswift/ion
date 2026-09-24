@@ -115,10 +115,10 @@ the boundary.
 
 ```powershell
 # build the installer for whatever changed
-.\packaging\windows\dev\Update-IonDev.ps1
+.\desktop\packaging-windows\dev\Update-IonDev.ps1
 
 # build it, close a running Ion, and launch the installer
-.\packaging\windows\dev\Update-IonDev.ps1 -Install
+.\desktop\packaging-windows\dev\Update-IonDev.ps1 -Install
 
 # remove every trace of Ion from this machine (elevated prompt required)
 .\make.ps1 uninstall
@@ -190,7 +190,7 @@ argument for having one.
 Bootstrap enables OpenSSH Server and prints the VM's address. After that:
 
 ```bash
-ssh <user>@<vm-ip> "pwsh -File C:\dev\ion\packaging\windows\dev\Update-IonDev.ps1 -Fast"
+ssh <user>@<vm-ip> "pwsh -File C:\dev\ion\desktop\packaging-windows\dev\Update-IonDev.ps1 -Fast"
 ```
 
 A long run needs to outlive the SSH session, and the obvious answer does not

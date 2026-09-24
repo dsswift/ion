@@ -14,7 +14,7 @@ Win32 app, and to deliver Ion Engine enterprise policy alongside it.
 | `policy/package/` | What that app runs on a device: install, uninstall, detect. |
 | `policy/enterprise-config.example.json` | Placeholders only, documenting the required shape. The packaging tool refuses to package it. |
 
-The ADMX/ADML template lives one directory up, in `packaging/windows/policy/`.
+The ADMX/ADML template lives one directory up, in `desktop/packaging-windows/policy/`.
 
 ## Release assets
 
@@ -259,7 +259,7 @@ One command, from the tenant's two inputs to the artifacts an administrator
 uploads:
 
 ```powershell
-pwsh -File packaging/windows/intune/policy/New-IonPolicyIntuneWin.ps1 `
+pwsh -File desktop/packaging-windows/intune/policy/New-IonPolicyIntuneWin.ps1 `
   -ConfigPath <path to your enterprise-config.json> `
   -ThemePath  <path to your theme pack's theme.json> `
   -Version 1.0.0 `
@@ -472,7 +472,7 @@ None of the three scripts touches a user profile, `%USERPROFILE%\.ion`,
 conversations, credentials, an operator's `~\orion` or `~\.orion`, another
 theme pack, or the administrator-authored `enterprise-config.json` /
 `enterprise-config.d` files under `%ProgramData%\Ion`. That is asserted by
-`packaging/windows/intune/policy/New-IonPolicyPackage.test.ps1`, not just
+`desktop/packaging-windows/intune/policy/New-IonPolicyPackage.test.ps1`, not just
 intended.
 
 ### Rolling out to the three hosts

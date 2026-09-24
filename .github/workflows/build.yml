@@ -533,7 +533,7 @@ jobs:
           cp -R sdk/go desktop/resources/engine/extensions/sdk-go
           # The Scheduled Task template; engine-supervisor-schtasks.ts
           # substitutes the per-user paths at registration time.
-          cp packaging/windows/ion-engine-task.xml desktop/resources/engine/ion-engine-task.xml
+          cp desktop/packaging-windows/ion-engine-task.xml desktop/resources/engine/ion-engine-task.xml
 
       - name: Install dependencies
         working-directory: desktop
@@ -599,8 +599,8 @@ jobs:
         shell: bash
         run: |
           V="${{ steps.version.outputs.version }}"
-          cd packaging/windows/policy
-          7z a "../../../desktop/release/Ion-PolicyTemplates-$V.zip" IonEngine.admx en-US
+          cd desktop/packaging-windows/policy
+          7z a "../../release/Ion-PolicyTemplates-$V.zip" IonEngine.admx en-US
 
       # Provenance for every asset a fleet will install. The manifest reads
       # each file's real SHA-256 and its real Authenticode status off the file

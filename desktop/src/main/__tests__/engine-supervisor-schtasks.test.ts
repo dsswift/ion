@@ -150,7 +150,7 @@ import {
 import type { SupervisorOpts } from '../engine-supervisor'
 
 const supervisorDir = path.join(__dirname, '..')
-const taskTemplatePath = path.resolve(supervisorDir, '..', '..', '..', 'packaging', 'windows', 'ion-engine-task.xml')
+const taskTemplatePath = path.resolve(supervisorDir, '..', '..', 'packaging-windows', 'ion-engine-task.xml')
 const ionHome = path.join(FAKE_HOME, '.ion')
 const taskTarget = path.join(ionHome, 'ion-engine-task.xml')
 const fakeBinPath = path.join('fake-bin', 'ion.exe')
@@ -415,7 +415,7 @@ describe('per-user task identity', () => {
   })
 
   // Uninstall and the administrator remediation script both enumerate by this
-  // prefix, so it is a contract between the desktop and packaging/windows/.
+  // prefix, so it is a contract between this file and desktop/packaging-windows/.
   it('keeps the prefix uninstall enumerates by', () => {
     expect(taskNameForSid(SID_A).startsWith(`${LEGACY_TASK_NAME} (`)).toBe(true)
   })

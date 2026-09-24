@@ -26,16 +26,16 @@ set -euo pipefail
 VM_HOST="${ION_WIN_VM_HOST:-josh@10.211.55.3}"
 VM_PATH="${ION_WIN_VM_PATH:-C:/dev/ion}"
 
-# Roots that affect a Windows build. desktop/ carries the Electron app and the
-# installer config; engine/ is the Go binary; packaging/ and scripts/ hold the
-# NSIS script and the PowerShell build harness.
+# Roots that affect a Windows build. desktop/ carries the Electron app, the
+# installer config, and the NSIS/Intune packaging under desktop/packaging-windows/;
+# engine/ is the Go binary; scripts/ holds the PowerShell build harness.
 #
 # The root files are named individually because the VM builds by running
 # make.ps1, and make.ps1 was never synced -- it arrived on the VM by hand once
 # and then drifted, which is the exact per-file failure mode this script exists
 # to remove. release-please-manifest.json is here because the desktop version
 # resolver reads it.
-ROOTS=(engine desktop packaging scripts Makefile make.ps1 bootstrap.ps1 release-please-manifest.json)
+ROOTS=(engine desktop scripts Makefile make.ps1 bootstrap.ps1 release-please-manifest.json)
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"

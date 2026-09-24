@@ -382,14 +382,19 @@ final class RelayClient {
         isConnected = false
         isConnecting = false
         stopPing()
+
+        // Publish the retry state before cancelling the socket. Cancellation
+        // invokes test and URLSession callbacks synchronously, so scheduling
+        // afterward exposes a transient state where the transport is closed
+        // but no reconnect is visible yet.
+        if !intentionallyClosed {
+            scheduleReconnect()
+        }
+
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
         taskFactory?.invalidateAndCancel()
         taskFactory = nil
-
-        if !intentionallyClosed {
-            scheduleReconnect()
-        }
     }
 
     // MARK: - Reconnection

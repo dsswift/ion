@@ -278,7 +278,7 @@ ionAclDirOk:
     ; later. It inherits the ACL just applied: readable and runnable by any
     ; user, writable only by administrators and SYSTEM.
     SetOutPath "$1\Ion"
-    File "${BUILD_RESOURCES_DIR}\..\..\packaging\windows\Remove-IonEngineTasks.ps1"
+    File "${BUILD_RESOURCES_DIR}\..\packaging-windows\Remove-IonEngineTasks.ps1"
     SetOutPath "$INSTDIR"
     !insertmacro ionLog "install: placed Remove-IonEngineTasks.ps1 in $1\Ion"
   ${endif}

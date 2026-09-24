@@ -195,7 +195,7 @@
       "deleteAppDataOnUninstall": false,
       "runAfterFinish": true,
       "guid": "7b1e4b3a-5d2c-4c7e-9f0a-2e6d8c1b4a53",
-      "include": "../packaging/windows/installer.nsh",
+      "include": "packaging-windows/installer.nsh",
       "shortcutName": "Ion"
     },
     "afterSign": "scripts/notarize.js",

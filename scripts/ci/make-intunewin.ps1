@@ -107,7 +107,7 @@ $ionProvenanceRoot = if ($RepoRoot) { (Resolve-Path -LiteralPath $RepoRoot).Path
 . (Join-Path $PSScriptRoot 'IonContentPrepTool.ps1')
 . (Join-Path $PSScriptRoot 'Write-IonArtifactManifest.ps1')
 
-$DetectSource = Join-Path $ionScriptRepo 'packaging/windows/intune/Detect-Ion.ps1'
+$DetectSource = Join-Path $ionScriptRepo 'desktop/packaging-windows/intune/Detect-Ion.ps1'
 
 <#
 .SYNOPSIS

@@ -196,9 +196,39 @@ $engineLog = Join-Path $IonHome 'engine.jsonl'
 Assert (Test-Path -LiteralPath $engineLog) "engine log at $engineLog"
 Assert ((Select-String -Path $engineLog -Pattern 'loaded enterprise config from windows registry' -Quiet) -eq $true) 'engine logged the registry policy read'
 
+# The engine host's TCP listener (waited for above) says only that the engine
+# process is up. The desktop is a separate Electron process with its own
+# async startup: connect to the engine bridge (which itself retries with
+# backoff), fetch the enterprise policy, then log this line. Nothing ties
+# that sequence to the engine socket becoming ready, so asserting on it
+# immediately is a race, not a check -- poll instead, the same way step 8
+# polls the scheduled task instead of asserting on a single read.
+#
+# $ErrorActionPreference = 'Stop' is set for the whole script, so a file read
+# against desktop.jsonl while the desktop process still has it open for
+# writing can throw an IO exception (sharing violation) instead of just
+# failing to match. An uncaught throw here would abort the loop on its first
+# iteration and skip the remaining wait entirely, which is indistinguishable
+# from the earlier unpolled assert -- exactly the failure this loop exists to
+# remove. Swallow a transient read error and keep polling; only a timeout
+# after the full window is a real failure.
 $desktopLog = Join-Path $IonHome 'desktop.jsonl'
+$logDeadline = (Get-Date).AddSeconds(30)
+$sawKillSwitch = $false
+while ((Get-Date) -lt $logDeadline) {
+  try {
+    if ((Test-Path -LiteralPath $desktopLog) -and
+        ((Select-String -Path $desktopLog -Pattern 'auto-update disabled by enterprise policy' -Quiet -ErrorAction Stop) -eq $true)) {
+      $sawKillSwitch = $true
+      break
+    }
+  } catch {
+    Write-Host "  (desktop log read failed, retrying: $($_.Exception.Message))"
+  }
+  Start-Sleep -Seconds 1
+}
 Assert (Test-Path -LiteralPath $desktopLog) "desktop log at $desktopLog"
-Assert ((Select-String -Path $desktopLog -Pattern 'auto-update disabled by enterprise policy' -Quiet) -eq $true) 'desktop logged the auto-update kill switch'
+Assert $sawKillSwitch 'desktop logged the auto-update kill switch within 30s'
 
 # --- 8. Quitting the desktop must not stop the engine -----------------------
 Step 'quitting the desktop'

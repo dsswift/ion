@@ -138,4 +138,4 @@ if ($LASTEXITCODE -ne 0) { [Console]::Error.WriteLine('make.ps1 installer failed
 
 Write-Host ''
 Write-Host "Logs: $Dest\bootstrap.log and $Dest\make.log" -ForegroundColor Green
-Write-Host "Loop: .\packaging\windows\dev\Update-IonDev.ps1 [-Install]" -ForegroundColor Green
+Write-Host "Loop: .\desktop\packaging-windows\dev\Update-IonDev.ps1 [-Install]" -ForegroundColor Green

@@ -394,7 +394,7 @@ check-contracts:
 	@cd engine && go test ./internal/extension/ -run TestSDKContractManifest
 
 # Windows Group Policy template gate.
-# Cross-checks packaging/windows/policy/IonEngine.admx against its en-US ADML
+# Cross-checks desktop/packaging-windows/policy/IonEngine.admx against its en-US ADML
 # (every $(string.*)/$(presentation.*) reference resolves, every element has a
 # presentation control) and against docs/enterprise/mdm.md (every registry
 # value name the template writes is documented). Runs the validator's own

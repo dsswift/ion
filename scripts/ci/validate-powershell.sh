@@ -39,10 +39,10 @@ for f in "${scripts[@]}"; do
 done
 
 pwsh -NoProfile -File scripts/windows/IonBuild.test.ps1
-pwsh -NoProfile -File packaging/windows/Remove-IonEngineTasks.test.ps1
+pwsh -NoProfile -File desktop/packaging-windows/Remove-IonEngineTasks.test.ps1
 pwsh -NoProfile -File scripts/ci/Write-IonArtifactManifest.test.ps1
 pwsh -NoProfile -File scripts/ci/IonContentPrepTool.test.ps1
 pwsh -NoProfile -File scripts/ci/make-intunewin.test.ps1
-pwsh -NoProfile -File packaging/windows/intune/policy/New-IonPolicyPackage.test.ps1
+pwsh -NoProfile -File desktop/packaging-windows/intune/policy/New-IonPolicyPackage.test.ps1
 
 echo "check-windows-scripts: OK"
