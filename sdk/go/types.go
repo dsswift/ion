@@ -214,12 +214,24 @@ type PlanModeState struct {
 	PlanFilePath string `json:"planFilePath"`
 }
 
-// SessionListEntry is one session from [Context.Sessions].List.
+// SessionListEntry is one session from [Context.Sessions].List. The engine
+// filters this list to sessions sharing the CALLING session's own principal
+// before returning it -- never every session engine-wide -- so
+// PrincipalSubject on every entry always equals the caller's own.
+//
+// SessionKey's json tag was "sessionKey" until this fix; the wire has always
+// sent the field as "key", so it decoded to "" on every call. Status was
+// "status,omitempty" and asked for data the wire has never sent at all (the
+// engine sends HasActiveRun as a bool, not a status string) -- also always
+// empty. Neither field had a real caller anywhere: fixed the mapping on
+// SessionKey (same Go field name, corrected tag) and replaced Status outright
+// with the field the wire actually carries.
 type SessionListEntry struct {
-	SessionKey     string `json:"sessionKey"`
-	ConversationID string `json:"conversationId"`
-	ExtensionName  string `json:"extensionName,omitempty"`
-	Status         string `json:"status,omitempty"`
+	SessionKey       string `json:"key"`
+	HasActiveRun     bool   `json:"hasActiveRun"`
+	ConversationID   string `json:"conversationId"`
+	ExtensionName    string `json:"extensionName,omitempty"`
+	PrincipalSubject string `json:"principalSubject,omitempty"`
 }
 
 // NotifyOpts configures [Context.Notify], which sends a push notification
