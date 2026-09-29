@@ -36,7 +36,7 @@ cases = {
     "relay": ("relay/main.go", {"relay", "logging"}),
     "sdk": ("sdk/go/context.go", {"sdk", "logging"}),
     "engine-sdk": ("engine/extensions/sdk/ion-sdk/types.ts", {"engine", "sdk", "logging"}),
-    "desktop-source": ("desktop/src/main/remote/protocol.ts", {"desktop", "logging"}),
+    "desktop-source": ("desktop/src/main/local-server.ts", {"desktop", "logging"}),
     "desktop-dependency": ("desktop/package-lock.json", {"desktop", "desktop_deps", "logging"}),
     "shared": ("packages/shared/src/types.ts", {"shared", "logging"}),
     "server": ("server/src/main.ts", {"server", "logging"}),
@@ -54,7 +54,7 @@ for name, (changed, want) in cases.items():
 job_scopes = {
     "actionlint": "workflows",
     "status-writers": "desktop",
-    "studio-parity": "desktop",
+    "server-parity": "desktop",
     "check-logging": "logging",
     "check-swiftlint": "ios",
     "dashboards": "dashboards",

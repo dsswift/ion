@@ -162,7 +162,7 @@ jobs:
 
   status-writers:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
+    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.server == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.ios == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -481,7 +481,7 @@ jobs:
 
   desktop-test:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true'
+    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -509,7 +509,7 @@ jobs:
   # gated on desktop changes so it does not run on every PR.
   desktop-test-windows:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true'
+    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.server == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7

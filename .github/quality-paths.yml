@@ -13,7 +13,7 @@ relay:
 desktop:
   - 'desktop/**'
   - 'scripts/check-status-writers.sh'
-  - 'scripts/check-atv-parity.sh'
+  - 'scripts/check-server-parity.sh'
 desktop_deps:
   - 'desktop/package.json'
   - 'desktop/package-lock.json'
