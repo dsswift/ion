@@ -35,6 +35,11 @@ jobs:
             goarch: amd64
             ext: ""
             runner: ubuntu-latest
+          # build-studio-server bundles this binary for linux/arm64 hosts.
+          - goos: linux
+            goarch: arm64
+            ext: ""
+            runner: ubuntu-latest
           - goos: darwin
             goarch: amd64
             ext: ""
@@ -238,9 +243,9 @@ jobs:
             ghcr.io/${{ github.repository }}/engine:latest
 
   # The Studio server bundle: engine binary + Node runtime + built server in
-  # one tarball per platform, plus the installer script, uploaded to the
-  # server-v<version> release. install-studio-server.sh and `ion studio
-  # update` download exactly these. The engine binary is the signed release
+  # one tarball per platform, uploaded to the server-v<version> release
+  # (studio-server-checksums adds the installer script once).
+  # install-studio-server.sh and `ion studio update` download exactly these. The engine binary is the signed release
   # asset for engine/VERSION (never rebuilt here); when this same release
   # also ships the engine, build-engine runs first.
   #
@@ -312,7 +317,6 @@ jobs:
         run: |
           TAG="server-v${{ steps.version.outputs.version }}"
           gh release upload "$TAG" "build/deploy/ion-studio-server-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz" --clobber -R "${{ github.repository }}"
-          gh release upload "$TAG" scripts/install-studio-server.sh --clobber -R "${{ github.repository }}"
 
   # checksums.txt for the server-v release: what install-studio-server.sh
   # and `ion studio update` verify the bundle against.
@@ -320,6 +324,10 @@ jobs:
     needs: build-studio-server
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
       - name: Get version
         id: version
         env:
@@ -327,6 +335,15 @@ jobs:
         run: |
           VERSION=$(echo "${RELEASE_REPORT}" | jq -r '.releases[] | select(.component=="server") | .new_version')
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      # Once, here: every bundle job uploading it with --clobber raced, one
+      # job's delete landing mid-upload of another's (HTTP 404).
+      - name: Upload the installer script
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="server-v${{ steps.version.outputs.version }}"
+          gh release upload "$TAG" scripts/install-studio-server.sh --clobber -R "${{ github.repository }}"
 
       - name: Download release assets
         env:

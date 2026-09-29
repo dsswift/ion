@@ -11,10 +11,17 @@ curl -fsSL https://github.com/dsswift/ion/releases/latest/download/ion-darwin-ar
 chmod +x /usr/local/bin/ion
 ```
 
-### Linux
+### Linux (x86_64)
 
 ```bash
 curl -fsSL https://github.com/dsswift/ion/releases/latest/download/ion-linux-amd64 -o /usr/local/bin/ion
+chmod +x /usr/local/bin/ion
+```
+
+### Linux (arm64)
+
+```bash
+curl -fsSL https://github.com/dsswift/ion/releases/latest/download/ion-linux-arm64 -o /usr/local/bin/ion
 chmod +x /usr/local/bin/ion
 ```
 
