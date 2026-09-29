@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
+	"net/http"
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/dsswift/ion/engine/internal/auth"
+	"github.com/dsswift/ion/engine/internal/types"
 )
 
 // VertexConfig configures Anthropic via Google Cloud Vertex AI.
@@ -17,8 +20,22 @@ type VertexConfig struct {
 	AccessToken string
 }
 
+// vertexProvider wraps the inner Anthropic-protocol client with Vertex's own
+// per-request token resolution (config -> auth.ResolveProviderEnv("vertex")
+// -> gcloud CLI). Holds no static credential (R-23): resolveAccessToken runs
+// fresh on every Stream call rather than snapshotting a token at
+// construction, which fixes a latent staleness bug -- gcloud-issued access
+// tokens expire within an hour, so the old construction-time snapshot went
+// stale on any Vertex provider that outlived that window.
+type vertexProvider struct {
+	inner       LlmProvider
+	configToken string // VertexConfig.AccessToken, when explicitly supplied
+}
+
 // NewVertexProvider creates an Anthropic provider routed through Vertex AI.
-// It resolves the access token from config, environment, or gcloud CLI.
+// projectID is resolved once at construction (config, then
+// auth.ResolveProviderEnv("vertex")) because it is baked into the request
+// URL, which does not vary per request the way a credential does.
 func NewVertexProvider(cfg VertexConfig) (LlmProvider, error) {
 	region := cfg.Region
 	if region == "" {
@@ -27,15 +44,10 @@ func NewVertexProvider(cfg VertexConfig) (LlmProvider, error) {
 
 	projectID := cfg.ProjectID
 	if projectID == "" {
-		projectID = os.Getenv("GOOGLE_CLOUD_PROJECT")
+		projectID, _ = auth.ResolveProviderEnvField("vertex", "projectID")
 	}
 	if projectID == "" {
 		return nil, fmt.Errorf("vertex: no project ID configured (set VertexConfig.ProjectID or GOOGLE_CLOUD_PROJECT)")
-	}
-
-	accessToken := resolveVertexToken(cfg)
-	if accessToken == "" {
-		return nil, fmt.Errorf("vertex: no access token found (set VertexConfig.AccessToken, GOOGLE_ACCESS_TOKEN, or ensure gcloud is authenticated)")
 	}
 
 	baseURL := fmt.Sprintf(
@@ -43,27 +55,62 @@ func NewVertexProvider(cfg VertexConfig) (LlmProvider, error) {
 		region, projectID, region,
 	)
 
-	return NewAnthropicProvider(&ProviderOptions{
+	inner := NewAnthropicProvider(&ProviderOptions{
 		ID:         "vertex",
 		BaseURL:    baseURL,
-		APIKey:     accessToken,
 		AuthHeader: "bearer",
-	}), nil
+	})
+
+	return &vertexProvider{inner: inner, configToken: cfg.AccessToken}, nil
 }
 
-// resolveVertexToken resolves a Google Cloud access token from (in order):
-// 1. VertexConfig.AccessToken
-// 2. GOOGLE_ACCESS_TOKEN env var
-// 3. gcloud auth print-access-token (10s timeout)
-func resolveVertexToken(cfg VertexConfig) string {
-	if cfg.AccessToken != "" {
-		return cfg.AccessToken
-	}
+func (p *vertexProvider) ID() string { return p.inner.ID() }
 
-	if token := os.Getenv("GOOGLE_ACCESS_TOKEN"); token != "" {
-		return token
-	}
+func (p *vertexProvider) CountTokens(ctx context.Context, req CountTokensRequest) (int, error) {
+	return p.inner.CountTokens(p.withResolvedToken(ctx), req)
+}
 
+func (p *vertexProvider) Stream(ctx context.Context, opts types.LlmStreamOptions) (<-chan types.LlmStreamEvent, <-chan error) {
+	return p.inner.Stream(p.withResolvedToken(ctx), opts)
+}
+
+// withResolvedToken attaches a freshly-resolved Vertex access token to ctx
+// when the request path did not already attach one (a registered
+// PrincipalCredentialSource, or the per-run resolver fallback, both take
+// precedence -- R-03). Resolution order: configToken (explicit
+// VertexConfig.AccessToken, an operator-configured static credential) ->
+// auth.ResolveProviderEnv("vertex") (GOOGLE_ACCESS_TOKEN) -> gcloud CLI.
+func (p *vertexProvider) withResolvedToken(ctx context.Context) context.Context {
+	if _, ok := RequestCredentialFrom(ctx); ok {
+		return ctx
+	}
+	token := p.configToken
+	if token == "" {
+		token, _ = auth.ResolveProviderEnvField("vertex", "accessToken")
+	}
+	if token == "" {
+		token = gcloudAccessToken()
+	}
+	if token == "" {
+		return ctx
+	}
+	return WithRequestCredential(ctx, staticBearerAuthenticator{token: token})
+}
+
+// staticBearerAuthenticator is the minimal RequestAuthenticator for a
+// pre-resolved bearer token. Vertex's own resolution (above) is the only
+// caller; it never returns the token to anything outside Authenticate.
+type staticBearerAuthenticator struct{ token string }
+
+func (a staticBearerAuthenticator) Authenticate(_ context.Context, req *http.Request, _ []byte) error {
+	req.Header.Set("Authorization", "Bearer "+a.token)
+	return nil
+}
+
+// gcloudAccessToken shells out to `gcloud auth print-access-token` (10s
+// timeout), the same mechanism the pre-existing constructor-time resolution
+// used. Returns "" on any failure so the caller falls through cleanly.
+func gcloudAccessToken() string {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

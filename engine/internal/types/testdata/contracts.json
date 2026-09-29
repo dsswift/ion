@@ -313,6 +313,7 @@
   "engineEvent": [
     "active",
     "agents",
+    "assistantEntryIds",
     "asyncDecl",
     "asyncDurationMs",
     "asyncHadMarker",
@@ -357,6 +358,11 @@
     "contextSummaryReserve",
     "contextTokens",
     "contextWindow",
+    "credentialAxis",
+    "credentialHost",
+    "credentialProvider",
+    "credentialRequestId",
+    "credentialSubject",
     "defaultProvider",
     "defaultValue",
     "dialogId",
@@ -469,6 +475,7 @@
     "offset",
     "oidcAuthorizationUrl",
     "oidcDisplayName",
+    "oidcIssuer",
     "oidcProvider",
     "oidcRequired",
     "oidcSignedIn",
@@ -535,6 +542,7 @@
     "steerQueuedCount",
     "strategy",
     "summary",
+    "systemMetrics",
     "taskSuspendAwaitingCount",
     "taskSuspendAwaitingTaskCount",
     "telemetryCritical",
@@ -628,6 +636,11 @@
       "totalTokens",
       "unaccounted"
     ],
+    "ConversationPrincipal": [
+      "displayName",
+      "provider",
+      "subject"
+    ],
     "EngineCommandListing": [
       "description",
       "name"
@@ -648,6 +661,7 @@
       "sessionId",
       "systemHint",
       "thinking",
+      "toolEnv",
       "toolGate",
       "workingDirectory",
       "workspaceWatchIgnore"
@@ -684,17 +698,27 @@
       "trigger",
       "type"
     ],
+    "McpOAuthStatus": [
+      "authUrl",
+      "clientId",
+      "hasClientSecret",
+      "resource",
+      "scope",
+      "tokenUrl"
+    ],
     "McpServerInfo": [
       "name",
       "status"
     ],
     "McpServerStatus": [
+      "args",
       "authenticated",
       "capabilities",
       "command",
       "connected",
       "lastError",
       "name",
+      "oauth",
       "protocolVersion",
       "toolCount",
       "transport",
@@ -769,7 +793,8 @@
       "cli",
       "displayName",
       "hasAuth",
-      "id"
+      "id",
+      "loginFlow"
     ],
     "ProviderLoginUpdate": [
       "authUrl",
@@ -850,6 +875,17 @@
       "path",
       "type"
     ],
+    "SessionPrincipal": [
+      "attribution",
+      "claims",
+      "displayName",
+      "email",
+      "kind",
+      "multiTenant",
+      "provider",
+      "subject",
+      "username"
+    ],
     "SessionStatus": [
       "activeBackgroundTasks",
       "backgroundAgentCount",
@@ -903,6 +939,43 @@
       "sessionId",
       "state",
       "team"
+    ],
+    "SystemMetricsHost": [
+      "containerLimited",
+      "cpuCount",
+      "cpuUtilization",
+      "diskFreeBytes",
+      "diskPath",
+      "diskTotalBytes",
+      "effectiveCpuCount",
+      "load1",
+      "memoryAvailableBytes",
+      "memoryLimitBytes",
+      "memoryTotalBytes"
+    ],
+    "SystemMetricsProcess": [
+      "cpuPercent",
+      "cpuTimeMs",
+      "name",
+      "pid",
+      "role",
+      "rssBytes",
+      "startTimeMs"
+    ],
+    "SystemMetricsRuntime": [
+      "goroutines",
+      "heapBytes",
+      "memLimitBytes",
+      "numGC",
+      "sessions",
+      "sysBytes"
+    ],
+    "SystemMetricsSample": [
+      "host",
+      "intervalMs",
+      "processes",
+      "runtime",
+      "sampledAt"
     ],
     "ToolGateConfig": [
       "clientToolTimeoutMs",

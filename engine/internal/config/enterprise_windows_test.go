@@ -32,7 +32,7 @@ func TestReadWindows_RegistryOverProgramData(t *testing.T) {
 		t.Fatalf("CreateKey: %v", err)
 	}
 	t.Cleanup(func() {
-		k.Close() //nolint:errcheck // best-effort test cleanup
+		k.Close()                                                   //nolint:errcheck // best-effort test cleanup
 		registry.DeleteKey(windowsPolicyRoot, windowsPolicyKeyPath) //nolint:errcheck // best-effort test cleanup
 	})
 
@@ -63,5 +63,60 @@ func TestReadWindows_RegistryOverProgramData(t *testing.T) {
 	// the registry's, not the file's.
 	if len(cfg.BlockedModels) != 1 || cfg.BlockedModels[0] != "json-blocked" {
 		t.Errorf("BlockedModels = %v, want [json-blocked] (registry overlays programdata)", cfg.BlockedModels)
+	}
+}
+
+// TestReadUserSourceWindowsRegistry_OnlyEnvironmentsSurvive extends the
+// HKCU-never-read-for-MACHINE-policy invariant above: the per-user layer
+// (manifest C11) DOES read HKCU, under a separate key
+// (windowsUserPolicyKeyPath), but a per-user registry value carrying
+// allowedModels, a locked flag, or any other policy-relevant key must never
+// reach the merged EnterpriseConfig -- only
+// customFields.ion-desktop.environments does. This test writes a
+// ConfigJson value under a scratch HKCU key containing exactly the kind of
+// content described in the "never-loosens" invariant, and asserts the
+// per-user layer surfaces only the environments array.
+func TestReadUserSourceWindowsRegistry_OnlyEnvironmentsSurvive(t *testing.T) {
+	origKeyPath := windowsUserPolicyKeyPath
+	t.Cleanup(func() { windowsUserPolicyKeyPath = origKeyPath })
+	windowsUserPolicyKeyPath = `SOFTWARE\IonEngineUserTest\` + t.Name()
+
+	k, _, err := registry.CreateKey(registry.CURRENT_USER, windowsUserPolicyKeyPath, registry.ALL_ACCESS)
+	if err != nil {
+		t.Fatalf("CreateKey: %v", err)
+	}
+	t.Cleanup(func() {
+		k.Close()                                                           //nolint:errcheck // best-effort test cleanup
+		registry.DeleteKey(registry.CURRENT_USER, windowsUserPolicyKeyPath) //nolint:errcheck // best-effort test cleanup
+	})
+
+	configJSON := `{
+		"allowedModels": ["should-be-ignored"],
+		"customFields": {
+			"ion-desktop": {
+				"environmentPolicy": {"mode": "central-only", "locked": true},
+				"environments": [{"label": "Personal", "url": "wss://personal.example"}]
+			}
+		}
+	}`
+	if err := k.SetStringValue("ConfigJson", configJSON); err != nil {
+		t.Fatalf("SetStringValue ConfigJson: %v", err)
+	}
+
+	raw, ok := readUserSourceWindowsRegistry()
+	if !ok {
+		t.Fatal("readUserSourceWindowsRegistry() = (_, false), want a value present")
+	}
+
+	entries := extractEnvironmentEntries(raw, "windows-user-registry-test")
+	if len(entries) != 1 || entries[0]["label"] != "Personal" {
+		t.Fatalf("entries = %+v, want one entry labeled Personal", entries)
+	}
+
+	// Confirm the raw map DOES carry the ignored keys (proving the registry
+	// read itself is not the thing filtering them) -- extractEnvironmentEntries
+	// above is what drops them, and that is asserted by the entries check.
+	if _, hasAllowedModels := raw["allowedModels"]; !hasAllowedModels {
+		t.Error("raw registry value unexpectedly missing allowedModels; the fixture is not exercising the drop path")
 	}
 }

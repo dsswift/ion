@@ -1,6 +1,7 @@
 package compaction
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -150,13 +151,16 @@ func TestSetAuthResolver(t *testing.T) {
 	defer func() { authResolver = original }()
 
 	called := false
-	SetAuthResolver(func(string) { called = true })
+	SetAuthResolver(func(ctx context.Context, providerName string) context.Context {
+		called = true
+		return ctx
+	})
 	if authResolver == nil {
 		t.Fatal("expected authResolver to be set")
 	}
 
 	// Invoke to verify it works.
-	authResolver("test-provider")
+	authResolver(context.Background(), "test-provider")
 	if !called {
 		t.Error("expected authResolver to be called")
 	}

@@ -59,7 +59,7 @@ func TestPlainSession_EnterpriseToolDeny_Blocks(t *testing.T) {
 	mgr.mu.Unlock()
 
 	// Plain session: nil extension group.
-	runCfg := mgr.buildRunConfig(s, "plain1", "req-1", apiBackend, nil, false, nil, nil, nil, "")
+	runCfg := mgr.buildRunConfig(s, "plain1", "req-1", apiBackend, nil, false, nil, nil, nil, "", nil)
 
 	if runCfg.Hooks.OnToolCall == nil {
 		t.Fatal("plain session must install the enterprise OnToolCall gate (D-009 bypass regression)")
@@ -100,7 +100,7 @@ func TestPlainSession_NoEnterprise_NoToolGate(t *testing.T) {
 	mgr.sessions = map[string]*engineSession{"plain2": s}
 	mgr.mu.Unlock()
 
-	runCfg := mgr.buildRunConfig(s, "plain2", "req-1", apiBackend, nil, false, nil, nil, nil, "")
+	runCfg := mgr.buildRunConfig(s, "plain2", "req-1", apiBackend, nil, false, nil, nil, nil, "", nil)
 
 	if runCfg.Hooks.OnToolCall != nil {
 		t.Error("without enterprise config a plain session must not install an OnToolCall gate")
@@ -135,7 +135,7 @@ func TestExtensionSession_EnterpriseGateComposesWithExtensionHook(t *testing.T) 
 	group.Add(host)
 	s.extGroup = group
 
-	runCfg := mgr.buildRunConfig(s, "ext1", "req-1", apiBackend, group, false, nil, nil, nil, "")
+	runCfg := mgr.buildRunConfig(s, "ext1", "req-1", apiBackend, group, false, nil, nil, nil, "", nil)
 
 	if runCfg.Hooks.OnToolCall == nil {
 		t.Fatal("extension session must have OnToolCall wired")
@@ -172,5 +172,51 @@ func TestExtensionSession_EnterpriseGateComposesWithExtensionHook(t *testing.T) 
 	}
 	if result != nil && result.Block {
 		t.Error("Read passes both layers and must not be blocked")
+	}
+}
+
+// TestBuildRunConfig_PerPrincipalToolRuleEnforced pins FR-03's end-to-end
+// wiring: buildRunConfig's OnToolCall gate refuses a tool per the TURN's
+// principal (the sixth buildRunConfig argument), not just global enterprise
+// policy -- two sessions built with different principals against the SAME
+// enterprise config see different enforcement.
+func TestBuildRunConfig_PerPrincipalToolRuleEnforced(t *testing.T) {
+	apiBackend := backend.NewApiBackend()
+	mgr := NewManager(apiBackend)
+	defer mgr.Shutdown()
+	mgr.SetConfig(&types.EngineRuntimeConfig{
+		Enterprise: &types.EnterpriseConfig{
+			ToolRestrictions: &types.ToolRestrictions{
+				Principals: []types.PrincipalToolRule{
+					{Match: types.PrincipalMatch{Subjects: []string{"oidc:contractor"}}, Deny: []string{"Bash"}},
+				},
+			},
+		},
+	})
+
+	s := newPlainTestSession("principal1")
+	mgr.mu.Lock()
+	mgr.sessions = map[string]*engineSession{"principal1": s}
+	mgr.mu.Unlock()
+
+	contractor := &types.SessionPrincipal{Subject: "oidc:contractor", Provider: "entra", Kind: "operator"}
+	employee := &types.SessionPrincipal{Subject: "oidc:employee", Provider: "entra", Kind: "operator"}
+
+	contractorCfg := mgr.buildRunConfig(s, "principal1", "req-1", apiBackend, nil, false, nil, nil, nil, "", contractor)
+	result, err := contractorCfg.Hooks.OnToolCall(backend.ToolCallInfo{ToolName: "Bash", ToolID: "t1"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result == nil || !result.Block {
+		t.Fatal("expected Bash blocked for the contractor principal")
+	}
+
+	employeeCfg := mgr.buildRunConfig(s, "principal1", "req-2", apiBackend, nil, false, nil, nil, nil, "", employee)
+	result, err = employeeCfg.Hooks.OnToolCall(backend.ToolCallInfo{ToolName: "Bash", ToolID: "t2"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != nil && result.Block {
+		t.Error("expected Bash allowed for the employee principal, unaffected by the contractor-scoped rule")
 	}
 }

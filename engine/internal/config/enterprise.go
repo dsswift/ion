@@ -23,12 +23,26 @@ import (
 //  4. Windows: %ProgramData%\Ion\enterprise-config.json + enterprise-config.d\*.json,
 //     then HKLM\SOFTWARE\Policies\IonEngine overlaid on top (values decoded by
 //     EnterpriseConfig field name; see enterprise_registry_decode.go). HKCU is
-//     never read.
+//     never read for this MACHINE layer.
+//
+// After the machine layer above is resolved, a second per-user layer
+// (manifest C11, program child 03) is merged in: its only honored content
+// is customFields['ion-desktop'].environments, additively unioned with
+// whatever the machine layer already declared there (machine wins a URL
+// collision). See enterprise_user.go for the full per-user-layer contract.
 func LoadEnterpriseConfig() *types.EnterpriseConfig {
 	return loadEnterpriseConfig(runtime.GOOS)
 }
 
 func loadEnterpriseConfig(goos string) *types.EnterpriseConfig {
+	cfg := loadMachineEnterpriseConfig(goos)
+	return mergeUserEnvironmentLayer(cfg, goos)
+}
+
+// loadMachineEnterpriseConfig resolves the machine-level enterprise config
+// (the sole policy ENFORCER) from the env var override or the
+// platform-appropriate machine source, with no per-user layer applied yet.
+func loadMachineEnterpriseConfig(goos string) *types.EnterpriseConfig {
 	// Env var override (all platforms)
 	if envPath := os.Getenv("ION_ENTERPRISE_CONFIG"); envPath != "" {
 		if cfg := readJSONFile[types.EnterpriseConfig](envPath); cfg != nil {
@@ -52,16 +66,8 @@ func loadEnterpriseConfig(goos string) *types.EnterpriseConfig {
 // readMacOS reads enterprise config from macOS managed preferences (plist).
 func readMacOS() *types.EnterpriseConfig {
 	const plistPath = "/Library/Managed Preferences/com.ion.engine.plist"
-	if _, err := os.Stat(plistPath); err != nil {
-		return nil
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	out, err := exec.CommandContext(ctx, "plutil", "-convert", "json", plistPath, "-o", "-").Output()
-	if err != nil {
-		utils.LogWithFields(utils.LevelInfo, "config.enterprise", "failed to read macos plist", map[string]any{"error": err.Error()})
+	out := plutilToJSON(plistPath)
+	if out == nil {
 		return nil
 	}
 
@@ -72,6 +78,28 @@ func readMacOS() *types.EnterpriseConfig {
 	}
 	utils.Log("Enterprise", "loaded config from macOS plist")
 	return &cfg
+}
+
+// plutilToJSON converts a macOS plist at path to JSON bytes via the `plutil`
+// CLI, or nil when the file is absent or the conversion fails. Shared by the
+// machine-layer reader above and the per-user layer reader
+// (enterprise_user.go readUserSourceMacOS), which decode the same plist
+// shape into different Go types (a typed EnterpriseConfig vs. a permissive
+// map[string]any).
+func plutilToJSON(plistPath string) []byte {
+	if _, err := os.Stat(plistPath); err != nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "plutil", "-convert", "json", plistPath, "-o", "-").Output()
+	if err != nil {
+		utils.LogWithFields(utils.LevelInfo, "config.enterprise", "failed to read macos plist", map[string]any{"path": plistPath, "error": err.Error()})
+		return nil
+	}
+	return out
 }
 
 // readLinux reads enterprise config from /etc/ion/config.json + /etc/ion/config.d/*.json.
@@ -115,8 +143,6 @@ func readLinux() *types.EnterpriseConfig {
 
 	return cfg
 }
-
-
 
 // mergeEnterprisePartial does a shallow merge of enterprise config (later wins for scalars/slices).
 func mergeEnterprisePartial(base, overlay *types.EnterpriseConfig) *types.EnterpriseConfig {
@@ -172,11 +198,20 @@ func mergeEnterprisePartial(base, overlay *types.EnterpriseConfig) *types.Enterp
 	if overlay.Telemetry != nil {
 		result.Telemetry = overlay.Telemetry
 	}
+	if overlay.SystemMetrics != nil {
+		result.SystemMetrics = overlay.SystemMetrics
+	}
 	if overlay.Network != nil {
 		result.Network = overlay.Network
 	}
 	if overlay.Sandbox != nil {
 		result.Sandbox = overlay.Sandbox
+	}
+	if overlay.Security != nil {
+		result.Security = overlay.Security
+	}
+	if overlay.Git != nil {
+		result.Git = overlay.Git
 	}
 	if overlay.NewConversationDefaults != nil {
 		result.NewConversationDefaults = overlay.NewConversationDefaults

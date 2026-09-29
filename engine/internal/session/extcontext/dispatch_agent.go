@@ -379,6 +379,9 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		} else if childCfg.DefaultModel == "" {
 			childCfg.DefaultModel = dispatchDefaultModel
 		}
+		// The child acts as the parent session's person: its provider
+		// credentials, git identity, sandbox, and principal boundary.
+		sa.WirePrincipalRunConfig(childCfg)
 		utils.LogWithFields(utils.LevelInfo, "session", "child run config: source=dispatch", map[string]any{"dispatch_default_model": dispatchDefaultModel, "session_key": sa.SessionKey(), "model": model})
 
 		// conversation.* telemetry (issue #378, child 05): wire the exact

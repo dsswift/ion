@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -17,42 +16,29 @@ import (
 )
 
 type googleProvider struct {
-	apiKey     string
-	baseURL    string
-	authHeader string // "" = key-in-url (default), "bearer", "x-api-key", etc.
-	client     *http.Client
+	baseURL string
+	client  *http.Client
 }
 
-// NewGoogleProvider creates a Google Gemini provider that uses raw HTTP streaming
-// and translates to Anthropic canonical format.
+// NewGoogleProvider creates a Google Gemini provider that uses raw HTTP
+// streaming and translates to Anthropic canonical format.
+//
+// Holds no credential (R-23): authentication is resolved per request via
+// applyRequestAuth. The native Gemini API accepts the key on the ?key= query
+// parameter, and the "google" provider's default authenticator style
+// ("urlkey", auth.authHeaderBuiltinDefaults) applies it there -- the same
+// wire shape this provider used before this program (R-10). A configured
+// gateway/custom-baseURL override still authenticates via a header, exactly
+// as ProviderConfig.AuthHeader always has (see ApplyConfig).
 func NewGoogleProvider(opts *ProviderOptions) LlmProvider {
-	apiKey := ""
-	if opts != nil && opts.APIKey != "" {
-		apiKey = opts.APIKey
-	}
-	if apiKey == "" {
-		apiKey = os.Getenv("GOOGLE_API_KEY")
-	}
-	if apiKey == "" {
-		apiKey = os.Getenv("GEMINI_API_KEY")
-	}
-
 	baseURL := "https://generativelanguage.googleapis.com"
-	authHeader := ""
-	if opts != nil {
-		if opts.BaseURL != "" {
-			baseURL = opts.BaseURL
-		}
-		if opts.AuthHeader != "" {
-			authHeader = opts.AuthHeader
-		}
+	if opts != nil && opts.BaseURL != "" {
+		baseURL = opts.BaseURL
 	}
 
 	return &googleProvider{
-		apiKey:     apiKey,
-		baseURL:    baseURL,
-		authHeader: authHeader,
-		client:     &http.Client{Transport: network.GetHTTPTransport()},
+		baseURL: baseURL,
+		client:  &http.Client{Transport: network.GetHTTPTransport()},
 	}
 }
 
@@ -75,25 +61,8 @@ func (p *googleProvider) Stream(ctx context.Context, opts types.LlmStreamOptions
 }
 
 func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptions, events chan<- types.LlmStreamEvent) error {
-	apiKey := p.apiKey
-	if apiKey == "" {
-		apiKey = GetProviderKey(p.ID())
-	}
-	if apiKey == "" {
-		return NewProviderError(ErrAuth, "Google API key not configured. Set GOOGLE_API_KEY or GEMINI_API_KEY", 0, false)
-	}
-
-	// Build URL: native Gemini uses key-in-url, custom gateway uses header auth
-	var url string
-	if p.authHeader != "" {
-		// Gateway/proxy: key in header, no query param
-		url = fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?alt=sse",
-			strings.TrimRight(p.baseURL, "/"), opts.Model)
-	} else {
-		// Native Gemini API: key in query param
-		url = fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?key=%s&alt=sse",
-			strings.TrimRight(p.baseURL, "/"), opts.Model, apiKey)
-	}
+	url := fmt.Sprintf("%s/v1beta/models/%s:streamGenerateContent?alt=sse",
+		strings.TrimRight(p.baseURL, "/"), opts.Model)
 
 	body := p.buildRequestBody(opts)
 	raw, err := json.Marshal(body)
@@ -106,12 +75,8 @@ func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 		return NewProviderError(ErrUnknown, fmt.Sprintf("create request: %v", err), 0, false)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if p.authHeader != "" {
-		apiKey := p.apiKey
-		if apiKey == "" {
-			apiKey = GetProviderKey(p.ID())
-		}
-		setAuthHeader(req, p.authHeader, apiKey)
+	if pe := applyRequestAuth(ctx, req, raw, p.ID()); pe != nil {
+		return pe
 	}
 
 	resp, err := p.client.Do(req)

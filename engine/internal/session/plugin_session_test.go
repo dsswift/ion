@@ -89,7 +89,7 @@ func TestPluginUserPromptHooks_FireWithoutExtGroup(t *testing.T) {
 
 	runCfg := mgr.buildRunConfig(s, "plugin-no-ext", "req-no-ext",
 		apiBackend, nil /* extGroup */, false, /* skipExtensions */
-		nil, nil, nil, "")
+		nil, nil, nil, "", nil)
 
 	// Plugin hooks now wire OnInitialMessages, not OnBeforePrompt.
 	if runCfg.Hooks.OnInitialMessages == nil {
@@ -155,7 +155,7 @@ func TestPluginUserPromptHooks_MultipleHooksAllContribute(t *testing.T) {
 	}
 
 	runCfg := mgr.buildRunConfig(s, "plugin-multi", "req-multi",
-		apiBackend, nil, false, nil, nil, nil, "")
+		apiBackend, nil, false, nil, nil, nil, "", nil)
 
 	if runCfg.Hooks.OnInitialMessages == nil {
 		t.Fatal("expected OnInitialMessages to be wired")

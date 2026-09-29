@@ -80,11 +80,9 @@ func (p *anthropicProvider) CountTokens(ctx context.Context, req CountTokensRequ
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	apiKey := p.apiKey
-	if apiKey == "" {
-		apiKey = GetProviderKey(p.id)
+	if pe := applyRequestAuth(ctx, httpReq, raw, p.id); pe != nil {
+		return 0, pe
 	}
-	setAuthHeader(httpReq, p.authHeader, apiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
 
 	resp, err := p.client.Do(httpReq)
@@ -121,14 +119,6 @@ func (p *anthropicProvider) CountTokens(ctx context.Context, req CountTokensRequ
 // CountTokens calls the Gemini :countTokens endpoint via raw HTTP. Returns the
 // reported totalTokens. Errors are returned so the caller can fall back.
 func (p *googleProvider) CountTokens(ctx context.Context, req CountTokensRequest) (int, error) {
-	apiKey := p.apiKey
-	if apiKey == "" {
-		apiKey = GetProviderKey(p.ID())
-	}
-	if apiKey == "" && p.authHeader == "" {
-		return 0, NewProviderError(ErrAuth, "Google API key not configured", 0, false)
-	}
-
 	body := map[string]any{
 		"contents": formatGeminiMessages(req.Messages),
 	}
@@ -155,22 +145,15 @@ func (p *googleProvider) CountTokens(ctx context.Context, req CountTokensRequest
 		return 0, NewProviderError(ErrUnknown, fmt.Sprintf("marshal countTokens request: %v", err), 0, false)
 	}
 
-	var url string
-	if p.authHeader != "" {
-		url = fmt.Sprintf("%s/v1beta/models/%s:countTokens",
-			strings.TrimRight(p.baseURL, "/"), req.Model)
-	} else {
-		url = fmt.Sprintf("%s/v1beta/models/%s:countTokens?key=%s",
-			strings.TrimRight(p.baseURL, "/"), req.Model, apiKey)
-	}
+	url := fmt.Sprintf("%s/v1beta/models/%s:countTokens", strings.TrimRight(p.baseURL, "/"), req.Model)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
 	if err != nil {
 		return 0, NewProviderError(ErrUnknown, fmt.Sprintf("create countTokens request: %v", err), 0, false)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	if p.authHeader != "" {
-		setAuthHeader(httpReq, p.authHeader, apiKey)
+	if pe := applyRequestAuth(ctx, httpReq, raw, p.ID()); pe != nil {
+		return 0, pe
 	}
 
 	resp, err := p.client.Do(httpReq)

@@ -23,14 +23,24 @@ import (
 type StartSessionResult struct {
 	Existed        bool   `json:"existed"`
 	ConversationID string `json:"conversationId,omitempty"`
+	// StorageRoot is the absolute directory this session's conversation is
+	// (or would be) stored under, when principal partitioning is enabled
+	// and the session carries a principal. Empty when partitioning is off
+	// or the session is unattributed -- the caller (e.g. a harness deriving
+	// its own per-principal data root, see cos2's journalroot.go) falls
+	// back to its historical behavior in that case.
+	StorageRoot string `json:"storageRoot,omitempty"`
 }
 
 // startSession owns the common initialization path. A fork supplies its
 // reservation and inherited state so the target becomes visible atomically and
 // session_start hooks observe the inherited state from their first instruction.
+// principal is the manifest C1/C2 attribution for this session; nil when the
+// caller supplied none (pre-existing behavior, unchanged).
 func (m *Manager) startSession(
 	key string,
 	config types.EngineConfig,
+	principal *types.SessionPrincipal,
 	reservation *forkReservation,
 	initial *forkInitialState,
 ) (*StartSessionResult, error) {
@@ -94,11 +104,26 @@ func (m *Manager) startSession(
 			toolGateChanged = len(s.config.ToolGate.ClientTools) != len(config.ToolGate.ClientTools)
 		}
 		s.config.ToolGate = config.ToolGate
+		// A reconnecting client's re-assert of start_session carries its
+		// latest principal, same replace-not-merge convention as ToolGate
+		// above -- but only forward: a nil principal on this call never
+		// clears one the session already carries (an older client that
+		// predates this field, or the engine's own idempotent internal
+		// callers, must not silently un-attribute a session).
+		principalChanged := principal != nil && (s.principal == nil || s.principal.Subject != principal.Subject)
+		if principal != nil {
+			s.principal = principal
+			promoteSessionPrincipalProcessWide(principal)
+		}
 		m.mu.Unlock()
 		if toolGateChanged {
 			utils.LogWithFields(utils.LevelInfo, "session.toolgate", "startsession: tool-gate declaration replaced on existing session", map[string]any{
 				"key": key, "declared": config.ToolGate != nil,
 			})
+		}
+		if principalChanged {
+			utils.LogWithFields(utils.LevelInfo, "session", "session principal set", map[string]any{"session_key": key, "principal_subject": principal.Subject, "provider": principal.Provider, "kind": principal.Kind})
+			m.fireIdentityChangedForSession(key, principal)
 		}
 
 		// Re-register extensions when the session was restored without them
@@ -117,15 +142,19 @@ func (m *Manager) startSession(
 		// conversation so the desktop stops re-driving futile resumes.
 		if wantsRebind {
 			if conversation.Exists(config.SessionID, "") {
+				if err := checkConversationAccess(principal, config.SessionID, false); err != nil {
+					utils.LogWithFields(utils.LevelWarn, "session", "startsession: rebind refused by principal guard", map[string]any{"key": key, "conversation_id": config.SessionID})
+					return nil, err
+				}
 				m.rebindSession(s, key, config.SessionID)
 				utils.LogWithFields(utils.LevelInfo, "session", "startsession: rebound to requested conversation", map[string]any{"key": key, "conversation_id": config.SessionID, "was": convID})
-				return &StartSessionResult{Existed: true, ConversationID: config.SessionID}, nil
+				return &StartSessionResult{Existed: true, ConversationID: config.SessionID, StorageRoot: storageRootFor(s.principal)}, nil
 			}
 			utils.LogWithFields(utils.LevelInfo, "session", "startsession: caller requested conversation has no backing file, keeping current", map[string]any{"key": key, "requested": config.SessionID, "keeping": convID})
 		}
 
 		utils.LogWithFields(utils.LevelInfo, "session", "startsession: already exists (idempotent)", map[string]any{"key": key, "conversation_id": convID})
-		return &StartSessionResult{Existed: true, ConversationID: convID}, nil
+		return &StartSessionResult{Existed: true, ConversationID: convID, StorageRoot: storageRootFor(s.principal)}, nil
 	}
 
 	// D-007: enterprise session cap. Checked after the idempotency branch so
@@ -171,6 +200,18 @@ func (m *Manager) startSession(
 	// session never leaves a phantom binding. (#230/#231)
 	convExists := conversation.Exists(convID, "")
 
+	// FR-01: a new session key resolving to an EXISTING conversation is a
+	// resume/attach, same class of access as the rebind branch above --
+	// guard it identically. A fresh mint (convExists==false) has nothing to
+	// own yet, so checkConversationAccess is a no-op there.
+	if convExists {
+		if err := checkConversationAccess(principal, convID, false); err != nil {
+			m.mu.Unlock()
+			utils.LogWithFields(utils.LevelWarn, "session", "startsession: refused by principal guard", map[string]any{"key": key, "conversation_id": convID})
+			return nil, err
+		}
+	}
+
 	s := &engineSession{
 		key:              key,
 		config:           config,
@@ -184,7 +225,9 @@ func (m *Manager) startSession(
 		maxQueueDepth:    32,
 		dispatchRegistry: extcontext.NewDispatchRegistry(),
 		resourceBroker:   resource.NewBroker(),
+		principal:        principal,
 	}
+	m.watchWorkspaceProducers(key, s.resourceBroker)
 	if initial != nil {
 		s.planMode = initial.planMode
 		s.planModeTools = append([]string(nil), initial.planModeTools...)
@@ -196,6 +239,10 @@ func (m *Manager) startSession(
 	s.rootDispatchCompletions = loadRootDispatchOutbox(convID)
 	if len(s.rootDispatchCompletions) > 0 {
 		utils.LogWithFields(utils.LevelInfo, "session.dispatch_delivery", "root dispatch outbox rehydrated", map[string]any{"session_id": key, "conversation_id": convID, "count": len(s.rootDispatchCompletions)})
+	}
+	if principal != nil {
+		utils.LogWithFields(utils.LevelInfo, "session", "session principal set", map[string]any{"session_key": key, "principal_subject": principal.Subject, "provider": principal.Provider, "kind": principal.Kind})
+		promoteSessionPrincipalProcessWide(principal)
 	}
 
 	// Initialize the session's cancellation root before any run or
@@ -210,8 +257,7 @@ func (m *Manager) startSession(
 	// nil registry — downstream call sites (extcontext.go) already guard
 	// with `if reg := sa.ProcRegistry(); reg != nil`, so extensions that
 	// would have used it degrade to no-op instead of silently failing.
-	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
-	pidsDir := filepath.Join(home, ".ion", "agent-pids")
+	pidsDir := filepath.Join(utils.IonDir(), "agent-pids")
 	if reg, err := extension.NewProcessRegistry(pidsDir); err != nil {
 		utils.LogWithFields(utils.LevelInfo, "session", "startsession : process registry unavailable", map[string]any{"key": key, "error": err})
 		s.procRegistry = nil
@@ -493,5 +539,58 @@ func (m *Manager) startSession(
 		utils.LogWithFields(utils.LevelInfo, "session.recovery", "recovery continuation queued", map[string]any{"key": key, "conversation_id": s.conversationID})
 	}
 
-	return &StartSessionResult{Existed: false, ConversationID: s.conversationID}, nil
+	return &StartSessionResult{Existed: false, ConversationID: s.conversationID, StorageRoot: storageRootFor(principal)}, nil
+}
+
+// promoteSessionPrincipalProcessWide stamps the process-wide operator
+// identity (telemetry.SetUserIdentity, R20) from a session's principal.
+//
+// Root cause: correlationCtx/correlationCtxExt (telemetry_ctx.go) never
+// carry "principal_identity", so every event built from them --
+// extension.coldstart, extension.respawn, extension.hook_latency -- and
+// every genuinely process-level event with a nil ctx (system.metrics) falls
+// through telemetry.identityForEvent to the process-wide
+// resolvedUserIdentity(). On a desktop install where the engine runs its own
+// OIDC login (auth.identityProvider), signing in populates that slot
+// (server/dispatch_oidc.go's broadcastOidcIdentity) and all of those events
+// carry a user. On an Orion instance pod, the owner authenticates through
+// the SERVER's own OIDC door (server.json's oidc config, the bearer auth
+// door) -- engine.json carries no identityProvider there -- so
+// resolvedUserIdentity() was never populated and the same events shipped
+// with no user at all, forever, while session/run-scoped events (llm.call,
+// tool.execute, dispatch.agent) were already fine: they read the session's
+// own principal through ctx.
+//
+// The fix is at this one origin rather than at each event family: the
+// server already tells the engine who is signed in on every
+// start_session/send_prompt (types.SessionPrincipal, manifest C1/C2),
+// regardless of which door authenticated the person. Promoting that
+// principal into the same process-wide slot the engine's own OIDC login
+// already uses closes the gap for every current and future event family
+// that falls back to it, with no per-event-type carve-out.
+//
+// Guarded by principal.MultiTenant (added alongside this comment): on an
+// engine whose server has POSITIVELY determined that more than one person
+// is attributed against it -- a Studio Server install with
+// server.json tenancy.mode "isolated" (config/current.ts's
+// isSharedTenancy() false), the actual multi-person case, as opposed to a
+// personal desktop or a dedicated single-owner instance pod where every
+// paired device folds to the same host identity (isSharedTenancy() true) --
+// promoting a session's principal process-wide would let whichever person's
+// session started most recently overwrite process-level events
+// (system.metrics, extension.coldstart, extension.hook_latency) attributed
+// to every other person on that engine, and could stomp the engine's own
+// OIDC sign-in identity with an unrelated person's. On a multi-tenant
+// engine those process-level events instead carry no user at all; each
+// session's own events are unaffected because they already read the
+// session's principal through ctx (see the root-cause note above), never
+// through this process-wide slot.
+func promoteSessionPrincipalProcessWide(principal *types.SessionPrincipal) {
+	if principal.MultiTenant {
+		utils.LogWithFields(utils.LevelDebug, "session.identity", "process-wide identity promotion skipped: multi-tenant engine", map[string]any{"principal_subject": principal.Subject})
+		return
+	}
+	if identity := principal.AttributionForTelemetry(); identity != "" {
+		telemetry.SetUserIdentity(identity)
+	}
 }

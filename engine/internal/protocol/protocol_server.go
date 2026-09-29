@@ -34,6 +34,10 @@ type SessionInfo struct {
 	HasActiveRun   bool   `json:"hasActiveRun"`
 	ToolCount      int    `json:"toolCount"`
 	ConversationID string `json:"conversationId,omitempty"`
+	// PrincipalSubject is the session's stamped principal subject, when one
+	// was supplied on start_session (manifest C1/C2). Empty for a session
+	// nobody attributed.
+	PrincipalSubject string `json:"principalSubject,omitempty"`
 }
 
 // ServerSessionList carries the list_sessions response.

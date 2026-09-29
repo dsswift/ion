@@ -36,8 +36,9 @@ type gatewayProvider struct {
 }
 
 // NewGatewayProvider creates a dialect-dispatching provider. All inner
-// providers share the gateway's ID, baseURL, API key, and auth header, so key
-// resolution (GetProviderKey) and telemetry attribute to the gateway itself.
+// providers share the gateway's ID, baseURL, and auth header; authentication
+// is resolved per request from the context (R-23) so it attributes to the
+// gateway's own configured credential path uniformly across dialects.
 func NewGatewayProvider(opts CompatibleProviderOptions) LlmProvider {
 	utils.LogWithFields(utils.LevelInfo, "GatewayProvider", "new dialect-dispatching provider", map[string]any{"provider": opts.ID, "path": opts.BaseURL})
 	inner := &ProviderOptions{

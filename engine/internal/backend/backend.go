@@ -3,8 +3,10 @@ package backend
 import (
 	"context"
 
+	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/permissions"
+	"github.com/dsswift/ion/engine/internal/principalboundary"
 	"github.com/dsswift/ion/engine/internal/sandbox"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/tools"
@@ -362,7 +364,30 @@ type RunConfig struct {
 	// execution, so the refusal is deterministic regardless of which
 	// extensions are loaded.
 	WorkspaceChecker *workspaces.Checker
-	ExternalTools    []types.LlmToolDef
+	// PrincipalBoundary enforces FR-03's per-principal execution boundary:
+	// with storage partitioning enabled, a session may not read or write
+	// another principal's partition through its own tools. Nil means
+	// disabled (partitioning off, or this session is unattributed).
+	// Checked in the tool loop beside WorkspaceChecker.
+	PrincipalBoundary *principalboundary.Checker
+	// ToolEnv is additive environment for local Bash subprocesses (see
+	// internal/tools/bash_execution_env.go's WithToolEnv). Populated by
+	// buildRunConfig from the caller's EngineConfig.ToolEnv merged with
+	// FR-04's resolved git author/committer identity. Nil means no
+	// additional environment beyond ION_SESSION_ID.
+	ToolEnv map[string]string
+	// GitIdentityRequiredUnresolved is set by buildRunConfig when
+	// GitConfig.Identity.Required is true and resolveGitIdentity found
+	// neither a usable principal identity nor a configured machine
+	// fallback. While true, every Bash call invoking a git-mutating
+	// subcommand (commit, merge, rebase, cherry-pick, am, tag -a) is
+	// refused before execution with typed reason
+	// "git_identity_unresolved" -- see checkGitIdentityRequired -- so a
+	// commit never lands silently attributed to whatever ambient identity
+	// git would otherwise fall back to (the operator's own ~/.gitconfig,
+	// or no identity at all).
+	GitIdentityRequiredUnresolved bool
+	ExternalTools                 []types.LlmToolDef
 	// McpToolRouter routes MCP and extension-registered tool calls. The ctx is
 	// the per-tool-call context: it carries the DeadlineSuspender (see
 	// types.WithDeadlineSuspender) so a tool that synchronously blocks on a
@@ -604,4 +629,13 @@ type RunConfig struct {
 	// knows the conversation id and correlation context from its own RunConfig
 	// closure (session-layer wiring in buildRunConfig / buildManualCompactState).
 	OnConversationCompacted func()
+
+	// CredentialContext carries the acting principal's per-run credential
+	// resolution (SC-2): resolveProvider attaches its Authenticator to the
+	// request context before every provider call, replacing the deleted
+	// process-global provider key map. Nil means unattributed -- the run
+	// falls through to the resolver's process-wide levels exactly as before
+	// this field existed (R-10). Built once per run by
+	// session.wireCredentialContext, mirroring wireGitIdentity.
+	CredentialContext *auth.CredentialContext
 }

@@ -1,8 +1,10 @@
 package backend
 
 import (
+	"context"
 	"fmt"
 
+	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -36,7 +38,18 @@ import (
 // Mutates opts.Model in place when the swap happens; that's deliberate —
 // the rest of runLoop reads opts.Model for telemetry, hooks, and
 // conversation persistence and must see the actual model that ran.
-func (b *ApiBackend) resolveProviderForRun(run *activeRun, opts *types.RunOptions) (providers.LlmProvider, string) {
+//
+// Also resolves the acting principal's request credential for the
+// (possibly swapped) model's provider and attaches it to the returned
+// context (see resolveProviderAndAttachAuth), reading run.cfg.
+// CredentialContext directly -- nil (an unattributed run, or a RunConfig
+// with none wired) means the returned context is ctx unchanged, matching
+// the pre-existing single-user behavior (R-10).
+func (b *ApiBackend) resolveProviderForRun(ctx context.Context, run *activeRun, opts *types.RunOptions) (providers.LlmProvider, string, context.Context) {
+	var cc *auth.CredentialContext
+	if run.cfg != nil {
+		cc = run.cfg.CredentialContext
+	}
 	model := opts.Model
 	if model == "" {
 		msg := "no model configured: set defaultModel in ~/.ion/engine.json or pass --model. See docs/configuration/engine-json.md."
@@ -47,10 +60,10 @@ func (b *ApiBackend) resolveProviderForRun(run *activeRun, opts *types.RunOption
 		}})
 		b.emitError(run, fmt.Errorf("%s", msg))
 		b.emitExit(run.requestID, intPtr(1), nil, opts.ConversationID)
-		return nil, ""
+		return nil, "", ctx
 	}
 
-	provider := b.resolveProvider(model)
+	provider, providerCtx := b.resolveProviderAndAttachAuth(ctx, model, cc)
 	if provider == nil && run.cfg != nil && run.cfg.DefaultModel != "" && run.cfg.DefaultModel != model {
 		// Graceful degradation: the requested model (e.g. an unrecognized
 		// tier alias like "standard") didn't resolve. Fall back to the
@@ -70,7 +83,7 @@ func (b *ApiBackend) resolveProviderForRun(run *activeRun, opts *types.RunOption
 		})
 		model = run.cfg.DefaultModel
 		opts.Model = model
-		provider = b.resolveProvider(model)
+		provider, providerCtx = b.resolveProviderAndAttachAuth(ctx, model, cc)
 		// Re-point the slash provenance at the model that will actually serve
 		// the run. ResolvedSlashModelEffective is documented as "the concrete
 		// model selected to start this run AFTER tier and provider resolution"
@@ -141,8 +154,8 @@ func (b *ApiBackend) resolveProviderForRun(run *activeRun, opts *types.RunOption
 		}})
 		b.emitError(run, fmt.Errorf("no provider found for model %q", model))
 		b.emitExit(run.requestID, intPtr(1), nil, opts.ConversationID)
-		return nil, ""
+		return nil, "", ctx
 	}
 
-	return provider, model
+	return provider, model, providerCtx
 }

@@ -54,13 +54,12 @@ func TestOpenAIResponsesProviderStream(t *testing.T) {
 	defer srv.Close()
 
 	p := NewOpenAIResponsesProvider(&ProviderOptions{
-		APIKey:     "test-key",
-		BaseURL:    srv.URL,
-		AuthHeader: "x-api-key",
+		BaseURL: srv.URL,
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	ctx = WithRequestCredential(ctx, testStaticAuthenticator{key: "test-key", header: "x-api-key"})
 
 	events, errc := p.Stream(ctx, types.LlmStreamOptions{
 		Model:  "gpt-5.2-codex",

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -19,28 +18,20 @@ import (
 const imageGenerationTimeout = 90 * time.Second
 
 type openaiImageProvider struct {
-	id         string
-	apiKey     string
-	baseURL    string
-	authHeader string // "bearer" (default), "x-api-key", "api-key", or a custom header name
-	client     *http.Client
+	id      string
+	baseURL string
+	client  *http.Client
 }
 
 // NewOpenAIImageProvider creates an ImageProvider for OpenAI image-generation
 // APIs (DALL-E 3, gpt-image-1) and OpenAI-compatible image endpoints behind
-// enterprise gateways. It follows the same constructor pattern as
-// NewOpenAIProvider: constructor key → GetProviderKey(id) at call time, and
-// the same AuthHeader semantics (see setAuthHeader) so a gateway that expects
-// x-api-key instead of Authorization: Bearer works identically for chat and
-// image calls.
+// enterprise gateways. Holds no credential (R-23): authentication is
+// resolved per request from the context via applyRequestAuth, same as the
+// chat provider (NewOpenAIProvider).
 func NewOpenAIImageProvider(opts *ProviderOptions) ImageProvider {
-	apiKey := ""
 	baseURL := "https://api.openai.com"
 	id := "openai"
 	if opts != nil {
-		if opts.APIKey != "" {
-			apiKey = opts.APIKey
-		}
 		if opts.BaseURL != "" {
 			baseURL = opts.BaseURL
 		}
@@ -48,21 +39,12 @@ func NewOpenAIImageProvider(opts *ProviderOptions) ImageProvider {
 			id = opts.ID
 		}
 	}
-	if apiKey == "" && id == "openai" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
-	}
-	authHeader := "bearer"
-	if opts != nil && opts.AuthHeader != "" {
-		authHeader = opts.AuthHeader
-	}
 	p := &openaiImageProvider{
-		id:         id,
-		apiKey:     apiKey,
-		baseURL:    baseURL,
-		authHeader: authHeader,
-		client:     &http.Client{Transport: network.GetHTTPTransport()},
+		id:      id,
+		baseURL: baseURL,
+		client:  &http.Client{Transport: network.GetHTTPTransport()},
 	}
-	utils.LogWithFields(utils.LevelInfo, "OpenAIImage", "new image provider", map[string]any{"provider": id, "path": baseURL, "reason": authHeader})
+	utils.LogWithFields(utils.LevelInfo, "OpenAIImage", "new image provider", map[string]any{"provider": id, "path": baseURL})
 	return p
 }
 
@@ -120,21 +102,8 @@ func (p *openaiImageProvider) Generate(ctx context.Context, opts types.ImageGene
 		return nil, fmt.Errorf("openai image: create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-
-	apiKey := p.apiKey
-	keySource := "constructor"
-	if apiKey == "" {
-		apiKey = GetProviderKey(p.id)
-		keySource = "registry:" + p.id
-	}
-	utils.LogWithFields(utils.LevelInfo, "OpenAIImage", "generate auth resolved", map[string]any{
-		"provider": p.id,
-		"source":   keySource,
-		"keyLen":   len(apiKey),
-		"style":    p.authHeader,
-	})
-	if apiKey != "" {
-		setAuthHeader(req, p.authHeader, apiKey)
+	if pe := applyRequestAuth(ctx, req, raw, p.id); pe != nil {
+		return nil, fmt.Errorf("openai image: %s", pe.Message)
 	}
 
 	resp, err := p.client.Do(req)

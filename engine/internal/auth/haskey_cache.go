@@ -19,6 +19,15 @@
 // exists only as a backstop for a writer nobody remembered to wire up (an
 // external process editing credentials.json, say), never as the primary
 // mechanism.
+//
+// Keyed by (subject, provider) as of child 07 (R-14): the resolver's own
+// process-wide levels have no principal dimension, but HasKey's PROCESS-WIDE
+// negative was shared across every caller regardless of who was asking. On a
+// shared instance, one principal's miss would cache a negative that then
+// masked a DIFFERENT principal's genuinely available credential for the TTL
+// window -- the cache existed to remove noise, not to misreport someone
+// else's access. subject "" is the unattributed key, so a single-user engine
+// (every existing call site) is unaffected byte for byte.
 
 package auth
 
@@ -35,13 +44,15 @@ import (
 // seconds rather than a session, long enough to collapse an init burst.
 const DefaultNegativeCacheTTL = 5 * time.Second
 
+type negKey struct{ Subject, Provider string }
+
 type negativeEntry struct {
 	at time.Time
 }
 
 var (
 	negCacheMu  sync.RWMutex
-	negCache    = make(map[string]negativeEntry)
+	negCache    = make(map[negKey]negativeEntry)
 	negCacheTTL = DefaultNegativeCacheTTL
 	// negCacheDisabled short-circuits every path, so `-1` is a true bypass
 	// rather than a zero-length TTL that still takes locks.
@@ -57,7 +68,7 @@ func SetNegativeCacheTTL(seconds int) {
 	switch {
 	case seconds < 0:
 		negCacheDisabled = true
-		negCache = make(map[string]negativeEntry)
+		negCache = make(map[negKey]negativeEntry)
 	case seconds == 0:
 		negCacheDisabled = false
 		negCacheTTL = DefaultNegativeCacheTTL
@@ -70,56 +81,89 @@ func SetNegativeCacheTTL(seconds int) {
 	})
 }
 
-// hasNegative reports whether a fresh negative result is cached.
-func hasNegative(provider string) bool {
+// hasNegative reports whether a fresh negative result is cached for
+// (subject, provider). subject "" is the unattributed key.
+func hasNegative(subject, provider string) bool {
 	negCacheMu.RLock()
 	defer negCacheMu.RUnlock()
 	if negCacheDisabled {
 		return false
 	}
-	entry, ok := negCache[strings.ToLower(provider)]
+	entry, ok := negCache[negKey{Subject: subject, Provider: strings.ToLower(provider)}]
 	if !ok {
 		return false
 	}
 	return time.Since(entry.at) < negCacheTTL
 }
 
-// rememberNegative records that a provider resolved to no credentials.
-func rememberNegative(provider string) {
+// rememberNegative records that (subject, provider) resolved to no
+// credentials.
+func rememberNegative(subject, provider string) {
 	negCacheMu.Lock()
 	defer negCacheMu.Unlock()
 	if negCacheDisabled {
 		return
 	}
-	negCache[strings.ToLower(provider)] = negativeEntry{at: time.Now()}
+	negCache[negKey{Subject: subject, Provider: strings.ToLower(provider)}] = negativeEntry{at: time.Now()}
 }
 
-// InvalidateHasKey drops the cached negative for one provider.
+// InvalidateHasKey drops the cached negative for one provider, across EVERY
+// subject. Every credential write path calls this: a process-wide write
+// (SetProgrammatic, a file-store write, a keychain write) has no way to know
+// which principal's cached negative it should have invalidated, so it
+// invalidates all of them -- correctness over precision, since the cost of a
+// missed invalidation (a stale "no credential" the operator can see is
+// wrong) is worse than the cost of an extra re-check for an unaffected
+// principal.
 //
-// Every credential write path must call this. It is exported because the
-// writers live on other types (FileStore, the keychain helpers) that have no
-// reference to a Resolver.
+// It is exported because the writers live on other types (FileStore, the
+// keychain helpers) that have no reference to a Resolver.
 func InvalidateHasKey(provider string) {
 	provider = strings.ToLower(strings.TrimPrefix(provider, "oauth:"))
 
 	negCacheMu.Lock()
-	_, existed := negCache[provider]
-	delete(negCache, provider)
+	dropped := 0
+	for k := range negCache {
+		if k.Provider == provider {
+			delete(negCache, k)
+			dropped++
+		}
+	}
 	negCacheMu.Unlock()
 
-	if existed {
+	if dropped > 0 {
 		utils.LogWithFields(utils.LevelDebug, "auth", "haskey negative cache invalidated", map[string]any{
-			"provider": provider,
+			"provider": provider, "entries": dropped,
 		})
 	}
 }
 
-// InvalidateAllHasKey drops every cached negative. Used when a write's scope
-// is unknown, and by tests.
+// InvalidateHasKeySubject drops the cached negative for exactly one
+// (subject, provider) pair -- the principal-scoped counterpart to
+// InvalidateHasKey, used by InvalidatePrincipal (child 07's single
+// invalidation entry point) so invalidating one principal's credential state
+// never touches another principal's cached negative for the same provider.
+func InvalidateHasKeySubject(subject, provider string) {
+	provider = strings.ToLower(strings.TrimPrefix(provider, "oauth:"))
+
+	negCacheMu.Lock()
+	_, existed := negCache[negKey{Subject: subject, Provider: provider}]
+	delete(negCache, negKey{Subject: subject, Provider: provider})
+	negCacheMu.Unlock()
+
+	if existed {
+		utils.LogWithFields(utils.LevelDebug, "auth", "haskey negative cache invalidated for subject", map[string]any{
+			"subject": subject, "provider": provider,
+		})
+	}
+}
+
+// InvalidateAllHasKey drops every cached negative, for every subject. Used
+// when a write's scope is unknown, and by tests.
 func InvalidateAllHasKey() {
 	negCacheMu.Lock()
 	size := len(negCache)
-	negCache = make(map[string]negativeEntry)
+	negCache = make(map[negKey]negativeEntry)
 	negCacheMu.Unlock()
 
 	if size > 0 {

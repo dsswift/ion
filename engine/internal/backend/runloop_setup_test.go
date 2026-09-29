@@ -836,6 +836,59 @@ func TestLoadOrCreateConversation_NoParent_LeavesParentIDEmpty(t *testing.T) {
 	}
 }
 
+// TestLoadOrCreateConversation_StampsPrincipalOnFreshConversation verifies
+// that a fresh conversation minted with opts.Principal set carries that
+// principal, projected to the durable header shape, on its very first save
+// (manifest C1/C2 "stamped at mint" contract).
+func TestLoadOrCreateConversation_StampsPrincipalOnFreshConversation(t *testing.T) {
+	opts := types.RunOptions{
+		ConversationID: "principal-fresh-conv-id",
+		Principal:      &types.SessionPrincipal{Subject: "local:alice", Provider: "os", Kind: "local", DisplayName: "Alice"},
+	}
+	conv, err := loadOrCreateConversation(opts, "mock-model")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if conv.Principal == nil {
+		t.Fatal("expected a header principal, got nil")
+	}
+	if conv.Principal.Subject != "local:alice" {
+		t.Errorf("header principal subject = %q, want local:alice", conv.Principal.Subject)
+	}
+	if conv.Principal.DisplayName != "Alice" {
+		t.Errorf("header principal display name = %q, want Alice", conv.Principal.DisplayName)
+	}
+}
+
+// TestLoadOrCreateConversation_NoPrincipal_LeavesHeaderUnowned verifies the
+// non-breaking default: a nil opts.Principal leaves the header with no
+// owner, exactly as before this field existed.
+func TestLoadOrCreateConversation_NoPrincipal_LeavesHeaderUnowned(t *testing.T) {
+	opts := types.RunOptions{ConversationID: "no-principal-conv-id"}
+	conv, err := loadOrCreateConversation(opts, "mock-model")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if conv.Principal != nil {
+		t.Errorf("expected no header principal, got %+v", conv.Principal)
+	}
+}
+
+// TestStampPrincipalAtMint_NeverOverwritesExistingOwner verifies that a
+// conversation whose header already carries a DIFFERENT principal keeps its
+// owner -- the header's owner is set once, at mint, and never silently
+// reassigned by a later session that attaches a different principal.
+func TestStampPrincipalAtMint_NeverOverwritesExistingOwner(t *testing.T) {
+	conv := conversation.CreateConversation("mismatch-conv-id", "", "mock-model")
+	conv.Principal = &types.ConversationPrincipal{Subject: "local:alice"}
+
+	stampPrincipalAtMint(conv, &types.SessionPrincipal{Subject: "local:bob"})
+
+	if conv.Principal.Subject != "local:alice" {
+		t.Errorf("header principal subject = %q, want unchanged local:alice", conv.Principal.Subject)
+	}
+}
+
 // --- plan mode Bash allowlist tests ---
 
 // TestBuildToolDefs_PlanModeBashIncludedWhenAllowlistSet verifies that the

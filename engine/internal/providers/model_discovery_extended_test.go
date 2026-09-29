@@ -128,11 +128,9 @@ func TestDiscoveryExtendedPayload(t *testing.T) {
 	}
 }
 
-// TestFetchAnthropicModelsDisplayName verifies the dedicated Anthropic decode:
-// its native /v1/models payload is snake_case (`display_name`), which the
-// generic camelCase decoder does not read, so fetchAnthropicModels decodes it
-// directly and carries the friendly name onto the entry. This is the API-key
-// path's parity with the catalog's DisplayName.
+// TestFetchAnthropicModelsDisplayName verifies the dedicated Anthropic decode
+// carries the native /v1/models `display_name` onto the entry. This is the
+// API-key path's parity with the catalog's DisplayName.
 func TestFetchAnthropicModelsDisplayName(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/models" {
@@ -351,8 +349,9 @@ func TestGatewayProviderDialectDispatch(t *testing.T) {
 		"gw-chat":   "/v1/chat/completions",
 		"gw-codex":  "/v1/responses",
 	}
+	authCtx := WithRequestCredential(t.Context(), testStaticAuthenticator{key: "gw-key", header: "x-api-key"})
 	for model, wantPath := range wantPaths {
-		events, errc := gw.Stream(t.Context(), types.LlmStreamOptions{
+		events, errc := gw.Stream(authCtx, types.LlmStreamOptions{
 			Model:    model,
 			Messages: []types.LlmMessage{{Role: "user", Content: "hi"}},
 		})
@@ -366,7 +365,7 @@ func TestGatewayProviderDialectDispatch(t *testing.T) {
 	}
 
 	// Qualified id strips to the bare wire model and routes by dialect.
-	events, errc := gw.Stream(t.Context(), types.LlmStreamOptions{
+	events, errc := gw.Stream(authCtx, types.LlmStreamOptions{
 		Model:    "test-gw3/gw-claude",
 		Messages: []types.LlmMessage{{Role: "user", Content: "hi"}},
 	})
@@ -503,5 +502,55 @@ func TestStoreResultLiveMetadataWinsOverExisting(t *testing.T) {
 	}
 	if qualified.CostPer1kInput != 0.00175 || qualified.Dialect != "openai-responses" {
 		t.Errorf("qualified alias metadata wrong: in=%v dialect=%q", qualified.CostPer1kInput, qualified.Dialect)
+	}
+}
+
+// TestFetchModelsForProvider_AnthropicAlwaysUsesXApiKey pins that
+// fetchModelsForProvider("anthropic", ...) always authenticates with
+// x-api-key regardless of the configured authHeader override -- Anthropic's
+// native discovery endpoint has no other auth style. This is a regression
+// test for the authApplier refactor (child 05, entitlement.go): a first
+// pass at that refactor accidentally routed anthropic's raw-key discovery
+// call through the generic authHeader-driven applier, which silently
+// dropped the header to a Bearer token instead.
+func TestFetchModelsForProvider_AnthropicAlwaysUsesXApiKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-api-key") != "sk-test" {
+			t.Errorf("x-api-key = %q, want sk-test", r.Header.Get("x-api-key"))
+		}
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Errorf("Authorization header set to %q, want empty (anthropic never uses Bearer)", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"data":[]}`)
+	}))
+	defer srv.Close()
+
+	// A non-empty, wrong authHeader override must not leak into the
+	// anthropic-specific path.
+	if _, err := fetchModelsForProvider("anthropic", srv.URL, "sk-test", "authorization"); err != nil {
+		t.Fatalf("fetch error: %v", err)
+	}
+}
+
+// TestFetchModelsForProvider_GoogleAlwaysUsesURLKey pins that
+// fetchModelsForProvider("google", ...) always authenticates with a ?key=
+// query parameter regardless of the configured authHeader override --
+// Gemini's native discovery endpoint takes no header-based key.
+func TestFetchModelsForProvider_GoogleAlwaysUsesURLKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("key") != "gk-test" {
+			t.Errorf("key query param = %q, want gk-test", r.URL.Query().Get("key"))
+		}
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Errorf("Authorization header set to %q, want empty (google discovery uses ?key=)", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"models":[]}`)
+	}))
+	defer srv.Close()
+
+	if _, err := fetchModelsForProvider("google", srv.URL, "gk-test", "authorization"); err != nil {
+		t.Fatalf("fetch error: %v", err)
 	}
 }

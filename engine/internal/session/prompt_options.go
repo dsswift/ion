@@ -199,6 +199,13 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		PlanFilePath:                s.planFilePath,
 		PlanModeAllowedBashCommands: s.planModeAllowedBashCommands,
 		PlanModeAllowedMcpTools:     s.planModeAllowedMcpTools,
+		// Principal is the turn's attribution: overrides.Principal (a
+		// send_prompt-scoped override) takes priority when present, else the
+		// session's own stamped principal. Used only to stamp a freshly
+		// minted conversation header and to resolve Context.Identity() for
+		// this run's hooks -- never to change the session's stored
+		// principal or an existing header's owner.
+		Principal: turnPrincipal(s, overrides),
 	}
 
 	if overrides != nil {
@@ -705,4 +712,16 @@ func injectPluginContext(s *engineSession, opts *types.RunOptions) {
 	if len(s.pluginSessionMessages) > 0 {
 		opts.InitialMessages = append(opts.InitialMessages, s.pluginSessionMessages...)
 	}
+}
+
+// turnPrincipal resolves the attribution for one prompt: a send_prompt-scoped
+// override takes priority (manifest C2's "overrides attribution for that
+// turn's hooks and telemetry only" semantics), else the session's own
+// stamped principal. Returns nil when neither is set -- the session behaves
+// exactly as it did before this field existed.
+func turnPrincipal(s *engineSession, overrides *PromptOverrides) *types.SessionPrincipal {
+	if overrides != nil && overrides.Principal != nil {
+		return overrides.Principal
+	}
+	return s.principal
 }

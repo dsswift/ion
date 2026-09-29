@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // RetryConfig controls retry behavior for provider streams.
@@ -26,6 +27,25 @@ type RetryConfig struct {
 	PersistentMaxWaitMs         int64
 	OnRetryWait                 func(attempt, delayMs int, err *ProviderError)
 	OnFallback                  func(fromModel, toModel string, hopIndex int)
+	// AttachAuth re-resolves and attaches the acting principal's request
+	// credential for providerID, returning the context WithRequestCredential
+	// carries it on. Called before every Stream call -- the initial one and
+	// each fallback-chain hop -- because a hop can switch to a different
+	// provider than the one the caller originally attached auth for (R-02,
+	// R-03: a fallback must authenticate as the SAME principal, never fall
+	// back to a shared/no credential). nil means the context already carries
+	// whatever credential the caller attached and is used unchanged --
+	// preserves the pre-existing behavior for any caller that never adopted
+	// per-principal credentials.
+	AttachAuth func(ctx context.Context, providerID string) context.Context
+	// Subject is the acting principal, used only for the auth-rejection
+	// self-heal below (child 07, R-19). "" is the unattributed principal --
+	// InvalidatePrincipal("", providerID) still clears that principal's own
+	// cached negative/entitlement/token state, so self-heal is meaningful
+	// even for a single-user engine that keeps stale state around (a
+	// revoked key that was cached positive nowhere, but whose entitlement or
+	// negative HasKey cache could still be stale).
+	Subject string
 }
 
 func (c *RetryConfig) maxRetries() int {
@@ -97,6 +117,11 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 		attempt := 0
 		fallbackIdx := -1 // -1 = primary; 0..len(chain)-1 = chain hop
 		startTime := time.Now()
+		// authSelfHealed bounds the auth-rejection self-heal (child 07,
+		// R-19) to exactly one attempt across the whole retry loop -- not
+		// per fallback hop, so a persistently revoked credential cannot
+		// retry once per chain link and turn one rejection into N.
+		authSelfHealed := false
 
 		// Events are forwarded to the caller as they arrive so consumers
 		// stream live — time-to-first-token is a user-visible property of
@@ -124,7 +149,11 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 			streamOpts := opts
 			streamOpts.Model = currentModel
 
-			evCh, errCh := currentProvider.Stream(ctx, streamOpts)
+			attemptCtx := ctx
+			if config != nil && config.AttachAuth != nil {
+				attemptCtx = config.AttachAuth(ctx, currentProvider.ID())
+			}
+			evCh, errCh := currentProvider.Stream(attemptCtx, streamOpts)
 
 			// Forward each event to the caller immediately.
 			var streamErr error
@@ -166,8 +195,42 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 			}
 			pe.Attempt = attempt
 
+			// Auth rejection self-heal (child 07, R-19): a 401/403 is
+			// Retryable:false (errors.go), which would otherwise return
+			// immediately below. That non-retryable tag is exactly what
+			// keeps this a single deliberate re-resolution rather than a
+			// generic retry loop -- ErrAuth stays Retryable:false for every
+			// OTHER consumer; this is the one caller that treats it as a
+			// one-shot self-heal opportunity BEFORE the generic
+			// not-retryable return. principal_credential_unresolved (child
+			// 04's refusal) is deliberately excluded: invalidating and
+			// re-resolving a principal the fall-through policy already
+			// refused cannot produce a different answer, so retrying it
+			// would just be a wasted round trip with an identical outcome.
+			if pe.Code == ErrAuth && pe.Reason != ReasonPrincipalCredentialUnresolved && !authSelfHealed && config != nil && config.AttachAuth != nil {
+				authSelfHealed = true
+				InvalidatePrincipal(config.Subject, currentProvider.ID())
+				utils.LogWithFields(utils.LevelInfo, "providers.retry", "auth rejection; invalidated and re-resolving once", map[string]any{
+					"subject": config.Subject, "provider": currentProvider.ID(),
+				})
+				if !sendReset() {
+					errc <- ctx.Err()
+					return
+				}
+				continue // re-resolve auth and retry immediately, no backoff
+			}
+
 			// Not retryable
 			if !pe.Retryable {
+				if pe.Code == ErrAuth {
+					subject := ""
+					if config != nil {
+						subject = config.Subject
+					}
+					utils.LogWithFields(utils.LevelWarn, "providers.retry", "auth rejection after re-resolution; not retrying again", map[string]any{
+						"subject": subject, "provider": currentProvider.ID(), "already_self_healed": authSelfHealed,
+					})
+				}
 				errc <- pe
 				return
 			}

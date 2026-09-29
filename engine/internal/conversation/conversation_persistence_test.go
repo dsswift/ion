@@ -470,6 +470,45 @@ func TestForkConversation_V2_PreservesSystemAndModel(t *testing.T) {
 	}
 }
 
+// TestForkConversation_V2_CopiesSourcePrincipal proves a fork inherits its
+// source conversation's header principal (manifest C1/C2) verbatim -- a
+// fork is a client-owned branch of the same conversation family, and its
+// owner does not change.
+func TestForkConversation_V2_CopiesSourcePrincipal(t *testing.T) {
+	conv := CreateConversation("fork-principal", "", "claude-3")
+	conv.Principal = &types.ConversationPrincipal{Subject: "local:alice", Provider: "os", DisplayName: "Alice"}
+	AddUserMessage(conv, "test")
+
+	forked := ForkConversation(conv, 0)
+
+	if forked.Principal == nil {
+		t.Fatal("forked conversation has no principal, want copied from source")
+	}
+	if forked.Principal.Subject != "local:alice" {
+		t.Errorf("forked principal subject = %q, want local:alice", forked.Principal.Subject)
+	}
+}
+
+// TestForkConversationBefore_CopiesSourcePrincipal is the ForkConversationBefore
+// sibling of the test above -- the other fork constructor (fork_session's
+// entryID-addressed path) must inherit the source principal identically.
+func TestForkConversationBefore_CopiesSourcePrincipal(t *testing.T) {
+	conv := CreateConversation("fork-before-principal", "", "claude-3")
+	conv.Principal = &types.ConversationPrincipal{Subject: "local:bob", Provider: "os", DisplayName: "Bob"}
+	entry := AddUserMessage(conv, "hello")
+	if entry == nil {
+		t.Fatal("AddUserMessage returned nil entry")
+	}
+
+	forked, err := ForkConversationBefore(conv, entry.ID)
+	if err != nil {
+		t.Fatalf("ForkConversationBefore: %v", err)
+	}
+	if forked.Principal == nil || forked.Principal.Subject != "local:bob" {
+		t.Errorf("forked principal = %+v, want local:bob", forked.Principal)
+	}
+}
+
 func TestForkConversation_V2_NewMessagesCreateSibling(t *testing.T) {
 	conv := CreateConversation("fork-sib", "", "claude-3")
 	for i := 0; i < 3; i++ {
@@ -907,5 +946,53 @@ func TestScanNonEmptyLines_LargeToken(t *testing.T) {
 	}
 	if lines[0] != line {
 		t.Errorf("round-tripped line length = %d, want %d", len(lines[0]), len(line))
+	}
+}
+
+// TestSaveLoad_PrincipalSurvivesTheSplitFormatRoundTrip pins FR-01/FR-04's
+// load-bearing assumption -- "the durable owner attribution stamped on a
+// conversation's header at mint" -- against the CURRENT (split) save format,
+// which is what every conversation with tree Entries actually uses. Before
+// this fix, saveSplit's hand-built llmHeader map never included "principal"
+// at all: a conversation's Principal survived in memory but silently
+// vanished on every real save/load cycle, which made checkConversationAccess
+// (session/principal_guard.go) refuse the OWNER's own conversation.
+func TestSaveLoad_PrincipalSurvivesTheSplitFormatRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+
+	conv := CreateConversation("principal-roundtrip-1", "", "claude-3")
+	conv.Principal = &types.ConversationPrincipal{Subject: "oidc:alice", Provider: "entra", DisplayName: "Alice"}
+	AddUserMessage(conv, "hi") // populates Entries, forcing the split (current-format) save path
+
+	if err := Save(conv, dir); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := Load("principal-roundtrip-1", dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Principal == nil {
+		t.Fatal("expected Principal to survive the split-format round-trip, got nil")
+	}
+	if *loaded.Principal != *conv.Principal {
+		t.Errorf("Principal = %+v, want %+v", *loaded.Principal, *conv.Principal)
+	}
+}
+
+func TestSaveLoad_UnattributedConversationStaysNilThroughTheRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	conv := CreateConversation("principal-roundtrip-2", "", "claude-3")
+	AddUserMessage(conv, "hi")
+
+	if err := Save(conv, dir); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	loaded, err := Load("principal-roundtrip-2", dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Principal != nil {
+		t.Errorf("expected nil Principal for an unattributed conversation, got %+v", *loaded.Principal)
 	}
 }

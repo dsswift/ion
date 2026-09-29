@@ -35,6 +35,7 @@ func (m *Manager) buildRunConfig(
 	telemCollector *telemetry.Collector,
 	mcpConns []*mcp.Connection,
 	currentModel string,
+	principal *types.SessionPrincipal,
 ) *backend.RunConfig {
 	runCfg := &backend.RunConfig{}
 
@@ -140,6 +141,10 @@ func (m *Manager) buildRunConfig(
 		runCfg.WorkspaceChecker = m.workspaceChecker()
 	}
 
+	// Everything that depends on WHO this run acts as: sandbox, principal
+	// boundary, git identity, provider credentials. See wirePrincipalRun.
+	m.wirePrincipalRun(s, key, principal, runCfg)
+
 	// Client tool gate: wired only for sessions whose EngineConfig.ToolGate
 	// opted in (see session/tool_gate.go). Runs in the tool loop after the
 	// permission engine and workspace containment, before sandbox wrapping
@@ -157,24 +162,27 @@ func (m *Manager) buildRunConfig(
 	if m.config != nil && m.config.Enterprise != nil {
 		capturedEnterprise := m.config.Enterprise
 		capturedTelem := telemCollector
+		capturedPrincipal := principal
 		runCfg.Hooks.OnToolCall = func(info backend.ToolCallInfo) (*backend.ToolCallResult, error) {
-			if !ionconfig.IsToolAllowed(info.ToolName, capturedEnterprise) {
-				utils.LogWithFields(utils.LevelInfo, "session", "enterprise policy blocked tool call", map[string]any{"key": key, "tool": info.ToolName})
+			if !ionconfig.IsToolAllowedFor(info.ToolName, capturedPrincipal, capturedEnterprise) {
+				subject := ""
+				if capturedPrincipal != nil {
+					subject = capturedPrincipal.Subject
+				}
+				utils.LogWithFields(utils.LevelInfo, "session", "enterprise policy blocked tool call", map[string]any{"key": key, "tool": info.ToolName, "subject": subject})
 				// Enforcement audit event (feature 0010 audit clause). Nil-safe:
 				// a session without telemetry emits nothing.
 				if capturedTelem != nil {
-					source := "allowlist"
-					if capturedEnterprise.ToolRestrictions != nil {
-						for _, d := range capturedEnterprise.ToolRestrictions.Deny {
-							if d == info.ToolName {
-								source = "denylist"
-								break
-							}
-						}
-					}
+					source, rule := ionconfig.ToolBlockReason(info.ToolName, capturedPrincipal, capturedEnterprise)
 					capturedTelem.Event(telemetry.EnforcementToolBlocked, map[string]any{
 						"subject": info.ToolName,
 						"source":  source,
+						// FR-03: which principal and which per-principal rule (if
+						// any) produced the block, so an audit log can attribute
+						// enforcement action to the policy that caused it, not
+						// just the tool name.
+						"principal": subject,
+						"rule":      rule,
 					}, nil)
 				}
 				return &backend.ToolCallResult{Block: true, Reason: "tool blocked by enterprise policy"}, nil

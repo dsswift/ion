@@ -2,9 +2,11 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/cost"
 	"github.com/dsswift/ion/engine/internal/providers"
@@ -88,32 +90,51 @@ func (b *ApiBackend) runImageLoop(ctx context.Context, run *activeRun, opts type
 		SessionID: conv.ID,
 	}})
 
-	// Verify a direct API key is resolvable. Image generation APIs cannot be
-	// proxied through a delegated CLI (Codex/ChatGPT subscription). When only
-	// a CLI-backed credential exists, fail fast with an actionable message.
+	// Verify a request credential is resolvable. Image generation APIs cannot
+	// be proxied through a delegated CLI (Codex/ChatGPT subscription). When
+	// only a CLI-backed credential exists, fail fast with an actionable
+	// message.
 	imageProviderID := "openai" // all current image models are OpenAI
 	if info := providers.GetModelInfo(model); info != nil && info.ProviderID != "" {
 		imageProviderID = info.ProviderID
 	}
 
-	apiKey := ""
-	if b.authResolver != nil {
-		var err error
-		apiKey, err = b.authResolver.ResolveKey(imageProviderID)
+	var cc *auth.CredentialContext
+	if run.cfg != nil {
+		cc = run.cfg.CredentialContext
+	}
+	if cc == nil {
+		b.mu.Lock()
+		authRes := b.authResolver
+		b.mu.Unlock()
+		if authRes != nil {
+			cc = auth.NewCredentialContext(nil, authRes, nil)
+		}
+	}
+	if cc != nil {
+		a, err := cc.Authenticator(ctx, imageProviderID)
 		if err != nil {
-			utils.LogWithFields(utils.LevelWarn, "backend.image", "auth resolver error", map[string]any{
-				"run_id":   run.requestID,
-				"model":    model,
-				"provider": imageProviderID,
-				"error":    utils.ErrStr(err),
+			if errors.Is(err, auth.ErrPrincipalCredentialUnresolved) {
+				pe := providers.NewPrincipalCredentialError(imageProviderID, cc.Subject())
+				b.emit(run, types.NormalizedEvent{Data: &types.ErrorEvent{
+					ErrorMessage: pe.Message,
+					ErrorCode:    "image_no_api_key",
+				}})
+				b.emitError(run, pe)
+				b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
+				return
+			}
+			utils.LogWithFields(utils.LevelInfo, "backend.image", "no request credential", map[string]any{
+				"run_id": run.requestID, "model": model, "provider": imageProviderID, "error": err.Error(),
+			})
+		} else if a != nil {
+			ctx = providers.WithRequestCredential(ctx, a)
+			utils.LogWithFields(utils.LevelInfo, "backend.image", "request credential attached", map[string]any{
+				"run_id": run.requestID, "provider": imageProviderID, "subject": cc.Subject(),
 			})
 		}
 	}
-	if apiKey == "" {
-		// Fall back to the registry (set by the server at startup from env/keychain).
-		apiKey = providers.GetProviderKey(imageProviderID)
-	}
-	if apiKey == "" {
+	if _, ok := providers.RequestCredentialFrom(ctx); !ok {
 		msg := fmt.Sprintf(
 			"%s requires a direct %s API key; image generation is not available via a CLI subscription path. Add an API key in Settings → Providers.",
 			model, imageProviderID,
@@ -148,10 +169,6 @@ func (b *ApiBackend) runImageLoop(ctx context.Context, run *activeRun, opts type
 		b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
 		return
 	}
-
-	// Set the resolved API key on the provider registry so the image provider
-	// can pick it up via GetProviderKey at request time.
-	providers.SetProviderKey(imageProviderID, apiKey)
 
 	utils.LogWithFields(utils.LevelInfo, "backend.image", "calling image provider", map[string]any{
 		"run_id":   run.requestID,

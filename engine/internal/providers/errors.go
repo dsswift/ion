@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // Error codes matching providers/errors.ts ProviderErrorCode.
@@ -35,6 +37,13 @@ type ProviderError struct {
 	RetryAfterMs int64  `json:"retryAfterMs,omitempty"`
 	Attempt      int    `json:"attempt,omitempty"`
 	Cause        error  `json:"-"`
+	// Reason carries a distinct sub-classification within Code, when one
+	// exists. Empty for the ordinary "auth"-coded errors this file already
+	// produces (a plain missing/rejected key). SC-4 (FR-05, R-22) sets it to
+	// ReasonPrincipalCredentialUnresolved so a client can render "your
+	// access is not provisioned" rather than the generic "configure a key"
+	// message a bare ErrAuth implies.
+	Reason string `json:"reason,omitempty"`
 }
 
 func (e *ProviderError) Error() string {
@@ -112,6 +121,32 @@ func NewProviderError(code, message string, httpStatus int, retryable bool) *Pro
 		Message:    message,
 		HTTPStatus: httpStatus,
 		Retryable:  retryable,
+	}
+}
+
+// ReasonPrincipalCredentialUnresolved distinguishes a refusal caused by an
+// attributed principal having no resolvable credential from a plain missing
+// key (R-22). A client can use this to render "your access is not
+// provisioned" rather than "configure a key".
+const ReasonPrincipalCredentialUnresolved = "principal_credential_unresolved"
+
+// NewPrincipalCredentialError builds the refusal SC-4 defines: raised before
+// the HTTP request is built (a pre-request refusal, never a request that was
+// sent and rejected), typed ErrAuth, and -- critically -- non-retryable, so
+// child 07's 401 self-healing arm never treats this as a transient failure
+// to retry. subject is logged for audit, never included in the message
+// (the message names no credential and no source value, matching the
+// `secrets` gate).
+func NewPrincipalCredentialError(providerID, subject string) *ProviderError {
+	utils.LogWithFields(utils.LevelError, "Providers", "refusing run: no credential for principal", map[string]any{
+		"provider": providerID, "subject": subject, "reason": ReasonPrincipalCredentialUnresolved,
+	})
+	return &ProviderError{
+		Code:       ErrAuth,
+		Message:    fmt.Sprintf("no credential resolved for the acting principal on provider %q", providerID),
+		Reason:     ReasonPrincipalCredentialUnresolved,
+		HTTPStatus: 401,
+		Retryable:  false,
 	}
 }
 

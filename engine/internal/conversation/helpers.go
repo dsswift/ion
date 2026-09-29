@@ -23,14 +23,11 @@ import (
 // to resolve the default, so callers that pass dir="" automatically benefit
 // from ION_DATA_DIR without any changes to their call sites.
 func DefaultConversationsDir() string {
-	if v := os.Getenv("ION_DATA_DIR"); v != "" {
-		return filepath.Join(v, "conversations")
-	}
-	home, err := utils.UserHomeDir()
-	if err != nil || home == "" {
+	dir := utils.IonDir()
+	if dir == "" {
 		return ""
 	}
-	return filepath.Join(home, ".ion", "conversations")
+	return filepath.Join(dir, "conversations")
 }
 
 // DiscoverContextFiles walks parent directories looking for context files.
@@ -344,4 +341,27 @@ func strPtr(s string) *string {
 func jsonBool(m map[string]any, key string) bool {
 	value, ok := m[key].(bool)
 	return ok && value
+}
+
+// jsonPrincipal decodes the optional "principal" header field back into a
+// *types.ConversationPrincipal via a JSON re-marshal of the decoded map
+// (the same pattern as asMessageData/asCompactionData elsewhere in this
+// file) -- json.Unmarshal already produced a map[string]any for this
+// nested object, not the typed struct directly. Absent or malformed
+// returns nil, never an error: a conversation predating this field (or
+// with a corrupt principal block) is simply unattributed, not unreadable.
+func jsonPrincipal(m map[string]any) *types.ConversationPrincipal {
+	raw, ok := m["principal"]
+	if !ok || raw == nil {
+		return nil
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return nil
+	}
+	var p types.ConversationPrincipal
+	if err := json.Unmarshal(b, &p); err != nil || p.Subject == "" {
+		return nil
+	}
+	return &p
 }

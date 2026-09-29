@@ -437,3 +437,51 @@ func TestWrapCommand_FilesystemAndNetworkCombined(t *testing.T) {
 		t.Error("expected deny network-outbound when AllowedDomains set")
 	}
 }
+
+// FR-03: AllowRead carves a read exception out of a broader DenyRead subpath
+// (the session's own principal partition inside a denied principals/ tree).
+
+func TestGenerateSeatbeltProfile_AllowReadCarvesExceptionOutOfDenyRead(t *testing.T) {
+	cfg := Config{
+		Filesystem: FSConfig{
+			DenyRead:  []string{"/data/principals"},
+			AllowRead: []string{"/data/principals/alice--abc123"},
+		},
+	}
+	profile := generateSeatbeltProfile(cfg)
+
+	denyIdx := strings.Index(profile, `(deny file-read* (subpath "/data/principals"))`)
+	allowIdx := strings.Index(profile, `(allow file-read* (subpath "/data/principals/alice--abc123"))`)
+	if denyIdx == -1 {
+		t.Fatal("expected the broad deny rule present")
+	}
+	if allowIdx == -1 {
+		t.Fatal("expected the carved-out allow rule present")
+	}
+	if allowIdx < denyIdx {
+		t.Error("expected the allow exception to be written AFTER its enclosing deny (later, more specific rule governs)")
+	}
+}
+
+func TestGenerateBwrapArgs_AllowReadReExposesSubpathAfterTmpfs(t *testing.T) {
+	cfg := Config{
+		Filesystem: FSConfig{
+			DenyRead:  []string{"/data/principals"},
+			AllowRead: []string{"/data/principals/alice--abc123"},
+		},
+	}
+	args := generateBwrapArgs(cfg)
+	joined := strings.Join(args, " ")
+
+	if !strings.Contains(joined, "--tmpfs /data/principals") {
+		t.Error("expected --tmpfs hiding the broad deny path")
+	}
+	if !strings.Contains(joined, "--ro-bind /data/principals/alice--abc123 /data/principals/alice--abc123") {
+		t.Error("expected a read-only bind re-exposing the allowed subpath")
+	}
+	tmpfsIdx := strings.Index(joined, "--tmpfs /data/principals")
+	roBindIdx := strings.Index(joined, "--ro-bind /data/principals/alice--abc123")
+	if roBindIdx < tmpfsIdx {
+		t.Error("expected the ro-bind exception to be appended AFTER the tmpfs mount it carves an exception out of")
+	}
+}

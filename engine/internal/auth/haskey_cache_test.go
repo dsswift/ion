@@ -18,11 +18,11 @@ func resetCache(t *testing.T) {
 func TestNegativeCache_RemembersAMiss(t *testing.T) {
 	resetCache(t)
 
-	if hasNegative("anthropic") {
+	if hasNegative("", "anthropic") {
 		t.Fatal("cache should start empty")
 	}
-	rememberNegative("anthropic")
-	if !hasNegative("anthropic") {
+	rememberNegative("", "anthropic")
+	if !hasNegative("", "anthropic") {
 		t.Error("a recorded negative should be readable")
 	}
 }
@@ -30,8 +30,8 @@ func TestNegativeCache_RemembersAMiss(t *testing.T) {
 func TestNegativeCache_IsCaseInsensitive(t *testing.T) {
 	resetCache(t)
 
-	rememberNegative("Anthropic")
-	if !hasNegative("anthropic") {
+	rememberNegative("", "Anthropic")
+	if !hasNegative("", "anthropic") {
 		t.Error("provider ids are case-insensitive elsewhere; the cache must match")
 	}
 }
@@ -40,13 +40,13 @@ func TestNegativeCache_ExpiresAfterTTL(t *testing.T) {
 	resetCache(t)
 	SetNegativeCacheTTL(1)
 
-	rememberNegative("anthropic")
-	if !hasNegative("anthropic") {
+	rememberNegative("", "anthropic")
+	if !hasNegative("", "anthropic") {
 		t.Fatal("entry should be fresh immediately after recording")
 	}
 
 	time.Sleep(1100 * time.Millisecond)
-	if hasNegative("anthropic") {
+	if hasNegative("", "anthropic") {
 		t.Error("entry should have expired past its TTL")
 	}
 }
@@ -59,14 +59,14 @@ func TestNegativeCache_ExpiresAfterTTL(t *testing.T) {
 func TestNegativeCache_InvalidateClearsTheStaleAnswer(t *testing.T) {
 	resetCache(t)
 
-	rememberNegative("anthropic")
-	if !hasNegative("anthropic") {
+	rememberNegative("", "anthropic")
+	if !hasNegative("", "anthropic") {
 		t.Fatal("precondition: a negative should be cached")
 	}
 
 	InvalidateHasKey("anthropic")
 
-	if hasNegative("anthropic") {
+	if hasNegative("", "anthropic") {
 		t.Error("a credential write must make the cached negative disappear immediately")
 	}
 }
@@ -77,10 +77,10 @@ func TestNegativeCache_InvalidateClearsTheStaleAnswer(t *testing.T) {
 func TestNegativeCache_InvalidateStripsOAuthPrefix(t *testing.T) {
 	resetCache(t)
 
-	rememberNegative("anthropic")
+	rememberNegative("", "anthropic")
 	InvalidateHasKey("oauth:anthropic")
 
-	if hasNegative("anthropic") {
+	if hasNegative("", "anthropic") {
 		t.Error("invalidating an oauth: key must clear the bare provider's negative")
 	}
 }
@@ -88,14 +88,14 @@ func TestNegativeCache_InvalidateStripsOAuthPrefix(t *testing.T) {
 func TestNegativeCache_InvalidateIsScopedToOneProvider(t *testing.T) {
 	resetCache(t)
 
-	rememberNegative("anthropic")
-	rememberNegative("openai")
+	rememberNegative("", "anthropic")
+	rememberNegative("", "openai")
 	InvalidateHasKey("anthropic")
 
-	if hasNegative("anthropic") {
+	if hasNegative("", "anthropic") {
 		t.Error("target provider should be cleared")
 	}
-	if !hasNegative("openai") {
+	if !hasNegative("", "openai") {
 		t.Error("an unrelated provider must not be cleared")
 	}
 }
@@ -103,11 +103,11 @@ func TestNegativeCache_InvalidateIsScopedToOneProvider(t *testing.T) {
 func TestNegativeCache_InvalidateAllClearsEverything(t *testing.T) {
 	resetCache(t)
 
-	rememberNegative("anthropic")
-	rememberNegative("openai")
+	rememberNegative("", "anthropic")
+	rememberNegative("", "openai")
 	InvalidateAllHasKey()
 
-	if hasNegative("anthropic") || hasNegative("openai") {
+	if hasNegative("", "anthropic") || hasNegative("", "openai") {
 		t.Error("InvalidateAllHasKey should clear every entry")
 	}
 }
@@ -118,8 +118,8 @@ func TestNegativeCache_DisabledNeverHits(t *testing.T) {
 	resetCache(t)
 	SetNegativeCacheTTL(-1)
 
-	rememberNegative("anthropic")
-	if hasNegative("anthropic") {
+	rememberNegative("", "anthropic")
+	if hasNegative("", "anthropic") {
 		t.Error("a disabled cache must not serve hits")
 	}
 }
@@ -129,8 +129,8 @@ func TestNegativeCache_ZeroSelectsDefaultTTL(t *testing.T) {
 	SetNegativeCacheTTL(-1)
 	SetNegativeCacheTTL(0)
 
-	rememberNegative("anthropic")
-	if !hasNegative("anthropic") {
+	rememberNegative("", "anthropic")
+	if !hasNegative("", "anthropic") {
 		t.Error("zero should re-enable the cache at the default TTL")
 	}
 }
@@ -142,11 +142,11 @@ func TestSetProgrammatic_InvalidatesCachedNegative(t *testing.T) {
 	resetCache(t)
 
 	r := NewResolver(nil)
-	rememberNegative("anthropic")
+	rememberNegative("", "anthropic")
 
 	r.SetProgrammatic("anthropic", "sk-test")
 
-	if hasNegative("anthropic") {
+	if hasNegative("", "anthropic") {
 		t.Error("setting a programmatic key must clear the cached negative")
 	}
 	if ok, source := r.HasKey("anthropic"); !ok || source != "programmatic" {
@@ -171,5 +171,114 @@ func TestHasKey_SeesAProgrammaticKeyWrittenAfterAMiss(t *testing.T) {
 
 	if ok, _ := r.HasKey("nonexistent-provider"); !ok {
 		t.Error("HasKey must see a credential added after a cached miss")
+	}
+}
+
+// TestNegativeCache_IsPerPrincipal pins R-29: a negative cached while
+// answering for one subject must not mask another subject's cache entry for
+// the same provider.
+func TestNegativeCache_IsPerPrincipal(t *testing.T) {
+	resetCache(t)
+
+	rememberNegative("alice", "anthropic")
+	if !hasNegative("alice", "anthropic") {
+		t.Fatal("alice's negative should be cached")
+	}
+	if hasNegative("bob", "anthropic") {
+		t.Error("bob must not see alice's cached negative for the same provider")
+	}
+}
+
+// TestNegativeCache_UnattributedUnchanged pins B-21: the unattributed
+// subject ("") behaves exactly as the pre-child-07 process-wide cache did.
+func TestNegativeCache_UnattributedUnchanged(t *testing.T) {
+	resetCache(t)
+
+	rememberNegative("", "anthropic")
+	if !hasNegative("", "anthropic") {
+		t.Error("the unattributed negative should be cached and readable")
+	}
+}
+
+// TestInvalidateHasKey_ClearsEverySubject pins that InvalidateHasKey (the
+// process-wide write-path invalidation) clears the negative for EVERY
+// subject on that provider -- a write whose scope is unknown must not leave
+// a different principal's stale negative behind.
+func TestInvalidateHasKey_ClearsEverySubject(t *testing.T) {
+	resetCache(t)
+
+	rememberNegative("alice", "anthropic")
+	rememberNegative("bob", "anthropic")
+	rememberNegative("", "anthropic")
+
+	InvalidateHasKey("anthropic")
+
+	if hasNegative("alice", "anthropic") || hasNegative("bob", "anthropic") || hasNegative("", "anthropic") {
+		t.Error("InvalidateHasKey should clear every subject's negative for the provider")
+	}
+}
+
+// TestInvalidateHasKeySubject_ScopedToOneSubject pins that the
+// subject-scoped invalidation never touches a different subject's cached
+// negative for the same provider.
+func TestInvalidateHasKeySubject_ScopedToOneSubject(t *testing.T) {
+	resetCache(t)
+
+	rememberNegative("alice", "anthropic")
+	rememberNegative("bob", "anthropic")
+
+	InvalidateHasKeySubject("alice", "anthropic")
+
+	if hasNegative("alice", "anthropic") {
+		t.Error("alice's negative should be cleared")
+	}
+	if !hasNegative("bob", "anthropic") {
+		t.Error("bob's negative must survive alice's invalidation")
+	}
+}
+
+// TestPositiveNeverCached pins the design's core rule: HasKey never caches a
+// positive result. Two consecutive calls for a provider WITH a credential
+// must each walk the resolution levels fresh, so a revoked credential is
+// visible on the very next call rather than served stale from a cache.
+func TestPositiveNeverCached(t *testing.T) {
+	resetCache(t)
+
+	r := NewResolver(nil)
+	r.SetProgrammatic("anthropic", "sk-test")
+
+	if ok, _ := r.HasKey("anthropic"); !ok {
+		t.Fatal("expected a positive result with the programmatic key set")
+	}
+
+	// Revoke the credential directly (not through a write path that would
+	// invalidate a cache) -- if HasKey cached the positive, the next call
+	// would still report true.
+	r.programmatic["anthropic"] = ""
+
+	if ok, _ := r.HasKey("anthropic"); ok {
+		t.Error("HasKey reported true after the credential was removed -- a positive was cached")
+	}
+}
+
+// TestTTLIsBackstopNotMechanism pins R-20: explicit invalidation clears a
+// cached negative immediately, well before the TTL would expire it on its
+// own -- proving the TTL is a backstop for a missed invalidation, not the
+// mechanism callers are expected to rely on.
+func TestTTLIsBackstopNotMechanism(t *testing.T) {
+	resetCache(t)
+	SetNegativeCacheTTL(300) // long enough that the TTL alone would not save this test
+
+	rememberNegative("alice", "anthropic")
+	if !hasNegative("alice", "anthropic") {
+		t.Fatal("precondition: a negative should be cached")
+	}
+
+	// Explicit invalidation must win immediately, without waiting anywhere
+	// near the configured 300s TTL.
+	InvalidateHasKeySubject("alice", "anthropic")
+
+	if hasNegative("alice", "anthropic") {
+		t.Error("explicit invalidation should clear the negative immediately, not wait for the TTL")
 	}
 }

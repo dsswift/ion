@@ -1,6 +1,8 @@
 package backend
 
 import (
+	"context"
+	"fmt"
 	"sync"
 
 	"github.com/dsswift/ion/engine/internal/auth"
@@ -169,9 +171,13 @@ func effectiveKind(requested string) string {
 }
 
 // resolveKind returns the effective kind for a model and logs a downgrade when
-// the requested kind is not yet available.
-func (h *HybridBackend) resolveKind(model string) string {
-	requested := h.kindFor(model)
+// the requested kind is not yet available. requiresPrincipalCredential is
+// forwarded to kindFor to close the CLI back door (R-40) for an attributed
+// principal the API path would refuse. keyOverride, when non-nil, is the
+// acting principal's own credential-presence check (child 06, R-13) --
+// forwarded unchanged to kindFor.
+func (h *HybridBackend) resolveKind(model string, requiresPrincipalCredential bool, keyOverride KeyHaver) string {
+	requested := h.kindFor(model, requiresPrincipalCredential, keyOverride)
 	eff := effectiveKind(requested)
 	if eff != requested {
 		utils.LogWithFields(utils.LevelWarn, "backend.hybrid", "requested backend kind unavailable, routing to api", map[string]any{
@@ -186,9 +192,13 @@ func (h *HybridBackend) resolveKind(model string) string {
 // ResolveFor returns the inner backend that should handle a run for the given
 // model, constructing it if necessary. This is the single routing entry point;
 // the session package's resolvedBackend helper delegates here so routing logic
-// lives in exactly one place.
+// lives in exactly one place. Callers here have no per-run CredentialContext
+// (ResolveFor is used for capability/backend-kind queries outside a live
+// run's dispatch, e.g. building tool defs before StartRunWithConfig), so
+// requiresPrincipalCredential is always false -- the authoritative refusal
+// decision is made by StartRunWithConfig at actual dispatch time.
 func (h *HybridBackend) ResolveFor(model string) RunBackend {
-	return h.get(h.resolveKind(model))
+	return h.get(h.resolveKind(model, false, nil))
 }
 
 // SetAuthResolver stores the resolver and forwards it to every api-capable
@@ -254,9 +264,12 @@ func (h *HybridBackend) InnerClaudeCode() *ClaudeCodeBackend {
 }
 
 // StartRun records the routing decision and dispatches to the chosen inner
-// backend. Callers who need per-run config should use StartRunWithConfig.
+// backend. Callers who need per-run config should use StartRunWithConfig. No
+// CredentialContext is available here (StartRun takes no RunConfig), so
+// requiresPrincipalCredential is false -- matching the pre-existing routing
+// behavior for this entry point exactly.
 func (h *HybridBackend) StartRun(requestID string, options types.RunOptions) {
-	kind := h.resolveKind(options.Model)
+	kind := h.resolveKind(options.Model, false, nil)
 	inner := h.get(kind)
 	h.recordRun(requestID, inner, kind, options.Model)
 	inner.StartRun(requestID, options)
@@ -268,8 +281,16 @@ func (h *HybridBackend) StartRun(requestID string, options types.RunOptions) {
 // spawner, and telemetry attach correctly. For subscription-routed runs
 // (claude-code/codex/grok/cursor) we fall back to StartRun on the inner
 // backend, which wires its own hooks via its subprocess protocol.
+//
+// requiresPrincipalCredential (R-40) is derived from cfg.CredentialContext's
+// fall-through policy for the acting principal, evaluated once here at
+// actual dispatch time -- this is the routing decision a run will really
+// use, so it is also what the provider-entry projection (dispatch_data.go)
+// must agree with for the "what the UI shows is what the next run will
+// actually pick" promise to hold.
 func (h *HybridBackend) StartRunWithConfig(requestID string, options types.RunOptions, cfg *RunConfig) {
-	kind := h.resolveKind(options.Model)
+	requiresPrincipalCredential := credentialContextRequiresPrincipal(cfg)
+	kind := h.resolveKind(options.Model, requiresPrincipalCredential, keyOverrideFor(context.Background(), cfg))
 	inner := h.get(kind)
 	h.recordRun(requestID, inner, kind, options.Model)
 	if api, ok := inner.(*ApiBackend); ok {
@@ -281,9 +302,15 @@ func (h *HybridBackend) StartRunWithConfig(requestID string, options types.RunOp
 		api.StartRunWithConfig(requestID, options, cfg)
 		return
 	}
-	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "StartRunWithConfig: subscription-routed, falling back to StartRun (cfg ignored)", map[string]any{
-		"request_id": requestID,
-		"kind":       kind,
+	telemetryWired := false
+	if setter, ok := inner.(RunTelemetrySetter); ok && cfg != nil && cfg.Telemetry != nil {
+		setter.SetRunTelemetry(requestID, cfg.Telemetry)
+		telemetryWired = true
+	}
+	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "StartRunWithConfig: subscription-routed, starting without cfg", map[string]any{
+		"request_id":      requestID,
+		"kind":            kind,
+		"telemetry_wired": telemetryWired,
 	})
 	inner.StartRun(requestID, options)
 }
@@ -347,16 +374,41 @@ func (h *HybridBackend) IsRunning(requestID string) bool {
 	return inner.IsRunning(requestID)
 }
 
-// WriteToStdin routes to the recorded inner backend.
+// WriteToStdin routes to the recorded inner backend. An unknown run is an
+// error: reporting success would tell the caller a message was delivered that
+// went nowhere.
 func (h *HybridBackend) WriteToStdin(requestID string, msg interface{}) error {
 	inner, _ := h.lookup(requestID)
 	if inner == nil {
-		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "WriteToStdin: not in routing table", map[string]any{
+		utils.LogWithFields(utils.LevelWarn, "backend.hybrid", "WriteToStdin: not in routing table", map[string]any{
 			"request_id": requestID,
 		})
-		return nil
+		return fmt.Errorf("run %q not in routing table", requestID)
 	}
 	return inner.WriteToStdin(requestID, msg)
+}
+
+// SteerViaStdin routes a stdin steer to the recorded inner backend when that
+// backend confirms stdin steers itself, and returns ErrStdinSteerUnsupported
+// otherwise so the caller falls back to WriteToStdin.
+func (h *HybridBackend) SteerViaStdin(requestID, message, injectionKind, clientMessageID string) error {
+	inner, backendKind := h.lookup(requestID)
+	if inner == nil {
+		utils.LogWithFields(utils.LevelWarn, "backend.hybrid", "SteerViaStdin: not in routing table", map[string]any{
+			"request_id": requestID,
+		})
+		return fmt.Errorf("run %q not in routing table", requestID)
+	}
+	steerer, ok := inner.(interface {
+		SteerViaStdin(requestID, message, kind, clientMessageID string) error
+	})
+	if !ok {
+		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "SteerViaStdin: inner backend has no confirmed stdin steer", map[string]any{
+			"request_id": requestID, "kind": backendKind,
+		})
+		return ErrStdinSteerUnsupported
+	}
+	return steerer.SteerViaStdin(requestID, message, injectionKind, clientMessageID)
 }
 
 // Steer satisfies a local `steerable` interface in the session package.

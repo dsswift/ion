@@ -53,3 +53,37 @@ func TestDispatchAgent_PropagatesParentWorkspaceChecker(t *testing.T) {
 		t.Fatalf("child WorkspaceChecker = %p, want parent checker %p", cfg.WorkspaceChecker, checker)
 	}
 }
+
+// principalWiringAccessor records the RunConfig the dispatch path asks the
+// parent session to stamp with its principal's wiring.
+type principalWiringAccessor struct {
+	*bumpCountingAccessor
+	wired *backend.RunConfig
+}
+
+func (a *principalWiringAccessor) WirePrincipalRunConfig(cfg *backend.RunConfig) {
+	a.wired = cfg
+	cfg.ToolEnv = map[string]string{"PARENT_PRINCIPAL": "wired"}
+}
+
+// TestDispatchAgent_ChildActsAsParentPrincipal pins that a dispatched child's
+// RunConfig carries the parent session's principal wiring. Without it the
+// child runs as nobody: on a partitioned instance its provider credential is
+// refused and the gateway answers 401 (a scheduled briefing agent, fired with
+// no human in the loop, was the reported case).
+func TestDispatchAgent_ChildActsAsParentPrincipal(t *testing.T) {
+	child := &configCapturingChildBackend{}
+	accessor := &principalWiringAccessor{bumpCountingAccessor: &bumpCountingAccessor{child: child}}
+
+	dispatch := BuildDispatchAgentFunc(accessor, nil, 0, "", nil)
+	if _, err := dispatch(extension.DispatchAgentOpts{WaitForCompletion: true, Name: "briefing-writer", Task: "brief"}); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	cfg := child.capturedConfig()
+	if cfg == nil || accessor.wired != cfg {
+		t.Fatalf("the child's own RunConfig was not wired to the parent principal (wired=%p, child=%p)", accessor.wired, cfg)
+	}
+	if cfg.ToolEnv["PARENT_PRINCIPAL"] != "wired" {
+		t.Fatalf("child RunConfig lost the principal wiring: ToolEnv=%v", cfg.ToolEnv)
+	}
+}

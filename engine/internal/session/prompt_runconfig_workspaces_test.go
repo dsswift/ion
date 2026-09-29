@@ -31,7 +31,7 @@ func workspaceRunCfg(t *testing.T, cfg *types.EngineRuntimeConfig) *backend.RunC
 	mgr.sessions = map[string]*engineSession{"ws-thread": s}
 	mgr.mu.Unlock()
 
-	return mgr.buildRunConfig(s, "ws-thread", "req-ws", apiBackend, nil, false, nil, nil, nil, "")
+	return mgr.buildRunConfig(s, "ws-thread", "req-ws", apiBackend, nil, false, nil, nil, nil, "", nil)
 }
 
 func TestBuildRunConfig_WorkspaceCheckerOnByDefault(t *testing.T) {

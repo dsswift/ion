@@ -30,16 +30,20 @@ const (
 	titleMaxTokens = 256
 )
 
-// authResolver is an optional hook that resolves and injects the API key for a
-// provider before the titling LLM call. Without this, the provider may not have
-// credentials (e.g. keychain-stored keys are only resolved through the auth
-// resolver, not at provider init time).
-var authResolver func(providerName string)
+// authResolver attaches a request credential to ctx for the named provider
+// before the titling LLM call, so the request authenticates instead of
+// relying on the provider having a credential of its own (providers hold
+// none since R-23). Without this, a keychain- or file-store-stored key would
+// never reach the request. Set via SetAuthResolver from main.go for the
+// process-wide (unattributed) path; a session-specific call
+// (GenerateTitleForPrincipal) supplies its own hook built from that
+// session's CredentialContext instead.
+var authResolver func(ctx context.Context, providerName string) context.Context
 
-// SetAuthResolver registers a function that ensures the named provider has a
-// valid API key injected via providers.SetProviderKey before streaming. Called
-// from main.go after constructing the auth.Resolver.
-func SetAuthResolver(fn func(providerName string)) {
+// SetAuthResolver registers the process-wide credential-attachment hook used
+// by GenerateTitle (the unattributed path). Called from main.go after
+// constructing the auth.Resolver.
+func SetAuthResolver(fn func(ctx context.Context, providerName string) context.Context) {
 	authResolver = fn
 }
 
@@ -48,6 +52,19 @@ func SetAuthResolver(fn func(providerName string)) {
 // provider is unavailable, or the model returns an empty response. Callers
 // should keep their fallback title.
 func GenerateTitle(ctx context.Context, firstMessage string) (string, error) {
+	return generateTitle(ctx, firstMessage, authResolver)
+}
+
+// GenerateTitleForPrincipal is GenerateTitle with an explicit credential
+// hook, so a session-scoped call authenticates as that session's acting
+// principal (R-11) rather than the process-wide fallback. attachAuth may be
+// nil (falls through to no credential attachment, matching an unattributed
+// GenerateTitle call with no resolver configured).
+func GenerateTitleForPrincipal(ctx context.Context, firstMessage string, attachAuth func(ctx context.Context, providerName string) context.Context) (string, error) {
+	return generateTitle(ctx, firstMessage, attachAuth)
+}
+
+func generateTitle(ctx context.Context, firstMessage string, attachAuth func(ctx context.Context, providerName string) context.Context) (string, error) {
 	model := resolveModel()
 	if model == "" {
 		utils.Log("Titling", "no model configured for titling, skipping")
@@ -55,12 +72,12 @@ func GenerateTitle(ctx context.Context, firstMessage string) (string, error) {
 	}
 	utils.LogWithFields(utils.LevelInfo, "titling", "generating title", map[string]any{"model": model, "count": len(firstMessage)})
 
-	// Ensure the provider has a valid API key before we attempt to stream.
-	// The provider init may not have the key (e.g. stored in keychain, not
-	// in env vars), so we resolve it through the auth chain.
-	if authResolver != nil {
+	// Attach a request credential for the resolved provider before we attempt
+	// to stream. The provider itself holds none (R-23); the credential must
+	// travel on ctx.
+	if attachAuth != nil {
 		if providerName := providers.ProviderNameForModel(model); providerName != "" {
-			authResolver(providerName)
+			ctx = attachAuth(ctx, providerName)
 		}
 	}
 

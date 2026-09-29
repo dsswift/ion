@@ -35,7 +35,7 @@ func TestBuildProviderEntries_CliCapable_NoApiKey(t *testing.T) {
 		cliCapable:   true,
 		authResolver: r,
 	}
-	entries := s.buildProviderEntries()
+	entries := s.buildProviderEntries(nil)
 
 	entry := findAnthropicEntry(entries)
 	if entry == nil {
@@ -63,7 +63,7 @@ func TestBuildProviderEntries_NotCliCapable(t *testing.T) {
 		cliCapable:   false,
 		authResolver: r,
 	}
-	entries := s.buildProviderEntries()
+	entries := s.buildProviderEntries(nil)
 
 	entry := findAnthropicEntry(entries)
 	if entry == nil {
@@ -85,7 +85,7 @@ func TestBuildProviderEntries_CliCapable_WithApiKey(t *testing.T) {
 		cliCapable:   true,
 		authResolver: r,
 	}
-	entries := s.buildProviderEntries()
+	entries := s.buildProviderEntries(nil)
 
 	entry := findAnthropicEntry(entries)
 	if entry == nil {

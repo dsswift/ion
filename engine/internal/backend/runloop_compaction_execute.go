@@ -3,6 +3,7 @@ package backend
 import (
 	"fmt"
 
+	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/compaction"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/telemetry"
@@ -84,7 +85,11 @@ func (b *ApiBackend) performCompact(p performCompactParams) error {
 			if summary == "" && p.cp.summaryEnabled {
 				text := compaction.FormatMessagesForSummary(droppedPrefix)
 				if text != "" {
-					llmSummary, usage := compaction.Summarize(p.ctx, text, p.cp.summaryModel, p.cp.summaryMaxTokens)
+					var cc *auth.CredentialContext
+					if p.run.cfg != nil {
+						cc = p.run.cfg.CredentialContext
+					}
+					llmSummary, usage := compaction.SummarizeForPrincipal(p.ctx, text, p.cp.summaryModel, p.cp.summaryMaxTokens, attachAuthFor(cc))
 					summary = llmSummary
 					if usage != nil {
 						totalIn := usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
