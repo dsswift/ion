@@ -1,8 +1,8 @@
-import type { ResourceItem } from '../../../shared/types-engine'
+import type { ResourceItem } from '@ion/shared/types-engine'
 import { registerContentRouter } from '../../lib/file-open-router'
 import { useSurfaceStore } from './surface-store'
-import { useSessionStore } from '../../stores/sessionStore'
-import { activeInstance } from '../../stores/conversation-instance'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { activeInstance } from '@ion/server/store/conversation-instance'
 import { latestPlanPathFromMessages } from '../../components/StatusBarAttachmentsParser'
 import { registerRuntimePanel, updateRuntimePanel } from './runtime-panel-registry'
 import { rDebug, rTrace, rWarn } from '../../rendererLogger'
@@ -12,6 +12,11 @@ export function registerStudioFileRouter(revealSurface: () => void = () => {}): 
     openTextFile: (dir, tabId, filePath) => {
       revealSurface()
       useSurfaceStore.getState().openFileTab(dir, tabId, filePath)
+    },
+    openTextFileAt: (dir, tabId, filePath, target) => {
+      revealSurface()
+      useSurfaceStore.getState().revealFileLine(dir, tabId, filePath, target)
+      rDebug('studio.surface', 'opened file at line', { path: filePath, line: target.line, column: target.column })
     },
     openPlan: (dir, tabId, filePath) => {
       revealSurface()
@@ -52,7 +57,7 @@ export function registerStudioFileRouter(revealSurface: () => void = () => {}): 
       // opened unable to load.
       revealSurface()
       useSurfaceStore.getState().openBrowserTab(url, 'browse')
-      rDebug('studio.surface', 'opened clicked link in browser tab', { host: hostOf(url) })
+      rDebug('studio.surface', 'opened clicked link in browser tab', { url_host: hostOf(url) })
       return true
     },
     openWebApplication: (tabId, url) => {

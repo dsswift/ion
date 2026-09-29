@@ -17,7 +17,7 @@
  *   - TerminalTabStrip.tsx      (tab strip + resize/tall controls)
  *   - ConversationView.tsx      (scrollable message list)
  *   - ConversationView.tsx       (unified conversation + agent panels)
- *   - App.tsx                   (split layout, resize container)
+ *   - StudioCenter.tsx          (split layout, resize container)
  *
  * The tests read source files as text and find the first component-level
  * early return (lines matching `return null`, `return (`, or `return <`)
@@ -229,7 +229,7 @@ describe('Terminal + conversation split/resize path: React hooks order (React #3
   //   1. `if (!tab) return null`          (line ~142)
   //   2. `if (inst.messages.length === 0) return <EmptyState />`  (line ~168)
   // All hooks (useSessionStore, useCallback, useEffect, useMemo,
-  // useConversationSearch) must precede the FIRST guard.
+  // useDomFind) must precede the FIRST guard.
   assertNoHooksAfterEarlyReturn(
     resolve(COMPONENTS_DIR, 'ConversationView.tsx'),
     'ConversationView',
@@ -244,10 +244,12 @@ describe('Terminal + conversation split/resize path: React hooks order (React #3
     'ConversationView',
   )
 
-  // App (root layout): split pane, resize container, terminal+conversation
-  // render branches. Has a single `return (...)` with all hooks before it.
+  // StudioCenter (Studio's root split layout, formerly App.tsx before spec 17
+  // deleted the Overlay presentation): split pane, resize container,
+  // terminal+conversation render branches. Has a single `return (...)` with
+  // all hooks before it.
   assertNoHooksAfterEarlyReturn(
-    resolve(APP_DIR, 'App.tsx'),
-    'App',
+    resolve(APP_DIR, 'studio', 'StudioCenter.tsx'),
+    'StudioCenter',
   )
 })

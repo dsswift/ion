@@ -3,10 +3,13 @@
  * tabs. Overlay never registers and preserves its floating fallback.
  */
 import type React from 'react'
-import type { ResourceItem } from '../../shared/types-engine'
+import type { ResourceItem } from '@ion/shared/types-engine'
+import type { FileRevealTarget } from '../studio/surface/file-reveal'
 
 export interface ContentRouter {
   openTextFile(dir: string, tabId: string, filePath: string): void
+  /** Open a text file with `target` selected (a Workspace Search result). */
+  openTextFileAt?(dir: string, tabId: string, filePath: string, target: FileRevealTarget): void
   /** Open a plan: Studio activates Plan Canvas for latest path, otherwise file tab. */
   openPlan?(dir: string, tabId: string, filePath: string): void
   openImage(filePath: string, dataUrl?: string): void

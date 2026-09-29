@@ -13,4 +13,9 @@ describe('StudioLeftSidebar chrome', () => {
     expect(source).toContain('<OpenSettingsButton />')
     expect(source).not.toContain('aria-label="Close sidebar"')
   })
+
+  it('offers a Search view bound to the workspace search command', () => {
+    expect(source).toContain('{ id: "search", label: "Search", command: "panel.search" }')
+    expect(source).toContain('<WorkspaceSearchPanel />')
+  })
 })

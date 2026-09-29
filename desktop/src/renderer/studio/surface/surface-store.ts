@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import { useSessionStore } from "../../stores/sessionStore";
-import type { ResourceItem } from "../../../shared/types-engine";
+import { useSessionStore } from "@ion/server/store/sessionStore";
+import type { ResourceItem } from "@ion/shared/types-engine";
 import {
   browserTabId,
   DISPATCH_SURFACE_ID,
@@ -12,16 +12,17 @@ import {
   type SingletonId,
   type SurfaceConversationPersisted,
   type SurfaceTab,
-} from "../../../shared/studio-surface-types";
+} from "@ion/shared/studio-surface-types";
 import type {
   BrowserEmulationState,
   StudioBrowserTabInfo,
-} from "../../../shared/studio-browser-types";
+} from "@ion/shared/studio-browser-types";
 import {
   bindAgentBrowserActions,
   pointerAfterOpen,
 } from "./surface-agent-browser";
 import { openFileTabIn, openPreviewTabIn } from "./surface-file-tabs";
+import type { FileReveal, FileRevealTarget } from "./file-reveal";
 import {
   applyConversationSelection,
   configureConversationSelection,
@@ -48,7 +49,7 @@ import {
   nextActiveAfterClose,
   nextTerminalTitle,
   normalizeTabs,
-} from "../../../shared/studio-surface-ordering";
+} from "@ion/shared/studio-surface-ordering";
 import { rDebug, rInfo } from "../../rendererLogger";
 import { unregisterRuntimePanel } from "./runtime-panel-registry";
 import { scratchTabsForProject } from "./surface-scratch";
@@ -90,6 +91,8 @@ export interface SurfaceState {
   surfaceWidth: number | null;
   hydrated: boolean;
   diffReveal: { filePath: string; staged: boolean; nonce: number } | null;
+  /** A pending jump to a line in a file tab; the file tab clears it once applied. */
+  fileReveal: FileReveal | null;
   /**
    * Conversation tab ids whose ACTIVE conversation currently has an open
    * guided-questions workflow. The synchronizer (questions-surface-sync)
@@ -188,6 +191,10 @@ export interface SurfaceState {
   ): void;
   renameTerminalTab(id: string, title: string): void;
   revealDiffFile(target: { filePath: string; staged: boolean }): void;
+  /** Open `filePath` as a file tab and select `target` in it once its text loads. */
+  revealFileLine(dir: string, tabId: string, filePath: string, target: FileRevealTarget): void;
+  /** Clear the pending file reveal, but only if it is still the one applied. */
+  consumeFileReveal(nonce: number): void;
   /** Synchronizer entry: a conversation gained an open guided workflow. */
   showQuestionsSurface(tabId: string): void;
   /** Synchronizer entry: a conversation's guided workflows all closed. */
@@ -296,6 +303,7 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
   surfaceWidth: null,
   hydrated: false,
   diffReveal: null,
+  fileReveal: null,
   questionsConversations: new Set<string>(),
   questionsPriorActive: {},
 
@@ -544,6 +552,17 @@ export const useSurfaceStore = create<SurfaceState>((set, get) => ({
         nonce: (state.diffReveal?.nonce ?? 0) + 1,
       },
     }));
+  },
+
+  revealFileLine: (dir, tabId, filePath, target) => {
+    get().openFileTab(dir, tabId, filePath);
+    set((state) => ({
+      fileReveal: { ...target, filePath, nonce: (state.fileReveal?.nonce ?? 0) + 1 },
+    }));
+  },
+
+  consumeFileReveal: (nonce) => {
+    if (get().fileReveal?.nonce === nonce) set({ fileReveal: null });
   },
 
   ...createQuestionsSurfaceActions({
