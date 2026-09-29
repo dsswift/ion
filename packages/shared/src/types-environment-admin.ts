@@ -296,7 +296,8 @@ export const DISCOVERY_CHANNEL = 'ion:discovery'
  * A bare signal that the paired clients of this environment changed: one was
  * added by a completed pairing, revoked, or rebound to another subject. It
  * carries nothing, because a channel reaches every connected client; whoever
- * may read the list re-reads it with `auth.listClients`.
+ * may read the list re-reads it: `auth.listClients` for an admin,
+ * `environment.devices` for anyone's own devices.
  */
 export const CLIENTS_CHANGED_CHANNEL = 'ion:clients-changed'
 export const PROJECT_JOB_CHANNEL = 'ion:project-job'
