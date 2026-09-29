@@ -27,8 +27,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         let token = deviceToken.map { String(format: "%02x", $0) }.joined()
-        DiagnosticLog.log("apns registered", tag: "apns", fields: ["token_prefix": String(token.prefix(8))])
+        DiagnosticLog.log("apns registered", tag: "apns", fields: ["token_prefix": String(token.prefix(8)), "apns_env": APNsEnvironment.current.rawValue])
         sessionViewModel?.apnsToken = token
+        // A token that arrives after the connection opened still reaches the server now.
+        sessionViewModel?.registerPushAddress()
     }
 
     func application(
@@ -64,7 +66,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             sessionViewModel?.navigateToExternalTab(deviceId: device.id, tabId: tabId)
         } else if let tabId = userInfo["tabId"] as? String,
                   let viewModel = sessionViewModel,
-                  viewModel.mayViewActiveDesktopData {
+                  viewModel.mayViewActiveServerData {
             // Legacy payloads have no pairing identity. They may only navigate
             // inside the currently authorized pairing and never bypass a lock.
             viewModel.navigateToTab(tabId)
