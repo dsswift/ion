@@ -6,8 +6,8 @@
 // semantically-identical; every expression classified.
 
 import type { Dashboard } from '../dashboard.ts';
-import { row, text, stat, timeseries, piechart, table, logs } from '../panels.ts';
-import { accumulation, instant, stream, telemetry } from '../queries.ts';
+import { row, text, stat, timeseries, piechart, table, logsTable } from '../panels.ts';
+import { accumulation, stream, telemetry } from '../queries.ts';
 import { quantile } from '../queries-latency.ts';
 import { groupedKindCount, groupedKindSeries } from '../queries-logs.ts';
 
@@ -147,13 +147,12 @@ export function trustDashboard(): Dashboard {
       transformations: [{ id: 'extractFields', options: { source: 'labels', replace: false } }],
       targets: [{ e: stream(`${PERM} | json | payload_decision="deny"`) }],
     }),
-    logs({
+    logsTable({
       id: 12,
       title: 'Live trust stream',
-      description: 'Real-time log tail for all trust-surface events: permission decisions, sandbox blocks, and secret containments.',
+      description: 'Real-time tail for all trust-surface events: permission decisions, sandbox blocks, and secret containments.',
       gridPos: { h: 10, w: 24, x: 0, y: 37 },
-      options: { showTime: true, showLabels: true, showCommonLabels: false, wrapLogMessage: true, prettifyLogMessage: true, enableLogDetails: true, dedupStrategy: 'none', sortOrder: 'Descending' },
-      target: { e: stream('{service_name="ion-telemetry", kind=~"permission.decision|sandbox.block|secret.containment"}') },
+      target: { e: stream('{event_name=~"permission.decision|sandbox.block|secret.containment"} | json') },
     }),
   ];
 
@@ -173,7 +172,7 @@ export function trustDashboard(): Dashboard {
       { name: 'model', label: 'Model', description: 'Filter by model name. Accepts regex. Default matches all.', type: 'textbox', current: { value: '.+' }, query: '.+', hide: 0 },
     ],
     annotations: [
-      { name: 'Extension respawn', type: 'logs', rawQuery: '{service_name="ion-telemetry", kind="extension.respawn"} | json', iconColor: 'red', titleFormat: 'respawn: {{payload_extension}} attempt {{payload_attempt}}/{{payload_budget_max}}' },
+      { name: 'Extension respawn', type: 'logs', rawQuery: '{event_name="extension.respawn"} | json', iconColor: 'red', titleFormat: 'respawn: {{payload_extension}} attempt {{payload_attempt}}/{{payload_budget_max}}' },
     ],
   };
 }

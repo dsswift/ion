@@ -1,14 +1,15 @@
 // Recipe: Ion Fleet (uid ion-fleet).
 //
 // "Who is running Ion, where, and on what version?" Hosts, installs, and
-// version drift over the telemetry stream. Every telemetry line carries
-// top-level `host`, `install_id`, and `version`, so the fleet view works on
-// any install — including several headless engine instances sharing one host
+// version drift over the telemetry stream. Every telemetry event carries its
+// source as `host_name`, `service_instance_id`, and `service_version` (its OTLP
+// resource), so the fleet view works on any install — including several headless engine instances sharing one host
 // (the installs-per-host panel makes that visible).
 //
-// Per-host error signal: ops-log ERROR lines carry no host identity, so the
-// error panels here count telemetry events with a non-empty payload_error —
-// the only error signal that is attributable to a host.
+// Per-host error signal: the error panels here count telemetry events with a
+// non-empty payload_error. Operational ERROR lines carry the `host_name` stream
+// label too (Alloy `ion_identity`); the Errors & Health dashboard scoped with
+// the Device filter is where those are broken down.
 
 import type { Dashboard } from '../dashboard.ts';
 import { row, text, stat, timeseries, bargauge, table } from '../panels.ts';
@@ -58,19 +59,19 @@ export function fleetDashboard(): Dashboard {
         overrides: [],
       },
       options: statOptions('value'),
-      targets: [{ e: distinctLabelCount('host', HOST_PIPE, '$__range') }],
+      targets: [{ e: distinctLabelCount('host_name', HOST_PIPE, '$__range') }],
     }),
     stat({
       id: 3,
       title: 'Installs',
-      description: 'Distinct install_id values — engine installations, which can outnumber hosts when headless instances share a machine.',
+      description: 'Distinct service_instance_id values — engine installations, which can outnumber hosts when headless instances share a machine.',
       gridPos: { h: 4, w: 4, x: 4, y: 4 },
       fieldConfig: {
         defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [], noValue: 'telemetry off' },
         overrides: [],
       },
       options: statOptions('value'),
-      targets: [{ e: distinctLabelCount('install_id', HOST_PIPE, '$__range') }],
+      targets: [{ e: distinctLabelCount('service_instance_id', HOST_PIPE, '$__range') }],
     }),
     stat({
       id: 4,
@@ -91,7 +92,7 @@ export function fleetDashboard(): Dashboard {
         overrides: [],
       },
       options: statOptions('background'),
-      targets: [{ e: distinctLabelCount('version', HOST_PIPE, '$__range') }],
+      targets: [{ e: distinctLabelCount('service_version', HOST_PIPE, '$__range') }],
     }),
     stat({
       id: 5,
@@ -107,7 +108,7 @@ export function fleetDashboard(): Dashboard {
     stat({
       id: 6,
       title: 'Fleet errors',
-      description: 'Telemetry events carrying a non-empty payload_error. Ops-log ERROR lines carry no host identity, so this is the per-host error signal.',
+      description: 'Telemetry events carrying a non-empty payload_error. Operational ERROR lines per device are on Errors & Health, scoped with the Device filter.',
       gridPos: { h: 4, w: 4, x: 16, y: 4 },
       fieldConfig: {
         defaults: {
@@ -151,13 +152,13 @@ export function fleetDashboard(): Dashboard {
         textMode: 'value_and_name',
         reduceOptions: { calcs: ['lastNotNull'], fields: '', values: true },
       },
-      targets: [{ e: hostLastSeenMinutes('24h'), legend: '{{host}}' }],
+      targets: [{ e: hostLastSeenMinutes('24h'), legend: '{{host_name}}' }],
     }),
     row(20, 'Installations and versions', 8),
     bargauge({
       id: 8,
       title: 'Installs per host',
-      description: 'Distinct install_id count per host. More than one means several engine instances (e.g. headless daemons) share the machine.',
+      description: 'Distinct service_instance_id count per host. More than one means several engine instances (e.g. headless daemons) share the machine.',
       gridPos: { h: 8, w: 8, x: 0, y: 9 },
       fieldConfig: {
         defaults: {
@@ -171,7 +172,7 @@ export function fleetDashboard(): Dashboard {
         overrides: [],
       },
       options: { orientation: 'horizontal', reduceOptions: { calcs: ['lastNotNull'] }, displayMode: 'gradient', showUnfilled: true },
-      targets: [{ e: installsPerHost('$__range'), legend: '{{host}}' }],
+      targets: [{ e: installsPerHost('$__range'), legend: '{{host_name}}' }],
     }),
     table({
       id: 9,
@@ -182,10 +183,10 @@ export function fleetDashboard(): Dashboard {
       fieldConfig: { defaults: { unit: 'short', custom: { align: 'auto', displayMode: 'auto' } }, overrides: [] },
       options: { footer: { show: false }, sortBy: [{ displayName: 'Events', desc: true }] },
       transformations: [
-        { id: 'organize', options: { renameByName: { host: 'Host', install_id: 'Install', version: 'Engine version', Value: 'Events' } } },
+        { id: 'organize', options: { renameByName: { host_name: 'Host', service_instance_id: 'Install', service_version: 'Engine version', Value: 'Events' } } },
       ],
       targets: [
-        { e: activityBy(['host', 'install_id', 'version'], HOST_PIPE, '$__range'), legend: '{{host}} / {{install_id}} / {{version}}' },
+        { e: activityBy(['host_name', 'service_instance_id', 'service_version'], HOST_PIPE, '$__range'), legend: '{{host_name}} / {{service_instance_id}} / {{service_version}}' },
       ],
     }),
     table({
@@ -197,12 +198,12 @@ export function fleetDashboard(): Dashboard {
       fieldConfig: { defaults: { unit: 'short', custom: { align: 'auto', displayMode: 'auto' } }, overrides: [] },
       options: { footer: { show: false }, sortBy: [{ displayName: 'Runs', desc: true }] },
       transformations: [
-        { id: 'organize', options: { renameByName: { host: 'Host', context_extension: 'Extension', context_extension_version: 'Version', Value: 'Runs' } } },
+        { id: 'organize', options: { renameByName: { host_name: 'Host', context_extension: 'Extension', context_extension_version: 'Version', Value: 'Runs' } } },
       ],
       targets: [
         {
-          e: kindCountBy('run.complete', ['host', 'context_extension', 'context_extension_version'], HOST_PIPE, '$__range', ' | context_extension=~".+"'),
-          legend: '{{host}} / {{context_extension}} v{{context_extension_version}}',
+          e: kindCountBy('run.complete', ['host_name', 'context_extension', 'context_extension_version'], HOST_PIPE, '$__range', ' | context_extension=~".+"'),
+          legend: '{{host_name}} / {{context_extension}} v{{context_extension_version}}',
         },
       ],
     }),
@@ -212,7 +213,7 @@ export function fleetDashboard(): Dashboard {
       gridPos: { h: 8, w: 12, x: 12, y: 17 },
       fieldConfig: { defaults: { unit: 'currencyUSD', decimals: 4 }, overrides: [] },
       options: { orientation: 'horizontal', reduceOptions: { calcs: ['sum'] }, displayMode: 'gradient', showUnfilled: true },
-      targets: [{ e: spendBy(['host'], HOST_PIPE, '$__range'), legend: '{{host}}' }],
+      targets: [{ e: spendBy(['host_name'], HOST_PIPE, '$__range'), legend: '{{host_name}}' }],
     }),
     row(30, 'Usage over time', 25),
     timeseries({
@@ -221,7 +222,7 @@ export function fleetDashboard(): Dashboard {
       gridPos: { h: 8, w: 12, x: 0, y: 26 },
       fieldConfig: bars(60),
       options: legendBottom(),
-      targets: [{ e: runsBy(['host'], HOST_PIPE, '$__interval'), legend: '{{host}}' }],
+      targets: [{ e: runsBy(['host_name'], HOST_PIPE, '$__interval'), legend: '{{host_name}}' }],
     }),
     timeseries({
       id: 13,
@@ -232,7 +233,7 @@ export function fleetDashboard(): Dashboard {
         overrides: [],
       },
       options: legendBottom(),
-      targets: [{ e: spendBy(['host'], HOST_PIPE, '$__interval'), legend: '{{host}}' }],
+      targets: [{ e: spendBy(['host_name'], HOST_PIPE, '$__interval'), legend: '{{host_name}}' }],
     }),
     timeseries({
       id: 14,
@@ -241,7 +242,7 @@ export function fleetDashboard(): Dashboard {
       gridPos: { h: 8, w: 12, x: 0, y: 34 },
       fieldConfig: bars(60),
       options: legendBottom(),
-      targets: [{ e: activityBy(['host'], HOST_PIPE, '$__interval'), legend: '{{host}}' }],
+      targets: [{ e: activityBy(['host_name'], HOST_PIPE, '$__interval'), legend: '{{host_name}}' }],
     }),
     timeseries({
       id: 15,
@@ -250,7 +251,7 @@ export function fleetDashboard(): Dashboard {
       gridPos: { h: 8, w: 12, x: 12, y: 34 },
       fieldConfig: bars(70),
       options: legendBottom(),
-      targets: [{ e: errorEventsBy(['host'], HOST_PIPE, '$__interval'), legend: '{{host}}' }],
+      targets: [{ e: errorEventsBy(['host_name'], HOST_PIPE, '$__interval'), legend: '{{host_name}}' }],
     }),
   ];
 
@@ -266,19 +267,5 @@ export function fleetDashboard(): Dashboard {
     folder: 'fleet',
     file: 'ion-fleet',
     panels,
-    templating: [
-      // `host` is a parsed JSON field, not an indexed stream label, so
-      // label_values() cannot populate a dropdown (same constraint as the
-      // extensions pack). Textbox regex defaulting to `.*` matches every host.
-      {
-        name: 'host',
-        label: 'Host',
-        description: 'Hostname to scope panels. Accepts regex. Default matches all hosts.',
-        type: 'textbox',
-        current: { value: '.*' },
-        query: '.*',
-        hide: 0,
-      },
-    ],
   };
 }

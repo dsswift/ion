@@ -6,6 +6,7 @@
 // they are the reusable, reconciliation-relevant calculations worth documenting.
 
 import type { RegisteredQuery } from './queries.ts';
+import { SYSTEM_METRICS_PROMQL } from './queries-system-metrics.ts';
 
 const CLASS_BLURB: Record<RegisteredQuery['cls'], string> = {
   accumulation:
@@ -54,6 +55,25 @@ export function renderQueriesDoc(queries: readonly RegisteredQuery[]): string {
     lines.push(q.commentary);
     lines.push('');
     lines.push('```logql');
+    lines.push(q.expr);
+    lines.push('```');
+    lines.push('');
+  }
+
+  lines.push('## System Metrics (PromQL)');
+  lines.push('');
+  lines.push(
+    'For the OTLP metrics export (`telemetry.otel.metrics`), against the Prometheus data source. The same ' +
+      'expressions run against the local Prometheus and an Azure Monitor workspace behind Application Insights. ' +
+      'See [Signals and where they go](README.md#signals-and-where-they-go).',
+  );
+  lines.push('');
+  for (const q of SYSTEM_METRICS_PROMQL) {
+    lines.push(`### ${q.name}`);
+    lines.push('');
+    lines.push(q.commentary);
+    lines.push('');
+    lines.push('```promql');
     lines.push(q.expr);
     lines.push('```');
     lines.push('');

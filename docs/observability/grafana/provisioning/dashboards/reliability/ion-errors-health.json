@@ -11,7 +11,7 @@
         "iconColor": "orange",
         "name": "Model fallback",
         "titleFormat": "fallback: {{payload_requested_model}} -> {{payload_fallback_model}} ({{payload_reason}})",
-        "expr": "{service_name=\"ion-telemetry\", kind=\"provider.fallback\"} | json",
+        "expr": "{event_name=\"provider.fallback\", host_name=~\"$host\", user=~\"$user\"} | json",
         "step": "60s"
       },
       {
@@ -24,7 +24,7 @@
         "iconColor": "blue",
         "name": "Compaction",
         "titleFormat": "compaction: {{payload_trigger}} tokens_reclaimed={{payload_tokens_reclaimed}}",
-        "expr": "{service_name=\"ion-telemetry\", kind=\"compaction\"} | json",
+        "expr": "{event_name=\"compaction\", host_name=~\"$host\", user=~\"$user\"} | json",
         "step": "60s"
       },
       {
@@ -37,7 +37,7 @@
         "iconColor": "red",
         "name": "Extension respawn",
         "titleFormat": "respawn: {{payload_extension}} attempt {{payload_attempt}}/{{payload_budget_max}}",
-        "expr": "{service_name=\"ion-telemetry\", kind=\"extension.respawn\"} | json",
+        "expr": "{event_name=\"extension.respawn\", host_name=~\"$host\", user=~\"$user\"} | json",
         "step": "60s"
       }
     ]
@@ -125,7 +125,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({component=~\".+\", level=\"ERROR\"}[$__range]))",
+          "expr": "sum(count_over_time({service_name=~\".+\", event_name=\"\", level=\"ERROR\", host_name=~\"$host\", user=~\"$user\"}[$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -192,7 +192,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({component=~\".+\", level=\"WARN\"}[$__range]))",
+          "expr": "sum(count_over_time({service_name=~\".+\", event_name=\"\", level=\"WARN\", host_name=~\"$host\", user=~\"$user\"}[$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -260,7 +260,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({level=\"ERROR\"}[$__range])) / sum(count_over_time({component=~\".+\"}[$__range]))",
+          "expr": "sum(count_over_time({level=\"ERROR\", host_name=~\"$host\", user=~\"$user\"}[$__range])) / sum(count_over_time({service_name=~\".+\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"}[$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -315,7 +315,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({component=~\".+\"}[$__range]))",
+          "expr": "sum(count_over_time({service_name=~\".+\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"}[$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -399,7 +399,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({level=\"ERROR\"}[$__interval]))",
+          "expr": "sum(count_over_time({level=\"ERROR\", host_name=~\"$host\", user=~\"$user\"}[$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -410,7 +410,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({level=\"WARN\"}[$__interval]))",
+          "expr": "sum(count_over_time({level=\"WARN\", host_name=~\"$host\", user=~\"$user\"}[$__interval]))",
           "queryType": "range",
           "refId": "B",
           "__ionClass": "accumulation",
@@ -464,11 +464,11 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (component) (count_over_time({level=\"ERROR\"}[$__interval]))",
+          "expr": "sum by (service_name) (count_over_time({level=\"ERROR\", host_name=~\"$host\", user=~\"$user\"}[$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
-          "legendFormat": "{{component}}"
+          "legendFormat": "{{service_name}}"
         }
       ]
     },
@@ -508,17 +508,17 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (component, tag) (count_over_time({level=\"ERROR\"}[$__range]))",
+          "expr": "sum by (service_name, tag) (count_over_time({level=\"ERROR\", host_name=~\"$host\", user=~\"$user\"}[$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
-          "legendFormat": "{{component}} / {{tag}}"
+          "legendFormat": "{{service_name}} / {{tag}}"
         }
       ]
     },
     {
       "id": 9,
-      "type": "logs",
+      "type": "table",
       "title": "Recent errors",
       "gridPos": {
         "h": 8,
@@ -530,23 +530,215 @@
         "type": "loki",
         "uid": "loki"
       },
-      "options": {
-        "showTime": true,
-        "showLabels": false,
-        "showCommonLabels": false,
-        "wrapLogMessage": true,
-        "prettifyLogMessage": true,
-        "enableLogDetails": true,
-        "dedupStrategy": "none",
-        "sortOrder": "Descending"
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 200
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "level"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "ERROR": {
+                        "color": "red"
+                      },
+                      "WARN": {
+                        "color": "orange"
+                      },
+                      "INFO": {
+                        "color": "green"
+                      },
+                      "DEBUG": {
+                        "color": "blue"
+                      },
+                      "TRACE": {
+                        "color": "grey"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "service_name"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              },
+              {
+                "id": "displayName",
+                "value": "service"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "host_name"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 140
+              },
+              {
+                "id": "displayName",
+                "value": "host"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "tag"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "msg"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 320
+              },
+              {
+                "id": "displayName",
+                "value": "message"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "conversation_id"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              },
+              {
+                "id": "displayName",
+                "value": "conversation"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "trace_id"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              },
+              {
+                "id": "displayName",
+                "value": "trace"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Line"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "json-view"
+              },
+              {
+                "id": "displayName",
+                "value": "payload"
+              }
+            ]
+          }
+        ]
       },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        },
+        "sortBy": [
+          {
+            "displayName": "Time",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels",
+            "replace": false
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "pattern": "^(Time|Line|level|tag|component|service_name|host_name|msg|session_id|conversation_id|trace_id)$"
+            }
+          }
+        }
+      ],
       "targets": [
         {
           "datasource": {
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{level=\"ERROR\"}",
+          "expr": "{level=\"ERROR\", host_name=~\"$host\", user=~\"$user\"} | json",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "instant"
@@ -555,7 +747,7 @@
     },
     {
       "id": 10,
-      "type": "logs",
+      "type": "table",
       "title": "Live error and warning stream",
       "gridPos": {
         "h": 10,
@@ -567,23 +759,215 @@
         "type": "loki",
         "uid": "loki"
       },
-      "options": {
-        "showTime": true,
-        "showLabels": false,
-        "showCommonLabels": false,
-        "wrapLogMessage": true,
-        "prettifyLogMessage": true,
-        "enableLogDetails": true,
-        "dedupStrategy": "none",
-        "sortOrder": "Descending"
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 200
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "level"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "ERROR": {
+                        "color": "red"
+                      },
+                      "WARN": {
+                        "color": "orange"
+                      },
+                      "INFO": {
+                        "color": "green"
+                      },
+                      "DEBUG": {
+                        "color": "blue"
+                      },
+                      "TRACE": {
+                        "color": "grey"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "service_name"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              },
+              {
+                "id": "displayName",
+                "value": "service"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "host_name"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 140
+              },
+              {
+                "id": "displayName",
+                "value": "host"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "tag"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "msg"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 320
+              },
+              {
+                "id": "displayName",
+                "value": "message"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "conversation_id"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              },
+              {
+                "id": "displayName",
+                "value": "conversation"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "trace_id"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              },
+              {
+                "id": "displayName",
+                "value": "trace"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Line"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "json-view"
+              },
+              {
+                "id": "displayName",
+                "value": "payload"
+              }
+            ]
+          }
+        ]
       },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        },
+        "sortBy": [
+          {
+            "displayName": "Time",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels",
+            "replace": false
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "pattern": "^(Time|Line|level|tag|component|service_name|host_name|msg|session_id|conversation_id|trace_id)$"
+            }
+          }
+        }
+      ],
       "targets": [
         {
           "datasource": {
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{level=~\"ERROR|WARN\"}",
+          "expr": "{level=~\"ERROR|WARN\", host_name=~\"$host\", user=~\"$user\"} | json",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "instant"
@@ -670,7 +1054,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({service_name=\"ion-telemetry\", kind=\"provider.retry\"} | json [$__range]))",
+          "expr": "sum(count_over_time({event_name=\"provider.retry\", host_name=~\"$host\", user=~\"$user\"} | json [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -744,7 +1128,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({service_name=\"ion-telemetry\", kind=\"provider.stall\"} | json [$__range]))",
+          "expr": "sum(count_over_time({event_name=\"provider.stall\", host_name=~\"$host\", user=~\"$user\"} | json [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -818,7 +1202,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({service_name=\"ion-telemetry\", kind=\"provider.fallback\"} | json [$__range]))",
+          "expr": "sum(count_over_time({event_name=\"provider.fallback\", host_name=~\"$host\", user=~\"$user\"} | json [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -872,7 +1256,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (payload_error_code) (count_over_time({service_name=\"ion-telemetry\", kind=\"provider.retry\"} | json [$__interval]))",
+          "expr": "sum by (payload_error_code) (count_over_time({event_name=\"provider.retry\", host_name=~\"$host\", user=~\"$user\"} | json [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -927,7 +1311,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "quantile_over_time(0.95, {service_name=\"ion-telemetry\", kind=\"provider.ttft\"} | json | unwrap payload_ttft_ms [$__interval]) by (payload_model)",
+          "expr": "quantile_over_time(0.95, {event_name=\"provider.ttft\", host_name=~\"$host\", user=~\"$user\"} | json | unwrap payload_ttft_ms [$__interval]) by (payload_model)",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "windowed-stat",
@@ -982,7 +1366,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "quantile_over_time(0.99, {service_name=\"ion-telemetry\", kind=\"provider.stream_summary\"} | json | unwrap payload_max_gap_ms [$__interval]) by (payload_model)",
+          "expr": "quantile_over_time(0.99, {event_name=\"provider.stream_summary\", host_name=~\"$host\", user=~\"$user\"} | json | unwrap payload_max_gap_ms [$__interval]) by (payload_model)",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "windowed-stat",
@@ -1050,7 +1434,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (payload_extension) (count_over_time({service_name=\"ion-telemetry\", kind=\"extension.respawn\"} | json [$__interval]))",
+          "expr": "sum by (payload_extension) (count_over_time({event_name=\"extension.respawn\", host_name=~\"$host\", user=~\"$user\"} | json [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -1121,7 +1505,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({service_name=\"ion-telemetry\", kind=\"extension.respawn\"} | json | payload_outcome=\"budget_exceeded\" [$__range]))",
+          "expr": "sum(count_over_time({event_name=\"extension.respawn\", host_name=~\"$host\", user=~\"$user\"} | json | payload_outcome=\"budget_exceeded\" [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -1175,7 +1559,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "quantile_over_time(0.95, {service_name=\"ion-telemetry\", kind=\"extension.coldstart\"} | json | unwrap payload_ready_ms [$__interval]) by (payload_extension)",
+          "expr": "quantile_over_time(0.95, {event_name=\"extension.coldstart\", host_name=~\"$host\", user=~\"$user\"} | json | unwrap payload_ready_ms [$__interval]) by (payload_extension)",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "windowed-stat",
@@ -1243,7 +1627,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "max by (payload_queue) (last_over_time({service_name=\"ion-telemetry\", kind=\"client.backpressure\"} | json | unwrap payload_dropped_total [$__interval]))",
+          "expr": "max by (payload_queue) (last_over_time({event_name=\"client.backpressure\", host_name=~\"$host\", user=~\"$user\"} | json | unwrap payload_dropped_total [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "windowed-stat",
@@ -1335,7 +1719,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"ion-telemetry\", kind=\"extension.respawn\"} | json",
+          "expr": "{event_name=\"extension.respawn\", host_name=~\"$host\", user=~\"$user\"} | json",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "instant"
@@ -1350,7 +1734,58 @@
     "reliability"
   ],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "name": "host",
+        "label": "Device",
+        "type": "query",
+        "description": "The device a line came from (label `host_name`, the OTLP host.name). Multi-select; All includes lines with no device.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(host_name)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
+      {
+        "name": "user",
+        "label": "User",
+        "type": "query",
+        "description": "The signed-in operator (Alloy label `user`). Multi-select; All includes lines with no identity.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(user)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      }
+    ]
   },
   "time": {
     "from": "now-24h",

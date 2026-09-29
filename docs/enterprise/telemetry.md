@@ -70,7 +70,8 @@ The `targets` array specifies where telemetry data is sent. Multiple targets can
 | Target | Description | Required fields |
 |--------|-------------|-----------------|
 | `http` | Send batched JSON payloads to an HTTP endpoint | `httpEndpoint` |
-| `file` | Write JSON lines to a local file | `filePath` |
+| `file` | Write schema-v4 compact frames, one JSON line each, to a local file | `filePath` (defaults to `~/.ion/telemetry.jsonl`) |
+| `stdout` | Write the same JSON lines to the engine's standard output | none |
 | `otel` | Export via OpenTelemetry protocol | `otel.endpoint` |
 | `eventhub` | Send events to an Azure Event Hub | `eventHubConnectionString` |
 
@@ -88,7 +89,7 @@ Sends telemetry as JSON arrays to the configured endpoint via POST requests. Eac
 
 #### Durable delivery
 
-A failed POST does not drop the batch. The engine persists it to an on-disk retry queue (one file per collector instance, alongside the configured `filePath` when set, or derived from the endpoint otherwise) and redelivers it FIFO on the next flush tick, with exponential backoff between attempts on a batch that keeps failing (starting at 5s, doubling up to a 5-minute ceiling). This applies identically to the `conversationEvents.targets: ["http"]` target below, and to the `eventhub` target's own retry queue, since all three route through the same retry-queue mechanism.
+A failed POST does not drop the batch. The engine persists it to an on-disk retry queue (one file per collector instance, alongside the configured `filePath` when set, or `<data dir>/<target>-retry-<hash>.jsonl` otherwise, where the data dir is `ION_DATA_DIR` or `~/.ion`) and redelivers it FIFO on the next flush tick, with exponential backoff between attempts on a batch that keeps failing (starting at 5s, doubling up to a 5-minute ceiling). This applies identically to the `conversationEvents.targets: ["http"]` target below, and to the `eventhub` target's own retry queue, since all three route through the same retry-queue mechanism. A queue drains only while its target is configured: at startup the engine removes a data-dir queue file that no configured target uses, logging a WARN (`orphaned retry queue removed`) with the batch and event counts it held. Removing a target is the decision to stop sending there; re-add it before restarting if its backlog should still be delivered.
 
 **The queue is unbounded by default.** It carries an audit stream, and a dropped batch is a hole in that record at exactly the moment the downstream was unreachable. A hard cap is an explicit opt-in (`httpRetryQueueMaxMB` / `eventHubRetryQueueMaxMB` greater than zero): entries beyond it are dropped oldest-first, every drop logs a `WARN` with the count, and the engine logs a `WARN` at startup naming the cap so the loss is always a choice someone made. Prefer watching the health signal over capping.
 
@@ -128,26 +129,115 @@ Shipping telemetry downstream does **not** bound the local file — a shipper ad
 
 ### OpenTelemetry target
 
-Exports telemetry as OpenTelemetry spans and log records to an OTEL collector.
+Exports telemetry as OpenTelemetry **traces** to an OTLP receiver. It sends no OTLP log records (operational logs go out through `logging.egressTargets: ["otel"]` instead) and, unless `otel.metrics` is enabled, no metrics.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `otel.enabled` | `bool` | Enable OTEL export |
 | `otel.endpoint` | `string` | OTEL collector endpoint |
-| `otel.protocol` | `string` | Transport protocol: `"grpc"` or `"http"` |
+| `otel.protocol` | `string` | Transport protocol: `"http/protobuf"` (default) or `"grpc"`. Any other value fails the exporter and is logged. |
 | `otel.headers` | `map[string]string` | Custom headers for the OTEL exporter |
 | `otel.serviceName` | `string` | Service name reported in OTEL resource |
 | `otel.resourceAttributes` | `map[string]string` | Additional OTEL resource attributes |
+| `otel.tokenScope` | `string` | Mint a fresh bearer token for this scope before each trace and metrics export and send it as `Authorization`, over any static header. `otel.metrics.tokenScope` wins for metrics |
+| `otel.tokenProvider` | `string` | Name of the `auth.oauth` entry that mints the `otel.tokenScope` and `otel.metrics.tokenScope` tokens. Empty uses `auth.identityProvider`. Name a `machineIdentity` entry so a headless engine with no signed-in operator can export. An entry also named by `logging.egressTokenProvider` is shared |
 
-The OTEL integration maps Ion Engine concepts to OTEL semantics:
+How Ion events map to OTLP:
 
-| Ion concept | OTEL representation |
-|-------------|---------------------|
-| Session | Trace |
-| Turn | Span |
-| Tool invocation | Child span |
-| Permission decision | Span event |
-| Audit entry | Log record |
+| Ion | OTLP |
+|-----|------|
+| Every telemetry event (`llm.call`, `tool.execute`, `run.complete`, …) | One zero-length span named after the event, its payload as span attributes and its correlation context as `ctx.*` attributes |
+| The event's correlation `trace_id` | The span's trace, so every event of one run lands in one trace |
+| An event whose payload carries an error | The span's status set to error with that message |
+| A timed span the engine records directly | A span with its real start and end |
+
+With the HTTP protocol, an endpoint with no path gets `/v1/traces`.
+
+### System Metrics
+
+The engine samples System Metrics whether or not telemetry is on: host CPU, memory (container-aware), load and disk, and CPU and memory for every process in its own tree, labeled by role (`engine`, `extension`, `mcp`, `backend`, `tool`). The numbers leave the machine only through the two outputs below. The map of every output is [Signals and where they go](../observability/README.md#signals-and-where-they-go); the sampler's settings are [`systemMetrics`](../configuration/engine-json.md#systemmetrics).
+
+**The `system.metrics` event.** While `telemetry.enabled` is true, the engine records one `system.metrics` event every `systemMetrics.telemetryIntervalMs` (default 60000) through the normal targets. Its payload is numbers plus each process's role and name: `sampled_at`, `interval_ms`, `host` (`cpu_utilization`, `cpu_count`, `effective_cpu_count`, `memory_total_bytes`, `memory_available_bytes`, `memory_limit_bytes`, `container_limited`, `load1`, `disk_total_bytes`, `disk_free_bytes`), `processes[]` (`role`, `name`, `cpu_percent`, `cpu_time_ms`, `rss_bytes`), and `runtime` (`heap_bytes`, `sys_bytes`, `mem_limit_bytes`, `goroutines`, `num_gc`, `sessions`). It carries no content, so `privacyLevel` does not change it.
+
+**OTLP metrics.** `otel.metrics` exports System Metrics as OTLP metrics, off unless `otel.metrics.enabled` is true:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `otel.metrics.enabled` | `bool` | `false` | Turn the export on |
+| `otel.metrics.exportIntervalMs` | `int` | `60000` | Export interval |
+| `otel.metrics.endpoint` | `string` | `otel.endpoint` + `/v1/metrics` | A receiver that takes metrics at its own URL. An endpoint with a path is used as given |
+| `otel.metrics.temporality` | `string` | `cumulative` | `cumulative` or `delta` |
+| `otel.metrics.tokenScope` | `string` | `otel.tokenScope` | Mint a fresh token from `otel.tokenProvider` for this scope before each export and send it as `Authorization`, over any static header |
+
+It shares `otel.protocol`, `otel.headers`, `otel.serviceName`, `otel.resourceAttributes`, `otel.tokenScope`, and `otel.tokenProvider` with the trace export. Instruments: gauges `ion.host.cpu.utilization`, `ion.host.memory.available`, `ion.host.memory.limit` (physical memory when no container limit applies), `ion.host.disk.free`, `ion.process.cpu.utilization` (cores in use), `ion.process.memory.rss`, `ion.engine.heap`, `ion.engine.goroutines`, `ion.engine.sessions`, and the counter `ion.system_metrics.samples`. The only attribute is `role` on the two `ion.process.*` gauges: a per-process or per-name label would multiply the series a metrics store keeps. No key is built in. An enterprise that seals `telemetry` on can seal the whole `otel` block, `metrics` included.
+
+### Sending System Metrics to Application Insights
+
+Application Insights created with **OTLP support** stores logs and traces in a Log Analytics workspace and OTLP metrics in a linked **Azure Monitor workspace** (a hosted Prometheus you query with PromQL). Its Overview page lists a separate ingestion address per signal; the metrics one is on a `*.metrics.ingest.monitor.azure.com` host.
+
+**Ion cannot send to it directly.** Azure Monitor ingestion accepts only an app or workload identity holding **Monitoring Metrics Publisher** on the data collection rule, never a person's delegated token, and Application Insights requires **delta temporality** and exponential histograms. So the engine sends to an OpenTelemetry Collector, and the Collector does the rest:
+
+1. The engine sends OTLP metrics to the Collector with the operator's Entra token (`tokenScope` set to the Collector's audience).
+2. The Collector checks that token (`oidcauthextension`), converts cumulative to delta (`cumulativetodelta`), and signs in to Azure Monitor with its own workload identity (`azureauthextension`, scope `https://monitor.azure.com/.default`).
+3. Grafana reads the Azure Monitor workspace through a Prometheus data source, beside Log Analytics through the Azure Monitor data source.
+
+Engine config (all values are placeholders):
+
+```json
+{
+  "telemetry": {
+    "enabled": true,
+    "otel": {
+      "enabled": true,
+      "endpoint": "https://otel-collector.example.org",
+      "serviceName": "ion-engine",
+      "metrics": {
+        "enabled": true,
+        "tokenScope": "api://collector-app-id/Telemetry.Write"
+      }
+    }
+  }
+}
+```
+
+Collector config (contrib distribution, placeholders only):
+
+```yaml
+extensions:
+  oidc:
+    issuer_url: https://login.microsoftonline.com/<tenant-id>/v2.0
+    audience: api://collector-app-id
+  azure_auth:
+    managed_identity: {}
+    scopes: [https://monitor.azure.com/.default]
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        auth: { authenticator: oidc }
+
+processors:
+  batch:
+  cumulativetodelta:
+
+exporters:
+  otlphttp/azuremonitor:
+    traces_endpoint: https://<logs-dce>/datacollectionRules/<dcr-immutable-id>/streams/Microsoft-OTLP-Traces/otlp/v1/traces
+    logs_endpoint: https://<logs-dce>/datacollectionRules/<dcr-immutable-id>/streams/Microsoft-OTLP-Logs/otlp/v1/logs
+    metrics_endpoint: https://<metrics-dce>/datacollectionRules/<dcr-immutable-id>/streams/Custom-Metrics-Otel/otlp/v1/metrics
+    auth: { authenticator: azure_auth }
+
+service:
+  extensions: [oidc, azure_auth]
+  pipelines:
+    traces:  { receivers: [otlp], processors: [batch], exporters: [otlphttp/azuremonitor] }
+    logs:    { receivers: [otlp], processors: [batch], exporters: [otlphttp/azuremonitor] }
+    metrics: { receivers: [otlp], processors: [cumulativetodelta, batch], exporters: [otlphttp/azuremonitor] }
+```
+
+When a receiver takes metrics at its own URL and needs delta itself (a direct ingestion endpoint with an app identity, for example), set `otel.metrics.endpoint` and `otel.metrics.temporality: "delta"` on the engine instead. Sources: [Ingest OTLP data into Azure Monitor with the OpenTelemetry Collector](https://learn.microsoft.com/en-us/azure/azure-monitor/containers/opentelemetry-protocol-ingestion), [Direct OpenTelemetry ingestion into Azure Monitor](https://techcommunity.microsoft.com/blog/azureobservabilityblog/direct-opentelemetry-ingestion-into-azure-monitor-is-now-generally-available/4524044).
 
 ### Event Hub target
 
@@ -239,10 +329,12 @@ Default is `minimal`. Enterprise deployments that need full audit trails should 
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `batchSize` | `int` | 100 | Maximum entries per batch before flushing |
+| `batchSize` | `int` | unset (0) | Buffered entries that trigger an early flush. When unset or 0, there is no size trigger and only the interval flushes. |
 | `flushIntervalMs` | `int64` | 5000 | Maximum time (ms) between flushes, regardless of batch size |
 
-The engine flushes telemetry when either threshold is reached (whichever comes first). On session end, any remaining buffered entries are flushed immediately.
+The engine flushes telemetry on every `flushIntervalMs` tick, and also as soon as the buffer reaches `batchSize` when that is set above 0. On session end, any remaining buffered entries are flushed immediately.
+
+The OpenTelemetry target batches its spans separately: its exporter sends at most 100 spans per export. That limit is internal to the `otel` target and is not set by `batchSize`.
 
 ## Enterprise enforcement
 
@@ -261,7 +353,7 @@ When telemetry is enabled at the enterprise layer, it cannot be disabled by user
 }
 ```
 
-This guarantees that all sessions produce telemetry records shipped to the configured destination. Users cannot opt out.
+This guarantees that all sessions produce telemetry records shipped to the configured destination. Users cannot opt out. The seal carries `enabled`, `targets`, `privacyLevel`, each target's destination (`httpEndpoint`, `httpHeaders`, the `eventHub*` fields), `oversizeEventPolicy`, and the whole `otel` block including `otel.metrics`. An enterprise `systemMetrics` block likewise replaces the user's whole block (see [System Metrics](#system-metrics)).
 
 ## Conversation events
 
@@ -342,11 +434,11 @@ each block at its own destination independently.
 
 ## Operational logs vs. telemetry
 
-The engine produces two distinct observability streams. They are complementary, not redundant.
+The engine produces two distinct observability streams. They are complementary, not redundant. System Metrics ride both (sample lines in the logs, `system.metrics` events in telemetry) and have their own OTLP metrics output; [Signals and where they go](../observability/README.md#signals-and-where-they-go) maps every output in one place.
 
 | Dimension | Operational logs | Telemetry |
 |---|---|---|
-| Format | JSONL (one structured line per event) | OpenTelemetry spans and log records |
+| Format | JSONL (one structured line per event) | JSONL schema-v4 compact frames; optionally OpenTelemetry traces through the `otel` target (one zero-length span per event) |
 | Emitter | `utils.Log` / `utils.LogCtx` (Go slog) | `internal/telemetry` package |
 | Destination | `~/.ion/*.jsonl` (local); optional downstream egress via `logging.egressTargets` (HTTP endpoint or OTLP collector); Loki (observability stack) | File, HTTP endpoint, or OTLP collector |
 | Purpose | Real-time debugging, investigation, agent guidance | Session metrics, audit trail, enterprise compliance |
@@ -361,27 +453,29 @@ reference and consumer guide.
 
 ### Correlation model
 
-Every log line and every telemetry event emitted during a run carries the same `trace_id`, and every
-line belonging to a session carries the same `session_id`. That lets you move between the two streams
-without losing the thread:
+A prompt is one trace. The client that sends it starts the trace, and the relay, the server, and the
+engine's run join it, so every log line and telemetry event about that prompt, on every surface,
+carries the same `trace_id`. Every line belonging to a session carries the same `session_id`. That
+lets you move between the streams without losing the thread:
 
 1. Find an error in Loki: `{level="ERROR"} | json | session_id = "01932abc1234"`
-2. Copy the `trace_id` from that log line — it identifies the single run the error occurred in
-3. Pull every line from that run across all surfaces:
-   `{component=~".+"} | json | trace_id = "..."`, or open the span tree in whichever OTLP backend the
-   run's spans were exported to
+2. Copy the `trace_id` from that log line — it identifies the prompt the error occurred in
+3. Pull every line of that prompt across all surfaces:
+   `{service_name=~".+"} | trace_id = "..."`, or open the span tree (client, relay, server,
+   engine) in whichever OTLP backend the spans were exported to
 4. Widen to the whole conversation with `conversation_id` when you need the history around the failure
 
-**Pick the ID that matches the granularity you want.** `trace_id` is scoped to **one
-prompt-to-completion run** — it is the APM operation id and the value that belongs in a
-`traceparent` header for a downstream call. `conversation_id` is the durable thread across restarts.
-`session_id` groups the runs that shared one live session. `run_id` is the engine-native form of the
-same run `trace_id` names, for joining Ion's own two streams. Full table:
+**Pick the ID that matches the granularity you want.** `trace_id` is scoped to **one prompt**, from
+the client's submit through the engine's run — it is the APM operation id and the value that belongs
+in a `traceparent` header for a downstream call. `conversation_id` is the durable thread across
+restarts. `session_id` groups the runs that shared one live session. `run_id` is the engine-native id
+of the run alone, for joining Ion's own two streams. Spans and the hop chain:
+[`log-schema.md`](../observability/log-schema.md#spans) § "Spans". Full table:
 [`log-schema.md`](../observability/log-schema.md) § "Correlation-ID vocabulary".
 
 The `trace_id` field is a W3C trace-context trace-id (32 lowercase hex). The `span_id` field is a
-16-hex span ID. Both are omitted when no run is in flight — a session-lifecycle line or an async
-delivery has no transaction to trace, so it carries neither.
+16-hex span ID. Both are omitted on a line about no prompt — a session-lifecycle line has no
+transaction to trace, so it carries neither.
 
 ### Schema reference
 
@@ -439,5 +533,5 @@ change expansion behavior, regenerate the fixture and run the desktop suite in t
 to the operational-record path, which puts the raw frame JSON in `msg` and drops every cost, kind, and
 attribution attribute the dashboards query. The engine expands in
 `engine/internal/utils/log_egress_tailer_telemetry.go`; the desktop expands in
-`desktop/src/main/log-egress-tailer.ts`. Which surface actually ships is set by `egressShipSources` and
+`packages/shared/src/log-egress-tailer.ts` (which Electron's main process shares). Which surface actually ships is set by `egressShipSources` and
 `egressClientShipSources` — either one may be the shipper, so both expand.

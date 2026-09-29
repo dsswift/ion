@@ -75,7 +75,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "count(sum by (user) (count_over_time({service_name=\"ion-telemetry\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" [$__range])))",
+          "expr": "count(sum by (user) (count_over_time({event_name=~\".+\", host_name=~\"$host\", user=~\"$user\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | service_instance_id=~\"$install\" [$__range])))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -138,7 +138,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | unwrap payload_run_cost_usd [$__range]))",
+          "expr": "sum(sum_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | service_instance_id=~\"$install\" | unwrap payload_run_cost_usd [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -200,7 +200,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum (count_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" [$__range]))",
+          "expr": "sum (count_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | service_instance_id=~\"$install\" [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -217,7 +217,7 @@
         "x": 12,
         "y": 5
       },
-      "description": "tool.execute events carrying a non-empty payload_error for the selected user(s).",
+      "description": "tool.failure events for the selected user(s).",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -274,7 +274,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum (count_over_time({service_name=\"ion-telemetry\", kind=\"tool.execute\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | payload_error!=\"\" [$__range]))",
+          "expr": "sum (count_over_time({event_name=\"tool.failure\", host_name=~\"$host\", user=~\"$user\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | service_instance_id=~\"$install\" [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -336,7 +336,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum (count_over_time({service_name=\"ion-telemetry\", kind=\"permission.decision\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | payload_decision=\"deny\" [$__range]))",
+          "expr": "sum (count_over_time({event_name=\"permission.decision\", host_name=~\"$host\", user=~\"$user\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | service_instance_id=~\"$install\" | payload_decision=\"deny\" [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -409,7 +409,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum (count_over_time({service_name=\"ion-telemetry\", kind=\"sandbox.block\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" [$__range]))",
+          "expr": "sum (count_over_time({event_name=\"sandbox.block\", host_name=~\"$host\", user=~\"$user\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | service_instance_id=~\"$install\" [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -466,7 +466,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (user) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | unwrap payload_run_cost_usd [$__range]))",
+          "expr": "sum by (user) (sum_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | service_instance_id=~\"$install\" | unwrap payload_run_cost_usd [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -532,7 +532,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (user) (count_over_time({service_name=\"ion-telemetry\", kind=\"permission.decision\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | payload_decision=\"allow\" [$__range])) / sum by (user) (count_over_time({service_name=\"ion-telemetry\", kind=\"permission.decision\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" [$__range]))",
+          "expr": "sum by (user) (count_over_time({event_name=\"permission.decision\", host_name=~\"$host\", user=~\"$user\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | service_instance_id=~\"$install\" | payload_decision=\"allow\" [$__range])) / sum by (user) (count_over_time({event_name=\"permission.decision\", host_name=~\"$host\", user=~\"$user\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | service_instance_id=~\"$install\" [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -607,7 +607,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum (sum_over_time({service_name=\"ion-telemetry\", kind=\"secret.containment\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | unwrap payload_match_count [$__range]))",
+          "expr": "sum (sum_over_time({event_name=\"secret.containment\", host_name=~\"$host\", user=~\"$user\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | service_instance_id=~\"$install\" | unwrap payload_match_count [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -680,7 +680,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (user, payload_model) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | unwrap payload_run_cost_usd [$__range]))",
+          "expr": "sum by (user, payload_model) (sum_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | service_instance_id=~\"$install\" | unwrap payload_run_cost_usd [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -742,7 +742,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (user, context_extension) (count_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | label_format context_extension=`{{if .context_extension}}{{.context_extension}}{{else}}unattributed{{end}}` [$__range]))",
+          "expr": "sum by (user, context_extension) (count_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | service_instance_id=~\"$install\" | label_format context_extension=`{{if .context_extension}}{{.context_extension}}{{else}}unattributed{{end}}` [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -760,7 +760,7 @@
         "x": 16,
         "y": 19
       },
-      "description": "tool.execute failures grouped by user and tool. The user/tool pair with the highest count is the one most likely stuck in a loop.",
+      "description": "tool.failure events grouped by user and tool. The user/tool pair with the highest count is the one most likely stuck in a loop.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -804,7 +804,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (user, payload_tool) (count_over_time({service_name=\"ion-telemetry\", kind=\"tool.execute\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | payload_error!=\"\" [$__range]))",
+          "expr": "sum by (user, payload_tool) (count_over_time({event_name=\"tool.failure\", host_name=~\"$host\", user=~\"$user\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | service_instance_id=~\"$install\" [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -872,7 +872,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (user) (count_over_time({service_name=\"ion-telemetry\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" [$__interval]))",
+          "expr": "sum by (user) (count_over_time({event_name=~\".+\", host_name=~\"$host\", user=~\"$user\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | service_instance_id=~\"$install\" [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -926,7 +926,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (user) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | unwrap payload_run_cost_usd [$__interval]))",
+          "expr": "sum by (user) (sum_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | service_instance_id=~\"$install\" | unwrap payload_run_cost_usd [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -936,7 +936,7 @@
     },
     {
       "id": 16,
-      "type": "logs",
+      "type": "table",
       "title": "Recent denials",
       "gridPos": {
         "h": 10,
@@ -949,23 +949,215 @@
         "type": "loki",
         "uid": "loki"
       },
-      "options": {
-        "showTime": true,
-        "showLabels": false,
-        "showCommonLabels": false,
-        "wrapLogMessage": true,
-        "prettifyLogMessage": true,
-        "enableLogDetails": true,
-        "dedupStrategy": "none",
-        "sortOrder": "Descending"
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 200
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "level"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "ERROR": {
+                        "color": "red"
+                      },
+                      "WARN": {
+                        "color": "orange"
+                      },
+                      "INFO": {
+                        "color": "green"
+                      },
+                      "DEBUG": {
+                        "color": "blue"
+                      },
+                      "TRACE": {
+                        "color": "grey"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "service_name"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              },
+              {
+                "id": "displayName",
+                "value": "service"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "host_name"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 140
+              },
+              {
+                "id": "displayName",
+                "value": "host"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "tag"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "msg"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 320
+              },
+              {
+                "id": "displayName",
+                "value": "message"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "conversation_id"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              },
+              {
+                "id": "displayName",
+                "value": "conversation"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "trace_id"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              },
+              {
+                "id": "displayName",
+                "value": "trace"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Line"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "json-view"
+              },
+              {
+                "id": "displayName",
+                "value": "payload"
+              }
+            ]
+          }
+        ]
       },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        },
+        "sortBy": [
+          {
+            "displayName": "Time",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels",
+            "replace": false
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "pattern": "^(Time|Line|level|tag|component|service_name|host_name|msg|session_id|conversation_id|trace_id)$"
+            }
+          }
+        }
+      ],
       "targets": [
         {
           "datasource": {
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"ion-telemetry\", kind=\"permission.decision\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | payload_decision=\"deny\"",
+          "expr": "{event_name=\"permission.decision\", host_name=~\"$host\", user=~\"$user\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | service_instance_id=~\"$install\" | payload_decision=\"deny\"",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "instant"
@@ -983,13 +1175,52 @@
   "templating": {
     "list": [
       {
+        "name": "host",
+        "label": "Device",
+        "type": "query",
+        "description": "The device a line came from (label `host_name`, the OTLP host.name). Multi-select; All includes lines with no device.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(host_name)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
+      {
         "name": "user",
         "label": "User",
-        "type": "textbox",
-        "description": "User identity to scope panels. Accepts regex. `unassigned` selects default installs without an identity. Default matches all.",
-        "query": ".*",
+        "type": "query",
+        "description": "The signed-in operator (Alloy label `user`). Multi-select; All includes lines with no identity.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(user)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
         "current": {
-          "value": ".*"
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         },
         "hide": 0
       },
@@ -997,7 +1228,7 @@
         "name": "install",
         "label": "Install",
         "type": "textbox",
-        "description": "install_id to scope panels — the secondary identity that splits individuals within the unassigned bucket. Accepts regex. Default matches all.",
+        "description": "service_instance_id (the engine install) to scope panels — the secondary identity that splits individuals within the unassigned bucket. Accepts regex. Default matches all.",
         "query": ".*",
         "current": {
           "value": ".*"

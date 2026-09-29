@@ -1,3 +1,14 @@
+# Tempo 3 single-binary config for the local stack. The same config ships to
+# the home-lab cluster (sh-monorepo kubernetes/workloads/ion-observability).
+#
+# TraceQL metrics ({ } | rate(), Grafana Traces Drilldown) need no extra
+# config and no Prometheus: in Tempo 3 the live-store answers metrics queries
+# on recent data and the querier reads older blocks from storage. Tempo 3
+# removed the metrics-generator local-blocks processor that 2.x needed for
+# this, and refuses to start if a config still names it.
+
+stream_over_http_enabled: true
+
 server:
   http_listen_port: 3200
 
@@ -17,3 +28,6 @@ storage:
       path: /var/tempo/blocks
     wal:
       path: /var/tempo/wal
+
+usage_report:
+  reporting_enabled: false

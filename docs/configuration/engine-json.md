@@ -352,11 +352,14 @@ Map of server name to MCP server configuration. Each entry defines a connection 
 |-------|------|---------|-------------|
 | `client_id` | string | -- | OAuth client ID. |
 | `client_secret` | string | `""` | OAuth client secret (omit for public clients). |
-| `auth_url` | string | -- | Authorization endpoint URL. |
-| `token_url` | string | -- | Token endpoint URL. |
+| `auth_url` | string | -- | Authorization endpoint URL. Discovered when omitted. |
+| `token_url` | string | -- | Token endpoint URL. Discovered when omitted. |
 | `scope` | string | `""` | Space-separated scopes. |
 | `redirect_uri` | string | `""` | Redirect URI for the OAuth flow. |
-| `use_pkce` | bool | `false` | Enable PKCE (Proof Key for Code Exchange). |
+| `client_metadata_uri` | string | `""` | Client ID Metadata Document URL. |
+| `resource` | string | `""` | RFC 8707 resource indicator. Discovered when omitted. |
+
+Every login uses authorization code with PKCE. Full reference: [MCP Configuration](../mcp/configuration.md#oauth-fields).
 
 ```json
 {
@@ -452,12 +455,12 @@ If identity is optional, a verification failure keeps unrelated sessions usable 
 | Field | Type | Description |
 |-------|------|-------------|
 | `clientId` | string | OAuth client ID. |
+| `clientIdEnv` | string | Environment variable holding the client ID, read when the provider is built (for example `AZURE_CLIENT_ID`, set by the AKS workload identity webhook). Mutually exclusive with `clientId`. An empty variable fails the provider. The variable is not removed. |
 | `authorizationUrl` | string | Authorization endpoint. |
 | `tokenUrl` | string | Token endpoint. |
 | `scopes` | string[] | Requested scopes. |
 | `usePkce` | bool | Enable PKCE. |
 | `redirectUri` | string | Redirect URI. |
-
 | `issuerUrl` | string | OIDC issuer used to discover endpoints. Required for interactive operator Context Identity. Explicit endpoint fields win. |
 | `audience` | string | Default token audience/resource. |
 | `audienceParameter` | string | `"audience"` (default) or RFC 8707 `"resource"`. |
@@ -523,6 +526,51 @@ Network transport configuration.
 }
 ```
 
+## logging
+
+Local log file settings and operational-log egress. The full egress field list and its behavior
+live in [Consuming logs](../observability/consuming-logs.md#option-3--programmable-egress-no-ion-provided-stack-required).
+These fields decide how egress authenticates:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `egressTokenScope` | string | `""` | When set, every egress flush mints a fresh bearer token for this scope and sends it as `Authorization`, over any static header. |
+| `egressTokenAudience` | string | `""` | Explicit audience/resource for the egress token. Empty uses the provider's default. |
+| `egressTokenProvider` | string | `""` | Name of the `auth.oauth` entry that mints the egress token. Empty uses `auth.identityProvider`. Name a `machineIdentity` entry so a headless engine with no signed-in operator can authenticate. An `aws` machine identity cannot be used: it yields AWS credentials, not a bearer token. |
+
+A headless engine shipping its logs under a client-secret machine identity:
+
+```json
+{
+  "auth": {
+    "oauth": {
+      "log-shipper": {
+        "clientId": "00000000-0000-0000-0000-000000000000",
+        "tokenUrl": "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token",
+        "scopes": ["api://<ingest-app-id>/.default"],
+        "machineIdentity": {
+          "source": "client_secret",
+          "clientSecretEnv": "ION_LOG_SHIPPER_CLIENT_SECRET"
+        }
+      }
+    }
+  },
+  "logging": {
+    "egressTargets": ["otel"],
+    "egressOtel": { "enabled": true, "endpoint": "https://otel.example.com" },
+    "egressTokenScope": "api://<ingest-app-id>/.default",
+    "egressTokenProvider": "log-shipper"
+  }
+}
+```
+
+Enterprise config that seals egress on also seals `egressTokenScope`, `egressTokenAudience`, and
+`egressTokenProvider` when it sets them.
+
+`egressOtel.serviceName` names the OTLP exporter's instrumentation scope, not a service. Each shipped
+record's service is its own resource `service.name` (`ion-<component>`), whichever process ships it.
+See [Consuming logs](../observability/consuming-logs.md#otlp-is-the-canonical-egress).
+
 ## telemetry
 
 Telemetry collection and export. The file target writes schema-v4 compact frames. This reduces repeated identity and correlation data; the telemetry forwarder expands both frame and expanded-event records for Alloy and other consumers, at any schema at or below its own.
@@ -530,14 +578,22 @@ Telemetry collection and export. The file target writes schema-v4 compact frames
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | bool | `false` | Master switch for telemetry. |
-| `targets` | string[] | `[]` | Export targets: `"http"`, `"file"`, `"otel"`. |
+| `targets` | string[] | `["file"]` when `enabled` and unset | Export targets: `"file"`, `"stdout"`, `"http"`, `"eventhub"`, `"otel"`. An explicit `[]` means no sinks. |
 | `httpEndpoint` | string | `""` | HTTP endpoint for telemetry export. |
 | `httpHeaders` | object | `{}` | Headers sent with HTTP telemetry requests. |
-| `filePath` | string | `""` | Path for file-based telemetry output. The file uses v4 compact frames; consumers use the telemetry forwarder to expand them. |
-| `privacyLevel` | string | `""` | Controls what data is collected. |
-| `batchSize` | int | `0` | Number of events per export batch. |
-| `flushIntervalMs` | int64 | `0` | How often to flush batched events (milliseconds). |
+| `filePath` | string | `~/.ion/telemetry.jsonl` with the `file` target | Path for file-based telemetry output. The file uses v4 compact frames; consumers use the telemetry forwarder to expand them. |
+| `privacyLevel` | string | `minimal` | Controls what data is collected: `minimal`, `standard`, or `full`. |
+| `batchSize` | int | `0` | Buffered events that trigger an early flush. `0` means only the interval flushes. |
+| `flushIntervalMs` | int64 | `5000` | How often to flush batched events (milliseconds). |
+| `maxSizeMB` / `maxFiles` / `disableRotation` | int / int / bool | `20` / `3` / `false` | Rotation of the file target. |
+| `httpRetryQueueMaxMB`, `eventHubRetryQueueMaxMB` | int | unbounded | Optional hard cap on the on-disk retry queue of the `http` / `eventhub` target. |
+| `retryQueueSoftWarnMB` / `retryQueueStuckAfterMinutes` | int | `500` / `15` | Thresholds for the `engine_telemetry_health` signal. |
+| `eventHubConnectionString`, `eventHubName`, `eventHubNamespace`, `eventHubTokenScope`, `eventHubTokenAudience` | string | `""` | Event Hub target and its authentication. |
+| `eventHubMaxMessageBytes` | int | negotiated | Per-message size events are fitted to. |
+| `oversizeEventPolicy` | string | `segment` | `segment` or `quarantine`, for an event larger than the transport allows. |
 | `otel` | object | `null` | OpenTelemetry export configuration. |
+
+The [Telemetry](../enterprise/telemetry.md) guide covers the Event Hub target, durable delivery, rotation, and the size contract in full.
 
 ### OpenTelemetry fields
 
@@ -547,8 +603,41 @@ Telemetry collection and export. The file target writes schema-v4 compact frames
 | `endpoint` | string | OTLP collector endpoint. |
 | `protocol` | string | Export protocol (e.g., `"grpc"`, `"http/protobuf"`). |
 | `headers` | object | Headers sent to the collector. |
-| `serviceName` | string | Service name reported in traces. |
+| `serviceName` | string | Service name reported in traces and metrics. |
 | `resourceAttributes` | object | Additional OTLP resource attributes. |
+| `metrics` | object | OTLP metrics export of System Metrics. Off unless `metrics.enabled` is `true` and `telemetry.enabled` is `true`. Shares `protocol`, `headers`, `serviceName`, `resourceAttributes`, `tokenScope`, and `tokenProvider`. |
+| `tokenScope` | string | When set, a fresh bearer token for this scope is minted before each trace and metrics export and sent as `Authorization`, over any static header. `metrics.tokenScope` wins for metrics. Empty sends only the static headers. |
+| `tokenProvider` | string | Name of the `auth.oauth` entry that mints the `tokenScope` and `metrics.tokenScope` tokens. Empty uses `auth.identityProvider`, the behavior before the field existed. Name a `machineIdentity` entry so a headless engine with no signed-in operator can export; an entry also named by `logging.egressTokenProvider` is built once and shared. An unknown or interactive entry is logged as an error and falls back to `auth.identityProvider`. The engine logs `otlp export token provider installed` at start, and each exporter's start line carries `token_provider`. |
+
+#### `otel.metrics` fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Export System Metrics as OTLP metrics. |
+| `exportIntervalMs` | int | `60000` | How often metrics are exported. |
+| `endpoint` | string | shared `endpoint` + `/v1/metrics` | A receiver that takes metrics at its own URL (Azure Monitor does). An endpoint with a path is used as given. |
+| `temporality` | string | `cumulative` | `cumulative` or `delta`. Application Insights requires `delta`. |
+| `tokenScope` | string | `otel.tokenScope` | When set, a fresh token for this scope is minted before each export and sent as `Authorization`, over any static header. Minted from `otel.tokenProvider`. |
+
+The exported instruments are gauges `ion.host.cpu.utilization`, `ion.host.memory.available`, `ion.host.memory.limit`, `ion.host.disk.free`, `ion.process.cpu.utilization`, `ion.process.memory.rss`, `ion.engine.heap`, `ion.engine.goroutines`, `ion.engine.sessions`, and the counter `ion.system_metrics.samples`. The only attribute is `role` on the two `ion.process.*` instruments. See [Telemetry](../enterprise/telemetry.md#system-metrics) for sending them to Application Insights.
+
+A headless engine exporting traces and System Metrics under the same machine identity its log egress uses:
+
+```json
+{
+  "telemetry": {
+    "enabled": true,
+    "targets": ["otel"],
+    "otel": {
+      "enabled": true,
+      "endpoint": "https://otel.example.com",
+      "tokenScope": "api://<ingest-app-id>/.default",
+      "tokenProvider": "log-shipper",
+      "metrics": { "enabled": true }
+    }
+  }
+}
+```
 
 ```json
 {
@@ -562,6 +651,26 @@ Telemetry collection and export. The file target writes schema-v4 compact frames
     "batchSize": 50,
     "flushIntervalMs": 10000
   }
+}
+```
+
+## systemMetrics
+
+The System Metrics sampler: host CPU, memory, load and disk, and CPU and memory for every process in the engine's own tree, labeled by role. It runs by default and keeps its numbers on the machine. They leave only through the outputs you turn on: the `system.metrics` telemetry event while `telemetry.enabled` is `true`, and OTLP metrics under `telemetry.otel.metrics`. See [System Metrics](../observability/README.md#signals-and-where-they-go).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool (nullable) | `null` (on) | `false` turns sampling off; `get_system_metrics` and `system_metrics_watch` are then refused. |
+| `backgroundIntervalMs` | int | `30000` | Sampling interval while no connection watches. One sample per interval is logged at INFO. |
+| `minIntervalMs` | int | `250` | The fastest interval a `system_metrics_watch` may ask for. |
+| `diskPath` | string | `~/.ion` | Directory whose volume the disk figures report. |
+| `telemetryIntervalMs` | int | `60000` | How often a `system.metrics` telemetry event is recorded while telemetry is enabled. |
+
+An enterprise `systemMetrics` block replaces the user's whole block.
+
+```json
+{
+  "systemMetrics": { "backgroundIntervalMs": 15000, "telemetryIntervalMs": 120000 }
 }
 ```
 
@@ -611,6 +720,46 @@ Context window compaction controls how the engine manages conversation length. T
 |-------|------|---------|-------------|
 | `redactSecrets` | bool | `false` | When enabled, the engine scans tool output for secrets and redacts them before returning to the model. |
 | `workspaceContainment` | bool | enabled when absent | Baseline worktree containment, checked in the tool loop: a conversation whose working directory is a registered worktree may not write into the base repository it was cut from or into a sibling worktree, and operations that would change which branch the worktree holds (or remove the checkout) are refused. Bench rules are client policy delivered through the tool gate, not part of this setting. Absent or `null` means enabled — this is a safety default, so only an explicit `false` disables it. |
+| `principalPartitioning` | object | absent (disabled) | Per-principal conversation storage isolation (ADR-034). See below. |
+| `sandbox` | object | absent (disabled) | User-layer OS sandbox policy (Seatbelt on macOS, bwrap on Linux) for shell execution. See below. |
+
+### `security.principalPartitioning`
+
+Isolates conversation storage per authenticated principal on a multi-tenant engine. See [ADR-034](../architecture/adr/034-principal-isolation-and-tenancy.md) and [Conversation storage](../architecture/conversation-storage.md#partition-layout) for the full directory layout.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Absent or `false` means every principal's conversations live in the historical flat `conversations/` directory — byte-identical to the pre-partitioning layout. `true` partitions each principal's conversations under `principals/<PrincipalDir(subject)>/conversations/`, a sibling of the flat root, which remains the home for unattributed sessions only. |
+| `enforcement` | string | `"strict"` when `enabled: true` | `"strict"` — a session may only read or write its own partition; any cross-principal access is refused. `"read-only"` — cross-principal reads are allowed, writes remain confined to the session's own partition. `"none"` — partitioning is a storage-layout convention only; every session can read and write every partition. Logged at WARN on every boot, since this is never meant to be a silent downgrade. |
+
+An enterprise sealed config can force this on and set a floor enforcement level via `security.principalPartitioning`'s equivalent enterprise fields (`requirePrincipalPartitioning`, `minEnforcement`) — see [Sealed configuration](../enterprise/sealed-config.md#security).
+
+`get_host_info` publishes the resolved state as `principalPartitioning: {enabled, enforcement, root}` so a client or harness can detect the mode without inferring it from file layout. `start_session`'s result and the `identity_changed` hook payload (`ContextIdentity.storageRoot`) both carry the session's own resolved partition directory when partitioning is enabled and the session has a principal — see [Hooks reference](../hooks/reference.md#storageroot).
+
+### `security.sandbox`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable the OS-level sandbox for shell execution. An enterprise sealed config can force this on (`security.sandbox.required`) regardless of this value. |
+| `denyRead` | string[] | `[]` | Additional filesystem paths the sandbox denies read access to, beyond its built-in defaults. |
+| `denyWrite` | string[] | `[]` | Additional filesystem paths the sandbox denies write access to. |
+| `allowWrite` | string[] | `[]` | Filesystem paths explicitly allowed for write, carved out of an otherwise-denied region. |
+| `network.allowedDomains` | string[] | absent | When set, network access from the sandbox is limited to these domains. |
+| `network.blockedDomains` | string[] | absent | Domains the sandbox blocks even when otherwise allowed. |
+
+When `security.principalPartitioning` is also active, the sandbox's filesystem rules are extended automatically: every other principal's partition directory (and the flat legacy root) is denied read, with an allow-read exception carved back for the session's own partition. This needs no separate configuration — it follows from `principalPartitioning` being enabled.
+
+## git
+
+Per-session git author identity, independent of the per-principal git *credential* resolution the server performs (see [Server configuration](server-json.md#git) and [Git identity setup](../deployment/git-identity-setup.md)) — this section resolves the name/email a commit records, not what it authenticates with.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `identity.fromPrincipal` | bool | `true` | When true, a session's git author/committer identity resolves from its `SessionPrincipal` (display name or username, paired with its email) whenever both are present. |
+| `identity.required` | bool | `false` | When true, a Bash call that would record a commit (`commit`, `merge --no-ff`, `rebase`, `cherry-pick`, `am`, `tag`, `commit-tree`) is refused before it runs if no identity could be resolved, rather than stamping an unattributed commit. Read-only and non-authoring commands (status, diff, log, push, fetch, checkout, branch, stash, reset) are never gated. |
+| `identity.machine` | `{name, email}` | absent | A fallback author identity used when `fromPrincipal` is false, or when a principal's name/email cannot be resolved. |
+
+An enterprise sealed config can force `identity.required` on and/or replace `identity.machine` wholesale (`git.required`, `git.machine` under the sealed config's `git` block) — see [Sealed configuration](../enterprise/sealed-config.md#git).
 
 ## relay
 
@@ -845,6 +994,8 @@ A multi-provider configuration mixing a local Ollama model with a hosted OpenAI 
 
 * [models.json Reference](models.md) for registering custom models and tier aliases.
 * [Provider Setup](../providers/index.md) for the catalog of supported providers and their environment variables.
+* [ADR-034: Principal Isolation and Tenancy](../architecture/adr/034-principal-isolation-and-tenancy.md) for why `security.principalPartitioning`, `security.sandbox`, and `git.identity` exist.
+* [Git identity setup](../deployment/git-identity-setup.md) for the operator-facing checklist behind `git.identity` and its server-side counterpart.
 
 ## newConversationDefaults
 

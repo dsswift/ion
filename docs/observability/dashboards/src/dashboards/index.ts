@@ -21,6 +21,7 @@ import { trustDashboard } from './trust.ts';
 import { usersDashboard } from './users.ts';
 import { fleetDashboard } from './fleet.ts';
 import { mobileDashboard } from './mobile.ts';
+import { systemMetricsDashboard } from './system-metrics.ts';
 
 export type Recipe = () => Dashboard;
 
@@ -40,4 +41,5 @@ export const RECIPES: readonly Recipe[] = [
   usersDashboard,
   fleetDashboard,
   mobileDashboard,
+  systemMetricsDashboard,
 ];

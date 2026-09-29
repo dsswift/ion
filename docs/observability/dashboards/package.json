@@ -7,6 +7,7 @@
   "scripts": {
     "generate": "node src/generate.ts",
     "check": "node src/check.ts",
+    "generate:azure": "node src/generate-azure.ts",
     "test": "node --test"
   },
   "engines": {

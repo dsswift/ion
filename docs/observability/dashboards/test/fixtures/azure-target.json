@@ -1,0 +1,12 @@
+{
+  "datasource": { "type": "grafana-azure-monitor-datasource", "uid": "example-azure-monitor" },
+  "resources": [
+    "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/example/providers/Microsoft.OperationalInsights/workspaces/example"
+  ],
+  "folder": "ion",
+  "views": {
+    "IonTelemetry": "ExampleTelemetry",
+    "IonLogs": "ExampleLogs",
+    "IonSpans": "ExampleSpans"
+  }
+}

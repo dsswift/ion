@@ -1,9 +1,14 @@
 # Ion Unified Log Schema
 
-Canonical JSONL schema for all five surfaces: **engine**, **desktop**, **ios**, **relay**, **extension**.
+Canonical JSONL schema for all surfaces: **engine**, **desktop**, **server**, **web**, **ios**, **relay**, **extension**.
 
 Every surface writes one JSON object per line (NDJSON). All fields are snake_case. No surface may invent
 top-level fields outside this schema; additional context goes into `fields`.
+
+**Schema version: 2.** The version covers the whole emitted contract: the local JSONL lines below, the
+OTLP records every exporter ships (§ "OTLP correlation model"), and the names a collector indexes them
+under (§ "Names in Loki"). A change to any of them bumps the version and moves every consumer Ion owns
+with it.
 
 ---
 
@@ -13,13 +18,13 @@ top-level fields outside this schema; additional context goes into `fields`.
 |---|---|---|---|
 | `ts` | string | YES | RFC3339Nano, always UTC. Example: `2024-11-15T22:04:05.123456789Z` |
 | `level` | string enum | YES | `TRACE` \| `DEBUG` \| `INFO` \| `WARN` \| `ERROR`. No absent-equals-INFO default — the field must be present on every line. |
-| `component` | string enum | YES | `engine` \| `desktop` \| `ios` \| `relay` \| `extension` |
+| `component` | string enum | YES | `engine` \| `desktop` \| `server` \| `web` \| `ios` \| `relay` \| `extension` |
 | `tag` | string | NO | Subsystem tag within the component (`session`, `ext:my-agent`, etc.). For extension-component logs, this MUST be the extension name. |
 | `msg` | string | YES | Human-readable message. No structured data embedded here; use `fields`. |
 | `session_id` | string | NO | The engine session key: the opaque, client-supplied key that identifies the current engine session. For desktop clients this is the tab UUID (`ClientCommand.Key`). For external consumers it may be any string the client chose. This is NOT the conversation ID. Omit (never `""`) when not in a session context. |
 | `conversation_id` | string | NO | The engine-minted conversation-file identity, format `{unix-millis}-{12-hex-chars}` (e.g. `1780093348767-c1c03e998388`). This is the durable identity of the persisted conversation tree at `~/.ion/conversations/<id>.tree.jsonl`. A single conversation spans multiple sessions and runs. Omit (never `""`) when not associated with a conversation. |
-| `trace_id` | string | NO | W3C trace-context trace-id: 32 lowercase hex chars. Scoped to **one prompt-to-completion run** — see § "Correlation-ID vocabulary". Omit when no run is in flight. |
-| `span_id` | string | NO | OpenTelemetry-compatible 16-hex span ID. Omit when no span is active. |
+| `trace_id` | string | NO | W3C trace-context trace-id: 32 lowercase hex chars. Scoped to **one prompt**, from the client's submit to the end of the engine's run — see § "Correlation-ID vocabulary" and § "Spans". Omit when no prompt is in flight. |
+| `span_id` | string | NO | OpenTelemetry-compatible 16-hex span ID. Omit when no span is active. A span line carries its own `span_id` in `fields` instead (§ "Spans"). |
 | `fields` | object | YES | Open key/value map for structured context. Always present; use `{}` when empty. Values can be any JSON scalar, array, or object. |
 
 ### Empty-string rule
@@ -67,7 +72,7 @@ the most common source of unusable traces. Each answers a different question:
 | ID | Scope | Lifetime | Use it for |
 |---|---|---|---|
 | `conversation_id` | One persisted conversation tree | Durable — survives engine restarts, reattaches, and days of wall-clock | Long-term conversation tracking, audit trails, resource scoping. The ID a human means by "that conversation". |
-| `trace_id` | **One prompt-to-completion run** | The run | **Distributed tracing.** The `operation_Id` in Application Insights, the trace-id in a `traceparent` header, the trace in Jaeger/Tempo. |
+| `trace_id` | **One prompt**, from the client's submit to the end of the run | The prompt | **Distributed tracing.** The `operation_Id` in Application Insights, the trace-id in a `traceparent` header, the trace in Jaeger/Tempo. |
 | `run_id` | The same single run | The run | Joining Ion's own logs to Ion's own telemetry for one run. Engine-native, **not** W3C-shaped. |
 | `session_id` | One engine session | The session — one client connection/tab, spanning many runs | Grouping the runs that shared a live session. This is the ID that used to be `trace_id`'s scope. |
 | `dispatch_id` + `depth` | One sub-agent within a run | The dispatch | Locating a child agent inside its parent's trace. `depth` is 0 for the root session. |
@@ -81,6 +86,16 @@ transaction, which is what every OTLP backend expects. If you want the old sessi
 **Lines emitted outside a run carry no `trace_id`.** Session start/stop, extension load, and
 schedule/webhook deliveries have no run in flight, so the key is absent rather than empty (see
 § "Empty-string rule"). Those lines remain joinable by `session_id` and `conversation_id`.
+
+**The client that sends a prompt mints its `trace_id`.** Studio (in Electron or a browser) and
+the phone start the trace when the operator submits and pass it on as a `traceparent`; the server
+and the engine's run join it. A pivot on `trace_id` therefore returns that prompt's lines on every
+surface that handled it: the client's span, the relay's forward span, the server's lines and span,
+and the engine and extension lines of the run. A prompt that arrives with no valid `traceparent`
+(a server-originated turn, a caller that sends none) starts its trace at the server, and a run the
+engine starts on its own (a schedule, a webhook) starts it at the engine. Lines about no prompt carry
+none; follow a conversation across prompts by `conversation_id` or `session_id`, which each surface
+resolves per line. How the trace moves hop to hop is § "Spans".
 
 **Consuming `trace_id` from an extension.** `ctx.traceId` is valid to place directly in a
 `traceparent` header, so a downstream API call joins the engine's trace:
@@ -145,18 +160,198 @@ Engine WARN, no session (daemon startup):
 
 ---
 
-## Loki label policy
+## Spans
 
-Only three fields become Loki stream labels. All other fields stay in the log body.
+A prompt is one W3C trace, with one timed span at each hop:
 
-| Label | Source field | Rationale |
+```
+prompt.send              client (Studio desktop, Studio web, iOS)   kind client
+  relay.forward          relay, phone frames only                   kind server
+  prompt.handle          Ion server                                 kind server
+    engine.send_prompt   Ion server, the call into the engine       kind client
+      run.execute        engine                                     kind server
+        llm.call                                                    kind client
+        tool.execute / extension.hook_latency                       kind internal
+```
+
+`relay.forward` and `prompt.handle` are both children of `prompt.send`: the relay forwards the frame and
+the server receives it. `engine.send_prompt` is a child of `prompt.handle`, and `run.execute` is a
+child of `engine.send_prompt`. Every hop between two services is a client span whose child is a server
+span in the next service; § "OTLP correlation model" says why.
+
+### Where each span starts and ends
+
+| Span | Starts | Ends | Written by |
+|---|---|---|---|
+| `prompt.send` (Studio) | The operator submits (`desktop/src/renderer/lib/prompt-trace.ts`, `submitWithTrace`) | The server answers the `submit` action, accepted or refused | `rendererLogger`: `desktop.jsonl` in Electron, `server.jsonl` as `component=web` in a browser |
+| `prompt.send` (iOS) | The operator submits (`SessionViewModel.submit`, `PromptTraceBook`) | The server answers `session.prompt` (a failed or timed-out action answers rejected) | `DiagnosticLog.logSpan`, pulled into `ios-diagnostic-logs.jsonl` |
+| `relay.forward` | The relay receives the frame | The frame is written to the peer | The relay's own OTLP export (§ "relay") |
+| `prompt.handle` | The server receives the prompt: the store's `submit` (Studio) or `session.prompt` (a client action) | The engine accepts or rejects `send_prompt` / `send_command`, or the prompt is handled or refused without it | `server/src/tracing/prompt-span.ts` through the server logger |
+| `engine.send_prompt` | The server sends `send_prompt` or `send_command` (`server/src/engine/engine-bridge-core.ts`) | The engine answers `send_prompt`; for `send_command`, the send itself (the command is not awaited) | `server/src/tracing/prompt-span.ts` through the server logger |
+| `run.execute` and below | The engine run starts | The run exits | The engine's telemetry stream |
+
+`prompt.handle` joins the client's trace when the client sent a valid `traceparent`, and starts a new
+root otherwise. Either way it logs one line with the reason, `tag=trace`:
+`prompt trace joined the client trace`, or `prompt trace started a new root` with
+`reason` = `client sent no traceparent` | `client traceparent is invalid`. Every server line about
+handling the prompt carries the prompt's top-level `trace_id`.
+
+### Propagation
+
+`traceparent` is `00-<32 hex trace-id>-<16 hex parent span-id>-<2 hex flags>`. A value is valid only
+at version `00`, lowercase hex, trace-id and span-id not all zero; the engine, the server, the
+clients, and the relay apply the same rule.
+
+| Hop | Carrier |
+|---|---|
+| Studio → server | The `submit` store action's options, `traceparent` (the client span) |
+| Phone → server | The `session.prompt` action's `traceparent` argument, and the same value on the frame's outer sealed envelope, where the relay reads it ([Studio wire § Trace context on the envelope](../protocol/studio-wire.md#trace-context-on-the-envelope)) |
+| Server → engine | `send_prompt` / `send_command` `traceparent` (the `engine.send_prompt` client span; [client commands](../protocol/client-commands.md)) |
+
+### Span record shapes
+
+A span is a log record whose `ts` is the span's END and whose top-level `trace_id` is its trace. Two
+shapes carry one:
+
+**Span log line** (server, desktop, web, iOS). An operational line with `tag` = `span`:
+
+```json
+{"ts":"2026-09-23T10:00:01.250000000Z","level":"INFO","component":"server","tag":"span","msg":"prompt.handle","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","conversation_id":"1780093348767-c1c03e998388","fields":{"span_id":"00f067aa0ba902b7","parent_span_id":"1111222233334444","duration_ms":12,"span_kind":"server","tab_id":"t1","accepted":true}}
+```
+
+- `msg` is the span name. `fields.span_id` (16 hex) and a numeric `fields.duration_ms` are required;
+  `fields.parent_span_id` is absent on a root. `fields.span_kind` is `server`, `client`, or
+  `internal` (the default). A non-empty `fields.error` marks the span failed; such a line is WARN.
+- Every other `fields` key is a span attribute. `session_id` and `conversation_id` stay top-level
+  and are not repeated in `fields`.
+- A surface states the trace as a `trace_id` field; its logger lifts that to the top level
+  (`@ion/shared/log-correlation` `lineFields`, and `DiagnosticLog` on iOS). Any line may carry a
+  `trace_id` this way.
+- A browser span line keeps `tag` = `span` through `POST /log`; other forwarded lines get `web:`.
+
+**Telemetry span event** (engine). A `telemetry.jsonl` event whose `payload` holds `span_id` and
+`duration_ms`: `run.execute`, `llm.call`, `tool.execute`, `extension.hook_latency`. Its parent is
+`context.parent_span_id`. `payload.span_kind` names the kind the same way `fields.span_kind` does:
+`run.execute` is `server`, `llm.call` is `client`, and the rest are internal.
+
+A client span names the service it calls in the `peer.service` attribute: `ion-server` on
+`prompt.send`, `ion-engine` on `engine.send_prompt`.
+
+### Export
+
+With the `otel` egress target, each batch's span records are posted to `<endpoint>/v1/traces` as
+OTLP/JSON after the batch's logs are accepted, with the same headers. The engine does it for the
+files it ships (`engine/internal/utils/log_egress_traces.go`), and the desktop and server do the same
+for what they ship (`packages/shared/src/log-egress-traces.ts`), with the same recognition rules and
+attribute mapping:
+
+- The resource is the recording source's (§ "OTLP correlation model"); `service.name` is
+  `ion-<component>`. Start is `ts` minus `duration_ms`, end is `ts`.
+- `kind` comes from `span_kind`: `server` is 2, `client` is 3, anything else is internal (1).
+- Attributes are the span's fields (minus `span_id`, `parent_span_id`, `duration_ms`, `span_kind`,
+  `error`, and the fields the resource states: `host` and `install_id`, or on iOS `device_id` and
+  `app_version`), plus top-level `session_id` and `conversation_id`, plus the telemetry `context`'s
+  `session_id`, `conversation_id`, and `run_id`.
+- A failed span export is logged and never fails the batch: the logs already landed, and the span
+  line itself stays findable by `trace_id`.
+
+## OTLP correlation model
+
+One emission serves every consumer. Each shipped log record and span carries the same identity, and
+each backend reads the part it needs. The engine (`engine/internal/utils/log_egress_resource.go`), the
+server and desktop (`packages/shared/src/log-egress-resource.ts`), and the relay derive it by one rule.
+
+### Resource: which service wrote it
+
+A batch holds records from several sources, so the resource is built per record, and records group
+into one `resourceLogs` / `resourceSpans` entry per distinct resource. A source's logs and spans
+share one resource.
+
+| Attribute | Value |
+|---|---|
+| `service.namespace` | `ion`, for every component |
+| `service.name` | `ion-<component>`: `ion-engine`, `ion-extension`, `ion-server`, `ion-desktop`, `ion-web`, `ion-ios`, `ion-relay` |
+| `service.instance.id` | The host's `install_id` (`~/.ion/install_id`); on a telemetry event, the event's `install_id`; on an iOS line, the line's `fields.device_id`; on the relay, its host name |
+| `service.version` | The shipping process's build version; on a telemetry event, the event's `version`; on an iOS line, `fields.app_version`; on the relay, its `VERSION` |
+| `host.name` | The OS host name without `.local`; on a telemetry event, the event's `host`; absent on iOS lines, which describe the device, not the host that shipped them |
+
+The otel config's `resourceAttributes` are added to every resource and win over the derived values,
+except `service.name`, which always names the source. `serviceName` names the exporter's
+instrumentation scope. The engine's OTLP trace and metrics exports carry the same host identity
+under their own `serviceName` (default `ion-engine`).
+
+### Log record: which operation it belongs to
+
+| OTLP LogRecord field | Value |
+|---|---|
+| `traceId` | The record's `trace_id`, when it is a valid W3C trace id |
+| `spanId` | The span the record is about: a span line's `fields.span_id`, a span event's `payload.span_id`, otherwise a telemetry event's `context.parent_span_id`. Never set without `traceId` |
+| `body` | The record itself: the operational JSONL line, or the telemetry event JSON |
+| `attributes` | Operational line: `tag`, `session_id`, `conversation_id`, `user`, `event_id`, and every `fields` key. Telemetry event: `event.name`, `user`, `schema_version`, and the payload and context keys the local telemetry pipeline extracts (`model`, `run_cost_usd`, `context_session_id`, ...) |
+
+The envelope states each fact once. No attribute repeats the trace (`traceId`), the span (`spanId`), the
+component (`service.name`), the host (`host.name`), the install (`service.instance.id`), or the build
+(`service.version`). A telemetry event is told from an operational line by `event.name`, the OTel
+attribute naming an event; no `fields` key is dotted, so no operational line carries it.
+
+### What each backend reads
+
+| Backend | Service | Log to operation | Span tree |
+|---|---|---|---|
+| Application Insights (Azure Monitor OTLP ingestion: `OTelLogs`, `OTelSpans`) | `RoleName` from `service.namespace` + `service.name`; `RoleInstance` from `service.instance.id` | `OTelLogs.TraceId` / `SpanId` from the LogRecord fields | `OTelSpans.TraceId` / `SpanId` / `ParentSpanId`. `Kind` server spans are requests and client or internal spans are dependencies; the Application Map draws an edge from a client span to the server span it parents in another service |
+| Tempo | `resource.service.name` | (Loki, below) | `traceId` / `spanId` / `parentSpanId`, `kind` |
+| Loki | the `service_name` label | the `trace_id` and `span_id` structured metadata | (Tempo) |
+| Grafana on Log Analytics (`IonLogs` / `IonTelemetry` / `IonSpans` views) | `ServiceName`, `RoleName`, `ServiceInstanceId` | `TraceId` / `SpanId` | `IonSpans` rows |
+
+Azure's table columns are documented at
+[OTelLogs](https://learn.microsoft.com/azure/azure-monitor/reference/tables/otellogs) and
+[OTelSpans](https://learn.microsoft.com/azure/azure-monitor/reference/tables/otelspans). The role name
+and instance mapping and the request/dependency split are documented at
+[Configuring OpenTelemetry in Application Insights](https://learn.microsoft.com/azure/azure-monitor/app/opentelemetry-configuration)
+and [Add and modify OpenTelemetry](https://learn.microsoft.com/azure/azure-monitor/app/opentelemetry-add-modify).
+
+---
+
+## Names in Loki
+
+A collector indexes every record under the names its OTLP form carries, so a query reads the same
+names whether the record arrived from a local file or over OTLP. The local stack's Alloy config
+(`alloy-config.alloy`) and telemetry forwarder produce exactly these, as does the fleet OTLP config in
+[`central-log-collection.md`](../enterprise/central-log-collection.md#3-alloy--the-ingestion-endpoint);
+the dashboards select on nothing else (`dashboards/test/stream-labels.test.ts`).
+
+Six stream labels. All other fields stay in the log body or in structured metadata.
+
+| Label | OTLP source | Local source | Rationale |
+|---|---|---|---|
+| `service_name` | `service.name` | `ion-` + the line's `component`; the forwarder's stream label for telemetry | The surface that wrote the record (`ion-engine`, `ion-server`, `ion-desktop`, `ion-web`, `ion-ios`, `ion-relay`, `ion-extension`) |
+| `event_name` | `event.name` | the telemetry event's `name` | Present only on telemetry events. A log selector says `event_name=""`; a telemetry selector names the event (`{event_name="run.complete"}`) or `event_name=~".+"` |
+| `level` | `severityText` | `level` | Severity filtering without full-text scan. Operational lines only |
+| `tag` | the `tag` attribute | `tag` | Subsystem and extension fan-out (`ext:my-agent`, `session`, ...) |
+| `host_name` | `host.name` | top-level `host` (telemetry) or `fields.host` (operational), `.local` trimmed | The device: every dashboard's **Device** filter and every per-device chart |
+| `user` | the `user` attribute | `user` | The signed-in operator: every dashboard's **User** filter |
+
+Structured metadata, filtered without a parser (`| trace_id = "..."`):
+
+| Key | OTLP source | Local source |
 |---|---|---|
-| `component` | `component` | Surface-level fan-out (`engine`, `desktop`, etc.) |
-| `level` | `level` | Severity filtering without full-text scan |
-| `tag` | `tag` | Extension-level fan-out (`ext:my-agent`, `session`, etc.) |
+| `trace_id` | LogRecord `traceId` | top-level `trace_id` |
+| `span_id` | LogRecord `spanId` | a span line's `fields.span_id`, else top-level `span_id`; a telemetry event's `payload.span_id`, else `context.parent_span_id` |
+| `service_instance_id` | `service.instance.id` | a telemetry event's `install_id`; an iOS line's `fields.device_id` |
+| `service_version` | `service.version` | a telemetry event's `version`; an iOS line's `fields.app_version` |
 
-Correlation IDs (`session_id`, `conversation_id`, `trace_id`, `span_id`) stay in the body and are queried
-with LogQL `| json | session_id = "..."`. Promoting them to labels would create extreme label cardinality.
+Telemetry events also carry the payload and context keys listed under § "Telemetry event fields" as
+structured metadata. `host_name` and `user` are set on every pipeline by one Alloy stage,
+`loki.process "ion_identity"`, so a line gets them whatever shape it arrived in. A line with neither
+leaves them unset. They are the only identity labels: `machine_id` and the MDM ids are
+one-per-install and stay in the body, where `| json` reads them. Three consequences to know:
+
+- Every engine, server, and desktop line carries `fields.host` in the local file, so a local stack labels its lines by device. A line written before the machine identity loads (the first lines of a desktop or server boot) has none.
+- `host`, `machine_id`, `mdm_device_id`, and `mdm_serial` belong to the logger. It stamps them over any caller field of the same name, and `make check-logging` (RESERVED-KEY) fails a call site that uses one: a URL's host logged as `host` would otherwise show up as a device. Name such a value for what it is (`url_host`, `git_host`, `bind_host`).
+- An iOS line is labeled with the device that shipped it (the server's host), not the phone; the Mobile dashboard slices phones by their own device fields.
+
+`session_id` and `conversation_id` stay in the body and are queried with LogQL
+`| json | session_id = "..."`. Promoting them to labels would create extreme label cardinality.
 
 ---
 
@@ -185,10 +380,9 @@ earlier expanded-event schemas used: combine the indexed identity and context wi
 record, then set its `schema` to `4`.
 
 The compact file format is a storage format, not a dashboard contract. The
-telemetry forwarder decodes every line at or below its own schema and posts expanded events to Alloy. It
-keeps the `service="ion-telemetry"`, `service_name="ion-telemetry"`, and `kind`
-labels, plus the structured metadata names that the dashboards use. Existing
-dashboard queries therefore do not change.
+telemetry forwarder decodes every line at or below its own schema and posts expanded events to Alloy,
+one stream per recording service (`service_name`). Alloy adds the `event_name` label and the
+structured metadata in § "Names in Loki".
 
 ### Expanded telemetry event fields
 
@@ -377,19 +571,40 @@ upgrade.
 
 #### Machine identity in `fields` (engine)
 
-When egress is configured, the engine forwarder (`engine/internal/utils/log_egress.go`) stamps the following stable machine-identity fields onto every egress record. They are absent from the local `engine.jsonl` line (local JSONL uses the slog handler); they appear in the record shipped to the HTTP/OTEL egress target. Absent keys mean the value is empty or the platform has no source for it.
+The engine logger stamps the following stable machine-identity fields onto every `engine.jsonl` line and, when egress is configured, every shipped record (`engine/internal/utils/log_identity.go`). The logger's value wins over a caller field of the same name. Absent keys mean the value is empty or the platform has no source for it. The install is not a field: a shipped record states it as its resource's `service.instance.id`.
 
 | Field | Source | Notes |
 |---|---|---|
-| `host` | `os.Hostname()` | Always present. Matches the `host` field on telemetry events for the same machine — the Fleet board join key. |
-| `machine_id` | `ioreg IOPlatformUUID` (macOS) / `/etc/machine-id` (Linux) | Stable **hardware** UUID independent of the username. Absent on platforms without a source. Distinct from `install_id` — see the note below. |
-| `install_id` | `~/.ion/install_id` (minted once) | Anonymous **per-install** UUID, the same value telemetry stamps (`utils.InstallID`). Joins egress records to the telemetry stream. Distinct from `machine_id` — see the note below. |
+| `host` | `os.Hostname()` | Always present. Matches the `host` field on telemetry events for the same machine — the Fleet board join key. Shipped as the resource's `host.name`, not as an attribute. |
+| `machine_id` | `ioreg IOPlatformUUID` (macOS) / `/etc/machine-id` (Linux) | Stable **hardware** UUID independent of the username. Absent on platforms without a source. Distinct from the install — see the note below. |
 | `mdm_device_id` | MDM config (`MDMDeviceID` key) | Present only on MDM-enrolled machines (e.g. Intune). Enables cross-reference to the MDM console. |
 | `mdm_serial` | MDM config (`MDMSerialNumber` key) | Present only on MDM-enrolled machines. |
 
-> **`machine_id` vs `install_id` are different identifiers, not a naming drift.** `machine_id` is the stable **hardware** UUID (survives reinstalls, changes on new hardware); `install_id` is the **per-install** anonymous UUID (changes on reinstall, joins to the telemetry stream which stamps the same value). Both ship on every egress record so a consumer can group by hardware (`machine_id`) or by install (`install_id`) as needed.
+> **`machine_id` and the install are different identifiers.** `machine_id` is the stable **hardware** UUID (survives reinstalls, changes on new hardware). The install (`~/.ion/install_id`, shipped as `service.instance.id`) is the **per-install** anonymous UUID (changes on reinstall, the same value telemetry stamps). A consumer groups by hardware with `machine_id` and by install with `service.instance.id`.
 
 Every egress record also carries a per-record `event_id` (16 hex chars, stamped at the enqueue chokepoint) for downstream dedup during retry storms — the same shape as the telemetry `event_id`. A record that already carries an `event_id` (e.g. a tailed telemetry event) keeps its own.
+
+#### System Metrics sample (engine)
+
+`tag=sysmetrics`, `msg="system metrics sample"`. One line per `systemMetrics.backgroundIntervalMs` (default 30 s) at INFO, or at ERROR with `msg="HIGH MEMORY"` when the Go heap is at or above 85% of the soft ceiling. Every other sample (a watcher asked for a faster interval) is logged at DEBUG. Every figure is a flat field under `fields` (LogQL: `fields_<name>`), so `unwrap` can chart it:
+
+| Field | Unit | Meaning |
+|---|---|---|
+| `host_cpu_utilization` | 0..1 | Share of all host CPUs in use since the previous sample. Absent on the first sample |
+| `host_cpu_count` / `host_effective_cpu_count` | CPUs | Logical CPUs / the container's CPU quota when one applies |
+| `host_memory_total_bytes` / `host_memory_available_bytes` / `host_memory_limit_bytes` | bytes | Physical memory / available to new work / container limit (0 when none) |
+| `host_container_limited` | bool | A cgroup limit narrowed CPU or memory |
+| `host_load1` | load | One-minute load average. Absent on Windows |
+| `host_disk_total_bytes` / `host_disk_free_bytes` | bytes | The volume holding `systemMetrics.diskPath` |
+| `<role>_cpu_percent` | % of one core | Summed CPU of each process role: `engine`, `extension`, `mcp`, `backend`, `tool` |
+| `<role>_rss_bytes` | bytes | Summed resident memory of each role |
+| `process_count` | count | Processes in the engine's tree |
+| `heap_bytes` / `sys_bytes` / `mem_limit_bytes` | bytes | Go heap in use / obtained from the OS / soft ceiling |
+| `heap_mb` / `sys_mb` / `limit_mb` | MiB | The same three, as the earlier memory-monitor line wrote them |
+| `goroutines` / `num_gc` / `sessions` | count | Goroutines, completed GC cycles, live sessions |
+| `interval_ms` / `sample_duration_ms` | ms | Sampling interval in effect / how long the sample took |
+
+Each watch change logs `watcher set` / `watcher removed` (`connection_id`, `interval_ms`, `watchers`) and each cadence change `sampling interval changed`, at INFO.
 
 ### extension (`component: "extension"`)
 
@@ -400,13 +615,14 @@ Every egress record also carries a per-record `event_id` (16 hex chars, stamped 
 
 ### desktop (`component: "desktop"`)
 
-- Written by Electron main process and renderer process.
+- Written by Electron's main process and its renderer.
+- Since the Ion Studio Server was split out ([ADR-033](../architecture/adr/033-ion-studio-server-and-environments.md)), the store, the Studio wire, worktrees, git and the remote/relay transport log as `server`, not here. What remains on this component is what Electron itself does: windows, menus, tray, deep links, the engine daemon bootstrap, the local server supervisor, and the renderer's own lines. Desktop main runs a great deal of `@ion/server` code in-process, and those lines are stamped `desktop` too, because the process is what a reader needs to know (`desktop/src/main/server-logger-adapter.ts`).
 - File: `~/.ion/desktop.jsonl`, rename-rotate at 20 MB, 3 generations (`.1`, `.2`, `.3`).
 - `tag` = subsystem label (`ipc`, `conversation`, `sync`, etc.).
 
 #### Machine identity in `fields` (desktop)
 
-After `loadMachineIdentity()` resolves at app startup, the desktop logger stamps the following fields onto every log line (via `initLoggerMachineIdentity`). Caller-supplied fields always take precedence over these ambient values — they fill absent keys only.
+After `loadMachineIdentity()` resolves at app startup, the desktop logger stamps the following fields onto every log line (via `initLoggerMachineIdentity`). They win over a caller field of the same name.
 
 | Field | Source | Notes |
 |---|---|---|
@@ -415,10 +631,36 @@ After `loadMachineIdentity()` resolves at app startup, the desktop logger stamps
 | `mdm_device_id` | `/Library/Managed Preferences/com.ion.engine.plist` (`MDMDeviceID` key) | Present only on MDM-enrolled macOS machines. |
 | `mdm_serial` | `/Library/Managed Preferences/com.ion.engine.plist` (`MDMSerialNumber` key) | Present only on MDM-enrolled macOS machines. |
 
+#### Device Metrics sample (desktop)
+
+`tag=device-metrics`. Ion Studio's own Electron processes, measured on the device and never sent anywhere else.
+
+- `msg="device metrics sample"`: one per 30 s at INFO (every 1 s at DEBUG while the Environment page's panel is open). Flat fields: `studio_process_count`, `studio_cpu_percent` and `studio_rss_bytes` (all Studio processes), `gpu_helper_cpu_percent`, `gpu_helper_rss_bytes`, `renderer_cpu_percent`, `renderer_rss_bytes`, `focused`, `system_idle_state`, `interval_ms`. GPU time as % of wall time (100 = one GPU fully busy): `studio_gpu_percent`, `gpu_helper_gpu_percent`, `renderer_gpu_percent`, present only when measured (macOS today), never zero for unknown.
+- `msg="idle repaint detected"` at WARN, once per episode: a GPU helper or renderer stayed above the `idleRepaint*` Device-setting limits while no Studio window had focus or the machine was idle. Fields: `pid`, `process_name`, `gpu_percent`, `cpu_percent`, `busy_for_ms`, `focused`, `system_idle_state`. `msg="idle repaint ended"` at INFO when it settles.
+
+### server (`component: "server"`)
+
+- Written by `server/src/logger.ts` (the Ion Studio Server, `@ion/server`).
+- `fields.pid` is stamped on every line (caller fields win on collision). Two server processes once wrote interleaved lines to one `server.jsonl` -- an orphaned child of a quit desktop and its successor -- and nothing on a line said which process wrote it. Filter one process with `jq 'select(.fields.pid == N)'`.
+- File: `<ION_DATA_DIR>/server.jsonl`, rename-rotate at 20 MB, default 3 generations (`.1`, `.2`, `.3`).
+- `tag` = subsystem label (`auth`, `wire`, `worktree`, etc.).
+- Every connection transition, hide decision, refusal, and migration step logs at INFO with `environment_id`, `client_id`, `principal_subject`, and `reason` fields (manifest C12).
+- **System Metrics sample:** `tag=system-metrics`, `msg="system metrics sample"`, one per 30 s at INFO, with the server's own process: `server_cpu_percent` (% of one core), `server_rss_bytes`, `server_event_loop_utilization` (0..1), and `watchers`. Watch changes log `system metrics watch changed` / `system metrics watch ended by disconnect` with `connection_id`, `view`, and `watchers`.
+- Machine identity (`host`, `machine_id`, `mdm_device_id`, `mdm_serial`) is stamped on every line, on the same terms as the desktop's table above (`initLoggerMachineIdentity`, applied at boot by `server/src/process-logging.ts`).
+- `ION_LOG_OUTPUT` selects `file` (default), `stdout`, or `both`. The server's Docker image sets `both`: the file for an operator on the volume, stdout for `docker logs` and any container log collector.
+
+### web (`component: "web"`)
+
+- Written by the SAME `server/src/logger.ts` module as `server`, but stamped `component: "web"` instead — the one deliberate exception to "the server stamps its own component on everything it writes." `server/src/http/log-ingest.ts`'s `POST /log` route forwards a browser Studio client's OWN log lines (spec 18) into `server.jsonl`, and those lines describe BROWSER-side behavior, not the Node server process's own — stamping them `server` would misattribute every web-client failure to the wrong component.
+- File: `<ION_DATA_DIR>/server.jsonl` (same file as `server`, distinguished only by `component`).
+- `tag` is prefixed `web:` by the ingest route, except a span line, which keeps `tag` = `span` (§ "Spans").
+- `fields.subject` is the authenticated caller and `fields.user_agent` the browser that sent it. Both are stamped by the route; a client's own copy of either, and of `pid`/`host`/`machine_id`/`mdm_*`, is dropped rather than merged, so a browser cannot attribute its lines to another process or machine.
+- Each caller has a per-window line budget. Over it, the route answers `429` and records one WARN naming the subject and the count.
+
 ### ios (`component: "ios"`)
 
-- Written via `DiagnosticLog.log()` to `~/.ion/ios-diagnostic-logs.jsonl` on the paired desktop.
-- On-device rolling storage: 5 sessions max, 10 MB total cap. Desktop-side file: rename-rotate at 10 MB, 2 generations (`.1`, `.2`).
+- Written via `DiagnosticLog.log()` on the device, then pulled by the server it is paired with and appended to `<ION_DATA_DIR>/ios-diagnostic-logs.jsonl` (`server/src/remote/handlers/diagnostics.ts`). The pull is the server's, not the desktop's, since ADR-033 -- so with a REMOTE server the phone's lines land on that host, not on the Mac.
+- On-device storage: `current.log` plus 1 MB segments (`session-<launch>-<maxSeq>.log`). The pull reads every segment, so rotation never hides a line. A segment is deleted only after every paired server that owns lines in it has confirmed them (the server's `sinceSeq` on its next pull is the confirmation), keeping about 10 MB of confirmed history for the on-device viewer. Unconfirmed segments go only past a 100 MB hard cap, and each such delete writes a WARN `log segment dropped before shipping` with `after_seq` / `through_seq`, so the gap is explicit on the server. The server advances its cursor only after the lines are on disk. Server-side file: rename-rotate at 10 MB, 2 generations (`.1`, `.2`).
 - `tag` = Swift subsystem label.
 - **Per-device identity in `fields`.** Every iOS line carries device-attribution keys in its `fields` object so the central sink can answer "which device, on which app build, paired to which desktop, produced this line?" The identity is split by who owns it:
 
@@ -433,19 +675,41 @@ After `loadMachineIdentity()` resolves at app startup, the desktop logger stamps
   | `mdm_serial` | iOS | MDM-reported hardware serial number from the Managed App Config key `MDMSerialNumber`. Present only on MDM-enrolled devices. Absent otherwise. |
   | `seq` | iOS | Monotonic per-line sequence (string-encoded int), persisted in `UserDefaults` and never reset across launches. The desktop's exactly-once pull cursor: it requests lines with `seq` greater than its persisted per-device mark and dedups on `seq` before appending, so a reconnect or desktop restart resumes instead of re-shipping history. Independent of on-device file rotation (unlike a line count). |
   | `pairing_id` | Desktop | The ECDH channel ID for the specific desktop pairing session that collected these logs. Links a log line to a pairing session — distinct from `device_id` (hardware) and stable across reconnects within the same pairing. Injected at persist time. |
-  | `desktop_host` | Desktop | The collecting desktop's hostname, injected at persist time. **Mirrors the telemetry `host` value** for the same machine, so an iOS line cross-references the Ion Fleet board's host rows — the basis for the device↔desktop pairing view on the Ion Mobile dashboard. |
+  | `desktop_host` | Server | The hostname of the Ion server that pulled the line from the phone (a desktop's own server, or a remote one), injected at persist time. The field keeps its original name. **Mirrors the telemetry `host` value** for the same machine, so an iOS line cross-references the Ion Fleet board's host rows — the basis for the device↔desktop pairing view on the Ion Mobile dashboard. |
 
-  These power the **Ion Mobile** dashboard (`docs/observability/dashboards/src/dashboards/mobile.ts`), which queries the `{component="ios"}` log stream. Like `host`/`user` on the Fleet/Users packs, none of these are Alloy-promoted stream labels — dashboards parse them with `| json`.
+  These power the **Ion Mobile** dashboard (`docs/observability/dashboards/src/dashboards/mobile.ts`), which queries the `{service_name="ion-ios", event_name=""}` log stream. None of these are stream labels; dashboards parse them with `| json`. On a shipped record `device_id` and `app_version` are the resource's `service.instance.id` and `service.version`, not attributes.
 
 ### relay (`component: "relay"`)
 
 - Written by the Go relay server. Writes canonical JSONL to a **file** (`RELAY_LOG_FILE`, default
   `/var/log/ion/relay.jsonl`) with nested `fields` (always present, `{}` when empty) and the full
-  five-level enum including `TRACE` — parity with engine/desktop/ios. `RELAY_LOG_OUTPUT` selects
+  five-level enum including `TRACE` — parity with engine/server/desktop/ios. `RELAY_LOG_OUTPUT` selects
   `stdout` | `file` | `both` (default `stdout`). Rename-rotate at 20 MB, default 3 generations;
   configurable via `RELAY_LOG_MAX_FILES` env var.
 - `RELAY_LOG_LEVEL=trace` enables TRACE; default minimum level is INFO.
 - `tag` = subsystem label (`ws`, `auth`, `sync`, etc.).
+- **OTLP shipping (optional).** When `RELAY_OTLP_ENDPOINT` is set, every line that passes the level gate
+  is also queued and POSTed as OTLP/HTTP JSON to `<endpoint>/v1/logs` every few seconds and at shutdown.
+  The record mirrors the engine's operational OTLP record: the body is the canonical JSONL line itself,
+  `severityText`/`severityNumber` carry the level, and the attributes are `tag`, each present
+  top-level correlation key (`session_id`, `conversation_id`, `channel_id`, `role`, `port`), and every
+  `fields` key except `span_id` and `host`. A line with a valid `trace_id` carries it as the LogRecord
+  `traceId` (and `fields.span_id` as `spanId`), and nowhere else. The resource carries `service.namespace=ion`, `service.name=ion-relay`,
+  `service.instance.id` and `host.name` (the host name), and `service.version` (the relay's `VERSION`). The queue is bounded and drops the oldest
+  line on overflow; the drop count and export failures are written to the local log only, never shipped.
+  Auth is an OAuth2 `client_credentials` bearer token, cached until shortly before expiry and refreshed
+  once on a 401. It is minted with a client secret (`RELAY_OTLP_TOKEN_URL`, `RELAY_OTLP_CLIENT_ID`,
+  `RELAY_OTLP_CLIENT_SECRET`, `RELAY_OTLP_SCOPE`), or, when `AZURE_FEDERATED_TOKEN_FILE` is set, with an
+  Azure workload identity client assertion (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `RELAY_OTLP_SCOPE`; the
+  file is re-read on every fetch). The `otlp shipping enabled` line carries `auth_mode`
+  (`none` | `client_secret` | `federated_token`), `token_url`, and `client_id`; every failed fetch logs
+  `otlp: token request failed` with `auth_mode` and `err`. Unset `RELAY_OTLP_ENDPOINT` and nothing ships.
+- **Forward spans.** With shipping on, a forwarded frame whose outer envelope carries a W3C `traceparent`
+  (`00-<32 hex>-<16 hex>-<2 hex>`) records one `relay.forward` span, shipped to `<endpoint>/v1/traces`.
+  It joins the sender's trace (same trace id, parent = the traceparent's span id), runs from receive to
+  the write to the peer, and carries `direction` (`mobile_to_ion` | `ion_to_mobile`), `channel_id`,
+  `seq` (when the envelope has one), and `bytes`. A failed peer write sets the span status to error.
+  An invalid traceparent records no span. The frame is forwarded byte for byte either way.
 
 ---
 

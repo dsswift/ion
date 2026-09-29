@@ -49,8 +49,10 @@ would need to know which backend is behind the endpoint, the design is wrong.
 
 **OTLP is the canonical egress; the collector owns backend knowledge.** Of the sink styles above,
 an OTLP collector is the recommended default for both the engine and the desktop. Ion ships
-operational logs as OTLP/HTTP losslessly — `msg` as the record body; `component`, `tag`, every
-in-scope correlation ID, and `user` as attributes; and **every `fields` key flattened to its own
+operational logs as OTLP/HTTP losslessly — the line as the record body; the trace and span as the
+LogRecord `traceId` and `spanId`; the component, host, install, and build as the resource
+(`service.name`, `host.name`, `service.instance.id`, `service.version`); `tag`, the session and
+conversation ids, and `user` as attributes; and **every other `fields` key flattened to its own
 natively-typed attribute** (`run_id` included, since it lives in `fields`). Point every component at
 one OTLP collector endpoint and let that collector's pipeline fan the records out to Loki, Splunk,
 Elastic, an object archive, or several at once. All backend-specific routing and auth lives in the
@@ -92,9 +94,10 @@ responsibility split; subsections give the detail.
 |---|---|---|
 | Engine (workstation, headless, CI, Docker) | `logging.egressTargets` + `telemetry.targets` — ships itself | Endpoint config (sealed via enterprise layer) |
 | Extensions | Ride the engine's egress (`component=extension` lines in the engine stream) | Nothing extra |
-| Desktop app | `logging.egressTargets` — its own `desktop.jsonl` lines ship directly; it tails `engine.jsonl` and `ios-diagnostic-logs.jsonl` | Endpoint config (sealed via enterprise layer) |
-| iOS | Ships to its paired desktop (periodic diagnostic-log pull) | Covered by the desktop's tailer |
-| Relay | Canonical JSONL file (`RELAY_LOG_FILE`) | Volume mount + sidecar tailer |
+| Ion Studio Server | `server.json`'s `logging.egressTargets` — its own `server.jsonl` lines (and the `component=web` browser-client lines it records) ship directly | Endpoint config in `server.json`; `ION_LOG_OUTPUT=both` also streams to stdout for a container collector |
+| Desktop app | `logging.egressTargets` — its own `desktop.jsonl` lines ship directly; it tails `engine.jsonl`, `server.jsonl` and `ios-diagnostic-logs.jsonl` | Endpoint config (sealed via enterprise layer) |
+| iOS | Pulled by the server it is paired with (periodic diagnostic-log pull) into that host's data directory | Covered by whichever surface is assigned the `ios` source |
+| Relay | `RELAY_OTLP_ENDPOINT`: its own lines (and `relay.forward` spans) ship directly over OTLP/HTTP; otherwise the canonical JSONL file (`RELAY_LOG_FILE`) | OTLP endpoint and token env vars, or a volume mount + sidecar tailer |
 
 ### Engine — headless, CI, and Docker deployments
 
@@ -166,7 +169,7 @@ Ion files rotate by rename. A tailer must support `.1` archive handoff or ship t
 ### Desktop — the workstation collection point
 
 A managed workstation runs the desktop app, which connects to the persistent engine daemon and pairs with iOS. The
-log files accumulate under `~/.ion` (`engine.jsonl`, `desktop.jsonl`,
+log files accumulate under `~/.ion` (`engine.jsonl`, `server.jsonl`, `desktop.jsonl`,
 `ios-diagnostic-logs.jsonl`), plus `telemetry.jsonl` when telemetry is enabled.
 
 **What ships natively:** all of it, through the desktop's own egress forwarder. When
@@ -175,17 +178,18 @@ log files accumulate under `~/.ion` (`engine.jsonl`, `desktop.jsonl`,
 
 - ships its **own** `desktop.jsonl` lines directly on the logger's write path (every desktop main-
   and renderer-process line is buffered off the hot path and flushed to the endpoint), and
-- **tails** `engine.jsonl` (engine + extension lines) and `ios-diagnostic-logs.jsonl` (the peered iOS
+- **tails** `engine.jsonl` (engine + extension lines), `server.jsonl` (the local Studio Server's own
+  lines, and the browser-client lines it records) and `ios-diagnostic-logs.jsonl` (the peered iOS
   device's logs) into the same forwarder. Telemetry uses its own file target or direct telemetry egress.
 
 So a managed workstation needs **no separate operational-log file tailer**: point sealed
-`logging.egressTargets` at the ingestion endpoint and the engine, extensions, desktop, and peered
-iOS ship from that config. Telemetry ships through `telemetry.targets` or the telemetry forwarder.
+`logging.egressTargets` at the ingestion endpoint and the engine, extensions, desktop, local server
+and peered iOS ship from that config. Telemetry ships through `telemetry.targets` or the telemetry forwarder.
 
 **Who ships what is a configurable matrix.** The default above (desktop ships everything)
 is one arrangement, not the only one. `logging.egressShipSources` assigns the engine's
 share and `logging.egressClientShipSources` the managing client's — each an array of
-`engine` / `desktop` / `ios` / `telemetry`. The engine has its own file tailer, so a
+`engine` / `desktop` / `server` / `ios` / `telemetry`. The engine has its own file tailer, so a
 deployment can equally make the **engine** the sole collection point (headless hosts always
 work this way), split the sources between surfaces, or keep the legacy desktop-ships-all
 model. Both forwarders authenticate with the engine-owned identity provider: operator installations mint from the durable operator grant, while headless hosts mint from configured machine bearer credentials. The engine mints
@@ -210,6 +214,7 @@ supported pattern. A minimal Alloy config for the workstation tailer:
 local.file_match "ion_client_logs" {
   path_targets = [
     {"__path__" = "/Users/*/.ion/desktop.jsonl"},
+    {"__path__" = "/Users/*/.ion/server.jsonl"},
     {"__path__" = "/Users/*/.ion/ios-diagnostic-logs.jsonl"},
   ]
 }
@@ -229,27 +234,84 @@ loki.write "corp" {
 Because every surface writes the same canonical schema, the tailed lines and the natively-egressed
 lines are query-compatible downstream — one `component` field discriminates them.
 
-### iOS — ships through the desktop
+### iOS — ships through the server it is paired with
 
-The iOS app never talks to the ingestion endpoint. Its diagnostic logs flow to the paired
-desktop (the desktop pulls new lines periodically over the remote connection and persists them
-to `~/.ion/ios-diagnostic-logs.jsonl`), and from there they ride the workstation tailer like
-any other client-side file. There is nothing to configure on the device: if the paired
-desktop is collected, the iOS logs are collected.
+The iOS app never talks to the ingestion endpoint. Its diagnostic logs flow to the Ion Studio
+Server it is paired with, which pulls new lines periodically over the wire and persists them to
+its own `<ION_DATA_DIR>/ios-diagnostic-logs.jsonl`; from there they ride that host's tailer like
+any other file. There is nothing to configure on the device: if the host the phone pairs with is
+collected, the iOS logs are collected. On a workstation that host is the local server beside the
+desktop; with a remote server it is that machine, and the phone's lines never reach the Mac.
 
 Each iOS line carries per-device identity in its `fields` — `device_model` / `app_version` /
 `app_build` / `os_version` (stamped by the device) and `device_id` / `device_name` /
-`desktop_host` (stamped by the collecting desktop at persist time) — so every line is
-individually attributable downstream: which device, on which app build, paired to which
-desktop. `desktop_host` mirrors the telemetry `host`, so an iOS line joins the same machine's
-rows on the fleet view. The pull is exactly-once (a monotonic per-line `seq` cursor persisted
-per device), so a reconnect or desktop restart resumes rather than re-shipping history. See
+`desktop_host` (stamped by the collecting server at persist time; the field keeps its original
+name) — so every line is individually attributable downstream: which device, on which app
+build, paired to which server. `desktop_host` mirrors the telemetry `host`, so an iOS line joins
+the same machine's rows on the fleet view. The pull is exactly-once (a monotonic per-line `seq`
+cursor persisted per device), so a reconnect or server restart resumes rather than re-shipping
+history. See
 [`log-schema.md` § ios](../observability/log-schema.md) for the field reference and the **Ion
 Mobile** dashboard for the per-device view.
 
-### Relay — ship the file, not the console
+### Relay — ship over OTLP, or ship the file
 
-The relay writes canonical JSONL to `RELAY_LOG_FILE` (default `/var/log/ion/relay.jsonl`
+The relay can ship its own log lines straight to an OTLP/HTTP collector. Set
+`RELAY_OTLP_ENDPOINT` to the collector's base URL and the relay POSTs batches to
+`<base>/v1/logs` every few seconds and on shutdown. Each record has the same shape as an
+engine OTLP record (the canonical JSONL line as the body, `tag` and every other `fields` key as
+attributes, `service.name=ion-relay` and `host.name` on the resource), so the same ingest pipeline and
+dashboards handle relay lines. Frames that carry a W3C `traceparent` in their outer envelope
+also produce a `relay.forward` span on `<base>/v1/traces`, joined to the sender's trace. See
+[`log-schema.md` § relay](../observability/log-schema.md) for the attribute list.
+
+For a collector behind Entra ID (or any OAuth2 provider), the relay fetches a
+`client_credentials` bearer token. It caches the token until shortly before it expires and
+refreshes it once on a 401. Two credentials can mint it:
+
+- **Client secret.** Set `RELAY_OTLP_TOKEN_URL`, `RELAY_OTLP_CLIENT_ID`,
+  `RELAY_OTLP_CLIENT_SECRET`, and `RELAY_OTLP_SCOPE`. The secret is removed from the process
+  environment after it is read.
+- **Azure workload identity (no secret).** When the workload identity webhook injects
+  `AZURE_FEDERATED_TOKEN_FILE`, `AZURE_CLIENT_ID`, and `AZURE_TENANT_ID`, the relay sends the
+  projected service-account token as a `jwt-bearer` client assertion for `AZURE_CLIENT_ID`. It
+  re-reads the file on every fetch, since the kubelet rotates it. `RELAY_OTLP_SCOPE` is
+  required. The token URL is `RELAY_OTLP_TOKEN_URL` when set, otherwise
+  `<AZURE_AUTHORITY_HOST>/<AZURE_TENANT_ID>/oauth2/v2.0/token`. This mode wins whenever
+  `AZURE_FEDERATED_TOKEN_FILE` is set. The app registration behind `AZURE_CLIENT_ID` needs a
+  federated credential for the relay's service account and the collector's app role.
+
+The relay logs the chosen mode on the `otlp shipping enabled` line (`auth_mode`) and logs
+every failed token fetch as `otlp: token request failed`.
+
+```yaml
+services:
+  relay:
+    image: ion-relay:latest
+    environment:
+      - RELAY_OTLP_ENDPOINT=https://ingest.corp.example.com
+      - RELAY_OTLP_TOKEN_URL=https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token
+      - RELAY_OTLP_CLIENT_ID=<client-id>
+      - RELAY_OTLP_CLIENT_SECRET=<client-secret>
+      - RELAY_OTLP_SCOPE=api://<collector-app-id>/.default
+```
+
+On AKS with workload identity, label the pod `azure.workload.identity/use: "true"`, run it
+under a service account annotated with `azure.workload.identity/client-id`, and set only:
+
+```yaml
+env:
+  - name: RELAY_OTLP_ENDPOINT
+    value: https://ingest.corp.example.com
+  - name: RELAY_OTLP_SCOPE
+    value: api://<collector-app-id>/.default
+```
+
+The in-memory queue is bounded and drops the oldest lines when the collector is unreachable
+for long. Drop counts and export failures go to the relay's local log only. Leave
+`RELAY_OTLP_ENDPOINT` unset to turn shipping off; the file path below still works either way.
+
+Without OTLP, ship the file, not the console. The relay writes canonical JSONL to `RELAY_LOG_FILE` (default `/var/log/ion/relay.jsonl`
 inside the container) when `RELAY_LOG_OUTPUT` is `file` or `both`. For fleet collection,
 **the file is the canonical path**: volume-mount the log directory and tail it with a sidecar,
 exactly like the Docker engine pattern. The `stdout` target (and `docker logs ion-relay`)
@@ -374,13 +436,31 @@ Add Loki as a datasource (`http://loki.ion-observability:3100`) and import the I
 packs from [`docs/observability/grafana/`](../observability/README.md#dashboard-story-packs) —
 they bind to the canonical schema, so they work unmodified against fleet data. The only
 difference from the local stack is cardinality: panels that were single-machine become
-fleet-wide, and `install_id`/`host` become the natural drill-down dimensions.
+fleet-wide, and the install (`service_instance_id`) and device (`host_name`) become the natural
+drill-down dimensions.
 
 ### 3. Alloy — the ingestion endpoint
 
 Alloy plays a different role here than in the local stack: instead of tailing local files, it
 **is the network ingestion endpoint** — it receives OTLP/HTTP from every engine's egress and
 forwards to Loki.
+
+The `ion_otlp_unwrap` stage is what makes the Ion dashboards work on this Loki. It indexes each
+OTLP record under the same names the local stack uses
+([`log-schema.md` § "Names in Loki"](../observability/log-schema.md#names-in-loki)), so one set of
+dashboards reads both:
+
+- **Stream labels**: `service_name` (`service.name`), `event_name` (the `event.name` attribute,
+  telemetry events only), `level` (`severityText`, operational lines only), `tag`, `host_name`
+  (`host.name`, `.local` trimmed), and `user`.
+- **Structured metadata**: `trace_id` and `span_id` (the LogRecord `traceId` and `spanId`),
+  `service_instance_id` and `service_version` (the resource), and a telemetry event's payload
+  and context keys (`model`, `run_cost_usd`, `context_conversation_id`, ...).
+- **The stored line** is the record's body: the Ion JSON line itself, so a dashboard's `| json`
+  stage finds `msg`, `fields`, and `payload` where the local stack puts them.
+
+The Loki exporter's own labels (`exporter`, `job`, `instance`, `level`) are dropped first. Without
+this stage every record lands under those labels alone, and every dashboard panel is empty.
 
 ```alloy
 // alloy-fleet-config.alloy — receive OTLP from the fleet, write to Loki.
@@ -400,7 +480,112 @@ otelcol.processor.batch "default" {
   }
 }
 
+// Each OTLP log record becomes one Loki entry whose line is a JSON envelope:
+// body, traceid, spanid, severity, attributes, resources.
 otelcol.exporter.loki "default" {
+  forward_to = [loki.process.ion_otlp_unwrap.receiver]
+}
+
+// Index each record under the same names the local stack uses
+// (log-schema.md § "Names in Loki"), then store the record's own JSON as the
+// line so dashboard `| json` stages read the same fields on both paths.
+loki.process "ion_otlp_unwrap" {
+  // The exporter labels every entry exporter, job, instance, and level. None
+  // is an Ion name, and a telemetry event has no level, so all four go.
+  stage.label_drop {
+    values = ["exporter", "job", "instance", "level"]
+  }
+
+  stage.json {
+    expressions = {
+      body                      = "body",
+      severity                  = "severity",
+      trace_id                  = "traceid",
+      span_id                   = "spanid",
+      service_name              = "resources.\"service.name\"",
+      otlp_host_name            = "resources.\"host.name\"",
+      service_instance_id       = "resources.\"service.instance.id\"",
+      service_version           = "resources.\"service.version\"",
+      event_name                = "attributes.\"event.name\"",
+      tag                       = "attributes.tag",
+      user                      = "attributes.user",
+      model                     = "attributes.model",
+      tool                      = "attributes.tool",
+      stop_reason               = "attributes.stop_reason",
+      duration_ms               = "attributes.duration_ms",
+      run_cost_usd              = "attributes.run_cost_usd",
+      agg_cost_usd              = "attributes.agg_cost_usd",
+      dispatch_depth            = "attributes.dispatch_depth",
+      num_turns                 = "attributes.num_turns",
+      input_tokens              = "attributes.input_tokens",
+      output_tokens             = "attributes.output_tokens",
+      cache_read_tokens         = "attributes.cache_read_tokens",
+      cache_creation_tokens     = "attributes.cache_creation_tokens",
+      error                     = "attributes.error",
+      schema_version            = "attributes.schema_version",
+      context_conversation_id   = "attributes.context_conversation_id",
+      context_session_id        = "attributes.context_session_id",
+      context_extension         = "attributes.context_extension",
+      context_extension_version = "attributes.context_extension_version",
+    }
+  }
+
+  // level is an operational line's severity. A telemetry event has none.
+  stage.template {
+    source   = "level"
+    template = "{{ if not .event_name }}{{ .severity }}{{ end }}"
+  }
+
+  // One machine has one name: `.local` is trimmed, as the local stack does.
+  stage.template {
+    source   = "host_name"
+    template = "{{ if .otlp_host_name }}{{ TrimSuffix .otlp_host_name \".local\" }}{{ end }}"
+  }
+
+  // Only low-cardinality values become labels. An operational line has no
+  // event_name; a telemetry event has no level or tag.
+  stage.labels {
+    values = {
+      service_name = "",
+      event_name   = "",
+      level        = "",
+      tag          = "",
+      host_name    = "",
+      user         = "",
+    }
+  }
+
+  stage.structured_metadata {
+    values = {
+      trace_id                  = "",
+      span_id                   = "",
+      service_instance_id       = "",
+      service_version           = "",
+      model                     = "",
+      tool                      = "",
+      stop_reason               = "",
+      duration_ms               = "",
+      run_cost_usd              = "",
+      agg_cost_usd              = "",
+      dispatch_depth            = "",
+      num_turns                 = "",
+      input_tokens              = "",
+      output_tokens             = "",
+      cache_read_tokens         = "",
+      cache_creation_tokens     = "",
+      error                     = "",
+      schema_version            = "",
+      context_conversation_id   = "",
+      context_session_id        = "",
+      context_extension         = "",
+      context_extension_version = "",
+    }
+  }
+
+  stage.output {
+    source = "body"
+  }
+
   forward_to = [loki.write.local.receiver]
 }
 
@@ -440,8 +625,9 @@ viable gate.
 - **Workstation tailers**: MDM-deploy the
   [desktop tailer](#desktop--the-workstation-collection-point) with its `loki.write` URL set
   to `https://ingest.corp.example.com:3500/loki/api/v1/push`.
-- **Relay**: deploy the [relay sidecar](#relay--ship-the-file-not-the-console) with the same
-  push URL.
+- **Relay**: set `RELAY_OTLP_ENDPOINT` to `https://ingest.corp.example.com:4318` (plus the
+  token variables if the collector requires auth), or deploy the
+  [relay sidecar](#relay--ship-over-otlp-or-ship-the-file) with the same push URL.
 - **Headless/CI engines**: egress config only, no agent.
 
 ### 5. Verify end to end
@@ -450,14 +636,20 @@ From Grafana → Explore → Loki, confirm each component is arriving:
 
 ```logql
 # Every component reporting, by volume
-sum by (component) (count_over_time({component=~".+"}[15m]))
+sum by (service_name) (count_over_time({service_name=~".+", event_name=""}[15m]))
 
-# One machine's engine stream (host is on telemetry; install_id pivots)
-{service="ion-telemetry"} | json | host = "some-workstation"
+# One machine's telemetry
+{event_name=~".+", host_name="some-workstation"}
 
 # Cross-surface forensics still works at fleet scale — same join keys
-{component=~".+"} | json | conversation_id = "1780093348767-c1c03e998388"
+{service_name=~".+", event_name=""} | json | conversation_id = "1780093348767-c1c03e998388"
+
+# One prompt across every surface, from structured metadata (no parser)
+{service_name=~".+"} | trace_id = "0af7651916cd43dd8448eb211c80319c"
 ```
+
+If `{event_name=~".+"}` returns nothing while engines are shipping, the collector is not
+promoting labels: compare its config with the one above.
 
 The correlation model from
 [`consuming-logs.md`](../observability/consuming-logs.md#correlation-model) carries over
@@ -541,7 +733,12 @@ tool calls with which inputs and outputs.
 
 Application Insights is a consumption layer over the same Log Analytics workspace — request
 maps, dependency maps, per-request traces — used for "something is wrong, why?"
-investigation. It stores nothing independently. One asymmetry matters: **Orion-hosted
+investigation. It keeps no store of its own: logs and traces live in the linked Log Analytics
+workspace. When Application Insights is created with OpenTelemetry (OTLP) support, it also
+creates and links an **Azure Monitor workspace**, and OTLP metrics are stored there, not in
+Log Analytics. The Azure Monitor workspace is a hosted Prometheus store queried with PromQL
+([Ingest OTLP data into Azure Monitor](https://learn.microsoft.com/en-us/azure/azure-monitor/containers/opentelemetry-protocol-ingestion)).
+One asymmetry matters: **Orion-hosted
 services** (hosted MCP servers, functions, workflow apps) instrument through the App
 Insights/OpenTelemetry SDK directly, not through Event Hub (Orion ADR-6003). The event-bus
 intake is for the fleet's Ion devices; dci-managed Azure services use the platform-native
@@ -549,11 +746,26 @@ instrumentation path.
 
 ### Layer 5 — Grafana (fleet dashboard)
 
-Grafana queries Log Analytics (only) and presents the operational heartbeat: fleet activity,
+Grafana queries Log Analytics (through the Azure Monitor data source, KQL) and, for OTLP
+metrics, the Azure Monitor workspace (through a Prometheus data source, PromQL). One dashboard
+can mix both. It presents the operational heartbeat: fleet activity,
 error sources, per-user turn latency, per-user cost, dispatch topology, adoption. Any
 fleet-level metric slices down to an individual user — which is only possible because every
 event is stamped with the authenticated user identity at emission (see the
 [progression roadmap](#the-progression-roadmap) below for where that stamp comes from).
+
+### The metrics path — System Metrics
+
+Metrics take their own path, beside the event bus rather than through it. Each engine exports
+its System Metrics (host load and its own processes) as OTLP metrics
+(`telemetry.otel.metrics`) to the OpenTelemetry Collector, with the operator's Entra token. The
+Collector checks that token, converts to delta temporality, and sends to the Application
+Insights **metrics** ingestion address with its own workload identity. They are stored in the
+Azure Monitor workspace linked to Application Insights, and Grafana reads them through a
+Prometheus data source with PromQL. Studio's own Device Metrics never take this path: they stay
+on each workstation. Configuration: [Telemetry § Sending System Metrics to Application
+Insights](telemetry.md#sending-system-metrics-to-application-insights); the map of every output:
+[Signals and where they go](../observability/README.md#signals-and-where-they-go).
 
 ### Tiering summary
 
@@ -563,6 +775,7 @@ event is stamped with the authenticated user identity at emission (see the
 | Hot | Cosmos DB | 30 days rolling | Raw full-fidelity conversation stream (ADR-6002 Tier 1) |
 | Warm | Log Analytics | 365 days | Fleet-queryable analytical store (ADR-3004) |
 | Cold | Blob archive | ~7 years | Sanitized transcripts + exported telemetry; the audit tier (ADR-6001/6002 Tier 3) |
+| Metrics | Azure Monitor workspace | Workspace retention | OTLP System Metrics (host and engine process load), queried with PromQL |
 | *Contrast: home/self-hosted default* | *Single Loki tier* | *90 days flat* | *Everything, one store, one retention knob (the tutorial above)* |
 
 The contrast row is the point of the whole document: the same engines, the same schemas, the

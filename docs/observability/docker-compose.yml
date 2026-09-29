@@ -16,8 +16,13 @@ services:
       - /etc/alloy/config.alloy
     ports:
       - "12345:12345" # Alloy HTTP UI
+      - "4317:4317" # OTLP gRPC in: traces to Tempo, logs dropped (already tailed)
+      - "4318:4318" # OTLP HTTP in: same
     volumes:
-      - ${HOME}/.ion:/ion-logs:ro
+      # ION_LOGS_DIR points the collector at a data directory other than the
+      # default -- a server started with its own ION_DATA_DIR writes there,
+      # and its logs are invisible to this stack otherwise.
+      - ${ION_LOGS_DIR:-${HOME}/.ion}:/ion-logs:ro
       - ./alloy-config.alloy:/etc/alloy/config.alloy
       # Named volume at the path the image CMD passes as --storage.path.
       # Persists Alloy tail read-positions across container restarts so logs
@@ -56,8 +61,9 @@ services:
           memory: 32m
 
   # Expands telemetry file records at any schema at or below its own, and posts
-  # standard events to Alloy's
-  # Loki Push API. The image owns the reader and frame-decoding mechanics.
+  # standard events to Alloy's Loki Push API, one stream per recording service
+  # (service_name). The image owns the reader and frame-decoding mechanics;
+  # rebuild it when the forwarder source changes.
   telemetry-forwarder:
     build:
       context: ../../engine
@@ -106,17 +112,42 @@ services:
     depends_on:
       - loki
 
-  # Tempo is optional — comment out if you don't need trace correlation
+  # Tempo stores traces. Optional: comment it out if you do not need traces.
+  # Keep in step with dev.yaml, which builds the same image and config from
+  # Dockerfile.tempo.
   tempo:
-    image: grafana/tempo:2.10.7
+    image: grafana/tempo:3.0.3
     command:
       - -config.file=/etc/tempo/tempo.yaml
-    ports:
-      - "4317:4317" # OTLP gRPC
-      - "4318:4318" # OTLP HTTP
+    # No published OTLP ports: spans come in through Alloy, which owns
+    # 4317/4318. Grafana reaches Tempo inside the network on 3200.
     volumes:
       - ./tempo-config.yaml:/etc/tempo/tempo.yaml
       - tempo-data:/var/tempo
+    networks:
+      - ion-obs
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  # Prometheus is the metrics store, the local stand-in for the Azure Monitor
+  # workspace behind Application Insights. It receives the engine's OTLP
+  # metrics (telemetry.otel.metrics) directly on its native OTLP receiver:
+  #   endpoint: http://localhost:9090/api/v1/otlp/v1/metrics
+  # Grafana reads it as the "Prometheus" data source.
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-otlp-receiver
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
     networks:
       - ion-obs
     deploy:
@@ -164,4 +195,5 @@ volumes:
   loki-data:
   grafana-data:
   tempo-data:
+  prometheus-data:
   telemetry-forwarder-data:

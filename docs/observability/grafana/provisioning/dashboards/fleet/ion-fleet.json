@@ -74,7 +74,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "count(sum by (host) (count_over_time({service_name=\"ion-telemetry\"} | json | host=~\"$host\" [$__range])))",
+          "expr": "count(sum by (host_name) (count_over_time({event_name=~\".+\", host_name=~\"$host\", user=~\"$user\"} | json [$__range])))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -91,7 +91,7 @@
         "x": 4,
         "y": 4
       },
-      "description": "Distinct install_id values — engine installations, which can outnumber hosts when headless instances share a machine.",
+      "description": "Distinct service_instance_id values — engine installations, which can outnumber hosts when headless instances share a machine.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -131,7 +131,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "count(sum by (install_id) (count_over_time({service_name=\"ion-telemetry\"} | json | host=~\"$host\" [$__range])))",
+          "expr": "count(sum by (service_instance_id) (count_over_time({event_name=~\".+\", host_name=~\"$host\", user=~\"$user\"} | json [$__range])))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -199,7 +199,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "count(sum by (version) (count_over_time({service_name=\"ion-telemetry\"} | json | host=~\"$host\" [$__range])))",
+          "expr": "count(sum by (service_version) (count_over_time({event_name=~\".+\", host_name=~\"$host\", user=~\"$user\"} | json [$__range])))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -262,7 +262,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | host=~\"$host\" | unwrap payload_run_cost_usd [$__range]))",
+          "expr": "sum(sum_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | unwrap payload_run_cost_usd [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -279,7 +279,7 @@
         "x": 16,
         "y": 4
       },
-      "description": "Telemetry events carrying a non-empty payload_error. Ops-log ERROR lines carry no host identity, so this is the per-host error signal.",
+      "description": "Telemetry events carrying a non-empty payload_error. Operational ERROR lines per device are on Errors & Health, scoped with the Device filter.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -330,7 +330,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum (count_over_time({service_name=\"ion-telemetry\"} | json | host=~\"$host\" | payload_error!=\"\" [$__range]))",
+          "expr": "sum (count_over_time({event_name=~\".+\", host_name=~\"$host\", user=~\"$user\"} | json | payload_error!=\"\" [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -399,11 +399,11 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "(vector(${__to:date:seconds}) - on() group_right() max by (host) (max_over_time({service_name=\"ion-telemetry\"} | json | host=~\"$host\" | label_format ts_unix=\"{{ __timestamp__ | unixEpoch }}\" | unwrap ts_unix [24h]))) / 60",
+          "expr": "(vector(${__to:date:seconds}) - on() group_right() max by (host_name) (max_over_time({event_name=~\".+\", host_name=~\"$host\", user=~\"$user\"} | json | label_format ts_unix=\"{{ __timestamp__ | unixEpoch }}\" | unwrap ts_unix [24h]))) / 60",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "instant",
-          "legendFormat": "{{host}}"
+          "legendFormat": "{{host_name}}"
         }
       ]
     },
@@ -430,7 +430,7 @@
         "x": 0,
         "y": 9
       },
-      "description": "Distinct install_id count per host. More than one means several engine instances (e.g. headless daemons) share the machine.",
+      "description": "Distinct service_instance_id count per host. More than one means several engine instances (e.g. headless daemons) share the machine.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -473,11 +473,11 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "count by (host) (sum by (host, install_id) (count_over_time({service_name=\"ion-telemetry\"} | json | host=~\"$host\" [$__range])))",
+          "expr": "count by (host_name) (sum by (host_name, service_instance_id) (count_over_time({event_name=~\".+\", host_name=~\"$host\", user=~\"$user\"} | json [$__range])))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
-          "legendFormat": "{{host}}"
+          "legendFormat": "{{host_name}}"
         }
       ]
     },
@@ -522,9 +522,9 @@
           "id": "organize",
           "options": {
             "renameByName": {
-              "host": "Host",
-              "install_id": "Install",
-              "version": "Engine version",
+              "host_name": "Host",
+              "service_instance_id": "Install",
+              "service_version": "Engine version",
               "Value": "Events"
             }
           }
@@ -536,11 +536,11 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (host, install_id, version) (count_over_time({service_name=\"ion-telemetry\"} | json | host=~\"$host\" [$__range]))",
+          "expr": "sum by (host_name, service_instance_id, service_version) (count_over_time({event_name=~\".+\", host_name=~\"$host\", user=~\"$user\"} | json [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
-          "legendFormat": "{{host}} / {{install_id}} / {{version}}"
+          "legendFormat": "{{host_name}} / {{service_instance_id}} / {{service_version}}"
         }
       ]
     },
@@ -585,7 +585,7 @@
           "id": "organize",
           "options": {
             "renameByName": {
-              "host": "Host",
+              "host_name": "Host",
               "context_extension": "Extension",
               "context_extension_version": "Version",
               "Value": "Runs"
@@ -599,11 +599,11 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (host, context_extension, context_extension_version) (count_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | host=~\"$host\" | context_extension=~\".+\" [$__range]))",
+          "expr": "sum by (host_name, context_extension, context_extension_version) (count_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | context_extension=~\".+\" [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
-          "legendFormat": "{{host}} / {{context_extension}} v{{context_extension_version}}"
+          "legendFormat": "{{host_name}} / {{context_extension}} v{{context_extension_version}}"
         }
       ]
     },
@@ -644,11 +644,11 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (host) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | host=~\"$host\" | unwrap payload_run_cost_usd [$__range]))",
+          "expr": "sum by (host_name) (sum_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | unwrap payload_run_cost_usd [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
-          "legendFormat": "{{host}}"
+          "legendFormat": "{{host_name}}"
         }
       ]
     },
@@ -711,11 +711,11 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (host) (count_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | host=~\"$host\" [$__interval]))",
+          "expr": "sum by (host_name) (count_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
-          "legendFormat": "{{host}}"
+          "legendFormat": "{{host_name}}"
         }
       ]
     },
@@ -765,11 +765,11 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (host) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | host=~\"$host\" | unwrap payload_run_cost_usd [$__interval]))",
+          "expr": "sum by (host_name) (sum_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | unwrap payload_run_cost_usd [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
-          "legendFormat": "{{host}}"
+          "legendFormat": "{{host_name}}"
         }
       ]
     },
@@ -820,11 +820,11 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (host) (count_over_time({service_name=\"ion-telemetry\"} | json | host=~\"$host\" [$__interval]))",
+          "expr": "sum by (host_name) (count_over_time({event_name=~\".+\", host_name=~\"$host\", user=~\"$user\"} | json [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
-          "legendFormat": "{{host}}"
+          "legendFormat": "{{host_name}}"
         }
       ]
     },
@@ -875,11 +875,11 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (host) (count_over_time({service_name=\"ion-telemetry\"} | json | host=~\"$host\" | payload_error!=\"\" [$__interval]))",
+          "expr": "sum by (host_name) (count_over_time({event_name=~\".+\", host_name=~\"$host\", user=~\"$user\"} | json | payload_error!=\"\" [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
-          "legendFormat": "{{host}}"
+          "legendFormat": "{{host_name}}"
         }
       ]
     }
@@ -894,12 +894,51 @@
     "list": [
       {
         "name": "host",
-        "label": "Host",
-        "type": "textbox",
-        "description": "Hostname to scope panels. Accepts regex. Default matches all hosts.",
-        "query": ".*",
+        "label": "Device",
+        "type": "query",
+        "description": "The device a line came from (label `host_name`, the OTLP host.name). Multi-select; All includes lines with no device.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(host_name)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
         "current": {
-          "value": ".*"
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
+      {
+        "name": "user",
+        "label": "User",
+        "type": "query",
+        "description": "The signed-in operator (Alloy label `user`). Multi-select; All includes lines with no identity.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(user)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         },
         "hide": 0
       }

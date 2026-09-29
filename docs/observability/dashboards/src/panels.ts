@@ -254,6 +254,76 @@ export function table(p: TablePanelSpec): Record<string, unknown> {
   return out;
 }
 
+// Recent log lines as a table: time/level/service/host/tag/message/conversation
+// /trace as columns, instead of a raw-JSON log-line panel. The full parsed body
+// stays available per row under the "payload" column (cellOptions type
+// json-view — collapsed by default, expands on click) so nothing is lost, it is
+// just not the FIRST thing on screen. `| json` on the query parses msg,
+// conversation_id, trace_id, session_id out of the body; level/tag/service_name
+// /host_name/user are already Loki stream labels (see docs/observability/log-schema.md
+// "Names in Loki") and need no parser. `extractFields` with `source: 'labels'`
+// promotes every label Loki returned (both the stream labels and the `| json`
+// -parsed body fields) into its own column.
+//
+// Not used by the Explore cookbook (`dashboards/cookbook.ts`), which is
+// deliberately a raw-line recipe launcher for copy/paste into Explore, not a
+// monitoring view — the raw `logs` panel is the point there.
+interface LogsTablePanelSpec extends PanelBase {
+  target: Target;
+  // Default is newest-first. Set true for a panel reading one session/trace as
+  // a chronological narrative (forensics), where oldest-first is the point.
+  sortAscending?: boolean;
+}
+export function logsTable(p: LogsTablePanelSpec): Record<string, unknown> {
+  const out = base(p, 'table');
+  out.datasource = LOKI;
+  out.fieldConfig = {
+    defaults: { unit: 'short', custom: { align: 'auto', displayMode: 'auto', filterable: true } },
+    overrides: [
+      { matcher: { id: 'byName', options: 'Time' }, properties: [{ id: 'custom.width', value: 200 }] },
+      {
+        matcher: { id: 'byName', options: 'level' },
+        properties: [
+          { id: 'custom.displayMode', value: 'color-background' },
+          { id: 'custom.width', value: 90 },
+          {
+            id: 'mappings',
+            value: [
+              { type: 'value', options: { ERROR: { color: 'red' }, WARN: { color: 'orange' }, INFO: { color: 'green' }, DEBUG: { color: 'blue' }, TRACE: { color: 'grey' } } },
+            ],
+          },
+        ],
+      },
+      { matcher: { id: 'byName', options: 'service_name' }, properties: [{ id: 'custom.width', value: 130 }, { id: 'displayName', value: 'service' }] },
+      { matcher: { id: 'byName', options: 'host_name' }, properties: [{ id: 'custom.width', value: 140 }, { id: 'displayName', value: 'host' }] },
+      { matcher: { id: 'byName', options: 'tag' }, properties: [{ id: 'custom.width', value: 150 }] },
+      { matcher: { id: 'byName', options: 'msg' }, properties: [{ id: 'custom.width', value: 320 }, { id: 'displayName', value: 'message' }] },
+      { matcher: { id: 'byName', options: 'conversation_id' }, properties: [{ id: 'custom.width', value: 170 }, { id: 'displayName', value: 'conversation' }] },
+      { matcher: { id: 'byName', options: 'trace_id' }, properties: [{ id: 'custom.width', value: 170 }, { id: 'displayName', value: 'trace' }] },
+      { matcher: { id: 'byName', options: 'Line' }, properties: [{ id: 'custom.displayMode', value: 'json-view' }, { id: 'displayName', value: 'payload' }] },
+    ],
+  };
+  out.options = { showHeader: true, footer: { show: false }, sortBy: [{ displayName: 'Time', desc: !p.sortAscending }] };
+  out.transformations = [
+    { id: 'extractFields', options: { source: 'labels', replace: false } },
+    // extractFields promotes every label Loki returned, including Loki's own
+    // auto-detected `detected_level`, the `level`/`tag` labels re-parsed by
+    // `| json` under `_extracted` names, `id`/`tsNs`/`labelTypes`/`labels`
+    // bookkeeping fields, and a `fields_*` column per nested `fields.*` key
+    // (varies per line). Whitelisting the curated column set keeps the table
+    // to the fields worth seeing at a glance; nothing is lost — it is all
+    // still in the expandable "payload" (Line) column.
+    {
+      id: 'filterFieldsByName',
+      options: {
+        include: { pattern: '^(Time|Line|level|tag|component|service_name|host_name|msg|session_id|conversation_id|trace_id)$' },
+      },
+    },
+  ];
+  out.targets = [emitTarget(p.target, 'range', 0, p.title)];
+  return out;
+}
+
 // Tempo trace panel (forensics dispatch tree). Not a LogQL/class target.
 interface TracesPanelSpec extends PanelBase {
   query: string;

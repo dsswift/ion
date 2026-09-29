@@ -1,8 +1,8 @@
 // Recipe: Ion Mobile (uid ion-mobile).
 //
 // "Which iOS devices are running Ion Remote, on what app version, paired to
-// which desktop?" The per-device view over the iOS OPERATIONAL-LOG stream
-// ({component="ios"}) — NOT the telemetry stream the Fleet pack uses, because
+// which server?" The per-device view over the iOS OPERATIONAL-LOG stream
+// ({service_name="ion-ios", event_name=""}) — NOT the telemetry stream the Fleet pack uses, because
 // iOS emits no telemetry. Every iOS log line is the full canonical Ion JSONL
 // (the OTLP body carries the complete record since log-egress-otel ships the
 // full JSON). Alloy's ion_otlp_unwrap rewrites the Loki line to that JSON body,
@@ -10,20 +10,19 @@
 // key:
 //   device_id / device_model / app_version / app_build / os_version  — stamped by iOS
 //   mdm_device_id / mdm_serial                                        — stamped by iOS (MDM-enrolled)
-//   pairing_id / desktop_host                                          — stamped by the desktop
+//   pairing_id / desktop_host                                          — stamped by the server
 //
 // device_id is the stable per-device hardware identity (UIDevice.identifierForVendor
 // UUID) that survives re-pairings. pairing_id is the ECDH channel ID for the
-// specific desktop pairing session. Named json extraction pulls them to top-level
+// specific server pairing session. Named json extraction pulls them to top-level
 // label names (queries-mobile.ts DEVICE_PIPE) so `by (device_id, ...)` groupings
 // resolve. The $device variable scopes by device_model (hardware model, e.g.
 // iPhone15,3) rather than a user-assigned name that can change.
 
 import type { Dashboard } from '../dashboard.ts';
-import { row, text, stat, timeseries, bargauge, table, logs } from '../panels.ts';
+import { row, text, stat, timeseries, bargauge, table, logsTable } from '../panels.ts';
 import { stream } from '../queries.ts';
 import {
-  DEVICE_PIPE,
   distinctDeviceField,
   iosLinesCount,
   iosErrorCount,
@@ -52,7 +51,7 @@ const bars = (fillOpacity: number) => ({
 });
 
 const INTRO =
-  '## Which iOS devices are running Ion, on what version, paired to which desktop?\n\nThe per-device mobile view over the **iOS log stream** (`{component="ios"}`). iOS emits no telemetry, so this pack does not appear on [Ion Fleet](/d/ion-fleet) — it reads the operational logs the paired desktop collects.\n\nEvery line carries **device identity** stamped by iOS: `device_id` (stable per-device UUID from `identifierForVendor` — survives re-pairings), `device_model` (hardware model e.g. `iPhone15,3`), OS version, and app version+build. On MDM-enrolled devices, `mdm_device_id` and `mdm_serial` enable cross-reference to Intune. The desktop stamps `pairing_id` (the ECDH channel ID for the specific pairing session) and `desktop_host`.\n\nThe **device→desktop pairing** table below is the "which device connected where" matrix. `desktop_host` matches the telemetry `host`, so a pairing row cross-references the Fleet board for the same machine.\n\nAll panels honor the dashboard time picker except **Device last-seen**, a liveness detector with a fixed 24h lookback so a quiet device stays visible.\n\n| Related | Dashboard |\n|---|---|\n| Landing | [Ion Overview](/d/ion-overview) |\n| Desktop/host view | [Ion Fleet](/d/ion-fleet) |\n| Live logs | [Ion Live Logs](/d/ion-logs) |';
+  '## Which iOS devices are running Ion, on what version, paired to which server?\n\nThe per-device mobile view over the **iOS log stream** (`{service_name="ion-ios", event_name=""}`). iOS emits no telemetry, so this pack does not appear on [Ion Fleet](/d/ion-fleet) — it reads the operational logs the paired server collects.\n\nEvery line carries **device identity** stamped by iOS: `device_id` (stable per-device UUID from `identifierForVendor` — survives re-pairings), `device_model` (hardware model e.g. `iPhone15,3`), OS version, and app version+build. On MDM-enrolled devices, `mdm_device_id` and `mdm_serial` enable cross-reference to Intune. The server stamps `pairing_id` (the ECDH channel ID for the specific pairing session) and `desktop_host`.\n\nThe **device→server pairing** table below is the "which device connected where" matrix. `desktop_host` matches the telemetry `host`, so a pairing row cross-references the Fleet board for the same machine.\n\nAll panels honor the dashboard time picker except **Device last-seen**, a liveness detector with a fixed 24h lookback so a quiet device stays visible.\n\n| Related | Dashboard |\n|---|---|\n| Landing | [Ion Overview](/d/ion-overview) |\n| Server/host view | [Ion Fleet](/d/ion-fleet) |\n| Live logs | [Ion Live Logs](/d/ion-logs) |';
 
 export function mobileDashboard(): Dashboard {
   const panels = [
@@ -184,8 +183,8 @@ export function mobileDashboard(): Dashboard {
     }),
     table({
       id: 12,
-      title: 'Device → desktop pairing',
-      description: 'Every device × desktop_host pair that produced iOS logs in the window. device_id is the stable hardware identity (survives re-pairings); pairing_id is the ECDH channel for the specific session. A device paired to two desktops yields two rows; several devices on one desktop yield several rows for that host. desktop_host matches the telemetry host on the Ion Fleet board.',
+      title: 'Device → server pairing',
+      description: 'Every device × desktop_host pair that produced iOS logs in the window. device_id is the stable hardware identity (survives re-pairings); pairing_id is the ECDH channel for the specific session. A device paired to two servers yields two rows; several devices on one server yield several rows for that host. desktop_host matches the telemetry host on the Ion Fleet board.',
       gridPos: { h: 8, w: 12, x: 12, y: 9 },
       mode: 'instant',
       fieldConfig: { defaults: { unit: 'short', custom: { align: 'auto', displayMode: 'auto' } }, overrides: [] },
@@ -198,7 +197,7 @@ export function mobileDashboard(): Dashboard {
               device_id: 'Device ID',
               device_model: 'Model',
               pairing_id: 'Pairing ID',
-              desktop_host: 'Desktop host',
+              desktop_host: 'Server host',
               mdm_device_id: 'MDM Device ID',
               mdm_serial: 'Serial',
               Value: 'Lines',
@@ -253,28 +252,18 @@ export function mobileDashboard(): Dashboard {
       options: legendBottom(),
       targets: [{ e: errorsByDevice(['device_id', 'device_model'], '$__interval'), legend: '{{device_model}} {{device_id}}' }],
     }),
-    logs({
+    logsTable({
       id: 17,
       title: 'iOS log tail',
       gridPos: { h: 12, w: 24, x: 0, y: 34 },
-      options: {
-        showTime: true,
-        showLabels: true,
-        showCommonLabels: false,
-        wrapLogMessage: true,
-        prettifyLogMessage: false,
-        enableLogDetails: true,
-        dedupStrategy: 'none',
-        sortOrder: 'Descending',
-      },
-      target: { e: stream('{component="ios"} | json device_model="fields.device_model" | __error__="" | device_model=~"$device"') },
+      target: { e: stream('{service_name="ion-ios", event_name=""} | json device_model="fields.device_model" | __error__="" | device_model=~"$device"') },
     }),
   ];
 
   return {
     uid: 'ion-mobile',
     title: 'Ion Mobile',
-    description: 'Ion mobile — which iOS devices are running Ion, on what version, paired to which desktop?',
+    description: 'Ion mobile — which iOS devices are running Ion, on what version, paired to which server?',
     tags: ['ion', 'mobile'],
     schemaVersion: 39,
     version: 1,

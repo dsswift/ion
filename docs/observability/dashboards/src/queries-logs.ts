@@ -21,18 +21,18 @@ import { accumulation, instant, windowedStat, telemetry, registerQuery } from '.
 // Instant count of log lines at a level over a window (headline stat; pass
 // $__range so the stat follows the dashboard time picker).
 export const levelCount = (level: string, window: Window, componentGuard = false): Expr => {
-  const sel = componentGuard ? `{component=~".+", level="${level}"}` : `{level="${level}"}`;
+  const sel = componentGuard ? `{service_name=~".+", event_name="", level="${level}"}` : `{level="${level}"}`;
   return accumulation(`sum(count_over_time(${sel}[${window}]))`, window);
 };
 
 // Instant count of ALL log lines over a window.
 export const allLinesCount = (window: Window): Expr =>
-  accumulation(`sum(count_over_time({component=~".+"}[${window}]))`, window);
+  accumulation(`sum(count_over_time({service_name=~".+", event_name=""}[${window}]))`, window);
 
 // Instant error rate = errors / all lines over a window.
 export const errorRate = (window: Window): Expr =>
   accumulation(
-    `sum(count_over_time({level="ERROR"}[${window}])) / sum(count_over_time({component=~".+"}[${window}]))`,
+    `sum(count_over_time({level="ERROR"}[${window}])) / sum(count_over_time({service_name=~".+", event_name=""}[${window}]))`,
     window,
   );
 
@@ -45,12 +45,12 @@ export const levelSeriesInterval = (level: string): Expr =>
 
 // Error count grouped by component, per interval (same undersampling fix).
 export const errorsByComponentInterval = (): Expr =>
-  accumulation(`sum by (component) (count_over_time({level="ERROR"}[$__interval]))`, '$__interval');
+  accumulation(`sum by (service_name) (count_over_time({level="ERROR"}[$__interval]))`, '$__interval');
 
 // Top error sources by component+tag, INSTANT over a window. This is the
 // overcount fix: it was a [24h] range timeseries; a ranked snapshot is instant.
 export const topErrorSources = (window: Window): Expr =>
-  accumulation(`sum by (component, tag) (count_over_time({level="ERROR"}[${window}]))`, window);
+  accumulation(`sum by (service_name, tag) (count_over_time({level="ERROR"}[${window}]))`, window);
 
 // ---------------------------------------------------------------------------
 // Log volume by component / extension
@@ -58,19 +58,19 @@ export const topErrorSources = (window: Window): Expr =>
 
 // Log volume by component, per interval (overview accumulation series).
 export const logVolumeByComponentInterval = (): Expr =>
-  accumulation(`sum by (component) (count_over_time({component=~".+"}[$__interval]))`, '$__interval');
+  accumulation(`sum by (service_name) (count_over_time({service_name=~".+", event_name=""}[$__interval]))`, '$__interval');
 
 // Overview uses rate() (per-second) by component for its headline volume chart.
 export const logRateByComponent = (window: Window): Expr =>
-  windowedStat(`sum by (component) (rate({component=~".+"}[${window}]))`, window);
+  windowedStat(`sum by (service_name) (rate({service_name=~".+", event_name=""}[${window}]))`, window);
 
 // Extension log volume per interval (the [1h]->$__interval overcount fix).
 export const extensionVolumeInterval = (): Expr =>
-  accumulation(`sum by (tag) (count_over_time({component="extension"}[$__interval]))`, '$__interval');
+  accumulation(`sum by (tag) (count_over_time({service_name="ion-extension", event_name=""}[$__interval]))`, '$__interval');
 
 // Active-extension count over a window (headline stat, nested count).
 export const activeExtensionCount = (window: Window): Expr =>
-  accumulation(`count(count by (tag) (count_over_time({component="extension"}[${window}])))`, window);
+  accumulation(`count(count by (tag) (count_over_time({service_name="ion-extension", event_name=""}[${window}])))`, window);
 
 // ---------------------------------------------------------------------------
 // Ingest freshness (per-component minutes since last log line)
@@ -114,7 +114,7 @@ export const ingestFreshnessMinutes = (window: Window): Expr =>
       'as a growing red value rather than dropping it from a narrow window.',
     instant(
       `(vector(\${__to:date:seconds}) - on() group_right() ` +
-        `max by (component) (max_over_time({component=~".+"} ` +
+        `max by (service_name) (max_over_time({service_name=~".+", event_name=""} ` +
         `| label_format ts_unix="{{ __timestamp__ | unixEpoch }}" | unwrap ts_unix [${window}]))) / 60`,
       window,
     ),
@@ -126,7 +126,7 @@ export const ingestFreshnessMinutes = (window: Window): Expr =>
 
 // Instant count of lines for a component (optionally an extension tag) lamp.
 export const componentLamp = (component: string, window: Window, tag?: string): Expr => {
-  const sel = tag ? `{component="${component}", tag="${tag}"}` : `{component="${component}"}`;
+  const sel = tag ? `{service_name="ion-${component}", event_name="", tag="${tag}"}` : `{service_name="ion-${component}", event_name=""}`;
   return accumulation(`sum(count_over_time(${sel}[${window}]))`, window);
 };
 

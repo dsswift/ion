@@ -76,7 +76,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (context_extension) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\" | label_format context_extension=`{{if .context_extension}}{{.context_extension}}{{else}}unattributed{{end}}` | unwrap run_cost_usd [$__range]))",
+          "expr": "sum by (context_extension) (sum_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | context_extension =~ \"$extension\" | label_format context_extension=`{{if .context_extension}}{{.context_extension}}{{else}}unattributed{{end}}` | unwrap run_cost_usd [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -127,7 +127,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (context_extension) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\" | label_format context_extension=`{{if .context_extension}}{{.context_extension}}{{else}}unattributed{{end}}` | unwrap run_cost_usd [$__range]))",
+          "expr": "sum by (context_extension) (sum_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | context_extension =~ \"$extension\" | label_format context_extension=`{{if .context_extension}}{{.context_extension}}{{else}}unattributed{{end}}` | unwrap run_cost_usd [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -184,7 +184,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (context_extension, model) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\" | label_format context_extension=`{{if .context_extension}}{{.context_extension}}{{else}}unattributed{{end}}` | unwrap run_cost_usd [$__range]))",
+          "expr": "sum by (context_extension, model) (sum_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | context_extension =~ \"$extension\" | label_format context_extension=`{{if .context_extension}}{{.context_extension}}{{else}}unattributed{{end}}` | unwrap run_cost_usd [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -234,7 +234,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "label_replace(sum by (context_extension, context_extension_version) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\" | context_extension_version =~ \"$version\" | label_format context_extension=`{{if .context_extension}}{{.context_extension}}{{else}}unattributed{{end}}` | unwrap run_cost_usd [$__interval])), \"vsuffix\", \" v$1\", \"context_extension_version\", \"(.+)\")",
+          "expr": "label_replace(sum by (context_extension, context_extension_version) (sum_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | context_extension =~ \"$extension\" | context_extension_version =~ \"$version\" | label_format context_extension=`{{if .context_extension}}{{.context_extension}}{{else}}unattributed{{end}}` | unwrap run_cost_usd [$__interval])), \"vsuffix\", \" v$1\", \"context_extension_version\", \"(.+)\")",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -301,11 +301,11 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (payload_extension, payload_extension_version, payload_agent) (count_over_time({service_name=\"ion-telemetry\", kind=\"dispatch.agent\"} | json | payload_extension =~ \"$extension\" [$__range]))",
+          "expr": "sum by (payload_extension, payload_extension_version, payload_agent) (count_over_time({event_name=\"dispatch.agent\", host_name=~\"$host\", user=~\"$user\"} | json | payload_extension =~ \"$extension\" | label_format payload_extension=`{{if .payload_extension}}{{.payload_extension}}{{else}}no extension{{end}}` | label_format payload_extension_version=`{{if .payload_extension_version}}{{.payload_extension_version}}{{else}}unversioned{{end}}` [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
-          "legendFormat": "{{payload_extension}} | v{{payload_extension_version}} | {{payload_agent}}"
+          "legendFormat": "{{payload_extension}} | {{payload_extension_version}} | {{payload_agent}}"
         }
       ]
     },
@@ -358,11 +358,11 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (context_extension, context_extension_version) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\" | context_extension_version =~ \"$version\" | unwrap run_cost_usd [$__range]))",
+          "expr": "sum by (context_extension, context_extension_version) (sum_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | context_extension =~ \"$extension\" | context_extension_version =~ \"$version\" | label_format context_extension=`{{if .context_extension}}{{.context_extension}}{{else}}no extension{{end}}` | label_format context_extension_version=`{{if .context_extension_version}}{{.context_extension_version}}{{else}}unversioned{{end}}` | unwrap run_cost_usd [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
-          "legendFormat": "{{context_extension}} v{{context_extension_version}}"
+          "legendFormat": "{{context_extension}} {{context_extension_version}}"
         }
       ]
     },
@@ -400,11 +400,11 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (context_extension, context_extension_version) (count_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\" | context_extension_version =~ \"$version\" [$__range]))",
+          "expr": "sum by (context_extension, context_extension_version) (count_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | context_extension =~ \"$extension\" | context_extension_version =~ \"$version\" | label_format context_extension=`{{if .context_extension}}{{.context_extension}}{{else}}no extension{{end}}` | label_format context_extension_version=`{{if .context_extension_version}}{{.context_extension_version}}{{else}}unversioned{{end}}` [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
-          "legendFormat": "{{context_extension}} v{{context_extension_version}}"
+          "legendFormat": "{{context_extension}} {{context_extension_version}}"
         }
       ]
     },
@@ -463,7 +463,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (context_extension) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\" | unwrap input_tokens [$__interval]))",
+          "expr": "sum by (context_extension) (sum_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | context_extension =~ \"$extension\" | unwrap input_tokens [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -474,7 +474,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (context_extension) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\" | unwrap output_tokens [$__interval]))",
+          "expr": "sum by (context_extension) (sum_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | context_extension =~ \"$extension\" | unwrap output_tokens [$__interval]))",
           "queryType": "range",
           "refId": "B",
           "__ionClass": "accumulation",
@@ -492,6 +492,56 @@
   ],
   "templating": {
     "list": [
+      {
+        "name": "host",
+        "label": "Device",
+        "type": "query",
+        "description": "The device a line came from (label `host_name`, the OTLP host.name). Multi-select; All includes lines with no device.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(host_name)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
+      {
+        "name": "user",
+        "label": "User",
+        "type": "query",
+        "description": "The signed-in operator (Alloy label `user`). Multi-select; All includes lines with no identity.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(user)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
       {
         "name": "extension",
         "label": "Extension",

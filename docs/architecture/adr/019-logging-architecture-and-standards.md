@@ -14,7 +14,8 @@ out-of-order line recovery and delayed-shipping scenarios.
 ## Context
 
 Ion emits two structured NDJSON streams: the **operational log** (diagnostic
-JSONL written per surface — `~/.ion/engine.jsonl`, `~/.ion/desktop.jsonl`,
+JSONL written per surface — `~/.ion/engine.jsonl`,
+`<ION_DATA_DIR>/server.jsonl`, `~/.ion/desktop.jsonl`,
 `~/.ion/ios-diagnostic-logs.jsonl`, the relay's `relay.jsonl`) and the
 **telemetry stream** (`~/.ion/telemetry.jsonl`, versioned event schema for
 central sinks). Before the unified log contract landed, the two streams had
@@ -76,8 +77,8 @@ violates the contract fails `go test ./internal/telemetry/`.
 
 ### 2. Five-level operational log model
 
-All five operational surfaces (engine, desktop, ios, relay, extension) use a
-five-level enum: `TRACE < DEBUG < INFO < WARN < ERROR`. TRACE is new; it sits
+Every operational surface (engine, server, web, desktop, ios, relay,
+extension) uses a five-level enum: `TRACE < DEBUG < INFO < WARN < ERROR`. TRACE is new; it sits
 below DEBUG on every surface (engine `LevelTrace`, desktop `LEVEL_ORDER` 0,
 relay `slogLevelTrace`, iOS `DiagnosticLog.Level.trace`). Default minimum
 level stays INFO everywhere.
@@ -201,8 +202,8 @@ Schema transitions remain append-only. Size rotation is independent and uses
 
 ### Positive
 
-- One casing, one timestamp format, one correlation vocabulary across all
-  five operational surfaces and the telemetry stream.
+- One casing, one timestamp format, one correlation vocabulary across every
+  operational surface and the telemetry stream.
 - Constant messages make Loki grouping, counting, and alerting reliable.
 - Version-forward append-only telemetry: a downgraded writer never wipes
   history; schema transitions are observable via `telemetry.schema_writer_changed`
@@ -333,15 +334,16 @@ numbers decoded as floats, and promoting whole floats to `intValue` makes the
 live record and the spool-round-tripped record serialize identically. Attributes
 are emitted **sorted by key** so output is deterministic across both surfaces.
 
-### Engine↔desktop parity is a pinned contract
+### Engine↔TypeScript parity is a pinned contract
 
 For the same canonical record, the engine (Go, `engine/internal/utils/log_egress.go`)
-and desktop (TypeScript, `desktop/src/main/log-egress-otel.ts`) exporters produce
-**structurally identical** OTLP output: same attribute keys, same value types,
-same sorted order, same constant-`msg` body. This parity is enforced by tests —
-`engine/internal/utils/log_egress_otel_test.go` pins the engine's attribute set
-against a canonical record, and `desktop/src/main/__tests__/log-egress-otel.test.ts`
-asserts the desktop output against that same engine attribute set. Any change to
+and the TypeScript exporter (`packages/shared/src/log-egress-otel.ts`, which the server and
+Electron's main process share) produce **structurally identical** OTLP output: same
+attribute keys, same value types, same sorted order, same constant-`msg` body. This
+parity is enforced by tests — `engine/internal/utils/log_egress_otel_test.go` pins the
+engine's attribute set against a canonical record, and
+`packages/shared/src/__tests__/log-egress-otel.test.ts` asserts the TypeScript output against
+that same engine attribute set. Any change to
 one exporter's typing convention fails the other's parity test, forcing both back
 into agreement. **Keep the two exporters identical**; the typing table above is
 the shared convention, and `run_id` stays in `fields` (never promoted top-level)

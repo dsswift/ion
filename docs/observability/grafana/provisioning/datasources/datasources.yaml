@@ -1,6 +1,15 @@
 apiVersion: 1
 
 datasources:
+  # Metrics: the engine's OTLP System Metrics, stored in Prometheus. The same
+  # PromQL runs against an Azure Monitor workspace in a hosted deployment.
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    jsonData:
+      timeInterval: 60s
   - name: Loki
     type: loki
     uid: loki
@@ -9,9 +18,13 @@ datasources:
     isDefault: true
     jsonData:
       maxLines: 1000
+      # Log -> trace: every line that names a trace carries it as the
+      # trace_id structured metadata (the OTLP LogRecord traceId), which a
+      # label matcher reads without parsing the line.
       derivedFields:
         - datasourceUid: tempo
-          matcherRegex: '"trace_id":"([a-f0-9]{32})"'
+          matcherType: label
+          matcherRegex: trace_id
           name: TraceID
           url: '${__value.raw}'
           urlDisplayLabel: View trace in Tempo
@@ -27,14 +40,29 @@ datasources:
     # grafana/grafana:13.1.0 (see grafana/devenv/datasources.yaml and
     # https://grafana.com/docs/grafana/latest/administration/correlations/create-a-new-correlation/).
     correlations:
-      # conversation_id → Explore: all log lines for this conversation across components.
+      # conversation_id → Explore: every operational log line for a conversation.
+      #
+      # Operational lines carry conversation_id at the TOP level (every
+      # surface's logger resolves it per line); telemetry events carry it
+      # nested under context. One correlation cannot serve both. An
+      # operational line is any stream with no event_name.
       - targetUID: loki
         label: "All logs for conversation"
-        description: "Open Explore filtered to all log lines sharing this conversation_id (engine + extensions + desktop)."
+        description: "Open Explore filtered to every operational log line sharing this conversation_id (engine, server, desktop, web, ios, extensions)."
         type: query
         config:
           target:
-            expr: '{component=~".+"} | json | context_conversation_id = "${__value.raw}"'
+            expr: '{service_name=~".+", event_name=""} | json | conversation_id = "${__value.raw}"'
+          field: conversation_id
+
+      # The same pivot from a telemetry event, whose ids are nested.
+      - targetUID: loki
+        label: "All logs for conversation (from telemetry)"
+        description: "Open Explore filtered to every operational log line sharing this telemetry event's conversation."
+        type: query
+        config:
+          target:
+            expr: '{service_name=~".+", event_name=""} | json | conversation_id = "${__value.raw}"'
           field: context_conversation_id
 
       # session_id → Explore: all telemetry events for a session.
@@ -44,13 +72,13 @@ datasources:
         type: query
         config:
           target:
-            expr: '{component=~".+"} | json | context_session_id = "${__value.raw}"'
+            expr: '{event_name=~".+"} | context_session_id = "${__value.raw}"'
           field: context_session_id
 
       # trace_id → Tempo: jump from a Loki log line to the corresponding trace.
       - targetUID: tempo
         label: "View trace"
-        description: "Open this trace in Tempo. Requires the trace_id structured-metadata field to be present (emitted on LLM call spans)."
+        description: "Open this line's trace in Tempo. Present on every line logged inside a traced operation."
         type: query
         config:
           target:
@@ -63,14 +91,22 @@ datasources:
     access: proxy
     url: http://tempo:3200
     jsonData:
+      # Search and TraceQL metrics stream over HTTP; tempo-config.yaml sets
+      # stream_over_http_enabled to match.
+      streamingEnabled:
+        search: true
+        metrics: true
+      # Trace -> logs: every line and telemetry event whose trace_id
+      # structured metadata is this trace, from any service. No json parse.
       tracesToLogsV2:
         datasourceUid: loki
         spanStartTimeShift: '-1m'
         spanEndTimeShift: '1m'
         filterByTraceID: true
         customQuery: true
-        query: '{component=~".+"} | json | trace_id = "${__span.traceId}"'
-      serviceMap:
-        datasourceUid: prometheus
+        query: '{service_name=~".+"} | trace_id="${__trace.traceId}"'
+      # No serviceMap: it reads span metrics from a Prometheus datasource, and
+      # this Tempo remote-writes none. Pointing it at Prometheus anyway made
+      # the Service Graph tab fail rather than be absent.
       nodeGraph:
         enabled: true

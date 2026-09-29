@@ -87,52 +87,52 @@ export const costPerRunByModelInterval = (): Expr => {
 };
 
 // ---------------------------------------------------------------------------
-// wire-latency raw-field quantiles (desktop/ios transport frames)
+// wire-latency: the Studio wire, per client
 // ---------------------------------------------------------------------------
+//
+// The server writes one `wire window` line per connection per minute
+// (`server/src/protocol/wire-latency.ts`), and each client one `client window`
+// line (`packages/shared/src/client-wire-latency.ts`, and its Swift mirror).
+// Both carry tag="wire-latency"; the msg distinguishes them.
+//
+// These replaced a set of queries against desktop→iOS transport frames. That
+// transport is gone (ADR-035 put every client on the Studio wire), nothing had
+// emitted those fields since, and the dashboard reading them looked exactly
+// like a quiet system.
 
-// quantile of a desktop/ios transport field, grouped by event_type.
-export function transportQuantile(opts: {
-  q: number;
-  component: 'desktop' | 'ios';
-  tag: string;
-  field: string;
-  window: Window;
-}): Expr {
-  const expr =
-    `quantile_over_time(${opts.q}, {component="${opts.component}"} | json | tag="${opts.tag}"` +
-    ` | ${opts.field} != "" | unwrap ${opts.field} [${opts.window}]) by (fields_event_type)`;
-  return windowedStat(expr, opts.window);
-}
-
-// avg of the iOS heartbeat skew estimate over a window (windowed-stat).
-// iOS emits skew on every receive-path frame under tag="transport.receive";
-// the heartbeat frames carry msg="heartbeat received" with fields_skew_est_ms
-// (TransportManager+Receive.swift). Filtering to the heartbeat msg isolates the
-// clock-skew round-trips from ordinary data frames.
-export const skewEstimateAvg = (window: Window): Expr =>
-  windowedStat(
-    `avg_over_time({component="ios"} | json | tag="transport.receive" | msg="heartbeat received"` +
-      ` | fields_skew_est_ms != "" | unwrap fields_skew_est_ms [${window}])`,
-    window,
-  );
-
-// DECODE-ERR frames/min: rolling count of transport decode errors per window on
-// one component. windowed-stat (deliberate rolling window, pinned in title).
-// The receive-path tag differs by component: the desktop logs decode/decompress
-// failures under tag="transport" (transport.ts), iOS logs them under
-// tag="transport.receive" (TransportManager+Receive.swift). The caller passes
-// the correct tag for the component so each series matches its real emitter.
-export const decodeErrorRate = (opts: {
-  component: 'desktop' | 'ios';
-  tag: string;
-  msgPattern: string;
-  window: Window;
-}): Expr =>
-  windowedStat(
-    `sum(count_over_time({component="${opts.component}"} | json | level="ERROR" | tag="${opts.tag}"` +
-      ` | msg=~"${opts.msgPattern}" [${opts.window}]))`,
+/** A numeric field off the server's per-connection window, grouped by client kind. */
+export function wireWindowStat(opts: { field: string; window: Window; by?: readonly string[] }): Expr {
+  const by = opts.by && opts.by.length ? opts.by.join(', ') : 'fields_client_kind';
+  return windowedStat(
+    `avg_over_time({service_name="ion-server", event_name=""} | json | tag="wire-latency" | msg="wire window"` +
+      ` | ${opts.field} != "" | unwrap ${opts.field} [${opts.window}]) by (${by})`,
     opts.window,
   );
+}
+
+/** A rate off the server's window: probes lost, decode errors, bytes out. */
+export function wireWindowRate(opts: { field: string; window: Window }): Expr {
+  return windowedStat(
+    `sum by (fields_client_kind) (sum_over_time({service_name="ion-server", event_name=""} | json | tag="wire-latency"` +
+      ` | msg="wire window" | ${opts.field} != "" | unwrap ${opts.field} [${opts.window}]))`,
+    opts.window,
+  );
+}
+
+/**
+ * The action latency a person actually waits through, from each client's own
+ * window. Grouped by component, which is what tells the three clients apart:
+ * `desktop` (Studio and Electron main), `web` (a browser tab, forwarded
+ * through the server's POST /log), `ios` (the phone, through its diagnostic
+ * pull).
+ */
+export function clientWindowStat(opts: { field: string; window: Window }): Expr {
+  return windowedStat(
+    `avg_over_time({service_name=~"ion-(desktop|web|ios)", event_name=""} | json | tag="wire-latency" | msg="client window"` +
+      ` | ${opts.field} != "" | unwrap ${opts.field} [${opts.window}]) by (service_name)`,
+    opts.window,
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Instant windowed stats (single headline number)

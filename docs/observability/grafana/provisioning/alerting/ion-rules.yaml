@@ -1,0 +1,179 @@
+# Ion anomaly alert rules — local Loki stack.
+#
+# 2026-09-28 operator direction: anomalies (a cost or usage spike outside
+# norms, a runaway agent left running overnight) become alert rules with
+# notifications, and the overview dashboard surfaces the firing count/stream
+# via Grafana's native alertlist panel (see dashboards/src/dashboards/overview.ts,
+# panel "Critical alerts firing") instead of an operator having to notice a
+# raw number drift on some other panel.
+#
+# Every query here reuses a query SHAPE already proven in the dashboard
+# recipes (docs/observability/dashboards/src/queries-logs.ts's
+# ingestFreshnessMinutes, queries-fleet.ts's hostLastSeenMinutes: the
+# vector(${__to:date:seconds}) / label_format / unwrap detector idiom) rather
+# than inventing new LogQL; every query has been run against this stack's real
+# data (see the reliability journal entry for 2026-09-28).
+#
+# 2026-09-28 revision: the first cut of the runaway-session and ingest-wedge
+# rules turned out to alert on normal telemetry, not anomalies (session log
+# span always covers most of a day; a 30m gap is routine for iOS, the relay,
+# and idle instances). Both were rebuilt against the same real data plus a
+# synthetic push to Loki proving the positive case (see the journal): the
+# unattended-session rule now keys on run.execute density per hourly bucket
+# joined against the prompt.handle span (the server-side span logged only
+# when a client actually submits — see docs/observability/log-schema.md
+# "Spans"), and the ingest-wedge rule now requires a host's engine stream to
+# be fresh WHILE its paired server/desktop stream on the SAME host has gone
+# stale, rather than firing on any one component's absolute silence.
+#
+# No notification contact point is configured. az-lz-cloudops has no Grafana
+# contact point today (investigated 2026-09-28: no grafana_contact_point /
+# grafana_notification_policy resource anywhere in that repo, and the one
+# azurerm_monitor_action_group in the repo is scoped to the AI Gateway, not
+# reusable here without misattributing Ion alerts to that service). These
+# rules fire and are visible in Alerting > Alert rules and on this dashboard's
+# alertlist panel either way — Grafana's default notification policy just has
+# nowhere to send a message until the operator names a destination (see
+# reliability journal 2026-09-28 for the decision this needs).
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: ion-anomalies
+    folder: Ion Alerts
+    interval: 5m
+    rules:
+      - uid: ion-error-burst
+        title: Ion error burst
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: sum(count_over_time({level="ERROR"}[15m]))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [20] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels: { severity: critical, ion: 'true' }
+        annotations:
+          summary: 'More than 20 ERROR log lines in the last 15 minutes.'
+          description: 'Threshold matches the overview "Errors" tile''s red band (>=10 over the picker range) with headroom for a short burst; a sustained 15m rate this high is worth paging on. See Ion Errors & Health for the breakdown by component.'
+
+      - uid: ion-cost-spike
+        title: Ion cost spike vs 7-day baseline
+        condition: D
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: sum(sum_over_time({event_name="run.complete"} | json | unwrap payload_run_cost_usd [1h]))
+          - refId: B
+            relativeTimeRange: { from: 604800, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: B
+              queryType: instant
+              expr: sum(sum_over_time({event_name="run.complete"} | json | unwrap payload_run_cost_usd [7d])) / 168
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: math
+              expression: '$A > (5 * $B) && $A > 1'
+          - refId: D
+            datasourceUid: __expr__
+            model:
+              refId: D
+              type: threshold
+              expression: C
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        labels: { severity: critical, ion: 'true' }
+        annotations:
+          summary: 'The last hour''s spend is more than 5x the trailing 7-day hourly average, and above $1.'
+          description: 'A = current-hour spend. B = 7-day trailing hourly average. Fires only when the ratio AND the absolute spend both clear the bar, so a jump from $0.001/hr to $0.01/hr does not page anyone. See Ion Cost for the breakdown.'
+
+      - uid: ion-runaway-session
+        title: Ion unattended session (continuous runs, no prompt)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 14400, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: >-
+                (sum by (session_id) (count_over_time({event_name="run.execute"} | json |
+                label_format session_id=context_session_id [1h]))
+                and sum by (session_id) (count_over_time({event_name="run.execute"} | json |
+                label_format session_id=context_session_id [1h] offset 1h))
+                and sum by (session_id) (count_over_time({event_name="run.execute"} | json |
+                label_format session_id=context_session_id [1h] offset 2h))
+                and sum by (session_id) (count_over_time({event_name="run.execute"} | json |
+                label_format session_id=context_session_id [1h] offset 3h)))
+                unless on(session_id)
+                sum by (session_id) (count_over_time({tag="span"} | json | msg="prompt.handle" [4h]))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels: { severity: warning, ion: 'true' }
+        annotations:
+          summary: 'A session has had engine runs executing in every one of the last four consecutive 1h windows, with zero server-side prompt.handle spans (no user-originated submit) anywhere in that 4h stretch — an agent working unattended, e.g. left running overnight.'
+          description: 'Not a log-span check (normal sessions legitimately span most of a day) — this keys on run.execute density per hourly bucket, joined against session_id, then excludes any session that has at least one prompt.handle span (the server-side span logged when a client actually submits) in the same 4h window. A session mid one long user-initiated dispatch chain still has its opening prompt.handle inside the window and will not fire; a session with continuous run activity and zero fresh user input for 4+ hours will. See Ion Live Logs / Ion Forensics (filter by the firing session_id) to confirm before killing it.'
+
+      - uid: ion-ingest-wedge
+        title: Ion ingest tailer wedge (paired stream stalled)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 86400, to: 0 }
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: instant
+              expr: >-
+                (sum by (host_name) (count_over_time({service_name="ion-engine", event_name="",
+                host_name!=""} [10m])) and sum by (host_name) (count_over_time({service_name=~"ion-server|ion-desktop",
+                event_name="", host_name!=""} [24h]))) unless on(host_name) sum by (host_name)
+                (count_over_time({service_name=~"ion-server|ion-desktop", event_name="", host_name!=""} [30m]))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels: { severity: warning, ion: 'true' }
+        annotations:
+          summary: 'A host''s engine shipped an op-log line in the last 10 minutes, that host has shipped a server or desktop op-log line at some point in the last 24h (so a pairing exists), but neither has shipped one in the last 30 minutes — the tailer-wedge case, not an idle/unpaired component going quiet.'
+          description: 'Three fixed-window counts per host_name, combined in one LogQL expression (no vector()/now-macro, which Grafana''s alerting engine does not expand the way a dashboard panel does): (engine active in 10m) AND (server/desktop active at some point in 24h, i.e. a pairing exists on this host) UNLESS (server/desktop active in the last 30m). A host with no desktop/server pairing at all (headless engine, or a component that legitimately reports rarely, e.g. iOS, the relay, an idle instance) never satisfies the 24h clause and never matches. See the overview dashboard''s "Ingest freshness by component" tile for the raw per-component numbers, and README "Tailer wedge" for the known virtiofs bind-mount cause.'
