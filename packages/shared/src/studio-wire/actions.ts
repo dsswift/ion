@@ -423,7 +423,6 @@ export const MIRROR_LOCAL_ACTIONS: Record<string, string> = {
   closeStatusDrawer: "per-window UI",
   openDispatchSplit: "per-window UI",
   closeDispatchSplit: "per-window UI",
-  openDispatchPreview: "per-window UI",
   toggleTallView: "per-window UI",
   openSettings: "per-window UI",
   closeSettings: "per-window UI",

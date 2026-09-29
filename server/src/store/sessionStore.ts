@@ -67,7 +67,6 @@ const initialState = {
   inboxPanelOpen: false,
   // Null = use the default height, which is also the floor for a drag.
   statusDrawerOpen: false,
-  statusDrawerDispatchId: null,
   dispatchSplit: null,
   terminalOpenTabIds: new Set<string>(),
   terminalActivities: new Map(),

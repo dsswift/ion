@@ -26,7 +26,7 @@
  *
  * The offset is gone entirely now, because the state it existed for is gone: at
  * most one right-side panel can be open (see `toggleGitPanel` /
- * `toggleStatusDrawer` / `openDispatchPreview` in `stores/slices/expand-slice.ts`),
+ * `toggleStatusDrawer` in `server/src/store/slices/expand-slice.ts`),
  * so the drawer always sits at `PANEL_GAP` and has nothing to clear. The history
  * is recorded here because the lesson -- a width restated at a second site
  * drifts from the first -- outlives the function that taught it.

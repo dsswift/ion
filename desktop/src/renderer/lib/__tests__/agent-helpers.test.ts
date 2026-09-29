@@ -24,7 +24,6 @@ const RUNTIME_EXPORTS = [
   'childrenOfDispatch',
   'childAgentsOf',
   'rootDispatches',
-  'buildBreadcrumbStack',
 ] as const
 
 describe('agent-helpers relocation', () => {

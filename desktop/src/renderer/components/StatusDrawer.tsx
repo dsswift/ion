@@ -17,17 +17,15 @@
  *   - Session ID (copyable), conversation-lifetime turns, durationMs, sessionVersion (C6).
  */
 
-import React, { useMemo, useCallback, useEffect } from 'react'
+import React, { useMemo, useEffect } from 'react'
 import { X, CircleNotch } from '@phosphor-icons/react'
 import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useShallow } from 'zustand/shallow'
-import { windowRole } from '@ion/server/lib/window-role'
 import { useColors } from '../theme'
 import { STATUS_DRAWER_WIDTH } from './panelGeometry'
-import { meta, getDispatches, buildBreadcrumbStack } from './agent-panel-helpers'
-import { AgentDetailPanel } from './AgentDetailPanel'
+import { meta, getDispatches } from './agent-panel-helpers'
 import type { AgentStateUpdate } from '@ion/shared/types'
-import type { ContextBreakdownCategory, DispatchInfo } from '@ion/shared/types-engine'
+import type { ContextBreakdownCategory } from '@ion/shared/types-engine'
 import { getDynamicContextWindow } from '@ion/server/store/model-labels'
 import { runningConversationModel } from '@ion/shared/conversation-model'
 import { resolveContextDisplay, resolveContextInputs } from './context-usage'
@@ -50,8 +48,6 @@ import type { KindKey, GraphSegment } from './StatusDrawerParts'
 export function StatusDrawer({ embedded = false }: { embedded?: boolean }) {
   const colors = useColors()
   const closeStatusDrawer = useSessionStore((s) => s.closeStatusDrawer)
-  const openDispatchPreview = useSessionStore((s) => s.openDispatchPreview)
-  const statusDrawerDispatchId = useSessionStore((s) => s.statusDrawerDispatchId)
 
   const { tab, activeInstance } = useSessionStore(
     useShallow((s) => {
@@ -84,7 +80,6 @@ export function StatusDrawer({ embedded = false }: { embedded?: boolean }) {
     () => activeInstance?.agentStates ?? [],
     [activeInstance?.agentStates],
   )
-  const dispatchTelemetry = activeInstance?.dispatchTelemetry ?? []
 
   // Flat, running-only dispatch rows across all tiers
   const runningDispatches = useMemo(() => {
@@ -98,21 +93,6 @@ export function StatusDrawer({ embedded = false }: { embedded?: boolean }) {
       return [{ agent, dispatch: activeDispatch, depth, displayName }]
     })
   }, [agentStates])
-
-  // Breadcrumb reconstruction for deep-linked dispatch
-  const deepLinkData = useMemo(() => {
-    if (!statusDrawerDispatchId) return null
-    const targetAgent = agentStates.find((a) => getDispatches(a).some((d) => d.id === statusDrawerDispatchId))
-    if (!targetAgent) return null
-    const dispatches = getDispatches(targetAgent)
-    const stack = buildBreadcrumbStack(statusDrawerDispatchId, agentStates)
-    const dispatchIdx = Math.max(0, dispatches.findIndex((d) => d.id === statusDrawerDispatchId))
-    return { agent: targetAgent, dispatches, dispatchIdx, stack: stack ?? undefined }
-  }, [statusDrawerDispatchId, agentStates])
-
-  const handleCloseDeepLink = useCallback(() => {
-    useSessionStore.setState({ statusDrawerDispatchId: null })
-  }, [])
 
   // Context breakdown cached on the instance from engine_context_breakdown events
   const contextBreakdown = activeInstance?.contextBreakdown ?? null
@@ -271,43 +251,17 @@ export function StatusDrawer({ embedded = false }: { embedded?: boolean }) {
           <div>
             <SectionHeader label={`Running (${runningDispatches.length})`} colors={colors} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {runningDispatches.map(({ agent: _agent, dispatch, depth, displayName }) => (
+              {runningDispatches.map(({ agent, dispatch, depth, displayName }) => (
                 <button key={dispatch.id} onClick={() => {
-                  // Studio routes the deep-link into the inline dispatch
-                  // split; the overlay keeps the drawer→floating-panel path.
-                  if (windowRole() === 'studio') {
-                    useSessionStore.getState().openDispatchSplit({ agentName: _agent.name, dispatchId: dispatch.id })
-                    return
-                  }
-                  openDispatchPreview(dispatch.id)
+                  useSessionStore.getState().openDispatchSplit({ agentName: agent.name, dispatchId: dispatch.id })
                 }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderRadius: 4, background: statusDrawerDispatchId === dispatch.id ? colors.surfaceActive : colors.surfaceHover, border: 'none', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderRadius: 4, background: colors.surfaceHover, border: 'none', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
                   {depth > 0 && <span style={{ fontSize: 9, color: colors.textMuted, flexShrink: 0 }}>T{depth}</span>}
                   <span style={{ fontSize: 10, color: colors.textPrimary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>
                   <span style={{ fontSize: 9, color: colors.textTertiary, flexShrink: 0 }}>{elapsedStr(dispatch.startTime)}</span>
                 </button>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Deep-link: AgentDetailPanel */}
-        {deepLinkData && (
-          <div>
-            <SectionHeader label="Dispatch Detail" colors={colors} />
-            <AgentDetailPanel
-              agent={deepLinkData.agent}
-              loadedMessages={undefined}
-              loading={false}
-              dispatches={deepLinkData.dispatches as DispatchInfo[]}
-              selectedDispatch={deepLinkData.dispatchIdx}
-              onSelectDispatch={() => {}}
-              onClose={handleCloseDeepLink}
-              dispatchTelemetry={dispatchTelemetry}
-              allAgents={agentStates}
-              initialStack={deepLinkData.stack}
-              tabId={tabId}
-            />
           </div>
         )}
       </div>

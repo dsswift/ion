@@ -134,7 +134,6 @@ vi.mock("@ion/shared/transcript/agent-conversation-mapper", () => ({
 }));
 
 import { AgentDetailPanel } from "../AgentDetailPanel";
-import type { BreadcrumbFrame } from "../agent-panel-helpers";
 import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 function makeAgent(name: string): AgentStateUpdate {
@@ -463,44 +462,6 @@ describe("AgentDetailPanel nested dispatches", () => {
 
     const text = container.textContent || "";
     expect(text).toContain("claude-sonnet-4-6");
-    expect(text).not.toContain("claude-opus-4-8");
-    unmount();
-  });
-
-  it("renders no meta row for a drilled-in dispatch neither pills nor telemetry know", () => {
-    // Deep-link entry to a child frame with no durable pill and no telemetry:
-    // the header must omit the Model/Duration row entirely rather than borrow
-    // the parent frame's dispatch meta.
-    const initialStack: BreadcrumbFrame[] = [
-      {
-        dispatchId: "d1",
-        conversationId: "conv-1",
-        agentDisplayName: "dev-lead",
-      },
-      {
-        dispatchId: "d-unknown",
-        conversationId: "conv-x",
-        agentDisplayName: "ios-dev",
-      },
-    ];
-
-    const { container, unmount } = renderPanel({
-      agent: makeAgent("dev-lead"),
-      loadedMessages: [
-        { id: "u1", role: "user", content: "Root msg", timestamp: 0 },
-      ],
-      loading: false,
-      dispatches: [makeDispatch("d1", "conv-1", "claude-opus-4-8", 68)],
-      selectedDispatch: 0,
-      onSelectDispatch: () => {},
-      onClose: () => {},
-      dispatchTelemetry: [],
-      allAgents: [makeAgent("dev-lead")],
-      initialStack,
-    });
-
-    const text = container.textContent || "";
-    expect(text).not.toContain("Model:");
     expect(text).not.toContain("claude-opus-4-8");
     unmount();
   });

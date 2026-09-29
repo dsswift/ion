@@ -82,13 +82,6 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
    * coexists — they are not mutually exclusive.
    */
   statusDrawerOpen: boolean;
-  /**
-   * When set, the Status Drawer opens the AgentDetailPanel for this
-   * dispatch ID on mount, reconstructing the breadcrumb stack by walking
-   * dispatchParentId up through durable agentStates. Cleared when the
-   * Status Drawer is closed or the panel navigates away.
-   */
-  statusDrawerDispatchId: string | null;
   /** Studio inline dispatch split subject (null = closed). Scoped to its opening conversation. */
   dispatchSplit: DispatchSplitSubject | null;
   terminalOpenTabIds: Set<string>;
@@ -345,14 +338,8 @@ export interface State extends WorktreeBenchActions, EngineSubmitActions {
   closeGitPanel: () => void;
   /** Toggle the Status Drawer (the ⓘ right-side panel). */
   toggleStatusDrawer: () => void;
-  /** Close the Status Drawer and clear the pending dispatch deep-link. */
+  /** Close the Status Drawer. */
   closeStatusDrawer: () => void;
-  /**
-   * Open the Status Drawer and pre-select a specific dispatch for deep-link
-   * navigation. The drawer reconstructs the ancestor breadcrumb stack from
-   * durable agentStates (dispatchParentId walk) before presenting the panel.
-   */
-  openDispatchPreview: (dispatchId: string) => void;
   openDispatchSplit: (subject: {
     agentName: string;
     dispatchId: string;

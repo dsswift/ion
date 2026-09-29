@@ -40,8 +40,6 @@ export interface AgentDetailBodyProps {
   dispatchTelemetry?: DispatchTelemetryEntry[];
   /** Full agent-state list — durable source for nested children. */
   allAgents?: AgentStateUpdate[];
-  /** Pre-populated breadcrumb stack for deep-link entry. */
-  initialStack?: BreadcrumbFrame[];
   /** Studio supplies agent title in its pane chrome, so hide root duplicate. */
   hideRootBreadcrumb?: boolean;
   /** Owning tab for the selected dispatch stop control. */
@@ -57,63 +55,43 @@ export function AgentDetailBody({
   onSelectDispatch,
   dispatchTelemetry,
   allAgents,
-  initialStack,
   hideRootBreadcrumb = false,
   tabId,
 }: AgentDetailBodyProps): React.JSX.Element {
   const colors = useColors();
   const unifiedTurnView = usePreferencesStore((s) => s.unifiedTurnView);
 
-  // Breadcrumb stack. When initialStack is provided (deep-link from StatusDrawer),
-  // use it as the starting point. Otherwise start at the root frame (single entry).
+  // Breadcrumb stack, starting at the root frame; drill-down pushes onto it.
   const rootDispatch = dispatches[selectedDispatch];
-  const rootFrame: BreadcrumbFrame = {
-    dispatchId: rootDispatch?.id ?? "",
-    conversationId: rootDispatch?.conversationId ?? "",
-    agentDisplayName: meta(agent, "displayName", agent.name),
-  };
-  const [stack, setStack] = useState<BreadcrumbFrame[]>(() =>
-    initialStack && initialStack.length > 0 ? initialStack : [rootFrame],
-  );
-
-  // Stable identity of the deep-link target. `initialStack` is a fresh array on
-  // every render (StatusDrawer memoizes deepLinkData on agentStates, so a
-  // heartbeat rebuilds it), but its TARGET dispatch only changes when the user
-  // deep-links to a genuinely different dispatch. Keying the reset on this
-  // string instead of the array ref stops a rebuilt-but-identical initialStack
-  // from clobbering a manual drill-down.
-  const initialStackTargetId =
-    initialStack && initialStack.length > 0
-      ? (initialStack[initialStack.length - 1]?.dispatchId ?? "")
-      : "";
+  const [stack, setStack] = useState<BreadcrumbFrame[]>(() => [
+    {
+      dispatchId: rootDispatch?.id ?? "",
+      conversationId: rootDispatch?.conversationId ?? "",
+      agentDisplayName: meta(agent, "displayName", agent.name),
+    },
+  ]);
 
   // Reset stack ONLY when the root subject identity genuinely changes. The deps
-  // are deliberately restricted to stable primitives: `agent` and `initialStack`
-  // are new object/array references on every engine_agent_state heartbeat (the
-  // popup passes popupAgent = visible.find(...), rebuilt each heartbeat), so
-  // depending on them would refire this reset mid-drill and snap the breadcrumb
-  // back to the root — the exact bug this guards against. `agent.name`,
-  // `rootDispatch?.id`, `rootDispatch?.conversationId`, and `initialStackTargetId`
-  // are stable across heartbeats and change on every genuine subject change
-  // (different agent, pager switch, or a different deep-link target).
+  // are deliberately restricted to stable primitives: `agent` is a new object
+  // reference on every engine_agent_state heartbeat (the popup passes
+  // popupAgent = visible.find(...), rebuilt each heartbeat), so depending on it
+  // would refire this reset mid-drill and snap the breadcrumb back to the root.
+  // `agent.name`, `rootDispatch?.id`, and `rootDispatch?.conversationId` are
+  // stable across heartbeats and change on every genuine subject change
+  // (different agent or pager switch).
   useEffect(() => {
-    if (initialStack && initialStack.length > 0) {
-      setStack(initialStack);
-    } else {
-      setStack([
-        {
-          dispatchId: rootDispatch?.id ?? "",
-          conversationId: rootDispatch?.conversationId ?? "",
-          agentDisplayName: meta(agent, "displayName", agent.name),
-        },
-      ]);
-    }
+    setStack([
+      {
+        dispatchId: rootDispatch?.id ?? "",
+        conversationId: rootDispatch?.conversationId ?? "",
+        agentDisplayName: meta(agent, "displayName", agent.name),
+      },
+    ]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     rootDispatch?.id,
     rootDispatch?.conversationId,
     agent.name,
-    initialStackTargetId,
   ]);
 
   const top = stack[stack.length - 1];

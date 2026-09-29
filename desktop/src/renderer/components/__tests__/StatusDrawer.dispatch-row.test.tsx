@@ -1,23 +1,15 @@
 // @vitest-environment jsdom
 //
-// Regression pin: StatusDrawer must pass the owning tabId into AgentDetailPanel
-// for the deep-linked dispatch. Without it, the drawer-opened dispatch preview
-// renders no Stop control even though AgentDetailPanel/AgentDetailBody support
-// one — the tabId simply never reaches them.
+// A running-dispatch row in the Status Drawer opens that dispatch in Studio's
+// inline dispatch split, on every Studio client. The row used to branch on a
+// window role guessed from the page's entry file, which sent a browser client
+// down a path only the deleted Overlay window used.
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-
-const agentDetailPanelProps: Array<Record<string, unknown>> = []
-vi.mock('../AgentDetailPanel', () => ({
-  AgentDetailPanel: (props: Record<string, unknown>) => {
-    agentDetailPanelProps.push(props)
-    return React.createElement('div', { 'data-testid': 'agent-detail-panel' })
-  },
-}))
 
 vi.mock('../../theme', () => ({
   useColors: () => new Proxy({}, { get: () => '#000' }),
@@ -25,7 +17,6 @@ vi.mock('../../theme', () => ({
 vi.mock('../../preferences', () => ({
   usePreferencesStore: (sel: (s: Record<string, unknown>) => unknown) => sel({ preferredModel: 'm' }),
 }))
-vi.mock('@ion/server/lib/window-role', () => ({ windowRole: () => 'overlay' }))
 vi.mock('../../host/host-instance', () => ({
   host: { shell: { engineGetContextBreakdown: vi.fn(async () => {}) }, capabilities: () => ['terminal', 'git', 'files', 'questions', 'graph'] },
 }))
@@ -40,8 +31,7 @@ const tabId = 'tab-drawer-1'
 const dispatchId = 'dispatch-d2'
 const state = {
   closeStatusDrawer: vi.fn(),
-  openDispatchPreview: vi.fn(),
-  statusDrawerDispatchId: dispatchId as string | null,
+  openDispatchSplit: vi.fn(),
   tabs: [{ id: tabId }],
   activeTabId: tabId,
   conversationPanes: new Map([[tabId, {
@@ -76,13 +66,15 @@ function render() {
   return { container, unmount() { act(() => { root.unmount() }); document.body.removeChild(container) } }
 }
 
-describe('StatusDrawer deep-link tabId wiring', () => {
-  beforeEach(() => { agentDetailPanelProps.length = 0 })
+describe('StatusDrawer running-dispatch row', () => {
   afterEach(() => { document.body.replaceChildren() })
 
-  it('forwards the active tabId to the deep-linked AgentDetailPanel', () => {
-    const { unmount } = render()
-    expect(agentDetailPanelProps.at(-1)?.tabId).toBe(tabId)
+  it('opens the clicked dispatch in the inline dispatch split', () => {
+    const { container, unmount } = render()
+    const row = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('child'))
+    expect(row).toBeDefined()
+    act(() => { row!.click() })
+    expect(state.openDispatchSplit).toHaveBeenCalledWith({ agentName: 'child', dispatchId })
     unmount()
   })
 })

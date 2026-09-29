@@ -15,7 +15,6 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 vi.mock('../AgentDetailPanel', () => ({ AgentDetailPanel: () => React.createElement('div') }))
 vi.mock('../../theme', () => ({ useColors: () => new Proxy({}, { get: () => '#000' }) }))
 vi.mock('../../preferences', () => ({ usePreferencesStore: (sel: (s: Record<string, unknown>) => unknown) => sel({ preferredModel: 'm' }) }))
-vi.mock('@ion/server/lib/window-role', () => ({ windowRole: () => 'overlay' }))
 vi.mock('zustand/shallow', () => ({ useShallow: (selector: unknown) => selector }))
 vi.mock('./StatusDrawerParts', () => ({
   UsageBar: () => null, SectionHeader: () => null, elapsedStr: () => '', ProportionGraph: () => null,
@@ -31,8 +30,6 @@ vi.mock('../../host/host-instance', () => ({
 const tabId = 'tab-drawer-1'
 const state = {
   closeStatusDrawer: vi.fn(),
-  openDispatchPreview: vi.fn(),
-  statusDrawerDispatchId: null as string | null,
   tabs: [{ id: tabId }],
   activeTabId: tabId,
   conversationPanes: new Map([[tabId, {

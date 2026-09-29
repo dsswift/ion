@@ -41,8 +41,8 @@ export function createExpandSlice(set: StoreSet, get: StoreGet): Partial<State> 
     // either one closes the other.
     //
     // The rule lives HERE rather than in the components that trigger it because
-    // there are four triggers already (StatusBarGitButton, the context ring,
-    // a dispatch row, the keyboard) and a component handler only holds for the
+    // there are several triggers already (StatusBarGitButton, the context
+    // ring, the keyboard) and a component handler only holds for the
     // window it is mounted in -- the Studio mirror runs these same actions. One
     // invariant at the mutation point covers every caller, present and future.
     //
@@ -62,7 +62,7 @@ export function createExpandSlice(set: StoreSet, get: StoreGet): Partial<State> 
           return { gitPanelOpen: false }
         }
         rDebug('panels', 'toggleGitPanel: opening', { displaced_drawer: s.statusDrawerOpen })
-        return { gitPanelOpen: true, statusDrawerOpen: false, statusDrawerDispatchId: null }
+        return { gitPanelOpen: true, statusDrawerOpen: false }
       })
     },
 
@@ -82,29 +82,10 @@ export function createExpandSlice(set: StoreSet, get: StoreGet): Partial<State> 
     },
 
     closeStatusDrawer: () => {
-      set({ statusDrawerOpen: false, statusDrawerDispatchId: null })
+      set({ statusDrawerOpen: false })
     },
 
-    // Open the Status Drawer and deep-link to a specific dispatch in the
-    // dispatch preview. The StatusDrawer reads statusDrawerDispatchId to
-    // decide which agent to pre-open in AgentDetailPanel. A null id just
-    // opens the drawer without pre-selecting anything.
-    //
-    // This is the drawer's second opener, so it carries the same exclusivity as
-    // toggleStatusDrawer -- a deep-link from a dispatch row must not leave the
-    // drawer stacked beside an open git panel.
-    openDispatchPreview: (dispatchId: string) => {
-      set((s) => {
-        rDebug('panels', 'openDispatchPreview', {
-          dispatch_id: dispatchId,
-          displaced_git_panel: s.gitPanelOpen,
-        })
-        return { statusDrawerOpen: true, statusDrawerDispatchId: dispatchId, gitPanelOpen: false }
-      })
-    },
-
-    // Studio inline dispatch split (the Studio counterpart of the overlay's
-    // floating AgentDetailPanel). Same dispatch identity as the popup:
+    // Studio inline dispatch split. Dispatch identity is
     // {agentName, dispatchId}, '' = agent-level sentinel. Completion retains
     // the ended detail until the user closes it; changing conversation closes
     // it because no dispatch preview may outlive its originating conversation.
