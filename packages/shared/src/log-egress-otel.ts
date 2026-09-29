@@ -291,7 +291,8 @@ export function resourceFieldKeys(component: unknown): ReadonlySet<string> {
 /**
  * Flatten an operational record to its OTLP attribute set: tag; each present
  * session, conversation, and user id; event_id; and every fields key (run_id
- * rides here) except those the resource or the LogRecord already carry. The
+ * rides here) except those the resource, the LogRecord, or the record's own
+ * keys above already carry. The
  * component is the resource's service.name and the trace is the LogRecord
  * traceId, so neither is an attribute. Sorted by key so the desktop and engine
  * exporters produce identical output for the same record.
@@ -304,8 +305,13 @@ export function otlpAttrsFromRecord(r: EgressRecord): OtlpLogAttr[] {
   if (typeof r.event_id === 'string' && r.event_id) attrs.push({ key: 'event_id', value: otlpStr(r.event_id) })
   if (r.fields) {
     const skip = resourceFieldKeys(r.component)
+    // The record's own tag, ids, and user own their attribute keys. A field of
+    // the same name (a line logging the OS account as `user`) rides in the
+    // body only; pushing it too would make a second attribute with that key,
+    // and the collector keeps whichever it reads last.
+    const recordKeys = new Set(attrs.map((a) => a.key))
     for (const [k, v] of Object.entries(r.fields)) {
-      if (!skip.has(k)) attrs.push({ key: k, value: otlpAttrValFromAny(v) })
+      if (!skip.has(k) && !recordKeys.has(k)) attrs.push({ key: k, value: otlpAttrValFromAny(v) })
     }
   }
   attrs.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))

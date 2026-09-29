@@ -225,8 +225,8 @@ func resourceFieldKeys(component string) map[string]bool {
 
 // otlpAttrsFromRecord flattens an operational record to its OTLP attribute
 // set: tag; each present session, conversation, and user id; event_id; and
-// every fields key (run_id rides here) except those the resource or the
-// LogRecord already carry. The component is the resource's service.name and
+// every fields key (run_id rides here) except those the resource, the
+// LogRecord, or the record's own keys above already carry. The component is the resource's service.name and
 // the trace is the LogRecord's traceId, so neither is an attribute. Sorted by
 // key so the engine and desktop exporters produce identical output.
 func otlpAttrsFromRecord(r egressRecord) []otlpLogAttr {
@@ -245,6 +245,13 @@ func otlpAttrsFromRecord(r egressRecord) []otlpLogAttr {
 		attrs = append(attrs, otlpLogAttr{Key: "event_id", Value: otlpStr(r.EventID)})
 	}
 	skip := resourceFieldKeys(r.Component)
+	// The record's own tag, ids, and user own their attribute keys. A field of
+	// the same name (a line logging the OS account as "user") rides in the
+	// body only; pushing it too would make a second attribute with that key,
+	// and the collector keeps whichever it reads last.
+	for _, a := range attrs {
+		skip[a.Key] = true
+	}
 	for k, v := range r.Fields {
 		if !skip[k] {
 			attrs = append(attrs, otlpLogAttr{Key: k, Value: otlpAttrValFromAny(v)})

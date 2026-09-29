@@ -8,6 +8,10 @@ those keys. A call site that logs a URL's or a git remote's host under
 identity win and this scan keeps call sites off the keys: name the value for
 what it is (url_host, git_host, bind_host).
 
+`user` is reserved the same way: it is the line's signed-in user, which the
+exporters stamp as the `user` attribute. A call site logging an OS account or
+a sign-in result names it os_user, signed_in_user, remote_user.
+
 Reads file paths on stdin, prints `file:line:source` for each violation.
 Scans the whole argument list of a logger call, so a field object spread
 over several lines is covered. Opt out with a trailing `// log-key-ok: <reason>`.
@@ -15,7 +19,7 @@ over several lines is covered. Opt out with a trailing `// log-key-ok: <reason>`
 import re
 import sys
 
-RESERVED = r'(host|machine_id|mdm_device_id|mdm_serial)'
+RESERVED = r'(host|machine_id|mdm_device_id|mdm_serial|user)'
 GO_CALL = re.compile(r'\butils\.(LogWithFields|TraceWithFields)\(')
 GO_KEY = re.compile(r'"' + RESERVED + r'"\s*:')
 TS_CALL = re.compile(r'(?<![\w.])(log|debug|warn|error|info|trace|rInfo|rDebug|rWarn|rError|rTrace|_log|_warn|_error|_debug|_info)\(')

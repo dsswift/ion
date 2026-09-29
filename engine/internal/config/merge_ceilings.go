@@ -111,7 +111,7 @@ func sealLimitCeiling(user, enterprise *int, name string) *int {
 	}
 	if user == nil || *user > *enterprise {
 		if user != nil {
-			utils.LogWithFields(utils.LevelInfo, "config.merge", "enterprise: resource limit capped to ceiling", map[string]any{"limit": name, "user": *user, "ceiling": *enterprise})
+			utils.LogWithFields(utils.LevelInfo, "config.merge", "enterprise: resource limit capped to ceiling", map[string]any{"limit": name, "configured": *user, "ceiling": *enterprise})
 		}
 		v := *enterprise
 		return &v

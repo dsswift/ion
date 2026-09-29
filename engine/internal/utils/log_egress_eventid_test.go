@@ -56,3 +56,34 @@ func TestOTLPAttrsIncludeEventID(t *testing.T) {
 		t.Error("otlpAttrsFromRecord must include event_id when present")
 	}
 }
+
+// TestOTLPAttrsRecordKeysWinOverFields pins that a field named like one of the
+// record's own attributes never becomes a second attribute with that key. A
+// line logging the OS account as fields.user used to ship two "user"
+// attributes, and the collector kept the field's value over the signed-in
+// user's. Mirrored in packages/shared log-egress-otel.test.ts.
+func TestOTLPAttrsRecordKeysWinOverFields(t *testing.T) {
+	attrs := otlpAttrsFromRecord(egressRecord{
+		Component: "engine", Tag: "test", User: "user@example.com", SessionID: "s-1",
+		Fields: map[string]any{"user": "osuser", "session_id": "s-1", "tag": "other", "kept": "yes"},
+	})
+	counts := map[string]int{}
+	values := map[string]string{}
+	for _, a := range attrs {
+		counts[a.Key]++
+		if a.Value.StringValue != nil {
+			values[a.Key] = *a.Value.StringValue
+		}
+	}
+	for _, key := range []string{"user", "session_id", "tag"} {
+		if counts[key] != 1 {
+			t.Fatalf("%s attributes = %d, want 1", key, counts[key])
+		}
+	}
+	if values["user"] != "user@example.com" || values["tag"] != "test" {
+		t.Fatalf("record keys lost to fields: user=%q tag=%q", values["user"], values["tag"])
+	}
+	if values["kept"] != "yes" {
+		t.Fatal("an unrelated field must still become an attribute")
+	}
+}

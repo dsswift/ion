@@ -489,3 +489,29 @@ describe('telemetry event OTLP fidelity (dashboard strip fix)', () => {
     expect(attrs.run_id).toEqual({ stringValue: 'run-xyz' })
   })
 })
+
+// A field named like one of the record's own attributes never becomes a second
+// attribute with that key. A line logging the OS account as fields.user used to
+// ship two `user` attributes, and the collector kept the field's value over the
+// signed-in user's. Mirrored in engine log_egress_eventid_test.go.
+describe('otlpAttrsFromRecord: record keys win over same-named fields', () => {
+  it('ships one user, session_id, and tag attribute, each the record value', () => {
+    const attrs = otlpAttrsFromRecord({
+      ts: '2026-01-01T00:00:00.000Z',
+      level: 'INFO',
+      msg: 'm',
+      component: 'desktop',
+      tag: 'test',
+      user: 'user@example.com',
+      session_id: 's-1',
+      fields: { user: 'osuser', session_id: 's-1', tag: 'other', kept: 'yes' },
+    } as EgressRecord)
+    for (const key of ['user', 'session_id', 'tag']) {
+      expect(attrs.filter((a) => a.key === key)).toHaveLength(1)
+    }
+    const byKey = Object.fromEntries(attrs.map((a) => [a.key, a.value.stringValue]))
+    expect(byKey.user).toBe('user@example.com')
+    expect(byKey.tag).toBe('test')
+    expect(byKey.kept).toBe('yes')
+  })
+})

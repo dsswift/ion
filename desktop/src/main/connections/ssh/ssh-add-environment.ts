@@ -89,7 +89,7 @@ export async function addEnvironmentOverSsh(opts: SshAddEnvironmentOptions): Pro
     let remotePort: number
     if (appraisal.studioVersion) {
       remotePort = installedPort(appraisal)
-      log('existing install found; pairing only', { destination: dest.destination, studio_version: appraisal.studioVersion, user: appraisal.user ?? '', remote_port: remotePort })
+      log('existing install found; pairing only', { destination: dest.destination, studio_version: appraisal.studioVersion, remote_user: appraisal.user ?? '', remote_port: remotePort })
       report('installing', `Studio Server ${appraisal.studioVersion} is already installed for ${appraisal.user ?? 'this account'}; nothing to install`)
     } else {
       report('installing', 'Installing the Ion Studio Server on the host…')

@@ -174,7 +174,7 @@ export const AUTH_FLOW_ACTIONS: Record<string, AuthFlowActionSpec> = {
     try {
       if (flow === 'device') return { ok: true, ...(await entraBeginDeviceSignIn()) }
       const { identity, authorizationUrl } = await entraSignIn(conn)
-      log('entra sign-in succeeded', { user: identity.user })
+      log('entra sign-in succeeded', { signed_in_user: identity.user })
       return { ok: true, identity, authorizationUrl }
     } catch (err) {
       log('entra sign-in failed', { connection_id: conn.id, flow, error: (err as Error).message })

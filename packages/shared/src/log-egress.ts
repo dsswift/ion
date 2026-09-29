@@ -68,7 +68,7 @@ let _egressUser: string | undefined
  */
 export function setEgressUser(user: string | undefined): void {
   _egressUser = user
-  log('egress user context updated', { user: user ?? '(cleared)' })
+  log('egress user context updated', { egress_user: user ?? '(cleared)' })
 }
 
 /** Returns the current egress user claim, or undefined if not signed in. */

@@ -207,7 +207,7 @@ export async function authenticateStartup(): Promise<void> {
       status: 'Signed in. Preparing your workspace…',
     }
     publish()
-    log('startup', 'required operator authentication completed', { user: identity.user })
+    log('startup', 'required operator authentication completed', { signed_in_user: identity.user })
     // The gate blocks reveal while mode is 'authentication', and both ready
     // reports can arrive before this promise settles: the main-process wait
     // loop polls the engine every 250ms and proceeds on the engine's own view

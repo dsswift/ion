@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Regression coverage for scripts/check-logging-reserved-keys.py (the
-# RESERVED-KEY category of check-logging.sh): it flags a machine-identity key
+# RESERVED-KEY category of check-logging.sh): it flags a machine-identity or
+# user key
 # at a logger call site, including one on a later line of a multi-line field
 # object, and leaves renamed keys, values, and opted-out lines alone.
 set -euo pipefail
@@ -19,6 +20,8 @@ debug('favicon', 'multi-line', {
 log('x', 'renamed', { url_host: host })
 log('x', 'opted out', { host: h }) // log-key-ok: the machine's own name
 const cfg = { host: 'not a log call' }
+log('auth', 'signed in', { user: identity.user })
+log('auth', 'renamed', { signed_in_user: identity.user })
 TS
 cat > "$TMP/b.go" <<'GO'
 package x
@@ -34,6 +37,7 @@ GO
 OUT="$(printf '%s\n' "$TMP/a.ts" "$TMP/b.go" | python3 "$REPO_ROOT/scripts/check-logging-reserved-keys.py")"
 want="$TMP/a.ts:1:
 $TMP/a.ts:4:
+$TMP/a.ts:9:
 $TMP/b.go:4:"
 got="$(sed -E 's/^([^:]+:[0-9]+:).*/\1/' <<<"$OUT")"
 [ "$got" = "$want" ] || fail "unexpected findings:"$'\n'"$OUT"

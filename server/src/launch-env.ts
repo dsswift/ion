@@ -267,7 +267,7 @@ export function sanitizeLaunchEnvironment(): LaunchEnvironmentPlan {
 
   if (!plan.contaminated && plan.remove.length === 0 && Object.keys(plan.correct).length === 0) {
     log('launch environment is clean', {
-      user: process.env.USER,
+      os_user: process.env.USER,
       logname: process.env.LOGNAME,
       home: process.env.HOME,
       shell: process.env.SHELL,
@@ -286,7 +286,7 @@ export function sanitizeLaunchEnvironment(): LaunchEnvironmentPlan {
     corrected: Object.fromEntries(
       Object.entries(plan.correct).map(([name, c]) => [name, { from: c.from ?? null, to: c.to, reason: c.reason }]),
     ),
-    user: process.env.USER,
+    os_user: process.env.USER,
     logname: process.env.LOGNAME,
     home: process.env.HOME,
     shell: process.env.SHELL,

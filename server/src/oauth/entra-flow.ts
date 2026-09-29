@@ -193,7 +193,7 @@ export async function signIn(requester?: AuthUrlRequester): Promise<{ identity: 
     const snapshot = await engineBridge.request<OidcIdentityData>('oidc_identity', {})
     if (snapshot.ok && snapshot.data?.signedIn) {
       const identity = toEntraIdentity(snapshot.data)
-      log('entra_auth: sign-in succeeded', { user: identity.user, oid: identity.oid })
+      log('entra_auth: sign-in succeeded', { signed_in_user: identity.user, oid: identity.oid })
       return { identity, authorizationUrl }
     }
   }
@@ -233,7 +233,7 @@ async function waitForDeviceSignIn(deadline: number): Promise<void> {
     const snapshot = await engineBridge.request<OidcIdentityData>('oidc_identity', {})
     if (snapshot.ok && snapshot.data?.signedIn) {
       const identity = toEntraIdentity(snapshot.data)
-      log('entra_auth: device sign-in succeeded', { user: identity.user, oid: identity.oid })
+      log('entra_auth: device sign-in succeeded', { signed_in_user: identity.user, oid: identity.oid })
       return
     }
   }

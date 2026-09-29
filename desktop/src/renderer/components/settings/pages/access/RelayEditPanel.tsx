@@ -116,7 +116,7 @@ export function RelayEditPanel({ relayUrl, relayApiKey, onSave, onClose }: { rel
       const result = await shell.entraSignIn()
       if (result?.ok && result.identity) {
         setSignedInUser(result.identity.username)
-        rInfo('settings', 'relay enterprise sign-in succeeded', { user: result.identity.username })
+        rInfo('settings', 'relay enterprise sign-in succeeded', { signed_in_user: result.identity.username })
       } else {
         setTestError(result?.error ?? 'Sign-in failed')
       }
