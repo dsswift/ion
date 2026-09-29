@@ -4,7 +4,6 @@ package integration
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -168,7 +167,7 @@ func TestPrincipalSourceEndToEnd(t *testing.T) {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatal(fmt.Sprintf("run never reached the provider (recorded %d headers)", len(headers)))
+			t.Fatalf("run never reached the provider (recorded %d headers)", len(headers))
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
