@@ -1,0 +1,518 @@
+// Extension-surface event handlers extracted from event-slice.ts (Fix 1:
+// keep the reducer under the 600-line cap). These are the harness/extension
+// lifecycle arms of the single normalized-event reducer — they were lifted
+// out verbatim, preserving behavior. Each handler mutates the shared reducer
+// context (messages, the engine* side-effect maps, the tab `updated` patch)
+// through a passed-by-reference context object, exactly as the inline switch
+// arms did.
+//
+// The reducer in event-slice.ts owns the commit; these handlers only stage
+// the same local mutations the inline cases used to.
+import type { Message, TabStatus } from '@ion/shared/types'
+import type { ConversationInstance } from '@ion/shared/types-engine'
+import type { State } from '../session-store-types'
+import type { NormalizedEvent } from '@ion/shared/types-events'
+import { nextMsgId } from '../session-store-helpers'
+import { rInfo, rTrace, rWarn } from '../rendererLogger'
+import { logTabStatusPatch } from './tab-status-transition'
+import { isPendingUserCardDenial } from '@ion/shared/pending-card'
+import { formatDispatchLostDivider } from '@ion/shared/clear-divider'
+
+/**
+ * Mutable context shared with the parent reducer for one event. The parent
+ * seeds it from its locals, the handler mutates the fields in place (and
+ * reassigns the array/map fields), and the parent reads them back after the
+ * call. This mirrors the closure-local mutation the inline switch arms relied
+ * on, with no behavior change.
+ */
+export interface ExtensionSurfaceCtx {
+  s: State
+  tabId: string
+  /** The active instance snapshot at reducer entry (read-only here). */
+  inst0: (ConversationInstance & { id: string }) | null
+  /** Working copy of the active instance's messages (reassigned on append). */
+  messages: Message[]
+  /** Tab-level patch object; handlers may set status. */
+  updated: { status?: string; [k: string]: unknown }
+  /** Per-conversation patch object the parent commits onto the instance. */
+  instPatch: Partial<ConversationInstance>
+  /** Set true when instPatch was mutated (parent reads this back). */
+  instTouched: boolean
+  /** Side-effect maps; undefined means "no change this event". */
+  engineWorkingMessages?: Map<string, string>
+  engineNotifications?: Map<string, Array<{ id: string; message: string; level: string; timestamp: number }>>
+  engineDialogs?: Map<string, { dialogId: string; method: string; title: string; options?: string[]; defaultValue?: string } | null>
+  engineModelFallbacks?: State['engineModelFallbacks']
+}
+
+/**
+ * The tab's status before this event's patch is committed. This context carries
+ * only a patch object (`updated`), not the tab, so the pre-write value has to
+ * come from state — and it is what makes a status line diagnosable: "to: idle"
+ * alone cannot distinguish a run ending from a no-op on an already-idle tab.
+ * An earlier arm in the same event may have staged its own status, so that
+ * takes precedence over the committed value.
+ */
+function priorStatus(ctx: ExtensionSurfaceCtx): TabStatus {
+  if (typeof ctx.updated.status === 'string') return ctx.updated.status as TabStatus
+  return (ctx.s.tabs.find((t) => t.id === ctx.tabId)?.status ?? 'idle') as TabStatus
+}
+
+/**
+ * Handle the extension-surface event arms. Returns true when the event type
+ * was one of these arms (so the parent can skip its own switch for them),
+ * false otherwise. Behavior is identical to the former inline cases.
+ */
+export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: NormalizedEvent): boolean {
+  const { s, tabId } = ctx
+  switch (event.type) {
+    case 'agent_state':
+      // Complete agent-state snapshot. Replace the instance view — do not
+      // merge incrementally. The engine contract guarantees a terminal
+      // status (done/error/cancelled) for every agent before the next
+      // snapshot, so local view stays accurate.
+      ctx.instPatch.agentStates = event.agents
+      ctx.instTouched = true
+      return true
+
+    case 'status':
+      // Complete per-session status snapshot, forwarded by the control plane
+      // from every engine_status. Replace inst.statusFields wholesale (snapshot
+      // semantics, like agent_state) — engine_status always carries the full
+      // StatusFields, never a diff. This is what populates inst.statusFields for
+      // the StatusBar engine slots (identity, cost, backend badge) and the
+      // model-picker actual-model parenthetical; before this arm existed the
+      // field was null forever.
+      rTrace('event.status', 'statusFields updated', { tab_id: tabId, state: event.fields.state })
+      ctx.instPatch.statusFields = event.fields
+      // Self-heal a lost card from the heartbeat snapshot.
+      //
+      // The engine retains unresolved AskUserQuestion / ExitPlanMode denials on
+      // the session and re-publishes them on every idle heartbeat
+      // (session/status_work_snapshot.go), clearing them only when a new prompt
+      // supersedes them (session/prompt_dispatch.go). So while this field is
+      // populated, the engine's authoritative position is "the user still owes
+      // an answer."
+      //
+      // The main-process pass-through surfaces such an idle only ONCE per
+      // distinct proposal (lastSurfacedProposalSig in
+      // engine-control-plane-status-event.ts) because it cannot see whether the
+      // user has since dismissed the card, and re-synthesizing task_complete on
+      // every heartbeat would resurrect a dismissed one. That dedup is correct
+      // for its own purpose but it makes the first delivery the ONLY delivery:
+      // when anything else nulls permissionDenied immediately afterwards (a
+      // conversation load pushing live state on top of a just-synthesized
+      // proposal was the observed case), no later heartbeat ever restores it and
+      // the tab sits with a plan the user cannot act on.
+      //
+      // Reconciling here closes that hole without weakening the dedup: the
+      // renderer is the side that KNOWS whether a card is currently displayed.
+      // We restore only when the engine still retains the denial AND we hold
+      // none — never overwriting a live entry (which carries richer toolInput),
+      // and never inventing one the engine did not report. A user dismissal is
+      // not undone, because dismissing is followed by a prompt that clears the
+      // engine's retention; an idle that still carries denials means no such
+      // prompt happened.
+      if (event.fields.state === 'idle') {
+        const retained = event.fields.permissionDenials
+        const held =
+          'permissionDenied' in ctx.instPatch ? ctx.instPatch.permissionDenied : ctx.inst0?.permissionDenied
+        if (isPendingUserCardDenial({ tools: retained }) && !isPendingUserCardDenial(held)) {
+          ctx.instPatch.permissionDenied = { tools: retained! }
+          rInfo('event.status', 'restored pending user card from retained denials', {
+            tab_id: tabId,
+            tools: (retained ?? []).map((t) => t.toolName).join(','),
+          })
+        }
+      }
+      // Mirror the context scalars onto the tab. The renderer's own
+      // indicator reads inst.statusFields directly; this copy exists purely
+      // because the desktop→iOS snapshot projects per-tab scalars and does
+      // NOT project per-instance statusFields (remote-projection.ts). Both
+      // are written from this one event, so they cannot disagree.
+      if (typeof event.fields.contextTokens === 'number') {
+        ctx.updated.contextTokens = event.fields.contextTokens
+      }
+      if (event.fields.contextWindow) {
+        ctx.updated.contextWindow = event.fields.contextWindow
+      }
+      ctx.instTouched = true
+      return true
+
+    case 'plan_mode_auto_exit':
+      // Engine synthesized an auto-exit at end-of-turn. This is a
+      // *proposal awaiting user approval*, identical in meaning to a
+      // model-driven ExitPlanMode — which does NOT flip permissionMode
+      // (see event-slice-plan-mode.ts). Per ADR-003, the instance stays
+      // 'plan' until the user approves at the implement-slice.ts
+      // chokepoint (onImplement → setPermissionMode('auto','plan_approved'))
+      // or changes mode via the manual dropdown. Keeping the instance 'plan'
+      // is also correct for tab auto-move: the tab belongs in the planning
+      // group until the user decides.
+      //
+      // Sticky-parent invariant: never write tab.permissionMode here.
+      // The regression test in engine-event-slice-plan-auto-exit.test.ts
+      // enforces both invariants.
+      return true
+
+    case 'model_fallback':
+      // Record the model-fallback indicator; remote-projection.ts projects
+      // it to thin clients. Keyed by bare tabId — one fallback slot per tab.
+      if (ctx.inst0) {
+        ctx.engineModelFallbacks = new Map(s.engineModelFallbacks)
+        ctx.engineModelFallbacks.set(tabId, {
+          requestedModel: event.requestedModel,
+          fallbackModel: event.fallbackModel,
+          reason: event.reason,
+          at: Date.now(),
+        })
+      }
+      return true
+
+    case 'capability_unsupported':
+      // The engine declined the prompt cleanly: the requested feature (e.g.
+      // plan mode) is unsupported by the backend that would serve the run.
+      // No run ever started engine-side, so settle the tab back to idle
+      // (the send path set it running optimistically) and surface the
+      // reason as a recoverable system message — not a failed/dead state.
+      rWarn('event.capability', 'capability unsupported', {
+        tab_id: tabId,
+        capability: event.capability,
+        backend: event.backend,
+      })
+      logTabStatusPatch(tabId, priorStatus(ctx), 'idle', 'event.extension-surface-idle',
+        { capability: event.capability, backend: event.backend })
+      ctx.updated.status = 'idle'
+      ctx.updated.activeRequestId = null
+      ctx.updated.currentActivity = ''
+      ctx.messages = [
+        ...ctx.messages,
+        {
+          id: nextMsgId(),
+          role: 'system',
+          content: event.reason || `${event.capability} is not supported on the ${event.backend} backend`,
+          timestamp: Date.now(),
+        },
+      ]
+      return true
+
+    case 'harness_message': {
+      // Extension harness display message. Three dedup paths:
+      //
+      // 1. dedupMode === 'relocate' + dedupKey present: remove any existing
+      //    message with that dedupKey from scrollback, then append the new
+      //    marker at the end. The marker always stays current — never trails
+      //    behind new conversation turns.
+      // 2. dedupKey present (no dedupMode / dedupMode absent): suppress-later
+      //    — if a message with the same key already exists, drop this one.
+      // 3. No dedupKey: append unconditionally.
+      const dk = event.dedupKey
+      const newMsg = {
+        id: nextMsgId(),
+        role: 'harness' as any,
+        content: event.message,
+        timestamp: Date.now(),
+        ...(dk ? { dedupKey: dk } : {}),
+        ...(event.source ? { harnessSource: event.source } : {}),
+      }
+      if (event.dedupMode === 'relocate' && dk) {
+        // Remove the existing keyed marker (if any), then append the fresh one.
+        ctx.messages = [
+          ...ctx.messages.filter((m) => (m as any).dedupKey !== dk),
+          newMsg,
+        ]
+      } else {
+        const alreadyPresent = dk
+          ? ctx.messages.some((m) => (m as any).dedupKey === dk)
+          : false
+        if (!alreadyPresent) {
+          ctx.messages = [...ctx.messages, newMsg]
+        }
+      }
+      return true
+    }
+
+    case 'working_message':
+      // Transient activity string. Empty string clears the indicator.
+      ctx.engineWorkingMessages = new Map(s.engineWorkingMessages)
+      if (event.message) {
+        ctx.engineWorkingMessages.set(tabId, event.message)
+      } else {
+        ctx.engineWorkingMessages.delete(tabId)
+      }
+      return true
+
+    case 'notify':
+      // Ephemeral toast notification. Push to the engineNotifications list
+      // keyed by bare tabId (matches ConversationView's read key).
+      {
+        const existing = s.engineNotifications.get(tabId) || []
+        ctx.engineNotifications = new Map(s.engineNotifications)
+        ctx.engineNotifications.set(tabId, [
+          ...existing,
+          { id: nextMsgId(), message: event.message, level: event.level, timestamp: Date.now() },
+        ])
+      }
+      return true
+
+    case 'dialog':
+      // Modal prompt from the harness. Store under bare tabId so
+      // EngineDialog can resolve it without the compound key.
+      ctx.engineDialogs = new Map(s.engineDialogs)
+      ctx.engineDialogs.set(tabId, {
+        dialogId: event.dialogId,
+        method: event.method,
+        title: event.title,
+        options: event.options,
+        defaultValue: event.defaultValue,
+      })
+      return true
+
+    case 'message_end':
+      // End of one LLM message within a multi-turn run. Seal the last
+      // assistant text row so the next text_chunk starts a fresh row
+      // instead of appending to this one. When the event carries the
+      // canonical persisted entry ids, re-key the rows to them: the sealed
+      // assistant row takes entryId and the turn's user row takes
+      // userEntryId, so a later history load (SessionLoadMessage.id) dedups
+      // against these rows instead of duplicating them.
+      {
+        // The message being closed is the most recent assistant TEXT row —
+        // walk back past the turn's tool rows (message_end fires after the
+        // stream ends but before tool results arrive, so tool rows can sit
+        // above the text row). Stop at a user row: nothing to seal.
+        // Observability: this walk decides the assistant row's IDENTITY, and
+        // identity is what iOS's tail fingerprint compares against the
+        // engine's history page. A miss here is invisible in the transcript
+        // and shows up much later as a client that reloads forever, so every
+        // outcome is logged — re-keyed, already sealed, or no row found.
+        let rekeyOutcome = 'no_assistant_row'
+        let rekeyFrom = ''
+        for (let i = ctx.messages.length - 1; i >= 0; i--) {
+          const m = ctx.messages[i]
+          if (m.role === 'user') { rekeyOutcome = 'hit_user_row'; break }
+          if (m.role === 'assistant' && !m.toolName) {
+            // An already-sealed row belongs to an earlier message_end (this
+            // one closed a tool-only assistant message) — its identity is
+            // final; never re-key it to a later entry id.
+            if (!m.sealed) {
+              rekeyFrom = m.id
+              rekeyOutcome = event.entryId ? 'rekeyed' : 'sealed_no_entry_id'
+              ctx.messages = [
+                ...ctx.messages.slice(0, i),
+                { ...m, sealed: true, ...(event.entryId ? { id: event.entryId } : {}) },
+                ...ctx.messages.slice(i + 1),
+              ]
+            } else {
+              rekeyFrom = m.id
+              rekeyOutcome = 'already_sealed'
+            }
+            break
+          }
+        }
+        rInfo('event.message_end', 'assistant row re-key', {
+          tab_id: ctx.tabId,
+          outcome: rekeyOutcome,
+          from_id: rekeyFrom,
+          entry_id: event.entryId ?? '',
+          user_entry_id: event.userEntryId ?? '',
+        })
+        // The run-opening user row already carries its canonical id -- a prior
+        // message_end of the same run did it, or it came from history. Then
+        // nothing is re-keyed. Checking only the most recent user row was
+        // wrong: after a steer, the most recent user row IS the steer, and it
+        // was re-keyed onto the opening row's id, leaving two rows with one id.
+        const userIdTaken = !!event.userEntryId && ctx.messages.some((m) => m.id === event.userEntryId)
+        if (userIdTaken) {
+          rInfo('event.message_end', 'user row re-key', {
+            tab_id: ctx.tabId,
+            outcome: 'already_canonical',
+            user_entry_id: event.userEntryId,
+          })
+        }
+        if (event.userEntryId && !userIdTaken) {
+          // Re-key the most recent user row (the run-opening turn).
+          for (let i = ctx.messages.length - 1; i >= 0; i--) {
+            const m = ctx.messages[i]
+            if (m.role === 'user') {
+              rInfo('event.message_end', 'user row re-key', {
+                tab_id: ctx.tabId,
+                outcome: m.id !== event.userEntryId ? 'rekeyed' : 'already_canonical',
+                from_id: m.id,
+                user_entry_id: event.userEntryId,
+              })
+              if (m.id !== event.userEntryId) {
+                ctx.messages = [
+                  ...ctx.messages.slice(0, i),
+                  { ...m, id: event.userEntryId },
+                  ...ctx.messages.slice(i + 1),
+                ]
+              }
+              break
+            }
+          }
+        }
+      }
+      return true
+
+    case 'assistant_turn_persisted': {
+      // A backend that persists its turn at run exit naming the canonical
+      // tree-entry ids of the assistant messages it just wrote. Re-key this
+      // run's assistant rows to them, so a later history load dedups against
+      // these rows instead of reading as a diverged transcript.
+      //
+      // Scope is the current run: walk back to the last user row and take the
+      // assistant TEXT rows above it, in order. Tool rows are their own rows
+      // here and are keyed by toolId, so they are not part of the mapping.
+      const ids = event.entryIds || []
+      const runRows: number[] = []
+      for (let i = ctx.messages.length - 1; i >= 0; i--) {
+        const m = ctx.messages[i]
+        if (m.role === 'user') break
+        if (m.role === 'assistant' && !m.toolName) runRows.unshift(i)
+      }
+      if (ids.length === 0 || runRows.length !== ids.length) {
+        // The ids describe a transcript this process did not build. A
+        // positional re-key would then assign a wrong identity to a row, which
+        // is worse than leaving it local — so refuse, and say so.
+        rWarn('event.assistant_turn_persisted', 'assistant re-key skipped, row count differs', {
+          tab_id: ctx.tabId,
+          announced: String(ids.length),
+          local_rows: String(runRows.length),
+        })
+        return true
+      }
+      const next = [...ctx.messages]
+      runRows.forEach((rowIndex, n) => {
+        next[rowIndex] = { ...next[rowIndex], id: ids[n], sealed: true }
+      })
+      ctx.messages = next
+      rInfo('event.assistant_turn_persisted', 'assistant rows re-keyed', {
+        tab_id: ctx.tabId,
+        count: String(ids.length),
+      })
+      return true
+    }
+
+    case 'user_turn_persisted':
+      // The engine persisted the run-opening user turn and announced its
+      // canonical tree-entry id BEFORE streaming. Re-key the most recent
+      // user row to it now, so a run that never reaches a message_end
+      // (cancel, mid-stream failure) still leaves the optimistic row
+      // canonically keyed — otherwise the next history load can't anchor on
+      // it and the user turn renders twice. Same walk as the message_end
+      // userEntryId re-key above; this event just fires unconditionally at
+      // run start instead of only on a completed message.
+      {
+        // Same rule as message_end's user re-key: when some other row already
+        // carries this id, re-keying the latest user row would give two rows
+        // one id. The row that has it is the run-opening turn.
+        const holder = ctx.messages.findIndex((m) => m.id === event.entryId)
+        const latestUser = ctx.messages.map((m) => m.role).lastIndexOf('user')
+        if (holder !== -1 && holder !== latestUser) {
+          rInfo('event.user_turn_persisted', 'user row re-key skipped, id already held', {
+            tab_id: ctx.tabId, entry_id: event.entryId,
+          })
+          return true
+        }
+        for (let i = ctx.messages.length - 1; i >= 0; i--) {
+          const m = ctx.messages[i]
+          if (m.role === 'user') {
+            if (
+              m.id !== event.entryId ||
+              (event.slashModelAlias && m.slashModelAlias !== event.slashModelAlias) ||
+              (event.slashModelEffective && m.slashModelEffective !== event.slashModelEffective) ||
+              (event.slashFrontmatter && m.slashFrontmatter !== event.slashFrontmatter)
+            ) {
+              ctx.messages = [
+                ...ctx.messages.slice(0, i),
+                {
+                  ...m,
+                  id: event.entryId,
+                  ...(event.slashModelAlias ? { slashModelAlias: event.slashModelAlias } : {}),
+                  ...(event.slashModelEffective ? { slashModelEffective: event.slashModelEffective } : {}),
+                  ...(event.slashFrontmatter ? { slashFrontmatter: event.slashFrontmatter } : {}),
+                },
+                ...ctx.messages.slice(i + 1),
+              ]
+            }
+            break
+          }
+        }
+      }
+      return true
+
+    case 'dispatch_lost':
+      // A dispatch that was running when the engine died. The agent panel
+      // already shows the row errored from the rehydrated snapshot, but a
+      // conversation that was waiting on this agent otherwise just goes
+      // quiet — the operator sees a turn that ended and no reason why.
+      //
+      // Scrollback rather than an ephemeral notification: the loss is a fact
+      // about this conversation's history, and it stays legible while the
+      // operator decides whether to redispatch. Not deduped against a
+      // previous announcement, because the engine re-announces only while
+      // the orphan is still unacknowledged — a repeat means it is still
+      // unresolved, which is worth saying again.
+      ctx.messages = [
+        ...ctx.messages,
+        {
+          id: nextMsgId(),
+          role: 'system',
+          content: formatDispatchLostDivider(new Date(), event.agentName),
+          timestamp: Date.now(),
+        },
+      ]
+      rWarn('event.dispatch_lost', 'dispatch lost, notice added to scrollback', {
+        tab_id: tabId, dispatch_id: event.dispatchId, agent: event.agentName,
+      })
+      return true
+
+    case 'extension_died':
+      // Extension subprocess crashed. Push an ephemeral notification.
+      {
+        const existing2 = s.engineNotifications.get(tabId) || []
+        ctx.engineNotifications = new Map(s.engineNotifications)
+        ctx.engineNotifications.set(tabId, [
+          ...existing2,
+          { id: nextMsgId(), message: `Extension ${event.extensionName} died — attempting restart`, level: 'warning', timestamp: Date.now() },
+        ])
+      }
+      return true
+
+    case 'extension_respawned':
+      // Extension subprocess recovered. Push a clearing notification.
+      {
+        const existing3 = s.engineNotifications.get(tabId) || []
+        ctx.engineNotifications = new Map(s.engineNotifications)
+        ctx.engineNotifications.set(tabId, [
+          ...existing3,
+          { id: nextMsgId(), message: `Extension ${event.extensionName} restarted (attempt ${event.attemptNumber})`, level: 'info', timestamp: Date.now() },
+        ])
+      }
+      return true
+
+    case 'extension_dead_permanent':
+      // Extension exceeded crash budget. Mark error so user sees it.
+      ctx.messages = [
+        ...ctx.messages,
+        {
+          id: nextMsgId(),
+          role: 'system',
+          content: `Extension ${event.extensionName} failed permanently after ${event.attemptNumber} restart attempts. Close and reopen the tab to recover.`,
+          timestamp: Date.now(),
+        },
+      ]
+      logTabStatusPatch(tabId, priorStatus(ctx), 'failed', 'event.extension-surface-failed',
+        { extension: event.extensionName, attempts: event.attemptNumber })
+      ctx.updated.status = 'failed'
+      return true
+
+    case 'events_dropped':
+      // Buffer overflow. Log only; no UI action (state may be stale but
+      // there's nothing useful the user can do except wait).
+      rWarn('event.buffer', 'events dropped', { tab_id: tabId, count: event.count })
+      return true
+  }
+  return false
+}
