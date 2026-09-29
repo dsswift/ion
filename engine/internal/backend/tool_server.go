@@ -67,17 +67,19 @@ type ToolHandler func(ctx context.Context, input map[string]interface{}) (*types
 // cmd.Key is accepted verbatim from any harness), so a raw key can contain
 // characters that are illegal or dangerous in a socket path (colon, comma,
 // slash, space) and can be arbitrarily long, blowing the platform sun_path
-// limit. A SHA-256 hex digest is collision-resistant and length-bounded (fixed
-// 64 chars, immune to sun_path overflow) where a raw key is neither, and
-// character-safe ([0-9a-f] only) for the filesystem. So the socket and
-// MCP-config filenames must be derived from this token, never from the raw key.
+// limit. The first 128 bits of a SHA-256 digest are collision-resistant,
+// fixed at 32 hex characters, and character-safe ([0-9a-f] only). The full
+// 64-character digest left too little of the 104-byte darwin sun_path for the
+// data dir that precedes it. So the socket and MCP-config filenames must be
+// derived from this token, never from the raw key.
 //
 // The socket path is now handed to the bridge as a discrete argv element
 // (`ion mcp-bridge --socket <path>`), not embedded in a `UNIX-CONNECT:<path>`
 // string, so a colon in the path is no longer parsed as an address delimiter --
 // but the length and filesystem-safety guarantees above still require the digest.
 func socketToken(sessionID string) string {
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(sessionID)))
+	sum := sha256.Sum256([]byte(sessionID))
+	return fmt.Sprintf("%x", sum[:16])
 }
 
 // NewToolServer creates a tool server for the given session.
