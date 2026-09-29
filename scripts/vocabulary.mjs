@@ -7,7 +7,9 @@ const DOMAIN_VALUES = ['engine', 'harness-sdk', 'clients', 'relay'];
 const KIND_VALUES = ['product-concept', 'ui-component', 'state', 'action', 'runtime-mechanic', 'internal-type', 'public-contract'];
 const STATUS_VALUES = ['canonical', 'review-needed', 'deprecated'];
 const CONTRACT_VALUES = ['public-wire', 'public-sdk', 'internal', 'none'];
-const PLATFORM_VALUES = ['engine', 'sdk', 'desktop', 'studio', 'overlay', 'ios', 'relay'];
+// `server` is the Ion Studio Server (`server/`, ADR-033): a headless platform of its own,
+// neither a Desktop presentation nor the engine.
+const PLATFORM_VALUES = ['engine', 'sdk', 'server', 'desktop', 'studio', 'overlay', 'ios', 'relay'];
 const PRESENTATION_VALUES = ['code', 'ui', 'wire', 'doc'];
 const LANGUAGE_VALUES = ['go', 'typescript', 'swift', 'markdown', 'json'];
 // Platform `desktop` records the shared Desktop client: one component that both Desktop
