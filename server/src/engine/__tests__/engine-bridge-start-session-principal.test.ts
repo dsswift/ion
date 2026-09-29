@@ -11,6 +11,11 @@ import { _resetPrincipalIndexForTest } from '../../protocol/tabs-index'
 import { execFileSync } from 'child_process'
 import { _resetGitCredentialStoreForTest, gitCredentialStore } from '../../git/identity/credential-store'
 
+const signedIn = vi.hoisted(() => ({ identity: null as { user: string; oid: string } | null }))
+vi.mock('../../oauth/entra-flow', () => ({
+  getSignedInIdentityIfEngineConnected: vi.fn(() => Promise.resolve(signedIn.identity)),
+}))
+
 /**
  * Pins the manifest-C1-default wiring `engine-bridge-start-session.ts` adds:
  * every `start_session` dispatch carries `principal: localPrincipal()` so
@@ -42,6 +47,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  signedIn.identity = null
   _resetPrincipalIndexForTest()
   _resetPrincipalRegistryForTest()
   if (originalIonDataDir === undefined) delete process.env.ION_DATA_DIR
@@ -87,6 +93,45 @@ describe('startSession principal attribution', () => {
       provider: 'os',
       kind: 'local',
     })
+  })
+})
+
+describe('startSession signed-in attribution', () => {
+  function startAndCapture(): Promise<Record<string, unknown>> {
+    const sendWithData = vi.fn((_msg: Record<string, unknown>) => Promise.resolve({ ok: true, data: { conversationId: 'conv-1' } }))
+    return startSession(fakeBridge(sendWithData), 'key-1', { workingDirectory: '/tmp' } as EngineConfig).then(
+      () => (sendWithData.mock.calls[0] as [Record<string, unknown>])[0].principal as Record<string, unknown>,
+    )
+  }
+
+  it('labels a local fallback session with the engine\'s signed-in identity, keeping the OS subject', async () => {
+    signedIn.identity = { user: 'user@example.com', oid: 'oid-1' }
+
+    const principal = await startAndCapture()
+
+    expect(principal).toMatchObject({
+      subject: `local:${userInfo().username}`,
+      kind: 'local',
+      displayName: userInfo().username,
+      attribution: 'user@example.com',
+    })
+  })
+
+  it('leaves a local fallback session unlabelled when nobody is signed in', async () => {
+    const principal = await startAndCapture()
+
+    expect(principal.attribution).toBeUndefined()
+  })
+
+  it('never relabels a registered owner', async () => {
+    signedIn.identity = { user: 'user@example.com', oid: 'oid-1' }
+    writeFileSync(join(dataDir, 'tabs.json'), JSON.stringify({ tabs: [{ id: 'key-1', principalSubject: 'alice' }] }))
+    registerPrincipal({ subject: 'alice', displayName: 'Alice', provider: 'entra', kind: 'operator' })
+
+    const principal = await startAndCapture()
+
+    expect(principal.attribution).toBeUndefined()
+    expect(principal.displayName).toBe('Alice')
   })
 })
 

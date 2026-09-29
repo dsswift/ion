@@ -2,7 +2,7 @@ import type { EngineBridge } from './engine-bridge'
 import { log as _log, warn as _warn } from '../logger'
 import type { EngineConfig } from '@ion/shared/types'
 import { SESSION_ATTACH_BATCH_SIZE } from '@ion/shared/session-attach-policy'
-import { localPrincipal } from '../identity/local-principal'
+import { localPrincipal, withSignedInAttribution } from '../identity/local-principal'
 import { principalSubjectForTab } from '../protocol/tabs-index'
 import { lookupPrincipal, lookupClaims } from '../identity/principal-registry'
 import { toSessionPrincipal } from '../identity/session-principal'
@@ -109,7 +109,7 @@ export async function startSession(
   // Attributes the session to the tab's owning principal (P0), falling back
   // to the server's local identity for an un-attributed tab -- see
   // `resolveSessionPrincipal` above.
-  const principal = resolveSessionPrincipal(key)
+  const principal = await withSignedInAttribution(resolveSessionPrincipal(key))
 
   // FR-04: resolve this session's own credential for its workspace's git
   // remote (if any) so the agent's own `git push` authenticates as this

@@ -116,3 +116,31 @@ export async function resolveLocalConnectionPrincipal(): Promise<SessionPrincipa
   }
   return localPrincipal()
 }
+
+/**
+ * Stamps the engine's signed-in identity as telemetry attribution on a
+ * `kind: 'local'` principal (the OS-username fallback a `start_session` uses
+ * for a tab with no registered owner). Subject, username, and displayName
+ * stay the OS account: they key this person's saved git credentials and
+ * per-principal files, which must not move. Only `attribution` changes, and
+ * the engine reads it first when it labels a run's telemetry and logs, so a
+ * signed-in person's work carries the same user as the rest of their
+ * engine's lines instead of their OS login name.
+ *
+ * Any other principal, or no signed-in identity, is returned unchanged.
+ */
+export async function withSignedInAttribution(principal: SessionPrincipal): Promise<SessionPrincipal> {
+  if (principal.kind !== 'local') return principal
+  try {
+    const { getSignedInIdentityIfEngineConnected } = await import('../oauth/entra-flow')
+    const identity = await getSignedInIdentityIfEngineConnected()
+    if (identity?.user) {
+      log('local principal: attributing to signed-in engine identity', { subject: principal.subject })
+      return { ...principal, attribution: identity.user }
+    }
+    log('local principal: no signed-in engine identity; attribution stays the OS username', { subject: principal.subject })
+  } catch (err) {
+    warn('local principal: signed-in identity check failed; attribution stays the OS username', { subject: principal.subject, error: String(err) })
+  }
+  return principal
+}
