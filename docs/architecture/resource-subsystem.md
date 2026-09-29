@@ -8,7 +8,7 @@ The engine provides a generic resource subsystem for durable structured content.
 
 **Producer-owned persistence.** The engine stores nothing. Extensions that declare resource kinds are responsible for persisting their data in producer-owned storage. File-backed extensions use a producer namespace such as `~/.ion/resources/{producer}/{global|conversationId}/`; two producers must never scan the same directory and claim the same files. When a client subscribes (or resubscribes after disconnect), the engine routes a query to each producing extension, which answers from its own store.
 
-**Snapshot coverage.** `engine_resource_snapshot.resourceProducers` is the authoritative replacement boundary. Consumers replace items owned by listed producers and retain all other producers. A successful empty query lists its producer and clears its prior items. A failed query omits its producer and preserves its last valid items. This makes partial multi-producer snapshots precise without an item-count heuristic. For a workspace subscription, the engine queries producer-owned session brokers because the manager-level global broker is only a live delta fan-out bus. The global subscriber is registered before those queries start; concurrent deltas are buffered and released after the initial snapshots, so a stale query result cannot overwrite a newer update.
+**Snapshot coverage.** `engine_resource_snapshot.resourceProducers` is the authoritative replacement boundary. Consumers replace items owned by listed producers and retain all other producers. A successful empty query lists its producer and clears its prior items. A failed query omits its producer and preserves its last valid items. This makes partial multi-producer snapshots precise without an item-count heuristic. For a workspace subscription, the engine queries producer-owned session brokers because the manager-level global broker is only a live delta fan-out bus. The global subscriber is registered before those queries start; concurrent deltas are buffered and released after the initial snapshots, so a stale query result cannot overwrite a newer update. A producer that first comes online in a session after the workspace subscription (every session at engine or server boot) sends that subscriber one snapshot of its workspace items, once per producer, so the workspace subscription never depends on a conversation's subscription to carry workspace items.
 
 **Scoping.** Resources are either conversation-scoped (belong to a specific session) or workspace-scoped (global, belong to no conversation). The `conversationId` field determines the scope. Scheduled jobs and webhooks produce global resources. Interactive tool calls produce conversation-scoped resources.
 
@@ -252,3 +252,33 @@ iOS Documents/
 4. **Deletes use durable tombstones.** Desktop persists each deleted identity and filters it from producer snapshots. The engine broker distributes the live `delete` delta to every connected client. A producer can keep its own historical file without making a deleted notification return.
 
 5. **Content preservation across snapshots.** iOS's `applySnapshot` preserves existing non-empty content when the incoming snapshot item has empty content. This prevents the 5-second snapshot poll from wiping content the user just loaded.
+
+## Cross-device synchronization
+
+The desktop is the primary client. The iOS app is a thin client connected via WebSocket (directly or through the relay). All state changes flow through the engine:
+
+- When a resource is published, the engine broadcasts the delta to all subscribers (desktop + iOS).
+- When a user reads a resource on either device, the client sends a `resource_publish` with `op: 'mark_read'`. The engine fans the delta to all subscribers. Both devices update their read state.
+- Desktop persists read identities and deletion tombstones as the client source of truth. Clients send `mark_read` and `delete` deltas through the engine; the engine fans each delta to all subscribers. Desktop snapshots carry the persisted result to reconnecting devices.
+
+### Producer-owned persistence
+
+The engine stores nothing. Extensions that declare resource kinds are responsible for persisting their data. When a client subscribes (or resubscribes after disconnect), the engine routes a query to the producing extension, which answers from its own store.
+
+### Moving a conversation's resources
+
+A conversation can move to another machine (a transfer). Its conversation-scoped resources move with it, and the engine still stores none of them: it asks producers to hand them over and take them in.
+
+| Step | Client command | Producer RPC | What the producer does |
+|------|----------------|--------------|------------------------|
+| Export | `resource_export {key, resourceConversationIds}` | `resource/export {kind, conversationIds}` | Returns every item it holds for those conversations, with full content. A producer with no export handler is read through its query handler instead, one conversation at a time (`exportSupported: false`). |
+| Import | `resource_import {key, resourceItems}` | `resource/import {kind, items}` | Persists items the same-named producer exported elsewhere. Answers which it accepted and which it refused. |
+| Forget | `resource_forget {key, resourceConversationIds}` | `resource/forget {kind, conversationIds}` | Drops every item it holds for those conversations. |
+
+Each command runs against the broker of the session named by `key`, whose extensions are the producers. Import routes each item by its own `kind` and `producer`: an item whose producer is not loaded there comes back `no_producer`, and one whose producer has no import handler comes back `unsupported`. The engine reports these outcomes and decides nothing; a client that moves conversations chooses what to do about them. Ion Studio Server refuses the move.
+
+An SDK answers `-32601` for an operation the extension registered no handler for, which the engine reads as "this producer cannot". The broker side lives in `engine/internal/resource/transfer.go`, the RPCs in `engine/internal/extension/host_rpc_resource_transfer.go`.
+
+## Notifications
+
+`ctx.notify()` sends a push notification through the engine's relay pipeline. Notifications are signals, not payloads. The push body is a doorbell string ("New briefing ready"), not content. The relay includes `ionResourceId` and `ionKind` in the APNs payload for future deep-linking. iOS does not yet read these fields; the current `AppDelegate` navigates by `tabId` only.
