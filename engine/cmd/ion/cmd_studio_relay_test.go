@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -72,7 +73,8 @@ func TestSetStudioRelay_CreatesServerJSONOnADesktopInstall(t *testing.T) {
 		t.Errorf("a created server.json must state only the relays, so every other default stays the server's: %v", cfg)
 	}
 	info, err := os.Stat(filepath.Join(dir, "server.json"))
-	if err != nil || info.Mode().Perm() != 0o600 {
+	// Windows file modes carry only read-only; the profile's ACL keeps it private.
+	if err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
 		t.Errorf("server.json mode = %v (err %v), want 0600: it can hold a key", info.Mode().Perm(), err)
 	}
 }

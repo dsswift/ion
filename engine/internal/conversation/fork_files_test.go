@@ -1,6 +1,7 @@
 package conversation
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,6 +47,17 @@ func writeTestFile(t *testing.T, path, content string) {
 	}
 }
 
+// jsonPath is path as it appears inside a JSON string, where a Windows
+// backslash is escaped.
+func jsonPath(t *testing.T, path string) string {
+	t.Helper()
+	b, err := json.Marshal(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Trim(string(b), `"`)
+}
+
 func readTestFile(t *testing.T, path string) string {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -87,11 +99,11 @@ func TestCopyOwnedFilesForFork_RewritesEveryPath(t *testing.T) {
 	for _, suffix := range []string{".tree.jsonl", ".llm.jsonl"} {
 		body := readTestFile(t, filepath.Join(DefaultConversationsDir(), f.forked.ID+suffix))
 		for _, old := range []string{f.ownedPlan, f.legacyPlan, f.spill} {
-			if strings.Contains(body, old) {
+			if strings.Contains(body, jsonPath(t, old)) {
 				t.Errorf("%s still names the source's %s", suffix, old)
 			}
 		}
-		if !strings.Contains(body, OwnedDir(f.forked.ID)) && suffix == ".tree.jsonl" {
+		if !strings.Contains(body, jsonPath(t, OwnedDir(f.forked.ID))) && suffix == ".tree.jsonl" {
 			t.Errorf("%s names nothing in the fork's folder", suffix)
 		}
 	}

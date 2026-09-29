@@ -35,6 +35,7 @@ func TestIonDir_HomeDefault(t *testing.T) {
 func TestIonDir_Empty(t *testing.T) {
 	t.Setenv("ION_DATA_DIR", "")
 	t.Setenv("HOME", "")
+	t.Setenv("USERPROFILE", "") // os.UserHomeDir's Windows source
 	if got := IonDir(); got != "" {
 		t.Fatalf("IonDir() = %q, want empty string", got)
 	}

@@ -344,7 +344,7 @@ func TestStudioServerCLI_FallsBackToTheDesktop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bin != f.deps.desktop.executable() || !strings.HasSuffix(script, "dist/server/pair.js") || !contains(env, "ELECTRON_RUN_AS_NODE=1") {
+	if bin != f.deps.desktop.executable() || !strings.HasSuffix(filepath.ToSlash(script), "dist/server/pair.js") || !contains(env, "ELECTRON_RUN_AS_NODE=1") {
 		t.Errorf("bin=%s script=%s env=%v", bin, script, env)
 	}
 	f.installBundle(t, "1.85.2")

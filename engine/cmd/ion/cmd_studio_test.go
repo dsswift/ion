@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -124,6 +125,7 @@ func TestRenderSystemdUnit(t *testing.T) {
 }
 
 func TestLaunchdManager_GuiDomainWhenLoadable(t *testing.T) {
+	skipLaunchdOnWindows(t)
 	l := testLayout(t)
 	r := &fakeRunner{results: map[string]fakeResult{"launchctl print gui/": {code: 0}}}
 	m, err := newLaunchdManager(r, l, false)
@@ -142,6 +144,7 @@ func TestLaunchdManager_GuiDomainWhenLoadable(t *testing.T) {
 }
 
 func TestLaunchdManager_SystemDomainWhenHeadlessWithPasswordlessSudo(t *testing.T) {
+	skipLaunchdOnWindows(t)
 	l := testLayout(t)
 	r := &fakeRunner{results: map[string]fakeResult{"sudo -n true": {code: 0}}}
 	m, err := newLaunchdManager(r, l, false)
@@ -499,7 +502,19 @@ func TestStudioPairArgs(t *testing.T) {
 	}
 }
 
+// skipLaunchdOnWindows skips a launchd test on Windows, where
+// newServiceManager refuses to manage services and launchd paths never exist.
+func skipLaunchdOnWindows(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("launchd is macOS-only")
+	}
+}
+
 func TestRepointCurrent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no Windows studio server bundle exists, so update never repoints current there")
+	}
 	l := testLayout(t)
 	v1 := filepath.Join(l.versions, "1")
 	v2 := filepath.Join(l.versions, "2")

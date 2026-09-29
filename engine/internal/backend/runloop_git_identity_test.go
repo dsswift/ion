@@ -9,6 +9,7 @@ package backend
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -130,10 +131,15 @@ func TestExecuteTools_GitIdentityToolEnvReachesBashSubprocess(t *testing.T) {
 		},
 	}
 	dir := t.TempDir()
+	command := "echo $GIT_AUTHOR_NAME"
+	if runtime.GOOS == "windows" {
+		// PowerShell reads an environment variable via $env:NAME, not $NAME.
+		command = "echo $env:GIT_AUTHOR_NAME"
+	}
 	blocks := []types.LlmContentBlock{{
 		Name:  "Bash",
 		ID:    "tc-git-env",
-		Input: map[string]interface{}{"command": "echo $GIT_AUTHOR_NAME"},
+		Input: map[string]interface{}{"command": command},
 	}}
 
 	results, err := b.executeTools(context.Background(), run, blocks, dir)
