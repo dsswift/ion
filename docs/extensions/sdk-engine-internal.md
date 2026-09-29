@@ -610,7 +610,7 @@ The Go SDK context exposes methods for the resource subsystem, push notification
 
 **Cross-session messaging:**
 
-- **`ctx.Sessions.List()`** -- returns `[]SessionListEntry` with `Key`, `HasActiveRun`, `ExtensionName`, `ConversationID`. Only sessions running the same extension type are returned.
+- **`ctx.Sessions.List()`** -- returns `[]SessionListEntry` with `Key`, `HasActiveRun`, `ExtensionName`, `ConversationID`, `PrincipalSubject`. The engine filters to sessions sharing the CALLING session's own principal (never every session engine-wide, which is what stops one tenant's extension from enumerating another's on a shared multi-tenant engine). It does not filter by extension type -- the caller checks `ExtensionName` itself to find sessions of its own kind.
 - **`ctx.Sessions.Send(targetKey, kind string, payload map[string]interface{})`** -- send a structured message to another session. The engine enforces same extension type; cross-type sends return an error. The receiving session's `session_message` hook fires with `SessionMessageInfo{SenderSessionKey, Kind, Payload}`.
 
 **Intercept:**

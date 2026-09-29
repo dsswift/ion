@@ -22,6 +22,11 @@ Otherwise the engine reads its platform-native source:
 
 Within a platform the listed sources are merged, not raced: a later source overlays the earlier ones field by field.
 
+This page describes the **machine layer** -- the sole policy enforcer. A second,
+additive-only **per-user layer** lets IT provision which Ion Studio Servers a specific
+person should see, without giving a person-writable file any power to loosen policy. See
+[Enterprise Configuration](../configuration/enterprise.md) for the two-layer model.
+
 ## macOS: Managed Preferences
 
 The engine reads from the `com.ion.engine` preference domain. Deploy this via an MDM profile (Jamf, Mosyle, Kandji, Fleet, etc.) as a custom settings payload.
