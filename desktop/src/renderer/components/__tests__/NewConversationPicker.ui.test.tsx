@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const createConversationTab = vi.fn().mockResolvedValue('tab-created')
 const gitFetch = vi.fn().mockResolvedValue({ ok: true })
 const gitBranches = vi.fn().mockResolvedValue({ current: 'main', branches: [{ name: 'main', isRemote: false }, { name: 'release', isRemote: false }] })
+const resolveNewConversationDefaults = vi.fn().mockResolvedValue(null)
 const close = vi.fn()
 const preferenceState = {
   projects: {} as Record<string, { addedManually: boolean; lastUsedAt: number; isDefault?: boolean; profileOverride?: { kind: 'plain' } }>,
@@ -18,10 +19,11 @@ const preferenceState = {
 vi.mock('../../theme', () => ({ useColors: () => ({ scrim: 'rgba(0,0,0,.2)', popoverBg: '#111', popoverBorder: '#222', popoverShadow: 'none', textPrimary: '#fff', textSecondary: '#ccc', textTertiary: '#999', tabActive: '#333' }) }))
 vi.mock('../../components/PopoverLayer', () => ({ usePopoverLayer: () => document.body }))
 vi.mock('../../preferences', () => ({ usePreferencesStore: (selector: (state: typeof preferenceState) => unknown) => selector(preferenceState) }))
-vi.mock('../../stores/sessionStore', () => ({ useSessionStore: { getState: () => ({ createConversationTab }) } }))
-vi.mock('../../rendererLogger', () => ({ rInfo: vi.fn(), rError: vi.fn() }))
+vi.mock('@ion/server/store/sessionStore', () => ({ useSessionStore: { getState: () => ({ createConversationTab }) } }))
+vi.mock('../../rendererLogger', () => ({ rInfo: vi.fn(), rError: vi.fn(), rWarn: vi.fn(), rDebug: vi.fn() }))
 
 import { NewConversationPicker } from '../NewConversationPicker'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 let container: HTMLDivElement
 let root: ReturnType<typeof createRoot>
@@ -38,7 +40,7 @@ beforeEach(() => {
   preferenceState.enterpriseNewConversationDefaults = null
   container = document.createElement('div')
   document.body.appendChild(container)
-  Object.assign(window, { ion: { gitFetch, gitBranches } })
+  Object.assign(window, { ion: installFakeWire({ gitFetch, gitBranches, resolveNewConversationDefaults }) })
 })
 
 afterEach(() => { act(() => root.unmount()); container.remove() })

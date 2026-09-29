@@ -1,7 +1,10 @@
-import type { TabState } from '../../../shared/types'
-import type { IntegrationMember, IntegrationWorkspace, WorktreeInfo, WorktreeInventoryEntry } from '../../../shared/types'
-import { buildWorktreeList } from '../../../shared/worktree-list'
+import type { TabState } from '@ion/shared/types'
+import type { IntegrationMember, IntegrationWorkspace, WorktreeInfo, WorktreeInventoryEntry } from '@ion/shared/types'
+import { buildWorktreeList } from '@ion/shared/worktree-list'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import { inboxProjectFor, type InboxProject } from './inbox-grouping'
+import { checkoutSlot, pathScope, type ProjectScopeResolver } from './project-identity'
+import { pathBasename } from '@ion/shared/paths'
 
 export type InboxNavigatorGroupKind = 'bench' | 'source' | 'worktree'
 
@@ -16,9 +19,40 @@ export interface InboxNavigatorGroup {
 }
 
 export interface InboxNavigatorProject {
+  /**
+   * The primary checkout: the path key structure is indexed by (inventory,
+   * benches, collapse state). When the repository is open on several
+   * environments this is the local one, else the first.
+   */
   project: InboxProject
+  /** The Environment `project.key` is a path on: the primary checkout's machine. A verb started from the header (a new conversation in the project) runs there. */
+  environmentId: string
+  /** The repository identity this header stands for; equal to `project.key` for a checkout with no known identity. See `project-identity.ts`. */
+  scopeKey: string
+  /** Every checkout merged under this header, each a path key on its own Environment. A re-read of a checkout's worktrees runs there. */
+  checkouts: Array<{ environmentId: string; key: string }>
   groups: InboxNavigatorGroup[]
   flatTabs: TabState[]
+}
+
+export interface InboxNavigatorOptions {
+  /** Maps a path key on an environment to its repository identity. Defaults to every path being its own project. */
+  scopeOf?: ProjectScopeResolver
+  /** Names an environment, to label the groups of a checkout that is not the header's primary one. */
+  environmentLabel?: (environmentId: string) => string
+  /**
+   * The Environment whose worktree read model holds `repoPath`. The merged
+   * inventory and bench maps do not say which machine a key came from, and a
+   * repository known only from them (no conversation open in it) is a
+   * checkout on that machine. Defaults to local.
+   */
+  environmentOfRepo?: (repoPath: string) => string | null
+  /**
+   * Whether the Environment filter shows this machine. Conversations arrive
+   * already filtered; a repository known only from the worktree read model
+   * does not, so it is checked here. Defaults to every machine.
+   */
+  environmentIncluded?: (environmentId: string) => boolean
 }
 
 function containsDirectory(root: string, directory: string): boolean {
@@ -30,7 +64,7 @@ function fallbackWorktree(info: WorktreeInfo): WorktreeInventoryEntry {
     worktreePath: info.worktreePath,
     branchName: info.branchName,
     sourceBranch: info.sourceBranch,
-    label: info.worktreePath.split('/').filter(Boolean).at(-1) ?? info.branchName,
+    label: pathBasename(info.worktreePath) || info.branchName,
     head: '',
     lastCommitSubject: '',
     isDirty: false,
@@ -89,37 +123,52 @@ export function buildInboxNavigator(
   inventory: ReadonlyMap<string, readonly WorktreeInventoryEntry[]>,
   selectedBenchByRepo: ReadonlyMap<string, string> = new Map(),
   projectScope: ReadonlySet<string> = new Set(),
+  options: InboxNavigatorOptions = {},
 ): InboxNavigatorProject[] {
-  const projectIncluded = (projectKey: string): boolean => projectScope.size === 0 || projectScope.has(projectKey)
-  const projects = new Map<string, { project: InboxProject; tabs: TabState[] }>()
+  const scopeOf = options.scopeOf ?? pathScope
+  // The scope is a set of repository identities; a path key is still honored
+  // so a selection made before identities were known keeps working until
+  // the sidebar normalizes it.
+  const projectIncluded = (scopeKey: string, projectKey: string): boolean => projectScope.size === 0 || projectScope.has(scopeKey) || projectScope.has(projectKey)
+  const projects = new Map<string, { project: InboxProject; tabs: TabState[]; environmentId: string; scopeKey: string }>()
   for (const tab of tabs) {
     if (tab.isTerminalOnly) continue
     const project = inboxNavigatorProjectFor(tab, benches, inventory)
-    if (!projectIncluded(project.key)) continue
-    const current = projects.get(project.key)
+    const environmentId = tab.environmentId ?? LOCAL_ENVIRONMENT_ID
+    const scopeKey = scopeOf(project.key, environmentId)
+    if (!projectIncluded(scopeKey, project.key)) continue
+    // Two environments can hold a checkout at the same path; they are
+    // different checkouts, so the structural slot is per environment.
+    const slot = checkoutSlot(environmentId, project.key)
+    const current = projects.get(slot)
     if (current) current.tabs.push(tab)
-    else projects.set(project.key, { project, tabs: [tab] })
+    else projects.set(slot, { project, tabs: [tab], environmentId, scopeKey })
+  }
+  // A repository known only from the read model is a checkout on the
+  // Environment that published it, never assumed local: a remote repository
+  // placed in a local slot would take the header and draw its worktrees twice.
+  const addStructural = (repoPath: string): void => {
+    const environmentId = options.environmentOfRepo?.(repoPath) ?? LOCAL_ENVIRONMENT_ID
+    if (options.environmentIncluded && !options.environmentIncluded(environmentId)) return
+    const scopeKey = scopeOf(repoPath, environmentId)
+    if (!projectIncluded(scopeKey, repoPath)) return
+    const slot = checkoutSlot(environmentId, repoPath)
+    if (projects.has(slot)) return
+    projects.set(slot, { project: { key: repoPath, name: repoPath.split('/').filter(Boolean).at(-1) ?? repoPath }, tabs: [], environmentId, scopeKey })
   }
   // Inventory is the source of truth for workspace presence. Include every
   // repo with a non-landed worktree before grouping conversation tabs.
   for (const [repoPath, entries] of inventory) {
-    if (!projectIncluded(repoPath)) continue
-    if (entries.some((entry) => entry.landedAt == null) && !projects.has(repoPath)) {
-      projects.set(repoPath, { project: { key: repoPath, name: repoPath.split('/').filter(Boolean).at(-1) ?? repoPath }, tabs: [] })
-    }
+    if (entries.some((entry) => entry.landedAt == null)) addStructural(repoPath)
   }
   // A repo whose only open conversation is a bench terminal has no entry above
   // (terminal-only tabs are filtered before project assignment), but its Bench
   // is still a structural bucket that must be visible.
   for (const [repoPath, workspaces] of benches) {
-    if (workspaces.length === 0) continue
-    if (!projectIncluded(repoPath)) continue
-    if (!projects.has(repoPath)) {
-      projects.set(repoPath, { project: { key: repoPath, name: repoPath.split('/').filter(Boolean).at(-1) ?? repoPath }, tabs: [] })
-    }
+    if (workspaces.length > 0) addStructural(repoPath)
   }
 
-  return [...projects.values()].map(({ project, tabs: projectTabs }) => {
+  const perCheckout = [...projects.values()].map(({ project, tabs: projectTabs, environmentId, scopeKey }) => {
     const entries = uniqueInventory(inventory.get(project.key) ?? [])
     const workspaces = benches.get(project.key) ?? []
     const membershipWorkspace = workspaces.find((workspace) => workspace.members.some((member) => entries.some((entry) => entry.worktreePath === member.worktreePath)))
@@ -221,6 +270,22 @@ export function buildInboxNavigator(
       return 0
     })
     const groups = [...benchGroups.values(), ...orderedWorktreeGroups, ...(sourceGroup ? [sourceGroup] : [])]
-    return { project, groups, flatTabs }
-  }).sort((left, right) => left.project.name.localeCompare(right.project.name))
+    return { project, scopeKey, checkouts: [{ environmentId, key: project.key }], groups, flatTabs, environmentId }
+  })
+
+  // One header per repository. Checkouts of the same repository on several
+  // environments merge under the local one (else the first); the others'
+  // groups follow, labeled with their machine so "Source Repository" twice
+  // reads as two places rather than a duplicate.
+  const merged = new Map<string, InboxNavigatorProject>()
+  for (const node of perCheckout.sort((left, right) => Number(right.environmentId === LOCAL_ENVIRONMENT_ID) - Number(left.environmentId === LOCAL_ENVIRONMENT_ID))) {
+    const primary = merged.get(node.scopeKey)
+    if (!primary) { merged.set(node.scopeKey, node); continue }
+    const machine = options.environmentLabel?.(node.environmentId) ?? node.environmentId
+    primary.groups.push(...node.groups.map((group) => ({ ...group, label: `${group.label} · ${machine}` })))
+    primary.flatTabs.push(...node.flatTabs)
+    primary.checkouts.push(...node.checkouts)
+  }
+  return [...merged.values()]
+    .sort((left, right) => left.project.name.localeCompare(right.project.name))
 }

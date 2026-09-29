@@ -7,6 +7,7 @@ import type {
   WorkspaceCategoryId,
   WorkspaceTabRef,
 } from "./WorkspaceStatusIndicator";
+import { tabListKey } from '../studio/connection/tab-environment';
 
 // ─── WorkspaceCountRow ────────────────────────────────────────────────────────
 
@@ -130,7 +131,7 @@ export function WorkspaceCollapsibleRow({
       {expanded &&
         tabs.map((tab) => (
           <WorkspaceTabRow
-            key={tab.id}
+            key={tabListKey(tab)}
             tab={tab}
             onNavigate={onNavigate}
             colors={colors}

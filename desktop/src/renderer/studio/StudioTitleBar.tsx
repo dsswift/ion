@@ -14,10 +14,11 @@ import {
   SquareSplitHorizontal,
   Terminal as TerminalIcon,
 } from "@phosphor-icons/react";
-import { useSessionStore } from "../stores/sessionStore";
+import { useSessionStore } from "@ion/server/store/sessionStore";
 import { usePreferencesStore } from "../preferences";
-import { orderedProjects } from "../../shared/project-registry";
-import { STUDIO_TITLE_BAR_HEIGHT } from "../../shared/studio-chrome";
+import { isProjectRegistry, NO_PROJECTS, useActiveServerSetting } from "./state/use-server-setting";
+import { orderedProjects } from "@ion/shared/project-registry";
+import { STUDIO_TITLE_BAR_HEIGHT } from "@ion/shared/studio-chrome";
 import { useColors } from "../theme";
 import { Tooltip } from "../components/git/Tooltip";
 import { ShortcutHint } from "../shortcuts/ShortcutHint";
@@ -25,7 +26,8 @@ import { useRevealedShortcuts } from "../shortcuts/useShortcutHints";
 import { useStudioWindowChrome } from "./chrome/useStudioWindowChrome";
 import { UpdateButton } from "../components/UpdateButton";
 import { NotificationsBell } from "../components/NotificationsPanel";
-import { DirectoryPicker } from "../components/TabStripDirectoryPicker";
+import { EnvironmentStatusIndicator } from "./connection/EnvironmentStatusIndicator";
+import { DirectoryPicker } from "../components/DirectoryPicker";
 import { zoomRect } from "../viewport-zoom";
 import { rDebug, rError } from "../rendererLogger";
 
@@ -61,7 +63,9 @@ export function StudioTitleBar({
   const tab = useSessionStore(
     (state) => state.tabs.find((item) => item.id === state.activeTabId) ?? null,
   );
-  const registry = usePreferencesStore((state) => state.projects);
+  // The project registry of the server the conversation is on: a path on
+  // another server is a different project even when the strings match.
+  const registry = useActiveServerSetting("projects", isProjectRegistry, NO_PROJECTS);
   // Held-modifier reveal for the pane toggles. Each entry is present only
   // while its own chord's modifiers are held, so ⌘ reveals the sidebar and
   // canvas toggles while ⌃ reveals the terminal toggle.
@@ -208,6 +212,9 @@ export function StudioTitleBar({
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
         <UpdateButton />
+        <div data-drag-region="no-drag" style={{ WebkitAppRegion: "no-drag" }}>
+          <EnvironmentStatusIndicator />
+        </div>
         <div data-drag-region="no-drag" style={{ WebkitAppRegion: "no-drag" }}>
           <NotificationsBell />
         </div>

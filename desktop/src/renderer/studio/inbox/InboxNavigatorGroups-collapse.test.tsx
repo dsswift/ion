@@ -2,8 +2,8 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ConversationPane } from '../../../shared/types-engine'
-import type { IntegrationWorkspace, TabState, WorktreeInventoryEntry } from '../../../shared/types'
+import type { ConversationPane } from '@ion/shared/types-engine'
+import type { IntegrationWorkspace, TabState, WorktreeInventoryEntry } from '@ion/shared/types'
 import type { InboxNavigatorProject } from './inbox-navigator'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -21,7 +21,7 @@ const state = {
   openWorktreeConversation: vi.fn(async () => null), createConversationTab: vi.fn(async () => undefined), createTabInDirectory: vi.fn(async () => undefined), openSettings: vi.fn(),
 }
 
-vi.mock('../../stores/sessionStore', () => ({ useSessionStore: Object.assign((selector: (value: typeof state) => unknown) => selector(state), { getState: () => state }) }))
+vi.mock('@ion/server/store/sessionStore', () => ({ useSessionStore: Object.assign((selector: (value: typeof state) => unknown) => selector(state), { getState: () => state }) }))
 vi.mock('../../theme', () => ({ useColors: () => new Proxy({}, { get: () => '#000000' }) }))
 vi.mock('../../rendererLogger', () => ({ rInfo: vi.fn(), rError: vi.fn() }))
 vi.mock('../../preferences', () => ({ usePreferencesStore: { getState: () => ({ engineProfiles: [], defaultEngineProfileId: null, enterpriseNewConversationDefaults: null }) } }))
@@ -72,7 +72,7 @@ describe('InboxNavigatorGroups collapsed important rows', () => {
     const idle = tab('idle')
     state.activeTabId = selected.id
     state.tabs = [selected, working, idle]
-    const project: InboxNavigatorProject = { project: { key: '/repo', name: 'repo' }, groups: [{ key: 'source:/repo', kind: 'source', label: 'Source Repository', tabs: state.tabs }], flatTabs: [] }
+    const project: InboxNavigatorProject = { project: { key: '/repo', name: 'repo' }, scopeKey: '/repo', environmentId: 'local', checkouts: [{ environmentId: 'local', key: '/repo' }], groups: [{ key: 'source:/repo', kind: 'source', label: 'Source Repository', tabs: state.tabs }], flatTabs: [] }
     const { container, root } = await mount(project, 'project:/repo')
     expectImportantRows(container)
     await act(async () => { root.unmount() })
@@ -86,7 +86,7 @@ describe('InboxNavigatorGroups collapsed important rows', () => {
     state.activeTabId = selected.id
     state.tabs = [selected, working, idle]
     state.benchWorkspaces = new Map([['/repo', [workspace]]])
-    const project: InboxNavigatorProject = { project: { key: '/repo', name: 'repo' }, groups: [{ key: `bench:${workspace.benchPath}`, kind: 'bench', label: 'Integration Bench · main', tabs: state.tabs, workspace }], flatTabs: [] }
+    const project: InboxNavigatorProject = { project: { key: '/repo', name: 'repo' }, scopeKey: '/repo', environmentId: 'local', checkouts: [{ environmentId: 'local', key: '/repo' }], groups: [{ key: `bench:${workspace.benchPath}`, kind: 'bench', label: 'Integration Bench · main', tabs: state.tabs, workspace }], flatTabs: [] }
     const { container, root } = await mount(project, `group:card:bench:${workspace.benchPath}`)
     expectImportantRows(container)
     await act(async () => { root.unmount() })
@@ -101,7 +101,7 @@ describe('InboxNavigatorGroups collapsed important rows', () => {
     state.activeTabId = activeTabId
     state.tabs = [terminal]
     state.benchWorkspaces = new Map([['/repo', [workspace]]])
-    const project: InboxNavigatorProject = { project: { key: '/repo', name: 'repo' }, groups: [{ key: `bench:${workspace.benchPath}`, kind: 'bench', label: 'Integration Bench · main', tabs: [], workspace }], flatTabs: [] }
+    const project: InboxNavigatorProject = { project: { key: '/repo', name: 'repo' }, scopeKey: '/repo', environmentId: 'local', checkouts: [{ environmentId: 'local', key: '/repo' }], groups: [{ key: `bench:${workspace.benchPath}`, kind: 'bench', label: 'Integration Bench · main', tabs: [], workspace }], flatTabs: [] }
     const { container, root } = await mount(project, `group:card:bench:${workspace.benchPath}`)
     expect(container.querySelector('[data-testid="terminal-bench-terminal"]')).not.toBeNull()
     await act(async () => { root.unmount() })
@@ -116,7 +116,7 @@ describe('InboxNavigatorGroups collapsed important rows', () => {
     state.activeTabId = activeTabId
     state.tabs = [terminal]
     state.benchWorkspaces = new Map([['/repo', [workspace]]])
-    const project: InboxNavigatorProject = { project: { key: '/repo', name: 'repo' }, groups: [{ key: `bench:${workspace.benchPath}`, kind: 'bench', label: 'Integration Bench · main', tabs: [], workspace }], flatTabs: [] }
+    const project: InboxNavigatorProject = { project: { key: '/repo', name: 'repo' }, scopeKey: '/repo', environmentId: 'local', checkouts: [{ environmentId: 'local', key: '/repo' }], groups: [{ key: `bench:${workspace.benchPath}`, kind: 'bench', label: 'Integration Bench · main', tabs: [], workspace }], flatTabs: [] }
     const { container, root } = await mount(project, 'project:/repo')
     expect(container.querySelector('[data-testid="terminal-bench-terminal"]')).not.toBeNull()
     await act(async () => { root.unmount() })
@@ -127,7 +127,7 @@ describe('InboxNavigatorGroups collapsed important rows', () => {
     const terminal = { ...tab('bench-terminal'), workingDirectory: workspace.benchPath, isTerminalOnly: true } as TabState
     state.tabs = [terminal]
     state.benchWorkspaces = new Map([['/repo', [workspace]]])
-    const project: InboxNavigatorProject = { project: { key: '/repo', name: 'repo' }, groups: [{ key: `bench:${workspace.benchPath}`, kind: 'bench', label: 'Integration Bench · main', tabs: [], workspace }], flatTabs: [] }
+    const project: InboxNavigatorProject = { project: { key: '/repo', name: 'repo' }, scopeKey: '/repo', environmentId: 'local', checkouts: [{ environmentId: 'local', key: '/repo' }], groups: [{ key: `bench:${workspace.benchPath}`, kind: 'bench', label: 'Integration Bench · main', tabs: [], workspace }], flatTabs: [] }
     const { container, root } = await mount(project, `group:card:bench:${workspace.benchPath}`)
     expect(container.querySelector('[data-testid="terminal-bench-terminal"]')).toBeNull()
     await act(async () => { root.unmount() })

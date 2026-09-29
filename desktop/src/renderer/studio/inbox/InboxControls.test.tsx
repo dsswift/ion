@@ -22,12 +22,8 @@ function Harness(): React.JSX.Element {
   const projectRef = useRef<HTMLButtonElement>(null)
   const sortRef = useRef<HTMLButtonElement>(null)
   return <div>
-    <InboxControlButton buttonRef={projectRef} onClick={() => setOpen((current) => current === 'project' ? null : 'project')}>
-      Projects
-    </InboxControlButton>
-    <InboxControlButton buttonRef={sortRef} onClick={() => setOpen((current) => current === 'sort' ? null : 'sort')}>
-      Recent activity
-    </InboxControlButton>
+    <InboxControlButton buttonRef={projectRef} icon={<span />} title="Projects" label="Projects" onClick={() => setOpen((current) => current === 'project' ? null : 'project')} />
+    <InboxControlButton buttonRef={sortRef} icon={<span />} title="Recent activity" label="Recent activity" onClick={() => setOpen((current) => current === 'sort' ? null : 'sort')} />
     {open === 'project' && <InboxProjectScopePicker
       anchor={{ x: 0, y: 0 }}
       projects={[
@@ -110,5 +106,39 @@ describe('Inbox project selection', () => {
     expect(saveProjectSelection(new Set())).toBeNull()
     expect(saveProjectSelection(new Set(['/one', '/two']))).toBe('["/one","/two"]')
     expect([...toggleProjectSelection(new Set(['/one']), '/two')]).toEqual(['/one', '/two'])
+  })
+})
+
+/**
+ * The header is three controls wide in a sidebar that is not. Spelling out
+ * "All projects / All environments / Recent activity" wrapped every button
+ * onto two lines; a control earns its label only by being narrowed to
+ * something, and even then it stays on one line.
+ */
+describe('InboxControlButton sizing', () => {
+  function render(node: React.JSX.Element): HTMLDivElement {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    act(() => { root.render(node) })
+    return host
+  }
+
+  it('is a square icon with no text when the filter is not narrowed, and still says what it is', () => {
+    const host = render(<InboxControlButton icon={<span data-testid="icon" />} title="Project scope: All projects" onClick={() => {}} />)
+    const button = host.querySelector('button')!
+    expect(button.textContent).toBe('')
+    expect(button.getAttribute('aria-label')).toBe('Project scope: All projects')
+    expect(button.style.width).toBe('28px')
+  })
+
+  it('shows the label, on one line, once the filter carries information', () => {
+    const host = render(<InboxControlButton icon={<span />} title="Environments: grover" label="grover" onClick={() => {}} />)
+    const button = host.querySelector('button')!
+    expect(button.textContent).toContain('grover')
+    expect(button.style.width).toBe('')
+    const label = Array.from(button.querySelectorAll('span')).find((s) => s.textContent === 'grover')!
+    expect(label.style.whiteSpace).toBe('nowrap')
+    expect(label.style.textOverflow).toBe('ellipsis')
   })
 })

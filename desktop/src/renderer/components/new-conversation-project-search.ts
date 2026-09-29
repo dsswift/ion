@@ -1,5 +1,4 @@
-import type { EffectiveProjectEntry, ProjectDisplayEntry } from '../../shared/project-registry'
-import { isAbsolutePath } from '../../shared/paths'
+import { isAbsolutePath, joinPath, pathDirname } from '@ion/shared/paths'
 
 export interface DirectoryBrowseQuery {
   parentPath: string
@@ -24,9 +23,9 @@ export function parseDirectoryBrowseQuery(query: string): DirectoryBrowseQuery |
   if (value === '~') return { parentPath: '~', filter: '', hasTrailingSeparator: false }
   if (value === '/') return { parentPath: '/', filter: '', hasTrailingSeparator: true }
 
-  const hasTrailingSeparator = value.endsWith('/')
+  const hasTrailingSeparator = /[\\/]$/.test(value)
   const withoutTrailingSeparator = hasTrailingSeparator ? value.slice(0, -1) : value
-  const separator = withoutTrailingSeparator.lastIndexOf('/')
+  const separator = Math.max(withoutTrailingSeparator.lastIndexOf('/'), withoutTrailingSeparator.lastIndexOf('\\'))
 
   if (hasTrailingSeparator) {
     return { parentPath: withoutTrailingSeparator || '/', filter: '', hasTrailingSeparator: true }
@@ -34,7 +33,7 @@ export function parseDirectoryBrowseQuery(query: string): DirectoryBrowseQuery |
   if (separator === -1) return null
   if (withoutTrailingSeparator === '~') return { parentPath: '~', filter: '', hasTrailingSeparator: false }
 
-  const parentPath = separator === 0 ? '/' : withoutTrailingSeparator.slice(0, separator)
+  const parentPath = pathDirname(withoutTrailingSeparator)
   return {
     parentPath: parentPath === '' ? '/' : parentPath,
     filter: withoutTrailingSeparator.slice(separator + 1),
@@ -44,11 +43,15 @@ export function parseDirectoryBrowseQuery(query: string): DirectoryBrowseQuery |
 
 /** Append one directory name to an engine-returned absolute path. */
 export function joinDirectoryPath(parentPath: string, name: string): string {
-  return parentPath === '/' ? `/${name}` : `${parentPath.replace(/\/+$/, '')}/${name}`
+  return parentPath === '/' ? `/${name}` : joinPath(parentPath.replace(/[\\/]+$/, ''), name)
 }
 
-/** Keep matching loaded projects in their supplied (normally recency) order. */
-export function filterProjects<T extends ProjectDisplayEntry | EffectiveProjectEntry>(
+/**
+ * Narrow the loaded projects to a search, preserving the caller's order. The
+ * picker orders explicitly afterwards (`new-conversation-project-order.ts`),
+ * so this never imposes one of its own.
+ */
+export function filterProjects<T extends { displayName: string; dir: string }>(
   projects: readonly T[],
   query: string,
 ): T[] {

@@ -3,11 +3,11 @@ import Markdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useColors } from '../theme'
-import { useSessionStore, FileEditorTab } from '../stores/sessionStore'
-import { EDITABLE_EXTS } from '../hooks/useNavigableLinks'
+import type { FileEditorTab } from '@ion/server/store/sessionStore'
 import { REMARK_PLUGINS } from './FileEditorShared'
 import { TableScrollWrapper } from './conversation/markdownRenderers'
 import { openClickedLink } from '../lib/open-link'
+import { openFileLink } from '../lib/open-file-link'
 import { DEFAULT_MONO_FONT } from '../typography'
 
 interface FileEditorPreviewProps {
@@ -25,6 +25,22 @@ function resolveRelativePath(baseDir: string, href: string): string {
     else if (p && p !== '.') resolved.push(p)
   }
   return '/' + resolved.join('/')
+}
+
+/** A link to a web page, a mail address, or an anchor, rather than a file. */
+function isNonFileHref(href: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('#')
+}
+
+/** The file path a markdown link names: no `#anchor`, percent-escapes decoded. */
+function hrefFilePath(href: string): string {
+  const path = href.split('#')[0]
+  try {
+    return decodeURI(path)
+  } catch {
+    // silent-ok: a malformed escape is kept as written; the server reports it missing
+    return path
+  }
 }
 
 /**
@@ -62,9 +78,8 @@ function splitFrontmatter(content: string): { frontmatterRaw: string | null; bod
 }
 
 /**
- * Markdown preview pane. Resolves relative links against the active file's
- * directory and routes editable files back into the editor; everything else
- * opens in the OS default handler.
+ * Markdown preview pane. A link to a file resolves against the active file's
+ * directory and opens the way any clicked file does; a web link opens as one.
  */
 export function FileEditorPreview({ dir, tabId, activeFile }: FileEditorPreviewProps) {
   const colors = useColors()
@@ -101,17 +116,11 @@ export function FileEditorPreview({ dir, tabId, activeFile }: FileEditorPreviewP
         onClick={(event) => {
           if (!href) return
           const h = String(href)
-          if (h.startsWith('http://') || h.startsWith('https://')) {
+          if (isNonFileHref(h)) {
             openClickedLink(h, event, 'file-preview')
             return
           }
-          const fullPath = resolveRelativePath(baseDir, h)
-          const ext = fullPath.includes('.') ? '.' + fullPath.split('.').pop()!.toLowerCase() : ''
-          if (EDITABLE_EXTS.has(ext)) {
-            useSessionStore.getState().openFileInEditor(dir, tabId, fullPath, { insertAfterActive: true })
-          } else {
-            openClickedLink(h, event, 'file-preview')
-          }
+          void openFileLink({ tabId, path: hrefFilePath(h), cwd: baseDir, event, tag: 'file-preview' })
         }}
       >
         {children}
@@ -155,7 +164,7 @@ export function FileEditorPreview({ dir, tabId, activeFile }: FileEditorPreviewP
         />
       )
     },
-  }), [colors, baseDir, dir, tabId])
+  }), [colors, baseDir, tabId])
 
   return (
     <div
