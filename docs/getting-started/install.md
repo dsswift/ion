@@ -22,6 +22,13 @@ curl -fsSL https://github.com/dsswift/ion/releases/latest/download/ion-linux-amd
 chmod +x /usr/local/bin/ion
 ```
 
+## Linux (arm64)
+
+```bash
+curl -fsSL https://github.com/dsswift/ion/releases/latest/download/ion-linux-arm64 -o /usr/local/bin/ion
+chmod +x /usr/local/bin/ion
+```
+
 ## Windows (PowerShell)
 
 ```powershell

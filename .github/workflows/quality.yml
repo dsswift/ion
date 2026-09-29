@@ -84,6 +84,8 @@ jobs:
         run: bash scripts/gate-cache.test.sh
       - name: Test Linux parity gate node_modules isolation
         run: bash scripts/test-linux-gate-mounts.test.sh
+      - name: Test the root prepare script without husky
+        run: bash scripts/husky-install.test.sh
       - name: Studio server installer test
         run: bash scripts/install-studio-server.test.sh
 

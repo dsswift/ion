@@ -22,6 +22,11 @@ chmod +x /usr/local/bin/ion
 curl -L https://github.com/dsswift/ion/releases/latest/download/ion-linux-amd64 \
   -o /usr/local/bin/ion
 chmod +x /usr/local/bin/ion
+
+# Linux (arm64)
+curl -L https://github.com/dsswift/ion/releases/latest/download/ion-linux-arm64 \
+  -o /usr/local/bin/ion
+chmod +x /usr/local/bin/ion
 ```
 
 ### From source
