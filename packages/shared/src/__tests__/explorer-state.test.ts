@@ -88,4 +88,9 @@ describe('pruneExpandedChildren', () => {
   it('leaves paths outside the listed directory alone', () => {
     expect(pruneExpandedChildren(expanded, '/other', ['/other/x'])).toEqual(expanded)
   })
+
+  it('judges a Windows listing, whose paths are joined with backslashes', () => {
+    const windows = ['C:\\repo\\src', 'C:\\repo\\gone', 'C:\\repo\\src\\renderer']
+    expect(pruneExpandedChildren(windows, 'C:\\repo', ['C:\\repo\\src'])).toEqual(['C:\\repo\\src', 'C:\\repo\\src\\renderer'])
+  })
 })

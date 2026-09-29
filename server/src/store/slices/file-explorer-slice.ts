@@ -1,5 +1,6 @@
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { pruneExpandedChildren } from '@ion/shared/explorer-state'
+import { relativeTreeDirectory } from '@ion/shared/fs-tree-watch'
 
 export function createFileExplorerSlice(set: StoreSet, _get: StoreGet): Partial<State> {
   return {
@@ -84,7 +85,7 @@ export function createFileExplorerSlice(set: StoreSet, _get: StoreGet): Partial<
         const states = new Map(s.fileExplorerStates)
         let changed = false
         for (const [root, state] of states) {
-          if (dir !== root && !dir.startsWith(root.endsWith('/') ? root : `${root}/`)) continue
+          if (relativeTreeDirectory(root, dir) === null) continue
           const kept = pruneExpandedChildren([...state.expandedPaths], dir, presentDirectories)
           if (kept.length === state.expandedPaths.size) continue
           states.set(root, { ...state, expandedPaths: new Set(kept) })

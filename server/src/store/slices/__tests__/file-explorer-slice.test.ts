@@ -123,6 +123,19 @@ describe('pruneExplorerExpanded', () => {
     expect(expandedOf(ROOT)).toEqual(['/repo/src'])
   })
 
+  it('prunes a nested Windows directory through its root', () => {
+    const root = 'C:\\repo'
+    useSessionStore.setState({
+      fileExplorerStates: new Map([
+        [root, { expandedPaths: new Set(['C:\\repo\\src', 'C:\\repo\\src\\gone']), selectedPath: null }],
+      ]),
+    })
+
+    useSessionStore.getState().pruneExplorerExpanded('C:\\repo\\src', [])
+
+    expect(expandedOf(root)).toEqual(['C:\\repo\\src'])
+  })
+
   it('leaves a root that merely shares a path prefix untouched', () => {
     useSessionStore.setState({
       fileExplorerStates: new Map([

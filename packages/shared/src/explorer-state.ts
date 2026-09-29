@@ -15,7 +15,7 @@
  * is doing.
  */
 
-import { isAbsolutePath } from './paths'
+import { isAbsolutePath, normalizeSlashes } from './paths'
 
 /** Everything the explorer shares between windows. */
 export interface ExplorerStateSnapshot {
@@ -145,13 +145,18 @@ export function pruneExpandedChildren(
   directory: string,
   presentDirectories: readonly string[],
 ): string[] {
-  const prefix = directory.endsWith('/') ? directory : `${directory}/`
-  const present = new Set(presentDirectories)
+  // Compared with forward slashes throughout: a Windows listing joins names
+  // with backslashes, and against a '/'-only prefix no Windows path was ever
+  // a child of anything, so nothing was ever pruned there.
+  const base = normalizeSlashes(directory)
+  const prefix = base.endsWith('/') ? base : `${base}/`
+  const present = new Set(presentDirectories.map(normalizeSlashes))
   return expandedPaths.filter((path) => {
-    if (!path.startsWith(prefix)) return true
+    const candidate = normalizeSlashes(path)
+    if (!candidate.startsWith(prefix)) return true
     // Only DIRECT children are judged: a deeper path's own parent listing is
     // what decides it, and that listing may not have been read yet.
-    if (path.slice(prefix.length).includes('/')) return true
-    return present.has(path)
+    if (candidate.slice(prefix.length).includes('/')) return true
+    return present.has(candidate)
   })
 }
