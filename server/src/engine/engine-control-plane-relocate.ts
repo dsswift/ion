@@ -28,10 +28,9 @@
  * no conversation identity change — which is why this lives in the consumer
  * rather than the engine (see docs/engine-grounding.md § 5).
  *
- * The engine-side half of the story is `syncConversationWorkingDirectory` in
- * `engine/internal/backend/runloop_working_dir.go`: the next run persists the
- * new path onto the conversation record, so a LATER resume from the session
- * browser also opens in the new location instead of the dead one.
+ * The engine records each run's working directory on the conversation record,
+ * so after the next run a LATER resume from the session browser also opens in
+ * the new location instead of the dead one.
  */
 import { log as _log, warn as _warn } from '../logger'
 import type { TabEntry } from './engine-control-plane-events'
