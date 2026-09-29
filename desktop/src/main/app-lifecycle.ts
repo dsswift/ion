@@ -26,9 +26,9 @@ import { supervisorFor } from '@ion/server/engine/engine-supervisor'
 import { pruneOperationDirs } from '@ion/server/utils/temp-dir'
 import { claimEngineEgressForDesktop } from './engine-egress-claim'
 import { localServer } from './local-server-instance'
-import { readEnvCache } from './env-cache'
 import { ensureEntraAuthConfig } from '@ion/server/oauth/entra-config'
 import { initAutoUpdater } from './updater'
+import { disableAutoUpdateFrom, firstLocalWelcome } from './local-welcome'
 import { startWatchdog, setWatchdogSuspended } from '@ion/server/watchdog'
 import { startDeviceMetrics } from './device-metrics'
 import { broker } from './connections/broker-instance'
@@ -126,6 +126,21 @@ export function setupAppLifecycle(): void {
   // connection already open and keeps it.
   const localLabel = localEnvironmentLabel(process.platform)
   registerEnvironmentLabel(LOCAL_ENVIRONMENT_ID, localLabel)
+  // Startup policy (the auto-update kill switch, the identity provider)
+  // arrives on this connection's live welcome, so listen before connecting.
+  const localWelcome = firstLocalWelcome(broker)
+  void localWelcome.then(async (welcome) => {
+    // Auto-updater (D-012): enterprise-managed installs pin their version
+    // through MDM, so it never checks before the policy is known.
+    if (!welcome) {
+      log('app_lifecycle: auto-update not started; the local environment never delivered its policy')
+      return
+    }
+    const disableAutoUpdate = disableAutoUpdateFrom(welcome)
+    if (disableAutoUpdate) log('app_lifecycle: auto-update disabled by enterprise policy')
+    await app.whenReady()
+    initAutoUpdater({ disableAutoUpdate })
+  })
   void connectEnvironment(LOCAL_ENVIRONMENT_ID, localLabel, { kind: 'local' }).catch((err) => {
     log('app_lifecycle: local environment connect failed', { error: String(err) })
   })
@@ -260,21 +275,6 @@ export function setupAppLifecycle(): void {
     // (spawned below) is the engine's one client, and this process reaches
     // it over the Studio wire.
 
-    // Auto-updater (D-012): enterprise-managed installs pin their version
-    // through MDM; the app-level updater must not fight it. The flag rides
-    // the desktop-owned customFields['ion-desktop'] namespace of the policy
-    // blob, which the local Environment publishes on `studio_welcome`; the
-    // cached welcome from the last connection is what this boot reads (the
-    // server fetches the live blob from the engine, not this process).
-    const cachedPolicy = readEnvCache(LOCAL_ENVIRONMENT_ID)?.welcome
-    const enterprisePolicy = cachedPolicy && cachedPolicy.type === 'studio_welcome' ? cachedPolicy.enterprisePolicy : null
-    const ionDesktopFields = (enterprisePolicy?.customFields?.['ion-desktop'] ?? {}) as import('@ion/shared/types-engine').IonDesktopPolicyFields
-    const disableAutoUpdate = ionDesktopFields.disableAutoUpdate === true
-    if (disableAutoUpdate) {
-      log('app_lifecycle: auto-update disabled by enterprise policy')
-    }
-    initAutoUpdater({ disableAutoUpdate })
-
     installContentSecurityPolicy()
 
     startStartup()
@@ -285,8 +285,9 @@ export function setupAppLifecycle(): void {
     // cannot load extensions before authentication completes.
     // Unconfigured identity is the normal optional-auth state. Query the engine
     // only when a provider exists; required config is validated by the engine
-    // before daemon startup and can never arrive here unconfigured.
-    const identityAvailable = identityConfigured || !!enterprisePolicy?.auth?.identityProvider
+    // before daemon startup and can never arrive here unconfigured. Without a
+    // local provider, the enterprise one is on the live welcome.
+    const identityAvailable = identityConfigured || !!(await localWelcome)?.enterprisePolicy?.auth?.identityProvider
     if (identityAvailable) {
       // The engine's identity snapshot, read through the local server: this
       // process never connects to the engine itself.
