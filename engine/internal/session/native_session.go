@@ -212,6 +212,9 @@ func (m *Manager) persistCliTurn(key, convID string) {
 	// run has already been cleared by the time the turn is persisted; an empty
 	// value is logged as-is rather than guessed at.
 	turnRunID := s.requestID
+	// The directory this delegated turn ran in, recorded on the header by the
+	// append below for the same reason as servingModel.
+	workingDirectory := s.config.WorkingDirectory
 	planMarker := s.pendingCliPlanMarker
 	slashInvocation := s.pendingCliSlashInvocation
 	// The provider accounting this run reported, retained from its usage
@@ -287,6 +290,7 @@ func (m *Manager) persistCliTurn(key, convID string) {
 		// last ran on. A CLI-served conversation reaches none of the API
 		// runloop, so this is the only place the header advances for it.
 		conversation.SyncModel(conv, servingModel, turnRunID)
+		conversation.SyncWorkingDirectory(conv, workingDirectory, turnRunID)
 		hasRecordedText := false
 		for _, it := range structuredItems {
 			if it.kind == "text" {

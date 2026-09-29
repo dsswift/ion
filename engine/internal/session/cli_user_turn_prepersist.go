@@ -20,7 +20,7 @@ import (
 // only called when recovery did not. Returns "" when there is no conversation
 // yet or the write failed; persistCliTurn then writes the turn at exit, as it
 // did before, so a failure here costs the early id and never the turn.
-func (m *Manager) prePersistCliUserTurn(s *engineSession, key string, opts types.RunOptions) string {
+func (m *Manager) prePersistCliUserTurn(s *engineSession, key, requestID string, opts types.RunOptions) string {
 	if s.conversationID == "" {
 		utils.LogWithFields(utils.LevelDebug, "session.native_session", "cli user turn not pre-persisted: no conversation id", map[string]any{"key": key})
 		return ""
@@ -29,6 +29,7 @@ func (m *Manager) prePersistCliUserTurn(s *engineSession, key string, opts types
 	err := conversation.UpdateOrCreateOnDisk(s.conversationID, "", func() *conversation.Conversation {
 		return conversation.CreateConversation(s.conversationID, "", opts.Model)
 	}, func(conv *conversation.Conversation) (bool, error) {
+		conversation.SyncWorkingDirectory(conv, opts.ProjectPath, requestID)
 		if userEntry := backend.AppendInboundUserMessage(conv, &opts); userEntry != nil {
 			userEntryID = userEntry.ID
 		}

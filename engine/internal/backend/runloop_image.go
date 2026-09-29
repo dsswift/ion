@@ -68,6 +68,9 @@ func (b *ApiBackend) runImageLoop(ctx context.Context, run *activeRun, opts type
 		return
 	}
 	run.conv = conv
+	// Image runs never reach the chat runloop, so they record their own
+	// working directory. The generated-image save below persists it.
+	conversation.SyncWorkingDirectory(conv, opts.ProjectPath, run.requestID)
 
 	// Persist the user prompt turn unless session recovery committed its canonical
 	// turn before backend launch. This matches runLoop and prevents image prompts

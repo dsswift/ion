@@ -675,7 +675,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		}
 		opts.PrePersistedUserEntryID = entryID
 	} else if cliPrePersistNeeded {
-		opts.PrePersistedUserEntryID = m.prePersistCliUserTurn(s, key, opts)
+		opts.PrePersistedUserEntryID = m.prePersistCliUserTurn(s, key, requestID, opts)
 	}
 	m.mu.Lock()
 	if cliPrePersistNeeded {

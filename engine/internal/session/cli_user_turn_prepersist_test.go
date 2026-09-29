@@ -78,6 +78,15 @@ func runDelegatedCliPrePersist(t *testing.T, recovery bool) {
 	if got := countUserRows(t, convID, "and of Spain?"); got != 1 {
 		t.Fatalf("user turn must be on disk before the run starts, found %d", got)
 	}
+	// The dispatch-time write is the first write a delegated-CLI conversation
+	// gets, and no API runloop follows it, so it must record where the
+	// conversation runs. Directory-scoped consumers (worktree membership,
+	// retros) cannot see a conversation whose header leaves this blank.
+	if onDisk, err := conversation.Load(convID, ""); err != nil {
+		t.Fatalf("load conversation: %v", err)
+	} else if onDisk.WorkingDirectory != "/tmp" {
+		t.Fatalf("working directory must be recorded at dispatch, got %q", onDisk.WorkingDirectory)
+	}
 	// The history bridge ran (no native cursor). The turn is the prompt, so the
 	// bridged transcript must not carry it a second time.
 	if got := strings.Count(started.Prompt, "and of Spain?"); got != 1 {

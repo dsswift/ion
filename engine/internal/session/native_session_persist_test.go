@@ -311,3 +311,43 @@ func TestPersistCliTurn_RecordsModelChange(t *testing.T) {
 		t.Fatalf("expected exactly one model_change entry, got %d", changes)
 	}
 }
+
+// TestPersistCliTurn_RecordsWorkingDirectory pins the delegated-CLI half of
+// working-directory tracking. A CLI-served conversation runs none of the API
+// runloop, so without the SyncWorkingDirectory call in persistCliTurn its
+// header keeps an empty (or stale) directory forever. Revert that call and
+// both assertions go red.
+func TestPersistCliTurn_RecordsWorkingDirectory(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	mgr := NewManager(backend.NewClaudeCodeBackend())
+	_, _ = mgr.StartSession("cli-workdir", defaultConfig())
+
+	const convID = "1784000000000-dddddddddddd"
+	persist := func(workingDirectory, text string) {
+		mgr.mu.Lock()
+		s := mgr.sessions["cli-workdir"]
+		s.conversationID = convID
+		s.config.WorkingDirectory = workingDirectory
+		s.pendingCliUserTurn = text
+		s.pendingCliAssistantText = "ok"
+		mgr.mu.Unlock()
+		mgr.persistCliTurn("cli-workdir", convID)
+	}
+	load := func() *conversation.Conversation {
+		conv, err := conversation.Load(convID, "")
+		if err != nil {
+			t.Fatalf("load conversation: %v", err)
+		}
+		return conv
+	}
+
+	persist("/repo/worktree", "first turn")
+	if got := load().WorkingDirectory; got != "/repo/worktree" {
+		t.Fatalf("first CLI turn must record the working directory, got %q", got)
+	}
+
+	persist("/repo/project", "second turn")
+	if got := load().WorkingDirectory; got != "/repo/project" {
+		t.Errorf("working directory must follow a relocated conversation, got %q", got)
+	}
+}

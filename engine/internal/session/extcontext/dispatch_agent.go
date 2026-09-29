@@ -296,7 +296,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		child := sa.NewChildBackend()
 		var transcript *conversation.DispatchTranscriptRecorder
 		if backend.ResolveChildCapabilities(child, model).ContextModel == backend.ContextModelNativeSession {
-			transcript = conversation.NewDispatchTranscriptRecorder(opts.Task, model)
+			transcript = conversation.NewDispatchTranscriptRecorder(opts.Task, model, projectPath)
 		}
 		var childCfg *backend.RunConfig
 

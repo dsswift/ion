@@ -1,16 +1,14 @@
-package backend
+package conversation
 
 import (
 	"path/filepath"
 	"testing"
-
-	"github.com/dsswift/ion/engine/internal/conversation"
 )
 
 // Working-directory tracking on the conversation record.
 //
 // The engine persists `workingDirectory` in the conversation's tree header so a
-// consumer reopening a stored conversation knows where it ran. The original
+// consumer reopening a stored conversation knows where it ran. An earlier
 // implementation wrote that field ONLY when it was empty, which pinned the
 // first-ever path forever. That is wrong for a conversation that legitimately
 // MOVES: a consumer may relocate a live conversation to a different directory —
@@ -23,13 +21,13 @@ import (
 // survives a save/load round-trip so a reopened conversation resolves to the
 // new location.
 
-func TestSyncConversationWorkingDirectory_SeedsWhenEmpty(t *testing.T) {
-	conv := conversation.CreateConversation("conv-seed", "", "test-model")
+func TestSyncWorkingDirectory_SeedsWhenEmpty(t *testing.T) {
+	conv := CreateConversation("conv-seed", "", "test-model")
 	if conv.WorkingDirectory != "" {
 		t.Fatalf("precondition: fresh conversation should have no working directory, got %q", conv.WorkingDirectory)
 	}
 
-	changed := syncConversationWorkingDirectory(conv, "/repo/project", "run-1")
+	changed := SyncWorkingDirectory(conv, "/repo/project", "run-1")
 
 	if !changed {
 		t.Error("expected changed=true when seeding an empty working directory")
@@ -42,18 +40,18 @@ func TestSyncConversationWorkingDirectory_SeedsWhenEmpty(t *testing.T) {
 // The regression test for the relocation defect. On the unfixed code (which
 // wrote only when the field was empty) the second call is a no-op and this
 // fails: the conversation keeps the dead worktree path.
-func TestSyncConversationWorkingDirectory_TracksRelocation(t *testing.T) {
-	conv := conversation.CreateConversation("conv-move", "", "test-model")
+func TestSyncWorkingDirectory_TracksRelocation(t *testing.T) {
+	conv := CreateConversation("conv-move", "", "test-model")
 
 	// First run inside a worktree.
-	syncConversationWorkingDirectory(conv, "/worktrees/wt-a3f1", "run-1")
+	SyncWorkingDirectory(conv, "/worktrees/wt-a3f1", "run-1")
 	if conv.WorkingDirectory != "/worktrees/wt-a3f1" {
 		t.Fatalf("precondition: WorkingDirectory = %q, want the worktree path", conv.WorkingDirectory)
 	}
 
 	// The worktree is retired and the conversation is relocated to the repo
 	// root; the next run carries the new project path.
-	changed := syncConversationWorkingDirectory(conv, "/repo/project", "run-2")
+	changed := SyncWorkingDirectory(conv, "/repo/project", "run-2")
 
 	if !changed {
 		t.Error("expected changed=true when the project path differs from the persisted one")
@@ -64,11 +62,11 @@ func TestSyncConversationWorkingDirectory_TracksRelocation(t *testing.T) {
 	}
 }
 
-func TestSyncConversationWorkingDirectory_UnchangedWhenSame(t *testing.T) {
-	conv := conversation.CreateConversation("conv-same", "", "test-model")
+func TestSyncWorkingDirectory_UnchangedWhenSame(t *testing.T) {
+	conv := CreateConversation("conv-same", "", "test-model")
 	conv.WorkingDirectory = "/repo/project"
 
-	changed := syncConversationWorkingDirectory(conv, "/repo/project", "run-1")
+	changed := SyncWorkingDirectory(conv, "/repo/project", "run-1")
 
 	if changed {
 		t.Error("expected changed=false when the project path already matches")
@@ -80,11 +78,11 @@ func TestSyncConversationWorkingDirectory_UnchangedWhenSame(t *testing.T) {
 
 // An empty ProjectPath carries no information about where the conversation
 // lives, so it must never erase a previously recorded directory.
-func TestSyncConversationWorkingDirectory_EmptyPathPreservesExisting(t *testing.T) {
-	conv := conversation.CreateConversation("conv-empty", "", "test-model")
+func TestSyncWorkingDirectory_EmptyPathPreservesExisting(t *testing.T) {
+	conv := CreateConversation("conv-empty", "", "test-model")
 	conv.WorkingDirectory = "/repo/project"
 
-	changed := syncConversationWorkingDirectory(conv, "", "run-1")
+	changed := SyncWorkingDirectory(conv, "", "run-1")
 
 	if changed {
 		t.Error("expected changed=false for an empty project path")
@@ -94,8 +92,8 @@ func TestSyncConversationWorkingDirectory_EmptyPathPreservesExisting(t *testing.
 	}
 }
 
-func TestSyncConversationWorkingDirectory_NilConversation(t *testing.T) {
-	if syncConversationWorkingDirectory(nil, "/repo/project", "run-1") {
+func TestSyncWorkingDirectory_NilConversation(t *testing.T) {
+	if SyncWorkingDirectory(nil, "/repo/project", "run-1") {
 		t.Error("expected changed=false for a nil conversation")
 	}
 }
@@ -105,13 +103,13 @@ func TestSyncConversationWorkingDirectory_NilConversation(t *testing.T) {
 func TestConversationWorkingDirectory_RelocationSurvivesRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 
-	conv := conversation.CreateConversation("conv-roundtrip", "", "test-model")
-	syncConversationWorkingDirectory(conv, filepath.Join(dir, "worktree"), "run-1")
-	if err := conversation.Save(conv, dir); err != nil {
+	conv := CreateConversation("conv-roundtrip", "", "test-model")
+	SyncWorkingDirectory(conv, filepath.Join(dir, "worktree"), "run-1")
+	if err := Save(conv, dir); err != nil {
 		t.Fatalf("save after first run: %v", err)
 	}
 
-	reloaded, err := conversation.Load("conv-roundtrip", dir)
+	reloaded, err := Load("conv-roundtrip", dir)
 	if err != nil {
 		t.Fatalf("load after first run: %v", err)
 	}
@@ -120,12 +118,12 @@ func TestConversationWorkingDirectory_RelocationSurvivesRoundTrip(t *testing.T) 
 	}
 
 	// Relocate and persist again.
-	syncConversationWorkingDirectory(reloaded, filepath.Join(dir, "repo"), "run-2")
-	if err := conversation.Save(reloaded, dir); err != nil {
+	SyncWorkingDirectory(reloaded, filepath.Join(dir, "repo"), "run-2")
+	if err := Save(reloaded, dir); err != nil {
 		t.Fatalf("save after relocation: %v", err)
 	}
 
-	final, err := conversation.Load("conv-roundtrip", dir)
+	final, err := Load("conv-roundtrip", dir)
 	if err != nil {
 		t.Fatalf("load after relocation: %v", err)
 	}
