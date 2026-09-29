@@ -35,9 +35,9 @@ type SessionPrincipal struct {
 	// `email` claim, falling back to `preferred_username` when that looks
 	// like an address -- `email` is an OPTIONAL claim in Entra v2 tokens.
 	Email string `json:"email,omitempty"`
-	// Attribution is a pre-formatted "DisplayName <username>" string for
-	// contexts (e.g. git commit authorship) that want one field rather than
-	// assembling it themselves. Empty when the caller did not supply one.
+	// Attribution overrides the user value telemetry and ambient logs stamp
+	// for this principal (AttributionForTelemetry). Empty when the caller did
+	// not supply one.
 	Attribution string `json:"attribution,omitempty"`
 	// Claims carries provider-specific claims (roles, scopes, tenant, ...)
 	// for the lifetime of the process. Never persisted -- see the type
@@ -85,10 +85,14 @@ func (p *SessionPrincipal) ToConversation() *ConversationPrincipal {
 	}
 }
 
-// AttributionForTelemetry returns the display value telemetry and ambient
-// logs should stamp for work done on this principal's behalf (FR-05 child
-// 10, R-41/R-42): Attribution first (a pre-formatted "DisplayName
-// <username>" string), falling back to DisplayName, then Subject. Returns ""
+// AttributionForTelemetry returns the value telemetry and ambient logs
+// stamp for work done on this principal's behalf (FR-05 child 10,
+// R-41/R-42): Attribution first, then Username, then DisplayName, then
+// Subject. Username before DisplayName is the same order the engine's own
+// signed-in identity uses for process-wide attribution
+// (auth.OperatorIdentity.AttributionValue: attribution claim, then
+// preferred_username, then subject), so one person reads as one user
+// whether a line came from their session or from the process. Returns ""
 // for a nil receiver or an entirely empty principal, so a caller never
 // stamps an empty user string. Deliberately never returns Claims -- Claims
 // must never reach telemetry or logs (see the type doc comment above).
@@ -98,6 +102,9 @@ func (p *SessionPrincipal) AttributionForTelemetry() string {
 	}
 	if p.Attribution != "" {
 		return p.Attribution
+	}
+	if p.Username != "" {
+		return p.Username
 	}
 	if p.DisplayName != "" {
 		return p.DisplayName

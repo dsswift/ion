@@ -32,9 +32,9 @@ func WithTraceID(ctx context.Context, id string) context.Context {
 // principal's attribution string (FR-05 child 09/10, R-41/R-42): the
 // identity telemetry and ambient logs should stamp for work done on this
 // principal's behalf, rather than the process-wide operator/machine
-// identity. attribution is a display value (SessionPrincipal.Attribution,
-// falling back to DisplayName then Subject at the call site) -- never
-// SessionPrincipal.Claims, which must never reach telemetry or logs.
+// identity. attribution is the caller's already-resolved user value, stored
+// as given -- never a principal's claims, which must never reach telemetry
+// or logs.
 func WithPrincipalIdentity(ctx context.Context, attribution string) context.Context {
 	return context.WithValue(ctx, ctxKeyPrincipalIdentity, attribution)
 }
