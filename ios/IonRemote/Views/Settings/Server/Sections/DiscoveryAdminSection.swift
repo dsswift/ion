@@ -96,7 +96,7 @@ struct DiscoveryAdminSection: View {
         VStack(alignment: .leading, spacing: IonSpace.hairlineGap) {
             if let code {
                 Text(code)
-                    .font(.system(.title2, design: .monospaced).weight(.semibold))
+                    .font(.system(.title2, design: .monospaced).weight(.semibold)) // design-type: display-size code read off this screen and typed on another device; text-style based, so it still scales
                     .tracking(3)
                     .textSelection(.enabled)
                 caption(text)

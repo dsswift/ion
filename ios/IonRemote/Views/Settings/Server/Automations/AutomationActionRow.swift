@@ -3,6 +3,7 @@ import SwiftUI
 /// One action of the Then step: which action, what it targets (always from
 /// the event, or a directory on the server), and its settings.
 struct AutomationActionRow: View {
+    @Environment(\.appTheme) private var theme
     let editor: AutomationEditorModel
     let projects: [EnvironmentProject]
     let action: AutomationAction
@@ -54,7 +55,7 @@ struct AutomationActionRow: View {
     private func targetLine(_ text: String, ok: Bool) -> some View {
         Label(text, systemImage: ok ? "scope" : "exclamationmark.triangle")
             .font(.caption)
-            .foregroundStyle(ok ? Color.secondary : Color.orange)
+            .foregroundStyle(ok ? theme.textSecondary : theme.statusWarning)
     }
 
     private var directoryField: some View {

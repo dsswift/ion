@@ -14,7 +14,7 @@ struct PairingQRCodeView: View {
                 .scaledToFit()
                 .frame(width: side, height: side)
                 .padding(IonSpace.compactGap)
-                .background(RoundedRectangle(cornerRadius: 12).fill(.white))
+                .background(RoundedRectangle(cornerRadius: IonRadius.container).fill(.white))
                 .accessibilityLabel("QR code of the pairing link")
         } else {
             Label("The QR code could not be drawn. Use the code instead.", systemImage: "exclamationmark.triangle")

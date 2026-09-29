@@ -15,7 +15,7 @@ struct FolderEntryRow: View {
                 Text("git")
                     .font(.caption2.weight(.semibold))
                     .padding(.horizontal, IonSpace.compactInset)
-                    .padding(.vertical, 2)
+                    .padding(.vertical, 2) // design-geometry: chip interior, matches the other admin chips
                     .background(Color.accentColor.opacity(0.15), in: Capsule())
                     .foregroundStyle(Color.accentColor)
             }

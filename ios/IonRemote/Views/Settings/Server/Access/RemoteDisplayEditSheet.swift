@@ -84,8 +84,8 @@ struct RemoteDisplayEditSheet: View {
             }
             .frame(maxWidth: .infinity, minHeight: 56)
             .foregroundStyle(selected ? theme.accent : theme.textPrimary)
-            .background(RoundedRectangle(cornerRadius: 10).fill(selected ? theme.accentSubtle : Color.secondary.opacity(0.08)))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? theme.accent : .clear))
+            .background(RoundedRectangle(cornerRadius: IonRadius.container).fill(selected ? theme.accentSubtle : Color.secondary.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: IonRadius.container).strokeBorder(selected ? theme.accent : .clear))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

@@ -25,7 +25,7 @@ struct PairPhoneSheet: View {
                     Section {
                         if let code = offer.code {
                             Text(code)
-                                .font(.system(.title, design: .monospaced).weight(.semibold))
+                                .font(.system(.title, design: .monospaced).weight(.semibold)) // design-type: display-size code read off this screen and typed on another device; text-style based, so it still scales
                                 .tracking(3)
                                 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity)

@@ -15,7 +15,7 @@ struct EntraDeviceCodeView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Text(signIn.userCode)
-                .font(.system(.largeTitle, design: .monospaced).weight(.semibold))
+                .font(.system(.largeTitle, design: .monospaced).weight(.semibold)) // design-type: display-size code read off this screen and typed on another device; text-style based, so it still scales
                 .textSelection(.enabled)
                 .accessibilityLabel("Sign-in code \(signIn.userCode.map(String.init).joined(separator: " "))")
             HStack(spacing: IonSpace.compactGap) {

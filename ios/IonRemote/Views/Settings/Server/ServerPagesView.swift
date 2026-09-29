@@ -72,12 +72,13 @@ struct ServerPagesList: View {
 
 /// The server's name, whether this phone reaches it now, and what it may change there.
 struct ServerConnectionHeader: View {
+    @Environment(\.appTheme) private var theme
     let session: ServerAdminSession
 
     var body: some View {
         HStack(spacing: 12) {
             Circle()
-                .fill(session.state == .disconnected ? Color.orange : Color.green)
+                .fill(session.state == .disconnected ? theme.statusWarning : theme.statusDone)
                 .frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.serverLabel).font(.headline)
