@@ -28,6 +28,8 @@ jobs:
       relay: ${{ steps.filter.outputs.relay }}
       desktop: ${{ steps.filter.outputs.desktop }}
       desktop_deps: ${{ steps.filter.outputs.desktop_deps }}
+      shared: ${{ steps.filter.outputs.shared }}
+      server: ${{ steps.filter.outputs.server }}
       ios: ${{ steps.filter.outputs.ios }}
       logging: ${{ steps.filter.outputs.logging }}
       dashboards: ${{ steps.filter.outputs.dashboards }}
@@ -80,6 +82,8 @@ jobs:
         run: bash scripts/check-go-toolchains.test.sh
       - name: Test Linux parity gate receipt semantics
         run: bash scripts/gate-cache.test.sh
+      - name: Studio server installer test
+        run: bash scripts/install-studio-server.test.sh
 
   file-size:
     runs-on: ubuntu-latest
@@ -171,18 +175,40 @@ jobs:
         # state-ownership rule documented in CLAUDE.md.
         run: bash scripts/check-status-writers.sh
 
-  studio-parity:
+  server-parity:
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Overlay-Studio broadcast parity
-        # The overlay and Studio shell are two clients of one event stream:
-        # pushes to the overlay renderer must route through broadcast()
-        # (which fans out to the Studio mirror) unless the sending file is on
-        # the owner-only allowlist in the script, each entry with a reason.
-        run: bash scripts/check-studio-parity.sh
+      - name: Server parity (spec 17)
+        # Server owns the store, Studio renders: a direct webContents.send
+        # from Electron main is suspect unless the sending file is on the
+        # main-process-only allowlist in the script, each entry with a
+        # reason. Also gates the executeJavaScript elimination, the deleted
+        # single-UI exclusivity keys, and imports of deleted paths.
+        run: bash scripts/check-server-parity.sh
+
+  studio-wire:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.server == 'true' || needs.changes.outputs.desktop == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The script diffs against the PR base branch to detect a changed
+          # fixture; the default shallow (fetch-depth 1) checkout has no
+          # history to diff against.
+          fetch-depth: 0
+      - name: Studio wire protocol version gate
+        # A changed or newly-added golden fixture under
+        # packages/shared/src/studio-wire/__fixtures__ must ship with a
+        # matching '## v<N>' note in docs/protocol/studio-wire.md in the
+        # same PR -- the wire shape moved, and that is either a new
+        # protocol version or a documented note under the current one.
+        run: bash scripts/check-studio-wire.sh
+        env:
+          STUDIO_WIRE_BASE_REF: origin/${{ github.base_ref || 'main' }}
 
   check-logging:
     needs: changes
@@ -197,6 +223,8 @@ jobs:
         # non-canonical field keys. A failure here means a new call site
         # violates the standard — fix the call site, not the script.
         run: bash scripts/check-logging.sh
+      - name: RESERVED-KEY scanner test
+        run: bash scripts/check-logging-reserved-keys.test.sh
 
   check-swiftlint:
     needs: changes
@@ -431,6 +459,11 @@ jobs:
       - name: Unit and parity tests with race detector
         working-directory: sdk/go
         run: go test -race ./...
+      # The Studio SDK's Go flavor is its own module (Studio vocabulary stays out
+      # of the engine SDK). Its contract test reads packages/studio-sdk/contract.json.
+      - name: Studio SDK (Go) tests with race detector
+        working-directory: packages/studio-sdk/go
+        run: go test -race ./...
 
   relay-test:
     needs: changes
@@ -448,7 +481,7 @@ jobs:
 
   desktop-test:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
+    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -476,7 +509,7 @@ jobs:
   # gated on desktop changes so it does not run on every PR.
   desktop-test-windows:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
+    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -509,7 +542,7 @@ jobs:
 
   desktop-lint:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
+    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -530,6 +563,33 @@ jobs:
         working-directory: desktop
         run: npm run lint
 
+  # Bundle the Studio renderer for Electron and for the browser. Both bundle
+  # the server's session store and packages/shared, and a Node-only import
+  # that reaches them fails only at bundle time: typecheck, lint, and every
+  # unit test pass. So a server or shared change runs this too, not only a
+  # desktop one.
+  desktop-build:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm ci --ignore-scripts
+      - name: Build (Electron)
+        working-directory: desktop
+        run: npm run build
+      - name: Build (browser)
+        working-directory: desktop
+        run: npm run build:web
+
   desktop-audit:
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.desktop_deps == 'true'
@@ -543,6 +603,88 @@ jobs:
       - name: npm audit (high+ only, prod deps)
         working-directory: desktop
         run: npm audit --audit-level=high --omit=dev
+
+  # @ion/shared has no standalone lockfile (unlike desktop, which keeps one
+  # for its own npm ci isolation) — its only consumers are desktop and
+  # server, both workspace members, so its own gate installs once at the
+  # workspace root and runs its typecheck and test scripts by workspace name.
+  shared-test:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Type-check
+        run: npm -w @ion/shared run typecheck
+      - name: Run tests
+        run: npm -w @ion/shared test -- --run
+
+  server-typecheck:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true' || needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Type-check
+        run: npm -w server run typecheck
+
+  server-lint:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: ESLint
+        run: npm -w server run lint
+
+  server-test:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true' || needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Run tests
+        run: npm -w server test -- --run
+
+  doc-links:
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check relative markdown links resolve
+        run: bash scripts/check-doc-links.sh
 
   docker-build:
     needs: changes
@@ -559,6 +701,62 @@ jobs:
           push: false
           platforms: linux/amd64
           tags: ion-engine:ci
+
+  # Real compose stack (manifest child 11): engine + server sharing one /data
+  # volume, proven against an actual `docker compose up`, not a mock. Gated
+  # on server OR engine changes -- a server.Dockerfile-only PR and an
+  # engine.Dockerfile-only PR both need this to catch a compose-level
+  # regression (the child 11 postmortem: engine/Dockerfile's unversioned
+  # `go build` made every engine image report an unparseable "dev" version,
+  # which made the compose stack's /readyz permanently refuse -- a failure
+  # only a real `docker compose up` + `/readyz` poll catches, not a unit test
+  # on either side alone).
+  server-compose-smoke:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true' || needs.changes.outputs.engine == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies (smoke.mjs needs jose + ws)
+        run: npm ci --ignore-scripts
+      - name: docker compose up
+        working-directory: server
+        run: docker compose up -d --build
+      - name: Wait for /readyz (up to 60s)
+        run: |
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' localhost:7331/readyz || true)
+            if [ "$code" = "200" ]; then echo "ready after ${i}s"; exit 0; fi
+            sleep 1
+          done
+          echo "::error::server never reached /readyz 200 within 60s"
+          docker compose -f server/docker-compose.yml logs
+          exit 1
+      # Nonfunctional requirement: image size logged, gate fails above 400MB.
+      # The server image (not the engine's, which is a separate FROM-scratch
+      # binary an order of magnitude smaller) is the one this child's
+      # multi-stage build + `npm prune --omit=dev` step controls.
+      - name: Check server image size (<400MB)
+        run: |
+          SIZE_BYTES=$(docker image inspect server-server:latest --format '{{.Size}}')
+          SIZE_MB=$((SIZE_BYTES / 1024 / 1024))
+          echo "server image size: ${SIZE_MB}MB"
+          if [ "$SIZE_MB" -gt 400 ]; then
+            echo "::error::server image is ${SIZE_MB}MB, over the 400MB gate"
+            exit 1
+          fi
+      - name: Run smoke checks
+        run: node server/scripts/smoke.mjs
+      - name: docker compose down
+        if: always()
+        working-directory: server
+        run: docker compose down -v
 
   ios-build:
     needs: changes

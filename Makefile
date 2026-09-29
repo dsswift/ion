@@ -1,4 +1,4 @@
-.PHONY: sync-windows-vm default demo desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test test test-all test-linux test-linux-engine test-linux-engine-run test-linux-engine-summary test-linux-desktop test-linux-desktop-run clean check-file-sizes check-contracts check-status-writers check-studio-parity check-logging check-admx check-windows-scripts check-swiftlint check-dashboards check-vocabulary check-issue-closure generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop log-level-debug
+.PHONY: sync-windows-vm default demo desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test shared-test server-test test test-all test-linux test-linux-engine test-linux-engine-run test-linux-engine-summary test-linux-desktop test-linux-desktop-run test-linux-server test-linux-server-run clean check-file-sizes check-contracts check-status-writers check-server-parity check-studio-wire check-logging check-admx check-windows-scripts check-swiftlint check-dashboards check-vocabulary check-issue-closure check-doc-links generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop log-level-debug
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -39,7 +39,13 @@ desktop:
 # the electron-builder --dir build (produces release/mac*/Ion.app) into
 # pkgbuild via scripts/build-pkg.sh. Does NOT install or relaunch — unlike
 # `make desktop`, this only produces the artifact under desktop/release/.
+#
+# The engine is staged first, by the same script `make desktop` uses. Without
+# it the app is built around whatever binary an earlier build left in
+# desktop/resources/engine/, which is how an installer once shipped an engine
+# older than the branch it was built from.
 desktop-pkg:
+	@bash scripts/stage-engine-resources.sh
 	@cd desktop && npm run dist && npm run pkg
 
 # Push this checkout's tracked source to a Windows test VM.
@@ -105,6 +111,14 @@ desktop-test:
 lint-desktop:
 	@cd desktop && npm run lint
 
+# @ion/shared and @ion/server have no standalone lockfile: both install from
+# the workspace root (npm ci at the repo root), then run by workspace name.
+shared-test:
+	@npm -w @ion/shared run typecheck && npm -w @ion/shared test -- --run
+
+server-test:
+	@npm -w server run typecheck && npm -w server run lint && npm -w server test -- --run
+
 test:
 	@cd engine && go test ./...
 	@cd desktop && npm test 2>/dev/null || true
@@ -112,7 +126,7 @@ test:
 # Run every test surface end-to-end before merging. Stops at the first
 # failure so you don't waste minutes on a downstream failure that's really
 # caused by an earlier component.
-test-all: check-file-sizes check-contracts check-status-writers check-studio-parity check-logging check-swiftlint check-dashboards check-vocabulary engine-test sdk-test desktop-test ios-test
+test-all: check-file-sizes check-contracts check-status-writers check-server-parity check-studio-wire check-logging check-swiftlint check-dashboards check-vocabulary engine-test sdk-test desktop-test ios-test
 	@echo "✅ test-all: all surfaces green"
 
 # ---------------------------------------------------------------------------
@@ -213,6 +227,7 @@ DESKTOP_PLATFORM := linux/$(DESKTOP_ARCH)
 # with an emulated one left behind by an earlier run.
 ENGINE_IMAGE := ion-test-linux-engine:$(GO_VERSION)
 DESKTOP_IMAGE := ion-test-linux-desktop:22-$(DESKTOP_ARCH)
+SERVER_IMAGE := ion-test-linux-server:22-$(DESKTOP_ARCH)
 
 # Linked-worktree support: a git worktree's .git is a *file* pointing at an
 # absolute host path under the base repo's .git/worktrees/<name>, which lives
@@ -235,8 +250,8 @@ else
 GIT_WORKTREE_MOUNT := -v "$(GIT_COMMON_DIR)":"$(GIT_COMMON_DIR)"
 endif
 
-test-linux: test-linux-engine test-linux-desktop
-	@echo "✅ test-linux: engine unit+integration race, desktop lint+typecheck+test green on Linux (CI parity)"
+test-linux: test-linux-engine test-linux-desktop test-linux-server
+	@echo "✅ test-linux: engine unit+integration race, desktop lint+typecheck+test, server lint+typecheck+test green on Linux (CI parity)"
 
 test-linux-engine:
 	@bash scripts/gate-cache.sh check engine $(ENGINE_PLATFORM) || $(MAKE) --no-print-directory test-linux-engine-run
@@ -298,7 +313,7 @@ test-linux-desktop-run:
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
 	@echo "▶ desktop: building prebaked Linux parity image ($(DESKTOP_IMAGE))"
 	@docker build --platform $(DESKTOP_PLATFORM) -t $(DESKTOP_IMAGE) -f scripts/docker/test-linux-desktop.Dockerfile scripts/docker
-	@echo "▶ desktop: npm ci --ignore-scripts && npm run lint && npm run typecheck && npm test on linux ($(DESKTOP_IMAGE))"
+	@echo "▶ desktop: npm ci --ignore-scripts && npm run lint && npm run typecheck && npm test && npm run build && npm run build:web on linux ($(DESKTOP_IMAGE))"
 	@docker run --rm --platform $(DESKTOP_PLATFORM) -v "$(PWD)":/src -v /src/desktop/node_modules $(GIT_WORKTREE_MOUNT) \
 		-v ion-npm-cache:/home/ionci/.npm \
 		-w /src/desktop $(DESKTOP_IMAGE) \
@@ -306,8 +321,30 @@ test-linux-desktop-run:
 		         chown ionci:ionci /src/desktop/node_modules && \
 		         git config --global --add safe.directory /src && \
 		         git config --global --add safe.directory \"$(GIT_COMMON_DIR)\" && \
-		         su ionci -c 'cd /src/desktop && npm ci --ignore-scripts && npm run lint && npm run typecheck && npm test'"
+		         su ionci -c 'cd /src/desktop && npm ci --ignore-scripts && npm run lint && npm run typecheck && npm test && npm run build && npm run build:web'"
 	@bash scripts/gate-cache.sh save desktop $(DESKTOP_PLATFORM)
+
+# @ion/server and @ion/shared have no standalone lockfile — both install from
+# the workspace root, unlike test-linux-desktop-run's per-package npm ci.
+test-linux-server:
+	@bash scripts/gate-cache.sh check server $(DESKTOP_PLATFORM) || $(MAKE) --no-print-directory test-linux-server-run
+
+test-linux-server-run:
+	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
+	@echo "▶ server: building prebaked Linux parity image ($(SERVER_IMAGE))"
+	@docker build --platform $(DESKTOP_PLATFORM) -t $(SERVER_IMAGE) -f scripts/docker/test-linux-server.Dockerfile scripts/docker
+	@echo "▶ server: npm ci --ignore-scripts (root) && server/shared lint+typecheck+test on linux ($(SERVER_IMAGE))"
+	@docker run --rm --platform $(DESKTOP_PLATFORM) -v "$(PWD)":/src -v /src/node_modules $(GIT_WORKTREE_MOUNT) \
+		-v ion-npm-cache:/home/ionci/.npm \
+		-w /src $(SERVER_IMAGE) \
+		bash -c "chmod -R a+rX /src 2>/dev/null || true && \
+		         chown ionci:ionci /src/node_modules && \
+		         git config --global --add safe.directory /src && \
+		         git config --global --add safe.directory \"$(GIT_COMMON_DIR)\" && \
+		         su ionci -c 'cd /src && npm ci --ignore-scripts && \
+		                      npm -w @ion/shared run typecheck && npm -w @ion/shared test -- --run && \
+		                      npm -w server run typecheck && npm -w server run lint && npm -w server test -- --run'"
+	@bash scripts/gate-cache.sh save server $(DESKTOP_PLATFORM)
 
 clean:
 	@cd engine && rm -rf bin/ dist/
@@ -368,6 +405,13 @@ check-vocabulary:
 generate-vocabulary:
 	@node scripts/vocabulary.mjs generate
 
+# Fails on a relative markdown link (in any tracked *.md file) whose target
+# does not exist on disk. Added alongside the ADR-025/026 renumber (Ion
+# Studio Server program, child 04) that this gate exists to protect against
+# recurring.
+check-doc-links:
+	@bash scripts/check-doc-links.sh
+
 # Verifies every issue a PR's title/commits reference as "(#N)" actually
 # closes on merge (a real "Fixes #N"/"Closes #N" keyword, not just the link
 # suffix). Pass PR=<number>, or omit to resolve the current branch's PR.
@@ -380,11 +424,19 @@ check-issue-closure:
 check-status-writers:
 	@bash scripts/check-status-writers.sh
 
-# Overlay↔Studio broadcast parity: event pushes to the overlay renderer must
-# route through broadcast() (which fans out to the Studio mirror) unless the
-# file is on the owner-only allowlist in scripts/check-studio-parity.sh.
-check-studio-parity:
-	@bash scripts/check-studio-parity.sh
+# Spec 17: "server owns the store, Studio renders" — a direct webContents.send
+# from Electron main is suspect (conversation/session state should ride the
+# server's studio-wire instead) unless the file is on the main-process-only
+# allowlist in scripts/check-server-parity.sh. Also gates the executeJavaScript
+# elimination, the single-UI exclusivity key deletion, and deleted-path imports.
+check-server-parity:
+	@bash scripts/check-server-parity.sh
+
+# Studio wire protocol version gate: a changed/added golden fixture under
+# packages/shared/src/studio-wire/__fixtures__ must ship with a matching
+# '## v<N>' note in docs/protocol/studio-wire.md in the same change.
+check-studio-wire:
+	@bash scripts/check-studio-wire.sh
 
 # Cross-language contract drift detection.
 # Asserts the Go-generated contracts.json is up to date; TS and Swift tests
@@ -415,6 +467,8 @@ check-admx:
 # field keys. See scripts/check-logging.sh for the full check catalog.
 check-logging:
 	@bash scripts/check-logging.sh
+	@bash scripts/check-logging-reserved-keys.test.sh
+	@bash scripts/check-logging-non-canon.test.sh
 
 # Silent-failure gate for the iOS app (mirrors check-logging's "no silent
 # failures" goal). Custom SwiftLint rules flag empty `catch {}` blocks
@@ -626,3 +680,42 @@ test-pipeline-relay:
 	act workflow_dispatch -W .github/workflows/build.yml \
 		-j build-relay \
 		--input release_report="$$(cat .act/release-report.json)"
+
+# Package the Ion Studio Server bundle (engine + node runtime + server) for
+# one platform -- the release asset install-studio-server.sh downloads.
+#   make package-studio-server                      # this machine's platform
+#   make package-studio-server GOOS=darwin GOARCH=amd64
+.PHONY: package-studio-server
+package-studio-server:
+	@scripts/package-studio-server.sh $(or $(GOOS),$(shell uname -s | tr '[:upper:]' '[:lower:]')) $(or $(GOARCH),$(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')) build/deploy
+
+# Install a DEV BUILD of the Studio server from this checkout on a remote
+# host over SSH: packages the bundle, ships it, runs the same installer a
+# consumer runs. Repeatable: rerun after every fix. `ion fleet deploy --to`
+# does the work (ion fleet deploy --help lists ARGS).
+#   make deploy-studio-server HOST=grover.local
+#   make deploy-studio-server HOST=grover.local ARGS="--no-build --pair laptop"
+.PHONY: deploy-studio-server
+deploy-studio-server:
+	@[ -n "$(HOST)" ] || { echo "usage: make deploy-studio-server HOST=<[user@]host> [ARGS=...]"; exit 2; }
+	@cd engine && go run ./cmd/ion fleet deploy --to $(HOST) --kind server --source $(CURDIR) $(ARGS)
+
+# Install the Ion desktop on a remote Mac or Windows host over SSH: builds
+# the installer, copies it, installs it, verifies what landed. The last
+# stdout line is a JSON receipt, so a playbook can run it per host. A desktop
+# install carries its own Studio Server, so the host is a pairable
+# Environment once Ion runs there. `ion fleet deploy --to` does the work.
+#   make deploy-studio-desktop HOST=user@mac.local
+#   make deploy-studio-desktop HOST=user@mac.local ARGS="--no-build --pair"
+.PHONY: deploy-studio-desktop
+deploy-studio-desktop:
+	@[ -n "$(HOST)" ] || { echo "usage: make deploy-studio-desktop HOST=<[user@]host> [ARGS=...]"; exit 2; }
+	@cd engine && go run ./cmd/ion fleet deploy --to $(HOST) --kind desktop --source $(CURDIR) $(ARGS)
+
+# Installer regression test (no network, stub ion). The packaging test
+# (scripts/package-studio-server.test.sh) builds a real bundle and is run by
+# the release job, or by hand after touching the packager. The deploys
+# themselves are tested in engine/internal/fleet.
+.PHONY: test-studio-installer
+test-studio-installer:
+	@bash scripts/install-studio-server.test.sh
