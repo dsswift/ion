@@ -23,12 +23,24 @@ function Build-IonEngine {
   $engineOut = Join-Path $engineDir 'ion.exe'
   New-Item -ItemType Directory -Path $engineDir -Force | Out-Null
 
+  # The sync stamp answers first, for the same reason it does in
+  # Resolve-IonDesktopVersion: a synced tree carries stale .git metadata that
+  # describes a commit nobody synced, and an engine stamped from it reports a
+  # version in every log line and telemetry frame that its source never had.
   $version = 'dev'
-  try {
-    $described = & git -C $Root describe --tags --always --dirty 2>$null
-    if ($LASTEXITCODE -eq 0 -and $described) { $version = "dev-$($described.Trim())" }
-  } catch {
-    Write-IonWarn "git describe failed, stamping version=dev: $($_.Exception.Message)"
+  $stampPath = Join-Path $Root '.ion-sync-stamp.json'
+  if (Test-Path -LiteralPath $stampPath) {
+    $stamp = Get-Content -LiteralPath $stampPath -Raw | ConvertFrom-Json
+    if (-not $stamp.commit) { throw "$stampPath carries no commit; re-run ``make sync-windows-vm``" }
+    $version = "dev-$($stamp.commit.Substring(0, 12))$(if ($stamp.dirty) { '.dirty' } else { '' })"
+    Write-IonInfo "engine version from the sync stamp: $version"
+  } else {
+    try {
+      $described = & git -C $Root describe --tags --always --dirty 2>$null
+      if ($LASTEXITCODE -eq 0 -and $described) { $version = "dev-$($described.Trim())" }
+    } catch {
+      Write-IonWarn "git describe failed, stamping version=dev: $($_.Exception.Message)"
+    }
   }
 
   # CGO off: the only cgo in the engine is the darwin Local Network probe.
@@ -72,17 +84,25 @@ function Build-IonEngine {
 }
 
 <#
-  Install desktop dependencies when they are absent or the lockfile has moved.
-  npm ci is the only install used: npm install would rewrite the lockfile, and
-  a Windows machine quietly rewriting a lockfile the Mac owns is how a branch
-  grows a diff nobody meant to make.
+  Install the workspace's dependencies when they are absent or the lockfile
+  has moved.
+
+  The repository is an npm workspace: desktop/ depends on @ion/server and
+  @ion/shared, which only exist as sibling workspace packages, so the install
+  has to run at the repository root where package-lock.json describes all of
+  them together. An install run inside desktop/ alone leaves the two
+  unresolved and the server bundle unbuildable.
+
+  npm ci is the only install used: npm install would rewrite the lockfile,
+  and a Windows machine quietly rewriting a lockfile the Mac owns is how a
+  branch grows a diff nobody meant to make. HUSKY=0 keeps the root prepare
+  script from looking for a .git directory the synced tree does not have.
 #>
 function Install-IonDesktopDependencies {
   param([Parameter(Mandatory)][string] $Root)
 
-  $desktop = Join-Path $Root 'desktop'
-  $modules = Join-Path $desktop 'node_modules'
-  $lock    = Join-Path $desktop 'package-lock.json'
+  $modules = Join-Path $Root 'node_modules'
+  $lock    = Join-Path $Root 'package-lock.json'
   $stamp   = Join-Path $modules '.ion-lock-hash'
 
   $lockHash = (Get-FileHash $lock -Algorithm SHA256).Hash
@@ -91,15 +111,19 @@ function Install-IonDesktopDependencies {
     return
   }
 
-  Write-IonStep 'npm ci (desktop)'
+  Write-IonStep 'npm ci (workspace root)'
+  $previousHusky = $env:HUSKY
+  $env:HUSKY = '0'
   try {
-    Invoke-IonNative 'npm' @('ci', '--no-audit', '--no-fund') -WorkingDirectory $desktop | Out-Null
+    Invoke-IonNative 'npm' @('ci', '--no-audit', '--no-fund') -WorkingDirectory $Root | Out-Null
   } catch {
     Write-IonError 'npm ci failed.'
     Write-IonInfo 'If the error names node-gyp, Python or Visual Studio: electron-builder rebuilds native'
     Write-IonInfo 'modules against Electron ABI, which needs a C++ toolchain even though every dependency'
     Write-IonInfo 'ships a prebuilt binary. Run .\bootstrap.ps1 to install Python and VS Build Tools.'
     throw
+  } finally {
+    $env:HUSKY = $previousHusky
   }
   Set-Content -Path $stamp -Value $lockHash -Encoding ascii
 }
@@ -144,6 +168,14 @@ function Build-IonInstaller {
   # sets GOOS/GOARCH: make.ps1 builds once and exits, and a later step reading
   # the version this build used is right rather than surprising.
   $env:ION_DESKTOP_VERSION = $version
+
+  # The Studio server ships inside the app at dist\server, unpacked so its
+  # native dependency resolves beside it, and the desktop spawns it as a child
+  # on every launch. Nothing else in the desktop build produces that bundle,
+  # so it is staged before electron-builder collects the tree -- the same
+  # step the release workflow runs.
+  Write-IonStep 'staging the Studio server bundle'
+  Invoke-IonNative 'node' @('scripts/stage-server-bundle.js') -WorkingDirectory $desktop | Out-Null
 
   Write-IonStep 'electron-vite build'
   Invoke-IonNative 'npx' @('electron-vite', 'build', '--mode', 'production') -WorkingDirectory $desktop | Out-Null
@@ -192,6 +224,13 @@ function Build-IonInstaller {
   }
 
   Assert-IonInstallerVersion -InstallerPath $exe.FullName -Arch $Arch -Version $version -ReleaseDir $release
+
+  # The packaged app must load its own module graph. A bundle require the asar
+  # does not carry, or a shipped package reaching for one, is a "Cannot find
+  # module" dialog on first launch with every build step green. Probed under
+  # Electron itself so native addons load too.
+  Write-IonStep 'verifying the packaged app loads its module graph'
+  Invoke-IonNative 'node' @('scripts/check-packaged-requires.js') -WorkingDirectory $desktop | Out-Null
 
   # Provenance, written next to the artifact.
   #
@@ -252,7 +291,7 @@ function Stop-IonRunning {
   # task name is machine-global and two users on one host would otherwise share
   # one registration. The legacy shared name is still matched so a machine
   # mid-upgrade is stopped too. See
-  # desktop/src/main/engine-supervisor-schtasks.ts.
+  # server/src/engine/engine-supervisor-schtasks.ts.
   $sid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
   $task = Get-ScheduledTask -ErrorAction SilentlyContinue |
     Where-Object { $_.TaskName -eq "Ion Engine ($sid)" -or $_.TaskName -eq 'Ion Engine' } |
@@ -320,7 +359,8 @@ function Invoke-IonClean {
   foreach ($path in @(
     (Join-Path $Root 'desktop\dist'),
     (Join-Path $Root 'desktop\release'),
-    (Join-Path $Root 'desktop\resources\engine')
+    (Join-Path $Root 'desktop\resources\engine'),
+    (Join-Path $Root 'server\dist')
   )) {
     if (Test-Path $path) {
       Remove-Item $path -Recurse -Force

@@ -26,16 +26,21 @@ set -euo pipefail
 VM_HOST="${ION_WIN_VM_HOST:-josh@10.211.55.3}"
 VM_PATH="${ION_WIN_VM_PATH:-C:/dev/ion}"
 
-# Roots that affect a Windows build. desktop/ carries the Electron app, the
-# installer config, and the NSIS/Intune packaging under desktop/packaging-windows/;
-# engine/ is the Go binary; scripts/ holds the PowerShell build harness.
+# Roots that affect a Windows build. desktop/ carries the Electron app and the
+# installer config; server/ is the Studio server the desktop spawns and ships
+# inside the app; packages/ holds the workspace packages both of them import;
+# engine/ is the Go binary; sdk/ is the Go extension SDK the engine build
+# stages beside it; scripts/ holds the PowerShell build harness, and the
+# NSIS/Intune packaging rides inside desktop/packaging-windows/.
 #
 # The root files are named individually because the VM builds by running
 # make.ps1, and make.ps1 was never synced -- it arrived on the VM by hand once
 # and then drifted, which is the exact per-file failure mode this script exists
 # to remove. release-please-manifest.json is here because the desktop version
-# resolver reads it.
-ROOTS=(engine desktop scripts Makefile make.ps1 bootstrap.ps1 release-please-manifest.json)
+# resolver reads it. package.json and package-lock.json are the npm workspace
+# root: without them the VM installs the desktop as a standalone package and
+# never sees @ion/server or @ion/shared. .npmrc carries the install policy.
+ROOTS=(engine server packages sdk desktop scripts Makefile make.ps1 bootstrap.ps1 release-please-manifest.json package.json package-lock.json .npmrc)
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
@@ -147,6 +152,11 @@ STAMP
 # Two tar invocations, one archive: bsdtar parses every -C before it reads
 # the -T list, so a single command cannot mix repo-relative entries with a
 # file from elsewhere. Create, append the stamp, then compress.
+# COPYFILE_DISABLE stops macOS bsdtar from adding an AppleDouble "._name"
+# sidecar for every file that carries extended attributes. On the VM those
+# land as real files next to the source and show up in every directory
+# listing as junk nobody can explain.
+export COPYFILE_DISABLE=1
 tar cf "$archive" -T "$list"
 tar rf "$archive" -C "$stamp_dir" .ion-sync-stamp.json
 gzip -n -f "$archive"
@@ -171,5 +181,11 @@ if [ "$dirty" = true ]; then
   echo "sync-windows-vm: NOTE ${dirty_count} tracked file(s) are modified but uncommitted;"
   echo "  the VM has your working-tree contents, not ${head_sha} exactly."
   echo "  The sync stamp names them, so the VM build's provenance does too:"
-  while IFS= read -r f; do [ -n "$f" ] && echo "    $f"; done <<< "$dirty_files"
+  # An if, not `&&`: the last line read is the trailing newline, and under
+  # set -e a false `[ -n ]` as the loop's final status made a successful sync
+  # exit 1.
+  while IFS= read -r f; do
+    if [ -n "$f" ]; then echo "    $f"; fi
+  done <<< "$dirty_files"
 fi
+exit 0
