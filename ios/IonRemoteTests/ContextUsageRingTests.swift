@@ -76,7 +76,7 @@ final class ContextUsageRingTests: XCTestCase {
             permissionMode: .auto,
             availableModels: [],
             attachmentCount: 0,
-            onSelectModel: { _ in },
+            onSelectModel: { _, _ in },
             onToggleMode: {},
             onTapAttachments: {},
         )
@@ -102,7 +102,7 @@ final class ContextUsageRingTests: XCTestCase {
                                  label: "Sonnet 4.6", contextWindow: 200_000, hasAuth: true),
             ],
             attachmentCount: 0,
-            onSelectModel: { _ in },
+            onSelectModel: { _, _ in },
             onToggleMode: {},
             onTapAttachments: {},
         )

@@ -155,7 +155,7 @@ final class ThinkingControlStateTests: XCTestCase {
                 ),
             ],
             attachmentCount: 0,
-            onSelectModel: { _ in },
+            onSelectModel: { _, _ in },
             onToggleMode: {},
             onTapAttachments: {}
         )
@@ -188,7 +188,7 @@ final class ThinkingControlStateTests: XCTestCase {
                 ),
             ],
             attachmentCount: 0,
-            onSelectModel: { _ in },
+            onSelectModel: { _, _ in },
             onToggleMode: {},
             onTapAttachments: {}
         )
