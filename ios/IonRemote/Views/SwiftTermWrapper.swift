@@ -26,6 +26,7 @@ struct SwiftTermWrapper: UIViewRepresentable {
         context.coordinator.terminalView = terminal
 
         let key = "\(tabId):\(instanceId)"
+        let coordinator = context.coordinator
         TerminalOutputRouter.shared.register(
             key: key,
             dataHandler: { [weak terminal] data in
@@ -33,8 +34,27 @@ struct SwiftTermWrapper: UIViewRepresentable {
                     terminal?.feed(text: data)
                 }
             },
+            historyHandler: { [weak terminal, weak coordinator] data in
+                DispatchQueue.main.async {
+                    guard let terminal, let coordinator else { return }
+                    coordinator.replyGate.replayHistory(key: key) {
+                        terminal.feed(text: data)
+                    }
+                }
+            },
             exitHandler: { _ in
                 // Terminal exited -- could show an overlay or indicator
+            },
+            restartHandler: { [weak terminal, weak coordinator] in
+                DispatchQueue.main.async {
+                    guard let terminal, let coordinator else { return }
+                    // RIS: a full reset, so the replaced run's screen and
+                    // scrollback go with it.
+                    terminal.feed(text: "\u{1b}c")
+                    // The fresh shell starts at the desktop's default size.
+                    let size = terminal.getTerminal()
+                    coordinator.sizeChanged(source: terminal, newCols: size.cols, newRows: size.rows)
+                }
             }
         )
 
@@ -58,6 +78,7 @@ struct SwiftTermWrapper: UIViewRepresentable {
         var tabId: String
         var instanceId: String
         weak var terminalView: TerminalView?
+        let replyGate = TerminalReplyGate()
         private let viewModel: SessionViewModel
 
         init(tabId: String, instanceId: String, viewModel: SessionViewModel) {
@@ -71,6 +92,10 @@ struct SwiftTermWrapper: UIViewRepresentable {
         }
 
         func send(source: TerminalView, data: ArraySlice<UInt8>) {
+            // An answer SwiftTerm generated while parsing snapshot history
+            // belongs to a program that is long gone; forwarding it would type
+            // it into the live shell.
+            guard replyGate.shouldForward(byteCount: data.count) else { return }
             let str = String(bytes: data, encoding: .utf8) ?? ""
             if !str.isEmpty {
                 viewModel.sendTerminalInput(tabId: tabId, instanceId: instanceId, data: str)
