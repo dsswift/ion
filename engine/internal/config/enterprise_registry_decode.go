@@ -29,11 +29,11 @@ const (
 // classified by kind. Name is compared case-insensitively against the
 // EnterpriseConfig field's json tag.
 type registryValue struct {
-	Name  string
-	Kind  RegistryValueKind
-	Str   string
-	Strs  []string
-	Num   uint64
+	Name string
+	Kind RegistryValueKind
+	Str  string
+	Strs []string
+	Num  uint64
 }
 
 // reservedMetadataNames are registry value names the desktop reads directly

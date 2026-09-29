@@ -66,8 +66,8 @@ func TestStdioConnect_FullLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool echo: %v", err)
 	}
-	if result != "hello world" {
-		t.Errorf("echo result = %q, want %q", result, "hello world")
+	if result.Content != "hello world" {
+		t.Errorf("echo result = %q, want %q", result.Content, "hello world")
 	}
 }
 
@@ -109,8 +109,8 @@ func TestStdioConnect_EnvInheritance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool get_env CUSTOM_TEST_VAR: %v", err)
 	}
-	if result != "custom_value_42" {
-		t.Errorf("CUSTOM_TEST_VAR = %q, want %q", result, "custom_value_42")
+	if result.Content != "custom_value_42" {
+		t.Errorf("CUSTOM_TEST_VAR = %q, want %q", result.Content, "custom_value_42")
 	}
 
 	// Verify parent PATH is inherited (not wiped).
@@ -118,7 +118,7 @@ func TestStdioConnect_EnvInheritance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool get_env PATH: %v", err)
 	}
-	if result == "" {
+	if result.Content == "" {
 		t.Error("PATH should not be empty — parent env must be inherited")
 	}
 }

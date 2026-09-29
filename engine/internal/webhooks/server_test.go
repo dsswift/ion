@@ -185,10 +185,10 @@ func (noopCloser) Close() error { return nil }
 
 func TestDecodeHandlerResponse(t *testing.T) {
 	cases := []struct {
-		name  string
-		in    string
-		ws    int
-		wb    string
+		name string
+		in   string
+		ws   int
+		wb   string
 	}{
 		{"null is 200 empty", "null", 200, ""},
 		{"empty is 200 empty", "", 200, ""},

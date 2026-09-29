@@ -13,10 +13,10 @@ func fakeWindowsEnv(vals map[string]string) func(string) string {
 
 func TestInstallCandidatesWindows(t *testing.T) {
 	env := fakeWindowsEnv(map[string]string{
-		"APPDATA":       `C:\Users\x\AppData\Roaming`,
-		"USERPROFILE":   `C:\Users\x`,
-		"LOCALAPPDATA":  `C:\Users\x\AppData\Local`,
-		"ProgramFiles":  `C:\Program Files`,
+		"APPDATA":      `C:\Users\x\AppData\Roaming`,
+		"USERPROFILE":  `C:\Users\x`,
+		"LOCALAPPDATA": `C:\Users\x\AppData\Local`,
+		"ProgramFiles": `C:\Program Files`,
 	})
 	got := installCandidates("claude", env, "")
 	want := []string{

@@ -15,21 +15,21 @@ func boolPtr(b bool) *bool { return &b }
 // overrides only the fields it explicitly sets, and higher levels win.
 func TestResolvePolicyCascade(t *testing.T) {
 	cases := []struct {
-		name        string
-		perDispatch *types.DispatchContextConfig
-		session     *types.DispatchContextConfig
-		engine      *types.DispatchContextConfig
+		name         string
+		perDispatch  *types.DispatchContextConfig
+		session      *types.DispatchContextConfig
+		engine       *types.DispatchContextConfig
 		engineCompat bool
-		wantGlobal  bool
-		wantProject bool
-		wantCompat  bool
+		wantGlobal   bool
+		wantProject  bool
+		wantCompat   bool
 	}{
 		{
-			name:        "all_nil_builtin_defaults_on",
+			name:         "all_nil_builtin_defaults_on",
 			engineCompat: false,
-			wantGlobal:  true,
-			wantProject: true,
-			wantCompat:  false,
+			wantGlobal:   true,
+			wantProject:  true,
+			wantCompat:   false,
 		},
 		{
 			name:         "engine_compat_seeds_default",

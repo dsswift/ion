@@ -149,4 +149,3 @@ func (c *unixConn) Close() error {
 	c.transport.removeConn(c.conn)
 	return nil
 }
-

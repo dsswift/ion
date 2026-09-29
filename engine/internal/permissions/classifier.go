@@ -14,7 +14,7 @@ import (
 
 // ClassifyResult is the output of an LLM classification.
 type ClassifyResult struct {
-	Decision   string  // "allow", "deny"
+	Decision   string // "allow", "deny"
 	Confidence float64
 	Reason     string
 }
