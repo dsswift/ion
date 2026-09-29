@@ -29,29 +29,29 @@ describe('fsReadDir isHidden parity', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
-  it('marks a dotfile as isHidden', () => {
+  it('marks a dotfile as isHidden', async () => {
     writeFileSync(join(dir, '.env'), 'SECRET=1')
     writeFileSync(join(dir, 'index.ts'), 'export {}')
 
-    const { entries } = fsReadDir({ directory: dir, includeHidden: true })
+    const { entries } = await fsReadDir({ directory: dir, includeHidden: true })
 
     expect(entries.find((e) => e.name === '.env')?.isHidden).toBe(true)
     expect(entries.find((e) => e.name === 'index.ts')?.isHidden).toBe(false)
   })
 
-  it('omits dotfiles entirely when includeHidden is false', () => {
+  it('omits dotfiles entirely when includeHidden is false', async () => {
     writeFileSync(join(dir, '.env'), 'SECRET=1')
     writeFileSync(join(dir, 'index.ts'), 'export {}')
 
-    const { entries } = fsReadDir({ directory: dir, includeHidden: false })
+    const { entries } = await fsReadDir({ directory: dir, includeHidden: false })
 
     expect(entries.map((e) => e.name)).toEqual(['index.ts'])
   })
 
-  it('does not mark an ordinary subdirectory as hidden', () => {
+  it('does not mark an ordinary subdirectory as hidden', async () => {
     mkdirSync(join(dir, 'src'))
 
-    const { entries } = fsReadDir({ directory: dir, includeHidden: true })
+    const { entries } = await fsReadDir({ directory: dir, includeHidden: true })
 
     expect(entries.find((e) => e.name === 'src')?.isHidden).toBe(false)
   })

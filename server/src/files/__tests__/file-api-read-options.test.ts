@@ -25,18 +25,18 @@ beforeEach(() => {
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('fs.readDir includeHidden', () => {
-  it('lists hidden entries, flagged, when the option is absent', () => {
-    const { entries } = fsReadDir({ directory: dir })
+  it('lists hidden entries, flagged, when the option is absent', async () => {
+    const { entries } = await fsReadDir({ directory: dir })
     expect(entries.map((e) => e.name).sort()).toEqual(['.git', '.hidden', 'blob.bin', 'dot.png', 'visible.txt'])
     expect(entries.find((e) => e.name === '.hidden')?.isHidden).toBe(true)
   })
 
-  it('leaves them out when includeHidden is false', () => {
-    expect(fsReadDir({ directory: dir, includeHidden: false }).entries.map((e) => e.name).sort()).toEqual(['blob.bin', 'dot.png', 'visible.txt'])
+  it('leaves them out when includeHidden is false', async () => {
+    expect((await fsReadDir({ directory: dir, includeHidden: false })).entries.map((e) => e.name).sort()).toEqual(['blob.bin', 'dot.png', 'visible.txt'])
   })
 
-  it('treats includeHidden: true as the default', () => {
-    expect(fsReadDir({ directory: dir, includeHidden: true }).entries).toHaveLength(5)
+  it('treats includeHidden: true as the default', async () => {
+    expect((await fsReadDir({ directory: dir, includeHidden: true })).entries).toHaveLength(5)
   })
 })
 

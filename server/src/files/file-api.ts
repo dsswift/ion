@@ -20,17 +20,24 @@
  * the server, `webContents.send` in Electron — while the debounce and
  * refcount logic stays in one place.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync } from 'fs'
+import { readdir, stat } from 'fs/promises'
 import { join } from 'path'
 import type { FsEntry } from '@ion/shared/types'
 import { isValidProjectPath } from '../ipc-validation'
 import { fileWatchers, recentlyWrittenPaths } from '../state'
-import { windowsHiddenNames } from '../remote/handlers/files'
-import { log as _log } from '../logger'
+import { hiddenAttributeProbe } from './hidden-attribute-probe'
+import { log as _log, debug as _debug } from '../logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('file-api', msg, fields)
 }
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('file-api', msg, fields)
+}
+
+/** How many entries of one listing are stat'ed at a time. */
+const STAT_CONCURRENCY = 32
 
 /** Largest file the editor will read. Beyond this the caller gets a typed refusal, not a truncated buffer. */
 const MAX_READ_BYTES = 2 * 1024 * 1024
@@ -47,42 +54,50 @@ function str(value: unknown): string {
  * `includeHidden: false` leaves hidden entries out of the listing, for a
  * client that would only discard them. Absent, every entry is listed with its
  * `isHidden` flag, which is what the Explorer filters on itself.
+ *
+ * Asynchronous throughout. A listing is asked for per open folder and again
+ * whenever one changes, so nothing here may hold the event loop: a directory
+ * of thousands of entries is stat'ed a bounded number at a time, and the
+ * Windows hidden attribute comes from a helper that is already running.
  */
-export function fsReadDir(payload: unknown): ReadDirResult {
+export async function fsReadDir(payload: unknown): Promise<ReadDirResult> {
   const directory = str((payload as { directory?: unknown } | null)?.directory)
   const dropHidden = (payload as { includeHidden?: unknown } | null)?.includeHidden === false
   if (!isValidProjectPath(directory)) return { entries: [], error: 'Invalid path' }
+  const startedAt = Date.now()
   try {
-    const dirents = readdirSync(directory, { withFileTypes: true })
+    const [dirents, attributeHidden] = await Promise.all([
+      readdir(directory, { withFileTypes: true }),
+      hiddenAttributeProbe.hiddenNames(directory),
+    ])
+    const listed = dirents.filter((d) => d.name !== '.DS_Store')
     const entries: FsEntry[] = []
-    const winHidden = windowsHiddenNames(directory)
-    for (const d of dirents) {
-      if (d.name === '.DS_Store') continue
-      const isHidden = d.name.startsWith('.') || winHidden.has(d.name)
-      if (dropHidden && isHidden) continue
-      const fullPath = join(directory, d.name)
-      try {
-        const st = statSync(fullPath)
-        entries.push({
-          name: d.name,
-          path: fullPath,
-          isDirectory: d.isDirectory(),
-          size: st.size,
-          modifiedMs: st.mtimeMs,
-          // A dot prefix on every platform, plus the Windows hidden
-          // attribute — AppData and ProgramData carry no dot but are hidden,
-          // and a renderer cannot see that bit.
-          isHidden,
-        })
-      } catch { /* silent-ok: skip entries that vanish or are unreadable mid-listing */ }
+    let next = 0
+    const worker = async (): Promise<void> => {
+      while (next < listed.length) {
+        const d = listed[next++]
+        // A dot prefix on every platform, plus the Windows hidden
+        // attribute: AppData and ProgramData carry no dot but are hidden.
+        const isHidden = d.name.startsWith('.') || attributeHidden.has(d.name)
+        if (dropHidden && isHidden) continue
+        const fullPath = join(directory, d.name)
+        try {
+          const st = await stat(fullPath)
+          entries.push({ name: d.name, path: fullPath, isDirectory: d.isDirectory(), size: st.size, modifiedMs: st.mtimeMs, isHidden })
+        } catch (err) {
+          debug('entry skipped: it vanished or is unreadable mid-listing', { path: fullPath, error: String(err) })
+        }
+      }
     }
+    await Promise.all(Array.from({ length: Math.min(STAT_CONCURRENCY, listed.length) }, worker))
     entries.sort((a, b) => {
       if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
       return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
     })
-    log('directory listed', { directory, entries: entries.length, hidden_dropped: dropHidden })
+    log('directory listed', { directory, entries: entries.length, hidden_dropped: dropHidden, duration_ms: Date.now() - startedAt })
     return { entries }
   } catch (err) {
+    log('directory listing failed', { directory, error: String(err), duration_ms: Date.now() - startedAt })
     return { entries: [], error: (err as Error).message }
   }
 }

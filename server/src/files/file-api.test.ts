@@ -27,27 +27,27 @@ beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'ion-file-api-')) })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
 describe('fsReadDir', () => {
-  it('lists directories first, then files, case-insensitively by name', () => {
+  it('lists directories first, then files, case-insensitively by name', async () => {
     writeFileSync(join(dir, 'b.txt'), 'b')
     writeFileSync(join(dir, 'A.txt'), 'a')
     mkdirSync(join(dir, 'zdir'))
-    const result = fileApi.fsReadDir({ directory: dir })
+    const result = await fileApi.fsReadDir({ directory: dir })
     expect(result.error).toBeUndefined()
     expect(result.entries.map((e) => e.name)).toEqual(['zdir', 'A.txt', 'b.txt'])
     expect(result.entries[0].isDirectory).toBe(true)
   })
 
-  it('marks dot-prefixed entries hidden and drops .DS_Store entirely', () => {
+  it('marks dot-prefixed entries hidden and drops .DS_Store entirely', async () => {
     writeFileSync(join(dir, '.hidden'), 'x')
     writeFileSync(join(dir, '.DS_Store'), 'x')
-    const names = fileApi.fsReadDir({ directory: dir }).entries.map((e) => e.name)
+    const names = (await fileApi.fsReadDir({ directory: dir })).entries.map((e) => e.name)
     expect(names).toContain('.hidden')
     expect(names).not.toContain('.DS_Store')
-    expect(fileApi.fsReadDir({ directory: dir }).entries.find((e) => e.name === '.hidden')!.isHidden).toBe(true)
+    expect((await fileApi.fsReadDir({ directory: dir })).entries.find((e) => e.name === '.hidden')!.isHidden).toBe(true)
   })
 
-  it('refuses an invalid path instead of throwing', () => {
-    expect(fileApi.fsReadDir({ directory: 'relative/path' })).toEqual({ entries: [], error: 'Invalid path' })
+  it('refuses an invalid path instead of throwing', async () => {
+    expect(await fileApi.fsReadDir({ directory: 'relative/path' })).toEqual({ entries: [], error: 'Invalid path' })
   })
 })
 
