@@ -1,164 +1,146 @@
-# Engine Grounding Prompt
+# Engine Grounding
 
-Paste (or reference) this at the start of any session that may touch `engine/`. It is the non-negotiable framing for engine work.
+Read this before any work that touches `engine/`. Section numbers are cited from code comments; keep them stable.
 
 ---
 
 ## 1. The engine is the product
 
-The engine is a headless Go library that emits a complete, self-describing event stream over a Unix socket (`~/.ion/engine.sock`, NDJSON). Desktop, iOS, relay, and harness extensions are **consumers** of this stream. They are not the engine's audience — they are its dependents.
+The engine is a headless Go library that emits a complete, self-describing event stream over a Unix socket (`~/.ion/engine.sock`, NDJSON). The server, desktop, iOS, relay, and harness extensions are its consumers. External consumers come first ([engine consumers](architecture/engine-consumers.md)).
 
-Internalize the consequences:
-
-- The engine must not assume a UI exists.
-- The engine must not encode renderer policy, retention rules, animation cues, or any other client-side concern.
-- The engine must not be "patched around" by a consumer inventing local behavior to compensate for an engine gap. If the consumer needs different data, the engine emits different data — cleanly, additively, and for everyone.
-- Engine code and engine docs must never use renderer-flavored language ("clear the panel", "show as cancelled", "highlight the row"). Engine emits typed data; consumers interpret.
-
-If a UI requirement seems to demand an engine change, that is a **major red flag**. Stop and justify it as core engine functionality before writing a line of Go.
+- The engine never assumes a UI exists.
+- The engine never encodes renderer policy, retention rules, animation cues, or any other client concern.
+- Engine code and docs never use renderer language ("clear the panel", "show as cancelled"). The engine emits typed data; consumers interpret it.
+- A consumer never patches around an engine gap with invented local behavior. If a consumer needs data the engine does not emit, the engine emits it: additively, generically, for every consumer.
 
 ## 2. Engine executes. Harness decides.
 
 | Layer | Where | Role |
 |-------|-------|------|
 | Engine | `engine/` (Go) | Hooks, events, tools, LLM streaming, agent discovery mechanics. Headless. |
+| Server | `server/` (TS) | Studio wire, auth, per-Environment orchestration. Pairs with one engine. |
 | Harness | `~/.ion/extensions/` (TS via SDK) | Policy: which agents load, delegation routing, workflow patterns. |
-| Client | `desktop/`, `ios/` | Renders UI from engine events. |
+| Client | `desktop/`, `ios/` | Renders UI. |
 
 The engine never:
 
-- Blocks for user input.
+- Blocks the socket for user input.
 - Persists user preferences or cross-session memory.
 - Decides policy (who can do what, what to load, how to orchestrate).
 - Knows that a UI exists.
 
-> **Note:** The engine *does* persist conversation-scoped operational state (`.tree.jsonl`, `.llm.jsonl`, `.memory.md`) as part of session management. This is not "memory" in the LLM sense — it is compaction infrastructure that the engine owns. The prohibition targets user preference persistence and durable cross-session memory features, which belong to the harness or client.
+The engine does persist conversation-scoped operational state (`.tree.jsonl`, `.llm.jsonl`, `.memory.md`). That is session management and compaction infrastructure, not memory.
 
-> **Note on "blocks for user input":** the prohibition is about the **socket**, not about every goroutine. A dispatch arm must never hold the client's read loop waiting on a human. Long-running interactive flows the engine *drives* — a delegated-CLI login, an OIDC grant — are started by a command that returns immediately (`{started: true}`), then progress on a background goroutine that may legitimately await a user-supplied value, always under a bounded deadline and always cancellable by a follow-up command. The engine still never *decides* anything about that input; it transports it. What remains forbidden is a synchronous dispatch that parks the socket, or an engine-side prompt that assumes a UI is there to answer it.
+"Blocks for user input" is about the socket, not every goroutine. A dispatch arm never holds the client's read loop waiting on a human. An interactive flow the engine drives (delegated-CLI login, OIDC grant) starts from a command that returns at once (`{started: true}`), then runs on a background goroutine that may await a user-supplied value. It always has a bounded deadline and is always cancellable by a follow-up command. The engine transports that value; it decides nothing about it.
 
-When labeling work, decide first: is this engine, harness, or client? If a harness or client gap is caused by a missing engine capability, call that out explicitly — but the default answer is almost always "fix it in the consumer."
+## 3. Contracts are additive only
 
-## 3. Contracts are sacred. Breaking changes are a stop-the-line event.
-
-Every consumer depends on published contracts. **Never ship a breaking change to a published contract.** If you think you need to, stop and discuss with the user — never commit it silently.
+Never ship a breaking change to a published contract without explicit operator approval.
 
 ### What counts as a contract
 
 | Surface | Key files |
 |---------|-----------|
 | Wire protocol | `engine/internal/protocol/protocol.go` (`ClientCommand`, `ServerMessage`, NDJSON framing) |
-| NormalizedEvent variants & fields | `engine/internal/types/normalized_event.go` (mirrored in TS and Swift) |
-| SDK types & hook signatures | `engine/internal/extension/sdk_types.go`, `sdk_hook_types.go` |
-| Hook names & payload shapes | `engine/internal/extension/sdk_hooks_*.go` |
-| Engine events consumed by clients | Any event type or field a client reads |
-| **Event semantics** | Snapshot vs. incremental, replace vs. merge, idempotency — see §4 |
+| NormalizedEvent variants and fields | `engine/internal/types/normalized_event.go` (mirrored in TS and Swift) |
+| SDK types and hook signatures | `engine/internal/extension/sdk_types.go`, `sdk_hook_types.go` |
+| Hook names and payload shapes | `engine/internal/extension/sdk_hooks_*.go` |
+| Engine events clients read | Any event type or field a client reads |
+| Event semantics | Snapshot vs. incremental, replace vs. merge, idempotency, when it fires (§ 4) |
 
-### Allowed (non-breaking, additive)
+### Allowed
 
-- Add new fields with zero-value defaults.
-- Add new event variants, new hooks, new optional parameters.
-- Fix bugs in existing behavior (defects, not redefinitions).
-- Version a new alternative (`ToolCallV2`) when a design must evolve — leave the original intact.
+- New fields with zero-value defaults.
+- New event variants, hooks, optional parameters.
+- Bug fixes to existing behavior (defects, not redefinitions).
+- A versioned alternative (`ToolCallV2`) beside an untouched original.
 
-### Forbidden (breaking)
+### Forbidden
 
 - Remove or rename a field, type, constant, hook name, or event variant.
 - Change a field's type.
-- Alter a hook's payload shape non-additively.
-- Remove or reorder positional arguments in an SDK callback signature.
-- Change wire-protocol message framing or envelope structure.
-- Change the **semantics** of an existing event (e.g. turning a snapshot into an incremental update, or vice versa) — even if the wire shape is unchanged.
-- Stop emitting an existing event on one of its established triggers, even when the wire shape is unchanged. Consumers depend on *when* events fire, not just on their schema. Exceptions require an ADR documenting the semantic rationale and the migration impact; the ADR is the single source of truth for what changed and why (e.g. [ADR-003](architecture/adr/003-state-events-vs-workflow-events.md) for the `engine_plan_mode_changed` / `ExitPlanMode` trigger removal).
+- Change a hook payload non-additively.
+- Remove or reorder positional arguments in an SDK callback.
+- Change wire framing or envelope structure.
+- Change an event's semantics (snapshot to incremental or back), even with the same wire shape.
+- Stop emitting an event on one of its established triggers. An exception needs an ADR that records the rationale and migration impact (e.g. [ADR-003](architecture/adr/003-state-events-vs-workflow-events.md)).
 
 ### Typed events are the complete signaling surface
 
-Typed events fulfill the engine's signaling obligation in full. Do not double-surface signal in stream content, log lines, or system messages. See root [`CLAUDE.md`](../CLAUDE.md) § "The typed-event corollary" for the full rule. Short version: when the engine needs to communicate something to consumers, it emits a typed `NormalizedEvent` variant — and nothing else. Mutating `TaskCompleteEvent.Result`, `TextChunkEvent`, or injecting synthetic system messages to make the same information visible "by another path" is forbidden because it forces every consumer through one UI-shaped interpretation and corrupts headless pipelines that parse stream content as the LLM's verbatim output.
+When the engine has a signal, it emits one typed `NormalizedEvent` variant and stops. Never also surface it in `TaskCompleteEvent.Result`, `TextChunkEvent`, a synthetic system message, or a log line. Doing so forces one UI-shaped reading on every consumer and corrupts headless pipelines that treat stream content as the model's verbatim output. Root [`AGENTS.md`](../AGENTS.md) § "The typed-event corollary".
 
-### Cross-language sync (mandatory when shared types change)
+### Cross-language sync
 
-Go is the source of truth. `engine/internal/types/contract_test.go` extracts JSON field names into `engine/internal/types/testdata/contracts.json`. TS and Swift validate against it.
-
-When you change a shared type:
-
-1. Make the Go change in `engine/internal/types/`.
-2. Regenerate the manifest: `cd engine && go test ./internal/types/ -run TestContractManifest -update`.
-3. Update `desktop/src/shared/__tests__/contract-sync.test.ts` and the TS type definitions.
-4. Update the Swift type in `ios/IonRemote/Models/` and the Swift contract test.
-5. Verify: `make check-contracts`, `npm test`, `make ios-check`.
-
-Skipping any step trips CI with a clear drift message. Do not bypass it.
+Go is the source of truth. `engine/internal/types/contract_test.go` writes JSON field names to `engine/internal/types/testdata/contracts.json`; TS and Swift validate against it. Steps: root [`AGENTS.md`](../AGENTS.md) § "Cross-language contract sync". Verify with `make check-contracts` and the scoped contract tests; the full suites run at PR time.
 
 ## 4. Event semantics: the snapshot contract
 
 `engine_agent_state` is the canonical example, and the rule generalizes:
 
-> Every `engine_agent_state` event is a **complete snapshot** of every agent the engine considers live at that instant. Consumers replace their local view with the payload. They do **not** merge, do **not** preserve absent entries, and do **not** invent retention rules. An empty `agents: []` is the authoritative "no agents live" signal — not a no-op.
+> Every `engine_agent_state` event is a **complete snapshot** of every agent the engine considers live at that instant. Consumers replace their local view with the payload. They do not merge, do not keep absent entries, and do not invent retention rules. An empty `agents: []` is the authoritative "no agents live" signal, not a no-op.
 
-Concretely:
+- Every path that ends an agent's run either transitions it to a terminal status (`done` / `error` / `cancelled`) and emits a follow-up snapshot, or drops it from the next snapshot. There is no third option.
+- `engine/internal/session/manager_agent_lifecycle_test.go` pins this per path. A new termination path extends it.
+- Reconnecting clients receive the current snapshot unconditionally, even when empty, via `ReconcileState`.
+- A "past dispatches" history is built from conversation history by the consumer, not from retained agent-state entries.
 
-- Every code path that ends an agent's run must transition the registry to a terminal status (`done` / `error` / `cancelled`) and emit a follow-up snapshot — **or** drop the agent from the next snapshot. There is no third option.
-- Tests in `engine/internal/session/manager_agent_lifecycle_test.go` enforce this per-path. New termination paths must extend these tests.
-- Reconnecting clients receive the current snapshot unconditionally (even when empty) via `ReconcileState`.
-- "History of past dispatches" features are built from conversation history, not retained agent-state entries. That is a consumer concern, full stop.
+A new event decides up front whether it is a snapshot or an incremental update. The choice is part of the contract.
 
-When designing a new event, decide and document up front: is it a snapshot or an incremental update? The choice is part of the contract.
+## 5. When an engine change is justified
 
-## 5. Modifying the engine is a restricted operation
+An engine change reaches every consumer, so it needs a reason stated as engine mechanics, not one client's convenience.
 
-Engine changes carry blast radius across desktop, iOS, relay, and every harness extension in the wild. Treat every engine PR as:
-
-- Defaulting to "no" until proven necessary.
-- Requiring justification as core engine mechanics (not consumer convenience).
-- Additive over modifying — new fields, new variants, new hooks, new optional params.
-- Accompanied by tests that lock in the new behavior, including its semantics.
-
-If a desktop, iOS, or harness requirement seems to need an engine change, first ask: can this be solved in the consumer using existing engine data? In ~90% of cases the answer is yes.
+1. First check whether existing engine data already answers the need. Often it does, and the fix is in the consumer.
+2. If it does not, the engine gains a generic, additive primitive any plausible consumer could use: a field, an event, a hook, an optional parameter. Never a UI-shaped one.
+3. Never fake the missing capability in a consumer or harness (a timer standing in for a schedule kind, polling standing in for an event). Name the gap and build the primitive.
+4. Every change ships tests that pin the new behavior and its semantics.
 
 ## 6. Settings live with their owner
 
-Per-desktop customization is owned by the desktop, edited from either iOS or the desktop's Remote settings tab, persisted on the desktop, and broadcast to every currently-paired iOS device. Offline phones pick up the latest values on their next sync snapshot. Both edit surfaces funnel through the **same main-process write helper** — exactly one persistence + broadcast path.
+Every persisted setting has one scope, declared in `packages/shared/src/settings-registry.ts`. An Environment setting is one value for a whole server, changed only by a connection holding `admin`. An Account setting is a person's own on one server. Personal and Device settings live on the client. See [Settings scopes](configuration/settings-scopes.md).
 
-The engine has no opinion on user preferences. It does not persist them. It does not read them. If a setting needs to influence engine behavior, it is passed in as config at session start, not fetched by the engine from disk.
+The engine has no opinion on any of them. It neither persists nor reads them. A setting that must influence the engine arrives as config at session start, passed in by the server. For a Personal preference the server takes the value from the conversation's own stamp, written by the client that created or last prompted it.
 
 ## 7. Logging is part of the contract
 
-Logging is first-class. Every operation must be reconstructible from logs alone, without a debugger.
+Every operation must be reconstructible from logs alone.
 
-- Use `utils.Log` / `utils.Debug` / `utils.Error` with a consistent tag and rich context (provider id, model id, session key, request id, status codes).
-- Never use `log.Printf` or `fmt.Printf` for operational logging — the engine runs as a headless launchd daemon and its stderr is not a reliable operational channel. All operational logs go to `~/.ion/engine.jsonl` via `utils.Log`.
-- Log both sides of conditionals. The happy path is as valuable as the failure path.
-- When entering an under-instrumented code path, **add comprehensive logging first**, then make your change. Logging is permanent, not scaffolding.
+- `utils.Log` / `utils.Debug` / `utils.Error` with a consistent tag and identifiers (provider id, model id, session key, request id, status code).
+- Never `log.Printf` or `fmt.Printf` for operational logging. The daemon's stderr is lost; logs go to `~/.ion/engine.jsonl`.
+- Log both sides of every branch that decides the outcome.
+- Entering an under-instrumented path, add the logging first, then make the change. Logging is permanent.
 
-## 8. Quality gates before declaring done
+## 8. Quality gates
 
-1. `cd engine && go test -race ./...` passes.
-2. Public-surface changes: `go test -race -tags integration ./tests/integration/...` passes.
-3. `golangci-lint run` clean.
-4. `govulncheck ./...` clean.
-5. `make check-file-sizes` and `make check-contracts` pass.
-6. Cross-language mirrors (TS, Swift) updated if any shared type changed.
-7. Never `git push`. Report changes as ready and let the user push.
+While developing, run the scoped set once the change is stable:
+
+1. `go test ./internal/<pkg>/...` for touched packages (`-race` for concurrency; `-run <TestPrefix>` in slow packages).
+2. `golangci-lint run ./internal/<pkg>/...`.
+3. `make check-file-sizes`, and `make check-contracts` when a shared type changed.
+4. TS and Swift mirrors updated if a shared type changed.
+
+The full race suite, integration tests, and `govulncheck` are PR-time gates (root `AGENTS.md` § "Heavy gates — never run during development"). Never `git push`.
 
 ## 9. File and package discipline
 
-- 800-line cap for `*.go`, 1500 for `*_test.go`. CI hard-fails. Override only with `// @file-size-exception: <reason>` on line 1.
-- Same-package multi-file is the idiom. Do not create a giant `types.go` per package (`internal/types` is the documented exception).
+- Caps: 800 lines for `*.go`, 1500 for `*_test.go`. Override only with `// @file-size-exception: <reason>` on line 1.
+- Same-package multi-file is the idiom. No giant `types.go` per package; `internal/types` is the exception.
 - Tests live next to source.
-- `internal/` boundary is compiler-enforced. External consumers reach the engine only via the wire protocol.
-- New code goes in a new file in the right package. Do not extend allowlisted god files (`session/manager.go`, `extension/host.go`).
+- `internal/` is compiler-enforced. External consumers reach the engine only through the wire protocol.
+- New code goes in a new file in the right package. A file near the cap takes no new code.
 
-## 10. House rules recap (one line each)
+## 10. House rules
 
-- Engine is headless. No UI assumptions, ever.
+- Engine is headless. No UI assumptions.
 - Engine executes; harness decides; clients render.
 - Contracts are additive only. Semantics count.
 - Snapshots replace; incrementals merge. Pick one and document it.
-- Typed events are the complete signaling surface. Never double-surface in stream content.
-- Engine changes are dangerous. Default to "no."
-- Settings belong to the consumer that owns them.
-- Log everything; success and failure; with context.
+- Typed events are the complete signaling surface.
+- An engine change needs an engine reason, and a real gap gets a generic primitive, never a consumer workaround.
+- Settings belong to the scope that owns them.
+- Log everything, success and failure, with identifiers.
 - Never `--no-verify`. Never `git push`.
 
 ---
 
-**If anything in a task contradicts this document, surface the contradiction before writing code.**
+If a task contradicts this document, surface the contradiction before writing code.

@@ -12,7 +12,7 @@ All hooks grouped by category. For each hook: when it fires, what payload it rec
 
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
-| `identity_changed` | Verified Context Identity changes | `IdentityChangedInfo{Identity, Reason}` | ignored | Complete snapshot. Tool changes commit as one transaction. |
+| `identity_changed` | Verified Context Identity changes, or a session's stamped principal is set/changed | `IdentityChangedInfo{Identity, Reason, SessionKey}` | ignored | Complete snapshot. Tool changes commit as one transaction. `SessionKey` is empty for the process-level operator-identity firing (the historical behavior) and non-empty when a specific session's own principal (manifest C1/C2, `start_session.principal`) is what changed. |
 | `session_start` | Session initialized | `nil` | ignored | Observe only |
 | `session_end` | Session teardown | `nil` | ignored | Observe only |
 | `before_prompt` | Before prompt sent to LLM | `string` (prompt) | `BeforePromptResult{Prompt, SystemPrompt}` or `string` | Last non-nil wins. String = prompt rewrite. Struct can set both prompt and system prompt addition. `ctx.model` carries the selected model (ID + context window) for model-aware rewriting. |
@@ -47,14 +47,21 @@ All hooks grouped by category. For each hook: when it fires, what payload it rec
 
 ```go
 type IdentityChangedInfo struct {
-    Identity *ContextIdentity `json:"identity,omitempty"`
-    Reason   string           `json:"reason"`
+    Identity   *ContextIdentity `json:"identity,omitempty"`
+    Reason     string           `json:"reason"`
+    SessionKey string           `json:"sessionKey,omitempty"`
 }
 ```
 
-`Identity` is absent when no verified identity is available. `Reason` is one of `initial`, `signed_in`, `signed_out`, `claims_changed`, `verification_lost`, or `workload_ready`. Replace extension-local identity state with each payload. Do not merge values from an earlier payload.
+`Identity` is absent when no verified identity is available. `Reason` is one of `initial`, `signed_in`, `signed_out`, `claims_changed`, `verification_lost`, `workload_ready`, or `session_principal`. Replace extension-local identity state with each payload. Do not merge values from an earlier payload.
 
-The engine fires `initial` once per host load or respawn after init and session wiring, before `session_start` and all other extension lifecycle hooks. Later verified transitions fire after sign-in, sign-out, verified claim changes, verification loss, or workload readiness. Equal later snapshots are deduplicated.
+The engine fires `initial` once per host load or respawn after init and session wiring, before `session_start` and all other extension lifecycle hooks. Later verified transitions fire after sign-in, sign-out, verified claim changes, verification loss, or workload readiness. Equal later snapshots are deduplicated. `SessionKey` is empty for all of these process-level firings.
+
+A separate, per-session firing (`Reason: "session_principal"`, `SessionKey` set to the session's key) happens when `start_session.principal` (manifest C1/C2) is set for the first time or replaced with a principal carrying a different `subject` on an idempotent re-`start_session`. `ctx.identity` for THIS firing (and for every subsequent hook fired in that session) resolves the session's own stamped principal first, falling back to the process-level operator identity only when the session carries none.
+
+#### `StorageRoot`
+
+`ContextIdentity.StorageRoot` (ADR-034, additive field, `json:"storageRoot,omitempty"`) is the absolute directory this identity's conversations live under, mirroring `start_session`'s own `StorageRoot` result field. It is populated **only** on a `session_principal` firing (a process-level `identity_changed` has no session to derive a partition from) and only when `engine.json`'s `security.principalPartitioning.enabled` is `true` and the principal's `Subject` is non-empty. **`StorageRoot` is authoritative when present; absent means unchanged behavior** — a harness that reads it to relocate its own data root should fall back to its historical env-based or hardcoded location whenever this field is empty, exactly as it would on an engine that predates this field entirely. See [Conversation storage's partition layout](../architecture/conversation-storage.md#partition-layout) for the directory shape, and the cos2 harness's `journalroot.go`/`storageroot.go` for a worked example of this fallback rule.
 
 During this hook, `ctx.identity` equals payload `Identity` as a deep copy. Tool changes are transactional. The SDK returns the complete tool snapshot with the hook result and the engine swaps the registry only after handler success. A failed, timed-out, malformed, or stale snapshot keeps the host pending: it contributes no new-run tools and denies live tool calls until it receives the transition again.
 

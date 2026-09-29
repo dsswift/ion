@@ -325,7 +325,7 @@ this condition; the engine never mutates stream content
 (`TaskCompleteEvent.Result`, `TextChunkEvent`) to communicate the
 fallback. Consumers may surface this however they wish — render a UI
 warning, abort a downstream orchestration, log a metric, or ignore the
-event entirely. See [CLAUDE.md § "The typed-event corollary"](https://github.com/dsswift/ion/blob/main/CLAUDE.md).
+event entirely. See [AGENTS.md § "The typed-event corollary"](https://github.com/dsswift/ion/blob/main/AGENTS.md).
 
 Snapshot semantics: workflow signal, not state. The event fires once at
 the swap site and is not retained or replayed on reconnect. Consumers
@@ -364,7 +364,7 @@ The engine reports; the consumer decides. A harness may reroute the prompt
 to a capable model, abort, notify the user, or ignore the event — the
 engine has no opinion and never auto-reroutes. The event is the engine's
 complete signaling surface for the declined request; no stream content is
-synthesized. See [CLAUDE.md § "The typed-event corollary"](https://github.com/dsswift/ion/blob/main/CLAUDE.md).
+synthesized. See [AGENTS.md § "The typed-event corollary"](https://github.com/dsswift/ion/blob/main/AGENTS.md).
 
 Snapshot semantics: workflow signal, not state. The event fires once at
 the decline site and is not retained or replayed on reconnect.
@@ -440,6 +440,8 @@ The revive semantics differ by design: the dispatch path revives only when **eve
 ### steer_injected
 
 A live run-loop checkpoint drained a steer message into its conversation before the next LLM call. This is a workflow signal, not a snapshot. The body is already in the conversation and is never echoed in the event.
+
+On a Claude CLI run the steer reaches the CLI over stdin, and this event fires when the CLI reports consuming it, at the point in the stream where the model first sees it. That turn is written to the conversation when the run exits, so `entryId` is absent on this path.
 
 | Field | Type | Description |
 |-------|------|-------------|

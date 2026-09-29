@@ -25,6 +25,9 @@ These fields restrict what is available. Lower layers cannot expand them.
 | `toolRestrictions.deny` | Tools on this list are always denied. Lower layers cannot remove entries. |
 | `sandbox.required` | If `true`, sandbox cannot be disabled. |
 | `sandbox.allowDisable` | If `false`, the `sandbox.enabled` field is locked. |
+| `security.requirePrincipalPartitioning` | If `true`, `security.principalPartitioning.enabled` cannot be set to `false` (ADR-034). |
+| `security.minEnforcement` | Raises the effective partitioning enforcement to at least this level (`none` < `read-only` < `strict`). A lower layer may configure something stricter; it can never soften below this floor. An unrecognized enforcement value ranks as `none` so a malformed config can never satisfy a stricter floor. |
+| `git.required` | If `true`, a session with no resolvable git author identity refuses a commit-recording Bash call rather than stamping one unattributed. |
 
 ### Additive fields (union merge)
 
@@ -49,6 +52,28 @@ These fields, when set at the enterprise level, replace any value from lower lay
 | `telemetry` | Enterprise telemetry config replaces lower layers. If `enabled: true`, it cannot be disabled. |
 | `requiredHooks` | These hooks must be active. Extensions cannot deregister them. |
 | `newConversationDefaults` | When non-null, replaces the base value. A null overlay preserves the base value. When `locked: true`, clients skip the profile and directory pickers for new conversations and use the mandated values. |
+| `git.machine` | When set, replaces the user-layer `git.identity.machine` fallback wholesale — the enterprise-mandated author identity, used whenever `fromPrincipal` is false or a principal's own name/email can't be resolved. |
+
+### Per-principal fields (`toolRestrictions.principals`)
+
+`toolRestrictions.principals[]` is a fourth category the three above don't quite cover: rules scoped to a matching principal (by subject, provider, or claim), evaluated after the layer-restrictive `toolRestrictions.allow`/`deny` above and unioned across every matching rule. The precedence, in order:
+
+1. The restrictive `toolRestrictions.deny`/`allow` lists above are checked first. An enterprise-wide deny always wins, even over a principal-specific allow.
+2. Every `principals[]` entry whose `match` matches the calling principal is then consulted. Deny wins across matching rules.
+3. When at least one matching rule declares a non-empty `allow`, the tool must be in the intersection of every matching rule's `allow` list — one rule's silence on `allow` does not widen another's.
+4. A principal matched by no rule falls through to the global policy alone.
+
+A `match` with every field empty matches every principal — the operator's own mistake to notice, not something the engine rejects. `toolRestrictions.principals[]` exists only in the sealed enterprise config — there is no user-layer equivalent in `engine.json`. Each entry:
+
+```jsonc
+{
+  "match": { "subjects": ["alice@example.com"], "providers": ["entra"], "claims": { "groups": ["eng"] } },
+  "allow": ["Read", "Grep"],
+  "deny": ["Bash"]
+}
+```
+
+`match`'s fields are each optional and act as a wildcard when empty: `subjects`/`providers` match by exact string, `claims` requires the principal's session claims to contain the named key with a value in the given set. See [ADR-034](../architecture/adr/034-principal-isolation-and-tenancy.md) for the design rationale.
 
 ### Filtering fields (post-merge filter)
 
