@@ -68,6 +68,12 @@ server, the workspace packages, the desktop, packaging, scripts, and the npm
 workspace root) every time — a few seconds of transfer in exchange for
 eliminating the failure mode.
 
+The same holds in reverse for a file deleted from git. Extraction never
+deletes, so after it the sync prunes each source folder it names
+(`PRUNE_ROOTS`) to exactly the tracked set, leaving dependency and build
+folders alone. Without that, a test deleted on the Mac keeps running on the
+VM against code that no longer exists.
+
 ## The loop
 
 ```bash

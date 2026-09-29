@@ -41,6 +41,9 @@ VM_PATH="${ION_WIN_VM_PATH:-C:/dev/ion}"
 # root: without them the VM installs the desktop as a standalone package and
 # never sees @ion/server or @ion/shared. .npmrc carries the install policy.
 ROOTS=(engine server packages sdk desktop scripts Makefile make.ps1 bootstrap.ps1 release-please-manifest.json package.json package-lock.json .npmrc)
+# Source-only folders the VM prunes to exactly the tracked set. A test or
+# source file deleted from git would otherwise stay on the VM and run there.
+PRUNE_ROOTS=(engine/cmd engine/internal engine/tests server/src desktop/src packages/shared/src packages/studio-sdk sdk/go scripts)
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
@@ -158,18 +161,23 @@ STAMP
 # listing as junk nobody can explain.
 export COPYFILE_DISABLE=1
 tar cf "$archive" -T "$list"
-tar rf "$archive" -C "$stamp_dir" .ion-sync-stamp.json
+cp "$list" "$stamp_dir/.ion-sync-files.txt"
+tar rf "$archive" -C "$stamp_dir" .ion-sync-stamp.json .ion-sync-files.txt
 gzip -n -f "$archive"
 archive="$archive.gz"
 size="$(wc -c < "$archive" | tr -d ' ')"
 echo "sync-windows-vm: ${file_count} files + sync stamp, ${size} bytes"
 
-# tar over ssh, extracted in place. Extraction overwrites and adds; it does not
-# delete, so a file removed from git stays on the VM until someone clears the
-# tree. That is the accepted trade: a stale extra file cannot make a build
-# report a false pass, while a missing file demonstrably can.
+# tar over ssh, extracted in place. Extraction overwrites and adds but does
+# not delete, so the prune below removes every file under PRUNE_ROOTS that
+# the tracked list does not name. A stale test there runs and fails (or
+# passes) against code that no longer exists, so a VM result means nothing.
 scp -q "$archive" "${VM_HOST}:C:/Users/josh/ion-sync.tgz"
 ssh "$VM_HOST" "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force -Path '${VM_PATH}' | Out-Null; Set-Location '${VM_PATH}'; tar xzf C:/Users/josh/ion-sync.tgz; Remove-Item C:/Users/josh/ion-sync.tgz\""
+
+prune_roots="$(IFS=,; echo "${PRUNE_ROOTS[*]}")"
+pruned="$(ssh "$VM_HOST" "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File '${VM_PATH}/scripts/windows/Prune-SyncTree.ps1' -Base '${VM_PATH}' -Roots ${prune_roots}" | tr -d '\r' | tail -1)"
+echo "sync-windows-vm: pruned ${pruned} file(s) no longer tracked under ${PRUNE_ROOTS[*]}"
 
 echo "sync-windows-vm: stamped desktop version ${desktop_version} (dirty=${dirty})"
 
