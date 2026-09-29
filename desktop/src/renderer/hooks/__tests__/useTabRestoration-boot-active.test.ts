@@ -19,9 +19,9 @@ vi.mock('../../rendererLogger', () => ({
   rDebug: vi.fn(), rInfo: vi.fn(), rWarn: vi.fn(), rError: vi.fn(), rTrace: vi.fn(),
 }))
 
-import { resolveBootActiveTabId, hydrateBootActiveTab, hydrateBootWorkspace, restoredModelSelection } from '../useTabRestoration-helpers'
-import { makeMainPane } from '../../stores/conversation-instance'
-import type { ConversationPane } from '../../../shared/types-engine'
+import { resolveBootActiveTabId, hydrateBootActiveTab, hydrateBootWorkspace, restoredModelSelection } from '@ion/server/hooks/useTabRestoration-helpers'
+import { makeMainPane } from '@ion/server/store/conversation-instance'
+import type { ConversationPane } from '@ion/shared/types-engine'
 
 describe('resolveBootActiveTabId', () => {
   const restored = [
@@ -174,17 +174,17 @@ describe('hydrateBootActiveTab', () => {
 
 describe('restoredModelSelection', () => {
   it('preserves user and automatic selection while leaving legacy provenance unknown', () => {
-    expect(restoredModelSelection({ modelOverride: 'gpt-5.6-sol', modelOverrideSource: 'user' })).toEqual({
-      modelOverride: 'gpt-5.6-sol', modelOverrideSource: 'user',
+    expect(restoredModelSelection({ modelOverride: 'gpt-5.6-sol', modelOverrideSource: 'user', modelOverrideProviderId: 'openai' })).toEqual({
+      modelOverride: 'gpt-5.6-sol', modelOverrideSource: 'user', modelOverrideProviderId: 'openai',
     })
     expect(restoredModelSelection({ modelOverride: 'gpt-5.6-sol', modelOverrideSource: 'automatic' })).toEqual({
-      modelOverride: 'gpt-5.6-sol', modelOverrideSource: 'automatic',
+      modelOverride: 'gpt-5.6-sol', modelOverrideSource: 'automatic', modelOverrideProviderId: null,
     })
     expect(restoredModelSelection({ modelOverride: 'gpt-5.6-sol' })).toEqual({
-      modelOverride: 'gpt-5.6-sol', modelOverrideSource: null,
+      modelOverride: 'gpt-5.6-sol', modelOverrideSource: null, modelOverrideProviderId: null,
     })
     expect(restoredModelSelection({ modelOverride: null, modelOverrideSource: 'user' })).toEqual({
-      modelOverride: null, modelOverrideSource: null,
+      modelOverride: null, modelOverrideSource: null, modelOverrideProviderId: null,
     })
   })
 })

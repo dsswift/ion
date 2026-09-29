@@ -4,12 +4,14 @@ import { Star, MagnifyingGlass, CaretDown, CaretRight } from '@phosphor-icons/re
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
-import { useModelStore } from '../stores/model-store'
+import { useModelStore, environmentModels } from '@ion/server/store/model-store'
+
+import { environmentSetting, useEnvironmentSettingsStore } from '../studio/state/environment-settings-store'
 import { usePreferencesStore } from '../preferences'
-import { getProviderDisplayName, getModelDisplayLabel } from '../../shared/types-models'
-// getModelDisplayLabel prefers the engine-supplied ModelEntry.displayName and
-// falls back to its static id-to-name table, so the picker shows friendly names.
-import type { ModelEntry } from '../../shared/types-models'
+import { getProviderDisplayName, getModelDisplayLabel } from '@ion/shared/types-models'
+// getModelDisplayLabel shows the engine-supplied ModelEntry.displayName, or the
+// id when the engine has no name for the model.
+import type { ModelEntry } from '@ion/shared/types-models'
 
 const COLLAPSED_KEY = 'ion:model-picker-collapsed'
 
@@ -128,18 +130,23 @@ function ModelRow({ model, hasAuth, isSelected, isDefault, isDupe, onPick }: {
 }
 
 interface ModelPickerPopoverProps {
+  /** Whose catalog to list: the conversation's Environment (ADR-033). */
+  environmentId: string
   selectedModelId: string
-  onSelect: (modelId: string) => void
+  onSelect: (modelId: string, providerId: string) => void
   onClose: () => void
   position: { bottom: number; left: number }
   popoverRef: React.RefObject<HTMLDivElement | null>
 }
 
-export function ModelPickerPopover({ selectedModelId, onSelect, onClose, position, popoverRef }: ModelPickerPopoverProps) {
+export function ModelPickerPopover({ environmentId, selectedModelId, onSelect, onClose, position, popoverRef }: ModelPickerPopoverProps) {
   const colors = useColors()
-  const allModels = useModelStore((s) => s.models)
-  const providers = useModelStore((s) => s.providers)
-  const preferredModel = usePreferencesStore((s) => s.preferredModel)
+  const allModels = useModelStore((s) => environmentModels(s, environmentId).models)
+  const providers = useModelStore((s) => environmentModels(s, environmentId).providers)
+  // The star marks YOUR default model on the server this picker lists models
+  // for. This client's own default belongs to the local server and would star
+  // the wrong row, or none, for a conversation elsewhere.
+  const preferredModel = useEnvironmentSettingsStore((s) => environmentSetting<string>(s, environmentId, 'preferredModel') ?? '')
   // Enterprise model allowlist (D-011): when active, the picker only lists
   // permitted models. Enforcement is engine-side (disallowed overrides are
   // rejected at dispatch); this filter is the UI half so restricted users
@@ -258,7 +265,7 @@ export function ModelPickerPopover({ selectedModelId, onSelect, onClose, positio
                   isSelected={m.id === selectedModelId}
                   isDefault={m.id === preferredModel}
                   isDupe={duplicateLabels.has(getModelDisplayLabel(m))}
-                  onPick={() => { onSelect(m.id); onClose() }}
+                  onPick={() => { onSelect(m.id, m.providerId); onClose() }}
                 />
               ))}
             </div>
