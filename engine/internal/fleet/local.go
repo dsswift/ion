@@ -16,6 +16,12 @@ import (
 // localPlatform is this machine's platform.
 var localPlatform = func() Platform { return Platform{GOOS: runtime.GOOS, GOARCH: runtime.GOARCH} }
 
+// localToolFound reports whether a build tool is on this machine's PATH.
+var localToolFound = func(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
+}
+
 // localCommand runs a command line in this machine's shell: sh, or
 // PowerShell on Windows.
 func localCommand(ctx context.Context, command string) *exec.Cmd {

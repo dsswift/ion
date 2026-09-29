@@ -136,6 +136,19 @@ func TestPlanBuilds_NothingCanBuild(t *testing.T) {
 	}
 }
 
+// This machine builds what it can, and refuses up front when it lacks a tool
+// for that build rather than failing partway through it.
+func TestPlanBuilds_RefusesWhenThisMachineLacksATool(t *testing.T) {
+	cfg := Config{Checkout: fakeCheckout(t), Hosts: []Host{{Name: "mac", SSH: "mac", Kind: KindServer}}}
+	f, d := builderFixture(t, cfg, nil)
+	f.platform["mac"] = "Darwin arm64"
+	pretendLocal(t, Platform{GOOS: "darwin", GOARCH: "arm64"}, []string{"npm"})
+	_, err := d.Prepare(context.Background(), Request{Hosts: cfg.Hosts, Source: SourceDev, Checkout: cfg.Checkout})
+	if err == nil || !strings.Contains(err.Error(), "this machine builds the darwin/arm64 server but lacks npm") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 // The first Windows host builds; the installer comes back here once and
 // goes to every Windows host from here.
 func TestDeploy_BuildsOnceOnAHostAndInstallsEverywhere(t *testing.T) {

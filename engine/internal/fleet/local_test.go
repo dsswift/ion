@@ -4,22 +4,28 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
 
-// onMac pretends this machine is an Apple silicon Mac for the test.
+// onMac pretends this machine is an Apple silicon Mac with its build tools.
 func onMac(t *testing.T) {
-	old := localPlatform
-	localPlatform = func() Platform { return Platform{GOOS: "darwin", GOARCH: "arm64"} }
-	t.Cleanup(func() { localPlatform = old })
+	pretendLocal(t, Platform{GOOS: "darwin", GOARCH: "arm64"}, nil)
 }
 
-// onWindows pretends this machine runs Windows for the test.
+// onWindows pretends this machine runs Windows with its build tools.
 func onWindows(t *testing.T) {
-	old := localPlatform
-	localPlatform = func() Platform { return Platform{GOOS: "windows", GOARCH: "arm64"} }
-	t.Cleanup(func() { localPlatform = old })
+	pretendLocal(t, Platform{GOOS: "windows", GOARCH: "arm64"}, nil)
+}
+
+// pretendLocal fixes this machine's platform and which build tools it lacks,
+// so a test never depends on what the real machine has installed.
+func pretendLocal(t *testing.T, p Platform, lacks []string) {
+	oldPlatform, oldTool := localPlatform, localToolFound
+	localPlatform = func() Platform { return p }
+	localToolFound = func(name string) bool { return !slices.Contains(lacks, name) }
+	t.Cleanup(func() { localPlatform, localToolFound = oldPlatform, oldTool })
 }
 
 // A fleet manager on Windows runs its own commands (a relay key command, a

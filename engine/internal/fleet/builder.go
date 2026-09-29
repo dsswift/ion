@@ -3,7 +3,6 @@ package fleet
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"sort"
 	"strings"
 
@@ -133,7 +132,7 @@ func (d *Deployer) planBuilds(ctx context.Context, p *Prepared) error {
 func missingLocalTools(tools []string) []string {
 	var missing []string
 	for _, t := range tools {
-		if _, err := exec.LookPath(t); err != nil {
+		if !localToolFound(t) {
 			missing = append(missing, t)
 		}
 	}
