@@ -97,7 +97,7 @@ Keep it simple. Assign each PR exactly one tier:
 Decide the rebase → merge → resume order:
 
 - Merge the **lowest-risk, smallest-surface, CI-green** PRs first (`github-actions`, `docker`, desktop `dev-deps`, patch `gomod`).
-- Group by ecosystem so lockfile churn collides minimally. Two PRs that touch the **same lockfile** (`package-lock.json` at root, `engine/go.sum`, `relay/go.sum`, `desktop/package-lock.json`) need a rebase between them, and the plan sequences it.
+- Group by ecosystem so lockfile churn collides minimally. Two PRs that touch the **same lockfile** (`package-lock.json` at root, `engine/go.sum`, `relay/go.sum`) need a rebase between them, and the plan sequences it.
 - For any **known-issue** PR, schedule its follow-up immediately after its merge: a new branch, the correction commit, a follow-up PR opened and merged, before resuming the Dependabot chain.
 - For **High** PRs, the resolution is **close** (`gh pr close` with the reason), not merge.
 

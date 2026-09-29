@@ -16,7 +16,7 @@ desktop:
   - 'scripts/check-server-parity.sh'
 desktop_deps:
   - 'desktop/package.json'
-  - 'desktop/package-lock.json'
+  - 'package-lock.json'
 shared:
   - 'packages/shared/**'
   # The Studio SDK's TypeScript flavor and its contract are tested from here.

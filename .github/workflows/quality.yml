@@ -490,7 +490,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: package-lock.json
       - name: Install dependencies
         working-directory: desktop
         run: npm ci --ignore-scripts
@@ -529,7 +529,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: package-lock.json
       - name: Install dependencies
         working-directory: desktop
         run: npm ci --ignore-scripts
@@ -551,7 +551,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: package-lock.json
       - name: Install dependencies
         working-directory: desktop
         run: npm ci --ignore-scripts
@@ -579,7 +579,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: package-lock.json
       - name: Install dependencies
         working-directory: desktop
         run: npm ci --ignore-scripts
@@ -600,14 +600,15 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: '22'
+      - name: Lockfile integrity
+        run: bash scripts/check-lockfile-integrity.test.sh && node scripts/check-lockfile-integrity.mjs package-lock.json
       - name: npm audit (high+ only, prod deps)
         working-directory: desktop
         run: npm audit --audit-level=high --omit=dev
 
-  # @ion/shared has no standalone lockfile (unlike desktop, which keeps one
-  # for its own npm ci isolation) — its only consumers are desktop and
-  # server, both workspace members, so its own gate installs once at the
-  # workspace root and runs its typecheck and test scripts by workspace name.
+  # @ion/shared's only consumers are desktop and server, all three workspace
+  # members, so its gate installs once at the workspace root and runs its
+  # typecheck and test scripts by workspace name.
   shared-test:
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.shared == 'true'

@@ -386,6 +386,11 @@ check-file-sizes:
 check-no-binaries:
 	@bash scripts/check-no-binaries.sh
 
+# Every registry package in the root lockfile must carry resolved and integrity.
+.PHONY: check-lockfile-integrity
+check-lockfile-integrity:
+	@node scripts/check-lockfile-integrity.mjs package-lock.json
+
 # Dashboards-as-code drift + structural-overcount gate. Regenerates every
 # provisioned Grafana dashboard JSON and queries.md from the canonical query
 # module and byte-diffs against the committed files; also re-runs the

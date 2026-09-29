@@ -37,7 +37,7 @@ cases = {
     "sdk": ("sdk/go/context.go", {"sdk", "logging"}),
     "engine-sdk": ("engine/extensions/sdk/ion-sdk/types.ts", {"engine", "sdk", "logging"}),
     "desktop-source": ("desktop/src/main/local-server.ts", {"desktop", "logging"}),
-    "desktop-dependency": ("desktop/package-lock.json", {"desktop", "desktop_deps", "logging"}),
+    "desktop-dependency": ("package-lock.json", {"desktop_deps"}),
     "shared": ("packages/shared/src/types.ts", {"shared", "logging"}),
     "server": ("server/src/main.ts", {"server", "logging"}),
     "ios": ("ios/IonRemote/Models/RemoteTabState.swift", {"ios", "logging"}),
