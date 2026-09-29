@@ -32,10 +32,7 @@
   },
   "customFields": {
     "ion-desktop": {
-      "disableAutoUpdate": true,
-      "tabStripPolicy": {
-        "visible": false
-      }
+      "disableAutoUpdate": true
     }
   }
 }
