@@ -1,7 +1,7 @@
 // identity_reconcile.go — version-aware grant reconciliation and renewal.
 //
 // A stored operator grant carries a schema version. When the engine's
-// currentIdentityVersion is newer than a persisted grant, or the grant lacks
+// IdentityStoreVersion is newer than a persisted grant, or the grant lacks
 // the verified-identity snapshot, the engine upgrades it silently at startup
 // using the existing refresh token — the operator never re-authenticates in a
 // browser. The same mechanism keeps the identity alive: an id_token's freshness
@@ -18,7 +18,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// currentIdentityVersion is the schema version the running engine writes for a
+// IdentityStoreVersion is the schema version the running engine writes for a
 // verified operator grant. A stored grant below this version is upgraded in
 // place on the next load via a silent refresh-token exchange. Bump this when
 // the persisted grant schema grows information the engine must capture.
@@ -27,7 +27,7 @@ import (
 //	v2 — adds the verified identity snapshot (PersistedIdentity) so the engine
 //	     can present the operator's identity without re-verifying on the hot
 //	     path or after the id_token's freshness window lapses.
-const currentIdentityVersion = 2
+const IdentityStoreVersion = 2
 
 // persistedIdentity is the verified operator identity captured in the stored
 // grant (schema v2). It mirrors the identity claims the engine derives from a
@@ -87,7 +87,7 @@ func (m *IdentityManager) ReconcileAtStartup(ctx context.Context) error {
 	// Force a refresh when the schema is behind or the identity snapshot is
 	// absent, even if the access token is still fresh: the upgrade must capture
 	// a currently-verifiable id_token and its identity snapshot.
-	force := stored.IdentityVersion < currentIdentityVersion || stored.PersistedIdentity == nil
+	force := stored.IdentityVersion < IdentityStoreVersion || stored.PersistedIdentity == nil
 	if err := m.renewNow(ctx, force); err != nil {
 		utils.LogWithFields(utils.LevelWarn, "auth.identity", "operator identity reconcile at startup failed; last-known identity retained", map[string]any{
 			"provider": m.provider, "stored_version": stored.IdentityVersion, "error": err.Error(),
@@ -97,7 +97,7 @@ func (m *IdentityManager) ReconcileAtStartup(ctx context.Context) error {
 	identity := m.Identity()
 	utils.LogWithFields(utils.LevelInfo, "auth.identity", "operator identity reconciled at startup", map[string]any{
 		"provider": m.provider, "signed_in": identity != nil,
-		"stored_version": stored.IdentityVersion, "current_version": currentIdentityVersion,
+		"stored_version": stored.IdentityVersion, "current_version": IdentityStoreVersion,
 	})
 	if identity != nil {
 		m.publishIdentity(identity, "reconciled")
@@ -127,7 +127,7 @@ func (m *IdentityManager) renewNow(ctx context.Context, force bool) error {
 
 	// Already current, fresh, and holding an unexpired identity snapshot:
 	// hydrate the cache without a round-trip.
-	if !force && stored.IdentityVersion >= currentIdentityVersion && stored.PersistedIdentity != nil &&
+	if !force && stored.IdentityVersion >= IdentityStoreVersion && stored.PersistedIdentity != nil &&
 		m.tokenFresh(*stored) && time.Now().Before(stored.PersistedIdentity.ExpiresAt) {
 		identity := persistedToIdentity(stored.PersistedIdentity)
 		identity.Provider = m.provider
@@ -176,7 +176,7 @@ func (m *IdentityManager) renewNow(ctx context.Context, force bool) error {
 		refreshTok = stored.RefreshToken
 	}
 
-	// completeLogin verifies the id_token, persists at currentIdentityVersion
+	// completeLogin verifies the id_token, persists at IdentityStoreVersion
 	// with the identity snapshot, refreshes the cache, and publishes the change.
 	if err := m.completeLogin(ctx, &TokenResponse{
 		AccessToken: refreshed.AccessToken, RefreshToken: refreshTok,
@@ -184,9 +184,9 @@ func (m *IdentityManager) renewNow(ctx context.Context, force bool) error {
 	}, ""); err != nil {
 		return err
 	}
-	if prevVersion < currentIdentityVersion {
+	if prevVersion < IdentityStoreVersion {
 		utils.LogWithFields(utils.LevelInfo, "auth.identity", "operator identity grant upgraded to current schema", map[string]any{
-			"provider": m.provider, "from_version": prevVersion, "to_version": currentIdentityVersion,
+			"provider": m.provider, "from_version": prevVersion, "to_version": IdentityStoreVersion,
 		})
 	}
 	return nil
@@ -208,7 +208,14 @@ func isGrantRejected(err error) bool {
 // operator grant. Identity() runs on hot paths and must never block, so a lapsed
 // id_token triggers this instead of a synchronous refresh. A failed renewal is
 // logged and the last-known identity is retained; it is never discarded here.
+//
+// After a failure it waits before trying again (renewal_backoff.go). Identity()
+// is called on every request, so without the wait a renewal that keeps failing
+// asks the provider for a token on every call, forever.
 func (m *IdentityManager) kickBackgroundRenewal() {
+	if !m.renewal.due(time.Now()) {
+		return
+	}
 	if !m.renewing.CompareAndSwap(false, true) {
 		return
 	}
@@ -217,9 +224,14 @@ func (m *IdentityManager) kickBackgroundRenewal() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := m.renewNow(ctx, false); err != nil {
+			wait := m.renewal.failed(time.Now())
 			utils.LogWithFields(utils.LevelWarn, "auth.identity", "background identity renewal failed; serving last-known identity", map[string]any{
-				"provider": m.provider, "error": err.Error(),
+				"provider": m.provider, "error": err.Error(), "retry_in_ms": wait.Milliseconds(),
 			})
+			return
+		}
+		if m.renewal.succeeded() {
+			utils.LogWithFields(utils.LevelInfo, "auth.identity", "background identity renewal recovered", map[string]any{"provider": m.provider})
 		}
 	}()
 }

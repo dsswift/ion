@@ -8,6 +8,9 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/dsswift/ion/engine/internal/engineipc"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // connectAndSend connects to the engine socket, sends a command, waits for response.
@@ -143,4 +146,24 @@ func streamUntilIdle(sock, key string, deadline time.Duration) (timedOut bool) {
 		}
 	}
 	return false
+}
+
+// connectAndSendTimeout is connectAndSend bounded by a deadline over the dial,
+// the write, and the wait for the answer, for a probe that must not hang on
+// an engine that accepted the connection but never replies.
+func connectAndSendTimeout(sock string, msg map[string]interface{}, timeout time.Duration) (map[string]interface{}, error) {
+	return engineipc.Request(dialNetwork(sock), sock, msg, timeout)
+}
+
+// shareIdentityWithOwnUser lets a non-elevated engine verify this process
+// when it runs elevated, as an administrator's SSH session does on Windows.
+func shareIdentityWithOwnUser() {
+	changed, err := utils.ShareIdentityWithOwnUser()
+	if err != nil {
+		utils.LogWithFields(utils.LevelWarn, "cli", "could not share this elevated process's identity with its own user; a non-elevated engine will refuse it", map[string]any{"error": err.Error()})
+		return
+	}
+	if changed {
+		utils.LogWithFields(utils.LevelDebug, "cli", "shared this elevated process's identity with its own user", nil)
+	}
 }

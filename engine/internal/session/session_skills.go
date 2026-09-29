@@ -7,9 +7,9 @@ import (
 
 // session_skills.go holds session-scoped skill teardown.
 //
-// Lives in its own file rather than in manager.go because manager.go is
-// allowlisted for file size (engine/AGENTS.md: "Don't extend; add a new file
-// in the same package"). StopSession calls clearSessionSkills; the helper
+// Lives in its own file rather than in manager.go because manager.go sits at
+// the file-size cap (engine/AGENTS.md: "Don't extend it; add a new file in the
+// same package"). StopSession calls clearSessionSkills; the helper
 // itself belongs here.
 
 // clearSessionSkills drops a stopped session's skill registrations so a

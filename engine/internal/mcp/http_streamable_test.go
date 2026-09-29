@@ -89,7 +89,7 @@ func mobbinStyleServer(t *testing.T) *httptest.Server {
 		switch req.Method {
 		case "initialize":
 			result = map[string]any{
-				"protocolVersion": mcpProtocolVersion,
+				"protocolVersion": DiscoveryProtocolVersion,
 				"capabilities":    map[string]any{"tools": map[string]any{"listChanged": true}},
 				"serverInfo":      map[string]any{"name": "mobbin", "version": "1.0.0"},
 			}

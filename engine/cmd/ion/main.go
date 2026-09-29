@@ -25,6 +25,9 @@ func main() {
 		// provider-registration logs every process emits at init().
 		utils.DiscardOperationalLogs()
 	}
+	if command != "serve" {
+		shareIdentityWithOwnUser()
+	}
 
 	switch command {
 	case "serve":
@@ -47,7 +50,7 @@ func main() {
 	case "attach":
 		cmdAttach(flags)
 	case "status":
-		cmdStatus()
+		cmdStatus(flags)
 	case "stop":
 		cmdStop(flags)
 	case "shutdown":
@@ -72,8 +75,12 @@ func main() {
 		cmdMcpBridge(flags)
 	case "telemetry":
 		cmdTelemetry(positional, flags)
+	case "studio":
+		cmdStudio(positional, flags)
+	case "fleet":
+		cmdFleet(positional, flags)
 	case "version":
-		fmt.Printf("ion-engine %s\n", version)
+		printVersion(os.Stdout, flags["json"] == "true")
 	case "help":
 		// Reached by `help`, `--help`, and `-h`. printUsage exits non-zero
 		// because it is also the unknown-command path; an explicit request for
@@ -116,8 +123,11 @@ func printUsageTo(w io.Writer) {
 	b.WriteString("    --extension FILE       Load extension (can be repeated)" + "\n")
 	b.WriteString("    --attach               Stream output until idle (keyed sessions)" + "\n")
 	b.WriteString("    --timeout DURATION      Wall-clock deadline (e.g. 60s, 5m, 2h); exit 124 on timeout" + "\n")
+	b.WriteString("  studio <install|status|restart|update|uninstall|pair>" + "\n")
+	b.WriteString("                           Run engine + Studio server as a host service (ion studio help)" + "\n")
+	b.WriteString("  fleet [command]          Manage many Studio hosts from this Mac (ion fleet help)" + "\n")
 	b.WriteString("  attach                   Stream events (NDJSON)" + "\n")
-	b.WriteString("  status                   List sessions" + "\n")
+	b.WriteString("  status [--json]          List sessions" + "\n")
 	b.WriteString("  stop --key               Stop session" + "\n")
 	b.WriteString("  shutdown                 Stop daemon" + "\n")
 	b.WriteString("  health                   Probe daemon liveness (exit 0=ok, 1=down)" + "\n")
@@ -132,7 +142,7 @@ func printUsageTo(w io.Writer) {
 	b.WriteString("  plugin remove <name>         Remove a plugin" + "\n")
 	b.WriteString("  telemetry expand [FILE|-] Expand telemetry frames as JSONL" + "\n")
 	b.WriteString("  telemetry forward          Forward telemetry to Loki" + "\n")
-	b.WriteString("  version                  Show version (also: --version, -v)" + "\n")
+	b.WriteString("  version [--json]         Show version (also: --version, -v); --json adds the Format Versions" + "\n")
 	b.WriteString("  help                     Show this help (also: --help, -h)" + "\n")
 	b.WriteString("\n")
 	b.WriteString("Options:" + "\n")
