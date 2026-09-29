@@ -1,14 +1,16 @@
 /**
  * Test harness for the Studio wire protocol tests: starts a real local
- * (Unix socket) and TCP listener via `startStudioListeners`, and gives tests
+ * (Unix socket, or a named pipe on Windows) and TCP listener via
+ * `startStudioListeners`, and gives tests
  * a real `ws` client connected to either transport plus small frame
  * send/receive helpers. Not a `*.test.ts` file itself, so vitest's
  * `include: ['src/**\/*.test.{ts,tsx}']` never collects it directly.
  */
 import { createServer, type Server } from 'http'
 import { mkdtempSync, rmSync } from 'fs'
+import { connect as netConnect } from 'net'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { basename, join } from 'path'
 import WebSocket from 'ws'
 import type { HealthHandle, ReadinessState } from '../../http/health'
 import { startStudioListeners, type StudioListenersHandle, type StudioListenersOptions } from '../listener'
@@ -43,7 +45,8 @@ export interface Harness {
 /** Start both a TCP and a local-socket Studio listener pair for one test. */
 export async function startHarness(options: Partial<StudioListenersOptions> = {}): Promise<Harness> {
   const tmpDir = mkdtempSync(join(tmpdir(), 'ion-studio-wire-test-'))
-  const socketPath = join(tmpDir, 'studio.sock')
+  // Windows cannot listen on a filesystem path; its local sockets are pipes.
+  const socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\${basename(tmpDir)}` : join(tmpDir, 'studio.sock')
 
   const tcpServer = createServer()
   await new Promise<void>((resolve) => tcpServer.listen(0, '127.0.0.1', resolve))
@@ -79,6 +82,9 @@ export function connectTcp(harness: Harness): WebSocket {
 }
 
 export function connectLocal(harness: Harness): WebSocket {
+  if (process.platform === 'win32') {
+    return new WebSocket('ws://localhost/', { createConnection: () => netConnect(harness.socketPath) })
+  }
   return new WebSocket(`ws+unix://${harness.socketPath}:/`)
 }
 

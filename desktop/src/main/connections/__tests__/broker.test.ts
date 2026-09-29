@@ -22,8 +22,16 @@ function targetFor(harness: Harness, environmentId = 'env-local'): ConnectionTar
 
 describe('Broker', () => {
   let harness: Harness | undefined
+  // A broker left connected reconnects when the harness drops its socket,
+  // and that fresh connection holds the listener's close() open.
+  const brokers: Broker[] = []
+  const track = (broker: Broker): Broker => {
+    brokers.push(broker)
+    return broker
+  }
 
   afterEach(async () => {
+    for (const broker of brokers.splice(0)) broker.disconnectAll()
     // harness.close() walks connectionRegistry to close every still-open
     // socket before the underlying WebSocketServer.close() call, which
     // itself doesn't resolve until every tracked socket disconnects.
@@ -37,7 +45,7 @@ describe('Broker', () => {
 
   it('delivers a studio_welcome frame once connected to a fake local server', async () => {
     harness = await startHarness()
-    const broker = new Broker()
+    const broker = track(new Broker())
     const received: StudioFrame[] = []
     broker.onFrame((_envId, frame) => received.push(frame))
 
@@ -60,7 +68,7 @@ describe('Broker', () => {
 
   it('advertises the target capabilities in its hello, so the server can route reverse commands to it', async () => {
     harness = await startHarness()
-    const broker = new Broker()
+    const broker = track(new Broker())
     broker.connect(targetFor(harness, 'env-caps'))
 
     await new Promise<void>((resolve, reject) => {
@@ -84,7 +92,7 @@ describe('Broker', () => {
   // restart, so the credential belongs to the attempt, not to the target.
   it('derives the credential once per attempt, including every reconnect', async () => {
     harness = await startHarness()
-    const broker = new Broker()
+    const broker = track(new Broker())
     let refreshes = 0
     const target: ConnectionTarget = {
       ...targetFor(harness),
@@ -110,7 +118,7 @@ describe('Broker', () => {
 
   it('round-trips a studio_action through send/onFrame using sendAction', async () => {
     harness = await startHarness()
-    const broker = new Broker()
+    const broker = track(new Broker())
     broker.connect(targetFor(harness, 'env-action'))
 
     await new Promise<void>((resolve, reject) => {
@@ -145,7 +153,7 @@ describe('Broker', () => {
    */
   it('holds a frame sent before the wire is ready and delivers it once welcomed', async () => {
     harness = await startHarness()
-    const broker = new Broker()
+    const broker = track(new Broker())
     broker.connect(targetFor(harness, 'env-queued'))
 
     // No wait: the connection cannot possibly be open on this tick.
@@ -162,7 +170,7 @@ describe('Broker', () => {
     // connection used to vanish, and each of those actions timed out at 30s
     // -- the splash sat on "Workspace ready" for that long on every launch.
     harness = await startHarness()
-    const broker = new Broker()
+    const broker = track(new Broker())
     const pending = broker.sendAction('env-early', 'toggleExpanded', [])
     broker.connect(targetFor(harness, 'env-early'))
     await expect(pending).rejects.toThrow(/unknown_action|toggleExpanded/)
@@ -170,7 +178,7 @@ describe('Broker', () => {
 
   it('decodes a binary FILE_CHUNK frame sent by the server and delivers it via onBinary', async () => {
     harness = await startHarness()
-    const broker = new Broker()
+    const broker = track(new Broker())
     broker.connect(targetFor(harness, 'env-binary'))
 
     await new Promise<void>((resolve, reject) => {
@@ -212,7 +220,7 @@ describe('Broker', () => {
   it('reports offline after five failed connection attempts', async () => {
     vi.useFakeTimers()
     try {
-      const broker = new Broker()
+      const broker = track(new Broker())
       const phases: string[] = []
       broker.onPhase((_envId, phase) => phases.push(phase.phase))
 
@@ -243,7 +251,7 @@ describe('Broker', () => {
     // times send-to-answer itself, so no clock-skew correction is needed and
     // it reads the same for every client and route.
     harness = await startHarness()
-    const broker = new Broker()
+    const broker = track(new Broker())
     const target = { ...targetFor(harness), capabilities: ['graph', WIRE_PING_CAPABILITY] }
     broker.connect(target)
     await vi.waitFor(() => expect(connectionRegistry.all()).toHaveLength(1), { timeout: 5_000 })
@@ -266,7 +274,7 @@ describe('Broker', () => {
     // A client that predates the frame would refuse to decode it and its
     // connection would close -- far worse than a missing measurement.
     harness = await startHarness()
-    const broker = new Broker()
+    const broker = track(new Broker())
     const target = targetFor(harness) // capabilities: ['graph'] only
     broker.connect(target)
     await vi.waitFor(() => expect(connectionRegistry.all()).toHaveLength(1), { timeout: 5_000 })
