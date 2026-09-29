@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { handleStreamSignalEvent } from '../engine-control-plane-stream'
+import { handleStreamSignalEvent } from '@ion/server/engine/engine-control-plane-stream'
 
 /**
  * Steer signal semantics at the desktop's engine-wire boundary.
@@ -27,9 +27,7 @@ describe('handleStreamSignalEvent — steer delivery semantics', () => {
 
   // REGRESSION: engine_steer_injected's correlation fields (steerClientMessageId,
   // steerEntryId — the engine's own field names) were dropped by the desktop's
-  // engine_event -> internal steer_injected translation, even though iOS's
-  // handleEngineSteerInjected has needed them since the exact-rewind-entry fix
-  // (learn exact rewind entry from steer confirmations). Without them, a
+  // engine_event -> internal steer_injected translation. Without them, a
   // client-originated steer could never be resolved to its exact optimistic
   // bubble or adopt the durable entry id for a later rewind by id.
   it('forwards the correlation ids the engine attaches to a live drain', () => {
