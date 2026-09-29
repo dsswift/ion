@@ -10,11 +10,15 @@
  */
 import { createHash } from 'crypto'
 import { mkdirSync, writeFileSync } from 'fs'
-import { basename, join } from 'path'
+import { join, posix } from 'path'
 
-/** The part of a client-supplied name that is safe as one path segment. */
+/**
+ * The part of a client-supplied name that is safe as one path segment. The
+ * POSIX basename is used on every OS so a Windows drive prefix ("a:") is just
+ * more unsafe characters, not a root that swallows the start of the name.
+ */
 export function safeCopyName(name: string): string {
-  const base = basename(name.replace(/\\/g, '/')).replace(/[\0-\x1f<>:"|?*]/g, '_').trim()
+  const base = posix.basename(name.replace(/\\/g, '/')).replace(/[\0-\x1f<>:"|?*]/g, '_').trim()
   return base && base !== '.' && base !== '..' ? base.slice(0, 200) : 'attachment'
 }
 
