@@ -43,7 +43,11 @@ func ConfigureIdentityProviders(cfg *types.AuthConfig) (*IdentityManager, error)
 				"remedy":        "set auth.oauth." + cfg.IdentityProvider + ".issuerUrl so OIDC discovery can reach the provider's signing keys",
 			})
 		}
-		operator := NewIdentityManager(cfg.IdentityProvider, oauthCfg, cfg.RefreshThresholdMs)
+		resolved, err := withResolvedClientID(cfg.IdentityProvider, oauthCfg)
+		if err != nil {
+			return nil, err
+		}
+		operator := NewIdentityManager(cfg.IdentityProvider, resolved, cfg.RefreshThresholdMs)
 		SetTokenProvider(operator)
 		SetContextIdentityProvider(operator)
 		utils.LogWithFields(utils.LevelInfo, "auth.identity", "operator identity provider configured", map[string]any{

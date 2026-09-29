@@ -259,10 +259,10 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 	}
 
 	// Correlation ctx mirrors session/telemetry_ctx.go correlationCtxExt:
-	// {session_id, conversation_id, extension, extension_version}. run_id is
-	// intentionally omitted — the extension layer holds no run pointer, and the
-	// peer session-layer builder omits it too. session_id + conversation_id are
-	// the join keys.
+	// {session_id, conversation_id, extension, extension_version}, plus the
+	// run's trace below when a run is in flight. run_id is intentionally
+	// omitted — the peer session-layer builder omits it too. session_id +
+	// conversation_id are the join keys.
 	corr := map[string]any{
 		"session_id": sessionKey,
 		"extension":  h.name_(),
@@ -273,14 +273,23 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 	if h.version != "" {
 		corr["extension_version"] = h.version
 	}
-
-	telemFn("extension.hook_latency", map[string]any{
+	// Inside a run, the hook call is a span under the run's span: span_id
+	// plus duration_ms mark the event as a span, parent_span_id places it.
+	hookPayload := map[string]any{
 		"extension":  h.name_(),
 		"hook":       hookKind,
 		"latency_ms": latencyMs,
 		"turn":       turn,
 		"blocked":    blocked,
-	}, corr)
+	}
+	if ctx != nil && ctx.TraceID != "" && ctx.RunSpanID != "" {
+		corr["trace_id"] = ctx.TraceID
+		corr["parent_span_id"] = ctx.RunSpanID
+		hookPayload["span_id"] = utils.NewSpanID()
+		hookPayload["duration_ms"] = latencyMs
+	}
+
+	telemFn("extension.hook_latency", hookPayload, corr)
 
 	utils.LogWithFields(utils.LevelDebug, "extension", "hook_latency emitted", map[string]any{
 		"extension":       h.name_(),

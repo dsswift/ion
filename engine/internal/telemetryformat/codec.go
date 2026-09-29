@@ -77,6 +77,11 @@ func Expand(frame Frame) ([]Event, error) {
 			context := frame.Contexts[*frameEvent.Context]
 			event.Context = context.Context
 			event.TraceID = context.TraceID
+			// A span's parent rides in its correlation context; lift it to the
+			// expanded field the way the producer's Collector.Event does.
+			if parent, ok := context.Context["parent_span_id"].(string); ok {
+				event.ParentSpanID = parent
+			}
 		}
 		if err := ValidateEvent(event); err != nil {
 			return nil, fmt.Errorf("event %d: %w", index, err)

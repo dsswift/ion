@@ -77,7 +77,14 @@ func TestCleanupEphemeralPromptShutsDownOnlyOwnedServer(t *testing.T) {
 	commands := make(chan string, 2)
 	go servePromptTimeoutSocket(t, listener, commands)
 	t.Setenv("ION_SOCKET_PATH", listener.Addr().String())
-	cleanupEphemeralPrompt(listener.Addr().String(), "ephemeral-key", true)
+	t.Setenv("ION_DATA_DIR", t.TempDir())
+	// Stand-in for the spawned daemon: the test binary running no tests,
+	// which exits on its own so cleanup's exit wait returns promptly.
+	owned := exec.Command(os.Args[0], "-test.run=^$")
+	if err := owned.Start(); err != nil {
+		t.Fatalf("start owned process: %v", err)
+	}
+	cleanupEphemeralPrompt(listener.Addr().String(), "ephemeral-key", owned.Process)
 
 	got := receivePromptTimeoutCommands(t, commands, 2)
 	want := []string{"stop_session", "shutdown"}

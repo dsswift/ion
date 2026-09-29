@@ -26,6 +26,7 @@ func promptOverridesFromCommand(cmd *protocol.ClientCommand) *session.PromptOver
 		EnterPlanModeDescription:            cmd.EnterPlanModeDescription,
 		PlanModeSparseReminder:              cmd.PlanModeSparseReminder,
 		PlanFilePath:                        cmd.PlanFilePath,
+		Traceparent:                         cmd.Traceparent,
 		BashAllowlistAdditionsForThisPrompt: cmd.BashAllowlistAdditionsForThisPrompt,
 		McpAllowlistAdditionsForThisPrompt:  cmd.McpAllowlistAdditionsForThisPrompt,
 		CompactTargetPercent:                cmd.CompactTargetPercent,

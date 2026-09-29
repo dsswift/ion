@@ -137,3 +137,41 @@ func TestAmbientCtx_GoroutineIsolation(t *testing.T) {
 		t.Errorf("session_id leaked from exited goroutine: %v", obj2["session_id"])
 	}
 }
+
+// TestAmbientLogCarriesActingPrincipal pins R-42: resolvedEgressUser (the
+// same seam log_egress_tailer.go stamps into egressRecord.User) reads the
+// acting principal's attribution from the current goroutine's ambient
+// context ahead of the process-wide SetEgressUser value.
+func TestAmbientLogCarriesActingPrincipal(t *testing.T) {
+	t.Cleanup(func() { SetEgressUser("") })
+	SetEgressUser("process-wide-operator")
+
+	ctx := WithPrincipalIdentity(context.Background(), "alice")
+	SetAmbientCtx(ctx)
+	defer ClearAmbientCtx()
+
+	if got := resolvedEgressUser(); got != "alice" {
+		t.Errorf("resolvedEgressUser() = %q, want the ambient principal identity %q", got, "alice")
+	}
+}
+
+// TestAmbientLogFallsBackToProcessIdentity pins B-23: with no ambient
+// principal identity set, resolvedEgressUser falls back to the process-wide
+// SetEgressUser value exactly as before this program.
+func TestAmbientLogFallsBackToProcessIdentity(t *testing.T) {
+	t.Cleanup(func() { SetEgressUser("") })
+	SetEgressUser("process-wide-operator")
+
+	// No ambient context at all.
+	if got := resolvedEgressUser(); got != "process-wide-operator" {
+		t.Errorf("resolvedEgressUser() with no ambient ctx = %q, want the process-wide fallback", got)
+	}
+
+	// An ambient context with no principal identity set.
+	ctx := WithSessionID(context.Background(), "sess-1")
+	SetAmbientCtx(ctx)
+	defer ClearAmbientCtx()
+	if got := resolvedEgressUser(); got != "process-wide-operator" {
+		t.Errorf("resolvedEgressUser() with an ambient ctx lacking a principal = %q, want the process-wide fallback", got)
+	}
+}

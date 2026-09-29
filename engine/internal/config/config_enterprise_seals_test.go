@@ -484,3 +484,190 @@ func TestEnterpriseSealForwardsEventHubDestination(t *testing.T) {
 		t.Errorf("token audience = %q, want aud", ce.EventHubTokenAudience)
 	}
 }
+
+func TestEnforceEnterprise_PrincipalPartitioning_RequiredForcesOnRegardlessOfUserSetting(t *testing.T) {
+	cfg := &types.EngineRuntimeConfig{} // no user Security block at all
+	enterprise := &types.EnterpriseConfig{
+		Security: &types.EnterpriseSecurityConfig{RequirePrincipalPartitioning: true},
+	}
+	result := EnforceEnterprise(cfg, enterprise)
+
+	if result.Security == nil || result.Security.PrincipalPartitioning == nil || !result.Security.PrincipalPartitioning.Enabled {
+		t.Fatal("expected partitioning forced on by the enterprise requirement")
+	}
+	if got := result.Security.PrincipalPartitioning.ResolvedEnforcement(); got != types.EnforcementStrict {
+		t.Errorf("expected default enforcement strict once forced on, got %q", got)
+	}
+}
+
+func TestEnforceEnterprise_PrincipalPartitioning_UserCannotDisableARequiredSetting(t *testing.T) {
+	cfg := &types.EngineRuntimeConfig{
+		Security: &types.SecurityConfig{PrincipalPartitioning: &types.PrincipalPartitioningConfig{Enabled: false}},
+	}
+	enterprise := &types.EnterpriseConfig{
+		Security: &types.EnterpriseSecurityConfig{RequirePrincipalPartitioning: true},
+	}
+	result := EnforceEnterprise(cfg, enterprise)
+
+	if !result.Security.PrincipalPartitioning.Enabled {
+		t.Fatal("a user Enabled=false must not survive a sealed RequirePrincipalPartitioning")
+	}
+}
+
+func TestEnforceEnterprise_PrincipalPartitioning_MinEnforcementRaisesALooserUserValue(t *testing.T) {
+	cfg := &types.EngineRuntimeConfig{
+		Security: &types.SecurityConfig{PrincipalPartitioning: &types.PrincipalPartitioningConfig{Enabled: true, Enforcement: types.EnforcementNone}},
+	}
+	enterprise := &types.EnterpriseConfig{
+		Security: &types.EnterpriseSecurityConfig{MinEnforcement: types.EnforcementStrict},
+	}
+	result := EnforceEnterprise(cfg, enterprise)
+
+	if result.Security.PrincipalPartitioning.Enforcement != types.EnforcementStrict {
+		t.Errorf("expected enforcement raised to the sealed floor 'strict', got %q", result.Security.PrincipalPartitioning.Enforcement)
+	}
+}
+
+func TestEnforceEnterprise_PrincipalPartitioning_MinEnforcementNeverLowersAStricterUserValue(t *testing.T) {
+	cfg := &types.EngineRuntimeConfig{
+		Security: &types.SecurityConfig{PrincipalPartitioning: &types.PrincipalPartitioningConfig{Enabled: true, Enforcement: types.EnforcementStrict}},
+	}
+	enterprise := &types.EnterpriseConfig{
+		Security: &types.EnterpriseSecurityConfig{MinEnforcement: types.EnforcementReadOnly},
+	}
+	result := EnforceEnterprise(cfg, enterprise)
+
+	if result.Security.PrincipalPartitioning.Enforcement != types.EnforcementStrict {
+		t.Errorf("a stricter user-configured value must stand over a looser enterprise floor, got %q", result.Security.PrincipalPartitioning.Enforcement)
+	}
+}
+
+func TestEnforceEnterprise_PrincipalPartitioning_NilEnterpriseSecurityLeavesUserValueUntouched(t *testing.T) {
+	userSecurity := &types.SecurityConfig{PrincipalPartitioning: &types.PrincipalPartitioningConfig{Enabled: true, Enforcement: types.EnforcementReadOnly}}
+	cfg := &types.EngineRuntimeConfig{Security: userSecurity}
+	result := EnforceEnterprise(cfg, &types.EnterpriseConfig{})
+
+	if result.Security != userSecurity {
+		t.Error("expected the user's Security block to pass through unchanged when enterprise sets no security policy")
+	}
+}
+
+func TestEnforceEnterprise_PrincipalPartitioning_DoesNotMutateInput(t *testing.T) {
+	userPartitioning := &types.PrincipalPartitioningConfig{Enabled: false}
+	userSecurity := &types.SecurityConfig{PrincipalPartitioning: userPartitioning}
+	cfg := &types.EngineRuntimeConfig{Security: userSecurity}
+	enterprise := &types.EnterpriseConfig{Security: &types.EnterpriseSecurityConfig{RequirePrincipalPartitioning: true}}
+
+	_ = EnforceEnterprise(cfg, enterprise)
+
+	if userPartitioning.Enabled {
+		t.Error("EnforceEnterprise must not mutate the caller's PrincipalPartitioningConfig in place")
+	}
+}
+
+func TestEnforceEnterprise_GitIdentity_RequiredForcesOnRegardlessOfUserSetting(t *testing.T) {
+	cfg := &types.EngineRuntimeConfig{} // no user Git block at all
+	enterprise := &types.EnterpriseConfig{Git: &types.EnterpriseGitConfig{Required: true}}
+	result := EnforceEnterprise(cfg, enterprise)
+
+	if result.Git == nil || !result.Git.Identity.RequiredEnabled() {
+		t.Fatal("expected git identity Required forced on by the enterprise seal")
+	}
+}
+
+func TestEnforceEnterprise_GitIdentity_UserCannotDisableARequiredSetting(t *testing.T) {
+	notRequired := false
+	cfg := &types.EngineRuntimeConfig{Git: &types.GitConfig{Identity: types.GitIdentityConfig{Required: &notRequired}}}
+	enterprise := &types.EnterpriseConfig{Git: &types.EnterpriseGitConfig{Required: true}}
+	result := EnforceEnterprise(cfg, enterprise)
+
+	if !result.Git.Identity.RequiredEnabled() {
+		t.Fatal("a user Required=false must not survive a sealed enterprise requirement")
+	}
+}
+
+func TestEnforceEnterprise_GitIdentity_MachineReplacesUserFallback(t *testing.T) {
+	cfg := &types.EngineRuntimeConfig{
+		Git: &types.GitConfig{Identity: types.GitIdentityConfig{Machine: &types.GitAuthor{Name: "User Machine", Email: "user@example.com"}}},
+	}
+	enterprise := &types.EnterpriseConfig{Git: &types.EnterpriseGitConfig{Machine: &types.GitAuthor{Name: "CI Bot", Email: "ci@example.com"}}}
+	result := EnforceEnterprise(cfg, enterprise)
+
+	if result.Git.Identity.Machine == nil || result.Git.Identity.Machine.Name != "CI Bot" || result.Git.Identity.Machine.Email != "ci@example.com" {
+		t.Errorf("expected the enterprise machine identity to replace the user's, got %+v", result.Git.Identity.Machine)
+	}
+}
+
+func TestEnforceEnterprise_GitIdentity_NilEnterpriseGitLeavesUserValueUntouched(t *testing.T) {
+	userGit := &types.GitConfig{Identity: types.GitIdentityConfig{Machine: &types.GitAuthor{Name: "User Machine", Email: "user@example.com"}}}
+	cfg := &types.EngineRuntimeConfig{Git: userGit}
+	result := EnforceEnterprise(cfg, &types.EnterpriseConfig{})
+
+	if result.Git != userGit {
+		t.Error("expected the user's Git block to pass through unchanged when enterprise sets no git policy")
+	}
+}
+
+func TestEnforceEnterprise_GitIdentity_DoesNotMutateInput(t *testing.T) {
+	userIdentity := types.GitIdentityConfig{}
+	userGit := &types.GitConfig{Identity: userIdentity}
+	cfg := &types.EngineRuntimeConfig{Git: userGit}
+	enterprise := &types.EnterpriseConfig{Git: &types.EnterpriseGitConfig{Required: true}}
+
+	_ = EnforceEnterprise(cfg, enterprise)
+
+	if userGit.Identity.RequiredEnabled() {
+		t.Error("EnforceEnterprise must not mutate the caller's GitConfig in place")
+	}
+}
+
+func TestEnforceEnterprise_SystemMetricsReplacesUserBlock(t *testing.T) {
+	off := false
+	user := &types.EngineRuntimeConfig{SystemMetrics: &types.SystemMetricsConfig{BackgroundIntervalMs: 1000}}
+	got := EnforceEnterprise(user, &types.EnterpriseConfig{
+		SystemMetrics: &types.SystemMetricsConfig{Enabled: &off, TelemetryIntervalMs: 120_000},
+	})
+	if got.SystemMetrics == nil || got.SystemMetrics.IsEnabled() || got.SystemMetrics.BackgroundIntervalMs != 0 || got.SystemMetrics.TelemetryIntervalMs != 120_000 {
+		t.Fatalf("enterprise block must replace the user's whole: %+v", got.SystemMetrics)
+	}
+	untouched := EnforceEnterprise(&types.EngineRuntimeConfig{SystemMetrics: &types.SystemMetricsConfig{BackgroundIntervalMs: 1000}}, &types.EnterpriseConfig{})
+	if untouched.SystemMetrics.BackgroundIntervalMs != 1000 {
+		t.Fatalf("no enterprise block must leave the user's alone: %+v", untouched.SystemMetrics)
+	}
+}
+
+func TestEnforceEnterprise_TelemetrySealCarriesOtel(t *testing.T) {
+	sealed := &types.OtelConfig{Enabled: true, Endpoint: "https://collector.example.org"}
+	got := EnforceEnterprise(
+		&types.EngineRuntimeConfig{Telemetry: &types.TelemetryConfig{Otel: &types.OtelConfig{Endpoint: "https://user.example.org"}}},
+		&types.EnterpriseConfig{Telemetry: &types.TelemetryConfig{Enabled: true, Otel: sealed}},
+	)
+	if got.Telemetry.Otel == nil || got.Telemetry.Otel.Endpoint != "https://collector.example.org" {
+		t.Fatalf("sealed telemetry must carry the enterprise otel block: %+v", got.Telemetry.Otel)
+	}
+}
+
+// A sealed telemetry block must carry its destinations: forcing the "http"
+// or "eventhub" target on with nowhere to send would fail every flush.
+func TestEnforceEnterprise_TelemetrySealCarriesDestinations(t *testing.T) {
+	got := EnforceEnterprise(&types.EngineRuntimeConfig{}, &types.EnterpriseConfig{Telemetry: &types.TelemetryConfig{
+		Enabled:             true,
+		Targets:             []string{"http", "eventhub"},
+		HttpEndpoint:        "https://siem.example.org/ingest",
+		HttpHeaders:         map[string]string{"X-Tenant": "t1"},
+		EventHubNamespace:   "ns.servicebus.windows.net",
+		EventHubName:        "ion",
+		EventHubTokenScope:  "https://eventhubs.azure.net/.default",
+		OversizeEventPolicy: "quarantine",
+	}})
+	tc := got.Telemetry
+	if tc.HttpEndpoint != "https://siem.example.org/ingest" || tc.HttpHeaders["X-Tenant"] != "t1" {
+		t.Fatalf("http destination not sealed: %+v", tc)
+	}
+	if tc.EventHubNamespace != "ns.servicebus.windows.net" || tc.EventHubName != "ion" || tc.EventHubTokenScope == "" {
+		t.Fatalf("event hub destination not sealed: %+v", tc)
+	}
+	if tc.OversizeEventPolicy != "quarantine" {
+		t.Fatalf("oversize policy not sealed: %q", tc.OversizeEventPolicy)
+	}
+}

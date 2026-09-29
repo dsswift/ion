@@ -56,6 +56,10 @@ type PromptOverrides struct {
 	// if missing it falls back to fresh allocation. Additive optional
 	// field; empty by default.
 	PlanFilePath string
+	// Traceparent is the caller's W3C trace context for this prompt. A valid
+	// value makes the run a child span of the caller's span, in the caller's
+	// trace. Empty or invalid starts a new trace (see newRunTrace).
+	Traceparent string
 
 	// BashAllowlistAdditionsForThisPrompt are per-prompt additions to
 	// the plan-mode Bash allowlist. The engine unions these with the
@@ -168,6 +172,13 @@ type PromptOverrides struct {
 	// still-valid native cursor is unaffected either way — that path never
 	// reaches the seed step. False for every other caller.
 	SkipCliHistorySeed bool
+
+	// Principal overrides attribution for this single turn's hooks and
+	// telemetry only (manifest C1/C2 send_prompt.principal). It never
+	// changes the session's stored principal (s.principal) or the
+	// conversation header's owner -- both are set once, at start_session
+	// and at mint respectively. Nil uses the session's own principal.
+	Principal *types.SessionPrincipal
 }
 
 func clonePromptOverrides(in *PromptOverrides) *PromptOverrides {

@@ -164,3 +164,86 @@ func (a *extAttributionTestAccessor) ExtensionName() string    { return a.extNam
 func (a *extAttributionTestAccessor) ExtensionVersion() string { return a.extVer }
 
 func (a *extAttributionTestAccessor) AppContext() map[string]string { return nil }
+
+// principalTestAccessor is a SessionAccessor test double that surfaces a
+// stamped SessionPrincipal, so TestDispatchAgentSpanUserAttributionCarried
+// can verify the dispatch.agent span's Event.User carries it.
+type principalTestAccessor struct {
+	depthTestAccessor
+	principal *types.SessionPrincipal
+}
+
+func (a *principalTestAccessor) Principal() *types.SessionPrincipal { return a.principal }
+
+// TestDispatchAgentSpanUserAttributionCarried pins the origin fix for a
+// dispatch.agent event shipping with no user at all on a deployment where
+// the server's own OIDC door authenticates the session's principal but the
+// engine has no process-wide operator identity of its own (every Orion
+// instance pod: server.json's oidc/allowedSubjects authenticate the person,
+// engine.json carries no auth.identityProvider). startDispatchSpan
+// (pre-fix) called the bare two-arg Collector.StartSpan, which always
+// passes a nil ctx, so telemetry.identityForEvent had nothing but the
+// (here, empty) process-wide fallback to read -- unlike every other
+// telemetry event type, which stamps the session's own principal into ctx.
+//
+// RED on unfixed code: Event.User would be "" even though the session has
+// an attributed principal.
+func TestDispatchAgentSpanUserAttributionCarried(t *testing.T) {
+	col := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
+	acc := &principalTestAccessor{
+		depthTestAccessor: depthTestAccessor{telem: col},
+		principal:         &types.SessionPrincipal{Subject: "entra-oid-123", DisplayName: "JSprague@dciartform.com"},
+	}
+	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
+	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
+		Name:  "attributed-user-agent",
+		Task:  "work",
+		Model: "no-such-model",
+	})
+
+	var found *telemetry.Event
+	for _, ev := range col.BufferedEvents() {
+		ev := ev
+		if ev.Name == telemetry.DispatchAgent {
+			found = &ev
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("expected a dispatch.agent span event")
+	}
+	if found.User != "JSprague@dciartform.com" {
+		t.Errorf("User = %q, want %q", found.User, "JSprague@dciartform.com")
+	}
+}
+
+// TestDispatchAgentSpanUserAttributionAbsentIsSafe verifies an unattributed
+// session (Principal() nil, the common case: no session principal and no
+// process-wide operator identity) produces an empty Event.User rather than
+// panicking -- SessionPrincipal.AttributionForTelemetry is a nil-receiver-safe
+// method, and startDispatchSpan relies on that.
+func TestDispatchAgentSpanUserAttributionAbsentIsSafe(t *testing.T) {
+	col := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
+	acc := &depthTestAccessor{telem: col} // Principal() returns nil
+	dispatchFn := BuildDispatchAgentFunc(acc, nil, 0, "")
+	_, _ = dispatchFn(extension.DispatchAgentOpts{WaitForCompletion: true,
+		Name:  "unattributed-user-agent",
+		Task:  "work",
+		Model: "no-such-model",
+	})
+
+	var found *telemetry.Event
+	for _, ev := range col.BufferedEvents() {
+		ev := ev
+		if ev.Name == telemetry.DispatchAgent {
+			found = &ev
+			break
+		}
+	}
+	if found == nil {
+		t.Fatal("expected a dispatch.agent span event")
+	}
+	if found.User != "" {
+		t.Errorf("User = %q, want empty for an unattributed session", found.User)
+	}
+}

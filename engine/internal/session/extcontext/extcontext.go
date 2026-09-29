@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/resource"
@@ -123,8 +124,18 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 		// Run identity: both empty when no run is in flight (session_start, a
 		// schedule or webhook delivery), which is the honest encoding — there
 		// is no transaction to correlate against.
-		RunID:   runID,
-		TraceID: traceID,
+		RunID:     runID,
+		TraceID:   traceID,
+		RunSpanID: runSpanID(sa),
+		// Identity resolves the session's own stamped principal (manifest
+		// C1/C2) as the SESSION-level baseline. stampContextIdentity
+		// (extension/context_identity.go), which runs at every dispatch
+		// point (hook, tool call, command), only overwrites this with the
+		// process-level operator identity when the session carries no
+		// principal of its own -- so "session principal first, process
+		// identity second" holds regardless of which invocation path a
+		// given hook fires through.
+		Identity: auth.FromSessionPrincipal(sa.Principal()),
 		// Dispatch identity travels on the context so every hook fired in a
 		// child session (session_start included, whose payload is nil) can
 		// discriminate root (Depth 0) from dispatched children (Depth > 0).
@@ -187,8 +198,18 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 		// Pre-authenticated outbound HTTP: session-independent (token
 		// minting needs no session state), wired here so Go SDK consumers
 		// reach it through the same Context surface as everything else.
+		// The acting principal's Subject rides on ctx via auth.WithSubject
+		// (FR-05 child 10, R-43), so DoOperatorHTTPRequest resolves the
+		// per-principal bearer provider rather than the shared process-wide
+		// one -- sa.Principal() is nil for an unattributed session, and
+		// (*types.SessionPrincipal)(nil).Subject would panic, so the zero
+		// value is read through a nil-safe local first.
 		HTTPRequest: func(params extension.OperatorHTTPRequestParams) (*extension.OperatorHTTPResponse, error) {
-			return extension.DoOperatorHTTPRequest(context.Background(), params)
+			subject := ""
+			if p := sa.Principal(); p != nil {
+				subject = p.Subject
+			}
+			return extension.DoOperatorHTTPRequest(auth.WithSubject(context.Background(), subject), params)
 		},
 		SendPrompt: func(text string, model string, bashAllowlistAdditions []string) error {
 			return sa.SendPrompt(text, model, bashAllowlistAdditions)
@@ -376,6 +397,14 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 		broker.SetQueryHandlerFor(kind, producer, handler)
 	}
 
+	ctx.HandleResourceTransfer = func(kind, producer string, handlers resource.TransferHandlers) {
+		broker := sa.ResourceBroker()
+		if broker == nil {
+			return
+		}
+		broker.SetTransferHandlersFor(kind, producer, handlers)
+	}
+
 	ctx.Notify = func(opts types.NotifyOpts) error {
 		if opts.Title == "" {
 			return fmt.Errorf("notification title is required")
@@ -505,4 +534,12 @@ func mapDispatchWaitingOn(waiting *DispatchWaitingOn) *extension.DispatchWaiting
 		TaskIDs:          append([]string(nil), waiting.TaskIDs...),
 		ChildDispatchIDs: append([]string(nil), waiting.ChildDispatchIDs...),
 	}
+}
+
+// runSpanID is the accessor's active run span-id, when the accessor tracks one.
+func runSpanID(sa SessionAccessor) string {
+	if spans, ok := sa.(interface{ RunSpanID() string }); ok {
+		return spans.RunSpanID()
+	}
+	return ""
 }

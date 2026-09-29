@@ -117,12 +117,12 @@ func CheckMcpServerAllowed(name string, cfg types.McpServerConfig) error {
 		}
 		if host := mcpServerURLHost(cfg); host != "" && matchesAny(enterprise.McpAllowlist, host) {
 			utils.LogWithFields(utils.LevelInfo, "config", "mcp server add allowed by enterprise URL host pattern", map[string]any{
-				"server": name, "host": host,
+				"server": name, "url_host": host,
 			})
 			return nil
 		}
 		utils.LogWithFields(utils.LevelWarn, "config", "mcp server add refused by enterprise allowlist", map[string]any{
-			"server": name, "host": mcpServerURLHost(cfg), "allowlist": enterprise.McpAllowlist,
+			"server": name, "url_host": mcpServerURLHost(cfg), "allowlist": enterprise.McpAllowlist,
 		})
 		return fmt.Errorf("MCP server %q is not permitted by enterprise policy (mcpAllowlist)", name)
 	}

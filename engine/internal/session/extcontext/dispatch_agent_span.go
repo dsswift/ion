@@ -76,7 +76,22 @@ func startDispatchSpan(sa SessionAccessor, s dispatchSpanStart) *telemetry.SpanH
 			attrs["extension_version"] = s.extensionVersion
 		}
 	}
-	return telem.StartSpan("dispatch.agent", attrs)
+	// FR-05 child 10 (R-41): the acting principal's attribution, same key
+	// and precedence telemetry.identityForEvent reads for every other event
+	// type (backend.buildTelemCtx does this for llm.call/tool.execute; the
+	// session package's stampPrincipalIdentity does it for run/cache
+	// telemetry). This span used the bare two-arg StartSpan, which passes a
+	// nil ctx, so dispatch.agent alone always fell through to the
+	// process-wide operator identity -- absent on a deployment where the
+	// server's OIDC door authenticates the person but the engine's own
+	// identityProvider is unconfigured (every Orion instance pod), so
+	// dispatch.agent shipped with no user at all instead of falling back
+	// the way a session-scoped event does elsewhere.
+	ctx := map[string]any{}
+	if identity := sa.Principal().AttributionForTelemetry(); identity != "" {
+		ctx["principal_identity"] = identity
+	}
+	return telem.StartSpanCtx("dispatch.agent", attrs, ctx)
 }
 
 // dispatchSpanEnd bundles the terminal metrics stamped on the dispatch.agent

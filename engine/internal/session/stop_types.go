@@ -38,6 +38,7 @@ func (m *Manager) finishStoppedSession(resources stoppedSessionResources) {
 	}
 	tools.StopBackgroundTasksForOwner(resources.key)
 	m.clearOutstandingBackgroundTasks(resources.key)
+	forgetAgentSnapshotNesting(resources.key, true)
 	if resources.sessionMemory != nil {
 		resources.sessionMemory.Stop()
 	}

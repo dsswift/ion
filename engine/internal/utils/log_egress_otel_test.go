@@ -12,7 +12,7 @@ package utils
 //
 // The typing convention (native scalar; whole-valued floats promoted to
 // intValue) is shared byte-for-byte with the desktop exporter
-// (desktop/src/main/log-egress.ts). The desktop mirror test asserts the same
+// (packages/shared/src/log-egress.ts). The TypeScript mirror test asserts the same
 // canonical record produces the same attribute keys/types.
 
 import (
@@ -117,15 +117,15 @@ func TestOtelExporterLossless_EveryKeyBecomesAttribute(t *testing.T) {
 		t.Errorf("severity = %q/%d, want INFO/9", sevText, sevNum)
 	}
 
-	// Expected attribute set: component, tag, the three correlation IDs, user,
-	// every fields key (run_id included), and the loki.attribute.labels
-	// promotion hint. This is the canonical set; a missing or extra key fails.
+	// Expected attribute set: tag, the session and conversation ids, user, and
+	// every fields key (run_id included). The component is service.name and the
+	// trace is the LogRecord traceId, so neither is an attribute. This is the
+	// canonical set; a missing or extra key fails.
 	wantKeys := []string{
-		"component", "tag",
-		"session_id", "conversation_id", "trace_id", "user",
+		"tag",
+		"session_id", "conversation_id", "user",
 		"run_id", "model", "turn", "cost_usd", "cache_hit",
 		"duration_ms", "nested", "list", "whole_float",
-		"loki.attribute.labels",
 	}
 	if len(attrs) != len(wantKeys) {
 		t.Errorf("attribute count = %d, want %d; got keys %v", len(attrs), len(wantKeys), keysOf(attrs))
@@ -137,14 +137,10 @@ func TestOtelExporterLossless_EveryKeyBecomesAttribute(t *testing.T) {
 	}
 
 	// Native typing assertions.
-	assertStr(t, attrs, "component", "engine")
 	assertStr(t, attrs, "tag", "session")
 	assertStr(t, attrs, "session_id", "sess-abc")
 	assertStr(t, attrs, "conversation_id", "1780093348767-c1c03e998388")
-	assertStr(t, attrs, "trace_id", "4bf92f3577b34da6a3ce929d0e0e4736")
 	assertStr(t, attrs, "user", "user@example.com")
-	// Operational records carry the component/tag promotion hint (desktop parity).
-	assertStr(t, attrs, "loki.attribute.labels", "component, tag")
 	// run_id rides inside fields but must still surface as its own attribute.
 	assertStr(t, attrs, "run_id", "run-xyz")
 	assertStr(t, attrs, "model", "claude-opus-4-5")
@@ -183,8 +179,7 @@ func TestOtelExporterLossless_OmitsAbsentCorrelation(t *testing.T) {
 			t.Errorf("attribute %q must be omitted when not in scope", absent)
 		}
 	}
-	// component, tag, and the one fields key must be present.
-	assertStr(t, attrs, "component", "engine")
+	// tag and the one fields key must be present.
 	assertStr(t, attrs, "tag", "server")
 	assertStr(t, attrs, "path", "/tmp/x.sock")
 	if sevText != "WARN" || sevNum != 13 {
@@ -404,10 +399,8 @@ func TestTelemetryEvent_AttributeMap(t *testing.T) {
 		t.Errorf("severity = %q/%d, want INFO/9", sevText, sevNum)
 	}
 
-	// kind + service are the stream-label discriminators the dashboards select.
-	assertStr(t, attrs, "kind", "run.complete")
-	assertStr(t, attrs, "service", "ion-telemetry")
-	assertStr(t, attrs, "component", "engine")
+	// event.name names the event and is what tells it from an operational line.
+	assertStr(t, attrs, EventNameAttr, "run.complete")
 
 	// payload.* with the file-tail rename map (aggregate_cost_usd→agg_cost_usd,
 	// cache_*_input_tokens→cache_*_tokens). Native typing: whole floats→intValue.
@@ -429,21 +422,13 @@ func TestTelemetryEvent_AttributeMap(t *testing.T) {
 	assertStr(t, attrs, "context_conversation_id", "1783339918596-0a78dd0c12ca")
 	assertStr(t, attrs, "context_session_id", "230dad54-0960-4c08-ace2-35f75a8f23be")
 
-	// top-level envelope.
 	assertInt(t, attrs, "schema_version", "3")
-	assertStr(t, attrs, "install_id", "5a435113-060b-4b0c-a5c9-1184ccd709a5")
-	assertStr(t, attrs, "engine_version", "dev")
-	assertStr(t, attrs, "trace_id", "4bf92f3577b34da6a3ce929d0e0e4736")
 
-	// The label-promotion hint names service+kind+component so
-	// otelcol.exporter.loki promotes them to Loki stream labels.
-	assertStr(t, attrs, "loki.attribute.labels", "service, kind, component")
-
-	// host and event_id ride in the BODY (asserted above) but are omitted from
-	// the ATTRIBUTE set to stay byte-identical with the desktop exporter.
-	for _, absent := range []string{"host", "event_id"} {
+	// The install, version, and host are the resource; the trace is the
+	// LogRecord traceId; event_id rides in the body. None is an attribute.
+	for _, absent := range []string{"host", "event_id", "install_id", "engine_version", "trace_id", "component", "kind", "service", "loki.attribute.labels"} {
 		if _, ok := attrs[absent]; ok {
-			t.Errorf("attribute %q must be omitted (body-only; desktop attribute parity)", absent)
+			t.Errorf("attribute %q must be omitted", absent)
 		}
 	}
 }
@@ -466,7 +451,7 @@ func TestTelemetryEvent_OmitsAbsentFields(t *testing.T) {
 	}
 	attrs, _, _, _ := decodeOtelBody(t, rec)
 
-	assertStr(t, attrs, "kind", "llm.call")
+	assertStr(t, attrs, EventNameAttr, "llm.call")
 	assertInt(t, attrs, "duration_ms", "5820")
 	assertStr(t, attrs, "stop_reason", "end_turn")
 	for _, absent := range []string{"run_cost_usd", "num_turns", "input_tokens", "context_extension"} {

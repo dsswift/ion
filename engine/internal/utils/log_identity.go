@@ -1,12 +1,11 @@
 package utils
 
 import (
-	"os"
 	"sync"
 )
 
 // machineIdentity holds stable hardware and MDM identity fields stamped on
-// every engine egress record. Populated once at forwarder init; never mutated.
+// every engine log line and egress record. Loaded once; never mutated.
 type machineIdentity struct {
 	Host        string
 	MachineID   string
@@ -23,7 +22,7 @@ var (
 // call. Safe for concurrent use after init.
 func getMachineIdentity() machineIdentity {
 	machineIdentityOnce.Do(func() {
-		host, _ := os.Hostname() //nolint:errcheck // empty hostname fallback
+		host := HostName()
 		platform := loadPlatformMachineIdentity()
 
 		cachedMachineIdentity = machineIdentity{
@@ -36,14 +35,12 @@ func getMachineIdentity() machineIdentity {
 	return cachedMachineIdentity
 }
 
-// ambientFieldsFromIdentity builds the fields map to merge into every egress
-// record. Only non-empty values are included. install_id (the per-install
-// anonymous UUID) is included alongside the hardware machine_id: they are
-// DISTINCT identifiers, not a naming drift. install_id joins egress records to
-// the telemetry stream (which stamps the same value); machine_id stays
-// hardware-stable across reinstalls. Both ship. See docs/observability/log-schema.md.
-func ambientFieldsFromIdentity(id machineIdentity) map[string]any {
-	m := make(map[string]any, 6)
+// machineFieldsFromIdentity is the identity every engine.jsonl line carries:
+// the same host, machine_id and MDM ids the server and desktop loggers stamp,
+// so a log pipeline can label every line with the device it came from.
+// Only non-empty values are included.
+func machineFieldsFromIdentity(id machineIdentity) map[string]any {
+	m := make(map[string]any, 5)
 	if id.Host != "" {
 		m["host"] = id.Host
 	}
@@ -56,10 +53,43 @@ func ambientFieldsFromIdentity(id machineIdentity) map[string]any {
 	if id.MDMSerial != "" {
 		m["mdm_serial"] = id.MDMSerial
 	}
-	if iid := InstallID(); iid != "" {
-		m["install_id"] = iid
-	}
 	return m
+}
+
+var (
+	lineIdentityOnce   sync.Once
+	lineIdentityFields map[string]any
+)
+
+// lineIdentity returns the machine identity stamped on every engine.jsonl
+// line, loading it on first call.
+func lineIdentity() map[string]any {
+	lineIdentityOnce.Do(func() {
+		if lineIdentityFields == nil {
+			lineIdentityFields = machineFieldsFromIdentity(getMachineIdentity())
+		}
+	})
+	return lineIdentityFields
+}
+
+// withMachineIdentity returns a copy of fields with identity stamped over it.
+// Identity wins on a collision: these keys name the machine a line came from,
+// and log pipelines label lines by them, so a caller's `host` meaning
+// something else (a URL's host) must not relabel the line. Call sites name
+// such values differently (scripts/check-logging.sh, RESERVED-KEY). fields
+// itself is never mutated: the same map also goes to the egress forwarder.
+func withMachineIdentity(fields, identity map[string]any) map[string]any {
+	if len(identity) == 0 {
+		return fields
+	}
+	out := make(map[string]any, len(fields)+len(identity))
+	for k, v := range fields {
+		out[k] = v
+	}
+	for k, v := range identity {
+		out[k] = v
+	}
+	return out
 }
 
 // platformIdentity is the result of platform-specific hardware identity reads.

@@ -42,50 +42,6 @@ func TestEgressEnqueue_PreservesExistingEventID(t *testing.T) {
 	}
 }
 
-// TestEgressEnqueue_MergesInstallIDAmbient pins that install_id is merged into
-// egress records from the ambient identity fields, and that machine_id is
-// unchanged (both ship — distinct identifiers).
-func TestEgressEnqueue_MergesInstallIDAmbient(t *testing.T) {
-	f := &EgressForwarder{
-		shipOwn: true,
-		buffer:  make([]egressRecord, 0, 2),
-		ambientFields: map[string]any{
-			"machine_id": "hw-uuid-1234",
-			"install_id": "install-uuid-5678",
-		},
-	}
-	f.ship(egressRecord{Ts: "t", Level: "INFO", Msg: "m", Component: "engine", Tag: "test"})
-	if len(f.buffer) != 1 {
-		t.Fatalf("expected 1 buffered record, got %d", len(f.buffer))
-	}
-	fields := f.buffer[0].Fields
-	if fields["install_id"] != "install-uuid-5678" {
-		t.Errorf("install_id ambient must be merged: got %v", fields["install_id"])
-	}
-	if fields["machine_id"] != "hw-uuid-1234" {
-		t.Errorf("machine_id ambient must be unchanged: got %v", fields["machine_id"])
-	}
-}
-
-// TestAmbientFieldsIncludeInstallID pins that ambientFieldsFromIdentity emits
-// install_id alongside machine_id (distinct identifiers).
-func TestAmbientFieldsIncludeInstallID(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	ResetInstallIDForTest()
-
-	m := ambientFieldsFromIdentity(machineIdentity{Host: "h", MachineID: "hw-id"})
-	if m["install_id"] == nil || m["install_id"] == "" {
-		t.Error("ambient fields must include a non-empty install_id")
-	}
-	if m["machine_id"] != "hw-id" {
-		t.Errorf("machine_id must be unchanged: got %v", m["machine_id"])
-	}
-	// install_id must equal the shared accessor's value.
-	if m["install_id"] != InstallID() {
-		t.Errorf("ambient install_id %v must match utils.InstallID() %v", m["install_id"], InstallID())
-	}
-}
-
 // TestOTLPAttrsIncludeEventID pins that the operational OTLP attribute mapper
 // promotes event_id when present.
 func TestOTLPAttrsIncludeEventID(t *testing.T) {

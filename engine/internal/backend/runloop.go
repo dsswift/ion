@@ -54,11 +54,13 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 	// Resolve provider — applies the engine's graceful-degradation
 	// policy (fall back to DefaultModel when the requested model is
-	// unknown) and emits ModelFallbackEvent on the swap path. See
-	// runloop_provider_resolve.go for the full contract; on any
-	// non-recoverable failure the helper has already emitted the
-	// appropriate ErrorEvent + exit and we just return.
-	provider, model := b.resolveProviderForRun(run, &opts)
+	// unknown) and emits ModelFallbackEvent on the swap path. Also resolves
+	// the acting principal's request credential (SC-2) and attaches it to
+	// ctx, so every downstream provider call in this function reads it via
+	// applyRequestAuth. See runloop_provider_resolve.go for the full
+	// contract; on any non-recoverable failure the helper has already
+	// emitted the appropriate ErrorEvent + exit and we just return.
+	provider, model, ctx := b.resolveProviderForRun(ctx, run, &opts)
 	if provider == nil {
 		return
 	}
@@ -446,7 +448,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		}
 
 		streamOpts := types.LlmStreamOptions{
-			Model:       model,
+			Model:       providerWireModel(provider, model),
 			System:      conv.System,
 			Messages:    messages,
 			Tools:       toolDefs,
@@ -486,6 +488,8 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			spanAttrs := map[string]interface{}{
 				"model": model,
 				"turn":  turn,
+				// An outbound provider call: a client span (a dependency).
+				"span_kind": telemetry.SpanKindClient,
 			}
 			if telem.PrivacyLevel() == "full" {
 				spanAttrs["prompt"] = truncatePreview(promptTextForTelemetry(messages), telemPreviewLimit)

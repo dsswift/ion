@@ -72,6 +72,22 @@ func ambientCorrelationIDs() (sessionID, conversationID, traceID string) {
 	return
 }
 
+// ambientPrincipalIdentity returns the acting principal's attribution string
+// from the current goroutine's ambient context, or "" if absent (no ambient
+// context set, or the ambient context was never given one via
+// WithPrincipalIdentity -- an unattributed run).
+func ambientPrincipalIdentity() string {
+	v, ok := ambientCtxMap.Load(goroutineID())
+	if !ok {
+		return ""
+	}
+	ctx, ok := v.(context.Context)
+	if !ok {
+		return ""
+	}
+	return PrincipalIdentityFromContext(ctx)
+}
+
 // egressUserV holds the user-attribution identity stamped on outbound egress
 // records (R20). It mirrors the telemetry SetUserIdentity seam and the
 // desktop setEgressUser seam, but lives in utils because the egress forwarder
@@ -92,7 +108,17 @@ func SetEgressUser(identity string) {
 
 // resolvedEgressUser returns the current egress user identity, or "" when not
 // set. Read on the ship path so the stamp is always the latest value.
+// resolvedEgressUser returns the current egress user identity: the acting
+// principal's attribution from the current goroutine's ambient context when
+// one is set (FR-05 child 10, R-42 -- the same context-first,
+// process-fallback resolution telemetry.resolvedUserIdentity's caller uses),
+// falling back to the process-wide egressUserV when the goroutine has no
+// ambient principal (unattributed work, e.g. startup) -- unchanged, and
+// preserving B-23 for a single-user engine.
 func resolvedEgressUser() string {
+	if id := ambientPrincipalIdentity(); id != "" {
+		return id
+	}
 	if v, ok := egressUserV.Load().(string); ok {
 		return v
 	}
@@ -101,7 +127,7 @@ func resolvedEgressUser() string {
 
 // egressAuthProviderV holds the flush-time auth-header provider for the
 // egress forwarder. Mirrors the desktop's AuthHeaderProvider seam
-// (desktop/src/main/log-egress.ts): called at every flush so shipped
+// (packages/shared/src/log-egress.ts): called at every flush so shipped
 // batches always carry a fresh operator token. Injected from serve startup
 // (a closure over the engine's identity manager minting the configured
 // egressTokenScope) because utils cannot import internal/auth — auth

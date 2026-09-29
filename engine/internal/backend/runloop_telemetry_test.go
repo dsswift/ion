@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -332,6 +333,9 @@ func TestLlmCallSpan_PromptAndResponseGatedByPrivacyLevel(t *testing.T) {
 				t.Fatal("expected at least one llm.call event")
 			}
 			e := events[0]
+			if e.Payload["span_kind"] != telemetry.SpanKindClient {
+				t.Errorf("llm.call span_kind = %v, want client", e.Payload["span_kind"])
+			}
 
 			_, promptPresent := e.Payload["prompt"]
 			if promptPresent != tc.wantPresent {

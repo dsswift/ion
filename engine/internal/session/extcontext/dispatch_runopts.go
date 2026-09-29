@@ -5,6 +5,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // buildDispatchRunOptions assembles the types.RunOptions for a dispatched
@@ -25,7 +26,7 @@ func buildDispatchRunOptions(opts *extension.DispatchAgentOpts, model, projectPa
 		Model:       model,
 		ModelOrigin: opts.ModelOrigin,
 		ProjectPath: projectPath,
-		ParentCtx:   dispatchParentCtx,
+		ParentCtx:   withDispatchingRunTrace(dispatchParentCtx, sa),
 		// Mirror the parent session's Claude-compatibility setting onto the
 		// child run so the backend's read-triggered nested context loader
 		// applies the same Ion-vs-Claude gate during the child's own run. Root
@@ -92,4 +93,26 @@ func buildDispatchRunOptions(opts *extension.DispatchAgentOpts, model, projectPa
 		}
 	}
 	return runOpts
+}
+
+// withDispatchingRunTrace puts the dispatching run's trace and span on a child
+// run's parent context when that context has none. A foreground dispatch
+// already inherits them through the tool call's context; a background
+// dispatch derives from the session root, which carries neither, and would
+// otherwise start a trace of its own.
+func withDispatchingRunTrace(ctx context.Context, sa SessionAccessor) context.Context {
+	if ctx == nil || utils.TraceIDFromContext(ctx) != "" {
+		return ctx
+	}
+	traceID := sa.TraceID()
+	if traceID == "" {
+		return ctx
+	}
+	ctx = utils.WithTraceID(ctx, traceID)
+	if spans, ok := sa.(interface{ RunSpanID() string }); ok {
+		if spanID := spans.RunSpanID(); spanID != "" {
+			ctx = utils.WithSpanID(ctx, spanID)
+		}
+	}
+	return ctx
 }

@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	traceSDK "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc"
 )
 
 const (
@@ -33,6 +35,10 @@ type OtelConfig struct {
 	ResourceAttributes map[string]string `json:"resource_attributes"`
 	BatchSize          int               `json:"batch_size"`
 	FlushInterval      time.Duration     `json:"flush_interval"`
+	// TokenScope, when set, mints a bearer token for every trace export from
+	// the credential TokenProvider names ("" = the identity provider).
+	TokenScope    string `json:"token_scope"`
+	TokenProvider string `json:"token_provider"`
 }
 
 // OtelBridge converts Ion events to OTLP spans and exports them through the
@@ -72,11 +78,19 @@ func NewOtelBridge(config OtelConfig) *OtelBridge {
 	exporter, err := newOTLPExporter(context.Background(), config)
 	if err != nil {
 		bridge.initErr = err
+		utils.LogWithFields(utils.LevelError, "telemetry.otel", "otlp trace export failed to start", map[string]any{
+			"endpoint": config.Endpoint, "protocol": config.Protocol, "error": err.Error(),
+		})
 		return bridge
 	}
+	utils.LogWithFields(utils.LevelInfo, "telemetry.otel", "otlp trace export started", map[string]any{
+		"endpoint": config.Endpoint, "protocol": config.Protocol,
+		"token_scope_set": config.TokenScope != "", "token_provider": tokenProviderForLog(config.TokenProvider),
+	})
 
 	bridge.provider = traceSDK.NewTracerProvider(
 		traceSDK.WithResource(otelResource(config)),
+		traceSDK.WithIDGenerator(ionIDGenerator{}),
 		traceSDK.WithBatcher(
 			exporter,
 			traceSDK.WithMaxExportBatchSize(config.BatchSize),
@@ -87,6 +101,7 @@ func NewOtelBridge(config OtelConfig) *OtelBridge {
 }
 
 func newOTLPExporter(ctx context.Context, config OtelConfig) (*otlptrace.Exporter, error) {
+	tokenAuth := otlpTokenAuth{signal: "traces", scope: config.TokenScope, provider: config.TokenProvider}
 	switch config.Protocol {
 	case otlpProtocolHTTPProtobuf:
 		endpoint, insecure, err := httpTracesEndpoint(config.Endpoint)
@@ -99,6 +114,11 @@ func newOTLPExporter(ctx context.Context, config OtelConfig) (*otlptrace.Exporte
 		}
 		if insecure {
 			opts = append(opts, otlptracehttp.WithInsecure())
+		}
+		if config.TokenScope != "" {
+			opts = append(opts, otlptracehttp.WithHTTPClient(&http.Client{
+				Transport: &tokenRoundTripper{auth: tokenAuth, next: http.DefaultTransport},
+			}))
 		}
 		exporter, err := otlptracehttp.New(ctx, opts...)
 		if err != nil {
@@ -116,6 +136,9 @@ func newOTLPExporter(ctx context.Context, config OtelConfig) (*otlptrace.Exporte
 		}
 		if insecure {
 			opts = append(opts, otlptracegrpc.WithInsecure())
+		}
+		if config.TokenScope != "" {
+			opts = append(opts, otlptracegrpc.WithDialOption(grpc.WithPerRPCCredentials(tokenRPCCredentials{auth: tokenAuth, secure: !insecure})))
 		}
 		exporter, err := otlptracegrpc.New(ctx, opts...)
 		if err != nil {
@@ -159,52 +182,107 @@ func grpcEndpoint(rawEndpoint string) (string, bool, error) {
 	return endpoint.Host, endpoint.Scheme == "http", nil
 }
 
+// otelResource is the resource the SDK exports carry: the same identity log
+// egress gives the engine's records (service.namespace, service.instance.id,
+// host.name, service.version), under config.ServiceName. Configured resource
+// attributes win over the derived ones; service.name is always ServiceName.
 func otelResource(config OtelConfig) *resource.Resource {
-	attrs := make([]attribute.KeyValue, 0, len(config.ResourceAttributes)+1)
-	for key, value := range config.ResourceAttributes {
+	values := hostResourceAttributes(config.ResourceAttributes)
+	values["service.name"] = config.ServiceName
+	attrs := make([]attribute.KeyValue, 0, len(values))
+	for key, value := range values {
 		attrs = append(attrs, attribute.String(key, value))
 	}
-	attrs = append(attrs, attribute.String("service.name", config.ServiceName))
 	return resource.NewWithAttributes("", attrs...)
 }
 
-// RecordEvent converts an Ion telemetry Event to an OTLP span.
+// RecordEvent converts an Ion telemetry Event to an OTLP span. A span event
+// (payload span_id + duration_ms, see span_handle.go) becomes a timed span
+// under its own span-id, ending at ts. Any other event becomes a zero-length
+// span. Either one is parented to the event's ParentSpanID when present.
 func (b *OtelBridge) RecordEvent(event Event) {
-	timestamp := eventTime(event.Ts)
+	end := eventTime(event.Ts)
+	start := end
+	spanID := ""
+	if id, durationMs, ok := spanIdentity(event.Payload); ok {
+		spanID = id
+		start = end.Add(-time.Duration(durationMs * float64(time.Millisecond)))
+	}
+	// The span's own id and its parent are the span's SpanId and
+	// ParentSpanId, so neither is repeated as an attribute.
 	attrs := make(map[string]any, len(event.Payload)+len(event.Context))
 	for key, value := range event.Payload {
-		attrs[key] = value
+		switch key {
+		case spanKindKey:
+			attrs[spanKindAttr] = value
+		case spanIDKey:
+		default:
+			attrs[key] = value
+		}
 	}
 	for key, value := range event.Context {
-		attrs["ctx."+key] = value
+		if key != parentSpanIDKey {
+			attrs["ctx."+key] = value
+		}
 	}
 
-	b.recordSpan(event.Name, timestamp, timestamp, attrs, event.TraceID, errorMessage(event.Payload))
+	b.recordSpan(event.Name, start, end, attrs, spanIdentifiers{
+		traceID:      event.TraceID,
+		spanID:       spanID,
+		parentSpanID: event.ParentSpanID,
+	}, errorMessage(event.Payload))
 }
 
-// RecordSpan records a timed span directly. The attrs map becomes span
-// attributes; ctx carries correlation separately, matching StartSpanCtx.
-func (b *OtelBridge) RecordSpan(name string, startMs, endMs int64, attrs, ctx map[string]any) {
-	b.recordSpan(
-		name,
-		time.UnixMilli(startMs),
-		time.UnixMilli(endMs),
-		attrs,
-		traceIDFromCorrelationContext(ctx),
-		"",
-	)
+// spanIdentity reports whether payload marks its event as a span, returning
+// the span-id and duration.
+func spanIdentity(payload map[string]any) (string, float64, bool) {
+	id, _ := payload[spanIDKey].(string) //nolint:errcheck // non-string span_id is not a span
+	if !utils.IsValidSpanID(id) {
+		return "", 0, false
+	}
+	switch d := payload["duration_ms"].(type) {
+	case float64:
+		return id, d, true
+	case int64:
+		return id, float64(d), true
+	case int:
+		return id, float64(d), true
+	}
+	return "", 0, false
 }
 
-func (b *OtelBridge) recordSpan(name string, start, end time.Time, attrs map[string]any, traceID, errMessage string) {
+// spanIdentifiers are the W3C ids one exported span records under. Empty
+// spanID mints one; empty or invalid parentSpanID makes the span a root of
+// traceID; invalid traceID starts a fresh trace.
+type spanIdentifiers struct {
+	traceID      string
+	spanID       string
+	parentSpanID string
+}
+
+func (b *OtelBridge) recordSpan(name string, start, end time.Time, attrs map[string]any, ids spanIdentifiers, errMessage string) {
 	if b.provider == nil {
 		return
 	}
 
 	ctx := context.Background()
-	if parent, ok := otelParentContext(traceID); ok {
-		ctx = trace.ContextWithRemoteSpanContext(ctx, parent)
+	traceID, traceErr := trace.TraceIDFromHex(ids.traceID)
+	if traceErr == nil && traceID.IsValid() {
+		if parentID, err := trace.SpanIDFromHex(ids.parentSpanID); err == nil && parentID.IsValid() {
+			ctx = trace.ContextWithRemoteSpanContext(ctx, trace.NewSpanContext(trace.SpanContextConfig{
+				TraceID:    traceID,
+				SpanID:     parentID,
+				TraceFlags: trace.FlagsSampled,
+				Remote:     true,
+			}))
+		} else {
+			ctx = context.WithValue(ctx, traceIDOverrideKey{}, traceID)
+		}
 	}
-	_, span := b.provider.Tracer("ion-engine").Start(ctx, name, trace.WithTimestamp(start))
+	if spanID, err := trace.SpanIDFromHex(ids.spanID); err == nil && spanID.IsValid() {
+		ctx = context.WithValue(ctx, spanIDOverrideKey{}, spanID)
+	}
+	_, span := b.provider.Tracer("ion-engine").Start(ctx, name, trace.WithTimestamp(start), trace.WithSpanKind(spanKindFromAttrs(attrs)))
 	span.SetAttributes(otelAttributes(attrs)...)
 	if errMessage != "" {
 		span.SetStatus(codes.Error, errMessage)
@@ -212,26 +290,25 @@ func (b *OtelBridge) recordSpan(name string, start, end time.Time, attrs map[str
 	span.End(trace.WithTimestamp(end))
 }
 
-func otelParentContext(traceID string) (trace.SpanContext, bool) {
-	traceIDValue, err := trace.TraceIDFromHex(traceID)
-	if err != nil || !traceIDValue.IsValid() {
-		return trace.SpanContext{}, false
+// spanKindFromAttrs reads the span kind recordSpan was handed. A span event
+// names its kind in its payload's span_kind ("server" or "client"); anything
+// else is internal.
+func spanKindFromAttrs(attrs map[string]any) trace.SpanKind {
+	switch attrs[spanKindAttr] {
+	case SpanKindServer:
+		return trace.SpanKindServer
+	case SpanKindClient:
+		return trace.SpanKindClient
 	}
-	spanIDValue, err := trace.SpanIDFromHex(genSpanID())
-	if err != nil {
-		return trace.SpanContext{}, false
-	}
-	return trace.NewSpanContext(trace.SpanContextConfig{
-		TraceID:    traceIDValue,
-		SpanID:     spanIDValue,
-		TraceFlags: trace.FlagsSampled,
-		Remote:     true,
-	}), true
+	return trace.SpanKindInternal
 }
 
 func otelAttributes(values map[string]any) []attribute.KeyValue {
 	attrs := make([]attribute.KeyValue, 0, len(values))
 	for key, value := range values {
+		if key == spanKindAttr {
+			continue
+		}
 		switch typed := value.(type) {
 		case string:
 			attrs = append(attrs, attribute.String(key, typed))
@@ -298,4 +375,30 @@ func (b *OtelBridge) Close() error {
 // genSpanID generates an 8-byte random hex span ID.
 func genSpanID() string {
 	return utils.RandomID()
+}
+
+type traceIDOverrideKey struct{}
+type spanIDOverrideKey struct{}
+
+// ionIDGenerator lets a span keep the ids Ion already assigned it, so the
+// OTLP span and the JSONL telemetry event agree and children recorded
+// elsewhere find their parent. Without an override it mints random ids.
+type ionIDGenerator struct{}
+
+func (ionIDGenerator) NewIDs(ctx context.Context) (trace.TraceID, trace.SpanID) {
+	traceID, ok := ctx.Value(traceIDOverrideKey{}).(trace.TraceID)
+	if !ok {
+		//nolint:errcheck // NewTraceID always returns 32 hex characters
+		traceID, _ = trace.TraceIDFromHex(utils.NewTraceID())
+	}
+	return traceID, ionIDGenerator{}.NewSpanID(ctx, traceID)
+}
+
+func (ionIDGenerator) NewSpanID(ctx context.Context, _ trace.TraceID) trace.SpanID {
+	if spanID, ok := ctx.Value(spanIDOverrideKey{}).(trace.SpanID); ok {
+		return spanID
+	}
+	//nolint:errcheck // NewSpanID always returns 16 hex characters
+	spanID, _ := trace.SpanIDFromHex(utils.NewSpanID())
+	return spanID
 }

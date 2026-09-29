@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -127,6 +128,7 @@ func newRetryQueue(target, path string, maxMB, softWarnMB, stuckAfterMin int, de
 		health:        &healthTracker{},
 		quarantine:    newQuarantine(path, target),
 	}
+	registerLiveRetryQueue(path)
 	if maxMB > 0 {
 		q.maxBytes = int64(maxMB) * 1024 * 1024
 		utils.LogWithFields(utils.LevelWarn, "telemetry", "retry queue configured with an explicit hard cap; batches beyond it will be dropped oldest-first during a sustained outage", map[string]any{
@@ -153,7 +155,7 @@ func retryQueuePath(kind, filePath, discriminant string) string {
 		return utils.ExpandHomePath(filePath) + "." + kind + "-retry.jsonl"
 	}
 	sum := sha1.Sum([]byte(discriminant)) //nolint:gosec // filename derivation only
-	return utils.ExpandHomePath(fmt.Sprintf("~/.ion/%s-retry-%x.jsonl", kind, sum[:8]))
+	return filepath.Join(utils.IonDir(), fmt.Sprintf("%s-retry-%x.jsonl", kind, sum[:8]))
 }
 
 // load reads the persisted queue. A missing file is an empty queue, not an

@@ -26,7 +26,7 @@ func TestCacheSavingsTelemetry(t *testing.T) {
 		CacheReadInputTokens:     intPtr(10000),
 		CacheCreationInputTokens: intPtr(2000),
 	}
-	emitCacheSavings(col, "cache-savings-model", usage, "sess-cache", "", "", "", "", "")
+	emitCacheSavings(col, "cache-savings-model", usage, "sess-cache", "", "", "", "", "", "jsprague")
 
 	events := col.BufferedEvents()
 	var found *telemetry.Event
@@ -63,6 +63,13 @@ func TestCacheSavingsTelemetry(t *testing.T) {
 	if found.Context["session_id"] != "sess-cache" {
 		t.Errorf("ctx session_id = %v", found.Context["session_id"])
 	}
+	// Regression: cache.savings is cost-bearing and must carry the acting
+	// principal's identity like its sibling run.execute/run.complete/
+	// llm.call spans, not silently fall back to the process-wide operator
+	// identity.
+	if found.User != "jsprague" {
+		t.Errorf("cache.savings User = %q, want the passed principal identity %q", found.User, "jsprague")
+	}
 }
 
 // TestCacheSavingsPricingSourceModelsJSON verifies that when the model catalog
@@ -85,7 +92,7 @@ func TestCacheSavingsPricingSourceModelsJSON(t *testing.T) {
 
 	col := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
 	usage := types.UsageData{CacheReadInputTokens: intPtr(10000)}
-	emitCacheSavings(col, "cache-read-priced-model", usage, "sess-priced", "", "", "", "", "")
+	emitCacheSavings(col, "cache-read-priced-model", usage, "sess-priced", "", "", "", "", "", "")
 
 	var found *telemetry.Event
 	for i, e := range col.BufferedEvents() {
@@ -122,7 +129,7 @@ func TestCacheSavingsPricingSourceModelsJSON(t *testing.T) {
 // no cache tokens.
 func TestCacheSavingsNoCacheTokens(t *testing.T) {
 	col := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
-	emitCacheSavings(col, "cache-savings-model", types.UsageData{}, "sess-none", "", "", "", "", "")
+	emitCacheSavings(col, "cache-savings-model", types.UsageData{}, "sess-none", "", "", "", "", "", "")
 	for _, e := range col.BufferedEvents() {
 		if e.Name == telemetry.CacheSavings {
 			t.Fatal("expected no cache.savings event when no cache tokens")
@@ -135,5 +142,5 @@ func TestCacheSavingsNoCacheTokens(t *testing.T) {
 func TestCacheSavingsNilCollector(t *testing.T) {
 	emitCacheSavings(nil, "cache-savings-model", types.UsageData{
 		CacheReadInputTokens: intPtr(100),
-	}, "sess-nil", "", "", "", "", "")
+	}, "sess-nil", "", "", "", "", "", "")
 }

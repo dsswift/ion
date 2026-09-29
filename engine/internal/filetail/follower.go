@@ -14,7 +14,9 @@ type StartMode uint8
 const (
 	// StartAtBeginning reads content already present when the follower opens.
 	StartAtBeginning StartMode = iota
-	// StartAtEnd ignores content already present when the follower opens.
+	// StartAtEnd ignores content already present when the follower first
+	// finds the file. A file that did not exist on the follower's first Poll
+	// is created afterwards, so it has no history and is read from its start.
 	StartAtEnd
 )
 
@@ -69,7 +71,12 @@ func (f *Follower) Poll(handler LineHandler) error {
 	if handler == nil {
 		return errors.New("filetail: line handler is required")
 	}
-	if err := f.open(); err != nil {
+	err := f.open()
+	if errors.Is(err, os.ErrNotExist) && !f.cursor.Initialized {
+		// Absent at start: whatever file appears later is new content.
+		f.start = StartAtBeginning
+	}
+	if err != nil {
 		return err
 	}
 

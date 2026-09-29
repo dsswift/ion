@@ -2,6 +2,7 @@ package extension
 
 import (
 	"github.com/dsswift/ion/engine/internal/auth"
+	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -54,6 +55,12 @@ type Context struct {
 	// ConversationID; for the engine session use SessionKey. See
 	// docs/observability/log-schema.md § Correlation-ID vocabulary.
 	TraceID string
+
+	// RunSpanID is the span-id of the run in flight: 16 lowercase hex
+	// characters, empty when no run is active. Engine-internal: the engine
+	// parents the spans it records around hook calls to it. Not sent on the
+	// hook envelope.
+	RunSpanID string
 
 	// Depth is the dispatch depth of the session that fired the hook: 0 for
 	// the root (orchestrator) session, 1 for a directly dispatched child,
@@ -358,6 +365,12 @@ type Context struct {
 	// initial snapshot of items matching the subscription filter.
 	HandleResourceQuery func(kind, producer string, handler func(types.ResourceFilter) ([]types.ResourceItem, error))
 
+	// HandleResourceTransfer registers a producer's export, import, and
+	// forget handlers for the given kind, so a conversation's items can move
+	// with it to another machine. Optional: nil on a context that has no
+	// broker.
+	HandleResourceTransfer func(kind, producer string, handlers resource.TransferHandlers)
+
 	// Notify sends a push notification through the engine's notification
 	// pipeline. The engine formats the payload and routes it through
 	// the relay's push channel. Extensions never speak relay protocol
@@ -415,11 +428,19 @@ type Context struct {
 // SessionListEntry describes a session as returned by ListSessions.
 // Mirrors session.SessionInfo but lives in the extension package to
 // avoid a circular dependency.
+//
+// ListSessions (session_accessor_messaging.go's ListAllSessions) filters the
+// engine's full session list down to the CALLER's own principal before this
+// type is ever built, so PrincipalSubject on every returned entry always
+// equals the caller's own -- it is carried for the extension's convenience
+// (e.g. rendering "unowned" when empty on a single-tenant/local engine, where
+// every session shares the same subject), not as a cross-tenant signal.
 type SessionListEntry struct {
-	Key            string `json:"key"`
-	HasActiveRun   bool   `json:"hasActiveRun"`
-	ExtensionName  string `json:"extensionName,omitempty"`
-	ConversationID string `json:"conversationId,omitempty"`
+	Key              string `json:"key"`
+	HasActiveRun     bool   `json:"hasActiveRun"`
+	ExtensionName    string `json:"extensionName,omitempty"`
+	ConversationID   string `json:"conversationId,omitempty"`
+	PrincipalSubject string `json:"principalSubject,omitempty"`
 }
 
 // InterceptOpts configures an engine_intercept signal event. The engine

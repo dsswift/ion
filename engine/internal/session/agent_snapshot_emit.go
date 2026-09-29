@@ -111,7 +111,7 @@ func (m *Manager) publishAgentSnapshot(key, reason string, force bool, snapshot 
 	// clamped payload arrives rather than one frame late.
 	m.emitClampAdvisories(key, reports)
 
-	utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted", map[string]any{
+	utils.LogWithFields(agentSnapshotEmittedLevel(key, len(snapshot), force), "session", "agent_snapshot_emitted", map[string]any{
 		"key": key, "count": len(snapshot), "reason": reason, "force": force,
 	})
 	// Describe the payload, not just its size. A count alone cannot answer

@@ -12,6 +12,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/types"
 	collectortrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
@@ -222,4 +223,64 @@ func (service *testTraceService) Export(ctx context.Context, request *collectort
 	service.mu.Unlock()
 	service.requests <- request
 	return &collectortrace.ExportTraceServiceResponse{}, nil
+}
+
+// A span event's payload span_kind becomes the exported span's kind, the
+// marker itself never becomes an attribute, and the resource carries the
+// host identity log egress stamps on the engine's records.
+func TestOtelBridgeExportsSpanKindAndHostResource(t *testing.T) {
+	requests := make(chan *collectortrace.ExportTraceServiceRequest, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		payload, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Errorf("read request: %v", err)
+			return
+		}
+		var export collectortrace.ExportTraceServiceRequest
+		if err := proto.Unmarshal(payload, &export); err != nil {
+			t.Errorf("unmarshal OTLP protobuf: %v", err)
+			return
+		}
+		requests <- &export
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	bridge := NewOtelBridge(OtelConfig{Endpoint: server.URL, BatchSize: 1})
+	t.Cleanup(func() {
+		if err := bridge.Close(); err != nil {
+			t.Errorf("Close: %v", err)
+		}
+	})
+	bridge.RecordEvent(Event{
+		Name:    "run.execute",
+		Ts:      time.Now().UTC().Format(time.RFC3339Nano),
+		TraceID: "4bf92f3577b34da6a3ce929d0e0e4736",
+		Payload: map[string]any{"span_id": "00f067aa0ba902b7", "duration_ms": 5.0, "span_kind": SpanKindServer},
+		Context: map[string]any{"parent_span_id": "1111222233334444", "run_id": "r1"},
+	})
+	request := waitForOTLPRequest(t, requests)
+
+	span := request.ResourceSpans[0].ScopeSpans[0].Spans[0]
+	if span.Kind != tracepb.Span_SPAN_KIND_SERVER {
+		t.Errorf("kind = %v, want SERVER", span.Kind)
+	}
+	keys := map[string]bool{}
+	for _, a := range span.Attributes {
+		keys[a.Key] = true
+		if a.Key == spanKindAttr || a.Key == spanKindKey {
+			t.Errorf("kind marker %q leaked into attributes", a.Key)
+		}
+	}
+	// The span's id and parent are its SpanId and ParentSpanId, not attributes.
+	if keys["span_id"] || keys["ctx.parent_span_id"] || !keys["ctx.run_id"] {
+		t.Errorf("attributes = %v, want ctx.run_id and no span_id / ctx.parent_span_id", keys)
+	}
+	resource := map[string]string{}
+	for _, a := range request.ResourceSpans[0].Resource.Attributes {
+		resource[a.Key] = a.Value.GetStringValue()
+	}
+	if resource["service.name"] != "ion-engine" || resource["service.namespace"] != "ion" || resource["service.instance.id"] == "" || resource["service.version"] == "" {
+		t.Errorf("resource = %v", resource)
+	}
 }

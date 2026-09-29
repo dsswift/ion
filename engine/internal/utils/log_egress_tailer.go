@@ -18,10 +18,10 @@ const egressTailerPollInterval = 2 * time.Second
 
 // egressTailSourceFiles maps matrix source names to the ~/.ion file each
 // tails. "engine" is absent by design: engine records ship in-process.
-func egressTailSourceFiles(home string) map[string]string {
-	ionDir := filepath.Join(home, ".ion")
+func egressTailSourceFiles(ionDir string) map[string]string {
 	return map[string]string{
 		"desktop":   filepath.Join(ionDir, "desktop.jsonl"),
+		"server":    filepath.Join(ionDir, "server.jsonl"),
 		"ios":       filepath.Join(ionDir, "ios-diagnostic-logs.jsonl"),
 		"telemetry": filepath.Join(ionDir, "telemetry.jsonl"),
 	}
@@ -42,17 +42,18 @@ type EgressTailer struct {
 }
 
 // StartEgressTailer starts a tailer for non-engine sources assigned to the
-// engine. First-seen files start at EOF to avoid historical backfill.
+// engine. Content present when it starts is history and is skipped; anything
+// written after is shipped.
 func StartEgressTailer(sources []string, fwd *EgressForwarder) *EgressTailer {
 	if fwd == nil {
 		return nil
 	}
-	home, err := UserHomeDir()
-	if err != nil {
-		Error("log_egress_tailer", "cannot determine home dir; tailer disabled: "+err.Error())
+	ionDir := IonDir()
+	if ionDir == "" {
+		Error("log_egress_tailer", "cannot determine ion data dir; tailer disabled")
 		return nil
 	}
-	available := egressTailSourceFiles(home)
+	available := egressTailSourceFiles(ionDir)
 	files := make(map[string]string)
 	for _, source := range sources {
 		if path, ok := available[source]; ok {
@@ -65,7 +66,7 @@ func StartEgressTailer(sources []string, fwd *EgressForwarder) *EgressTailer {
 
 	t := &EgressTailer{
 		files:      files,
-		cursorPath: filepath.Join(home, ".ion", ".engine-egress-tailer-cursors.json"),
+		cursorPath: filepath.Join(ionDir, ".engine-egress-tailer-cursors.json"),
 		fwd:        fwd,
 		tailers:    make(map[string]*filetail.Follower),
 		cursors:    make(map[string]filetail.Cursor),
@@ -78,8 +79,15 @@ func StartEgressTailer(sources []string, fwd *EgressForwarder) *EgressTailer {
 	for source := range files {
 		names = append(names, source)
 	}
+	// Look at every file now, not at the first tick. History is what exists
+	// when the tailer starts: this poll puts each present file's cursor at its
+	// end and marks each absent file as born later, so it is read from its
+	// start. Deferred to the first tick, a process that exits within the poll
+	// interval (a CI run) saw its own output as history and shipped none of it.
+	t.pollAll()
 	LogWithFields(LevelInfo, "log_egress_tailer", "tailer started", map[string]any{"status": names})
 	go t.loop()
+	registerEgressTailer(t)
 	return t
 }
 

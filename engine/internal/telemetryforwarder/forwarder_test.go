@@ -63,8 +63,8 @@ func TestForwarderPushesExpandedEventsAndAdvancesCursorAfterSuccess(t *testing.T
 	}
 	for _, request := range requests {
 		stream := request.Streams[0]
-		if stream.Stream["service"] != "ion-telemetry" || stream.Stream["service_name"] != "ion-telemetry" {
-			t.Fatalf("labels = %v", stream.Stream)
+		if len(stream.Stream) != 1 || stream.Stream["service_name"] != "ion-engine" {
+			t.Fatalf("labels = %v, want only service_name=ion-engine", stream.Stream)
 		}
 	}
 	if got, want := len(requests[1].Streams[0].Values), 2; got != want {

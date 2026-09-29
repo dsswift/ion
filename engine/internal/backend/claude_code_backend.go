@@ -18,6 +18,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/procctl"
 	"github.com/dsswift/ion/engine/internal/rpcstdio"
 	"github.com/dsswift/ion/engine/internal/stream"
+	"github.com/dsswift/ion/engine/internal/sysmetrics"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -72,6 +73,10 @@ type claudeCodeRun struct {
 	// the CLI answers each with "No such tool available", so the run spends its
 	// remaining turns on refusals. See claude_code_turn_seal.go.
 	turnSealed bool
+	// pendingSteers holds steers written to stdin that the CLI has not yet
+	// echoed back, oldest first. Guarded by stdinMu so the queue order is the
+	// pipe order. See claude_code_steer.go.
+	pendingSteers []pendingStdinSteer
 }
 
 // ClaudeCodeBackend implements RunBackend by spawning the Claude Code CLI
@@ -92,6 +97,15 @@ type ClaudeCodeBackend struct {
 	onNormalized func(string, types.NormalizedEvent)
 	onExit       func(string, *int, *string, string)
 	onError      func(string, error)
+
+	// telem carries per-call telemetry for runs given a collector
+	// (delegated_telemetry.go).
+	telem delegatedTelemetry
+}
+
+// SetRunTelemetry implements RunTelemetrySetter.
+func (b *ClaudeCodeBackend) SetRunTelemetry(requestID string, telem TelemetryCollector) {
+	b.telem.SetRunTelemetry(requestID, telem)
 }
 
 // NewClaudeCodeBackend creates a ClaudeCodeBackend ready for use.
@@ -223,6 +237,7 @@ func (b *ClaudeCodeBackend) StartRun(requestID string, options types.RunOptions)
 		})
 	}
 	ctx, cancel := context.WithCancel(parent)
+	b.telem.begin(requestID, "claude-code", options)
 
 	run := &claudeCodeRun{
 		requestID: requestID,
@@ -245,9 +260,16 @@ func findClaudeBinary() (string, error) {
 
 // runProcess is the goroutine that manages the Claude CLI process lifecycle.
 func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, opts types.RunOptions) {
+	// Every log line this goroutine writes carries the run's session,
+	// conversation, and trace (see installAmbientLogging).
+	defer installAmbientLogging(ctx)()
 	// Capture plan state so the event loop can enrich ExitPlanMode denials.
 	run.planMode = opts.PlanMode
 	run.planFilePath = opts.PlanFilePath
+
+	// First, before anything that can fail: the turn is already on disk, so
+	// the announcement must reach consumers on every run outcome.
+	b.announceUserTurnPersisted(run.requestID, opts)
 
 	// Delay cleanup by 5s so callers can read diagnostics (stderr) after exit
 	defer func() {
@@ -366,6 +388,7 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 		"pid":        cmd.Process.Pid,
 		"request_id": run.requestID,
 	})
+	sysmetrics.RegisterProcess(cmd.Process.Pid, types.SystemMetricsRoleBackend, "claude")
 
 	// Record spawn metadata for diagnostic use in the empty-stderr exit path.
 	run.spawnedAt = time.Now()
@@ -424,6 +447,15 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 			run.stdinMu.Unlock()
 		}
 
+		// The CLI's echo of a stdin user message confirms a steer at the
+		// exact point it took effect. It carries nothing else to normalize.
+		if b.acknowledgeReplay(run, raw) {
+			continue
+		}
+
+		if t := b.telem.get(run.requestID); t != nil {
+			t.claudeStreamLine(raw)
+		}
 		events := normalizer.Normalize(raw)
 		for _, ev := range events {
 			// Track sessionID from init or result events
@@ -520,6 +552,7 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 	// Wait for process to exit
 	waitErr := cmd.Wait()
 	procctl.Release(cmd)
+	sysmetrics.UnregisterProcess(cmd.Process.Pid)
 
 	exitCode := 0
 	if waitErr != nil {
@@ -536,6 +569,7 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 		"code":       exitCode,
 		"request_id": run.requestID,
 	})
+	logUnconsumedSteers(run)
 
 	if exitCode != 0 {
 		stderrLines := run.stderr.Lines()
@@ -597,6 +631,7 @@ func (b *ClaudeCodeBackend) removeRun(requestID string) {
 }
 
 func (b *ClaudeCodeBackend) emit(runID string, event types.NormalizedEvent) {
+	b.telem.observe(runID, event)
 	b.mu.Lock()
 	fn := b.onNormalized
 	b.mu.Unlock()
@@ -619,6 +654,7 @@ func (b *ClaudeCodeBackend) emitExit(runID string, code *int, signal *string, se
 		"signal":     sigStr,
 		"session_id": sessionID,
 	})
+	b.telem.end(runID)
 	b.mu.Lock()
 	fn := b.onExit
 	b.mu.Unlock()

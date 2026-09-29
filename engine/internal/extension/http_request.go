@@ -134,8 +134,24 @@ func DoOperatorHTTPRequest(ctx context.Context, params OperatorHTTPRequestParams
 			Provider: auth.CurrentAWSCredentialsProvider(), Service: params.AwsService, Region: params.AwsRegion,
 		}
 	} else {
+		// FR-05 child 10 (R-43): resolve the bearer provider for the ACTING
+		// PRINCIPAL when ctx carries a Subject (auth.WithSubject, set at the
+		// session-scoped call site in session/extcontext.go), so an
+		// extension's authenticated request during one principal's session
+		// authenticates as that principal rather than the shared
+		// process-wide operator/machine identity.
+		// auth.TokenProviderForSubject returns auth.CurrentTokenProvider()
+		// unchanged for an empty subject (schedules/webhooks with no
+		// session in scope) or a provider with no principal dimension --
+		// preserving B-24 for a single-user engine and every
+		// session-independent invocation.
+		subject := auth.SubjectFromContext(ctx)
+		provider := auth.TokenProviderForSubject(subject)
+		utils.LogWithFields(utils.LevelDebug, "extension", "operator http request authenticator resolved", map[string]any{
+			"subject": subject, "scope": params.Scope, "principal_scoped": subject != "",
+		})
 		authenticator = auth.BearerAuthenticator{
-			Provider: auth.CurrentTokenProvider(), Scope: params.Scope, Audience: params.Audience,
+			Provider: provider, Scope: params.Scope, Audience: params.Audience,
 		}
 	}
 	// Remove extension-provided Authorization before either strategy runs. For

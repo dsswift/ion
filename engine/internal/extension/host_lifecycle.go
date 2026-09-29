@@ -13,6 +13,8 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/cliprobe"
 	"github.com/dsswift/ion/engine/internal/procctl"
+	"github.com/dsswift/ion/engine/internal/sysmetrics"
+	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -281,6 +283,7 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 		verb = "respawned"
 	}
 	utils.LogWithFields(utils.LevelInfo, "extension", "extension from (pid )", map[string]any{"verb": verb, "extension_path": extensionPath, "run_id": cmd.Process.Pid})
+	sysmetrics.RegisterProcess(cmd.Process.Pid, types.SystemMetricsRoleExtension, h.name_())
 	return nil
 }
 
@@ -484,6 +487,7 @@ func (h *Host) captureExitStatus() {
 	}
 	err := cmd.Wait()
 	procctl.Release(cmd)
+	sysmetrics.UnregisterProcess(cmd.Process.Pid)
 	if err == nil {
 		h.lastExitCode.Store(0)
 		return

@@ -248,6 +248,7 @@ func (s *Server) evictClient(conn net.Conn, reason string) {
 		if s.ownership != nil {
 			s.ownership.releaseConn(conn)
 		}
+		s.unwatchSystemMetrics(cw.id)
 		select {
 		case <-cw.done:
 		default:
