@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { EventEmitter } from 'events'
+import { join } from 'path'
 
 const electronApp = vi.hoisted(() => ({ isPackaged: false, getAppPath: () => '/fake/app' }))
 vi.mock('electron', () => ({ app: electronApp }))
@@ -57,7 +58,7 @@ describe('LocalServerSupervisor', () => {
     const supervisor = new LocalServerSupervisor({ entryPath: '/fake/server/main.js', spawnFn: spawnFn as unknown as typeof import('child_process').spawn })
     supervisor.start()
     const env = (spawnFn.mock.calls[0] as unknown as [string, string[], { env: NodeJS.ProcessEnv }])[2].env
-    expect(env.ION_STUDIO_THEMES_BUNDLED_DIR).toBe('/fake/app/resources/studio/themes')
+    expect(env.ION_STUDIO_THEMES_BUNDLED_DIR).toBe(join('/fake/app/resources', 'studio', 'themes'))
     expect(env.ION_SUPERVISOR_PID).toBe(String(process.pid))
     // The built-in server is its owner's own install: without this a second
     // laptop paired to it saw none of the owner's conversations.
@@ -161,7 +162,7 @@ describe('LocalServerSupervisor', () => {
     Object.defineProperty(process, 'resourcesPath', { value: '/Applications/Ion.app/Contents/Resources', configurable: true })
     try {
       expect(resolveServerEntryPath()).toBe(
-        '/Applications/Ion.app/Contents/Resources/app.asar.unpacked/dist/server/main.js',
+        join('/Applications/Ion.app/Contents/Resources', 'app.asar.unpacked', 'dist', 'server', 'main.js'),
       )
     } finally {
       electronApp.isPackaged = false
@@ -170,7 +171,7 @@ describe('LocalServerSupervisor', () => {
   })
 
   it('resolves the dev server entry from the workspace root', () => {
-    expect(resolveServerEntryPath()).toBe('/fake/server/dist/main.js')
+    expect(resolveServerEntryPath()).toBe(join('/fake/server', 'dist', 'main.js'))
   })
 
   it('records the child\'s stderr as a warning, not a debug detail', () => {

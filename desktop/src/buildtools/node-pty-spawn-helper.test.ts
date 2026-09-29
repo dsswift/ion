@@ -9,7 +9,7 @@
 import { createRequire } from "node:module";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, basename, dirname } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
@@ -60,7 +60,7 @@ describe("node-pty spawn-helper execute bit", () => {
 
   it("lists every unix prebuild's helper and none for windows", () => {
     const dir = installNodePty(root, ["darwin-arm64", "darwin-x64", "linux-x64", "win32-x64"]);
-    expect(helperScript.spawnHelperPaths(dir).map((p) => p.split("/").at(-2))).toEqual(["darwin-arm64", "darwin-x64", "linux-x64"]);
+    expect(helperScript.spawnHelperPaths(dir).map((p) => basename(dirname(p)))).toEqual(["darwin-arm64", "darwin-x64", "linux-x64"]);
     expect(helperScript.spawnHelperPaths(join(root, "nowhere"))).toEqual([]);
   });
 

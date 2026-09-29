@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { join } from 'path'
 
 const { handlers, warn, state, readFileSync } = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
@@ -58,7 +59,7 @@ describe('attachment IPC failures', () => {
     const previous = process.env.ION_DATA_DIR
     process.env.ION_DATA_DIR = '/srv/ion-data'
     try {
-      expect(userImagesDir()).toBe('/srv/ion-data/user-images')
+      expect(userImagesDir()).toBe(join('/srv/ion-data', 'user-images'))
     } finally {
       if (previous === undefined) delete process.env.ION_DATA_DIR
       else process.env.ION_DATA_DIR = previous

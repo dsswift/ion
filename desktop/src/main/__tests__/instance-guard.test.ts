@@ -38,7 +38,8 @@ describe('detectRunningIon', () => {
   })
 
   it('falls back to a live Ion process when the pid file is stale', () => {
-    state.scan = '456\n'
+    // The scan reads this OS's process lister: tasklist CSV on win32, pgrep elsewhere.
+    state.scan = process.platform === 'win32' ? '"Ion.exe","456","Console","1","64,120 K"\r\n' : '456\n'
     state.existing.add(456)
     expect(detectRunningIon()).toEqual({ pid: 456, source: 'process_scan' })
   })

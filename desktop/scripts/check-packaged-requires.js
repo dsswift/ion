@@ -86,7 +86,8 @@ function bundleEntries(rootDir) {
     for (const dirent of readdirSync(dir, { recursive: true, withFileTypes: true })) {
       if (!dirent.isFile() || !/\.(js|mjs|cjs)$/.test(dirent.name)) continue
       const full = path.join(dirent.parentPath, dirent.name)
-      entries.push({ file: path.relative(rootDir, full), code: readFileSync(full, 'utf8') })
+      // An asar path, spelled with '/' on every OS like the rest of this report.
+      entries.push({ file: path.relative(rootDir, full).split(path.sep).join('/'), code: readFileSync(full, 'utf8') })
     }
   }
   return entries
