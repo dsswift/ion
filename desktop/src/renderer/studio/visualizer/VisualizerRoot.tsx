@@ -9,19 +9,21 @@ import { rError, rInfo } from "../../rendererLogger";
 import type {
   StudioSettings,
   StudioThemeListEntry,
-} from "../../../shared/types-studio";
+} from "@ion/shared/types-studio";
 import { createVisualizerEngine, type StudioEngine } from "./engine";
-import { loadTheme, ipcAssetSource, type LoadedTheme } from "./theme/loader";
+import { loadTheme, hostAssetSource, type LoadedTheme } from "./theme/loader";
 import { AgentCache, type StudioActiveState } from "./state/agent-cache";
 import { persistSeed, resolveSeed } from "./state/seed";
 import { Toolbar } from "./Toolbar";
 import { StudioSoundEngine } from "./sound/sound-engine";
 import { clipRemaining, type ClipState } from "./export/clip";
 import { useStudioControlsBus } from "../state/controls-bus";
-import { useExports } from "./useExports";
+import { canExport, useExports } from "./useExports";
+import { handleEntityClick } from "./visualizer-entity-click";
 import { VisualizerCanvas } from "./VisualizerCanvas";
 import { canvasPointFromClient } from "./canvas-coordinates";
 import { humanDuration, type Tooltip, type Phase } from "./visualizer-types";
+import { host } from '../../host/host-instance'
 
 /** Imperative surface-tab handle: pause/resume the render+sim loop (D10). */
 export interface VisualizerHandle {
@@ -141,8 +143,8 @@ export function VisualizerRoot({
     cacheRef.current = cache;
 
     async function boot(): Promise<void> {
-      const settings = await window.ion.studioGetSettings();
-      const themeList = await window.ion.studioListThemes();
+      const settings = await host.shell.studioGetSettings();
+      const themeList = await host.shell.studioListThemes();
       if (disposed) return;
       settingsRef.current = settings;
       setThemes(themeList);
@@ -151,7 +153,7 @@ export function VisualizerRoot({
       const themeId = themeList.some((t) => t.id === settings.studioTheme)
         ? settings.studioTheme
         : (themeList[0]?.id ?? "ion-works");
-      const theme = await loadTheme(ipcAssetSource(), themeId, {
+      const theme = await loadTheme(hostAssetSource(), themeId, {
         logWarn: (msg, fields) => rError("studio", msg, fields),
       });
       if (disposed) return;
@@ -277,7 +279,7 @@ export function VisualizerRoot({
           : prev;
       const next = Math.max(1, Math.min(6, base + delta));
       engineRef.current?.setZoom(next);
-      void window.ion.studioSetSetting("studioZoom", next);
+      void host.shell.studioSetSetting("studioZoom", next);
       return next;
     });
   }, []);
@@ -285,7 +287,7 @@ export function VisualizerRoot({
   const onZoomFit = useCallback(() => {
     engineRef.current?.zoomToFit();
     setZoomState(0);
-    void window.ion.studioSetSetting("studioZoom", 0);
+    void host.shell.studioSetSetting("studioZoom", 0);
   }, []);
 
   // Canvas interactions: drag to pan (manual zoom), hover for agent info.
@@ -425,29 +427,7 @@ export function VisualizerRoot({
         e.clientX,
         e.clientY,
       );
-      const entity = engine.getEntityAt(point.x, point.y);
-      if (!entity || entity.role === "pet") return;
-      // The manager = the orchestrator = the main conversation: clicking him
-      // shows the desktop on that conversation (no dispatch panel).
-      if (entity.name === "__manager__") {
-        rInfo("studio", "manager clicked", { tab_id: active.tabId });
-        if (onAgentClick) onAgentClick(active.tabId, "__manager__");
-        else window.ion.studioFocusAgent(active.tabId, "__orchestrator__");
-        return;
-      }
-      // Shift+click: follow-cam / focus-mode cycle (game-feel camera).
-      if (e.shiftKey) {
-        const mode = engine.cycleFollow(entity.name);
-        rInfo("studio", "follow cycled", { agent: entity.name, mode });
-        return;
-      }
-      if (!entity.working && !entity.completed && !entity.waiting) return;
-      rInfo("studio", "agent clicked", {
-        agent: entity.name,
-        tab_id: active.tabId,
-      });
-      if (onAgentClick) onAgentClick(active.tabId, entity.name);
-      else window.ion.studioFocusAgent(active.tabId, entity.name);
+      handleEntityClick(engine, active, point, e.shiftKey, onAgentClick);
     },
     [onAgentClick],
   );
@@ -460,17 +440,17 @@ export function VisualizerRoot({
     setSoundOn((prev) => {
       const next = !prev;
       soundRef.current.enabled = next;
-      void window.ion.studioSetSetting("studioSound", next);
+      void host.shell.studioSetSetting("studioSound", next);
       return next;
     });
   }, []);
 
   const onSelectTheme = useCallback(
     (id: string) => {
-      void window.ion.studioSetSetting("studioTheme", id).then(async () => {
+      void host.shell.studioSetSetting("studioTheme", id).then(async () => {
         // Full theme swap: reload the pack and rebuild the scene against it.
         try {
-          const theme = await loadTheme(ipcAssetSource(), id, {
+          const theme = await loadTheme(hostAssetSource(), id, {
             logWarn: (msg, fields) => rError("studio", msg, fields),
           });
           themeRef.current = theme;
@@ -495,7 +475,7 @@ export function VisualizerRoot({
   );
 
   // Publish window-level controls (sound, seed, theme) to the controls bus —
-  // the TabStrip's Studio button popover (ControlsPopover) renders them.
+  // the toolbar's settings popover (ControlsPopover) renders them.
   useEffect(() => {
     useStudioControlsBus.getState().publish({
       seed,
@@ -549,6 +529,7 @@ export function VisualizerRoot({
               setReplaying(true);
             }
           }}
+          canExport={canExport()}
           onExportPostcard={() => void exportPostcard()}
           clipSecondsLeft={
             clip.kind === "recording"
@@ -563,7 +544,7 @@ export function VisualizerRoot({
             const next = !heatOn;
             setHeatOn(next);
             engineRef.current?.setHeatOverlay(next);
-            void window.ion.studioSetSetting("studioHeat", next);
+            void host.shell.studioSetSetting("studioHeat", next);
           }}
           zoom={zoom}
           problems={problems}

@@ -26,7 +26,7 @@ vi.mock('@phosphor-icons/react', () => ({
   DeviceMobile: () => null, Monitor: () => null, Gear: () => null,
 }))
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: { getState: () => ({ conversationPanes: new Map() }) },
 }))
 
@@ -34,7 +34,7 @@ vi.mock('../../preferences', () => ({
   usePreferencesStore: { getState: () => ({ uiZoom: 1, gitOpsMode: 'standard' }) },
 }))
 
-import { resolveTabModelFallback, type TabModelFallback } from '../TabStripShared'
+import { resolveTabModelFallback, type TabModelFallback } from '../conversation-status'
 
 const fb: TabModelFallback = {
   requestedModel: 'opus-9',

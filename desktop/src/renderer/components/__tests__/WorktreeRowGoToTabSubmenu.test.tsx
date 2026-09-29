@@ -20,7 +20,7 @@ import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { WorktreeAppraisalWire } from '../../../shared/types'
+import type { WorktreeAppraisalWire } from '@ion/shared/types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -55,7 +55,7 @@ vi.mock('../../preferences', () => ({
   usePreferencesStore: Object.assign(
     (selector: (s: { worktreeCompletionStrategy: string }) => unknown) =>
       selector({ worktreeCompletionStrategy: 'merge-ff' }),
-    // zoomRect (TabStripShared.ts) reads uiZoom directly off getState() when
+    // zoomRect (conversation-status.ts) reads uiZoom directly off getState() when
     // measuring the "Go to tab" row's bounding rect — unrelated to anything
     // this file exercises, but required for the click handler not to throw.
     { getState: () => ({ uiZoom: 1.5 }) },
@@ -65,7 +65,7 @@ vi.mock('../../preferences', () => ({
 // The tabs living in this worktree, mutated per test before render.
 let storeTabs: Array<{ id: string; workingDirectory: string; title: string; customTitle: string | null; status: string; tabRole?: 'conflict-auto-fix' | 'bench-conversation' | 'verification-analysis' | null }> = []
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (s: { benchWorkspaces: Map<string, never>; tabs: typeof storeTabs; conversationPanes: Map<string, never>; workspaceOperationLedger: Map<string, never> }) => unknown) =>
       selector({ benchWorkspaces: new Map<string, never>(), tabs: storeTabs, conversationPanes: new Map<string, never>(), workspaceOperationLedger: new Map<string, never>() }),

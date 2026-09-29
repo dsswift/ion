@@ -2,16 +2,14 @@
 /**
  * InboxRowMenu — Fork conversation.
  *
- * The inbox row's context menu is a second entry point to the same
- * `forkTab` store action the tab-strip context menu (`TabStripTabContextMenu.tsx`)
- * exposes. This pins that the row appears only for a minted conversation, is
+ * The inbox row's context menu calls the `forkTab` store action. This pins that the row appears only for a minted conversation, is
  * absent once the tab's worktree has landed (a sealed read-only record that
  * accepts no new forks), and calls the same store action.
  */
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { TabState } from '../../../shared/types'
+import type { TabState } from '@ion/shared/types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -35,7 +33,7 @@ const state = {
   forkTab,
 }
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (value: typeof state) => unknown) => selector(state),
     { getState: () => state },
@@ -79,6 +77,9 @@ beforeEach(() => {
   window.ion = {
     gitIsRepo: vi.fn().mockResolvedValue({ isRepo: false }),
     gitChanges: vi.fn(),
+    // The menu's Transfer gate asks which other Environments are connected.
+    hostGetConnections: vi.fn().mockResolvedValue([]),
+    onHostConnections: vi.fn(() => () => {}),
   } as unknown as typeof window.ion
   host = document.createElement('div')
   document.body.appendChild(host)
@@ -108,7 +109,7 @@ describe('InboxRowMenu — Fork conversation', () => {
     expect(forkButton()).toBeDefined()
   })
 
-  it('calls the same forkTab store action the tab-strip menu uses', async () => {
+  it('calls the forkTab store action', async () => {
     await openMenu(tab())
     act(() => { forkButton()!.click() })
 

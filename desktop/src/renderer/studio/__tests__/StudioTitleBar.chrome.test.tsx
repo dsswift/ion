@@ -13,7 +13,7 @@ const sessionState = {
   createTabInDirectory: vi.fn(() => Promise.resolve()),
 };
 
-vi.mock("../../stores/sessionStore", () => {
+vi.mock("@ion/server/store/sessionStore", () => {
   const useSessionStore = (selector: (state: typeof sessionState) => unknown) => selector(sessionState);
   useSessionStore.getState = () => sessionState;
   return { useSessionStore };
@@ -28,7 +28,7 @@ vi.mock("../../theme", () => ({
 }));
 vi.mock("../../components/git/Tooltip", () => ({ Tooltip: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("../../components/NotificationsPanel", () => ({ NotificationsBell: () => <button aria-label="Notifications" /> }));
-vi.mock("../../components/TabStripDirectoryPicker", () => ({ DirectoryPicker: () => <div data-testid="directory-picker" /> }));
+vi.mock("../../components/DirectoryPicker", () => ({ DirectoryPicker: () => <div data-testid="directory-picker" /> }));
 vi.mock("../../rendererLogger", () => ({ rDebug: vi.fn(), rError: vi.fn(), rWarn: vi.fn() }));
 
 Object.defineProperty(window, "ion", {

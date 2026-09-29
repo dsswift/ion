@@ -1,21 +1,27 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Check, ClockCounterClockwise, Globe, PushPin, PushPinSlash, Terminal, WarningCircle } from '@phosphor-icons/react'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useQuestionsStore } from '../../stores/questions-store'
 import { usePreferencesStore } from '../../preferences'
-import { activeInstance } from '../../stores/conversation-instance'
-import { getWaitingState, formatRelativeShort, abbreviateProfileName } from '../../components/TabStripShared'
+import { activeInstance } from '@ion/server/store/conversation-instance'
+import { getWaitingState, formatRelativeShort, abbreviateProfileName } from '../../components/conversation-status'
 import { useColors } from '../../theme'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
 import { transitions } from '../../theme-tokens'
 import { InboxRowMenu } from './InboxRowMenu'
+import { useRenameTabWorktree } from '../../hooks/useRenameTabWorktree'
 import { Tooltip } from '../../components/git/Tooltip'
+import { EnvironmentBadge } from './EnvironmentBadge'
+import { tabEnvironmentId } from '../connection/tab-environment'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import { availableSnoozePresets } from './inbox-snooze-presets'
 import { ConversationHoverCard } from './ConversationHoverCard'
 import { inboxWorktreeFor } from './inbox-grouping'
-import { latestConversationActivityAt } from '../../../shared/inbox-classify'
+import { latestConversationActivityAt } from '@ion/shared/inbox-classify'
 import { contentRouter } from '../../lib/file-open-router'
-import type { IntegrationWorkspace, TabState, WorktreeInventoryEntry } from '../../../shared/types'
+import type { IntegrationWorkspace, TabState, WorktreeInventoryEntry } from '@ion/shared/types'
+import { host } from '../../host/host-instance'
+import { PillColorPicker } from '../../components/PillColorPicker'
 
 export type InboxRowVariant = 'card' | 'slim'
 
@@ -41,6 +47,10 @@ export function InboxRow({
 }): React.JSX.Element {
   const colors = useColors()
   const { hover, pressed, handlers } = useInteractiveState()
+  // The row's own Environment (ADR-033 union store): a badge names the host
+  // whenever it is not this machine; hovering the row shows its address.
+  const rowEnvironmentId = tabEnvironmentId(tab)
+  const remoteEnvironmentId = rowEnvironmentId === LOCAL_ENVIRONMENT_ID ? null : rowEnvironmentId
   const isActive = useSessionStore((state) => state.activeTabId === tab.id)
   const pendingAsk = useSessionStore((state) => {
     const instance = activeInstance(state.conversationPanes, tab.id)
@@ -53,15 +63,17 @@ export function InboxRow({
   const waiting = useSessionStore((state) => getWaitingState(tab, state.conversationPanes))
   const terminalActivity = useSessionStore((state) => [...(state.terminalActivities?.values() ?? [])].find((activity) => activity.tabId === tab.id && activity.active) ?? null)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  // The color a person gives a conversation. The Inbox row wears it as a
+  // tint, and the picker opens from its menu.
+  const [colorPicker, setColorPicker] = useState<{ x: number; y: number } | null>(null)
   const [renaming, setRenaming] = useState(false)
+  const renameWithWorktree = useRenameTabWorktree()
   const [name, setName] = useState(tab.customTitle ?? tab.title)
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => { if (renaming) inputRef.current?.focus() }, [renaming])
 
-  // Harness badge label — mirrors TabPill/TabStripDropdownTabRow's
-  // subscription and rendering exactly, so a conversation running under an
-  // engine profile shows the same abbreviated extension name here as it does
-  // in the tab strip. Subscribe narrowly so the row only re-renders when
+  // Harness badge label: a conversation running under an engine profile
+  // shows its abbreviated extension name. Subscribe narrowly so the row only re-renders when
   // engine profiles change, not on every preference write.
   const harnessBadgeLabel = usePreferencesStore((s) => {
     if (!tab.engineProfileId) return null
@@ -93,6 +105,35 @@ export function InboxRow({
     ? availableSnoozePresets(new Date()).find((preset) => preset.until === tab.snoozedUntil)?.label ?? formatRelativeShort(tab.snoozedUntil)
     : latestActivityAt != null ? formatRelativeShort(latestActivityAt) : ''
 
+  // Badges ride the second line, after the directory, so the title line
+  // carries only the title.
+  //
+  // Harness badge: abbreviated profile name in an accent-tinted chip.
+  // Style spec: 4px radius, accent bg/border/text at 25/40/100% opacity,
+  // 9px/600 weight.
+  const harnessBadge = harnessBadgeLabel !== null ? (
+      <span
+        style={{
+          flexShrink: 0,
+          fontSize: 9,
+          fontWeight: 600,
+          color: colors.accent,
+          background: `${colors.accent}25`,
+          border: `1px solid ${colors.accent}40`,
+          borderRadius: 4,
+          padding: '1px 3px',
+          lineHeight: 1.4,
+          letterSpacing: '0.02em',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {harnessBadgeLabel}
+      </span>
+  ) : null
+  const remoteBadge = remoteEnvironmentId !== null ? <EnvironmentBadge environmentId={remoteEnvironmentId} compact={compact} /> : null
+  // A conversation's color tints the whole row rather than adding a mark.
+  const colorTint = tab.pillColor ? `linear-gradient(color-mix(in srgb, ${tab.pillColor} 14%, transparent), color-mix(in srgb, ${tab.pillColor} 14%, transparent))` : undefined
+
   const commitRename = (): void => {
     const next = name.trim()
     if (next) useSessionStore.getState().renameTab(tab.id, next)
@@ -104,6 +145,7 @@ export function InboxRow({
     <div
       {...handlers}
       data-inbox-tab-id={tab.id}
+      data-conversation-color={tab.pillColor ?? undefined}
       onClick={(event) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey) {
           onToggleSelected?.(event.shiftKey)
@@ -118,7 +160,8 @@ export function InboxRow({
       style={{
         display: 'flex', alignItems: compact ? 'center' : 'flex-start', gap: 7,
         padding: compact ? '5px 9px' : '8px 10px', cursor: 'pointer', borderRadius: 6,
-        background: interactiveBg(colors, { hover, pressed }, isActive || selected ? colors.accentLight : 'transparent'),
+        backgroundColor: interactiveBg(colors, { hover, pressed }, isActive || selected ? colors.accentLight : 'transparent'),
+        backgroundImage: colorTint,
         opacity: quiet ? (hover ? 1 : 0.62) : 1, transition: `background ${transitions.base}, opacity ${transitions.base}`,
         fontFamily: 'system-ui, sans-serif', minWidth: 0, width: '100%', boxSizing: 'border-box',
       }}
@@ -126,29 +169,9 @@ export function InboxRow({
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
           {tab.pinnedAt != null && <PushPin size={12} color={colors.textTertiary} weight="fill" />}
-          {harnessBadgeLabel !== null && (
-            // Harness badge: abbreviated profile name in an accent-tinted chip.
-            // Mirrors TabPill/TabStripDropdownTabRow's badge exactly — same
-            // style spec: 4px radius, accent bg/border/text at 25/40/100%
-            // opacity, 9px/600 weight.
-            <span
-              style={{
-                flexShrink: 0,
-                fontSize: 9,
-                fontWeight: 600,
-                color: colors.accent,
-                background: `${colors.accent}25`,
-                border: `1px solid ${colors.accent}40`,
-                borderRadius: 4,
-                padding: '1px 3px',
-                lineHeight: 1.4,
-                letterSpacing: '0.02em',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {harnessBadgeLabel}
-            </span>
-          )}
+          {/* The slim variant has no second line, so its badges stay here. */}
+          {compact && harnessBadge}
+          {compact && remoteBadge}
           {renaming ? (
             <input ref={inputRef} value={name} onChange={(event) => setName(event.target.value)} onBlur={commitRename}
               onKeyDown={(event) => { if (event.key === 'Enter') commitRename(); if (event.key === 'Escape') setRenaming(false) }}
@@ -158,8 +181,10 @@ export function InboxRow({
         {!compact && (
           <div style={{ display: 'flex', gap: 4, alignItems: 'center', minWidth: 0, marginTop: 2, color: colors.textTertiary, fontSize: 10 }}>
             {projectName && <span style={{ background: colors.surfacePrimary, padding: '0 4px', borderRadius: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectName}</span>}
+            {harnessBadge}
             {worktreeTitle && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{worktreeTitle}</span>}
             {tab.worktree?.branchName && tab.worktree.branchName !== worktreeTitle && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tab.worktree.branchName}</span>}
+            {remoteBadge}
           </div>
         )}
       </div>
@@ -170,7 +195,7 @@ export function InboxRow({
             const app = terminalActivity.applications[0]
             const router = contentRouter()
             if (router?.openWebApplication) router.openWebApplication(tab.id, app.url)
-            else void window.ion.openExternal(app.url)
+            else void host.openExternal(app.url)
           }} style={{ display: 'inline-flex', border: 'none', background: 'transparent', color: colors.statusBash, cursor: 'pointer', padding: 0 }}><Globe size={12} /></button>
             : <Terminal size={12} weight="fill" color={colors.statusBash} aria-label="Running terminal command" />}
         </Tooltip>}
@@ -188,7 +213,16 @@ export function InboxRow({
           else void useSessionStore.getState().unsettleTab(tab.id, 'user')
         }} style={{ border: 'none', background: 'transparent', color: colors.textTertiary, cursor: 'pointer' }} aria-label="Restore conversation"><ClockCounterClockwise size={14} /></button>}
       </div>
-      {menu && <InboxRowMenu x={menu.x} y={menu.y} tab={tab} canRestore={canRestore} onRename={() => setRenaming(true)} onClose={() => setMenu(null)} />}
+      {menu && <InboxRowMenu x={menu.x} y={menu.y} tab={tab} canRestore={canRestore} onRename={() => setRenaming(true)} onRenameWithWorktree={() => renameWithWorktree.requestRename(tab)} onPickColor={() => setColorPicker(menu)} onClose={() => setMenu(null)} />}
+      {colorPicker && (
+        <PillColorPicker
+          anchor={colorPicker}
+          currentColor={tab.pillColor}
+          onSelect={(color) => useSessionStore.getState().setTabPillColor(tab.id, color)}
+          onClose={() => setColorPicker(null)}
+        />
+      )}
+      {renameWithWorktree.dialog}
     </div>
     </ConversationHoverCard>
   )

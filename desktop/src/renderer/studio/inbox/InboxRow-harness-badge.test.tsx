@@ -1,15 +1,13 @@
 // @vitest-environment jsdom
 /**
- * The tab strip shows an abbreviated engine-profile ("harness") badge on any
- * tab that carries an engineProfileId (TabPill, TabStripDropdownTabRow), but
- * the inbox never picked it up — a conversation running under an extension
- * looked identical to a plain one there. This pins InboxRow rendering the
- * same badge, sourced the same way.
+ * A conversation running under an engine profile wears an abbreviated
+ * profile ("harness") badge on its Inbox row, so it does not look identical
+ * to a plain one. This pins the badge in both row variants.
  */
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { TabState } from '../../../shared/types'
+import type { TabState } from '@ion/shared/types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -32,7 +30,7 @@ const state = {
 
 let engineProfiles: Array<{ id: string; name: string }> = []
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (value: typeof state) => unknown) => selector(state),
     { getState: () => state },

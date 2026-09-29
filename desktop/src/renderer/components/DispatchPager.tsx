@@ -2,9 +2,9 @@ import React from 'react'
 import { useColors } from '../theme'
 import { formatDuration } from './agent-panel-helpers'
 import { resolveDispatchDot } from '../lib/agent-dot-model'
-import { StatusDot } from './TabStripStatusDot'
+import { StatusDot } from './StatusDot'
 import type { DispatchInfo } from './agent-panel-helpers'
-import type { AgentStateUpdate } from '../../shared/types'
+import type { AgentStateUpdate } from '@ion/shared/types'
 
 interface Props {
   /** Agent owning this history. Each chip resolves status against its own dispatch. */

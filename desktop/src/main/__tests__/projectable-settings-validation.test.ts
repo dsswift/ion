@@ -28,13 +28,13 @@ const themePolicyMock = vi.hoisted(() => ({
     (): { themeId: string; locked: boolean } | null => null,
   ),
 }))
-vi.mock('../theme-policy', () => ({
+vi.mock('@ion/server/theme-policy', () => ({
   getEnterpriseThemePolicy: () => themePolicyMock.getEnterpriseThemePolicy(),
   isThemeLocked: () =>
     themePolicyMock.getEnterpriseThemePolicy()?.locked === true,
 }))
 
-import { validateSettingValue } from '../projectable-settings'
+import { validateSettingValue } from '@ion/server/projectable-settings'
 
 describe('validateSettingValue', () => {
   it('accepts a boolean for a boolean key', () => {
@@ -95,24 +95,6 @@ describe('validateSettingValue', () => {
   it('rejects null for a non-nullable static enum', () => {
     // gitOpsMode has no { value: null } choice — null must be rejected.
     expect(validateSettingValue('gitOpsMode', null)).not.toBeNull()
-  })
-
-  it('accepts null for dynamic group-id enums (the "None" choice)', () => {
-    expect(validateSettingValue('planningGroupId', null)).toBeNull()
-    expect(validateSettingValue('inProgressGroupId', null)).toBeNull()
-    expect(validateSettingValue('doneGroupId', null)).toBeNull()
-  })
-
-  it('accepts an arbitrary string for dynamic group-id enums', () => {
-    // The canonical choice set depends on live tabGroups; we trust
-    // iOS not to fabricate a string outside the current set, and the
-    // projection layer self-heals stale references to None.
-    expect(validateSettingValue('planningGroupId', 'group-abc')).toBeNull()
-  })
-
-  it('rejects non-string non-null for a dynamic group-id enum', () => {
-    expect(validateSettingValue('planningGroupId', 42)).not.toBeNull()
-    expect(validateSettingValue('planningGroupId', true)).not.toBeNull()
   })
 
   it('accepts an array for a list-typed key', () => {

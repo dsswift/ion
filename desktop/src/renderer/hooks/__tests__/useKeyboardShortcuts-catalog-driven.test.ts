@@ -48,7 +48,7 @@ vi.mock('../../preferences', () => ({
   },
 }))
 
-vi.mock('../../stores/sessionStore', async () => {
+vi.mock('@ion/server/store/sessionStore', async () => {
   return {
     useSessionStore: {
       getState: () => sessionState,
@@ -58,7 +58,7 @@ vi.mock('../../stores/sessionStore', async () => {
   }
 })
 
-vi.mock('../../../shared/tab-predicates', () => ({
+vi.mock('@ion/shared/tab-predicates', () => ({
   tabHasExtensions: () => false,
 }))
 
@@ -72,7 +72,7 @@ vi.mock('../../preferences-types', async () => {
   return actual
 })
 
-vi.mock('../../stores/conversation-instance', () => ({
+vi.mock('@ion/server/store/conversation-instance', () => ({
   effectivePermissionMode: () => 'plan',
 }))
 
@@ -85,7 +85,6 @@ function makeTab(id: string) {
     title: 'Test',
     customTitle: null,
     pillColor: null,
-    pillIcon: null,
     groupId: null,
     hasChosenDirectory: true,
     engineProfileId: null,

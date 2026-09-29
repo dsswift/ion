@@ -26,7 +26,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { create } from 'zustand'
-import type { TabState } from '../../../shared/types'
+import type { TabState } from '@ion/shared/types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -86,7 +86,7 @@ const useFakeStore = create<FakeState>((set) => ({
   openSettings: () => {},
 }))
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (s: FakeState) => unknown) => useFakeStore(selector as never),
     { getState: () => useFakeStore.getState() },
@@ -115,7 +115,7 @@ vi.mock('./InboxRow', () => ({ InboxRow: () => React.createElement('div') }))
 vi.mock('./InboxNavigatorGroups', () => ({ InboxNavigatorGroups: () => React.createElement('div') }))
 vi.mock('./SettledHistoryView', () => ({ SettledHistoryView: () => React.createElement('div') }))
 vi.mock('../../components/NewConversationPicker', () => ({ NewConversationPicker: () => React.createElement('div') }))
-vi.mock('../../components/TabStripShared', () => ({
+vi.mock('../../components/conversation-status', () => ({
   shouldUseWorktree: () => false,
   waitingStateOfPane: () => null,
 }))

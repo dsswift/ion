@@ -1,5 +1,5 @@
-import type { AgentStateUpdate } from '../../shared/types'
-import type { DispatchInfo, DispatchTelemetryEntry } from '../../shared/types-engine'
+import type { AgentStateUpdate } from '@ion/shared/types'
+import type { DispatchInfo, DispatchTelemetryEntry } from '@ion/shared/types-engine'
 
 // Re-export so existing renderer imports keep working.
 export type { DispatchInfo }
@@ -265,7 +265,7 @@ export interface StatusDot {
 /**
  * A `StatusDot` plus its rank, so an aggregate over several dispatches can pick
  * the most important state to show (higher wins) the way
- * `getGroupStatusColor` folds a group of tabs down to one dot.
+ * `getTabStatusColor` ranks a single tab.
  *
  * Deliberately a SEPARATE type rather than a field on `StatusDot`: `getStatusDot`
  * is consumed by callers that compare its result exactly, so widening the base
@@ -413,7 +413,7 @@ export function isAgentActive(agent: AgentStateUpdate, allAgents: AgentStateUpda
 
 /**
  * Map an agent's status to the platform's standardized status-dot vocabulary,
- * the same cascade `StatusDot` (TabStripStatusDot.tsx) and the status bar use.
+ * the same cascade `StatusDot` (StatusDot.tsx) and the status bar use.
  *
  * Thin delegator to `resolveDotForStatus` — that function documents and owns
  * the cascade, so there is exactly ONE place the ordering lives. Kept pure:

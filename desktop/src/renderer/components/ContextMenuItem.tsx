@@ -1,9 +1,7 @@
 // ContextMenuItem — shared row button for portal context menus (tab pill menu,
 // inactive-group menu, and their inline submenus).
 //
-// Extracted to its own file rather than living inline in
-// TabStripTabContextMenu.tsx because that file sits just under the 600-line
-// cap. Centralizes the standard interactive-state treatment for menu rows:
+// Shared by every context menu. Centralizes the standard interactive-state treatment for menu rows:
 // hover/pressed backgrounds via `useInteractiveState` + `interactiveBg`
 // (pressed > hover > base), keyboard focus ring via `.ion-focusable`
 // (index.css), `transitions.base` on the background per the style-guide

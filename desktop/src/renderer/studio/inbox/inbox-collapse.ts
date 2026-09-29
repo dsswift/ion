@@ -1,8 +1,11 @@
-import type { ConversationPane } from "../../../shared/types-engine";
-import type { TabState } from "../../../shared/types";
+import type { ConversationPane } from "@ion/shared/types-engine";
+import type { TabState } from "@ion/shared/types";
 import type { InboxSortOrder } from "./InboxControls";
-import { sortPinnedByOrder } from "../../../shared/inbox-pin-order";
-import { evaluateSessionBusyGuard } from "../../stores/slices/session-busy-guard";
+import { sortPinnedByOrder } from "@ion/shared/inbox-pin-order";
+import { inboxActivityOrder } from "@ion/shared/inbox-classify";
+import { evaluateSessionBusyGuard } from "@ion/server/store/slices/session-busy-guard";
+
+export { inboxActivityOrder };
 
 function activityTime(tab: TabState): number {
   return tab.lastActivityAt ?? tab.lastMessageAt ?? tab.createdAt ?? 0;
@@ -26,16 +29,6 @@ export function orderInboxTabs(
   );
 }
 
-/** Conversations in navigation order: newest real activity first, then stable ID. */
-export function inboxActivityOrder<
-  T extends Pick<TabState, "id" | "lastActivityAt">,
->(tabs: readonly T[]): T[] {
-  return [...tabs].sort(
-    (left, right) =>
-      (right.lastActivityAt ?? 0) - (left.lastActivityAt ?? 0) ||
-      left.id.localeCompare(right.id),
-  );
-}
 
 /**
  * True when the conversation still has foreground or background work in flight.
@@ -43,6 +36,10 @@ export function inboxActivityOrder<
  * The session-busy guard is the canonical all-instance fold for child agents,
  * pending accepted work, and background shells. Tab status covers CLI and
  * pre-status windows where the conversation pane does not yet carry state.
+ *
+ * 'starting' is not work: it is a session attaching with nothing asked of it,
+ * which every restored conversation passes through at server boot. A submitted
+ * prompt holds 'connecting' through the attach instead.
  */
 export function isInboxTabWorking(
   tab: Pick<TabState, "status">,
@@ -50,12 +47,16 @@ export function isInboxTabWorking(
 ): boolean {
   if (
     tab.status === "connecting" ||
-    tab.status === "starting" ||
     tab.status === "running" ||
     tab.status === "waiting"
   )
     return true;
-  return evaluateSessionBusyGuard(pane).blocked;
+  const guard = evaluateSessionBusyGuard(pane);
+  return (
+    (guard.orchestratorRunning && !guard.orchestratorAttachingOnly) ||
+    guard.childCounts.some((child) => child.count > 0) ||
+    guard.shellCount > 0
+  );
 }
 
 export function worktreeChildRows(

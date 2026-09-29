@@ -7,13 +7,13 @@ import {
   mostRecentDispatch,
 } from "./agent-panel-helpers";
 import { resolveAgentDotModel } from "../lib/agent-dot-model";
-import { StatusDotStack } from "./TabStripStatusDot";
+import { StatusDotStack } from "./StatusDot";
 import { DurationDisplay } from "./DurationDisplay";
 import { DispatchStopControl } from "./DispatchStopControl";
-import { useSessionStore } from "../stores/sessionStore";
+import { useSessionStore } from "@ion/server/store/sessionStore";
 import type { useColors } from "../theme";
-import type { AgentStateUpdate } from "../../shared/types";
-import type { DispatchInfo } from "../../shared/types-engine";
+import type { AgentStateUpdate } from "@ion/shared/types";
+import type { DispatchInfo } from "@ion/shared/types-engine";
 
 interface Props {
   agent: AgentStateUpdate;
@@ -44,7 +44,7 @@ interface Props {
  *
  * The row visual mirrors iOS AgentBarRow (a rounded name pill, a separate
  * status dot, monospace duration) and the status dot reuses the platform's
- * standardized vocabulary (TabStripStatusDot): pulsing orange for running,
+ * standardized vocabulary (StatusDot): pulsing orange for running,
  * pulsing yellow for "waiting on dispatched children", solid green for done.
  * The dot carries all status meaning — the row shows no text status suffix.
  */
@@ -136,7 +136,7 @@ export function AgentRow({
             </span>
           )}
           {/* Standardized status dot(s) — same vocabulary as the tab and
-              status-bar dots (TabStripStatusDot). One dot when the agent has a
+              status-bar dots (StatusDot). One dot when the agent has a
               single dispatch; two overlapping dots when it has more, so a
               finished most-recent dispatch cannot hide an older one that is
               still waiting on a live agent. The ring uses the panel surface so

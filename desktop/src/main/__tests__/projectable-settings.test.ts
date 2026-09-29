@@ -62,7 +62,7 @@ const themePolicyMock = vi.hoisted(() => ({
     (): { themeId: string; locked: boolean } | null => null,
   ),
 }))
-vi.mock('../theme-policy', () => ({
+vi.mock('@ion/server/theme-policy', () => ({
   getEnterpriseThemePolicy: () => themePolicyMock.getEnterpriseThemePolicy(),
   isThemeLocked: () =>
     themePolicyMock.getEnterpriseThemePolicy()?.locked === true,
@@ -74,16 +74,17 @@ import {
   PROJECTABLE_GROUP_LABELS,
   isProjectableKey,
   projectableKeysWithoutDefault,
+  projectableKeysWithDriftedDefault,
   projectCurrentSettings,
   projectableSchema,
   projectableGroups,
-} from '../projectable-settings'
-import * as settingsStore from '../settings-store'
-import { resetThemePacksForTest } from '../theme-packs'
+} from '@ion/server/projectable-settings'
+import * as settingsStore from '@ion/server/persistence/settings-store'
+import { resetThemePacksForTest } from '@ion/server/theme-packs'
 import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import type { DesktopSettingsSchemaEntry } from '../remote/protocol'
+import type { DesktopSettingsSchemaEntry } from '@ion/server/remote/protocol'
 
 // selectedTheme validation + schema choices consult the live theme-pack
 // registry (fs scan). Point both roots at hermetic temp dirs so the
@@ -218,6 +219,15 @@ describe('projectable-settings allowlist', () => {
     expect(orphans, `keys with no defaults: ${orphans.join(', ')}`).toEqual([])
   })
 
+  it("every entry's declared default matches the default the desktop ships", () => {
+    // iOS renders `defaultValue` as the row's "Default". It is hand-written
+    // beside the key, so nothing stops it drifting when the ship default
+    // changes — and a drifted row tells a mobile operator that a fresh
+    // install behaves a way it does not.
+    const drifted = projectableKeysWithDriftedDefault()
+    expect(drifted, `declared defaults out of step: ${drifted.join('; ')}`).toEqual([])
+  })
+
   it('every entry declares a known group (in PROJECTABLE_GROUP_LABELS)', () => {
     // The group must be a RECOGNIZED group — one with a label — not
     // necessarily a PROJECTED one. Some entries (e.g. keyboardShortcuts under
@@ -273,10 +283,22 @@ describe('projectable-settings allowlist', () => {
       'git',
       'quicktools',
       'notifications',
+      'advanced',
     ])
     const actual = new Set<string>(projectableGroups().map((group) => group.id))
     expect(actual.size).toBeGreaterThan(0)
     for (const group of actual) expect(expected).toContain(group)
+  })
+
+  it('does not project the retired overlay-era preferences', () => {
+    // These keys drove the overlay window (panel density, tall mode, the
+    // floating explorer's auto-close, collapse-on-minimize). Studio reads
+    // none of them, so projecting them would hand iOS a switch that
+    // changes nothing on the desktop.
+    const keys = new Set(PROJECTABLE_SETTINGS.map((e) => e.key))
+    for (const retired of ['expandedUI', 'ultraWide', 'defaultTallConversation', 'defaultTallTerminal', 'closeExplorerOnFileOpen', 'hideOnExternalLaunch', 'keepExplorerOnCollapse', 'keepTerminalOnCollapse', 'keepGitPanelOnCollapse', 'keepStatusDrawerOnCollapse']) {
+      expect(keys.has(retired), retired).toBe(false)
+    }
   })
 
   it('projects streamThinkingToRemote as a default-on boolean in the General group (issue #158)', () => {
@@ -353,33 +375,6 @@ describe('projectableSchema / projectableGroups', () => {
     ])
   })
 
-  it('list entries carry their itemSchema', () => {
-    // tabGroups and quickTools are list-typed; the iOS list editor
-    // needs the per-record itemSchema to render fields. tabGroups
-    // includes `order` and `collapsed` so iOS can synthesize them
-    // for new records and round-trip them on edits; these are not
-    // rendered as editable rows (the editor uses a hidden-keys
-    // skip set).
-    const schema = projectableSchema()
-    const tabGroups = schema.find((e) => e.key === 'tabGroups')
-    expect(tabGroups?.itemSchema, 'tabGroups itemSchema').toBeTruthy()
-    expect(tabGroups?.itemSchema?.map((f) => f.key)).toEqual([
-      'id',
-      'label',
-      'isDefault',
-      'order',
-      'collapsed',
-    ])
-    const quickTools = schema.find((e) => e.key === 'quickTools')
-    expect(quickTools?.itemSchema, 'quickTools itemSchema').toBeTruthy()
-    expect(quickTools?.itemSchema?.map((f) => f.key)).toEqual([
-      'id',
-      'name',
-      'icon',
-      'command',
-    ])
-  })
-
   it('primitive-list entries carry their itemType (not itemSchema)', () => {
     // planModeAllowedBashCommands is the first primitive-list setting:
     // type: 'list', itemType: 'string', defaultValue: [] (opinionless — the
@@ -415,35 +410,6 @@ describe('projectableSchema / projectableGroups', () => {
     expect(schema.find((e) => e.key === 'uiZoom')).toBeUndefined()
   })
 
-  it('dynamic group-id enums inject the current tabGroups as choices', () => {
-    // Seed settings.json with two tab groups; the three pointer keys
-    // (planning/inProgress/done) should each get a choices array of
-    // [None, group1, group2].
-    readSettingsSpy.mockReturnValue({
-      tabGroups: [
-        { id: 'g1', label: 'Backlog', order: 0 },
-        { id: 'g2', label: 'Active', order: 1 },
-      ],
-    })
-    const schema = projectableSchema()
-    const planning = schema.find((e) => e.key === 'planningGroupId')
-    expect(planning?.choices).toEqual([
-      { value: null, label: 'None' },
-      { value: 'g1', label: 'Backlog' },
-      { value: 'g2', label: 'Active' },
-    ])
-    const inProgress = schema.find((e) => e.key === 'inProgressGroupId')
-    expect(inProgress?.choices?.map((c) => c.value)).toEqual([null, 'g1', 'g2'])
-    const done = schema.find((e) => e.key === 'doneGroupId')
-    expect(done?.choices?.map((c) => c.value)).toEqual([null, 'g1', 'g2'])
-  })
-
-  it('dynamic group-id enums fall back to just None when no tabGroups exist', () => {
-    readSettingsSpy.mockReturnValue({}) // no tabGroups field
-    const schema = projectableSchema()
-    const planning = schema.find((e) => e.key === 'planningGroupId')
-    expect(planning?.choices).toEqual([{ value: null, label: 'None' }])
-  })
 })
 
 describe('isProjectableKey', () => {
@@ -512,39 +478,6 @@ describe('projectCurrentSettings', () => {
     expect(out).not.toHaveProperty('relayApiKey')
     expect(out).not.toHaveProperty('defaultBaseDirectory')
     expect(out).not.toHaveProperty('terminalFontFamily')
-  })
-
-  it('self-heals stale group-id pointers to None when the referenced group no longer exists', () => {
-    // Settings say planningGroupId points at g-deleted, but only g-live
-    // exists in tabGroups. The projection should surface
-    // planningGroupId as null (the "None" choice) without touching the
-    // on-disk value (the user might rename the group back).
-    readSettingsSpy.mockReturnValue({
-      tabGroups: [{ id: 'g-live', label: 'Live', order: 0 }],
-      planningGroupId: 'g-deleted',
-      inProgressGroupId: 'g-live',
-      doneGroupId: 'g-also-deleted',
-    })
-    const out = projectCurrentSettings()
-    expect(out.planningGroupId).toBeNull()
-    expect(out.inProgressGroupId).toBe('g-live')
-    expect(out.doneGroupId).toBeNull()
-  })
-
-  it('leaves null group-id pointers untouched', () => {
-    readSettingsSpy.mockReturnValue({
-      tabGroups: [{ id: 'g1', label: 'G1', order: 0 }],
-      planningGroupId: null,
-    })
-    const out = projectCurrentSettings()
-    expect(out.planningGroupId).toBeNull()
-  })
-
-  it('includes list-typed defaults as empty arrays', () => {
-    readSettingsSpy.mockReturnValue({})
-    const out = projectCurrentSettings()
-    expect(out.quickTools).toEqual([])
-    expect(out.tabGroups).toEqual([])
   })
 
   it('passes list-typed values through unchanged', () => {

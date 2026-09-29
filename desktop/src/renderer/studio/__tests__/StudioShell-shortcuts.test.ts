@@ -24,10 +24,13 @@ describe("StudioShell shortcut wiring", () => {
     }
   });
 
-  it("creates and reveals a project Scratch Document with Cmd+N", () => {
+  it("creates a project Scratch Document with Cmd+N", () => {
     expect(source).toContain('"tab.scratch": () =>')
     expect(source).toContain('useSurfaceStore.getState().createScratch()')
-    expect(source).toContain('setNarrowPane("surface")')
+    // No pane-reveal step: the shell no longer collapses to one pane at
+    // narrow widths (see resolveStudioResponsiveLayout's doc), so the
+    // surface is already on screen and there is nothing to switch to.
+    expect(source).not.toContain('setNarrowPane')
   })
 
   it("uses the active conversation's terminal tray for toggle and new-shell commands", () => {
@@ -44,9 +47,8 @@ describe("StudioShell shortcut wiring", () => {
     expect(source).not.toContain("openFilePicker");
   });
 
-  it("mounts the picker host independently from optional Studio tabs", () => {
-    expect(source).toContain('studioTabStripVisible && (');
-    expect(source).toContain('<TabStrip presentation="studio" />');
+  it("mounts the picker host, and no tab strip", () => {
+    expect(source).not.toContain("TabStrip");
     expect(source).toContain('<NewConversationPickerHost />');
   });
 

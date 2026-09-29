@@ -1,19 +1,16 @@
 import React, { useState, useCallback } from 'react'
-import type { TabState } from '../../shared/types'
-import { useSessionStore } from '../stores/sessionStore'
+import type { TabState } from '@ion/shared/types'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { RenameTabWorktreeDialog } from '../components/RenameTabWorktreeDialog'
 import { rError } from '../rendererLogger'
 
 /**
- * The "rename tab and worktree" verb, mounted wherever the tab context menu is.
+ * The "rename conversation and worktree" verb, offered from the Inbox row menu.
  *
- * ── Why a hook and not three copies ─────────────────────────────────────────
- * The tab context menu is hosted at three call sites (the tab strip, the group
- * pill, and the group-picker dropdown). Each needs the same three things: the
- * menu handler, the open/closed state, and the dialog itself. Three copies of
- * that wiring is three chances for one site to drift — one forgetting to clear
- * state on cancel, another passing a different default name. So the whole verb
- * lives here and each site spends two lines on it.
+ * ── Why a hook ──────────────────────────────────────────────────────────────
+ * The verb needs three things: the menu handler, the open/closed state, and
+ * the dialog itself. Keeping them together means a host cannot forget to clear
+ * state on cancel or pass a different default name; it spends two lines on it.
  *
  * ── What it deliberately does not do ────────────────────────────────────────
  * It does not synchronize anything. The dialog applies one name to both records

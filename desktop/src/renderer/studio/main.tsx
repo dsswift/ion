@@ -3,7 +3,7 @@
  * Mounts the Studio shell; all simulation state lives outside React.
  *
  * The global stylesheet import is LOAD-BEARING: every shared component
- * (TabStrip, ConversationView, InputBar…) styles itself with the same
+ * (Inbox, ConversationView, InputBar…) styles itself with the same
  * Tailwind utilities and global rules the overlay entry loads. Without it
  * the shell renders as unstyled HTML.
  */

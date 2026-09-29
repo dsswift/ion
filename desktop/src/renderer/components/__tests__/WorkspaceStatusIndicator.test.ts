@@ -38,14 +38,14 @@ const permissionQueueMap = new Map<string, number>()
 // from the map resolve to 'auto' — mirrors effectivePermissionMode's fallback.
 const permissionModeMap = new Map<string, 'plan' | 'auto'>()
 
-vi.mock('../TabStripShared', () => ({
+vi.mock('../conversation-status', () => ({
   anyEngineInstanceHasRunningChildren: (tabId: string) => runningChildrenIds.has(tabId),
   anyEngineInstanceHasRunningShells: (tabId: string) => runningShellIds.has(tabId),
   isAnyTerminalCommandRunning: (tabId: string) => terminalCommandIds.has(tabId),
   getWaitingState: (tab: any) => waitingStateMap.get(tab.id) ?? null,
 }))
 
-vi.mock('../../stores/conversation-instance', () => ({
+vi.mock('@ion/server/store/conversation-instance', () => ({
   activeInstance: (_panes: any, tabId: string) => {
     const qLen = permissionQueueMap.get(tabId) ?? 0
     return { permissionQueue: new Array(qLen) }
@@ -54,7 +54,7 @@ vi.mock('../../stores/conversation-instance', () => ({
 }))
 
 vi.mock('@phosphor-icons/react', () => ({}))
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: { getState: () => ({ conversationPanes: new Map() }) },
 }))
 vi.mock('../../preferences', () => ({
@@ -444,7 +444,7 @@ describe('WorkspaceStatusIndicator.computeStatusCounts', () => {
 
 // ─── Background-shell branch ──────────────────────────────────────────────────
 
-// runningShellIds was wired into the TabStripShared mock when the shell
+// runningShellIds was wired into the conversation-status mock when the shell
 // dimension shipped, but no test ever populated it — so globalRunningTier's
 // shell branch and computeStatusCounts' waitingShells / waitingShellTabs had
 // zero coverage and the set existed only to keep the mock shape valid. These

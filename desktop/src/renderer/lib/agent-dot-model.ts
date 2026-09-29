@@ -1,5 +1,5 @@
-import type { AgentStateUpdate } from '../../shared/types'
-import type { DispatchInfo } from '../../shared/types-engine'
+import type { AgentStateUpdate } from '@ion/shared/types'
+import type { DispatchInfo } from '@ion/shared/types-engine'
 import type { RankedStatusDot, StatusDotColors } from './agent-helpers'
 import {
   activityTierForDispatch,
@@ -12,9 +12,7 @@ import {
 /**
  * How one agent row's status indicator should render.
  *
- * Mirrors `getGroupDotModel`'s contract (TabStripGroupStatus.ts), which solves
- * the same problem for the tab-group pill: one dot when there is nothing to
- * split, two overlapping dots when the item in focus and the aggregate of the
+ * One dot when there is nothing to split, two overlapping dots when the item in focus and the aggregate of the
  * rest can disagree.
  */
 export type AgentDotModel =
@@ -87,7 +85,7 @@ export function resolveAgentDotModel(
   }
 
   // Highest-priority state across the earlier dispatches wins the background
-  // dot, the same fold `getGroupStatusColor` performs across a group's tabs.
+  // dot.
   let background = resolveDispatchDot(agent, previous[0], allAgents, colors)
   for (const d of previous.slice(1)) {
     const candidate = resolveDispatchDot(agent, d, allAgents, colors)

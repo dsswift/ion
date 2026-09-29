@@ -2,9 +2,9 @@
  * Studio control bar: canvas actions only — zoom/fit, campus, replay, exports,
  * heat, and the side-dock toggle. Window-level controls live elsewhere by
  * design: pin is a Window-menu item (main process), and sound + the office
- * generator (seed/theme) sit behind the TabStrip's Studio button popover
- * (ControlsPopover). Conversation switching lives in the real TabStrip
- * mounted by StudioShell — never a bespoke picker here (parity mechanism 1).
+ * generator (seed/theme) sit behind this toolbar's settings button popover
+ * (ControlsPopover). Conversation switching lives in the Inbox mounted by
+ * StudioShell — never a bespoke picker here (parity mechanism 1).
  * Chrome colors come from the active application theme. Canvas colors stay
  * theme-pack-driven.
  */
@@ -29,6 +29,8 @@ export interface ToolbarProps {
   /** Session replay toggle (enter/exit). */
   replaying: boolean;
   onToggleReplay(): void;
+  /** False on a host with no native save dialog: the two export buttons are not rendered. */
+  canExport: boolean;
   /** Save an office-snapshot postcard PNG. */
   onExportPostcard(): void;
   /** Clip recording: 0 = idle, >0 = seconds left, -1 = saving. */
@@ -157,6 +159,7 @@ export function Toolbar(props: ToolbarProps): React.JSX.Element {
           weight={props.replaying ? "fill" : "regular"}
         />
       </button>
+      {props.canExport && (
       <button
         style={buttonStyle}
         title="Export office postcard (PNG)"
@@ -164,6 +167,8 @@ export function Toolbar(props: ToolbarProps): React.JSX.Element {
       >
         <Camera size={14} />
       </button>
+      )}
+      {props.canExport && (
       <button
         style={{
           ...buttonStyle,
@@ -187,6 +192,7 @@ export function Toolbar(props: ToolbarProps): React.JSX.Element {
           </span>
         )}
       </button>
+      )}
       <button
         style={buttonStyle}
         title="Visualizer settings"

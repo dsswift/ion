@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { ConversationPane } from "../../../shared/types-engine";
-import type { TabState } from "../../../shared/types";
+import type { ConversationPane } from "@ion/shared/types-engine";
+import type { TabState } from "@ion/shared/types";
 import {
   collapsedInboxRows,
   inboxActivityOrder,
@@ -123,7 +123,7 @@ describe("collapsedInboxRows", () => {
       isInboxTabWorking(tab("running", { status: "running" }), undefined),
     ).toBe(true);
     expect(
-      isInboxTabWorking(tab("starting", { status: "starting" }), undefined),
+      isInboxTabWorking(tab("connecting", { status: "connecting" }), undefined),
     ).toBe(true);
     expect(
       isInboxTabWorking(tab("waiting", { status: "waiting" }), undefined),
@@ -147,6 +147,37 @@ describe("collapsedInboxRows", () => {
       ),
     ).toBe(true);
     expect(isInboxTabWorking(tab("idle"), pane())).toBe(false);
+  });
+
+  it("does not count a session attaching at boot as work", () => {
+    expect(
+      isInboxTabWorking(tab("starting", { status: "starting" }), undefined),
+    ).toBe(false);
+    expect(
+      isInboxTabWorking(
+        tab("attaching"),
+        pane({ statusFields: { state: "starting" } }),
+      ),
+    ).toBe(false);
+    expect(
+      isInboxTabWorking(
+        tab("attaching-with-child"),
+        pane({ statusFields: { state: "starting" }, agentStates: [{ status: "running" }] }),
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps a collapsed group to pinned rows while restored sessions attach", () => {
+    const rows = [
+      tab("pinned", { pinnedAt: 1 }),
+      tab("restoring", { status: "starting" }),
+    ];
+    const working = new Set(
+      rows.filter((row) => isInboxTabWorking(row, undefined)).map(({ id }) => id),
+    );
+    expect(
+      collapsedInboxRows(rows, null, working).map(({ id }) => id),
+    ).toEqual(["pinned"]);
   });
 });
 

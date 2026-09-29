@@ -4,7 +4,8 @@
  * Pins the kind-agnostic, blocklist-based filter for the global notification
  * tray (issue: de-opinionate resource kinds). The tray must:
  *   - show every workspace-scoped kind by default (empty blocklist),
- *   - hide ONLY workspace items whose kind is in excludedResourceKinds,
+ *   - hide workspace items whose kind is in excludedResourceKinds,
+ *   - never show Studio's own traffic (the operator focus, control kinds),
  *   - NEVER hide conversation-scoped items (those belong to the attachments
  *     panel and are immune to the blocklist),
  *   - sort newest-first.
@@ -12,7 +13,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { selectTrayResources } from '../notifications-tray-filter'
-import type { ResourceItem } from '../../../shared/types-engine'
+import type { ResourceItem } from '@ion/shared/types-engine'
 
 function item(overrides: Partial<ResourceItem>): ResourceItem {
   return {
@@ -29,19 +30,28 @@ describe('selectTrayResources', () => {
     const resources = {
       briefing: [item({ id: 'b1', kind: 'briefing' })],
       report: [item({ id: 'r1', kind: 'report' })],
-      'desktop.focus': [item({ id: 'f1', kind: 'desktop.focus' })],
+      alert: [item({ id: 'a1', kind: 'alert' })],
     }
     const out = selectTrayResources(resources, [])
-    expect(out.map((i) => i.id).sort()).toEqual(['b1', 'f1', 'r1'])
+    expect(out.map((i) => i.id).sort()).toEqual(['a1', 'b1', 'r1'])
   })
 
   it('hides only the workspace items whose kind is excluded', () => {
     const resources = {
       briefing: [item({ id: 'b1', kind: 'briefing' })],
-      'desktop.focus': [item({ id: 'f1', kind: 'desktop.focus' })],
+      alert: [item({ id: 'a1', kind: 'alert' })],
     }
-    const out = selectTrayResources(resources, ['desktop.focus'])
+    const out = selectTrayResources(resources, ['alert'])
     expect(out.map((i) => i.id)).toEqual(['b1'])
+  })
+
+  it("never shows Studio's own traffic, even with an empty blocklist", () => {
+    const resources = {
+      briefing: [item({ id: 'b1', kind: 'briefing' })],
+      'desktop.focus': [item({ id: 'f1', kind: 'desktop.focus' })],
+      'ion-studio.composer-action': [item({ id: 'c1', kind: 'ion-studio.composer-action' })],
+    }
+    expect(selectTrayResources(resources, []).map((i) => i.id)).toEqual(['b1'])
   })
 
   it('never hides conversation-scoped items, even when their kind is excluded', () => {

@@ -30,18 +30,19 @@
  * buttons — so there is no unreachable control there to rescue.
  */
 import React from 'react'
+import { isWorktreeSealed } from '@ion/shared/worktree-seal'
 
 import { useColors } from '../theme'
 import { Tooltip } from './git/Tooltip'
 import { HoverCard } from './git/HoverCard'
 import { WorktreeConversationsCard } from './WorktreeConversationsCard'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { WorktreeStateSlot } from './WorktreeStateSlot'
 import { WorktreeEnrollmentSlot } from './WorktreeEnrollmentSlot'
 import { WorktreeStageSlot } from './WorktreeStageSlot'
 import { resolveRowState, resolveRowWords } from './worktreeRowState'
-import { describeOpenConversations, type DirConversation } from '../../shared/worktree-conversations'
-import type { WorktreeInventoryEntry, IntegrationMember, WorkStage } from '../../shared/types'
+import { describeOpenConversations, type DirConversation } from '@ion/shared/worktree-conversations'
+import type { WorktreeInventoryEntry, IntegrationMember, WorkStage } from '@ion/shared/types'
 
 /**
  * Width of every gutter slot, and the gutter total.
@@ -88,11 +89,11 @@ export interface WorktreeRowProps {
   railContinues?: boolean
   /**
    * Aggregate conversation status for this worktree, from
-   * `getGroupStatusColor` -- the same fold the tab-group pills use.
+   * `getTabStatusColor` folded across its conversations, highest priority wins.
    *
    * Passed in rather than derived here because the row is given
    * `DirConversation`s (a display projection), not `TabState`s. Reusing the
-   * group cascade is the point: a coloured dot already means "what is happening
+   * status cascade is the point: a coloured dot already means "what is happening
    * in these conversations" everywhere else in the app, so the worktree row
    * should not invent a second vocabulary for the same question.
    */
@@ -100,9 +101,9 @@ export interface WorktreeRowProps {
   /**
    * The active conversation is standing in this worktree — "you are here".
    *
-   * Answers a question no other navigation surface can. The tab strip shows
-   * which TAB is focused and the workspace indicator shows which conversations
-   * are live, but with dozens of worktrees open neither says which CHECKOUT the
+   * Answers a question no other navigation surface can. The Inbox shows
+   * which conversation is focused and the workspace indicator shows which
+   * conversations are live, but with dozens of worktrees open neither says which CHECKOUT the
    * current conversation belongs to, and a worktree's registry title and its
    * conversation's title routinely differ.
    */
@@ -138,6 +139,8 @@ export interface WorktreeRowProps {
    * Absent for every other row.
    */
   verificationSuspect?: { command: string }
+  /** Why the last assembly could not merge this member when nothing collided. */
+  obstruction?: { reason: string }
   /** Reveal the bench's verification-failure detail (this member is a suspect). */
   onShowVerificationFailure?(): void
   /** Set or clear the operator's workflow stage on this worktree. */
@@ -183,7 +186,8 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
   // The human title when the worktree has earned one, else the directory slug.
   // The slug is never a good name -- it is just the only one available before
   // the first prompt names the work.
-  const isLanded = !!entry.landedAt
+  // Landed: no verb runs here.
+  const isLanded = isWorktreeSealed(entry)
   const displayName = entry.title || entry.label
   const openLabel = describeOpenConversations(openConversations)
 
@@ -194,9 +198,10 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
     membership: props.membership,
     syncing,
     verificationSuspect: props.verificationSuspect,
+    obstruction: props.obstruction,
     hasActiveResolver: props.hasActiveResolver,
   })
-  const words = resolveRowWords({ entry, membership: props.membership, syncing, verificationSuspect: props.verificationSuspect })
+  const words = resolveRowWords({ entry, membership: props.membership, syncing, verificationSuspect: props.verificationSuspect, obstruction: props.obstruction })
   const enrolled = !!props.membership
 
   return (
@@ -445,8 +450,8 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
         {/* The worktree ID, ahead of the commit subject.
             This is the string that correlates the panel against every other
             surface: it is the directory name under ~/.ion/worktrees/, and it is
-            the suffix of the branch (`wt/<id>`) the tab strip and git verbs
-            name. Without it the panel and the strip shared no visible token, so
+            the suffix of the branch (`wt/<id>`) the Inbox and git verbs
+            name. Without it the panel and the Inbox shared no visible token, so
             an operator bouncing between dozens of tabs could not tell which row
             they were standing in even after finding it.
 

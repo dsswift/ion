@@ -1,33 +1,33 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { useSessionStore } from "../stores/sessionStore";
+import { useSessionStore } from "@ion/server/store/sessionStore";
 import { useQuestionsStore } from "../stores/questions-store";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover";
 import { useColors } from "../theme";
 import { usePopoverLayer } from "./PopoverLayer";
-import { tabUnread } from "../../shared/inbox-classify";
+import { tabUnread } from "@ion/shared/inbox-classify";
 import {
   anyEngineInstanceHasRunningChildren,
   anyEngineInstanceHasRunningShells,
   getWaitingState,
   isAnyTerminalCommandRunning,
-} from "./TabStripShared";
+} from "./conversation-status";
 import {
   activeInstance,
   effectivePermissionMode,
-} from "../stores/conversation-instance";
-import type { TabState } from "../../shared/types";
+} from "@ion/server/store/conversation-instance";
+import type { TabState } from "@ion/shared/types";
 import { scrollableMenuStyle } from "../menu-viewport";
 import {
   WorkspaceCollapsibleRow,
   WorkspaceCountRow,
   WorkspaceTabRow,
 } from "./WorkspaceStatusPopoverRows";
+import { tabListKey } from '../studio/connection/tab-environment';
 
 // ─── WorkspaceStatusIndicator ───────────────────────────────────────────────
 //
-// A single dot mounted on the LEFT of the tab strip (immediately after the
-// minimize/maximize toggle) that reflects the overall workspace running state
+// A single dot mounted at the top of the Studio left sidebar that reflects the overall workspace running state
 // at a glance. Distinct from the per-group dot: this is a quieter two-tier
 // model rather than the full 9-level cascade.
 //
@@ -80,8 +80,7 @@ export interface WorkspaceTabRef {
   mode: "plan" | "auto";
 }
 
-/** Display name for a tab, mirroring TabStripTabPill's `displayTitle`
- *  (customTitle wins over title). Kept local so the fold stays pure. */
+/** Display name for a tab (customTitle wins over title). Kept local so the fold stays pure. */
 function tabDisplayTitle(tab: TabState): string {
   return tab.customTitle || tab.title;
 }
@@ -223,7 +222,7 @@ export function computeStatusCounts(
 // The idle-ish categories are collapsed by default; when the user expands one,
 // the expansion must survive closing and reopening the popover — but reset on
 // app quit. Module scope gives exactly that lifetime: it outlives component
-// unmounts (popover close, TabStrip remount) and dies with the renderer
+// unmounts (popover close, sidebar remount) and dies with the renderer
 // process. No persistence, no store slice, no IPC. Each window (overlay, Studio)
 // gets its own module instance, so expansion is per-window — acceptable for a
 // glance affordance, not synced state.
@@ -253,8 +252,18 @@ export function WorkspaceStatusIndicator() {
   // RunningChildren reads the store but is not reactive on its own; the
   // component re-renders when conversationPanes identity changes).
   const tabs = useSessionStore((s) => s.tabs);
-  const terminalActiveTabIds = useSessionStore(
-    (s) => new Set([...(s.terminalActivities ?? new Map()).values()].filter((activity) => activity.active).map((activity) => activity.tabId)),
+  // `terminalActivities` selects the stable Map reference; the derived Set
+  // is computed in `useMemo`, not the zustand selector itself. A selector
+  // that builds a fresh Set on every call never returns the same reference
+  // twice, so `useSyncExternalStore` (which zustand's `useStore` is built
+  // on) sees a "changed" snapshot on every render -- including the render
+  // it triggers to re-check itself -- and React's tearing detection gives
+  // up with "Maximum update depth exceeded" (React error #185). This is
+  // what crashed the workspace status indicator on mount.
+  const terminalActivities = useSessionStore((s) => s.terminalActivities);
+  const terminalActiveTabIds = useMemo(
+    () => new Set([...(terminalActivities ?? new Map()).values()].filter((activity) => activity.active).map((activity) => activity.tabId)),
+    [terminalActivities],
   );
   useSessionStore((s) => s.conversationPanes);
   // Same reason: a Guided Questions round is a waiting state that lives
@@ -310,10 +319,8 @@ export function WorkspaceStatusIndicator() {
 
   const counts = open ? computeStatusCounts(tabs, terminalActiveTabIds) : null;
 
-  // Measured placement. The dot lives in the tab strip, which sits at the
-  // BOTTOM of the overlay glass and at the TOP of the Studio window, so a fixed
-  // "below the dot" placement is off-screen in one of the two. The popover
-  // grows with the tab list, so the counts drive a re-measure.
+  // Measured placement: the popover is anchored to the dot and kept inside the
+  // window. It grows with the tab list, so the counts drive a re-measure.
   const pos = useAnchoredPopover(anchor, {
     offsetY: 6,
     // Every input that changes the popover's rendered height: whether it is
@@ -350,10 +357,8 @@ export function WorkspaceStatusIndicator() {
           ).current = node;
           pos.ref(node);
         }}
-        // Marks this portaled popover as interactive UI. Without it, useClickThrough
-        // (elementFromPoint().closest('[data-ion-ui]')) sees no UI under the cursor
-        // and keeps the transparent overlay in OS click-through mode, so clicks on
-        // the tab-name rows pass straight through to whatever app is behind the glass.
+        // Marks this portaled popover as interactive UI, consistent with every
+        // other PopoverLayer consumer (see popover-bounds-scan.test.ts).
         data-ion-ui
         style={{
           position: "fixed",
@@ -397,7 +402,7 @@ export function WorkspaceStatusIndicator() {
           a non-zero count can never render without its conversations. */}
         {counts.runningTabs.map((t) => (
           <WorkspaceTabRow
-            key={t.id}
+            key={tabListKey(t)}
             tab={t}
             onNavigate={handleNavigate}
             colors={colors}
@@ -426,7 +431,7 @@ export function WorkspaceStatusIndicator() {
         {/* Clickable names for tabs awaiting background agents. */}
         {counts.waitingTabs.map((t) => (
           <WorkspaceTabRow
-            key={t.id}
+            key={tabListKey(t)}
             tab={t}
             onNavigate={handleNavigate}
             colors={colors}
@@ -441,7 +446,7 @@ export function WorkspaceStatusIndicator() {
         {/* Clickable names for tabs awaiting background bash commands. */}
         {counts.waitingShellTabs.map((t) => (
           <WorkspaceTabRow
-            key={t.id}
+            key={tabListKey(t)}
             tab={t}
             onNavigate={handleNavigate}
             colors={colors}

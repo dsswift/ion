@@ -1,4 +1,5 @@
-import type { ResourceItem } from '../../shared/types-engine'
+import type { ResourceItem } from '@ion/shared/types-engine'
+import { isStudioTrafficKind } from '@ion/shared/studio-sdk-contract'
 
 /**
  * Pure selector for the global notification tray.
@@ -11,7 +12,8 @@ import type { ResourceItem } from '../../shared/types-engine'
  *   - Only workspace/global items are eligible (no `conversationId`).
  *     Conversation-scoped resources are shown in the per-conversation
  *     attachments panel and are NEVER affected by the blocklist.
- *   - A workspace item is hidden iff its `kind` is in `excludedKinds`.
+ *   - Studio's own traffic (`isStudioTrafficKind`) is never shown.
+ *   - Any other workspace item is hidden iff its `kind` is in `excludedKinds`.
  *   - An empty blocklist (the default) shows every kind.
  *
  * Extracting this from the React component gives a stable, unit-testable seam
@@ -25,6 +27,7 @@ export function selectTrayResources(
   const items = Object.values(resources)
     .flat()
     .filter((item) => !item.conversationId) // workspace/global only
+    .filter((item) => !isStudioTrafficKind(item.kind)) // Studio's own traffic, not a notification
     .filter((item) => !excluded.has(item.kind)) // honor the blocklist
   return [...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }

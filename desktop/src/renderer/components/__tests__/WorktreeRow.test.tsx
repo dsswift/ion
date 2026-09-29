@@ -31,7 +31,7 @@ const store = vi.hoisted(() => ({
   selectTab: vi.fn(),
 }))
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (s: typeof store) => unknown) => selector(store),
     { getState: () => store },
@@ -54,8 +54,8 @@ vi.mock('../../theme', () => ({
 
 import { PopoverLayerProvider } from '../PopoverLayer'
 import { WorktreeRow } from '../WorktreeRow'
-import type { WorktreeInventoryEntry } from '../../../shared/types'
-import type { DirConversation } from '../../../shared/worktree-conversations'
+import type { WorktreeInventoryEntry } from '@ion/shared/types'
+import type { DirConversation } from '@ion/shared/worktree-conversations'
 
 const WT = '/Users/dev/.ion/worktrees/ion-a3f1'
 
@@ -216,8 +216,8 @@ describe('WorktreeRow — hover card', () => {
 
   it('renders canonical live status for every listed conversation', () => {
     store.tabs = [
-      { id: 'a', status: 'running', pillIcon: null, manualUnread: false, lastCompletionAt: null, lastVisitedAt: null },
-      { id: 'b', status: 'idle', pillIcon: null, manualUnread: false, lastCompletionAt: null, lastVisitedAt: null },
+      { id: 'a', status: 'running', manualUnread: false, lastCompletionAt: null, lastVisitedAt: null },
+      { id: 'b', status: 'idle', manualUnread: false, lastCompletionAt: null, lastVisitedAt: null },
     ]
     render({
       entry: entry(),

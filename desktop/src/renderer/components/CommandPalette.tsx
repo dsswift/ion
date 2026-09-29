@@ -8,7 +8,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { usePaletteEscape } from './command-palette-control'
 import { createPortal } from 'react-dom'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { rankEntries, type PaletteEntry } from './command-palette-rank'
@@ -44,7 +44,7 @@ export function CommandPalette(props: CommandPaletteProps): React.JSX.Element | 
     const tabEntries: PaletteEntry[] = tabs.map((t) => ({
       id: `tab:${t.id}`,
       label: t.customTitle || t.title,
-      keywords: `${t.workingDirectory} ${t.groupId ?? ''}`,
+      keywords: t.workingDirectory,
       section: 'Conversations',
       run: () => useSessionStore.getState().selectTab(t.id),
     }))
