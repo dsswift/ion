@@ -15,9 +15,10 @@ import { join } from 'path'
 // The shared validator refuses paths outside a known project root; the tests
 // exercise the API's own behavior, so it is stubbed to accept real absolute
 // paths and still refuse the empty/relative ones the callers guard against.
-vi.mock('../ipc-validation', () => ({
-  isValidProjectPath: (p: string) => typeof p === 'string' && p.startsWith('/'),
-}))
+vi.mock('../ipc-validation', async () => {
+  const { isAbsolute } = await import('path')
+  return { isValidProjectPath: (p: string) => typeof p === 'string' && isAbsolute(p) }
+})
 
 import * as fileApi from './file-api'
 

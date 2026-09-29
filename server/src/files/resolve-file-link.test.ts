@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs'
 import { homedir, tmpdir } from 'os'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { resolveFileLink } from './resolve-file-link'
 
@@ -22,7 +22,7 @@ describe('resolveFileLink', () => {
   })
 
   it('reports a missing file with its resolved path, and rejects a malformed request', () => {
-    expect(resolveFileLink({ path: '/nope/missing.docx', cwd: dir })).toEqual({ path: '/nope/missing.docx', exists: false, isDirectory: false, size: 0 })
+    expect(resolveFileLink({ path: '/nope/missing.docx', cwd: dir })).toEqual({ path: resolve('/nope/missing.docx'), exists: false, isDirectory: false, size: 0 })
     expect(resolveFileLink({ path: 'a\nb', cwd: dir }).exists).toBe(false)
     expect(resolveFileLink(null).path).toBe('')
   })
