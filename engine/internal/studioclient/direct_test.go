@@ -98,7 +98,7 @@ func (f *fakeServer) record(v url.Values) {
 
 func (f *fakeServer) serveStudio(ctx context.Context, conn *websocket.Conn) {
 	send := func(v any) {
-		data, _ := json.Marshal(v)                    //nolint:errcheck // fixed test payload
+		data, _ := json.Marshal(v)                   //nolint:errcheck // fixed test payload
 		conn.Write(ctx, websocket.MessageText, data) //nolint:errcheck // test reply
 	}
 	for {

@@ -449,7 +449,6 @@ func TestExternalHost_KeysSayItIsReadOnly(t *testing.T) {
 	}
 }
 
-
 // Each host keeps its own rhythm: a host that answers is read again after
 // ReadInterval, a down one only after its back-off, and neither waits on the
 // other.

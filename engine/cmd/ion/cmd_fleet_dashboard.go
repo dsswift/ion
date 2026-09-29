@@ -36,9 +36,9 @@ func runFleetDashboard(flags map[string]string) {
 	deployer.Exec = fleettui.TerminalExec(send)
 	collector := fleetCollector()
 	model := fleettui.New(fleettui.Deps{
-		Config:  cfg,
-		Read:    collector.One,
-		Latest:  fleet.LatestReleases,
+		Config: cfg,
+		Read:   collector.One,
+		Latest: fleet.LatestReleases,
 		Prepare: func(ctx context.Context, hosts []fleet.Host, source string, known []fleet.HostStatus) (*fleet.Prepared, error) {
 			kind, checkout, err := fleet.ResolveSource(source, cfg)
 			if err != nil {

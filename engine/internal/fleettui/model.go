@@ -91,11 +91,11 @@ type pendingAction struct {
 
 // Model is the dashboard state.
 type Model struct {
-	deps       Deps
-	statuses   []fleet.HostStatus
-	latest     fleet.Latest
-	cursor     int
-	selected   map[string]bool
+	deps     Deps
+	statuses []fleet.HostStatus
+	latest   fleet.Latest
+	cursor   int
+	selected map[string]bool
 	screen   screen
 	sched    map[string]hostSchedule
 	releases releaseSchedule

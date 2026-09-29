@@ -312,7 +312,7 @@ func (s *Server) broadcastOidcIdentity() {
 	line := protocol.SerializeServerEvent("", json.RawMessage(raw))
 	s.broadcast(line, evt.Type)
 	utils.LogWithFields(utils.LevelInfo, "server.oidc", "identity snapshot broadcast", map[string]any{
-		"signed_in": evt.OidcSignedIn != nil && *evt.OidcSignedIn,
+		"signed_in":      evt.OidcSignedIn != nil && *evt.OidcSignedIn,
 		"signed_in_user": evt.OidcUsername,
 	})
 }
