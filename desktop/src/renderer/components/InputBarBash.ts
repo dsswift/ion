@@ -58,3 +58,14 @@ export function dispatchBashCommand(deps: BashDispatchDeps): boolean {
   })
   return true
 }
+
+/**
+ * Adapts the host's bash spawn verb (`host.shell.executeBash`, bridged over
+ * the studio-wire on every host) to the `BashDispatchDeps['executeBash']`
+ * shape `dispatchBashCommand` consumes.
+ */
+export function createHostExecuteBash(host: {
+  shell: { executeBash: (execId: string, cmd: string, cwd: string) => Promise<{ stdout: string; stderr: string; exitCode: number | null }> }
+}): BashDispatchDeps['executeBash'] {
+  return (execId, cmd, cwd) => host.shell.executeBash(execId, cmd, cwd)
+}

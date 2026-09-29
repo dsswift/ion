@@ -8,14 +8,14 @@
  * another conversation's state can render beneath it.
  */
 import React from 'react'
-import { useSessionStore } from '../stores/sessionStore'
-import { activeInstance } from '../stores/conversation-instance'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { activeInstance } from '@ion/server/store/conversation-instance'
 import { AgentDetailBody } from '../components/AgentDetailBody'
 import { useDispatchTranscript, resolveSubjectAgent } from '../hooks/useDispatchTranscript'
 import { activeDispatchSplit } from './dispatch-split-state'
 import { meta } from '../components/agent-panel-helpers'
 import { useColors } from '../theme'
-import type { AgentStateUpdate } from '../../shared/types'
+import type { AgentStateUpdate } from '@ion/shared/types'
 
 export function DispatchSplitPane(): React.JSX.Element | null {
   const colors = useColors()

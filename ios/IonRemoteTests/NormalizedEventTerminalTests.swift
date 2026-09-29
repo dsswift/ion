@@ -45,6 +45,22 @@ final class NormalizedEventTerminalTests: XCTestCase {
         }
     }
 
+    func testTerminalRestartedRoundTrips() throws {
+        let json = """
+        {"type":"desktop_terminal_restarted","tabId":"t1","instanceId":"inst1"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        guard case .terminalRestarted(let tabId, let instanceId) = event else {
+            return XCTFail("Expected terminalRestarted, got \(event)")
+        }
+        XCTAssertEqual(tabId, "t1")
+        XCTAssertEqual(instanceId, "inst1")
+
+        let encoded = try encoder.encode(event)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertEqual(object["type"] as? String, "desktop_terminal_restarted")
+    }
+
     func testDecodeTerminalInstanceAdded() throws {
         let json = """
         {"type":"desktop_terminal_instance_added","tabId":"t1","instance":{"id":"inst2","label":"Shell","kind":"user","readOnly":false,"cwd":"/tmp"}}
@@ -202,114 +218,7 @@ final class NormalizedEventTerminalTests: XCTestCase {
 
     // MARK: - Encode terminal commands
 
-    func testEncodeCreateTerminalTab() throws {
-        let cmd = RemoteCommand.createTerminalTab(workingDirectory: "/home/user")
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_create_terminal_tab")
-        XCTAssertEqual(json["workingDirectory"] as? String, "/home/user")
-    }
-
-    func testEncodeTerminalInput() throws {
-        let cmd = RemoteCommand.terminalInput(tabId: "t1", instanceId: "i1", data: "ls\n")
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_terminal_input")
-        XCTAssertEqual(json["tabId"] as? String, "t1")
-        XCTAssertEqual(json["instanceId"] as? String, "i1")
-        XCTAssertEqual(json["data"] as? String, "ls\n")
-    }
-
-    func testEncodeTerminalResize() throws {
-        let cmd = RemoteCommand.terminalResize(tabId: "t1", instanceId: "i1", cols: 120, rows: 40)
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_terminal_resize")
-        XCTAssertEqual(json["cols"] as? Int, 120)
-        XCTAssertEqual(json["rows"] as? Int, 40)
-    }
-
-    func testEncodeTerminalAddInstance() throws {
-        let cmd = RemoteCommand.terminalAddInstance(tabId: "t1")
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_terminal_add_instance")
-        XCTAssertEqual(json["tabId"] as? String, "t1")
-    }
-
-    func testEncodeTerminalRemoveInstance() throws {
-        let cmd = RemoteCommand.terminalRemoveInstance(tabId: "t1", instanceId: "i2")
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_terminal_remove_instance")
-        XCTAssertEqual(json["tabId"] as? String, "t1")
-        XCTAssertEqual(json["instanceId"] as? String, "i2")
-    }
-
-    func testEncodeTerminalSelectInstance() throws {
-        let cmd = RemoteCommand.terminalSelectInstance(tabId: "t1", instanceId: "i3")
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_terminal_select_instance")
-        XCTAssertEqual(json["instanceId"] as? String, "i3")
-    }
-
     // MARK: - Round-trip terminal commands
-
-    func testCommandRoundTripCreateTerminalTab() throws {
-        let original = RemoteCommand.createTerminalTab(workingDirectory: "/var")
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .createTerminalTab(let wd, _) = decoded {
-            XCTAssertEqual(wd, "/var")
-        } else {
-            XCTFail("Round-trip createTerminalTab failed")
-        }
-    }
-
-    func testCommandRoundTripTerminalInput() throws {
-        let original = RemoteCommand.terminalInput(tabId: "t1", instanceId: "i1", data: "echo hi\n")
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .terminalInput(let tabId, let instanceId, let text) = decoded {
-            XCTAssertEqual(tabId, "t1")
-            XCTAssertEqual(instanceId, "i1")
-            XCTAssertEqual(text, "echo hi\n")
-        } else {
-            XCTFail("Round-trip terminalInput failed")
-        }
-    }
-
-    func testCommandRoundTripTerminalResize() throws {
-        let original = RemoteCommand.terminalResize(tabId: "t1", instanceId: "i1", cols: 80, rows: 24)
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .terminalResize(let tabId, let instanceId, let cols, let rows) = decoded {
-            XCTAssertEqual(tabId, "t1")
-            XCTAssertEqual(instanceId, "i1")
-            XCTAssertEqual(cols, 80)
-            XCTAssertEqual(rows, 24)
-        } else {
-            XCTFail("Round-trip terminalResize failed")
-        }
-    }
-
-    func testEncodeOpenTerminalApplication() throws {
-        let cmd = RemoteCommand.openTerminalApplication(
-            tabId: "t1", url: "http://localhost:5173"
-        )
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_open_terminal_application")
-        XCTAssertEqual(json["tabId"] as? String, "t1")
-        XCTAssertEqual(json["url"] as? String, "http://localhost:5173")
-
-        guard case let .openTerminalApplication(tabId, url) = try decoder.decode(RemoteCommand.self, from: data) else {
-            return XCTFail("Expected openTerminalApplication")
-        }
-        XCTAssertEqual(tabId, "t1")
-        XCTAssertEqual(url, "http://localhost:5173")
-    }
 
     // MARK: - RemoteTabState terminal fields
 
@@ -336,22 +245,4 @@ final class NormalizedEventTerminalTests: XCTestCase {
 
     // MARK: - requestTerminalSnapshot command
 
-    func testEncodeRequestTerminalSnapshot() throws {
-        let cmd = RemoteCommand.requestTerminalSnapshot(tabId: "tab-99")
-        let data = try encoder.encode(cmd)
-        let dict = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(dict["type"] as? String, "desktop_request_terminal_snapshot")
-        XCTAssertEqual(dict["tabId"] as? String, "tab-99")
-    }
-
-    func testCommandRoundTripRequestTerminalSnapshot() throws {
-        let original = RemoteCommand.requestTerminalSnapshot(tabId: "tab-99")
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .requestTerminalSnapshot(let tabId) = decoded {
-            XCTAssertEqual(tabId, "tab-99")
-        } else {
-            XCTFail("Expected requestTerminalSnapshot, got \(decoded)")
-        }
-    }
 }

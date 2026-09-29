@@ -184,11 +184,11 @@ func goroutineDump() []byte {
 // Kept out of the JSONL log because a dump runs to megabytes and would push
 // every other line out of the rotation window.
 func writeStallDump(name string, dump []byte) (string, error) {
-	home, err := utils.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve home: %w", err)
+	ionDir := utils.IonDir()
+	if ionDir == "" {
+		return "", fmt.Errorf("resolve ion data dir")
 	}
-	dir := filepath.Join(home, ".ion", "diagnostics")
+	dir := filepath.Join(ionDir, "diagnostics")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("create %s: %w", dir, err)
 	}

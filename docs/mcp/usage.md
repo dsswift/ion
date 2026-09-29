@@ -28,8 +28,8 @@ mcp initialize mobbin: HTTP error (status 401) — "mobbin" requires authorizati
 from https://auth.example.com; run `ion mcp login mobbin`
 ```
 
-Run that command (or click Authorize in the desktop under Settings → MCP
-Servers) and the server connects on the next conversation. When the login
+Run that command (or click Authorize in the desktop under Settings → Servers → the server →
+Integrations) and the server connects on the next conversation. When the login
 completes, the engine also reconnects the server across every live session, so
 an already-open conversation picks up its tools without a restart.
 

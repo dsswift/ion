@@ -10,6 +10,8 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { homedir, tmpdir } from "os";
 import { join } from "path";
+import { afterEach } from "vitest";
+import { _resetForTest as resetServerLoggerForTest } from "@ion/server/logger";
 
 // Many main-process tests spin up a real, throwaway git repository in a temp
 // directory and assert on the exact bytes it produces (a committed blob's
@@ -206,6 +208,18 @@ function installMacNavigatorPlatform(): void {
     value: "MacIntel",
   });
 }
+
+// @ion/server's logger starts an unref'd flush setInterval the first time any
+// module under test logs through it (e.g. anything importing connections/
+// broker.ts, which pulls in the server protocol package). That timer is not
+// torn down when the test file's module graph is, so it keeps firing every
+// 500ms against whatever `fs` mock happens to be active in a LATER,
+// unrelated test file — throwing when that file's `vi.mock('fs', ...)`
+// doesn't happen to define `appendFile`. Resetting after every test clears
+// the timer before the next file's mocks are in place.
+afterEach(() => {
+  resetServerLoggerForTest();
+});
 
 installTestHome();
 installLocalStorageShim();

@@ -23,7 +23,7 @@ import { rWarn } from './rendererLogger'
 const STORAGE_KEY = 'ion_managedDefaultsApplied'
 
 /** Managed defaults that apply once per profile. */
-export type ManagedDefaultId = 'tabStrip'
+export type ManagedDefaultId = 'environments'
 
 function read(): Set<string> {
   try {

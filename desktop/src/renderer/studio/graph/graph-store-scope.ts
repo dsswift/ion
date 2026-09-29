@@ -11,7 +11,7 @@ import { query as querySearchIndex } from './search/search-index'
 import { rebuildAndSync, reprojectAfterVisibilityChange } from './graph-store-corpus'
 import { MAX_SCOPE_DEPTH } from './filter/visibility'
 import type { NeighborhoodDirection } from './scope/neighborhood'
-import type { GraphFilterRule, TagTreatment, ClusterRendering } from '../../../shared/graph-view-types'
+import type { GraphFilterRule, TagTreatment, ClusterRendering } from '@ion/shared/graph-view-types'
 import type { GraphState, StoreGet, StoreSet } from './graph-store-types'
 
 export function createScopeActions(

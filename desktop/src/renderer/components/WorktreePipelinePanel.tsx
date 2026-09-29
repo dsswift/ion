@@ -17,14 +17,14 @@
  */
 import React from 'react'
 import { ArrowsClockwise, CheckCircle, CircleNotch, Warning, X } from '@phosphor-icons/react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../theme'
 import { Tooltip } from './git/Tooltip'
 import { ConfirmDialog } from './git/ConfirmDialog'
 import { rError } from '../rendererLogger'
-import type { WorktreeInventoryEntry } from '../../shared/types'
-import type { WorktreePipelineState } from '../stores/session-store-types'
-import { pathSegments } from '../../shared/paths'
+import type { WorktreeInventoryEntry } from '@ion/shared/types'
+import type { WorktreePipelineState } from '@ion/server/store/session-store-types'
+import { pathSegments } from '@ion/shared/paths'
 
 /** Display name for a worktree path within the pipeline's outcome list. */
 function nameOf(p: WorktreePipelineState, worktreePath: string): string {

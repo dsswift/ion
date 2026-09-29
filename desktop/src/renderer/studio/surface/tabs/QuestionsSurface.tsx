@@ -1,6 +1,6 @@
 import React from 'react'
 import { useColors } from '../../../theme'
-import { useSessionStore } from '../../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useQuestionsStore, openWorkflowsForTab } from '../../../stores/questions-store'
 import { QuestionsWizard } from '../../../components/questions/QuestionsWizard'
 

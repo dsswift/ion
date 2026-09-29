@@ -34,7 +34,7 @@ All Quality workflow jobs must pass before a PR can merge:
 
 Quality keeps stable required-check names. On a pull request, `changes` classifies the PR diff and product jobs outside that scope are marked **skipped** rather than omitted. GitHub treats those skipped contexts as successful, while avoiding unrelated runners and package scans. The required engine matrix contexts are special: when `engine/**` is untouched, `changes` publishes completed no-op check runs with the existing macOS and Ubuntu names, so branch protection receives success instead of leaving those contexts indefinitely expected.
 
-Examples: a docs-only PR runs the universal file-size gate, not engine/desktop/relay tests, package vulnerability scans, Docker, or iOS compilation; a `desktop/package-lock.json` update additionally runs the desktop audit; an iOS change runs SwiftLint and the device build. Workflow YAML changes run actionlint. The classifier mapping is pinned by `scripts/test-quality-path-scopes.sh`.
+Examples: a docs-only PR runs the universal file-size gate, not engine/desktop/relay tests, package vulnerability scans, Docker, or iOS compilation; a root `package-lock.json` update runs the desktop audit; an iOS change runs SwiftLint and the device build. Workflow YAML changes run actionlint. The classifier mapping is pinned by `scripts/test-quality-path-scopes.sh`.
 
 Pushes to `main`, scheduled runs, and manual dispatches intentionally run every product scope. This preserves full post-merge and scheduled coverage even though pull requests get change-scoped feedback.
 

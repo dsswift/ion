@@ -1,28 +1,26 @@
+import { isCompletionStrategy, useActiveServerSetting } from '../studio/state/use-server-setting'
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { rDebug, rError } from '../rendererLogger'
 import { createPortal } from 'react-dom'
 import { AnimatePresence } from 'framer-motion'
-import {
-  ArrowsClockwise, ArrowDown, ArrowUp, CheckCircle, X, SpinnerGap,
-} from '@phosphor-icons/react'
-import { Tooltip } from './git/Tooltip'
-import { useSessionStore } from '../stores/sessionStore'
+import { X } from '@phosphor-icons/react'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
-import { usePreferencesStore } from '../preferences'
 import { computeGraphLayout } from '../utils/gitGraphLayout'
 import { FloatingPanel } from './FloatingPanel'
 import { DiffPane } from './git/DiffPane'
-import { useRepoState } from '../stores/git'
+import { useRepoState } from '@ion/server/store/git'
 import { useGitGraphFocus } from './git/useGitGraphFocus'
-import type { GitCommit, GitCommitDetail, GitCommitFile, GitDiffResult } from '../../shared/types'
-import { BranchPicker } from './GitBranchPicker'
+import type { GitCommit, GitCommitDetail, GitCommitFile, GitDiffResult } from '@ion/shared/types'
 import { CommitPopup } from './GitCommitPopup'
 import { CommitContextMenu } from './GitCommitContextMenu'
 import { FinishWorkContextMenu } from './GitFinishWorkMenu'
 import { VirtualCommitList } from './git/VirtualCommitList'
 import { GraphFilterBar, EMPTY_FILTERS, type GraphFilters } from './git/GraphFilterBar'
 import { RebaseEditor, type RebaseCommit } from './git/RebaseEditor'
+import { GitGraphToolbar } from './git/GitGraphToolbar'
+import { host } from '../host/host-instance'
 
 // ─── Graph Section ───
 
@@ -51,7 +49,8 @@ export function GitGraphSection({
   const [pushConfirm, setPushConfirm] = useState(false)
   const [rebaseError, setRebaseError] = useState<string | null>(null)
   const [finishMenuAnchor, setFinishMenuAnchor] = useState<{ x: number; y: number } | null>(null)
-  const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy)
+  // The land strategy is yours on the server this worktree lives on, not this Mac's.
+  const strategy = useActiveServerSetting('worktreeCompletionStrategy', isCompletionStrategy, 'merge-ff')
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const [graphFilters, setGraphFilters] = useState<GraphFilters>(EMPTY_FILTERS)
   const graphKey = useMemo(() => JSON.stringify({ directory, filters: graphFilters }), [directory, graphFilters])
@@ -80,7 +79,7 @@ export function GitGraphSection({
     setLoading(true)
     try {
       const skip = append ? commitsRef.current.length : 0
-      const result = await window.ion.gitGraph(
+      const result = await host.shell.gitGraph(
         directory, skip, 100,
         graphFilters.search || undefined,
         graphFilters.author || undefined,
@@ -149,7 +148,7 @@ export function GitGraphSection({
 
   const [stashes, setStashes] = useState<Array<{ ref: string; message: string; parentSha?: string }>>([])
   useEffect(() => {
-    window.ion.gitStashList(directory).then((r) => setStashes(r.stashes)).catch(() => setStashes([]))
+    host.shell.gitStashList(directory).then((r) => setStashes(r.stashes)).catch(() => setStashes([]))
   }, [directory, refreshKey])
 
   const decoratedCommits = useMemo(() => {
@@ -236,7 +235,7 @@ export function GitGraphSection({
       setHoverRect(rect)
       setHoverDetail(null)
       activeHashRef.current = commit.hash
-      window.ion.gitCommitDetail(directory, commit.hash).then((detail) => {
+      host.shell.gitCommitDetail(directory, commit.hash).then((detail) => {
         if (activeHashRef.current === commit.hash) setHoverDetail(detail)
       }).catch((err) => rDebug("git", "gitCommitDetail failed", { error: String(err) }))
     }, 300)
@@ -301,8 +300,8 @@ export function GitGraphSection({
     setExpandedDetail(null)
     try {
       const [filesResult, detailResult] = await Promise.all([
-        window.ion.gitCommitFiles(directory, commit.hash),
-        window.ion.gitCommitDetail(directory, commit.hash),
+        host.shell.gitCommitFiles(directory, commit.hash),
+        host.shell.gitCommitDetail(directory, commit.hash),
       ])
       setCommitFiles(filesResult.files as GitCommitFile[])
       setExpandedDetail(detailResult)
@@ -315,7 +314,7 @@ export function GitGraphSection({
   const handleCommitFileClick = useCallback(async (file: GitCommitFile) => {
     if (!expandedHash) return
     try {
-      const result = await window.ion.gitCommitFileDiff(directory, expandedHash, file.path)
+      const result = await host.shell.gitCommitFileDiff(directory, expandedHash, file.path)
       setCommitFileDiff(result)
     } catch {
       setCommitFileDiff(null)
@@ -323,7 +322,7 @@ export function GitGraphSection({
   }, [expandedHash, directory])
 
   const handleRebase = useCallback(async (commit: GitCommit) => {
-    const result = await window.ion.gitRebaseTodo(directory, commit.fullHash)
+    const result = await host.shell.gitRebaseTodo(directory, commit.fullHash)
     if (result.ok && result.commits.length > 0) {
       setRebaseTarget({
         onto: commit.fullHash,
@@ -344,7 +343,7 @@ export function GitGraphSection({
 
   const handleFetch = async () => {
     setFetchingAction('fetch')
-    await window.ion.gitFetch(directory)
+    await host.shell.gitFetch(directory)
     setFetchingAction(null)
     loadGraph().catch((err) => rError('git', 'graph reload after fetch failed', { error: String(err) }))
     onRefresh()
@@ -354,7 +353,7 @@ export function GitGraphSection({
     setFetchingAction('pull')
     if (worktree) {
       try {
-        const result = await window.ion.gitWorktreeRebase(worktree.worktreePath, worktree.sourceBranch)
+        const result = await host.shell.gitWorktreeRebase(worktree.worktreePath, worktree.sourceBranch)
         if (result.hasConflicts) {
           setRebaseError(result.error || 'Rebase has conflicts -- resolve them before continuing')
         }
@@ -362,7 +361,7 @@ export function GitGraphSection({
         setRebaseError(e instanceof Error ? e.message : 'Rebase failed')
       }
     } else {
-      await window.ion.gitPull(directory)
+      await host.shell.gitPull(directory)
     }
     setFetchingAction(null)
     loadGraph().catch((err) => rError('git', 'graph reload after pull failed', { error: String(err) }))
@@ -377,7 +376,7 @@ export function GitGraphSection({
     }
     setPushConfirm(false)
     setFetchingAction('push')
-    await window.ion.gitPush(directory)
+    await host.shell.gitPush(directory)
     setFetchingAction(null)
     loadGraph().catch((err) => rError('git', 'graph reload after push failed', { error: String(err) }))
   }
@@ -389,101 +388,22 @@ export function GitGraphSection({
 
   return (
     <>
-      {/* Graph header buttons */}
-      <div
-        className="flex items-center justify-between px-2"
-        style={{ height: 24, borderBottom: `1px solid ${colors.containerBorder}` }}
-      >
-        <BranchPicker directory={directory} currentBranch={branch} onRefresh={handleBranchRefresh} worktree={worktree} />
-        <div className="flex items-center gap-0.5">
-          {pushConfirm ? (
-            <div className="flex items-center gap-0.5 text-[9px]">
-              <span style={{ color: colors.textTertiary }}>Push?</span>
-              <button
-                onClick={() => { void handlePush().catch((err) => rError('git', 'push failed', { error: String(err) })) }}
-                className="px-1 rounded"
-                style={{ color: colors.accent }}
-              >
-                Yes
-              </button>
-              <button
-                onClick={() => setPushConfirm(false)}
-                className="px-1 rounded"
-                style={{ color: colors.textTertiary }}
-              >
-                No
-              </button>
-            </div>
-          ) : (
-            <>
-              <Tooltip text="Fetch">
-                <button
-                  onClick={() => { void handleFetch().catch((err) => rError('git', 'fetch failed', { error: String(err) })) }}
-                  disabled={!!fetchingAction}
-                  className="p-0.5 rounded transition-colors"
-                  style={{ color: colors.textTertiary }}
-                >
-                  {fetchingAction === 'fetch' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowsClockwise size={11} />}
-                </button>
-              </Tooltip>
-              <Tooltip text={worktree ? `Rebase from ${worktree.sourceBranch}` : 'Pull'}>
-                <button
-                  onClick={() => { void handlePull().catch((err) => rError('git', 'pull failed', { error: String(err) })) }}
-                  disabled={!!fetchingAction}
-                  className="p-0.5 rounded transition-colors"
-                  style={{ color: colors.textTertiary }}
-                >
-                  {fetchingAction === 'pull' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowDown size={11} />}
-                </button>
-              </Tooltip>
-              {worktree && !worktree.landedAt ? (
-                <Tooltip text={hasUncommittedChanges
-                    ? 'Commit all changes before finishing'
-                    : strategy === 'merge-ff'
-                      ? `Finish: fast-forward into ${worktree.sourceBranch}`
-                      : strategy === 'merge'
-                      ? `Finish: merge into ${worktree.sourceBranch}`
-                      : `Finish: push and create PR against ${worktree.sourceBranch}`}>
-                  <button
-                    onClick={() => {
-                      if (!hasUncommittedChanges) {
-                        useSessionStore.getState().finishWorktreeTab(activeTabId)
-                          .catch((err) => rError('git', 'finishWorktreeTab failed', { error: String(err) }))
-                      }
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault()
-                      if (!hasUncommittedChanges) {
-                        setFinishMenuAnchor({ x: e.clientX, y: e.clientY })
-                      }
-                    }}
-                    disabled={hasUncommittedChanges}
-                    className="p-0.5 rounded transition-colors"
-                    style={{
-                      color: hasUncommittedChanges ? colors.textTertiary : colors.worktreeGreen,
-                      opacity: hasUncommittedChanges ? 0.35 : 1,
-                      cursor: hasUncommittedChanges ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    <CheckCircle size={11} weight="fill" />
-                  </button>
-                </Tooltip>
-              ) : worktree?.landedAt ? null : (
-                <Tooltip text="Push">
-                  <button
-                    onClick={() => { void handlePush().catch((err) => rError('git', 'push failed', { error: String(err) })) }}
-                    disabled={!!fetchingAction}
-                    className="p-0.5 rounded transition-colors"
-                    style={{ color: colors.textTertiary }}
-                  >
-                    {fetchingAction === 'push' ? <SpinnerGap size={11} className="animate-spin" /> : <ArrowUp size={11} />}
-                  </button>
-                </Tooltip>
-              )}
-            </>
-          )}
-        </div>
-      </div>
+      <GitGraphToolbar
+        directory={directory}
+        branch={branch}
+        worktree={worktree}
+        hasUncommittedChanges={hasUncommittedChanges}
+        activeTabId={activeTabId}
+        strategy={strategy}
+        pushConfirm={pushConfirm}
+        setPushConfirm={setPushConfirm}
+        fetchingAction={fetchingAction}
+        handleFetch={handleFetch}
+        handlePull={handlePull}
+        handlePush={handlePush}
+        handleBranchRefresh={handleBranchRefresh}
+        setFinishMenuAnchor={setFinishMenuAnchor}
+      />
 
       <GraphFilterBar filters={graphFilters} onFilterChange={setGraphFilters} />
 

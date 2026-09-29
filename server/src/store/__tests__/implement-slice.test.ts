@@ -1,0 +1,450 @@
+/**
+ * implementPlan — the single plan-approval → implementation pipeline
+ * (implement-slice.ts). Formerly runHandleImplement, a component helper that
+ * executed in whichever window hosted the card; as a store action it is
+ * owner-executed everywhere (the Studio mirror forwards it — see
+ * shared/studio-mirror-actions.ts).
+ *
+ * Pinned contracts:
+ *  - Plan-mode stale-parent regression: implement must flip the AUTHORITATIVE
+ *    permission mode to 'auto' so the next submit() cannot re-assert plan.
+ *  - Explicit-tab regression (the Studio window wrong-tab flip): the mode flip targets
+ *    the CARD'S tab, not the store's activeTabId. The old pipeline called the
+ *    active-tab-bound setPermissionMode; a forwarded Studio call then flipped
+ *    whatever tab was active in the owner window.
+ *
+ *    action BEFORE the auto-move pin check, so the in-progress move runs.
+ *    The old pipeline forwarded the unpin cross-window and read the stale
+ *    mirror pin state, suppressing the move ("moved to Planning" bug).
+ *  - clearContext branch: session reset + conversationId archive + cut tag.
+ *
+ * The harness composes the REAL tab/send/implement slices over a manual
+ * store so setPermissionMode routing and effectivePermissionMode run for real.
+ */
+
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+
+// ── module-level mocks ────────────────────────────────────────────────────────
+
+vi.mock('../../components/TerminalPanel', () => ({ destroyTerminalInstance: vi.fn() }))
+
+// session-store-helpers constructs `new Audio()` at module load; stub the
+// helpers the slices actually use so importing send-slice/tab-slice doesn't
+// touch the DOM Audio API under jsdom-less test env.
+vi.mock('../session-store-helpers', () => ({
+  nextMsgId: vi.fn((..._a: any[]) => `msg-${Math.random()}`),
+  playNotificationIfHidden: vi.fn(async (..._a: any[]) => {}),
+  cancelDoneGroupMove: vi.fn((..._a: any[]) => false),
+  scheduleDoneGroupMove: vi.fn(),
+  makeLocalTab: vi.fn(),
+  initialModelOverride: vi.fn((..._a: any[]) => null),
+  initialPermissionMode: vi.fn((..._a: any[]) => 'auto'),
+}))
+
+// Mutable prefs so individual tests can enable auto-group movement.
+const prefs: Record<string, unknown> = {}
+function resetPrefs(): void {
+  Object.keys(prefs).forEach((k) => delete prefs[k])
+  Object.assign(prefs, {
+    preferredModel: null,
+    defaultPermissionMode: 'auto' as const,
+    planModelSplitEnabled: false,
+    planModeModel: null,
+    implementModeModel: null,
+    engineProfiles: [],
+    engineDefaultModel: null,
+  })
+}
+resetPrefs()
+vi.mock('../../persistence/preferences', () => ({
+  usePreferencesStore: { getState: vi.fn((..._a: any[]) => prefs) },
+}))
+
+// The harness store is created per-test; this holder lets the sessionStore
+// mock forward getState/setState to whichever harness the current test built.
+const storeHolder: { current: any } = { current: null }
+vi.mock('../sessionStore', () => ({
+  useSessionStore: {
+    getState: () => storeHolder.current,
+    setState: (updater: any) => {
+      const patch = typeof updater === 'function' ? updater(storeHolder.current) : updater
+      Object.assign(storeHolder.current, patch)
+    },
+  },
+}))
+
+const mockPrompt = vi.fn(async (..._a: any[]) => {})
+const mockSetPermissionMode = vi.fn()
+const mockEngineSetPlanMode = vi.fn()
+const mockSteer = vi.fn()
+const mockReadPlan = vi.fn(async (..._a: any[]) => ({ content: '# plan body' }))
+const mockTriggerPlanImplemented = vi.fn(async (..._a: any[]) => {})
+const mockResetTabSession = vi.fn()
+const mockResolvePermissionDenials = vi.fn()
+const mockCancelBash = vi.fn()
+const mockEngineAbort = vi.fn()
+
+vi.mock('../host-api', () => ({
+  echoUserTurnToStudio: vi.fn(),
+  prompt: (...args: any[]) => mockPrompt(...args),
+  setPermissionMode: (...args: any[]) => mockSetPermissionMode(...args),
+  engineSetPlanMode: (...args: any[]) => mockEngineSetPlanMode(...args),
+  steer: (...args: any[]) => mockSteer(...args),
+  readPlan: (...args: any[]) => mockReadPlan(...args),
+  triggerPlanImplemented: (...args: any[]) => mockTriggerPlanImplemented(...args),
+  resetTabSession: (...args: any[]) => mockResetTabSession(...args),
+  resolvePermissionDenials: (...args: any[]) => mockResolvePermissionDenials(...args),
+  cancelBash: (...args: any[]) => mockCancelBash(...args),
+  engineAbort: (...args: any[]) => mockEngineAbort(...args),
+  closeTab: vi.fn(),
+  createTab: vi.fn(),
+  deleteTabContent: vi.fn(),
+  saveSessionLabel: vi.fn(),
+  start: vi.fn(),
+  tabMetaChanged: vi.fn(),
+  terminalDestroy: vi.fn(),
+}))
+
+import { createImplementSlice } from '../slices/implement-slice'
+import { createSendSlice } from '../slices/send-slice'
+import { createTabSlice } from '../slices/tab-slice'
+import { effectivePermissionMode } from '../conversation-instance'
+import type { State } from '../session-store-types'
+import type { TabState } from '@ion/shared/types'
+import type { ConversationInstance } from '@ion/shared/types-engine'
+import { seedMainPane } from './helpers/conversation-test-helpers'
+
+// ── global window stub ────────────────────────────────────────────────────────
+
+;(globalThis as any).window = {
+  crypto: { randomUUID: () => 'uuid-1234' },
+}
+if (!(globalThis as any).crypto?.randomUUID) {
+  ;(globalThis as any).crypto = (globalThis as any).crypto ?? {}
+  ;(globalThis as any).crypto.randomUUID = () => 'uuid-1234'
+}
+
+// ── test state builder ────────────────────────────────────────────────────────
+
+function makeTab(overrides: Partial<TabState> = {}): TabState {
+  return {
+    id: 'tab-1',
+    conversationId: null,
+    historicalSessionIds: [],
+    lastKnownSessionId: null,
+    status: 'completed',
+    activeRequestId: null,
+    lastEventAt: null,    lastActivityAt: null,    idleSince: null,    lastCompletionAt: null,    settledOverride: null,    settledAt: null,    snoozedUntil: null,    snoozedAt: null,    lastVisitedAt: null,    manualUnread: false,
+    currentActivity: '',
+    attachments: [],
+    title: 'New Tab',
+    customTitle: null,
+    lastResult: null,
+    sessionTools: [],
+    sessionMcpServers: [],
+    sessionSkills: [],
+    sessionVersion: null,
+    queuedPrompts: [],
+    workingDirectory: '/home/test',
+    hasChosenDirectory: true,
+    additionalDirs: [],
+    bashResults: [],
+    bashExecuting: false,
+    bashExecId: null,
+    pillColor: null,
+    forkedFromSessionId: null,
+    worktree: null,
+    pendingWorktreeSetup: false,
+    contextTokens: null,
+    contextWindow: null,
+    isCompacting: false,
+    isTerminalOnly: false,
+    inputLocked: false,
+    engineProfileId: null,
+    lastMessagePreview: null,
+    ...overrides,
+  }
+}
+
+function buildHarness(
+  initialTabs: TabState | TabState[],
+  instanceOverrides: Partial<ConversationInstance> = {},
+  activeTabId?: string,
+) {
+  const tabs = Array.isArray(initialTabs) ? initialTabs : [initialTabs]
+  const panes = seedMainPane(tabs[0].id, { permissionMode: 'auto', ...instanceOverrides })
+  for (const t of tabs.slice(1)) {
+    for (const [k, v] of seedMainPane(t.id, {})) panes.set(k, v)
+  }
+  const state: any = {
+    tabs,
+    activeTabId: activeTabId ?? tabs[0].id,
+    scrollToBottomCounter: 0,
+    staticInfo: { homePath: '/home/test', projectPath: '/home/test', version: '1', email: null, subscriptionType: null },
+    backend: 'api' as const,
+    terminalPanes: new Map(),
+    terminalOpenTabIds: new Set(),
+    worktreeUncommittedMap: new Map(),
+    engineWorkingMessages: new Map(),
+    engineNotifications: new Map(),
+    engineDialogs: new Map(),
+    enginePinnedPrompt: new Map(),
+    conversationPanes: panes,
+    engineModelFallbacks: new Map(),
+    fileExplorerOpenDirs: new Set(),
+    fileEditorOpenDirs: new Set(),
+  }
+
+  const set = vi.fn((updater: any) => {
+    const patch = typeof updater === 'function' ? updater(state) : updater
+    Object.assign(state, patch)
+  })
+  const get = () => state as State
+
+  const tabSlice = createTabSlice(set, get)
+  const sendSlice = createSendSlice(set, get)
+  const implementSlice = createImplementSlice(set, get)
+  Object.assign(state, tabSlice, sendSlice, implementSlice)
+  state.moveTabToGroup = vi.fn()
+  state.handleError = vi.fn()
+  state.addEngineSystemMessage = vi.fn()
+  state.setTabModel = vi.fn()
+
+  storeHolder.current = state
+  return { state, set }
+}
+
+// ── tests ─────────────────────────────────────────────────────────────────────
+
+describe('implementPlan — plan-mode flip (plain tab)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetPrefs()
+    mockPrompt.mockResolvedValue(undefined)
+    mockReadPlan.mockResolvedValue({ content: '# plan body' })
+  })
+
+  it('clears the AUTHORITATIVE permission mode to auto and never re-asserts plan', async () => {
+    const tab = makeTab()
+    const { state } = buildHarness(tab, { permissionMode: 'plan', planFilePath: '/plans/test.md' })
+
+    await state.implementPlan('tab-1', {})
+
+    // Authoritative mode is on the active instance; must be 'auto' after implement.
+    const resolvedTab = state.tabs.find((t: TabState) => t.id === 'tab-1')!
+    expect(effectivePermissionMode(resolvedTab, state.conversationPanes)).toBe('auto')
+
+    // The engine was told auto (plan-off). The downstream submit() prompt_sync
+    // must NOT have re-asserted plan: every setPermissionMode call for this tab
+    // is 'auto', never 'plan'.
+    const tabCalls = mockSetPermissionMode.mock.calls.filter((c) => c[0] === 'tab-1')
+    expect(tabCalls.length).toBeGreaterThan(0)
+    for (const c of tabCalls) {
+      expect(c[1]).toBe('auto')
+    }
+  })
+
+  it('REGRESSION: flips the mode of the CARD tab even when another tab is active', async () => {
+    // The Studio wrong-tab bug: a forwarded implement executed the mode flip
+    // against the owner's activeTabId. With two tabs and tab-2 active, the
+    // old pipeline flipped tab-2 and left tab-1 in plan mode (the send-slice
+    // prompt_sync then re-asserted plan and the tab filed under Planning).
+    const tab1 = makeTab({ id: 'tab-1' })
+    const tab2 = makeTab({ id: 'tab-2' })
+    const { state } = buildHarness([tab1, tab2], { permissionMode: 'plan', planFilePath: '/plans/test.md' }, 'tab-2')
+
+    await state.implementPlan('tab-1', {})
+
+    const resolved = state.tabs.find((t: TabState) => t.id === 'tab-1')!
+    expect(effectivePermissionMode(resolved, state.conversationPanes)).toBe('auto')
+    // And the engine flip went to tab-1, not the active tab-2.
+    const flips = mockSetPermissionMode.mock.calls.filter((c) => c[1] === 'auto' && c[3] === undefined)
+    expect(flips.some((c) => c[0] === 'tab-1')).toBe(true)
+    expect(mockSetPermissionMode.mock.calls.every((c) => c[0] !== 'tab-2')).toBe(true)
+  })
+
+  it('triggers plan implementation automation before submitting', async () => {
+    const tab = makeTab({ worktree: { worktreePath: '/repo/wt', repoPath: '/repo', branchName: 'wt/test', sourceBranch: 'main' } })
+    const { state } = buildHarness(tab, { permissionMode: 'plan', planFilePath: '/plans/test.md' })
+
+    await state.implementPlan('tab-1', { clearContext: true })
+
+    expect(mockTriggerPlanImplemented).toHaveBeenCalledWith(expect.objectContaining({
+      tabId: 'tab-1', worktreePath: '/repo/wt', planFilePath: '/plans/test.md', clearContext: true, source: 'renderer',
+    }))
+  })
+
+  it('submits the implement prompt with implementationPhase', async () => {
+    const tab = makeTab()
+    const { state } = buildHarness(tab, { permissionMode: 'plan', planFilePath: '/plans/test.md' })
+
+    await state.implementPlan('tab-1', {})
+
+    expect(mockPrompt).toHaveBeenCalledTimes(1)
+    const args = mockPrompt.mock.calls[0] as unknown as any[]
+    expect(args[2].implementationPhase).toBe(true)
+  })
+})
+
+describe('implementPlan — denial card', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetPrefs()
+    mockPrompt.mockResolvedValue(undefined)
+    mockReadPlan.mockResolvedValue({ content: '# plan body' })
+  })
+
+  it('dismisses the denial card on the tab instance', async () => {
+    const denied = { tools: [{ toolName: 'ExitPlanMode', toolUseId: 'x', toolInput: { planFilePath: '/plans/test.md' } }] }
+    const tab = makeTab()
+    const { state } = buildHarness(tab, { permissionMode: 'plan', permissionDenied: denied })
+
+    await state.implementPlan('tab-1', {})
+
+    const pane = state.conversationPanes.get('tab-1')!
+    const inst = pane.instances.find((i: any) => i.id === pane.activeInstanceId) ?? pane.instances[0]
+    expect(inst.permissionDenied).toBeNull()
+    // The denial's toolInput served as the planFilePath fallback for the read.
+    expect(mockReadPlan).toHaveBeenCalledWith('/plans/test.md')
+  })
+})
+
+describe('implementPlan — planFilePath cleared on instance after implement', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetPrefs()
+    mockPrompt.mockResolvedValue(undefined)
+    mockReadPlan.mockResolvedValue({ content: '# plan body' })
+  })
+
+  it('clears instance.planFilePath to null (not a silent no-op on tabs[])', async () => {
+    const tab = makeTab()
+    const PLAN_PATH = '/Users/josh/.ion/plans/bold-guiding-kite.md'
+    const { state } = buildHarness(tab, { permissionMode: 'plan', planFilePath: PLAN_PATH })
+
+    const paneBefore = state.conversationPanes.get('tab-1')!
+    const instBefore = paneBefore.instances.find((i: any) => i.id === paneBefore.activeInstanceId) ?? paneBefore.instances[0]
+    expect(instBefore.planFilePath).toBe(PLAN_PATH)
+
+    mockReadPlan.mockResolvedValue({ content: '# plan' })
+
+    await state.implementPlan('tab-1', {})
+
+    // After implement the instance.planFilePath must be null — the path was
+    // consumed and must not linger to contaminate a subsequent planning cycle.
+    const paneAfter = state.conversationPanes.get('tab-1')!
+    const instAfter = paneAfter.instances.find((i: any) => i.id === paneAfter.activeInstanceId) ?? paneAfter.instances[0]
+    expect(instAfter.planFilePath).toBeNull()
+  })
+
+  it('preserves consumed plan path on implement divider before clearing current state', async () => {
+    const tab = makeTab()
+    const planPath = '/plans/retained.md'
+    const { state } = buildHarness(tab, { permissionMode: 'plan', planFilePath: planPath })
+
+    await state.implementPlan('tab-1', {})
+
+    expect(state.addEngineSystemMessage).toHaveBeenCalledWith(
+      'tab-1',
+      expect.stringContaining('Implementing plan'),
+      planPath,
+    )
+    const pane = state.conversationPanes.get('tab-1')!
+    expect(pane.instances[0].planFilePath).toBeNull()
+    expect(pane.instances[0].messages.at(-1)).toMatchObject({ role: 'user', implementationPhase: true })
+  })
+})
+
+describe('implementPlan — clearContext branch', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetPrefs()
+    mockPrompt.mockResolvedValue(undefined)
+    mockReadPlan.mockResolvedValue({ content: '# plan body' })
+  })
+
+  it('clearContext=true resets the session, archives the conversationId, and tags the cut', async () => {
+    const tab = makeTab({ conversationId: 'conv-old', historicalSessionIds: [] })
+    const { state } = buildHarness(tab, { permissionMode: 'plan', planFilePath: '/plans/test.md' })
+
+    await state.implementPlan('tab-1', { clearContext: true })
+
+    // The engine session was torn down via the reset IPC.
+    expect(mockResetTabSession).toHaveBeenCalledTimes(1)
+    expect(mockResetTabSession).toHaveBeenCalledWith('tab-1')
+
+    const resolvedTab = state.tabs.find((t: TabState) => t.id === 'tab-1')!
+    // conversationId is cut to null; the prior id is archived and recorded as parent.
+    expect(resolvedTab.conversationId).toBeNull()
+    expect(resolvedTab.historicalSessionIds).toContain('conv-old')
+    expect(resolvedTab.pendingParentConversationId).toBe('conv-old')
+
+    // The active instance carries the 'clear' cut reason so the session ledger
+    // tags the next minted id.
+    const pane = state.conversationPanes.get('tab-1')!
+    const inst = pane.instances.find((i: any) => i.id === pane.activeInstanceId) ?? pane.instances[0]
+    expect(inst.pendingCutReason).toBe('clear')
+
+    // Still submits the implement prompt with implementationPhase.
+    expect(mockPrompt).toHaveBeenCalledTimes(1)
+    const args = mockPrompt.mock.calls[0] as unknown as any[]
+    expect(args[2].implementationPhase).toBe(true)
+  })
+
+  it('clearContext=false (default Implement) preserves the conversation — no reset', async () => {
+    const tab = makeTab({ conversationId: 'conv-keep', historicalSessionIds: [] })
+    const { state } = buildHarness(tab, { permissionMode: 'plan', planFilePath: '/plans/test.md' })
+
+    await state.implementPlan('tab-1', {})
+
+    // No session teardown; conversation is preserved across the plan→implement boundary.
+    expect(mockResetTabSession).not.toHaveBeenCalled()
+    const resolvedTab = state.tabs.find((t: TabState) => t.id === 'tab-1')!
+    expect(resolvedTab.conversationId).toBe('conv-keep')
+    expect(resolvedTab.historicalSessionIds).not.toContain('conv-keep')
+
+    const pane = state.conversationPanes.get('tab-1')!
+    const inst = pane.instances.find((i: any) => i.id === pane.activeInstanceId) ?? pane.instances[0]
+    expect(inst.pendingCutReason).toBeUndefined()
+  })
+
+  /**
+   * Both ways a card leaves the screen must release the ENGINE's retention of
+   * the denial, not just the local copy. The engine re-publishes an unresolved
+   * AskUserQuestion / ExitPlanMode on every status snapshot and releases it
+   * only on a new prompt or a /clear, so a card that is merely dismissed would
+   * otherwise be re-offered forever.
+   */
+  it('dismissPermissionDenied clears the card AND notifies the engine', () => {
+    const tab = makeTab()
+    const { state } = buildHarness(tab, {
+      permissionMode: 'plan',
+      planFilePath: '/plans/test.md',
+      permissionDenied: { tools: [{ toolName: 'ExitPlanMode', toolUseId: 'tu-1' }] } as any,
+    })
+
+    state.dismissPermissionDenied('tab-1')
+
+    const pane = state.conversationPanes.get('tab-1')!
+    const inst = pane.instances.find((i: any) => i.id === pane.activeInstanceId) ?? pane.instances[0]
+    expect(inst.permissionDenied).toBeNull()
+    expect(mockResolvePermissionDenials).toHaveBeenCalledWith('tab-1')
+  })
+
+  it('implementPlan notifies the engine that the plan question is resolved', () => {
+    // Approval is a resolution too. The implement prompt would eventually
+    // clear the engine's retention, but the clearContext branch tears the
+    // session down first — so a heartbeat in that window would re-offer the
+    // card the user just approved.
+    const tab = makeTab({ conversationId: 'conv-1' })
+    const { state } = buildHarness(tab, {
+      permissionMode: 'plan',
+      planFilePath: '/plans/test.md',
+      permissionDenied: { tools: [{ toolName: 'ExitPlanMode', toolUseId: 'tu-1' }] } as any,
+    })
+
+    void state.implementPlan('tab-1', {})
+
+    expect(mockResolvePermissionDenials).toHaveBeenCalledWith('tab-1')
+  })
+})

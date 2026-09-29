@@ -7,7 +7,7 @@ import SwiftUI
 // not part of the core view hierarchy:
 //
 //   - AttachmentSegments / parseAttachmentSegments — splits `[Attached image: PATH]`
-//     markers out of a user-message body.
+//     and `[Attached file: PATH]` markers out of a user-message body.
 //   - InlineAttachmentImage — renders a remote image inline, fetching on miss.
 //   - BlinkingModifier — animates a streaming cursor.
 //   - Color(hex:) — hex-based Color initialiser used by bubble chrome.
@@ -16,11 +16,13 @@ import SwiftUI
 
 // MARK: - Attachment marker parsing
 
-/// Result of splitting a user-message body on `[Attached image: PATH]`
-/// markers. `images` lists each path in source order; `text` is the body
-/// with markers removed and incidental blank lines collapsed.
+/// Result of splitting a user-message body on `[Attached image: PATH]` and
+/// `[Attached file: PATH]` markers. `images` and `files` list each path in
+/// source order; `text` is the body with markers removed and incidental blank
+/// lines collapsed.
 struct AttachmentSegments {
     var images: [String]
+    var files: [String] = []
     var text: String
 }
 
@@ -28,6 +30,12 @@ private let attachedImagePattern: NSRegularExpression = {
     // Path matches anything except a closing bracket so the regex stops at
     // the marker boundary rather than greedily eating the whole line.
     return try! NSRegularExpression(pattern: #"\[Attached image: ([^\]]+)\]"#)
+}()
+
+/// A document marker, one per line as prompts prepend them. Desktop parity:
+/// `stripAttachmentMarkers` and `deriveMessageFiles`.
+private let attachedFilePattern: NSRegularExpression = {
+    return try! NSRegularExpression(pattern: #"^\[Attached file: ([^\]]+)\]$"#, options: [.anchorsMatchLines])
 }()
 
 /// Matches the encoder-rewritten marker produced by attachment-encoder.ts
@@ -64,22 +72,38 @@ func parseAttachmentSegments(_ raw: String) -> AttachmentSegments {
     let ns = raw as NSString
     let range = NSRange(location: 0, length: ns.length)
     let matches = attachedImagePattern.matches(in: raw, range: range)
+    let fileMatches = attachedFilePattern.matches(in: raw, range: range)
 
-    // When neither marker form is present, return early without allocation.
+    // When no marker form is present, return early without allocation.
     let contentAttachedRange = NSRange(location: 0, length: ns.length)
     let hasContentAttached = !contentAttachedPattern.matches(in: raw, range: contentAttachedRange).isEmpty
-    if matches.isEmpty && !hasContentAttached {
+    if matches.isEmpty && fileMatches.isEmpty && !hasContentAttached {
         return AttachmentSegments(images: [], text: raw)
     }
 
     var images: [String] = []
-    var cleaned = NSMutableString(string: raw)
+    var files: [String] = []
+    let cleaned = NSMutableString(string: raw)
+
+    // Pass 0: document markers. Collected and removed back to front so each
+    // match's range still points at the same text when it is replaced; the
+    // image pass below re-scans the result for the same reason.
+    for match in fileMatches.reversed() {
+        if match.numberOfRanges < 2 { continue }
+        files.insert(ns.substring(with: match.range(at: 1)), at: 0)
+        cleaned.replaceCharacters(in: match.range, with: "")
+    }
+    let afterFiles = cleaned as String
+    let afterFilesNs = afterFiles as NSString
+    let imageMatches = fileMatches.isEmpty
+        ? matches
+        : attachedImagePattern.matches(in: afterFiles, range: NSRange(location: 0, length: afterFilesNs.length))
 
     // Pass 1: extract image paths from [Attached image: PATH] markers and
     // remove them from the text.
-    for match in matches.reversed() {
+    for match in imageMatches.reversed() {
         if match.numberOfRanges < 2 { continue }
-        let path = ns.substring(with: match.range(at: 1))
+        let path = afterFilesNs.substring(with: match.range(at: 1))
         images.insert(path, at: 0)
         cleaned.replaceCharacters(in: match.range, with: "")
     }
@@ -99,7 +123,7 @@ func parseAttachmentSegments(_ raw: String) -> AttachmentSegments {
     // Collapse blank lines left behind by marker removal.
     while text.contains("\n\n\n") { text = text.replacingOccurrences(of: "\n\n\n", with: "\n\n") }
     text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    return AttachmentSegments(images: images, text: text)
+    return AttachmentSegments(images: images, files: files, text: text)
 }
 
 // MARK: - InlineAttachmentImage

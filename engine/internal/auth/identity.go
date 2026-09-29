@@ -64,45 +64,6 @@ type RefreshableTokenProvider interface {
 	ForceRefreshTokenWithAudienceExpiry(ctx context.Context, scope, audience string) (token string, expiresAt time.Time, err error)
 }
 
-// OperatorIdentity carries the identity claims of the signed-in operator,
-// extracted from the OIDC id_token.
-type OperatorIdentity struct {
-	// Subject is the stable subject identifier (Entra: the oid claim,
-	// falling back to sub).
-	Subject string `json:"subject"`
-	// Username is the human-readable identity used for attribution
-	// (Entra: preferred_username -- UPN/email for work accounts).
-	Username string `json:"username"`
-	// Name is the display name claim when present.
-	Name string `json:"name,omitempty"`
-	// Provider is the auth-config key this identity was minted under
-	// (e.g. "entra").
-	Provider string `json:"provider"`
-	// Claims preserves every JSON-compatible claim from the verified id_token.
-	Claims    map[string]any `json:"claims,omitempty"`
-	expiresAt time.Time
-	// Attribution is the value of the configured attributionClaim, when
-	// set. Takes precedence over the standard fallback chain in
-	// AttributionValue.
-	Attribution string `json:"attribution,omitempty"`
-}
-
-// AttributionValue returns the identity string stamped on telemetry and
-// egress records: the configured attributionClaim's value when set, else
-// preferred_username, else the subject.
-func (id *OperatorIdentity) AttributionValue() string {
-	if id == nil {
-		return ""
-	}
-	if id.Attribution != "" {
-		return id.Attribution
-	}
-	if id.Username != "" {
-		return id.Username
-	}
-	return id.Subject
-}
-
 // defaultRefreshThreshold is how long before expiry a cached access token
 // is considered stale and proactively refreshed. Overridable via
 // AuthConfig.RefreshThresholdMs.
@@ -141,12 +102,20 @@ type IdentityManager struct {
 	// renewing guards against launching more than one concurrent background
 	// renewal from Identity()'s hot path. See kickBackgroundRenewal.
 	renewing atomic.Bool
+	// renewal is the background-renewal backoff: after a failure the hot
+	// path starts no new renewal until the retry time. See renewal_backoff.go.
+	renewal renewalBackoff
 }
 
-// cacheKey builds the scopeCache key for a scope+audience pair. The
-// separator cannot appear in either value (NUL is invalid in both).
-func cacheKey(scope, audience string) string {
-	return scope + "\x00" + audience
+// cacheKey builds the scopeCache/machineTokenCache key for a
+// subject+scope+audience triple. The separator cannot appear in any value
+// (NUL is invalid in all three). subject is always "" for IdentityManager's
+// own scopeCache -- it identifies one signed-in operator, not many
+// principals -- so its keys are unaffected by the subject dimension
+// machineTokenCache adds in token_source.go for the principal-aware path
+// (child 02, R-04).
+func cacheKey(subject, scope, audience string) string {
+	return subject + "\x00" + scope + "\x00" + audience
 }
 
 // resolveEndpoints fills empty endpoint URLs from OIDC discovery when the
@@ -231,6 +200,9 @@ type LoginResult struct {
 // job is to surface AuthorizationURL to the user. On success the full grant
 // is persisted and the parsed identity is delivered on Done.
 func (m *IdentityManager) BeginLogin() (*LoginResult, error) {
+	if err := m.requireVerifiableLogin("pkce"); err != nil {
+		return nil, err
+	}
 	pkceCfg, err := m.pkceConfig()
 	if err != nil {
 		return nil, err
@@ -353,6 +325,9 @@ type DeviceLogin struct {
 // environments (no browser on the engine host). Requires
 // deviceAuthorizationUrl in the provider's OAuth config.
 func (m *IdentityManager) BeginDeviceLogin() (*DeviceLogin, error) {
+	if err := m.requireVerifiableLogin("device"); err != nil {
+		return nil, err
+	}
 	if err := m.resolveEndpoints(); err != nil {
 		return nil, err
 	}
@@ -456,7 +431,7 @@ func (m *IdentityManager) completeLogin(ctx context.Context, tok *TokenResponse,
 	stored := oauthToken{
 		AccessToken: tok.AccessToken, RefreshToken: tok.RefreshToken,
 		ExpiresAt: tok.ExpiresAt, IDToken: tok.IDToken, TokenType: tok.TokenType,
-		Scope: tok.Scope, IdentityVersion: currentIdentityVersion,
+		Scope: tok.Scope, IdentityVersion: IdentityStoreVersion,
 		PersistedIdentity: identityToPersisted(identity),
 	}
 	encoded, err := json.Marshal(stored)
@@ -474,7 +449,7 @@ func (m *IdentityManager) completeLogin(ctx context.Context, tok *TokenResponse,
 	m.identityExpiry = identity.expiresAt
 	m.identityResolved = true
 	if tok.Scope != "" {
-		m.scopeCache[cacheKey(tok.Scope, m.cfg.Audience)] = stored
+		m.scopeCache[cacheKey("", tok.Scope, m.cfg.Audience)] = stored
 	}
 	m.mu.Unlock()
 
@@ -491,21 +466,9 @@ func (m *IdentityManager) completeLogin(ctx context.Context, tok *TokenResponse,
 }
 
 func (m *IdentityManager) verifyIdentity(ctx context.Context, rawIDToken, expectedNonce string) (*OperatorIdentity, error) {
-	m.mu.Lock()
-	verifier := m.verifier
-	m.mu.Unlock()
-	if verifier == nil {
-		var err error
-		verifier, err = newOIDCVerifier(m.cfg.IssuerURL, m.cfg.ClientID)
-		if err != nil {
-			return nil, err
-		}
-		m.mu.Lock()
-		if m.verifier == nil {
-			m.verifier = verifier
-		}
-		verifier = m.verifier
-		m.mu.Unlock()
+	verifier, err := m.identityVerifier()
+	if err != nil {
+		return nil, err
 	}
 	identity, err := verifier.verify(ctx, rawIDToken, expectedNonce)
 	if err != nil {
@@ -527,7 +490,7 @@ func (m *IdentityManager) SeedVerifiedLoginForTest(tok *TokenResponse, identity 
 	if tok == nil || tok.AccessToken == "" {
 		return fmt.Errorf("identity: empty test token response")
 	}
-	stored := oauthToken{AccessToken: tok.AccessToken, RefreshToken: tok.RefreshToken, ExpiresAt: tok.ExpiresAt, IDToken: tok.IDToken, TokenType: tok.TokenType, Scope: tok.Scope, IdentityVersion: currentIdentityVersion, PersistedIdentity: identityToPersisted(identity)}
+	stored := oauthToken{AccessToken: tok.AccessToken, RefreshToken: tok.RefreshToken, ExpiresAt: tok.ExpiresAt, IDToken: tok.IDToken, TokenType: tok.TokenType, Scope: tok.Scope, IdentityVersion: IdentityStoreVersion, PersistedIdentity: identityToPersisted(identity)}
 	encoded, err := json.Marshal(stored)
 	if err != nil {
 		return fmt.Errorf("identity: marshal test token: %w", err)
@@ -545,7 +508,7 @@ func (m *IdentityManager) SeedVerifiedLoginForTest(tok *TokenResponse, identity 
 	m.identityExpiry = time.Time{}
 	m.identityResolved = true
 	if tok.Scope != "" {
-		m.scopeCache[cacheKey(tok.Scope, m.cfg.Audience)] = stored
+		m.scopeCache[cacheKey("", tok.Scope, m.cfg.Audience)] = stored
 	}
 	m.mu.Unlock()
 	return nil
@@ -630,7 +593,7 @@ func (m *IdentityManager) getTokenWithAudienceExpiry(ctx context.Context, scope,
 	if audience == "" {
 		audience = m.cfg.Audience
 	}
-	key := cacheKey(scope, audience)
+	key := cacheKey("", scope, audience)
 
 	m.mu.Lock()
 	cached, ok := m.scopeCache[key]

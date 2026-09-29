@@ -82,7 +82,26 @@ type EngineEvent struct {
 	// their optimistic user row to this id so history loads dedup against it
 	// even when the run never reaches a message_end (cancel, mid-stream
 	// failure). Never carries content. See types.UserTurnPersistedEvent.
-	UserTurnEntryID             string         `json:"userTurnEntryId,omitempty"`
+	UserTurnEntryID string `json:"userTurnEntryId,omitempty"`
+	// AssistantEntryIDs carries engine_assistant_turn_persisted: the canonical
+	// tree-entry ids of a run's assistant messages, in transcript order.
+	//
+	// It exists for backends that persist a turn AFTER the stream ends. An
+	// engine-owned run mints each assistant entry id before it streams and
+	// announces it on that message's engine_message_end, so a consumer re-keys
+	// its live-streamed rows as it goes. A delegated-CLI run cannot: Ion copies
+	// the turn into its store at run exit (persistCliTurn), so at message_end
+	// time no entry exists and engine_message_end carries no entryId. Without
+	// this event those consumers keep locally-minted ids forever, and any later
+	// comparison against a history load -- which returns the canonical ids --
+	// reads as a permanent divergence.
+	//
+	// A RE-KEY signal, not a transcript echo: ids only, never content. A
+	// consumer holding the same ordered assistant rows for the run re-keys them
+	// positionally. A consumer whose count differs must NOT guess -- the ids
+	// then describe a transcript it did not build, and a wrong re-key is worse
+	// than none.
+	AssistantEntryIDs           []string       `json:"assistantEntryIds,omitempty"`
 	UserTurnSlashModelAlias     string         `json:"userTurnSlashModelAlias,omitempty"`
 	UserTurnSlashModelEffective string         `json:"userTurnSlashModelEffective,omitempty"`
 	UserTurnSlashFrontmatter    map[string]any `json:"userTurnSlashFrontmatter,omitempty"`
@@ -287,6 +306,12 @@ type EngineEvent struct {
 	TelemetryQuarantinedEvents int   `json:"telemetryQuarantinedEvents,omitempty"`
 	TelemetryQuarantinedBytes  int64 `json:"telemetryQuarantinedBytes,omitempty"`
 
+	// engine_system_metrics — a complete System Metrics snapshot (host load,
+	// the engine's process tree, the Go runtime). Written only to connections
+	// that asked for it with system_metrics_watch, at the interval they asked
+	// for; never broadcast. Snapshot semantics: a consumer replaces its copy.
+	SystemMetrics *SystemMetricsSample `json:"systemMetrics,omitempty"`
+
 	// engine_capability_unsupported — workflow signal emitted when a
 	// requested feature (e.g. plan mode) is not supported by the backend
 	// that would serve the run, and the engine declined the prompt cleanly
@@ -448,6 +473,18 @@ type EngineEvent struct {
 	ElicitCancelled bool                   `json:"cancelled,omitempty"`
 	ElicitDeclined  bool                   `json:"elicitDeclined,omitempty"`
 
+	// engine_credential_request (FR-05 child 09, SC-8): the engine asking a
+	// connected control-plane client whether it has a credential for one
+	// principal's (subject, provider) or (subject, host) scope. Carries NO
+	// credential -- it is a question. CredentialAxis is "provider" or
+	// "git"; exactly one of CredentialProvider/CredentialHost is populated,
+	// matching auth.CredentialScope's own shape.
+	CredentialRequestID string `json:"credentialRequestId,omitempty"`
+	CredentialSubject   string `json:"credentialSubject,omitempty"`
+	CredentialAxis      string `json:"credentialAxis,omitempty"`
+	CredentialProvider  string `json:"credentialProvider,omitempty"`
+	CredentialHost      string `json:"credentialHost,omitempty"`
+
 	// engine_oidc_login_url — delivered to the client that issued
 	// oidc_begin_login. Exactly one of the two shapes is populated:
 	// interactive PKCE carries OidcAuthorizationURL (the consumer opens it
@@ -472,9 +509,12 @@ type EngineEvent struct {
 	// OidcRequired carries auth.requireOperatorIdentity on every identity
 	// snapshot. Pointer preserves the false value so consumers can replace stale
 	// required state after configuration changes.
-	OidcRequired    *bool  `json:"oidcRequired,omitempty"`
-	OidcProvider    string `json:"oidcProvider,omitempty"`
-	OidcSubject     string `json:"oidcSubject,omitempty"`
+	OidcRequired *bool  `json:"oidcRequired,omitempty"`
+	OidcProvider string `json:"oidcProvider,omitempty"`
+	OidcSubject  string `json:"oidcSubject,omitempty"`
+	// OidcIssuer is the issuer that signed the operator's identity (the
+	// verified id_token's iss claim).
+	OidcIssuer      string `json:"oidcIssuer,omitempty"`
 	OidcUsername    string `json:"oidcUsername,omitempty"`
 	OidcDisplayName string `json:"oidcDisplayName,omitempty"`
 

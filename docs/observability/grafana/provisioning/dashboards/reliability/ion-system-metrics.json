@@ -1,0 +1,645 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "name": "Idle repaint",
+        "titleFormat": "{{host_name}} {{fields_process_name}} gpu={{fields_gpu_percent}} cpu={{fields_cpu_percent}}",
+        "expr": "{service_name=\"ion-desktop\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"device-metrics\" | msg=\"idle repaint detected\"",
+        "step": "60s"
+      }
+    ]
+  },
+  "description": "Host load and every Ion process, from the sample lines each process logs every 30 s. Works with telemetry off. Studio's Device Metrics appear only here: they never leave the device.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "## Ion System Metrics\n\nEvery device and every Ion process on it, from the sample line each one logs every 30 s. Charts draw **one line per device**; use the **Device** and **User** dropdowns to narrow the fleet. **Engine** lines carry the host (CPU, memory, disk) and each engine process role; the **server** line carries the Studio server's own process; the **desktop** line carries Studio's own Electron processes, including GPU time on macOS.\n\nA GPU figure is missing, not zero, where it was not measured. For a fleet, alerting, or Application Insights, use the OTLP metrics export instead (see the observability README, \"Signals and where they go\")."
+      }
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Devices reporting",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "description": "Devices that logged a System Metrics sample in the time range, within the Device and User filters.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "noValue": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "count(sum by (host_name) (count_over_time({service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"sysmetrics\" | msg=~\"system metrics sample|HIGH MEMORY\" [$__range])))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Host CPU in use",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "description": "Share of all host CPUs in use since the previous sample, 0..1; steal time counts as busy. Source: engine.jsonl tag=sysmetrics fields.host_cpu_utilization.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "max": 1,
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg by (host_name) (avg_over_time({service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"sysmetrics\" | msg=~\"system metrics sample|HIGH MEMORY\" | fields_host_cpu_utilization != \"\" | unwrap fields_host_cpu_utilization [5m]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "{{host_name}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Host memory available and disk free",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "description": "Memory available to new work (inside a limited container, the limit less its use), and free space on the volume holding the engine's data (systemMetrics.diskPath, default ~/.ion). Source: engine.jsonl fields.host_memory_available_bytes, host_disk_free_bytes.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg by (host_name) (avg_over_time({service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"sysmetrics\" | msg=~\"system metrics sample|HIGH MEMORY\" | fields_host_memory_available_bytes != \"\" | unwrap fields_host_memory_available_bytes [5m]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "memory {{host_name}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg by (host_name) (avg_over_time({service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"sysmetrics\" | msg=~\"system metrics sample|HIGH MEMORY\" | fields_host_disk_free_bytes != \"\" | unwrap fields_host_disk_free_bytes [5m]))",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "disk {{host_name}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "CPU by engine process role, selected devices",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "description": "Summed CPU of each role in the engine's own process tree, added up across the selected devices; 100 = one full core. Pick one device to see one machine. Source: engine.jsonl fields.<role>_cpu_percent.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(avg by (host_name) (avg_over_time({service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"sysmetrics\" | msg=~\"system metrics sample|HIGH MEMORY\" | fields_engine_cpu_percent != \"\" | unwrap fields_engine_cpu_percent [5m])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "engine"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(avg by (host_name) (avg_over_time({service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"sysmetrics\" | msg=~\"system metrics sample|HIGH MEMORY\" | fields_extension_cpu_percent != \"\" | unwrap fields_extension_cpu_percent [5m])))",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "extension"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(avg by (host_name) (avg_over_time({service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"sysmetrics\" | msg=~\"system metrics sample|HIGH MEMORY\" | fields_mcp_cpu_percent != \"\" | unwrap fields_mcp_cpu_percent [5m])))",
+          "queryType": "range",
+          "refId": "C",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "mcp"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(avg by (host_name) (avg_over_time({service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"sysmetrics\" | msg=~\"system metrics sample|HIGH MEMORY\" | fields_backend_cpu_percent != \"\" | unwrap fields_backend_cpu_percent [5m])))",
+          "queryType": "range",
+          "refId": "D",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "backend"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(avg by (host_name) (avg_over_time({service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"sysmetrics\" | msg=~\"system metrics sample|HIGH MEMORY\" | fields_tool_cpu_percent != \"\" | unwrap fields_tool_cpu_percent [5m])))",
+          "queryType": "range",
+          "refId": "E",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "tool"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Memory by engine process role, selected devices",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "description": "Summed resident memory of each role in the engine's process tree, added up across the selected devices. Source: engine.jsonl fields.<role>_rss_bytes.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(avg by (host_name) (avg_over_time({service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"sysmetrics\" | msg=~\"system metrics sample|HIGH MEMORY\" | fields_engine_rss_bytes != \"\" | unwrap fields_engine_rss_bytes [5m])))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "engine"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(avg by (host_name) (avg_over_time({service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"sysmetrics\" | msg=~\"system metrics sample|HIGH MEMORY\" | fields_extension_rss_bytes != \"\" | unwrap fields_extension_rss_bytes [5m])))",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "extension"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(avg by (host_name) (avg_over_time({service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"sysmetrics\" | msg=~\"system metrics sample|HIGH MEMORY\" | fields_mcp_rss_bytes != \"\" | unwrap fields_mcp_rss_bytes [5m])))",
+          "queryType": "range",
+          "refId": "C",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "mcp"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(avg by (host_name) (avg_over_time({service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"sysmetrics\" | msg=~\"system metrics sample|HIGH MEMORY\" | fields_backend_rss_bytes != \"\" | unwrap fields_backend_rss_bytes [5m])))",
+          "queryType": "range",
+          "refId": "D",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "backend"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(avg by (host_name) (avg_over_time({service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"sysmetrics\" | msg=~\"system metrics sample|HIGH MEMORY\" | fields_tool_rss_bytes != \"\" | unwrap fields_tool_rss_bytes [5m])))",
+          "queryType": "range",
+          "refId": "E",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "tool"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Studio server process CPU",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "description": "The Ion Studio Server's own CPU (100 = one core). Its resident memory is fields.server_rss_bytes on the same line. Source: server.jsonl tag=system-metrics fields.server_cpu_percent.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg by (host_name) (avg_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"system-metrics\" | msg=\"system metrics sample\" | fields_server_cpu_percent != \"\" | unwrap fields_server_cpu_percent [5m]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "{{host_name}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Studio processes: CPU and GPU",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "description": "Ion Studio's own Electron processes on this device: all of them, the GPU helper, and the renderer. GPU time is measured on macOS only. Source: desktop.jsonl tag=device-metrics.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg by (host_name) (avg_over_time({service_name=\"ion-desktop\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"device-metrics\" | msg=\"device metrics sample\" | fields_studio_cpu_percent != \"\" | unwrap fields_studio_cpu_percent [5m]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "Studio CPU {{host_name}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg by (host_name) (avg_over_time({service_name=\"ion-desktop\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"device-metrics\" | msg=\"device metrics sample\" | fields_gpu_helper_gpu_percent != \"\" | unwrap fields_gpu_helper_gpu_percent [5m]))",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "GPU helper GPU {{host_name}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg by (host_name) (avg_over_time({service_name=\"ion-desktop\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"device-metrics\" | msg=\"device metrics sample\" | fields_renderer_cpu_percent != \"\" | unwrap fields_renderer_cpu_percent [5m]))",
+          "queryType": "range",
+          "refId": "C",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "renderer CPU {{host_name}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Idle-repaint warnings",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "description": "Times Studio's GPU helper or a renderer stayed busy while no Studio window had focus or the machine was idle: the sign of an animation that never stops repainting. Limits are Device settings (idleRepaint* in desktop.json). Source: desktop.jsonl msg=\"idle repaint detected\".",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (host_name) (count_over_time({service_name=\"ion-desktop\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"device-metrics\" | msg=\"idle repaint detected\" [$__interval]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{host_name}}"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": [
+    "ion",
+    "system-metrics",
+    "resources",
+    "gpu"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "host",
+        "label": "Device",
+        "type": "query",
+        "description": "The device a line came from (label `host_name`, the OTLP host.name). Multi-select; All includes lines with no device.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(host_name)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
+      {
+        "name": "user",
+        "label": "User",
+        "type": "query",
+        "description": "The signed-in operator (Alloy label `user`). Multi-select; All includes lines with no identity.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(user)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Ion System Metrics",
+  "uid": "ion-system-metrics-001",
+  "version": 1
+}

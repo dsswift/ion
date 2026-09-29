@@ -19,10 +19,9 @@ import Foundation
 //   - If they land while `tearDownTransport()` has briefly cleared
 //     `self.transport`, the `guard let transport else` branch in
 //     `SessionViewModel+Commands.swift` toasts "Not connected".
-//   - If they land while the transport reference is non-nil but neither
-//     `lan.isConnected` nor `relay.isConnected` is true yet,
-//     `TransportManager+Send.swift` throws `.noTransportAvailable` and
-//     the catch in `send(...)` toasts "Send failed".
+//   - If they land while the transport reference is non-nil but no route is
+//     connected yet, the send throws and the catch in `send(...)` toasts
+//     "Send failed".
 //
 // Either way the user sees a spurious error toast on every foreground
 // before they've done anything. The right fix is to wait for the only
@@ -196,6 +195,16 @@ extension SessionViewModel {
                 }
             }
         }
+    }
+
+    /// Drop one queued command without sending it: a newer request for the
+    /// same thing is about to go out and supersedes it.
+    func removeEssential(key: String) {
+        guard let index = pendingEssentialQueue.firstIndex(where: { $0.key == key }) else { return }
+        pendingEssentialQueue.remove(at: index)
+        DiagnosticLog.log("essential queue entry superseded before flush", tag: "session.essential", fields: [
+            "reason": String(key.prefix(128))
+        ])
     }
 
     /// Discard the essential queue without sending. Called by `disconnect()`

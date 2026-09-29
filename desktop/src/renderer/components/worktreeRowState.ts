@@ -18,7 +18,8 @@
  * is what makes a single slot honest -- it is a summary, not a filter.
  *
  */
-import type { IntegrationMember, WorktreeInventoryEntry } from '../../shared/types'
+import type { IntegrationMember, WorktreeInventoryEntry } from '@ion/shared/types'
+import { isWorktreeSealed } from '@ion/shared/worktree-seal'
 
 /**
  * What the state slot shows. A discriminated union rather than a string so the
@@ -29,6 +30,13 @@ export type RowStateIndicator =
   | { kind: 'operation-conflict'; operation: string; conflictedCount: number }
   /** The bench could not merge this member's pinned contribution. */
   | { kind: 'bench-conflict'; paths: string[]; conflictsWith: string[]; hasActiveResolver?: boolean }
+  /**
+   * The bench could not merge this member, and NOTHING collided: the merge was
+   * stopped before it reached conflict state. Separate from `bench-conflict`
+   * because the operator's next act is different — there is nothing to resolve,
+   * so this rung offers no resolution control, only the reason.
+   */
+  | { kind: 'bench-obstructed'; reason?: string }
   /**
    * This member's merge came from a REPLAYED recording in an assembly that
    * then failed project verification. The member IS in the failed tree (its
@@ -65,6 +73,12 @@ export interface RowStateInput {
    * === 'conflicted'`, which ranks above this).
    */
   verificationSuspect?: { command: string }
+  /**
+   * Why the last assembly could not merge this member when nothing collided.
+   * Read from the workspace's assembly error by the row, because the member
+   * record holds no conflict detail for an obstruction — there is none.
+   */
+  obstruction?: { reason: string }
   /** A machine resolver is actively working in this bench. */
   hasActiveResolver?: boolean
 }
@@ -78,19 +92,21 @@ export interface RowStateInput {
  *    numbers are conservative defaults and the only useful act is Resolve.
  * 2. A bench merge conflict. The contribution is not in the build at all, which
  *    outranks any question of freshness.
- * 3. A bench VERIFICATION suspect. The contribution IS in the failed tree —
+ * 3. A bench OBSTRUCTION. Also absent from the build, and ranked immediately
+ *    below a conflict only because a conflict names work the operator can do.
+ * 4. A bench VERIFICATION suspect. The contribution IS in the failed tree —
  *    its merge succeeded — so it ranks below an outright conflict but still
  *    above every freshness/provisioning question, because the whole bench is
  *    empty until this is resolved.
- * 4. Failed provisioning. A worktree that cannot build is not waiting on a sync.
- * 5. A moved base. Ranked ABOVE the pin because syncing rewrites the worktree's
+ * 5. Failed provisioning. A worktree that cannot build is not waiting on a sync.
+ * 6. A moved base. Ranked ABOVE the pin because syncing rewrites the worktree's
  *    commits, so any pin taken first is immediately stale -- see the note at the
  *    branch itself. Disabled, not hidden, when the worktree is dirty.
- * 6. A behind pin. The bench holds older content than the worktree.
- * 7. Provisioning in flight. Transient and self-resolving.
+ * 7. A behind pin. The bench holds older content than the worktree.
+ * 8. Provisioning in flight. Transient and self-resolving.
  *
  * Work stages are NOT in this chain. Their verdict-pair predecessors used to
- * occupy rungs 4 and 7, from when the only place a marker could appear was this
+ * occupy the provisioning rungs, from when the only place a marker could appear was this
  * slot -- but the stage CHIP on line 2 is always visible and already shows the
  * state it sets, so a gutter copy would mark every staged row twice. Two glyphs
  * per row for one fact is what makes a list hard to scan.
@@ -98,7 +114,7 @@ export interface RowStateInput {
 export function resolveRowState(input: RowStateInput): RowStateIndicator {
   const { entry, membership, syncing } = input
 
-  if (entry.landedAt) return { kind: 'none' }
+  if (isWorktreeSealed(entry)) return { kind: 'none' }
 
   if (entry.operationState) {
     return {
@@ -115,6 +131,10 @@ export function resolveRowState(input: RowStateInput): RowStateIndicator {
       conflictsWith: membership.conflictsWith ?? [],
       hasActiveResolver: input.hasActiveResolver || undefined,
     }
+  }
+
+  if (membership?.merge === 'obstructed') {
+    return { kind: 'bench-obstructed', reason: input.obstruction?.reason }
   }
 
   if (input.verificationSuspect) {
@@ -178,7 +198,7 @@ export function resolveRowState(input: RowStateInput): RowStateIndicator {
  */
 export function resolveRowWords(input: RowStateInput): string[] {
   const { entry, membership, syncing } = input
-  if (entry.landedAt) return []
+  if (isWorktreeSealed(entry)) return []
   const shown = resolveRowState(input)
   const words: string[] = []
 
@@ -187,6 +207,7 @@ export function resolveRowWords(input: RowStateInput): string[] {
   // this" and "this worktree is mid-rebase" are different problems with
   // different fixes.
   if (membership?.merge === 'conflicted' && shown.kind !== 'bench-conflict') words.push('bench conflict')
+  if (membership?.merge === 'obstructed' && shown.kind !== 'bench-obstructed') words.push('bench blocked')
   if (input.verificationSuspect && shown.kind !== 'bench-verification') words.push('verify suspect')
   if (entry.provisionState === 'failed' && shown.kind !== 'provision-failed') words.push('setup failed')
 

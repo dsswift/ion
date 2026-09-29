@@ -116,6 +116,22 @@ Certificate auth accepts X.509 certificate plus PKCS#8, PKCS#1 RSA, or SEC1 P-25
 
 Federation accepts any projected assertion trusted by the configured token endpoint, including AKS workload identity, EKS/GKE service-account tokens, and CI OIDC tokens. Assertion files are never persisted by Ion and are read fresh on every grant.
 
+The client ID can come from the runtime instead of the config. Set `clientIdEnv` to the variable that holds it, in place of `clientId`. On AKS workload identity the webhook sets `AZURE_CLIENT_ID` and `AZURE_FEDERATED_TOKEN_FILE` in each pod, so one config serves every identity a pod can be given:
+
+```json
+"workload": {
+  "clientIdEnv": "AZURE_CLIENT_ID",
+  "tokenUrl": "https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token",
+  "scopes": ["api://<resource>/.default"],
+  "machineIdentity": {
+    "source": "federated_assertion",
+    "federatedTokenFile": "/var/run/secrets/azure/tokens/azure-identity-token"
+  }
+}
+```
+
+The engine reads the variable when it builds the provider. An empty variable fails the provider, and setting both `clientId` and `clientIdEnv` is an error. The variable stays set, because a client ID is not a secret and other SDKs in the process read it.
+
 ## Credential process
 
 Credential process is part of trusted credential boundary. It is not an extension hook. Command path must be absolute; Ion executes it directly without shell interpolation, with bounded runtime and output. Request arrives as JSON on stdin:

@@ -17,6 +17,22 @@ const (
 	authFailureInvalidScheme          AuthFailureReason = "invalid_authorization_scheme"
 	authFailureJWTValidation          AuthFailureReason = "jwt_validation_failed"
 	authFailurePSKMismatch            AuthFailureReason = "psk_mismatch"
+	// authFailureIssuerNotTrusted is returned for a server-announced-trust
+	// join (manifest C7) whose announced issuer is not in the operator's
+	// RELAY_TRUSTED_ISSUERS allowlist.
+	authFailureIssuerNotTrusted AuthFailureReason = "issuer_not_trusted"
+	// authFailureSubjectNotAnnounced is returned when a channel's
+	// announcement names the one subject allowed to join and a valid token
+	// for the announced issuer proves a different one.
+	authFailureSubjectNotAnnounced AuthFailureReason = "subject_not_announced"
+	// authFailureJWKSUnavailable is returned when a trusted issuer's JWKS
+	// could not be fetched. The ion peer that announced trust is
+	// unaffected; only this one join attempt fails.
+	authFailureJWKSUnavailable AuthFailureReason = "jwks_unavailable"
+	// authFailurePairingExpired is returned for a pairing channel (manifest
+	// C7) join attempted after its 5-minute expiry or after its single
+	// permitted use.
+	authFailurePairingExpired AuthFailureReason = "pairing_expired"
 )
 
 // AuthMiddleware validates requests via PSK and/or OIDC JWT.
@@ -25,15 +41,30 @@ const (
 // and can be active simultaneously.
 type AuthMiddleware struct {
 	apiKey []byte      // PSK (may be nil when OIDC-only)
-	oidc   *OIDCConfig // OIDC config (may be nil when PSK-only)
+	oidc   *OIDCConfig // primary OIDC issuer (may be nil when PSK-only)
+	// issuers is every accepted org-wide issuer, primary first. A JWT is
+	// routed to the entry matching its iss claim.
+	issuers []*OIDCConfig
 }
 
 // NewAuthMiddleware creates an AuthMiddleware.
 // apiKey may be empty when oidc is non-nil. oidc may be nil when apiKey is set.
-func NewAuthMiddleware(apiKey string, oidc *OIDCConfig) *AuthMiddleware {
+// more lists further accepted issuers (RELAY_OIDC_ISSUERS); oidc stays the
+// primary one.
+func NewAuthMiddleware(apiKey string, oidc *OIDCConfig, more ...*OIDCConfig) *AuthMiddleware {
+	var issuers []*OIDCConfig
+	if oidc != nil {
+		issuers = append(issuers, oidc)
+	}
+	for _, cfg := range more {
+		if cfg != nil {
+			issuers = append(issuers, cfg)
+		}
+	}
 	return &AuthMiddleware{
-		apiKey: []byte(apiKey),
-		oidc:   oidc,
+		apiKey:  []byte(apiKey),
+		oidc:    oidc,
+		issuers: issuers,
 	}
 }
 
@@ -57,20 +88,10 @@ func (a *AuthMiddleware) Validate(r *http.Request) (*UserIdentity, bool) {
 // structured logs, but must never be replaced with a token, claim, or raw
 // validation error.
 func (a *AuthMiddleware) ValidateDetailed(r *http.Request) (*UserIdentity, AuthFailureReason) {
-	header := r.Header.Get("Authorization")
-	if header == "" {
-		return nil, authFailureMissingAuthorization
+	bearer, reason := extractBearerToken(r)
+	if reason != "" {
+		return nil, reason
 	}
-
-	parts := strings.SplitN(header, " ", 2)
-	if len(parts) != 2 || parts[1] == "" {
-		return nil, authFailureMalformedAuthorization
-	}
-	if !strings.EqualFold(parts[0], "Bearer") {
-		return nil, authFailureInvalidScheme
-	}
-
-	bearer := parts[1]
 
 	// JWT path: OIDC configured and token looks like a JWT.
 	//
@@ -79,8 +100,8 @@ func (a *AuthMiddleware) ValidateDetailed(r *http.Request) (*UserIdentity, AuthF
 	// A PSK containing two dots would therefore be unauthenticatable in dual
 	// mode. The documented PSK generator (`openssl rand -hex 32`) emits a
 	// dot-free hex string, so real-world PSKs never collide with the JWT shape.
-	if a.oidc != nil && isJWTShaped(bearer) {
-		identity, err := a.oidc.ValidateJWT(bearer)
+	if len(a.issuers) > 0 && isJWTShaped(bearer) {
+		identity, err := validateAgainstIssuers(a.issuers, bearer)
 		if err != nil {
 			return nil, authFailureJWTValidation
 		}
@@ -93,4 +114,27 @@ func (a *AuthMiddleware) ValidateDetailed(r *http.Request) (*UserIdentity, AuthF
 	}
 
 	return nil, authFailurePSKMismatch
+}
+
+// extractBearerToken pulls the bearer token out of an Authorization header,
+// or returns a safe failure reason when the header is missing, malformed,
+// or uses a scheme other than Bearer. Shared by ValidateDetailed (the
+// baseline org-wide auth path) and the server-announced-trust path
+// (announce.go), which both need the raw token string before deciding
+// which validator to run it through.
+func extractBearerToken(r *http.Request) (string, AuthFailureReason) {
+	header := r.Header.Get("Authorization")
+	if header == "" {
+		return "", authFailureMissingAuthorization
+	}
+
+	parts := strings.SplitN(header, " ", 2)
+	if len(parts) != 2 || parts[1] == "" {
+		return "", authFailureMalformedAuthorization
+	}
+	if !strings.EqualFold(parts[0], "Bearer") {
+		return "", authFailureInvalidScheme
+	}
+
+	return parts[1], ""
 }

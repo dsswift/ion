@@ -19,7 +19,7 @@
  * whole-corpus opening scope, never data.
  */
 
-import type { SurfaceTab } from '../../../shared/studio-surface-types'
+import type { SurfaceTab } from '@ion/shared/studio-surface-types'
 
 const lastFileByConversation = new Map<string, string>()
 

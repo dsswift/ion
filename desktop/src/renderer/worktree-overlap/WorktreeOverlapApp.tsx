@@ -3,9 +3,10 @@ import type {
   WorktreeOverlapAnalysis,
   WorktreeOverlapApplyPreview,
   WorktreeOverlapBasis,
+  WorktreeOverlapContext,
   WorktreeOverlapPair,
   WorktreeOverlapSolverResult,
-} from '../../shared/types-worktree-overlap'
+} from '@ion/shared/types-worktree-overlap'
 import { useColors } from '../theme'
 import { rError } from '../rendererLogger'
 import { OverlapRing } from './OverlapRing'
@@ -15,6 +16,7 @@ import { OverlapSolverPanel } from './OverlapSolverPanel'
 import { ConfirmDialog } from '../components/git/ConfirmDialog'
 import { filterOverlapAnalysis } from './filter-analysis'
 import { useResponsiveAnalysisLayout } from './useResponsiveAnalysisLayout'
+import { host } from '../host/host-instance'
 
 export function WorktreeOverlapApp(): React.JSX.Element {
   const colors = useColors()
@@ -32,18 +34,36 @@ export function WorktreeOverlapApp(): React.JSX.Element {
   const [applyPreview, setApplyPreview] = useState<WorktreeOverlapApplyPreview | null>(null)
   const [applying, setApplying] = useState(false)
   const [loading, setLoading] = useState(true)
+  // The repository this window was opened for. Read once from the native
+  // window record; every `worktree.overlap.*` action takes it explicitly,
+  // because a studio_action has no calling window to look it up from.
+  const [context, setContext] = useState<WorktreeOverlapContext | null>(null)
+
+  useEffect(() => {
+    void host.shell.getWorktreeOverlapContext().then((ctx) => {
+      if (ctx) { setContext(ctx); return }
+      rError('worktree.overlap', 'window opened without a repository context')
+      setError('This window was opened without a repository.')
+      setLoading(false)
+    }).catch((reason) => {
+      rError('worktree.overlap', 'context read failed', { error: String(reason) })
+      setError(String(reason))
+      setLoading(false)
+    })
+  }, [])
 
   const load = useCallback((nextBasis: WorktreeOverlapBasis, keep: string[] = []) => {
+    if (!context) return
     const id = ++request.current
     setLoading(true)
     setError(null)
-    void window.ion.getWorktreeOverlap(nextBasis).then(async (result) => {
+    void host.shell.getWorktreeOverlap(context, nextBasis).then(async (result) => {
       if (id !== request.current) return
       if (!result.analysis) {
         setError(result.error ?? 'Overlap analysis returned no data.')
         return
       }
-      const solved = await window.ion.solveWorktreeOverlap(nextBasis, keep)
+      const solved = await host.shell.solveWorktreeOverlap(context, nextBasis, keep)
       if (id !== request.current) return
       if (!solved.solver) {
         setError(solved.error ?? 'Could not solve selected worktrees.')
@@ -62,7 +82,7 @@ export function WorktreeOverlapApp(): React.JSX.Element {
     }).finally(() => {
       if (id === request.current) setLoading(false)
     })
-  }, [])
+  }, [context])
 
   useEffect(() => { load(basis) }, [basis, load])
 
@@ -77,7 +97,8 @@ export function WorktreeOverlapApp(): React.JSX.Element {
       : [...keptPaths, path])
   }
   const autoOrder = (): void => {
-    void window.ion.autoOrderWorktreeOverlap(basis, selectedPaths).then((result) => {
+    if (!context) return
+    void host.shell.autoOrderWorktreeOverlap(context, basis, selectedPaths).then((result) => {
       if (result.cohort) setSelectedPaths(result.cohort.orderedPaths)
       else setError(result.error ?? 'Could not auto-order current selection.')
     }).catch((reason) => {
@@ -86,7 +107,8 @@ export function WorktreeOverlapApp(): React.JSX.Element {
     })
   }
   const requestApply = (): void => {
-    void window.ion.previewWorktreeOverlapApply(basis, selectedPaths).then((result) => {
+    if (!context) return
+    void host.shell.previewWorktreeOverlapApply(context, basis, selectedPaths).then((result) => {
       if (result.preview) setApplyPreview(result.preview)
       else setError(result.error ?? 'Could not preview selection changes.')
     }).catch((reason) => {
@@ -95,9 +117,9 @@ export function WorktreeOverlapApp(): React.JSX.Element {
     })
   }
   const confirmApply = (): void => {
-    if (!applyPreview) return
+    if (!applyPreview || !context) return
     setApplying(true)
-    void window.ion.applyWorktreeOverlap(basis, applyPreview.orderedPaths).then((result) => {
+    void host.shell.applyWorktreeOverlap(context, basis, applyPreview.orderedPaths).then((result) => {
       if (!result.ok) setError(result.error ?? 'Selection was not applied.')
       setApplyPreview(null)
       if (result.ok) load(basis, keptPaths)

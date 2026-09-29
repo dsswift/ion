@@ -7,7 +7,14 @@ import (
 	"sync"
 
 	tiktoken "github.com/pkoukk/tiktoken-go"
+	tiktokenloader "github.com/pkoukk/tiktoken-go-loader"
 )
+
+// The BPE tables ship inside the binary. tiktoken-go's default loader
+// downloads them from a public blob store on first use.
+func init() {
+	tiktoken.SetBpeLoader(tiktokenloader.NewOfflineLoader())
+}
 
 // TokenizerTier identifies how a token count was obtained.
 type TokenizerTier string

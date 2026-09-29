@@ -19,7 +19,7 @@ extension ConversationView {
             ConversationContextStrip(
                 statusFields: viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)?.statusFields,
                 modelOverride: viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)?.modelOverride,
-                preferredModel: viewModel.preferredModel,
+                preferredModel: viewModel.resolvedModel(tabId: tabId, instanceId: activeInstanceId),
                 availableModels: viewModel.availableModels,
             )
 
@@ -72,7 +72,7 @@ extension ConversationView {
             let activeInst = viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)
             let engineInputs = ConversationStatusBar.resolveEngineInputs(
                 fields: activeInst?.statusFields,
-                fallbackPreferredModel: viewModel.preferredModel,
+                fallbackPreferredModel: viewModel.resolvedModel(tabId: tabId, instanceId: activeInstanceId),
             )
             ConversationStatusBar(
                 modelOverride: activeInst?.modelOverride,
@@ -87,8 +87,8 @@ extension ConversationView {
                 permissionMode: viewModel.tab(for: tabId)?.permissionMode,
                 availableModels: viewModel.availableModels,
                 attachmentCount: engineAttachmentCount,
-                onSelectModel: { model in
-                    viewModel.setModel(tabId: tabId, model: model)
+                onSelectModel: { model, providerId in
+                    viewModel.setModel(tabId: tabId, model: model, providerId: providerId)
                 },
                 onToggleMode: {
                     guard let current = viewModel.tab(for: tabId)?.permissionMode else { return }
@@ -186,7 +186,7 @@ extension ConversationView {
                 onTapPlan: { path in
                     selectedPlanPath = IdentifiablePath(path: path)
                 },
-                onOpenFile: { path in openFilePreview(path) },
+                onOpenFile: { path in handleFileLink(path, .open) },
                 onReachedTop: {
                     // RC-15: page in older history when the user scrolls to the
                     // top. loadMoreMessages guards on hasMore + a stored cursor +

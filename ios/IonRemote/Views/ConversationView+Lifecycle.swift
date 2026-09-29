@@ -24,21 +24,12 @@ extension ConversationView {
         ])
     }
 
-    /// Load conversation history via the unified wire command.
-    /// WI-004 / #259: desktop_load_conversation handles every tab — plain and
-    /// extension-hosted alike. The former tabHasExtensions fork
-    /// (desktop_load_engine_conversation for engine tabs) is retired: with
-    /// WI-001/WI-002 landed all messages live on the active instance regardless
-    /// of backend, and the unified handler pushes live engine state when the
-    /// session is running.
+    /// Open this conversation's transcript stream.
     ///
     /// Routed through `loadConversationIfNeeded`: this is a view-appear path,
-    /// and the snapshot pre-load has normally already fetched the transcript by
-    /// the time the view is pushed. Asking again produced a duplicate the
-    /// desktop coalesced and never answered, which is what kept the
-    /// "Loading conversation…" spinner on screen for ~5s on a tab with no
-    /// history at all. Explicit reloads (retry button, reconnect heal) call
-    /// `loadConversation` directly and are unaffected.
+    /// and the snapshot pre-load has normally already opened the transcript
+    /// by the time the view is pushed. The retry banner calls
+    /// `loadConversation` directly.
     @MainActor
     func loadConversationHistory() {
         viewModel.loadConversationIfNeeded(tabId: tabId)

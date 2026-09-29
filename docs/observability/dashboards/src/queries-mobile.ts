@@ -1,8 +1,8 @@
 // Canonical Ion Mobile expressions (per-device iOS operational-log stream).
 //
-// iOS emits NO telemetry — only operational log lines (component="ios") that
-// ride the paired desktop's egress of ios-diagnostic-logs.jsonl. So this pack
-// queries the STRUCTURED LOG stream ({component="ios"}), not the telemetry
+// iOS emits NO telemetry — only operational log lines (service_name="ion-ios") that
+// ride the paired server's egress of ios-diagnostic-logs.jsonl. So this pack
+// queries the STRUCTURED LOG stream ({service_name="ion-ios", event_name=""}), not the telemetry
 // stream the Fleet/Users packs use.
 //
 // OTLP body is the full Ion JSONL line (since log-egress-otel.ts shipped the
@@ -12,20 +12,21 @@
 //
 //   device_id / device_model / app_version / app_build / os_version   — stamped by iOS
 //   mdm_device_id / mdm_serial                                         — stamped by iOS (MDM-enrolled only)
-//   pairing_id / desktop_host                                           — stamped by the desktop
+//   pairing_id / desktop_host                                           — stamped by the server
+//                                                                        (desktop_host keeps its original name)
 //
 // Loki `| json` flattens nested objects with a `_` separator, so these become
 // `fields_device_id`, `fields_app_version`, etc. Named extraction pulls them
 // back to friendly label names via the Loki json extraction syntax
 // (`| json device_id="fields.device_id"`).
-// component and level are promoted stream labels — no json parse needed for them.
+// service_name and level are promoted stream labels — no json parse needed for them.
 // The `$device` dashboard variable scopes by device_model (regex, default `.*`).
 
 import type { Expr, Window } from './types.ts';
 import { accumulation, instant, registerQuery } from './queries.ts';
 
 // The iOS operational-log stream selector.
-const IOS = '{component="ios"}';
+const IOS = '{service_name="ion-ios", event_name=""}';
 
 // Named json extraction for device identity fields. Pulls nested fields.*
 // values up to friendly top-level label names so the rest of every query can
@@ -45,7 +46,7 @@ const JSON_EXTRACT =
 // against device_model, the hardware model identifier e.g. `iPhone15,3`).
 //
 // The `| __error__=""` stage is load-bearing, not defensive garnish. The
-// {component="ios"} stream is heterogeneous: newer lines store the full Ion
+// {service_name="ion-ios", event_name=""} stream is heterogeneous: newer lines store the full Ion
 // JSONL record as the Loki body, but older lines (shipped before the full-body
 // OTLP egress fix) store only the bare `msg` string. `| json` raises
 // JSONParserErr on those bare-string bodies, and in LogQL a parse error on even
@@ -56,6 +57,10 @@ const JSON_EXTRACT =
 // (it filters on the error that stage produces) and BEFORE the device filter.
 export const DEVICE_PIPE = ` ${JSON_EXTRACT} | __error__="" | device_model=~"$device"`;
 
+// The same extraction without the pack-local $device scope, for a dashboard
+// that does not define $device (the overview).
+const DEVICE_COUNT_PIPE = ` ${JSON_EXTRACT} | __error__=""`;
+
 // ---------------------------------------------------------------------------
 // Distinct counts (headline stats)
 // ---------------------------------------------------------------------------
@@ -64,14 +69,14 @@ export const DEVICE_PIPE = ` ${JSON_EXTRACT} | __error__="" | device_model=~"$de
 // The inner sum collapses each value to one series; the outer count counts the
 // series. Instant accumulation — pass $__range. Powers the "Devices reporting"
 // / "App versions" headline stats.
-export const distinctDeviceField = (field: string, window: Window): Expr =>
+export const distinctDeviceField = (field: string, window: Window, scoped = true): Expr =>
   registerQuery(
     `Distinct iOS ${field} count`,
     `Number of distinct \`${field}\` values seen in the iOS log stream over the window. ` +
       'The inner sum collapses each value to one series; the outer count counts the series. ' +
       'Powers the mobile "Devices reporting" and "App versions" headline stats.',
     accumulation(
-      `count(sum by (${field}) (count_over_time(${IOS}${DEVICE_PIPE} [${window}])))`,
+      `count(sum by (${field}) (count_over_time(${IOS}${scoped ? DEVICE_PIPE : DEVICE_COUNT_PIPE} [${window}])))`,
       window,
     ),
   );
@@ -87,7 +92,7 @@ export const iosLinesCount = (window: Window): Expr =>
 // iOS ERROR lines over the window (headline stat). level IS a promoted label,
 // so this filters on the label before the json extraction for efficiency.
 export const iosErrorCount = (window: Window): Expr =>
-  accumulation(`sum(count_over_time({component="ios", level="ERROR"}${DEVICE_PIPE} [${window}]))`, window);
+  accumulation(`sum(count_over_time({service_name="ion-ios", event_name="", level="ERROR"}${DEVICE_PIPE} [${window}]))`, window);
 
 // Per-device log volume, grouped (bargauge / table / timeseries).
 // Default grouping uses device_id + device_model: stable hardware identity with
@@ -101,13 +106,13 @@ export const volumeByDevice = (by: readonly string[], window: Window): Expr => {
 export const errorsByDevice = (by: readonly string[], window: Window): Expr => {
   const grouping = by.length > 0 ? `sum by (${by.join(', ')})` : 'sum';
   return accumulation(
-    `${grouping} (count_over_time({component="ios", level="ERROR"}${DEVICE_PIPE} [${window}]))`,
+    `${grouping} (count_over_time({service_name="ion-ios", event_name="", level="ERROR"}${DEVICE_PIPE} [${window}]))`,
     window,
   );
 };
 
 // ---------------------------------------------------------------------------
-// Attribution tables (device / app-version drift, device↔desktop pairing)
+// Attribution tables (device / app-version drift, device↔server pairing)
 // ---------------------------------------------------------------------------
 
 // Every device / app-version / os-version combination reporting in the window
@@ -130,19 +135,19 @@ export const appVersionByDevice = (window: Window): Expr =>
     ),
   );
 
-// The device→desktop pairing matrix: every device_id × desktop_host pair that
-// produced lines in the window, with the count. A device paired to two desktops
-// yields two rows; this is the "which device connected to which desktop" view.
+// The device→server pairing matrix: every device_id × desktop_host pair that
+// produced lines in the window, with the count. A device paired to two servers
+// yields two rows; this is the "which device connected to which server" view.
 // device_id is the stable hardware identity (identifierForVendor UUID) that
 // survives re-pairings; pairing_id is the ECDH channel ID that links to a
-// specific desktop pairing session.
+// specific server pairing session.
 // Instant snapshot (table).
 export const devicePairingMatrix = (window: Window): Expr =>
   registerQuery(
-    'iOS device↔desktop pairing matrix',
+    'iOS device↔server pairing matrix',
     'Every device_id / device_model × desktop_host pair that produced iOS log lines over the ' +
-      'window, with the line count. A device paired to two desktops yields two rows — this is ' +
-      'the "which iOS device connected to which desktop, and generated logs there" view. ' +
+      'window, with the line count. A device paired to two servers yields two rows — this is ' +
+      'the "which iOS device connected to which server, and generated logs there" view. ' +
       'pairing_id is the ECDH channel ID for the specific pairing session; device_id is the ' +
       'stable per-device hardware identity (survives re-pairings). ' +
       'desktop_host mirrors the telemetry `host` value, so a row cross-references the Ion Fleet ' +

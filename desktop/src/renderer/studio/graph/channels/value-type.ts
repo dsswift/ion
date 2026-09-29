@@ -7,7 +7,7 @@
  * mid-session, which is exactly the instability the design forbids.
  */
 
-import type { ChannelBinding, ChannelValueType } from '../../../../shared/graph-view-types'
+import type { ChannelBinding, ChannelValueType } from '@ion/shared/graph-view-types'
 
 function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v)

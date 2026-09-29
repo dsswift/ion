@@ -1,7 +1,7 @@
 /**
  * FileExplorerRootSection — one workspace root's tree inside the explorer:
- * per-root directory cache, gitignored paths, inline create/rename, 5s
- * auto-refresh (skipped while collapsed), and the entry context menu.
+ * per-root directory cache, gitignored paths, inline create/rename, refresh
+ * on change (nothing is read while collapsed), and the entry context menu.
  *
  * Extracted from FileExplorer for multi-root workspaces: the explorer
  * renders one section per root ([primary, ...workspace roots]); tree
@@ -10,20 +10,25 @@
  * directory), while per-mount UI (inline create/rename inputs, dir cache)
  * is component-local.
  */
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { CaretDown, CaretRight, DotsThree } from '@phosphor-icons/react'
-import { useSessionStore, isTextFile } from '../stores/sessionStore'
+import { useSessionStore, isTextFile } from '@ion/server/store/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { FileExplorerContextMenu, type ContextMenuState } from './FileExplorerContextMenu'
 import { FileExplorerTreeRow, FileExplorerInlineInput } from './FileExplorerTreeRow'
 import { FileExplorerRootHeaderMenu } from './FileExplorerRootHeaderMenu'
-import type { FsEntry } from '../../shared/types'
+import type { FsEntry } from '@ion/shared/types'
 import { surfaceRouter } from '../lib/file-open-router'
 import { fileOpenIntent, type FileClickModifiers } from '../lib/open-file-intent'
 import { rDebug, rInfo, rWarn, rError } from '../rendererLogger'
-import { normalizeSlashes, pathSegments } from '../../shared/paths'
+import { pathSegments } from '@ion/shared/paths'
 import { usePreferencesStore } from '../preferences'
+import { host } from '../host/host-instance'
+import { joinPath, pathDirname } from '@ion/shared/paths'
+import { relativeTreeDirectory, type FsTreeChange } from '@ion/shared/fs-tree-watch'
+import { useFileTreeWatch } from '../hooks/useFileTreeWatch'
+import { ignoredPathMatcher, sameIgnoredPaths, sameListing } from './file-explorer-listing'
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff'])
 
@@ -67,54 +72,117 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
   const [renaming, setRenaming] = useState<{ path: string; initialName: string } | null>(null)
   const [headerMenu, setHeaderMenu] = useState<{ x: number; y: number } | null>(null)
 
-  const fetchDir = useCallback(async (dirPath: string) => {
-    const result = await window.ion.fsReadDir(dirPath)
-    if (result.entries) {
-      // Every listing is also the evidence that decides which remembered
-      // expansions are still real. Expansion outlives the window now, so a
-      // folder renamed or deleted outside Ion would otherwise stay in the set
-      // forever.
-      useSessionStore.getState().pruneExplorerExpanded(
-        dirPath,
-        result.entries.filter((entry) => entry.isDirectory).map((entry) => entry.path),
-      )
-      setDirCache((prev) => {
-        const next = new Map(prev)
+  // What is shown, readable from a callback without making the callback
+  // depend on it. A refresh that depended on the expansion set re-read every
+  // open folder each time one folder was opened or closed.
+  const dirCacheRef = useRef(dirCache)
+  const expandedRef = useRef(explorerState.expandedPaths)
+  expandedRef.current = explorerState.expandedPaths
+  /** Directories being read, and whether another read was asked for meanwhile. */
+  const readsInFlight = useRef(new Map<string, boolean>())
+  const ignoredReadInFlight = useRef<boolean | null>(null)
+
+  /**
+   * Read one directory into the cache. Resolves true when the set of entries
+   * differs from what was shown. A read asked for while one is under way runs
+   * once more after it instead of alongside it.
+   */
+  const fetchDir = useCallback(async (dirPath: string): Promise<boolean> => {
+    const reads = readsInFlight.current
+    if (reads.has(dirPath)) {
+      reads.set(dirPath, true)
+      return false
+    }
+    let changed = false
+    try {
+      do {
+        reads.set(dirPath, false)
+        const result = await host.shell.fsReadDir(dirPath)
+        if (!result.entries) continue
+        // Every listing is also the evidence that decides which remembered
+        // expansions are still real. Expansion outlives the window now, so a
+        // folder renamed or deleted outside Ion would otherwise stay in the set
+        // forever.
+        useSessionStore.getState().pruneExplorerExpanded(
+          dirPath,
+          result.entries.filter((entry) => entry.isDirectory).map((entry) => entry.path),
+        )
         const sorted = [...result.entries].sort((a, b) => {
           if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
           return a.name.localeCompare(b.name)
         })
+        // An unchanged listing writes nothing, so it renders nothing.
+        if (sameListing(dirCacheRef.current.get(dirPath), sorted)) continue
+        changed = true
+        const next = new Map(dirCacheRef.current)
         next.set(dirPath, sorted)
-        return next
-      })
+        dirCacheRef.current = next
+        setDirCache(next)
+      } while (reads.get(dirPath))
+    } finally {
+      reads.delete(dirPath)
     }
+    return changed
   }, [])
-
-  const refreshAll = useCallback(() => {
-    fetchDir(rootDir).catch((err) => rWarn('file-explorer', 'refreshAll root fetch failed', { dir: rootDir, error: String(err) }))
-    for (const p of explorerState.expandedPaths) {
-      fetchDir(p).catch((err) => rWarn('file-explorer', 'refreshAll expanded fetch failed', { dir: p, error: String(err) }))
-    }
-  }, [rootDir, explorerState.expandedPaths, fetchDir])
 
   const fetchIgnored = useCallback((dir: string) => {
-    window.ion.gitIgnoredFiles(dir).then((result) => {
-      setIgnoredPaths(new Set(result.paths))
-    }).catch((err) => rDebug('file-explorer', 'gitIgnoredFiles failed', { dir, error: String(err) }))
+    if (ignoredReadInFlight.current !== null) {
+      ignoredReadInFlight.current = true
+      return
+    }
+    ignoredReadInFlight.current = false
+    host.shell.gitIgnoredFiles(dir).then((result) => {
+      setIgnoredPaths((prev) => (sameIgnoredPaths(prev, result.paths) ? prev : new Set(result.paths)))
+    }).catch((err) => rDebug('file-explorer', 'gitIgnoredFiles failed', { dir, error: String(err) })).finally(() => {
+      const again = ignoredReadInFlight.current
+      ignoredReadInFlight.current = null
+      if (again) fetchIgnored(dir)
+    })
   }, [])
 
-  // Initial load + 5s auto-refresh — SKIPPED while the section is collapsed
-  // (a collapsed root costs zero fs traffic).
+  /** Re-read `dirs`, then the ignored paths when any of them gained or lost an entry. */
+  const refreshDirs = useCallback((dirs: string[], ignoredToo: boolean) => {
+    void Promise.all(dirs.map((dir) => fetchDir(dir).catch((err) => {
+      rWarn('file-explorer', 'directory refresh failed', { dir, error: String(err) })
+      return false
+    }))).then((changed) => {
+      if (ignoredToo || changed.some(Boolean)) fetchIgnored(rootDir)
+    })
+  }, [rootDir, fetchDir, fetchIgnored])
+
+  // Everything shown is read when the root is first shown and each time it is
+  // un-collapsed. Nothing is read while it is collapsed.
   useEffect(() => {
     if (collapsed) return
-    refreshAll()
-    fetchIgnored(rootDir)
-    const interval = setInterval(() => {
-      refreshAll()
-      fetchIgnored(rootDir)
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [rootDir, collapsed, refreshAll, fetchIgnored])
+    refreshDirs([rootDir, ...expandedRef.current], true)
+  }, [rootDir, collapsed, refreshDirs])
+
+  // An expanded directory that has never been read is read now. Expansion can
+  // arrive after mount, from the state another window or a past session left.
+  useEffect(() => {
+    if (collapsed) return
+    const unread = [...explorerState.expandedPaths].filter((dir) => !dirCacheRef.current.has(dir) && !readsInFlight.current.has(dir))
+    if (unread.length > 0) refreshDirs(unread, false)
+  }, [collapsed, explorerState.expandedPaths, refreshDirs])
+
+  // After that the tree is re-read only where the server reports a change.
+  const handleTreeChange = useCallback((change: FsTreeChange) => {
+    const shown = [rootDir, ...expandedRef.current]
+    if (change.overflow) {
+      rDebug('file-explorer', 're-reading everything shown', { root: rootDir, directories: shown.length })
+      refreshDirs(shown, true)
+      return
+    }
+    const changed = new Set(change.directories)
+    const affected = shown.filter((dir) => {
+      const relativeDir = relativeTreeDirectory(rootDir, dir)
+      return relativeDir !== null && changed.has(relativeDir)
+    })
+    if (affected.length === 0 && !change.ignoreRulesChanged) return
+    rDebug('file-explorer', 're-reading changed directories', { root: rootDir, directories: affected.length, ignore_rules_changed: change.ignoreRulesChanged })
+    refreshDirs(affected, change.ignoreRulesChanged)
+  }, [rootDir, refreshDirs])
+  useFileTreeWatch(rootDir, !collapsed, handleTreeChange)
 
   const handleToggleDir = useCallback((entry: FsEntry) => {
     const isExpanded = explorerState.expandedPaths.has(entry.path)
@@ -135,7 +203,10 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
     // The explorer gains the two gestures it never had, so all surfaces agree:
     // ⌥⌘ opens in the operating system, ⇧⌘ reads source even for HTML.
     if (intent === 'native') {
-      void window.ion.fsOpenNative(entry.path).catch((err) => rWarn('file-explorer', 'open native failed', { path: entry.path, error: String(err) }))
+      // Opening in the OS needs 'nativeShell' -- a browser client has the
+      // filesystem over the wire but no operating system.
+      if (!host.capabilities().includes('nativeShell')) return
+      void host.shell.fsOpenNative(entry.path).catch((err) => rWarn('file-explorer', 'open native failed', { path: entry.path, error: String(err) }))
       return
     }
     if (intent === 'source' && isTextFile(entry.name)) {
@@ -185,8 +256,8 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
     const input = props.inlineCreate
     if (!input) return
     const fullPath = `${input.parentDir}/${name}`
-    if (input.type === 'file') await window.ion.fsCreateFile(fullPath)
-    else await window.ion.fsCreateDir(fullPath)
+    if (input.type === 'file') await host.shell.fsCreateFile(fullPath)
+    else await host.shell.fsCreateDir(fullPath)
     props.onInlineCreateDone()
     fetchDir(input.parentDir).catch((err) => rWarn('file-explorer', 'inline submit refresh failed', { dir: input.parentDir, error: String(err) }))
   }, [props, fetchDir])
@@ -204,12 +275,11 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
       setRenaming(null)
       return
     }
-    const lastSlash = renaming.path.lastIndexOf('/')
-    const parentDir = lastSlash >= 0 ? renaming.path.slice(0, lastSlash) : renaming.path
-    const newPath = `${parentDir}/${trimmed}`
+    const parentDir = pathDirname(renaming.path) || renaming.path
+    const newPath = joinPath(parentDir, trimmed)
     rInfo('file-explorer', 'handleRenameSubmit', { old_path: renaming.path, new_path: newPath })
     try {
-      const result = await window.ion.fsRename(renaming.path, newPath)
+      const result = await host.shell.fsRename(renaming.path, newPath)
       if (result.ok) rInfo('file-explorer', 'rename success', { old_path: renaming.path, new_path: newPath })
       else rDebug('file-explorer', 'rename failed', { old_path: renaming.path, new_path: newPath, error: result.error })
     } catch (err) {
@@ -223,25 +293,8 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
     setRenaming(null)
   }, [])
 
-  // Separator-agnostic, because the two sides disagree on Windows: git
-  // reports `node_modules/` with forward slashes, and the main process joins
-  // that onto the root with Node's `join`, which uses backslashes. Comparing
-  // the raw strings meant no Windows path ever matched, so nothing in the tree
-  // was ever dimmed as ignored -- hidden and ignored directories rendered
-  // identically to source folders.
-  const isIgnored = useCallback((filePath: string) => {
-    const target = normalizeSlashes(filePath)
-    for (const raw of ignoredPaths) {
-      const p = normalizeSlashes(raw)
-      // git marks a directory with a trailing slash. Strip it so the
-      // directory ITSELF matches, then re-add it as the boundary so only
-      // genuine descendants match and a same-prefix sibling does not.
-      const base = p.endsWith('/') ? p.slice(0, -1) : p
-      if (target === base) return true
-      if (target.startsWith(base + '/')) return true
-    }
-    return false
-  }, [ignoredPaths])
+  // Built once per change to the ignored paths, not once per row per render.
+  const isIgnored = useMemo(() => ignoredPathMatcher(ignoredPaths), [ignoredPaths])
 
   const renderTree = useCallback((dirPath: string, depth: number): React.ReactNode[] => {
     // Filtered at render, not at fetch, so toggling the preference re-renders

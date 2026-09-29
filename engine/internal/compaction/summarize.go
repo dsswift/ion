@@ -16,13 +16,17 @@ import (
 // excessive cost on a fast-tier model.
 const DefaultSummaryMaxTokens = 4096
 
-// authResolver is set by the host process (same pattern as titling).
-// It ensures API keys from the keychain are available before calling a provider.
-var authResolver func(providerName string)
+// authResolver attaches a request credential to ctx for the named provider
+// before a summary LLM call, the same pattern as titling.go. Set via
+// SetAuthResolver from main.go for the process-wide (unattributed) path; a
+// session-specific call (SummarizeForPrincipal) supplies its own hook built
+// from that session's CredentialContext instead.
+var authResolver func(ctx context.Context, providerName string) context.Context
 
-// SetAuthResolver configures the auth resolver for summary LLM calls.
-// Must be called during engine initialization, before any compaction runs.
-func SetAuthResolver(fn func(providerName string)) {
+// SetAuthResolver configures the process-wide credential-attachment hook for
+// summary LLM calls. Must be called during engine initialization, before any
+// compaction runs.
+func SetAuthResolver(fn func(ctx context.Context, providerName string) context.Context) {
 	authResolver = fn
 }
 
@@ -93,6 +97,18 @@ func resolveSummaryModel(explicitModel string) string {
 // Usage data is returned as the second value so the caller can emit a
 // UsageEvent for cost tracking. It may be nil on error.
 func Summarize(ctx context.Context, text, model string, maxTokens int) (string, *types.LlmUsage) {
+	return summarize(ctx, text, model, maxTokens, authResolver)
+}
+
+// SummarizeForPrincipal is Summarize with an explicit credential hook, so a
+// session-scoped compaction call authenticates as that session's acting
+// principal (R-11) rather than the process-wide fallback. attachAuth may be
+// nil.
+func SummarizeForPrincipal(ctx context.Context, text, model string, maxTokens int, attachAuth func(ctx context.Context, providerName string) context.Context) (string, *types.LlmUsage) {
+	return summarize(ctx, text, model, maxTokens, attachAuth)
+}
+
+func summarize(ctx context.Context, text, model string, maxTokens int, attachAuth func(ctx context.Context, providerName string) context.Context) (string, *types.LlmUsage) {
 	resolved := resolveSummaryModel(model)
 	if resolved == "" {
 		utils.Debug("Compaction", "Summarize: no model available, skipping LLM summary")
@@ -102,12 +118,12 @@ func Summarize(ctx context.Context, text, model string, maxTokens int) (string, 
 		maxTokens = DefaultSummaryMaxTokens
 	}
 
-	// Ensure the provider has a valid API key before we attempt to stream.
-	// The provider init may not have the key (e.g. stored in keychain, not
-	// in env vars), so we resolve it through the auth chain.
-	if authResolver != nil {
+	// Attach a request credential for the resolved provider before we attempt
+	// to stream. The provider itself holds none (R-23); the credential must
+	// travel on ctx.
+	if attachAuth != nil {
 		if pn := providers.ProviderNameForModel(resolved); pn != "" {
-			authResolver(pn)
+			ctx = attachAuth(ctx, pn)
 		}
 	}
 

@@ -287,7 +287,7 @@ Manage MCP (Model Context Protocol) servers. Subcommands: `add`, `list`,
 `remove`, `login`, `logout`.
 
 Every subcommand is a client of the engine's `mcp_*` wire commands, so the CLI,
-the desktop (Settings → MCP Servers), and any third-party client drive the same
+the desktop (Settings → Servers → the server → Integrations), and any third-party client drive the same
 mechanism. Servers are written to `~/.ion/engine.json`.
 
 #### `ion mcp add <name> <url>`
@@ -308,6 +308,12 @@ ion mcp add mobbin https://api.mobbin.com/mcp
 | `--header K=V` | Static HTTP header. Repeatable. For pre-shared tokens; a server using OAuth needs none. |
 | `--env K=V` | Environment variable for a stdio server's subprocess. Repeatable. |
 | `--scope user` | Config layer to write. `user` is the only supported value. |
+| `--client-id ID` | OAuth client ID. For an authorization server that cannot register Ion dynamically (Microsoft Entra, for example). |
+| `--client-secret SECRET` | Client secret, for a confidential client only. |
+| `--auth-url URL` | Authorization endpoint. Discovered when omitted. |
+| `--token-url URL` | Token endpoint. Discovered when omitted. |
+| `--oauth-scope SCOPE` | Scope to request. Discovered when omitted. |
+| `--resource URI` | RFC 8707 resource indicator. Discovered when omitted. |
 
 A local server:
 
@@ -319,6 +325,21 @@ ion mcp add filesystem --command npx \
 The engine resolves the server map fresh at each session's first prompt, so a
 server added while the daemon is running connects on the very next prompt in a
 new conversation — no restart.
+
+#### `ion mcp update <name> [url]`
+
+Change one server. Every setting the command does not name is kept, including
+headers and environment variables. Takes `--url`, `--transport`, `--command`,
+`--arg`, and the OAuth flags of `ion mcp add`. An OAuth flag given an empty
+value removes that setting and leaves it to discovery.
+
+```bash
+ion mcp update exchange --client-id 00000000-0000-0000-0000-000000000000
+ion mcp update exchange --client-secret ""
+```
+
+Changing the URL or OAuth client drops the stored sign-in; the command says so,
+and `ion mcp login <name>` signs in again.
 
 #### `ion mcp list`
 

@@ -18,7 +18,7 @@
 
 import { existsSync } from 'fs'
 import { log as _log } from './logger'
-import { ENGINE_CONFIG_FILE, updateEngineConfig } from './settings-store'
+import { engineConfigFile, updateEngineConfig } from '@ion/server/persistence/settings-store'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -39,7 +39,7 @@ function log(msg: string, fields?: Record<string, unknown>): void {
  * (exposed for tests and callers that want to know whether a write happened).
  */
 export function claimEngineEgressForDesktop(): boolean {
-  if (!existsSync(ENGINE_CONFIG_FILE)) return false
+  if (!existsSync(engineConfigFile())) return false
   try {
     return updateEngineConfig((cfg) => {
       const logging = cfg.logging as Record<string, unknown> | undefined

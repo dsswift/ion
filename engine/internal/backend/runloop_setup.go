@@ -1,11 +1,13 @@
 package backend
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/providers"
@@ -100,45 +102,96 @@ func mcpToolAllowed(name string, allowlist []string) bool {
 	return false
 }
 
-// resolveProvider resolves the provider for the given model and injects the
-// provider's API key (if available) into the global provider key registry.
-// Returns nil if no provider supports the model.
+// resolveProvider resolves the provider for the given model. Returns nil if
+// no provider supports the model.
+//
+// This no longer writes a process-global provider key: the acting
+// principal's authenticator is attached to the request context by
+// resolveProviderAndAttachAuth (below), which every call site on the live
+// run path uses instead. This unexported helper survives only for
+// ResolveProviderOnDemand, an on-demand token-counting path with no request
+// credential in play (see manager_context_breakdown.go).
 func (b *ApiBackend) resolveProvider(model string) providers.LlmProvider {
-	b.mu.Lock()
-	authRes := b.authResolver
-	b.mu.Unlock()
-	providerName := providers.ProviderNameForModel(model)
-	if authRes != nil && providerName != "" {
-		if key, err := authRes.ResolveKey(providerName); err == nil && key != "" {
-			providers.SetProviderKey(providerName, key)
-			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "resolved key for", map[string]any{
-				"provider": providerName,
-				"len":      len(key),
-			})
-		} else if err != nil {
-			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "no key for", map[string]any{
-				"provider": providerName,
-				"error":    utils.ErrStr(err),
-			})
-		}
-	}
 	p := providers.ResolveProvider(model)
+	providerName := providers.ProviderNameForModel(model)
 	if p != nil {
-		// Also check what key the provider will actually use at request time
-		runtimeKey := providers.GetProviderKey(p.ID())
-		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "resolved → (, )", map[string]any{
-			"model":           model,
-			"provider":        p.ID(),
-			"name_for_model":  providerName,
-			"runtime_key_len": len(runtimeKey),
+		utils.LogWithFields(utils.LevelDebug, "backend.runloop", "resolve provider on-demand", map[string]any{
+			"model": model, "provider": p.ID(), "name_for_model": providerName,
 		})
 	} else {
-		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "resolved → nil", map[string]any{
-			"model":          model,
-			"name_for_model": providerName,
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "resolve provider on-demand: no match", map[string]any{
+			"model": model, "name_for_model": providerName,
 		})
 	}
 	return p
+}
+
+// resolveProviderAndAttachAuth resolves the provider for model and resolves
+// the acting principal's authenticator for that provider, attaching it to
+// the returned context via providers.WithRequestCredential.
+//
+// cc non-nil is the normal live-run path: the session layer always builds
+// one per run (session.wireCredentialContext), attributed or not, so its
+// Authenticator already falls through to the resolver's process-wide levels
+// for an unattributed principal (R-10) or one that lacks its own credential
+// under an allow-fall-through policy (child 04).
+//
+// cc nil is a defensive fallback for a call site that predates
+// CredentialContext wiring (a test harness, an isolated RunConfig): it
+// builds an unattributed context directly from b.authResolver so the
+// request-credential path is exercised exactly the same way rather than
+// silently sending an unauthenticated request.
+func (b *ApiBackend) resolveProviderAndAttachAuth(ctx context.Context, model string, cc *auth.CredentialContext) (providers.LlmProvider, context.Context) {
+	p := providers.ResolveProvider(model)
+	if p == nil {
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "resolve provider: no match", map[string]any{"model": model})
+		return nil, ctx
+	}
+	providerName := p.ID()
+	if cc == nil {
+		b.mu.Lock()
+		authRes := b.authResolver
+		b.mu.Unlock()
+		if authRes == nil {
+			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "resolve provider: no credential context and no auth resolver", map[string]any{
+				"model": model, "provider": providerName,
+			})
+			return p, ctx
+		}
+		cc = auth.NewCredentialContext(nil, authRes, nil)
+	}
+	a, err := cc.Authenticator(ctx, providerName)
+	if err != nil {
+		if errors.Is(err, auth.ErrPrincipalCredentialUnresolved) {
+			// Mark the context so applyRequestAuth refuses at the actual
+			// request-building point, pre-request (SC-4, R-07, R-22) --
+			// rather than only here, which would let a custom-base-url
+			// gateway proceed keyless (requireKeyForHost never gates those).
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "principal credential refused", map[string]any{
+				"provider": providerName, "subject": cc.Subject(),
+			})
+			return p, providers.WithCredentialRefusal(ctx, cc.Subject())
+		}
+		// Any other source failure surfaces here. Do not abort resolution:
+		// applyRequestAuth on the request path makes the authoritative
+		// pre-request decision (fail fast on a key-required host, or proceed
+		// keyless for a legitimately keyless custom base URL). Logging here
+		// is purely diagnostic.
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "no request credential", map[string]any{
+			"provider": providerName, "subject": cc.Subject(), "error": err.Error(),
+		})
+		return p, ctx
+	}
+	if a == nil {
+		utils.LogWithFields(utils.LevelDebug, "backend.runloop", "no request credential", map[string]any{
+			"provider": providerName, "subject": cc.Subject(),
+		})
+		return p, ctx
+	}
+	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "request credential attached", map[string]any{
+		"provider": providerName, "subject": cc.Subject(),
+	})
+	return p, providers.WithRequestCredential(ctx, a)
 }
 
 // loadOrCreateConversation returns an existing conversation when ConversationID
@@ -178,6 +231,7 @@ func loadOrCreateConversation(opts types.RunOptions, model string) (*conversatio
 						"parent_id":       opts.ParentConversationID,
 					})
 				}
+				stampPrincipalAtMint(created, opts.Principal)
 				return created, nil
 			}
 			utils.LogWithFields(utils.LevelError, "backend.runloop", "failed to load conversation", map[string]any{
@@ -197,6 +251,14 @@ func loadOrCreateConversation(opts types.RunOptions, model string) (*conversatio
 		if loaded.Backend == "" {
 			loaded.Backend = "api"
 		}
+		// First-touch backfill: a conversation that predates this feature (or
+		// was never attributed) has no header principal. If this session
+		// carries one, stamp it now rather than leaving the header
+		// permanently unowned -- but only on first touch (loaded.Principal
+		// is nil); an existing header's owner is never overwritten by a
+		// later session that attaches a different principal (see the
+		// "principal mismatch" WARN in session/start_session.go).
+		stampPrincipalAtMint(loaded, opts.Principal)
 		return loaded, nil
 	}
 	// Use the canonical conversation ID generator so two runs that begin
@@ -214,7 +276,33 @@ func loadOrCreateConversation(opts types.RunOptions, model string) (*conversatio
 			"parent_id": opts.ParentConversationID,
 		})
 	}
+	stampPrincipalAtMint(created, opts.Principal)
 	return created, nil
+}
+
+// stampPrincipalAtMint writes conv.Principal from principal when the header
+// carries no owner yet. A no-op when principal is nil (session attributed
+// nothing) or the header already has an owner (never overwritten, matching
+// the manifest's "backfill by first touch only" contract). When the header
+// already has a DIFFERENT owner than the session's principal, the header
+// keeps its owner and the mismatch is logged at WARN -- the session's turns
+// still attribute to the session's own principal via RunOptions.Principal,
+// but the durable header is never silently reassigned.
+func stampPrincipalAtMint(conv *conversation.Conversation, principal *types.SessionPrincipal) {
+	if conv == nil || principal == nil {
+		return
+	}
+	if conv.Principal == nil {
+		conv.Principal = principal.ToConversation()
+		return
+	}
+	if conv.Principal.Subject != principal.Subject {
+		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "principal mismatch", map[string]any{
+			"conversation_id": conv.ID,
+			"header_subject":  conv.Principal.Subject,
+			"session_subject": principal.Subject,
+		})
+	}
 }
 
 // buildSystemPrompt assembles the final system prompt for a run, layering in
@@ -602,4 +690,36 @@ func AssembleSystemPromptOnDemand(opts *types.RunOptions, conv *conversation.Con
 // need a provider reference without a live activeRun.
 func (b *ApiBackend) ResolveProviderOnDemand(model string) providers.LlmProvider {
 	return b.resolveProvider(model)
+}
+
+// attachAuthFor builds the credential-attachment hook titling.GenerateTitleFor
+// Principal / compaction.SummarizeForPrincipal take, so an in-run titling or
+// compaction call authenticates as the SAME acting principal as the run's own
+// provider calls (R-11), rather than the process-wide fallback. cc nil (an
+// unattributed run, or a call site with no CredentialContext) returns nil,
+// which both callers treat as "no credential attachment" -- falling through
+// to whatever the provider's own request-time resolution does.
+func attachAuthFor(cc *auth.CredentialContext) func(ctx context.Context, providerID string) context.Context {
+	if cc == nil {
+		return nil
+	}
+	return func(ctx context.Context, providerID string) context.Context {
+		a, err := cc.Authenticator(ctx, providerID)
+		if err != nil {
+			if errors.Is(err, auth.ErrPrincipalCredentialUnresolved) {
+				utils.LogWithFields(utils.LevelInfo, "backend.runloop", "principal credential refused for titling/compaction", map[string]any{
+					"provider": providerID, "subject": cc.Subject(),
+				})
+				return providers.WithCredentialRefusal(ctx, cc.Subject())
+			}
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "no request credential for titling/compaction", map[string]any{
+				"provider": providerID, "subject": cc.Subject(), "error": err.Error(),
+			})
+			return ctx
+		}
+		if a == nil {
+			return ctx
+		}
+		return providers.WithRequestCredential(ctx, a)
+	}
 }

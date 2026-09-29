@@ -2,8 +2,8 @@
 import React, { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ConversationPane } from '../../../shared/types-engine'
-import type { TabState, WorktreeInventoryEntry, IntegrationWorkspace } from '../../../shared/types'
+import type { ConversationPane } from '@ion/shared/types-engine'
+import type { TabState, WorktreeInventoryEntry, IntegrationWorkspace } from '@ion/shared/types'
 import type { InboxNavigatorProject } from './inbox-navigator'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -25,7 +25,7 @@ const state = {
   conversationPanes: new Map<string, ConversationPane>(),
   worktreeInventory: new Map<string, WorktreeInventoryEntry[]>(),
   benchWorkspaces: new Map(),
-  terminalActivities: new Map<string, import('../../../shared/terminal-activity').TerminalActivity>(),
+  terminalActivities: new Map<string, import('@ion/shared/terminal-activity').TerminalActivity>(),
   workspaceOperationLedger: new Map(),
   selectTab: (tabId: string): void => {
     state.activeTabId = tabId
@@ -44,7 +44,7 @@ const state = {
   startWorktreePipeline,
 }
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (value: typeof state) => unknown) => selector(state),
     { getState: () => state },
@@ -55,7 +55,8 @@ vi.mock('../../theme', () => ({
   useColors: () => new Proxy({}, { get: () => '#000000' }),
 }))
 
-const rInfo = vi.fn()
+// Hoisted: a module imported by the component logs while it loads, before this file's own statements run.
+const rInfo = vi.hoisted(() => vi.fn())
 vi.mock('../../rendererLogger', () => ({
   rInfo: (...args: unknown[]) => rInfo(...args),
   rError: vi.fn(),
@@ -172,7 +173,7 @@ describe('InboxNavigatorGroups worktree cycling', () => {
 
   it('expands a collapsed worktree before selecting its first conversation', async () => {
     const project: InboxNavigatorProject = {
-      project: { key: '/repo', name: 'repo' },
+      project: { key: '/repo', name: 'repo' }, scopeKey: '/repo', environmentId: 'local', checkouts: [{ environmentId: 'local', key: '/repo' }],
       groups: [{
         key: worktree.worktreePath,
         kind: 'worktree',
@@ -206,7 +207,7 @@ describe('InboxNavigatorGroups worktree cycling', () => {
 
   it('expands a collapsed project before selecting its next conversation', async () => {
     const project: InboxNavigatorProject = {
-      project: { key: '/repo', name: 'repo' },
+      project: { key: '/repo', name: 'repo' }, scopeKey: '/repo', environmentId: 'local', checkouts: [{ environmentId: 'local', key: '/repo' }],
       groups: [{
         key: worktree.worktreePath,
         kind: 'worktree',
@@ -260,7 +261,7 @@ describe('InboxNavigatorGroups worktree cycling', () => {
   it('keeps the selected source conversation visible, then expands and cycles', async () => {
     state.activeTabId = 'older'
     const project: InboxNavigatorProject = {
-      project: { key: '/repo', name: 'repo' },
+      project: { key: '/repo', name: 'repo' }, scopeKey: '/repo', environmentId: 'local', checkouts: [{ environmentId: 'local', key: '/repo' }],
       groups: [{
         key: 'source:/repo',
         kind: 'source',
@@ -307,7 +308,7 @@ describe('InboxNavigatorGroups worktree mutations', () => {
 
   it('forwards row mutations without a mirror-local workspace refresh', async () => {
     const project: InboxNavigatorProject = {
-      project: { key: '/repo', name: 'repo' },
+      project: { key: '/repo', name: 'repo' }, scopeKey: '/repo', environmentId: 'local', checkouts: [{ environmentId: 'local', key: '/repo' }],
       groups: [{ key: worktree.worktreePath, kind: 'worktree', label: 'example', tabs: [], worktree }],
       flatTabs: [],
     }
@@ -343,7 +344,7 @@ describe('InboxNavigatorGroups bench terminal row', () => {
 
   function benchProject(): InboxNavigatorProject {
     return {
-      project: { key: '/repo', name: 'repo' },
+      project: { key: '/repo', name: 'repo' }, scopeKey: '/repo', environmentId: 'local', checkouts: [{ environmentId: 'local', key: '/repo' }],
       groups: [{ key: `bench:${workspace.benchPath}`, kind: 'bench', label: 'Integration Bench · main', tabs: [], workspace }],
       flatTabs: [],
     }
@@ -528,7 +529,7 @@ describe('InboxNavigatorGroups bench assemble button', () => {
 
   function benchProject(): InboxNavigatorProject {
     return {
-      project: { key: '/repo', name: 'repo' },
+      project: { key: '/repo', name: 'repo' }, scopeKey: '/repo', environmentId: 'local', checkouts: [{ environmentId: 'local', key: '/repo' }],
       groups: [{ key: `bench:${workspace.benchPath}`, kind: 'bench', label: 'Integration Bench · main', tabs: [], workspace }],
       flatTabs: [],
     }

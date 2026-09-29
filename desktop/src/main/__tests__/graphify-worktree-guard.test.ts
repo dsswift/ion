@@ -1,12 +1,12 @@
 /** Graphify primary-checkout ownership guard. */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { execFileSync } from 'child_process'
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, delimiter } from 'path'
-import { normalizeSlashes } from '../../shared/paths'
-import { realpathSyncPortable as realpathSync } from '../fs-realpath'
+import { normalizeSlashes } from '@ion/shared/paths'
+import { realpathSyncPortable as realpathSync } from '@ion/server/fs-realpath'
 
 const PROJECT_ROOT = join(__dirname, '..', '..', '..', '..')
 const GUARD = join(PROJECT_ROOT, 'scripts', 'graphify-worktree-guard.sh')

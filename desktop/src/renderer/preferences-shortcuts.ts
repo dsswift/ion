@@ -2,7 +2,7 @@ import * as shortcutCatalog from './shortcuts/shortcut-catalog'
 import { defaultBinding } from './shortcuts/shortcut-catalog'
 import { parseChord } from './shortcuts/chord'
 import { rInfo, rWarn } from './rendererLogger'
-import type { PreferencesState } from './preferences-types'
+import type { PreferencesState } from '@ion/server/preferences-types'
 import type { ShortcutEntry, ShortcutGroup, ShortcutResolution } from './shortcuts/shortcut-types'
 
 export type ShortcutView = 'overlay' | 'studio'
@@ -56,7 +56,7 @@ export function sanitizeKeyboardShortcuts(value: unknown): KeyboardShortcuts {
 export function createKeyboardShortcutActions(
   set: (patch: Partial<PreferencesState>) => void,
   get: () => PreferencesState,
-  save: () => void,
+  save: (patch: Partial<PreferencesState>) => void,
 ) {
   return {
     setKeyboardShortcut: (view: ShortcutView, commandId: string, chord: string) => {
@@ -70,28 +70,32 @@ export function createKeyboardShortcutActions(
         return
       }
       const overrides = { ...get().keyboardShortcuts[view] }
-      if (chord === defaultBinding(entry, view)) delete overrides[commandId]
+      if (chord === defaultBinding(entry)) delete overrides[commandId]
       else overrides[commandId] = chord
-      set({ keyboardShortcuts: { ...get().keyboardShortcuts, [view]: overrides } })
-      rInfo('preferences', 'keyboard shortcut override updated', { command_id: commandId, view, customized: chord !== defaultBinding(entry, view) })
-      save()
+      const keyboardShortcuts = { ...get().keyboardShortcuts, [view]: overrides }
+      set({ keyboardShortcuts })
+      rInfo('preferences', 'keyboard shortcut override updated', { command_id: commandId, view, customized: chord !== defaultBinding(entry) })
+      save({ keyboardShortcuts })
     },
     resetKeyboardShortcut: (view: ShortcutView, commandId: string) => {
       const overrides = { ...get().keyboardShortcuts[view] }
       delete overrides[commandId]
-      set({ keyboardShortcuts: { ...get().keyboardShortcuts, [view]: overrides } })
+      const keyboardShortcuts = { ...get().keyboardShortcuts, [view]: overrides }
+      set({ keyboardShortcuts })
       rInfo('preferences', 'keyboard shortcut override reset', { command_id: commandId, view })
-      save()
+      save({ keyboardShortcuts })
     },
     resetKeyboardShortcuts: (view: ShortcutView) => {
-      set({ keyboardShortcuts: { ...get().keyboardShortcuts, [view]: {} } })
+      const keyboardShortcuts = { ...get().keyboardShortcuts, [view]: {} }
+      set({ keyboardShortcuts })
       rInfo('preferences', 'keyboard shortcuts reset for view', { view })
-      save()
+      save({ keyboardShortcuts })
     },
     resetAllKeyboardShortcuts: () => {
-      set({ keyboardShortcuts: { overlay: {}, studio: {} } })
+      const keyboardShortcuts = { overlay: {}, studio: {} }
+      set({ keyboardShortcuts })
       rInfo('preferences', 'keyboard shortcuts reset for all views')
-      save()
+      save({ keyboardShortcuts })
     },
   }
 }

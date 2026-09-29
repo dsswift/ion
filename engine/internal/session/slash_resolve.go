@@ -120,6 +120,7 @@ func parseSlashInvocation(text string) (name, args string, ok bool) {
 // consumer hands it (here, via the session's EngineConfig).
 func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*ResolvedSlash, bool) {
 	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	ionDir := utils.IonDir()
 	filePath := strings.ReplaceAll(name, ":", string(filepath.Separator)) + ".md"
 	flatName := !strings.Contains(name, ":")
 
@@ -135,13 +136,13 @@ func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*Res
 	if workingDir != "" {
 		candidates = append(candidates, candidate{path: filepath.Join(workingDir, ".ion", "commands", filePath), source: slashSourceIon})
 	}
-	candidates = append(candidates, candidate{path: filepath.Join(home, ".ion", "commands", filePath), source: slashSourceIon})
+	candidates = append(candidates, candidate{path: filepath.Join(ionDir, "commands", filePath), source: slashSourceIon})
 	// Ion-native skill roots — always probed, like the .ion command roots.
 	if flatName {
 		if workingDir != "" {
 			candidates = append(candidates, candidate{path: filepath.Join(workingDir, ".ion", "skills", name, "SKILL.md"), source: slashSourceSkill, isSkill: true})
 		}
-		candidates = append(candidates, candidate{path: filepath.Join(home, ".ion", "skills", name, "SKILL.md"), source: slashSourceSkill, isSkill: true})
+		candidates = append(candidates, candidate{path: filepath.Join(ionDir, "skills", name, "SKILL.md"), source: slashSourceSkill, isSkill: true})
 	}
 	// .claude command + skill roots are gated on claudeCompat. When the
 	// consumer has Claude compatibility disabled, these are never probed.

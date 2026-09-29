@@ -1,26 +1,27 @@
 import XCTest
 import CryptoKit
+import Security
 @testable import IonRemote
 
 /// Recovery-path tests for the relay-config lifecycle.
 ///
-/// These pin the two halves of the "iPhone can never reconnect" incident that
-/// live below `handleRelayConfig`:
+/// These pin the two halves of the "iPhone can never reconnect" incident:
 ///
 ///  1. `relayURL` / `relayAPIKey` start empty on every launch and were never
-///     hydrated from the active device. That turned them into a destructive
-///     fallback — `handleRelayConfig` treats them as the "keep what we have"
-///     source, so on a cold start it fell back onto `""`.
-///  2. `softReconnect()` bailed out of an empty relay URL with a bare `return`
-///     AFTER tearing the transport down and BEFORE setting `connectionState`.
-///     The result was `transport == nil` with a stale `.connected`: every
-///     command deferred forever, no retry, no banner, no log line.
+///     hydrated from the active pairing, so a cold start held `""` while a
+///     good relay config sat in the stored record.
+///  2. `softReconnect()` bailed out of an unconnectable pairing with a bare
+///     `return` AFTER tearing the transport down and BEFORE setting
+///     `connectionState`. The result was `transport == nil` with a stale
+///     `.connected`: every command deferred forever, no retry, no banner, no
+///     log line.
 final class RelayConfigRecoveryTests: XCTestCase {
 
     private func makeDevice(
         id: String = "dev-recovery",
         relayURL: String?,
-        relayAPIKey: String?
+        relayAPIKey: String?,
+        sharedSecret: Data = Data(repeating: 0x5A, count: 32)
     ) -> PairedDevice {
         PairedDevice(
             id: id,
@@ -28,10 +29,20 @@ final class RelayConfigRecoveryTests: XCTestCase {
             pairedAt: Date(),
             lastSeen: nil,
             channelId: "channel-\(id)",
-            sharedSecret: Data(repeating: 0x5A, count: 32),
+            sharedSecret: sharedSecret,
             relayURL: relayURL,
             relayAPIKey: relayAPIKey
         )
+    }
+
+    /// A pairing no stored Studio record can match. `studioRecord(for:)` looks
+    /// up the real Keychain by `pairedDeviceId` and by the client id the
+    /// secret derives, so a fixed secret would match whatever another test in
+    /// this target left behind.
+    private func makeUncredentialedDevice() -> PairedDevice {
+        var secret = Data(count: 32)
+        secret.withUnsafeMutableBytes { _ = SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
+        return makeDevice(id: "dev-no-studio-\(UUID().uuidString)", relayURL: "", relayAPIKey: "", sharedSecret: secret)
     }
 
     // MARK: - Hydration
@@ -68,51 +79,25 @@ final class RelayConfigRecoveryTests: XCTestCase {
         XCTAssertEqual(vm.relayAPIKey, "")
     }
 
+    // MARK: - No wire to fall back to
+
+    /// The Studio wire is the only wire. A pairing whose Studio credential is
+    /// missing has nothing to connect with, so both entry points must land on
+    /// `.disconnected` with no transport rather than leaving a stale
+    /// `.connected` that defers every command forever — the shape of the
+    /// original "iPhone can never reconnect" incident.
     @MainActor
-    func testHydratedConfigSurvivesACredentiallessPush() {
-        // The two fixes composed: hydration gives handleRelayConfig a real
-        // fallback, and the empty-write guard refuses to persist nothing.
+    func testSoftReconnectWithNoStudioCredentialGoesHonestlyDisconnected() {
         let vm = SessionViewModel()
-        vm.pairedDevices = [makeDevice(
-            relayURL: "wss://relay.example.com",
-            relayAPIKey: "stored-token"
-        )]
-        vm.activeDeviceId = "dev-recovery"
-        vm.hydrateRelayConfig()
-
-        vm.handleRelayConfig(
-            relayUrl: "",
-            relayApiKey: "",
-            authMode: "psk",
-            relayOidcIssuer: nil,
-            relayOidcAudience: nil,
-            relayOidcRequiredScope: nil,
-            relayOidcClientId: nil
-        )
-
-        XCTAssertEqual(vm.relayURL, "wss://relay.example.com")
-        XCTAssertEqual(vm.relayAPIKey, "stored-token")
-        XCTAssertEqual(vm.pairedDevices.first?.relayURL, "wss://relay.example.com")
-        XCTAssertEqual(vm.pairedDevices.first?.relayAPIKey, "stored-token")
-    }
-
-    // MARK: - LAN-only fallback instead of a silent dead end
-
-    @MainActor
-    func testSoftReconnectWithEmptyRelayURLStillBuildsATransport() {
-        let vm = SessionViewModel()
-        vm.pairedDevices = [makeDevice(relayURL: "", relayAPIKey: "")]
-        vm.activeDeviceId = "dev-recovery"
-        vm.relayURL = ""
-        vm.relayAPIKey = ""
-        // The exact wedged state from the incident: the app believes it is
-        // connected while the transport is gone.
+        let device = makeUncredentialedDevice()
+        vm.pairedDevices = [device]
+        vm.activeDeviceId = device.id
         vm.connectionState = .connected
 
         vm.softReconnect()
 
-        XCTAssertNotNil(vm.transport,
-            "an empty relay URL must fall back to a LAN-only transport, never leave transport == nil")
+        XCTAssertNil(vm.transport,
+            "there is no second wire to build a transport on")
         XCTAssertEqual(vm.connectionState, .disconnected,
             "state must not stay .connected — the disconnected view's auto-retry keys off .disconnected")
 
@@ -120,61 +105,31 @@ final class RelayConfigRecoveryTests: XCTestCase {
     }
 
     @MainActor
-    func testSoftReconnectWithHostlessRelayURLStillBuildsATransport() {
+    func testConnectWithNoStudioCredentialGoesHonestlyDisconnected() {
         let vm = SessionViewModel()
-        // A stored value that is non-empty but unusable hit the same
-        // `guard ... else { return }` dead end. Note that modern Foundation
-        // does NOT reject this string — URL(string:) percent-encodes it into a
-        // host-less URL, which RelayClient can never connect to. That is why
-        // the guard checks for a host, not merely for parseability.
-        vm.pairedDevices = [makeDevice(relayURL: "not a url", relayAPIKey: "k")]
-        vm.activeDeviceId = "dev-recovery"
-        vm.relayURL = "not a url"
-        vm.relayAPIKey = "k"
+        let device = makeUncredentialedDevice()
+        vm.pairedDevices = [device]
+        vm.activeDeviceId = device.id
         vm.connectionState = .connected
-
-        vm.softReconnect()
-
-        XCTAssertNotNil(vm.transport)
-        XCTAssertEqual(vm.connectionState, .disconnected)
-
-        vm.disconnect()
-    }
-
-    @MainActor
-    func testUsableRelayURLRejectsHostlessAndEmptyValues() {
-        let vm = SessionViewModel()
-        XCTAssertNil(vm.usableRelayURL(""))
-        XCTAssertNil(vm.usableRelayURL("not a url"),
-            "URL(string:) accepts this and yields a host-less URL — it must still be rejected")
-        XCTAssertNotNil(vm.usableRelayURL("wss://relay.example.com"))
-        XCTAssertNotNil(vm.usableRelayURL("ws://192.168.1.10:19837"))
-    }
-
-    @MainActor
-    func testConnectWithEmptyRelayURLStillBuildsATransport() {
-        let vm = SessionViewModel()
-        vm.pairedDevices = [makeDevice(relayURL: "", relayAPIKey: "")]
-        vm.activeDeviceId = "dev-recovery"
-        vm.relayURL = ""
-        vm.relayAPIKey = ""
 
         vm.connect()
 
-        XCTAssertNotNil(vm.transport,
-            "connect() must also fall back to LAN rather than returning with no transport")
+        XCTAssertNil(vm.transport)
         XCTAssertEqual(vm.connectionState, .disconnected)
 
         vm.disconnect()
     }
 
     @MainActor
-    func testLANOnlyFallbackKeepsTabsIntact() {
-        // The fallback must not wipe transient state — the user keeps their
-        // cached tab list while Bonjour re-establishes the session.
+    func testSoftReconnectKeepsTabsIntact() {
+        // A failed reconnect must not wipe transient state — the user keeps
+        // their tab list while the session re-establishes. The pairing has no
+        // Studio credential so nothing connects and nothing restores a cached
+        // layout over the tabs, which is the arm this pins.
         let vm = SessionViewModel()
-        vm.pairedDevices = [makeDevice(relayURL: "", relayAPIKey: "")]
-        vm.activeDeviceId = "dev-recovery"
+        let device = makeUncredentialedDevice()
+        vm.pairedDevices = [device]
+        vm.activeDeviceId = device.id
         vm.tabs = [RemoteTabState(
             id: "tab-1", title: "Cached tab", customTitle: nil, status: .idle,
             workingDirectory: "/tmp", permissionMode: .auto, thinkingEffort: nil,
@@ -184,7 +139,7 @@ final class RelayConfigRecoveryTests: XCTestCase {
         vm.softReconnect()
 
         XCTAssertEqual(vm.tabs.count, 1,
-            "soft reconnect never wipes transient state, including on the LAN fallback path")
+            "soft reconnect never wipes transient state, even when it cannot connect")
 
         vm.disconnect()
     }

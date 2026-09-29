@@ -46,6 +46,18 @@ enum PairingState: Sendable {
         return false
     }
 
+    var isPaired: Bool {
+        if case .paired = self { return true }
+        return false
+    }
+
+    /// What went wrong, in words to put in front of a person. Nil unless the
+    /// pairing failed — a sheet shows this instead of dismissing silently.
+    var failureMessage: String? {
+        if case .failed(let error) = self { return error.localizedDescription }
+        return nil
+    }
+
     var isConnecting: Bool {
         switch self {
         case .connecting, .exchangingKeys, .configuringRelay: true

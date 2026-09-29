@@ -8,21 +8,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { useSessionStore } from '../../stores/sessionStore'
-import { makeLocalTab } from '../../stores/session-store-helpers'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { makeLocalTab } from '@ion/server/store/session-store-helpers'
 import { usePreferencesStore } from '../../preferences'
 import { FileExplorer } from '../FileExplorer'
 import { PopoverLayerProvider } from '../PopoverLayer'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 beforeEach(() => {
-  ;(window as unknown as { ion: unknown }).ion = {
+  ;(window as unknown as { ion: unknown }).ion = installFakeWire({
     fsReadDir: vi.fn().mockResolvedValue({ entries: [] }),
     gitIgnoredFiles: vi.fn().mockResolvedValue({ paths: [] }),
     selectDirectory: vi.fn().mockResolvedValue(null),
     fsRevealInFinder: vi.fn().mockResolvedValue(undefined),
-  }
+  })
   useSessionStore.setState({
     activeTabId: 'tab-1',
     tabs: [{ ...makeLocalTab(), id: 'tab-1', workingDirectory: '/proj/main' }] as never,
@@ -107,7 +108,7 @@ describe('FileExplorer multi-root', () => {
     const fsReadDir = (window as unknown as { ion: { fsReadDir: ReturnType<typeof vi.fn> } }).ion.fsReadDir
     const { unmount } = render()
     // Only the primary root fetches; both collapsed roots skip.
-    const fetchedDirs = fsReadDir.mock.calls.map((c: unknown[]) => c[0])
+    const fetchedDirs = fsReadDir.mock.calls.map((c: unknown[]) => (c[0] as { directory: string }).directory)
     expect(fetchedDirs).toContain('/proj/main')
     expect(fetchedDirs).not.toContain('/lib/alpha')
     expect(fetchedDirs).not.toContain('/lib/zeta')

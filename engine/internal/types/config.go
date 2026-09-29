@@ -115,6 +115,10 @@ type EnterpriseConfig struct {
 	ToolRestrictions     *ToolRestrictions `json:"toolRestrictions,omitempty"`
 	Permissions          *PermissionPolicy `json:"permissions,omitempty"`
 	Telemetry            *TelemetryConfig  `json:"telemetry,omitempty"`
+	// SystemMetrics, when set, replaces the user's System Metrics block
+	// whole: an enterprise can fix the sampling cadence, the telemetry
+	// interval, or turn sampling off (see EnforceEnterprise).
+	SystemMetrics *SystemMetricsConfig `json:"systemMetrics,omitempty"`
 	// ConversationEvents seals the standalone conversation.* telemetry family
 	// on, independent of Telemetry's own seal (see EnforceEnterprise).
 	ConversationEvents *ConversationEventsConfig `json:"conversationEvents,omitempty"`
@@ -146,6 +150,13 @@ type EnterpriseConfig struct {
 	// not delete conversations; this field is policy carried to consumers
 	// via get_enterprise_policy.
 	ConversationRetentionDays *int `json:"conversationRetentionDays,omitempty"`
+	// Security seals FR-01's principal partitioning. Nil means no enterprise
+	// requirement -- the user/project layer's PrincipalPartitioning setting
+	// stands as configured (including disabled, the default).
+	Security *EnterpriseSecurityConfig `json:"security,omitempty"`
+	// Git seals FR-04's git identity policy. Nil means no enterprise
+	// requirement -- the user/project layer's GitConfig stands as configured.
+	Git *EnterpriseGitConfig `json:"git,omitempty"`
 	// Limits carries enterprise ceilings for fields that also exist under
 	// `limits` in engine.json. The path is deliberately identical in both
 	// schemas — an administrator writing `limits.planModeAllowedBashCommands`
@@ -232,6 +243,34 @@ type ExtensionAllowlistEntry struct {
 type ToolRestrictions struct {
 	Allow []string `json:"allow,omitempty"`
 	Deny  []string `json:"deny,omitempty"`
+	// Principals layers per-principal tool policy on top of the global
+	// Allow/Deny above (FR-03). Every rule whose Match matches the acting
+	// principal is applied: any matching rule's Deny blocks the tool
+	// (deny always wins), and when at least one matching rule declares a
+	// non-empty Allow, the tool must appear in the INTERSECTION of every
+	// matching rule's Allow list. A principal matched by no rule falls
+	// through to the global Allow/Deny only. See config.IsToolAllowedFor.
+	Principals []PrincipalToolRule `json:"principals,omitempty"`
+}
+
+// PrincipalToolRule is one per-principal tool policy entry.
+type PrincipalToolRule struct {
+	Match PrincipalMatch `json:"match"`
+	Allow []string       `json:"allow,omitempty"`
+	Deny  []string       `json:"deny,omitempty"`
+}
+
+// PrincipalMatch selects which principals a PrincipalToolRule applies to.
+// Empty fields are wildcards on that dimension; a rule with every field
+// empty matches every principal (rarely useful, but not rejected -- the
+// operator's own mistake to notice). Subjects/Providers match by exact
+// string; Claims requires the principal's claims map to contain the named
+// key with a value in the given set (claims are session-scoped, never
+// persisted -- see SessionPrincipal.Claims).
+type PrincipalMatch struct {
+	Subjects  []string            `json:"subjects,omitempty"`
+	Providers []string            `json:"providers,omitempty"`
+	Claims    map[string][]string `json:"claims,omitempty"`
 }
 
 // SandboxEnterpriseConfig controls sandbox enforcement at the enterprise level.
@@ -246,6 +285,22 @@ type SandboxEnterpriseConfig struct {
 type DangerousPattern struct {
 	Pattern string `json:"pattern"`
 	Reason  string `json:"reason"`
+}
+
+// EnterpriseSecurityConfig seals FR-01's principal partitioning. Two
+// independent one-way ceilings, mirroring the ResourceLimits/Thinking
+// sealed-ceiling pattern:
+//
+//   - RequirePrincipalPartitioning=true forces partitioning ON regardless of
+//     the user/project layer's own setting. A lower layer can never disable
+//     a required partition.
+//   - MinEnforcement raises the effective PrincipalEnforcement to at least
+//     this level -- a lower layer may configure something MORE strict, but
+//     never something less strict than the enterprise minimum. Empty means
+//     no floor.
+type EnterpriseSecurityConfig struct {
+	RequirePrincipalPartitioning bool                 `json:"requirePrincipalPartitioning,omitempty"`
+	MinEnforcement               PrincipalEnforcement `json:"minEnforcement,omitempty"`
 }
 
 // PluginsConfig holds the user-layer plugin policy. Merged with enterprise
@@ -301,16 +356,24 @@ type EngineRuntimeConfig struct {
 	Auth                    *AuthConfig                    `json:"auth,omitempty"`
 	Network                 *NetworkConfig                 `json:"network,omitempty"`
 	Telemetry               *TelemetryConfig               `json:"telemetry,omitempty"`
+	// SystemMetrics configures the System Metrics sampler (host and process
+	// load). Nil means sampling is on with the compiled defaults.
+	SystemMetrics *SystemMetricsConfig `json:"systemMetrics,omitempty"`
 	// ConversationEvents is a sibling of Telemetry, not nested under it — see
 	// ConversationEventsConfig's doc comment for why (issue #378).
 	ConversationEvents *ConversationEventsConfig `json:"conversationEvents,omitempty"`
 	Compaction         *CompactionConfig         `json:"compaction,omitempty"`
 	Security           *SecurityConfig           `json:"security,omitempty"`
-	Enterprise         *EnterpriseConfig         `json:"enterprise,omitempty"`
-	FeatureFlags       *FeatureFlagsConfig       `json:"featureFlags,omitempty"`
-	Relay              *RelayConfig              `json:"relay,omitempty"`
-	Timeouts           *TimeoutsConfig           `json:"timeouts,omitempty"`
-	WebSearch          *WebSearchConfig          `json:"webSearch,omitempty"`
+	// Git is FR-04's engine-side git identity policy: whether a session's
+	// commits are attributed to its principal, a configured machine
+	// fallback identity, or refused outright when neither resolves. See
+	// session.resolveGitIdentity.
+	Git          *GitConfig          `json:"git,omitempty"`
+	Enterprise   *EnterpriseConfig   `json:"enterprise,omitempty"`
+	FeatureFlags *FeatureFlagsConfig `json:"featureFlags,omitempty"`
+	Relay        *RelayConfig        `json:"relay,omitempty"`
+	Timeouts     *TimeoutsConfig     `json:"timeouts,omitempty"`
+	WebSearch    *WebSearchConfig    `json:"webSearch,omitempty"`
 	// Shell controls how the Bash tool selects the shell used to execute
 	// commands. Pointer so engine.json can fully omit the block and inherit
 	// the default (non-login bash -c). When Shell.UseLoginShell is true, the
@@ -618,6 +681,8 @@ type LoggingConfig struct {
 	// surface: which log sources its forwarder ships. Recognized sources:
 	//   "engine"    — the engine's own operational records (in-process).
 	//   "desktop"   — ~/.ion/desktop.jsonl (tailed).
+	//   "server"    — ~/.ion/server.jsonl (tailed): an Ion Studio Server's own
+	//                 lines, plus the browser-client lines it records.
 	//   "ios"       — ~/.ion/ios-diagnostic-logs.jsonl (tailed).
 	//   "telemetry" — ~/.ion/telemetry.jsonl (tailed).
 	// The enterprise deployer decides the split: the engine may ship only
@@ -628,7 +693,7 @@ type LoggingConfig struct {
 	// Unset (nil) preserves legacy behavior: the engine ships ["engine"]
 	// unless EgressManagedByClient is true (then nothing). The desktop's
 	// counterpart lives in its own settings and defaults to everything —
-	// see desktop/src/main/log-egress.ts.
+	// see packages/shared/src/log-egress.ts.
 	EgressShipSources []string `json:"egressShipSources,omitempty"`
 
 	// EgressClientShipSources is the managing client's share of the
@@ -655,6 +720,14 @@ type LoggingConfig struct {
 	// RFC 8707) instead of encoding the resource in the scope string.
 	// Empty uses the identity provider's configured default audience.
 	EgressTokenAudience string `json:"egressTokenAudience,omitempty"`
+
+	// EgressTokenProvider names the auth.oauth entry whose credential mints
+	// the EgressTokenScope token. Empty uses the engine's identity provider
+	// (auth.identityProvider), which on a headless engine with no signed-in
+	// operator has no token to give. Naming an entry with machineIdentity
+	// lets such an engine authenticate its egress as a workload. Naming the
+	// identity provider itself reuses that provider's instance.
+	EgressTokenProvider string `json:"egressTokenProvider,omitempty"`
 }
 
 // GetWorkspace returns the Workspace config block, or nil for a nil receiver
@@ -838,7 +911,6 @@ type McpOAuthConfig struct {
 	TokenURL     string `json:"token_url"`
 	Scope        string `json:"scope,omitempty"`
 	RedirectURI  string `json:"redirect_uri,omitempty"`
-	UsePKCE      bool   `json:"use_pkce,omitempty"`
 	// ClientMetadataURI is a URI pointing to an OAuth Client ID Metadata
 	// Document. When set, the engine fetches client metadata from this URI
 	// instead of using dynamic client registration. Takes precedence over
@@ -894,6 +966,99 @@ type SecurityConfig struct {
 	// safety mechanism, not an opt-in feature, so it is on by default and a
 	// consumer that genuinely wants raw behavior sets false explicitly.
 	WorkspaceContainment *bool `json:"workspaceContainment,omitempty"`
+
+	// PrincipalPartitioning isolates conversation storage per authenticated
+	// principal on a multi-tenant engine (FR-01). Nil/absent means DISABLED
+	// — a single-user desktop keeps today's flat `conversations/` layout
+	// with no migration. See conversation.ConfigurePartitioning.
+	PrincipalPartitioning *PrincipalPartitioningConfig `json:"principalPartitioning,omitempty"`
+
+	// Sandbox is the user-layer OS sandbox policy (FR-03). Nil/absent means
+	// DISABLED unless SandboxEnterpriseConfig.Required forces it on. See
+	// session.buildSandboxConfig, which merges this with the enterprise
+	// seal and, when principal partitioning is active, adds the
+	// principals/flat-root deny with an own-partition read exception.
+	Sandbox *SandboxConfig `json:"sandbox,omitempty"`
+}
+
+// SandboxConfig is the user-layer (engine.json) OS sandbox policy. Mirrors
+// sandbox.Config's shape field-for-field so session.buildSandboxConfig's
+// merge is a direct copy, plus Enabled (sandbox.Config has no on/off switch
+// of its own -- RunConfig.SandboxCfg being nil IS "off").
+type SandboxConfig struct {
+	// Enabled defaults to false (nil and false are the same: off) unless
+	// SandboxEnterpriseConfig.Required forces it on regardless of this
+	// value.
+	Enabled    *bool    `json:"enabled,omitempty"`
+	DenyRead   []string `json:"denyRead,omitempty"`
+	DenyWrite  []string `json:"denyWrite,omitempty"`
+	AllowWrite []string `json:"allowWrite,omitempty"`
+	Network    *struct {
+		AllowedDomains []string `json:"allowedDomains,omitempty"`
+		BlockedDomains []string `json:"blockedDomains,omitempty"`
+	} `json:"network,omitempty"`
+}
+
+// SandboxConfigEnabled resolves the pointer's default-disabled semantics:
+// nil or an explicit false both mean disabled.
+func (s *SandboxConfig) SandboxConfigEnabled() bool {
+	return s != nil && s.Enabled != nil && *s.Enabled
+}
+
+// GitAuthor is a {name, email} pair for git commit attribution -- the
+// engine's own shape for author/committer identity, independent of
+// SessionPrincipal (which carries provider/kind/claims a git identity has
+// no use for).
+type GitAuthor struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// GitIdentityConfig is the user-layer (engine.json) knob for FR-04's git
+// identity resolution (session.resolveGitIdentity):
+//
+//  1. FromPrincipal (default true): use the session's own
+//     SessionPrincipal.DisplayName/Username + Email.
+//  2. Machine: a configured fallback identity for a session with no
+//     principal (a headless/local-desktop engine) or whose principal lacks
+//     an email.
+//  3. Unresolved: neither produced a usable identity. Required=true then
+//     refuses a git-mutating Bash segment outright rather than letting git
+//     itself fail with its own "please tell me who you are" error deep
+//     inside a subprocess the model cannot see.
+type GitIdentityConfig struct {
+	FromPrincipal *bool      `json:"fromPrincipal,omitempty"`
+	Required      *bool      `json:"required,omitempty"`
+	Machine       *GitAuthor `json:"machine,omitempty"`
+}
+
+// GitConfig is the user-layer (engine.json) git policy.
+type GitConfig struct {
+	Identity GitIdentityConfig `json:"identity,omitempty"`
+}
+
+// FromPrincipalEnabled resolves the pointer's default-enabled semantics:
+// nil means true (use the session's principal when one exists).
+func (g *GitIdentityConfig) FromPrincipalEnabled() bool {
+	return g == nil || g.FromPrincipal == nil || *g.FromPrincipal
+}
+
+// RequiredEnabled resolves the pointer's default-disabled semantics: nil or
+// an explicit false both mean "an unresolved identity is not an error."
+func (g *GitIdentityConfig) RequiredEnabled() bool {
+	return g != nil && g.Required != nil && *g.Required
+}
+
+// EnterpriseGitConfig seals FR-04's git identity policy. Required is a
+// one-way seal (mirroring EnterpriseSecurityConfig): true forces
+// GitIdentityConfig.Required on regardless of the user/project layer, and
+// can never be relaxed by a lower layer. Machine, when set, REPLACES the
+// user-layer's Machine fallback wholesale (an enterprise-managed machine
+// identity is the organization's own service-account attribution, not
+// something a lower layer should be able to override piecemeal).
+type EnterpriseGitConfig struct {
+	Required bool       `json:"required,omitempty"`
+	Machine  *GitAuthor `json:"machine,omitempty"`
 }
 
 // WorkspaceContainmentEnabled resolves the pointer's default-enabled
@@ -903,6 +1068,81 @@ func (s *SecurityConfig) WorkspaceContainmentEnabled() bool {
 		return true
 	}
 	return *s.WorkspaceContainment
+}
+
+// PrincipalEnforcement is the strictness level a partitioned engine applies
+// once PrincipalPartitioningConfig.Enabled is true.
+type PrincipalEnforcement string
+
+const (
+	// EnforcementStrict: a session may only read/write its own partition.
+	// The default -- partitioning with no enforcement is a directory
+	// convention, not an isolation guarantee.
+	EnforcementStrict PrincipalEnforcement = "strict"
+	// EnforcementReadOnly: cross-partition READS are allowed; writes remain
+	// confined to the session's own partition.
+	EnforcementReadOnly PrincipalEnforcement = "read-only"
+	// EnforcementNone: partitioning is purely a storage layout -- every
+	// session can read/write every partition. Logged at WARN on every boot
+	// so this is never a silent downgrade.
+	EnforcementNone PrincipalEnforcement = "none"
+)
+
+// PrincipalPartitioningConfig is the user-layer (engine.json) knob for FR-01.
+// See EnterpriseSecurityConfig for the enterprise-sealed ceiling.
+type PrincipalPartitioningConfig struct {
+	Enabled bool `json:"enabled"`
+	// Enforcement defaults to EnforcementStrict when Enabled is true and
+	// this field is empty. A lower layer's Enforcement can never be softer
+	// than the enterprise MinEnforcement (see EnforceEnterprise).
+	Enforcement PrincipalEnforcement `json:"enforcement,omitempty"`
+	// AllowCredentialFallThrough opts an attributed principal with no
+	// resolvable provider credential INTO the process-wide resolver levels
+	// (FR-05) instead of being refused. Absent (the zero value) means
+	// refuse, which is the secure default on a partitioned instance: a
+	// silent fall-through on a shared instance would put that principal's
+	// traffic back on a shared credential, which is the exact outcome
+	// per-principal credentials exist to end. See auth.RequiresPrincipalCredential.
+	AllowCredentialFallThrough bool `json:"allowCredentialFallThrough,omitempty"`
+}
+
+// ResolvedEnforcement returns the effective enforcement level: the
+// configured value, or EnforcementStrict when Partitioning is enabled but
+// Enforcement was left empty. Nil-safe.
+func (c *PrincipalPartitioningConfig) ResolvedEnforcement() PrincipalEnforcement {
+	if c == nil || !c.Enabled {
+		return EnforcementNone
+	}
+	if c.Enforcement == "" {
+		return EnforcementStrict
+	}
+	return c.Enforcement
+}
+
+// enforcementRank orders enforcement levels from loosest to strictest, so a
+// sealed minimum can be compared against a configured value. An unrecognized
+// value ranks as EnforcementNone (loosest) so a malformed config can never
+// accidentally satisfy a stricter enterprise floor.
+func enforcementRank(e PrincipalEnforcement) int {
+	switch e {
+	case EnforcementReadOnly:
+		return 1
+	case EnforcementStrict:
+		return 2
+	default:
+		return 0
+	}
+}
+
+// SealMinEnforcement returns whichever of configured/floor ranks stricter --
+// the enforcement-level counterpart to a sealed ceiling (here, a sealed
+// FLOOR: the enterprise sets a minimum strictness a lower layer can only
+// exceed, never soften below).
+func SealMinEnforcement(configured, floor PrincipalEnforcement) PrincipalEnforcement {
+	if enforcementRank(floor) > enforcementRank(configured) {
+		return floor
+	}
+	return configured
 }
 
 // --- Permission Types (from engine/src/permissions/types.ts) ---
@@ -1014,7 +1254,14 @@ type CredentialProcessConfig struct {
 
 // OAuthConfig configures OAuth authentication for a provider.
 type OAuthConfig struct {
-	ClientID         string   `json:"clientId"`
+	ClientID string `json:"clientId"`
+	// ClientIDEnv names an environment variable holding the client ID, read
+	// when the provider is built. It lets a workload take its client ID from
+	// its runtime (AZURE_CLIENT_ID, set by the AKS workload identity webhook)
+	// instead of a literal. Mutually exclusive with ClientID. Unlike
+	// clientSecretEnv the variable is left in place: a client ID is not a
+	// secret, and other SDKs in the process read the same variable.
+	ClientIDEnv      string   `json:"clientIdEnv,omitempty"`
 	AuthorizationURL string   `json:"authorizationUrl"`
 	TokenURL         string   `json:"tokenUrl"`
 	Scopes           []string `json:"scopes"`
@@ -1342,6 +1589,41 @@ type OtelConfig struct {
 	Headers            map[string]string `json:"headers,omitempty"`
 	ServiceName        string            `json:"serviceName,omitempty"`
 	ResourceAttributes map[string]string `json:"resourceAttributes,omitempty"`
+	// Metrics turns on OTLP metrics export of System Metrics. It shares
+	// Protocol, Headers, ServiceName, ResourceAttributes, TokenScope, and
+	// TokenProvider with the trace export. Nil means no metrics export.
+	Metrics *OtelMetricsConfig `json:"metrics,omitempty"`
+	// TokenScope, when set, mints a fresh bearer token for this scope before
+	// each trace and metrics export and sends it as the Authorization header,
+	// over any static one in Headers. Metrics.TokenScope, when set, wins for
+	// the metrics export. Empty sends only the static headers.
+	TokenScope string `json:"tokenScope,omitempty"`
+	// TokenProvider names the auth.oauth entry whose credential mints the
+	// TokenScope and Metrics.TokenScope tokens. Empty uses the engine's
+	// identity provider (auth.identityProvider), which on a headless engine
+	// with no signed-in operator has no token to give. Naming an entry with
+	// machineIdentity lets such an engine authenticate its export as a
+	// workload; an entry also named by logging.egressTokenProvider is shared.
+	TokenProvider string `json:"tokenProvider,omitempty"`
+}
+
+// OtelMetricsConfig configures the OTLP metrics export of System Metrics.
+type OtelMetricsConfig struct {
+	Enabled bool `json:"enabled"`
+	// ExportIntervalMs is how often metrics are exported. Default 60000.
+	ExportIntervalMs int64 `json:"exportIntervalMs,omitempty"`
+	// Endpoint is the metrics receiver, for one that takes metrics at their
+	// own URL. Empty means the shared OtelConfig.Endpoint with the metrics
+	// path (/v1/metrics).
+	Endpoint string `json:"endpoint,omitempty"`
+	// Temporality is "cumulative" (the OpenTelemetry default) or "delta".
+	// Some receivers require delta.
+	Temporality string `json:"temporality,omitempty"`
+	// TokenScope, when set, mints a fresh bearer token for this scope before
+	// each metrics export and sends it as the Authorization header, over any
+	// static one in Headers. The credential is the parent OtelConfig's
+	// TokenProvider. Empty falls back to the parent OtelConfig.TokenScope.
+	TokenScope string `json:"tokenScope,omitempty"`
 }
 
 // WebSearchConfig controls web search tool behavior.

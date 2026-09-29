@@ -17,7 +17,7 @@ vi.mock('../git/HoverCard', () => ({
 }))
 
 import { WorktreeRow, WORKTREE_ROW_GUTTER_WIDTH } from '../WorktreeRow'
-import type { IntegrationMember, WorktreeInventoryEntry } from '../../../shared/types'
+import type { IntegrationMember, WorktreeInventoryEntry } from '@ion/shared/types'
 
 const BRANCH = 'wt/a1'
 const onToggleMembership = vi.fn()

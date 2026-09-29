@@ -20,11 +20,11 @@ final class AgentPanelDefaultResolverTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeSettings(agentPanelDefaultOpen value: Bool) -> DesktopSettingsState {
-        DesktopSettingsState(
+    private func makeSettings(agentPanelDefaultOpen value: Bool) -> ServerSettingsState {
+        ServerSettingsState(
             settings: ["agentPanelDefaultOpen": AnyCodable(value)],
             schema: [
-                DesktopSettingSchemaEntry(
+                ServerSettingSchemaEntry(
                     key: "agentPanelDefaultOpen",
                     type: .boolean,
                     group: "conversation",
@@ -38,7 +38,7 @@ final class AgentPanelDefaultResolverTests: XCTestCase {
                 )
             ],
             groups: [
-                DesktopSettingGroupDescriptor(groupId: "conversation", label: "Conversation")
+                ServerSettingGroupDescriptor(groupId: "conversation", label: "Conversation")
             ]
         )
     }
@@ -75,7 +75,7 @@ final class AgentPanelDefaultResolverTests: XCTestCase {
     /// When the settings object has no agentPanelDefaultOpen key at all,
     /// the resolver falls back to true (expanded by default).
     func test_settingAbsent_returnsTrue() {
-        let emptySettings = DesktopSettingsState(settings: [:], schema: [], groups: [])
+        let emptySettings = ServerSettingsState(settings: [:], schema: [], groups: [])
         let result = AgentPanelDefaultResolver.resolveAgentPanelDefault(emptySettings)
         XCTAssertTrue(
             result,

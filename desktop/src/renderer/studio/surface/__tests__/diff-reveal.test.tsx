@@ -4,10 +4,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { useSessionStore } from '../../../stores/sessionStore'
-import { useGitStore } from '../../../stores/git'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { useGitStore } from '@ion/server/store/git'
 import { useSurfaceStore } from '../surface-store'
 import { DiffSurface } from '../tabs/DiffSurface'
+import { installFakeWire } from '../../../host/__tests__/fake-wire'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -17,13 +18,13 @@ beforeEach(() => {
   scrollIntoViewMock.mockClear()
   Element.prototype.scrollIntoView = scrollIntoViewMock
   vi.stubGlobal('IntersectionObserver', class { observe(): void {} disconnect(): void {} unobserve(): void {} })
-  ;(window as unknown as { ion: unknown }).ion = {
+  ;(window as unknown as { ion: unknown }).ion = installFakeWire({
     gitSubscribe: vi.fn().mockResolvedValue({ snapshot: null }),
     gitUnsubscribe: vi.fn().mockResolvedValue(undefined),
     gitRefresh: vi.fn().mockResolvedValue(undefined),
     gitDiff: vi.fn().mockResolvedValue({ diff: '', fileName: 'x.ts' }),
     onGitEvent: vi.fn(() => () => undefined),
-  }
+  })
   useSessionStore.setState({
     activeTabId: 'ion',
     rehydrating: true,
@@ -58,13 +59,13 @@ describe('DiffSurface', () => {
     expect(container.textContent).toContain('ion')
     expect(container.textContent).not.toContain('workspace repo')
     expect(container.querySelector('section[data-diff-path="engine/main.go"][data-diff-staged="0"]')).not.toBeNull()
-    expect((window as unknown as { ion: { gitDiff: ReturnType<typeof vi.fn> } }).ion.gitDiff).toHaveBeenCalledWith('/worktrees/ion', 'engine/main.go', false)
+    expect((window as unknown as { ion: { gitDiff: ReturnType<typeof vi.fn> } }).ion.gitDiff).toHaveBeenCalledWith({ directory: '/worktrees/ion', path: 'engine/main.go', staged: false })
 
     act(() => useSessionStore.setState({ activeTabId: 'website' }))
     await act(async () => { await Promise.resolve() })
 
     expect(container.textContent).toContain('ion-website')
-    expect((window as unknown as { ion: { gitRefresh: ReturnType<typeof vi.fn> } }).ion.gitRefresh).toHaveBeenCalledWith('/repos/ion-website')
+    expect((window as unknown as { ion: { gitRefresh: ReturnType<typeof vi.fn> } }).ion.gitRefresh).toHaveBeenCalledWith({ directory: '/repos/ion-website' })
     act(() => root.unmount())
     container.remove()
   })
@@ -78,7 +79,7 @@ describe('DiffSurface', () => {
     act(() => root.render(<DiffSurface />))
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
     expect(scrollIntoViewMock).toHaveBeenCalled()
-    expect((window as unknown as { ion: { gitDiff: ReturnType<typeof vi.fn> } }).ion.gitDiff).toHaveBeenCalledWith('/repos/ion-website', 'site/index.ts', true)
+    expect((window as unknown as { ion: { gitDiff: ReturnType<typeof vi.fn> } }).ion.gitDiff).toHaveBeenCalledWith({ directory: '/repos/ion-website', path: 'site/index.ts', staged: true })
     act(() => root.unmount())
     container.remove()
   })

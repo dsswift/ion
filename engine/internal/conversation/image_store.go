@@ -65,7 +65,7 @@ func SaveImageToConversation(dir, convID, mediaType, base64Data string) (string,
 		return "", fmt.Errorf("SaveImageToConversation: convID is required")
 	}
 	if dir == "" {
-		dir = DefaultConversationsDir()
+		dir = resolveDir(convID)
 	}
 
 	data, err := base64.StdEncoding.DecodeString(base64Data)

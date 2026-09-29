@@ -235,8 +235,8 @@ func TestFilterActiveBranch_BranchedTree(t *testing.T) {
 	entries := []conversation.SessionEntry{
 		{ID: "a", ParentID: nil},
 		{ID: "b", ParentID: strPtr("a")},
-		{ID: "c", ParentID: strPtr("b")},  // branch 1
-		{ID: "d", ParentID: strPtr("b")},  // branch 2
+		{ID: "c", ParentID: strPtr("b")}, // branch 1
+		{ID: "d", ParentID: strPtr("b")}, // branch 2
 	}
 
 	// Active branch from "c" should be a -> b -> c (3 entries).

@@ -16,6 +16,7 @@ import (
 	"context"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
+	"github.com/dsswift/ion/engine/internal/principalboundary"
 	"github.com/dsswift/ion/engine/internal/sandbox"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -195,4 +196,95 @@ func (b *ApiBackend) checkAndWrapSandbox(
 		block.Input["command"] = wrapped
 	}
 	return false
+}
+
+// checkContainmentBoundaries runs the three deterministic, extension-independent
+// tool-loop boundaries in sequence -- workspace containment, FR-03's
+// principal execution boundary, then FR-04's git-identity-required gate --
+// so runloop_tools.go's already-oversized executeTools needs only one call
+// site for all three. Returns true (caller stops) as soon as any refuses.
+func (b *ApiBackend) checkContainmentBoundaries(
+	gCtx context.Context,
+	run *activeRun,
+	wsChecker *workspaces.Checker,
+	principalChecker *principalboundary.Checker,
+	gitIdentityRequired bool,
+	block types.LlmContentBlock,
+	cwd string,
+	permDenyFn func(runID string, info interface{}),
+	telem TelemetryCollector,
+	results []conversation.ToolResultEntry,
+	i int,
+) bool {
+	if b.checkWorkspaceContainment(gCtx, run, wsChecker, block, cwd, permDenyFn, telem, results, i) {
+		return true
+	}
+	if b.checkPrincipalBoundary(gCtx, run, principalChecker, block, cwd, permDenyFn, telem, results, i) {
+		return true
+	}
+	return b.checkGitIdentityRequired(gCtx, run, gitIdentityRequired, block, cwd, permDenyFn, telem, results, i)
+}
+
+// checkPrincipalBoundary evaluates one tool call against FR-03's
+// per-principal execution boundary (the in-process backstop for the OS
+// sandbox -- see principalboundary's own package doc). Returns true when
+// the call was refused and its result recorded, mirroring
+// checkWorkspaceContainment's contract exactly: same nil-safety, same
+// permission_denied observability path, so a refusal here is
+// indistinguishable in shape from a workspace-containment refusal to any
+// consumer, differing only in its "reason" text and failure classification.
+func (b *ApiBackend) checkPrincipalBoundary(
+	gCtx context.Context,
+	run *activeRun,
+	checker *principalboundary.Checker,
+	block types.LlmContentBlock,
+	cwd string,
+	permDenyFn func(runID string, info interface{}),
+	telem TelemetryCollector,
+	results []conversation.ToolResultEntry,
+	i int,
+) bool {
+	if checker == nil {
+		return false
+	}
+	refusal := checker.Check(block.Name, block.Input, cwd)
+	if refusal == nil {
+		return false
+	}
+
+	utils.LogWithFields(utils.LevelInfo, "principalboundary", "principal execution boundary decision", map[string]any{
+		"decision": "deny",
+		"tool":     block.Name,
+		"target":   refusal.Target,
+		"cwd":      cwd,
+		"run_id":   run.requestID,
+	})
+
+	if permDenyFn != nil {
+		if _, hookErr := runHookCtx(gCtx, func() struct{} {
+			permDenyFn(run.requestID, map[string]interface{}{
+				"tool_name": block.Name,
+				"input":     block.Input,
+				"reason":    refusal.Reason,
+			})
+			return struct{}{}
+		}); hookErr != nil {
+			utils.LogWithFields(utils.LevelWarn, "principalboundary", "permission_denied hook interrupted during principal boundary refusal", map[string]any{
+				"tool": block.Name, "error": hookErr.Error(),
+			})
+		}
+	}
+
+	results[i] = conversation.ToolResultEntry{
+		ToolUseID: block.ID,
+		Content:   refusal.Reason,
+		IsError:   true,
+	}
+	emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "principal_boundary", refusal.Reason)
+	b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
+		ToolID:  block.ID,
+		Content: results[i].Content,
+		IsError: true,
+	}})
+	return true
 }

@@ -12,17 +12,18 @@ import {
   ChatCircle,
   Flask,
   FolderOpen,
+  PaperPlaneTilt,
   Package,
   PencilSimple,
   Trash,
 } from "@phosphor-icons/react";
-import { describeLandStrategy } from "../../shared/worktree-land-strategy";
-import type { ColorPalette } from "../theme/palette-dark";
+import { describeLandStrategy } from "@ion/shared/worktree-land-strategy";
+import type { ColorPalette } from "@ion/server/renderer/theme/palette-dark";
 import type {
   IntegrationMember,
   WorktreeCompletionStrategy,
   WorktreeInventoryEntry,
-} from "../../shared/types";
+} from "@ion/shared/types";
 
 /** One action row in the menu. */
 export interface WorktreeMenuActionEntry {
@@ -53,6 +54,7 @@ export interface WorktreeMenuActions {
   onMoveInBench(toIndex: number): void;
   onSync(): void;
   onLandAndRetire(): void;
+  onTransferWorktree(): void;
   onRequestDiscardWorktree(): void;
   onReveal(): void;
   onReprovision(): void;
@@ -256,6 +258,25 @@ export function buildWorktreeMenuEntries(
             : undefined),
       keepsMenuOpen: true,
       run: actions.onLandAndRetire,
+    },
+    {
+      // The worktree moves as a unit: its checkout and every conversation in
+      // it. A conversation that should leave on its own uses its own
+      // Transfer instead.
+      type: "action",
+      id: "transfer-worktree",
+      label: "Transfer worktree…",
+      icon: <PaperPlaneTilt size={12} color={colors.textSecondary} />,
+      disabled: !hasOpenConversations || entry.isDirty || !!entry.landedAt,
+      hint: entry.landedAt
+        ? "Landed; it is read-only"
+        : entry.isDirty
+          ? "Commit changes first"
+          : !hasOpenConversations
+            ? "No conversation in it to carry"
+            : "",
+      keepsMenuOpen: true,
+      run: actions.onTransferWorktree,
     },
   ]);
 

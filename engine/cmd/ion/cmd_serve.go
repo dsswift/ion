@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -15,6 +14,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/compaction"
 	"github.com/dsswift/ion/engine/internal/config"
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/featureflags"
 	"github.com/dsswift/ion/engine/internal/filelock"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
@@ -23,6 +23,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/server"
+	"github.com/dsswift/ion/engine/internal/sysmetrics"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/titling"
 	"github.com/dsswift/ion/engine/internal/tools"
@@ -32,12 +33,12 @@ import (
 )
 
 func cmdServe(flags map[string]string) {
-	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home falls back to a relative .ion dir
-	ionDir := filepath.Join(home, ".ion")
+	ionDir := utils.IonDir()
 	if err := os.MkdirAll(ionDir, 0o700); err != nil {
 		utils.LogWithFields(utils.LevelError, "main", "failed to create ion data dir", map[string]any{"path": ionDir, "error": utils.ErrStr(err)})
 	}
 	utils.LogWithFields(utils.LevelInfo, "main", "=== engine process start ===", map[string]any{"run_id": os.Getpid(), "version": version})
+	utils.LogWithFields(utils.LevelInfo, "iondir", "data dir resolved", map[string]any{"path": ionDir, "source": utils.IonDirSource()})
 
 	// Hide the console immediately when supervised, before anything else
 	// runs, so there is no visible flash of a window on Windows. The
@@ -60,6 +61,16 @@ func cmdServe(flags map[string]string) {
 
 	cfg := config.LoadConfig("")
 	utils.LogWithFields(utils.LevelInfo, "main", "config loaded", map[string]any{"backend": cfg.Backend, "model": cfg.DefaultModel, "count": len(cfg.Providers), "max": len(cfg.McpServers)})
+
+	// FR-01: activate (or deactivate) principal partitioning once, from the
+	// fully enterprise-enforced config, before any conversation storage is
+	// touched. A nil Security/PrincipalPartitioning block is the default
+	// disabled state -- ConfigurePartitioning handles that no-op case itself.
+	var partitioningCfg *types.PrincipalPartitioningConfig
+	if cfg.Security != nil {
+		partitioningCfg = cfg.Security.PrincipalPartitioning
+	}
+	conversation.ConfigurePartitioning(conversation.DefaultConversationsDir(), partitioningCfg)
 
 	// Report the supervised-flag outcome now that LoadConfig has applied
 	// engine.json's logLevel (config.go calls SetLevelFromString during load),
@@ -116,7 +127,7 @@ func cmdServe(flags map[string]string) {
 	// Apply a soft heap ceiling (GOMEMLIMIT) so the GC holds resident memory below
 	// the level where the OS memory-pressure killer (macOS jetsam / Linux OOM) would
 	// SIGKILL this single daemon and take every hosted session down at once. The
-	// returned limit is reported by the memory monitor started below. This is a soft
+	// returned limit is reported by the System Metrics sampler started below. This is a soft
 	// limit (GC pressure), never a hard cap, and it never overrides an operator's
 	// explicit GOMEMLIMIT env var. See cmd/ion/memlimit.go.
 	memLimitBytes := applyMemoryLimit(cfg)
@@ -228,21 +239,29 @@ func cmdServe(flags map[string]string) {
 		v.SetAuthResolver(resolver)
 	}
 
-	// Wire auth resolver into titling so it can resolve keychain-stored keys
-	// without depending on a prior regular prompt having called SetProviderKey.
-	titling.SetAuthResolver(func(providerName string) {
-		if key, err := resolver.ResolveKey(providerName); err == nil && key != "" {
-			providers.SetProviderKey(providerName, key)
+	// Wire the process-wide (unattributed) credential-attachment hook into
+	// titling: attach an authenticator built from the resolver's five levels
+	// directly to the request context, replacing the old
+	// resolve-then-SetProviderKey global write (R-02, R-23). Every
+	// context.Context titling passes through here is the unattributed one
+	// (generate_title carries no principal on the wire today), so this
+	// mirrors B-22's pre-existing zero-config behavior exactly.
+	unattributedCredentials := auth.NewCredentialContext(nil, resolver, nil)
+	attachUnattributedAuth := func(ctx context.Context, providerName string) context.Context {
+		a, err := unattributedCredentials.Authenticator(ctx, providerName)
+		if err != nil || a == nil {
+			return ctx
 		}
-	})
+		return providers.WithRequestCredential(ctx, a)
+	}
+	titling.SetAuthResolver(attachUnattributedAuth)
 
-	// Wire auth resolver into compaction so LLM-based summarization can
-	// resolve keychain-stored keys (same pattern as titling above).
-	compaction.SetAuthResolver(func(providerName string) {
-		if key, err := resolver.ResolveKey(providerName); err == nil && key != "" {
-			providers.SetProviderKey(providerName, key)
-		}
-	})
+	// Wire the same hook into compaction (same pattern as titling above). A
+	// session-scoped compaction call authenticates as the acting principal
+	// via compaction.SummarizeForPrincipal instead -- see
+	// backend.attachAuthFor -- so this process-wide hook only fires for the
+	// unattributed fallback path.
+	compaction.SetAuthResolver(attachUnattributedAuth)
 
 	sock, sockErr := resolveSocketPath()
 	if sockErr != nil {
@@ -269,9 +288,20 @@ func cmdServe(flags map[string]string) {
 	}
 
 	srv.SetConfig(cfg)
+	// SetConfig built every telemetry collector, so a retry queue none of
+	// them owns belongs to a target that is no longer configured.
+	telemetry.SweepOrphanRetryQueues(utils.IonDir())
 	srv.SetVersion(version)
 	srv.SessionManager().SetEngineBuildIdentity(version)
 	srv.SetAuthResolver(resolver)
+
+	// Register the process-wide "client" PrincipalCredentialSource (FR-05
+	// child 09, SC-1): asks a connected session's client for a per-principal
+	// credential via the engine_credential_request/credential_response
+	// bridge before falling through to the resolver's process-wide levels.
+	// Registered once here, not per-session -- auth.RegisterPrincipalSource
+	// is a single global registry keyed by Name().
+	srv.SessionManager().RegisterClientCredentialSource()
 
 	// Engine-owned operator or machine identity. Token acquisition routes
 	// through one generic registry; only a real operator manager is attached to
@@ -317,25 +347,12 @@ func cmdServe(flags map[string]string) {
 		}
 	}
 
-	// Authenticated log egress: when egressTokenScope is configured, every
-	// flush mints a fresh configured-identity bearer token for that scope.
-	if cfg.Logging != nil && cfg.Logging.EgressTokenScope != "" {
-		scope := cfg.Logging.EgressTokenScope
-		audience := cfg.Logging.EgressTokenAudience
-		utils.SetEgressAuthHeaderProvider(func() map[string]string {
-			provider := auth.CurrentTokenProvider()
-			if provider == nil {
-				return nil
-			}
-			token, err := provider.GetTokenWithAudience(context.Background(), scope, audience)
-			if err != nil {
-				utils.LogWithFields(utils.LevelError, "main", "egress token mint failed; flush proceeds with static headers", map[string]any{"error": err.Error()})
-				return nil
-			}
-			return map[string]string{"Authorization": "Bearer " + token}
-		})
-		utils.LogWithFields(utils.LevelInfo, "main", "egress auth header provider installed", map[string]any{"tag": scope})
-	}
+	// Authenticated log egress and OTLP export: every flush or export mints a
+	// fresh bearer token from the identity provider or the machine identity
+	// the config names. One resolver builds each named identity once.
+	exportTokens := newTokenSourceResolver(cfg.Auth)
+	installEgressAuthWith(cfg, exportTokens)
+	installOtelExportAuth(cfg, exportTokens)
 
 	// Shipping-responsibility matrix: when the matrix assigns the engine
 	// non-engine sources (desktop / ios / telemetry files), start the file
@@ -349,9 +366,9 @@ func cmdServe(flags map[string]string) {
 			}
 		}
 		if len(tailed) > 0 {
-			if tailer := utils.StartEgressTailer(tailed, utils.ActiveEgressForwarder()); tailer != nil {
-				defer tailer.Stop()
-			}
+			// Stopped by utils.ShutdownLogEgress at the end of shutdown, before
+			// the forwarder it feeds is drained.
+			utils.StartEgressTailer(tailed, utils.ActiveEgressForwarder())
 		}
 	}
 
@@ -405,14 +422,25 @@ func cmdServe(flags map[string]string) {
 		}
 	}()
 
-	// Memory-pressure monitor: periodically logs heap footprint against the soft
-	// ceiling and the live session count, escalating to ERROR near the high-water
-	// mark. Closes the observability blind spot — before this, nothing recorded
-	// memory pressure approaching the level where the OS kills the daemon. The
-	// session-count closure avoids a cmd→internal/server import concern.
-	startMemoryMonitor(memLimitBytes, func() int {
-		return len(srv.SessionManager().ListSessions())
-	})
+	// System Metrics sampler: host load, the engine's process tree, and the
+	// Go runtime. It logs a sample every background interval (escalating to
+	// ERROR near the soft heap ceiling, which is what records memory pressure
+	// approaching the level where the OS kills the daemon) and serves
+	// get_system_metrics / system_metrics_watch. Disabled only when
+	// systemMetrics.enabled is false.
+	stopSystemMetricsExport := func() {}
+	if cfg.SystemMetrics.IsEnabled() {
+		sampler := sysmetrics.New(sysmetrics.Options{
+			Config:        cfg.SystemMetrics,
+			MemLimitBytes: memLimitBytes,
+			Sessions:      func() int { return len(srv.SessionManager().ListSessions()) },
+		})
+		srv.SetSystemMetrics(sampler)
+		stopSystemMetricsExport = startSystemMetricsExport(cfg, srv.Telemetry(), sampler)
+		sampler.Start()
+	} else {
+		utils.Log("serve", "system metrics sampling disabled by config")
+	}
 	if runtime.GOOS == "windows" {
 		fmt.Printf("Listening: tcp://%s\n", sock)
 	} else {
@@ -477,25 +505,50 @@ func cmdServe(flags map[string]string) {
 	// produce a graceful, breadcrumb-clean shutdown rather than an abrupt kill.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	// The reason the breadcrumb is finalized with once teardown completes.
+	// Captured in the shutdown arm so the "clean" record names what asked for
+	// the shutdown, not merely that one happened.
+	shutdownReason := ""
 	select {
 	case sig := <-sigCh:
-		utils.LogWithFields(utils.LevelInfo, "main", "received signal: , shutting down", map[string]any{"sig": sig})
-		writeClean(exitPath(), sig.String())
+		// sig.String() rather than sig: os.Signal marshals to its bare numeric
+		// value, so the field read `"sig": 15` and the message's signal name had
+		// already been removed (ADR-019 forbids an interpolated msg) — between
+		// them the name was lost from the log entirely.
+		shutdownReason = sig.String()
+		sigNum := 0
+		// Comma-ok: every signal this channel is registered for is a
+		// syscall.Signal, but a bare assertion here would turn an unexpected
+		// sender into a panic during shutdown. The name is the load-bearing
+		// field; the number is supporting detail that is simply omitted if the
+		// value is not a syscall.Signal.
+		if s, ok := sig.(syscall.Signal); ok {
+			sigNum = int(s)
+		}
+		utils.LogWithFields(utils.LevelInfo, "main", "received signal, shutting down", map[string]any{"sig": shutdownReason, "sig_num": sigNum})
+		writeStopping(exitPath(), shutdownReason)
 		// Best-effort durability: persist any in-flight conversation before
 		// the run goroutines are cancelled by srv.Stop(). This guarantees the
 		// user's most recent prompt and any complete assistant blocks survive
 		// graceful shutdown (Electron quit, kill -TERM, Ctrl+C). SIGKILL
 		// bypasses this; per-event Save() in the agent loop covers that.
 		b.FlushConversations()
-		if err := srv.Stop(); err != nil {
-			utils.LogWithFields(utils.LevelError, "main", "server stop failed during shutdown", map[string]any{"error": utils.ErrStr(err)})
-		}
+		stopServerBounded(srv, cfg.Timeouts.Shutdown())
 	case <-srv.Done():
 		utils.Log("main", "shutdown command received, shutting down")
-		writeClean(exitPath(), "shutdown-cmd")
+		shutdownReason = "shutdown-cmd"
+		writeStopping(exitPath(), shutdownReason)
 		b.FlushConversations()
-		// srv.Stop() already called by the shutdown command handler.
+		// The shutdown command handler started srv.Stop() on its own goroutine,
+		// and Done() closes as Stop begins, not when it ends. Stop is
+		// sync.Once-guarded, so this call joins the in-flight teardown (session
+		// telemetry close, server collectors) under the same budget instead of
+		// exiting while it is still running.
+		stopServerBounded(srv, cfg.Timeouts.Shutdown())
 	}
+
+	// Flush the last OTLP metrics export before the process exits.
+	stopSystemMetricsExport()
 
 	if relay != nil {
 		if err := relay.Close(); err != nil {
@@ -508,6 +561,13 @@ func cmdServe(flags map[string]string) {
 			utils.LogWithFields(utils.LevelWarn, "main", "pid lock release failed during shutdown", map[string]any{"error": utils.ErrStr(err)})
 		}
 	}
+
+	// Teardown is done: finalize the breadcrumb from "stopping" to "clean". This
+	// is deliberately the LAST thing before the process unwinds — the record
+	// means "shutdown finished", and a process killed before reaching here
+	// leaves the "stopping" record that logPriorExit reports as a killed
+	// shutdown on the next start.
+	writeClean(exitPath(), shutdownReason)
 	// Report any log lines the per-message rate limiter withheld and never got a
 	// successor line to account for. A storm that stopped just before shutdown
 	// would otherwise take its count to the grave, which is the one case where
@@ -521,6 +581,10 @@ func cmdServe(flags map[string]string) {
 			"window_secs":      s.WindowSecs,
 		})
 	}
+	// Final egress drain: the tailer's last lines and every record buffered
+	// since the last periodic flush, including the lines above. Nothing logged
+	// after this point ships.
+	utils.ShutdownLogEgress(logEgressShutdownTimeout)
 
 	fmt.Println("Engine stopped.")
 }

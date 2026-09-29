@@ -8,8 +8,8 @@
 
 import type { ColorPalette } from '../../../theme-tokens'
 import { categoricalColorPalette } from './categorical-palette'
-import { toValueList } from '../../../../shared/graph-model-resolve'
-import type { ChannelBinding, ChannelValueType } from '../../../../shared/graph-view-types'
+import { toValueList } from '@ion/shared/graph-model-resolve'
+import type { ChannelBinding, ChannelValueType } from '@ion/shared/graph-view-types'
 
 export type ChannelKind = 'color' | 'shape' | 'size' | 'thickness' | 'opacity'
 

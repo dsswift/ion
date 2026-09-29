@@ -10,7 +10,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentStateUpdate } from "../../../shared/types";
+import type { AgentStateUpdate } from "@ion/shared/types";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -49,7 +49,7 @@ vi.mock("framer-motion", () => ({
     ),
   },
 }));
-vi.mock("../../stores/sessionStore", () => ({
+vi.mock("@ion/server/store/sessionStore", () => ({
   useSessionStore: (selector: (state: Record<string, unknown>) => unknown) =>
     selector({
       abortDispatch: vi.fn(),

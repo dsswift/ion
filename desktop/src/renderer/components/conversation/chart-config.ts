@@ -23,7 +23,7 @@ import {
   type ChartAxisId,
   type ChartSpec,
   type ChartValueFormat,
-} from '../../../shared/chart-schema'
+} from '@ion/shared/chart-schema'
 
 /**
  * Default series colors, in assignment order.

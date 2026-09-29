@@ -1,21 +1,19 @@
 import React, { useState, useMemo, useCallback, useSyncExternalStore } from 'react'
 import { useColors } from '../theme'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { getFileIcon } from '../components/FileExplorerIcons'
-import { rDebug, rWarn } from '../rendererLogger'
 import { openClickedLink } from '../lib/open-link'
-import { surfaceRouter } from '../lib/file-open-router'
-import { fileOpenIntent, isRenderableHtml, type FileClickModifiers } from '../lib/open-file-intent'
-import { segmentText, EDITABLE_EXTS, type TextSegment } from './link-segments'
+import { openFileLink } from '../lib/open-file-link'
+import { type FileClickModifiers } from '../lib/open-file-intent'
+import { segmentText, type TextSegment } from './link-segments'
 import { readNavigableKind } from './remarkNavigableLinks'
 import { isModKey } from '../platform/mod-key'
-import { isAbsolutePath, joinPath } from '../../shared/paths'
 
 // The pure pieces live in their own modules so the remark plugin stays loadable
 // without React, the theme, or the session store (this file imports all three,
 // and the theme touches `document` at import time). Re-exported here because
 // every existing consumer imports them from this path.
-export { segmentText, LINK_RE, EDITABLE_EXTS, type TextSegment } from './link-segments'
+export { segmentText, LINK_RE, type TextSegment } from './link-segments'
 export { remarkNavigableLinks, readNavigableKind, NAVIGABLE_DATA_ATTR } from './remarkNavigableLinks'
 
 // ─── CMD key tracking (singleton — one listener pair for all components) ───
@@ -153,21 +151,6 @@ export const LinkSegment = React.memo(function LinkSegment({
 
 // ─── Hook: returns navigable text markdown component + file/url openers ───
 
-/** Hand a file to the operating system's default application for its type. */
-async function openNatively(resolved: string): Promise<void> {
-  rDebug('navigable-links', 'opening file in native application', { resolved })
-  try {
-    const result = await window.ion.fsOpenNative(resolved)
-    if (!result.ok) {
-      rWarn('navigable-links', 'native file open rejected', { resolved, error: result.error ?? 'unknown error' })
-      return
-    }
-    rDebug('navigable-links', 'native file open succeeded', { resolved })
-  } catch (err) {
-    rWarn('navigable-links', 'native file open failed', { resolved, error: String(err) })
-  }
-}
-
 export function useNavigableText() {
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const workingDir = useSessionStore((s) => {
@@ -175,67 +158,10 @@ export function useNavigableText() {
     return tab?.workingDirectory || '~'
   })
 
-  const onOpenFile = useCallback(async (path: string, event?: FileClickModifiers) => {
-    const homeDir = useSessionStore.getState().staticInfo?.homePath || '/Users/' + (process.env.USER || 'user')
-    const expanded = path.startsWith('~/') ? homeDir + path.slice(1) : path
-    const resolved = isAbsolutePath(expanded) ? expanded : joinPath(workingDir, expanded)
-    rDebug('navigable-links', 'checking file target', { raw_path: path, resolved })
-    let exists = false
-    try {
-      const result = await window.ion.fsExists(resolved)
-      exists = result.exists
-    } catch (err) {
-      rWarn('navigable-links', 'file existence check failed', { raw_path: path, resolved, error: String(err) })
-      return
-    }
-    if (!exists) {
-      rDebug('navigable-links', 'file does not exist, ignoring cmd-click', { raw_path: path, resolved })
-      return
-    }
-    rDebug('navigable-links', 'file target exists', { raw_path: path, resolved })
-    const ext = resolved.includes('.') ? '.' + resolved.split('.').pop()!.toLowerCase() : ''
-    const intent = fileOpenIntent(event)
-
-    // ⌥⌘ hands the file to the operating system, whatever it is. Same meaning
-    // as ⌥⌘ on a web link: "not in Ion, in my own application."
-    if (intent === 'native') {
-      await openNatively(resolved)
-      return
-    }
-
-    // ⌘ on an HTML file RENDERS it, matching what the file explorer has always
-    // done. Before this the same file opened as source here and as a page
-    // there, which is the inconsistency this resolves. ⇧⌘ still reads source.
-    if (intent === 'view' && isRenderableHtml(resolved)) {
-      const router = surfaceRouter()
-      if (router) {
-        rDebug('navigable-links', 'opening html preview in Studio surface', { resolved })
-        router.openHtml(resolved)
-        return
-      }
-      // The Overlay has no browser surface, so source is the honest fallback
-      // rather than silently doing nothing.
-      rDebug('navigable-links', 'no surface router; opening html as source', { resolved })
-    }
-
-    if (EDITABLE_EXTS.has(ext) && activeTabId) {
-      const router = surfaceRouter()
-      if (router) {
-        rDebug('navigable-links', 'opening text file in Studio surface', { tab_id: activeTabId, working_directory: workingDir, resolved })
-        try {
-          router.openTextFile(workingDir, activeTabId, resolved)
-        } catch (err) {
-          rWarn('navigable-links', 'Studio surface file open failed', { tab_id: activeTabId, working_directory: workingDir, resolved, error: String(err) })
-        }
-        return
-      }
-      rDebug('navigable-links', 'opening text file in overlay editor', { tab_id: activeTabId, working_directory: workingDir, resolved })
-      useSessionStore.getState().openFileInEditor(workingDir, activeTabId, resolved)
-      return
-    }
-
-    await openNatively(resolved)
-  }, [activeTabId, workingDir])
+  const onOpenFile = useCallback(
+    (path: string, event?: FileClickModifiers) => openFileLink({ tabId: activeTabId, path, cwd: workingDir, event, tag: 'navigable-links' }),
+    [activeTabId, workingDir],
+  )
 
   const onOpenUrl = useCallback((url: string, event?: { metaKey?: boolean; ctrlKey?: boolean; altKey?: boolean }) => {
     // The real click is forwarded rather than a synthesized { metaKey: true }.

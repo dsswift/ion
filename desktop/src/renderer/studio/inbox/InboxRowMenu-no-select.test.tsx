@@ -20,7 +20,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { TabState } from '../../../shared/types'
+import type { TabState } from '@ion/shared/types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -41,7 +41,7 @@ const state = {
   deleteConversationTab: vi.fn(async () => undefined),
 }
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (value: typeof state) => unknown) => selector(state),
     { getState: () => state },
@@ -83,11 +83,14 @@ beforeEach(() => {
   document.body.appendChild(host)
   root = createRoot(host)
   // The row menu now includes the same convert-to-worktree gate the tab-strip
-  // menu uses, which probes window.ion.gitIsRepo on mount. Stub it closed (not
+  // menu uses, which probes the gitIsRepo bridge call on mount. Stub it closed (not
   // a repo) so it stays inert for this bubbling-regression test.
   window.ion = {
     gitIsRepo: vi.fn().mockResolvedValue({ isRepo: false }),
     gitChanges: vi.fn().mockResolvedValue({ files: [] }),
+    // The menu's Transfer gate asks which other Environments are connected.
+    hostGetConnections: vi.fn().mockResolvedValue([]),
+    onHostConnections: vi.fn(() => () => {}),
   } as unknown as typeof window.ion
 })
 afterEach(() => {

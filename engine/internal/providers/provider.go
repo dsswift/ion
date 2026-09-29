@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -115,7 +116,7 @@ func ResolveProvider(model string) LlmProvider {
 	defer mu.RUnlock()
 
 	// Check model registry first
-	if info, ok := modelRegistry[model]; ok {
+	if info, ok := lookupModelInfoLocked(model); ok {
 		p := providerRegistry[info.ProviderID]
 		if p != nil {
 			utils.LogWithFields(utils.LevelInfo, "Providers", "resolve provider registry hit", map[string]any{"model": model, "provider": p.ID()})
@@ -174,14 +175,67 @@ func ResolveProvider(model string) LlmProvider {
 	return nil
 }
 
-// GetModelInfo returns metadata for a registered model.
+// GetModelInfo returns metadata for a registered model. A provider-qualified
+// id ("<providerID>/<model>") resolves to the bare entry when that entry is
+// served by the named provider; see lookupModelInfoLocked.
 func GetModelInfo(model string) *types.ModelInfo {
 	mu.RLock()
 	defer mu.RUnlock()
-	if info, ok := modelRegistry[model]; ok {
+	if info, ok := lookupModelInfoLocked(model); ok {
 		return &info
 	}
 	return nil
+}
+
+// lookupModelInfoLocked is the one registry lookup behind GetModelInfo,
+// ProviderNameForModel and ResolveProvider. Caller holds mu (read or write).
+//
+// An exact id wins. Otherwise a provider-qualified id "<providerID>/<model>"
+// resolves to the bare entry when the registry serves that bare id from that
+// exact provider. Qualified ids are an accepted input (ResolveProvider routes
+// them, a client sends one to pin an explicit pick to a provider so a
+// defaultProvider preference cannot move it), but only the gateway provider
+// understood them: every registry consumer -- backend routing, the context
+// window, thinking resolution, image detection -- missed and fell back to
+// "unknown model", which routed an explicit "anthropic/<model>" pick to the
+// keyed API path instead of the authenticated CLI. OpenRouter-style ids whose
+// slash is part of the model id ("deepseek/deepseek-chat") are registered
+// under their full id and take the exact branch; a qualified id whose bare
+// half is served by a different provider stays unresolved rather than
+// silently rerouting.
+func lookupModelInfoLocked(model string) (types.ModelInfo, bool) {
+	if info, ok := modelRegistry[model]; ok {
+		return info, true
+	}
+	idx := strings.Index(model, "/")
+	if idx <= 0 || idx == len(model)-1 {
+		return types.ModelInfo{}, false
+	}
+	providerID, bare := model[:idx], model[idx+1:]
+	info, ok := modelRegistry[bare]
+	if !ok || info.ProviderID != providerID {
+		return types.ModelInfo{}, false
+	}
+	utils.LogWithFields(utils.LevelDebug, "Registry", "provider-qualified id resolved to bare entry", map[string]any{"model": model, "provider": providerID, "bare": bare})
+	return info, true
+}
+
+// WireModelID returns the model id to put on a provider's or CLI's wire for
+// model: the bare id when model is a provider-qualified id the registry
+// resolves, otherwise model unchanged. The qualifier exists so two providers
+// can serve one bare id inside the engine; no provider API and no delegated
+// CLI accepts it.
+func WireModelID(model string) string {
+	mu.RLock()
+	defer mu.RUnlock()
+	if _, exact := modelRegistry[model]; exact {
+		return model
+	}
+	info, ok := lookupModelInfoLocked(model)
+	if !ok {
+		return model
+	}
+	return StripProviderQualifier(info.ProviderID, model)
 }
 
 // RegisterModel adds a model to the global model registry.
@@ -207,7 +261,7 @@ func ProviderNameForModel(model string) string {
 	mu.RLock()
 	defer mu.RUnlock()
 
-	if info, ok := modelRegistry[model]; ok {
+	if info, ok := lookupModelInfoLocked(model); ok {
 		utils.LogWithFields(utils.LevelDebug, "Registry", "provider name for model from registry", map[string]any{"model": model, "provider": info.ProviderID})
 		return info.ProviderID
 	}
@@ -309,6 +363,13 @@ func ListModels() []types.ModelEntry {
 			// /models payload must never be clobbered by stale catalog data).
 			for _, dm := range discovered {
 				if catalog, ok := catalogLookup[dm.ID]; ok {
+					// A gateway that serves a catalog model under the same id
+					// rarely publishes a name for it; without this fill the same
+					// model is named under its public provider and unnamed under
+					// the gateway.
+					if dm.DisplayName == "" {
+						dm.DisplayName = catalog.DisplayName
+					}
 					if dm.ContextWindow == 0 {
 						dm.ContextWindow = catalog.ContextWindow
 					}
@@ -398,6 +459,20 @@ func ListModels() []types.ModelEntry {
 		}
 	}
 
+	// Last naming fallback: an entry no payload or catalog named gets a name
+	// derived from its id, so every consumer sees one name for it.
+	for i := range entries {
+		if entries[i].DisplayName != "" {
+			continue
+		}
+		bare := StripProviderQualifier(entries[i].ProviderID, entries[i].ID)
+		derived := DeriveModelDisplayName(bare)
+		utils.LogWithFields(utils.LevelDebug, "Providers", "list_models: unnamed model, derived display name from id", map[string]any{
+			"provider": entries[i].ProviderID, "model": entries[i].ID, "derived": derived, "derived_ok": derived != "",
+		})
+		entries[i].DisplayName = derived
+	}
+
 	sort.Slice(entries, func(i, j int) bool {
 		if entries[i].ProviderID != entries[j].ProviderID {
 			return entries[i].ProviderID < entries[j].ProviderID
@@ -424,31 +499,6 @@ func ListProviderIDs() []string {
 	return ids
 }
 
-// SetProviderKey stores a resolved API key for a provider. Provider
-// implementations read this when constructing HTTP requests.
-func SetProviderKey(providerID, key string) {
-	mu.Lock()
-	defer mu.Unlock()
-	utils.LogWithFields(utils.LevelDebug, "Providers", "set provider key", map[string]any{"provider": providerID, "count": len(key)})
-	if providerKeys == nil {
-		providerKeys = make(map[string]string)
-	}
-	providerKeys[providerID] = key
-}
-
-// GetProviderKey returns a previously stored API key for the given provider.
-func GetProviderKey(providerID string) string {
-	mu.RLock()
-	defer mu.RUnlock()
-	if providerKeys == nil {
-		utils.LogWithFields(utils.LevelDebug, "Registry", "get provider key no keys map", map[string]any{"provider": providerID})
-		return ""
-	}
-	key := providerKeys[providerID]
-	utils.LogWithFields(utils.LevelDebug, "Registry", "get provider key", map[string]any{"provider": providerID, "status": key != "", "count": len(key)})
-	return key
-}
-
 // ApplyConfig re-registers providers that have config overrides (baseURL,
 // authHeader, etc.). Call after loading engine config.
 //
@@ -458,10 +508,25 @@ func GetProviderKey(providerID string) string {
 // an on-premise endpoint that implements the /v1/images/generations API) to
 // declare image models via modelKind="image" in their models.json entry and
 // have those models route through runImageLoop without additional setup.
+//
+// No credential is passed into any provider constructor here (R-23):
+// cfg.APIKey is intentionally never read. A provider's credential resolves
+// per request from the acting principal's CredentialContext, which falls
+// through to auth.Resolver's process-wide levels for an unattributed run
+// (R-10) -- the SAME resolver whose config-file level already carries
+// engine.json's providers.<name>.apiKey (auth/resolver.go's
+// SetProgrammatic path, wired at startup from this same config). A key in
+// engine.json therefore still authenticates; it just no longer does so by
+// being baked into a provider singleton (R-03).
+//
+// cfg.AuthHeader is registered with auth.RegisterProviderAuthHeader so the
+// resolver-fallback authenticator (an unattributed or fall-through run) uses
+// the SAME header style as the request-scoped path, for both first-class and
+// custom-baseURL/gateway providers.
 func ApplyConfig(configs map[string]types.ProviderConfig) {
 	for name, cfg := range configs {
+		auth.RegisterProviderAuthHeader(name, cfg.AuthHeader)
 		opts := &ProviderOptions{
-			APIKey:     cfg.APIKey,
 			BaseURL:    cfg.BaseURL,
 			AuthHeader: cfg.AuthHeader,
 		}
@@ -486,7 +551,6 @@ func ApplyConfig(configs map[string]types.ProviderConfig) {
 				}
 				compatOpts := CompatibleProviderOptions{
 					ID:         name,
-					APIKey:     cfg.APIKey,
 					BaseURL:    baseURL,
 					AuthHeader: cfg.AuthHeader,
 				}
@@ -500,7 +564,6 @@ func ApplyConfig(configs map[string]types.ProviderConfig) {
 				// provider so modelKind="image" entries route correctly.
 				RegisterImageProvider(NewOpenAIImageProvider(&ProviderOptions{
 					ID:         name,
-					APIKey:     cfg.APIKey,
 					BaseURL:    baseURL,
 					AuthHeader: cfg.AuthHeader,
 				}))
@@ -512,13 +575,11 @@ func ApplyConfig(configs map[string]types.ProviderConfig) {
 				// through runImageLoop without additional config.
 				RegisterProvider(NewGatewayProvider(CompatibleProviderOptions{
 					ID:         name,
-					APIKey:     cfg.APIKey,
 					BaseURL:    cfg.BaseURL,
 					AuthHeader: cfg.AuthHeader,
 				}))
 				RegisterImageProvider(NewOpenAIImageProvider(&ProviderOptions{
 					ID:         name,
-					APIKey:     cfg.APIKey,
 					BaseURL:    cfg.BaseURL,
 					AuthHeader: cfg.AuthHeader,
 				}))
@@ -528,8 +589,6 @@ func ApplyConfig(configs map[string]types.ProviderConfig) {
 		}
 	}
 }
-
-var providerKeys map[string]string
 
 // ResetRegistries clears both registries. Used for testing only.
 func ResetRegistries() {

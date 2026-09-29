@@ -4,9 +4,8 @@ import SwiftUI
 struct TabListNewTabSheet: View {
     @Environment(SessionViewModel.self) private var viewModel
     let projects: [RemoteProject]
-    let pendingPinToGroupId: String?
     @Binding var isPresented: Bool
-    let onNewConversation: (_ project: RemoteProject, _ pinToGroupId: String?) -> Void
+    let onNewConversation: (_ project: RemoteProject) -> Void
     let onCreateWorktree: (_ repoPath: String, _ sourceBranch: String) -> Void
     let onCreateWorktreeConversation: (_ repoPath: String, _ sourceBranch: String) -> Void
     let onCreateTerminalTab: (_ directory: String) -> Void
@@ -27,7 +26,7 @@ struct TabListNewTabSheet: View {
                             Spacer()
                             Button {
                                 isPresented = false
-                                onNewConversation(project, pendingPinToGroupId)
+                                onNewConversation(project)
                             } label: {
                                 Image(systemName: "plus")
                             }
@@ -58,7 +57,7 @@ struct TabListNewTabSheet: View {
                     }
                 }
             }
-            .navigationTitle(pendingPinToGroupId == nil ? "New Conversation" : "New Conversation in Group")
+            .navigationTitle("New Conversation")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

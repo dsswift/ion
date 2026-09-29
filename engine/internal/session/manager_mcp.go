@@ -229,6 +229,8 @@ func (m *Manager) McpServerStatuses(projectDir string) []types.McpServerStatus {
 			Transport:     cfg.Type,
 			URL:           cfg.URL,
 			Command:       cfg.Command,
+			Args:          cfg.Args,
+			OAuth:         mcpOAuthStatus(cfg.OAuth),
 			Connected:     isConnected,
 			Authenticated: mcp.IsAuthenticated(name),
 			ToolCount:     toolCount,
@@ -255,6 +257,26 @@ func (m *Manager) McpServerStatuses(projectDir string) []types.McpServerStatus {
 		statuses = append(statuses, status)
 	}
 	return statuses
+}
+
+// mcpOAuthStatus reports a configured OAuth block without its secret, or nil
+// when the block configures nothing.
+func mcpOAuthStatus(oauth *types.McpOAuthConfig) *types.McpOAuthStatus {
+	if oauth == nil {
+		return nil
+	}
+	status := types.McpOAuthStatus{
+		ClientID:        oauth.ClientID,
+		AuthURL:         oauth.AuthURL,
+		TokenURL:        oauth.TokenURL,
+		Scope:           oauth.Scope,
+		Resource:        oauth.Resource,
+		HasClientSecret: oauth.ClientSecret != "",
+	}
+	if status == (types.McpOAuthStatus{}) {
+		return nil
+	}
+	return &status
 }
 
 // SessionKeys returns every live session key.
@@ -333,11 +355,13 @@ func (m *Manager) ReconnectMcpServer(name string) int {
 		// none, which would silently strip the server's tools mid-conversation.
 		conn, err := mcp.Connect(name, cfg)
 		if err != nil {
+			m.recordMcpConnectError(name, err)
 			utils.LogWithFields(utils.LevelError, "session", "mcp reconnect failed; keeping existing connection", map[string]any{
 				"serverName": name, "key": key, "error": utils.ErrStr(err),
 			})
 			continue
 		}
+		m.clearMcpConnectError(name)
 
 		m.mu.Lock()
 		cur, stillLive := m.sessions[key]
@@ -369,19 +393,11 @@ func (m *Manager) ReconnectMcpServer(name string) int {
 		if replaced != nil {
 			// Close the superseded connection so its transport and any session
 			// the remote server holds are released.
-			//
-			// Close also unregisters the name from the package-level connection
-			// registry that ListMcpResources / ReadMcpResource resolve through,
-			// and the new connection registered itself under that same name
-			// during Connect. Closing second would therefore evict the LIVE
-			// entry and leave those two tools unable to find the server. So the
-			// registry entry is restored immediately after.
 			if closeErr := replaced.Close(); closeErr != nil {
 				utils.LogWithFields(utils.LevelInfo, "session", "mcp reconnect: closing replaced connection failed", map[string]any{
 					"serverName": name, "key": key, "error": closeErr.Error(),
 				})
 			}
-			mcp.Register(conn)
 		}
 
 		reconnected++

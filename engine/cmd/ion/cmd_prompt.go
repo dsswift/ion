@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -30,19 +31,28 @@ func teardownSend(sock, cmd, key string) {
 	}
 }
 
-func cleanupEphemeralPrompt(sock, key string, serverStarted bool) {
+// spawnedServerExitMargin is slack on top of the engine's own shutdown budget
+// before the CLI stops waiting for an engine it started.
+const spawnedServerExitMargin = 5 * time.Second
+
+// cleanupEphemeralPrompt removes the ephemeral session. When this CLI started
+// the engine (spawned non-nil), it also shuts that engine down and waits for
+// it to exit, bounded by the engine's configured shutdown budget.
+func cleanupEphemeralPrompt(sock, key string, spawned *os.Process) {
 	// stop_session cancels an active run before removing the ephemeral session.
 	teardownSend(sock, "stop_session", key)
-	if serverStarted {
-		teardownSend(sock, "shutdown", "")
+	if spawned == nil {
+		return
 	}
+	teardownSend(sock, "shutdown", "")
+	waitForSpawnedServerExit(spawned, serveShutdownBudget(config.ResolveTimeouts())+spawnedServerExitMargin)
 }
 
 func cmdPrompt(positional []string, flags map[string]string, listFlags map[string][]string) {
 	text, err := resolvePromptText(positional, os.Stdin)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-		os.Exit(1)
+		exitPrompt(1)
 	}
 
 	// Parse --timeout flag (duration string like 60s, 5m, 2h).
@@ -51,13 +61,15 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 		d, err := time.ParseDuration(t)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: invalid --timeout value %q: %s\n", t, err)
-			os.Exit(1)
+			exitPrompt(1)
 		}
 		timeout = d
 	}
 
 	sock := socketPathOrExit()
-	serverStarted := ensureServer(sock)
+	spawned := ensureServer(sock)
+	startPromptEgress(spawned)
+	defer drainPromptEgress()
 
 	key := flags["key"]
 	ephemeral := key == ""
@@ -65,7 +77,7 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 		b := make([]byte, 8)
 		if _, err := rand.Read(b); err != nil {
 			fmt.Fprintf(os.Stderr, "Error generating session key: %s\n", err)
-			os.Exit(1)
+			exitPrompt(1)
 		}
 		key = "prompt-" + hex.EncodeToString(b)
 
@@ -89,11 +101,11 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 		result, err := connectAndSend(sock, startMsg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error starting session: %s\n", err)
-			os.Exit(1)
+			exitPrompt(1)
 		}
 		if errMsg, ok := result["error"].(string); ok && errMsg != "" {
 			fmt.Fprintf(os.Stderr, "Error starting session: %s\n", errMsg)
-			os.Exit(1)
+			exitPrompt(1)
 		}
 	} else {
 		cwd, _ := os.Getwd() //nolint:errcheck // cwd failure falls back to empty working directory
@@ -116,12 +128,12 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 		result, err := connectAndSend(sock, startMsg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error starting session: %s\n", err)
-			os.Exit(1)
+			exitPrompt(1)
 		}
 		if errMsg, ok := result["error"].(string); ok && errMsg != "" {
 			if !strings.Contains(errMsg, "already exists") {
 				fmt.Fprintf(os.Stderr, "Error starting session: %s\n", errMsg)
-				os.Exit(1)
+				exitPrompt(1)
 			}
 		}
 	}
@@ -176,16 +188,16 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 		result, err := connectAndSend(sock, msg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-			os.Exit(1)
+			exitPrompt(1)
 		}
 		if errMsg, ok := result["error"].(string); ok && errMsg != "" {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", errMsg)
-			os.Exit(1)
+			exitPrompt(1)
 		}
 		timedOut := streamUntilIdle(sock, key, timeout)
-		cleanupEphemeralPrompt(sock, key, serverStarted)
+		cleanupEphemeralPrompt(sock, key, spawned)
 		if timedOut {
-			os.Exit(124)
+			exitPrompt(124)
 		}
 		return
 	}
@@ -194,18 +206,18 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 		result, err := connectAndSend(sock, msg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-			os.Exit(1)
+			exitPrompt(1)
 		}
 		if errMsg, ok := result["error"].(string); ok && errMsg != "" {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", errMsg)
-			os.Exit(1)
+			exitPrompt(1)
 		}
 		timedOut := attachStream(sock, key, timeout)
 		if timedOut {
 			if ephemeral {
-				cleanupEphemeralPrompt(sock, key, serverStarted)
+				cleanupEphemeralPrompt(sock, key, spawned)
 			}
-			os.Exit(124)
+			exitPrompt(124)
 		}
 		return
 	}
@@ -213,7 +225,7 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 	result, err := connectAndSend(sock, msg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-		os.Exit(1)
+		exitPrompt(1)
 	}
 
 	if outputMode == "json" {
@@ -224,14 +236,14 @@ func cmdPrompt(positional []string, flags map[string]string, listFlags map[strin
 
 	if errMsg, ok := result["error"].(string); ok && errMsg != "" {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", errMsg)
-		os.Exit(1)
+		exitPrompt(1)
 	}
 	if ok, _ := result["ok"].(bool); ok { //nolint:errcheck // missing/!bool ok treated as failure -> prints result JSON
 		if flags["attach"] == "true" {
 			timedOut := streamUntilIdle(sock, key, timeout)
 			if timedOut {
 				fmt.Fprintf(os.Stderr, "\nTimeout: prompt exceeded %s deadline\n", timeout)
-				os.Exit(124)
+				exitPrompt(124)
 			}
 		} else {
 			fmt.Println("Prompt sent. Use `ion attach` to stream output.")

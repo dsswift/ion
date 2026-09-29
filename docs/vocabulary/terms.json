@@ -27,6 +27,24 @@
       ]
     },
     {
+      "id": "account-setting",
+      "term": "Account Setting",
+      "definition": "A setting that belongs to one person but only makes sense on one Environment, because it names models or directories that exist there. It is stored in that server's per-identity overlay. Studio labels it Yours on this server.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "SETTINGS_REGISTRY",
+          "path": "packages/shared/src/settings-registry.ts"
+        }
+      ]
+    },
+    {
       "id": "agent",
       "term": "Agent",
       "definition": "One named actor that runs a prompt loop with its own model, tools, and system prompt. The root agent is the conversation itself. A sub-agent is an agent that the root agent or another agent starts.",
@@ -92,7 +110,7 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "agentBrowserInstanceId",
-          "path": "desktop/src/shared/studio-surface-types.ts"
+          "path": "packages/shared/src/studio-surface-types.ts"
         },
         {
           "platform": "studio",
@@ -204,7 +222,7 @@
     {
       "id": "automation-editor",
       "term": "Automation Editor",
-      "definition": "The shared Settings surface for Desktop Automation: one panel with three labeled sections (When / If / Then), not a wizard. It renders inline beside the source-aware rule list, offers only catalog-valid triggers, fields, operators, and finite values, derives action targets from the trigger, shows a plain-language preview, and disables Save until the rule is runnable. Constructs it cannot represent are shown read-only and preserved.",
+      "definition": "The shared Settings surface for Desktop Automation: one panel with three labeled sections (When / If / Then), not a wizard. It opens in a Settings Side Panel from the source-aware rule list, offers only catalog-valid triggers, fields, operators, and finite values, derives action targets from the trigger, shows a plain-language preview, and disables Save until the rule is runnable. Constructs it cannot represent are shown read-only and preserved.",
       "domain": "clients",
       "kind": "ui-component",
       "status": "canonical",
@@ -216,8 +234,8 @@
         {
           "platform": "desktop",
           "presentation": "ui",
-          "symbol": "export function AutomationEditor",
-          "path": "desktop/src/renderer/components/settings/AutomationEditor.tsx",
+          "symbol": "export function AutomationEditorPanel",
+          "path": "desktop/src/renderer/components/settings/pages/integrations/AutomationEditorPanel.tsx",
           "language": "typescript"
         },
         {
@@ -225,7 +243,14 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "AUTOMATION_TRIGGERS",
-          "path": "desktop/src/shared/automation-catalog.ts"
+          "path": "packages/shared/src/automation-catalog.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct AutomationEditorView",
+          "path": "ios/IonRemote/Views/Settings/Server/Automations/AutomationEditorView.swift"
         }
       ]
     },
@@ -283,6 +308,31 @@
       ]
     },
     {
+      "id": "builder-host",
+      "term": "Builder Host",
+      "definition": "The fleet host that builds a dev deploy's artifact for its own platform when the machine running `ion fleet` cannot: a Windows desktop from a Mac, a Linux Studio Server bundle, a Mac desktop for another CPU. The deploy ships the checkout there with a version stamp, builds once, fetches the artifact back, and installs that one artifact on every host of the platform, the builder included.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type BuildPlan",
+          "path": "engine/internal/fleet/builder.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "doc",
+          "language": "markdown",
+          "symbol": "Builds",
+          "path": "docs/deployment/fleet.md"
+        }
+      ]
+    },
+    {
       "id": "channel",
       "term": "Channel",
       "definition": "The relay pairing unit. One channel holds at most two peers and is named by an opaque channel identifier.",
@@ -327,21 +377,21 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "export function rebuildFromHistory",
-          "path": "desktop/src/main/chart-resource-store.ts"
+          "path": "server/src/persistence/chart-resource-store.ts"
         },
         {
           "platform": "desktop",
           "presentation": "code",
           "language": "typescript",
           "symbol": "export async function reconcileConversationCharts",
-          "path": "desktop/src/main/chart-reconcile.ts"
+          "path": "server/src/store/chart-reconcile.ts"
         },
         {
           "platform": "desktop",
           "presentation": "code",
           "language": "typescript",
           "symbol": "export function reconcileChartsForBranch",
-          "path": "desktop/src/renderer/lib/chart-reconcile-request.ts"
+          "path": "server/src/store/chart-reconcile-request.ts"
         }
       ],
       "notes": "Desktop-owned. The Desktop is the producer for the chart resource kind, so it rebuilds the records and fans the deltas; iOS and the Studio mirror receive them through the generic resource broker."
@@ -364,21 +414,21 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "export interface ChartSpec",
-          "path": "desktop/src/shared/chart-schema.ts"
+          "path": "packages/shared/src/chart-schema.ts"
         },
         {
           "platform": "desktop",
           "presentation": "code",
           "language": "typescript",
           "symbol": "export function parseChartToolInput",
-          "path": "desktop/src/shared/chart-parse.ts"
+          "path": "packages/shared/src/chart-parse.ts"
         },
         {
           "platform": "desktop",
           "presentation": "code",
           "language": "typescript",
           "symbol": "export function executeRenderChart",
-          "path": "desktop/src/main/studio-chart-tool.ts"
+          "path": "server/src/engine/studio-chart-tool.ts"
         },
         {
           "platform": "desktop",
@@ -482,6 +532,67 @@
           "language": "swift",
           "symbol": "CompactionRowView",
           "path": "ios/IonRemote/Views/CompactionRowView.swift"
+        }
+      ]
+    },
+    {
+      "id": "composer-action",
+      "term": "Composer Action",
+      "definition": "A row an extension adds to the + menu of the Input Bar through the Studio SDK. Choosing it sends a slash command the extension registered, through the normal prompt pipeline.",
+      "domain": "clients",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface ComposerAction",
+          "path": "packages/shared/src/studio-sdk-contract.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function useComposerActions",
+          "path": "desktop/src/renderer/components/composer/useComposerActions.tsx"
+        }
+      ]
+    },
+    {
+      "id": "composer-draft",
+      "term": "Composer Draft",
+      "definition": "The unsent prompt text held for a conversation. Owned by the server: it lives on the conversation pane, is written to the tabs file, and is read back at boot, so a half-written prompt survives a restart. A client commits its edits on a debounce and adopts the stored value when it opens the conversation, never while its own composer is focused.",
+      "domain": "clients",
+      "kind": "state",
+      "status": "canonical",
+      "aliases": [
+        "draft input",
+        "unsent prompt"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "setDraftInput",
+          "path": "server/src/store/slices/attachments-slice.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "useComposerDraft",
+          "path": "desktop/src/renderer/components/composer/useComposerDraft.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "adoptRemoteDraft",
+          "path": "ios/IonRemote/ViewModels/SessionViewModel+Drafts.swift"
         }
       ]
     },
@@ -643,32 +754,9 @@
           "presentation": "wire",
           "language": "typescript",
           "symbol": "export interface RemoteTabState",
-          "path": "desktop/src/main/remote/protocol-remote-tab.ts"
+          "path": "server/src/remote/protocol-remote-tab.ts"
         }
       ]
-    },
-    {
-      "id": "conversation-backfill",
-      "term": "Conversation backfill",
-      "definition": "Background retrieval of a conversation's older history pages after the newest page has rendered. The client shows the newest page immediately, then walks the page chain from newest to oldest until the transcript is complete, so scrolling back and jumping to an older row never wait on a round trip. The chain is sequential because each page carries the cursor for the next.",
-      "domain": "clients",
-      "kind": "runtime-mechanic",
-      "status": "canonical",
-      "aliases": [
-        "history prefetch",
-        "history backfill"
-      ],
-      "contract": "none",
-      "implementations": [
-        {
-          "platform": "ios",
-          "presentation": "code",
-          "language": "swift",
-          "symbol": "final class ConversationBackfill",
-          "path": "ios/IonRemote/ViewModels/ConversationBackfill.swift"
-        }
-      ],
-      "notes": "iOS only today. The Desktop keeps its own pagination and has not adopted prefetch; revisit if the Desktop shows the same scroll-back stutter."
     },
     {
       "id": "conversation-events",
@@ -712,7 +800,7 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "export interface ProjectedConversationInstance",
-          "path": "desktop/src/shared/remote-projection-types.ts"
+          "path": "packages/shared/src/remote-projection-types.ts"
         },
         {
           "platform": "ios",
@@ -775,7 +863,7 @@
           "presentation": "ui",
           "language": "typescript",
           "symbol": "StatusDot",
-          "path": "desktop/src/renderer/components/TabStripStatusDot.tsx"
+          "path": "desktop/src/renderer/components/StatusDot.tsx"
         },
         {
           "platform": "ios",
@@ -829,14 +917,14 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "conversationTelemetryTool",
-          "path": "desktop/src/main/telemetry/conversation-telemetry-tool.ts"
+          "path": "server/src/telemetry/conversation-telemetry-tool.ts"
         },
         {
           "platform": "desktop",
           "presentation": "code",
           "language": "typescript",
           "symbol": "selectConversations",
-          "path": "desktop/src/main/telemetry/conversation-telemetry-select.ts"
+          "path": "server/src/telemetry/conversation-telemetry-select.ts"
         },
         {
           "platform": "desktop",
@@ -850,7 +938,7 @@
     {
       "id": "conversation-terminal-panel",
       "term": "Conversation Terminal Panel",
-      "definition": "The per-conversation terminal panel shared by the Overlay and Studio presentations. Both presentations show the same terminal tabs and attach to the same main-owned PTYs.",
+      "definition": "The per-conversation terminal panel in Studio. Every Studio client attached to the conversation shows the same terminal tabs and attaches to the same server-owned PTYs.",
       "domain": "clients",
       "kind": "ui-component",
       "status": "canonical",
@@ -934,7 +1022,7 @@
           "path": "ios/IonRemote/Views/ConversationView.swift"
         }
       ],
-      "notes": "One Desktop component, mounted in both the Overlay and the Studio presentation."
+      "notes": "One component, mounted by Studio for every conversation it shows."
     },
     {
       "id": "corpus-index",
@@ -950,14 +1038,14 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "export async function scanCorpus",
-          "path": "desktop/src/main/graph-view/corpus-scan.ts"
+          "path": "server/src/graph-view/corpus-scan.ts"
         }
       ]
     },
     {
       "id": "corpus-root",
       "term": "Corpus Root",
-      "definition": "One configured directory Graph View scans for Markdown documents. The effective corpus is the union of every configured root \u2014 the operator's primary repository plus zero or more bundle roots or other directories they add. Roots are additive and never collide; an empty or missing root is silently ignored.",
+      "definition": "One configured directory Graph View scans for Markdown documents. The effective corpus is the union of every configured root — the operator's primary repository plus zero or more bundle roots or other directories they add. Roots are additive and never collide; an empty or missing root is silently ignored.",
       "domain": "clients",
       "kind": "product-concept",
       "status": "canonical",
@@ -968,7 +1056,7 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "interface CorpusRootConfig",
-          "path": "desktop/src/shared/graph-view-types.ts"
+          "path": "packages/shared/src/graph-view-types.ts"
         }
       ]
     },
@@ -1018,20 +1106,20 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "export class AutomationRuntime",
-          "path": "desktop/src/main/automation/runtime.ts"
+          "path": "server/src/automation/runtime.ts"
         },
         {
           "platform": "desktop",
           "presentation": "code",
           "language": "typescript",
           "symbol": "export function validateUserDefinition",
-          "path": "desktop/src/shared/automation-catalog.ts"
+          "path": "packages/shared/src/automation-catalog.ts"
         },
         {
           "platform": "desktop",
           "presentation": "ui",
-          "symbol": "export function AutomationCategory",
-          "path": "desktop/src/renderer/components/settings/AutomationCategory.tsx",
+          "symbol": "export function AutomationSection",
+          "path": "desktop/src/renderer/components/settings/pages/integrations/AutomationSection.tsx",
           "language": "typescript"
         }
       ]
@@ -1039,7 +1127,7 @@
     {
       "id": "desktop-client",
       "term": "Desktop",
-      "definition": "One client application built on Electron. It owns the session store, persists conversations, answers snapshot polls, and hosts both client presentations.",
+      "definition": "The Electron application that hosts Studio. It runs the local Environment's server and connects Studio to every Environment; the server owns the session store, persists conversations, and answers snapshot polls.",
       "domain": "clients",
       "kind": "product-concept",
       "status": "canonical",
@@ -1054,17 +1142,85 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "export type WindowRole",
-          "path": "desktop/src/renderer/lib/window-role.ts"
+          "path": "server/src/lib/window-role.ts"
         },
         {
           "platform": "desktop",
           "presentation": "code",
           "language": "typescript",
           "symbol": "export interface TabState",
-          "path": "desktop/src/shared/types-session.ts"
+          "path": "packages/shared/src/types-session.ts"
         }
       ],
-      "notes": "Desktop is ONE client with two presentations: the Overlay and the Studio. Never call the presentations separate clients."
+      "notes": "Studio is the Desktop's application window. The splash and the worktree-overlap visualizer are auxiliary windows with no store."
+    },
+    {
+      "id": "device-metrics",
+      "term": "Device Metrics",
+      "definition": "What Ion Studio itself uses on the machine it runs on: CPU, memory, and GPU time of each of its own Electron processes (main, GPU helper, renderer, utility helpers), and the idle-repaint warning when the GPU helper or a renderer stays busy while nobody is looking at Studio. They describe the device, not an Environment, so they are read and kept on the device and never sent to a server or another client.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "class DeviceMetricsSampler",
+          "path": "desktop/src/main/device-metrics/sampler.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "class IdleRepaintDetector",
+          "path": "desktop/src/main/device-metrics/idle-repaint.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "interface DeviceMetricsSample",
+          "path": "packages/shared/src/types-device-metrics.ts"
+        }
+      ]
+    },
+    {
+      "id": "device-policy",
+      "term": "Device Policy",
+      "definition": "Enterprise constraints on a person's own desktop UI (theme lock, auto-update, the environment catalog it offers), read only from the LOCAL environment. A remote Environment can never narrow it.",
+      "domain": "clients",
+      "kind": "internal-type",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "interface IonDesktopPolicyFields",
+          "path": "packages/shared/src/types-enterprise.ts"
+        }
+      ]
+    },
+    {
+      "id": "device-setting",
+      "term": "Device Setting",
+      "definition": "A setting for the screen in use, such as the theme or a font size. It is stored on the client and read only there. Studio labels it This Device.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "SETTINGS_REGISTRY",
+          "path": "packages/shared/src/settings-registry.ts"
+        }
+      ]
     },
     {
       "id": "dialog",
@@ -1170,7 +1326,7 @@
           "path": "desktop/src/renderer/studio/DispatchSplitPane.tsx"
         }
       ],
-      "notes": "Studio-only region. Canvas-coupled and not shared with the Overlay."
+      "notes": "Studio-only region, canvas-coupled."
     },
     {
       "id": "drawer",
@@ -1242,7 +1398,7 @@
           "presentation": "wire",
           "language": "typescript",
           "symbol": "EngineEvent",
-          "path": "desktop/src/shared/types-engine-event.ts"
+          "path": "packages/shared/src/types-engine-event.ts"
         },
         {
           "platform": "ios",
@@ -1257,7 +1413,7 @@
     {
       "id": "engine-host-launcher",
       "term": "Engine Host Launcher",
-      "definition": "The Windows-only launcher the Engine Supervisor's Scheduled Task runs instead of the engine binary, so the engine daemon never puts a console window on screen. Task Scheduler always allocates a console for a console-subsystem image and offers no way to suppress it, and where the default terminal is Windows Terminal the visible window belongs to that process while the daemon can only reach the pseudoconsole host's already-invisible window. The launcher is linked for the GUI subsystem, so Windows gives it no console at all, and it starts the engine with CREATE_NO_WINDOW so the engine gets none either. It lives for as long as the engine, confines it to a kill-on-close job object, exits with its exit code, and captures its standard streams to the same two files the macOS LaunchAgent redirects to. It has no macOS counterpart because launchd never attaches a terminal.",
+      "definition": "The Windows-only launcher the Engine Supervisor's Scheduled Task runs instead of the engine binary, so the engine daemon never puts a console window on screen. Task Scheduler always allocates a console for a console-subsystem image and offers no way to suppress it, and where the default terminal is Windows Terminal the visible window belongs to that process while the daemon can only reach the pseudoconsole host's already-invisible window. The launcher is linked for the GUI subsystem, so Windows gives it no console at all, and it starts the engine with CREATE_NO_WINDOW so the engine gets none either. It lives for as long as the engine, confines it to a kill-on-close job object, exits with its exit code, and captures its standard streams to the same two files the macOS LaunchAgent redirects to. It has no macOS counterpart because launchd never attaches a terminal. Has no pod counterpart: a containerized engine's stdout/stderr go to the container runtime's own log capture, not to redirected files a launcher would need to create.",
       "domain": "clients",
       "kind": "runtime-mechanic",
       "status": "canonical",
@@ -1275,14 +1431,14 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "resolveTaskAction",
-          "path": "desktop/src/main/engine-supervisor-schtasks.ts"
+          "path": "server/src/engine/engine-supervisor-schtasks.ts"
         },
         {
           "platform": "desktop",
           "presentation": "code",
           "language": "typescript",
           "symbol": "findBundledHost",
-          "path": "desktop/src/main/engine-binary-install.ts"
+          "path": "server/src/engine/engine-binary-install.ts"
         }
       ]
     },
@@ -1310,7 +1466,7 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "engineProfileId",
-          "path": "desktop/src/shared/remote-projection-types.ts"
+          "path": "packages/shared/src/remote-projection-types.ts"
         },
         {
           "platform": "ios",
@@ -1346,7 +1502,7 @@
     {
       "id": "engine-supervisor",
       "term": "Engine Supervisor",
-      "definition": "The operating system service that keeps one user's engine daemon running independently of the desktop: a launchd LaunchAgent on macOS, a per-user Scheduled Task named \"Ion Engine (<SID>)\" on Windows. The desktop registers it, starts and stops it, and reads its state; it is what makes quitting the desktop leave the engine up and makes the engine present again at the next sign-in. A platform with no supervisor implementation resolves to none, and the desktop reports the engine as unmanaged rather than pretending to supervise it.",
+      "definition": "The operating system service that keeps one user's engine daemon running independently of the desktop: a launchd LaunchAgent on macOS, a per-user Scheduled Task named \"Ion Engine (<SID>)\" on Windows. The desktop registers it, starts and stops it, and reads its state; it is what makes quitting the desktop leave the engine up and makes the engine present again at the next sign-in. A platform with no supervisor implementation resolves to none, and the desktop reports the engine as unmanaged rather than pretending to supervise it. Has no meaning in a headless Environment (a Kubernetes pod's engine is unmanaged by Kubernetes' own supervision instead); supervisorFor resolves to none there, same as any platform with no supervisor implementation.",
       "domain": "clients",
       "kind": "runtime-mechanic",
       "status": "canonical",
@@ -1357,21 +1513,182 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "supervisorFor",
-          "path": "desktop/src/main/engine-supervisor.ts"
+          "path": "server/src/engine/engine-supervisor.ts"
         },
         {
           "platform": "desktop",
           "presentation": "code",
           "language": "typescript",
           "symbol": "launchdSupervisor",
-          "path": "desktop/src/main/engine-supervisor-launchd.ts"
+          "path": "server/src/engine/engine-supervisor-launchd.ts"
         },
         {
           "platform": "desktop",
           "presentation": "code",
           "language": "typescript",
           "symbol": "schtasksSupervisor",
-          "path": "desktop/src/main/engine-supervisor-schtasks.ts"
+          "path": "server/src/engine/engine-supervisor-schtasks.ts"
+        }
+      ]
+    },
+    {
+      "id": "environment",
+      "term": "Environment",
+      "definition": "One Ion Studio Server plus one Ion Engine, sharing a single ION_DATA_DIR. The unit a Studio client (desktop, iOS, browser) connects to. Runs identically on a desktop, in Docker Compose, or as a Kubernetes pod.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "type EnvironmentTarget",
+          "path": "packages/shared/src/types-environments.ts"
+        }
+      ]
+    },
+    {
+      "id": "environment-availability",
+      "term": "Environment Availability",
+      "definition": "Whether a client is talking to an Environment right now, and therefore whether that Environment's rows may be shown. Connected means the Studio wire is welcomed and its conversations are live and interactive. Reconnecting means the wire dropped within the last few seconds: its rows stay, visibly dimmed, and every input aimed at them is refused, so a brief blip does not reshuffle the window. Offline means the wire stayed down past that grace window, and the Environment's tabs, panes, terminals and worktree rows are dropped from the union store entirely, because a mirror of a machine that cannot be reached is a photograph and invites decisions against state that has already moved. The conversation being read survives as an empty shell so the window is not yanked elsewhere mid-read. Derived from the registry's transport phase; never a freshness heuristic.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "environmentAvailability",
+          "path": "desktop/src/renderer/studio/connection/environment-availability.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "dropEnvironmentState",
+          "path": "desktop/src/renderer/studio/state/secondary-store-purge.ts"
+        }
+      ]
+    },
+    {
+      "id": "environment-catalog",
+      "term": "Environment Catalog",
+      "definition": "The desktop's own list of Environment targets it can connect to (local, paired, bearer), merged from user-added entries and enterprise-managed entries.",
+      "domain": "clients",
+      "kind": "state",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "readCatalog",
+          "path": "desktop/src/renderer/studio/connection/catalog.ts"
+        }
+      ]
+    },
+    {
+      "id": "environment-page",
+      "term": "Environment Page",
+      "definition": "The Settings pages for one Environment, the local server included, listed under Servers in Settings: Overview (connection, server facts, lifecycle), Projects, Git access, Providers & models, Agent rules, Integrations, Workflow, Access & pairing, and Health. Add server lands on its Overview with a finish-setup notice; later reconfiguration is the same pages. Every verb they offer is a studio_action on that Environment's server. The desktop and the phone show the same pages for every server they are paired with; what a client may change follows its connection's scopes.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "SETTINGS_PAGES",
+          "path": "desktop/src/renderer/components/settings/settings-catalog.ts"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "ENVIRONMENT_ACTIONS",
+          "path": "server/src/environment/actions.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct ServerPagesView",
+          "path": "ios/IonRemote/Views/Settings/Server/ServerPagesView.swift"
+        }
+      ]
+    },
+    {
+      "id": "environment-policy",
+      "term": "Environment Policy",
+      "definition": "Enterprise constraints an engine enforces on itself (allowed models, allowed providers, tool restrictions, resource limits), republished to every connected client on studio_welcome.enterprisePolicy so policy-gated surfaces narrow per-Environment.",
+      "domain": "engine",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type EnterpriseConfig struct",
+          "path": "engine/internal/types/config.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "environmentPolicy(environmentId: string): EnterprisePolicy | null",
+          "path": "desktop/src/renderer/studio/connection/policy-store.ts"
+        }
+      ]
+    },
+    {
+      "id": "environment-purge",
+      "term": "Environment Purge",
+      "definition": "Removing Ion from an Environment's host by degree: the Studio Server services and bundle always, and by choice the principal's git credentials, the repositories Ion cloned, and all Ion data. Appraised before it runs, executed on the host through its own `ion studio uninstall` scheduled detached. Distinct from forgetting the Environment on one device, which leaves the host untouched.",
+      "domain": "clients",
+      "kind": "action",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "runPurge",
+          "path": "server/src/environment/purge.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "RemoveServerPanel",
+          "path": "desktop/src/renderer/components/settings/pages/RemoveServerPanel.tsx"
+        }
+      ]
+    },
+    {
+      "id": "environment-setting",
+      "term": "Environment Setting",
+      "definition": "A setting with one value for a whole Environment. It is stored in that server's settings document, and only a connection holding the admin scope may change it. Auto-settle and conversation recovery are Environment Settings.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "SETTINGS_REGISTRY",
+          "path": "packages/shared/src/settings-registry.ts"
         }
       ]
     },
@@ -1403,7 +1720,7 @@
     {
       "id": "explorer-tree-state",
       "term": "Explorer Tree State",
-      "definition": "Which folders are expanded, which root sections are folded shut, and which row is selected in the file explorer. Keyed by absolute root directory, owned by the desktop main process, shared by the Overlay and the Studio, and persisted apart from settings. Expansion and folded roots survive a relaunch; the selected row is shared live only.",
+      "definition": "Which folders are expanded, which root sections are folded shut, and which row is selected in the file explorer. Keyed by absolute root directory, owned by the server, shared by every Studio client, and persisted apart from settings. Expansion and folded roots survive a relaunch; the selected row is shared live only.",
       "domain": "clients",
       "kind": "runtime-mechanic",
       "status": "canonical",
@@ -1414,21 +1731,21 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "ExplorerStateSnapshot",
-          "path": "desktop/src/shared/explorer-state.ts"
+          "path": "packages/shared/src/explorer-state.ts"
         },
         {
           "platform": "desktop",
           "presentation": "code",
           "language": "typescript",
           "symbol": "loadExplorerState",
-          "path": "desktop/src/main/explorer-state-store.ts"
+          "path": "server/src/explorer-state-store.ts"
         },
         {
           "platform": "desktop",
           "presentation": "code",
           "language": "typescript",
           "symbol": "setupExplorerStateSync",
-          "path": "desktop/src/renderer/stores/explorer-state-sync.ts"
+          "path": "server/src/store/explorer-state-sync.ts"
         }
       ]
     },
@@ -1519,6 +1836,102 @@
       "notes": "Source of truth is engine/extensions/sdk/ion-sdk/. The installed copy is overwritten at build time."
     },
     {
+      "id": "external-host",
+      "term": "External Host",
+      "definition": "A fleet host deployed outside the fleet, such as a server in a cluster, registered by its address (`url`) instead of an SSH target. The fleet reads it (its public versions and formats, and with the fleet's own device-code sign-in its load, running conversations, and devices) and never changes it: deploy, restart, and relay set refuse it.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (h Host) External",
+          "path": "engine/internal/fleet/config.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "doc",
+          "language": "markdown",
+          "symbol": "Hosts deployed outside the fleet",
+          "path": "docs/deployment/fleet.md"
+        }
+      ]
+    },
+    {
+      "id": "fleet",
+      "term": "Fleet",
+      "definition": "The set of Studio hosts one operator manages from one machine with `ion fleet`: Studio Server hosts on macOS and Linux, and Macs and Windows PCs running the Ion desktop, listed in ~/.ion/fleet.json. The fleet reads each host's status and paired devices over SSH, or through the relay with its own read-only pairing, judges which hosts can work together by their Format Versions, and redeploys a selection or one host, building each platform once.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Config",
+          "path": "engine/internal/fleet/config.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Model",
+          "path": "engine/internal/fleettui/model.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "doc",
+          "language": "markdown",
+          "symbol": "Fleet",
+          "path": "docs/deployment/fleet.md"
+        }
+      ]
+    },
+    {
+      "id": "format-version",
+      "term": "Format Version",
+      "definition": "The version of one data format, stored schema, or wire protocol an Ion build reads or writes (the transfer archive, the Studio wire, the conversation file schema), with the rule that decides whether two builds can work together over it: exact, accepts-previous, reader-at-least, host-storage, or external. Each side keeps one registry that reads the constant its code already uses; a test fails when a new version constant is not registered.",
+      "domain": "engine",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Format",
+          "path": "engine/internal/compat/compat.go"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "SERVER_FORMAT_REGISTRY",
+          "path": "server/src/compat/registry.ts"
+        },
+        {
+          "platform": "server",
+          "presentation": "wire",
+          "language": "typescript",
+          "symbol": "interface ServerVersionReport",
+          "path": "packages/shared/src/format-versions.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "ServerFactsGroup",
+          "path": "desktop/src/renderer/components/settings/pages/OverviewPage.tsx"
+        }
+      ]
+    },
+    {
       "id": "forwarding",
       "term": "Message forwarding",
       "definition": "The relay action that passes one frame from a peer to the other peer on the same channel. The relay treats the frame as opaque bytes.",
@@ -1545,6 +1958,53 @@
           "path": "relay/relay.go"
         }
       ]
+    },
+    {
+      "id": "git-identity",
+      "term": "Git Identity",
+      "definition": "The credential and author identity a git operation runs as, resolved per connected principal rather than per server. Resolution precedence: an admin-managed credential (a secret-store-backed SSH key or certificate scoped to a subject and host), a user-supplied credential entered in Studio Settings, then an OAuth exchange (Azure DevOps on-behalf-of, GitLab, or a GitHub App). The resolved identity is stamped into the engine's tool environment for every git operation a tool runs, so a commit's authorship matches who actually asked for it.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export async function resolveGitCredential",
+          "path": "server/src/git/identity/resolver.ts"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func stampToolEnv",
+          "path": "engine/internal/backend/runloop_git_identity.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "GitAccessPage",
+          "path": "desktop/src/renderer/components/settings/pages/GitAccessPage.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct GitIdentitySummary",
+          "path": "ios/IonRemote/Models/GitIdentitySummary.swift"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct AddGitCredentialSheet",
+          "path": "ios/IonRemote/Views/Settings/Server/GitAccess/AddGitCredentialSheet.swift"
+        }
+      ],
+      "notes": "The phone's Git access page enters credentials as the desktop does: mint an SSH key on the server, paste a key, store a token, or start a git host's OAuth sign-in, which the phone opens itself from the returned authorizationUrl."
     },
     {
       "id": "graph-agent-highlight",
@@ -1579,7 +2039,7 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "export function buildAnchorNodes",
-          "path": "desktop/src/shared/graph-model-anchors.ts"
+          "path": "packages/shared/src/graph-model-anchors.ts"
         }
       ],
       "notes": "Promoted fields are configured under `promotedFields` (desktop/src/shared/graph-view-types.ts); the depth and split options there decide which part of a value becomes the anchor."
@@ -1656,14 +2116,14 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "export class QuestionsCoordinator",
-          "path": "desktop/src/main/questions/questions-coordinator.ts"
+          "path": "server/src/questions/questions-coordinator.ts"
         },
         {
           "platform": "desktop",
           "presentation": "wire",
           "language": "typescript",
           "symbol": "export type RemoteQuestionsEvent",
-          "path": "desktop/src/main/remote/protocol-questions.ts"
+          "path": "server/src/remote/protocol-questions.ts"
         },
         {
           "platform": "engine",
@@ -1748,14 +2208,7 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "export function classifyInbox",
-          "path": "desktop/src/shared/inbox-classify.ts"
-        },
-        {
-          "platform": "desktop",
-          "presentation": "ui",
-          "language": "typescript",
-          "symbol": "export function InboxPanel",
-          "path": "desktop/src/renderer/components/InboxPanel.tsx"
+          "path": "packages/shared/src/inbox-classify.ts"
         },
         {
           "platform": "studio",
@@ -1771,6 +2224,10 @@
           "symbol": "InboxRowView",
           "path": "ios/IonRemote/Views/InboxRowView.swift"
         }
+      ],
+      "legacyNames": [
+        "Tab Strip",
+        "tab list"
       ]
     },
     {
@@ -1805,14 +2262,7 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "export function suppressesInjection",
-          "path": "desktop/src/shared/injection-policy.ts"
-        },
-        {
-          "platform": "ios",
-          "presentation": "code",
-          "language": "swift",
-          "symbol": "enum InjectionPolicy",
-          "path": "ios/IonRemote/Utilities/InjectionPolicy.swift"
+          "path": "packages/shared/src/injection-policy.ts"
         }
       ]
     },
@@ -1897,7 +2347,7 @@
           "presentation": "wire",
           "language": "typescript",
           "symbol": "export interface RemoteBench",
-          "path": "desktop/src/main/remote/protocol-worktree.ts"
+          "path": "server/src/remote/protocol-worktree.ts"
         },
         {
           "platform": "desktop",
@@ -1912,6 +2362,24 @@
           "language": "swift",
           "symbol": "InboxBenchGroup",
           "path": "ios/IonRemote/Views/InboxBenchGroup.swift"
+        }
+      ]
+    },
+    {
+      "id": "ion-studio-server",
+      "term": "Ion Studio Server",
+      "definition": "The headless extraction of the desktop's former main-process store, Studio wire, auth, and per-Environment orchestration into a process with no Electron dependency. Pairs with one Ion Engine to form an Environment.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "main",
+          "path": "server/src/main.ts"
         }
       ]
     },
@@ -1966,6 +2434,56 @@
       ]
     },
     {
+      "id": "lan-discovery",
+      "term": "LAN Discovery",
+      "definition": "A Studio Server announcing itself on its local network as `_ion-studio._tcp` so a desktop can list it under Add server without a pasted link. Off by default: a person opens a bounded window that closes itself, a headless host sets it as standing configuration, and an enterprise seal forbids it outright. The announcement is only an address; pairing still needs the one-time discovery code or a pairing link.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "DiscoveryWindow",
+          "path": "server/src/discovery/window.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "useNearbyDoor",
+          "path": "desktop/src/renderer/components/settings/pages/add-server-nearby.tsx"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "DiscoverySection",
+          "path": "desktop/src/renderer/components/settings/pages/access/DiscoverySection.tsx"
+        }
+      ]
+    },
+    {
+      "id": "local-principal",
+      "term": "Local Principal",
+      "definition": "The Session Principal a server stamps for the local, same-machine caller: subject local:<os-username>, provider os, kind local. Requires no sign-in.",
+      "domain": "clients",
+      "kind": "internal-type",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "localPrincipal",
+          "path": "server/src/identity/local-principal.ts"
+        }
+      ]
+    },
+    {
       "id": "menu",
       "term": "Menu",
       "definition": "A short list of actions that opens from a control or from a long press. It closes when the user picks an action.",
@@ -1981,8 +2499,8 @@
           "platform": "desktop",
           "presentation": "ui",
           "language": "typescript",
-          "symbol": "export function TabContextMenu",
-          "path": "desktop/src/renderer/components/TabStripTabContextMenu.tsx"
+          "symbol": "export function InboxRowMenu",
+          "path": "desktop/src/renderer/studio/inbox/InboxRowMenu.tsx"
         },
         {
           "platform": "ios",
@@ -2030,7 +2548,7 @@
     {
       "id": "mirror-store",
       "term": "Mirror store",
-      "definition": "The Studio presentation's copy of the session store. It reads the same event stream, forwards owner-only mutations, and never persists.",
+      "definition": "A Studio client's copy of the session store: the union of every connected Environment's published state. It runs the same reducers on the same event streams, forwards owner-durable mutations to the server that owns them, and never persists.",
       "domain": "clients",
       "kind": "runtime-mechanic",
       "status": "canonical",
@@ -2044,24 +2562,24 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "isMirrorWindow",
-          "path": "desktop/src/renderer/lib/window-role.ts"
+          "path": "server/src/lib/window-role.ts"
         },
         {
           "platform": "desktop",
           "presentation": "code",
           "language": "typescript",
           "symbol": "MIRROR_LOCAL_ACTIONS",
-          "path": "desktop/src/shared/studio-mirror-actions.ts"
+          "path": "packages/shared/src/studio-mirror-actions.ts"
         },
         {
           "platform": "studio",
           "presentation": "code",
           "language": "typescript",
-          "symbol": "waitForTabsSync",
+          "symbol": "hydrateTabsFromSync",
           "path": "desktop/src/renderer/studio/state/secondary-store.ts"
         }
       ],
-      "notes": "See ADR-021. The Overlay renderer is the single owner; the Studio presentation is the mirror."
+      "notes": "Each Environment's server holds the owner store. Studio declares itself a mirror at boot (declareMirrorWindow), so owner-only reducer side effects never run in a client. See ADR-033."
     },
     {
       "id": "model-boundary",
@@ -2140,8 +2658,8 @@
           "platform": "desktop",
           "presentation": "ui",
           "language": "typescript",
-          "symbol": "ProjectFoldersSection",
-          "path": "desktop/src/renderer/components/settings/ProjectFoldersSection.tsx"
+          "symbol": "WorkspaceFolders",
+          "path": "desktop/src/renderer/components/settings/pages/project-local.tsx"
         },
         {
           "platform": "desktop",
@@ -2184,7 +2702,7 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "export function buildNativeCompactionMarkerContent",
-          "path": "desktop/src/shared/compaction-marker.ts"
+          "path": "packages/shared/src/compaction-marker.ts"
         }
       ]
     },
@@ -2274,27 +2792,76 @@
       ]
     },
     {
-      "id": "overlay",
-      "term": "Overlay",
-      "definition": "One of the Desktop client's two presentations. It is the transparent always-on-top glass window, and its renderer is the session-store owner.",
+      "id": "on-host",
+      "term": "On Host",
+      "definition": "Whether a Studio wire connection runs on its server's own host, meaning it arrived on the local socket. Sent as studio_welcome.onHost. A sign-in that finishes on a loopback callback on the host can only finish for such a connection; the server refuses host-only sign-ins to any other and hands browser sign-ins back to the requester to finish with auth.completeSignIn. Keyed on the connection, never on an environment id. Absent from an older server, which reads as not on the host.",
       "domain": "clients",
-      "kind": "ui-component",
+      "kind": "public-contract",
       "status": "canonical",
-      "aliases": [
-        "overlay glass",
-        "glass"
-      ],
-      "contract": "none",
+      "contract": "public-wire",
       "implementations": [
         {
-          "platform": "overlay",
+          "platform": "server",
+          "presentation": "wire",
+          "language": "typescript",
+          "symbol": "onHost?: boolean",
+          "path": "packages/shared/src/studio-wire/types.ts"
+        },
+        {
+          "platform": "server",
           "presentation": "code",
           "language": "typescript",
-          "symbol": "overlay",
-          "path": "desktop/src/renderer/lib/window-role.ts"
+          "symbol": "export function connectionOnHost",
+          "path": "server/src/protocol/hello.ts"
         }
+      ]
+    },
+    {
+      "id": "pairing-link",
+      "term": "Pairing Link",
+      "definition": "A one-time, five-minute `ion-studio://pair?code=…&url=…&env=…` link an Ion Studio Server mints (an admin over the Studio wire, or `ion studio pair` on the server host) that a client redeems against `POST /auth/pair` to obtain a paired credential for that Environment. Carries the server's advertised HTTP base so the link is self-contained, and optionally a relay pairing channel (`relay`, `channel`, `relayKey`) so a client off the LAN can complete the same exchange through the relay.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "formatPairingLink",
+          "path": "server/src/auth/pairing-links.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "parsePairingLink",
+          "path": "packages/shared/src/pairing-link.ts"
+        }
+      ]
+    },
+    {
+      "id": "pane-find",
+      "term": "Pane Find",
+      "definition": "Find within one pane of the Studio shell. The find shortcuts act on the pane that holds focus: the canvas when it was focused last and is on screen, the conversation otherwise. A code editor in edit mode uses its own search; other panes search their rendered text.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "find in page",
+        "find in conversation"
       ],
-      "notes": "A presentation of the Desktop client, never a separate client."
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function paneFindTarget",
+          "path": "desktop/src/renderer/studio/find/pane-find.ts"
+        }
+      ]
     },
     {
       "id": "panel",
@@ -2362,7 +2929,7 @@
           "presentation": "wire",
           "language": "go",
           "symbol": "role != \"ion\" && role != \"mobile\"",
-          "path": "relay/main.go"
+          "path": "relay/routes.go"
         },
         {
           "platform": "relay",
@@ -2412,6 +2979,52 @@
           "language": "swift",
           "symbol": "struct PermissionCardView",
           "path": "ios/IonRemote/Views/PermissionCardView.swift"
+        }
+      ]
+    },
+    {
+      "id": "personal-preference",
+      "term": "Personal Preference",
+      "definition": "A setting that belongs to one person on every Environment. It is stored on the client. When the server needs the value, the client sends it with the request and the server stamps it onto the conversation; the server keeps no settings copy. Studio labels it You.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "SETTINGS_REGISTRY",
+          "path": "packages/shared/src/settings-registry.ts"
+        }
+      ]
+    },
+    {
+      "id": "phone-action-list",
+      "term": "Phone Action List",
+      "definition": "The list of every studio_action the phone calls directly to administer a server, each with the scope the server requires for it. It is plain data both flavors read. A server test checks each entry against the server's own registration and refuses any action kept for the local desktop; an iOS test checks the phone's action table against it. The phone refuses an action its connection's scopes do not allow before sending it. Separate from the phone command map, which maps the older desktop_* commands.",
+      "domain": "clients",
+      "kind": "public-contract",
+      "status": "canonical",
+      "aliases": [
+        "phone actions"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "wire",
+          "language": "json",
+          "symbol": "actions",
+          "path": "packages/shared/src/studio-wire/phone-actions.json"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "enum PhoneAction",
+          "path": "ios/IonRemote/Networking/Admin/PhoneAction.swift"
         }
       ]
     },
@@ -2472,9 +3085,149 @@
       ]
     },
     {
+      "id": "presence",
+      "term": "Presence",
+      "definition": "Who is connected to an Environment, which tab each connection has focused, and which tab (if any) each connection is currently driving -- has an in-flight run it started still running. A full snapshot every change, sent to every connected client regardless of tenancy mode: presence is who else is here, which isolated tenancy mode is not designed to hide, unlike tab contents.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function presenceSnapshot",
+          "path": "server/src/protocol/presence.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "usePresenceStore",
+          "path": "desktop/src/renderer/stores/presence-store.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct PresenceAvatar",
+          "path": "ios/IonRemote/Views/PresenceAvatar.swift"
+        }
+      ]
+    },
+    {
+      "id": "principal-partition",
+      "term": "Principal Partition",
+      "definition": "The subdirectory of the conversations root one principal's conversations live under on disk, keyed by a filesystem-safe hash of their subject, when engine.json's security.principalPartitioning.enabled is true. Absent/off means every principal's conversations still live in one flat directory, the pre-partitioning layout, byte-identical to before this feature existed.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func PartitionConversationsDir",
+          "path": "engine/internal/conversation/partition.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func PartitioningEnabled",
+          "path": "engine/internal/conversation/partition.go"
+        }
+      ],
+      "notes": "StartSessionResult.StorageRoot and ContextIdentity.StorageRoot both carry the resolved partition path so a harness or SDK consumer can locate it without re-deriving the partitioning rule."
+    },
+    {
+      "id": "project-job",
+      "term": "Project Job",
+      "definition": "Background work an Environment runs on one of its projects: a clone, a setup recipe, or a purge. Registered on the server, published as a full snapshot on `ion:project-job` at every change so any client renders the same progress, cancellable while running, retained briefly after it settles.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "startJob",
+          "path": "server/src/environment/jobs.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "useEnvironmentJobs",
+          "path": "desktop/src/renderer/components/settings/environment/environment-client.ts"
+        }
+      ]
+    },
+    {
+      "id": "project-quick-tool",
+      "term": "Project Quick Tool",
+      "definition": "A Quick Tool a project ships in its committed .ion/studio.json, offered in every conversation in that project. It runs only after the operator has trusted the project's exact tool list, and the server reads the command from the file at run time.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface ProjectQuickTool",
+          "path": "packages/shared/src/project-studio-config.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export async function resolveProjectQuickTool",
+          "path": "server/src/project-studio-config.ts"
+        }
+      ]
+    },
+    {
+      "id": "project-trust",
+      "term": "Project Trust",
+      "definition": "Whether Ion may run a project's own code on its host: the setup command and worktree seed builds it declares in `.ion/worktree.json`. A checkout Ion cloned starts untrusted and runs nothing until the operator trusts it, either with the clone request (Transfer's Clone and trust, which then runs the setup as soon as the clone lands) or later with Trust Project, which also provisions every worktree of it refused while untrusted. Every project the operator registered themselves is trusted.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "isProjectTrusted",
+          "path": "server/src/environment/project-trust.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "setupCheck",
+          "path": "desktop/src/renderer/studio/transfer/setup-check.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "cloneFixes",
+          "path": "desktop/src/renderer/studio/transfer/clone-fixes.ts"
+        }
+      ]
+    },
+    {
       "id": "project-workspace",
       "term": "Project Workspace",
-      "definition": "A Project's source directory together with its mounted folders. Every checkout of that Project \u2014 the base repo, each worktree, each bench \u2014 renders the same set, because the mounted-folder setting is keyed by the Project rather than by the active directory.",
+      "definition": "A Project's source directory together with its mounted folders. Every checkout of that Project — the base repo, each worktree, each bench — renders the same set, because the mounted-folder setting is keyed by the Project rather than by the active directory.",
       "domain": "clients",
       "kind": "product-concept",
       "status": "canonical",
@@ -2485,16 +3238,59 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "resolveProjectDir",
-          "path": "desktop/src/shared/project-workspace.ts"
+          "path": "packages/shared/src/project-workspace.ts"
         },
         {
           "platform": "desktop",
           "presentation": "code",
           "language": "typescript",
           "symbol": "orderedWorkspaceRoots",
-          "path": "desktop/src/shared/workspace-roots.ts"
+          "path": "packages/shared/src/workspace-roots.ts"
         }
       ]
+    },
+    {
+      "id": "prompt-trace",
+      "term": "Prompt trace",
+      "definition": "The one W3C trace that follows a prompt from the client that sent it through the relay and the Ion server into the engine run. Each hop records one timed span, and the next hop joins the trace through a traceparent.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "traceparent"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function submitWithTrace",
+          "path": "desktop/src/renderer/lib/prompt-trace.ts"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function startPromptHandleSpan",
+          "path": "server/src/tracing/prompt-span.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "final class PromptTraceBook",
+          "path": "ios/IonRemote/Utilities/PromptTraceBook.swift"
+        },
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "func ParseTraceparent",
+          "path": "engine/internal/utils/traceparent.go"
+        }
+      ],
+      "notes": "Span record shapes and the hop chain: docs/observability/log-schema.md § Spans."
     },
     {
       "id": "provider",
@@ -2519,9 +3315,52 @@
       "notes": "Name providers by name. Never pin a provider count in prose."
     },
     {
+      "id": "push-address",
+      "term": "Push address",
+      "definition": "Where a paired phone receives push notifications: its APNs device token and the APNs environment that issued it. The phone registers it with each server it is paired to; the server keeps it on the pairing record and sends it with every push. The relay only delivers and keeps none.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "device token",
+        "APNs token"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface PushAddress",
+          "path": "server/src/auth/credentials-store.ts"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "'device.registerPush'",
+          "path": "server/src/auth/actions.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "func registerPushAddress()",
+          "path": "ios/IonRemote/ViewModels/SessionViewModel+Commands.swift"
+        },
+        {
+          "platform": "relay",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type apnsDevice struct",
+          "path": "relay/apns_device.go"
+        }
+      ]
+    },
+    {
       "id": "questions-wizard",
       "term": "Questions Wizard",
-      "definition": "The shared client surface that renders a Guided Questions page: the answer form, review screen, and waiting states. One component serves both desktop presentations; the Overlay mounts it in a modal and the Studio shell mounts it in the transient Questions canvas tab.",
+      "definition": "The client surface that renders a Guided Questions page: the answer form, review screen, and waiting states. Studio mounts it in the transient Questions canvas tab.",
       "domain": "clients",
       "kind": "ui-component",
       "status": "canonical",
@@ -2543,6 +3382,31 @@
           "language": "typescript",
           "symbol": "export function QuestionsSurface",
           "path": "desktop/src/renderer/studio/surface/tabs/QuestionsSurface.tsx"
+        }
+      ]
+    },
+    {
+      "id": "quick-tool",
+      "term": "Quick Tool",
+      "definition": "A named shell command an operator runs from the lightning button in the Input Bar. It opens in a terminal pane of the active conversation. An operator defines their own in settings, scoped to directories if they choose.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface QuickTool",
+          "path": "packages/shared/src/types-session.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function ComposerQuickToolsButton",
+          "path": "desktop/src/renderer/components/composer/ComposerQuickToolsButton.tsx"
         }
       ]
     },
@@ -2575,6 +3439,31 @@
       ]
     },
     {
+      "id": "relay-environment",
+      "term": "Relay-backed Environment",
+      "definition": "A paired Environment reached through an Ion Relay when its LAN address is unreachable. The server holds one end-to-end encrypted relay channel per paired desktop, keyed by the pairing secret, and admits that client's paired credential on it with the channel as the proof; the desktop dials the LAN first, falls back to the relay the pairing advertised, and returns to the LAN when it answers again.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "startRelayStudioListeners",
+          "path": "server/src/protocol/relay-listener.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "RelayStudioSocket",
+          "path": "desktop/src/main/connections/transport-relay.ts"
+        }
+      ]
+    },
+    {
       "id": "relay-hub",
       "term": "Relay hub",
       "definition": "The in-memory map from channel identifier to its connected peers. It holds no persistence and cleans a channel up when both peers leave.",
@@ -2592,6 +3481,49 @@
           "language": "go",
           "symbol": "func NewHub",
           "path": "relay/relay.go"
+        }
+      ]
+    },
+    {
+      "id": "relay-trust-announcement",
+      "term": "Relay Trust Announcement",
+      "definition": "The relay_announce frame an ion peer (a server) sends as its first text frame after the relay WebSocket upgrade, naming its own issuer/audience/scope. Lets one relay broker connections for Environments across different Entra tenants.",
+      "domain": "relay",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "relay",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "parseRelayAnnounce",
+          "path": "relay/announce.go"
+        }
+      ]
+    },
+    {
+      "id": "request-principal",
+      "term": "Request Principal",
+      "definition": "The identity attributed to one connection's studio-wire session -- subject, display name, and (when principal partitioning is enabled) a storage root. Every tab, conversation, and action the connection touches is gated against this principal, not a claim the request itself can override. Distinct from the engine's per-session SessionPrincipal that stamps a conversation's own header: the request principal is who is asking, the stamped principal is who a conversation belongs to.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "principal: StudioPrincipalSummary | null",
+          "path": "server/src/protocol/connection.ts"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type SessionPrincipal struct",
+          "path": "engine/internal/types/identity.go"
         }
       ]
     },
@@ -2716,7 +3648,25 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "export interface ScratchDocument",
-          "path": "desktop/src/shared/studio-surface-types.ts"
+          "path": "packages/shared/src/studio-surface-types.ts"
+        }
+      ]
+    },
+    {
+      "id": "server-admin-session",
+      "term": "Server Admin Session",
+      "definition": "The phone's connection for one paired server's Settings pages. For the server the phone chats on it uses the live connection. For any other it opens a dedicated connection while the pages are on screen, keeps that connection's settings snapshot and granted scopes, and closes it after the pages have been gone for a short idle time. The live session is never touched.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "final class ServerAdminSession",
+          "path": "ios/IonRemote/Networking/Admin/ServerAdminSession.swift"
         }
       ]
     },
@@ -2783,6 +3733,67 @@
       "notes": "A session is the engine-side run container. A conversation is what a client renders. They are not interchangeable words."
     },
     {
+      "id": "session-principal",
+      "term": "Session Principal",
+      "definition": "A per-session identity attribution stamped on the engine session and, at mint, on the conversation header. Lets one shared engine serve several signed-in people without conflating whose conversation is whose.",
+      "domain": "engine",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type SessionPrincipal struct",
+          "path": "engine/internal/types/identity.go"
+        }
+      ]
+    },
+    {
+      "id": "settings-side-panel",
+      "term": "Settings Side Panel",
+      "definition": "The panel that slides over the right of the Settings content for one add, edit, test, sign-in, or confirm flow, so a list stays one row per item and never grows an inline form that pushes the page down. Escape closes the top-most panel only.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function SidePanel",
+          "path": "desktop/src/renderer/components/settings/kit/SidePanel.tsx"
+        }
+      ]
+    },
+    {
+      "id": "settings-taxonomy",
+      "term": "Settings Taxonomy",
+      "definition": "The settings pages every client shows, in order under the This Device, You, and Servers headings, with the sections on each page and the settings group policy hides each section by. It also places every setting in one section. Studio renders it with its own icons and components, and the server sends it to the phone with the projected settings, so both clients name, order, and place settings the same way.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "SETTINGS_TAXONOMY",
+          "path": "packages/shared/src/settings-taxonomy.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "ui",
+          "language": "swift",
+          "symbol": "struct ServerPagesView",
+          "path": "ios/IonRemote/Views/Settings/Server/ServerPagesView.swift"
+        }
+      ]
+    },
+    {
       "id": "slash-command",
       "term": "Slash command",
       "definition": "A named template that a user starts with a forward slash. The engine owns discovery, frontmatter parsing, precedence, and argument expansion. An extension may change the resolution.",
@@ -2821,6 +3832,31 @@
           "language": "swift",
           "symbol": "struct SlashCommandMenu",
           "path": "ios/IonRemote/Views/SlashCommandMenu.swift"
+        }
+      ]
+    },
+    {
+      "id": "ssh-door",
+      "term": "SSH Door",
+      "definition": "The Add server path that takes only `user@host`: the desktop installs the Studio Server Bundle on the host over ssh, opens a loopback port forward to the server's port, mints a pairing link there, and completes the pairing through the forward. The result is a paired Environment with `via: 'ssh'` whose forward is re-opened before every connect.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "addEnvironmentOverSsh",
+          "path": "desktop/src/main/connections/ssh/ssh-add-environment.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "useSshDoor",
+          "path": "desktop/src/renderer/components/settings/pages/add-server-doors.tsx"
         }
       ]
     },
@@ -2959,7 +3995,7 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "export interface BrowserTab",
-          "path": "desktop/src/shared/studio-surface-types.ts"
+          "path": "packages/shared/src/studio-surface-types.ts"
         }
       ]
     },
@@ -3007,9 +4043,91 @@
       ]
     },
     {
+      "id": "studio-resource-traffic",
+      "term": "Studio Resource Traffic",
+      "definition": "Resources Ion Studio trades with extensions over the engine's resource pipe: a control resource an extension sends to Studio (kind ion-studio.*), and the operator focus Studio publishes for extensions (kind desktop.focus). It is never content for a person, so no notification inbox, attachments list, or mobile client shows it.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function isStudioTrafficKind",
+          "path": "packages/shared/src/studio-sdk-contract.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "static func isStudioTraffic",
+          "path": "ios/IonRemote/ViewModels/Settings/NotificationKinds.swift"
+        }
+      ]
+    },
+    {
+      "id": "studio-sdk",
+      "term": "Studio SDK",
+      "definition": "The SDK an extension uses to extend Ion Studio. It is separate from the engine SDK because the engine has no concept of a user interface. A request to Studio travels as a resource whose kind starts with ion-studio., which the engine forwards as opaque content.",
+      "domain": "clients",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function studio",
+          "path": "packages/studio-sdk/ts/index.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func NewComposer",
+          "path": "packages/studio-sdk/go/studio.go"
+        },
+        {
+          "platform": "studio",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function isStudioControlKind",
+          "path": "packages/shared/src/studio-sdk-contract.ts"
+        }
+      ]
+    },
+    {
+      "id": "studio-server-bundle",
+      "term": "Studio Server Bundle",
+      "definition": "The one tarball per platform (`ion-studio-server-<goos>-<goarch>.tar.gz`) a `server-v*` release carries: the engine binary, a Node runtime, the built Ion Studio Server and its dependencies, and a VERSION manifest. `install-studio-server.sh` extracts it under `~/.ion/studio-server/versions/<v>` and `ion studio` runs the services from the `current` symlink, so an update is an extract and a repoint.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "cmdStudio",
+          "path": "engine/cmd/ion/cmd_studio.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "installOnHost",
+          "path": "desktop/src/main/connections/ssh/ssh-bootstrap.ts"
+        }
+      ]
+    },
+    {
       "id": "studio-shell",
       "term": "Studio",
-      "definition": "One of the Desktop client's two presentations. It is a standalone window with a conversation-centric workspace and the visualizer canvas as one surface.",
+      "definition": "The Desktop's application window, and the same client built for the browser: a conversation-centric workspace with the visualizer canvas as one surface.",
       "domain": "clients",
       "kind": "ui-component",
       "status": "canonical",
@@ -3031,7 +4149,7 @@
           "path": "desktop/src/renderer/studio/StudioShell.tsx"
         }
       ],
-      "notes": "A presentation of the Desktop client, never a separate client. Exactly one presentation is active at a time."
+      "notes": "The only conversation UI on the desktop. See ADR-033."
     },
     {
       "id": "studio-surface",
@@ -3077,6 +4195,24 @@
       ]
     },
     {
+      "id": "studio-wire",
+      "term": "Studio Wire",
+      "definition": "The WebSocket protocol between an Ion Studio Server and a Studio client (desktop, iOS, browser): studio_hello/studio_welcome handshake, studio_action/studio_event for store forwarding, studio_command/studio_command_result for reverse RPC.",
+      "domain": "clients",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "type StudioFrame",
+          "path": "packages/shared/src/studio-wire/types.ts"
+        }
+      ]
+    },
+    {
       "id": "surface",
       "term": "Surface",
       "definition": "One selectable content region that belongs to a conversation, such as a diff, a plan, a file, or the visualizer.",
@@ -3099,6 +4235,59 @@
       "notes": "Honest mismatch: the code uses surface for the Studio right-pane tab model, while prose also uses surface as a loose word for any UI region. The narrow Studio meaning is the one the code pins. The loose use needs a decision before the term is canonical."
     },
     {
+      "id": "system-metrics",
+      "term": "System Metrics",
+      "definition": "How busy an Environment's host is and what Ion itself uses on it: host CPU, memory (container-aware), load and disk, and CPU and memory for every process in the engine's own process tree labeled by role, plus the Go runtime. Each sample is a complete snapshot. The engine samples it always and delivers it only to connections that watch (engine_system_metrics); the server merges in its own process and publishes it to watching clients; it leaves the machine only through a configured output (the system.metrics telemetry event, OTLP metrics). Never carries a command line.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type SystemMetricsSample",
+          "path": "engine/internal/types/system_metrics.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Sampler",
+          "path": "engine/internal/sysmetrics/sampler.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "class SystemMetricsPublisher",
+          "path": "server/src/system-metrics/publisher.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "HealthPage",
+          "path": "desktop/src/renderer/components/settings/pages/HealthPage.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "struct EnvironmentLoadSummary",
+          "path": "ios/IonRemote/Models/EnvironmentLoadSummary.swift"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "final class HealthAdminModel",
+          "path": "ios/IonRemote/ViewModels/Admin/HealthAdminModel.swift"
+        }
+      ]
+    },
+    {
       "id": "tab",
       "term": "Tab",
       "definition": "The client-side row that holds one conversation and its instances, terminals, group, and lifecycle role.",
@@ -3115,7 +4304,7 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "export interface TabState",
-          "path": "desktop/src/shared/types-session.ts"
+          "path": "packages/shared/src/types-session.ts"
         },
         {
           "platform": "ios",
@@ -3123,41 +4312,6 @@
           "language": "swift",
           "symbol": "struct TabRowView",
           "path": "ios/IonRemote/Views/TabRowView.swift"
-        }
-      ]
-    },
-    {
-      "id": "tab-strip",
-      "term": "Tab Strip",
-      "definition": "The region that shows every open conversation, its status dot, and its group pill, and that switches the active conversation.",
-      "domain": "clients",
-      "kind": "ui-component",
-      "status": "canonical",
-      "aliases": [
-        "tab list"
-      ],
-      "contract": "none",
-      "implementations": [
-        {
-          "platform": "desktop",
-          "presentation": "ui",
-          "language": "typescript",
-          "symbol": "export function TabStrip",
-          "path": "desktop/src/renderer/components/TabStrip.tsx"
-        },
-        {
-          "platform": "studio",
-          "presentation": "ui",
-          "language": "typescript",
-          "symbol": "TabStrip",
-          "path": "desktop/src/renderer/studio/StudioShell.tsx"
-        },
-        {
-          "platform": "ios",
-          "presentation": "ui",
-          "language": "swift",
-          "symbol": "struct TabListView",
-          "path": "ios/IonRemote/Views/TabListView.swift"
         }
       ]
     },
@@ -3175,7 +4329,7 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "export type TagTreatment",
-          "path": "desktop/src/shared/graph-view-types.ts"
+          "path": "packages/shared/src/graph-view-types.ts"
         }
       ]
     },
@@ -3197,6 +4351,49 @@
           "language": "go",
           "symbol": "type Event = telemetryformat.Event",
           "path": "engine/internal/telemetry/telemetry.go"
+        }
+      ]
+    },
+    {
+      "id": "telemetry-health",
+      "term": "Telemetry Health",
+      "definition": "The delivery health of one telemetry egress target: its on-disk retry backlog, whether it is stuck, what was quarantined, and whether durability was lost. The engine reports it as a complete per-target snapshot on each transition (engine_telemetry_health) and on demand in health; the server retains the latest state per target and replays it on the Studio snapshot.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type TelemetryHealth",
+          "path": "engine/internal/telemetry/telemetry_health.go"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function installTelemetryHealthConsumer",
+          "path": "server/src/engine/telemetry-health.ts"
+        }
+      ]
+    },
+    {
+      "id": "tenancy-mode",
+      "term": "Tenancy Mode",
+      "definition": "server.json's tenancy.mode: 'isolated' (default), enforcing every per-principal visibility and ownership gate, or 'shared', the explicit escape hatch where every gate shows every tab to every connection. Refused at boot when the engine's own principalPartitioning is also enabled, since partitioned storage with a shared-visibility UI is a leak, not a feature.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function isSharedTenancy",
+          "path": "server/src/config/current.ts"
         }
       ]
     },
@@ -3249,7 +4446,7 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "export interface TerminalActivity",
-          "path": "desktop/src/shared/terminal-activity.ts"
+          "path": "packages/shared/src/terminal-activity.ts"
         },
         {
           "platform": "ios",
@@ -3257,6 +4454,71 @@
           "language": "swift",
           "symbol": "TerminalInstanceBar",
           "path": "ios/IonRemote/Views/TerminalInstanceBar.swift"
+        }
+      ]
+    },
+    {
+      "id": "terminal-launch-key",
+      "term": "Terminal Launch Key",
+      "definition": "A caller-chosen identity for a launch that opens a Terminal, unique within one Conversation. A later launch with the same key stops the processes of the Terminal that holds it and reuses that Terminal instead of opening another.",
+      "domain": "clients",
+      "kind": "state",
+      "status": "canonical",
+      "aliases": [
+        "launch key"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "launchKey?: string",
+          "path": "packages/shared/src/types-session.ts"
+        }
+      ],
+      "notes": "Carried by the ion://terminal `key` parameter. dev.yaml sends one per service so a rerun of a profile reuses its panes."
+    },
+    {
+      "id": "thin-view",
+      "term": "Thin View",
+      "definition": "The view of an Environment a Studio wire client asks for with `view: 'thin'` at hello when it renders conversations but holds no store. The server derives what such a client needs (transcript rows, batched text deltas, tab and worktree state, settings, themes, questions, presence) and sends it on the single `studio:thin-event` channel, built and filtered for that connection's principal. A client that asks for nothing gets the mirror view, which is what Studio uses.",
+      "domain": "clients",
+      "kind": "public-contract",
+      "status": "canonical",
+      "aliases": [
+        "thin client view",
+        "thin connection"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export type StudioView",
+          "path": "packages/shared/src/studio-wire/types.ts"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function sendRemoteEvent",
+          "path": "server/src/thin-view/remote-out.ts"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export async function sendThinFirstPaint",
+          "path": "server/src/thin-view/thin-sync.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "final class StudioTransport",
+          "path": "ios/IonRemote/Networking/StudioWire/StudioTransport.swift"
         }
       ]
     },
@@ -3302,6 +4564,31 @@
       "notes": "Name tools by name. Never pin a tool count in prose."
     },
     {
+      "id": "tool-execution-boundary",
+      "term": "Tool Execution Boundary",
+      "definition": "A per-principal backstop that refuses a tool call whose path falls outside the session's own storage partition, checked directly at the tool call site rather than only advertised in a policy list a workaround could skip. Distinct from and lower-level than the enterprise tool-restrictions policy (security.toolRestrictions.principals[], enforced via IsToolAllowedFor): the boundary restricts WHERE a tool may act once it is already allowed to run, and defers the adversarial case for a shell to the OS-level sandbox (security.sandbox), which it wires with a deny-read on every other principal's partition.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func New",
+          "path": "engine/internal/principalboundary/checker.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func IsToolAllowedFor",
+          "path": "engine/internal/config/merge.go"
+        }
+      ]
+    },
+    {
       "id": "transcript",
       "term": "Transcript",
       "definition": "The ordered list of rendered conversation rows: messages, tool groups, agent turns, and markers.",
@@ -3326,6 +4613,130 @@
           "language": "typescript",
           "symbol": "MessageBubble",
           "path": "desktop/src/renderer/components/conversation/MessageBubble.tsx"
+        }
+      ]
+    },
+    {
+      "id": "transcript-patch",
+      "term": "Transcript Patch",
+      "definition": "One change to a transcript stream, sent to thin clients after a snapshot: a streamed suffix appended to one row, a splice of rows, or a reset. Every patch names the revision it applies to, so a client that missed one knows it and takes a fresh snapshot.",
+      "domain": "clients",
+      "kind": "internal-type",
+      "status": "canonical",
+      "aliases": [
+        "desktop_transcript_patch"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "wire",
+          "language": "typescript",
+          "symbol": "export interface TranscriptPatchEvent",
+          "path": "packages/shared/src/transcript/transcript-patch.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "struct TranscriptStream",
+          "path": "ios/IonRemote/ViewModels/TranscriptStream.swift"
+        }
+      ]
+    },
+    {
+      "id": "transcript-row",
+      "term": "Transcript Row",
+      "definition": "One row of a conversation as a thin client receives it: the server store's own message, projected for the wire. Owner-only reducer state is dropped and long tool output is cut and flagged, but nothing is derived, renamed, or reordered, so a thin client and Studio render the same rows.",
+      "domain": "clients",
+      "kind": "internal-type",
+      "status": "canonical",
+      "aliases": [
+        "thin transcript row"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "wire",
+          "language": "typescript",
+          "symbol": "export interface TranscriptRow",
+          "path": "packages/shared/src/transcript/transcript-row.ts"
+        },
+        {
+          "platform": "ios",
+          "presentation": "code",
+          "language": "swift",
+          "symbol": "struct TranscriptRow",
+          "path": "ios/IonRemote/Models/TranscriptRow.swift"
+        }
+      ]
+    },
+    {
+      "id": "transfer",
+      "term": "Transfer",
+      "definition": "The explicit verb that moves a conversation's host binding: to another Environment, or to another checkout or worktree on the machine it is on. A conversation binds to exactly one Environment at draft time, locks on first prompt, and only Transfer moves it after that. It moves what the operator chose: a conversation on its own, leaving any worktree it lived in behind, or a whole worktree with every conversation in it. A move, not a copy: once the destination has verified every file it received against the digests the source recorded, the source deletes its conversation files, tab record, and, for a whole-worktree move, its worktree checkout, so the conversation exists on exactly one host at a time.",
+      "domain": "clients",
+      "kind": "action",
+      "status": "canonical",
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "interface TransferManifest",
+          "path": "server/src/transfer/manifest.ts"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "resolveLanding",
+          "path": "server/src/transfer/landing.ts"
+        }
+      ]
+    },
+    {
+      "id": "transfer-preflight",
+      "term": "Transfer Preflight",
+      "definition": "The checks Transfer runs before moving a conversation: the source describes what it carries (`transfer.describe`), the destination answers whether it can take it (`transfer.preflight`) and what a chosen project offers to land in (`transfer.landings`), and the dialog shows a checklist with a fix per failing row: clone the repository there, trust a fresh clone before its setup runs, commit a dirty worktree before moving it whole (a dirty worktree is never carried). The answer also decides whether the export bundle carries the base branch.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "useTransferPreflight",
+          "path": "desktop/src/renderer/studio/transfer/useTransferPreflight.ts"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "handleTransferPreflight",
+          "path": "server/src/transfer/actions.ts"
+        }
+      ]
+    },
+    {
+      "id": "transfer-verification",
+      "term": "Transfer Verification",
+      "definition": "The proof that lets Transfer delete the source. The export records the sha256 of every archive entry in the manifest; the destination re-hashes what it extracted and what it committed and refuses on any mismatch. The source is removed only after that passes, so an interrupted or corrupted transfer always leaves the original intact.",
+      "domain": "clients",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "verifyAgainstDigests",
+          "path": "server/src/transfer/entries.ts"
         }
       ]
     },
@@ -3375,6 +4786,31 @@
           "language": "typescript",
           "symbol": "export interface TurnInfo",
           "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        }
+      ]
+    },
+    {
+      "id": "union-store",
+      "term": "Union Store",
+      "definition": "The Studio client's one mirror store holding every connected Environment's tabs, terminals, and worktree read model at once, each tab tagged with its Environment. Every action, shell call, body request, and event is routed to the server that owns the tab it concerns; the Inbox shows everything together, a remote row wears a badge naming its host, and the environment view filter is a filter over this union, never a reconnect.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "hydrateTabsFromSync",
+          "path": "desktop/src/renderer/studio/state/secondary-store.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "resolveActionEnvironment",
+          "path": "desktop/src/renderer/studio/connection/tab-environment.ts"
         }
       ]
     },
@@ -3467,7 +4903,7 @@
           "presentation": "code",
           "language": "typescript",
           "symbol": "discoverTerminalWebApplications",
-          "path": "desktop/src/main/terminal-application-discovery.ts"
+          "path": "server/src/terminal/terminal-application-discovery.ts"
         },
         {
           "platform": "ios",
@@ -3475,6 +4911,24 @@
           "language": "swift",
           "symbol": "InboxRowView",
           "path": "ios/IonRemote/Views/InboxRowView.swift"
+        }
+      ]
+    },
+    {
+      "id": "web-client",
+      "term": "Web Client",
+      "definition": "A browser build of Studio served by an Ion Studio Server at its own origin (server.json.web.enabled), signing in with OIDC PKCE. Has no desktop-only capabilities (no Browser Surface, no native window chrome) and reports their absence rather than degrading silently.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "BrowserStudioHost",
+          "path": "desktop/src/renderer/host/BrowserStudioHost.ts"
         }
       ]
     },
@@ -3542,6 +4996,36 @@
       ]
     },
     {
+      "id": "workspace-search",
+      "term": "Workspace Search",
+      "definition": "The Studio sidebar view that finds literal text in every file of the active conversation's workspace folders and lists the matching lines grouped by file. Selecting a line opens that file in the canvas with the match selected.",
+      "domain": "clients",
+      "kind": "product-concept",
+      "status": "canonical",
+      "aliases": [
+        "search in files",
+        "find in files",
+        "grep"
+      ],
+      "contract": "internal",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function WorkspaceSearchPanel",
+          "path": "desktop/src/renderer/studio/search/WorkspaceSearchPanel.tsx"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export async function searchText",
+          "path": "server/src/files/text-search.ts"
+        }
+      ]
+    },
+    {
       "id": "worktree",
       "term": "Worktree",
       "definition": "A registered git checkout that holds one branch of work. It refuses writes outside itself, and a landed worktree is sealed for review.",
@@ -3563,7 +5047,7 @@
           "presentation": "wire",
           "language": "typescript",
           "symbol": "export interface RemoteWorktree",
-          "path": "desktop/src/main/remote/protocol-worktree.ts"
+          "path": "server/src/remote/protocol-worktree.ts"
         },
         {
           "platform": "desktop",

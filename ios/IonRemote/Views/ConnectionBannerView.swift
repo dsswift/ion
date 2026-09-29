@@ -101,11 +101,11 @@ struct ConnectionBannerView: View {
     private func title(state: ConnectionState, freshness: ConnectionHealth.Freshness) -> String {
         switch state {
         case .reconnecting:
-            return "Reconnecting to desktop..."
+            return "Reconnecting to server..."
         case .connecting:
             return "Connecting..."
         case .disconnected:
-            return "Desktop offline"
+            return "Server offline"
         case .connected:
             return freshness.label
         }
@@ -127,15 +127,7 @@ struct ConnectionBannerView: View {
             if let label = health.lastSyncLabel {
                 return "Last sync: \(label)"
             }
-            return relayModeLabel(health: health)
-        }
-    }
-
-    private func relayModeLabel(health: ConnectionHealth) -> String? {
-        switch health.relayAckMode {
-        case .legacy:     return "Relay (legacy)"
-        case .unavailable: return nil
-        case .strict:     return nil
+            return nil
         }
     }
 

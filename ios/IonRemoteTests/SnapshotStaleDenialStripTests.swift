@@ -53,11 +53,11 @@ final class SnapshotStaleDenialStripTests: XCTestCase {
         let vm = SessionViewModel()
         let data = snapshotJSON(status: status, questionId: questionId, toolName: toolName)
         let event = try decoder.decode(RemoteEvent.self, from: data)
-        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
+        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _) = event else {
             XCTFail("Expected snapshot"); return []
         }
         XCTAssertEqual(tabs[0].permissionQueue.count, 1, "pre-condition: raw snapshot has the entry")
-        vm.handleSnapshot(snapshotTabs: tabs, recentDirs: [], groupMode: nil, groups: nil)
+        vm.handleSnapshot(snapshotTabs: tabs, recentDirs: [])
         return vm.tabs.first(where: { $0.id == "tab-1" })?.permissionQueue ?? []
     }
 
@@ -144,10 +144,10 @@ final class SnapshotStaleDenialStripTests: XCTestCase {
 
     private func applySnapshotData(_ vm: SessionViewModel, _ data: Data) throws {
         let event = try decoder.decode(RemoteEvent.self, from: data)
-        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
+        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _) = event else {
             XCTFail("Expected snapshot"); return
         }
-        vm.handleSnapshot(snapshotTabs: tabs, recentDirs: [], groupMode: nil, groups: nil)
+        vm.handleSnapshot(snapshotTabs: tabs, recentDirs: [])
     }
 
     func testConfirmedThenOmittedCardIsDropped() throws {

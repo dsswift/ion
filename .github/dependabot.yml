@@ -21,31 +21,6 @@ updates:
           - "*"
 
   - package-ecosystem: npm
-    directory: /desktop
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    versioning-strategy: increase
-    groups:
-      dev-deps:
-        dependency-type: development
-        update-types:
-          - minor
-          - patch
-      prod-deps:
-        dependency-type: production
-        update-types:
-          - minor
-          - patch
-    ignore:
-      - dependency-name: "electron"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "react"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "react-dom"
-        update-types: ["version-update:semver-major"]
-
-  - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
@@ -55,6 +30,13 @@ updates:
       all-npm-deps:
         patterns:
           - "*"
+    ignore:
+      - dependency-name: "electron"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /

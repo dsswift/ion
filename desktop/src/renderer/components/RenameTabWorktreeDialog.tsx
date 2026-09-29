@@ -120,7 +120,7 @@ export function RenameTabWorktreeDialog({
       >
         <div style={{ padding: '14px 16px 0' }}>
           <span style={{ color: colors.textPrimary, fontSize: 14, fontWeight: 600 }}>
-            Rename tab and worktree
+            Rename conversation and worktree
           </span>
           {/* Name the worktree being renamed: the operator is changing two
               things at once and should see the second one. */}

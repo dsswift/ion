@@ -402,7 +402,9 @@ enum MarkdownFormatter {
 
     /// Render a sequence of inline markup nodes into a single `AttributedString`
     /// with the appropriate per-run styling. SwiftUI's `Text(AttributedString)`
-    /// honors `font`, `foregroundColor`, and inline links automatically.
+    /// honors `font`, `foregroundColor`, and inline links automatically. Each
+    /// styled run also carries its `inlinePresentationIntent`, which is what
+    /// `LinkableTextRenderer` reads to draw the same styling in UIKit.
     // `internal` (not `private`): MarkdownFormatter+Helpers.swift's
     // flattenBlocksToAttributed calls this, and Swift's `private` does not
     // extend across files even for extensions of the same type.
@@ -452,7 +454,7 @@ enum MarkdownFormatter {
     ) -> AttributedString {
         switch inline {
         case let text as Markdown.Text:
-            return AttributedString(text.string)
+            return renderProseText(text.string)
 
         case let code as Markdown.InlineCode:
             return renderInlineCode(code.code)
@@ -468,6 +470,7 @@ enum MarkdownFormatter {
             inner.runs.forEach { run in
                 let range = run.range
                 inner[range].font = (inner[range].font ?? .body).italic()
+                inner[range].inlinePresentationIntent = (inner[range].inlinePresentationIntent ?? []).union(.emphasized)
             }
             return inner
 
@@ -476,6 +479,7 @@ enum MarkdownFormatter {
             inner.runs.forEach { run in
                 let range = run.range
                 inner[range].font = (inner[range].font ?? .body).bold()
+                inner[range].inlinePresentationIntent = (inner[range].inlinePresentationIntent ?? []).union(.stronglyEmphasized)
             }
             return inner
 
@@ -484,6 +488,7 @@ enum MarkdownFormatter {
             inner.runs.forEach { run in
                 let range = run.range
                 inner[range].strikethroughStyle = .single
+                inner[range].inlinePresentationIntent = (inner[range].inlinePresentationIntent ?? []).union(.strikethrough)
             }
             return inner
 

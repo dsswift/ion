@@ -71,6 +71,8 @@ extension SessionViewModel {
     private func scheduleCreateTimeout(clientCmdId: String) {
         pendingCreates[clientCmdId]?.timeoutTask?.cancel()
         let task = Task { [weak self] in
+            // Only CancellationError can surface; the guard below re-checks cancellation.
+            // swiftlint:disable:next silent_try_optional
             try? await Task.sleep(for: SessionViewModel.createResendTimeout)
             guard !Task.isCancelled else { return }
             await MainActor.run { self?.onCreateTimeout(clientCmdId: clientCmdId) }

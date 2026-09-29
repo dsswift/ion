@@ -22,14 +22,16 @@ vi.mock('../logger', () => ({
   log: vi.fn(),
 }))
 
-vi.mock('../settings-store', async () => {
+vi.mock('@ion/server/persistence/settings-store', async (importOriginal) => {
+  const __actual = (await importOriginal()) as Record<string, unknown>
   const readEngineConfig = vi.fn(() => JSON.parse(JSON.stringify(fakeConfig)))
   const writeEngineConfig = vi.fn((cfg: Record<string, any>) => {
     written.push(JSON.parse(JSON.stringify(cfg)))
     fakeConfig = JSON.parse(JSON.stringify(cfg))
   })
   return {
-    ENGINE_CONFIG_FILE: '/fake/.ion/engine.json',
+    ...__actual,
+    engineConfigFile: () => '/fake/.ion/engine.json',
     readEngineConfig,
     writeEngineConfig,
     updateEngineConfig: vi.fn((mutator: (cfg: Record<string, any>) => boolean | void) => {

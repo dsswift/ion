@@ -19,7 +19,6 @@
 //
 // Remove this patch once app-builder-lib carries the ARM64 branch upstream.
 const fs = require('fs')
-const path = require('path')
 
 // The whole APP_64 block is matched rather than a single line, so a reformat
 // upstream fails loudly here instead of silently patching nothing.
@@ -50,6 +49,10 @@ const WITH_ARM64 = `${APP_64_BLOCK}      !ifdef APP_ARM64
  * @returns {'patched' | 'already' | 'missing' | 'unrecognised'} what happened.
  */
 function patchNsisArm64(filePath) {
+  if (!filePath) {
+    console.log('nsis arm64 patch skipped \u2014 app-builder-lib is not installed')
+    return 'missing'
+  }
   if (!fs.existsSync(filePath)) {
     console.log('nsis arm64 patch skipped \u2014 multiUser.nsh not present')
     return 'missing'
@@ -74,6 +77,6 @@ module.exports = { patchNsisArm64 }
 
 if (require.main === module) {
   patchNsisArm64(
-    path.join(__dirname, '..', 'node_modules', 'app-builder-lib', 'templates', 'nsis', 'multiUser.nsh'),
+    require('./resolve-package').packagePath('app-builder-lib', 'templates', 'nsis', 'multiUser.nsh'),
   )
 }

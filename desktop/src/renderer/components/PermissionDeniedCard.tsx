@@ -1,15 +1,16 @@
 import React, { useState, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ShieldWarning, ShieldCheck, Terminal, ListChecks, Eye, PushPinSlash } from '@phosphor-icons/react'
+import { ShieldWarning, Terminal, ListChecks, Eye } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { PlanViewer } from './PlanViewer'
 import { surfaceRouter } from '../lib/file-open-router'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { AskQuestionCard } from './AskQuestionCard'
 import type { AskData, AskOption } from './AskQuestionCard'
-import type { Message } from '../../shared/types'
+import type { Message } from '@ion/shared/types'
 import { rDebug, rError } from '../rendererLogger'
+import { host } from '../host/host-instance'
 
 interface Props {
   tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }>
@@ -18,8 +19,6 @@ interface Props {
   projectPath: string
   messages: Message[]
   tabPlanFilePath?: string | null
-  /** When true, shows the "Implement and unpin" button on the Plan Ready card. */
-  tabGroupPinned?: boolean
   onDismiss: () => void
   /**
    * Called when the user clicks Implement (or "Implement, clear context").
@@ -29,18 +28,11 @@ interface Props {
    * path. See implementPlan in implement-slice.ts.
    */
   onImplement?: (clearContext?: boolean) => void
-  /**
-   * Called when the user clicks "Implement and unpin" — unpins the tab
-   * then implements. `clearContext` mirrors the onImplement contract.
-   */
-  onImplementAndUnpin?: (clearContext?: boolean) => void
   onAnswer?: (answer: string) => void
-  onApprove?: (toolNames: string[]) => void
 }
 
-export function PermissionDeniedCard({ tools, tabId, sessionId: _sessionId, projectPath: _projectPath, messages, tabPlanFilePath, tabGroupPinned, onDismiss, onImplement, onImplementAndUnpin, onAnswer, onApprove }: Props) {
+export function PermissionDeniedCard({ tools, tabId, sessionId: _sessionId, projectPath: _projectPath, messages, tabPlanFilePath, onDismiss, onImplement, onAnswer }: Props) {
   const colors = useColors()
-  const allowSettingsEdits = usePreferencesStore((s) => s.allowSettingsEdits)
   // Reveals the secondary "Implement, clear context" action on the
   // plan-approval card. Default off — only users who explicitly want
   // per-plan opt-in to a fresh conversation enable this. See
@@ -98,7 +90,7 @@ export function PermissionDeniedCard({ tools, tabId, sessionId: _sessionId, proj
         return
       }
     }
-    const result = await window.ion.readPlan(planFilePath)
+    const result = await host.shell.readPlan(planFilePath)
     if (result.content && result.fileName) {
       setPlanData({ content: result.content, fileName: result.fileName, filePath: planFilePath })
     }
@@ -136,25 +128,6 @@ export function PermissionDeniedCard({ tools, tabId, sessionId: _sessionId, proj
       : []
     return { question: input.question as string, header: input.header as string | undefined, options: opts }
   }, [tools, messages, isAskQuestion])
-
-  // Extract context about what was denied (file path, command, etc.)
-  const deniedContext = useMemo(() => {
-    if (isPlanExit || isAskQuestion) return null
-    const deniedIds = new Set(tools.map((t) => t.toolUseId))
-    const deniedNames = new Set(tools.map((t) => t.toolName))
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i]
-      if (!m.toolInput) continue
-      if ((m.toolId && deniedIds.has(m.toolId)) || (m.toolName && deniedNames.has(m.toolName))) {
-        try {
-          const input = JSON.parse(m.toolInput)
-          if (input.file_path) return input.file_path as string
-          if (input.command) return input.command as string
-        } catch { /* ignore */ }
-      }
-    }
-    return null
-  }, [messages, tools, isPlanExit, isAskQuestion])
 
   // ─── ExitPlanMode: "Plan Ready" card ───
 
@@ -198,22 +171,6 @@ export function PermissionDeniedCard({ tools, tabId, sessionId: _sessionId, proj
 
             {/* Actions */}
             <div className="flex gap-1.5 flex-wrap">
-              {tabGroupPinned && onImplementAndUnpin && (
-                <button
-                  onClick={() => onImplementAndUnpin()}
-                  className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
-                  style={{
-                    background: colors.permissionAllowBg,
-                    color: colors.successFg,
-                    border: `1px solid ${colors.permissionAllowBorder}`,
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = colors.permissionAllowHoverBg }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = colors.permissionAllowBg }}
-                >
-                  <PushPinSlash size={12} />
-                  Implement and unpin
-                </button>
-              )}
               <button
                 onClick={() => onImplement()}
                 className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
@@ -283,106 +240,6 @@ export function PermissionDeniedCard({ tools, tabId, sessionId: _sessionId, proj
         onDismiss={onDismiss}
         colors={colors}
       />
-    )
-  }
-
-  // ─── Interactive approval card (when allowSettingsEdits is on) ───
-
-  if (allowSettingsEdits && onApprove && !isPlanExit && !isAskQuestion) {
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 8, scale: 0.97 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: -4, scale: 0.97 }}
-        transition={{ duration: 0.2 }}
-        className="mx-4 mb-2"
-      >
-        <div
-          style={{
-            background: colors.containerBg,
-            border: `1px solid ${colors.infoBorder}`,
-            borderRadius: 14,
-            boxShadow: `0 2px 12px ${colors.infoShadow}`,
-          }}
-          className="overflow-hidden"
-        >
-          {/* Header */}
-          <div
-            className="flex items-center gap-2 px-3 py-2"
-            style={{
-              background: colors.infoBg,
-              borderBottom: `1px solid ${colors.infoBorder}`,
-            }}
-          >
-            <ShieldCheck size={14} style={{ color: colors.infoText }} />
-            <span className="text-[12px] font-semibold" style={{ color: colors.infoText }}>
-              Permission Required
-            </span>
-          </div>
-
-          {/* Body */}
-          <div className="px-3 py-2">
-            <p className="text-[11px] leading-[1.5] mb-1" style={{ color: colors.textSecondary }}>
-              The agent needs permission to use{' '}
-              <span style={{ color: colors.textPrimary, fontWeight: 500 }}>{toolNames.join(', ')}</span>.
-            </p>
-            {deniedContext && (
-              <p
-                className="text-[10px] font-mono leading-[1.4] mb-2 px-2 py-1 rounded-md"
-                style={{
-                  background: colors.surfacePrimary,
-                  color: colors.textTertiary,
-                  border: `1px solid ${colors.surfaceSecondary}`,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {deniedContext}
-              </p>
-            )}
-
-            {/* Actions */}
-            <div className="flex gap-1.5">
-              <button
-                onClick={() => onApprove(toolNames)}
-                className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
-                style={{
-                  background: colors.permissionAllowBg,
-                  color: colors.successFg,
-                  border: `1px solid ${colors.permissionAllowBorder}`,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = colors.permissionAllowHoverBg
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = colors.permissionAllowBg
-                }}
-              >
-                <ShieldCheck size={12} />
-                Approve
-              </button>
-              <button
-                onClick={onDismiss}
-                className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer"
-                style={{
-                  background: colors.surfaceHover,
-                  color: colors.textTertiary,
-                  border: `1px solid ${colors.permissionDeniedBorder}`,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = colors.surfaceActive
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = colors.surfaceHover
-                }}
-              >
-                Block
-              </button>
-            </div>
-          </div>
-        </div>
-      </motion.div>
     )
   }
 

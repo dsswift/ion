@@ -1,6 +1,6 @@
 import Foundation
 
-/// The WebSocket operations used by `RelayClient`.
+/// The WebSocket operations used by the Studio wire's sockets.
 ///
 /// `URLSessionWebSocketTask` conforms in production. Tests supply a controlled
 /// task so timeout and replacement behavior can be pinned without a live relay.

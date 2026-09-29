@@ -1,8 +1,8 @@
-import type { TabState } from '../../../shared/types'
-import type { IntegrationWorkspace } from '../../../shared/types-bench'
-import { fuzzyMatchCommand } from '../../../shared/fuzzy-match'
+import type { TabState } from '@ion/shared/types'
+import type { IntegrationWorkspace } from '@ion/shared/types-bench'
+import { fuzzyMatchCommand } from '@ion/shared/fuzzy-match'
 import { inboxProjectFor, inboxWorktreeFor } from './inbox-grouping'
-import type { WorktreeInventoryEntry } from '../../../shared/types'
+import type { WorktreeInventoryEntry } from '@ion/shared/types'
 
 /** Number of days that conversations remain recoverable in Settled History. */
 export const SETTLED_HISTORY_CUTOFF_DAYS = 90

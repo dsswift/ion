@@ -20,7 +20,7 @@ import { SHORTCUT_CATALOG, resolveViewBindings } from '../shortcut-catalog'
 import { parseChord, formatChord } from '../chord'
 import { chordRevealed, NO_MODIFIERS } from '../modifier-reveal'
 import { CANVAS_TAB_COMMANDS } from '../../studio/surface/canvas-tab-commands'
-import { SINGLETON_ORDER, NOTIFICATION_SURFACE_ID } from '../../../shared/studio-surface-types'
+import { SINGLETON_ORDER, NOTIFICATION_SURFACE_ID } from '@ion/shared/studio-surface-types'
 
 afterAll(() => {
   if (_saved) Object.defineProperty(navigator, 'platform', _saved)

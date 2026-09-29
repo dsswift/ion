@@ -105,14 +105,14 @@ final class DataDrivenConversationTests: XCTestCase {
         ]}
         """.data(using: .utf8)!
         let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
-        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
+        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _) = event else {
             return XCTFail("Expected snapshot")
         }
         // Sanity: the wire payload really is a plain tab.
         XCTAssertNotEqual(tabs.first?.hasEngineExtension, true,
             "Fixture must represent a plain tab (no extension flag)")
 
-        vm.handleSnapshot(snapshotTabs: tabs, recentDirs: [], groupMode: nil, groups: nil)
+        vm.handleSnapshot(snapshotTabs: tabs, recentDirs: [])
 
         let instances = try XCTUnwrap(vm.conversationInstances["plain"],
             "A plain tab carrying conversationInstances must get them merged post-#256-follow-up — the former hasEngineExtension gate dropped them")
@@ -134,9 +134,7 @@ final class DataDrivenConversationTests: XCTestCase {
         vm.conversationInstances["plain"] = [
             ConversationInstanceInfo(id: "main", label: "Main")
         ]
-        vm.mutateConversationMessages(tabId: "plain") {
-            $0.append(Message(id: "m1", role: .user, content: "hi", timestamp: 1))
-        }
+        vm.conversationInstances["plain"]?[0].messages.append(Message(id: "m1", role: .user, content: "hi", timestamp: 1))
         let agent = try alwaysVisibleAgent(name: "Worker")
         vm.handleEvent(.engineAgentState(tabId: "plain", instanceId: nil, agents: [agent], metadataOmitted: false))
 
@@ -151,10 +149,10 @@ final class DataDrivenConversationTests: XCTestCase {
         ]}
         """.data(using: .utf8)!
         let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
-        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
+        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _) = event else {
             return XCTFail("Expected snapshot")
         }
-        vm.handleSnapshot(snapshotTabs: tabs, recentDirs: [], groupMode: nil, groups: nil)
+        vm.handleSnapshot(snapshotTabs: tabs, recentDirs: [])
 
         let instance = try XCTUnwrap(vm.conversationInstances["plain"]?.first)
         // Projected field updated…

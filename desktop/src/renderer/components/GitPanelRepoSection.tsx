@@ -10,21 +10,25 @@
  * its own repo through the refcounted useGitRepo (same-window collisions
  * fixed in the F5 commit).
  */
+import { isString, useActiveServerSetting } from '../studio/state/use-server-setting'
 import React, { useCallback, useEffect, useMemo } from 'react'
 import { ArrowsClockwise } from '@phosphor-icons/react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
 import { Chevron } from './Chevron'
-import { useRepoState } from '../stores/git'
+import { useRepoState } from '@ion/server/store/git'
 import { useGitRepo } from '../hooks/useGitRepo'
 import { GitChangesSection } from './GitChangesSection'
 import { CommitForm } from './git/CommitForm'
 import { SECTION_HEADER } from './git/paneLayout'
 import { rDebug, rError } from '../rendererLogger'
-import { pathSegments } from '../../shared/paths'
+import { pathSegments } from '@ion/shared/paths'
+import { host } from '../host/host-instance'
+import { WorktreeOverlapLauncher } from './WorktreeOverlapLauncher'
+import { submitWithTrace } from '../lib/prompt-trace'
 
 function HeaderIconButton({
   title,
@@ -77,7 +81,9 @@ export function GitPanelRepoSection(props: GitPanelRepoSectionProps): React.JSX.
   const collapsed = collapsedMap[directory] ?? !isPrimary
   const gitChangesTreeView = usePreferencesStore((s) => s.gitChangesTreeView)
   const activeTabId = useSessionStore((s) => s.activeTabId)
-  const commitCommand = usePreferencesStore((s) => s.commitCommand)
+  // Runs in the conversation's terminal, so it is the command you set on THAT
+  // server. This Mac's command may name a program the other machine lacks.
+  const commitCommand = useActiveServerSetting('commitCommand', isString, '')
 
   // Per-section subscription (refcounted — safe beside StatusBar's).
   useGitRepo(directory, true)
@@ -86,7 +92,7 @@ export function GitPanelRepoSection(props: GitPanelRepoSectionProps): React.JSX.
   const stagedCount = useMemo(() => files.filter((f) => f.staged).length, [files])
 
   const refresh = useCallback(() => {
-    window.ion.gitRefresh(directory).catch((err) => rDebug('git', 'gitRefresh failed', { directory, error: String(err) }))
+    host.shell.gitRefresh(directory).catch((err) => rDebug('git', 'gitRefresh failed', { directory, error: String(err) }))
   }, [directory])
 
   // Fresh snapshot whenever the section expands (watcher is best-effort).
@@ -105,7 +111,8 @@ export function GitPanelRepoSection(props: GitPanelRepoSectionProps): React.JSX.
         })
       })
     } else {
-      useSessionStore.getState().submit(activeTabId, 'commit the current changes')
+      const store = useSessionStore.getState()
+      void submitWithTrace(store.submit, activeTabId, 'commit the current changes', store.tabs.find((t) => t.id === activeTabId)?.conversationId)
     }
   }, [commitCommand, directory, activeTabId])
 
@@ -154,7 +161,12 @@ export function GitPanelRepoSection(props: GitPanelRepoSectionProps): React.JSX.
           </span>
         )}
         <div style={{ flex: 1 }} />
-        <HeaderIconButton title={`Refresh ${baseName}`} onClick={(e) => { e.stopPropagation(); refresh() }} colors={colors}>
+        <WorktreeOverlapLauncher repoPath={directory} sourceBranch={repoState?.branch} />
+        <HeaderIconButton
+          title={`Refresh ${baseName}`}
+          onClick={(e) => { e.stopPropagation(); refresh() }}
+          colors={colors}
+        >
           <ArrowsClockwise size={11} />
         </HeaderIconButton>
       </div>
@@ -165,14 +177,14 @@ export function GitPanelRepoSection(props: GitPanelRepoSectionProps): React.JSX.
             branch={repoState?.branch ?? ''}
             stagedCount={stagedCount}
             onCommit={async (message, amend, opts) => {
-              const result = await window.ion.gitCommit(directory, message, { amend, signoff: opts?.signoff, gpg: opts?.gpg })
+              const result = await host.shell.gitCommit(directory, message, { amend, signoff: opts?.signoff, gpg: opts?.gpg })
               if (result.ok) { refresh(); return true }
               return false
             }}
             onQuickCommit={handleQuickCommit}
             onPush={() => {
               void (async () => {
-                await window.ion.gitPush(directory)
+                await host.shell.gitPush(directory)
                 refresh()
               })().catch((err) => rError('git-panel', 'push failed', { error: String(err) }))
             }}

@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// Sheet to set the per-desktop display override (custom name + icon).
+/// Sheet to set the per-server display override (custom name + icon).
 ///
-/// Edits go to the desktop via `viewModel.updateRemoteDisplay(...)` which
+/// Edits go to the server via `viewModel.updateRemoteDisplay(...)` which
 /// transparently picks the active transport when editing the current
-/// desktop, or opens a transient sidecar transport for an inactive
-/// desktop. The desktop persists the value and broadcasts to every paired
+/// server, or opens a transient sidecar transport for an inactive
+/// server. The server persists the value and broadcasts to every paired
 /// phone — so this same edit will appear on the user's other iPhones too.
 struct DeviceCustomizationSheet: View {
     @Environment(\.appTheme) private var theme
@@ -81,15 +81,15 @@ struct DeviceCustomizationSheet: View {
                 } footer: {
                     let isActive = device.id == viewModel.activeDevice?.id
                     if isActive {
-                        Text("These settings sync to your other phones paired to this desktop.")
+                        Text("These settings sync to your other phones paired to this server.")
                     } else {
-                        Text("Will connect briefly to this desktop to apply the change, then disconnect. Active session is not interrupted.")
+                        Text("Will connect briefly to this server to apply the change, then disconnect. Active session is not interrupted.")
                     }
                 }
 
                 // Per-pairing enterprise account. Renders nothing unless this
-                // desktop authenticates its relay with OIDC.
-                DesktopAccountSection(device: device)
+                // server authenticates its relay with OIDC.
+                ServerAccountSection(device: device)
                     .environment(viewModel)
             }
             .navigationTitle("Customize")

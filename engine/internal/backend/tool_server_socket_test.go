@@ -80,6 +80,12 @@ func TestSocketPathSanitization(t *testing.T) {
 				}
 			}
 
+			// The token is the whole of what the key adds to the path, so it
+			// stays short enough to leave the data dir room under sun_path.
+			if got := len(socketToken(tc.key)); got != 32 {
+				t.Errorf("socket token is %d chars, want 32", got)
+			}
+
 			// Full socket path must stay within the sun_path limit.
 			if len(sockPath) >= sunPathLimit {
 				t.Errorf("socket path len %d >= sun_path limit %d: %q", len(sockPath), sunPathLimit, sockPath)

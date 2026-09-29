@@ -21,36 +21,23 @@ struct TabListView: View {
     // Internal (not private) so the same-module TabListView+DetailViews
     // extension can read it — see the note on `theme` above.
     @State var showNewTab = false
-    // When the new-tab sheet was opened from a group header's `+` button,
-    // this holds the target group's id so we can stamp `pinToGroupId` on
-    // the outbound createTab command (fix for issue: per-group `+` would
-    // create tabs that the first prompt's auto-movement immediately
-    // yanked into the planning group). nil when the sheet was opened from
-    // the global toolbar `+`, in which case we want the legacy behavior.
-    // Reset to nil on every sheet close so the global toolbar `+` is
-    // never accidentally treated as a per-group request.
-    // Internal (not private): the new-conversation presentation group in
-    // TabListView+Presentation.swift reads it, and private is file-scoped.
-    @State var pendingPinToGroupId: String? = nil
     // Pending new-conversation request from TabListNewTabSheet. Stored here
     // so `requestNewConversation` fires in `onDismiss` — after the sheet
     // animation completes — rather than mid-animation. SwiftUI silently drops
     // a confirmationDialog that is presented while a sheet is still animating
     // out, which caused the "Plain conversation" tap to appear to do nothing.
-    // Internal for the same reason as pendingPinToGroupId above: the sheet
-    // and its onDismiss drain live in TabListView+Presentation.swift.
+    // Internal (not private): the sheet and its onDismiss drain live in
+    // TabListView+Presentation.swift.
     @State var pendingNewConversationProject: RemoteProject? = nil
-    @State var pendingNewConversationPin: String? = nil
-    // Internal (not private): the DesktopPickerMenu in TabListView+Layouts'
+    // Internal (not private): the ServerPickerMenu in TabListView+Layouts'
     // toolbars binds to it.
     @State var showPairingSheet = false
     // When non-nil, the new-conversation profile picker is shown.
-    // Holds the target directory for tab creation and optional group pin id.
-    // These four are read by the TabListView+Helpers.swift extension, so they
+    // Holds the target project for tab creation.
+    // These three are read by the TabListView+Helpers.swift extension, so they
     // are internal (not private — private is file-scoped and the extension
     // lives in another file).
     @State var conversationPickerProject: RemoteProject? = nil
-    @State var conversationPickerPinToGroupId: String? = nil
     @State var conversationPickerUseWorktree: Bool? = nil
     @State var conversationPickerSourceBranch: String? = nil
     // Internal: the Rename Tab alert lives in the conversation-creation
@@ -61,15 +48,8 @@ struct TabListView: View {
     /// Nil for every uneventful close, which proceeds without a prompt.
     /// Internal so the +Inbox extension's requestCloseTab path shares the gate.
     @State var pendingCloseWarning: PendingCloseWarning?
-    @State var collapsedGroupIds: Set<String> = {
-        Set(UserDefaults.standard.stringArray(forKey: "collapsedGroupIds") ?? [])
-    }()
     @State var searchText: String = ""
 
-    // ─── Inbox | Ion Classic view switcher (per-device, persisted) ───────
-    // Mirrors the desktop's per-device conversationNav preference: never
-    // synced, never projectable — each device picks its own navigation.
-    @State var listViewMode: String = UserDefaults.standard.string(forKey: "tabListViewMode") ?? "classic"
     // Inbox shelf UI state (internal: the +Inbox extension reads these).
     @State var activeInboxExpansion: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "inboxActiveExpansion") ?? [])
     @State var snoozedInboxExpansion: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "inboxSnoozedExpansion") ?? [])
@@ -135,7 +115,7 @@ struct TabListView: View {
         VStack(spacing: 0) {
             // Device picker + connection quality always visible in sidebar
             HStack(spacing: 8) {
-                DesktopPickerMenu(showPairingSheet: $showPairingSheet)
+                ServerPickerMenu(showPairingSheet: $showPairingSheet)
                 Spacer()
                 ConnectionQualityView(compact: true)
             }
@@ -170,126 +150,17 @@ struct TabListView: View {
         }
     }
 
-    // MARK: - Tab Group Sections
+    // MARK: - Sections
 
-    /// Section dispatcher: Classic (groups) or Inbox, per the persisted
-    /// per-device mode. Both layout roots render THIS, so the switcher
-    /// applies to iPhone and iPad alike.
+    /// The Inbox is the one conversation list. Both layout roots render THIS.
     @ViewBuilder
     func tabSections(selectionStyle: TabSelectionStyle) -> some View {
-        if listViewMode == "inbox" {
-            inboxControls
-                // Ride the same cached crawl the desktop panels use so the
-                // hierarchy renders from fresh state the moment the inbox
-                // appears, instead of waiting out the snapshot interval.
-                .onAppear { viewModel.refreshAllWorktrees() }
-            inboxSections(selectionStyle: selectionStyle)
-        } else {
-            tabGroupSections(selectionStyle: selectionStyle)
-        }
-    }
-
-    /// Toolbar toggle between the two list modes.
-    var viewModeToggle: some View {
-        Button {
-            listViewMode = listViewMode == "inbox" ? "classic" : "inbox"
-            UserDefaults.standard.set(listViewMode, forKey: "tabListViewMode")
-            DiagnosticLog.log("tab list view mode switched", tag: "view.tablist", fields: ["mode": listViewMode])
-        } label: {
-            Image(systemName: listViewMode == "inbox" ? "tray.full" : "tray")
-        }
-        .accessibilityLabel(listViewMode == "inbox" ? "Switch to Ion Classic view" : "Switch to Inbox view")
-    }
-
-    // Internal (not private): both layout roots in TabListView+Layouts render it.
-    @ViewBuilder
-    func tabGroupSections(selectionStyle: TabSelectionStyle) -> some View {
-        let isSearching = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        ForEach(filteredDisplayGroups, id: \.id) { group in
-            Section {
-                if isSearching || !collapsedGroupIds.contains(group.id) {
-                    ForEach(group.tabs) { tab in
-                        Group {
-                            switch selectionStyle {
-                            case .navigation:
-                                NavigationLink(value: tab.id) {
-                                    TabRowView(
-                                        tab: tab,
-                                        showDirectory: viewModel.tabGroupMode == "manual",
-                                        showGitInfo: viewModel.showGitInfoInTabList,
-                                        idleSince: viewModel.tabIdleSince[tab.id],
-                                        isSpeaking: viewModel.voiceService.speakingTabId == tab.id && viewModel.voiceService.isSpeaking,
-                                        gitChanges: viewModel.gitChanges[tab.workingDirectory],
-                                        onOpenGit: {
-                                            viewModel.pendingGitPaneTabId = tab.id
-                                            viewModel.pendingNavigationTabId = tab.id
-                                        },
-                                    )
-                                }
-                            case .selection:
-                                TabRowView(
-                                    tab: tab,
-                                    showDirectory: viewModel.tabGroupMode == "manual",
-                                    showGitInfo: viewModel.showGitInfoInTabList,
-                                    idleSince: viewModel.tabIdleSince[tab.id],
-                                    isSpeaking: viewModel.voiceService.speakingTabId == tab.id && viewModel.voiceService.isSpeaking,
-                                    gitChanges: viewModel.gitChanges[tab.workingDirectory],
-                                    onOpenGit: {
-                                        viewModel.pendingGitPaneTabId = tab.id
-                                        viewModel.pendingNavigationTabId = tab.id
-                                    },
-                                )
-                                .tag(tab.id)
-                            }
-                        }
-                        // The row fill is a theme token, applied unconditionally.
-                        // It used to be applied only for pill-colored rows, so
-                        // every other row fell through to the List's default cell
-                        // material — a system color no theme pack can reach, and
-                        // solid black in dark mode.
-                        //
-                        // A pill color contributes a 3pt leading edge only. The
-                        // full-width 0.12 wash it used to also paint made colored
-                        // conversations shout beside neutral ones, so a tinted
-                        // idle row outweighed an untinted running one. The edge
-                        // still identifies the conversation without competing
-                        // with the status dot for attention.
-                        .listRowBackground(
-                            theme.surfaceSecondary
-                                .overlay(alignment: .leading) {
-                                    if let color = activePillColor(for: tab) {
-                                        color.opacity(0.65).frame(width: 3)
-                                    }
-                                }
-                        )
-                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                            Button {
-                                renameText = tab.displayTitle
-                                renamingTabId = tab.id
-                            } label: {
-                                Label("Rename", systemImage: "pencil")
-                            }
-                            .tint(.orange)
-                        }
-                        // Context menu extracted to TabRowContextMenu.swift to keep
-                        // this file under the Swift 600-line cap.
-                        .modifier(TabRowContextMenu(
-                            tab: tab,
-                            renamingTabId: $renamingTabId,
-                            renameText: $renameText
-                        ))
-                    }
-                    .onDelete { offsets in
-                        let tabs = offsets.map { group.tabs[$0] }
-                        for tab in tabs {
-                            requestCloseTab(tab)
-                        }
-                    }
-                }
-            } header: {
-                groupHeader(group)
-            }
-        }
+        inboxControls
+            // Ride the same cached crawl the desktop panels use so the
+            // hierarchy renders from fresh state the moment the inbox
+            // appears, instead of waiting out the snapshot interval.
+            .onAppear { viewModel.refreshAllWorktrees() }
+        inboxSections(selectionStyle: selectionStyle)
     }
 
     /// Close a tab, pausing for confirmation only when its worktree still holds
@@ -313,54 +184,14 @@ struct TabListView: View {
         viewModel.closeTab(tab.id)
     }
 
-    /// Returns the resolved Color for a tab's pill color when the Show Tab Colors
-    /// setting is enabled and the tab has a non-empty pillColor string. Returns nil
-    /// otherwise, in which case the row renders the plain `surfaceSecondary` fill
-    /// with no tint overlaid.
-    private func activePillColor(for tab: RemoteTabState) -> Color? {
-        guard viewModel.showTabColorInTabList,
-              let hex = tab.pillColor, !hex.isEmpty else { return nil }
-        return Color(hex: hex)
-    }
-
-    private func groupHeader(_ group: (label: String, id: String, icon: String, directory: String?, tabs: [RemoteTabState])) -> some View {
-        // under the Swift 600-line cap. See CLAUDE.md → "When a file
-        // exceeds the cap". The wrapper function is kept so existing
-        // callers (the List's `header:` parameter) don't need to change.
-        TabListGroupHeader(
-            group: group,
-            isCollapsed: collapsedGroupIds.contains(group.id),
-            tabGroupMode: viewModel.tabGroupMode,
-            onNewConversation: { dir, pin in
-                requestNewConversation(directory: dir, pinToGroupId: pin)
-            },
-            onCreateTerminalTab: { dir in
-                viewModel.createTerminalTab(workingDirectory: dir)
-            },
-            onToggleCollapsed: {
-                toggleGroupCollapsed(group.id)
-            }
-        )
-    }
-
-    // MARK: - Filtered Display Groups
-
-    /// Returns `viewModel.displayGroups` filtered by `searchText`.
-    /// When search is empty, returns the full list unchanged (zero cost).
-    /// Groups with zero matching tabs are dropped entirely.
-    // newTabSheet was extracted to TabListNewTabSheet.swift to keep this
-    // file under the Swift 600-line cap. See CLAUDE.md → "When a file
-    // exceeds the cap". The sheet is now presented inline in `body`'s
-    // `.sheet(isPresented:onDismiss:)` modifier above.
-    //
-    // The search-filter (filteredDisplayGroups), collapsed-group persistence,
-    // new-conversation routing (requestNewConversation), and directory-list
-    // helpers were extracted to TabListView+Helpers.swift for the same reason.
+    // newTabSheet was extracted to TabListNewTabSheet.swift, and the
+    // new-conversation routing and directory-list helpers to
+    // TabListView+Helpers.swift, to keep this file under the Swift 600-line cap.
 }
 
 // MARK: - Tab Selection Style
 
-// Internal, not private: `tabGroupSections(selectionStyle:)` takes it and is
+// Internal, not private: `tabSections(selectionStyle:)` takes it and is
 // called from the layout roots in TabListView+Layouts.swift.
 enum TabSelectionStyle {
     case navigation  // iPhone: NavigationLink(value:)

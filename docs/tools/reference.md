@@ -393,7 +393,7 @@ Two behaviors differ from a general-purpose browser server:
   argument. Each conversation exposes exactly one Agent-linked browser tab, and
   the desktop resolves it from the calling session. A model cannot reach another
   conversation's browser or the operator's other tabs. The operator moves the
-  link from the Studio tab strip.
+  link from the Studio Inbox.
 - **No `browser_run_code_unsafe`.** Upstream it evaluates JavaScript in the
   Playwright server process, which for Ion is the desktop main process.
   `browser_evaluate` covers the page sandbox instead.

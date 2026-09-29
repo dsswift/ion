@@ -62,7 +62,7 @@ vi.mock('@phosphor-icons/react', () => ({
 }))
 
 import { ThinkingBlock } from '../ThinkingBlock'
-import type { Message } from '../../../../shared/types'
+import type { Message } from '@ion/shared/types'
 
 function makeMessage(overrides: Partial<Message> = {}): Message {
   return {

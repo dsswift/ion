@@ -41,9 +41,22 @@ type ToolGateReply struct {
 	Images   []types.ImageAttachment
 }
 
-// Broker manages pending permission, dialog, elicitation, early-stop, and
-// tool-gate request maps. Each map type uses a buffered channel so callers can
-// block until the response arrives.
+// CredentialReply carries a client's answer to an
+// engine_credential_request event (FR-05 child 09, SC-9): whether it has a
+// credential for the requested (subject, provider|host) scope, and if so its
+// value and (for the provider axis) the header style to send it under. Found
+// false means "no, but the source has nothing wrong -- try the next source",
+// distinct from a timeout/no-client, which the client source treats
+// identically to Found=false (both mean "no answer", never an error).
+type CredentialReply struct {
+	Found  bool
+	Token  string
+	Header string
+}
+
+// Broker manages pending permission, dialog, elicitation, early-stop,
+// tool-gate, and credential request maps. Each map type uses a buffered
+// channel so callers can block until the response arrives.
 type Broker struct {
 	mu          sync.RWMutex
 	permissions map[string]chan string
@@ -51,6 +64,7 @@ type Broker struct {
 	elicits     map[string]chan ElicitReply
 	earlyStops  map[string]chan EarlyStopReply
 	toolGates   map[string]chan ToolGateReply
+	credentials map[string]chan CredentialReply
 }
 
 // New creates a ready-to-use Broker.
@@ -61,6 +75,7 @@ func New() *Broker {
 		elicits:     make(map[string]chan ElicitReply),
 		earlyStops:  make(map[string]chan EarlyStopReply),
 		toolGates:   make(map[string]chan ToolGateReply),
+		credentials: make(map[string]chan CredentialReply),
 	}
 }
 
@@ -239,4 +254,43 @@ func (b *Broker) UnregisterToolGate(id string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.toolGates, id)
+}
+
+// --- Credential requests (FR-05 child 09) ---
+
+// RegisterCredential creates a channel for an in-flight credential request
+// (engine_credential_request). Mirrors RegisterElicit exactly -- same
+// register/resolve/unregister shape, same buffered-channel non-blocking
+// send semantics.
+func (b *Broker) RegisterCredential(id string) chan CredentialReply {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	ch := make(chan CredentialReply, 1)
+	b.credentials[id] = ch
+	return ch
+}
+
+// ResolveCredential sends the reply to the waiting credential-request
+// channel. Non-blocking: if nobody is listening (already timed out, or an
+// unknown/expired request id) the send is dropped, exactly as a late
+// elicitation response is dropped.
+func (b *Broker) ResolveCredential(id string, reply CredentialReply) bool {
+	b.mu.RLock()
+	ch, ok := b.credentials[id]
+	b.mu.RUnlock()
+	if !ok {
+		return false
+	}
+	select {
+	case ch <- reply:
+	default:
+	}
+	return true
+}
+
+// UnregisterCredential removes a pending credential-request entry.
+func (b *Broker) UnregisterCredential(id string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.credentials, id)
 }

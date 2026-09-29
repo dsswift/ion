@@ -2,8 +2,8 @@
 import React, { act, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TabState, WorktreeInventoryEntry } from "../../../shared/types";
-import type { ConversationPane } from "../../../shared/types-engine";
+import type { TabState, WorktreeInventoryEntry } from "@ion/shared/types";
+import type { ConversationPane } from "@ion/shared/types-engine";
 import type { InboxNavigatorProject } from "./inbox-navigator";
 
 (
@@ -26,7 +26,7 @@ function activateOutsideInbox(tabId: string): void {
   for (const listener of listeners) listener();
 }
 
-vi.mock("../../stores/sessionStore", () => ({
+vi.mock("@ion/server/store/sessionStore", () => ({
   useSessionStore: Object.assign(
     (selector: (value: typeof state) => unknown) =>
       useSyncExternalStore(
@@ -67,7 +67,7 @@ function tab(id: string): TabState {
 const older = tab("older");
 const newer = tab("newer");
 const project: InboxNavigatorProject = {
-  project: { key: "/repo", name: "repo" },
+  project: { key: "/repo", name: "repo" }, scopeKey: "/repo", environmentId: "local", checkouts: [{ environmentId: "local", key: "/repo" }],
   groups: [
     {
       key: "source:/repo",

@@ -6,9 +6,10 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { useGraphStore } from './graph-store'
 import { clearAllSessions } from './session-park'
-import { GRAPH_VIEW_DEFAULTS } from '../../../shared/graph-view-types'
-import type { GraphViewConfig } from '../../../shared/graph-view-types'
-import type { CorpusSnapshot, CorpusWatchState } from '../../../shared/graph-corpus-types'
+import { GRAPH_VIEW_DEFAULTS } from '@ion/shared/graph-view-types'
+import type { GraphViewConfig } from '@ion/shared/graph-view-types'
+import type { CorpusSnapshot, CorpusWatchState } from '@ion/shared/graph-corpus-types'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 function config(overrides?: Partial<GraphViewConfig>): GraphViewConfig {
   return {
@@ -30,8 +31,11 @@ function config(overrides?: Partial<GraphViewConfig>): GraphViewConfig {
   }
 }
 
-function installIonStub(overrides?: Partial<typeof window.ion>): void {
-  window.ion = {
+/** The server-side stub the loopback wire dispatches to; `window.ion` is that wire. */
+let serverStub: { graphCorpusSubscribe: ReturnType<typeof vi.fn> }
+
+function installIonStub(overrides?: Record<string, unknown>): void {
+  serverStub = installFakeWire({
     graphViewGetConfig: vi.fn(async () => config()),
     graphViewSetUserConfig: vi.fn(async () => ({ ok: true })),
     onGraphViewConfigChanged: vi.fn(() => () => undefined),
@@ -39,7 +43,8 @@ function installIonStub(overrides?: Partial<typeof window.ion>): void {
     graphCorpusUnsubscribe: vi.fn(async () => ({ ok: true })),
     onGraphCorpusDelta: vi.fn(() => () => undefined),
     ...overrides,
-  } as unknown as typeof window.ion
+  }) as unknown as typeof serverStub
+  window.ion = serverStub as unknown as typeof window.ion
 }
 
 afterEach(() => {
@@ -67,14 +72,14 @@ describe('init / availability', () => {
 
     expect(useGraphStore.getState().projectPath).toBe('/second')
     expect(useGraphStore.getState().config?.corpusRoots).toEqual([{ path: '/second' }])
-    expect(window.ion.graphCorpusSubscribe).not.toHaveBeenCalledWith('/first')
+    expect(serverStub.graphCorpusSubscribe).not.toHaveBeenCalledWith('/first')
   })
 
   it('an unconfigured project reports available:false and performs no subscribe', async () => {
     installIonStub({ graphViewGetConfig: vi.fn(async () => config({ corpusRoots: [] })) })
     await useGraphStore.getState().init('/project')
     expect(useGraphStore.getState().available).toBe(false)
-    expect(window.ion.graphCorpusSubscribe).not.toHaveBeenCalled()
+    expect(serverStub.graphCorpusSubscribe).not.toHaveBeenCalled()
   })
 
   it('a configured project subscribes and builds a model', async () => {

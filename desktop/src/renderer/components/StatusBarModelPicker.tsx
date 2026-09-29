@@ -1,27 +1,29 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useViewportClamp } from '../hooks/useViewportClamp'
+import { zoomAnchorEdges } from '../viewport-zoom'
 import { createPortal } from 'react-dom'
 import { CaretDown } from '@phosphor-icons/react'
 import { useShallow } from 'zustand/shallow'
-import { useSessionStore } from '../stores/sessionStore'
-import { resolveModelDisplayLabel } from '../../shared/model-identity'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { resolveModelDisplayLabel } from '@ion/shared/model-identity'
 import { useAllowedModels } from '../stores/use-allowed-models'
-import { useModelStore } from '../stores/model-store'
+import { useModelStore, environmentModels } from '@ion/server/store/model-store'
+import { useActiveTabEnvironmentId } from '../studio/connection/tab-environment'
+
 import { ModelPickerPopover } from './ModelPickerPopover'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
-import { usePreferencesStore } from '../preferences'
+import { selectedConversationModel } from '@ion/shared/conversation-model'
 import { rError, rInfo } from '../rendererLogger'
 import { useActiveEngineStatusFields } from './StatusBarEngineHelpers'
-import { activeInstance } from '../stores/conversation-instance'
-import { tabHasExtensions } from '../../shared/tab-predicates'
+import { activeInstance } from '@ion/server/store/conversation-instance'
 import {
   estimateModelSwitchCost,
   formatModelSwitchCost,
   formatModelSwitchReason,
   type ModelSwitchCostEstimate,
-} from '../../shared/model-switch-cost'
+} from '@ion/shared/model-switch-cost'
 import { resolveContextInputs } from './context-usage'
 import { ConfirmDialog } from './git/ConfirmDialog'
 
@@ -35,9 +37,9 @@ import { ConfirmDialog } from './git/ConfirmDialog'
  * - Reads `inst.modelOverride` / `inst.sessionModel` (via `activeInstance`) for
  *   every tab; writes via `setTabModel(activeTabId, modelId)`, which commits the
  *   active instance's `modelOverride`.
- * - `harnessGoverned` (a DATA predicate: does an extension/harness govern this
- *   conversation?) only folds in the preferences' `engineDefaultModel` as a
- *   default and is never a read/write fork.
+ * - The default shown when the conversation has no pick of its own is
+ *   `inst.resolvedModel`, which the conversation's server decides. Whether a
+ *   harness governs the conversation is folded in there, not here.
  * - Shows the `(actualLabel)` parenthetical when the engine reports a different
  *   running model (`engineStatusFields.model`) than the current selection. That
  *   is pure data — null for a plain conversation, so the parenthetical
@@ -47,8 +49,6 @@ import { ConfirmDialog } from './git/ConfirmDialog'
  * tab type.
  */
 export function ModelPicker() {
-  const preferredModel = usePreferencesStore((s) => s.preferredModel)
-  const engineDefaultModel = usePreferencesStore((s) => s.engineDefaultModel)
   // Enterprise-filtered model list (D-011). Full AVAILABLE_MODELS when no
   // enterprise policy is active; only permitted models when it is.
   const allowedModels = useAllowedModels()
@@ -59,10 +59,6 @@ export function ModelPicker() {
       // Per-conversation model state (`sessionModel` / `modelOverride`) lives on
       // the active instance for EVERY tab type, resolved via `activeInstance`.
       const inst = activeInstance(s.conversationPanes, t.id)
-      // `harnessGoverned` is a DATA predicate — does an extension/harness govern
-      // this conversation's model? — used only for the engine-default fallback
-      // and the "engine reports a different model" parenthetical, never as a
-      // read/write fork. The model itself is read + written the same way for all.
       // contextTokens is the conversation's model-visible size — the exact
       // token count a model switch would re-send. resolveContextInputs is the
       // same helper the context indicator and status drawer use, so the
@@ -79,7 +75,7 @@ export function ModelPicker() {
         status: t.status,
         sessionModel: inst?.sessionModel ?? null,
         modelOverride: inst?.modelOverride ?? null,
-        harnessGoverned: tabHasExtensions(t),
+        resolvedModel: selectedConversationModel(inst),
         contextTokens: resolveContextInputs(inst).tokens,
         lastTurnAt: Math.max(t.lastMessageAt ?? 0, t.idleSince ?? 0) || null,
       }
@@ -94,7 +90,7 @@ export function ModelPicker() {
   const [open, setOpen] = useState(false)
   // A switch the operator has asked for but not yet paid for. Held until they
   // confirm the re-write cost; null whenever no confirmation is pending.
-  const [pendingSwitch, setPendingSwitch] = useState<{ modelId: string; estimate: ModelSwitchCostEstimate } | null>(null)
+  const [pendingSwitch, setPendingSwitch] = useState<{ modelId: string; providerId: string; estimate: ModelSwitchCostEstimate } | null>(null)
   // Trigger pointer state (handlers gated off while busy — a disabled
   // control does not respond to hover/pressed).
   const triggerState = useInteractiveState()
@@ -104,10 +100,13 @@ export function ModelPicker() {
   useViewportClamp(popoverRef, open)
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
 
-  const allModels = useModelStore((s) => s.models)
-  const fetchModels = useModelStore((s) => s.fetchModels)
+  // The active conversation's Environment owns the catalog this picker
+  // lists (ADR-033): a Grover tab picks from Grover's models.
+  const environmentId = useActiveTabEnvironmentId()
+  const allModels = useModelStore((s) => environmentModels(s, environmentId).models)
+  const fetchModelsFor = useModelStore((s) => s.fetchModelsFor)
   const hasModels = allModels.length > 0
-  const lastFetched = useModelStore((s) => s.lastFetched)
+  const lastFetched = useModelStore((s) => environmentModels(s, environmentId).lastFetched)
 
   // Busy-gating: on conversation tabs we use the tab-level status; on
   // engine tabs we use the active instance's engine status because
@@ -116,25 +115,22 @@ export function ModelPicker() {
   // Busy-gating from the conversation's run status — the same signal for every
   // tab type (tab.status reflects the active conversation's run state).
   const isBusy = tab?.status === 'running' || tab?.status === 'connecting'
-  // `harnessGoverned` only influences the engine-default fallback + the
-  // actual-model parenthetical below; it is data, not a read/write fork.
-  const harnessGoverned = !!tab?.harnessGoverned
 
   useEffect(() => {
-    if (!hasModels) fetchModels().catch((err) => rError('model-picker', 'fetch models failed', { error: String(err) }))
-  }, [hasModels, fetchModels])
+    if (!hasModels) fetchModelsFor(environmentId).catch((err) => rError('model-picker', 'fetch models failed', { environment_id: environmentId, error: String(err) }))
+  }, [hasModels, fetchModelsFor, environmentId])
 
   useEffect(() => {
-    if (open && Date.now() - lastFetched > 60_000) fetchModels().catch((err) => rError('model-picker', 'fetch models failed', { error: String(err) }))
-  }, [open, lastFetched, fetchModels])
+    if (open && Date.now() - lastFetched > 60_000) fetchModelsFor(environmentId).catch((err) => rError('model-picker', 'fetch models failed', { environment_id: environmentId, error: String(err) }))
+  }, [open, lastFetched, fetchModelsFor, environmentId])
 
   useEffect(() => { setOpen(false); setPendingSwitch(null) }, [activeTabId])
 
   const updatePos = useCallback(() => {
     if (!triggerRef.current) return
-    const rect = triggerRef.current.getBoundingClientRect()
+    const rect = zoomAnchorEdges(triggerRef.current.getBoundingClientRect())
     setPos({
-      bottom: window.innerHeight - rect.top + 6,
+      bottom: rect.fromBottom + 6,
       left: rect.left,
     })
   }, [])
@@ -158,20 +154,15 @@ export function ModelPicker() {
   }
 
   // Effective model + display label resolve from ONE source for every tab:
-  // the active instance's override (carried on `tab.modelOverride` here). A
-  // harness-governed conversation folds in `engineDefaultModel` as a sensible
-  // default before falling back to the global `preferredModel` — that fold is
-  // the only place `harnessGoverned` (data) participates, not a read fork.
+  // the model the conversation's server resolved (`resolvedModel`, which
+  // already folds in the override and the owner's defaults on that server).
+  // This client's own default model is never consulted: it belongs to the
+  // local server and would name the wrong model for a conversation elsewhere.
   const fallbackModel = allowedModels[0] ?? { id: '', label: '' }
-  const effectiveModel = tab?.modelOverride
-    || (harnessGoverned ? engineDefaultModel : '')
-    || preferredModel
-    || fallbackModel.id
+  const effectiveModel = tab?.resolvedModel || fallbackModel.id
 
   const activeLabel = (() => {
-    if (tab?.modelOverride) return resolveModelDisplayLabel(tab.modelOverride, allModels)
-    if (harnessGoverned && engineDefaultModel) return resolveModelDisplayLabel(engineDefaultModel, allModels)
-    if (preferredModel) return resolveModelDisplayLabel(preferredModel, allModels)
+    if (tab?.resolvedModel) return resolveModelDisplayLabel(tab.resolvedModel, allModels)
     // Echo the model the engine reports it is actually running (governed
     // conversations) or the tab's last session model — both live as data and
     // are simply absent for an ungoverned plain tab that hasn't run yet.
@@ -188,7 +179,7 @@ export function ModelPicker() {
   const actualLabel = actualModel ? resolveModelDisplayLabel(actualModel, allModels) : null
   const modelDiffers = !!actualModel && actualLabel !== activeLabel
 
-  const handleSelect = (modelId: string) => {
+  const handleSelect = (modelId: string, providerId: string) => {
     // One write path for every tab: setTabModel writes the active instance's
     // modelOverride (the unified home for the per-conversation model). The old
     // setEngineModel did the identical thing and is gone.
@@ -216,11 +207,11 @@ export function ModelPicker() {
         stayCostUsd: estimate.cachedCostUsd, cacheState: estimate.cacheState,
         idleSeconds: estimate.idleSeconds, cacheTtlSeconds: estimate.cacheTtlSeconds,
       })
-      setPendingSwitch({ modelId, estimate })
+      setPendingSwitch({ modelId, providerId, estimate })
       setOpen(false)
       return
     }
-    setTabModel(activeTabId, modelId)
+    setTabModel(activeTabId, modelId, providerId)
   }
 
   const confirmPendingSwitch = () => {
@@ -229,7 +220,7 @@ export function ModelPicker() {
       tabId: activeTabId, to: pendingSwitch.modelId,
       estimatedCostUsd: pendingSwitch.estimate.costUsd,
     })
-    setTabModel(activeTabId, pendingSwitch.modelId)
+    setTabModel(activeTabId, pendingSwitch.modelId, pendingSwitch.providerId)
     setPendingSwitch(null)
   }
 
@@ -283,6 +274,7 @@ export function ModelPicker() {
 
       {popoverLayer && open && createPortal(
         <ModelPickerPopover
+          environmentId={environmentId}
           popoverRef={popoverRef}
           selectedModelId={effectiveModel}
           onSelect={handleSelect}

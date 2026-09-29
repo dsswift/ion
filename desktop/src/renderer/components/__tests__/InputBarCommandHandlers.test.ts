@@ -18,7 +18,8 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { executeBuiltinCommand, formatClearDivider, type ExecuteCommandDeps } from '../InputBarCommandHandlers'
-import type { TabState } from '../../../shared/types'
+import type { TabState } from '@ion/shared/types'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 function makeFakeTab(id = 'tab-under-test'): TabState {
   // Minimal stub — the dispatcher only reads `tab.id`. Cast through unknown
@@ -40,9 +41,9 @@ function makeDeps(overrides?: Partial<ExecuteCommandDeps>): ExecuteCommandDeps {
 describe('executeBuiltinCommand', () => {
   beforeEach(() => {
     vi.stubGlobal('window', {
-      ion: {
+      ion: installFakeWire({
         engineCommand: vi.fn().mockResolvedValue(undefined),
-      },
+      }),
     })
   })
 
@@ -52,7 +53,7 @@ describe('executeBuiltinCommand', () => {
       executeBuiltinCommand('/clear', deps)
       const engineCommand = (window as any).ion.engineCommand as ReturnType<typeof vi.fn>
       expect(engineCommand).toHaveBeenCalledTimes(1)
-      expect(engineCommand).toHaveBeenCalledWith('tab-abc', 'clear', '')
+      expect(engineCommand).toHaveBeenCalledWith({ key: 'tab-abc', command: 'clear', args: '' })
     })
 
     it('does NOT call clearTab (scrollback must be preserved across checkpoint)', () => {

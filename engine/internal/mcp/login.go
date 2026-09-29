@@ -4,7 +4,7 @@ package mcp
 //
 // This is the producer the token store never had. Before this file,
 // OAuthStore.SetToken was reachable only from RefreshToken, so a token could
-// be refreshed but never obtained: resolveOAuthHeaders would find nothing on
+// be refreshed but never obtained: the token resolver would find nothing on
 // disk, connect unauthenticated, and every tool on the server would 401.
 //
 // The flow, in order:
@@ -13,7 +13,8 @@ package mcp
 //     stored dynamic registration; else discover + register.
 //  2. Run authorization-code + PKCE via auth.StartPKCEFlow. The engine owns
 //     the loopback callback server and the code exchange; the consumer only
-//     opens the returned URL.
+//     opens the returned URL. A consumer on another device supplies its own
+//     redirect and completes the flow instead (login_caller.go).
 //  3. Persist the resulting grant to OAuthStore so connect (and refresh) find
 //     it.
 //
@@ -118,6 +119,13 @@ func portFromRedirectURI(redirectURI string) int {
 	return port
 }
 
+// redirectCompatible reports whether a registration bound to storedRedirect can
+// serve an authorization request using redirect. An unbound side (empty) is
+// compatible with anything.
+func redirectCompatible(storedRedirect, redirect string) bool {
+	return storedRedirect == "" || redirect == "" || storedRedirect == redirect
+}
+
 // ResolveClient returns the OAuth client to use for a server, in precedence
 // order:
 //
@@ -189,8 +197,16 @@ func ResolveClient(serverName string, cfg types.McpServerConfig, scopeOverride, 
 		return reg, nil
 	}
 
-	// 2. Stored dynamic registration.
-	if stored := getClientStore().Get(serverName); stored != nil {
+	// 2. Stored dynamic registration. RFC 7591 binds the redirect URI, so a
+	// client registered for a different redirect cannot serve this login.
+	stored := getClientStore().Get(serverName)
+	if stored != nil && !redirectCompatible(stored.RedirectURI, redirectURI) {
+		utils.LogWithFields(utils.LevelInfo, "mcp.login", "stored registration bound to a different redirect; registering fresh", map[string]any{
+			"serverName": serverName, "storedRedirectUri": stored.RedirectURI, "redirectUri": redirectURI,
+		})
+		stored = nil
+	}
+	if stored != nil {
 		if scopeOverride != "" && scopeOverride != stored.Scope {
 			// A changed scope needs the provider's consent for the new set;
 			// the stored client is still the right client, so carry it with
@@ -290,18 +306,11 @@ func BeginLogin(serverName string, cfg types.McpServerConfig, scopeOverride stri
 		})
 	}
 
-	flow, err := auth.StartPKCEFlow(auth.PKCEFlowConfig{
-		ClientID:       reg.ClientID,
-		ClientSecret:   reg.ClientSecret,
-		AuthURL:        reg.AuthURL,
-		TokenURL:       reg.TokenURL,
-		Scope:          reg.Scope,
-		RedirectHost:   loginRedirectHost,
-		RedirectPort:   flowPort,
-		RedirectPath:   flowPath,
-		Resource:       reg.Resource,
-		ExpectedIssuer: reg.Issuer,
-	})
+	flowCfg := pkceConfigFor(reg)
+	flowCfg.RedirectHost = loginRedirectHost
+	flowCfg.RedirectPort = flowPort
+	flowCfg.RedirectPath = flowPath
+	flow, err := auth.StartPKCEFlow(flowCfg)
 	if err != nil {
 		return nil, fmt.Errorf("mcp login %s: start pkce flow: %w", serverName, err)
 	}
@@ -317,16 +326,7 @@ func BeginLogin(serverName string, cfg types.McpServerConfig, scopeOverride stri
 	go func() {
 		select {
 		case tok := <-flow.Token:
-			store := getOAuthStore()
-			store.SetToken(serverName, tokenFromGrant(tok, reg.Issuer, reg.Resource))
-			clearGrantFailure(serverName)
-			// Persist the endpoints the grant was minted against so a later
-			// refresh needs neither discovery nor engine.json.
-			persistRegistrationFromLogin(serverName, reg)
-			utils.LogWithFields(utils.LevelInfo, "mcp.login", "login completed; token persisted", map[string]any{
-				"serverName": serverName, "hasRefreshToken": tok.RefreshToken != "",
-				"expiresAt": tok.ExpiresAt.Format(time.RFC3339), "scope": tok.Scope,
-			})
+			finishLogin(serverName, reg, tok, "loopback")
 			doneCh <- struct{}{}
 		case flowErr := <-flow.Err:
 			utils.LogWithFields(utils.LevelError, "mcp.login", "login did not complete", map[string]any{
@@ -342,6 +342,35 @@ func BeginLogin(serverName string, cfg types.McpServerConfig, scopeOverride stri
 		Err:              errCh,
 		Cancel:           flow.Cancel,
 	}, nil
+}
+
+// pkceConfigFor builds the authorization request parameters for a resolved
+// client. The redirect is left to the caller: the loopback flow pins host, port,
+// and path; the caller-completed flow supplies a whole URI.
+func pkceConfigFor(reg *ClientRegistration) auth.PKCEFlowConfig {
+	return auth.PKCEFlowConfig{
+		ClientID:       reg.ClientID,
+		ClientSecret:   reg.ClientSecret,
+		AuthURL:        reg.AuthURL,
+		TokenURL:       reg.TokenURL,
+		Scope:          reg.Scope,
+		Resource:       reg.Resource,
+		ExpectedIssuer: reg.Issuer,
+	}
+}
+
+// finishLogin persists a completed grant. Every login path ends here, so a
+// token obtained through any redirect is stored and refreshable the same way.
+func finishLogin(serverName string, reg *ClientRegistration, tok *auth.TokenResponse, via string) {
+	getOAuthStore().SetToken(serverName, tokenFromGrant(tok, reg.Issuer, reg.Resource))
+	clearGrantFailure(serverName)
+	// Persist the endpoints the grant was minted against so a later refresh
+	// needs neither discovery nor engine.json.
+	persistRegistrationFromLogin(serverName, reg)
+	utils.LogWithFields(utils.LevelInfo, "mcp.login", "login completed; token persisted", map[string]any{
+		"serverName": serverName, "via": via, "hasRefreshToken": tok.RefreshToken != "",
+		"expiresAt": tok.ExpiresAt.Format(time.RFC3339), "scope": tok.Scope,
+	})
 }
 
 // tokenFromGrant converts an auth.TokenResponse into the store's OAuthToken.
@@ -401,6 +430,17 @@ func Logout(serverName string) {
 	utils.LogWithFields(utils.LevelInfo, "mcp.login", "logged out; token and client registration removed", map[string]any{
 		"serverName": serverName,
 	})
+}
+
+// HasStoredCredentials reports whether any token (expired or not) or client
+// registration is stored for a server, so a caller can tell whether a Logout
+// removed anything.
+func HasStoredCredentials(serverName string) bool {
+	store := getOAuthStore()
+	store.mu.RLock()
+	_, hasToken := store.tokens[serverName]
+	store.mu.RUnlock()
+	return hasToken || getClientStore().Get(serverName) != nil
 }
 
 // IsAuthenticated reports whether a usable (unexpired) token is stored for a

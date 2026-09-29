@@ -170,8 +170,8 @@ if ! npm install; then
 fi
 
 # Guard against stale lockfiles/dependency trees that keep vulnerable versions.
-installed_builder=$(node -p "require('./node_modules/electron-builder/package.json').version" 2>/dev/null || echo "")
-installed_electron=$(node -p "require('./node_modules/electron/package.json').version" 2>/dev/null || echo "")
+installed_builder=$(node -p "require('./scripts/resolve-package').packageVersion('electron-builder')" 2>/dev/null || echo "")
+installed_electron=$(node -p "require('./scripts/resolve-package').packageVersion('electron')" 2>/dev/null || echo "")
 
 if [ -z "$installed_builder" ] || [ -z "$installed_electron" ]; then
   echo
@@ -192,8 +192,8 @@ if ! version_gte "$installed_builder" "26.8.1" || ! version_gte "$installed_elec
   npm install -D electron-builder@^26.8.1 electron@^35.7.5
 fi
 
-final_builder=$(node -p "require('./node_modules/electron-builder/package.json').version" 2>/dev/null || echo "")
-final_electron=$(node -p "require('./node_modules/electron/package.json').version" 2>/dev/null || echo "")
+final_builder=$(node -p "require('./scripts/resolve-package').packageVersion('electron-builder')" 2>/dev/null || echo "")
+final_electron=$(node -p "require('./scripts/resolve-package').packageVersion('electron')" 2>/dev/null || echo "")
 echo "Installed: electron-builder $final_builder, electron $final_electron"
 
 echo

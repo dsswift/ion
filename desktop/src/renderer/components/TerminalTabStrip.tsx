@@ -1,11 +1,14 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
-import { Plus, X, Globe, Terminal, LockSimple, LockSimpleOpen, ArrowsOutSimple, ArrowsInSimple, ArrowsOut, ArrowsIn } from '@phosphor-icons/react'
+import { Plus, X, Globe, Terminal, ChatCircleDots, LockSimple, LockSimpleOpen, ArrowsOutSimple, ArrowsInSimple, ArrowsOut, ArrowsIn } from '@phosphor-icons/react'
 import { useColors } from '../theme'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { Tooltip } from './git/Tooltip'
 import { contentRouter } from '../lib/file-open-router'
-import type { TerminalInstance } from '../../shared/types'
+import type { TerminalInstance } from '@ion/shared/types'
 import { rWarn } from '../rendererLogger'
+import { host } from '../host/host-instance'
+import { getTerminalEntry } from './TerminalInstance'
+import { addTerminalContext } from './composer/composer-context-sources'
 
 interface Props {
   tabId: string
@@ -124,7 +127,7 @@ export function TerminalTabStrip({ tabId }: Props) {
                     const app = activity.applications[0]
                     const router = contentRouter()
                     if (router?.openWebApplication) router.openWebApplication(tabId, app.url)
-                    else void window.ion.openExternal(app.url)
+                    else void host.openExternal(app.url)
                   }} style={{ border: 'none', background: 'transparent', color: colors.statusBash, display: 'inline-flex', cursor: 'pointer', padding: 0 }}><Globe size={11} /></button>
                 ) : <Terminal size={11} weight="fill" color={colors.statusBash} aria-label="Running terminal command" />}
               </Tooltip>
@@ -252,6 +255,37 @@ export function TerminalTabStrip({ tabId }: Props) {
 
       {/* Separator before controls */}
       <div style={{ width: 1, height: 14, background: colors.containerBorder, margin: '0 4px', flexShrink: 0 }} />
+
+      {/* Hand the selection (or the recent output) to the prompt as context. */}
+      {activeId && (
+        <Tooltip text="Add selection to prompt (recent output when nothing is selected)">
+          <button
+            data-ion-ui
+            data-testid="terminal-add-to-prompt"
+            aria-label="Add terminal output to prompt"
+            onClick={() => {
+              const entry = getTerminalEntry(`${tabId}:${activeId}`)
+              if (!entry) {
+                rWarn('terminal', 'add to prompt ignored: terminal not mounted', { tab_id: tabId, instance_id: activeId })
+                return
+              }
+              void addTerminalContext(entry.terminal)
+            }}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: '2px 4px',
+              cursor: 'pointer',
+              color: colors.textTertiary,
+              display: 'flex',
+              alignItems: 'center',
+              borderRadius: 4,
+            }}
+          >
+            <ChatCircleDots size={14} />
+          </button>
+        </Tooltip>
+      )}
 
       {/* Make Tall button (hidden in big screen mode) */}
       {!isBigScreen && (

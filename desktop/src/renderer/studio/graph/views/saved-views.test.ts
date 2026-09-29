@@ -8,7 +8,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { applyView, captureView, type SavedViewApplyActions, type SavedViewCaptureState } from './saved-views'
-import { LAYOUT_FORCES_COMPACT, LAYOUT_FORCES_LOBES, type ChannelBindings, type GraphViewSavedView } from '../../../../shared/graph-view-types'
+import { LAYOUT_FORCES_COMPACT, LAYOUT_FORCES_LOBES, type ChannelBindings, type GraphViewSavedView } from '@ion/shared/graph-view-types'
 
 function bindings(): ChannelBindings {
   return {

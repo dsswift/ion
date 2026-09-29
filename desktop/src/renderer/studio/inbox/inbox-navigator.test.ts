@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { IntegrationMember, IntegrationWorkspace, TabState, WorktreeInventoryEntry } from '../../../shared/types'
+import type { IntegrationMember, IntegrationWorkspace, TabState, WorktreeInventoryEntry } from '@ion/shared/types'
 import { buildInboxNavigator } from './inbox-navigator'
 
 function tab(id: string, directory: string, overrides: Partial<TabState> = {}): TabState {
@@ -239,5 +239,98 @@ describe('buildInboxNavigator', () => {
     const terminal = tab('terminal', '/repo', { isTerminalOnly: true })
     const projects = buildInboxNavigator([tab('conversation', '/repo'), terminal], new Map(), new Map())
     expect(projects[0]!.flatTabs.map((item) => item.id)).toEqual(['conversation'])
+  })
+})
+
+describe('buildInboxNavigator: one project per repository across environments', () => {
+  // The same repository cloned on two machines has two paths. Keyed on the
+  // path it showed as two projects, and a scope on one hid the other's
+  // conversations.
+  const scopeOf = (key: string, env: string): string => ((env === 'local' && key === '/Users/u/src/ion') || (env === 'grover' && key === '/home/g/source/ion') ? 'remote:github.com/o/ion' : key)
+  const local = tab('t-local', '/Users/u/src/ion')
+  const remote = tab('t-grover', '/home/g/source/ion', { environmentId: 'grover' })
+  const other = tab('t-notes', '/Users/u/notes')
+
+  it('merges both checkouts under one header, local first, and labels the other machine\'s groups', () => {
+    const nodes = buildInboxNavigator([remote, local, other], new Map(), new Map(), new Map(), new Set(), { scopeOf, environmentLabel: (id) => (id === 'grover' ? 'grover' : 'This Mac') })
+    expect(nodes.map((n) => [n.project.name, n.scopeKey])).toEqual([['ion', 'remote:github.com/o/ion'], ['notes', '/Users/u/notes']])
+    const ion = nodes[0]
+    expect(ion.project.key).toBe('/Users/u/src/ion')
+    const tabIds = [...ion.flatTabs, ...ion.groups.flatMap((g) => g.tabs)].map((t) => t.id).sort()
+    expect(tabIds).toEqual(['t-grover', 't-local'])
+    expect(ion.groups.map((g) => g.label).filter((l) => l.endsWith('· grover')).length + ion.flatTabs.filter((t) => t.id === 't-grover').length).toBeGreaterThan(0)
+  })
+
+  it('a scope on the repository shows every machine\'s conversations, and a stale path scope still matches its own checkout', () => {
+    const scoped = buildInboxNavigator([remote, local, other], new Map(), new Map(), new Map(), new Set(['remote:github.com/o/ion']), { scopeOf })
+    expect(scoped).toHaveLength(1)
+    expect([...scoped[0].flatTabs, ...scoped[0].groups.flatMap((g) => g.tabs)].map((t) => t.id).sort()).toEqual(['t-grover', 't-local'])
+    const stale = buildInboxNavigator([remote, local, other], new Map(), new Map(), new Map(), new Set(['/Users/u/src/ion']), { scopeOf })
+    expect([...stale[0].flatTabs, ...stale[0].groups.flatMap((g) => g.tabs)].map((t) => t.id)).toEqual(['t-local'])
+  })
+
+  // The header's path is a path on one machine, and a new conversation
+  // started from the header is created there.
+  it('names the machine the header\'s path is on', () => {
+    const merged = buildInboxNavigator([remote, local], new Map(), new Map(), new Map(), new Set(), { scopeOf })
+    expect([merged[0].project.key, merged[0].environmentId]).toEqual(['/Users/u/src/ion', 'local'])
+    const onlyRemote = buildInboxNavigator([remote], new Map(), new Map(), new Map(), new Set(), { scopeOf })
+    expect([onlyRemote[0].project.key, onlyRemote[0].environmentId]).toEqual(['/home/g/source/ion', 'grover'])
+  })
+
+  it('without identities every path is its own project, as before', () => {
+    const nodes = buildInboxNavigator([remote, local], new Map(), new Map())
+    expect(nodes.map((n) => n.scopeKey).sort()).toEqual(['/Users/u/src/ion', '/home/g/source/ion'])
+  })
+})
+
+describe('buildInboxNavigator: a repository on another machine', () => {
+  // The screenshot bug: a remote repository's worktree rows fell back to blank
+  // "no commits yet" placeholders because the inventory never reached them.
+  // Once it does, the rows carry the remote's commit facts, and the
+  // repository must stay the remote's checkout rather than gaining a phantom
+  // local copy that draws every worktree twice.
+  const repo = '/Users/r/src/api'
+  const wt = { ...entry('/Users/r/.ion/worktrees/api-f83c', 'api-f83c'), lastCommitSubject: 'feat: add network', unlandedCommitCount: 5 }
+  const idle = entry('/Users/r/.ion/worktrees/api-b29b', 'api-b29b')
+  const conversation = tab('t-remote', wt.worktreePath, {
+    environmentId: 'env-remote',
+    worktree: { repoPath: repo, worktreePath: wt.worktreePath, branchName: wt.branchName, sourceBranch: 'main' },
+  })
+  const environmentOfRepo = (path: string): string | null => (path === repo ? 'env-remote' : null)
+
+  it('renders the remote inventory once, under the remote checkout', () => {
+    const nodes = buildInboxNavigator([conversation], new Map(), new Map([[repo, [wt, idle]]]), new Map(), new Set(), { environmentOfRepo })
+    expect(nodes).toHaveLength(1)
+    expect(nodes[0].environmentId).toBe('env-remote')
+    expect(nodes[0].checkouts).toEqual([{ environmentId: 'env-remote', key: repo }])
+    expect(nodes[0].groups.map((group) => [group.key, group.tabs.map((t) => t.id)])).toEqual([
+      [wt.worktreePath, ['t-remote']],
+      [idle.worktreePath, []],
+    ])
+    expect(nodes[0].groups[0].worktree).toMatchObject({ lastCommitSubject: 'feat: add network', unlandedCommitCount: 5 })
+  })
+
+  it('files a remote repository with no open conversation under its own machine', () => {
+    const nodes = buildInboxNavigator([], new Map(), new Map([[repo, [idle]]]), new Map(), new Set(), { environmentOfRepo })
+    expect(nodes.map((node) => [node.environmentId, node.checkouts])).toEqual([['env-remote', [{ environmentId: 'env-remote', key: repo }]]])
+  })
+
+  it('hides a remote repository with no open conversation when the Environment filter excludes its machine', () => {
+    const localOnly = (environmentId: string): boolean => environmentId === 'local'
+    const hidden = buildInboxNavigator([], new Map(), new Map([[repo, [idle]]]), new Map(), new Set(), { environmentOfRepo, environmentIncluded: localOnly })
+    expect(hidden).toEqual([])
+    const benchOnly = buildInboxNavigator([], new Map([[repo, [workspace(repo, '/home/u/.ion/integration/api')]]]), new Map(), new Map(), new Set(), { environmentOfRepo, environmentIncluded: localOnly })
+    expect(benchOnly).toEqual([])
+    const shown = buildInboxNavigator([], new Map(), new Map([[repo, [idle]]]), new Map(), new Set(), { environmentOfRepo, environmentIncluded: (environmentId) => environmentId === 'env-remote' })
+    expect(shown.map((node) => node.environmentId)).toEqual(['env-remote'])
+  })
+
+  it('lists every merged checkout so each is re-read on its own machine', () => {
+    const scopeOf = (key: string, env: string): string => ((env === 'local' && key === '/Users/u/src/api') || (env === 'env-remote' && key === repo) ? 'remote:example.org/o/api' : key)
+    const local = tab('t-local', '/Users/u/src/api')
+    const nodes = buildInboxNavigator([conversation, local], new Map(), new Map([[repo, [wt]]]), new Map(), new Set(), { scopeOf, environmentOfRepo })
+    expect(nodes).toHaveLength(1)
+    expect(nodes[0].checkouts).toEqual([{ environmentId: 'local', key: '/Users/u/src/api' }, { environmentId: 'env-remote', key: repo }])
   })
 })

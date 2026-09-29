@@ -19,7 +19,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
-const SLICES = join(__dirname, '..', '..', 'renderer', 'stores', 'slices')
+const SLICES = join(__dirname, '..', '..', '..', '..', 'server', 'src', 'store', 'slices')
 
 function source(file: string): string {
   return readFileSync(join(SLICES, file), 'utf-8')

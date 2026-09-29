@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -27,7 +28,14 @@ const listDirectoryMaxEntries = 5000
 // computeHostInfo collects engine-host metadata that the desktop uses to
 // browse the engine's filesystem (home, username, hostname, os, separator).
 // The values are immutable for the lifetime of the daemon, so it caches once.
-func computeHostInfo() map[string]interface{} {
+//
+// version is the engine binary version (Server.version, set once at startup
+// via SetVersion before the server accepts connections). A headless consumer
+// (Ion Studio Server child 06) compares this against its own configured
+// minimum engine version to decide whether it can safely connect; an older
+// client that does not read this key is unaffected (additive per the engine
+// wire contract).
+func computeHostInfo(version string) map[string]interface{} {
 	hostInfoOnce.Do(func() {
 		home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 		username := ""
@@ -35,12 +43,32 @@ func computeHostInfo() map[string]interface{} {
 			username = u.Username
 		}
 		hostname, _ := os.Hostname() //nolint:errcheck // empty hostname fallback
+		if version == "" {
+			version = "dev"
+		}
 		hostInfoCached = map[string]interface{}{
 			"home":     home,
 			"username": username,
 			"hostname": hostname,
 			"os":       runtime.GOOS,
 			"pathSep":  string(os.PathSeparator),
+			"version":  version,
+			// installId is the per-install anonymous UUID (manifest C2),
+			// from ~/.ion/install_id. Additive: an older client that does
+			// not read this key is unaffected.
+			"installId": utils.InstallID(),
+			// principalPartitioning (FR-01, additive) tells a Studio server
+			// consumer whether this engine partitions conversation storage
+			// per principal, and by how much -- without this, the server has
+			// no way to know whether looking in a principal's partition
+			// directory (vs. the flat root) is even meaningful. Stable for
+			// the daemon's lifetime: ConfigurePartitioning runs once, at
+			// boot, before the server accepts any connection.
+			"principalPartitioning": map[string]any{
+				"enabled":     conversation.PartitioningEnabled(),
+				"enforcement": string(conversation.PartitioningEnforcement()),
+				"root":        conversation.PartitionRoot(),
+			},
 		}
 	})
 	utils.LogWithFields(utils.LevelInfo, "server.fs", "host info cached", map[string]any{

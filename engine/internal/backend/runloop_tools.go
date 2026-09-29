@@ -8,6 +8,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/permissions"
+	"github.com/dsswift/ion/engine/internal/principalboundary"
 	"github.com/dsswift/ion/engine/internal/sandbox"
 	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -32,6 +33,7 @@ func (b *ApiBackend) executeTools(
 	var hooks RunHooks
 	var permEng *permissions.Engine
 	var wsChecker *workspaces.Checker
+	var principalChecker *principalboundary.Checker
 	var sbCfg *sandbox.Config
 	var mcpRouter func(context.Context, string, map[string]interface{}) (*types.ToolResult, error)
 	var telem TelemetryCollector
@@ -40,11 +42,14 @@ func (b *ApiBackend) executeTools(
 	var bgOwner string
 	var bgRegistrar func(taskID, command string)
 	var pollStarter tools.PollStarter
+	var gitIdentityRequired bool
 	if run.cfg != nil {
 		hooks = run.cfg.Hooks
 		permEng = run.cfg.PermEngine
 		wsChecker = run.cfg.WorkspaceChecker
+		principalChecker = run.cfg.PrincipalBoundary
 		sbCfg = run.cfg.SandboxCfg
+		gitIdentityRequired = run.cfg.GitIdentityRequiredUnresolved
 		mcpRouter = run.cfg.McpToolRouter
 		telem = run.cfg.Telemetry
 		spawnerFn = run.cfg.AgentSpawner
@@ -74,6 +79,7 @@ func (b *ApiBackend) executeTools(
 		gCtx = tools.WithBackgroundTaskOwner(gCtx, bgOwner)
 	}
 
+	gCtx = stampToolEnv(gCtx, run.cfg) // FR-04: see stampToolEnv.
 	// Stamp the outstanding-set registrar so a Bash call with
 	// notify_on_complete can register the task with the owning session, which
 	// is what makes the session hold for it at the turn boundary.
@@ -215,9 +221,10 @@ func (b *ApiBackend) executeTools(
 			}
 		}
 
-		// Workspace containment (beside the permission check, before hooks
-		// and execution). See checkWorkspaceContainment for the policy.
-		if done := b.checkWorkspaceContainment(gCtx, run, wsChecker, block, cwd, permDenyFn, telem, results, i); done {
+		// Workspace containment + FR-03's principal execution boundary
+		// (beside the permission check, before hooks and execution). See
+		// checkContainmentBoundaries for the combined policy.
+		if done := b.checkContainmentBoundaries(gCtx, run, wsChecker, principalChecker, gitIdentityRequired, block, cwd, permDenyFn, telem, results, i); done {
 			return nil
 		}
 

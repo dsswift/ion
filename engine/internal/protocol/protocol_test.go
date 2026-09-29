@@ -1300,3 +1300,27 @@ func TestResourceCommandProducerFields(t *testing.T) {
 		t.Fatalf("resource filter = %#v", cmd)
 	}
 }
+
+// credential_response was in validateRaw and the dispatcher but never in
+// validCommands, so every client answer to engine_credential_request was
+// refused as "invalid command" and the engine's credential wait always
+// timed out (5s per run, then the keyless fallback).
+func TestParseClientCommand_CredentialResponse(t *testing.T) {
+	cmd := ParseClientCommand(`{"cmd":"credential_response","key":"s1","credentialRequestId":"cred-1","credentialFound":false}`)
+	if cmd == nil {
+		t.Fatal("credential_response refused as invalid")
+	}
+	if cmd.Key != "s1" || cmd.CredentialRequestID != "cred-1" || cmd.CredentialFound {
+		t.Errorf("fields = key %q id %q found %v", cmd.Key, cmd.CredentialRequestID, cmd.CredentialFound)
+	}
+	found := ParseClientCommand(`{"cmd":"credential_response","key":"s1","credentialRequestId":"cred-2","credentialFound":true,"credentialToken":"tok","credentialHeader":"X-Auth"}`)
+	if found == nil || !found.CredentialFound || found.CredentialToken != "tok" || found.CredentialHeader != "X-Auth" {
+		t.Errorf("found reply = %+v", found)
+	}
+	if ParseClientCommand(`{"cmd":"credential_response","key":"s1"}`) != nil {
+		t.Error("missing credentialRequestId accepted")
+	}
+	if ParseClientCommand(`{"cmd":"credential_response","credentialRequestId":"cred-3"}`) != nil {
+		t.Error("missing key accepted")
+	}
+}

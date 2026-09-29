@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const stopBackgroundTask = vi.fn(async () => ({ ok: true, status: 'stopped' }))
-vi.mock('../../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: (selector: (state: { stopBackgroundTask: typeof stopBackgroundTask }) => unknown) => selector({ stopBackgroundTask }),
 }))
 vi.mock('../../../theme', () => ({

@@ -26,11 +26,11 @@ extension RemoteEvent: Codable {
         // This lets us distinguish "type string has no TypeKey case" (expected
         // for engine events iOS hasn't wired up yet — throws
         // RemoteEventDecodeError.unknownType) from "payload for a known type is
-        // malformed" (throws DecodingError). The caller in
-        // TransportManager+Receive.swift catches these two error types separately
-        // so only the second triggers an error log + resync.
+        // malformed" (throws DecodingError).
+        // Callers catch the two error types separately so only the second
+        // triggers an error log + resync.
         let rawType = try container.decode(String.self, forKey: .type)
-        guard let type = TypeKey(rawValue: rawType), type != .lanSecretUnusable else {
+        guard let type = TypeKey(rawValue: rawType) else {
             throw RemoteEventDecodeError.unknownType(rawType)
         }
 
@@ -54,7 +54,7 @@ extension RemoteEvent: Codable {
             self = event
             return
         }
-        if let event = try Self.decodeThinking(type: type, container: container) {
+        if let event = try Self.decodeTranscript(type: type, container: container) {
             self = event
             return
         }
@@ -63,6 +63,14 @@ extension RemoteEvent: Codable {
             return
         }
         if let event = try Self.decodeWorktree(type: type, container: container) {
+            self = event
+            return
+        }
+        if let event = try Self.decodePresence(type: type, container: container) {
+            self = event
+            return
+        }
+        if let event = try Self.decodeSystemMetrics(type: type, decoder: decoder) {
             self = event
             return
         }
@@ -96,9 +104,11 @@ extension RemoteEvent: Codable {
         if try encodePermission(into: &container) { return }
         if try encodeTerminal(into: &container) { return }
         if try encodeEngine(into: &container) { return }
-        if try encodeThinking(into: &container) { return }
+        if try encodeTranscript(into: &container) { return }
         if try encodeResource(into: &container) { return }
         if try encodeWorktree(into: &container) { return }
+        if try encodePresence(into: &container) { return }
+        if try encodeSystemMetrics(to: encoder) { return }
         if try encodeQuestions(into: &container) { return }
         if try encodeGit(into: &container) { return }
         if try encodeFiles(into: &container) { return }

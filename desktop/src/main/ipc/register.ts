@@ -1,83 +1,35 @@
-import { registerWindowIpc } from "./window";
-import { registerSessionIpc } from "./session";
-import { registerEngineIpc } from "./engine";
-import { registerChartReconcileIpc } from "./chart-reconcile-ipc";
-import { registerBashIpc } from "./bash";
-import { registerTerminalIpc } from "./terminal";
-import { registerPermissionsIpc } from "./permissions";
 import { registerSystemIpc } from "./system";
-import { registerTranscribeIpc } from "./transcribe";
-import { registerSessionsListIpc } from "./sessions-list";
 import { registerFileDialogIpc } from "./file-dialog";
+import { registerOAuthCallbackIpc } from "./oauth-callback";
 import { registerAttachmentsIpc } from "./attachments";
 import { registerFilesIpc } from "./files";
-import { registerGraphViewIpc } from "./graph-view";
-import { registerGitIpc } from "./git";
-import { registerGitExtrasIpc } from "./git-extras";
-import { registerGitRebaseIpc } from "./git-rebase";
-import { registerGitConflictsIpc } from "./git-conflicts";
-import { registerWorktreeIpc } from "./worktree";
-import { registerWorktreeLifecycleIpc } from "./worktree-lifecycle";
-import { registerBenchIpc } from "./bench";
-import { registerSettingsIpc } from "./settings";
-import { registerExplorerStateIpc } from "./explorer-state";
-import { registerRemoteControlIpc } from "./remote-control";
-import { registerModelsIpc } from "./models";
-import { registerMcpIpc } from "./mcp";
-import { registerOAuthIpc } from "./oauth";
-import { registerProvidersIpc } from "./providers";
-import { registerConversationBackupIpc } from "./conversation-backup";
+// Side-effect import: registers the desktop's save-dialog implementation
+// with the server's headless engine-export-handler seam. Nothing here calls
+// a named export — the registration runs at module evaluation.
+import "../engine-export-handler";
 import { registerLogIpc } from "./log";
 import { registerStudioIpc } from "./studio";
-import { registerThemesIpc } from "./themes";
+import { registerStudioBridgeIpc } from "./studio-bridge";
 import { registerFaviconIpc } from "./favicon";
 import { registerWorktreeOverlapIpc } from "./worktree-overlap";
-import { registerDeepLinkIpc } from "./deeplink";
-import { registerAutomationIpc } from "./automation";
 import { registerStartupIpc } from "./startup";
-import { wireQuestions } from "../questions/questions-wiring";
-import { engineBridge } from "../state";
+import { registerQuestionsIpc } from "../questions/questions-ipc";
 
 export function registerAllIpc(): void {
   registerStartupIpc();
-  // Guided Questions: constructs the main-owned QuestionsCoordinator,
-  // restores persisted workflows, registers the human-wait fulfiller on the
-  // tool-gate responder, and owns the ion:questions-* IPC handlers.
-  wireQuestions(engineBridge);
-  registerWindowIpc();
-  registerSessionIpc();
-  registerEngineIpc();
-  registerChartReconcileIpc();
-  registerBashIpc();
-  registerTerminalIpc();
-  registerPermissionsIpc();
+  // Guided Questions: the coordinator, its persistence and the engine-event
+  // intake are wired by the Studio server. registerQuestionsIpc owns the one
+  // handler that genuinely needs an Electron window (the native attachment
+  // picker) plus the renderer-facing ion:questions-* handlers.
+  registerQuestionsIpc();
   registerSystemIpc();
-  registerTranscribeIpc();
-  registerSessionsListIpc();
   registerFileDialogIpc();
+  registerOAuthCallbackIpc();
   registerAttachmentsIpc();
   registerFilesIpc();
-  registerGraphViewIpc();
-  registerGitIpc();
-  registerGitExtrasIpc();
-  registerGitRebaseIpc();
-  registerGitConflictsIpc();
-  registerWorktreeIpc();
-  registerWorktreeLifecycleIpc();
-  registerBenchIpc();
-  registerSettingsIpc();
-  registerExplorerStateIpc();
-  registerRemoteControlIpc();
-  registerModelsIpc();
-  registerOAuthIpc();
-  registerMcpIpc();
-  registerProvidersIpc();
-  registerConversationBackupIpc();
   registerLogIpc();
   registerStudioIpc();
-  registerThemesIpc();
+  registerStudioBridgeIpc();
   registerFaviconIpc();
   registerWorktreeOverlapIpc();
-  registerDeepLinkIpc();
-  registerAutomationIpc();
 }

@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -17,13 +18,17 @@ import (
 // Roots returned:
 //   - <workingDir>/.ion/plans/ (used by CLI and Hybrid backends when
 //     workingDir is non-empty)
-//   - ~/.ion/plans/ (used by API backend and as the fallback)
+//   - ~/.ion/plans/ (the fallback for a session with no conversation yet, and
+//     where plans lived before each conversation owned its own)
+//
+// A conversation's own plans folder (<conversationsDir>/<id>/plans/) is not
+// a fixed root, so isPlanShapedPath checks it by shape
+// (conversation.IsOwnedPlanPath) instead of listing it here.
 //
 // An empty workingDir produces only the home entry. The function never
 // returns nil; at minimum it returns the home plans directory.
 func planDirsForWorkingDir(workingDir string) []string {
-	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
-	homePlans := filepath.Join(home, ".ion", "plans")
+	homePlans := filepath.Join(utils.IonDir(), "plans")
 
 	if workingDir != "" {
 		return []string{
@@ -49,6 +54,9 @@ func planDirsForWorkingDir(workingDir string) []string {
 // still classifying a not-yet-created file.
 func isPlanShapedPath(targetPath, workingDir string) bool {
 	resolved := resolveForContainment(targetPath)
+	if conversation.IsOwnedPlanPath(resolved) {
+		return true
+	}
 	for _, dir := range planDirsForWorkingDir(workingDir) {
 		resolvedDir := resolveForContainment(dir)
 		rel, err := filepath.Rel(resolvedDir, resolved)

@@ -254,7 +254,9 @@ func newForkedConversation(source *Conversation) *Conversation {
 		CreatedAt:        nowMillis(),
 		Version:          CurrentVersion,
 		ParentID:         source.ID,
+		ForkOf:           source.ID,
 		WorkingDirectory: source.WorkingDirectory,
+		Principal:        source.Principal,
 	}
 }
 

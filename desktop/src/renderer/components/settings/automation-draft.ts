@@ -11,8 +11,8 @@ import type {
   AutomationActionSpec,
   AutomationFieldSpec,
   AutomationTriggerSpec,
-} from "../../../shared/automation-catalog";
-import { automationAction, automationField } from "../../../shared/automation-catalog";
+} from "@ion/shared/automation-catalog";
+import { automationAction, automationField } from "@ion/shared/automation-catalog";
 import type {
   AutomationAction,
   AutomationCondition,
@@ -20,7 +20,7 @@ import type {
   AutomationConditionOperator,
   AutomationStep,
   AutomationValue,
-} from "../../../shared/types-automation";
+} from "@ion/shared/types-automation";
 
 const PRESENCE_OPERATORS: readonly AutomationConditionOperator[] = ["exists", "not-exists"];
 

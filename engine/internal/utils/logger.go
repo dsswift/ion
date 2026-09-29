@@ -224,11 +224,18 @@ func ConfigureLogging(cfg *types.LoggingConfig) {
 	// new forwarder was built above, before the lock, for the same reason.
 	prevForwarder := activeEgressForwarder
 	activeEgressForwarder = newForwarder
+	held, heldDropped := takeHeldStartupRecordsLocked()
 
 	logMu.Unlock()
 
 	if prevForwarder != nil {
 		prevForwarder.Close()
+	}
+	if newForwarder != nil && len(held) > 0 {
+		for _, rec := range held {
+			newForwarder.ship(rec)
+		}
+		LogWithFields(LevelDebug, "log_egress", "startup lines handed to the forwarder", map[string]any{"count": len(held), "dropped": heldDropped})
 	}
 }
 
@@ -299,6 +306,9 @@ func logAtWithFields(level LogLevel, tag, msg string, fields map[string]any) {
 // emitting empty strings). fields is emitted as the "fields" object, defaulting
 // to {} when nil.
 func logAtFull(level LogLevel, component, tag, msg string, fields map[string]any, sessionID, conversationID, traceID string) {
+	// Resolved before taking logMu: the first call loads the machine identity
+	// (a short ioreg on macOS), which must not stall every other logger.
+	identity := lineIdentity()
 	logMu.Lock()
 
 	if level < logLevel {
@@ -375,8 +385,8 @@ func logAtFull(level LogLevel, component, tag, msg string, fields map[string]any
 	if traceID != "" {
 		attrs = append(attrs, slog.String("trace_id", traceID))
 	}
-	if fields != nil {
-		attrs = append(attrs, slog.Any("fields", normalizeFieldValues(fields)))
+	if stamped := withMachineIdentity(fields, identity); stamped != nil {
+		attrs = append(attrs, slog.Any("fields", normalizeFieldValues(stamped)))
 	} else {
 		attrs = append(attrs, slog.Any("fields", emptyFields))
 	}
@@ -389,22 +399,28 @@ func logAtFull(level LogLevel, component, tag, msg string, fields map[string]any
 	// shipping under the lock would self-deadlock. A synchronous HTTP POST
 	// under the lock would also stall every other logger. Ship lock-free.
 	fwd := activeEgressForwarder
+	rec := egressRecord{
+		Ts:             time.Now().UTC().Format(time.RFC3339Nano),
+		Level:          level.String(),
+		Msg:            msg,
+		Component:      component,
+		Tag:            tag,
+		SessionID:      sessionID,
+		ConversationID: conversationID,
+		TraceID:        traceID,
+		User:           resolvedEgressUser(),
+		Fields:         fields,
+	}
+	if fwd == nil {
+		// Before engine.json is read there is no forwarder yet; hold the line
+		// for the one ConfigureLogging builds (log_egress_startup.go).
+		holdStartupRecordLocked(rec)
+	}
 	logMu.Unlock()
 
 	// Forward to the egress sink when configured.
 	if fwd != nil {
-		fwd.ship(egressRecord{
-			Ts:             time.Now().UTC().Format(time.RFC3339Nano),
-			Level:          level.String(),
-			Msg:            msg,
-			Component:      component,
-			Tag:            tag,
-			SessionID:      sessionID,
-			ConversationID: conversationID,
-			TraceID:        traceID,
-			User:           resolvedEgressUser(),
-			Fields:         fields,
-		})
+		fwd.ship(rec)
 	}
 }
 
@@ -523,8 +539,7 @@ func initLogger() {
 	// SetTestSink (which fires in logAtFull before initLogger runs). The
 	// default lazy path must go nowhere near ~/.ion.
 	if testing.Testing() {
-		home, _ := UserHomeDir() //nolint:errcheck // empty home handled by caller
-		ionDir := filepath.Join(home, ".ion")
+		ionDir := IonDir()
 		if logDir == "" || logDir == ionDir {
 			h := slog.NewJSONHandler(io.Discard, &slog.HandlerOptions{
 				Level:       slogLevelTrace,
@@ -536,11 +551,10 @@ func initLogger() {
 	}
 
 	if logDir == "" {
-		home, err := UserHomeDir()
-		if err != nil {
+		logDir = IonDir()
+		if logDir == "" {
 			return
 		}
-		logDir = filepath.Join(home, ".ion")
 	}
 	os.MkdirAll(logDir, 0o700) //nolint:errcheck // dir create; failure surfaces on use
 

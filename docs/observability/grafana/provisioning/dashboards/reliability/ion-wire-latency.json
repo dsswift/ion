@@ -9,9 +9,9 @@
         "enable": true,
         "hide": false,
         "iconColor": "green",
-        "name": "Desktop send frames",
-        "titleFormat": "send: {{fields_event_type}} seq={{fields_seq}} dwell={{fields_queue_dwell_ms}}ms",
-        "expr": "{component=\"desktop\"} | json | tag=\"transport-frame\"",
+        "name": "Server wire windows",
+        "titleFormat": "{{fields_client_kind}} rtt p95={{fields_rtt_p95_ms}}ms dwell p95={{fields_dwell_p95_ms}}ms",
+        "expr": "{service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\"",
         "step": "60s"
       },
       {
@@ -22,14 +22,14 @@
         "enable": true,
         "hide": false,
         "iconColor": "blue",
-        "name": "iOS receive frames",
-        "titleFormat": "recv: {{fields_event_type}} adj={{fields_adj_latency_ms}}ms",
-        "expr": "{component=\"ios\"} | json | tag=\"transport.receive\" | msg=\"frame received\"",
+        "name": "Client windows",
+        "titleFormat": "{{service_name}} action p95={{fields_action_p95_ms}}ms",
+        "expr": "{service_name=~\"ion-(desktop|web|ios)\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"client window\"",
         "step": "60s"
       }
     ]
   },
-  "description": "Wire latency between desktop and iOS — per-event_type send latency and iOS receive latency with clock-skew correction.\n\n**Freshness caveat:** iOS diagnostic logs are pulled periodically (~30 s per the commit-10 pull interval). Data on the iOS-receive panels may be up to ~30 s stale relative to actual receipt time. The desktop-send panels are real-time (logs land in desktop.jsonl immediately).",
+  "description": "How long the Studio wire takes, per client. Server panels time a round trip on the server's own clock; client panels show the action latency a person waits through.\n\n**Freshness caveat:** iOS lines arrive through the diagnostic-log pull and may be up to ~30 s behind. Server and desktop lines are current.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -41,27 +41,27 @@
       "type": "text",
       "title": "",
       "gridPos": {
-        "h": 3,
+        "h": 4,
         "w": 24,
         "x": 0,
         "y": 0
       },
       "options": {
         "mode": "markdown",
-        "content": "## Ion Wire Latency\n\nPer-event_type send and receive latency between the desktop and iOS companion. **Desktop-send panels** show real-time data from `desktop.jsonl`. **iOS-receive panels** are bounded by the ~30 s diagnostic-log pull interval (see commit 10) — data may be up to 30 s stale.\n\nClock-skew correction is applied to iOS receive latency via a heartbeat-seeded exponential moving average (`adj_latency_ms = raw_latency_ms − skew_est_ms`)."
+        "content": "## Ion Wire Latency\n\nHow long the Studio wire takes, per client. **Server panels** time a round trip on the server's own clock (`studio_ping`/`studio_pong`), so there is no clock skew between machines to correct, and they read the same for Studio, a browser and a phone, over a local socket, TCP or a relay.\n\n**Client panels** show what a person waits through: an action leaving the client and its result arriving back. A low server time beside a high client time is the wire, not the work.\n\niOS lines arrive through the diagnostic-log pull, so they may be up to ~30 s behind; server and desktop lines are current."
       }
     },
     {
       "id": 2,
       "type": "timeseries",
-      "title": "Desktop → iOS: send queue dwell by event_type (p50 / p95)",
+      "title": "Round trip to each client (p50 / p95)",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 3
+        "y": 4
       },
-      "description": "Time from event entering the send queue to frame build, per event_type. High dwell indicates a blocked send queue (transport backpressure or slow encryption). Source: desktop.jsonl tag=transport-frame fields.queue_dwell_ms.",
+      "description": "Server-timed `studio_ping` → `studio_pong`, per client kind. One clock, both readings — no skew correction. Source: server.jsonl tag=wire-latency msg=\"wire window\" fields.rtt_p50_ms / rtt_p95_ms.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -94,36 +94,138 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "quantile_over_time(0.5, {component=\"desktop\"} | json | tag=\"transport-frame\" | fields_queue_dwell_ms != \"\" | unwrap fields_queue_dwell_ms [1m]) by (fields_event_type)",
+          "expr": "avg_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_rtt_p50_ms != \"\" | unwrap fields_rtt_p50_ms [5m]) by (fields_client_kind)",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "windowed-stat",
-          "legendFormat": "p50 {{fields_event_type}}"
+          "legendFormat": "p50 {{fields_client_kind}}"
         },
         {
           "datasource": {
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "quantile_over_time(0.95, {component=\"desktop\"} | json | tag=\"transport-frame\" | fields_queue_dwell_ms != \"\" | unwrap fields_queue_dwell_ms [1m]) by (fields_event_type)",
+          "expr": "avg_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_rtt_p95_ms != \"\" | unwrap fields_rtt_p95_ms [5m]) by (fields_client_kind)",
           "queryType": "range",
           "refId": "B",
           "__ionClass": "windowed-stat",
-          "legendFormat": "p95 {{fields_event_type}}"
+          "legendFormat": "p95 {{fields_client_kind}}"
         }
       ]
     },
     {
       "id": 3,
       "type": "timeseries",
-      "title": "Desktop → iOS: payload bytes by event_type (p50 / p95)",
+      "title": "Probes lost per window",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 3
+        "y": 4
       },
-      "description": "Compressed payload size per outbound frame. Large payloads (snapshot, conversation_history) drive bandwidth usage. Source: desktop.jsonl tag=transport-frame fields.payload_bytes.",
+      "description": "Probes a client never answered within the timeout. A non-zero line is a client that is connected but not reading its socket. Source: server.jsonl fields.pings_lost.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 20
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (fields_client_kind) (sum_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_pings_lost != \"\" | unwrap fields_pings_lost [5m]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "{{fields_client_kind}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Outbound queue wait (p95)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "description": "How long a frame sat between entering the send queue and leaving the socket. High wait means backpressure on this connection, not a slow network. Source: server.jsonl fields.dwell_p95_ms.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_dwell_p95_ms != \"\" | unwrap fields_dwell_p95_ms [5m]) by (fields_client_kind)",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "p95 {{fields_client_kind}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Peak send-queue depth",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "description": "The deepest the bounded send queue got in the window. A connection that crosses its cap is closed with slow_client, so this climbing is the warning before that. Source: server.jsonl fields.queue_max.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -156,149 +258,189 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "quantile_over_time(0.5, {component=\"desktop\"} | json | tag=\"transport-frame\" | fields_payload_bytes != \"\" | unwrap fields_payload_bytes [1m]) by (fields_event_type)",
+          "expr": "avg_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_queue_max != \"\" | unwrap fields_queue_max [5m]) by (fields_client_kind)",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "windowed-stat",
-          "legendFormat": "p50 {{fields_event_type}}"
-        },
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "quantile_over_time(0.95, {component=\"desktop\"} | json | tag=\"transport-frame\" | fields_payload_bytes != \"\" | unwrap fields_payload_bytes [1m]) by (fields_event_type)",
-          "queryType": "range",
-          "refId": "B",
-          "__ionClass": "windowed-stat",
-          "legendFormat": "p95 {{fields_event_type}}"
-        }
-      ]
-    },
-    {
-      "id": 4,
-      "type": "timeseries",
-      "title": "iOS receive: adjusted latency by event_type (p50 / p95)",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 11
-      },
-      "description": "Clock-skew-corrected one-way latency from desktop frame-build to iOS decode, per event_type. adj_latency_ms = raw_latency_ms − skew_est_ms. Source: ios-diagnostic-logs.jsonl tag=transport.receive msg=\"frame received\", bounded by ~30 s pull interval (freshness caveat).",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "maxDataPoints": 2000,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 10
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        },
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "quantile_over_time(0.5, {component=\"ios\"} | json | tag=\"transport.receive\" | fields_adj_latency_ms != \"\" | unwrap fields_adj_latency_ms [5m]) by (fields_event_type)",
-          "queryType": "range",
-          "refId": "A",
-          "__ionClass": "windowed-stat",
-          "legendFormat": "p50 {{fields_event_type}}"
-        },
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "quantile_over_time(0.95, {component=\"ios\"} | json | tag=\"transport.receive\" | fields_adj_latency_ms != \"\" | unwrap fields_adj_latency_ms [5m]) by (fields_event_type)",
-          "queryType": "range",
-          "refId": "B",
-          "__ionClass": "windowed-stat",
-          "legendFormat": "p95 {{fields_event_type}}"
-        }
-      ]
-    },
-    {
-      "id": 5,
-      "type": "timeseries",
-      "title": "iOS receive: heartbeat clock-skew estimate over time",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 11
-      },
-      "description": "The rolling clock-skew estimate (α=0.25 EMA) from heartbeat round-trips. A stable non-zero value is expected and normal — iOS and desktop clocks rarely agree perfectly. Rapid drift may indicate NTP problems on either device. Source: ios-diagnostic-logs.jsonl tag=transport.receive msg=\"heartbeat received\".",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "maxDataPoints": 2000,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "custom": {
-            "lineWidth": 2,
-            "fillOpacity": 10
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        },
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "avg_over_time({component=\"ios\"} | json | tag=\"transport.receive\" | msg=\"heartbeat received\" | fields_skew_est_ms != \"\" | unwrap fields_skew_est_ms [5m])",
-          "queryType": "range",
-          "refId": "A",
-          "__ionClass": "windowed-stat",
-          "legendFormat": "skew_est_ms (avg)"
+          "legendFormat": "{{fields_client_kind}}"
         }
       ]
     },
     {
       "id": 6,
       "type": "timeseries",
-      "title": "DECODE-ERR drop rate (frames/min)",
+      "title": "Bytes out per window",
       "gridPos": {
         "h": 8,
-        "w": 24,
+        "w": 12,
         "x": 0,
-        "y": 19
+        "y": 20
       },
-      "description": "Number of incoming frames that failed JSON decode or schema validation per minute. A non-zero rate indicates a wire mismatch (possible version skew between desktop and iOS builds). Source: desktop.jsonl and ios-diagnostic-logs.jsonl. The desktop emits decode errors at ERROR level with tag=transport; iOS emits them at ERROR level with tag=transport.receive in TransportManager+Receive.swift.",
+      "description": "Outbound volume per client kind. A phone on a relay paying for a snapshot shows up here. Source: server.jsonl fields.bytes_out.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (fields_client_kind) (sum_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_bytes_out != \"\" | unwrap fields_bytes_out [5m]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "{{fields_client_kind}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Server time per action (p95)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "description": "The server's own work on one studio_action, receipt to result sent — the wire is not in this number. Compare against the client-felt panel below: the gap between them is the wire. Source: server.jsonl fields.action_p95_ms.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_action_p95_ms != \"\" | unwrap fields_action_p95_ms [5m]) by (fields_client_kind)",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "p95 {{fields_client_kind}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Client-felt action latency (p50 / p95)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "description": "What a person waits through: an action leaving the client and its result arriving back, from each client's own window. desktop = Studio and Electron main; web = a browser tab (forwarded through POST /log); ios = the phone (through its diagnostic pull, so up to ~30 s behind). Source: each client's log, tag=wire-latency msg=\"client window\".",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg_over_time({service_name=~\"ion-(desktop|web|ios)\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"client window\" | fields_action_p50_ms != \"\" | unwrap fields_action_p50_ms [5m]) by (service_name)",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "p50 {{service_name}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg_over_time({service_name=~\"ion-(desktop|web|ios)\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"client window\" | fields_action_p95_ms != \"\" | unwrap fields_action_p95_ms [5m]) by (service_name)",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "p95 {{service_name}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Client action timeouts, and server decode errors",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      },
+      "description": "Two ways the wire fails rather than slows. Timeouts are actions a client gave up on, counted separately from the percentiles so a 30 s wait does not read as merely sluggish. Decode errors are frames the server could not parse — a version skew between a client and this server. Sources: client windows fields.action_timeouts; server windows fields.decode_errors.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -312,38 +454,7 @@
             "fillOpacity": 20
           }
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "decode errors (desktop)"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "orange"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "decode errors (ios)"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "red"
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "options": {
         "tooltip": {
@@ -362,22 +473,22 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({component=\"desktop\"} | json | level=\"ERROR\" | tag=\"transport\" | msg=~\".*(decode|decompress|JSON parse|failed to parse).*\" [1m]))",
+          "expr": "avg_over_time({service_name=~\"ion-(desktop|web|ios)\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"client window\" | fields_action_timeouts != \"\" | unwrap fields_action_timeouts [5m]) by (service_name)",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "windowed-stat",
-          "legendFormat": "decode errors (desktop)"
+          "legendFormat": "action timeouts ({{service_name}})"
         },
         {
           "datasource": {
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({component=\"ios\"} | json | level=\"ERROR\" | tag=\"transport.receive\" | msg=~\".*(decode|decompression|JSON|failed to parse).*\" [1m]))",
+          "expr": "sum by (fields_client_kind) (sum_over_time({service_name=\"ion-server\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | tag=\"wire-latency\" | msg=\"wire window\" | fields_decode_errors != \"\" | unwrap fields_decode_errors [5m]))",
           "queryType": "range",
           "refId": "B",
           "__ionClass": "windowed-stat",
-          "legendFormat": "decode errors (ios)"
+          "legendFormat": "decode errors ({{fields_client_kind}})"
         }
       ]
     }
@@ -388,11 +499,62 @@
     "ion",
     "wire",
     "latency",
-    "ios",
+    "studio",
     "transport"
   ],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "name": "host",
+        "label": "Device",
+        "type": "query",
+        "description": "The device a line came from (label `host_name`, the OTLP host.name). Multi-select; All includes lines with no device.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(host_name)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
+      {
+        "name": "user",
+        "label": "User",
+        "type": "query",
+        "description": "The signed-in operator (Alloy label `user`). Multi-select; All includes lines with no identity.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(user)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      }
+    ]
   },
   "time": {
     "from": "now-1h",

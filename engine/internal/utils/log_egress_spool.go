@@ -397,3 +397,23 @@ func (f *EgressForwarder) drainSpool() error {
 	}
 	return nil
 }
+
+// egressSpoolName is the forwarder's spool file name under IonDir(). A
+// process that ships alongside the engine daemon (ion prompt driving the
+// engine it started) sets its own name, so the two processes never append to
+// or drain the same file. Guarded by logMu.
+var egressSpoolName = ".engine-egress-spool.jsonl"
+
+// SetEgressSpoolName sets the spool file name used by forwarders that
+// ConfigureLogging builds after this call.
+func SetEgressSpoolName(name string) {
+	logMu.Lock()
+	egressSpoolName = name
+	logMu.Unlock()
+}
+
+func egressSpoolFileName() string {
+	logMu.Lock()
+	defer logMu.Unlock()
+	return egressSpoolName
+}

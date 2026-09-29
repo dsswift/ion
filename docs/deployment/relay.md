@@ -50,6 +50,7 @@ All configuration is through environment variables.
 | `RELAY_API_KEY` | Yes | -- | Hex secret for Bearer auth. Generate with `openssl rand -hex 32`. |
 | `RELAY_PORT` | No | `8443` | Listen port. |
 | `APNS_KEY_PATH` | No | -- | Path to APNs `.p8` key file. |
+| `APNS_KEY` | No | -- | The `.p8` key's PEM text itself, for a secret injected as an environment variable. Set this or `APNS_KEY_PATH`, never both. |
 | `APNS_KEY_ID` | No | -- | APNs key ID from Apple Developer portal. |
 | `APNS_TEAM_ID` | No | -- | Apple Developer team ID. |
 | `APNS_TOPIC` | With APNs | -- | The iOS app's bundle identifier, sent as the `apns-topic` header. Required when the three APNs variables above are set; the relay refuses to enable push without it. |
@@ -57,8 +58,15 @@ All configuration is through environment variables.
 | `RELAY_PING_INTERVAL_S` | No | `30` | Interval in seconds between WebSocket keepalive pings. |
 | `RELAY_PING_TIMEOUT_S` | No | `10` | Maximum seconds to wait for a pong response before closing the connection. |
 | `RELAY_MAX_MESSAGE_SIZE` | No | `1048576` (1 MB) | Maximum WebSocket message size in bytes. Messages exceeding this limit cause the connection to close. |
+| `RELAY_OIDC_ISSUERS` | No | -- | JSON array of further accepted OIDC issuers, each with its own audience and scope. See [Several tenants on one relay](relay-oidc.md#several-tenants-on-one-relay). |
+| `RELAY_TRUSTED_ISSUERS` | No | -- | Comma-separated OIDC issuer URLs the relay trusts for server-announced trust (per-channel issuer override). See [Server-Announced Trust](relay-oidc.md#server-announced-trust). |
+| `RELAY_STATE_DIR` | No | -- | Directory for persisted channel-owner bindings. Memory-only when unset (bindings do not survive a relay restart). The relay stores no push addresses; the server sends one with each push. |
 
-APNs is optional. When all three `APNS_*` variables are set, the relay sends push notifications to wake the iOS app when a message arrives on a channel where the mobile peer is disconnected.
+APNs is optional. When the key (`APNS_KEY_PATH` or `APNS_KEY`), `APNS_KEY_ID`, `APNS_TEAM_ID`, and `APNS_TOPIC` are set, the relay sends push notifications to wake the iOS app when a message arrives on a channel where the mobile peer is disconnected.
+
+The `.p8` key must come from the Apple Developer team that owns the app's bundle identifier (`APNS_TOPIC`). Apple refuses a push signed by another team's key, so a second relay that pushes to the same build of the app needs that same team's key, not a key from a different organization's account.
+
+Each push goes to the Apple environment that issued the phone's token. A development build (Xcode, `make ios`) registers with the sandbox and a TestFlight or App Store build with production. The relay keeps no push addresses. Each paired phone registers its token and environment with its server (`device.registerPush`, over whatever connection it has), and the server sends them with every push it rings, so one relay serves every build, server, and person at once. The server decides who is rung: a push about a conversation reaches only the devices of the people who may see that conversation. `APNS_PRODUCTION` only picks the environment for a push that arrives without one.
 
 ## Local development
 

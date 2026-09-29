@@ -3,6 +3,7 @@ package config
 import (
 	"net/url"
 	"path"
+	"strings"
 
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -71,9 +72,16 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		}
 	}
 
-	// Blocked models: if defaultModel is blocked, fall back
+	// Blocked models: if defaultModel is blocked, fall back to the first
+	// allowed model, or to no default at all when the policy names no
+	// allowed models either. Inventing an unrelated model id here would
+	// mask the fact that enterprise policy has blocked every model the
+	// operator actually configured -- empty surfaces that as the same clear
+	// "no model configured" failure an unconfigured engine already produces
+	// (runloop_provider_resolve.go), rather than silently substituting a
+	// model the policy never vetted.
 	if contains(enterprise.BlockedModels, result.DefaultModel) {
-		fallback := "claude-sonnet-4-6"
+		fallback := ""
 		if len(enterprise.AllowedModels) > 0 {
 			fallback = enterprise.AllowedModels[0]
 		}
@@ -173,7 +181,7 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 				continue
 			}
 			if host := mcpServerURLHost(server); host != "" && matchesAny(enterprise.McpAllowlist, host) {
-				utils.LogWithFields(utils.LevelInfo, "config.merge", "enterprise: MCP server allowed by URL host pattern", map[string]any{"server": key, "host": host})
+				utils.LogWithFields(utils.LevelInfo, "config.merge", "enterprise: MCP server allowed by URL host pattern", map[string]any{"server": key, "url_host": host})
 				continue
 			}
 			utils.Log("ConfigMerge", "enterprise: removing non-allowlisted MCP server \""+key+"\"")
@@ -238,6 +246,48 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		if enterprise.Telemetry.PrivacyLevel != "" {
 			result.Telemetry.PrivacyLevel = enterprise.Telemetry.PrivacyLevel
 		}
+		// The destination of each sealed target. Without these an enterprise
+		// could force the "http" or "eventhub" target on but supply nowhere to
+		// send, so every flush would fail into the retry queue: a sealed
+		// policy that cannot deliver. Same set as the ConversationEvents seal
+		// below.
+		if enterprise.Telemetry.HttpEndpoint != "" {
+			result.Telemetry.HttpEndpoint = enterprise.Telemetry.HttpEndpoint
+		}
+		if len(enterprise.Telemetry.HttpHeaders) > 0 {
+			result.Telemetry.HttpHeaders = enterprise.Telemetry.HttpHeaders
+		}
+		if enterprise.Telemetry.EventHubNamespace != "" {
+			result.Telemetry.EventHubNamespace = enterprise.Telemetry.EventHubNamespace
+		}
+		if enterprise.Telemetry.EventHubName != "" {
+			result.Telemetry.EventHubName = enterprise.Telemetry.EventHubName
+		}
+		if enterprise.Telemetry.EventHubTokenScope != "" {
+			result.Telemetry.EventHubTokenScope = enterprise.Telemetry.EventHubTokenScope
+		}
+		if enterprise.Telemetry.EventHubTokenAudience != "" {
+			result.Telemetry.EventHubTokenAudience = enterprise.Telemetry.EventHubTokenAudience
+		}
+		if enterprise.Telemetry.EventHubConnectionString != "" {
+			result.Telemetry.EventHubConnectionString = enterprise.Telemetry.EventHubConnectionString
+		}
+		if enterprise.Telemetry.OversizeEventPolicy != "" {
+			result.Telemetry.OversizeEventPolicy = enterprise.Telemetry.OversizeEventPolicy
+		}
+		// OpenTelemetry export, including the metrics block. Without this an
+		// enterprise that seals telemetry on could not also seal where its
+		// OTLP traces and metrics go.
+		if enterprise.Telemetry.Otel != nil {
+			result.Telemetry.Otel = enterprise.Telemetry.Otel
+		}
+	}
+
+	// SystemMetrics: an enterprise block replaces the user's whole. It can
+	// fix the sampling cadence and telemetry interval, or turn sampling off.
+	if enterprise.SystemMetrics != nil {
+		sealed := *enterprise.SystemMetrics
+		result.SystemMetrics = &sealed
 	}
 
 	// ConversationEvents: same one-way seal pattern as Telemetry above,
@@ -336,10 +386,17 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		if enterprise.Logging.EgressClientShipSources != nil {
 			result.Logging.EgressClientShipSources = enterprise.Logging.EgressClientShipSources
 		}
-		// Authenticated egress: enterprise can force the operator-token scope
-		// used to authenticate each flush.
+		// Authenticated egress: enterprise can force the token scope and
+		// audience used to authenticate each flush.
 		if enterprise.Logging.EgressTokenScope != "" {
 			result.Logging.EgressTokenScope = enterprise.Logging.EgressTokenScope
+		}
+		if enterprise.Logging.EgressTokenAudience != "" {
+			result.Logging.EgressTokenAudience = enterprise.Logging.EgressTokenAudience
+		}
+		// And the credential that mints it (an auth.oauth entry name).
+		if enterprise.Logging.EgressTokenProvider != "" {
+			result.Logging.EgressTokenProvider = enterprise.Logging.EgressTokenProvider
 		}
 		utils.LogWithFields(utils.LevelInfo, "config.merge", "enterprise forcing log egress", map[string]any{"status": enterprise.Logging.EgressTargets, "path": enterprise.Logging.EgressEndpoint})
 	}
@@ -373,6 +430,62 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		}
 		result.ResourceLimits.MaxSessions = sealLimitCeiling(result.ResourceLimits.MaxSessions, enterprise.ResourceLimits.MaxSessions, "maxSessions")
 		result.ResourceLimits.MaxAgentsPerSession = sealLimitCeiling(result.ResourceLimits.MaxAgentsPerSession, enterprise.ResourceLimits.MaxAgentsPerSession, "maxAgentsPerSession")
+	}
+
+	// Principal partitioning (FR-01): two independent one-way seals.
+	// RequirePrincipalPartitioning forces Enabled=true regardless of the
+	// lower layer's own setting; MinEnforcement raises Enforcement to at
+	// least the enterprise floor. Neither can be softened by a lower layer.
+	if enterprise.Security != nil && (enterprise.Security.RequirePrincipalPartitioning || enterprise.Security.MinEnforcement != "") {
+		if result.Security == nil {
+			result.Security = &types.SecurityConfig{}
+		} else {
+			dup := *result.Security
+			result.Security = &dup
+		}
+		existing := result.Security.PrincipalPartitioning
+		enabled := existing != nil && existing.Enabled
+		// Left empty (not EnforcementNone) when nothing was explicitly
+		// configured, so an untouched value still gets ResolvedEnforcement's
+		// own "enabled with no explicit level -> strict" default rather than
+		// this seal silently pinning it to "none".
+		var enforcement types.PrincipalEnforcement
+		if existing != nil {
+			enforcement = existing.Enforcement
+		}
+		if enterprise.Security.RequirePrincipalPartitioning && !enabled {
+			enabled = true
+			utils.LogWithFields(utils.LevelInfo, "ConfigMerge", "enterprise: principal partitioning required; enabling", nil)
+		}
+		if enterprise.Security.MinEnforcement != "" {
+			sealed := types.SealMinEnforcement(enforcement, enterprise.Security.MinEnforcement)
+			if sealed != enforcement {
+				utils.LogWithFields(utils.LevelInfo, "ConfigMerge", "enterprise: principal enforcement raised to the sealed minimum", map[string]any{
+					"configured": string(enforcement), "sealed": string(sealed),
+				})
+			}
+			enforcement = sealed
+		}
+		result.Security.PrincipalPartitioning = &types.PrincipalPartitioningConfig{Enabled: enabled, Enforcement: enforcement}
+	}
+
+	// Git identity (FR-04): Required is a one-way seal (mirrors
+	// RequirePrincipalPartitioning above); Machine, when the enterprise sets
+	// one, replaces the user-layer fallback identity wholesale.
+	if enterprise.Git != nil && (enterprise.Git.Required || enterprise.Git.Machine != nil) {
+		var existing types.GitIdentityConfig
+		if result.Git != nil {
+			existing = result.Git.Identity
+		}
+		if enterprise.Git.Required && !existing.RequiredEnabled() {
+			required := true
+			existing.Required = &required
+			utils.LogWithFields(utils.LevelInfo, "ConfigMerge", "enterprise: git identity required; enabling", nil)
+		}
+		if enterprise.Git.Machine != nil {
+			existing.Machine = enterprise.Git.Machine
+		}
+		result.Git = &types.GitConfig{Identity: existing}
 	}
 
 	// Plan-mode Bash allowlist: sealed ceiling. The merged user+project union
@@ -467,6 +580,122 @@ func IsToolAllowed(toolName string, enterprise *types.EnterpriseConfig) bool {
 		return false
 	}
 	return true
+}
+
+// principalMatches reports whether principal satisfies match. A nil
+// principal (unattributed session) matches only a rule with every field
+// empty -- there is no subject/provider/claim to compare against.
+func principalMatches(principal *types.SessionPrincipal, match types.PrincipalMatch) bool {
+	if principal == nil {
+		return len(match.Subjects) == 0 && len(match.Providers) == 0 && len(match.Claims) == 0
+	}
+	if len(match.Subjects) > 0 && !contains(match.Subjects, principal.Subject) {
+		return false
+	}
+	if len(match.Providers) > 0 && !contains(match.Providers, principal.Provider) {
+		return false
+	}
+	for claimKey, allowedValues := range match.Claims {
+		if !principalHasClaim(principal, claimKey, allowedValues) {
+			return false
+		}
+	}
+	return true
+}
+
+// principalHasClaim reports whether principal.Claims[claimKey] contains at
+// least one of allowedValues. A claim value may be a bare string (a single
+// role/tenant) or a []any of strings (a roles list, the common JWT shape
+// after JSON decode) -- both are checked.
+func principalHasClaim(principal *types.SessionPrincipal, claimKey string, allowedValues []string) bool {
+	if principal.Claims == nil {
+		return false
+	}
+	raw, ok := principal.Claims[claimKey]
+	if !ok {
+		return false
+	}
+	switch v := raw.(type) {
+	case string:
+		return contains(allowedValues, v)
+	case []any:
+		for _, item := range v {
+			if s, ok := item.(string); ok && contains(allowedValues, s) {
+				return true
+			}
+		}
+	case []string:
+		for _, s := range v {
+			if contains(allowedValues, s) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// IsToolAllowedFor is FR-03's per-principal tool-policy check: IsToolAllowed's
+// global Allow/Deny first (an enterprise-wide deny always wins, even over a
+// principal-specific allow), then every ToolRestrictions.Principals rule
+// matching principal. Deny wins across matching rules; when at least one
+// matching rule declares a non-empty Allow, toolName must be in the
+// INTERSECTION of every matching rule's Allow list (each matching rule's
+// allowlist independently narrows what's permitted -- one rule's silence on
+// Allow does not widen another's).
+func IsToolAllowedFor(toolName string, principal *types.SessionPrincipal, enterprise *types.EnterpriseConfig) bool {
+	if !IsToolAllowed(toolName, enterprise) {
+		return false
+	}
+	if enterprise == nil || enterprise.ToolRestrictions == nil || len(enterprise.ToolRestrictions.Principals) == 0 {
+		return true
+	}
+	for _, rule := range enterprise.ToolRestrictions.Principals {
+		if !principalMatches(principal, rule.Match) {
+			continue
+		}
+		if contains(rule.Deny, toolName) {
+			return false
+		}
+		if len(rule.Allow) > 0 && !contains(rule.Allow, toolName) {
+			return false
+		}
+	}
+	// No matching rule (or every matching rule silent on both lists) ->
+	// global policy alone governs, already checked above.
+	return true
+}
+
+// ToolBlockReason classifies WHY IsToolAllowedFor(toolName, principal,
+// enterprise) would refuse toolName, for audit telemetry
+// (EnforcementToolBlocked). Only meaningful to call when the tool is in
+// fact blocked; returns ("", "") for an allowed tool. source is "denylist"
+// (global deny), "allowlist" (excluded from a global allowlist), or
+// "principal" (a per-principal rule); rule names the matched principal
+// rule's subject/provider match for a "principal" source, empty otherwise.
+func ToolBlockReason(toolName string, principal *types.SessionPrincipal, enterprise *types.EnterpriseConfig) (source, rule string) {
+	if enterprise == nil {
+		return "", ""
+	}
+	if enterprise.ToolRestrictions != nil {
+		if contains(enterprise.ToolRestrictions.Deny, toolName) {
+			return "denylist", ""
+		}
+		if len(enterprise.ToolRestrictions.Allow) > 0 && !contains(enterprise.ToolRestrictions.Allow, toolName) {
+			return "allowlist", ""
+		}
+		for _, r := range enterprise.ToolRestrictions.Principals {
+			if !principalMatches(principal, r.Match) {
+				continue
+			}
+			if contains(r.Deny, toolName) {
+				return "principal", strings.Join(r.Match.Subjects, ",")
+			}
+			if len(r.Allow) > 0 && !contains(r.Allow, toolName) {
+				return "principal", strings.Join(r.Match.Subjects, ",")
+			}
+		}
+	}
+	return "", ""
 }
 
 // IsMcpAllowed checks if an MCP server is permitted by enterprise policy.

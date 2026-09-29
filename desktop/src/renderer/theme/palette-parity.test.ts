@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { darkColors } from "./palette-dark";
+import { darkColors } from "@ion/server/renderer/theme/palette-dark";
 import { lightColors } from "./palette-light";
 import { classicColors } from "./palette-classic";
 import { hudColors } from "./palette-hud";

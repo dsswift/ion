@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { groupInboxTabs, inboxProjectFor } from './inbox-grouping'
-import type { TabState, WorktreeInventoryEntry } from '../../../shared/types'
+import type { TabState, WorktreeInventoryEntry } from '@ion/shared/types'
 
 function tab(overrides: Partial<TabState>): TabState {
   return {

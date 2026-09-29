@@ -37,8 +37,7 @@ func Install(source string, progress func(string)) (InstalledPlugin, error) {
 		shortSHA = sha[:12]
 	}
 
-	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
-	installPath := filepath.Join(home, ".ion", "plugins", "cache", owner, repo, shortSHA)
+	installPath := filepath.Join(utils.IonDir(), "plugins", "cache", owner, repo, shortSHA)
 
 	// Already installed at this SHA?
 	if _, statErr := os.Stat(filepath.Join(installPath, ".claude-plugin", "plugin.json")); statErr == nil {

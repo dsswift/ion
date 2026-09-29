@@ -68,7 +68,8 @@ func TestAppendStructuredCliTurn_Adjacency(t *testing.T) {
 		{kind: "tool_result", toolID: "tu_1", resultContent: "answered"},
 		{kind: "text", text: "done"},
 	}
-	if !appendStructuredCliTurn(conv, items, "cli-model", nil) {
+	wrote, _ := appendStructuredCliTurn(conv, items, "cli-model", nil)
+	if !wrote {
 		t.Fatal("appendStructuredCliTurn wrote nothing")
 	}
 
@@ -224,5 +225,114 @@ func TestPersistCliTurn_StructuredAndFallback(t *testing.T) {
 	}
 	if len(conv2.Messages) != 2 {
 		t.Fatalf("text fallback: want 2 messages, got %d", len(conv2.Messages))
+	}
+}
+
+// TestAppendStructuredCliTurn_AnnouncesAssistantEntryIDs pins the re-key
+// signal for delegated-CLI turns.
+//
+// A delegated backend's turn is copied into Ion's store at run exit, so at
+// message_end time no entry exists and engine_message_end carries no entryId.
+// Consumers that built rows from the live stream therefore keep locally-minted
+// ids, and a later history load -- which returns the canonical ids -- reads as
+// a permanent divergence. engine_assistant_turn_persisted closes that gap, so
+// the write path must hand back exactly the ids it minted, in transcript
+// order. Returning none (or the wrong ones) turns this red.
+func TestAppendStructuredCliTurn_AnnouncesAssistantEntryIDs(t *testing.T) {
+	conv := conversation.CreateConversation("announce-test", "", "m")
+	items := []cliTranscriptItem{
+		{kind: "text", text: "asking"},
+		{kind: "tool_use", toolID: "tu_1", toolName: "Bash", input: map[string]any{"command": "ls"}},
+		{kind: "tool_result", toolID: "tu_1", resultContent: "ok"},
+		{kind: "text", text: "done"},
+	}
+
+	wrote, entryIDs := appendStructuredCliTurn(conv, items, "cli-model", nil)
+	if !wrote {
+		t.Fatal("appendStructuredCliTurn wrote nothing")
+	}
+
+	// The canonical ids of the assistant entries actually on the tree, in the
+	// order they were appended -- what a consumer re-keys its rows against.
+	var want []string
+	for _, entry := range conv.Entries {
+		if entry.Type != conversation.EntryMessage {
+			continue
+		}
+		data, ok := entry.Data.(conversation.MessageData)
+		if !ok || data.Role != "assistant" {
+			continue
+		}
+		want = append(want, entry.ID)
+	}
+
+	if len(want) == 0 {
+		t.Fatal("fixture wrote no assistant entries; the test cannot pin anything")
+	}
+	if len(entryIDs) != len(want) {
+		t.Fatalf("announced %d assistant entry ids, tree holds %d", len(entryIDs), len(want))
+	}
+	for i := range want {
+		if entryIDs[i] != want[i] {
+			t.Errorf("announced id %d = %q, want the persisted entry id %q", i, entryIDs[i], want[i])
+		}
+		if entryIDs[i] == "" {
+			t.Errorf("announced id %d is empty; a consumer cannot re-key to it", i)
+		}
+	}
+}
+
+// TestAppendStructuredCliTurn_AnnouncesOnlyTextBearingEntries pins the
+// mapping a consumer actually needs.
+//
+// A history load flattens one assistant entry into a text row keyed by the
+// entry id plus a tool row per tool_use keyed by its tool id. A tool-only
+// entry therefore yields no row a consumer could re-key to its entry id, and
+// announcing it makes the counts disagree: a real turn with nine tool calls
+// announced ten ids against the two text rows the consumer held, so the whole
+// positional mapping was correctly refused and nothing re-keyed at all.
+func TestAppendStructuredCliTurn_AnnouncesOnlyTextBearingEntries(t *testing.T) {
+	conv := conversation.CreateConversation("text-only-announce", "", "m")
+	// One text-bearing message, then two tool-only rounds, then a final answer:
+	// the shape of a turn that works before it replies.
+	items := []cliTranscriptItem{
+		{kind: "text", text: "Checking ground truth first."},
+		{kind: "tool_use", toolID: "tu_1", toolName: "Bash", input: map[string]any{"command": "ls"}},
+		{kind: "tool_result", toolID: "tu_1", resultContent: "ok"},
+		{kind: "tool_use", toolID: "tu_2", toolName: "Bash", input: map[string]any{"command": "pwd"}},
+		{kind: "tool_result", toolID: "tu_2", resultContent: "/tmp"},
+		{kind: "text", text: "Yes, it transferred."},
+	}
+
+	wrote, entryIDs := appendStructuredCliTurn(conv, items, "cli-model", nil)
+	if !wrote {
+		t.Fatal("appendStructuredCliTurn wrote nothing")
+	}
+
+	// Two text rows exist on this turn, so exactly two ids may be announced.
+	if len(entryIDs) != 2 {
+		t.Fatalf("announced %d ids, want 2 (one per text-bearing entry): %v", len(entryIDs), entryIDs)
+	}
+
+	// Each announced id must name an assistant entry that really carries text.
+	for _, id := range entryIDs {
+		found := false
+		for _, entry := range conv.Entries {
+			if entry.ID != id {
+				continue
+			}
+			data, ok := entry.Data.(conversation.MessageData)
+			if !ok || data.Role != "assistant" {
+				t.Fatalf("announced id %q is not an assistant entry", id)
+			}
+			blocks, _ := data.Content.([]types.LlmContentBlock) //nolint:errcheck // test fixture shape
+			if !blocksCarryText(blocks) {
+				t.Errorf("announced id %q names a tool-only entry; it yields no row to re-key", id)
+			}
+			found = true
+		}
+		if !found {
+			t.Errorf("announced id %q matches no entry on the tree", id)
+		}
 	}
 }

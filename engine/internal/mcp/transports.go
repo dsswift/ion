@@ -9,12 +9,13 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/network"
+	"github.com/dsswift/ion/engine/internal/sysmetrics"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
-// mcpProtocolVersion remains on discovery requests for legacy gateways. Modern
+// DiscoveryProtocolVersion remains on discovery requests for legacy gateways. Modern
 // protocol version negotiation is owned by the official SDK.
-const mcpProtocolVersion = "2026-07-28"
+const DiscoveryProtocolVersion = "2026-07-28"
 
 // newSDKTransport selects an official MCP SDK transport plus Ion's HTTP policy
 // wrapper. The wrapper is deliberately transport-level: protocol negotiation,
@@ -26,7 +27,12 @@ func newSDKTransport(name string, config types.McpServerConfig) (mcpgo.Transport
 		if err != nil {
 			return nil, nil, err
 		}
-		return transport, func() error { return nil }, nil
+		return transport, func() error {
+			if p := transport.Command.Process; p != nil {
+				sysmetrics.UnregisterProcess(p.Pid)
+			}
+			return nil
+		}, nil
 	case "http":
 		if config.URL == "" {
 			return nil, nil, fmt.Errorf("HTTP transport requires base URL")
@@ -89,7 +95,7 @@ func configuredTokenResolver(serverName string, config types.McpServerConfig) *t
 			ClientID: config.OAuth.ClientID, ClientSecret: config.OAuth.ClientSecret,
 			AuthURL: config.OAuth.AuthURL, TokenURL: config.OAuth.TokenURL,
 			Scope: config.OAuth.Scope, RedirectURI: config.OAuth.RedirectURI,
-			UsePKCE: config.OAuth.UsePKCE,
+			Resource: config.OAuth.Resource,
 		}
 	}
 	return newTokenResolver(serverName, oauthCfg)

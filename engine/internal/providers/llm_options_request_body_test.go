@@ -142,13 +142,12 @@ func TestOpenAIResponsesBuildRequestBody_Temperature(t *testing.T) {
 	}
 }
 
-// TestOpenAIResponsesEnvKeyGatedByProviderID pins the credential boundary:
-// OPENAI_API_KEY is OpenAI's own credential and must never be adopted as a
-// gateway's key. Gateway inner clients are constructed with the gateway's ID.
+// TestOpenAIResponsesEnvKeyGatedByProviderID pins the credential boundary
+// (R-23): openaiResponsesProvider holds no credential field at all -- a
+// gateway's identity can no longer adopt a stray OPENAI_API_KEY because
+// there is no field to adopt it into. Credentials resolve per request from
+// the context (applyRequestAuth), never at construction.
 func TestOpenAIResponsesEnvKeyGatedByProviderID(t *testing.T) {
-	t.Setenv("OPENAI_API_KEY", "sk-openai-env-key")
-
-	// A gateway-identified client must NOT pick up the OpenAI env key.
 	gw, ok := NewOpenAIResponsesProvider(&ProviderOptions{
 		ID:      "dci-marketing",
 		BaseURL: "https://ai.example.com",
@@ -156,17 +155,16 @@ func TestOpenAIResponsesEnvKeyGatedByProviderID(t *testing.T) {
 	if !ok {
 		t.Fatal("expected *openaiResponsesProvider")
 	}
-	if gw.apiKey != "" {
-		t.Errorf("gateway provider adopted OPENAI_API_KEY (%q); credential crossed provider boundary", gw.apiKey)
+	if gw.ID() != "dci-marketing" {
+		t.Errorf("gateway provider ID = %q, want dci-marketing", gw.ID())
 	}
 
-	// The OpenAI-identified client still gets the env fallback.
 	direct, ok := NewOpenAIResponsesProvider(&ProviderOptions{ID: "openai"}).(*openaiResponsesProvider)
 	if !ok {
 		t.Fatal("expected *openaiResponsesProvider")
 	}
-	if direct.apiKey != "sk-openai-env-key" {
-		t.Errorf("openai provider apiKey = %q, want the OPENAI_API_KEY value", direct.apiKey)
+	if direct.ID() != "openai" {
+		t.Errorf("direct provider ID = %q, want openai", direct.ID())
 	}
 
 	// The default id (no opts) is the Responses-native OpenAI client.
@@ -174,7 +172,7 @@ func TestOpenAIResponsesEnvKeyGatedByProviderID(t *testing.T) {
 	if !ok {
 		t.Fatal("expected *openaiResponsesProvider")
 	}
-	if def.apiKey != "sk-openai-env-key" {
-		t.Errorf("default provider apiKey = %q, want the OPENAI_API_KEY value", def.apiKey)
+	if def.ID() != "openai-responses" {
+		t.Errorf("default provider ID = %q, want openai-responses", def.ID())
 	}
 }

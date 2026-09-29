@@ -1,4 +1,4 @@
-import type { ProviderEntry } from '../../../shared/types-models'
+import type { ProviderEntry } from '@ion/shared/types-models'
 
 /** Map engine authSource to a user-friendly label. */
 export function humanAuthSource(source: string | undefined): string {

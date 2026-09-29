@@ -5,13 +5,14 @@ import SwiftUI
 enum BenchAssemblyTime {
     /// "assembled 5m ago", matching the desktop's wording (both BenchBar.tsx and
     /// InboxBenchBar.tsx) so the two clients never disagree on how bench age
-    /// reads. `lastBuiltAt` is Unix ms; 0 means never assembled.
-    static func relative(_ lastBuiltAtMs: Double) -> String {
+    /// reads. `lastBuiltAt` is Unix ms; 0 means never assembled. `now` is the
+    /// moment the age is measured from.
+    static func relative(_ lastBuiltAtMs: Double, now: Date = Date()) -> String {
         guard lastBuiltAtMs > 0 else { return "never assembled" }
         let date = Date(timeIntervalSince1970: lastBuiltAtMs / 1000)
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
-        return "assembled \(formatter.localizedString(for: date, relativeTo: Date()))"
+        return "assembled \(formatter.localizedString(for: date, relativeTo: now))"
     }
 
     /// The bench header's one-line status: how many members the bench holds,

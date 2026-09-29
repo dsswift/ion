@@ -11,6 +11,8 @@ struct SafeDecodable<T: Decodable>: Decodable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
+        // Lenient by design: an undecodable value becomes nil instead of failing the parent decode.
+        // swiftlint:disable:next silent_try_optional
         value = try? container.decode(T.self)
     }
 }

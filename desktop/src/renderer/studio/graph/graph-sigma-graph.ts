@@ -11,7 +11,7 @@
  */
 
 import Graph from 'graphology'
-import type { GraphModel, GraphNode } from '../../../shared/graph-model-types'
+import type { GraphModel, GraphNode } from '@ion/shared/graph-model-types'
 import type { CoarsenPlan } from './coarsen/coarsen'
 import { syntheticClusterNodeId } from './coarsen/coarsen'
 import { nodeRenderSize } from './graph-node-size'

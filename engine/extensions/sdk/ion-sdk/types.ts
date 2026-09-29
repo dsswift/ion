@@ -17,6 +17,31 @@ export interface ContextIdentity {
   attribution?: string
   source?: string
   claims?: Record<string, JSONValue>
+  /**
+   * Absolute directory this identity's conversations live under, mirroring
+   * the engine's StartSessionResult.storageRoot -- present only when
+   * principal partitioning is enabled and subject is non-empty; absent
+   * otherwise, meaning "unchanged from the pre-partitioning behavior."
+   */
+  storageRoot?: string
+}
+
+/**
+ * The person or service attributed to an engine session (manifest C1/C2).
+ * Sent by a consumer on start_session and, per-turn, on send_prompt. The
+ * engine never validates Subject against any identity provider -- the
+ * caller has already done that; the engine only carries, stores, and
+ * reports what it is told.
+ */
+export interface SessionPrincipal {
+  subject: string
+  provider: string
+  kind: string
+  username?: string
+  displayName?: string
+  attribution?: string
+  /** Never persisted to disk; wire and hook consumption only. */
+  claims?: Record<string, JSONValue>
 }
 
 export interface ExtensionConfig {
@@ -1587,6 +1612,24 @@ export interface IonContext extends DispatchControlContext {
     declare(decl: ResourceDeclaration): Promise<ResourceHandle>
     /** Register a query handler for the given kind. Called when clients subscribe. */
     onQuery(kind: string, handler: (filter: ResourceFilter) => Promise<ResourceItem[]> | ResourceItem[]): void
+    /**
+     * Register the handler that returns every item of this kind held for the
+     * given conversations, with full content. Called when a conversation moves
+     * to another machine. Without it, the engine reads the items through the
+     * query handler instead.
+     */
+    onExport(kind: string, handler: ResourceExportHandler): void
+    /**
+     * Register the handler that persists items the same-named producer
+     * exported on another machine. Without it, a conversation holding items of
+     * this kind cannot move here.
+     */
+    onImport(kind: string, handler: ResourceImportHandler): void
+    /**
+     * Register the handler that drops every item of this kind held for the
+     * given conversations, once they have moved to another machine.
+     */
+    onForget(kind: string, handler: ResourceForgetHandler): void
   }
 
   /**
@@ -1694,12 +1737,19 @@ export interface IonContext extends DispatchControlContext {
   setRunRecovery(config: RunRecoveryConfig): Promise<void>
 }
 
-/** Describes a session as returned by ctx.sessions.list(). */
+/**
+ * Describes a session as returned by ctx.sessions.list(). The engine filters
+ * this list to sessions sharing the CALLING session's own principal before
+ * returning it -- never every session engine-wide -- so `principalSubject` on
+ * every entry always equals the caller's own. On a single-tenant/local
+ * engine every session shares the same subject, so nothing is hidden there.
+ */
 export interface SessionListEntry {
   key: string
   hasActiveRun: boolean
   extensionName?: string
   conversationId?: string
+  principalSubject?: string
 }
 
 /** Result returned by {@link IonContext.getPlanMode}. */
@@ -2667,6 +2717,13 @@ export interface SystemInjectResult {
 export interface IdentityChangedInfo {
   identity?: ContextIdentity
   reason: string
+  /**
+   * Identifies the session whose principal was set or changed (manifest
+   * C1/C2). Empty/absent for the process-level identity firing -- the
+   * pre-existing behavior, unchanged -- and non-empty only when a specific
+   * session's stamped principal is what changed.
+   */
+  sessionKey?: string
 }
 
 export interface HookPayloadMap {
@@ -3097,6 +3154,24 @@ export interface IonSDK {
     declare(decl: ResourceDeclaration): Promise<ResourceHandle>
     /** Register a query handler for the given kind. Called when clients subscribe. */
     onQuery(kind: string, handler: (filter: ResourceFilter) => Promise<ResourceItem[]> | ResourceItem[]): void
+    /**
+     * Register the handler that returns every item of this kind held for the
+     * given conversations, with full content. Called when a conversation moves
+     * to another machine. Without it, the engine reads the items through the
+     * query handler instead.
+     */
+    onExport(kind: string, handler: ResourceExportHandler): void
+    /**
+     * Register the handler that persists items the same-named producer
+     * exported on another machine. Without it, a conversation holding items of
+     * this kind cannot move here.
+     */
+    onImport(kind: string, handler: ResourceImportHandler): void
+    /**
+     * Register the handler that drops every item of this kind held for the
+     * given conversations, once they have moved to another machine.
+     */
+    onForget(kind: string, handler: ResourceForgetHandler): void
   }
 }
 
@@ -3409,6 +3484,21 @@ export interface ResourceFilter {
 export interface ResourceDeclaration {
   kind: string
 }
+
+/** Returns every item held for the given conversations, with full content. */
+export type ResourceExportHandler = (conversationIds: string[]) => Promise<ResourceItem[]> | ResourceItem[]
+
+/** A producer's answer to an import: the item ids it persisted, and the ones it would not take. */
+export interface ResourceImportResult {
+  accepted: string[]
+  refused?: Array<{ id: string; reason: string }>
+}
+
+/** Persists items exported by the same-named producer on another machine. */
+export type ResourceImportHandler = (items: ResourceItem[]) => Promise<ResourceImportResult> | ResourceImportResult
+
+/** Drops every item held for the given conversations; returns how many were removed. */
+export type ResourceForgetHandler = (conversationIds: string[]) => Promise<number> | number
 
 /** Handle returned by ion.resources.declare(). */
 export interface ResourceHandle {

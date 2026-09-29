@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useColors } from '../../theme'
 import { rWarn } from '../../rendererLogger'
-import type { QuestionsWorkflowState, QuestionDraftAnswer } from '../../../shared/questions-state'
+import type { QuestionsWorkflowState, QuestionDraftAnswer } from '@ion/shared/questions-state'
 import { QuestionsWizardQuestion } from './QuestionsWizardQuestion'
 import { AutoGrowTextarea } from './AutoGrowTextarea'
+import { patchQuestions, actOnQuestions } from '../../stores/questions-store'
 
 /**
  * QuestionsWizard — the ONE guided-questions body, mounted by the Overlay
@@ -11,9 +12,10 @@ import { AutoGrowTextarea } from './AutoGrowTextarea'
  *
  * Renders the workflow's current phase: the answer form (collecting), the
  * review screen (review), and the waiting states (submitting /
- * awaiting_next). All mutations are revisioned main IPC calls; local edit
+ * awaiting_next). All mutations are revisioned server actions, routed by
+ * `questions-store` to the Environment holding the workflow; local edit
  * state exists only to keep typing responsive between debounced patches —
- * the broadcast state replaces it whenever main accepts or rejects.
+ * the broadcast state replaces it whenever the server accepts or rejects.
  */
 export function QuestionsWizard({ workflow }: { workflow: QuestionsWorkflowState }): React.JSX.Element {
   const colors = useColors()
@@ -37,16 +39,14 @@ export function QuestionsWizard({ workflow }: { workflow: QuestionsWorkflowState
   const schedulePatch = (answers: QuestionDraftAnswer[], pageComment: string) => {
     if (patchTimer.current) clearTimeout(patchTimer.current)
     patchTimer.current = setTimeout(() => {
-      void window.ion
-        .questionsPatch({
-          workflowId: workflow.workflowId,
-          requestId: workflow.requestId,
-          expectedRevision: seenRevision.current,
-          actionId: crypto.randomUUID(),
-          answers,
-          comment: pageComment,
-        })
-        .catch((err: unknown) => rWarn('questions', 'patch failed', { error: String(err) }))
+      void patchQuestions({
+        workflowId: workflow.workflowId,
+        requestId: workflow.requestId,
+        expectedRevision: seenRevision.current,
+        actionId: crypto.randomUUID(),
+        answers,
+        comment: pageComment,
+      }).catch((err: unknown) => rWarn('questions', 'patch failed', { error: String(err) }))
     }, 250)
   }
 
@@ -71,16 +71,15 @@ export function QuestionsWizard({ workflow }: { workflow: QuestionsWorkflowState
       clearTimeout(patchTimer.current)
       patchTimer.current = null
     }
-    void window.ion
-      .questionsAction({
-        workflowId: workflow.workflowId,
-        requestId: workflow.requestId,
-        expectedRevision: seenRevision.current,
-        actionId: crypto.randomUUID(),
-        kind,
-        answers: draft,
-        comment,
-      })
+    void actOnQuestions({
+      workflowId: workflow.workflowId,
+      requestId: workflow.requestId,
+      expectedRevision: seenRevision.current,
+      actionId: crypto.randomUUID(),
+      kind,
+      answers: draft,
+      comment,
+    })
       .then((result) => {
         if (!result.accepted) rWarn('questions', 'action rejected', { kind, error: result.error })
       })

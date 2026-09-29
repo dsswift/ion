@@ -11,8 +11,8 @@
  * the old one — there is no manual invalidation to get wrong.
  */
 
-import type { ChannelDimension } from '../../../../shared/graph-view-types'
-import type { GraphEdge, GraphModel, GraphNode } from '../../../../shared/graph-model-types'
+import type { ChannelDimension } from '@ion/shared/graph-view-types'
+import type { GraphEdge, GraphModel, GraphNode } from '@ion/shared/graph-model-types'
 
 /** Read a dimension's raw value from a node. An edge dimension is always undefined here. */
 export function nodeValue(node: GraphNode, dimension: ChannelDimension): unknown {

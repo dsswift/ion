@@ -1,18 +1,17 @@
 import { useEffect, useRef } from 'react'
-import { useSessionStore } from '../stores/sessionStore'
-import { usePreferencesStore } from '../preferences'
-import { IPC, type ImageAttachmentPayload } from '../../shared/types'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { type NormalizedEvent, type EnrichedError } from '@ion/shared/types'
 import {
   type QueuedItem, enqueueEvent, enqueueStatus, enqueueError, dropQueuedTextFor, countMergedChunks,
 } from './engine-event-frame-queue'
 import { createFlushScheduler, type FlushScheduler } from './engine-event-flush-scheduler'
-import { FORWARDED_ACTIONS } from '../../shared/studio-mirror-actions'
-import { isMirrorWindow } from '../lib/window-role'
 import { rTrace, rWarn, rDebug } from '../rendererLogger'
+import { host } from '../host/host-instance'
 
 /**
- * Subscribes to the single normalized-event stream (ion:normalized-event) and
- * routes events to the Zustand store via handleNormalizedEvent.
+ * Subscribes to the single normalized-event stream (ion:normalized-event),
+ * delivered as studio_event wire frames from every connected Environment,
+ * and routes events to the Zustand store via handleNormalizedEvent.
  *
  * WI-001 (single-path collapse): the raw IPC.ENGINE_EVENT subscription
  * (the second raw stream) has been retired. Every conversation — plain and
@@ -28,9 +27,11 @@ import { rTrace, rWarn, rDebug } from '../rendererLogger'
  */
 export function useEngineEvents() {
   useEffect(() => {
+    // `terminal.activitySnapshot` is a server read and `ion:terminal-activity`
+    // a tab-scoped channel, so every host bootstraps the same way.
     let live = true
     const receivedKeys = new Set<string>()
-    void window.ion.terminalActivitySnapshot()
+    void host.shell.terminalActivitySnapshot()
       .then((activities) => {
         if (!live) return
         useSessionStore.setState((state) => {
@@ -44,7 +45,7 @@ export function useEngineEvents() {
         })
       })
       .catch((err) => rWarn('terminal', 'terminal activity snapshot failed', { error: String(err) }))
-    const unsubscribe = window.ion.onTerminalActivity((activity) => {
+    const unsubscribe = host.shell.onTerminalActivity((activity) => {
       receivedKeys.add(activity.key)
       useSessionStore.setState((state) => {
         const terminalActivities = new Map(state.terminalActivities)
@@ -105,246 +106,97 @@ export function useEngineEvents() {
     schedulerRef.current = scheduler
     const schedule = () => scheduler.schedule()
 
-    rDebug('event.stream', 'registering onEvent handler')
-    const unsubEvent = window.ion.onEvent((tabId, event) => {
-      received += 1
-      // stream_reset: the engine is retrying — text queued behind the reset
-      // would be appended after the reset cleared it, so drop it now.
-      if (event.type === 'stream_reset') {
-        queueRef.current = dropQueuedTextFor(queueRef.current, tabId)
-      }
-      enqueueEvent(queueRef.current, tabId, event)
-      schedule()
-    })
-
-    const unsubStatus = window.ion.onTabStatusChange((tabId, newStatus, oldStatus) => {
-      // Queued rather than applied directly: a status transition and the event
-      // that caused it arrive on different IPC channels, and applying one
-      // ahead of the other would show a status the conversation had not
-      // reached yet.
-      enqueueStatus(queueRef.current, tabId, newStatus, oldStatus)
-      schedule()
-    })
-
-    const unsubError = window.ion.onError((tabId, error) => {
-      enqueueError(queueRef.current, tabId, error)
-      schedule()
-    })
-
-    const unsubSkill = window.ion.onSkillStatus((status) => {
-      if (status.state === 'failed') {
-        rWarn('event.skill', 'skill install failed', { name: status.name, error: status.error })
-      }
-    })
-
     // Engine came back after an outage: re-arm history hydration for panes
     // whose load failed while it was down. Mirror-local (each window
     // re-hydrates its own store), same as loadSkeletonMessages.
     const engineReconnectedHandler = () => {
       useSessionStore.getState().rehydrateFailedHistory()
     }
-    window.ion.on('ion:engine-reconnected', engineReconnectedHandler)
 
-    // Remote user messages (sent from iOS) — submit through the renderer's normal flow
-    // so the tab's working directory, session ID, model, and addDirs are used automatically.
-    // `attachments` is the raw iOS attachment metadata (type/name/path) the pipeline
-    // forwards so the optimistic user message renders inline image previews — the
-    // rewritten prompt only carries the pathless "(content attached)" marker form.
-    const remoteUserMsgHandler = (_e: any, data: { tabId: string; requestId: string; prompt: string; displayText?: string; echoToIos?: boolean; timestamp: number; imageAttachments?: ImageAttachmentPayload[]; attachments?: Array<{ type: string; name: string; path: string; contentHash?: string }>; resolveSlash?: boolean; implementationPhase?: boolean; injectionKind?: string }) => {
-      useSessionStore.getState().submitRemotePrompt(data.tabId, data.prompt, data.imageAttachments, data.resolveSlash, data.attachments, data.requestId, data.implementationPhase, data.injectionKind, data.displayText, data.echoToIos)
-    }
-    window.ion.on(IPC.REMOTE_USER_MESSAGE, remoteUserMsgHandler)
-
-    // Remote bash command (from iOS ! prefix) — execute through the renderer's normal bash flow
-    const remoteBashCommandHandler = (_e: any, data: { tabId: string; command: string }) => {
-      useSessionStore.getState().submitRemoteBash(data.tabId, data.command)
-    }
-    window.ion.on(IPC.REMOTE_BASH_COMMAND, remoteBashCommandHandler)
-
-    // Remote permission mode change (from iOS toggle or slash-command expansion).
-    // WI-001: all tab types write permissionMode onto the active instance in
-    // conversationPanes. The parent tab.permissionMode is no longer written here.
-    const remoteSetModeHandler = (_e: any, data: { tabId: string; mode: 'auto' | 'plan' }) => {
-      useSessionStore.setState((s) => {
-        const conversationPanes = new Map(s.conversationPanes)
-        const pane = conversationPanes.get(data.tabId)
-        if (!pane) return {}
-        const instanceId = pane.activeInstanceId
-        if (!instanceId) return {}
-        const idx = pane.instances.findIndex((i) => i.id === instanceId)
-        if (idx === -1) return {}
-        const instances = pane.instances.slice()
-        instances[idx] = { ...instances[idx], permissionMode: data.mode }
-        conversationPanes.set(data.tabId, { ...pane, instances })
-        return { conversationPanes }
-      })
-
-      // Re-evaluate auto group movement after the mode change
-      const { autoGroupMovement, tabGroupMode, planningGroupId, inProgressGroupId } = usePreferencesStore.getState()
-      if (autoGroupMovement && tabGroupMode === 'manual') {
-        const tab = useSessionStore.getState().tabs.find((t) => t.id === data.tabId)
-        if (tab) {
-          if (tab.groupPinned) {
-            const wouldMoveTo = data.mode === 'plan' ? planningGroupId : inProgressGroupId
-            rDebug('auto-move', 'suppressed: tab pinned', { tab_id: data.tabId.slice(0, 8), current_group: tab.groupId ?? '', would_move_to: wouldMoveTo ?? '' })
-          } else if (data.mode === 'plan' && planningGroupId && tab.groupId !== planningGroupId) {
-            useSessionStore.getState().moveTabToGroup(data.tabId, planningGroupId)
-          } else if (data.mode === 'auto' && inProgressGroupId && tab.groupId !== inProgressGroupId) {
-            useSessionStore.getState().moveTabToGroup(data.tabId, inProgressGroupId)
+    // The engine-event stream reaches this window ONLY as studio_event
+    // frames -- the LOCAL Environment's included. The desktop main process
+    // stopped receiving engine events when the store moved into the Studio
+    // server (ADR-033), so the raw main-process IPC path this hook used to
+    // prefer for the local Environment (`shell.onEvent` et al, gated on a
+    // 'directEvents' capability) had no producer: every local conversation
+    // rendered empty while the server's transcript filled in, and tab status
+    // only ever moved by the health poll. One path now, tagged with the
+    // Environment each frame came from; tab ids are minted per server, so
+    // the store keys on them alone.
+    const unsubFrame = host.onFrame((_environmentId, frame) => {
+      if (frame.type !== 'studio_event') return
+      switch (frame.channel) {
+        case 'ion:normalized-event': {
+          const [tabId, event] = frame.payload as [string, NormalizedEvent]
+          received += 1
+          if (event.type === 'stream_reset') {
+            queueRef.current = dropQueuedTextFor(queueRef.current, tabId)
           }
+          enqueueEvent(queueRef.current, tabId, event)
+          schedule()
+          break
         }
+        case 'ion:tab-status-change': {
+          const { tabId, status, previousStatus } = frame.payload as { tabId: string; status: string; previousStatus: string }
+          enqueueStatus(queueRef.current, tabId, status, previousStatus)
+          schedule()
+          break
+        }
+        case 'ion:enriched-error': {
+          const [tabId, error] = frame.payload as [string, EnrichedError]
+          enqueueError(queueRef.current, tabId, error)
+          schedule()
+          break
+        }
+        case 'ion:engine-reconnected':
+          engineReconnectedHandler()
+          break
+      }
+    })
+    rDebug('event.stream', 'registered wire-frame handler')
+
+    // Everything below is Electron-only: skill install status and the
+    // automation command round trip arrive over main-process IPC that a
+    // browser Studio client does not have (and whose bridged shell refuses
+    // unbridged verbs). `nativeShell` is the capability that says this
+    // client has that machine-side shell.
+    if (!host.capabilities().includes('nativeShell')) {
+      return () => {
+        rDebug('event.stream', 'cleanup: removing wire-frame handler')
+        unsubFrame()
+        scheduler.cancel()
+        schedulerRef.current = null
+        queueRef.current = []
       }
     }
-    window.ion.on(IPC.REMOTE_SET_PERMISSION_MODE, remoteSetModeHandler)
 
-    // Remote thinking-effort change (from iOS).
-    // WI-001: write thinkingEffort onto the active instance for all tab types.
-    const remoteSetThinkingHandler = (_e: any, data: { tabId: string; effort: 'off' | 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' }) => {
-      useSessionStore.setState((s) => {
-        const conversationPanes = new Map(s.conversationPanes)
-        const pane = conversationPanes.get(data.tabId)
-        if (!pane?.activeInstanceId) return {}
-        const idx = pane.instances.findIndex((i) => i.id === pane.activeInstanceId)
-        if (idx === -1) return {}
-        const instances = pane.instances.slice()
-        instances[idx] = { ...instances[idx], thinkingEffort: data.effort }
-        conversationPanes.set(data.tabId, { ...pane, instances })
-        return { conversationPanes }
-      })
-    }
-    window.ion.on(IPC.REMOTE_SET_THINKING_EFFORT, remoteSetThinkingHandler)
-
-    // Direct main-process fallback already stopped the remote tab's sessions and
-    // broadcast its permanent removal. Only overlay owns durable tab state;
-    // Studio follows owner sync.
-    const remoteCloseTabHandler = (_e: any, tabId: string) => {
-      if (isMirrorWindow()) {
-        rDebug('remote.close-tab', 'mirror ignored remote close; awaiting owner sync', { tab_id: tabId })
-        return
+    const unsubSkill = host.shell.onSkillStatus((status) => {
+      if (status.state === 'failed') {
+        rWarn('event.skill', 'skill install failed', { name: status.name, error: status.error })
       }
-      useSessionStore.getState().closeTab(tabId, 'remote-delete')
-    }
-    window.ion.on(IPC.REMOTE_CLOSE_TAB, remoteCloseTabHandler)
+    })
 
-    // Remote rename tab (from iOS)
-    const remoteRenameTabHandler = (_e: any, tabId: string, customTitle: string | null) => {
-      useSessionStore.getState().renameTab(tabId, customTitle)
-    }
-    window.ion.on(IPC.REMOTE_RENAME_TAB, remoteRenameTabHandler)
-
-    // Remote rename terminal instance (from iOS)
-    const remoteRenameTermInstHandler = (_e: any, tabId: string, instanceId: string, label: string) => {
-      useSessionStore.getState().renameTerminalInstance(tabId, instanceId, label)
-    }
-    window.ion.on(IPC.REMOTE_RENAME_TERMINAL_INSTANCE, remoteRenameTermInstHandler)
-
-    // Remote engine prompt (sent from iOS) — submit through the renderer's
-    // unified submit so the store adds the user message, sets status, resolves
-    // the tab's extensions (data) and dispatches the prompt. There is no
-    // separate engine submit path any more. source='remote' ensures the
-    // IPC.PROMPT handler skips its redundant desktop_message_added echo — the
-    // canonical echo was already sent by tabs-prompt.ts; a second echo with a
-    // renderer-generated id would cause a duplicate user bubble on iOS.
-    const remoteEnginePromptHandler = (_e: any, data: { tabId: string; text: string; displayText?: string; echoToIos?: boolean; reqId?: string; appendSystemPrompt?: string; imageAttachments?: ImageAttachmentPayload[]; attachments?: Array<{ type: string; name: string; path: string; contentHash?: string }>; resolveSlash?: boolean; implementationPhase?: boolean; injectionKind?: string }) => {
-      useSessionStore.getState().submit(data.tabId, data.text, { displayText: data.displayText, echoToIos: data.echoToIos, appendSystemPrompt: data.appendSystemPrompt, imageAttachments: data.imageAttachments, remoteAttachments: data.attachments, source: 'remote', resolveSlash: data.resolveSlash, requestId: data.reqId, implementationPhase: data.implementationPhase, injectionKind: data.injectionKind })
-    }
-    window.ion.on(IPC.REMOTE_ENGINE_PROMPT, remoteEnginePromptHandler)
-
-    // Remote set pill color (from iOS)
-    const remoteSetPillColorHandler = (_e: any, tabId: string, color: string | null) => {
-      useSessionStore.getState().setTabPillColor(tabId, color)
-    }
-    window.ion.on(IPC.REMOTE_SET_PILL_COLOR, remoteSetPillColorHandler)
-
-    // Remote set pill icon (from iOS)
-    const remoteSetPillIconHandler = (_e: any, tabId: string, icon: string | null) => {
-      useSessionStore.getState().setTabPillIcon(tabId, icon)
-    }
-    window.ion.on(IPC.REMOTE_SET_PILL_ICON, remoteSetPillIconHandler)
-
-    const unsubAutomationCommand = window.ion.onAutomationCommand(({ id, action }) => {
+    const unsubAutomationCommand = host.shell.onAutomationCommand(({ id, action }) => {
       void useSessionStore.getState().runAutomationCommand(action)
-        .then(() => window.ion.resolveAutomationCommand(id, { ok: true }))
+        .then(() => host.shell.resolveAutomationCommand(id, { ok: true }))
         .catch((err) => {
           const message = String(err)
           rWarn('automation.command', 'automation command failed', { kind: action.kind, error: message })
-          window.ion.resolveAutomationCommand(id, { ok: false, error: message })
-        })
-    })
-
-    // Forwarded actions from the Studio mirror window: this renderer is the
-    // session-store OWNER, so owner-durable mutations execute here (main
-    // already validated the action against FORWARDED_ACTIONS). The resulting
-    // state flows back to the mirror via events and sync pushes.
-    const unsubExecAction = window.ion.onStudioExecAction((action, args, callId) => {
-      // A round-trip call (callId set) must ALWAYS get exactly one reply, on
-      // every path — including the two rejections below. A mirror caller is
-      // awaiting it, and main only unblocks them on a reply or a timeout, so a
-      // silent return here would cost them 30s of hang for a fault we already
-      // know about right now.
-      const reply = (value: unknown): void => {
-        if (callId) window.ion.studioActionResult(callId, value)
-      }
-      if (!(action in FORWARDED_ACTIONS)) {
-        rWarn('event.studio', 'exec-action outside the forwarded set', { action })
-        reply(undefined)
-        return
-      }
-      const store = useSessionStore.getState() as unknown as Record<string, unknown>
-      const fn = store[action]
-      if (typeof fn !== 'function') {
-        rWarn('event.studio', 'exec-action has no store implementation', { action })
-        reply(undefined)
-        return
-      }
-      rDebug('event.studio', 'executing forwarded action', {
-        action, arg_count: args.length, call_id: callId ?? '',
-      })
-      // Fire-and-forget (no callId) keeps its existing `void` shape. A round
-      // trip resolves the action and returns its value — including a rejection,
-      // which becomes `undefined` rather than an unhandled rejection here: the
-      // owner logs the throw, and the mirror sees "no value", which is the same
-      // shape a non-returning action produces.
-      const ret = (fn as (...a: unknown[]) => unknown)(...args)
-      if (!callId) {
-        void ret
-        return
-      }
-      Promise.resolve(ret)
-        .then((value) => reply(value))
-        .catch((err) => {
-          rWarn('event.studio', 'forwarded action threw; replying with no value', {
-            action, call_id: callId, error: String(err),
-          })
-          reply(undefined)
+          host.shell.resolveAutomationCommand(id, { ok: false, error: message })
         })
     })
 
     return () => {
-    rDebug('event.stream', 'cleanup: removing handlers')
-      unsubEvent()
-      unsubStatus()
-      unsubError()
+      rDebug('event.stream', 'cleanup: removing handlers')
+      unsubFrame()
       unsubSkill()
-      window.ion.off('ion:engine-reconnected', engineReconnectedHandler)
-      window.ion.off(IPC.REMOTE_USER_MESSAGE, remoteUserMsgHandler)
-      window.ion.off(IPC.REMOTE_BASH_COMMAND, remoteBashCommandHandler)
-      window.ion.off(IPC.REMOTE_SET_PERMISSION_MODE, remoteSetModeHandler)
-      window.ion.off(IPC.REMOTE_SET_THINKING_EFFORT, remoteSetThinkingHandler)
-      window.ion.off(IPC.REMOTE_CLOSE_TAB, remoteCloseTabHandler)
-      window.ion.off(IPC.REMOTE_RENAME_TAB, remoteRenameTabHandler)
-      window.ion.off(IPC.REMOTE_RENAME_TERMINAL_INSTANCE, remoteRenameTermInstHandler)
-      window.ion.off(IPC.REMOTE_ENGINE_PROMPT, remoteEnginePromptHandler)
-      window.ion.off(IPC.REMOTE_SET_PILL_COLOR, remoteSetPillColorHandler)
-      window.ion.off(IPC.REMOTE_SET_PILL_ICON, remoteSetPillIconHandler)
       unsubAutomationCommand()
-      unsubExecAction()
       scheduler.cancel()
       schedulerRef.current = null
       queueRef.current = []
     }
   }, [handleNormalizedEvent, handleStatusChange, handleError])
 
-  // Note: window.ion.start() is called via sessionStore.initStaticInfo() in App.tsx.
+  // Note: host.shell.start() is called via sessionStore.initStaticInfo() in App.tsx.
   // No duplicate call needed here.
 }

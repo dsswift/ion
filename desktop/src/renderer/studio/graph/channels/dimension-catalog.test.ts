@@ -6,8 +6,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import { buildDimensionCatalog } from './dimension-catalog'
-import type { GraphModel } from '../../../../shared/graph-model-types'
-import type { GraphViewCuratedField } from '../../../../shared/graph-view-types'
+import type { GraphModel } from '@ion/shared/graph-model-types'
+import type { GraphViewCuratedField } from '@ion/shared/graph-view-types'
 
 function model(discoveredFields: string[]): GraphModel {
   return {

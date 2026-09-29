@@ -11,11 +11,11 @@ extension DiagnosticLog {
         case .sync:
             log("CMD: sync", tag: "ipc", level: .info)
 
-        case .createTab(let dir, let pinToGroupId, let profileId, _, _, let useWorktree, let sourceBranch):
+        case .createTab(let dir, let profileId, _, _, let useWorktree, let sourceBranch):
             if let profileId {
-                log("CMD: createTab(engine) dir=\(dir?.suffix(30) ?? "nil") profile=\(profileId) pinToGroup=\(pinToGroupId?.prefix(8) ?? "nil")", tag: "ipc", level: .info)
+                log("CMD: createTab(engine) dir=\(dir?.suffix(30) ?? "nil") profile=\(profileId)", tag: "ipc", level: .info)
             } else {
-                log("CMD: createTab dir=\(dir?.suffix(30) ?? "nil") pinToGroup=\(pinToGroupId?.prefix(8) ?? "nil")", tag: "ipc", level: .info)
+                log("CMD: createTab dir=\(dir?.suffix(30) ?? "nil")", tag: "ipc", level: .info)
             }
             if useWorktree == true || sourceBranch != nil {
                 log("CMD: createTab worktree source=\(sourceBranch ?? "default")", tag: "ipc", level: .info)
@@ -95,7 +95,7 @@ extension DiagnosticLog {
         case .resetEngineSession(let tabId, let instanceId):
             log("CMD: resetEngineSession tabId=\(tabId.prefix(8)) instanceId=\(instanceId.prefix(8))", tag: "ipc", level: .info)
 
-        case .prompt(let tabId, let text, _, let clientMsgId, let attachments, _, let instanceId):
+        case .prompt(let tabId, let text, _, let clientMsgId, let attachments, _, let instanceId, _):
             if let instanceId {
                 log("CMD: prompt(engine) tabId=\(tabId.prefix(8)) len=\(text.count) inst=\(instanceId.prefix(8)) att=\(attachments?.count ?? 0)", tag: "ipc", level: .info)
             } else {
@@ -122,6 +122,14 @@ extension DiagnosticLog {
 
         case .setPermissionMode(let tabId, let mode):
             log("CMD: setPermissionMode tabId=\(tabId.prefix(8)) mode=\(mode.rawValue)", tag: "ipc", level: .info)
+
+        case .setDraft(let tabId, let text):
+            // Length only, never the text: a draft is the operator's unsent
+            // words, and the log file travels in every diagnostic bundle.
+            log("CMD: setDraft tabId=\(tabId.prefix(8)) count=\(text.count)", tag: "ipc", level: .debug)
+
+        case .systemMetricsWatch(let on):
+            log("CMD: systemMetricsWatch on=\(on)", tag: "ipc", level: .info)
 
         case .setThinkingEffort(let tabId, let effort):
             log("CMD: setThinkingEffort tabId=\(tabId.prefix(8)) effort=\(effort)", tag: "ipc", level: .info)
@@ -220,30 +228,19 @@ extension DiagnosticLog {
 
         // loadEngineConversation removed (WI-004 / #259) — no log case needed.
 
-        case .loadAgentConversation(let conversationIds):
-            log("CMD: loadAgentConversation ids=\(conversationIds.count)", tag: "ipc", level: .info)
-
-        case .setTabGroupMode(let mode):
-            log("CMD: setTabGroupMode mode=\(mode)", tag: "ipc", level: .info)
-
-        case .moveTabToGroup(let tabId, let gId):
-            log("CMD: moveTabToGroup tabId=\(tabId.prefix(8)) group=\(gId.prefix(8))", tag: "ipc", level: .info)
-
-        case .toggleTabGroupPin(let tabId):
-            log("CMD: toggleTabGroupPin tabId=\(tabId.prefix(8))", tag: "ipc", level: .info)
+        case .loadDispatchTranscript(let tabId, let conversationId, let dispatchId, let before, _):
+            log("CMD: loadDispatchTranscript tabId=\(tabId.prefix(8)) conv=\(conversationId.prefix(8)) dispatch=\(dispatchId.prefix(8)) before=\(before?.prefix(8) ?? "nil")", tag: "ipc", level: .info)
 
         case .engineSetModel(let tabId, let model, let instId):
             log("CMD: engineSetModel tabId=\(tabId.prefix(8)) model=\(model) inst=\(instId?.prefix(8) ?? "nil")", tag: "ipc", level: .info)
 
-        case .setTabModel(let tabId, let model):
-            log("CMD: setTabModel tabId=\(tabId.prefix(8)) model=\(model)", tag: "ipc", level: .info)
+        case .setTabModel(let tabId, let model, let providerId):
+            log("CMD: setTabModel tabId=\(tabId.prefix(8)) model=\(model) providerId=\(providerId ?? "nil")", tag: "ipc", level: .info)
 
-        case .setPreferredModel(let model):
-            log("CMD: setPreferredModel model=\(model)", tag: "ipc", level: .info)
-
-        case .setEngineDefaultModel(let model):
-            log("CMD: setEngineDefaultModel model=\(model)", tag: "ipc", level: .info)
-
+        case .declarePreferences(let preferences):
+            log("CMD: declarePreferences keys=\(preferences.keys.sorted().joined(separator: ","))", tag: "ipc", level: .info)
+        case .registerPush(let token, let env):
+            log("CMD: registerPush env=\(env) token_prefix=\(token.prefix(8))", tag: "apns", level: .info)
         case .gitChanges(let dir):
             log("CMD: gitChanges dir=\(dir.suffix(30))", tag: "ipc", level: .info)
 
@@ -313,11 +310,8 @@ extension DiagnosticLog {
         case .voiceConfig(let enabled, let mode, _):
             log("CMD: voiceConfig enabled=\(enabled) mode=\(mode)", tag: "ipc", level: .info)
 
-        case .diagnosticLogsResponse(let logs, _, let nextSeq):
+        case .diagnosticLogsResponse(let logs, _, let nextSeq, _, _):
             log("CMD: diagnosticLogsResponse len=\(logs.count) nextSeq=\(nextSeq)", tag: "ipc", level: .info)
-
-        case .reorderTabGroups(let orderedIds):
-            log("CMD: reorderTabGroups count=\(orderedIds.count)", tag: "ipc", level: .info)
 
         case .setRemoteDisplay(let customName, let customIcon, let updatedAt):
             let ms = Int(updatedAt.timeIntervalSince1970 * 1000)
@@ -333,8 +327,6 @@ extension DiagnosticLog {
         case .setPillColor(let tabId, let color):
             log("CMD: setPillColor tabId=\(tabId.prefix(8)) color=\(color ?? "nil")", tag: "ipc", level: .info)
 
-        case .setPillIcon(let tabId, let icon):
-            log("CMD: setPillIcon tabId=\(tabId.prefix(8)) icon=\(icon ?? "nil")", tag: "ipc", level: .info)
 
         case .reportFocus(let tabId, let interceptEnabled):
             log("CMD: reportFocus tabId=\(tabId?.prefix(8) ?? "nil") interceptEnabled=\(interceptEnabled)", tag: "ipc", level: .info)
@@ -343,13 +335,13 @@ extension DiagnosticLog {
             log("CMD: reportMobileAuth has_username=\(!(username ?? "").isEmpty) has_tenant=\(!(tenant ?? "").isEmpty) clear_identity=\(clearIdentity) status=\(status ?? "unknown") reason=\(reason ?? "none")", tag: "ipc", level: .info)
 
         case .requestResourceContent(let kind, let producer, let resourceId):
-            log("CMD: requestResourceContent kind=\(kind) producer=\(producer) resourceId=\(resourceId.prefix(12))", tag: "ipc", level: .info)
+            log("CMD: requestResourceContent kind=\(kind) producer=\(producer ?? "-") resourceId=\(resourceId.prefix(12))", tag: "ipc", level: .info)
 
         case .markResourceRead(let kind, let producer, let resourceId):
-            log("CMD: markResourceRead kind=\(kind) producer=\(producer) resourceId=\(resourceId.prefix(12))", tag: "ipc", level: .info)
+            log("CMD: markResourceRead kind=\(kind) producer=\(producer ?? "-") resourceId=\(resourceId.prefix(12))", tag: "ipc", level: .info)
 
         case .deleteResource(let kind, let producer, let resourceId):
-            log("CMD: deleteResource kind=\(kind) producer=\(producer) resourceId=\(resourceId.prefix(12))", tag: "ipc", level: .info)
+            log("CMD: deleteResource kind=\(kind) producer=\(producer ?? "-") resourceId=\(resourceId.prefix(12))", tag: "ipc", level: .info)
 
         case .implementPlan(let tabId, let questionId, let instanceId, let clearContext):
             log("CMD: implementPlan tabId=\(tabId.prefix(8)) qId=\(questionId.prefix(12)) inst=\(instanceId?.prefix(8) ?? "nil") clearContext=\(clearContext)", tag: "ipc", level: .info)
@@ -364,6 +356,10 @@ extension DiagnosticLog {
             log("CMD: questionsAction tabId=\(tabId.prefix(8)) wf=\(action.workflowId.prefix(12)) kind=\(action.kind)", tag: "questions", level: .info)
         case .questionsRefresh(let tabId):
             log("CMD: questionsRefresh tabId=\(tabId.prefix(8))", tag: "questions", level: .info)
+
+        case .desktopAuth:
+            // Never log the token itself — it's a live OIDC bearer credential.
+            log("CMD: desktopAuth", tag: "transport.auth", level: .info)
         }
     }
 }

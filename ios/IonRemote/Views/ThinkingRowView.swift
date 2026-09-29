@@ -7,8 +7,8 @@ import SwiftUI
 // on desktop: screen space is scarce and reasoning is supplementary, so the
 // row stays a compact one-liner until the user taps to expand.
 //
-// Three render states, all driven off a single `.thinking` Message
-// (synthesized by the accumulator in SessionViewModel+ThinkingEvents.swift):
+// Three render states, all driven off a single `.thinking` row of the
+// server's transcript:
 //
 //   1. Live (message.thinkingActive == true): an activity indicator pulses
 //      next to a "Thinking…" label. Tapping expands to reveal the reasoning

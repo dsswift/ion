@@ -1,0 +1,6 @@
+{
+  "type": "studio_refused",
+  "reason": "protocol_version",
+  "detail": "client protocolVersion 3 is outside the accepted window",
+  "requiredProtocolVersion": 1
+}

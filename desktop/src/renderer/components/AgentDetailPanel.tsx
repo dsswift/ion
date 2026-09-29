@@ -1,17 +1,12 @@
 import React, { useCallback } from "react";
-import { useSessionStore } from "../stores/sessionStore";
+import { useSessionStore } from "@ion/server/store/sessionStore";
 import { FloatingPanel } from "./FloatingPanel";
 import { AgentDetailBody } from "./AgentDetailBody";
 import { meta } from "./agent-panel-helpers";
-import type { DispatchInfo, BreadcrumbFrame } from "./agent-panel-helpers";
-import type { AgentStateUpdate } from "../../shared/types";
-import type { Message } from "../../shared/types";
-import type { DispatchTelemetryEntry } from "../../shared/types-engine";
-
-// BreadcrumbFrame now lives with the pure helpers in renderer/lib/agent-helpers
-// (buildBreadcrumbStack constructs it). Re-exported here so existing imports
-// of the type from this component keep working.
-export type { BreadcrumbFrame };
+import type { DispatchInfo } from "./agent-panel-helpers";
+import type { AgentStateUpdate } from "@ion/shared/types";
+import type { Message } from "@ion/shared/types";
+import type { DispatchTelemetryEntry } from "@ion/shared/types-engine";
 
 interface AgentDetailPanelProps {
   agent: AgentStateUpdate;
@@ -31,16 +26,6 @@ interface AgentDetailPanelProps {
    * (late attach / tab reopen). See childAgentsOf in agent-panel-helpers.
    */
   allAgents?: AgentStateUpdate[];
-  /**
-   * Pre-populated breadcrumb stack for deep-link entry. When provided, the
-   * panel initializes with this stack instead of the root-only single-frame
-   * default. Built by `buildBreadcrumbStack` in agent-panel-helpers, which
-   * walks dispatchParentId up through durable agentStates.
-   *
-   * Enables n-tier deep-links from the StatusDrawer without requiring the
-   * user to drill down through each intermediate tier manually.
-   */
-  initialStack?: BreadcrumbFrame[];
   /**
    * Owning tab, forwarded to transcript and dispatch Stop controls. Threaded
    * rather than read from the store because this panel is also mounted for
@@ -71,7 +56,6 @@ export function AgentDetailPanel({
   onClose,
   dispatchTelemetry,
   allAgents,
-  initialStack,
   tabId,
 }: AgentDetailPanelProps) {
   const geometry = useSessionStore((s) => s.agentDetailGeometry);
@@ -102,7 +86,6 @@ export function AgentDetailPanel({
         onSelectDispatch={onSelectDispatch}
         dispatchTelemetry={dispatchTelemetry}
         allAgents={allAgents}
-        initialStack={initialStack}
         tabId={tabId}
       />
     </FloatingPanel>

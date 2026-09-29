@@ -10,7 +10,7 @@
  * without mounting Studio.
  */
 
-import type { StudioLayout, StudioSidebarView } from '../../../shared/types-studio'
+import type { StudioLayout, StudioSidebarView } from '@ion/shared/types-studio'
 
 /** The layout fields a dock reveal reads. */
 type DockLayout = Pick<StudioLayout, 'leftSidebarVisible' | 'leftSidebarView'>

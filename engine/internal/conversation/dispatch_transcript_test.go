@@ -28,7 +28,7 @@ func TestMaterializeDispatchTranscript_CreatesLoadableHistory(t *testing.T) {
 func TestDispatchTranscriptRecorder_PersistsTextAndTools(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	recorder := NewDispatchTranscriptRecorder("inspect code", "model-a")
+	recorder := NewDispatchTranscriptRecorder("inspect code", "model-a", "/repo/project")
 	recorder.SetConversationID("native-child-stream")
 	recorder.Record(types.NormalizedEvent{Data: &types.TextChunkEvent{Text: "before tool"}})
 	recorder.Record(types.NormalizedEvent{Data: &types.ToolCallEvent{ToolName: "Read", ToolID: "tool-1"}})
@@ -46,15 +46,24 @@ func TestDispatchTranscriptRecorder_PersistsTextAndTools(t *testing.T) {
 	if messages.Messages[1].Content != "before tool" || messages.Messages[2].Role != "tool" || messages.Messages[2].Content != "file body" || messages.Messages[3].Content != "after tool" {
 		t.Fatalf("history = %+v", messages.Messages)
 	}
+	// The mirror records where the child ran, so directory-scoped consumers
+	// (worktree membership, retros) can find it.
+	conv, err := Load("native-child-stream", "")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if conv.WorkingDirectory != "/repo/project" {
+		t.Fatalf("WorkingDirectory = %q, want the dispatch's project path", conv.WorkingDirectory)
+	}
 }
 
 func TestDispatchTranscriptRecorder_AppendsWhenNativeSessionIDIsReused(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	first := NewDispatchTranscriptRecorder("first task", "model-a")
+	first := NewDispatchTranscriptRecorder("first task", "model-a", "")
 	first.SetConversationID("reused-native")
 	first.Close("first output")
-	second := NewDispatchTranscriptRecorder("second task", "model-a")
+	second := NewDispatchTranscriptRecorder("second task", "model-a", "")
 	second.SetConversationID("reused-native")
 	second.Close("second output")
 
@@ -78,7 +87,7 @@ func TestDispatchTranscriptRecorder_DoesNotAppendEngineOwnedConversation(t *test
 	if err := Save(conv, ""); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	recorder := NewDispatchTranscriptRecorder("mirror task", "model-a")
+	recorder := NewDispatchTranscriptRecorder("mirror task", "model-a", "")
 	recorder.SetConversationID("engine-owned-child")
 	recorder.Close("mirror output")
 	messages, err := LoadMessagesPaginated("engine-owned-child", "", 0, 0)

@@ -7,21 +7,22 @@
 // inbound work. Draining it from `requestAnimationFrame` alone is correct only
 // while the window is being composited.
 //
-// The Desktop is one client with two presentations (ADR-021). The Overlay
-// renderer is the session-store OWNER in BOTH of them: in Studio mode the
-// Overlay window is HIDDEN but its renderer keeps running, keeps the engine
-// connection, and keeps every conversation (see main/active-ui.ts, which hides
-// the glass rather than closing it, precisely so runs are uninterrupted).
+// Studio is the desktop's one window (spec 17 deleted the Overlay glass this
+// scheduler was originally written to protect, where the Overlay renderer
+// stayed running hidden as the session-store owner behind a visible Studio
+// mirror). The same failure mode still applies to Studio itself: minimizing
+// or hiding the window keeps its engine connection and every conversation
+// alive, but Electron stops delivering animation frames to a hidden window.
 //
-// Electron stops delivering animation frames to a hidden window. So a hidden
-// OWNER kept enqueueing inbound events and scheduling a frame that never
-// arrived — starving itself of the ENTIRE event stream: text deltas, tool
-// results, permission requests, and run completions alike. Observed live: a
-// conversation whose run finished stayed 'connecting' forever with a locked
-// composer, because the `task_complete` that would have released it sat in the
-// owner's queue while the visible Studio mirror applied its own copy and moved
-// on. Every prompt typed into that tab was then refused as "still connecting"
-// and silently discarded.
+// So a hidden window kept enqueueing inbound events and scheduling a frame
+// that never arrived — starving itself of the ENTIRE event stream: text
+// deltas, tool results, permission requests, and run completions alike.
+// Observed live (against the old Overlay/Studio-mirror pair, before the
+// mirror was deleted): a conversation whose run finished stayed 'connecting'
+// forever with a locked composer, because the `task_complete` that would have
+// released it sat in the hidden owner's queue while the visible mirror
+// applied its own copy and moved on. Every prompt typed into that tab was
+// then refused as "still connecting" and silently discarded.
 //
 // ── The contract ────────────────────────────────────────────────────────────
 //

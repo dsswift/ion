@@ -1,17 +1,17 @@
+import { isCompletionStrategy, useActiveServerSetting } from '../studio/state/use-server-setting'
 import React, { useRef, useState } from 'react'
 import { useViewportClamp } from '../hooks/useViewportClamp'
 import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { Check } from '@phosphor-icons/react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
-import { usePreferencesStore } from '../preferences'
 import { rError, rInfo } from '../rendererLogger'
 import { ConfirmDialog } from './git/ConfirmDialog'
-import { describeLandStrategy } from '../../shared/worktree-land-strategy'
-import type { WorktreeCompletionStrategy } from '../../shared/types'
+import { describeLandStrategy } from '@ion/shared/worktree-land-strategy'
+import type { WorktreeCompletionStrategy } from '@ion/shared/types'
 
 // ─── Land worktree context menu (right-click on land button) ───
 
@@ -25,7 +25,8 @@ export function FinishWorkContextMenu({ anchor, worktree, onClose }: {
   const ref = useRef<HTMLDivElement>(null)
   // Keep the portaled popover inside the window (Studio top-anchored strip).
   useViewportClamp(ref, true)
-  const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy)
+  // The land strategy is yours on the server this worktree lives on, not this Mac's.
+  const strategy = useActiveServerSetting('worktreeCompletionStrategy', isCompletionStrategy, 'merge-ff')
   const activeTabId = useSessionStore((s) => s.activeTabId)
   // This action lands work, then seals the checkout for read-only review.
   // Retire remains a separate explicit action, so landing never deletes the

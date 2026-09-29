@@ -219,11 +219,23 @@ func TestRunEpoch_SerializesOntoTheWire(t *testing.T) {
 		t.Fatalf("RunEpoch missing from wire payload: %s", present)
 	}
 
-	absent, err := json.Marshal(types.StatusFields{State: "idle"})
+	// A recreated session reports zero until its first prompt. The zero must
+	// reach the consumer, or a baseline it recorded against the previous
+	// session survives and the new session's first run-ending idle is refused
+	// as stale, leaving the conversation stuck in Working.
+	zero, err := json.Marshal(types.StatusFields{State: "idle"})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	if strings.Contains(string(absent), "runEpoch") {
-		t.Fatalf("zero RunEpoch should be omitted, got: %s", absent)
+	if !strings.Contains(string(zero), `"runEpoch":0`) {
+		t.Fatalf("zero RunEpoch must be serialized, got: %s", zero)
+	}
+
+	mirror, err := json.Marshal(types.SessionStatus{Key: "k", State: "idle"})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(mirror), `"runEpoch":0`) {
+		t.Fatalf("zero SessionStatus.RunEpoch must be serialized, got: %s", mirror)
 	}
 }

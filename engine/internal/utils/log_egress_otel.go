@@ -5,7 +5,7 @@ package utils
 // the HTTP target) to keep each file under the file-size cap. The OTLP wire
 // types, the native-scalar attribute-value convention, and flushEgressToOtel
 // live here; they are shared byte-for-byte with the desktop exporter
-// (desktop/src/main/log-egress.ts).
+// (packages/shared/src/log-egress.ts).
 
 import (
 	"bytes"
@@ -54,17 +54,16 @@ func normalizedSeverityText(level string) string {
 }
 
 // otlpLogBody returns the OTLP log-record body: the full serialized Ion JSONL
-// line. Alloy's ion_otlp_unwrap pipeline extracts this as `inner_body` and
-// rewrites the Loki log line with it, so the stored Loki line IS the canonical
-// Ion JSONL. Dashboard queries that do `| json | device_name=~"$device"` (or
+// line. A collector can store it as the Loki log line (the fleet Alloy config's
+// ion_otlp_unwrap stage in docs/enterprise/central-log-collection.md does), so
+// the stored Loki line IS the canonical Ion JSONL. Dashboard queries that do `| json | device_name=~"$device"` (or
 // any other json extraction) work because the body is a parseable JSON object,
 // not a bare plain-text message string.
 //
 // Structured context is also carried in OTLP attributes for consumers who read
-// attributes directly (component, tag, correlation IDs, user, every fields key).
-// The body and attributes are complementary, not redundant: attributes give
-// label-promotion and metadata without a parser; the body gives full JSON access
-// to every nested field (e.g. fields.device_name via `| json fields_device_name`).
+// attributes directly (tag, session and conversation ids, user, every fields key
+// the resource does not already carry). The body gives full JSON access to every
+// nested field (e.g. fields.device_name via `| json fields_device_name`).
 func otlpLogBody(rec egressRecord) string {
 	b, err := json.Marshal(rec)
 	if err != nil {
@@ -100,10 +99,16 @@ type otlpLogScope struct {
 	Name string `json:"name"`
 }
 
+// otlpLogRecord carries TraceID and SpanID as the OTLP LogRecord fields (lowercase
+// hex, per the OTLP/JSON mapping), which is where Application Insights reads
+// a log's operation (OTelLogs TraceId/SpanId). They are the only place a
+// shipped record states its trace and span.
 type otlpLogRecord struct {
 	TimeUnixNano   string        `json:"timeUnixNano"`
 	SeverityNumber int           `json:"severityNumber"`
 	SeverityText   string        `json:"severityText"`
+	TraceID        string        `json:"traceId,omitempty"`
+	SpanID         string        `json:"spanId,omitempty"`
 	Body           otlpLogBodyV  `json:"body"`
 	Attributes     []otlpLogAttr `json:"attributes"`
 }
@@ -121,7 +126,7 @@ type otlpLogAttr struct {
 // one field is non-nil per value (pointer fields so a zero scalar — false, 0 —
 // still serializes rather than being dropped by omitempty). The typing
 // convention is native-scalar and is shared byte-for-byte with the desktop
-// exporter (desktop/src/main/log-egress.ts):
+// exporter (packages/shared/src/log-egress.ts):
 //   - string           -> stringValue
 //   - bool             -> boolValue
 //   - integer          -> intValue (int64 rendered as a decimal string, per the
@@ -206,24 +211,32 @@ func otlpFloat(f float64) otlpLogAttrVal {
 	return otlpLogAttrVal{DoubleValue: &d}
 }
 
-// otlpAttrsFromRecord flattens a record to the complete OTLP attribute set:
-// component and tag always; each present correlation ID and user; and every
-// key in the fields map (run_id rides here). The list is sorted by key so the
-// engine and desktop exporters produce identical output for the same record.
+// resourceFieldKeys are the fields keys a record's resource already states
+// (egressResourceAttrs): the host is host.name and the install is
+// service.instance.id; on an iOS line the device is service.instance.id and
+// the app build is service.version. span_id is the LogRecord's spanId. None of
+// them is repeated as an attribute.
+func resourceFieldKeys(component string) map[string]bool {
+	if component == iosComponent {
+		return map[string]bool{"span_id": true, "device_id": true, "app_version": true}
+	}
+	return map[string]bool{"span_id": true, "host": true, "install_id": true}
+}
+
+// otlpAttrsFromRecord flattens an operational record to its OTLP attribute
+// set: tag; each present session, conversation, and user id; event_id; and
+// every fields key (run_id rides here) except those the resource, the
+// LogRecord, or the record's own keys above already carry. The component is the resource's service.name and
+// the trace is the LogRecord's traceId, so neither is an attribute. Sorted by
+// key so the engine and desktop exporters produce identical output.
 func otlpAttrsFromRecord(r egressRecord) []otlpLogAttr {
-	attrs := make([]otlpLogAttr, 0, len(r.Fields)+7)
-	attrs = append(attrs,
-		otlpLogAttr{Key: "component", Value: otlpStr(r.Component)},
-		otlpLogAttr{Key: "tag", Value: otlpStr(r.Tag)},
-	)
+	attrs := make([]otlpLogAttr, 0, len(r.Fields)+5)
+	attrs = append(attrs, otlpLogAttr{Key: "tag", Value: otlpStr(r.Tag)})
 	if r.SessionID != "" {
 		attrs = append(attrs, otlpLogAttr{Key: "session_id", Value: otlpStr(r.SessionID)})
 	}
 	if r.ConversationID != "" {
 		attrs = append(attrs, otlpLogAttr{Key: "conversation_id", Value: otlpStr(r.ConversationID)})
-	}
-	if r.TraceID != "" {
-		attrs = append(attrs, otlpLogAttr{Key: "trace_id", Value: otlpStr(r.TraceID)})
 	}
 	if r.User != "" {
 		attrs = append(attrs, otlpLogAttr{Key: "user", Value: otlpStr(r.User)})
@@ -231,44 +244,48 @@ func otlpAttrsFromRecord(r egressRecord) []otlpLogAttr {
 	if r.EventID != "" {
 		attrs = append(attrs, otlpLogAttr{Key: "event_id", Value: otlpStr(r.EventID)})
 	}
+	skip := resourceFieldKeys(r.Component)
+	// The record's own tag, ids, and user own their attribute keys. A field of
+	// the same name (a line logging the OS account as "user") rides in the
+	// body only; pushing it too would make a second attribute with that key,
+	// and the collector keeps whichever it reads last.
+	for _, a := range attrs {
+		skip[a.Key] = true
+	}
 	for k, v := range r.Fields {
-		attrs = append(attrs, otlpLogAttr{Key: k, Value: otlpAttrValFromAny(v)})
+		if !skip[k] {
+			attrs = append(attrs, otlpLogAttr{Key: k, Value: otlpAttrValFromAny(v)})
+		}
 	}
 	sort.Slice(attrs, func(i, j int) bool { return attrs[i].Key < attrs[j].Key })
 	return attrs
 }
 
 // ---------------------------------------------------------------------------
-// Telemetry-event OTLP mapping — file-tail parity path.
+// Telemetry-event OTLP mapping.
 //
 // Telemetry EVENT records ({name, ts, schema, component, payload, context})
 // are a distinct shape from operational log records ({ts, level, msg, ...,
 // fields}). They arrive here because the egress tailer expands each compact
 // frame in ~/.ion/telemetry.jsonl into one record per event
-// (log_egress_tailer_telemetry.go). Their meaningful data
-// lives in Name (the event kind), Payload.* (cost/tokens/model/duration), and
-// Context.* (extension/conversation/session) — NONE of which the operational
-// attribute mapper (otlpAttrsFromRecord) reads. Mapped through the operational
-// path, a run.complete event carried a single attribute (component), silently
-// discarding every cost, kind, and attribution field — so the remote's Cost /
-// Runs / Extensions dashboards could never populate against an OTLP-ingested
-// backend.
+// (log_egress_tailer_telemetry.go). Their data lives in Name (the event kind),
+// Payload.* (cost/tokens/model/duration), and Context.* (extension,
+// conversation, session), none of which the operational mapper reads.
 //
-// This is the engine counterpart of the desktop's otlpAttrsFromTelemetryEvent
-// (desktop/src/main/log-egress-otel.ts) and of the file-tail telemetry pipeline
-// in docs/observability/alloy-config.alloy (`loki.process "ion_telemetry"`). It
-// mirrors that pipeline's stage.json field map EXACTLY so the SAME generated
-// dashboards render identically against both ingestion methods, and it is
-// byte-identical with the desktop exporter for the same event. host/event_id
-// ride in the verbatim body (telemetryEventBody) but are omitted from the
-// ATTRIBUTE set — matching the desktop, whose file-tail attribute mirror does
-// not promote them either.
+// An event is an OTel event: its name is the event.name attribute, which is
+// also what tells an event from an operational line (no fields key is
+// dotted). The event's source identity (install, version, host) is its
+// resource (egressResourceAttrs) and its trace is the LogRecord's traceId, so
+// none of those is an attribute. The payload and context names mirror the
+// local stack's telemetry pipeline (docs/observability/alloy-config.alloy,
+// `loki.process "ion_telemetry"`) and are byte-identical with the desktop
+// exporter (packages/shared/src/log-egress-otel.ts).
 // ---------------------------------------------------------------------------
 
-// telemetryServiceName is the Loki `service`/`service.name` value the telemetry
-// stream carries so `{service_name="ion-telemetry", kind="run.complete"}`
-// dashboard queries select it. Mirrors the desktop TELEMETRY_SERVICE.
-const telemetryServiceName = "ion-telemetry"
+// EventNameAttr is the OTel attribute naming a telemetry event
+// (run.complete, llm.call, ...). Present on every telemetry event record and
+// on no operational line.
+const EventNameAttr = "event.name"
 
 // isTelemetryEventRecord reports whether r is a telemetry EVENT (not an
 // operational log line). Operational records never carry a top-level Name or
@@ -339,17 +356,15 @@ func pushIfPresent(attrs []otlpLogAttr, key string, src map[string]any, srcKey s
 }
 
 // otlpAttrsFromTelemetryEvent builds the OTLP attribute set for a telemetry
-// EVENT record, mirroring the file-tail `ion_telemetry` pipeline's stage.json
-// field map (and the desktop otlpAttrsFromTelemetryEvent) EXACTLY. Sorted by
-// key for determinism and engine↔desktop byte parity.
+// EVENT record: event.name, user, the payload and context keys the local
+// telemetry pipeline extracts, and the telemetry schema version. Sorted by key
+// for determinism and engine↔desktop byte parity.
 func otlpAttrsFromTelemetryEvent(r egressRecord) []otlpLogAttr {
 	attrs := make([]otlpLogAttr, 0, 24)
-	// kind = name; service is the stream discriminator the dashboards select on.
-	attrs = append(attrs,
-		otlpLogAttr{Key: "kind", Value: otlpStr(r.Name)},
-		otlpLogAttr{Key: "service", Value: otlpStr(telemetryServiceName)},
-		otlpLogAttr{Key: "component", Value: otlpStr(r.Component)},
-	)
+	attrs = append(attrs, otlpLogAttr{Key: EventNameAttr, Value: otlpStr(r.Name)})
+	if r.User != "" {
+		attrs = append(attrs, otlpLogAttr{Key: "user", Value: otlpStr(r.User)})
+	}
 
 	// payload.* — names mirror alloy-config.alloy stage.json (renames included).
 	attrs = pushIfPresent(attrs, "model", r.Payload, "model")
@@ -366,18 +381,8 @@ func otlpAttrsFromTelemetryEvent(r egressRecord) []otlpLogAttr {
 	attrs = pushIfPresent(attrs, "cache_creation_tokens", r.Payload, "cache_creation_input_tokens")
 	attrs = pushIfPresent(attrs, "error", r.Payload, "error")
 
-	// top-level event envelope fields.
-	if r.TraceID != "" {
-		attrs = append(attrs, otlpLogAttr{Key: "trace_id", Value: otlpStr(r.TraceID)})
-	}
 	if r.Schema != nil {
 		attrs = append(attrs, otlpLogAttr{Key: "schema_version", Value: otlpAttrValFromAny(r.Schema)})
-	}
-	if r.InstallID != "" {
-		attrs = append(attrs, otlpLogAttr{Key: "install_id", Value: otlpStr(r.InstallID)})
-	}
-	if r.Version != "" {
-		attrs = append(attrs, otlpLogAttr{Key: "engine_version", Value: otlpStr(r.Version)})
 	}
 
 	// context.* attribution fields.
@@ -395,12 +400,31 @@ func flushEgressToOtel(records []egressRecord, cfg *types.OtelConfig, client *ht
 	if cfg == nil || cfg.Endpoint == "" {
 		return fmt.Errorf("log egress otel: endpoint not configured")
 	}
+	// serviceName names the instrumentation scope: the exporter. Each record's
+	// resource names the source that wrote it (egressResourceAttrs).
 	serviceName := cfg.ServiceName
 	if serviceName == "" {
 		serviceName = "ion-engine"
 	}
 
-	otlpRecords := make([]otlpLogRecord, 0, len(records))
+	// One resourceLogs entry per source resource, in first-seen order.
+	groups := []otlpResourceLogs{}
+	groupIndex := map[string]int{}
+	add := func(r egressRecord, rec otlpLogRecord) {
+		rec.TraceID, rec.SpanID = logRecordTraceIDs(r)
+		res := egressResourceAttrs(r, cfg.ResourceAttributes)
+		key := resourceKey(res)
+		i, ok := groupIndex[key]
+		if !ok {
+			i = len(groups)
+			groupIndex[key] = i
+			groups = append(groups, otlpResourceLogs{
+				Resource:  otlpLogResource{Attributes: res},
+				ScopeLogs: []otlpScopeLogs{{Scope: otlpLogScope{Name: serviceName}}},
+			})
+		}
+		groups[i].ScopeLogs[0].LogRecords = append(groups[i].ScopeLogs[0].LogRecords, rec)
+	}
 	for _, r := range records {
 		var tsNano string
 		if t, err := time.Parse(time.RFC3339Nano, r.Ts); err == nil {
@@ -408,68 +432,29 @@ func flushEgressToOtel(records []egressRecord, cfg *types.OtelConfig, client *ht
 		}
 
 		if isTelemetryEventRecord(r) {
-			// TELEMETRY EVENT record. Its data lives in name/payload/context, NOT
-			// in msg/level/fields, so the operational mapper would drop everything
-			// but component. Map it through the file-tail mirror instead:
-			//   - body = the verbatim event JSON. A dashboard's
-			//     `| json | unwrap payload_run_cost_usd` flattens
-			//     payload.run_cost_usd to payload_run_cost_usd exactly as the
-			//     file-tail raw line does.
-			//   - attributes = the flat file-tail label/metadata set (kind,
-			//     service, run_cost_usd, ...).
-			//   - loki.attribute.labels hint promotes service+kind+component to
-			//     Loki STREAM LABELS so `{service="ion-telemetry",
-			//     kind="run.complete"}` selects the stream. otelcol.exporter.loki
-			//     does not promote OTLP attributes to labels without this hint;
-			//     non-promoted attributes become Loki structured metadata (so
-			//     `| unwrap run_cost_usd` also resolves), matching the file-tail
-			//     representation.
-			attrs := otlpAttrsFromTelemetryEvent(r)
-			attrs = append(attrs, otlpLogAttr{Key: "loki.attribute.labels", Value: otlpStr("service, kind, component")})
-			sort.Slice(attrs, func(i, j int) bool { return attrs[i].Key < attrs[j].Key })
-			otlpRecords = append(otlpRecords, otlpLogRecord{
+			// TELEMETRY EVENT record: body is the verbatim event JSON, the
+			// attributes are the event's (otlpAttrsFromTelemetryEvent).
+			add(r, otlpLogRecord{
 				TimeUnixNano:   tsNano,
 				SeverityNumber: otlpLogSeverityNumber(r.Level),
 				SeverityText:   normalizedSeverityText(r.Level),
 				Body:           otlpLogBodyV{StringValue: telemetryEventBody(r)},
-				Attributes:     attrs,
+				Attributes:     otlpAttrsFromTelemetryEvent(r),
 			})
 			continue
 		}
 
-		// OPERATIONAL log record. loki.attribute.labels promotes component+tag to
-		// Loki stream labels so the operational panels that select on them — "Log
-		// volume by component" (`{component=~".+"}`) and "Extension activity"
-		// (`{component="extension"}`) — resolve against the OTLP-ingested backend
-		// exactly as they do against the file-tail backend. Harmless (idempotent)
-		// if the ingestion side already promotes them. Mirrors the desktop
-		// operational hint.
-		attrs := otlpAttrsFromRecord(r)
-		attrs = append(attrs, otlpLogAttr{Key: "loki.attribute.labels", Value: otlpStr("component, tag")})
-		sort.Slice(attrs, func(i, j int) bool { return attrs[i].Key < attrs[j].Key })
-		otlpRecords = append(otlpRecords, otlpLogRecord{
+		// OPERATIONAL log record: body is the full Ion JSONL line.
+		add(r, otlpLogRecord{
 			TimeUnixNano:   tsNano,
 			SeverityNumber: otlpLogSeverityNumber(r.Level),
 			SeverityText:   r.Level,
 			Body:           otlpLogBodyV{StringValue: otlpLogBody(r)},
-			Attributes:     attrs,
+			Attributes:     otlpAttrsFromRecord(r),
 		})
 	}
 
-	payload := otlpLogsExportRequest{
-		ResourceLogs: []otlpResourceLogs{{
-			Resource: otlpLogResource{
-				Attributes: []otlpLogAttr{{
-					Key:   "service.name",
-					Value: otlpStr(serviceName),
-				}},
-			},
-			ScopeLogs: []otlpScopeLogs{{
-				Scope:      otlpLogScope{Name: serviceName},
-				LogRecords: otlpRecords,
-			}},
-		}},
-	}
+	payload := otlpLogsExportRequest{ResourceLogs: groups}
 
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -503,5 +488,6 @@ func flushEgressToOtel(records []egressRecord, cfg *types.OtelConfig, client *ht
 	if err := resp.Body.Close(); err != nil {
 		Log("log_egress", fmt.Sprintf("otel: response body close failed: %v", err))
 	}
+	shipSpansToOtel(records, cfg, client)
 	return nil
 }

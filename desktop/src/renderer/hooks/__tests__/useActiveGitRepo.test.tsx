@@ -21,7 +21,7 @@ import { createRoot } from 'react-dom/client'
 const ACTIVE_TAB_ID = 'tab-1'
 const DIRECTORY = '/Users/josh/.ion/worktrees/ion-8a964cad'
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (s: { activeTabId: string; tabs: Array<{ id: string; workingDirectory: string }> }) => unknown) =>
       selector({ activeTabId: ACTIVE_TAB_ID, tabs: [{ id: ACTIVE_TAB_ID, workingDirectory: DIRECTORY }] }),
@@ -30,6 +30,7 @@ vi.mock('../../stores/sessionStore', () => ({
 }))
 
 import { useActiveGitRepo } from '../useActiveGitRepo'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 const gitSnapshot = {
   repoPath: DIRECTORY,
@@ -50,12 +51,12 @@ beforeEach(() => {
   gitSubscribeMock.mockClear()
   gitUnsubscribeMock.mockClear()
   gitRefreshMock.mockClear()
-  ;(window as unknown as { ion: unknown }).ion = {
+  ;(window as unknown as { ion: unknown }).ion = installFakeWire({
     gitSubscribe: gitSubscribeMock,
     gitUnsubscribe: gitUnsubscribeMock,
     gitRefresh: gitRefreshMock,
     onGitEvent: vi.fn(() => () => undefined),
-  }
+  })
 })
 
 let latest: ReturnType<typeof useActiveGitRepo> | undefined
@@ -87,7 +88,7 @@ describe('useActiveGitRepo', () => {
     const h = mount()
 
     // The probe fires without any GitPanel/DiffSurface consumer present.
-    expect(gitSubscribeMock).toHaveBeenCalledWith(DIRECTORY)
+    expect(gitSubscribeMock).toHaveBeenCalledWith({ directory: DIRECTORY })
 
     await act(async () => {
       await Promise.resolve()

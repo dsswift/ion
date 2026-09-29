@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -403,5 +404,29 @@ func TestGetPlanContent_SymlinkEscapeRejected(t *testing.T) {
 	}
 	if evt := findPlanContentEvent(t, lines); evt != nil {
 		t.Errorf("plan_content event must not be emitted for a symlink escape; got %+v", evt)
+	}
+}
+
+// TestGetPlanContent_ConversationOwnedPlanAccepted verifies a plan in a
+// conversation's own folder (<conversationsDir>/<id>/plans/, where every
+// engine-owned backend now writes its plans) is readable, while a plan-shaped
+// file outside the conversations directory still is not.
+func TestGetPlanContent_ConversationOwnedPlanAccepted(t *testing.T) {
+	_, conn, _ := planContentTestEnv(t, t.TempDir())
+
+	planPath := filepath.Join(conversation.PlansDir("owned-conv"), "quiet-sailing-boat.md")
+	if err := os.MkdirAll(filepath.Dir(planPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "# Owned plan\n"
+	if err := os.WriteFile(planPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sendJSON(t, conn, map[string]interface{}{
+		"cmd": "get_plan_content", "key": "plan-test", "path": planPath, "requestId": "req-owned",
+	})
+	evt := findPlanContentEvent(t, readLines(t, conn, 4, 2*time.Second))
+	if evt == nil || evt.PlanContentBody != content {
+		t.Fatalf("owned plan was not served: %+v", evt)
 	}
 }

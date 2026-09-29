@@ -17,7 +17,7 @@ You need an OpenRouter account and an API key. See [OpenRouter's documentation](
 ### Desktop UI (recommended)
 
 1. Open **Settings** (`⌘ ,`).
-2. Click **AI & Models** in the sidebar.
+2. Click **Models** in the sidebar.
 3. Scroll down to the **Providers** section.
 4. Find **OpenRouter** — it shows "not configured" initially.
 5. Paste your API key and click **Save**.
@@ -89,7 +89,7 @@ Once a model is registered, set it as the default in `~/.ion/engine.json`:
 }
 ```
 
-You can also set the default from the desktop UI: go to **Settings** → **AI & Models** → **Default Conversation Model** and select your registered OpenRouter model from the dropdown.
+You can also set the default from the desktop UI: go to **Settings** → **Models** → **Default Conversation Model** and select your registered OpenRouter model from the dropdown.
 
 ## Selecting per conversation
 

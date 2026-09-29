@@ -6,6 +6,12 @@ import { build as viteBuild, type Plugin, type ResolvedConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { assertSelfContainedPreloads } from "./src/buildtools/preload-bundle-guard";
+import {
+  WORKSPACE_SOURCE_PACKAGES,
+  assertNoWorkspaceSourceLoads,
+  type EmittedBundleFile,
+} from "./src/buildtools/workspace-bundle-guard";
+import { serverBrowserStubsPlugin, mainServerLoggerPlugin } from "./src/buildtools/renderer-server-stubs";
 
 function localDevelopmentVersion(): string {
   const manifest = JSON.parse(readFileSync(resolve(__dirname, "../release-please-manifest.json"), "utf8")) as { desktop: string };
@@ -16,6 +22,62 @@ function localDevelopmentVersion(): string {
 }
 
 const desktopVersion = process.env.ION_DESKTOP_VERSION || localDevelopmentVersion();
+
+/**
+ * Every emitted JavaScript artifact under an out dir, with its source text,
+ * for the build guards that scan bundle output.
+ */
+function emittedBundleFiles(outDir: string): EmittedBundleFile[] {
+  return readdirSync(outDir, { recursive: true, withFileTypes: true })
+    .filter((dirent) => dirent.isFile() && /\.(js|mjs|cjs)$/.test(dirent.name))
+    .map((dirent) => {
+      const full = join(dirent.parentPath, dirent.name);
+      return { file: relative(outDir, full), code: readFileSync(full, "utf8") };
+    });
+}
+
+/**
+ * Runtime dependencies that must be inlined rather than left external.
+ *
+ * `zustand`: the server-owned stores call `create` from zustand's root entry,
+ * because the Studio renderer consumes the very same stores as React hooks.
+ * That root entry requires `react`, which is a renderer-only devDependency and
+ * is never packaged, so an external `require("zustand")` in the main bundle
+ * dies at launch with "Cannot find module 'react'". Inlining zustand lets
+ * rollup bundle the react binding it reaches for, at build time, from the
+ * workspace's node_modules.
+ */
+const INLINED_RUNTIME_DEPS: readonly string[] = ["zustand"];
+
+/**
+ * Workspace packages that exist only as TypeScript source (`@ion/server`,
+ * `@ion/shared`) must be bundled into the main and preload artifacts.
+ * electron-vite externalizes every `dependencies` entry by default, and both
+ * are dependencies so npm links them, so without this exclusion the emitted
+ * bundle keeps `require("@ion/server/state")` and the packaged app resolves
+ * that to a `.ts` file it cannot load: the main process dies on
+ * `SyntaxError: Unexpected token ':'` before its first log line, and a
+ * sandboxed preload cannot require it at all. The guard below fails the build
+ * if any emitted artifact still carries such a load.
+ */
+const externalizeDeps = {
+  exclude: [...WORKSPACE_SOURCE_PACKAGES, ...INLINED_RUNTIME_DEPS],
+};
+
+/** Fails the main build if an emitted artifact loads a workspace package at runtime. */
+function workspaceBundleGuard(): Plugin {
+  let outDir: string;
+  return {
+    name: "ion:workspace-bundle-guard",
+    apply: "build",
+    configResolved(config) {
+      outDir = config.build.outDir;
+    },
+    closeBundle() {
+      assertNoWorkspaceSourceLoads(emittedBundleFiles(outDir));
+    },
+  };
+}
 
 /**
  * Builds one extra preload entry as its own single-entry bundle, then asserts
@@ -79,21 +141,9 @@ function selfContainedPreloadEntry(name: string, entry: string): Plugin {
         },
       });
       if (parent.build.watch) return;
-      const files = readdirSync(outDir, {
-        recursive: true,
-        withFileTypes: true,
-      })
-        .filter(
-          (dirent) => dirent.isFile() && /\.(js|mjs|cjs)$/.test(dirent.name),
-        )
-        .map((dirent) => {
-          const full = join(dirent.parentPath, dirent.name);
-          return {
-            file: relative(outDir, full),
-            code: readFileSync(full, "utf8"),
-          };
-        });
+      const files = emittedBundleFiles(outDir);
       assertSelfContainedPreloads(files);
+      assertNoWorkspaceSourceLoads(files);
     },
   };
 }
@@ -103,24 +153,13 @@ export default defineConfig({
     define: {
       __ION_DESKTOP_VERSION__: JSON.stringify(desktopVersion),
     },
+    plugins: [mainServerLoggerPlugin(__dirname), workspaceBundleGuard()],
     build: {
       outDir: "dist/main",
+      externalizeDeps,
       rollupOptions: {
         input: {
           index: resolve(__dirname, "src/main/index.ts"),
-          // Transport crypto worker: a worker_threads entry spawned by
-          // transport-send-worker-host.ts via join(__dirname, ...). Emitted as
-          // its own chunk next to the main bundle so the path resolves in both
-          // dev and packaged builds.
-          "transport-crypto-worker": resolve(
-            __dirname,
-            "src/main/remote/transport-crypto-worker.ts",
-          ),
-        },
-        output: {
-          // Keep entry names stable (no hash) — the host resolves the worker
-          // artifact by filename at runtime.
-          entryFileNames: "[name].js",
         },
       },
     },
@@ -137,6 +176,7 @@ export default defineConfig({
     ],
     build: {
       outDir: "dist/preload",
+      externalizeDeps,
       rollupOptions: {
         input: {
           index: resolve(__dirname, "src/preload/index.ts"),
@@ -146,7 +186,17 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, "src/renderer"),
-    plugins: [react(), tailwindcss()],
+    // The Studio renderer imports the server session store directly for its
+    // reactive selectors, which transitively reaches real Node-only server
+    // infrastructure. `serverBrowserStubsPlugin` (shared with
+    // `vite.web.config.ts`, spec 18) resolves each import normally, then
+    // swaps in the matching stub whenever the result is exactly one of the
+    // listed server files, regardless of how the importer spelled the
+    // relative path — a plain `resolve.alias` entry can't do this, because
+    // Vite matches alias keys against the import specifier text as written
+    // ('./logger', '../logger', '../../logger' depending on the importing
+    // file's depth), not the resolved absolute path.
+    plugins: [react(), tailwindcss(), serverBrowserStubsPlugin(__dirname)],
     // The graph layout worker (studio/graph/graph-layout.worker.ts) is a
     // module worker that imports ForceAtlas2's CommonJS internals. The dev
     // server's dependency scanner does not crawl into `new Worker(new URL())`
@@ -163,7 +213,6 @@ export default defineConfig({
       outDir: resolve(__dirname, "dist/renderer"),
       rollupOptions: {
         input: {
-          index: resolve(__dirname, "src/renderer/index.html"),
           studio: resolve(__dirname, "src/renderer/studio.html"),
           splash: resolve(__dirname, "src/renderer/splash.html"),
           "worktree-overlap": resolve(

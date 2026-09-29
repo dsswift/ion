@@ -143,21 +143,20 @@ final class GroupedItemContainedIdsTests: XCTestCase {
     }
 }
 
-/// Viewport ownership between a jump and the tail-pin.
+/// Viewport ownership between a jump and the tail.
 ///
 /// THE BUG THIS EXISTS FOR: dismissing the attachments sheet re-runs
 /// `updateUIViewController`, which applies a snapshot BEFORE performing the
-/// jump. That apply saw the view sitting at the tail, tailed again, and
-/// scheduled `holdBottomWhileSettling`. The jump then set its offset — and the
-/// already-queued settle loop pinned the view back to the bottom on the next
-/// main-queue turn.
+/// jump. That apply saw the view sitting at the tail and tailed again. The jump
+/// then set its offset — and the tail pinned the view back to the bottom on the
+/// next layout pass.
 ///
 /// Every log line reported success: the row resolved, the scroll ran,
 /// "transcript jump landed" was written. The operator saw nothing move.
 ///
-/// A generation token makes ownership explicit: a jump claims the viewport, and
-/// any settle loop queued under an older generation exits instead of fighting
-/// it.
+/// Ownership is explicit on two axes, and a jump must take both: the tail
+/// intent (which the collection view re-asserts on every layout pass) and the
+/// generation token (which invalidates a queued row-settle loop).
 final class ScrollGenerationTests: XCTestCase {
 
     private func source(_ name: String) -> String {
@@ -173,16 +172,36 @@ final class ScrollGenerationTests: XCTestCase {
         XCTAssertFalse(scrolling.isEmpty, "ChatCollectionScrolling.swift must be readable")
         XCTAssertTrue(
             scrolling.contains("scrollGeneration &+= 1"),
-            "scrollToRow must claim the viewport so a queued tail-pin cannot undo it"
+            "scrollToRow must claim the viewport so a queued row-settle loop cannot undo it"
+        )
+        XCTAssertTrue(
+            scrolling.contains("setTailIntent(false, reason: \"row_jump\")"),
+            "scrollToRow must release the tail, or the next layout pass pins it back to the bottom"
         )
     }
 
-    func testBottomPinYieldsToANewerNavigation() {
+    func testTheTailIsHeldByIntentRatherThanATimer() {
+        // The tail is re-asserted on every layout pass for as long as the
+        // operator has not taken the viewport. A time-boxed pin is what left a
+        // freshly opened conversation part-way up: it let go while the rows
+        // were still measuring.
+        let scrolling = source("ChatCollectionScrolling.swift")
+        XCTAssertTrue(
+            scrolling.contains("override func layoutSubviews()"),
+            "the bottom must be held from the layout pass, not from a scheduled loop"
+        )
+        XCTAssertFalse(
+            scrolling.contains("holdBottomWhileSettling"),
+            "the time-boxed bottom pin must not come back"
+        )
+    }
+
+    func testRowSettleYieldsToANewerNavigation() {
         let scrolling = source("ChatCollectionScrolling.swift")
         // Both the entry guard and the per-turn guard matter: the loop can be
         // superseded before it starts AND between its turns.
-        let guards = scrolling.components(separatedBy: "== self.scrollGeneration").count - 1
-            + scrolling.components(separatedBy: "token == scrollGeneration").count - 1
+        let guards = scrolling.components(separatedBy: "generation == scrollGeneration").count - 1
+            + scrolling.components(separatedBy: "generation == self.scrollGeneration").count - 1
         XCTAssertGreaterThanOrEqual(guards, 2, "the settle loop must check ownership on every turn")
     }
 

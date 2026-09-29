@@ -19,6 +19,7 @@ import { auditOvercount } from '../src/check.ts';
 import { buildDashboard } from '../src/dashboard.ts';
 import { RECIPES } from '../src/dashboards/index.ts';
 import { overviewDashboard } from '../src/dashboards/overview.ts';
+import { controlRoomDashboard } from '../src/dashboards/control-room.ts';
 import { semanticDiff } from '../src/semantic-diff.ts';
 
 // ---------------------------------------------------------------------------
@@ -211,8 +212,8 @@ function freshnessPanel(): Record<string, any> {
 test('freshness panel renders per-series labeled cells (values:true, non-collapsing reduce)', () => {
   // The operator saw a single "1.6 hours" with no component label because the
   // reduce collapsed every series into one number (values:false). Per-series
-  // display requires values:true so EVERY component gets its own cell, and
-  // textMode value_and_name so each cell is stamped with its {{component}} name.
+  // display requires values:true so EVERY service gets its own cell, and
+  // textMode value_and_name so each cell is stamped with its {{service_name}}.
   const p = freshnessPanel();
   assert.equal(p.options.reduceOptions.values, true, 'values must be true so all series render, not one reduction');
   assert.equal(
@@ -220,7 +221,7 @@ test('freshness panel renders per-series labeled cells (values:true, non-collaps
     'value_and_name',
     'textMode must display the component name alongside the value on each cell',
   );
-  assert.equal(p.targets[0].legendFormat, '{{component}}', 'legend must key each series by component');
+  assert.equal(p.targets[0].legendFormat, '{{service_name}}', 'legend must key each series by service');
 });
 
 test('freshness panel sits in the top verdict row (y=0 band) and is not full-width', () => {
@@ -229,6 +230,7 @@ test('freshness panel sits in the top verdict row (y=0 band) and is not full-wid
   // not size. The verdict row is the first content row below the intro text.
   const panels = overviewDashboard().panels as Record<string, any>[];
   const intro = panels.find((x) => x.type === 'text');
+  assert.ok(intro, 'the overview opens with an intro text panel');
   const verdictY = intro.gridPos.y + intro.gridPos.h; // first row after the intro
   const p = freshnessPanel();
   assert.equal(p.gridPos.y, verdictY, `freshness must share the verdict row band (y=${verdictY})`);
@@ -327,221 +329,22 @@ test('semanticDiff catches a changed window (the overcount-fix signal)', () => {
   assert.ok(changes.some((c) => c.includes('windows')));
 });
 
-// ---------------------------------------------------------------------------
-// ADR-022: panels honor the dashboard time picker
-// ---------------------------------------------------------------------------
-//
-// The window policy: instant "window total" panels use $__range, series
-// accumulations use $__interval, and titles never carry a window suffix for a
-// picker-honoring panel. Fixed windows survive ONLY on the detector classes
-// (lamps, freshness/last-seen detectors, latest-value panels, "now" detectors
-// with the window pinned in the title, and statistical smoothing windows).
-
-function recipeByUid(uid: string) {
-  const r = RECIPES.find((x) => x().uid === uid);
-  assert.ok(r, `recipe ${uid} must be registered`);
-  return r!();
-}
-
-function panelByTitle(uid: string, title: string): Record<string, any> {
-  const panels = recipeByUid(uid).panels as Record<string, any>[];
-  const p = panels.find((x) => x.title === title);
-  assert.ok(p, `${uid} must have a panel titled "${title}"`);
-  return p!;
-}
-
-test('ADR-022: overview verdict stats query $__range, not a fixed window', () => {
-  for (const title of ['Errors', 'Warnings', 'Spend', 'Runs']) {
-    const p = panelByTitle('ion-overview', title);
-    assert.ok(
-      (p.targets as any[]).every((t) => t.expr.includes('[$__range]')),
-      `overview "${title}" must aggregate over [$__range]; got: ${(p.targets as any[])[0].expr}`,
-    );
-  }
-});
-
-test('ADR-022: no picker-honoring panel title carries a window suffix', () => {
-  // The "(5m)" style suffix is reserved for now-detectors whose fixed window is
-  // part of the panel's stated meaning. A title suffix on a $__range/$__interval
-  // panel is drift by definition.
-  for (const recipe of RECIPES) {
-    const d = recipe();
-    for (const p of d.panels as Record<string, any>[]) {
-      if (!p.targets) continue;
-      const usesPickerWindows = (p.targets as any[]).every(
-        (t) => typeof t.expr !== 'string' || (!/\[\d+[smhd]\]/.test(t.expr)),
-      );
-      if (usesPickerWindows && /\((?:\d+[smhd]|30d|24h|1h)\)/.test(p.title)) {
-        assert.fail(`${d.uid} "${p.title}": window suffix in title but no fixed window in any query`);
-      }
+test('the control room names no extension or tool: its lamps come from the data', () => {
+  const built = buildDashboard(controlRoomDashboard()) as { panels: { title: string; targets?: { expr: string }[] }[] };
+  for (const panel of built.panels) {
+    for (const t of panel.targets ?? []) {
+      assert.doesNotMatch(t.expr, /\b(tag|tool)="/, `${panel.title} filters on a fixed name: ${t.expr}`);
     }
   }
 });
 
-test('ADR-022: converted series accumulations bind $__interval (undercount fix)', () => {
-  const p = panelByTitle('ion-errors-health', 'Errors vs Warnings over time');
-  for (const t of p.targets as any[]) {
-    assert.ok(t.expr.includes('[$__interval]'), `series target must use [$__interval]; got: ${t.expr}`);
-    assert.equal(t.__ionClass, 'accumulation');
+test('Active users counts signed-in users only, never the unassigned bucket', () => {
+  for (const [uid, title] of [['ion-overview', 'Active users (Users)'], ['ion-users', 'Active users']]) {
+    const recipe = RECIPES.find((r) => r().uid === uid)
+    assert.ok(recipe, uid)
+    const built = buildDashboard(recipe()) as { panels: { title: string; targets?: { expr: string }[] }[] }
+    const panel = built.panels.find((p) => p.title === title)
+    assert.ok(panel, `${uid}: ${title}`)
+    assert.match(panel.targets![0].expr, /user!="(unassigned)?"/, `${uid}: ${panel.targets![0].expr}`)
   }
-  const byComponent = panelByTitle('ion-errors-health', 'Error volume by component');
-  assert.ok((byComponent.targets as any[])[0].expr.includes('[$__interval]'));
-});
-
-test('ADR-022: detector-class panels KEEP their fixed windows', () => {
-  // Freshness/last-seen detectors: wide fixed net so a wedged/quiet source
-  // stays visible when the picker narrows.
-  const freshness = panelByTitle('ion-overview', 'Ingest freshness by component (min since last line)');
-  assert.ok((freshness.targets as any[])[0].expr.includes('[24h]'));
-  const lastSeen = panelByTitle('ion-fleet', 'Host last-seen (min)');
-  assert.ok((lastSeen.targets as any[])[0].expr.includes('[24h]'));
-  // Latest-value panels: the window is a staleness bound.
-  const pressure = panelByTitle('ion-logs', 'Context pressure (latest, per session)');
-  assert.ok((pressure.targets as any[])[0].expr.includes('[10m]'));
-  // Now-detectors: the window is the definition, pinned in the title.
-  const thrash = panelByTitle('ion-quality', 'Sessions thrashing now (5m)');
-  assert.ok((thrash.targets as any[])[0].expr.includes('[5m]'));
-  const inFlight = panelByTitle('ion-logs', 'Dispatches in flight (5m)');
-  assert.ok((inFlight.targets as any[])[0].expr.includes('[5m]'));
-});
-
-// ---------------------------------------------------------------------------
-// Ion Users / Ion Fleet pack contracts
-// ---------------------------------------------------------------------------
-
-test('users pack: registered, foldered, and variable-scoped', () => {
-  const d = recipeByUid('ion-users');
-  assert.equal(d.folder, 'audience');
-  assert.equal(d.file, 'ion-users');
-  const vars = (d.templating ?? []).map((v) => v.name);
-  assert.deepEqual(vars, ['user', 'install'], 'users pack must expose $user and $install textbox variables');
-  for (const v of d.templating ?? []) {
-    assert.equal(v.type, 'textbox', 'identity fields are parsed JSON, not stream labels — textbox regex only');
-    assert.equal(v.query, '.*');
-  }
-});
-
-test('users pack: coalesces absent user to "unassigned" BEFORE the $user filter', () => {
-  // Order matters: coalescing after the filter would make `unassigned`
-  // unselectable (the filter would run against the raw absent label). Every
-  // telemetry target must carry the label_format stage ahead of user=~"$user".
-  const d = recipeByUid('ion-users');
-  for (const p of d.panels as Record<string, any>[]) {
-    if (!p.targets) continue;
-    for (const t of p.targets as any[]) {
-      if (typeof t.expr !== 'string' || !t.expr.includes('user=~"$user"')) continue;
-      const coalesceIdx = t.expr.indexOf('label_format user=');
-      const filterIdx = t.expr.indexOf('user=~"$user"');
-      assert.ok(coalesceIdx !== -1, `"${p.title}": user-filtered query must coalesce user first: ${t.expr}`);
-      assert.ok(coalesceIdx < filterIdx, `"${p.title}": coalesce must precede the $user filter`);
-      assert.ok(t.expr.includes('unassigned'), `"${p.title}": fallback bucket must be "unassigned"`);
-    }
-  }
-});
-
-test('fleet pack: registered, foldered, and host-scoped via | json', () => {
-  const d = recipeByUid('ion-fleet');
-  assert.equal(d.folder, 'fleet');
-  assert.equal(d.file, 'ion-fleet');
-  const vars = (d.templating ?? []).map((v) => v.name);
-  assert.deepEqual(vars, ['host']);
-  // host is NOT Alloy-promoted: every host-scoped query must parse with | json
-  // ahead of the host filter, or it silently matches nothing.
-  for (const p of d.panels as Record<string, any>[]) {
-    if (!p.targets) continue;
-    for (const t of p.targets as any[]) {
-      if (typeof t.expr !== 'string' || !t.expr.includes('host=~"$host"')) continue;
-      const jsonIdx = t.expr.indexOf('| json');
-      const hostIdx = t.expr.indexOf('host=~"$host"');
-      assert.ok(jsonIdx !== -1 && jsonIdx < hostIdx, `"${p.title}": | json must precede the $host filter: ${t.expr}`);
-    }
-  }
-});
-
-test('fleet pack: installs-per-host counts distinct install_ids per host', () => {
-  const p = panelByTitle('ion-fleet', 'Installs per host');
-  const expr = (p.targets as any[])[0].expr as string;
-  assert.ok(expr.includes('count by (host)'), 'outer count must group by host');
-  assert.ok(expr.includes('sum by (host, install_id)'), 'inner sum must key host+install_id pairs');
-});
-
-// ---------------------------------------------------------------------------
-// Ion Mobile pack contract
-// ---------------------------------------------------------------------------
-
-test('mobile pack: registered, foldered, and device-scoped via | json', () => {
-  const d = recipeByUid('ion-mobile');
-  assert.equal(d.folder, 'mobile');
-  assert.equal(d.file, 'ion-mobile');
-  const vars = (d.templating ?? []).map((v) => v.name);
-  assert.deepEqual(vars, ['device'], 'mobile pack must expose the $device textbox variable');
-  for (const v of d.templating ?? []) {
-    assert.equal(v.type, 'textbox', 'device_name is a parsed JSON field, not a stream label — textbox regex only');
-    assert.equal(v.query, '.*');
-  }
-  // device_name is NOT Alloy-promoted: every device-scoped query must parse with
-  // | json ahead of the device filter, or it silently matches nothing (same
-  // constraint the fleet pack has on $host).
-  for (const p of d.panels as Record<string, any>[]) {
-    if (!p.targets) continue;
-    for (const t of p.targets as any[]) {
-      if (typeof t.expr !== 'string' || !t.expr.includes('device_name=~"$device"')) continue;
-      const jsonIdx = t.expr.indexOf('| json');
-      const deviceIdx = t.expr.indexOf('device_name=~"$device"');
-      assert.ok(jsonIdx !== -1 && jsonIdx < deviceIdx, `"${p.title}": | json must precede the $device filter: ${t.expr}`);
-    }
-  }
-});
-
-test('mobile pack: reads the iOS log stream, never the telemetry stream', () => {
-  // iOS emits no telemetry — the whole point of a separate pack. Every target
-  // must select {component="ios"} and none may touch service_name="ion-telemetry".
-  const d = recipeByUid('ion-mobile');
-  for (const p of d.panels as Record<string, any>[]) {
-    if (!p.targets) continue;
-    for (const t of p.targets as any[]) {
-      if (typeof t.expr !== 'string') continue;
-      assert.ok(t.expr.includes('component="ios"'), `"${p.title}": mobile target must select the iOS stream: ${t.expr}`);
-      assert.ok(!t.expr.includes('ion-telemetry'), `"${p.title}": mobile target must NOT read the telemetry stream: ${t.expr}`);
-    }
-  }
-});
-
-test('mobile pack: the device→desktop pairing table keys (device_id, desktop_host)', () => {
-  const p = panelByTitle('ion-mobile', 'Device → desktop pairing');
-  const expr = (p.targets as any[])[0].expr as string;
-  assert.ok(expr.includes('sum by (device_id, device_model,') && expr.includes('desktop_host)'), 'pairing table must group by the device×desktop key');
-});
-
-test('mobile pack: device last-seen is a fixed-24h detector (not $__range)', () => {
-  const p = panelByTitle('ion-mobile', 'Device last-seen (min)');
-  const expr = (p.targets as any[])[0].expr as string;
-  assert.ok(expr.includes('[24h]'), 'last-seen detector must use the fixed 24h lookback');
-  assert.equal((p.targets as any[])[0].__ionClass, 'instant', 'last-seen is an instant detector, not an accumulation');
-});
-
-test('mobile pack: every | json target skips unparseable lines with __error__=""', () => {
-  // The {component="ios"} stream is heterogeneous — legacy lines store a bare
-  // `msg` string as the body, not full JSON. In LogQL a JSONParserErr on ONE
-  // line aborts a grouped series and returns NO data, blanking every grouped
-  // panel. `| __error__=""` after the json stage skips the bad lines. This is
-  // the fix for the "186K lines but every device panel empty" production bug;
-  // it must never regress. Any target that parses JSON must also carry the skip.
-  const d = recipeByUid('ion-mobile');
-  for (const p of d.panels as Record<string, any>[]) {
-    if (!p.targets) continue;
-    for (const t of p.targets as any[]) {
-      if (typeof t.expr !== 'string' || !t.expr.includes('| json')) continue;
-      assert.ok(
-        t.expr.includes('__error__=""'),
-        `"${p.title}": a | json target must skip parse errors with __error__="" or one bad line blanks the panel: ${t.expr}`,
-      );
-      // Ordering: the skip must come AFTER the json stage (it filters the error
-      // that stage produces).
-      assert.ok(
-        t.expr.indexOf('| json') < t.expr.indexOf('__error__=""'),
-        `"${p.title}": __error__="" must come after | json: ${t.expr}`,
-      );
-    }
-  }
-});
+})

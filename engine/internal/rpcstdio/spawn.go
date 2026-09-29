@@ -9,6 +9,8 @@ import (
 	"sync"
 
 	"github.com/dsswift/ion/engine/internal/procctl"
+	"github.com/dsswift/ion/engine/internal/sysmetrics"
+	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -94,6 +96,9 @@ func Spawn(ctx context.Context, binPath string, args []string, env []string, opt
 		utils.LogWithFields(utils.LevelWarn, "rpcstdio", "process tree tracking degraded", map[string]any{"tag": opts.Tag, "bin": binPath, "error": err.Error()})
 	}
 	utils.LogWithFields(utils.LevelInfo, "rpcstdio", "process spawned", map[string]any{"tag": opts.Tag, "bin": binPath, "args": args, "pid": cmd.Process.Pid})
+	// Every rpcstdio process is a delegated-CLI backend (codex, the ACP
+	// CLIs) or a probe of one; the tag names which.
+	sysmetrics.RegisterProcess(cmd.Process.Pid, types.SystemMetricsRoleBackend, opts.Tag)
 
 	ring := NewRingBuffer(stderrRingSize)
 	go func() {
@@ -112,6 +117,7 @@ func Spawn(ctx context.Context, binPath string, args []string, env []string, opt
 	}
 	go func() {
 		p.waitErr = cmd.Wait()
+		sysmetrics.UnregisterProcess(cmd.Process.Pid)
 		procctl.Release(cmd)
 		utils.LogWithFields(utils.LevelInfo, "rpcstdio", "process exited", map[string]any{"tag": opts.Tag, "bin": binPath, "error": errString(p.waitErr)})
 		p.exitOnce.Do(func() { close(p.exited) })

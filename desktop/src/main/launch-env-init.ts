@@ -14,6 +14,6 @@
  * startup files, reports the bare system PATH, finds nothing new, and the
  * desktop caches a stripped PATH for the rest of its life.
  */
-import { sanitizeLaunchEnvironment } from './launch-env'
+import { sanitizeLaunchEnvironment } from '@ion/server/launch-env'
 
 sanitizeLaunchEnvironment()

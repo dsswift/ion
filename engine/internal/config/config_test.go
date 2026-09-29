@@ -16,8 +16,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Backend != "api" {
 		t.Fatalf("expected backend=api, got %q", cfg.Backend)
 	}
-	if cfg.DefaultModel != "claude-sonnet-4-6" {
-		t.Fatalf("expected defaultModel=claude-sonnet-4-6, got %q", cfg.DefaultModel)
+	if cfg.DefaultModel != "" {
+		t.Fatalf("expected defaultModel empty (engine ships with no model opinion), got %q", cfg.DefaultModel)
 	}
 	// Engine ships without opinionated limits; harness/operator sets them.
 	if cfg.Limits.MaxTurns != nil {

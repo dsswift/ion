@@ -46,7 +46,6 @@ const HANDLE = '[data-testid="test-panel-resize-handle"]'
 function Harness({ onCommit }: { onCommit(h: number | null): void }): React.JSX.Element {
   const { height, renderHandle } = usePanelVerticalResize({
     panelId: 'test-panel',
-    expandedUI: false,
     override: null,
     onCommit,
   })
@@ -92,22 +91,22 @@ function drag(dy: number): void {
 describe('usePanelVerticalResize — the drag', () => {
   it('renders at the default height with no override', () => {
     expect(host.querySelector('[data-testid="panel"]')!.getAttribute('data-height'))
-      .toBe(String(defaultPanelHeight(false)))
+      .toBe(String(defaultPanelHeight()))
   })
 
   it('commits default + 120 when dragged 120px upward', () => {
     drag(-120)
-    expect(onCommit).toHaveBeenLastCalledWith(defaultPanelHeight(false) + 120)
+    expect(onCommit).toHaveBeenLastCalledWith(defaultPanelHeight() + 120)
   })
 
   it('commits exactly the default when dragged far downward, never less', () => {
     drag(400)
-    expect(onCommit).toHaveBeenLastCalledWith(defaultPanelHeight(false))
+    expect(onCommit).toHaveBeenLastCalledWith(defaultPanelHeight())
   })
 
   it('stops at the viewport ceiling on a very large upward drag', () => {
     drag(-5000)
-    const ceiling = maxPanelHeight(window.innerHeight, defaultPanelHeight(false))
+    const ceiling = maxPanelHeight(window.innerHeight, defaultPanelHeight())
     expect(onCommit).toHaveBeenLastCalledWith(ceiling)
   })
 
@@ -122,8 +121,8 @@ describe('usePanelVerticalResize — the drag', () => {
     act(() => { document.dispatchEvent(new MouseEvent('mousemove', { clientY: 420 })) })
 
     expect(onCommit).toHaveBeenCalledTimes(2)
-    expect(onCommit).toHaveBeenNthCalledWith(1, defaultPanelHeight(false) + 40)
-    expect(onCommit).toHaveBeenNthCalledWith(2, defaultPanelHeight(false) + 80)
+    expect(onCommit).toHaveBeenNthCalledWith(1, defaultPanelHeight() + 40)
+    expect(onCommit).toHaveBeenNthCalledWith(2, defaultPanelHeight() + 80)
   })
 
   it('releases the cursor override and stops committing after mouseup', () => {

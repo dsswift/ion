@@ -50,13 +50,11 @@ export interface UsePanelVerticalResizeResult {
 
 export function usePanelVerticalResize({
   panelId,
-  expandedUI,
   override,
   onCommit,
 }: {
   /** Log field and test id, e.g. `git-panel`. */
   panelId: string
-  expandedUI: boolean
   override: number | null
   onCommit(height: number | null): void
 }): UsePanelVerticalResizeResult {
@@ -64,7 +62,7 @@ export function usePanelVerticalResize({
   const [isResizing, setIsResizing] = useState(false)
   const dragRef = useRef<{ y: number; startHeight: number } | null>(null)
 
-  const defaultHeight = defaultPanelHeight(expandedUI)
+  const defaultHeight = defaultPanelHeight()
   const height = resolvePanelHeight(override, defaultHeight, winHeight)
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
@@ -77,7 +75,7 @@ export function usePanelVerticalResize({
     setIsResizing(true)
     rDebug('panel-resize', 'drag started', { panel_id: panelId, start_height: height })
 
-    const min = defaultPanelHeight(expandedUI)
+    const min = defaultPanelHeight()
     const max = maxPanelHeight(winHeight, min)
 
     const onMouseMove = (ev: MouseEvent): void => {
@@ -106,7 +104,7 @@ export function usePanelVerticalResize({
     document.body.style.cursor = 'row-resize'
     document.addEventListener('mousemove', onMouseMove)
     document.addEventListener('mouseup', onMouseUp)
-  }, [expandedUI, height, onCommit, panelId, winHeight])
+  }, [height, onCommit, panelId, winHeight])
 
   const renderHandle = useCallback((): React.JSX.Element => (
     <PanelResizeHandle

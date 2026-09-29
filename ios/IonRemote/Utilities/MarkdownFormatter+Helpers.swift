@@ -26,6 +26,7 @@ extension MarkdownFormatter {
         var body = AttributedString(code)
         body.font = .system(.body, design: .monospaced)
         body.backgroundColor = Color(.tertiarySystemFill)
+        body.inlinePresentationIntent = .code
         if let ref = FilePathDetector.detect(code), let url = FilePathDetector.url(for: ref) {
             body.link = url
         }

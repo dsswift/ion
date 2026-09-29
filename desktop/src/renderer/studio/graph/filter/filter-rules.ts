@@ -19,9 +19,9 @@
  */
 
 import { nodeValue, edgeValue } from '../channels/dimension-values'
-import { toValueList } from '../../../../shared/graph-model-resolve'
-import type { GraphFilterRule } from '../../../../shared/graph-view-types'
-import type { GraphEdge, GraphModel, GraphNode } from '../../../../shared/graph-model-types'
+import { toValueList } from '@ion/shared/graph-model-resolve'
+import type { GraphFilterRule } from '@ion/shared/graph-view-types'
+import type { GraphEdge, GraphModel, GraphNode } from '@ion/shared/graph-model-types'
 
 function toNumeric(v: unknown): number {
   if (typeof v === 'number') return v

@@ -29,7 +29,7 @@ struct ConversationStatusBar: View {
     let permissionMode: PermissionMode?
     let availableModels: [RemoteModelEntry]
     let attachmentCount: Int
-    let onSelectModel: (String) -> Void
+    let onSelectModel: (String, String) -> Void
     let onToggleMode: () -> Void
     let onTapAttachments: () -> Void
     var onTapContextIndicator: () -> Void = {}
@@ -63,7 +63,7 @@ struct ConversationStatusBar: View {
     @State private var showModelPicker = false
     /// A model switch the operator chose but has not paid for yet. Held until
     /// they accept the prompt-cache re-write cost; nil when nothing is pending.
-    @State private var pendingModelSwitch: (model: String, estimate: ModelSwitchCost.Estimate)?
+    @State private var pendingModelSwitch: (model: String, providerId: String, estimate: ModelSwitchCost.Estimate)?
 
     /// Engine-derived inputs for the status bar, resolved nil-safely from an
     /// optional `StatusFields`. The bar must ALWAYS render for engine tabs (like
@@ -151,10 +151,11 @@ struct ConversationStatusBar: View {
         return RunActivity(show: false, isRunning: false, isWaitingShells: false, label: "")
     }
 
-    /// The effective model: override > preferred > default fallback.
+    /// The effective model: the conversation's own pick, else the default its
+    /// server resolved. Empty when the server resolved nothing; the phone never
+    /// substitutes a model id of its own.
     var effectiveModel: String {
-        let candidate = modelOverride ?? preferredModel
-        return candidate.isEmpty ? "claude-sonnet-4-6" : candidate
+        modelOverride ?? preferredModel
     }
 
     private var displayLabel: String {
@@ -391,9 +392,9 @@ struct ConversationStatusBar: View {
             ModelPickerSheet(
                 models: availableModels,
                 selectedModelId: effectiveModel,
-                // The star marks the GLOBAL default, which is what
-                // `preferredModel` carries; `effectiveModel` above folds in the
-                // per-conversation override and is marked with the checkmark.
+                // The star marks the default this conversation falls back to,
+                // which is what `preferredModel` carries; `effectiveModel` above
+                // folds in the per-conversation pick and gets the checkmark.
                 preferredModelId: preferredModel,
                 onSelect: handleSelectModel,
             )
@@ -414,7 +415,7 @@ struct ConversationStatusBar: View {
                         level: .info,
                         fields: ["model": pending.model, "tokens": String(pending.estimate.tokens)]
                     )
-                    onSelectModel(pending.model)
+                    onSelectModel(pending.model, pending.providerId)
                 }
                 pendingModelSwitch = nil
             }
@@ -445,7 +446,7 @@ struct ConversationStatusBar: View {
     /// `ModelSwitchCost.estimate` returns nil on a fresh or just-cleared
     /// conversation, which is exactly the case where the switch is free and the
     /// operator must not be interrupted.
-    private func handleSelectModel(_ model: String) {
+    private func handleSelectModel(_ model: String, _ providerId: String) {
         let estimate = ModelSwitchCost.estimate(
             contextTokens: contextTokens,
             targetModel: availableModels.first(where: { $0.id == model }),
@@ -453,7 +454,7 @@ struct ConversationStatusBar: View {
             lastActivityAt: lastTurnAtMs.map { Date(timeIntervalSince1970: $0 / 1000) }
         )
         guard let estimate, model != effectiveModel else {
-            onSelectModel(model)
+            onSelectModel(model, providerId)
             return
         }
         DiagnosticLog.log(
@@ -469,6 +470,6 @@ struct ConversationStatusBar: View {
                 "cache_ttl_seconds": estimate.cacheTtlSeconds.map(String.init) ?? "unknown",
             ]
         )
-        pendingModelSwitch = (model: model, estimate: estimate)
+        pendingModelSwitch = (model: model, providerId: providerId, estimate: estimate)
     }
 }

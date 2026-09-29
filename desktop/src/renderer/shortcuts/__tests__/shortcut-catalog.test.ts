@@ -38,7 +38,7 @@ afterEach(() => {
 describe('resolveBindings — defaults', () => {
   it('returns a Map with an entry for every catalog command', () => {
     const bindings = resolveBindings({})
-    for (const entry of SHORTCUT_CATALOG.filter((candidate) => candidate.views.includes('overlay'))) {
+    for (const entry of SHORTCUT_CATALOG) {
       // Every entry that has a valid defaultBinding should appear in the map
       // (unless it was trumped by a conflict, which default-only can't produce).
       const chord = parseChord(entry.defaultBinding)
@@ -157,6 +157,13 @@ describe('panel.statusDrawer', () => {
     expect(bindings.get('terminal.toggle')).toMatchObject({ ctrl: true, key: '`' })
   })
 
+  it('binds workspace search to Mod+Shift+F without a conflict', () => {
+    const bindings = resolveBindings({})
+    expect(bindings.get('panel.search')).toMatchObject({ mod: true, shift: true, key: 'f' })
+    expect(bindings.get('conversation.find')).toMatchObject({ mod: true, shift: false, key: 'f' })
+    expect(rWarnMock).not.toHaveBeenCalled()
+  })
+
   it('is rebindable like any other command', () => {
     const bindings = resolveBindings({ 'panel.statusDrawer': 'Mod+9' })
     expect(bindings.get('panel.statusDrawer')).toMatchObject({ mod: true, key: '9' })
@@ -164,14 +171,6 @@ describe('panel.statusDrawer', () => {
 })
 
 describe('resolveViewBindings', () => {
-  it('keeps Overlay and Studio conflicts independent', async () => {
-    const { resolveViewBindings } = await import('../../shortcuts/shortcut-catalog')
-    const overlay = resolveViewBindings('overlay', { 'tab.prev': 'Mod+l' })
-    const studio = resolveViewBindings('studio', {})
-    expect(overlay.shortcuts.find((entry) => entry.entry.id === 'tab.next')?.enabled).toBe(false)
-    expect(studio.shortcuts.find((entry) => entry.entry.id === 'tab.next')?.enabled).toBe(true)
-  })
-
   it('retains conflict loser binding for Settings display', async () => {
     const { resolveViewBindings } = await import('../../shortcuts/shortcut-catalog')
     const result = resolveViewBindings('studio', { 'tab.prev': 'Mod+l' })
@@ -186,5 +185,24 @@ describe('resolveViewBindings', () => {
     expect(palette?.defaultBinding).toBe('Mod+k')
     expect(tall?.defaultBinding).toBe('Mod+y')
     expect(SHORTCUT_CATALOG.some((entry) => entry.id === 'layout.expand')).toBe(false)
+  })
+})
+
+// Spec 17: the Overlay presentation is deleted, so the per-view `views` field
+// on catalog entries (and the overlay-only entries it protected) are gone.
+describe('spec 17 — single-view catalog', () => {
+  it('no entry carries a views field', () => {
+    for (const entry of SHORTCUT_CATALOG) {
+      expect(entry).not.toHaveProperty('views')
+    }
+  })
+
+  it('panel.editor and layout.collapse (overlay-only) are absent', () => {
+    expect(SHORTCUT_CATALOG.some((entry) => entry.id === 'panel.editor')).toBe(false)
+    expect(SHORTCUT_CATALOG.some((entry) => entry.id === 'layout.collapse')).toBe(false)
+  })
+
+  it('tab.newHere (shared with Studio) is present', () => {
+    expect(SHORTCUT_CATALOG.some((entry) => entry.id === 'tab.newHere')).toBe(true)
   })
 })

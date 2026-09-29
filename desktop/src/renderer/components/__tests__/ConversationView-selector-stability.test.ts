@@ -41,10 +41,6 @@ const conversationViewSrc = readFileSync(
   resolve(__dirname, '../ConversationView.tsx'),
   'utf8',
 )
-const appSrc = readFileSync(
-  resolve(__dirname, '../../App.tsx'),
-  'utf8',
-)
 const studioCenterSrc = readFileSync(
   resolve(__dirname, '../../studio/StudioCenter.tsx'),
   'utf8',
@@ -174,10 +170,10 @@ describe('ConversationView selector — shallow stability (#185 regression)', ()
 //      state (scroll position, search state, and pending optimistic rows) to
 //      initial values instead of showing state from another conversation.
 //
-// The overlay and Studio render the same component from separate roots, so each
-// mount needs the same key. Protecting only App.tsx left Studio able to reuse a
-// conversation fiber while its tabId prop changed, which bled queued steers into
-// unrelated transcripts.
+// Studio remounts on tab selection; without a key, React reuses the previous
+// conversation fiber while its tabId prop changed, which bled queued steers
+// into unrelated transcripts. (Overlay rendered the same component from a
+// separate root before spec 17 deleted it — this guard now checks Studio only.)
 //
 // Revert contract: reintroducing renderOffset/pagination or removing either
 // ConversationView key causes the corresponding assertion to fail immediately.
@@ -193,12 +189,10 @@ describe('ConversationView tab-switch reset — structural guards', () => {
     expect(conversationViewSrc).toContain('groupMessages(visibleMessages')
   })
 
-  it('[STRUCTURAL] overlay and Studio key ConversationView by activeTabId', () => {
-    // Every shell must remount on tab selection. Without a key, React reuses the
+  it('[STRUCTURAL] Studio keys ConversationView by activeTabId', () => {
+    // Studio must remount on tab selection. Without a key, React reuses the
     // previous conversation fiber and its local transcript state can render under
     // the new tab before the store-driven rows reconcile.
-    expect(appSrc).toContain('key={activeTabId}')
-    expect(appSrc).toMatch(/<ConversationView key=\{activeTabId\}/)
     expect(studioCenterSrc).toMatch(/<ConversationView key=\{activeTabId\} tabId=\{activeTabId\}/)
   })
 })

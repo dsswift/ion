@@ -21,7 +21,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "## Ion Explore Cookbook\n\nThis dashboard contains ready-to-run LogQL recipes for ad-hoc investigation. **Use it as a launching pad into Explore**, not as a live monitoring dashboard.\n\n### How to use a recipe\n1. Set the dashboard variables above (Conversation ID, Session ID, Extension Name) to scope the queries.\n2. Click the **three-dot menu** (⋮) on any panel and select **Explore** to open that query in Grafana Explore.\n3. In Explore you can adjust the time range, modify the query, and use **split-view** to correlate logs with traces.\n\n### Key fields (structured metadata promoted by Alloy)\n| Field | Description |\n|---|---|\n| `context_conversation_id` | Durable conversation-file ID — join key across all event types |\n| `context_session_id` | Engine session key (tab UUID for desktop clients) |\n| `context_extension` | Hosting extension name (omit-when-absent for non-extension runs) |\n| `context_extension_version` | Extension manifest version (omit-when-absent) |\n| `trace_id` | 32-hex trace ID — click the Tempo correlation link to jump to the trace |\n| `model` | LLM model name (on llm.call, run.complete) |\n| `run_cost_usd` | Per-run cost in USD (on run.complete) |\n\n### Provisioned correlations\nThe Loki datasource has three provisioned correlations: **conversation_id → all logs**, **session_id → telemetry**, **trace_id → Tempo trace**. In any Explore result, click the link button on a log line's field value to follow the correlation.\n"
+        "content": "## Ion Explore Cookbook\n\nThis dashboard contains ready-to-run LogQL recipes for ad-hoc investigation. **Use it as a launching pad into Explore**, not as a live monitoring dashboard.\n\n### How to use a recipe\n1. Set the dashboard variables above (Conversation ID, Session ID, Extension Name) to scope the queries.\n2. Click the **three-dot menu** (⋮) on any panel and select **Explore** to open that query in Grafana Explore.\n3. In Explore you can adjust the time range, modify the query, and use **split-view** to correlate logs with traces.\n\n### Key fields (structured metadata promoted by Alloy)\n| Field | Description |\n|---|---|\n| `context_conversation_id` | Durable conversation-file ID — join key across all event types |\n| `context_session_id` | Engine session key (tab UUID for desktop clients) |\n| `context_extension` | Hosting extension name (omit-when-absent for non-extension runs) |\n| `context_extension_version` | Extension manifest version (omit-when-absent) |\n| `trace_id` | 32-hex trace ID (the OTLP traceId) — click the Tempo correlation link to jump to the trace |\n| `span_id` | The span the event is about (the OTLP spanId) |\n| `service_instance_id` | The engine install that recorded the event |\n| `service_version` | The engine build that recorded the event |\n| `model` | LLM model name (on llm.call, run.complete) |\n| `run_cost_usd` | Per-run cost in USD (on run.complete) |\n\n### Provisioned correlations\nThe Loki datasource has three provisioned correlations: **conversation_id → all logs**, **session_id → telemetry**, **trace_id → Tempo trace**. In any Explore result, click the link button on a log line's field value to follow the correlation.\n"
       },
       "datasource": null
     },
@@ -64,7 +64,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{component=~\".+\"} | json | context_conversation_id = \"$conversation_id\"",
+          "expr": "{service_name=~\".+\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | conversation_id = \"$conversation_id\"",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "instant"
@@ -96,7 +96,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"ion-telemetry\"} | json | context_conversation_id = \"$conversation_id\"",
+          "expr": "{event_name=~\".+\", host_name=~\"$host\", user=~\"$user\"} | json | context_conversation_id = \"$conversation_id\"",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "instant"
@@ -141,7 +141,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"ion-telemetry\"} | json | context_session_id = \"$session_id\"",
+          "expr": "{event_name=~\".+\", host_name=~\"$host\", user=~\"$user\"} | json | context_session_id = \"$session_id\"",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "instant"
@@ -186,7 +186,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\"",
+          "expr": "{event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | context_extension =~ \"$extension\"",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "instant"
@@ -218,7 +218,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"ion-telemetry\", kind=\"dispatch.agent\"} | json | payload_extension =~ \"$extension\"",
+          "expr": "{event_name=\"dispatch.agent\", host_name=~\"$host\", user=~\"$user\"} | json | payload_extension =~ \"$extension\"",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "instant"
@@ -263,7 +263,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"ion-telemetry\", kind=\"llm.call\"} | json | trace_id != \"\"",
+          "expr": "{event_name=\"llm.call\", host_name=~\"$host\", user=~\"$user\"} | json | trace_id != \"\"",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "instant"
@@ -308,7 +308,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{component=\"engine\"} | json | level = \"ERROR\"",
+          "expr": "{service_name=\"ion-engine\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | level = \"ERROR\"",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "instant"
@@ -325,7 +325,7 @@
         "w": 24,
         "h": 8
       },
-      "description": "All ERROR-level log lines from extensions (component=extension). Cross-reference with the extension name via the 'tag' field (e.g. tag=ion-dev). Useful for debugging extension panics and unhandled hook rejections.",
+      "description": "All ERROR-level log lines from extensions (service_name=ion-extension). Cross-reference with the extension name via the 'tag' field (e.g. tag=ion-dev). Useful for debugging extension panics and unhandled hook rejections.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -340,7 +340,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{component=\"extension\"} | json | level = \"ERROR\"",
+          "expr": "{service_name=\"ion-extension\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json | level = \"ERROR\"",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "instant"
@@ -422,11 +422,11 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "(vector(${__to:date:seconds}) - on() group_right() max by (component) (max_over_time({component=~\".+\"} | label_format ts_unix=\"{{ __timestamp__ | unixEpoch }}\" | unwrap ts_unix [24h]))) / 60",
+          "expr": "(vector(${__to:date:seconds}) - on() group_right() max by (service_name) (max_over_time({service_name=~\".+\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | label_format ts_unix=\"{{ __timestamp__ | unixEpoch }}\" | unwrap ts_unix [24h]))) / 60",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "instant",
-          "legendFormat": "{{component}}"
+          "legendFormat": "{{service_name}}"
         }
       ]
     }
@@ -440,6 +440,56 @@
   ],
   "templating": {
     "list": [
+      {
+        "name": "host",
+        "label": "Device",
+        "type": "query",
+        "description": "The device a line came from (label `host_name`, the OTLP host.name). Multi-select; All includes lines with no device.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(host_name)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
+      {
+        "name": "user",
+        "label": "User",
+        "type": "query",
+        "description": "The signed-in operator (Alloy label `user`). Multi-select; All includes lines with no identity.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(user)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
       {
         "name": "conversation_id",
         "label": "Conversation ID",

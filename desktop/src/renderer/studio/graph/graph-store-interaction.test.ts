@@ -6,11 +6,13 @@
  */
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { useGraphStore } from './graph-store'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { clearAllSessions } from './session-park'
-import { GRAPH_VIEW_DEFAULTS } from '../../../shared/graph-view-types'
-import type { GraphViewConfig } from '../../../shared/graph-view-types'
-import type { CorpusSnapshot } from '../../../shared/graph-corpus-types'
+import { GRAPH_VIEW_DEFAULTS } from '@ion/shared/graph-view-types'
+import type { GraphViewConfig } from '@ion/shared/graph-view-types'
+import type { CorpusSnapshot } from '@ion/shared/graph-corpus-types'
+import { host, resetHostInstanceForTests } from '../../host/host-instance'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 function config(overrides?: Partial<GraphViewConfig>): GraphViewConfig {
   return {
@@ -33,14 +35,22 @@ function config(overrides?: Partial<GraphViewConfig>): GraphViewConfig {
 }
 
 function installIonStub(snapshot: CorpusSnapshot): void {
-  window.ion = {
+  // Installing the preload bridge is what makes this an Electron-like
+  // environment, so the cached host must re-resolve: `host-instance.ts`
+  // caches on FIRST access, and graph-store reads capabilities during
+  // `init()`. Without this reset the cached BrowserStudioHost reports
+  // `graphDirect: false` and `init()` short-circuits to the
+  // "unavailable in a browser client" branch, leaving every assertion here
+  // reading an empty store.
+  resetHostInstanceForTests()
+  window.ion = installFakeWire({
     graphViewGetConfig: vi.fn(async () => config()),
     graphViewSetUserConfig: vi.fn(async () => ({ ok: true })),
     onGraphViewConfigChanged: vi.fn(() => () => undefined),
     graphCorpusSubscribe: vi.fn(async () => snapshot),
     graphCorpusUnsubscribe: vi.fn(async () => ({ ok: true })),
     onGraphCorpusDelta: vi.fn(() => () => undefined),
-  } as unknown as typeof window.ion
+  }) as unknown as typeof window.ion
 }
 
 afterEach(() => {
@@ -202,7 +212,7 @@ describe('requestOpenFile', () => {
       documents: [{ path: '/root/a.md', rootPath: '/root', fileName: 'a', frontMatter: { topic: 'ops' }, wikiLinks: [], markdownLinks: [], sections: [], sizeBytes: 1, modifiedMs: 1 }],
     })
     // Rebuild with groupFields so a group node exists.
-    window.ion.graphViewGetConfig = vi.fn(async () => config({ groupFields: ['topic'] })) as typeof window.ion.graphViewGetConfig
+    host.shell.graphViewGetConfig = vi.fn(async () => config({ groupFields: ['topic'] })) as typeof host.shell.graphViewGetConfig
     await useGraphStore.getState().init('/root')
     useSessionStore.setState({
       activeTabId: 'tab-1',

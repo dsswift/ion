@@ -12,7 +12,7 @@ const state: Record<string, any> = {
   tabsReady: false, submit: vi.fn(), interrupt: vi.fn(), editQueuedMessage: vi.fn(),
 }
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (snapshot: typeof state) => unknown) => selector(state),
     { getState: () => state, setState: vi.fn() },
@@ -42,8 +42,8 @@ vi.mock('../AgentPanel', () => ({
 vi.mock('../PermissionDeniedCard', () => ({ PermissionDeniedCard: () => null }))
 vi.mock('../ElicitationCardHost', () => ({ ElicitationCardHost: () => null }))
 vi.mock('../TodoListPanel', () => ({ TodoListPanel: () => null }))
-vi.mock('../ConversationSearch', () => ({ ConversationSearch: () => null }))
-vi.mock('../hooks/useConversationSearch', () => ({ useConversationSearch: () => [{}, {}] }))
+vi.mock('../FindBar', () => ({ FindBar: () => null }))
+vi.mock('../../hooks/useDomFind', () => ({ useDomFind: () => [{}, { close: () => undefined }] }))
 vi.mock('../hooks/useClearPermissionDenied', () => ({ useClearPermissionDenied: () => vi.fn() }))
 // One STABLE object, not a fresh literal per call: the real hook returns
 // stable refs, and a new `scrollRef` identity on every render would re-run
@@ -100,18 +100,20 @@ vi.mock('../conversation', () => ({
 }))
 
 import { ConversationView } from '../ConversationView'
+import { installFakeWire, emitOnChannel } from '../../host/__tests__/fake-wire'
+import { usePresenceStore } from '../../stores/presence-store'
 
 // ConversationView subscribes to chart-jump requests at mount. The preload
 // bridge is absent in jsdom, so the stub both keeps the mount working and
 // captures the handler, which is what the chart-jump tests below drive.
 const chartJumpHandlers: Array<(req: { tabId: string; chartId: string; messageId: string }) => void> = []
 const unsubscribeChartJump = vi.fn()
-;(window as unknown as { ion: Record<string, unknown> }).ion = {
+;(window as unknown as { ion: Record<string, unknown> }).ion = installFakeWire({
   onChartJump: (cb: (req: { tabId: string; chartId: string; messageId: string }) => void) => {
     chartJumpHandlers.push(cb)
     return unsubscribeChartJump
   },
-}
+})
 
 function setConversation(
   status: string,
@@ -202,6 +204,39 @@ describe('ConversationView composer activity row', () => {
     expect(container.querySelector('[data-testid="conversation-activity-indicator"]')?.textContent)
       .toContain('Running… · 1 background shell')
     act(() => { root.unmount() })
+  })
+
+  it('shows who is driving the tab when another connection started this run (FR-02 presence)', () => {
+    setConversation('running', 0)
+    usePresenceStore.setState({
+      entries: [{ subject: 'local:bob', displayName: 'Bob', focusedTabId: 'tab-1' }],
+      driving: { 'tab-1': 'local:bob' },
+      ownSubject: 'local:alice',
+    })
+    try {
+      const { container, root } = renderConversation()
+      expect(container.querySelector('[data-testid="conversation-driven-by"]')?.textContent)
+        .toContain('driven by Bob')
+      act(() => { root.unmount() })
+    } finally {
+      usePresenceStore.setState({ entries: [], driving: {}, ownSubject: null })
+    }
+  })
+
+  it('hides the driven-by chip when this connection is the one driving', () => {
+    setConversation('running', 0)
+    usePresenceStore.setState({
+      entries: [{ subject: 'local:alice', displayName: 'Alice', focusedTabId: 'tab-1' }],
+      driving: { 'tab-1': 'local:alice' },
+      ownSubject: 'local:alice',
+    })
+    try {
+      const { container, root } = renderConversation()
+      expect(container.querySelector('[data-testid="conversation-driven-by"]')).toBeNull()
+      act(() => { root.unmount() })
+    } finally {
+      usePresenceStore.setState({ entries: [], driving: {}, ownSubject: null })
+    }
   })
 
   it('keeps Stop visible while only a background shell runs', () => {
@@ -313,11 +348,26 @@ describe('ConversationView chart jump', () => {
   })
   afterEach(() => { document.body.replaceChildren() })
 
-  it('subscribes on mount and unsubscribes on unmount', () => {
-    const { root } = renderConversation()
-    expect(chartJumpHandlers).toHaveLength(1)
+  it('acts on a jump while mounted and stops after unmount', () => {
+    // Asserted by behaviour rather than by counting subscriptions on the
+    // stub. The component subscribes through the wire now, so the loopback
+    // owns the single `onChartJump` subscription behind it; a handler count
+    // would pin the old transport and keep passing whether or not the
+    // component still responded.
+    const { container, root } = renderConversation()
+    scrollFollow.scrollRef.current = container
+    const anchor = document.createElement('div')
+    anchor.setAttribute('data-chart-id', 'chart-1')
+    const scrollIntoView = vi.fn()
+    anchor.scrollIntoView = scrollIntoView
+    container.appendChild(anchor)
+
+    act(() => { emitOnChannel('ion:chart-jump', { tabId: 'tab-1', chartId: 'chart-1', messageId: 'msg-1' }) })
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+
     act(() => { root.unmount() })
-    expect(unsubscribeChartJump).toHaveBeenCalled()
+    act(() => { emitOnChannel('ion:chart-jump', { tabId: 'tab-1', chartId: 'chart-1', messageId: 'msg-1' }) })
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
   })
 
   it('scrolls to the chart anchor when the request names this tab', () => {
@@ -330,7 +380,7 @@ describe('ConversationView chart jump', () => {
     container.appendChild(anchor)
 
     act(() => {
-      chartJumpHandlers[0]({ tabId: 'tab-1', chartId: 'chart-1', messageId: 'msg-1' })
+      emitOnChannel('ion:chart-jump', { tabId: 'tab-1', chartId: 'chart-1', messageId: 'msg-1' })
     })
     // 'start', not 'center': the virtual path anchors the card near the top
     // of the viewport, and both presentations must land the same way.
@@ -348,7 +398,7 @@ describe('ConversationView chart jump', () => {
     virtualJump.fn = (id: string) => { attempted.push(id); return true }
 
     act(() => {
-      chartJumpHandlers[0]({
+      emitOnChannel('ion:chart-jump', {
         tabId: 'tab-1',
         chartId: 'chart-derived',
         messageId: 'tool-gate-999-1',
@@ -368,7 +418,7 @@ describe('ConversationView chart jump', () => {
     virtualJump.fn = (id: string) => { attempted.push(id); return true }
 
     act(() => {
-      chartJumpHandlers[0]({ tabId: 'tab-1', chartId: 'unknown-chart', messageId: 'tool-gate-777-1' })
+      emitOnChannel('ion:chart-jump', { tabId: 'tab-1', chartId: 'unknown-chart', messageId: 'tool-gate-777-1' })
     })
 
     expect(attempted).toEqual(['tool-gate-777-1'])
@@ -385,7 +435,7 @@ describe('ConversationView chart jump', () => {
     container.appendChild(anchor)
 
     act(() => {
-      chartJumpHandlers[0]({ tabId: 'tab-OTHER', chartId: 'chart-1', messageId: 'msg-1' })
+      emitOnChannel('ion:chart-jump', { tabId: 'tab-OTHER', chartId: 'chart-1', messageId: 'msg-1' })
     })
     expect(scrollIntoView).not.toHaveBeenCalled()
     act(() => { root.unmount() })

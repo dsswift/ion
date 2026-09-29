@@ -36,7 +36,7 @@ const h = vi.hoisted(() => {
   return { selectTab, useSessionStore, waitingStates, permissionModes }
 })
 
-vi.mock('../../stores/sessionStore', () => ({ useSessionStore: h.useSessionStore }))
+vi.mock('@ion/server/store/sessionStore', () => ({ useSessionStore: h.useSessionStore }))
 vi.mock('../../theme', () => ({ useColors: () => new Proxy({}, { get: () => '#000000' }) }))
 // Mode glyphs must be identifiable in the DOM: stub each icon as a span
 // carrying a data-icon marker so assertions can tell plan from build.
@@ -45,11 +45,11 @@ vi.mock('@phosphor-icons/react', () => ({
   Robot: (props: any) => React.createElement('span', { 'data-icon': 'robot', ...props }),
   CaretRight: (props: any) => React.createElement('span', { 'data-icon': 'caret-right', ...props }),
 }))
-vi.mock('../../stores/conversation-instance', () => ({
+vi.mock('@ion/server/store/conversation-instance', () => ({
   activeInstance: () => ({ permissionQueue: [] }),
   effectivePermissionMode: (tab: { id: string }) => h.permissionModes.get(tab.id) ?? 'auto',
 }))
-vi.mock('../TabStripShared', () => ({
+vi.mock('../conversation-status', () => ({
   anyEngineInstanceHasRunningChildren: () => false,
   anyEngineInstanceHasRunningShells: () => false,
   isAnyTerminalCommandRunning: () => false,

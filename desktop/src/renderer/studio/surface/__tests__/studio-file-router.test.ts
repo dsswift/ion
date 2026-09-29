@@ -13,7 +13,7 @@ const { openFileInEditorMock, getSessionStateMock } = vi.hoisted(() => ({
 }))
 vi.mock('../../../rendererLogger', () => ({ rDebug: vi.fn(), rTrace: vi.fn(), rWarn: vi.fn() }))
 
-vi.mock('../../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: { getState: () => getSessionStateMock() },
 }))
 

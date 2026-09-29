@@ -3,9 +3,10 @@ import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { WorktreeOverlapAnalysis, WorktreeOverlapSolverResult } from '../../shared/types-worktree-overlap'
+import type { WorktreeOverlapAnalysis, WorktreeOverlapSolverResult } from '@ion/shared/types-worktree-overlap'
 import { WorktreeOverlapApp } from './WorktreeOverlapApp'
 import { TWO_COLUMN_MIN_WIDTH } from './useResponsiveAnalysisLayout'
+import { installFakeWire } from '../host/__tests__/fake-wire'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -77,15 +78,18 @@ vi.mock('../theme', () => ({
 vi.mock('../components/git/ConfirmDialog', () => ({ ConfirmDialog: () => null }))
 
 function installIonApi(): void {
+  // The context read is native (the window's own record); the verbs that
+  // take it are `worktree.overlap.*` actions answered over the loopback.
   Object.defineProperty(window, 'ion', {
     configurable: true,
-    value: {
+    value: installFakeWire({
+      getWorktreeOverlapContext: vi.fn().mockResolvedValue({ repoPath: '/repo', sourceBranch: 'main' }),
       getWorktreeOverlap: vi.fn().mockResolvedValue({ analysis }),
       solveWorktreeOverlap: vi.fn().mockResolvedValue({ solver }),
       autoOrderWorktreeOverlap: vi.fn(),
       previewWorktreeOverlapApply: vi.fn(),
       applyWorktreeOverlap: vi.fn(),
-    },
+    }),
   })
 }
 

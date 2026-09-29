@@ -25,7 +25,7 @@ vi.mock('./views/GraphViewsMenu', () => ({ GraphViewsMenu: () => null }))
 
 import { GraphSurface } from './GraphSurface'
 import { useGraphStore } from './graph-store'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 

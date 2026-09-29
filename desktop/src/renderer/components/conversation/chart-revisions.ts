@@ -18,13 +18,12 @@
  * lives now. That is what stops a conversation with six chart refinements from
  * carrying six large, five of them wrong.
  */
-import { parseChartToolInput } from '../../../shared/chart-parse'
-import { parseChartResultId } from '../../../shared/chart-result'
-import type { ChartSpec } from '../../../shared/chart-schema'
-import type { Message } from '../../../shared/types'
+import { parseChartToolInput } from '@ion/shared/chart-parse'
+import { parseChartResultId } from '@ion/shared/chart-result'
+import { CHART_TOOL_NAME, type ChartSpec } from '@ion/shared/chart-schema'
+import type { Message } from '@ion/shared/types'
 
-/** The tool name whose rows carry chart revisions. */
-export const CHART_TOOL_NAME = 'RenderChart'
+export { CHART_TOOL_NAME }
 
 /** One immutable revision, in branch order. */
 export interface ChartRevision {

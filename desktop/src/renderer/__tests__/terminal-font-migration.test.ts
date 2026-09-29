@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { DEFAULT_MONO_FONT } from '../typography'
+import { installFakeWire } from '../host/__tests__/fake-wire'
 
 // Correcting SETTINGS_DEFAULTS fixes nothing for an existing install: the old
 // macOS-only stack was written to settings.json on every profile that ever
@@ -19,13 +20,16 @@ async function load(disk: Record<string, unknown>): Promise<LoadResult> {
   const applied: Record<string, unknown> = {}
   let saved = false
   ;(globalThis as { window?: unknown }).window = {
-    ion: {
+    ion: installFakeWire({
       loadSettings: () => Promise.resolve(disk),
-      saveSettings: () => {
-        saved = true
+      // The terminal font is a Device setting, kept on this client. `saved`
+      // means the MIGRATED value was written, not the one-time adoption of
+      // whatever the server still held.
+      hostSetDeviceSetting: (key: string, value: unknown) => {
+        if (key === 'terminalFontFamily' && value === DEFAULT_MONO_FONT) saved = true
         return Promise.resolve()
       },
-    },
+    }),
   }
   const { loadPersistedSettings } = await import('../preferences-persist')
   await loadPersistedSettings(

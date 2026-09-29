@@ -63,6 +63,7 @@ func (m *Manager) forkSession(
 	conversationID := s.conversationID
 	config := s.config
 	extGroup := s.extGroup
+	principal := s.principal
 	initial := &forkInitialState{
 		planMode:                    s.planMode,
 		planModeTools:               append([]string(nil), s.planModeTools...),
@@ -124,7 +125,17 @@ func (m *Manager) forkSession(
 		logForkFailure("target rejected", key, newKey, conversationID, "", err)
 		return "", "", err
 	}
+	// The fork gets its own copy of every file the history points at (plans,
+	// copied-in attachments, spilled tool output), with those paths rewritten,
+	// so editing the fork's plan can never change the source's.
+	files, err := conversation.CopyOwnedFilesForFork(conv, forked, initial.planFilePath, newProjectPlanPath)
+	if err != nil {
+		logForkFailure("fork files failed", key, newKey, conversationID, forked.ID, err)
+		return "", "", err
+	}
+	initial.planFilePath = files.PlanFilePath
 	if err := conversation.Save(forked, ""); err != nil {
+		conversation.RemoveForkFiles(forked.ID, files)
 		wrapped := fmt.Errorf("failed to save forked conversation: %w", err)
 		logForkFailure("save failed", key, newKey, conversationID, forked.ID, wrapped)
 		return "", "", wrapped
@@ -132,7 +143,7 @@ func (m *Manager) forkSession(
 
 	config.SessionID = forked.ID
 	config.ForceNewConversation = false
-	started, err := m.startSession(newKey, config, reservation, initial)
+	started, err := m.startSession(newKey, config, principal, reservation, initial)
 	if err != nil {
 		// startSession removes the reservation only after it installs the live
 		// session. If a later startup phase fails, stop that partial session before
@@ -148,6 +159,7 @@ func (m *Manager) forkSession(
 				})
 			}
 		}
+		conversation.RemoveForkFiles(forked.ID, files)
 		if _, cleanupErr := conversation.DeleteStoredExact("", []string{forked.ID}, nil); cleanupErr != nil {
 			utils.LogWithFields(utils.LevelError, "session.fork", "fork session: startup cleanup failed", map[string]any{
 				"source_key": key, "new_key": newKey, "source_conversation_id": conversationID,
@@ -168,6 +180,7 @@ func (m *Manager) forkSession(
 	utils.LogWithFields(utils.LevelInfo, "session.fork", "fork session: created", map[string]any{
 		"source_key": key, "new_key": newKey, "source_conversation_id": conversationID,
 		"conversation_id": forked.ID, "message_index": messageIndex, "message_count": len(forked.Messages),
+		"plan_file_path": files.PlanFilePath,
 	})
 	if extGroup != nil && !extGroup.IsEmpty() {
 		ctx := m.newExtContext(s, key)

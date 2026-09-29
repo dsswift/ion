@@ -18,7 +18,7 @@
 import React from 'react'
 import { useColors } from '../theme'
 import { WorktreeConversationStatusDot } from './WorktreeConversationStatusDot'
-import { conversationRoleLabel, type DirConversation } from '../../shared/worktree-conversations'
+import { conversationRoleLabel, type DirConversation } from '@ion/shared/worktree-conversations'
 
 export interface WorktreeConversationsCardProps {
   /** Human title when the worktree has one; the caller falls back to the slug. */
@@ -113,8 +113,8 @@ export function WorktreeConversationsCard({
                 </span>
               )}
               {/* The status dot is the only trailing detail worth the space.
-                  This used to print `tab {c.index}` -- a number the tab strip
-                  never shows, so the operator could not act on it, and one that
+                  This used to print `tab {c.index}` -- a number no other
+                  surface shows, so the operator could not act on it, and one that
                   goes wrong the moment tabs are reordered. Clicking the row goes
                   to the conversation (onSelectConversation), which is what the
                   number was standing in for. */}

@@ -1,4 +1,4 @@
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 
 type Operation = {
   action: string

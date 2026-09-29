@@ -7,7 +7,7 @@
  * palette-parity.test.ts — a change here must be an intentional HUD change.
  */
 
-import type { ColorPalette } from "./palette-dark";
+import type { ColorPalette } from "@ion/server/renderer/theme/palette-dark";
 
 export const hudColors: ColorPalette = {
   // Surfaces — deep navy instead of neutral gray

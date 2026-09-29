@@ -1,0 +1,522 @@
+/**
+ * send-slice plan-mode convergence tests.
+ *
+ * Verifies that sendMessage and submitRemotePrompt handle plan-mode state
+ * identically:
+ *   - Both call setPermissionMode before the prompt (prompt_sync)
+ *   - Both clear permissionDenied when a new prompt is submitted
+ *   - Both pass planFilePath from tab state to window.ion.prompt
+ *
+ * Uses the same harness pattern as tab-group-pin.test.ts.
+ */
+
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+
+// ── module-level mocks ────────────────────────────────────────────────────────
+
+vi.mock('../../components/TerminalPanel', () => ({
+  destroyTerminalInstance: vi.fn(),
+}))
+
+vi.mock('../session-store-helpers', () => ({
+  makeLocalTab: vi.fn((..._a: any[]) => ({
+    id: 'mock-tab',
+    title: 'New Tab',
+    conversationId: null,
+    historicalSessionIds: [],
+    lastKnownSessionId: null,
+    status: 'idle' as const,
+    activeRequestId: null,
+    lastEventAt: null,    lastActivityAt: null,    idleSince: null,    lastCompletionAt: null,    settledOverride: null,    settledAt: null,    snoozedUntil: null,    snoozedAt: null,    lastVisitedAt: null,    manualUnread: false,
+    currentActivity: '',
+    attachments: [],
+    customTitle: null,
+    lastResult: null,
+    sessionTools: [],
+    sessionMcpServers: [],
+    sessionSkills: [],
+    sessionVersion: null,
+    queuedPrompts: [],
+    workingDirectory: '~',
+    hasChosenDirectory: false,
+    additionalDirs: [],
+    bashResults: [],
+    bashExecuting: false,
+    bashExecId: null,
+    pillColor: null,
+    forkedFromSessionId: null,
+    worktree: null,
+    pendingWorktreeSetup: false,
+    contextTokens: null,
+    contextWindow: null,
+    isCompacting: false,
+    isTerminalOnly: false,
+    inputLocked: false,
+    engineProfileId: null,
+    lastMessagePreview: null,
+  })),
+  initialModelOverride: vi.fn((..._a: any[]) => null),
+  nextMsgId: vi.fn((..._a: any[]) => `msg-${Math.random()}`),
+  playNotificationIfHidden: vi.fn(async (..._a: any[]) => {}),
+  cancelDoneGroupMove: vi.fn((..._a: any[]) => false),
+  scheduleDoneGroupMove: vi.fn(),
+}))
+
+const preferenceState = vi.hoisted(() => ({
+  preferredModel: null as string | null,
+  defaultPermissionMode: 'auto' as const,
+  planModelSplitEnabled: false,
+  planModeModel: null,
+  addRecentBaseDirectory: vi.fn(),
+  engineProfiles: [],
+  engineDefaultModel: null,
+}))
+
+// Titling reads the conversation's Personal-preferences stamp. These tests are
+// not about titling, so the stamp turns it off.
+vi.mock('../conversation-preferences-read', () => ({
+  conversationPreferencesFor: () => ({ defaultPermissionMode: 'plan', defaultThinkingEffort: 'medium', aiGeneratedTitles: false, enableClaudeCompat: false, enableEarlyStopContinuation: false }),
+}))
+
+vi.mock('../../persistence/preferences', () => ({
+  usePreferencesStore: {
+    getState: vi.fn((..._a: any[]) => preferenceState),
+  },
+}))
+
+const modelsById = vi.hoisted(() => new Map<string, { thinkingMode: string; thinkingEfforts: string[] }>())
+
+// The send path reads the conversation owner's model defaults through the one
+// resolver (model-resolution.ts), not through the preferences facade.
+vi.mock('../../persistence/effective-settings', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  readEffectiveSettings: () => ({ preferredModel: preferenceState.preferredModel ?? '' }),
+}))
+
+vi.mock('../model-store', () => ({
+  useModelStore: {
+    getState: () => ({ findModel: (id: string) => modelsById.get(id) }),
+  },
+}))
+
+// ── host-api mock ────────────────────────────────────────────────────────────
+
+const mockPrompt = vi.fn(async (..._a: any[]) => {})
+const mockSetPermissionMode = vi.fn()
+const mockSteer = vi.fn()
+const mockCancelBash = vi.fn()
+const mockEngineAbort = vi.fn()
+vi.mock('../host-api', () => ({
+  echoUserTurnToStudio: vi.fn(),
+  prompt: (...args: any[]) => mockPrompt(...args),
+  setPermissionMode: (...args: any[]) => mockSetPermissionMode(...args),
+  steer: (...args: any[]) => mockSteer(...args),
+  cancelBash: (...args: any[]) => mockCancelBash(...args),
+  engineAbort: (...args: any[]) => mockEngineAbort(...args),
+}))
+
+import { createSendSlice } from '../slices/send-slice'
+import { createTabSlice } from '../slices/tab-slice'
+import type { State } from '../session-store-types'
+import type { TabState } from '@ion/shared/types'
+import type { ConversationInstance } from '@ion/shared/types-engine'
+import { seedMainPane, mainInstance } from './helpers/conversation-test-helpers'
+
+;(globalThis as any).window = {
+  crypto: { randomUUID: () => 'uuid-1234' },
+}
+
+// ── test state builder ────────────────────────────────────────────────────────
+
+function makeTab(overrides: Partial<TabState> = {}): TabState {
+  return {
+    id: 'tab-1',
+    conversationId: null,
+    historicalSessionIds: [],
+    lastKnownSessionId: null,
+    status: 'idle',
+    activeRequestId: null,
+    lastEventAt: null,    lastActivityAt: null,    idleSince: null,    lastCompletionAt: null,    settledOverride: null,    settledAt: null,    snoozedUntil: null,    snoozedAt: null,    lastVisitedAt: null,    manualUnread: false,
+    currentActivity: '',
+    attachments: [],
+    title: 'New Tab',
+    customTitle: null,
+    lastResult: null,
+    sessionTools: [],
+    sessionMcpServers: [],
+    sessionSkills: [],
+    sessionVersion: null,
+    queuedPrompts: [],
+    workingDirectory: '/home/test',
+    hasChosenDirectory: true,
+    additionalDirs: [],
+    bashResults: [],
+    bashExecuting: false,
+    bashExecId: null,
+    pillColor: null,
+    forkedFromSessionId: null,
+    worktree: null,
+    pendingWorktreeSetup: false,
+    contextTokens: null,
+    contextWindow: null,
+    isCompacting: false,
+    isTerminalOnly: false,
+    inputLocked: false,
+    engineProfileId: null,
+    lastMessagePreview: null,
+    ...overrides,
+  }
+}
+
+function buildHarness(
+  initialTab: TabState,
+  instanceOverrides: Partial<ConversationInstance> = {},
+) {
+  const state: any = {
+    tabs: [initialTab],
+    activeTabId: initialTab.id,
+    scrollToBottomCounter: 0,
+    staticInfo: {
+      homePath: '/home/test',
+      projectPath: '/home/test',
+      version: '1',
+      email: null,
+      subscriptionType: null,
+    },
+    backend: 'api' as const,
+    terminalPanes: new Map(),
+    terminalOpenTabIds: new Set(),
+    worktreeUncommittedMap: new Map(),
+    engineWorkingMessages: new Map(),
+    engineNotifications: new Map(),
+    engineDialogs: new Map(),
+    enginePinnedPrompt: new Map(),
+    conversationPanes: seedMainPane(initialTab.id, {
+      ...instanceOverrides,
+    }),
+    engineModelFallbacks: new Map(),
+    fileExplorerOpenDirs: new Set(),
+    fileEditorOpenDirs: new Set(),
+  }
+
+  const set = vi.fn((updater: any) => {
+    const patch = typeof updater === 'function' ? updater(state) : updater
+    Object.assign(state, patch)
+  })
+
+  const get = () => state as State
+
+  const moveTabToGroup = vi.fn()
+  const handleError = vi.fn()
+
+  // Build slices
+  const tabSlice = createTabSlice(set, get)
+  const sendSlice = createSendSlice(set, get)
+
+  Object.assign(state, tabSlice, sendSlice)
+  state.moveTabToGroup = moveTabToGroup
+  state.handleError = handleError
+
+  return { state, set }
+}
+
+// ── tests ─────────────────────────────────────────────────────────────────────
+
+describe('prompt_sync parity — setPermissionMode before prompt', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    modelsById.clear()
+    preferenceState.preferredModel = null
+    mockPrompt.mockResolvedValue(undefined)
+  })
+
+  it('clears completed-run metadata immediately when a new prompt starts', () => {
+    const previousRun = { totalCostUsd: 0, durationMs: 12_000, reason: 'normal' as const, numTurns: 1, usage: {}, sessionId: 's1' }
+    const { state } = buildHarness(makeTab({ lastResult: previousRun }))
+
+    state.submit('tab-1', 'next task')
+
+    expect(state.tabs[0].lastResult).toBeNull()
+  })
+
+  it('sendMessage calls setPermissionMode with current plan mode', () => {
+    // permissionMode lives on the instance (WI-002) — pass as instanceOverride
+    const { state } = buildHarness(makeTab(), { permissionMode: 'plan' })
+
+    state.submit('tab-1', 'hello')
+
+    expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'plan', 'prompt_sync', undefined)
+  })
+
+  it('submitRemotePrompt calls setPermissionMode with current plan mode', () => {
+    // permissionMode lives on the instance (WI-002) — pass as instanceOverride
+    const { state } = buildHarness(makeTab(), { permissionMode: 'plan' })
+
+    state.submitRemotePrompt('tab-1', 'hello')
+
+    expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'plan', 'prompt_sync', undefined)
+  })
+
+  it('forwards the instance planFilePath on the plan-mode prompt_sync (continuity)', () => {
+    // Plan-file continuity: when the tab is in plan mode and the instance has
+    // a persisted planFilePath, the prompt_sync setPermissionMode call carries
+    // it as the 4th arg so the engine restores the existing plan even before
+    // the prompt is dispatched. Pre-fix this arg was absent (undefined).
+    const { state } = buildHarness(makeTab(), { permissionMode: 'plan', planFilePath: '/plans/simple-sailing-pine.md' })
+
+    state.submit('tab-1', 'hello')
+
+    expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'plan', 'prompt_sync', '/plans/simple-sailing-pine.md')
+  })
+
+  it('does NOT forward planFilePath on an auto prompt_sync (engine ignores it)', () => {
+    const { state } = buildHarness(makeTab(), { permissionMode: 'auto', planFilePath: '/plans/simple-sailing-pine.md' })
+
+    state.submit('tab-1', 'hello')
+
+    expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'auto', 'prompt_sync', undefined)
+  })
+
+  // ── slash commands preserve session plan mode and mark the one run temporary-auto ──
+  // A slash command is a "run this task" intent that the main-process pipeline
+  // flips plan→auto for. The renderer's prompt_sync re-assert must NOT re-arm
+  // `plan` for a slash prompt, or it fights (and beats) the flip. So a slash
+  // command on a plan-mode tab must sync `auto`, not `plan`.
+
+  it('sendMessage preserves PLAN and marks a slash prompt temporary-auto', () => {
+    const { state } = buildHarness(makeTab(), { permissionMode: 'plan', planFilePath: '/plans/p.md' })
+
+    state.submit('tab-1', '/align')
+
+    expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'plan', 'prompt_sync', '/plans/p.md')
+    expect(mockPrompt).toHaveBeenCalledWith('tab-1', expect.any(String), expect.objectContaining({ temporaryAutoFromPlan: true }))
+  })
+
+  it('submitRemotePrompt preserves PLAN and marks a slash prompt temporary-auto', () => {
+    const { state } = buildHarness(makeTab(), { permissionMode: 'plan', planFilePath: '/plans/p.md' })
+
+    state.submitRemotePrompt('tab-1', '/align')
+
+    expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'plan', 'prompt_sync', '/plans/p.md')
+    expect(mockPrompt).toHaveBeenCalledWith('tab-1', expect.any(String), expect.objectContaining({ temporaryAutoFromPlan: true }))
+  })
+
+  it('sendMessage still syncs PLAN for /clear (a checkpoint, not a task)', () => {
+    // /clear is excluded from the slash-aware skip: the pipeline never flips it,
+    // so re-asserting the real mode keeps clear from silently leaving plan mode.
+    const { state } = buildHarness(makeTab(), { permissionMode: 'plan', planFilePath: '/plans/p.md' })
+
+    state.submit('tab-1', '/clear')
+
+    expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'plan', 'prompt_sync', '/plans/p.md')
+  })
+
+  it('carries the ambient model while slash frontmatter selects its tier', () => {
+    // The plan-mode model is an ambient default, not a per-prompt selection.
+    // The engine still lets `/create-pr`'s frontmatter select its own tier.
+    const { state } = buildHarness(makeTab(), {
+      permissionMode: 'plan',
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: 'automatic',
+    })
+
+    state.submit('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: 'gpt-5.6-sol' }),
+    )
+  })
+
+  it('keeps effort unmodified while slash frontmatter selects the model', () => {
+    // Sol's effort-based capability would rewrite adaptive to off in the old
+    // renderer path. The final slash tier may target an adaptive model instead,
+    // so this directive must survive until the engine resolves that final model.
+    modelsById.set('gpt-5.6-sol', { thinkingMode: 'reasoning_effort', thinkingEfforts: ['low'] })
+    const { state } = buildHarness(makeTab(), {
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: 'automatic',
+      thinkingEffort: 'adaptive',
+    })
+
+    state.submit('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: 'gpt-5.6-sol', thinkingEffort: 'adaptive' }),
+    )
+  })
+
+  it('carries a preferred ambient model for a slash command', () => {
+    preferenceState.preferredModel = 'gpt-5.6-sol'
+    const { state } = buildHarness(makeTab(), { modelOverrideSource: null })
+
+    state.submit('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: 'gpt-5.6-sol' }),
+    )
+  })
+
+  it('carries a legacy unmarked model for a slash command', () => {
+    const { state } = buildHarness(makeTab(), {
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: null,
+    })
+
+    state.submit('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: 'gpt-5.6-sol' }),
+    )
+  })
+
+  it('carries an operator-selected model for a slash command', () => {
+    // Command frontmatter still owns slash execution in the engine. The
+    // conversation picker remains the default for ordinary prompts and is sent
+    // as the ambient fallback when the command has no model field.
+    const { state } = buildHarness(makeTab(), {
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: 'user',
+    })
+
+    state.submit('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: 'gpt-5.6-sol' }),
+    )
+  })
+
+  it('keeps the ambient model on an iOS slash prompt', () => {
+    modelsById.set('gpt-5.6-sol', { thinkingMode: 'reasoning_effort', thinkingEfforts: ['low'] })
+    const { state } = buildHarness(makeTab(), {
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: 'automatic',
+      thinkingEffort: 'adaptive',
+    })
+
+    state.submitRemotePrompt('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: 'gpt-5.6-sol', source: 'remote', thinkingEffort: 'adaptive' }),
+    )
+  })
+
+  it('applies the same ambient model precedence to an iOS prompt', () => {
+    const { state } = buildHarness(makeTab(), {
+      permissionMode: 'plan',
+      modelOverride: 'gpt-5.6-sol',
+      modelOverrideSource: 'automatic',
+    })
+
+    state.submitRemotePrompt('tab-1', '/create-pr')
+
+    expect(mockPrompt).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(String),
+      expect.objectContaining({ model: 'gpt-5.6-sol', source: 'remote' }),
+    )
+  })
+})
+
+describe('permissionDenied clearing on new prompt', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    modelsById.clear()
+    preferenceState.preferredModel = null
+    mockPrompt.mockResolvedValue(undefined)
+  })
+
+  it('sendMessage clears permissionDenied', () => {
+    const tab = makeTab()
+    const { state } = buildHarness(tab, {
+      permissionDenied: { tools: [{ toolName: 'ExitPlanMode', toolUseId: 'tu1' }] } as any,
+    })
+
+    state.submit('tab-1', 'amend')
+
+    expect(mainInstance(state.conversationPanes, 'tab-1')?.permissionDenied).toBeNull()
+  })
+
+  it('submitRemotePrompt clears permissionDenied', () => {
+    const tab = makeTab()
+    const { state } = buildHarness(tab, {
+      permissionDenied: { tools: [{ toolName: 'ExitPlanMode', toolUseId: 'tu1' }] } as any,
+    })
+
+    state.submitRemotePrompt('tab-1', 'amend')
+
+    expect(mainInstance(state.conversationPanes, 'tab-1')?.permissionDenied).toBeNull()
+  })
+})
+
+describe('planFilePath forwarding from tab state', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    modelsById.clear()
+    preferenceState.preferredModel = null
+    mockPrompt.mockResolvedValue(undefined)
+  })
+
+  it('sendMessage passes planFilePath to window.ion.prompt options', () => {
+    const tab = makeTab()
+    const { state } = buildHarness(tab, { planFilePath: '/plans/test.md' })
+
+    state.submit('tab-1', 'impl')
+
+    expect(mockPrompt).toHaveBeenCalledTimes(1)
+    const args = mockPrompt.mock.calls[0] as unknown as any[]
+    expect(args[2].planFilePath).toBe('/plans/test.md')
+  })
+
+  it('submitRemotePrompt passes planFilePath to window.ion.prompt options', () => {
+    const tab = makeTab()
+    const { state } = buildHarness(tab, { planFilePath: '/plans/test.md' })
+
+    state.submitRemotePrompt('tab-1', 'impl')
+
+    expect(mockPrompt).toHaveBeenCalledTimes(1)
+    const args = mockPrompt.mock.calls[0] as unknown as any[]
+    expect(args[2].planFilePath).toBe('/plans/test.md')
+  })
+})
+
+describe('Fix A — auto-exit does not corrupt prompt_sync assertion', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    modelsById.clear()
+    preferenceState.preferredModel = null
+    mockPrompt.mockResolvedValue(undefined)
+  })
+
+  it('instance stays plan after auto-exit so follow-up prompt_sync asserts plan not auto', () => {
+    // Instance permissionMode:'plan' + planFilePath set (Fix A: auto-exit does
+    // NOT flip this to 'auto', so the instance stays 'plan' when the user sends
+    // a follow-up prompt without approving).
+    const { state } = buildHarness(makeTab(), {
+      permissionMode: 'plan',
+      planFilePath: '/plans/active-plan.md',
+    })
+
+    // Simulate: event reducer received plan_mode_auto_exit but did NOT
+    // flip permissionMode (Fix A). Instance is still 'plan'.
+    expect(mainInstance(state.conversationPanes, 'tab-1')!.permissionMode).toBe('plan')
+
+    // User sends a follow-up comment without approving
+    state.submit('tab-1', 'can you also check edge cases')
+
+    // prompt_sync must re-assert 'plan', never 'auto'
+    expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'plan', 'prompt_sync', '/plans/active-plan.md')
+    expect(mockSetPermissionMode).not.toHaveBeenCalledWith('tab-1', 'auto', expect.anything(), expect.anything())
+  })
+})

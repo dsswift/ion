@@ -35,7 +35,7 @@ func TestEnforcement_ToolBlocked_EmitsAuditEvent(t *testing.T) {
 	mgr.mu.Unlock()
 
 	col := telemetry.NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
-	runCfg := mgr.buildRunConfig(s, "aud1", "req-1", apiBackend, nil, false, nil, col, nil, "")
+	runCfg := mgr.buildRunConfig(s, "aud1", "req-1", apiBackend, nil, false, nil, col, nil, "", nil)
 
 	if runCfg.Hooks.OnToolCall == nil {
 		t.Fatal("expected enterprise tool gate installed")

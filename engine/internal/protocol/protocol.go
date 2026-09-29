@@ -34,33 +34,36 @@ type ClientCommand struct {
 	// dispatch members) identifying the single background dispatch to cancel.
 	DispatchID string `json:"dispatchId,omitempty"`
 	// stop_background_task: exact session-owned Bash task to stop.
-	TaskID             string   `json:"taskId,omitempty"`
-	Message            string   `json:"message,omitempty"`
-	DialogID           string   `json:"dialogId,omitempty"`
-	Value              any      `json:"value,omitempty"`
-	Command            string   `json:"command,omitempty"`
-	Args               string   `json:"args,omitempty"`
-	Prefix             string   `json:"prefix,omitempty"`
-	MessageIndex       *int     `json:"messageIndex,omitempty"`
-	UserTurnIndex      *int     `json:"userTurnIndex,omitempty"`
-	NewKey             string   `json:"newKey,omitempty"`
-	Enabled            *bool    `json:"enabled,omitempty"`
-	AllowedTools       []string `json:"allowedTools,omitempty"`
-	EntryID            string   `json:"entryId,omitempty"`
-	TargetID           string   `json:"targetId,omitempty"`
-	ExtensionDir       string   `json:"extensionDir,omitempty"`
-	Extensions         []string `json:"extensions,omitempty"`
-	NoExtensions       bool     `json:"noExtensions,omitempty"`
-	QuestionID         string   `json:"questionId,omitempty"`
-	OptionID           string   `json:"optionId,omitempty"`
-	SessionIDs         []string `json:"sessionIds,omitempty"`
-	Label              string   `json:"label,omitempty"`
-	Limit              int      `json:"limit,omitempty"`
-	Offset             int      `json:"offset,omitempty"`
-	AppendSystemPrompt string   `json:"appendSystemPrompt,omitempty"`
-	Source             string   `json:"source,omitempty"`
-	Provider           string   `json:"provider,omitempty"`
-	Credential         string   `json:"credential,omitempty"`
+	TaskID        string   `json:"taskId,omitempty"`
+	Message       string   `json:"message,omitempty"`
+	DialogID      string   `json:"dialogId,omitempty"`
+	Value         any      `json:"value,omitempty"`
+	Command       string   `json:"command,omitempty"`
+	Args          string   `json:"args,omitempty"`
+	Prefix        string   `json:"prefix,omitempty"`
+	MessageIndex  *int     `json:"messageIndex,omitempty"`
+	UserTurnIndex *int     `json:"userTurnIndex,omitempty"`
+	NewKey        string   `json:"newKey,omitempty"`
+	Enabled       *bool    `json:"enabled,omitempty"`
+	AllowedTools  []string `json:"allowedTools,omitempty"`
+	EntryID       string   `json:"entryId,omitempty"`
+	TargetID      string   `json:"targetId,omitempty"`
+	ExtensionDir  string   `json:"extensionDir,omitempty"`
+	Extensions    []string `json:"extensions,omitempty"`
+	NoExtensions  bool     `json:"noExtensions,omitempty"`
+	QuestionID    string   `json:"questionId,omitempty"`
+	OptionID      string   `json:"optionId,omitempty"`
+	SessionIDs    []string `json:"sessionIds,omitempty"`
+	Label         string   `json:"label,omitempty"`
+	Limit         int      `json:"limit,omitempty"`
+	Offset        int      `json:"offset,omitempty"`
+	// system_metrics_watch: the interval (ms) this connection wants
+	// engine_system_metrics samples at; 0 stops watching.
+	IntervalMs         int64  `json:"intervalMs,omitempty"`
+	AppendSystemPrompt string `json:"appendSystemPrompt,omitempty"`
+	Source             string `json:"source,omitempty"`
+	Provider           string `json:"provider,omitempty"`
+	Credential         string `json:"credential,omitempty"`
 	// set_model_tier: ordered fallback model identifiers. Empty explicitly
 	// replaces a prior fallback chain with none.
 	Fallbacks []string `json:"fallbacks,omitempty"`
@@ -72,6 +75,16 @@ type ClientCommand struct {
 	ElicitResponse  map[string]interface{} `json:"elicitResponse,omitempty"`
 	ElicitCancelled bool                   `json:"elicitCancelled,omitempty"`
 	ElicitDeclined  bool                   `json:"elicitDeclined,omitempty"`
+
+	// credential_response (FR-05 child 09, SC-9): client reply to an
+	// engine_credential_request event. Found false means "I have nothing
+	// for this scope" -- not an error, and distinct from a timeout (which
+	// the engine also treats as "no answer"). Never present alongside a
+	// value: Found true is what makes Token/Header meaningful.
+	CredentialRequestID string `json:"credentialRequestId,omitempty"`
+	CredentialFound     bool   `json:"credentialFound,omitempty"`
+	CredentialToken     string `json:"credentialToken,omitempty"`
+	CredentialHeader    string `json:"credentialHeader,omitempty"`
 
 	// early_stop_decision_response: client reply to an
 	// engine_early_stop_decision_request event. All fields are optional; an
@@ -136,7 +149,7 @@ type ClientCommand struct {
 	// capability retain their normal token behavior.
 	OidcForceRefresh bool `json:"oidcForceRefresh,omitempty"`
 
-	// mcp_add / mcp_remove / mcp_login / mcp_logout: which configured MCP
+	// mcp_add / mcp_update / mcp_remove / mcp_login / mcp_logout: which configured MCP
 	// server the command applies to. Matches the key under engine.json's
 	// mcpServers map.
 	McpName string `json:"mcpName,omitempty"`
@@ -163,10 +176,23 @@ type ClientCommand struct {
 	McpEnv     map[string]string `json:"mcpEnv,omitempty"`
 	McpHeaders map[string]string `json:"mcpHeaders,omitempty"`
 
+	// mcp_add / mcp_update: the operator-configured OAuth client. Absent on
+	// mcp_update leaves the stored client untouched.
+	McpOAuth *McpOAuthSettings `json:"mcpOAuth,omitempty"`
+
 	// mcp_login: OAuth scope to request, overriding whatever the server's
 	// protected-resource metadata advertises. Empty uses the discovered
 	// (or operator-configured) scope, which is the right default.
 	McpScope string `json:"mcpScope,omitempty"`
+
+	// mcp_login: redirect URI the caller owns (a custom app scheme, an https
+	// page). When set the engine starts no loopback listener; the caller
+	// catches the provider's redirect and finishes with mcp_login_complete.
+	McpRedirectURI string `json:"mcpRedirectUri,omitempty"`
+
+	// mcp_login_complete: the full URL the provider redirected to, carrying
+	// code and state (or error).
+	McpCallbackURL string `json:"mcpCallbackUrl,omitempty"`
 
 	// list_directory: absolute path to enumerate on the engine's host.
 	// Empty or "~" resolves to the engine user's home directory. ShowHidden
@@ -237,6 +263,13 @@ type ClientCommand struct {
 	// Additive optional field; omitted by clients that have no persisted
 	// plan file path.
 	PlanFilePath string `json:"planFilePath,omitempty"`
+
+	// send_prompt / send_command: the caller's W3C trace context
+	// (`00-<trace-id>-<parent-span-id>-<flags>`). When valid, the run joins
+	// the caller's trace as a child of the caller's span, so one trace spans
+	// client, server, and engine. Omitted or invalid: the engine starts a new
+	// trace for the run, as before. Additive optional field.
+	Traceparent string `json:"traceparent,omitempty"`
 
 	// set_plan_mode: list of bash command prefixes that the engine
 	// allows in plan mode. Tri-valued:
@@ -386,6 +419,13 @@ type ClientCommand struct {
 	// the item is found; returns an error result when not found or when no
 	// producer is registered for the kind.
 	ResourceID string `json:"resourceId,omitempty"`
+	// resource_export / resource_forget: the conversations whose resources
+	// every producer on the session's broker should export or forget. Used
+	// to move a conversation's resources to another machine. Additive.
+	ResourceConversationIDs []string `json:"resourceConversationIds,omitempty"`
+	// resource_import: items exported elsewhere, each routed to the producer
+	// named by its own kind and producer fields. Additive.
+	ResourceItems []types.ResourceItem `json:"resourceItems,omitempty"`
 
 	// delete_stored_sessions: cleanup stale conversation files.
 	MaxAgeDays int      `json:"maxAgeDays,omitempty"`
@@ -417,6 +457,29 @@ type ClientCommand struct {
 	// Reuses the EntryID field already defined above for branch/branch_before.
 	// Additive: a rewind_session command that omits EntryID and sends only
 	// UserTurnIndex behaves exactly as before.
+
+	// start_session: the person or service this session belongs to. Stored
+	// on the session and stamped on the conversation header the first time
+	// it is minted (or the first time an existing headerless header binds
+	// to a session that carries one). Nil means no attribution -- the
+	// session behaves exactly as before this field existed.
+	//
+	// send_prompt: when present, overrides attribution for that single
+	// turn's hooks and telemetry only. It never changes the session's
+	// stored principal or the conversation header's owner.
+	Principal *types.SessionPrincipal `json:"principal,omitempty"`
+
+	// list_sessions: when non-empty, restrict the result to stored
+	// conversations whose header principal.subject equals this value (or,
+	// when IncludeUnowned is also set, conversations with no header
+	// principal at all). Empty means no filtering -- every conversation is
+	// returned, matching pre-existing behavior.
+	PrincipalSubject string `json:"principalSubject,omitempty"`
+	// list_sessions: when true, a non-empty PrincipalSubject filter also
+	// includes conversations whose header carries no principal (pre-dating
+	// this feature, or created by a caller that never attributed one).
+	// Ignored when PrincipalSubject is empty.
+	IncludeUnowned bool `json:"includeUnowned,omitempty"`
 }
 
 var validCommands = map[string]bool{
@@ -438,24 +501,29 @@ var validCommands = map[string]bool{
 	"settle_session": true,
 	// resume_session: reverse a settle — re-wire async hosts, clear the
 	// settled flag, and emit idle status. Requires key.
-	"resume_session":               true,
-	"stop_by_prefix":               true,
-	"list_sessions":                true,
-	"fork_session":                 true,
-	"set_plan_mode":                true,
-	"branch":                       true,
-	"branch_before":                true,
-	"rewind_session":               true,
-	"navigate_tree":                true,
-	"get_tree":                     true,
-	"shutdown":                     true,
-	"permission_response":          true,
-	"list_stored_sessions":         true,
-	"load_session_history":         true,
-	"save_session_label":           true,
-	"get_conversation":             true,
-	"generate_title":               true,
-	"elicitation_response":         true,
+	"resume_session":       true,
+	"stop_by_prefix":       true,
+	"list_sessions":        true,
+	"fork_session":         true,
+	"set_plan_mode":        true,
+	"branch":               true,
+	"branch_before":        true,
+	"rewind_session":       true,
+	"navigate_tree":        true,
+	"get_tree":             true,
+	"shutdown":             true,
+	"permission_response":  true,
+	"list_stored_sessions": true,
+	"load_session_history": true,
+	"save_session_label":   true,
+	"get_conversation":     true,
+	"generate_title":       true,
+	"elicitation_response": true,
+	// credential_response: a client's answer to engine_credential_request
+	// (FR-05 child 09). It shipped in validateRaw and the dispatcher but not
+	// here, so ParseClientCommand refused every answer as "invalid command"
+	// and the engine's 5s credential wait always timed out.
+	"credential_response":          true,
 	"early_stop_decision_response": true,
 	"tool_gate_response":           true,
 	"health":                       true,
@@ -539,20 +607,30 @@ var validCommands = map[string]bool{
 	// the engine keeps the refresh token; clients pull ephemeral access
 	// tokens on demand.
 	"oidc_token": true,
-	// mcp_list / mcp_add / mcp_remove / mcp_login / mcp_logout: MCP server
-	// administration. The engine owns the mechanism — engine.json CRUD, OAuth
-	// metadata discovery, dynamic client registration, the PKCE exchange, and
-	// token storage — so every consumer drives the same surface instead of
-	// reimplementing it. mcp_login returns an authorization URL immediately and
-	// completes the exchange on a background goroutine; state transitions
-	// broadcast engine_mcp_servers (a complete snapshot) to all clients.
-	"mcp_list":       true,
-	"mcp_add":        true,
-	"mcp_remove":     true,
-	"mcp_login":      true,
-	"mcp_logout":     true,
-	"get_host_info":  true,
-	"list_directory": true,
+	// mcp_list / mcp_add / mcp_update / mcp_remove / mcp_login / mcp_logout:
+	// MCP server administration. The engine owns the mechanism — engine.json
+	// CRUD, OAuth metadata discovery, dynamic client registration, the PKCE
+	// exchange, and token storage — so every consumer drives the same surface
+	// instead of reimplementing it. mcp_update patches one existing entry and
+	// keeps every field it does not name. mcp_login returns an authorization
+	// URL immediately and completes the exchange on a background goroutine;
+	// state transitions broadcast engine_mcp_servers (a complete snapshot) to
+	// all clients. mcp_login with mcpRedirectUri instead leaves the redirect to
+	// the caller, which hands the callback URL back through mcp_login_complete.
+	"mcp_list":           true,
+	"mcp_add":            true,
+	"mcp_update":         true,
+	"mcp_remove":         true,
+	"mcp_login":          true,
+	"mcp_login_complete": true,
+	"mcp_logout":         true,
+	"get_host_info":      true,
+	"list_directory":     true,
+	// System Metrics: get_system_metrics returns the latest complete sample;
+	// system_metrics_watch starts (intervalMs > 0) or stops (0) delivery of
+	// engine_system_metrics to the calling connection only.
+	"get_system_metrics":   true,
+	"system_metrics_watch": true,
 	// clear_conversation_file: wipes the LLM-visible Messages on a stored
 	// conversation file by sessionId, without requiring a live engine session. Used by
 	// consumers that need to reset a conversation file when no in-memory
@@ -573,6 +651,14 @@ var validCommands = map[string]bool{
 	"resource_unsubscribe": true,
 	"resource_publish":     true,
 	"resource_get":         true,
+	// resource_export / resource_import / resource_forget: move the
+	// resources producers hold for a conversation between machines. Export
+	// asks every producer for its items for resourceConversationIds; import
+	// hands resourceItems to the same-named producers; forget tells every
+	// producer to drop its items for resourceConversationIds. Additive.
+	"resource_export": true,
+	"resource_import": true,
+	"resource_forget": true,
 	// get_plan_content: fetch a bounded byte-range window of a plan file.
 	// Key (session key) scopes the plan directory for the security check.
 	// Path is the absolute plan file path the engine emitted in a prior

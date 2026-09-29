@@ -1,0 +1,223 @@
+/**
+ * Shared, pure mapper from the engine wire type (`SessionLoadMessage`) to the
+ * desktop client-render `Message`. This is the single seam every historical
+ * load path (resume-slice.ts, useTabRestoration.ts, and any future consumer)
+ * uses so the conversion — including marker-row handling — stays in lockstep.
+ *
+ * The engine now yields system-role marker rows on historical reload
+ * (compaction / plan / steer / clear) discriminated by `SessionLoadMessage.markerKind`.
+ * The engine emits structured data, not display strings; this mapper formats
+ * the content using the desktop's existing formatters so a reloaded marker is
+ * byte-identical to the live-session divider the renderer already produces.
+ *
+ * Pure (no Electron/IPC binding) → import-safe from both processes. See desktop
+ * AGENTS.md § IPC.
+ */
+
+import type { Message, SessionLoadMessage } from "./types";
+import { buildCompactionMarkerContent } from "./compaction-marker";
+import { suppressesInjection } from "./injection-policy";
+import { stripEngineBridgePrefix } from "./tool-names";
+import {
+  formatClearDivider,
+  formatPlanCreatedDivider,
+  formatPlanUpdatedDivider,
+  formatSteerAppliedDivider,
+} from "./clear-divider";
+
+/**
+ * Convert a marker row (a `SessionLoadMessage` with `markerKind` set) into the
+ * display content the renderer expects, mirroring the live-session handlers:
+ *
+ *   - compaction → `buildCompactionMarkerContent` (event-slice.ts `compacting`)
+ *   - plan       → `formatPlanCreatedDivider` / `formatPlanUpdatedDivider`
+ *                  (event-slice-plan-mode.ts `plan_file_written`)
+ *   - steer      → `formatSteerAppliedDivider` (event-slice.ts `steer_injected`)
+ *   - clear      → `formatClearDivider` (event-wiring.ts `engine_command_result{clear}`)
+ *
+ * The marker timestamp drives the divider clock so a reloaded conversation
+ * shows the original time, not the reload time. Returns `null` when the row is
+ * not a marker or when the compaction marker collapses to a no-op — the caller
+ * then treats the row as an ordinary message (or drops the no-op compaction).
+ */
+export function buildMarkerContent(m: SessionLoadMessage): string | null {
+  if (!m.markerKind) return null;
+  const at = new Date(m.timestamp || Date.now());
+  switch (m.markerKind) {
+    case "compaction":
+      return buildCompactionMarkerContent({
+        summary: m.markerSummary,
+        messagesBefore: m.markerMessagesBefore,
+        messagesAfter: m.markerMessagesAfter,
+        clearedBlocks: m.markerClearedBlocks,
+        strategy: m.markerStrategy,
+        microOnly: m.markerMicroOnly,
+        trigger: m.markerTrigger,
+        preTokens: m.markerPreTokens,
+      });
+    case "plan":
+      return m.markerPlanOperation === "updated"
+        ? formatPlanUpdatedDivider(at, m.markerPlanSlug)
+        : formatPlanCreatedDivider(at, m.markerPlanSlug);
+    case "steer":
+      return formatSteerAppliedDivider(at, m.markerMessageLength ?? 0);
+    case "clear":
+      return formatClearDivider(at);
+    default:
+      return null;
+  }
+}
+
+/**
+ * Tools whose "error" results are conversational (a declined plan, a question
+ * answered "no") rather than failures. The live reducer never marks them
+ * failed; history mapping must agree. Mirrors the exemption in
+ * event-slice.ts's tool_result handler.
+ */
+const ERROR_EXEMPT_TOOLS = new Set(["ExitPlanMode", "AskUserQuestion"]);
+
+/**
+ * Map a single engine `SessionLoadMessage` to a client `Message`, or `null`
+ * when the row should be dropped entirely (a no-op compaction marker the engine
+ * still persisted — mirrors the live path where `buildCompactionMarkerContent`
+ * returning `null` suppresses the marker).
+ *
+ * Row identity: the engine's canonical row id (`SessionLoadMessage.id` — the
+ * persisted entry id, stable across reloads) is used whenever present, so
+ * every consumer shares one id-space and repeated hydrations never mint new
+ * identities. `makeId` supplies the id only as a degraded fallback for rows
+ * from an engine that predates the field.
+ */
+export function mapSessionMessage(
+  m: SessionLoadMessage,
+  makeId: () => string,
+): Message | null {
+  // Tool rows are keyed by the engine tool id — the SAME key the live
+  // reducer uses when the tool_call streams in — so a history reload dedups
+  // against a live-built tool row. Every other row uses the engine's
+  // canonical entry-row id (live assistant/user rows re-key to it at
+  // message_end). makeId is the degraded fallback for engines predating ids.
+  const rowId = (m.toolName && m.toolId ? m.toolId : m.id) || makeId();
+  if (m.markerKind) {
+    const content = buildMarkerContent(m);
+    // A no-op compaction marker (buildCompactionMarkerContent → null) is
+    // dropped, matching the live compacting handler which never pushes it.
+    if (content === null) return null;
+    const msg: Message = {
+      id: rowId,
+      role: "system",
+      content,
+      timestamp: m.timestamp,
+    };
+    // Carry planFilePath so the plan slug stays clickable after reload, exactly
+    // as the live plan_file_written handler does.
+    if (m.markerKind === "plan" && m.markerPlanFilePath) {
+      msg.planFilePath = m.markerPlanFilePath;
+    }
+    return msg;
+  }
+
+  // A delegated-CLI transcript stores the engine's own tools under their MCP
+  // bridge name; the row carries the tool's own name, like a live one does.
+  const toolName = m.toolName ? stripEngineBridgePrefix(m.toolName) : m.toolName;
+  const failed = m.isError && toolName && !ERROR_EXEMPT_TOOLS.has(toolName);
+  return {
+    id: rowId,
+    role: m.role as Message["role"],
+    content: m.content || "",
+    toolName,
+    toolId: m.toolId,
+    toolInput: m.toolInput,
+    toolStatus: toolName ? (failed ? "error" : "completed") : undefined,
+    userExecuted: m.userExecuted,
+    slashCommand: m.slashCommand,
+    slashArgs: m.slashArgs,
+    slashSource: m.slashSource,
+    slashModelAlias: m.slashModelAlias,
+    slashModelEffective: m.slashModelEffective,
+    implementationPhase: m.implementationPhase,
+    slashFrontmatter: m.slashFrontmatter,
+    // Carried so a reloaded transcript labels a structured submission the
+    // same way the live bubble did. Without this the label exists only until
+    // the next reload, and the turn then reads as free text the operator
+    // typed — the exact misrepresentation the label prevents.
+    injectionKind: m.injectionKind,
+    attachments: m.attachments,
+    backgroundTaskId: m.backgroundTaskId,
+    timestamp: m.timestamp,
+  };
+}
+
+/**
+ * Map an array of engine history rows to client `Message`s, filtering out
+ * internal rows, any dropped marker rows (no-op compactions), and engine-
+ * injected turns that are machine-to-machine signals rather than user-authored
+ * content. Convenience wrapper over `mapSessionMessage` for the common
+ * `history.filter(...).map(...)` shape the load paths repeat.
+ *
+ * Desktop rendering opinion: a machine-to-machine injection is a signal the
+ * agent receives in its LLM context but the user never authored and should not
+ * see in the scrollback — a dispatch callback, a background command's exit code
+ * and output tail, a scheduled check-in, or the expanded body of a slash
+ * command whose display turn is persisted separately as the raw invocation.
+ *
+ * The engine faithfully persists and surfaces the classification; the desktop
+ * chooses to suppress. That choice lives in ONE place — `suppressesInjection`
+ * in shared/injection-policy.ts — shared with the live-event filter in
+ * stores/slices/event-slice.ts. It used to be two hand-copied kind lists that
+ * had drifted: this mapper filtered two kinds while the live reducer filtered
+ * three, so a `slash_command` injection was hidden while streaming and then
+ * appeared when history rehydrated. Sharing the function makes that class of
+ * divergence unrepresentable.
+ *
+ * A degraded self-steer needs no case here either. Its turn carries whatever
+ * kind the caller supplied — `checkin` for a heartbeat — and is suppressed or
+ * kept by that classification like any other. The steer MARKER the engine
+ * persists beside it flattens to its own `markerKind: 'steer'` row and becomes
+ * the divider, which is how the reload matches the live `steer_degraded` event for an idle fallback.
+ */
+export function mapSessionHistory(
+  history: readonly SessionLoadMessage[],
+  makeId: () => string,
+): Message[] {
+  // Pass 1: map all non-backgroundWork rows into messages, collecting
+  // background work entries for the fold pass.
+  const out: Message[] = [];
+  const pendingWork: Array<{ row: SessionLoadMessage; id: string }> = [];
+  for (const m of history) {
+    if (m.internal) continue;
+    if (m.backgroundWork) {
+      pendingWork.push({ row: m, id: m.id || makeId() });
+      continue;
+    }
+    if (suppressesInjection(m)) continue;
+    if (m.markerKind === "steer" && m.markerMachineAuthored) continue;
+    const mapped = mapSessionMessage(m, makeId);
+    if (mapped) out.push(mapped);
+  }
+
+  // Pass 2: fold background work items onto their originating tool rows.
+  // Unmatched deliveries stay invisible (machine context only).
+  for (const { row } of pendingWork) {
+    if (!row.backgroundWork) continue;
+    const itemsByTaskId = new Map<
+      string,
+      (typeof row.backgroundWork.items)[number]
+    >();
+    for (const item of row.backgroundWork.items) {
+      itemsByTaskId.set(item.id, item);
+    }
+    for (const msg of out) {
+      if (msg.role !== "tool" || !msg.backgroundTaskId) continue;
+      const item = itemsByTaskId.get(msg.backgroundTaskId);
+      if (!item) continue;
+      msg.toolStatus = item.status === "completed" ? "completed" : "error";
+      msg.backgroundWork = {
+        kind: row.backgroundWork.kind,
+        deliveryMode: row.backgroundWork.deliveryMode,
+        items: [item],
+      };
+    }
+  }
+  return out;
+}

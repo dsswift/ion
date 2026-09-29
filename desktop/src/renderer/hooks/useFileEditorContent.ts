@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react'
-import { useSessionStore, FileEditorTab } from '../stores/sessionStore'
+import { useSessionStore, FileEditorTab } from '@ion/server/store/sessionStore'
 import { rDebug, rWarn, rError } from '../rendererLogger'
+import { host } from '../host/host-instance'
 
 interface UseFileEditorContentParams {
   dir: string
@@ -33,7 +34,7 @@ export function useFileEditorContent({
     if (activeFile.filePath && !activeFile.isLoaded) {
       // Initial load for newly opened files
       rDebug('file-editor', 'initial load', { file_id: activeFile.id, path: activeFile.filePath })
-      window.ion.fsReadFile(activeFile.filePath).then((result) => {
+      host.shell.fsReadFile(activeFile.filePath).then((result) => {
         rDebug('file-editor', 'fsReadFile result', { path: activeFile.filePath, has_content: result.content !== null, content_len: result.content?.length })
         if (result.content !== null) {
           // Set both content and savedContent so isDirty starts false
@@ -94,7 +95,7 @@ export function useFileEditorContent({
       })
     } else if (activeFile.filePath && !activeFile.isDirty) {
       // Background tab refresh: re-read from disk when switching to a non-dirty file
-      window.ion.fsReadFile(activeFile.filePath).then((result) => {
+      host.shell.fsReadFile(activeFile.filePath).then((result) => {
         if (result.content !== null && result.content !== activeFile.savedContent) {
           useSessionStore.setState((s) => {
             const states = new Map(s.fileEditorStates)
@@ -120,9 +121,9 @@ export function useFileEditorContent({
     if (!activeFile?.filePath) return
     const filePath = activeFile.filePath
 
-    window.ion.fsWatchFile(filePath).catch((err) => rWarn('file-editor', 'fsWatchFile failed; external changes will not auto-reload', { path: filePath, error: String(err) }))
+    host.shell.fsWatchFile(filePath).catch((err) => rWarn('file-editor', 'fsWatchFile failed; external changes will not auto-reload', { path: filePath, error: String(err) }))
 
-    const unsub = window.ion.onFileChanged((changedPath) => {
+    const unsub = host.shell.onFileChanged((changedPath) => {
       if (changedPath !== filePath) return
       // Read fresh isDirty from store to avoid stale closure
       const state = useSessionStore.getState()
@@ -130,7 +131,7 @@ export function useFileEditorContent({
       const file = edState?.files.find((f) => f.id === activeFile.id)
       if (!file || file.isDirty) return
 
-      window.ion.fsReadFile(filePath).then((result) => {
+      host.shell.fsReadFile(filePath).then((result) => {
         if (result.content === null) return
         // Re-read current state to get latest savedContent
         const freshState = useSessionStore.getState()
@@ -157,7 +158,7 @@ export function useFileEditorContent({
 
     return () => {
       unsub()
-      window.ion.fsUnwatchFile(filePath).catch((err) => rDebug('file-editor', 'fsUnwatchFile failed', { path: filePath, error: String(err) }))
+      host.shell.fsUnwatchFile(filePath).catch((err) => rDebug('file-editor', 'fsUnwatchFile failed', { path: filePath, error: String(err) }))
     }
   }, [activeFile?.filePath, activeFile?.id, dir])
 
@@ -165,16 +166,16 @@ export function useFileEditorContent({
   const handleSave = useCallback(async () => {
     if (!activeFile || activeFile.isReadOnly) return
     if (activeFile.filePath) {
-      const result = await window.ion.fsWriteFile(activeFile.filePath, activeFile.content)
+      const result = await host.shell.fsWriteFile(activeFile.filePath, activeFile.content)
       if (result.ok) {
         markEditorSaved(dir, activeFile.id, activeFile.filePath)
       } else {
         rWarn('file-editor', 'file save failed', { path: activeFile.filePath, error: result.error ?? 'unknown error' })
       }
     } else {
-      const dialog = await window.ion.fsSaveDialog()
+      const dialog = await host.pickSavePath()
       if (dialog.filePath) {
-        const result = await window.ion.fsWriteFile(dialog.filePath, activeFile.content)
+        const result = await host.shell.fsWriteFile(dialog.filePath, activeFile.content)
         if (result.ok) {
           markEditorSaved(dir, activeFile.id, dialog.filePath)
         } else {

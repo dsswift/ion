@@ -11,13 +11,14 @@
  * WHEN each runs — see the dismissal contract documented on `items` there. This
  * hook only decides what each verb DOES.
  */
+import { isCompletionStrategy, useActiveServerSetting } from '../studio/state/use-server-setting';
 import { useState } from "react";
-import { useSessionStore } from "../stores/sessionStore";
-import { usePreferencesStore } from "../preferences";
-import { findMembership } from "../../shared/worktree-list";
-import { resolveRetireBlockers } from "../stores/slices/worktree-occupant-close";
+import { useSessionStore } from "@ion/server/store/sessionStore";
+import { findMembership } from "@ion/shared/worktree-list";
+import { resolveRetireBlockers } from "@ion/server/store/slices/worktree-occupant-close";
 import { rDebug, rError, rInfo, rWarn } from "../rendererLogger";
-import type { WorktreeInventoryEntry } from "../../shared/types";
+import type { WorktreeInventoryEntry } from "@ion/shared/types";
+import { host } from '../host/host-instance'
 
 /**
  * The land-and-retire confirmation, captured when the operator opens it.
@@ -49,7 +50,8 @@ export function useWorktreeRowMenuVerbs({
   const benchWorkspaces = useSessionStore((s) =>
     s.benchWorkspaces.get(repoPath),
   );
-  const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy);
+  // The land strategy is yours on the server this worktree lives on, not this Mac's.
+  const strategy = useActiveServerSetting('worktreeCompletionStrategy', isCompletionStrategy, 'merge-ff');
   // The operation ledger is the source of truth for in-flight workspace
   // mutations in both presentations (see studio/README.md — no local busy
   // flags). Land/retire now record a `running` entry keyed by worktreePath;
@@ -89,7 +91,7 @@ export function useWorktreeRowMenuVerbs({
     }
     let benchPaths: string[] = []
     try {
-      benchPaths = (await window.ion.gitWorktreeRetirePreview(entry.worktreePath)).prunedBenchPaths ?? []
+      benchPaths = (await host.shell.gitWorktreeRetirePreview(entry.worktreePath)).prunedBenchPaths ?? []
     } catch (error) {
       rWarn('worktree.menu', 'terminal completion preview failed', {
         worktree_path: entry.worktreePath,
@@ -122,7 +124,7 @@ export function useWorktreeRowMenuVerbs({
     }
     let benchPaths: string[] = []
     try {
-      benchPaths = (await window.ion.gitWorktreeRetirePreview(entry.worktreePath)).prunedBenchPaths ?? []
+      benchPaths = (await host.shell.gitWorktreeRetirePreview(entry.worktreePath)).prunedBenchPaths ?? []
     } catch (error) {
       rWarn('worktree.menu', 'discard preview failed; checking the worktree only', {
         worktree_path: entry.worktreePath,
@@ -136,7 +138,7 @@ export function useWorktreeRowMenuVerbs({
     }
 
     try {
-      const appraisal = await window.ion.gitWorktreeAppraise(entry.worktreePath, entry.sourceBranch)
+      const appraisal = await host.shell.gitWorktreeAppraise(entry.worktreePath, entry.sourceBranch)
       if (appraisal.appraisalFailed) {
         setDiscardError(appraisal.reason ?? 'Could not determine what this worktree contains.')
         return
@@ -183,6 +185,13 @@ export function useWorktreeRowMenuVerbs({
     setConfirmDiscardWorktree(null)
     onClose()
   }
+  // A failure replaces the confirmation with the error. Both dialogs share one
+  // layer, so leaving the confirmation up would draw it over the error.
+  function showLandFailure(message: string): void {
+    setConfirmRetire(null)
+    setLandError(message)
+  }
+
   async function doLandAndRetire(): Promise<void> {
     if (!entry.sourceBranch) return
     try {
@@ -194,12 +203,22 @@ export function useWorktreeRowMenuVerbs({
         label: entry.label,
       })
       if (!result.ok) {
-        setLandError(result.error ?? 'Land and retire failed.')
+        rWarn('worktree.menu', 'land and retire refused', {
+          worktree_path: entry.worktreePath,
+          error: result.error ?? '',
+        })
+        showLandFailure(result.error ?? 'Land and retire failed.')
         return
       }
       onRefresh()
       setConfirmRetire(null)
       onClose()
+    } catch (err) {
+      rError('worktree.menu', 'land and retire threw', {
+        worktree_path: entry.worktreePath,
+        error: String(err),
+      })
+      showLandFailure(`Land and retire failed: ${String(err)}`)
     } finally {
       onRefresh()
     }
@@ -341,7 +360,7 @@ export function useWorktreeRowMenuVerbs({
       return;
     }
     try {
-      const result = await window.ion.gitWorktreeSetTitle({
+      const result = await host.shell.gitWorktreeSetTitle({
         worktreePath: entry.worktreePath,
         repoPath,
         title: next,

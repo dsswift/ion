@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { deriveRoster } from '../roster'
 import { generateOffice } from '../index'
 import { testTheme } from './gen-helpers'
-import type { AgentStateUpdate } from '../../../../../shared/types'
+import type { AgentStateUpdate } from '@ion/shared/types'
 
 function rosterAgent(name: string, metadata: Record<string, unknown> = {}): AgentStateUpdate {
   return { name, status: 'idle', metadata } as unknown as AgentStateUpdate

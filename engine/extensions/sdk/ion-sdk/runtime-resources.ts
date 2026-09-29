@@ -7,13 +7,22 @@
 //
 // The engine calls resource/query when a client subscribes; the runtime
 // dispatches to the registered handler and returns the snapshot items.
+//
+// ion.resources.onExport / onImport / onForget register the handlers the
+// engine calls (resource/export, resource/import, resource/forget) to move
+// a conversation's items to another machine. A kind with no handler answers
+// -32601, which the engine reads as "this producer cannot do that".
 
 import type {
   IonContext,
   ResourceDeclaration,
   ResourceDelta,
+  ResourceExportHandler,
   ResourceFilter,
+  ResourceForgetHandler,
   ResourceHandle,
+  ResourceImportHandler,
+  ResourceImportResult,
   ResourceItem,
 } from './types'
 
@@ -22,6 +31,11 @@ const queryHandlers = new Map<
   string,
   (filter: ResourceFilter) => Promise<ResourceItem[]> | ResourceItem[]
 >()
+
+// Transfer handlers, keyed by kind.
+const exportHandlers = new Map<string, ResourceExportHandler>()
+const importHandlers = new Map<string, ResourceImportHandler>()
+const forgetHandlers = new Map<string, ResourceForgetHandler>()
 
 // Pre-init queue flushed into the init response.
 const pendingInitResources: ResourceDeclaration[] = []
@@ -83,6 +97,18 @@ export function buildResourcesAPI(): IonContext['resources'] {
     ): void {
       queryHandlers.set(kind, handler)
     },
+
+    onExport(kind: string, handler: ResourceExportHandler): void {
+      exportHandlers.set(kind, handler)
+    },
+
+    onImport(kind: string, handler: ResourceImportHandler): void {
+      importHandlers.set(kind, handler)
+    },
+
+    onForget(kind: string, handler: ResourceForgetHandler): void {
+      forgetHandlers.set(kind, handler)
+    },
   }
 }
 
@@ -97,4 +123,43 @@ export async function handleResourceQuery(params: {
   const handler = queryHandlers.get(params.kind)
   if (!handler) return []
   return await handler(params.filter)
+}
+
+/** The engine's resource transfer RPCs. */
+export const RESOURCE_TRANSFER_METHODS = ['resource/export', 'resource/import', 'resource/forget'] as const
+
+export type ResourceTransferOutcome =
+  | { handled: true; result: unknown }
+  | { handled: false; message: string }
+
+/**
+ * Handle resource/export, resource/import, or resource/forget. Returns
+ * `handled: false` when the extension registered no handler for the kind,
+ * which the runtime answers with -32601 so the engine can tell "cannot" from
+ * "failed".
+ */
+export async function handleResourceTransfer(
+  method: (typeof RESOURCE_TRANSFER_METHODS)[number],
+  params: { kind: string; conversationIds?: string[]; items?: ResourceItem[] },
+): Promise<ResourceTransferOutcome> {
+  const kind = params.kind
+  switch (method) {
+    case 'resource/export': {
+      const handler = exportHandlers.get(kind)
+      if (!handler) return { handled: false, message: `no export handler for kind ${kind}` }
+      return { handled: true, result: await handler(params.conversationIds ?? []) }
+    }
+    case 'resource/import': {
+      const handler = importHandlers.get(kind)
+      if (!handler) return { handled: false, message: `no import handler for kind ${kind}` }
+      const result: ResourceImportResult = await handler(params.items ?? [])
+      return { handled: true, result: { accepted: result.accepted ?? [], refused: result.refused ?? [] } }
+    }
+    case 'resource/forget': {
+      const handler = forgetHandlers.get(kind)
+      if (!handler) return { handled: false, message: `no forget handler for kind ${kind}` }
+      const removed = await handler(params.conversationIds ?? [])
+      return { handled: true, result: { removed } }
+    }
+  }
 }

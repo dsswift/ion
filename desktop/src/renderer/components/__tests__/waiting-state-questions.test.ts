@@ -19,7 +19,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const workflowsRef: { current: unknown[] } = { current: [] }
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: { getState: () => ({ conversationPanes: new Map() }) },
 }))
 vi.mock('../../preferences', () => ({
@@ -34,8 +34,9 @@ vi.mock('../../stores/questions-store', () => ({
     ).length,
 }))
 
-import { waitingStateOfPane } from '../TabStripShared'
-import type { ConversationPane } from '../../../shared/types-engine'
+import { waitingStateOfPane } from '../conversation-status'
+import { activeQuestionsCount } from '../../stores/questions-store'
+import type { ConversationPane } from '@ion/shared/types-engine'
 
 /** A pane with one instance and no pending denials. */
 function idlePane(): ConversationPane {
@@ -63,46 +64,46 @@ describe('waitingStateOfPane — Guided Questions round', () => {
     // so this returned null and every indicator showed idle.
     workflowsRef.current = [{ sessionKey: 'tab-1', phase: 'collecting' }]
 
-    expect(waitingStateOfPane(idlePane(), 'tab-1')).toBe('question')
+    expect(waitingStateOfPane(idlePane(), activeQuestionsCount('tab-1'))).toBe('question')
   })
 
   it('reports idle once the round reaches terminal', () => {
     workflowsRef.current = [{ sessionKey: 'tab-1', phase: 'terminal' }]
 
-    expect(waitingStateOfPane(idlePane(), 'tab-1')).toBeNull()
+    expect(waitingStateOfPane(idlePane(), activeQuestionsCount('tab-1'))).toBeNull()
   })
 
   it('does not leak across conversations', () => {
     // A round open on another tab must not light this one up.
     workflowsRef.current = [{ sessionKey: 'tab-other', phase: 'collecting' }]
 
-    expect(waitingStateOfPane(idlePane(), 'tab-1')).toBeNull()
+    expect(waitingStateOfPane(idlePane(), activeQuestionsCount('tab-1'))).toBeNull()
   })
 
   it('outranks a plan proposal, matching the denial-based precedence', () => {
     workflowsRef.current = [{ sessionKey: 'tab-1', phase: 'review' }]
 
-    expect(waitingStateOfPane(paneWithDenial('ExitPlanMode'), 'tab-1')).toBe('question')
+    expect(waitingStateOfPane(paneWithDenial('ExitPlanMode'), activeQuestionsCount('tab-1'))).toBe('question')
   })
 })
 
 describe('waitingStateOfPane — existing behavior preserved', () => {
   it("still reports 'question' for a singular AskUserQuestion denial", () => {
-    expect(waitingStateOfPane(paneWithDenial('AskUserQuestion'), 'tab-1')).toBe('question')
+    expect(waitingStateOfPane(paneWithDenial('AskUserQuestion'), activeQuestionsCount('tab-1'))).toBe('question')
   })
 
   it("still reports 'plan-ready' for an ExitPlanMode denial", () => {
-    expect(waitingStateOfPane(paneWithDenial('ExitPlanMode'), 'tab-1')).toBe('plan-ready')
+    expect(waitingStateOfPane(paneWithDenial('ExitPlanMode'), activeQuestionsCount('tab-1'))).toBe('plan-ready')
   })
 
   it('reports null for an idle pane', () => {
-    expect(waitingStateOfPane(idlePane(), 'tab-1')).toBeNull()
+    expect(waitingStateOfPane(idlePane(), activeQuestionsCount('tab-1'))).toBeNull()
   })
 
-  it('tolerates an absent tabId (non-questions callers)', () => {
-    // The parameter is optional so a caller with no tab id in hand keeps
-    // working; it simply cannot consult the questions store.
-    expect(waitingStateOfPane(paneWithDenial('ExitPlanMode'))).toBe('plan-ready')
-    expect(waitingStateOfPane(undefined)).toBeNull()
+  it('tolerates a caller with no open questions round', () => {
+    // The count is resolved by the caller (getWaitingState); a caller with
+    // nothing in the questions store simply passes 0.
+    expect(waitingStateOfPane(paneWithDenial('ExitPlanMode'), 0)).toBe('plan-ready')
+    expect(waitingStateOfPane(undefined, 0)).toBeNull()
   })
 })

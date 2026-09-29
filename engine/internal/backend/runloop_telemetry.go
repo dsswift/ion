@@ -1,9 +1,12 @@
 package backend
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -81,39 +84,61 @@ func buildTelemCtx(run *activeRun) map[string]any {
 	if run == nil {
 		return nil
 	}
-	ctx := map[string]any{
-		"run_id": run.requestID,
+	convID := ""
+	if run.conv != nil {
+		convID = run.conv.ID
 	}
-	if run.opts != nil && run.opts.ParentCtx != nil {
-		if traceID := utils.TraceIDFromContext(run.opts.ParentCtx); traceID != "" {
+	return telemCtxFromOptions(run.requestID, run.opts, convID)
+}
+
+// telemCtxFromOptions builds the correlation block from a run's options, for
+// a run with no *activeRun (the delegated CLIs). convID is the conversation
+// identity; session_id and conversation_id are omitted when it is empty.
+func telemCtxFromOptions(requestID string, opts *types.RunOptions, convID string) map[string]any {
+	ctx := map[string]any{
+		"run_id": requestID,
+	}
+	if opts != nil && opts.ParentCtx != nil {
+		if traceID := utils.TraceIDFromContext(opts.ParentCtx); traceID != "" {
 			ctx["trace_id"] = traceID
 		}
+		// The run's span encloses every span started from this correlation
+		// block, so llm.call and tool.execute record it as their parent.
+		if spanID := utils.SpanIDFromContext(opts.ParentCtx); spanID != "" {
+			ctx["parent_span_id"] = spanID
+		}
+		// FR-05 child 10 (R-41): the acting principal's attribution, when
+		// this run's context carries one (wired at prompt dispatch via
+		// utils.WithPrincipalIdentity). telemetry.Event's stamping point
+		// reads this key before falling back to the process-wide
+		// resolvedUserIdentity() -- see identityForEvent in telemetry.go.
+		if identity := utils.PrincipalIdentityFromContext(opts.ParentCtx); identity != "" {
+			ctx["principal_identity"] = identity
+		}
 	}
-	if run.conv != nil {
+	if convID != "" {
 		// session_id = engine session key (opts.SessionKey, the client-supplied
 		// tab UUID or equivalent). conversation_id = durable conversation-file
-		// identity (conv.ID). These are always distinct in desktop-driven sessions.
-		// Fall back to conv.ID when SessionKey is empty (API-backend path where no
-		// session layer exists) so events remain joinable even without a session key.
+		// identity. These are always distinct in desktop-driven sessions.
+		// Fall back to the conversation ID when SessionKey is empty (API-backend
+		// path where no session layer exists) so events remain joinable.
 		sessionKey := ""
-		if run.opts != nil {
-			sessionKey = run.opts.SessionKey
+		if opts != nil {
+			sessionKey = opts.SessionKey
 		}
 		if sessionKey == "" {
-			// API-backend path: no session-layer key; use the conversation ID as a
-			// stable per-run identifier so tier-4 events are still joinable.
-			sessionKey = run.conv.ID
+			sessionKey = convID
 		}
 		ctx["session_id"] = sessionKey
-		ctx["conversation_id"] = run.conv.ID
+		ctx["conversation_id"] = convID
 	}
 	// Extension attribution: omit-when-empty so non-extension runs are
 	// unaffected and old lines group as "unattributed" in dashboards.
 	// First exercised additive evolution of the telemetry context (ADR-019).
-	if run.opts != nil && run.opts.ExtensionName != "" {
-		ctx["extension"] = run.opts.ExtensionName
-		if run.opts.ExtensionVersion != "" {
-			ctx["extension_version"] = run.opts.ExtensionVersion
+	if opts != nil && opts.ExtensionName != "" {
+		ctx["extension"] = opts.ExtensionName
+		if opts.ExtensionVersion != "" {
+			ctx["extension_version"] = opts.ExtensionVersion
 		}
 	}
 	return ctx
@@ -216,10 +241,46 @@ func buildRetryConfig(run *activeRun, opts *types.RunOptions, model, runIDCopy s
 	if run.cfg != nil {
 		retryTelem = run.cfg.Telemetry
 	}
+	subject := ""
+	if run.cfg != nil && run.cfg.CredentialContext != nil {
+		subject = run.cfg.CredentialContext.Subject()
+	}
 	return &providers.RetryConfig{
 		MaxRetries:    opts.MaxRetries,
 		FallbackChain: opts.FallbackChain,
 		Persistent:    opts.Persistent,
+		// Subject powers the auth-rejection self-heal (child 07, R-19):
+		// InvalidatePrincipal needs to know WHICH principal's cached state
+		// to drop before the one-shot re-resolution retry.
+		Subject: subject,
+		// AttachAuth re-resolves the acting principal's authenticator for
+		// whichever provider is about to stream -- the original one, or a
+		// fallback-chain hop's provider (R-02, R-03). A nil CredentialContext
+		// (unattributed run) means every attempt uses ctx unchanged, which is
+		// the pre-existing single-user behavior.
+		AttachAuth: func(ctx context.Context, providerID string) context.Context {
+			cc := run.cfg
+			if cc == nil || cc.CredentialContext == nil {
+				return ctx
+			}
+			a, err := cc.CredentialContext.Authenticator(ctx, providerID)
+			if err != nil {
+				if errors.Is(err, auth.ErrPrincipalCredentialUnresolved) {
+					utils.LogWithFields(utils.LevelInfo, "backend.runloop", "principal credential refused on retry attempt", map[string]any{
+						"provider": providerID, "subject": cc.CredentialContext.Subject(),
+					})
+					return providers.WithCredentialRefusal(ctx, cc.CredentialContext.Subject())
+				}
+				utils.LogWithFields(utils.LevelInfo, "backend.runloop", "no request credential on retry attempt", map[string]any{
+					"provider": providerID, "subject": cc.CredentialContext.Subject(), "error": err.Error(),
+				})
+				return ctx
+			}
+			if a == nil {
+				return ctx
+			}
+			return providers.WithRequestCredential(ctx, a)
+		},
 		OnRetryWait: func(attempt, delayMs int, pe *providers.ProviderError) {
 			// Thread the real retry-attempt index onto the run so the next
 			// stream's provider.ttft event reports the attempt that produced it

@@ -85,9 +85,8 @@ struct Transcript: View {
     // MARK: - Grouping
 
     private var groupedMessages: [ConversationView.GroupedItem] {
-        // Run through the shared grouping algorithm directly. Harness messages
-        // with dedupMode "relocate" are already positioned correctly in the
-        // message list by handleEngineHarnessMessage; no pre-pass needed.
+        // Run through the shared grouping algorithm directly. The rows are
+        // the server's transcript, already in order; no pre-pass needed.
         let items = groupConversationItems(messages, unifiedTurnView: unifiedTurnView)
         return items.enumerated().map { index, item -> ConversationView.GroupedItem in
             switch item {

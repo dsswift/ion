@@ -9,11 +9,16 @@ Ion emits two structured NDJSON streams:
 
 | Stream | What it answers | Files | Schema |
 |---|---|---|---|
-| **Operational log** | "What did the code do on this machine?" | `~/.ion/engine.jsonl`, `~/.ion/desktop.jsonl`, `~/.ion/ios-diagnostic-logs.jsonl`, relay `relay.jsonl` | Canonical log schema (unversioned, additive-only) |
+| **Operational log** | "What did the code do on this machine?" | `~/.ion/engine.jsonl`, `<ION_DATA_DIR>/server.jsonl`, `~/.ion/desktop.jsonl`, `~/.ion/ios-diagnostic-logs.jsonl`, relay `relay.jsonl` | Canonical log schema (unversioned, additive-only) |
 | **Telemetry** | "What is happening across sessions, runs, and installs?" | `~/.ion/telemetry.jsonl` | Versioned event envelope (self-describing `schema` int) |
 
 Both streams use snake_case throughout and share one correlation vocabulary, so a single join key
 pivots between them (see [Correlation model](#correlation-model)).
+
+**System Metrics** are a third kind of output that rides both: sample lines in the operational
+logs (engine, server, and desktop), `system.metrics` events in telemetry, and their own OTLP
+metrics export. [Signals and where they go](README.md#signals-and-where-they-go) maps every output
+in one place; the recipes below read the sample lines.
 
 This document is the consumer **guide**. The normative field tables live in
 [`log-schema.md`](log-schema.md); where this guide and that document disagree, the schema document
@@ -32,7 +37,7 @@ Every operational surface writes one JSON object per line. The full normative ta
 |---|---|---|---|
 | `ts` | string | always | RFC3339Nano, UTC |
 | `level` | string enum | always | `TRACE` \| `DEBUG` \| `INFO` \| `WARN` \| `ERROR` |
-| `component` | string enum | always | `engine` \| `desktop` \| `ios` \| `relay` \| `extension` |
+| `component` | string enum | always | `engine` \| `server` \| `web` \| `desktop` \| `ios` \| `relay` \| `extension` |
 | `tag` | string | optional | Subsystem within the component; for extension logs, the extension name |
 | `msg` | string | always | Short, constant, data-free clause (never interpolated) |
 | `session_id` | string | omit when not in scope | Client-supplied engine session key |
@@ -80,7 +85,7 @@ versioned event stream. Every record self-identifies its schema generation via t
 | `user` | string | omit when absent | Authenticated identity when an enterprise OIDC auth context is present; absent on default installs |
 | `payload` | object | always | Event-specific fields, all snake_case |
 | `context` | object | when in scope | Correlation: `session_id`, `conversation_id`, `run_id` |
-| `trace_id` | string | omit when no run in flight | W3C trace-context trace-id, 32 lowercase hex. Scoped to one prompt-to-completion run — see § "Correlation model" |
+| `trace_id` | string | omit when no run in flight | W3C trace-context trace-id, 32 lowercase hex. The trace of the prompt the run serves: the run joins the trace the client started — see § "Correlation model" |
 
 Version history: v2 introduced the unified contract; v3 added `event_id` and the populated-capable `user` carrier; v4 stores compact frames with interned identity and context tables. The telemetry forwarder decodes file records at any schema at or below its own and sends expanded events to consumers. Added fields never bump the number; see [`docs/enterprise/telemetry.md`](../enterprise/telemetry.md) § "Schema versioning".
 
@@ -149,8 +154,10 @@ All surfaces share one schema and one JSONL format.
 |---|---|---|
 | Engine | `~/.ion/engine.jsonl` | Rename rotation, config-driven size cap; `.1` is the newest archive |
 | Extensions | `~/.ion/engine.jsonl` (`component=extension`, `tag=<extension-name>`) | Same file as engine |
+| Server | `<ION_DATA_DIR>/server.jsonl` (`component=server`) | Rename rotation at 20 MB; `.1` is the newest archive |
+| Browser Studio client | `<ION_DATA_DIR>/server.jsonl` (`component=web`, forwarded through the server's `POST /log`) | Same file as server |
 | Desktop | `~/.ion/desktop.jsonl` | Rename rotation; `.1` is the newest archive |
-| iOS | `~/.ion/ios-diagnostic-logs.jsonl` (shipped from device to the paired desktop's `~/.ion`) | Rename rotation; `.1` is the newest archive |
+| iOS | `<ION_DATA_DIR>/ios-diagnostic-logs.jsonl` (pulled from the device by the server it is paired with) | Rename rotation; `.1` is the newest archive |
 | Relay | `RELAY_LOG_FILE`, default `/var/log/ion/relay.jsonl` (inside the relay container) | Rename rotation; `.1` is the newest archive |
 | Telemetry (engine) | `~/.ion/telemetry.jsonl` (when telemetry is enabled) | Rename rotation by size; schema transitions are append-only |
 
@@ -206,6 +213,21 @@ Count occurrences of a constant message (this works *because* `msg` is never int
 jq -r 'select(.msg=="session started") | .ts' ~/.ion/engine.jsonl | wc -l
 ```
 
+System Metrics from the sample lines (fields under `fields`, see
+[log-schema.md](log-schema.md#system-metrics-sample-engine)):
+
+```bash
+# Host CPU and available memory over time, one line per 30 s sample
+jq -r 'select(.tag=="sysmetrics" and .level=="INFO") | [.ts, .fields.host_cpu_utilization, .fields.host_memory_available_bytes] | @tsv' ~/.ion/engine.jsonl
+
+# Which engine process role is using the most memory right now
+jq -c 'select(.tag=="sysmetrics") | .fields | {engine_rss_bytes, extension_rss_bytes, mcp_rss_bytes, backend_rss_bytes, tool_rss_bytes}' ~/.ion/engine.jsonl | tail -1
+
+# Studio's GPU helper, and every idle-repaint warning
+jq -r 'select(.tag=="device-metrics" and .msg=="device metrics sample") | [.ts, .fields.gpu_helper_gpu_percent // "n/a"] | @tsv' ~/.ion/desktop.jsonl
+jq -c 'select(.msg=="idle repaint detected")' ~/.ion/desktop.jsonl
+```
+
 Telemetry event queries require the telemetry forwarder because a v4 frame can contain multiple events. Use the local reference stack for LogQL queries, or configure the telemetry `http` or `otel` target for a collector that receives expanded events.
 
 ### Option 2 — the reference Loki/Grafana stack
@@ -218,36 +240,43 @@ dev util observability-up
 ```
 
 See [`docs/observability/README.md`](README.md) for the full stack reference: what Alloy tails, how the telemetry forwarder posts expanded events, the
-label policy, dashboard packs, and restart procedures. In short: Alloy tails the operational JSONL files and receives telemetry through `loki.source.api`; it promotes exactly three low-cardinality labels for operational logs
-(`component`, `level`, `tag`) plus `service`/`kind` for telemetry; everything else stays in the log
-body or structured metadata.
+label policy, dashboard packs, and restart procedures. In short: Alloy tails the operational JSONL files and receives telemetry through `loki.source.api`, and indexes every record under the names its OTLP form carries ([`log-schema.md`](log-schema.md) § "Names in Loki"): the labels `service_name`, `level`, and `tag` for operational logs, `service_name` and `event_name` for telemetry, and `host_name` and `user` on both; `trace_id` and `span_id` as structured metadata; everything else stays in the log
+body or structured metadata. A log query says `event_name=""`; a telemetry query names the event.
 
 LogQL Explore recipes (Grafana → Explore → Loki):
 
 ```logql
 # One conversation, all surfaces
-{component=~".+"} | json | conversation_id = "1780093348767-c1c03e998388"
+{service_name=~".+", event_name=""} | json | conversation_id = "1780093348767-c1c03e998388"
 
 # One session, all surfaces
-{component=~".+"} | json | session_id = "dd2ca947-1234-5678-abcd-ef0123456789"
+{service_name=~".+", event_name=""} | json | session_id = "dd2ca947-1234-5678-abcd-ef0123456789"
 
 # Errors from one component (level is a stream label; no JSON parse needed)
-{component="engine", level="ERROR"}
+{service_name="ion-engine", level="ERROR"}
 
 # One extension
-{component="extension", tag="my-extension"}
+{service_name="ion-extension", event_name="", tag="my-extension"}
 
 # Count a constant message over time (works because msg is never interpolated)
-count_over_time({component="engine"} |= "session started" [1h])
+count_over_time({service_name="ion-engine", event_name=""} |= "session started" [1h])
 
 # Pivot: everything sharing a trace_id found in Tempo
-{component=~".+"} | json | trace_id = "4bf92f3577b34da6a3ce929d0e0e4736"
+{service_name=~".+"} | trace_id = "4bf92f3577b34da6a3ce929d0e0e4736"
 
 # Telemetry: total cost, last 24h
-sum(sum_over_time({service="ion-telemetry", kind="run.complete"} | json | unwrap payload_run_cost_usd [24h]))
+sum(sum_over_time({event_name="run.complete"} | json | unwrap payload_run_cost_usd [24h]))
 
 # Telemetry: tool call volume by tool, last 24h
-sum by (tool) (count_over_time({service="ion-telemetry", kind="tool.execute"}[24h]))
+sum by (tool) (count_over_time({event_name="tool.execute"}[24h]))
+```
+
+The same System Metrics in LogQL (the **Ion System Metrics** dashboard is built from these):
+
+```logql
+avg(avg_over_time({service_name="ion-engine", event_name=""} | json | tag="sysmetrics" | fields_host_cpu_utilization != "" | unwrap fields_host_cpu_utilization [5m]))
+avg(avg_over_time({service_name="ion-desktop", event_name=""} | json | tag="device-metrics" | msg="device metrics sample" | fields_gpu_helper_gpu_percent != "" | unwrap fields_gpu_helper_gpu_percent [5m]))
+sum(count_over_time({service_name="ion-desktop", event_name=""} | json | msg="idle repaint detected" [1h]))
 ```
 
 ### Option 3 — programmable egress (no Ion-provided stack required)
@@ -285,10 +314,63 @@ existing SIEM, OTLP collector, or log pipeline needs no Alloy, no Loki, and no f
 | `egressChunkSize` | Maximum records per POST when draining the disk spool; zero uses the compiled default |
 | `egressSpoolMaxBytes` | Disk cap for the undeliverable-batch spool; zero uses the compiled default. Over cap, oldest records are dropped |
 | `egressBufferMaxRecords` | Heap cap for the in-memory staging buffer; zero uses the compiled default. Over cap, oldest records are dropped and the loss is logged at ERROR |
+| `egressTokenScope` | When set, every flush mints a fresh bearer token for this scope and sends it as `Authorization`, over any static header |
+| `egressTokenAudience` | Explicit audience/resource for the egress token, for providers that bind grants to one. Empty uses the provider's default |
+| `egressTokenProvider` | Name of the `auth.oauth` entry that mints the egress token. Empty uses `auth.identityProvider`. Name a `machineIdentity` entry to authenticate a headless engine that has no signed-in operator |
+
+**Authenticated egress on a headless engine.** By default the egress token comes from the engine's
+identity provider. A container, CI runner, or server has nobody signed in, so that provider has no
+token and the sink answers `401`. Point `egressTokenProvider` at a machine identity instead:
+
+```json
+{
+  "auth": {
+    "oauth": {
+      "log-shipper": {
+        "clientId": "00000000-0000-0000-0000-000000000000",
+        "tokenUrl": "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token",
+        "scopes": ["api://<ingest-app-id>/.default"],
+        "machineIdentity": {
+          "source": "client_secret",
+          "clientSecretEnv": "ION_LOG_SHIPPER_CLIENT_SECRET"
+        }
+      }
+    }
+  },
+  "logging": {
+    "egressTargets": ["otel"],
+    "egressOtel": { "enabled": true, "endpoint": "https://otel.example.com" },
+    "egressTokenScope": "api://<ingest-app-id>/.default",
+    "egressTokenProvider": "log-shipper"
+  }
+}
+```
+
+The engine reads the secret from the environment variable at startup and removes it from its own
+environment. Every `machineIdentity` source listed in the
+[engine.json reference](../configuration/engine-json.md#machine-identity-fields) works here except
+`aws`, which yields AWS credentials rather than a bearer token. When `egressTokenProvider` names
+`auth.identityProvider` itself, egress reuses that provider. The startup line
+`egress auth header provider installed` names the provider and its kind; a misconfigured entry logs
+an ERROR and falls back to the identity provider.
 
 Egress is additive: the local JSONL file is always written regardless of egress config. The
 forwarder buffers off the hot logging path and flushes on batch size, on the periodic ticker, and
-on engine shutdown.
+on engine shutdown. The shutdown drain is the engine's last step: it ships the lines logged during
+teardown, bounded to a few seconds so a hung sink cannot hold the process open. Whatever it cannot
+deliver stays in the spool for the next start. When `ion prompt` starts its own engine (for example
+as a container's entrypoint), it waits for that engine to finish shutting down before it exits, and
+it ships its own lines too, through a spool of its own (`.prompt-egress-spool.jsonl`). Against an
+engine that was already running, `ion prompt` ships nothing of its own.
+
+The first lines an engine logs (process start, its data directory, how its previous run exited)
+come before it reads `engine.json`. They are held and shipped by the first forwarder, so the shipped
+log starts where the file does.
+
+The tailer that ships the other assigned files treats what those files hold when it starts as
+history and skips it; everything written after that ships. A file that does not exist yet when the
+tailer starts is shipped from its first line. A run shorter than one poll interval, like a CI job,
+still ships all of its output.
 
 **A sink outage is bounded on both sides.** When a target is unreachable or rejects the batch
 (including a persistent `401` from an expired ingest credential), undelivered records go to the disk
@@ -306,25 +388,40 @@ logs to any backend.** OTLP/HTTP logs is a vendor-neutral wire format that virtu
 log backend and collector already speaks, so pointing Ion at an OTLP endpoint is the one integration
 that works everywhere without a bespoke receiver.
 
-The engine and the desktop both ship OTLP, and they ship it **losslessly**: every OTLP log record
-carries the complete canonical record. `msg` is the record body; `component`, `tag`, every in-scope
-correlation ID (`session_id`, `conversation_id`, `trace_id`), and `user` (when an identity is set)
-are attributes; and **every key in the `fields` map is flattened to its own natively-typed
-attribute** — string values as `stringValue`, booleans as `boolValue`, integers as `intValue`
-(int64 rendered as a decimal string per the OTLP/JSON mapping), non-integer numbers as `doubleValue`,
-and nested objects/arrays JSON-stringified into a `stringValue`. `run_id` is one of those `fields`
-keys (per the [correlation model](#correlation-model) it lives in `fields`, not top-level), so it
-rides through as its own attribute — nothing in the on-disk line is dropped on the OTLP wire.
+The engine, the server, the desktop, and the relay all ship OTLP, and every record states each fact
+once, where OTLP puts it (schema version 2, [`log-schema.md`](log-schema.md#otlp-correlation-model)
+§ "OTLP correlation model"):
 
-Levels map to OTLP severity numbers (TRACE=1, DEBUG=5, INFO=9, WARN=13, ERROR=17) with the level
-string as `severityText`. `service.name` defaults to `ion-engine` on the engine and `ion-desktop` on
-the desktop; override it via `egressOtel.serviceName`.
+- **Resource**: the source that wrote the record. `service.namespace` is `ion`, `service.name` is
+  `ion-<component>`, `service.instance.id` is the install (a telemetry event's own `install_id`, an
+  iOS line's `device_id`), `service.version` is the build, and `host.name` is the host without
+  `.local`. Application Insights builds `RoleName` and `RoleInstance` from these.
+- **LogRecord**: a valid `trace_id` is the `traceId`, and the span the record is about is the
+  `spanId`. Levels map to severity numbers (TRACE=1, DEBUG=5, INFO=9, WARN=13, ERROR=17) with the
+  level string as `severityText`. The body is the record itself: the JSONL line, or the telemetry
+  event JSON.
+- **Attributes**: on an operational line, `tag`, `session_id`, `conversation_id`, `user` (when an
+  identity is set), `event_id`, and **every `fields` key flattened to its own natively-typed
+  attribute** — string values as `stringValue`, booleans as `boolValue`, integers as `intValue`
+  (int64 rendered as a decimal string per the OTLP/JSON mapping), non-integer numbers as
+  `doubleValue`, and nested objects/arrays JSON-stringified into a `stringValue`. `run_id` rides
+  there (per the [correlation model](#correlation-model) it lives in `fields`). On a telemetry
+  event, `event.name`, `user`, `schema_version`, and the payload and context keys the local stack
+  indexes.
 
-**Engine↔desktop parity guarantee.** For the same canonical record, the engine (Go) and the desktop
-(TypeScript) produce **structurally identical** OTLP output: the same attribute keys, the same value
-types, the same sorted key order, the same constant-`msg` body. The two exporters share one typing
+No attribute repeats the trace, span, component, host, install, or build. `event.name` is present on
+every telemetry event and on no operational line, so it is what tells the two apart.
+
+`egressOtel.serviceName` names the exporter's instrumentation scope (`scopeLogs[].scope.name`), not a
+service. It defaults to `ion-engine` on the engine and `ion-<process>` on the server and desktop. A
+record's service is always its resource's `service.name`, whichever process shipped it, and a
+configured `resourceAttributes` entry never overrides `service.name`.
+
+**Engine↔TypeScript parity guarantee.** For the same canonical record, the engine (Go) and the
+TypeScript forwarder the server and desktop share produce **structurally identical** OTLP output: the same resource, the same attribute keys, the same value
+types, the same sorted key order, the same body. The two exporters share one typing
 convention and are pinned to each other by a cross-surface parity test
-(`desktop/src/main/__tests__/log-egress-otel.test.ts` asserts the desktop attribute set against the
+(`packages/shared/src/__tests__/log-egress-otel.test.ts` asserts the TypeScript attribute set against the
 engine's, whose shape is pinned in `engine/internal/utils/log_egress_otel_test.go`). A backend
 therefore sees one uniform log shape whether a line originated in the engine or the desktop.
 
@@ -343,10 +440,11 @@ without touching Ion config. Adding Splunk next to Loki is a collector-exporter 
 redeploy.
 
 ```
-engine  ─┐
-desktop ─┼─▶  OTLP collector  ─┬─▶  Loki
-telemetry┘   (routing config)  ├─▶  Splunk
-                               └─▶  Elastic / S3 / SIEM
+engine   ─┐
+server   ─┤
+desktop  ─┼─▶  OTLP collector  ─┬─▶  Loki
+telemetry─┘   (routing config)  ├─▶  Splunk
+                                └─▶  Elastic / S3 / SIEM
 ```
 
 #### The `http` target is the bespoke-Ion escape hatch
@@ -386,35 +484,44 @@ Both streams carry the same join keys. This is the contract that makes cross-str
 | `session_id` | top-level | `context.session_id` | One engine session (desktop: tab UUID), spanning many runs | You want every run that shared a live session |
 | `conversation_id` | top-level | `context.conversation_id` | Durable conversation-file identity; spans sessions and runs | You want the whole conversation over its lifetime — audit, resource scoping |
 | `run_id` | in `fields` where relevant | `context.run_id` | One prompt-to-completion run | You are joining Ion's logs to Ion's telemetry for one run |
-| `trace_id` | top-level | top-level, and `context` on run-scoped events | **One prompt-to-completion run** | You are doing distributed tracing — APM operation id, `traceparent` for a downstream call |
-| `span_id` | top-level | n/a (spans become events) | One operation | You are correlating a single span |
+| `trace_id` | top-level | top-level, and `context` on run-scoped events | **One prompt**, from the client's submit through the engine's run | You are following one prompt across every surface, or doing distributed tracing — APM operation id, `traceparent` for a downstream call |
+| `span_id` | `fields.span_id` on a span line (`tag=span`) | `payload.span_id` on a span event | One hop's timed span | You are placing one hop inside the prompt's trace |
 
-`trace_id` and `run_id` identify the same run: `trace_id` is the W3C-shaped 32-hex form that travels
-across process boundaries, `run_id` is the engine-native form. Use `trace_id` when the other side of
-the join is an OTLP backend, `run_id` when both sides are Ion's own streams.
+A prompt is one trace. The client that sends it (Studio in Electron or a browser, or the phone)
+starts the trace and passes it on as a `traceparent`; the relay, the server, and the engine's run
+join it, each with its own span. So `trace_id` is the same on the client's span line, the server's
+lines about the prompt, and every engine and extension line of the run it started. `run_id` is the
+engine-native id of the run alone. Use `trace_id` to follow a prompt across surfaces or into an OTLP
+backend, `run_id` when both sides are the engine's own streams. The hop chain and the span record
+shapes are in [`log-schema.md`](log-schema.md#spans) § "Spans".
 
-> **`trace_id` is scoped to one run, not one session.** A trace represents one logical transaction,
-> and a session can stay open for hours across hundreds of prompts. Lines emitted with no run in
-> flight (session start/stop, schedule and webhook deliveries) carry no `trace_id` at all — join
-> those by `session_id` or `conversation_id`. Full vocabulary:
+> **`trace_id` is scoped to one prompt, not one session.** A trace represents one logical transaction,
+> and a session can stay open for hours across hundreds of prompts. Lines about no prompt (session
+> start/stop, extension load) carry no `trace_id` at all — join those by `session_id` or
+> `conversation_id`. A run the engine starts on its own (a schedule or webhook delivery) has a trace
+> of its own that starts at the engine. Full vocabulary:
 > [`log-schema.md`](log-schema.md) § "Correlation-ID vocabulary".
 
 The pivot workflow (from [`docs/enterprise/telemetry.md`](../enterprise/telemetry.md#correlation-model)):
 
 1. Find an error in the operational stream: `{level="ERROR"} | json | session_id = "..."`.
-2. Copy its `trace_id` — that is the single run the error happened in. Pull every line from that run
-   across all surfaces: `{component=~".+"} | json | trace_id = "..."`. The same value opens the span
-   tree in any OTLP backend the run's spans were exported to.
+2. Copy its `trace_id` — that is the prompt the error happened in. Pull every line of it, on every
+   surface: `{service_name=~".+"} | trace_id = "..."` returns the client's `prompt.send` span
+   line, the server's lines and its `prompt.handle` span, and the engine and extension lines of the
+   run. The same value opens the span tree in any OTLP backend the spans were exported to (Tempo in
+   the local stack): `prompt.send` → `relay.forward` (phone prompts over a relay) and
+   `prompt.handle` → `engine.send_prompt` → `run.execute` → `llm.call` / `tool.execute` /
+   `extension.hook_latency`.
 3. Widen from the run to the whole conversation: take `conversation_id` off any of those lines and
-   query `{component=~".+"} | json | conversation_id = "..."`.
+   query `{service_name=~".+", event_name=""} | json | conversation_id = "..."`.
 
-Step 2 narrows to the failing transaction; step 3 widens to its history. That is the reason both IDs
-exist — `trace_id` isolates one run, `conversation_id` gives it context.
+Step 2 narrows to the failing prompt; step 3 widens to its history. That is the reason both IDs
+exist — `trace_id` isolates one prompt, `conversation_id` gives it context.
 
 The same joins work with plain `jq` — the keys are in the lines, not in any stack:
 
 ```bash
-# From a telemetry run.complete, pull the operational lines for that exact run
+# From a telemetry run.complete, pull every line of the prompt that run served
 TID=$(jq -r 'select(.name=="run.complete") | .trace_id' ~/.ion/telemetry.jsonl | tail -1)
 jq -c --arg tid "$TID" 'select(.trace_id==$tid)' ~/.ion/*.jsonl
 

@@ -24,13 +24,24 @@ operator's per-provider backend preferences.
 1. `providers.GetModelInfo(model).ProviderID` gives the provider ID.
 2. If the operator pinned that provider (`providers.<id>.backend` in
    `engine.json`), that kind wins.
-3. Otherwise the default rule applies: `ProviderID == "anthropic"` →
-   `claude-code`; everything else, including `GetModelInfo == nil` → `api`.
+3. Otherwise the credential rule applies
+   (`EffectiveBackendForProvider` in `engine/internal/backend/hybrid_routing.go`):
+   1. An API key is available for the provider → `api`.
+   2. No key, and the provider's delegated CLI is installed and signed in →
+      that CLI kind (`claude-code`, `codex`, `grok`, `cursor`).
+   3. Neither → `api` for a provider that allows the API backend, so the run
+      fails with a plain missing-key error. A CLI-only provider routes to its
+      CLI kind, so the run fails with a plain not-signed-in error.
 
-The default rule is exact-match on `"anthropic"`, not prefix matching on
-`"claude-"`. That makes it correct for custom-registered Anthropic model aliases
-(e.g. enterprise-renamed Claude IDs) without ad-hoc special cases. The canonical
-model→provider resolver is the single source of truth.
+The credential rule is evaluated live on every run. Adding or removing a key, or
+completing a CLI sign-in, changes the route on the next run with no restart.
+
+A run for an attributed principal whose API path requires the principal's own
+credential is never served by the machine's shared CLI subscription
+(`requiresPrincipalCredential`). Step 3.2 is skipped for it.
+
+The provider ID comes from the canonical model→provider resolver, so
+custom-registered model aliases route the same way as the built-in IDs.
 
 Inner backends are built lazily on first route and keyed by kind
 (`h.inner[kind]`). A requested kind whose backend has not landed degrades to the
@@ -56,11 +67,12 @@ Two methods on `*ApiBackend` are not part of the public `RunBackend` interface: 
 `HybridBackend` exposes both as additive methods:
 
 - `StartRunWithConfig` routes by model: API-routed runs forward to the inner `*ApiBackend.StartRunWithConfig`; subscription-routed runs (claude-code/codex/grok/cursor) fall back to `StartRun` on the inner backend (each wires its own hooks via its subprocess protocol and ignores `RunConfig`).
-- `Steer` looks up the routing table. For API-routed runs it forwards to `inner.Steer` and returns the inner's verdict. For non-API-routed runs it returns `false`, signaling the caller to fall back to the stdin-pipe path (`WriteToStdin`). The session package reaches `Steer` through a local `steerable` interface in `agent.go` rather than putting `Steer` on `RunBackend` — that keeps the published interface contract additive.
+- `Steer` looks up the routing table. For API-routed runs it forwards to `inner.Steer` and returns the inner's verdict. For non-API-routed runs it returns `false`, signaling the caller to fall back to the stdin-pipe path.
+- `SteerViaStdin` is that stdin path for an inner backend that confirms its steers (the Claude CLI). Any other inner backend returns `ErrStdinSteerUnsupported`, and the caller falls back to a plain `WriteToStdin`. The session package reaches `Steer` through a local `steerable` interface in `agent.go` rather than putting `Steer` on `RunBackend` — that keeps the published interface contract additive.
 
 ## Session-side helper
 
-`session.Manager.resolvedBackend(model)` is the one place in the session package that knows about hybrid. For plain `ClaudeCodeBackend` / `ApiBackend` / mock backends it returns `m.backend` unchanged. For `HybridBackend` it delegates to `HybridBackend.ResolveFor(model)`, which applies the per-provider preference and default rule and returns the inner backend.
+`session.Manager.resolvedBackend(model)` is the one place in the session package that knows about hybrid. For plain `ClaudeCodeBackend` / `ApiBackend` / mock backends it returns `m.backend` unchanged. For `HybridBackend` it delegates to `HybridBackend.ResolveFor(model)`, which applies the per-provider preference and the credential rule and returns the inner backend.
 
 Routing lives in exactly one place (`ResolveFor`); the session helper is the seam onto it.
 
@@ -85,7 +97,7 @@ Child runs route by the child's `RunOptions.Model`, not the parent's. A Claude p
 }
 ```
 
-`"claude-code"` (formerly `"cli"`, still accepted as a legacy alias) and `"api"` continue to behave exactly as before. Per-provider preferences are additive: an install with no `providers.<id>.backend` set uses the default rule, byte-for-byte as before. There is no migration step.
+`"claude-code"` (formerly `"cli"`, still accepted as a legacy alias) and `"api"` continue to behave exactly as before. Per-provider preferences are additive: an install with no `providers.<id>.backend` set uses the credential rule. There is no migration step.
 
 ## Contract safety
 

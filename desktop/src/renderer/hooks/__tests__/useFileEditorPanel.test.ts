@@ -27,7 +27,7 @@ import { useFileEditorPanel } from '../useFileEditorPanel'
 
 const RESTORED_GEO = { x: 1800, y: 40, w: 1600, h: 900 }
 
-vi.mock('../../stores/sessionStore', () => {
+vi.mock('@ion/server/store/sessionStore', () => {
   const state = {
     editorGeometry: { x: 1800, y: 40, w: 1600, h: 900 },
     setEditorGeometry: vi.fn(),

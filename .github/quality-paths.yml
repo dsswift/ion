@@ -5,6 +5,7 @@ engine:
   - 'engine/**'
 sdk:
   - 'sdk/go/**'
+  - 'packages/studio-sdk/**'
   - 'engine/extensions/sdk/**'
   - 'engine/internal/extension/**'
 relay:
@@ -12,10 +13,16 @@ relay:
 desktop:
   - 'desktop/**'
   - 'scripts/check-status-writers.sh'
-  - 'scripts/check-atv-parity.sh'
+  - 'scripts/check-server-parity.sh'
 desktop_deps:
   - 'desktop/package.json'
-  - 'desktop/package-lock.json'
+  - 'package-lock.json'
+shared:
+  - 'packages/shared/**'
+  # The Studio SDK's TypeScript flavor and its contract are tested from here.
+  - 'packages/studio-sdk/**'
+server:
+  - 'server/**'
 ios:
   - 'ios/IonRemote/**'
   - 'ios/IonRemoteTests/**'
@@ -27,13 +34,21 @@ logging:
   - 'sdk/go/**'
   - 'relay/**'
   - 'desktop/**'
+  - 'packages/shared/**'
+  - 'server/**'
   - 'ios/**'
-  - 'scripts/check-logging.sh'
+  - 'scripts/check-logging*'
   - 'scripts/test-quality-path-scopes.sh'
 dashboards:
   - 'docs/observability/dashboards/**'
   - 'docs/observability/grafana/provisioning/dashboards/**'
   - 'docs/observability/queries.md'
+  # The collector-source gate reads these two and log-schema.md: a log file the
+  # schema documents and the collector does not tail is invisible in Loki, with
+  # nothing failing to say so. That is how server.jsonl went uncollected.
+  - 'docs/observability/alloy-config.alloy'
+  - 'docs/observability/docker-compose.yml'
+  - 'docs/observability/log-schema.md'
 workflows:
   - '.github/workflows/**'
   - '.github/scripts/build-release-summary-context.sh'

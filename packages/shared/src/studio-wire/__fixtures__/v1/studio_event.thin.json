@@ -1,0 +1,5 @@
+{
+  "type": "studio_event",
+  "channel": "studio:thin-event",
+  "payload": { "type": "desktop_working_message", "tabId": "tab-1", "instanceId": "inst-1", "message": "Hello" }
+}

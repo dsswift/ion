@@ -17,20 +17,19 @@
  *   - Session ID (copyable), conversation-lifetime turns, durationMs, sessionVersion (C6).
  */
 
-import React, { useMemo, useCallback } from 'react'
+import React, { useMemo, useEffect } from 'react'
 import { X, CircleNotch } from '@phosphor-icons/react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useShallow } from 'zustand/shallow'
-import { windowRole } from '../lib/window-role'
 import { useColors } from '../theme'
 import { STATUS_DRAWER_WIDTH } from './panelGeometry'
-import { meta, getDispatches, buildBreadcrumbStack } from './agent-panel-helpers'
-import { AgentDetailPanel } from './AgentDetailPanel'
-import type { AgentStateUpdate } from '../../shared/types'
-import type { ContextBreakdownCategory, DispatchInfo } from '../../shared/types-engine'
-import { getDynamicContextWindow } from '../stores/model-labels'
-import { usePreferencesStore } from '../preferences'
+import { meta, getDispatches } from './agent-panel-helpers'
+import type { AgentStateUpdate } from '@ion/shared/types'
+import type { ContextBreakdownCategory } from '@ion/shared/types-engine'
+import { getDynamicContextWindow } from '@ion/server/store/model-labels'
+import { runningConversationModel } from '@ion/shared/conversation-model'
 import { resolveContextDisplay, resolveContextInputs } from './context-usage'
+import { host } from '../host/host-instance'
 
 // Presentational parts live in StatusDrawerParts.tsx — this file is under an
 // explicit size cap and the parts are pure (data + colors in, JSX out). The
@@ -48,10 +47,7 @@ import type { KindKey, GraphSegment } from './StatusDrawerParts'
 
 export function StatusDrawer({ embedded = false }: { embedded?: boolean }) {
   const colors = useColors()
-  const preferredModel = usePreferencesStore((s) => s.preferredModel)
   const closeStatusDrawer = useSessionStore((s) => s.closeStatusDrawer)
-  const openDispatchPreview = useSessionStore((s) => s.openDispatchPreview)
-  const statusDrawerDispatchId = useSessionStore((s) => s.statusDrawerDispatchId)
 
   const { tab, activeInstance } = useSessionStore(
     useShallow((s) => {
@@ -64,12 +60,26 @@ export function StatusDrawer({ embedded = false }: { embedded?: boolean }) {
   )
   const tabId = tab?.id
 
+  // Fire get_context_breakdown whenever the drawer mounts for a tab (Studio
+  // only mounts this component while the Status surface tab is active, so
+  // mount === open) so the breakdown panel always shows current data — even
+  // for idle or freshly-loaded historical conversations that have not sent a
+  // prompt yet. The engine emits engine_context_breakdown on its event bus;
+  // the existing context_breakdown handler in event-wiring.ts populates
+  // activeInstance.contextBreakdown and the drawer re-renders synchronously.
+  useEffect(() => {
+    if (!tabId) return
+    host.shell.engineGetContextBreakdown(tabId).catch(() => {
+      // Fire-and-forget. Failure is non-fatal: the drawer renders whatever
+      // cached breakdown it has (possibly none for brand-new sessions).
+    })
+  }, [tabId])
+
   const statusFields = activeInstance?.statusFields ?? null
   const agentStates: AgentStateUpdate[] = useMemo(
     () => activeInstance?.agentStates ?? [],
     [activeInstance?.agentStates],
   )
-  const dispatchTelemetry = activeInstance?.dispatchTelemetry ?? []
 
   // Flat, running-only dispatch rows across all tiers
   const runningDispatches = useMemo(() => {
@@ -83,21 +93,6 @@ export function StatusDrawer({ embedded = false }: { embedded?: boolean }) {
       return [{ agent, dispatch: activeDispatch, depth, displayName }]
     })
   }, [agentStates])
-
-  // Breadcrumb reconstruction for deep-linked dispatch
-  const deepLinkData = useMemo(() => {
-    if (!statusDrawerDispatchId) return null
-    const targetAgent = agentStates.find((a) => getDispatches(a).some((d) => d.id === statusDrawerDispatchId))
-    if (!targetAgent) return null
-    const dispatches = getDispatches(targetAgent)
-    const stack = buildBreadcrumbStack(statusDrawerDispatchId, agentStates)
-    const dispatchIdx = Math.max(0, dispatches.findIndex((d) => d.id === statusDrawerDispatchId))
-    return { agent: targetAgent, dispatches, dispatchIdx, stack: stack ?? undefined }
-  }, [statusDrawerDispatchId, agentStates])
-
-  const handleCloseDeepLink = useCallback(() => {
-    useSessionStore.setState({ statusDrawerDispatchId: null })
-  }, [])
 
   // Context breakdown cached on the instance from engine_context_breakdown events
   const contextBreakdown = activeInstance?.contextBreakdown ?? null
@@ -117,7 +112,7 @@ export function StatusDrawer({ embedded = false }: { embedded?: boolean }) {
   // The itemized sum still drives the per-category grid below, where the
   // `unaccounted` row makes its drift from the provider total explicit.
   const { tokens: contextTokens, engineWindow } = resolveContextInputs(activeInstance)
-  const effectiveModel = activeInstance?.modelOverride || activeInstance?.sessionModel || preferredModel
+  const effectiveModel = runningConversationModel(activeInstance)
   const selectedWindow = getDynamicContextWindow(effectiveModel, engineWindow)
   const contextDisplay = resolveContextDisplay(contextTokens, selectedWindow)
   const contextPercent = contextDisplay?.pct ?? 0
@@ -256,43 +251,17 @@ export function StatusDrawer({ embedded = false }: { embedded?: boolean }) {
           <div>
             <SectionHeader label={`Running (${runningDispatches.length})`} colors={colors} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {runningDispatches.map(({ agent: _agent, dispatch, depth, displayName }) => (
+              {runningDispatches.map(({ agent, dispatch, depth, displayName }) => (
                 <button key={dispatch.id} onClick={() => {
-                  // Studio routes the deep-link into the inline dispatch
-                  // split; the overlay keeps the drawer→floating-panel path.
-                  if (windowRole() === 'studio') {
-                    useSessionStore.getState().openDispatchSplit({ agentName: _agent.name, dispatchId: dispatch.id })
-                    return
-                  }
-                  openDispatchPreview(dispatch.id)
+                  useSessionStore.getState().openDispatchSplit({ agentName: agent.name, dispatchId: dispatch.id })
                 }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderRadius: 4, background: statusDrawerDispatchId === dispatch.id ? colors.surfaceActive : colors.surfaceHover, border: 'none', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderRadius: 4, background: colors.surfaceHover, border: 'none', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
                   {depth > 0 && <span style={{ fontSize: 9, color: colors.textMuted, flexShrink: 0 }}>T{depth}</span>}
                   <span style={{ fontSize: 10, color: colors.textPrimary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>
                   <span style={{ fontSize: 9, color: colors.textTertiary, flexShrink: 0 }}>{elapsedStr(dispatch.startTime)}</span>
                 </button>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Deep-link: AgentDetailPanel */}
-        {deepLinkData && (
-          <div>
-            <SectionHeader label="Dispatch Detail" colors={colors} />
-            <AgentDetailPanel
-              agent={deepLinkData.agent}
-              loadedMessages={undefined}
-              loading={false}
-              dispatches={deepLinkData.dispatches as DispatchInfo[]}
-              selectedDispatch={deepLinkData.dispatchIdx}
-              onSelectDispatch={() => {}}
-              onClose={handleCloseDeepLink}
-              dispatchTelemetry={dispatchTelemetry}
-              allAgents={agentStates}
-              initialStack={deepLinkData.stack}
-              tabId={tabId}
-            />
           </div>
         )}
       </div>

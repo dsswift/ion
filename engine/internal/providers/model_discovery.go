@@ -46,7 +46,6 @@ type providerDiscovery struct {
 var (
 	discoveryCache = make(map[string]*providerDiscovery)
 	discoveryMu    sync.RWMutex
-	discoveryOnce  sync.Once
 
 	// cliBackedProviders is the set of providers whose models come from a
 	// delegated CLI (via SetExternalModels) rather than the HTTP /models
@@ -97,12 +96,17 @@ func SetExternalModels(providerID string, models []types.ModelEntry) {
 type keyResolver func(provider string) (string, error)
 
 // StartModelDiscovery fetches models from all authed providers in the
-// background. Call once at startup.
+// background. Call once at startup -- the caller (cmd_serve.go) already
+// calls this exactly once per process, so no re-entrancy guard is needed
+// here. This is the unattributed (subject "") warm-up: it preserves a
+// single-user engine's exact startup behavior. The former package-level
+// sync.Once guard was retired here (R-16): "once" no longer means
+// anything once discovery is per (subject, provider) -- see entitlement.go,
+// whose own singleflight (EntitlementFor) is what actually collapses
+// concurrent first-use for one principal.
 func StartModelDiscovery(resolveKey keyResolver, providerConfigs map[string]types.ProviderConfig) {
-	discoveryOnce.Do(func() {
-		utils.Log("ModelDiscovery", "starting background discovery for all providers")
-		go runDiscoveryAll(resolveKey, providerConfigs, false)
-	})
+	utils.Log("ModelDiscovery", "starting background discovery for all providers")
+	go runDiscoveryAll(resolveKey, providerConfigs, false)
 }
 
 // DiscoverProvider runs model discovery for a single provider. Called
@@ -309,16 +313,16 @@ func storeResult(providerID string, models []types.ModelEntry, err error) {
 				// gateway routinely publishes cache rates with no lifetime, and
 				// taking the zero verbatim leaves consumers unable to tell a
 				// live prompt cache from an expired one.
-				CacheTtlSeconds:        ResolveCacheTtlSeconds(m.SupportsCaching, m.CacheTtlSeconds),
-				SupportsThinking:       m.SupportsThinking,
-				SupportsImages:         m.SupportsImages,
-				MaxOutputTokens:        m.MaxOutputTokens,
-				ThinkingMode:           m.ThinkingMode,
-				ThinkingEfforts:        m.ThinkingEfforts,
-				Tokenizer:              m.Tokenizer,
-				ModelKind:              m.ModelKind,
-				Dialect:                m.Dialect,
-				CostPerImage:           m.CostPerImage,
+				CacheTtlSeconds:  ResolveCacheTtlSeconds(m.SupportsCaching, m.CacheTtlSeconds),
+				SupportsThinking: m.SupportsThinking,
+				SupportsImages:   m.SupportsImages,
+				MaxOutputTokens:  m.MaxOutputTokens,
+				ThinkingMode:     m.ThinkingMode,
+				ThinkingEfforts:  m.ThinkingEfforts,
+				Tokenizer:        m.Tokenizer,
+				ModelKind:        m.ModelKind,
+				Dialect:          m.Dialect,
+				CostPerImage:     m.CostPerImage,
 			}
 			existing, exists := modelRegistry[m.ID]
 			if !exists {
@@ -432,12 +436,66 @@ func mergeDiscoveredInfo(existing, discovered types.ModelInfo) types.ModelInfo {
 
 // ─── Provider-specific fetch implementations ──────────────────────
 
+// authApplier attaches authentication to a discovery request. Both discovery
+// paths funnel through it: the legacy resolver-key path wraps a raw
+// key+header pair (rawKeyApplier); the per-principal path
+// (entitlement.go) wraps an already-resolved auth.RequestAuthenticator so a
+// raw credential never has to exist as a standalone string on this path
+// either (R-06).
+type authApplier func(req *http.Request) error
+
+// rawKeyApplier adapts the legacy (apiKey, authHeader) pair to authApplier,
+// preserving fetchModelsForProvider's exact existing behavior for the
+// unattributed/process-wide discovery path (StartModelDiscovery,
+// RefreshModels with no principal).
+func rawKeyApplier(apiKey, authHeader string) authApplier {
+	return func(req *http.Request) error {
+		if apiKey != "" {
+			setAuthHeader(req, authHeader, apiKey)
+		}
+		return nil
+	}
+}
+
+// urlKeyApplier attaches apiKey as a ?key= query parameter, matching
+// Gemini's native (non-authenticator) discovery auth style.
+func urlKeyApplier(apiKey string) authApplier {
+	return func(req *http.Request) error {
+		if apiKey != "" {
+			q := req.URL.Query()
+			q.Set("key", apiKey)
+			req.URL.RawQuery = q.Encode()
+		}
+		return nil
+	}
+}
+
 func fetchModelsForProvider(providerID, baseURL, apiKey, authHeader string) ([]types.ModelEntry, error) {
 	switch providerID {
 	case "anthropic":
-		return fetchAnthropicModels(baseURL, apiKey)
+		// Always x-api-key, matching Anthropic's own native auth style --
+		// never the generic authHeader override, which is meaningless for
+		// the vendor's own endpoint (a config gateway pointed at a
+		// different provider under the "anthropic" key registers as a
+		// gateway provider, not this one).
+		return fetchAnthropicModelsAuth(baseURL, rawKeyApplier(apiKey, "x-api-key"))
 	case "google":
-		return fetchGoogleModels(baseURL, apiKey)
+		// Always ?key=, matching Gemini's native discovery style.
+		return fetchGoogleModelsAuth(baseURL, urlKeyApplier(apiKey))
+	}
+	return fetchModelsForProviderAuth(providerID, baseURL, rawKeyApplier(apiKey, authHeader))
+}
+
+// fetchModelsForProviderAuth is fetchModelsForProvider generalized over
+// authApplier, so the per-principal entitlement path (entitlement.go) can
+// share the exact same wire-shape logic while authenticating via an
+// auth.RequestAuthenticator instead of a raw key string.
+func fetchModelsForProviderAuth(providerID, baseURL string, applyAuth authApplier) ([]types.ModelEntry, error) {
+	switch providerID {
+	case "anthropic":
+		return fetchAnthropicModelsAuth(baseURL, applyAuth)
+	case "google":
+		return fetchGoogleModelsAuth(baseURL, applyAuth)
 	case "bedrock", "azure":
 		return nil, fmt.Errorf("discovery not supported for %s", providerID)
 	default:
@@ -448,21 +506,18 @@ func fetchModelsForProvider(providerID, baseURL, apiKey, authHeader string) ([]t
 		if !strings.HasSuffix(baseURL, "/v1") && !strings.Contains(baseURL, "/v1/") {
 			baseURL = strings.TrimRight(baseURL, "/") + "/v1"
 		}
-		return fetchOpenAICompatModels(providerID, baseURL, apiKey, authHeader)
+		return fetchOpenAICompatModelsAuth(providerID, baseURL, applyAuth)
 	}
 }
 
-func fetchOpenAICompatModels(providerID, baseURL, apiKey, authHeader string) ([]types.ModelEntry, error) {
+func fetchOpenAICompatModelsAuth(providerID, baseURL string, applyAuth authApplier) ([]types.ModelEntry, error) {
 	url := strings.TrimRight(baseURL, "/") + "/models"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	if apiKey != "" {
-		// Honor the provider's configured auth header style (setAuthHeader
-		// defaults to Authorization: Bearer when authHeader is empty).
-		// Enterprise gateways commonly require x-api-key instead.
-		setAuthHeader(req, authHeader, apiKey)
+	if err := applyAuth(req); err != nil {
+		return nil, fmt.Errorf("authenticate discovery request: %w", err)
 	}
 	return doModelsFetch(req, providerID, func(id string) types.ModelEntry {
 		return types.ModelEntry{ID: id, ProviderID: providerID}
@@ -470,16 +525,22 @@ func fetchOpenAICompatModels(providerID, baseURL, apiKey, authHeader string) ([]
 }
 
 func fetchAnthropicModels(baseURL, apiKey string) ([]types.ModelEntry, error) {
+	return fetchAnthropicModelsAuth(baseURL, rawKeyApplier(apiKey, "x-api-key"))
+}
+
+func fetchAnthropicModelsAuth(baseURL string, applyAuth authApplier) ([]types.ModelEntry, error) {
 	url := strings.TrimRight(baseURL, "/") + "/v1/models"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("x-api-key", apiKey)
+	if err := applyAuth(req); err != nil {
+		return nil, fmt.Errorf("authenticate discovery request: %w", err)
+	}
 	req.Header.Set("anthropic-version", "2023-06-01")
-	// Anthropic's native /v1/models payload is snake_case (`display_name`), which
-	// the generic camelCase discoveredModelEntry decoder does not read, so it is
-	// decoded directly here to carry the human-friendly name onto the entry.
+	// Anthropic's native /v1/models payload is decoded directly here rather than
+	// through doModelsFetch: this path authenticates and names entries for the
+	// anthropic provider only and carries none of the gateway extended fields.
 	client := &http.Client{Timeout: discoveryTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -512,11 +573,14 @@ func fetchAnthropicModels(baseURL, apiKey string) ([]types.ModelEntry, error) {
 	return entries, nil
 }
 
-func fetchGoogleModels(baseURL, apiKey string) ([]types.ModelEntry, error) {
-	url := strings.TrimRight(baseURL, "/") + "/v1beta/models?key=" + apiKey
+func fetchGoogleModelsAuth(baseURL string, applyAuth authApplier) ([]types.ModelEntry, error) {
+	url := strings.TrimRight(baseURL, "/") + "/v1beta/models"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
+	}
+	if err := applyAuth(req); err != nil {
+		return nil, fmt.Errorf("authenticate discovery request: %w", err)
 	}
 	client := &http.Client{Timeout: discoveryTimeout}
 	resp, err := client.Do(req)
@@ -565,8 +629,15 @@ type modelFactory func(id string) types.ModelEntry
 // standard OpenAI {id} field it decodes the extended capability metadata that
 // enterprise gateways emit (field names match ModelEntry's JSON tags). Stock
 // providers omit the extended fields — zero values, behavior unchanged.
+//
+// The model name is read from both spellings. `display_name` is the Anthropic
+// Models API field, which is what Claude Code reads from a gateway's
+// /v1/models, so a gateway serving both Claude Code and Ion publishes that one.
+// `displayName` is Ion's camelCase spelling, kept for gateways already
+// emitting it. When both are present, `display_name` wins.
 type discoveredModelEntry struct {
 	ID                     string   `json:"id"`
+	DisplayNameAnthropic   string   `json:"display_name,omitempty"`
 	DisplayName            string   `json:"displayName,omitempty"`
 	Dialect                string   `json:"dialect,omitempty"`
 	ContextWindow          int      `json:"contextWindow,omitempty"`
@@ -583,6 +654,15 @@ type discoveredModelEntry struct {
 	ThinkingMode           string   `json:"thinkingMode,omitempty"`
 	ThinkingEfforts        []string `json:"thinkingEfforts,omitempty"`
 	ModelKind              string   `json:"modelKind,omitempty"`
+}
+
+// name returns the entry's published model name, preferring the Anthropic
+// Models API spelling over Ion's camelCase one.
+func (m discoveredModelEntry) name() string {
+	if m.DisplayNameAnthropic != "" {
+		return m.DisplayNameAnthropic
+	}
+	return m.DisplayName
 }
 
 func doModelsFetch(req *http.Request, providerID string, factory modelFactory) ([]types.ModelEntry, error) {
@@ -610,7 +690,7 @@ func doModelsFetch(req *http.Request, providerID string, factory modelFactory) (
 		entry := factory(m.ID)
 		// Overlay extended payload fields (zero values from stock providers
 		// leave the factory entry untouched, minus fields the factory set).
-		entry.DisplayName = m.DisplayName
+		entry.DisplayName = m.name()
 		entry.Dialect = m.Dialect
 		if m.ContextWindow != 0 {
 			entry.ContextWindow = m.ContextWindow
@@ -639,5 +719,16 @@ func ResetDiscoveryCache() {
 	discoveryMu.Lock()
 	defer discoveryMu.Unlock()
 	discoveryCache = make(map[string]*providerDiscovery)
-	discoveryOnce = sync.Once{}
+}
+
+// HasDiscoveryEntryForTest reports whether providerID has ANY discovery
+// cache entry (success or failure) -- used by cross-package tests
+// (server.TestStoreCredentialTriggersDiscovery) to observe that
+// DiscoverProvider's async goroutine actually ran, without asserting on
+// its outcome against a fake key. Test-only.
+func HasDiscoveryEntryForTest(providerID string) bool {
+	discoveryMu.RLock()
+	defer discoveryMu.RUnlock()
+	_, ok := discoveryCache[providerID]
+	return ok
 }

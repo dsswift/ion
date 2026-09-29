@@ -1,8 +1,8 @@
 import XCTest
 @testable import IonRemote
 
-/// Tests wire decode, round-trip, grouping, and compaction separation for
-/// delivered background work metadata.
+/// Delivered background work: row decoding, grouping, compaction separation,
+/// and the task lifecycle events.
 final class BackgroundWorkTests: XCTestCase {
     private let work = BackgroundWorkMetadata(
         kind: "background_task_completion",
@@ -21,30 +21,6 @@ final class BackgroundWorkTests: XCTestCase {
         let item = BackgroundWorkItem(id: taskId, source: "bash", label: command, status: status, exitCode: status == "completed" ? 0 : 1, elapsedMs: nil, outputPath: nil)
         let metadata = BackgroundWorkMetadata(kind: "background_task_completion", deliveryMode: "event_only", items: [item], remainingTaskIds: nil)
         return makeMsg(id: id, role: .system, backgroundWork: metadata)
-    }
-
-    func testBackgroundWorkDeliveredDecodesNoStandaloneRow() throws {
-        let json = """
-        {"type":"desktop_background_work_delivered","tabId":"tab","message":{"id":"entry-1","role":"system","content":"Background command bash-1 (completed).","timestamp":1,"backgroundWork":{"kind":"background_task_completion","deliveryMode":"wake","items":[{"id":"bash-1","source":"bash","label":"npm test","status":"completed","exitCode":0,"elapsedMs":800}]}}}
-        """.data(using: .utf8)!
-        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
-        guard case .backgroundWorkDelivered(let tabId, let instanceId, let message) = event else {
-            return XCTFail("expected background work event")
-        }
-        XCTAssertEqual(tabId, "tab")
-        XCTAssertNil(instanceId)
-        XCTAssertEqual(message.backgroundWork?.items.first?.id, "bash-1")
-    }
-
-    func testBackgroundWorkEventRoundTrips() throws {
-        var message = Message(id: "entry-1", role: .system, content: "payload", timestamp: 1)
-        message.backgroundWork = work
-        let data = try JSONEncoder().encode(RemoteEvent.backgroundWorkDelivered(tabId: "tab", instanceId: "main", message: message))
-        let decoded = try JSONDecoder().decode(RemoteEvent.self, from: data)
-        guard case .backgroundWorkDelivered(_, _, let restored) = decoded else {
-            return XCTFail("expected decoded delivery")
-        }
-        XCTAssertEqual(restored.backgroundWork, work)
     }
 
     func testClassicAndUnifiedGroupingDropUnmatchedBackgroundWork() {
@@ -73,137 +49,6 @@ final class BackgroundWorkTests: XCTestCase {
         guard case .compaction = items[0] else {
             return XCTFail("Expected .compaction, got \(items[0])")
         }
-    }
-
-    // MARK: - Encoder round-trip
-
-    func testToolEndEncoderTransmitsBackgroundTaskId() throws {
-        let event = RemoteEvent.engineToolEnd(
-            tabId: "tab1", instanceId: nil, toolId: "t1",
-            result: "ok", isError: false, backgroundTaskId: "bg-99"
-        )
-        let data = try JSONEncoder().encode(event)
-        let decoded = try JSONDecoder().decode(RemoteEvent.self, from: data)
-        guard case .engineToolEnd(_, _, _, _, _, let bgId) = decoded else {
-            return XCTFail("expected engineToolEnd")
-        }
-        XCTAssertEqual(bgId, "bg-99")
-    }
-
-    func testToolEndEncoderOmitsNilBackgroundTaskId() throws {
-        let event = RemoteEvent.engineToolEnd(
-            tabId: "tab1", instanceId: nil, toolId: "t1",
-            result: "ok", isError: false
-        )
-        let data = try JSONEncoder().encode(event)
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        XCTAssertNil(json?["backgroundTaskId"])
-    }
-
-    // MARK: - Status mapping
-
-    func testFailedItemStatusDecodes() throws {
-        let json = """
-        {"type":"desktop_background_work_delivered","tabId":"tab","message":{"id":"e1","role":"system","content":"Failed.","timestamp":1,"backgroundWork":{"kind":"background_task_completion","deliveryMode":"wake","items":[{"id":"bg-1","source":"bash","label":"npm test","status":"failed","exitCode":1,"elapsedMs":500}]}}}
-        """.data(using: .utf8)!
-        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
-        guard case .backgroundWorkDelivered(_, _, let message) = event else {
-            return XCTFail("expected backgroundWorkDelivered")
-        }
-        XCTAssertEqual(message.backgroundWork?.items.first?.status, "failed")
-    }
-
-    func testFailedItemSetsErrorStatus() {
-        var tool = Message(id: "t1", role: .tool, content: "old", timestamp: 1)
-        tool.toolName = "Bash"
-        tool.toolId = "t1"
-        tool.toolStatus = .asyncPending
-        tool.backgroundTaskId = "bg-1"
-
-        let failedWork = BackgroundWorkMetadata(
-            kind: "background_task_completion",
-            deliveryMode: "wake",
-            items: [BackgroundWorkItem(id: "bg-1", source: "bash", label: "npm test", status: "failed", exitCode: 1, elapsedMs: 500, outputPath: nil)],
-            remainingTaskIds: []
-        )
-        var msgs = [tool]
-        applyBackgroundWorkFold(messages: &msgs, deliveredWork: failedWork, deliveredContent: "Failed.")
-        XCTAssertEqual(msgs[0].toolStatus, .error)
-    }
-
-    func testStoppedItemSetsErrorStatus() {
-        var tool = Message(id: "t1", role: .tool, content: "old", timestamp: 1)
-        tool.toolName = "Bash"
-        tool.toolId = "t1"
-        tool.toolStatus = .asyncPending
-        tool.backgroundTaskId = "bg-1"
-
-        let stoppedWork = BackgroundWorkMetadata(
-            kind: "background_task_completion",
-            deliveryMode: "wake",
-            items: [BackgroundWorkItem(id: "bg-1", source: "bash", label: "npm test", status: "stopped", exitCode: -1, elapsedMs: 200, outputPath: nil)],
-            remainingTaskIds: []
-        )
-        var msgs = [tool]
-        applyBackgroundWorkFold(messages: &msgs, deliveredWork: stoppedWork, deliveredContent: "Stopped.")
-        XCTAssertEqual(msgs[0].toolStatus, .error)
-    }
-
-    func testCompletedItemSetsCompletedStatus() {
-        var tool = Message(id: "t1", role: .tool, content: "old", timestamp: 1)
-        tool.toolName = "Bash"
-        tool.toolId = "t1"
-        tool.toolStatus = .asyncPending
-        tool.backgroundTaskId = "bash-1"
-
-        var msgs = [tool]
-        applyBackgroundWorkFold(messages: &msgs, deliveredWork: work, deliveredContent: "Done.")
-        XCTAssertEqual(msgs[0].toolStatus, .completed)
-    }
-
-    // MARK: - Item ID folding
-
-    func testFoldingUsesItemIdsToMatch() {
-        var tool1 = Message(id: "t1", role: .tool, content: "old1", timestamp: 1)
-        tool1.toolName = "Bash"
-        tool1.toolId = "t1"
-        tool1.toolStatus = .asyncPending
-        tool1.backgroundTaskId = "bg-1"
-
-        var tool2 = Message(id: "t2", role: .tool, content: "old2", timestamp: 2)
-        tool2.toolName = "Bash"
-        tool2.toolId = "t2"
-        tool2.toolStatus = .asyncPending
-        tool2.backgroundTaskId = "bg-2"
-
-        let deliveredWork = BackgroundWorkMetadata(
-            kind: "background_task_completion",
-            deliveryMode: "wake",
-            items: [BackgroundWorkItem(id: "bg-1", source: "bash", label: "npm test", status: "completed", exitCode: 0, elapsedMs: 800, outputPath: nil)],
-            remainingTaskIds: []
-        )
-        var msgs = [tool1, tool2]
-        let count = applyBackgroundWorkFold(messages: &msgs, deliveredWork: deliveredWork, deliveredContent: "Done.")
-        XCTAssertEqual(count, 1)
-        XCTAssertEqual(msgs[0].toolStatus, .completed)
-        XCTAssertEqual(msgs[1].toolStatus, .asyncPending)
-    }
-
-    // MARK: - Payload replacement
-
-    func testDeliveredPayloadReplacesToolContent() {
-        var tool = Message(id: "t1", role: .tool, content: "old result", timestamp: 1)
-        tool.toolName = "Bash"
-        tool.toolId = "t1"
-        tool.toolStatus = .asyncPending
-        tool.backgroundTaskId = "bash-1"
-
-        let deliveredContent = "Background command bash-1 (completed)."
-        var msgs = [tool]
-        applyBackgroundWorkFold(messages: &msgs, deliveredWork: work, deliveredContent: deliveredContent)
-        XCTAssertEqual(msgs[0].content, deliveredContent)
-        XCTAssertNotNil(msgs[0].backgroundWork)
-        XCTAssertEqual(msgs[0].backgroundWork, work)
     }
 
     // MARK: - Turn-level active background summary
@@ -247,19 +92,6 @@ final class BackgroundWorkTests: XCTestCase {
         XCTAssertEqual(fields.activeBackgroundTasks, [
             BackgroundTaskState(taskId: "bg-1", command: "npm test", startedAt: 123, notifyOnComplete: false)
         ])
-    }
-
-    func testStopBackgroundTaskCommandRoundTrips() throws {
-        let command = RemoteCommand.stopBackgroundTask(tabId: "tab-1", taskId: "bg-9", requestId: "request-4")
-        let data = try JSONEncoder().encode(command)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_stop_background_task")
-        XCTAssertEqual(json["taskId"] as? String, "bg-9")
-        XCTAssertEqual(json["requestId"] as? String, "request-4")
-        guard case .stopBackgroundTask(let tabId, let taskId, let requestId) = try JSONDecoder().decode(RemoteCommand.self, from: data) else {
-            return XCTFail("expected stopBackgroundTask")
-        }
-        XCTAssertEqual([tabId, taskId, requestId], ["tab-1", "bg-9", "request-4"])
     }
 
     func testBackgroundTaskLifecycleMatchesDesktopWireShape() throws {
@@ -319,8 +151,10 @@ final class BackgroundWorkTests: XCTestCase {
         XCTAssertNil(stoppedJSON["sessionWorkStopped"])
     }
 
+    /// The terminal event settles the task list. The tool row's own status is
+    /// the server's to change; it arrives on the transcript.
     @MainActor
-    func testTerminalEventRemovesExactTaskAndSettlesTool() {
+    func testTerminalEventRemovesExactTaskAndLeavesRowsToTheTranscript() {
         let vm = SessionViewModel()
         vm.ensureMainInstance(tabId: "tab-1")
         var first = Message(id: "tool-1", role: .tool, content: "", timestamp: 1)
@@ -341,8 +175,7 @@ final class BackgroundWorkTests: XCTestCase {
 
         let instance = vm.engineInstance(tabId: "tab-1", instanceId: nil)
         XCTAssertEqual(instance?.activeBackgroundTasks?.map(\.taskId), ["bg-2"])
-        XCTAssertEqual(instance?.messages[0].toolStatus, .error)
-        XCTAssertEqual(instance?.messages[1].toolStatus, .asyncPending)
+        XCTAssertEqual(instance?.messages.map(\.toolStatus), [.asyncPending, .asyncPending])
     }
 
     @MainActor
@@ -352,6 +185,16 @@ final class BackgroundWorkTests: XCTestCase {
         vm.handleBackgroundTaskStopResult(requestId: "r1", taskId: "bg-1", status: "ownership_mismatch", error: "Task belongs to another session.")
         XCTAssertFalse(vm.stoppingBackgroundTaskIds.contains("bg-1"))
         XCTAssertTrue(vm.toastMessages.contains { $0.style == .error && $0.title == "Stop failed" })
+    }
+
+    /// The shared `BackgroundWorkItem` makes `source` and `exitCode`
+    /// optional. Requiring them failed the whole row that carried the item.
+    func testAnItemWithoutSourceOrExitCodeDecodes() throws {
+        let json = #"{"id":"e1","role":"system","content":"Delivered.","timestamp":1,"backgroundWork":{"kind":"agent","deliveryMode":"wake","items":[{"id":"bg-1","status":"completed"}]}}"#
+        let row = try JSONDecoder().decode(TranscriptRow.self, from: Data(json.utf8)).message
+        XCTAssertEqual(row.backgroundWork?.items.first?.id, "bg-1")
+        XCTAssertNil(row.backgroundWork?.items.first?.exitCode)
+        XCTAssertNil(row.backgroundWork?.items.first?.source)
     }
 
     // MARK: - Human steer unchanged
@@ -368,24 +211,4 @@ final class BackgroundWorkTests: XCTestCase {
         guard case .toolGroup = grouped[1] else { return XCTFail("expected toolGroup") }
         guard case .assistant = grouped[2] else { return XCTFail("expected assistant") }
     }
-}
-
-// MARK: - Test helper
-
-@discardableResult
-private func applyBackgroundWorkFold(messages: inout [Message], deliveredWork: BackgroundWorkMetadata, deliveredContent: String) -> Int {
-    let itemIds = Set(deliveredWork.items.map(\.id))
-    var matchCount = 0
-    for i in messages.indices {
-        guard let toolBgId = messages[i].backgroundTaskId,
-              messages[i].toolStatus == .asyncPending,
-              itemIds.contains(toolBgId) else { continue }
-        let item = deliveredWork.items.first { $0.id == toolBgId }
-        let status = item?.status ?? "completed"
-        messages[i].toolStatus = (status == "completed") ? .completed : .error
-        messages[i].content = deliveredContent
-        messages[i].backgroundWork = deliveredWork
-        matchCount += 1
-    }
-    return matchCount
 }

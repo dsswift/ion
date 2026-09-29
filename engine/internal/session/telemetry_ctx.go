@@ -1,5 +1,36 @@
 package session
 
+// stampPrincipalIdentity adds "principal_identity" to ctx from s's session
+// principal (FR-05 child 10, R-41), matching how backend.buildTelemCtx stamps
+// it for llm.call/tool.execute/tool.failure from the run's ParentCtx.
+// correlationCtx/correlationCtxExt never carry this key, so a session-package
+// event built from them silently falls through telemetry.identityForEvent to
+// the process-wide operator identity (the engine's own AI Gateway sign-in)
+// instead of the person actually driving this session -- disagreeing with
+// its own sibling per-call spans about who is acting. Call this explicitly
+// at cost-bearing, per-run emission sites (run.execute, run.complete,
+// cache.savings) that have the session in scope; nil-safe for a nil ctx or
+// an unattributed session (identity == "" leaves ctx unchanged, same as
+// buildTelemCtx's own omitempty behavior).
+func stampPrincipalIdentity(ctx map[string]any, s *engineSession) map[string]any {
+	if s == nil {
+		return ctx
+	}
+	return stampContextIdentity(ctx, s.principal.AttributionForTelemetry())
+}
+
+// stampContextIdentity is stampPrincipalIdentity's lower-level form, for a
+// call site (e.g. emitCacheSavings) that resolves the identity itself rather
+// than holding the *engineSession. Nil-safe; a "" identity leaves ctx
+// unchanged.
+func stampContextIdentity(ctx map[string]any, identity string) map[string]any {
+	if ctx == nil || identity == "" {
+		return ctx
+	}
+	ctx["principal_identity"] = identity
+	return ctx
+}
+
 // correlationCtx builds the canonical telemetry correlation context map used
 // by every telemetry emission site in the session package. It ensures that
 // run.complete and cache.savings always carry both identifiers so forensic

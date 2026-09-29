@@ -12,7 +12,7 @@ import type {
   GraphViewSavedView,
   LayoutForces,
   TagTreatment,
-} from '../../../../shared/graph-view-types'
+} from '@ion/shared/graph-view-types'
 
 export interface SavedViewCaptureState {
   bindings: ChannelBindings

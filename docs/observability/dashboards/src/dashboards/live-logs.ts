@@ -15,7 +15,7 @@
 //     query step exceeds it at wide ranges).
 
 import type { Dashboard } from '../dashboard.ts';
-import { row, text, stat, timeseries, gauge, logs } from '../panels.ts';
+import { row, text, stat, timeseries, gauge, logsTable } from '../panels.ts';
 import { stream } from '../queries.ts';
 import { levelCount, allLinesCount, activeExtensionCount, logVolumeByComponentInterval, extensionVolumeInterval, kindCount } from '../queries-logs.ts';
 import { quantile, latestMax } from '../queries-latency.ts';
@@ -152,7 +152,7 @@ export function liveLogsDashboard(): Dashboard {
       gridPos: { h: 8, w: 24, x: 0, y: 16 },
       fieldConfig: bars(70),
       options: legendBottom(true),
-      targets: [{ e: logVolumeByComponentInterval(), legend: '{{component}}' }],
+      targets: [{ e: logVolumeByComponentInterval(), legend: '{{service_name}}' }],
     }),
     timeseries({
       id: 6,
@@ -170,27 +170,17 @@ export function liveLogsDashboard(): Dashboard {
       options: legendBottom(true),
       targets: [{ e: extensionVolumeInterval(), legend: '{{tag}}' }],
     }),
-    logs({
+    logsTable({
       id: 8,
       title: 'Live log tail',
       gridPos: { h: 12, w: 24, x: 0, y: 32 },
-      target: { e: stream('{component=~".+"}') },
+      target: { e: stream('{service_name=~".+", event_name=""} | json') },
     }),
-    logs({
+    logsTable({
       id: 9,
       title: 'Extension activity log',
       gridPos: { h: 10, w: 24, x: 0, y: 44 },
-      options: {
-        showTime: true,
-        showLabels: true,
-        showCommonLabels: false,
-        wrapLogMessage: true,
-        prettifyLogMessage: false,
-        enableLogDetails: true,
-        dedupStrategy: 'none',
-        sortOrder: 'Descending',
-      },
-      target: { e: stream('{component="extension"}') },
+      target: { e: stream('{service_name="ion-extension", event_name=""} | json') },
     }),
   ];
 
@@ -207,8 +197,8 @@ export function liveLogsDashboard(): Dashboard {
     file: 'ion-logs',
     panels,
     annotations: [
-      { name: 'Model fallback', expr: '{service_name="ion-telemetry", kind="provider.fallback"} | json', iconColor: 'orange', step: '60s', titleFormat: 'fallback: {{payload_requested_model}} -> {{payload_fallback_model}}' },
-      { name: 'Compaction', expr: '{service_name="ion-telemetry", kind="compaction"} | json', iconColor: 'blue', step: '60s', titleFormat: 'compaction: {{payload_trigger}}' },
+      { name: 'Model fallback', expr: '{event_name="provider.fallback"} | json', iconColor: 'orange', step: '60s', titleFormat: 'fallback: {{payload_requested_model}} -> {{payload_fallback_model}}' },
+      { name: 'Compaction', expr: '{event_name="compaction"} | json', iconColor: 'blue', step: '60s', titleFormat: 'compaction: {{payload_trigger}}' },
     ],
   };
 }

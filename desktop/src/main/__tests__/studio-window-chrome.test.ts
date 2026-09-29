@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   STUDIO_TITLE_BAR_HEIGHT,
   STUDIO_TRAFFIC_LIGHT_POSITION,
-} from "../../shared/studio-chrome";
+} from "@ion/shared/studio-chrome";
 
 const mocks = vi.hoisted(() => {
   const events = new Map<string, Array<(...args: unknown[]) => void>>();
@@ -34,12 +34,10 @@ vi.mock("electron", () => ({
   BrowserWindow: vi.fn(function BrowserWindow() { return mocks.window; }),
 }));
 vi.mock("../logger", () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), trace: vi.fn() }));
-vi.mock("../state", () => ({
+vi.mock("@ion/server/state", async (importOriginal) => ({ ...(await importOriginal()), ...{
   enterprisePolicyCache: { policy: null },
   state: { mainWindow: null, studioWindow: null, forceQuit: false },
-}));
-vi.mock("../settings-store", () => ({ readSettings: () => ({ activeUi: "studio" }), writeSettings: vi.fn() }));
-vi.mock("../surface-launch", () => ({ resolveSurfacePlan: () => ({ activeUi: "studio" }) }));
+} }));
 vi.mock("../studio-state-cache", () => ({ getStudioState: vi.fn(() => ({ agents: [] })) }));
 vi.mock("../studio-beacon", () => ({ clearBeacon: vi.fn() }));
 vi.mock("../deeplink/confirm", () => ({ markDeepLinkConfirmationReady: vi.fn(), markDeepLinkConfirmationUnavailable: vi.fn() }));
@@ -49,7 +47,7 @@ vi.mock("../webview-policy", () => ({ installWebviewPolicy: vi.fn() }));
 import { BrowserWindow } from "electron";
 import { state } from "../state";
 import { openStudioWindow } from "../studio-window-manager";
-import { IPC } from "../../shared/types";
+import { IPC } from "@ion/shared/types";
 
 beforeEach(() => {
   mocks.events.clear();

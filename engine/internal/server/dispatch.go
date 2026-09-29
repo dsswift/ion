@@ -17,7 +17,6 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/conversation"
-	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/session"
@@ -73,7 +72,7 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 			s.sendResult(conn, cmd, err, nil)
 			break
 		}
-		result, err := s.manager.StartSession(cmd.Key, *cmd.Config)
+		result, err := s.manager.StartSession(cmd.Key, *cmd.Config, cmd.Principal)
 		if err == nil {
 			s.ownership.claim(conn, cmd.Key)
 			if cmd.Config.Pinned {
@@ -107,7 +106,7 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		}()
 		var overrides *session.PromptOverrides
 		resolvedExts := cmd.ResolveExtensions()
-		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.ThinkingEffort != "" || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || len(cmd.BashAllowlistAdditionsForThisPrompt) > 0 || len(cmd.McpAllowlistAdditionsForThisPrompt) > 0 || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil || cmd.ResolveSlash || cmd.SlashModelTierApplyMidConversation != nil || cmd.TemporaryAutoFromPlan || cmd.ClientWorkspaceContext != nil || cmd.DeliveryId != "" || cmd.DisplayText != "" || cmd.InjectionKind != "" {
+		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.ThinkingEffort != "" || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || len(cmd.BashAllowlistAdditionsForThisPrompt) > 0 || len(cmd.McpAllowlistAdditionsForThisPrompt) > 0 || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil || cmd.ResolveSlash || cmd.SlashModelTierApplyMidConversation != nil || cmd.TemporaryAutoFromPlan || cmd.ClientWorkspaceContext != nil || cmd.DeliveryId != "" || cmd.DisplayText != "" || cmd.InjectionKind != "" || cmd.Principal != nil || cmd.Traceparent != "" {
 			overrides = &session.PromptOverrides{
 				Model:                    cmd.Model,
 				MaxTurns:                 cmd.MaxTurns,
@@ -121,6 +120,7 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 				EnterPlanModeDescription: cmd.EnterPlanModeDescription,
 				PlanModeSparseReminder:   cmd.PlanModeSparseReminder,
 				PlanFilePath:             cmd.PlanFilePath,
+				Traceparent:              cmd.Traceparent,
 				// Per-prompt bash-allowlist additions. Forwarded to
 				// runloop_setup.buildToolDefs which unions them with the
 				// session allowlist for this run only. See
@@ -145,6 +145,10 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 				// user-authored, so persisting it would record a
 				// classification that changes nothing.
 				InjectionKind: resolveClientInjectionKind(cmd.Key, cmd.InjectionKind),
+				// send_prompt.principal: per-turn attribution override only
+				// (manifest C2). Never changes the session's stored
+				// principal or the conversation header's owner.
+				Principal: cmd.Principal,
 			}
 		}
 		err = s.manager.SendPrompt(cmd.Key, cmd.Text, overrides)
@@ -229,14 +233,26 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 
 	case "list_sessions":
 		sessions := s.manager.ListSessions()
-		infos := make([]protocol.SessionInfo, len(sessions))
-		for i, si := range sessions {
-			infos[i] = protocol.SessionInfo{
-				Key:            si.Key,
-				HasActiveRun:   si.HasActiveRun,
-				ToolCount:      si.ToolCount,
-				ConversationID: si.ConversationID,
+		infos := make([]protocol.SessionInfo, 0, len(sessions))
+		for _, si := range sessions {
+			// PrincipalSubject filter (manifest C2): empty means no
+			// filtering, matching pre-existing behavior. When set, a
+			// session's own subject must match, OR the caller asked for
+			// unowned sessions too and this one has none.
+			if cmd.PrincipalSubject != "" {
+				owned := si.PrincipalSubject == cmd.PrincipalSubject
+				unowned := cmd.IncludeUnowned && si.PrincipalSubject == ""
+				if !owned && !unowned {
+					continue
+				}
 			}
+			infos = append(infos, protocol.SessionInfo{
+				Key:              si.Key,
+				HasActiveRun:     si.HasActiveRun,
+				ToolCount:        si.ToolCount,
+				ConversationID:   si.ConversationID,
+				PrincipalSubject: si.PrincipalSubject,
+			})
 		}
 		if cmd.RequestID != "" {
 			// Return as result with requestId (TS parity).
@@ -344,6 +360,12 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		// raised by ion.elicit() / ctx.Elicit() so the extension Promise resolves.
 		s.manager.HandleElicitationResponse(cmd.Key, cmd.ElicitRequestID, cmd.ElicitResponse, cmd.ElicitCancelled, cmd.ElicitDeclined)
 
+	case "credential_response":
+		// Fire-and-forget: no response sent. Resolves a pending
+		// engine_credential_request raised by the client source
+		// (FR-05 child 09, SC-9).
+		s.manager.HandleCredentialResponse(cmd.Key, cmd.CredentialRequestID, cmd.CredentialFound, cmd.CredentialToken, cmd.CredentialHeader)
+
 	case "early_stop_decision_response":
 		// Fire-and-forget: no response sent. Resolves a pending early-stop
 		// wire-protocol request so the blocked agent loop proceeds with the
@@ -368,14 +390,7 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.sendResult(conn, cmd, err, results)
 
 	case "load_session_history":
-		var messages []types.SessionMessage
-		var err error
-		if len(cmd.SessionIDs) > 0 {
-			messages, err = conversation.LoadChainMessages(cmd.SessionIDs, "")
-		} else {
-			messages, err = conversation.LoadMessages(cmd.Key, "")
-		}
-		s.sendResult(conn, cmd, err, messages)
+		s.dispatchLoadSessionHistory(conn, cmd)
 
 	case "save_session_label":
 		// Serialized read-modify-write: a label append racing a dispatch
@@ -484,7 +499,7 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.dispatchSetDefaultProvider(conn, cmd)
 
 	case "get_host_info":
-		s.sendResult(conn, cmd, nil, computeHostInfo())
+		s.sendResult(conn, cmd, nil, computeHostInfo(s.version))
 
 	case "list_directory":
 		data, err := listDirectory(cmd.Path, cmd.ShowHidden)
@@ -505,34 +520,7 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.sendResult(conn, cmd, nil, listings)
 
 	case "store_credential":
-		if s.authResolver == nil {
-			s.sendResult(conn, cmd, fmt.Errorf("auth resolver not configured"), nil)
-			break
-		}
-		fs := auth.NewFileStore()
-		if cmd.Credential == "" {
-			// Empty credential means "clear this key"
-			if err := fs.DeleteKey(cmd.Provider); err != nil {
-				// A failed delete means the key persists while the user is told
-				// it was cleared — this must not be silent.
-				utils.LogWithFields(utils.LevelError, "server", "credential delete failed", map[string]any{"provider": cmd.Provider, "error": err.Error()})
-			}
-			providers.SetProviderKey(cmd.Provider, "")
-		} else {
-			if err := fs.SetKey(cmd.Provider, cmd.Credential); err != nil {
-				s.sendResult(conn, cmd, err, nil)
-				break
-			}
-			providers.SetProviderKey(cmd.Provider, cmd.Credential)
-			// Trigger model discovery for the newly-authed provider so its
-			// models appear in the picker without requiring an engine restart.
-			providerConfigs := make(map[string]types.ProviderConfig)
-			if s.config != nil {
-				providerConfigs = s.config.Providers
-			}
-			providers.DiscoverProvider(cmd.Provider, cmd.Credential, providerConfigs)
-		}
-		s.sendResult(conn, cmd, nil, nil)
+		s.dispatchStoreCredential(conn, cmd)
 
 	case "oidc_begin_login":
 		s.dispatchOidcBeginLogin(conn, cmd)
@@ -546,20 +534,8 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "oidc_token":
 		s.dispatchOidcToken(conn, cmd)
 
-	case "mcp_list":
-		s.dispatchMcpList(conn, cmd)
-
-	case "mcp_add":
-		s.dispatchMcpAdd(conn, cmd)
-
-	case "mcp_remove":
-		s.dispatchMcpRemove(conn, cmd)
-
-	case "mcp_login":
-		s.dispatchMcpLogin(conn, cmd)
-
-	case "mcp_logout":
-		s.dispatchMcpLogout(conn, cmd)
+	case "mcp_list", "mcp_add", "mcp_update", "mcp_remove", "mcp_login", "mcp_login_complete", "mcp_logout":
+		s.dispatchMcp(conn, cmd)
 
 	case "provider_login":
 		s.dispatchProviderLogin(conn, cmd)
@@ -586,6 +562,23 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		}
 		// Provider field is optional: empty = refresh all
 		providers.RefreshModels(cmd.Provider, true, resolveKey, providerConfigs)
+		// When the request is attributed, also refresh the acting
+		// principal's OWN entitlement (R-12) -- the process-wide
+		// RefreshModels call above only re-fetches the shared metadata
+		// path (dialect, cost); a principal's discovered id set is
+		// per-(subject, provider) and needs its own invalidate+refetch.
+		if cmd.Principal != nil && cmd.Principal.Subject != "" && s.authResolver != nil {
+			cc := auth.NewCredentialContext(cmd.Principal, s.authResolver, auth.NewTenancyFallThroughPolicy(s.config))
+			providers.WireEntitlement(cc, providerConfigs)
+			refreshSubjects := []string{cmd.Provider}
+			if cmd.Provider == "" {
+				refreshSubjects = providers.ListProviderIDs()
+			}
+			for _, pid := range refreshSubjects {
+				providers.InvalidateEntitlement(cmd.Principal.Subject, pid)
+				cc.Entitlement(pid) // triggers a fresh fetch, result cached
+			}
+		}
 		// Re-probe the delegated CLIs too, so their install/auth state and
 		// model lists refresh alongside the HTTP providers.
 		s.RefreshProviderProbes()
@@ -692,6 +685,15 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "resource_get":
 		s.dispatchResourceGet(conn, cmd)
 
+	case "resource_export":
+		s.dispatchResourceExport(conn, cmd)
+
+	case "resource_import":
+		s.dispatchResourceImport(conn, cmd)
+
+	case "resource_forget":
+		s.dispatchResourceForget(conn, cmd)
+
 	case "resolve_new_conversation_defaults":
 		s.dispatchResolveNewConversationDefaults(conn, cmd)
 
@@ -719,6 +721,12 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.sendResult(conn, cmd, nil, map[string]interface{}{
 			"newConversationDefaults": newConversationDefaults,
 			"policy":                  enterprisePolicy,
+			// policyHash (manifest C2) is a SHA-256 hex digest of the merged
+			// policy's canonical JSON. Stable across two calls with an
+			// unchanged policy; changes whenever the policy does. Lets a
+			// consumer (the server, a client cache) detect a policy change
+			// without deep-comparing the whole blob.
+			"policyHash": canonicalPolicyHash(enterprisePolicy),
 		})
 
 	case "get_plan_content":
@@ -729,7 +737,9 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		// dispatch runs inside a command-lane worker. Stop waits for those workers,
 		// so calling it here would wait for this dispatch to return and deadlock.
 		// Starting shutdown separately lets this command complete before Stop joins
-		// the lanes.
+		// the lanes. The result goes out first: Stop closes every client
+		// connection, and a caller left waiting reads that as a failed shutdown.
+		s.sendResult(conn, cmd, nil, nil)
 		go func() {
 			if err := s.Stop(); err != nil {
 				utils.LogWithFields(utils.LevelInfo, "server", "shutdown stop returned error", map[string]any{"error": err.Error()})
@@ -737,42 +747,19 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 		}()
 
 	case "plugin_install":
-		utils.LogWithFields(utils.LevelInfo, "server", "plugin install", map[string]any{"source": cmd.Source})
-		p, err := plugins.Install(cmd.Source, nil)
-		if err != nil {
-			s.sendResult(conn, cmd, err, nil)
-			return
-		}
-		s.sendResult(conn, cmd, nil, map[string]any{
-			"name":    p.Name,
-			"source":  p.Source,
-			"version": p.Version,
-		})
+		s.dispatchPluginInstall(conn, cmd)
 
 	case "plugin_list":
-		installed, err := plugins.ListInstalled()
-		if err != nil {
-			s.sendResult(conn, cmd, err, nil)
-			return
-		}
-		var infos []map[string]any
-		for _, p := range installed {
-			infos = append(infos, map[string]any{
-				"name":        p.Name,
-				"source":      p.Source,
-				"version":     p.Version,
-				"installedAt": p.InstalledAt,
-			})
-		}
-		s.sendResult(conn, cmd, nil, infos)
+		s.dispatchPluginList(conn, cmd)
 
 	case "plugin_remove":
-		utils.LogWithFields(utils.LevelInfo, "server", "plugin remove", map[string]any{"name": cmd.Label})
-		if err := plugins.Remove(cmd.Label); err != nil {
-			s.sendResult(conn, cmd, err, nil)
-			return
-		}
-		s.sendResult(conn, cmd, nil, map[string]any{"removed": cmd.Label})
+		s.dispatchPluginRemove(conn, cmd)
+	case "get_system_metrics":
+		s.dispatchGetSystemMetrics(conn, cmd)
+
+	case "system_metrics_watch":
+		s.dispatchSystemMetricsWatch(conn, cmd)
+
 	case "health":
 		type healthResult struct {
 			data map[string]interface{}

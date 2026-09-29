@@ -1,0 +1,6 @@
+{
+  "type": "studio_action",
+  "id": "act-1",
+  "action": "selectTab",
+  "args": ["tab-123"]
+}

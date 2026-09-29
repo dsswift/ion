@@ -21,7 +21,9 @@ struct ModelPickerSheet: View {
     /// Optional leading row for a "no explicit choice" sentinel, used by the
     /// Settings engine-default picker ("Same as Conversation" → "").
     var inheritOption: InheritOption?
-    let onSelect: (String) -> Void
+    /// `(modelId, providerId)`. `providerId` is empty for the inherit
+    /// sentinel row (it carries no model to qualify).
+    let onSelect: (String, String) -> Void
 
     /// A sentinel row rendered above the provider sections.
     struct InheritOption {
@@ -114,7 +116,7 @@ struct ModelPickerSheet: View {
 
     private func inheritRow(_ inherit: InheritOption) -> some View {
         Button {
-            pick(inherit.value)
+            pick(inherit.value, providerId: "")
         } label: {
             HStack {
                 Text(inherit.label)
@@ -165,7 +167,7 @@ struct ModelPickerSheet: View {
 
     private func modelRow(model: RemoteModelEntry, hasAuth: Bool, showRawId: Bool) -> some View {
         Button {
-            pick(model.id)
+            pick(model.id, providerId: model.providerId)
         } label: {
             HStack(spacing: 6) {
                 if model.id == preferredModelId {
@@ -216,8 +218,8 @@ struct ModelPickerSheet: View {
 
     // MARK: - Actions
 
-    private func pick(_ id: String) {
-        onSelect(id)
+    private func pick(_ id: String, providerId: String) {
+        onSelect(id, providerId)
         Haptic.success()
         dismiss()
     }

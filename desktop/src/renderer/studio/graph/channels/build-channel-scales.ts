@@ -8,8 +8,8 @@
 import { nodeValue, edgeValue } from './dimension-values'
 import { buildScale, type Scale } from './scales'
 import type { ColorPalette } from '../../../theme-tokens'
-import type { ChannelBindings } from '../../../../shared/graph-view-types'
-import type { GraphModel } from '../../../../shared/graph-model-types'
+import type { ChannelBindings } from '@ion/shared/graph-view-types'
+import type { GraphModel } from '@ion/shared/graph-model-types'
 
 export interface ChannelScales {
   nodeColor: Scale

@@ -16,9 +16,10 @@
  * tabs survived — the write had never happened.
  */
 import { useEffect } from 'react'
-import type { NotificationTab, PinnableSingletonId, ScratchProject, SurfaceConversationPersisted } from '../../../shared/studio-surface-types'
-import { serializeSurface } from '../../../shared/studio-surface-persistence'
+import type { NotificationTab, PinnableSingletonId, ScratchProject, SurfaceConversationPersisted } from '@ion/shared/studio-surface-types'
+import { serializeSurface } from '@ion/shared/studio-surface-persistence'
 import { rDebug, rInfo, rWarn } from '../../rendererLogger'
+import { host } from '../../host/host-instance'
 
 const PERSIST_DEBOUNCE_MS = 300
 
@@ -53,7 +54,7 @@ function write(state: PersistableSurface, reason: string, onResult?: (ok: boolea
     with_content: withContent.length,
     detail: withContent.slice(0, 12).join(' '),
   })
-  void window.ion.studioSetSetting('studioSurface', payload)
+  void host.shell.studioSetSetting('studioSurface', payload)
     .then((ok) => onResult?.(ok))
     .catch((err) => rWarn('studio.surface', 'surface persist failed', { reason, error: String(err) }))
 }

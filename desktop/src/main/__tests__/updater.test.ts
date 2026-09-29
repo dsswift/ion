@@ -26,7 +26,7 @@ vi.mock('electron-updater', () => ({
 }))
 
 import { autoUpdater } from 'electron-updater'
-import { IPC } from '../../shared/types-ipc'
+import { IPC } from '@ion/shared/types-ipc'
 import { initAutoUpdater } from '../updater'
 
 describe('auto updater install handoff', () => {

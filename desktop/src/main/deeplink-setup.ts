@@ -25,16 +25,11 @@ import { app } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { resolve as resolvePath } from 'path'
 import { log as _log, warn as _warn } from './logger'
-import { handleDeepLink, configureDeepLinks } from './deeplink/dispatch'
-import { ensureHandoffDir } from './deeplink/handoff'
-import { getDeepLinkToken } from './deeplink/token'
-import { markDeepLinkConfirmationReady, markDeepLinkConfirmationUnavailable, rejectAllDeepLinkConfirmations } from './deeplink/confirm'
-import { showWindow } from './window-manager'
 import { openStudioWindow } from './studio-window-manager'
-import { readSettings } from './settings-store'
-import { resolveSurfacePlan } from './surface-launch'
-import { enterprisePolicyCache } from './state'
-import type { DeepLinkConfirmOwner } from '../shared/types-ipc'
+import { broker } from './connections/broker-instance'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
+import type { DeepLinkConfirmOwner } from '@ion/shared/types-ipc'
+import { FORCE_QUIT_ARG } from './force-quit-arg'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('deeplink', msg, fields)
@@ -45,27 +40,26 @@ function warn(msg: string, fields?: Record<string, unknown>): void {
 
 export const ION_SCHEME = 'ion'
 
-function presentConfirmation(): DeepLinkConfirmOwner | null {
-  try {
-    const settings = readSettings()
-    // Single-UI exclusivity: the confirmation surfaces on the ACTIVE UI.
-    if (resolveSurfacePlan(settings, enterprisePolicyCache.policy).activeUi === 'studio') {
-      openStudioWindow('deeplink confirmation')
-      return 'studio'
-    }
-    showWindow('deeplink confirmation')
-    return 'overlay'
-  } catch (err) {
-    warn('confirmation surface resolution failed', { error: String(err) })
-    return null
-  }
+/**
+ * Hand an OS-delivered `ion://` URL to the Studio server, which owns the
+ * dispatcher, the confirmations and the store the actions drive. This
+ * process only receives the URL.
+ */
+export function handleDeepLink(url: string): Promise<unknown> {
+  return broker.sendAction(LOCAL_ENVIRONMENT_ID, 'deeplink.dispatch', [url])
 }
 
+/**
+ * The window that hosts the confirmation dialog. Its renderer reports its
+ * own readiness (`deeplink.setConfirmAvailability`); this process reports
+ * only what the renderer cannot: that the window is gone, so pending
+ * confirmations settle as declined instead of waiting out their timeout.
+ */
 export function bindDeepLinkRenderer(owner: DeepLinkConfirmOwner, win: BrowserWindow): void {
-  win.webContents.once('did-finish-load', () => markDeepLinkConfirmationReady(owner))
   win.on('closed', () => {
-    markDeepLinkConfirmationUnavailable(owner, 'window closed')
-    if (owner === 'overlay') rejectAllDeepLinkConfirmations('main window closed')
+    broker.sendAction(LOCAL_ENVIRONMENT_ID, 'deeplink.surfaceClosed', [{ owner }]).catch((err) => {
+      warn('surface-closed report failed', { owner, error: String(err) })
+    })
   })
 }
 
@@ -102,17 +96,14 @@ export function claimSingleInstance(): boolean {
  * is not missed while the app is still booting.
  */
 export function setupDeepLinks(): void {
-  configureDeepLinks({ presentConfirmation })
-
-  // Mint the token now so a tool that reads it at any point after startup finds
-  // it, and create the handoff directory so a caller never has to (and cannot
-  // create it with the wrong mode).
-  getDeepLinkToken()
-  ensureHandoffDir()
+  // The dispatcher, the token the terminals carry and the handoff directory
+  // are the Studio server's (it mints and creates them at boot); this process
+  // only registers the scheme and forwards what the OS delivers.
 
   // In dev the executable is Electron itself, so the scheme must be registered
   // against the app path for the OS to route back to this project rather than to
   // a packaged Ion.
+  //
   const registered = process.defaultApp && process.argv.length >= 2
     ? app.setAsDefaultProtocolClient(ION_SCHEME, process.execPath, [resolvePath(process.argv[1])])
     : app.setAsDefaultProtocolClient(ION_SCHEME)
@@ -130,12 +121,15 @@ export function setupDeepLinks(): void {
   // Path 2: a second launch. Its argv carries the URL on every platform, and on
   // Windows/Linux this is the only delivery mechanism.
   app.on('second-instance', (_event, argv) => {
+    // A forced quit is the quit handler's; surfacing a window would only
+    // flash one on the way out.
+    if (argv.includes(FORCE_QUIT_ARG)) return
     const url = extractIonUrl(argv)
     if (!url) {
       // A plain second launch should reveal the one active conversation UI.
       // Never show the hidden Overlay while Studio is active.
       log('second instance with no url; surfacing active UI')
-      presentConfirmation()
+      openStudioWindow('second instance')
       return
     }
     log('second-instance url received', { url_length: url.length })

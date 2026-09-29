@@ -23,9 +23,9 @@ import {
   type TagTreatment,
   type ClusterRendering,
   type ScopedSavedView,
-} from '../../../shared/graph-view-types'
-import type { CorpusDelta, CorpusSnapshot, CorpusWatchState } from '../../../shared/graph-corpus-types'
-import type { GraphModel, GraphNode, GraphEdge } from '../../../shared/graph-model-types'
+} from '@ion/shared/graph-view-types'
+import type { CorpusDelta, CorpusSnapshot, CorpusWatchState } from '@ion/shared/graph-corpus-types'
+import type { GraphModel, GraphNode, GraphEdge } from '@ion/shared/graph-model-types'
 import type { SectionScopeNotice } from './graph-store-corpus'
 
 /**

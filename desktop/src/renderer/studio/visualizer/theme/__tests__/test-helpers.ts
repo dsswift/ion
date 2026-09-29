@@ -4,7 +4,7 @@
  * path production uses — no binary fixtures in the repo.
  */
 import { deflateSync } from 'zlib'
-import type { StudioRawPackBundle, StudioThemeListEntry } from '../../../../../shared/types-studio'
+import type { StudioRawPackBundle, StudioThemeListEntry } from '@ion/shared/types-studio'
 import type { StudioAssetSource } from '../loader'
 
 const CRC_TABLE = (() => {

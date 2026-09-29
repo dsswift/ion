@@ -10,12 +10,7 @@ import SwiftUI
 /// view preserve the original groupings so users who learned the old
 /// shape can still find what they expect.
 ///
-/// This view holds **iOS-local** preferences only. The desktop's own
-/// Appearance category (theme mode, layout density, tool-result
-/// expansion, etc.) is mirrored separately under
-/// "Desktops & Connection → Desktop Settings → Appearance" so iOS
-/// becomes a true thin client for the desktop's preferences without
-/// duplicating them locally.
+/// This view holds **iOS-local** preferences only.
 struct SettingsAppearanceView: View {
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.appTheme) private var theme
@@ -30,9 +25,8 @@ struct SettingsAppearanceView: View {
         List {
             // ─── Theme ──────────────────────────────────────────────
             // The iOS-side theme is a client-only preference — it
-            // affects the colors of the iOS app itself, not the
-            // desktop. The desktop carries its own theme setting that
-            // is projected separately under Desktop Settings.
+            // affects the colors of the iOS app itself and nothing on
+            // any server.
             Section {
                 // Theme-pack brand mark (enterprise logo). Only custom
                 // packs carry one; built-ins render no image row.
@@ -90,7 +84,7 @@ struct SettingsAppearanceView: View {
             } header: {
                 Text("Tab List")
             } footer: {
-                Text("Git Info shows the current branch and commit counts. Tab Colors tints rows with the color set on desktop (desktop always shows color).")
+                Text("View picks Inbox or Ion Classic for the tab list on this device. Git Info shows the current branch and commit counts. Tab Colors tints rows with the color set on desktop (desktop always shows color).")
             }
 
             // ─── Keyboard Utility Bar ──────────────────────────────
@@ -122,18 +116,6 @@ struct SettingsAppearanceView: View {
             } footer: {
                 Text("Adds a toolbar above the keyboard with paste, select all, tab, new line, undo, redo, and dismiss-keyboard buttons. Toggle independently per view.")
             }
-
-            // Tab Groups are managed exclusively from the desktop side
-            // now (Desktops & Connection → Desktop Settings → Tabs &
-            // Panels). The full editor — grouping mode, group list with
-            // add/rename/reorder/delete, and the Planning/In-Progress/
-            // Done auto-movement targets — lives there as part of the
-            // desktop projection. Editing groups here used to send
-            // wire commands directly to the desktop, which made the
-            // iOS-local Appearance view a confusing mix of iOS-local
-            // preferences and desktop projection. The user-facing rule
-            // is now: iOS-local Appearance = iOS-only preferences;
-            // anything on the desktop is edited under Desktop Settings.
         }
         .navigationTitle("Appearance")
         .navigationBarTitleDisplayMode(.inline)

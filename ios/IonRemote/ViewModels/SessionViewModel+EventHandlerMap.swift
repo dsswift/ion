@@ -16,21 +16,20 @@
 //
 //  Connection events
 //    handleUnpair, handleLANAuthRejected  → SessionViewModel+ConnectionEvents
-//    handleRelayConfig                    → SessionViewModel+RelayAuth
 //
-//  Permission / message events
-//    handlePermissionRequest, handleConversationHistory, handleMessageAdded,
-//    handleMessageUpdated, handleInputPrefill
+//  Transcript (the only writer of conversation rows)
+//    handleTranscriptPage, handleTranscriptPatch, handleTranscriptUnavailable
+//                                         → SessionViewModel+Transcript
+//    handlePromptResult, the pending prompt overlay
+//                                         → SessionViewModel+PendingPrompts
+//
+//  Permission / input-prefill events
+//    handlePermissionRequest, handleInputPrefill
 //                                         → SessionViewModel+PermissionMessageEvents
 //
-//  Engine events
+//  Engine events (status, context usage, pinned prompt)
+//    handleEngineError, handleEngineMessageEnd, handleEngineDead,
 //    handleContextBreakdown               → SessionViewModel+EngineEvents
-//
-//  Conversation helpers
-//    deduplicateMessages                  → SessionViewModel+ConversationHelpers
 //
 //  Uploads
 //    handleUploadAttachmentResult         → SessionViewModel+UploadEvents
-//
-//  Thinking events
-//    the thinking-block accumulator       → SessionViewModel+ThinkingEvents

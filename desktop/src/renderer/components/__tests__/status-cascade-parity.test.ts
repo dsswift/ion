@@ -8,7 +8,7 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
-import { STATUS_CASCADE } from '../TabStripStatusPriority'
+import { STATUS_CASCADE } from '../status-priority'
 
 interface CascadeStatus {
   name: string

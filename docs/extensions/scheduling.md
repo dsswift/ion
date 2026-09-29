@@ -107,7 +107,8 @@ shared `catchUpGroup`; `catchUpScope: 'same_day'` rejects slots from an earlier
 local calendar day. Empty `catchUpGroup` makes a job its own group. Omit the
 field for existing `catchUpEnabled` behavior: jobs auto-catch up unless their
 extension registered a `schedule_missed` handler, which receives the decision
-instead. `catchUp` applies only to daily and weekly jobs.
+instead. The engine's own transport forwarders do not count as a registered
+handler. `catchUp` applies only to daily and weekly jobs.
 
 ## Job shapes
 

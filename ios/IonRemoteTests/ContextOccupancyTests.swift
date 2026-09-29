@@ -190,6 +190,17 @@ final class ContextOccupancyTests: XCTestCase {
         XCTAssertEqual(fields.contextEffectiveLimit, 167_000)
     }
 
+    /// The same limit rides every engine_session_status. It was declared
+    /// `let ... = nil`, which `Codable` never decodes, so a session-status
+    /// update always carried nil and the ring fell back to the estimate.
+    func test_sessionStatusDecodesTheEnginesEffectiveLimit() throws {
+        let json = """
+        {"key":"tab","state":"idle","lastEmittedAt":1,"contextWindow":200000,"contextTokens":84000,"contextEffectiveLimit":167000}
+        """.data(using: .utf8)!
+        let status = try JSONDecoder().decode(SessionStatus.self, from: json)
+        XCTAssertEqual(status.contextEffectiveLimit, 167_000)
+    }
+
     /// The engine's reported limit is authoritative for the model the engine
     /// ran, so it wins over recomputing the reserves locally.
     func test_contextCapacityPrefersTheEngineReportedEffectiveLimit() {

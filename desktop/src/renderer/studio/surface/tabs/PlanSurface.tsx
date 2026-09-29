@@ -10,17 +10,18 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { CheckCircle, Circle, DotsThree, FileText } from '@phosphor-icons/react'
-import { useSessionStore } from '../../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { PlanContent } from '../../../components/PlanContent'
 import { useColors } from '../../../theme'
 import { rDebug, rWarn } from '../../../rendererLogger'
-import { activeInstance } from '../../../stores/conversation-instance'
+import { activeInstance } from '@ion/server/store/conversation-instance'
 import { hasPlanFileBeenWritten, isPlanImplementedInMessages, latestPlanPathFromMessages } from '../../../components/StatusBarAttachmentsParser'
 import { Tooltip } from '../../../components/git/Tooltip'
 import { useInteractiveState, interactiveBg } from '../../../hooks/useInteractiveState'
 import { PlanActionsMenu } from './PlanActionsMenu'
 import { planExportFileName } from './plan-export'
 import { DEFAULT_MONO_FONT } from '../../../typography'
+import { host } from '../../../host/host-instance'
 
 type PlanState =
   | { kind: 'empty' }
@@ -63,7 +64,7 @@ export function PlanSurface(): React.JSX.Element {
   const downloadPlan = useCallback((filePath: string, content: string): void => {
     const defaultFileName = planExportFileName(filePath, new Date())
     rDebug('studio.plan', 'opening plan export dialog', { path: filePath, default_file_name: defaultFileName })
-    void window.ion.fsSaveDialog(undefined, defaultFileName).then(async (dialog) => {
+    void host.pickSavePath(undefined, defaultFileName).then(async (dialog) => {
       if (dialog.error) {
         rWarn('studio.plan', 'plan export dialog failed', { path: filePath, error: dialog.error })
         return
@@ -72,7 +73,7 @@ export function PlanSurface(): React.JSX.Element {
         rDebug('studio.plan', 'plan export cancelled', { path: filePath })
         return
       }
-      const result = await window.ion.fsWriteFile(dialog.filePath, content)
+      const result = await host.shell.fsWriteFile(dialog.filePath, content)
       if (!result.ok) {
         rWarn('studio.plan', 'plan export write failed', { path: dialog.filePath, error: result.error ?? 'unknown error' })
         return
@@ -99,7 +100,7 @@ export function PlanSurface(): React.JSX.Element {
     setPlan({ kind: 'loading', filePath: planFilePath })
 
     const load = (): void => {
-      void window.ion
+      void host.shell
         .fsReadFile(planFilePath)
         .then((res) => {
           if (!alive) return
@@ -122,13 +123,13 @@ export function PlanSurface(): React.JSX.Element {
     load()
 
     // Live updates: re-plan rewrites the file; the watcher pushes changes.
-    void window.ion
+    void host.shell
       .fsWatchFile(planFilePath)
       .then((res) => {
         if (!res.ok) rWarn('studio.plan', 'plan watch failed', { path: planFilePath, error: res.error ?? '' })
       })
       .catch((err) => rWarn('studio.plan', 'plan watch failed', { path: planFilePath, error: String(err) }))
-    const off = window.ion.onFileChanged((changed) => {
+    const off = host.shell.onFileChanged((changed) => {
       if (changed === planFilePath) {
         rDebug('studio.plan', 'plan file changed, reloading', { path: planFilePath })
         load()
@@ -138,7 +139,7 @@ export function PlanSurface(): React.JSX.Element {
     return () => {
       alive = false
       off()
-      void window.ion.fsUnwatchFile(planFilePath).catch((err) => rDebug('studio.plan', 'unwatch failed', { error: String(err) }))
+      void host.shell.fsUnwatchFile(planFilePath).catch((err) => rDebug('studio.plan', 'unwatch failed', { error: String(err) }))
     }
   }, [closeMenu, planFilePath, reserved])
 

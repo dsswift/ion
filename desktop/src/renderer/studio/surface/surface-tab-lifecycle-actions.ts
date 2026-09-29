@@ -1,10 +1,10 @@
-import { useSessionStore } from "../../stores/sessionStore";
+import { useSessionStore } from "@ion/server/store/sessionStore";
 import {
   NOTIFICATION_SURFACE_ID,
   QUESTIONS_SURFACE_ID,
   type PinnableSingletonId,
   type SurfaceConversationPersisted,
-} from "../../../shared/studio-surface-types";
+} from "@ion/shared/studio-surface-types";
 import { rDebug, rInfo, rWarn } from "../../rendererLogger";
 import { teardownSurfaceTab } from "./surface-tab-lifecycle";
 import {
@@ -12,8 +12,8 @@ import {
   closeToRightTargets,
   nextActiveAfterClose,
   normalizeTabs,
-} from "../../../shared/studio-surface-ordering";
-import { normalizePinnedTabs } from "../../../shared/studio-surface-persistence";
+} from "@ion/shared/studio-surface-ordering";
+import { normalizePinnedTabs } from "@ion/shared/studio-surface-persistence";
 import {
   emptyConversation,
   globalTabIds as globalSurfaceTabIds,

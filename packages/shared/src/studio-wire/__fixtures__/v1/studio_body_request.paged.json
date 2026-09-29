@@ -1,0 +1,7 @@
+{
+  "type": "studio_body_request",
+  "tabId": "tab-123",
+  "instanceId": "instance-1",
+  "before": "msg-0042",
+  "limit": 200
+}

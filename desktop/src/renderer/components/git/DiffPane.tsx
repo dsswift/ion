@@ -17,6 +17,7 @@ import type { ParsedDiff, DiffLine } from './diffParse'
 import { DiffTable } from './DiffTable'
 import { DiffSideBySide } from './DiffSideBySide'
 import { UnsupportedDiffNotice } from './UnsupportedDiffNotice'
+import { host } from '../../host/host-instance'
 
 const VIEW_MODE_KEY = 'ion:diff-view-mode'
 const EMPTY_PARSED_DIFF: ParsedDiff = { fileHeader: [], hunks: [], lines: [] }
@@ -84,7 +85,7 @@ export function DiffPane({ diff, fileName, filePath, isBinary, staged, directory
       ? buildPartialLinePatch(parsed, hunkIdx, selectedInHunk)
       : buildHunkPatch(parsed, hunkIdx)
     if (!patch) return
-    const result = await window.ion.gitApplyPatch(directory, patch, { cached: true, reverse: staged })
+    const result = await host.shell.gitApplyPatch(directory, patch, { cached: true, reverse: staged })
     if (!result.ok) { setError(result.error ?? 'Apply failed'); return }
     clearSelection()
     onRefresh()
@@ -95,7 +96,7 @@ export function DiffPane({ diff, fileName, filePath, isBinary, staged, directory
     setError(null)
     const patch = buildHunkPatch(parsed, hunkIdx)
     if (!patch) return
-    const result = await window.ion.gitApplyPatch(directory, patch, { cached: false, reverse: true })
+    const result = await host.shell.gitApplyPatch(directory, patch, { cached: false, reverse: true })
     if (!result.ok) { setError(result.error ?? 'Discard failed'); return }
     clearSelection()
     onRefresh()

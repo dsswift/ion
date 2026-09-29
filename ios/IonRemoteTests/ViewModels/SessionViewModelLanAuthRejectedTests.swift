@@ -30,7 +30,6 @@ final class SessionViewModelLanAuthRejectedTests: XCTestCase {
             sharedSecret: Data(repeating: 7, count: 32),
             relayURL: "ws://127.0.0.1:1",
             relayAPIKey: "lan-direct",
-            apnsToken: nil,
             customName: nil,
             customIcon: nil,
             remoteDisplayUpdatedAt: nil
@@ -47,9 +46,9 @@ final class SessionViewModelLanAuthRejectedTests: XCTestCase {
 
         vm.handleEvent(.lanAuthRejected)
 
-        XCTAssertNotEqual(vm.activeDesktopAccess.status, .rejected,
+        XCTAssertNotEqual(vm.activeServerAccess.status, .rejected,
             "A LAN-only rejection must not overwrite independent relay/OIDC authentication")
-        XCTAssertNotEqual(vm.activeDesktopAccess.reason, .pairingRejected)
+        XCTAssertNotEqual(vm.activeServerAccess.reason, .pairingRejected)
         XCTAssertEqual(vm.pairedDevices.map(\.id), [device.id, bystander.id],
             "LAN rejection must not remove or lock a pairing before relay verification")
         XCTAssertNotNil(vm.reconnectSafetyTask,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { filterOverlapAnalysis } from './filter-analysis'
-import type { WorktreeOverlapAnalysis } from '../../shared/types-worktree-overlap'
+import type { WorktreeOverlapAnalysis } from '@ion/shared/types-worktree-overlap'
 
 const analysis: WorktreeOverlapAnalysis = {
   repoPath: '/repo', sourceBranch: 'main', basis: 'live', computedAt: 0, incompletePaths: ['a'], recommendation: { kind: 'exact', orderedPaths: [], alternatives: [], blockers: [], pairScope: [] },

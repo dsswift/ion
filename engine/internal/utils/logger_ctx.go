@@ -9,6 +9,8 @@ const (
 	ctxKeySessionID contextKey = iota
 	ctxKeyConversationID
 	ctxKeyTraceID
+	ctxKeyPrincipalIdentity
+	ctxKeySpanID
 )
 
 // WithSessionID returns a new context carrying the given session ID.
@@ -24,6 +26,17 @@ func WithConversationID(ctx context.Context, id string) context.Context {
 // WithTraceID returns a new context carrying the given trace ID.
 func WithTraceID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, ctxKeyTraceID, id)
+}
+
+// WithPrincipalIdentity returns a new context carrying the acting
+// principal's attribution string (FR-05 child 09/10, R-41/R-42): the
+// identity telemetry and ambient logs should stamp for work done on this
+// principal's behalf, rather than the process-wide operator/machine
+// identity. attribution is the caller's already-resolved user value, stored
+// as given -- never a principal's claims, which must never reach telemetry
+// or logs.
+func WithPrincipalIdentity(ctx context.Context, attribution string) context.Context {
+	return context.WithValue(ctx, ctxKeyPrincipalIdentity, attribution)
 }
 
 // SessionIDFromContext returns the session ID carried by ctx, or "" if absent.
@@ -46,6 +59,16 @@ func ConversationIDFromContext(ctx context.Context) string {
 // TraceIDFromContext returns the trace ID carried by ctx, or "" if absent.
 func TraceIDFromContext(ctx context.Context) string {
 	if v, ok := ctx.Value(ctxKeyTraceID).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// PrincipalIdentityFromContext returns the acting principal's attribution
+// string carried by ctx, or "" if absent (an unattributed run, or a context
+// that never passed through WithPrincipalIdentity).
+func PrincipalIdentityFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(ctxKeyPrincipalIdentity).(string); ok {
 		return v
 	}
 	return ""

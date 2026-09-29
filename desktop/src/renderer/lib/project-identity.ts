@@ -1,4 +1,4 @@
-import type { WorktreeInfo } from '../../shared/types'
+import type { WorktreeInfo } from '@ion/shared/types'
 
 interface ProjectTab {
   workingDirectory: string

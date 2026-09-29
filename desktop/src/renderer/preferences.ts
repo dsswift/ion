@@ -1,18 +1,16 @@
-import { create } from 'zustand'
-import type { TabGroup } from '../shared/types'
+import { create, type StateCreator } from 'zustand'
 import { applyTheme, resolveColors, type ColorPalette } from './theme-tokens'
-import type { PreferencesState } from './preferences-types'
-import { saveSettings, getAllSettings, INITIAL_SAVED } from './preferences-persist'
+import type { PreferencesState } from '@ion/server/preferences-types'
+import { saveSettings, saveSettingsFor, persist, INITIAL_SAVED } from './preferences-persist'
 import { bootstrapPreferences } from './preferences-bootstrap'
 import { createKeyboardShortcutActions } from './preferences-shortcuts'
-import { deriveEnterpriseThemePolicy } from '../shared/enterprise-theme-policy'
+import { deriveEnterpriseThemePolicy } from '@ion/shared/enterprise-theme-policy'
 import { normalizePreferencesModels } from './preferences-model-normalization'
 import { rInfo, rWarn } from './rendererLogger'
-import { isEphemeralWorkspaceDirectory } from '../shared/recent-directories'
+import { isEphemeralWorkspaceDirectory } from '@ion/shared/recent-directories'
 import { clampFontSize, clampUiZoom } from './typography'
 import { createWorkspaceFolderActions, createInboxPreferenceActions, createProjectRegistryActions } from './preferences-workspace'
-export type { PreferencesState } from './preferences-types'
-export { getEffectiveTabGroups } from './preferences-persist'
+export type { PreferencesState } from '@ion/server/preferences-types'
 
 const saved = INITIAL_SAVED
 const _savedThemeId = localStorage.getItem('ion_selectedTheme') ?? 'ion-dark'
@@ -23,28 +21,39 @@ const _savedThemeId = localStorage.getItem('ion_selectedTheme') ?? 'ion-dark'
  * ~/.ion/settings.json per frame would turn one drag into hundreds of
  * atomic file writes. The store updates synchronously above; the disk write
  * fires once, shortly after the drag goes quiet.
+ *
+ * Accumulates the patch across the debounce window (both height setters
+ * share one timer) and sends only those fields -- never the full snapshot,
+ * which would freeze every other in-memory field into this identity's
+ * overlay too. See persist()'s doc comment.
  */
 let panelHeightSaveTimer: ReturnType<typeof setTimeout> | null = null
-function schedulePanelHeightSave(get: () => PreferencesState): void {
+let pendingPanelHeightPatch: Partial<PreferencesState> = {}
+function schedulePanelHeightSave(patch: Partial<PreferencesState>): void {
+  pendingPanelHeightPatch = { ...pendingPanelHeightPatch, ...patch }
   if (panelHeightSaveTimer !== null) clearTimeout(panelHeightSaveTimer)
   panelHeightSaveTimer = setTimeout(() => {
     panelHeightSaveTimer = null
-    saveSettings(getAllSettings(get))
+    const toSave = pendingPanelHeightPatch
+    pendingPanelHeightPatch = {}
+    saveSettings(toSave)
   }, 400)
 }
 
-export const usePreferencesStore = create<PreferencesState>((set, get) => ({
+/**
+ * The preference store's state and actions. Exported so Settings can build a
+ * second instance bound to another server (components/settings/
+ * settings-target.ts); the app-wide instance is `usePreferencesStore` below.
+ */
+export const createPreferencesState: StateCreator<PreferencesState> = (set, get) => ({
   selectedTheme: _savedThemeId,
   soundEnabled: saved.soundEnabled,
-  expandedUI: saved.expandedUI,
-  ultraWide: saved.ultraWide,
   defaultBaseDirectory: saved.defaultBaseDirectory,
   recentBaseDirectories: saved.recentBaseDirectories,
   directoryUsageCounts: saved.directoryUsageCounts,
   defaultPermissionMode: saved.defaultPermissionMode,
   browserPreviewNetworkShield: saved.browserPreviewNetworkShield,
   studioPlaywrightEnabled: saved.studioPlaywrightEnabled,
-  expandOnTabSwitch: saved.expandOnTabSwitch,
   studioSurfaceSwitchMode: saved.studioSurfaceSwitchMode,
   bashCommandEntry: saved.bashCommandEntry,
   gitPanelPaneProportions: saved.gitPanelPaneProportions,
@@ -56,7 +65,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   terminalFontFamily: saved.terminalFontFamily,
   terminalFontSize: saved.terminalFontSize,
   showHiddenFiles: saved.showHiddenFiles,
-  closeExplorerOnFileOpen: saved.closeExplorerOnFileOpen,
   openMarkdownInPreview: saved.openMarkdownInPreview,
   editorWordWrap: saved.editorWordWrap,
   editorFontSize: saved.editorFontSize,
@@ -66,36 +74,21 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   worktreeBranchDefaults: saved.worktreeBranchDefaults,
   worktreeSkipPrTitle: saved.worktreeSkipPrTitle,
   allowSettingsEdits: saved.allowSettingsEdits,
+  pushConversationTitles: saved.pushConversationTitles,
   enableClaudeCompat: saved.enableClaudeCompat ?? false,
   enableEarlyStopContinuation: saved.enableEarlyStopContinuation ?? false,
   showTodoList: saved.showTodoList,
   agentPanelDefaultOpen: saved.agentPanelDefaultOpen,
   unifiedTurnView: saved.unifiedTurnView,
   aiGeneratedTitles: saved.aiGeneratedTitles,
-  hideOnExternalLaunch: saved.hideOnExternalLaunch,
-  keepExplorerOnCollapse: saved.keepExplorerOnCollapse,
-  keepTerminalOnCollapse: saved.keepTerminalOnCollapse,
-  keepGitPanelOnCollapse: saved.keepGitPanelOnCollapse,
-  keepStatusDrawerOnCollapse: saved.keepStatusDrawerOnCollapse,
-  tabGroupMode: saved.tabGroupMode,
-  tabGroups: saved.tabGroups,
-  autoGroupOrder: saved.autoGroupOrder,
-  stashedManualGroups: saved.stashedManualGroups,
-  stashedManualTabAssignments: saved.stashedManualTabAssignments,
-  inProgressGroupId: saved.inProgressGroupId,
-  doneGroupId: saved.doneGroupId,
-  planningGroupId: saved.planningGroupId,
-  autoGroupMovement: saved.autoGroupMovement,
   commitCommand: saved.commitCommand,
   aiAssistPromptOverrides: saved.aiAssistPromptOverrides,
   gitChangesTreeView: saved.gitChangesTreeView,
   quickTools: saved.quickTools,
   uiZoom: saved.uiZoom,
-  remoteEnabled: saved.remoteEnabled,
-  relayUrl: saved.relayUrl,
+    relayUrl: saved.relayUrl,
   relayApiKey: saved.relayApiKey,
-  lanServerPort: saved.lanServerPort,
-  pairedDevices: saved.pairedDevices,
+    pairedDevices: saved.pairedDevices,
   streamThinkingToRemote: saved.streamThinkingToRemote,
   defaultThinkingEffort: saved.defaultThinkingEffort,
   remoteDisplay: saved.remoteDisplay,
@@ -106,8 +99,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   // Enterprise policy: starts null, loaded from engine at startup.
   enterpriseNewConversationDefaults: null,
   enterprisePolicy: null,
-  defaultTallConversation: saved.defaultTallConversation,
-  defaultTallTerminal: saved.defaultTallTerminal,
   tabRecoveryEnabled: saved.tabRecoveryEnabled,
   tabRecoveryTimeoutSec: saved.tabRecoveryTimeoutSec,
   planModelSplitEnabled: saved.planModelSplitEnabled,
@@ -119,32 +110,19 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   gitPanelRepoSectionsCollapsed: saved.gitPanelRepoSectionsCollapsed,
   inboxAutoSettleDays: saved.inboxAutoSettleDays,
   inboxAutoSettleOnMerge: saved.inboxAutoSettleOnMerge,
-  studioTabStripVisible: saved.studioTabStripVisible,
   projectSettingsVersion: saved.projectSettingsVersion,
   projects: saved.projects,
   excludedResourceKinds: saved.excludedResourceKinds,
   keyboardShortcuts: saved.keyboardShortcuts,
-  setDefaultTallConversation: (enabled) => {
-    set({ defaultTallConversation: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setDefaultTallTerminal: (enabled) => {
-    set({ defaultTallTerminal: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setTabRecoveryEnabled: (enabled) => {
-    set({ tabRecoveryEnabled: enabled })
-    saveSettings(getAllSettings(get))
-  },
+  setTabRecoveryEnabled: (enabled) => persist(set, { tabRecoveryEnabled: enabled }),
   setTabRecoveryTimeoutSec: (sec) => {
     const clamped = Math.max(30, Math.min(600, Math.round(sec)))
-    set({ tabRecoveryTimeoutSec: clamped })
-    saveSettings(getAllSettings(get))
+    persist(set, { tabRecoveryTimeoutSec: clamped })
   },
   // Theme selection is the single control: every built-in theme declares
   // its own color scheme, so picking a theme fully determines the look.
   // Enterprise lock: a locked themePolicy makes theme selection read-only
-  // (the picker is disabled in AppearanceCategory; this guard is the
+  // (the Settings theme picker is disabled; this guard is the
   // belt-and-suspenders for programmatic callers and iOS-originated
   // settings pushes, mirroring the main-process write-funnel strip).
   setSelectedTheme: (id) => {
@@ -157,26 +135,11 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       return
     }
     localStorage.setItem('ion_selectedTheme', id)
-    set({ selectedTheme: id })
+    persist(set, { selectedTheme: id })
     applyTheme(id)
-    saveSettings(getAllSettings(get))
   },
-  setSoundEnabled: (enabled) => {
-    set({ soundEnabled: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setExpandedUI: (expanded) => {
-    set({ expandedUI: expanded })
-    saveSettings(getAllSettings(get))
-  },
-  setUltraWide: (enabled) => {
-    set({ ultraWide: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setDefaultBaseDirectory: (dir) => {
-    set({ defaultBaseDirectory: dir })
-    saveSettings(getAllSettings(get))
-  },
+  setSoundEnabled: (enabled) => persist(set, { soundEnabled: enabled }),
+  setDefaultBaseDirectory: (dir) => persist(set, { defaultBaseDirectory: dir }),
   addRecentBaseDirectory: (dir) => {
     if (isEphemeralWorkspaceDirectory(dir)) {
       rInfo('preferences', 'ephemeral workspace excluded from recent directories', { directory: dir })
@@ -185,338 +148,108 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     const current = get().recentBaseDirectories.filter((d) => d !== dir)
     const updated = [dir, ...current].slice(0, 12)
     const counts = { ...get().directoryUsageCounts, [dir]: (get().directoryUsageCounts[dir] || 0) + 1 }
-    set({ recentBaseDirectories: updated, directoryUsageCounts: counts })
-    saveSettings(getAllSettings(get))
+    persist(set, { recentBaseDirectories: updated, directoryUsageCounts: counts })
   },
   removeRecentBaseDirectory: (dir) => {
     const updated = get().recentBaseDirectories.filter((d) => d !== dir)
     const counts = { ...get().directoryUsageCounts }
     delete counts[dir]
-    set({ recentBaseDirectories: updated, directoryUsageCounts: counts })
-    saveSettings(getAllSettings(get))
+    persist(set, { recentBaseDirectories: updated, directoryUsageCounts: counts })
   },
-  setDefaultPermissionMode: (mode) => {
-    set({ defaultPermissionMode: mode })
-    saveSettings(getAllSettings(get))
-  },
-  setBrowserPreviewNetworkShield: (enabled) => {
-    set({ browserPreviewNetworkShield: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setStudioPlaywrightEnabled: (enabled) => {
-    set({ studioPlaywrightEnabled: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setExpandOnTabSwitch: (enabled) => {
-    set({ expandOnTabSwitch: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setStudioSurfaceSwitchMode: (mode) => {
-    set({ studioSurfaceSwitchMode: mode })
-    saveSettings(getAllSettings(get))
-  },
-  setBashCommandEntry: (enabled) => {
-    set({ bashCommandEntry: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setGitPanelPaneProportions: (proportions) => {
-    set({ gitPanelPaneProportions: proportions })
-    saveSettings(getAllSettings(get))
-  },
+  setDefaultPermissionMode: (mode) => persist(set, { defaultPermissionMode: mode }),
+  setBrowserPreviewNetworkShield: (enabled) => persist(set, { browserPreviewNetworkShield: enabled }),
+  setStudioPlaywrightEnabled: (enabled) => persist(set, { studioPlaywrightEnabled: enabled }),
+  setStudioSurfaceSwitchMode: (mode) => persist(set, { studioSurfaceSwitchMode: mode }),
+  setBashCommandEntry: (enabled) => persist(set, { bashCommandEntry: enabled }),
+  setGitPanelPaneProportions: (proportions) => persist(set, { gitPanelPaneProportions: proportions }),
   // Panel heights commit on every drag frame (usePanelVerticalResize), so the
   // disk write must not ride every call — the store updates live and the
   // save is deferred to the trailing edge of the drag.
   setGitPanelHeight: (height) => {
     set({ gitPanelHeight: height })
-    schedulePanelHeightSave(get)
+    schedulePanelHeightSave({ gitPanelHeight: height })
   },
   setFileExplorerHeight: (height) => {
     set({ fileExplorerHeight: height })
-    schedulePanelHeightSave(get)
+    schedulePanelHeightSave({ fileExplorerHeight: height })
   },
-  setGitPanelChangesOpen: (open) => {
-    set({ gitPanelChangesOpen: open })
-    saveSettings(getAllSettings(get))
-  },
+  setGitPanelChangesOpen: (open) => persist(set, { gitPanelChangesOpen: open }),
   setGitPanelGraphOpen: (open) => {
     set({ gitPanelGraphOpen: open })
   },
 
-  setExpandToolResults: (enabled) => {
-    set({ expandToolResults: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setTerminalFontFamily: (font) => {
-    set({ terminalFontFamily: font })
-    saveSettings(getAllSettings(get))
-  },
-  setTerminalFontSize: (size) => {
-    set({ terminalFontSize: clampFontSize(size) })
-    saveSettings(getAllSettings(get))
-  },
-  setShowHiddenFiles: (show) => {
-    set({ showHiddenFiles: show })
-    saveSettings(getAllSettings(get))
-  },
-  setCloseExplorerOnFileOpen: (enabled) => {
-    set({ closeExplorerOnFileOpen: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setOpenMarkdownInPreview: (enabled) => {
-    set({ openMarkdownInPreview: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setEditorWordWrap: (enabled) => {
-    set({ editorWordWrap: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setEditorFontSize: (size) => {
-    set({ editorFontSize: clampFontSize(size, 12) })
-    saveSettings(getAllSettings(get))
-  },
-  setDataViewFontSize: (size) => {
-    set({ dataViewFontSize: clampFontSize(size) })
-    saveSettings(getAllSettings(get))
-  },
-  setGitOpsMode: (mode) => {
-    set({ gitOpsMode: mode })
-    saveSettings(getAllSettings(get))
-  },
-  setWorktreeCompletionStrategy: (strategy) => {
-    set({ worktreeCompletionStrategy: strategy })
-    saveSettings(getAllSettings(get))
-  },
+  setExpandToolResults: (enabled) => persist(set, { expandToolResults: enabled }),
+  setTerminalFontFamily: (font) => persist(set, { terminalFontFamily: font }),
+  setTerminalFontSize: (size) => persist(set, { terminalFontSize: clampFontSize(size) }),
+  setShowHiddenFiles: (show) => persist(set, { showHiddenFiles: show }),
+  setOpenMarkdownInPreview: (enabled) => persist(set, { openMarkdownInPreview: enabled }),
+  setEditorWordWrap: (enabled) => persist(set, { editorWordWrap: enabled }),
+  setEditorFontSize: (size) => persist(set, { editorFontSize: clampFontSize(size, 12) }),
+  setDataViewFontSize: (size) => persist(set, { dataViewFontSize: clampFontSize(size) }),
+  setGitOpsMode: (mode) => persist(set, { gitOpsMode: mode }),
+  setWorktreeCompletionStrategy: (strategy) => persist(set, { worktreeCompletionStrategy: strategy }),
   setWorktreeBranchDefault: (repoPath, branch) => {
     const current = get().worktreeBranchDefaults
-    set({ worktreeBranchDefaults: { ...current, [repoPath]: branch } })
-    saveSettings(getAllSettings(get))
+    persist(set, { worktreeBranchDefaults: { ...current, [repoPath]: branch } })
   },
   removeWorktreeBranchDefault: (repoPath) => {
     const current = { ...get().worktreeBranchDefaults }
     delete current[repoPath]
-    set({ worktreeBranchDefaults: current })
-    saveSettings(getAllSettings(get))
+    persist(set, { worktreeBranchDefaults: current })
   },
-  setWorktreeSkipPrTitle: (skip) => {
-    set({ worktreeSkipPrTitle: skip })
-    saveSettings(getAllSettings(get))
-  },
-  setAllowSettingsEdits: (enabled) => {
-    set({ allowSettingsEdits: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setEnableClaudeCompat: (enabled) => {
-    set({ enableClaudeCompat: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setEnableEarlyStopContinuation: (enabled) => {
-    set({ enableEarlyStopContinuation: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setShowTodoList: (enabled) => {
-    set({ showTodoList: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setAgentPanelDefaultOpen: (enabled) => {
-    set({ agentPanelDefaultOpen: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setUnifiedTurnView: (enabled) => {
-    set({ unifiedTurnView: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setAiGeneratedTitles: (enabled) => {
-    set({ aiGeneratedTitles: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setHideOnExternalLaunch: (enabled) => {
-    set({ hideOnExternalLaunch: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setKeepExplorerOnCollapse: (enabled) => {
-    set({ keepExplorerOnCollapse: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setKeepTerminalOnCollapse: (enabled) => {
-    set({ keepTerminalOnCollapse: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setKeepGitPanelOnCollapse: (enabled) => {
-    set({ keepGitPanelOnCollapse: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setKeepStatusDrawerOnCollapse: (enabled) => {
-    set({ keepStatusDrawerOnCollapse: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setTabGroupMode: (mode) => {
-    set({ tabGroupMode: mode })
-    saveSettings(getAllSettings(get))
-  },
-  setTabGroups: (groups) => {
-    set({ tabGroups: groups })
-    saveSettings(getAllSettings(get))
-  },
-  createTabGroup: (label) => {
-    const id = crypto.randomUUID()
-    const current = get().tabGroups
-    const isFirst = current.length === 0
-    const group: TabGroup = { id, label, isDefault: isFirst, order: current.length, collapsed: true }
-    set({ tabGroups: [...current, group] })
-    saveSettings(getAllSettings(get))
-    return id
-  },
-  deleteTabGroup: (groupId) => {
-    const current = get().tabGroups
-    const removing = current.find((g) => g.id === groupId)
-    let updated = current.filter((g) => g.id !== groupId)
-    // If we removed the default, assign default to first remaining
-    if (removing?.isDefault && updated.length > 0) {
-      updated = updated.map((g, i) => i === 0 ? { ...g, isDefault: true } : g)
-    }
-    // Reindex order
-    updated = updated.map((g, i) => ({ ...g, order: i }))
-    // Clear in-progress designation if this group was it
-    const patch: Partial<PreferencesState> = { tabGroups: updated }
-    if (get().inProgressGroupId === groupId) patch.inProgressGroupId = null
-    if (get().doneGroupId === groupId) patch.doneGroupId = null
-    if (get().planningGroupId === groupId) patch.planningGroupId = null
-    set(patch)
-    saveSettings(getAllSettings(get))
-  },
-  renameTabGroup: (groupId, label) => {
-    set({ tabGroups: get().tabGroups.map((g) => g.id === groupId ? { ...g, label } : g) })
-    saveSettings(getAllSettings(get))
-  },
-  setDefaultTabGroup: (groupId) => {
-    set({ tabGroups: get().tabGroups.map((g) => ({ ...g, isDefault: g.id === groupId })) })
-    saveSettings(getAllSettings(get))
-  },
-  reorderTabGroups: (reorderedGroups) => {
-    const updated = reorderedGroups.map((g, i) => ({ ...g, order: i }))
-    set({ tabGroups: updated })
-    saveSettings(getAllSettings(get))
-  },
-  setAutoGroupOrder: (order) => {
-    set({ autoGroupOrder: order })
-    saveSettings(getAllSettings(get))
-  },
-  setStashedManualGroups: (groups, assignments) => {
-    set({ stashedManualGroups: groups, stashedManualTabAssignments: assignments })
-    saveSettings(getAllSettings(get))
-  },
-  setInProgressGroupId: (groupId) => {
-    set({ inProgressGroupId: groupId })
-    saveSettings(getAllSettings(get))
-  },
-  setDoneGroupId: (groupId) => {
-    set({ doneGroupId: groupId })
-    saveSettings(getAllSettings(get))
-  },
-  setPlanningGroupId: (groupId) => {
-    set({ planningGroupId: groupId })
-    saveSettings(getAllSettings(get))
-  },
-  setAutoGroupMovement: (enabled) => {
-    set({ autoGroupMovement: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setCommitCommand: (cmd) => {
-    set({ commitCommand: cmd })
-    saveSettings(getAllSettings(get))
-  },
+  setWorktreeSkipPrTitle: (skip) => persist(set, { worktreeSkipPrTitle: skip }),
+  setAllowSettingsEdits: (enabled) => persist(set, { allowSettingsEdits: enabled }),
+  setPushConversationTitles: (enabled) => persist(set, { pushConversationTitles: enabled }),
+  setEnableClaudeCompat: (enabled) => persist(set, { enableClaudeCompat: enabled }),
+  setEnableEarlyStopContinuation: (enabled) => persist(set, { enableEarlyStopContinuation: enabled }),
+  setShowTodoList: (enabled) => persist(set, { showTodoList: enabled }),
+  setAgentPanelDefaultOpen: (enabled) => persist(set, { agentPanelDefaultOpen: enabled }),
+  setUnifiedTurnView: (enabled) => persist(set, { unifiedTurnView: enabled }),
+  setAiGeneratedTitles: (enabled) => persist(set, { aiGeneratedTitles: enabled }),
+  setCommitCommand: (cmd) => persist(set, { commitCommand: cmd }),
   setAiAssistPromptOverride: (workflowId, prompt) => {
     const next = { ...get().aiAssistPromptOverrides }
     const normalized = prompt?.trim()
     if (normalized) next[workflowId] = prompt!
     else delete next[workflowId]
-    set({ aiAssistPromptOverrides: next })
-    saveSettings(getAllSettings(get))
+    persist(set, { aiAssistPromptOverrides: next })
   },
-  setGitChangesTreeView: (enabled) => {
-    set({ gitChangesTreeView: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setQuickTools: (tools) => {
-    set({ quickTools: tools })
-    saveSettings(getAllSettings(get))
-  },
-  addQuickTool: (tool) => {
-    set({ quickTools: [...get().quickTools, tool] })
-    saveSettings(getAllSettings(get))
-  },
-  removeQuickTool: (toolId) => {
-    set({ quickTools: get().quickTools.filter((t) => t.id !== toolId) })
-    saveSettings(getAllSettings(get))
-  },
+  setGitChangesTreeView: (enabled) => persist(set, { gitChangesTreeView: enabled }),
+  setQuickTools: (tools) => persist(set, { quickTools: tools }),
+  addQuickTool: (tool) => persist(set, { quickTools: [...get().quickTools, tool] }),
+  removeQuickTool: (toolId) => persist(set, { quickTools: get().quickTools.filter((t) => t.id !== toolId) }),
   updateQuickTool: (toolId, updates) => {
-    set({ quickTools: get().quickTools.map((t) => t.id === toolId ? { ...t, ...updates } : t) })
-    saveSettings(getAllSettings(get))
+    persist(set, { quickTools: get().quickTools.map((t) => t.id === toolId ? { ...t, ...updates } : t) })
   },
-  setUiZoom: (zoom) => {
-    set({ uiZoom: clampUiZoom(zoom) })
-    saveSettings(getAllSettings(get))
-  },
+  setUiZoom: (zoom) => persist(set, { uiZoom: clampUiZoom(zoom) }),
   zoomIn: () => {
     get().setUiZoom(get().uiZoom + 0.1)
   },
   zoomOut: () => {
     get().setUiZoom(get().uiZoom - 0.1)
   },
-  setRemoteEnabled: (enabled) => {
-    set({ remoteEnabled: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setRelayUrl: (url) => {
-    set({ relayUrl: url })
-    saveSettings(getAllSettings(get))
-  },
-  setRelayApiKey: (key) => {
-    set({ relayApiKey: key })
-    saveSettings(getAllSettings(get))
-  },
-  setLanServerPort: (port) => {
-    set({ lanServerPort: port })
-    saveSettings(getAllSettings(get))
-  },
-  setStreamThinkingToRemote: (enabled) => {
-    set({ streamThinkingToRemote: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setDefaultThinkingEffort: (effort) => {
-    set({ defaultThinkingEffort: effort })
-    saveSettings(getAllSettings(get))
-  },
+  setRelayUrl: (url) => persist(set, { relayUrl: url }),
+  setRelayApiKey: (key) => persist(set, { relayApiKey: key }),
+  setStreamThinkingToRemote: (enabled) => persist(set, { streamThinkingToRemote: enabled }),
+  setDefaultThinkingEffort: (effort) => persist(set, { defaultThinkingEffort: effort }),
   addPairedDevice: (device) => {
     const current = get().pairedDevices.filter((d) => d.id !== device.id && d.name !== device.name)
-    set({ pairedDevices: [...current, device] })
-    saveSettings(getAllSettings(get))
+    persist(set, { pairedDevices: [...current, device] })
   },
   removePairedDevice: (deviceId) => {
-    set({ pairedDevices: get().pairedDevices.filter((d) => d.id !== deviceId) })
-    saveSettings(getAllSettings(get))
+    persist(set, { pairedDevices: get().pairedDevices.filter((d) => d.id !== deviceId) })
   },
   setRemoteDisplay: (customName, customIcon) => {
     // Optimistically update the store; the main process is the source of
     // truth and will broadcast the canonical value back via the
-    // 'ion:remote-display-changed' event listener (see RemoteCategory).
+    // 'ion:remote-display-changed' event listener.
     const updatedAt = Date.now()
     const next = { customName, customIcon, updatedAt }
-    set({ remoteDisplay: next })
-    saveSettings(getAllSettings(get))
+    persist(set, { remoteDisplay: next })
   },
-  setEngineDefaultModel: (model) => {
-    set({ engineDefaultModel: model })
-    saveSettings(getAllSettings(get))
-  },
-  setPreferredModel: (model) => {
-    set({ preferredModel: model })
-    saveSettings(getAllSettings(get))
-  },
-  setDefaultEngineProfileId: (profileId) => {
-    set({ defaultEngineProfileId: profileId })
-    saveSettings(getAllSettings(get))
-  },
+  setEngineDefaultModel: (model) => persist(set, { engineDefaultModel: model }),
+  setPreferredModel: (model) => persist(set, { preferredModel: model }),
+  setDefaultEngineProfileId: (profileId) => persist(set, { defaultEngineProfileId: profileId }),
   setEnterpriseNewConversationDefaults: (policy) => {
     // Not persisted: enterprise policy is always fetched from the engine.
     set({ enterpriseNewConversationDefaults: policy })
@@ -526,48 +259,25 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     // the engine — a runtime constraint, never a user setting.
     set({ enterprisePolicy: policy })
   },
-  addEngineProfile: (profile) => {
-    set({ engineProfiles: [...get().engineProfiles, profile] })
-    saveSettings(getAllSettings(get))
-  },
+  addEngineProfile: (profile) => persist(set, { engineProfiles: [...get().engineProfiles, profile] }),
   updateEngineProfile: (id, updates) => {
-    set({ engineProfiles: get().engineProfiles.map((p) => p.id === id ? { ...p, ...updates } : p) })
-    saveSettings(getAllSettings(get))
+    persist(set, { engineProfiles: get().engineProfiles.map((p) => p.id === id ? { ...p, ...updates } : p) })
   },
-  removeEngineProfile: (id) => {
-    set({ engineProfiles: get().engineProfiles.filter((p) => p.id !== id) })
-    saveSettings(getAllSettings(get))
-  },
-  setPlanModelSplitEnabled: (enabled) => {
-    set({ planModelSplitEnabled: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setPlanModeModel: (model) => {
-    set({ planModeModel: model })
-    saveSettings(getAllSettings(get))
-  },
-  setImplementModeModel: (model) => {
-    set({ implementModeModel: model })
-    saveSettings(getAllSettings(get))
-  },
+  removeEngineProfile: (id) => persist(set, { engineProfiles: get().engineProfiles.filter((p) => p.id !== id) }),
+  setPlanModelSplitEnabled: (enabled) => persist(set, { planModelSplitEnabled: enabled }),
+  setPlanModeModel: (model) => persist(set, { planModeModel: model }),
+  setImplementModeModel: (model) => persist(set, { implementModeModel: model }),
   normalizeModelPreferences: (models) => normalizePreferencesModels(set, get, models),
   ...createWorkspaceFolderActions(set, get),
   ...createInboxPreferenceActions(set, get),
   ...createProjectRegistryActions(set, get),
-  setExcludedResourceKinds: (kinds) => {
-    set({ excludedResourceKinds: kinds })
-    saveSettings(getAllSettings(get))
-  },
-  setShowImplementClearContext: (enabled) => {
-    set({ showImplementClearContext: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  ...createKeyboardShortcutActions(set, get, () => saveSettings(getAllSettings(get))),
-  applyPreset: (preset) => {
-    set(preset)
-    saveSettings(getAllSettings(get))
-  },
-}))
+  setExcludedResourceKinds: (kinds) => persist(set, { excludedResourceKinds: kinds }),
+  setShowImplementClearContext: (enabled) => persist(set, { showImplementClearContext: enabled }),
+  ...createKeyboardShortcutActions(set, get, (patch) => saveSettingsFor(set, patch)),
+  applyPreset: (preset) => persist(set, preset),
+})
+
+export const usePreferencesStore = create<PreferencesState>(createPreferencesState)
 
 // Startup side effects (theme CSS seed, persisted-settings hydration,
 // enterprise policy fetches, main-process settings-push listener) live in

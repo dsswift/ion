@@ -17,7 +17,7 @@ const state = vi.hoisted(() => ({
   conversationPanes: new Map<string, unknown>(),
 }))
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (store: typeof state) => unknown) => selector(state),
     { getState: () => state },
@@ -50,7 +50,7 @@ let root: ReturnType<typeof createRoot>
 
 function tab(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    id: 'tab-1', status: 'idle', pillIcon: null, bashExecuting: false,
+    id: 'tab-1', status: 'idle', bashExecuting: false,
     manualUnread: false, lastMessageAt: null, lastVisitedAt: null,
     ...over,
   }

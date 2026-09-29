@@ -10,7 +10,7 @@ import React from "react";
 import { SurfacePanel } from "./surface/SurfacePanel";
 import { useResizablePane } from "../hooks/useResizablePane";
 import { useColors } from "../theme";
-import { STUDIO_LAYOUT_BOUNDS } from "../../shared/types-studio";
+import { STUDIO_LAYOUT_BOUNDS } from "@ion/shared/types-studio";
 
 export interface StudioSurfaceProps {
   /** Live width during a drag. */

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC } from '../shared/types'
-import type { StartupState } from '../shared/startup-state'
+import { IPC } from '@ion/shared/types'
+import type { StartupState } from '@ion/shared/startup-state'
 
 const api = {
   getState: (): Promise<StartupState> => ipcRenderer.invoke(IPC.STARTUP_GET_STATE),

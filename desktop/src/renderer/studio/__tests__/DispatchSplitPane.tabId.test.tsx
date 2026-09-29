@@ -52,7 +52,7 @@ const state = {
   }]]),
 }
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (snapshot: typeof state) => unknown) => selector(state),
     { getState: () => state, setState: vi.fn() },

@@ -19,7 +19,7 @@ const store = vi.hoisted(() => ({
   state: { resources: {} as Record<string, unknown[]>, readResourceIds: new Set<string>() },
   setState: vi.fn(),
 }))
-vi.mock('../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: {
     setState: (fn: (s: typeof store.state) => Partial<typeof store.state>) => {
       Object.assign(store.state, fn(store.state))
@@ -30,6 +30,7 @@ vi.mock('../stores/sessionStore', () => ({
 vi.mock('../rendererLogger', () => ({ rDebug: vi.fn(), rInfo: vi.fn(), rWarn: vi.fn(), rError: vi.fn() }))
 
 import { bootstrapResources, _resetResourceBootstrapForTest } from './useResourceBootstrap'
+import { installFakeWire } from '../host/__tests__/fake-wire'
 
 function item(id: string, kind = 'chart') {
   return { id, kind, producer: 'desktop', content: '{}', createdAt: '', conversationId: 'conv-a' }
@@ -45,14 +46,14 @@ function installHarness(): void {
   catalogListeners.length = 0
   _resetResourceBootstrapForTest()
   ;(globalThis as unknown as { window: unknown }).window = {
-    ion: {
+    ion: installFakeWire({
       getReadResourceIds: vi.fn(async () => [] as string[]),
       getPersistedResources: persisted,
       onResourceCatalogChanged: (cb: () => void) => {
         catalogListeners.push(cb)
         return () => { /* listener lives for the window's lifetime */ }
       },
-    },
+    }),
   }
 }
 
@@ -141,3 +142,13 @@ describe('catalog-change subscription', () => {
     expect(catalogListeners).toHaveLength(1)
   })
 })
+
+/**
+ * THE THIRD BUG THIS EXISTED FOR: a browser Studio client has no
+ * `window.ion` contextBridge, and an earlier probe on it skipped this
+ * bootstrap entirely there. `resource.readIds`, `resource.listPersisted` and
+ * `ion:resource-catalog-changed` are wire-served, so the bootstrap runs the
+ * same way on every host; the harness above exercises exactly that path
+ * (every call rides the bridge table), and `scripts/check-server-parity.sh`
+ * fails the build if a `window.ion` probe returns to this file.
+ */

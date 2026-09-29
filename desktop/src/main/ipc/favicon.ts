@@ -15,9 +15,9 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { createHash } from 'crypto'
-import { IPC } from '../../shared/types'
+import { IPC } from '@ion/shared/types'
 import { debug } from '../logger'
-import { isValidFaviconHost } from '../ipc-validation'
+import { isValidFaviconHost } from '@ion/server/ipc-validation'
 
 const CACHE_DIR = join(homedir(), '.ion', 'favicon-cache')
 const DISK_TTL_MS = 7 * 24 * 60 * 60 * 1000 // one week
@@ -49,7 +49,7 @@ function writeDiskCache(host: string, bytes: Buffer): void {
     mkdirSync(CACHE_DIR, { recursive: true })
     writeFileSync(diskPath(host), bytes)
   } catch (err) {
-    debug('favicon', 'disk cache write failed', { host, error: String(err) })
+    debug('favicon', 'disk cache write failed', { url_host: host, error: String(err) })
   }
 }
 
@@ -58,19 +58,19 @@ async function fetchFavicon(host: string): Promise<string | null> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(5000) })
     if (!res.ok) {
-      debug('favicon', 'favicon fetch non-ok', { host, status: res.status })
+      debug('favicon', 'favicon fetch non-ok', { url_host: host, status: res.status })
       return null
     }
     const buf = Buffer.from(await res.arrayBuffer())
     if (buf.length === 0 || buf.length > MAX_ICON_BYTES) {
-      debug('favicon', 'favicon size out of bounds', { host, size: buf.length })
+      debug('favicon', 'favicon size out of bounds', { url_host: host, size: buf.length })
       return null
     }
     writeDiskCache(host, buf)
     const mime = res.headers.get('content-type')?.split(';')[0] || 'image/png'
     return `data:${mime};base64,${buf.toString('base64')}`
   } catch (err) {
-    debug('favicon', 'favicon fetch failed', { host, error: String(err) })
+    debug('favicon', 'favicon fetch failed', { url_host: host, error: String(err) })
     return null
   }
 }
@@ -78,7 +78,7 @@ async function fetchFavicon(host: string): Promise<string | null> {
 export function registerFaviconIpc(): void {
   ipcMain.handle(IPC.FAVICON_GET, async (_evt, host: unknown): Promise<string | null> => {
     if (typeof host !== 'string' || !isValidFaviconHost(host)) {
-      debug('favicon', 'rejected invalid favicon host', { host: String(host).slice(0, 128) })
+      debug('favicon', 'rejected invalid favicon host', { url_host: String(host).slice(0, 128) })
       return null
     }
     const normalized = host.toLowerCase()

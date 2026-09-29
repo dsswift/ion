@@ -55,6 +55,41 @@ if [[ "$network_device" != "$expected_network" ]]; then
   exit 1
 fi
 
+NO_REALITY_JSON="$TMP_DIR/no-reality.json"
+cat > "$NO_REALITY_JSON" <<'JSON'
+{
+  "result": {
+    "devices": [
+      {
+        "identifier": "00000000-0000000000000003",
+        "hardwareProperties": {"deviceType": "iPhone"},
+        "deviceProperties": {"name": "Unlabeled Phone"},
+        "connectionProperties": {
+          "tunnelState": "disconnected",
+          "transportType": "localNetwork"
+        }
+      },
+      {
+        "identifier": "00000000-0000000000000004",
+        "hardwareProperties": {"reality": "simulated", "deviceType": "iPhone"},
+        "deviceProperties": {"name": "Simulator Phone"},
+        "connectionProperties": {
+          "tunnelState": "connected",
+          "transportType": "localNetwork"
+        }
+      }
+    ]
+  }
+}
+JSON
+
+no_reality_device=$(parse_active_devices_from_devicectl_json "$NO_REALITY_JSON")
+expected_no_reality='no|00000000-0000000000000003|Unlabeled Phone|iPhone|coredevice'
+if [[ "$no_reality_device" != "$expected_no_reality" ]]; then
+  echo "physical device without a reality field was skipped, or a simulator was accepted" >&2
+  exit 1
+fi
+
 mkdir -p "$TMP_DIR/bin"
 cat > "$TMP_DIR/bin/ios-deploy" <<'SH'
 #!/usr/bin/env bash

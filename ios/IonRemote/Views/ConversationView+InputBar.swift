@@ -78,7 +78,7 @@ extension ConversationView {
     /// Mirrors the desktop's `isImageModel` check in `InputBar.tsx`.
     var isImageModel: Bool {
         let activeInst = viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)
-        let effectiveModelId = activeInst?.modelOverride ?? viewModel.preferredModel
+        let effectiveModelId = activeInst?.modelOverride ?? viewModel.resolvedModel(tabId: tabId, instanceId: activeInstanceId)
         guard !effectiveModelId.isEmpty else { return false }
         return viewModel.availableModels.first(where: { $0.id == effectiveModelId })?.modelKind == "image"
     }
@@ -122,7 +122,7 @@ extension ConversationView {
         let instance = viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)
         let fieldsTokens = instance?.statusFields?.contextTokens
         let occupancy = (fieldsTokens ?? 0) > 0 ? fieldsTokens : viewModel.tab(for: tabId)?.contextTokens
-        let modelId = instance?.modelOverride ?? viewModel.tab(for: tabId)?.modelOverride ?? viewModel.preferredModel
+        let modelId = instance?.modelOverride ?? viewModel.tab(for: tabId)?.modelOverride ?? viewModel.resolvedModel(tabId: tabId, instanceId: activeInstanceId)
         let engineWindow = instance?.statusFields?.contextWindow
         let fallbackWindow = (engineWindow ?? 0) > 0 ? engineWindow : viewModel.tab(for: tabId)?.contextWindow
         return ConversationStatusBar.resolveContextCapacity(
@@ -489,23 +489,17 @@ extension ConversationView {
         return (empty && attachmentCount == 0) || hasUploading || isCompacting
     }
 
-    /// Re-sync history when we recover from a transient disconnect
-    /// (e.g. phone locked while the conversation was running). The snapshot
-    /// handler also pre-loads history for unloaded tabs, but this handler
-    /// arms `pendingScrollAfterReload` so the view auto-scrolls to the
-    /// new bottom once history arrives.
-    ///
-    /// WI-004 / #259: loadConversation handles every tab.
+    /// Recovering from a transient disconnect (e.g. phone locked while the
+    /// conversation was running). The view model re-fetches every transcript
+    /// on reconnect; this arms `pendingScrollAfterReload` so the view scrolls
+    /// to the new bottom when it lands, and refreshes the attachments.
     func handleConnectionStateChange(oldState: ConnectionState, newState: ConnectionState) {
         guard oldState == .reconnecting && newState == .connected else { return }
-        // Only refresh tabs the user has actually opened; unopened tabs are
-        // handled by the snapshot prefetch in handleSnapshot.
         guard !engineMsgs.isEmpty else { return }
         DiagnosticLog.log("resume sync reloading", tag: "view.inputbar", fields: [
             "tab_id": String(tabId.prefix(8))
         ])
         pendingScrollAfterReload = true
-        viewModel.loadConversation(tabId: tabId)
         viewModel.requestLoadAttachments(tabId: tabId)
     }
 

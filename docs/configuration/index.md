@@ -114,6 +114,7 @@ Not every file under `.ion/` belongs to the engine's four-layer merge.
 |---|---|---|
 | `.ion/engine.json` | Engine | Yes — the project layer described above. |
 | [`.ion/worktree.json`](worktree-json.md) | Desktop | No. Read only when creating a worktree, to provision the gitignored dependency state git cannot carry. It has no user or enterprise layer because it describes the *project's* build inputs, not a person's preferences. |
+| [`.ion/studio.json`](studio-json.md) | Server | No. A committed project file that ships Studio behavior, such as Project Quick Tools, with the repository. It has no user or enterprise layer because it describes the *project*, and the operator's trust in its commands is recorded separately. The engine never reads it. |
 
 ## Other desktop surfaces
 

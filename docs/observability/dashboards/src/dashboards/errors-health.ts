@@ -12,7 +12,7 @@
 //     rolling window undersamples once the query step exceeds it at wide ranges.
 
 import type { Dashboard } from '../dashboard.ts';
-import { row, text, stat, timeseries, logs, bargauge, table } from '../panels.ts';
+import { row, text, stat, timeseries, logsTable, bargauge, table } from '../panels.ts';
 import { stream } from '../queries.ts';
 import { levelCount, allLinesCount, errorRate, levelSeriesInterval, errorsByComponentInterval, topErrorSources, kindCount, groupedKindSeries } from '../queries-logs.ts';
 import { quantile, latestMax } from '../queries-latency.ts';
@@ -146,7 +146,7 @@ export function errorsHealthDashboard(): Dashboard {
       gridPos: { h: 8, w: 24, x: 0, y: 16 },
       fieldConfig: bars(80),
       options: legendBottom(true),
-      targets: [{ e: errorsByComponentInterval(), legend: '{{component}}' }],
+      targets: [{ e: errorsByComponentInterval(), legend: '{{service_name}}' }],
     }),
     bargauge({
       id: 8,
@@ -154,19 +154,19 @@ export function errorsHealthDashboard(): Dashboard {
       gridPos: { h: 8, w: 12, x: 0, y: 24 },
       fieldConfig: { defaults: { unit: 'short' }, overrides: [] },
       options: { orientation: 'horizontal', reduceOptions: { calcs: ['sum'] }, displayMode: 'gradient', showUnfilled: true },
-      targets: [{ e: topErrorSources('$__range'), legend: '{{component}} / {{tag}}' }],
+      targets: [{ e: topErrorSources('$__range'), legend: '{{service_name}} / {{tag}}' }],
     }),
-    logs({
+    logsTable({
       id: 9,
       title: 'Recent errors',
       gridPos: { h: 8, w: 12, x: 12, y: 24 },
-      target: { e: stream('{level="ERROR"}') },
+      target: { e: stream('{level="ERROR"} | json') },
     }),
-    logs({
+    logsTable({
       id: 10,
       title: 'Live error and warning stream',
       gridPos: { h: 10, w: 24, x: 0, y: 32 },
-      target: { e: stream('{level=~"ERROR|WARN"}') },
+      target: { e: stream('{level=~"ERROR|WARN"} | json') },
     }),
     row(20, 'Provider market (Tier-4)', 42),
     stat({
@@ -363,7 +363,7 @@ export function errorsHealthDashboard(): Dashboard {
           },
         },
       ],
-      targets: [{ e: stream('{service_name="ion-telemetry", kind="extension.respawn"} | json') }],
+      targets: [{ e: stream('{event_name="extension.respawn"} | json') }],
     }),
   ];
 
@@ -380,9 +380,9 @@ export function errorsHealthDashboard(): Dashboard {
     file: 'ion-errors-health',
     panels,
     annotations: [
-      { name: 'Model fallback', expr: '{service_name="ion-telemetry", kind="provider.fallback"} | json', iconColor: 'orange', step: '60s', titleFormat: 'fallback: {{payload_requested_model}} -> {{payload_fallback_model}} ({{payload_reason}})' },
-      { name: 'Compaction', expr: '{service_name="ion-telemetry", kind="compaction"} | json', iconColor: 'blue', step: '60s', titleFormat: 'compaction: {{payload_trigger}} tokens_reclaimed={{payload_tokens_reclaimed}}' },
-      { name: 'Extension respawn', expr: '{service_name="ion-telemetry", kind="extension.respawn"} | json', iconColor: 'red', step: '60s', titleFormat: 'respawn: {{payload_extension}} attempt {{payload_attempt}}/{{payload_budget_max}}' },
+      { name: 'Model fallback', expr: '{event_name="provider.fallback"} | json', iconColor: 'orange', step: '60s', titleFormat: 'fallback: {{payload_requested_model}} -> {{payload_fallback_model}} ({{payload_reason}})' },
+      { name: 'Compaction', expr: '{event_name="compaction"} | json', iconColor: 'blue', step: '60s', titleFormat: 'compaction: {{payload_trigger}} tokens_reclaimed={{payload_tokens_reclaimed}}' },
+      { name: 'Extension respawn', expr: '{event_name="extension.respawn"} | json', iconColor: 'red', step: '60s', titleFormat: 'respawn: {{payload_extension}} attempt {{payload_attempt}}/{{payload_budget_max}}' },
     ],
   };
 }

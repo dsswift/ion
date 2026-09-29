@@ -18,8 +18,10 @@ import (
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/cliprobe"
+	"github.com/dsswift/ion/engine/internal/compat"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/session"
+	"github.com/dsswift/ion/engine/internal/sysmetrics"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -142,6 +144,10 @@ type Server struct {
 	// loop, separate targets — see ConversationEventsConfig's doc comment.
 	// Nil when conversation events are disabled. Guarded by s.mu.
 	conversationEventsTelemetry *telemetry.Collector
+
+	// sysMetrics is the System Metrics sampler. Nil when sampling is
+	// disabled. Guarded by s.mu.
+	sysMetrics *sysmetrics.Sampler
 }
 
 // SetConversationEventsTelemetry installs the standalone collector for the
@@ -242,6 +248,10 @@ func (s *Server) SetAuthResolver(r *auth.Resolver) {
 	s.authResolver = r
 }
 
+// newProbeRegistry builds a server's CLI probe registry. A variable so the
+// package's tests can build one that spawns nothing (see main_test.go).
+var newProbeRegistry = cliprobe.NewRegistry
+
 // NewServer creates a Server backed by the given RunBackend.
 // The session Manager is created internally and wired to the backend.
 func NewServer(socketPath string, b backend.RunBackend) *Server {
@@ -272,7 +282,7 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 		cliCapable:              cliCapable,
 		computeContextBreakdown: mgr.ComputeAndEmitContextBreakdownContext,
 		contextBreakdownActive:  make(map[string]struct{}),
-		probes:                  cliprobe.NewRegistry(),
+		probes:                  newProbeRegistry(),
 		hybrid:                  hybrid,
 	}
 	// Reap orphaned sessions a grace window after their last owning
@@ -481,14 +491,19 @@ func (s *Server) Stop() error {
 			close(lh.done)
 		}
 		s.broadcastListeners = nil
-		// Close the server-level telemetry collector (client.backpressure events)
-		// so its periodic flush goroutine stops and any buffered events reach disk
-		// before the process exits. Guarded by the same lock as SetTelemetry.
+		// Close the server-level telemetry collectors (client.backpressure and
+		// the standalone conversation.* family) so their periodic flush
+		// goroutines stop and any buffered events reach their targets before
+		// the process exits. Guarded by the same lock as their setters.
 		serverTelem := s.telemetry
+		convTelem := s.conversationEventsTelemetry
 		s.mu.Unlock()
 
 		if serverTelem != nil {
 			serverTelem.Close()
+		}
+		if convTelem != nil {
+			convTelem.Close()
 		}
 
 		if s.listener != nil {
@@ -708,14 +723,28 @@ func (s *Server) healthSnapshot() map[string]interface{} {
 	if version == "" {
 		version = "dev"
 	}
-	return map[string]interface{}{
+	out := map[string]interface{}{
 		"ok":           true,
 		"version":      version,
 		"startedAt":    s.startedAt.UTC().Format(time.RFC3339),
 		"uptimeSec":    int64(time.Since(s.startedAt).Seconds()),
 		"sessionCount": len(s.manager.ListSessions()),
 		"socketPath":   s.socketPath,
+		// telemetryHealth is the current delivery health of each telemetry
+		// collector's network targets; empty when none is configured.
+		"telemetryHealth": s.telemetryHealthSnapshot(),
+		// compat is this running engine's Format Versions registry.
+		"compat": compat.Formats(),
 	}
+	// systemMetrics is the latest System Metrics sample. Absent when
+	// sampling is disabled or no sample has been taken yet; health never
+	// takes a sample itself, so it stays cheap.
+	if sampler := s.SystemMetrics(); sampler != nil {
+		if latest := sampler.Latest(); latest != nil {
+			out["systemMetrics"] = latest
+		}
+	}
+	return out
 }
 
 // writeToClient routes a single line to the given conn through its state

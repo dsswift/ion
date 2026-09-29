@@ -17,9 +17,11 @@ import (
 // conversation (issue #378, child 04) without re-deriving which of the
 // requested IDs actually succeeded when a later ID in the batch errors.
 func DeleteStoredExact(dir string, ids []string, activeSessionIDs []string) ([]string, error) {
-	if dir == "" {
-		dir = DefaultConversationsDir()
-	}
+	// Resolved PER ID inside the loop below when dir=="" -- a batch can span
+	// several principals' partitions, each with its own directory (FR-01).
+	// An explicit dir from the caller always wins, unpartitioned, matching
+	// every other function in this package.
+	explicitDir := dir
 	if len(ids) == 0 {
 		return nil, fmt.Errorf("no conversation IDs supplied")
 	}
@@ -39,10 +41,15 @@ func DeleteStoredExact(dir string, ids []string, activeSessionIDs []string) ([]s
 	}
 	deleted := make([]string, 0, len(seen))
 	for id := range seen {
-		if err := deleteConversationFiles(dir, id); err != nil {
+		targetDir := explicitDir
+		if targetDir == "" {
+			targetDir = resolveDir(id)
+		}
+		if err := deleteConversationFiles(targetDir, id); err != nil {
 			utils.LogWithFields(utils.LevelError, "conversation.delete", "exact deletion failed", map[string]any{"conversation_id": id, "error": err.Error()})
 			return deleted, fmt.Errorf("delete conversation %q: %w", id, err)
 		}
+		unregisterPartitionEntry(id)
 		deleted = append(deleted, id)
 	}
 	utils.LogWithFields(utils.LevelInfo, "conversation.delete", "exact deletion complete", map[string]any{"conversation_count": len(deleted)})

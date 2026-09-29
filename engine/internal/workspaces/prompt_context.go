@@ -66,6 +66,9 @@ type WorktreeContext struct {
 	// Landed is true when this worktree's work already reached its source
 	// branch.
 	Landed bool `json:"landed,omitempty"`
+	// MovedTo names the Environment this worktree now lives on, when it has
+	// moved; the copy here is sealed.
+	MovedTo string `json:"movedTo,omitempty"`
 	// Siblings are the other worktrees of the same repository, which this
 	// conversation may not write into.
 	Siblings []SiblingContext `json:"siblings,omitempty"`
@@ -107,6 +110,9 @@ func (c *Checker) worktreeContext(wc *WorktreeContainment) *WorktreeContext {
 		out.SourceBranch = self.SourceBranch
 		out.Title = self.Title
 		out.Landed = self.Landed()
+		if self.Moved() {
+			out.MovedTo = self.TransferredTo.EnvironmentID
+		}
 	}
 	for _, sibling := range wc.SiblingPaths {
 		s := SiblingContext{WorktreePath: sibling}
@@ -148,11 +154,13 @@ func (w *WorktreeContext) format() string {
 	}
 	if w.Landed {
 		b.WriteString("\nThis worktree is SEALED — its work has already landed in the source branch. All writes, edits, and Bash mutations are refused. The worktree is read-only. To continue work on this area, create a new worktree from the updated source branch.\n")
+	} else if w.MovedTo != "" {
+		fmt.Fprintf(&b, "\nThis worktree is SEALED — it now lives on the Environment %s, and this copy is a read-only record. All writes, edits, and Bash mutations are refused here. Continue the work in that Environment, or bring the worktree back first.\n", w.MovedTo)
 	} else {
 		b.WriteString("\nWrites are confined to this worktree. Writing into the base repository or into another worktree of the same repository is refused, because it would interleave several conversations' work in one checkout and review could not attribute the changes afterwards. Directories outside this repository entirely are unaffected.\n")
 	}
 
-	if !w.Landed {
+	if !w.Landed && w.MovedTo == "" {
 		// The branch-attachment invariant. Stated as an END STATE, never as a verb
 		// blocklist: this worktree's history verbs (rebase, reset, stash, amend,
 		// push) are exactly what the operator's own amend and squash workflows are

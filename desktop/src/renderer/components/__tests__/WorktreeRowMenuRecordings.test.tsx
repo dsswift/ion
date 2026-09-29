@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
 import type {
   IntegrationWorkspace,
   WorktreeInventoryEntry,
-} from "../../../shared/types";
+} from "@ion/shared/types";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -46,7 +46,7 @@ vi.mock("../../rendererLogger", () => ({
   rDebug: vi.fn(),
   rTrace: vi.fn(),
 }));
-vi.mock("../../stores/sessionStore", () => ({
+vi.mock("@ion/server/store/sessionStore", () => ({
   useSessionStore: Object.assign(
     (
       selector: (state: {

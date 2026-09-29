@@ -206,3 +206,69 @@ func TestEgressTailerLoadsLegacyNumericCursors(t *testing.T) {
 		t.Fatalf("legacy cursor = %+v, want offset 42 and initialized", cursor)
 	}
 }
+
+// TestEgressTailSourceFiles_Server pins the "server" matrix source.
+//
+// The Ion Studio Server writes server.jsonl, and nothing shipped it: the
+// engine's tailer knew desktop, ios and telemetry only, so a headless
+// deployment where the engine is the single collection point had no way to
+// carry the server's own lines (nor the browser-client lines it records as
+// component=web).
+func TestEgressTailSourceFiles_Server(t *testing.T) {
+	files := egressTailSourceFiles("/data")
+
+	want := filepath.Join("/data", "server.jsonl")
+	if got := files["server"]; got != want {
+		t.Fatalf("server source = %q, want %q", got, want)
+	}
+	// The engine never tails its own file: its records ship in-process.
+	if path, ok := files["engine"]; ok {
+		t.Fatalf("engine must not be tailable, got %q", path)
+	}
+	for _, source := range []string{"desktop", "ios", "telemetry"} {
+		if _, ok := files[source]; !ok {
+			t.Fatalf("source %q disappeared from the matrix", source)
+		}
+	}
+}
+
+// TestEgressTailer_ShipsServerLines drives a poll over a server.jsonl and
+// asserts the appended line reaches the forwarder as a parsed record.
+func TestEgressTailer_ShipsServerLines(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "server.jsonl")
+	line := `{"ts":"2026-09-22T00:00:00.000000000Z","level":"INFO","component":"server","tag":"boot","msg":"a line worth shipping","fields":{"pid":42}}`
+	if err := os.WriteFile(logPath, []byte(line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fwd := makeTestForwarder(dir)
+	tailer := &EgressTailer{
+		files:      map[string]string{"server": logPath},
+		cursorPath: filepath.Join(dir, "cursors.json"),
+		fwd:        fwd,
+		cursors:    map[string]filetail.Cursor{logPath: {Initialized: true}}, // start from top
+		stopCh:     make(chan struct{}),
+		doneCh:     make(chan struct{}),
+	}
+	t.Cleanup(tailer.closeFollowers)
+
+	tailer.pollFile("server", logPath)
+
+	fwd.mu.Lock()
+	shipped := make([]egressRecord, len(fwd.buffer))
+	copy(shipped, fwd.buffer)
+	fwd.mu.Unlock()
+
+	if len(shipped) != 1 {
+		t.Fatalf("expected 1 shipped record, got %d", len(shipped))
+	}
+	if shipped[0].Msg != "a line worth shipping" {
+		t.Errorf("shipped Msg = %q", shipped[0].Msg)
+	}
+	if shipped[0].Component != "server" {
+		t.Errorf("shipped Component = %q; want server -- a server line must not arrive attributed elsewhere", shipped[0].Component)
+	}
+}

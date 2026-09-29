@@ -11,10 +11,11 @@
 // $install variable splits individual installs within it.
 
 import type { Dashboard } from '../dashboard.ts';
-import { row, text, stat, timeseries, bargauge, table, logs } from '../panels.ts';
+import { row, text, stat, timeseries, bargauge, table, logsTable } from '../panels.ts';
 import { accumulation, stream, telemetry } from '../queries.ts';
 import {
   USER_PIPE,
+  SIGNED_IN_USERS_PIPE,
   distinctLabelCount,
   totalSpend,
   spendBy,
@@ -52,14 +53,14 @@ export function usersDashboard(): Dashboard {
     stat({
       id: 2,
       title: 'Active users',
-      description: 'Distinct user values seen in telemetry over the dashboard time range. Default installs without identity all count as the single "unassigned" bucket.',
+      description: 'Distinct signed-in users seen in telemetry over the dashboard time range. Lines with no user (installs with no identity, machine-level metrics) are not counted here; they appear as "unassigned" in the panels below.',
       gridPos: { h: 4, w: 4, x: 0, y: 5 },
       fieldConfig: {
         defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [], noValue: 'telemetry off' },
         overrides: [],
       },
       options: statOptions('value'),
-      targets: [{ e: distinctLabelCount('user', USER_PIPE, '$__range') }],
+      targets: [{ e: distinctLabelCount('user', SIGNED_IN_USERS_PIPE, '$__range') }],
     }),
     stat({
       id: 3,
@@ -86,7 +87,7 @@ export function usersDashboard(): Dashboard {
     stat({
       id: 5,
       title: 'Tool failures',
-      description: 'tool.execute events carrying a non-empty payload_error for the selected user(s).',
+      description: 'tool.failure events for the selected user(s).',
       gridPos: { h: 4, w: 4, x: 12, y: 5 },
       fieldConfig: {
         defaults: {
@@ -103,7 +104,7 @@ export function usersDashboard(): Dashboard {
         overrides: [],
       },
       options: statOptions('background'),
-      targets: [{ e: kindCountBy('tool.execute', [], USER_PIPE, '$__range', ' | payload_error!=""') }],
+      targets: [{ e: kindCountBy('tool.failure', [], USER_PIPE, '$__range') }],
     }),
     stat({
       id: 6,
@@ -238,7 +239,7 @@ export function usersDashboard(): Dashboard {
     table({
       id: 13,
       title: 'Tool failure leaderboard',
-      description: 'tool.execute failures grouped by user and tool. The user/tool pair with the highest count is the one most likely stuck in a loop.',
+      description: 'tool.failure events grouped by user and tool. The user/tool pair with the highest count is the one most likely stuck in a loop.',
       gridPos: { h: 8, w: 8, x: 16, y: 19 },
       mode: 'instant',
       fieldConfig: { defaults: { unit: 'short', custom: { align: 'auto', displayMode: 'auto' } }, overrides: [] },
@@ -247,7 +248,7 @@ export function usersDashboard(): Dashboard {
         { id: 'organize', options: { renameByName: { user: 'User', payload_tool: 'Tool', Value: 'Failures' } } },
       ],
       targets: [
-        { e: kindCountBy('tool.execute', ['user', 'payload_tool'], USER_PIPE, '$__range', ' | payload_error!=""'), legend: '{{user}} / {{payload_tool}}' },
+        { e: kindCountBy('tool.failure', ['user', 'payload_tool'], USER_PIPE, '$__range'), legend: '{{user}} / {{payload_tool}}' },
       ],
     }),
     row(40, 'Over time', 27),
@@ -271,7 +272,7 @@ export function usersDashboard(): Dashboard {
       options: legendBottom(),
       targets: [{ e: spendBy(['user'], USER_PIPE, '$__interval'), legend: '{{user}}' }],
     }),
-    logs({
+    logsTable({
       id: 16,
       title: 'Recent denials',
       description: "The engine's verbatim record of denied tool calls for the selected user(s).",
@@ -293,23 +294,14 @@ export function usersDashboard(): Dashboard {
     file: 'ion-users',
     panels,
     templating: [
-      // `user` and `install_id` are parsed JSON fields, not indexed stream
-      // labels, so label_values() cannot populate a dropdown (same constraint
-      // as the extensions pack). Textbox regex variables defaulting to `.*`
-      // match everyone; `unassigned` selects the coalesced no-identity bucket.
-      {
-        name: 'user',
-        label: 'User',
-        description: "User identity to scope panels. Accepts regex. `unassigned` selects default installs without an identity. Default matches all.",
-        type: 'textbox',
-        current: { value: '.*' },
-        query: '.*',
-        hide: 0,
-      },
+      // `user` is the global identity dropdown every dashboard carries
+      // (dashboard.ts IDENTITY_VARS). The install (`service_instance_id`) is
+      // structured metadata, not a stream label, so it stays a textbox regex
+      // defaulting to `.*`.
       {
         name: 'install',
         label: 'Install',
-        description: 'install_id to scope panels — the secondary identity that splits individuals within the unassigned bucket. Accepts regex. Default matches all.',
+        description: 'service_instance_id (the engine install) to scope panels — the secondary identity that splits individuals within the unassigned bucket. Accepts regex. Default matches all.',
         type: 'textbox',
         current: { value: '.*' },
         query: '.*',

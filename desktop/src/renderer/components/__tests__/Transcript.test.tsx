@@ -21,7 +21,7 @@ vi.mock('../../preferences', () => ({
     sel({ agentPanelDefaultOpen: true, unifiedTurnView: false }),
 }))
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: (sel: (s: Record<string, unknown>) => unknown) =>
     sel({
       agentDetailGeometry: { x: 0, y: 0, w: 600, h: 500 },
@@ -40,7 +40,7 @@ vi.mock('../../FloatingPanel', () => ({
 vi.mock('../conversation/TranscriptRows', () => ({
   TranscriptRows: () => null,
 }))
-vi.mock('../conversation/tool-helpers', () => ({
+vi.mock('@ion/server/conversation/tool-helpers', () => ({
   groupMessages: () => [],
   suppressUserImageEchoes: (messages: unknown[]) => messages,
 }))
@@ -54,7 +54,7 @@ vi.mock('../conversation', () => ({
 }))
 
 import { Transcript } from '../conversation/Transcript'
-import type { AgentStateUpdate } from '../../../shared/types'
+import type { AgentStateUpdate } from '@ion/shared/types'
 
 function childStub(): AgentStateUpdate {
   return {

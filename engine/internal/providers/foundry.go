@@ -1,9 +1,6 @@
 package providers
 
-import (
-	"fmt"
-	"os"
-)
+import "github.com/dsswift/ion/engine/internal/auth"
 
 // FoundryConfig configures Anthropic Foundry (dedicated capacity).
 type FoundryConfig struct {
@@ -12,18 +9,23 @@ type FoundryConfig struct {
 }
 
 // NewFoundryProvider creates an Anthropic provider routed through Foundry.
+//
+// Holds no environment-derived credential (R-23): ANTHROPIC_FOUNDRY_API_KEY /
+// ANTHROPIC_API_KEY are no longer read here -- they resolve through
+// auth.Resolver (providerEnvVars["foundry"], child 01) at request time via
+// the per-run CredentialContext, exactly like every other provider.
+// cfg.BaseURL still wins when explicitly supplied; otherwise
+// ANTHROPIC_FOUNDRY_BASE_URL resolves via auth.ResolveProviderEnvField,
+// matching the pre-existing env fallback the constructor used to read
+// directly.
 func NewFoundryProvider(cfg FoundryConfig) (LlmProvider, error) {
-	baseURL := firstNonEmpty(cfg.BaseURL, os.Getenv("ANTHROPIC_FOUNDRY_BASE_URL"))
+	baseURL := cfg.BaseURL
 	if baseURL == "" {
-		return nil, fmt.Errorf("foundry: no base URL configured (set FoundryConfig.BaseURL or ANTHROPIC_FOUNDRY_BASE_URL)")
+		baseURL, _ = auth.ResolveProviderEnvField("foundry", "baseURL")
 	}
-
-	apiKey := firstNonEmpty(cfg.APIKey, os.Getenv("ANTHROPIC_FOUNDRY_API_KEY"), os.Getenv("ANTHROPIC_API_KEY"))
-
 	return NewAnthropicProvider(&ProviderOptions{
 		ID:      "foundry",
 		BaseURL: baseURL,
-		APIKey:  apiKey,
 	}), nil
 }
 

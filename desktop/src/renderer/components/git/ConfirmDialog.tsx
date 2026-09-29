@@ -132,7 +132,7 @@ export function ConfirmDialog({
         <div className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
           {title}
         </div>
-        <div className="text-[11px] mt-1.5" style={{ color: colors.textSecondary, lineHeight: '16px', overflowWrap: 'anywhere' }}>
+        <div className="text-[11px] mt-1.5" style={{ color: colors.textSecondary, lineHeight: '16px', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
           {message}
         </div>
         {busy && (

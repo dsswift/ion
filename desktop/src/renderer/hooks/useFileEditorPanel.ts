@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useEdgeResize, type ResizeGeometry } from './useEdgeResize'
 import { zoomDelta, zoomViewport } from '../viewport-zoom'
 

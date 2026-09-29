@@ -1,0 +1,393 @@
+import type { PersistedTabState } from '@ion/shared/types'
+import { serializeConversationPane, collectExternalInstanceMessages, isExtensionErrorMessage, resolvePersistedLastKnownSessionId } from './serialize-conversation-pane'
+import { tabContentDirty, markTabContentWritten } from './tab-content-tracking'
+import { activeInstance } from './conversation-instance'
+import { EXTERNALIZE_SCHEMA_VERSION } from '@ion/shared/types-persistence'
+import { persistableAttachments } from '@ion/shared/staged-attachments'
+import type { useSessionStore as UseSessionStoreType } from './sessionStore'
+import { rError } from './rendererLogger'
+import { projectResolvedModels } from './resolved-model-projection'
+import { loadSessionChains, saveSessionChains, saveTabContent, saveTabs, studioPublishTabsSync } from './host-api'
+import { tabForStudioSync } from '@ion/shared/tabs-sync-projection'
+import { registerForceFlushTabs } from './session-store-force-flush'
+
+/**
+ * Serializing a live xterm scrollback buffer requires a mounted terminal
+ * widget (`@xterm/addon-serialize`), which only exists in a rendering
+ * client. The server has no such widget for its own terminals — a client
+ * attaches to the server-owned PTY (`terminalManager`) and renders its own
+ * xterm instance — so there is nothing to serialize here. Persisted
+ * `terminalBuffers` are simply absent from a server-authored tab record; an
+ * attaching client re-populates its own scrollback from the terminal-attach
+ * protocol's snapshot, not from this persisted field.
+ */
+function serializeTerminalBuffer(_key: string): string | undefined {
+  return undefined
+}
+
+type Store = typeof UseSessionStoreType
+
+// isExtensionErrorMessage is defined in serialize-conversation-pane.ts and
+// re-exported here for backward compatibility with call sites that import it
+// from session-store-persistence.
+export { isExtensionErrorMessage, resolvePersistedLastKnownSessionId }
+
+/**
+ * Write the external content file for every tab whose externalizable
+ * scrollback changed since the last write, on the SAME tick as the thin-file
+ * save (change-tracked per tab — see tab-content-tracking.ts). A tab whose
+ * content collector returns null but that previously wrote content keeps its
+ * file — deletion happens only on tab close (closeTab → deleteTabContent)
+ * plus the main-process orphan sweep, never on a transient empty
+ * serialization.
+ */
+function persistExternalContent(useSessionStore: Store): void {
+  const { tabs, conversationPanes } = useSessionStore.getState()
+  for (const t of tabs) {
+    const pane = conversationPanes.get(t.id)
+    const inst = pane?.instances[0]
+    if (!inst) continue
+    if (!tabContentDirty(t.id, inst.messages)) continue
+    const content = collectExternalInstanceMessages(pane)
+    if (!content) continue
+    markTabContentWritten(t.id, inst.messages)
+    void saveTabContent(t.id, content.instanceId, content.messages)
+  }
+}
+
+function persistTabs(useSessionStore: Store): void {
+  const { tabs, activeTabId, settledHistory } = useSessionStore.getState()
+  const activeTab = tabs.find((t) => t.id === activeTabId)
+  const dirsWithEditorState = new Set<string>()
+  for (const [dir, dirState] of useSessionStore.getState().fileEditorStates) {
+    if (dirState.files.length > 0) dirsWithEditorState.add(dir)
+  }
+  void dirsWithEditorState
+
+  const { terminalPanes, conversationPanes } = useSessionStore.getState()
+
+  const persistedTabs = tabs
+    .map((t) => {
+      const pane = terminalPanes.get(t.id)
+      // Conversation state is persisted as the unified conversationPane
+      // (schemaVersion 2). Whether to persist message content (vs. count-only)
+      // is determined by a data fact — does the instance contain renderer-only
+      // rows (harness, system) that cannot be reloaded from the engine
+      // conversation file? No tab-type branch; see serialize-conversation-pane.ts.
+      const convoPane = serializeConversationPane(conversationPanes.get(t.id), {
+        tabIdForLog: t.id,
+      })
+      // Extension-hosted tab metadata (profile id) is written so restoration can
+      // restart the engine session with the correct profile.
+      const isEngine = t.engineProfileId != null && t.engineProfileId !== ''
+      // Preserve the last real conversation id in lastKnownSessionId so a
+      // transient empty / engine-minted conversationId never erases the tab's
+      // ability to resume its original conversation on the next restore. Reads
+      // from the active instance's conversation chain as a last source.
+      const inst = activeInstance(conversationPanes, t.id)
+      const persistedLastKnown = resolvePersistedLastKnownSessionId({
+        conversationId: t.conversationId,
+        lastKnownSessionId: t.lastKnownSessionId,
+        historicalSessionIds: t.historicalSessionIds,
+        instanceConversationIds: inst?.conversationIds,
+      })
+      return {
+        // Persist the durable tab identity. The session key == tabId, and the
+        // engine binding store is keyed on it; writing it here is what lets
+        // restore reuse the same key across restarts instead of minting a fresh
+        // one (which fragmented conversations into disjoint files). See
+        // PersistedTab.id in types-persistence.ts.
+        id: t.id,
+        ...(t.principalSubject ? { principalSubject: t.principalSubject } : {}),
+        ...(t.conversationPreferences ? { conversationPreferences: t.conversationPreferences } : {}),
+        conversationId: t.conversationId,
+        title: t.customTitle || t.title,
+        customTitle: t.customTitle,
+        workingDirectory: t.workingDirectory,
+        hasChosenDirectory: t.hasChosenDirectory,
+        additionalDirs: t.additionalDirs,
+        ...(convoPane ? { conversationPane: convoPane } : {}),
+        ...(t.historicalSessionIds.length > 0 ? { historicalSessionIds: t.historicalSessionIds } : {}),
+        ...(persistedLastKnown ? { lastKnownSessionId: persistedLastKnown } : {}),
+        ...(t.bashResults.length > 0 ? { bashResults: t.bashResults } : {}),
+        ...(t.pillColor ? { pillColor: t.pillColor } : {}),
+        ...(t.forkedFromSessionId ? { forkedFromSessionId: t.forkedFromSessionId } : {}),
+        ...(t.worktree ? { worktree: t.worktree } : {}),
+        ...(t.executionHost ? { executionHost: t.executionHost } : {}),
+        ...(t.executionMachineId ? { executionMachineId: t.executionMachineId } : {}),
+        ...(t.queuedPrompts?.length ? { queuedPrompts: t.queuedPrompts } : {}),
+        // Staged attachments ride with the draft text they belong to. Stripped
+        // of the base64 preview so a tray of images cannot bloat the file the
+        // 100 ms debounce rewrites; the preview is rebuilt from `path` on
+        // restore (shared/staged-attachments.ts).
+        //
+        // Optional chaining, matching every other field above: this function
+        // is reachable from a debounced setTimeout that can fire against a
+        // tab object built by test scaffolding (or any future caller) that
+        // does not carry every SessionTab field, even though the type
+        // declares `attachments` required. A bare `.length` crashed with
+        // "Cannot read properties of undefined" when that happened.
+        ...(t.attachments?.length ? { attachments: persistableAttachments(t.attachments) } : {}),
+        // Context occupancy: kept at tab level for backward compatibility
+        // with files written before the pane carried these scalars. The
+        // authoritative copy now lives on the persisted instance (see
+        // serialize-conversation-pane.ts), and the restore path prefers it;
+        // these are the fallback for an older file.
+        ...(t.contextTokens ? { contextTokens: t.contextTokens } : {}),
+        ...(t.contextWindow ? { contextWindow: t.contextWindow } : {}),
+        ...(t.lastMessagePreview ? { lastMessagePreview: t.lastMessagePreview } : {}),
+        ...(t.lastEventAt ? { lastEventAt: t.lastEventAt } : {}),
+        ...(t.lastActivityAt ? { lastActivityAt: t.lastActivityAt } : {}),
+        ...(t.lastMessageAt ? { lastMessageAt: t.lastMessageAt } : {}),
+        ...(t.createdAt != null ? { createdAt: t.createdAt } : {}),
+        ...(t.lastFailureAt ? { lastFailureAt: t.lastFailureAt } : {}),
+        ...(t.pinnedAt ? { pinnedAt: t.pinnedAt } : {}),
+        ...(t.pinOrderKey ? { pinOrderKey: t.pinOrderKey } : {}),
+        ...(t.idleSince ? { idleSince: t.idleSince } : {}),
+        ...(t.lastCompletionAt ? { lastCompletionAt: t.lastCompletionAt } : {}),
+        ...(t.settledOverride ? { settledOverride: t.settledOverride } : {}),
+        ...(t.settledAt ? { settledAt: t.settledAt } : {}),
+        ...(t.snoozedUntil ? { snoozedUntil: t.snoozedUntil } : {}),
+        ...(t.snoozedAt ? { snoozedAt: t.snoozedAt } : {}),
+        ...(t.lastVisitedAt ? { lastVisitedAt: t.lastVisitedAt } : {}),
+        ...(t.manualUnread ? { manualUnread: true } : {}),
+        ...(t.lastResult ? { lastResult: t.lastResult } : {}),
+        ...(t.isTerminalOnly ? { isTerminalOnly: true } : {}),
+        ...(t.inputLocked ? { inputLocked: true } : {}),
+        ...(t.inputLockReason ? { inputLockReason: t.inputLockReason } : {}),
+        ...(t.sealPending ? { sealPending: t.sealPending } : {}),
+        ...(t.tabRole ? { tabRole: t.tabRole } : {}),
+        ...(isEngine ? { hasEngineExtension: true, engineProfileId: t.engineProfileId } : {}),
+        ...(pane && pane.instances.length > 0 ? { terminalInstances: pane.instances } : {}),
+        ...(pane && pane.instances.length > 0 ? (() => {
+          const buffers: Record<string, string> = {}
+          for (const inst of pane.instances) {
+            const buf = serializeTerminalBuffer(`${t.id}:${inst.id}`)
+            if (buf) buffers[inst.id] = buf
+          }
+          return Object.keys(buffers).length > 0 ? { terminalBuffers: buffers } : {}
+        })() : {}),
+      }
+    })
+
+  const { fileEditorStates } = useSessionStore.getState()
+  const editorStates: Record<string, any> = {}
+  for (const [dir, dirState] of fileEditorStates) {
+    if (dirState.files.length > 0) {
+      const activeIdx = dirState.activeFileId
+        ? dirState.files.findIndex((f) => f.id === dirState.activeFileId)
+        : -1
+      editorStates[dir] = {
+        activeFileIndex: activeIdx >= 0 ? activeIdx : 0,
+        // Content locality (schema v4): a non-dirty file with a real path
+        // reloads byte-identically from disk on restore (useFileEditorContent
+        // already re-reads), so its buffers are not duplicated into the tab
+        // file. Dirty edits and scratch buffers (no path) are the only copy
+        // and persist inline.
+        files: dirState.files.map((f) => {
+          const reloadable = !f.isDirty && !!f.filePath
+          return {
+            filePath: f.filePath,
+            fileName: f.fileName,
+            content: reloadable ? '' : f.content,
+            savedContent: reloadable ? '' : f.savedContent,
+            isDirty: f.isDirty,
+            isReadOnly: f.isReadOnly,
+            isPreview: f.isPreview,
+          }
+        }),
+      }
+    }
+  }
+
+  const { isExpanded, fileEditorOpenDirs, editorGeometry, planGeometry, agentDetailGeometry } = useSessionStore.getState()
+
+  let activeTabIndex: number | null = null
+  for (let i = 0; i < tabs.length; i++) {
+    if (tabs[i].id === activeTabId) { activeTabIndex = i; break }
+  }
+
+  const data: PersistedTabState = {
+    schemaVersion: EXTERNALIZE_SCHEMA_VERSION,
+    activeSessionId: activeTab?.conversationId || null,
+    activeTabIndex,
+    tabs: persistedTabs,
+    settledHistory: settledHistory.map((tab) => ({
+      id: tab.id,
+      ...(tab.principalSubject ? { principalSubject: tab.principalSubject } : {}),
+      ...(tab.conversationPreferences ? { conversationPreferences: tab.conversationPreferences } : {}),
+      conversationId: tab.conversationId,
+      title: tab.customTitle || tab.title,
+      customTitle: tab.customTitle,
+      workingDirectory: tab.workingDirectory,
+      hasChosenDirectory: tab.hasChosenDirectory,
+      additionalDirs: tab.additionalDirs,
+      ...(tab.historicalSessionIds.length > 0 ? { historicalSessionIds: tab.historicalSessionIds } : {}),
+      ...(tab.lastKnownSessionId ? { lastKnownSessionId: tab.lastKnownSessionId } : {}),
+      ...(tab.worktree ? { worktree: tab.worktree } : {}),
+      ...(tab.executionHost ? { executionHost: tab.executionHost } : {}),
+      ...(tab.executionMachineId ? { executionMachineId: tab.executionMachineId } : {}),
+      ...(tab.engineProfileId ? { hasEngineExtension: true, engineProfileId: tab.engineProfileId } : {}),
+      ...(tab.lastMessagePreview ? { lastMessagePreview: tab.lastMessagePreview } : {}),
+      ...(tab.lastMessageAt ? { lastMessageAt: tab.lastMessageAt } : {}),
+      ...(tab.settledAt ? { settledAt: tab.settledAt } : {}),
+      settledOverride: tab.settledOverride === 'auto' ? 'auto' : 'settled', inputLocked: true, inputLockReason: 'settled',
+    })),
+    editorStates: Object.keys(editorStates).length > 0 ? editorStates : undefined,
+    isExpanded,
+    editorOpenDirs: fileEditorOpenDirs.size > 0 ? [...fileEditorOpenDirs] : undefined,
+    editorGeometry,
+    planGeometry,
+    agentDetailGeometry,
+  }
+  if (typeof saveTabs !== 'function') {
+    rError('session.persist', 'saveTabs bridge unavailable; restored session may be lost')
+  } else {
+    void Promise.resolve(saveTabs(data)).catch((err) =>
+      rError('session.persist', 'saveTabs failed; restored session may be lost', { error: String(err) }),
+    )
+  }
+
+  // External content files ride the same tick (change-tracked per tab), so
+  // the thin manifest's hasExternalContent markers and the content files can
+  // never drift by more than one debounce window.
+  persistExternalContent(useSessionStore)
+
+  // Owner sync push (mirror-store architecture): tab metadata does not ride
+  // normalized events, so the owner publishes the same persisted snapshot to
+  // the main process, which caches it and forwards it to the Studio mirror.
+  // Live statuses ride ALONGSIDE (they are runtime state, not persisted to
+  // disk) — without them the mirror would hydrate every tab as idle and the
+  // workspace indicator would miss running conversations. isCompacting is the
+  // same category: without liveIsCompacting, this same debounced push (fired
+  // by nothing more than the lastEventAt stamp on every normalized event)
+  // resets a live "Compacting…" indicator to false moments after it opened.
+  // Queued attachments are deliberately transient: copying their data URLs into
+  // tabs.json would retain arbitrary user content after send. Studio still needs
+  // them before send, so project the live queue only into the owner→mirror push.
+  // Empty arrays are kept to clear a previously staged mirror rail immediately.
+  const queuedAttachments = Object.fromEntries(tabs.map((t) => [t.id, t.attachments]))
+  studioPublishTabsSync?.({
+    ...data,
+    tabs: data.tabs.map(tabForStudioSync),
+    revision: Date.now(),
+    liveTabStatus: Object.fromEntries(tabs.map((t) => [t.id, t.status])),
+    liveIsCompacting: Object.fromEntries(tabs.map((t) => [t.id, t.isCompacting])),
+    // The model each conversation runs on, decided here and rendered by every
+    // client. Derived at publish time and never written to tabs.json: it
+    // depends on the owner's Account settings, so a stored copy would go
+    // stale the moment those change.
+    liveResolvedModel: projectResolvedModels(tabs, conversationPanes),
+    queuedAttachments,
+  })
+
+  void persistSessionChains(useSessionStore)
+}
+
+async function persistSessionChains(useSessionStore: Store): Promise<void> {
+  try {
+    const { tabs } = useSessionStore.getState()
+    const existing = await loadSessionChains()
+    const chains: Record<string, string[]> = { ...existing.chains }
+    const reverse: Record<string, string> = { ...existing.reverse }
+
+    for (const tab of tabs) {
+      if (tab.historicalSessionIds.length > 0 && tab.conversationId) {
+        const rootId = tab.historicalSessionIds[0]
+        const continuations = [...tab.historicalSessionIds.slice(1), tab.conversationId]
+        chains[rootId] = continuations
+        for (const cId of continuations) {
+          reverse[cId] = rootId
+        }
+        delete reverse[rootId]
+      }
+    }
+
+    await saveSessionChains({ chains, reverse })
+  } catch (error) {
+    rError('session.persist', 'session chain persistence failed', { error: String(error) })
+  }
+}
+
+export function setupPersistence(useSessionStore: Store): void {
+  let saveTimer: ReturnType<typeof setTimeout> | null = null
+  useSessionStore.subscribe((state, prev) => {
+    // Skip all saves while the tab-restoration loop is running. Each per-tab
+    // setState during rehydration fires this subscriber, but the partial state
+    // (1..N-1 tabs loaded) always trips the GUARD (on-disk has N tabs, incoming
+    // has fewer) producing a chain of "refusing save" rejections. The GUARD
+    // remains as a backstop; this flag prevents the storm at the source.
+    // rehydrating is cleared alongside tabsReady=true after the loop completes.
+    if (state.rehydrating) return
+
+    if (state.tabs !== prev.tabs || state.activeTabId !== prev.activeTabId || state.fileEditorStates !== prev.fileEditorStates || state.isExpanded !== prev.isExpanded || state.fileEditorOpenDirs !== prev.fileEditorOpenDirs || state.editorGeometry !== prev.editorGeometry || state.planGeometry !== prev.planGeometry || state.agentDetailGeometry !== prev.agentDetailGeometry || state.terminalPanes !== prev.terminalPanes || state.conversationPanes !== prev.conversationPanes || state.worktreeInventory !== prev.worktreeInventory || state.benchWorkspaces !== prev.benchWorkspaces || state.benchSourceTips !== prev.benchSourceTips || state.benchRetired !== prev.benchRetired || state.gitConflictAlerts !== prev.gitConflictAlerts || state.worktreePipeline !== prev.worktreePipeline || state.workspaceOperationLedger !== prev.workspaceOperationLedger) {
+      // Flush immediately when permissionDenied changes on any tab — this
+      // state must survive a crash or force-quit (e.g. the desktop is killed
+      // while an engine run is in progress and the AskUserQuestion / ExitPlanMode
+      // denial is never written to the conversation file). Per-conversation
+      // permissionDenied now lives on the instance for EVERY tab (all tabs
+      // use their `main` instance), so the single conversationPanes scan below covers
+      // every tab uniformly.
+      //
+      // IMPORTANT: compare per-instance permissionDenied precisely — NOT
+      // `state.conversationPanes !== prev.conversationPanes`. The Map identity changes on
+      // every RAF text-delta flush (~60fps during streaming) because the
+      // streaming commit creates a new Map. Using the coarse check bypassed the
+      // 100ms debounce and caused persistTabs() (4 synchronous filesystem ops +
+      // full JSON serialization) to fire at 60fps.
+      const permissionDeniedChanged =
+        state.conversationPanes !== prev.conversationPanes && (() => {
+          for (const [tabId, pane] of state.conversationPanes) {
+            const prevPane = prev.conversationPanes.get(tabId)
+            if (!prevPane) continue
+            for (const inst of pane.instances) {
+              const prevInst = prevPane.instances.find((p) => p.id === inst.id)
+              if (prevInst && inst.permissionDenied !== prevInst.permissionDenied) return true
+            }
+          }
+          return false
+        })()
+
+      // Flush immediately when any tab captures or updates its conversationId.
+      // Two cases require immediate persist:
+      //   1. First capture: tab goes from no conversationId → sessionId (new session or
+      //      first engine status event). The debounce creates a crash window here.
+      //   2. Changed sessionId: engine restarts mid-conversation and emits a new sessionId
+      //      (engine tab restart, reconnect). The prior sessionId was written on the debounced
+      //      timer; if the engine crashes between the old and new id, the tab recovers to the
+      //      old conversation. Writing immediately closes that window.
+      // For all tab types, forceFlushTabs (event-slice.ts, session_init handler)
+      // also fires on sessionId capture, providing a second guarantee. The subscriber
+      // here acts as a backstop when forceFlushTabs isn't registered yet at startup.
+      const conversationIdCaptured =
+        state.tabs !== prev.tabs && state.tabs.some((t, i) => {
+          const p = prev.tabs[i]
+          return p && t.id === p.id && t.conversationId !== p.conversationId && !!t.conversationId
+        })
+
+      if (permissionDeniedChanged || conversationIdCaptured) {
+        if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
+        persistTabs(useSessionStore)
+        return
+      }
+      if (saveTimer) clearTimeout(saveTimer)
+      saveTimer = setTimeout(() => persistTabs(useSessionStore), 100)
+    }
+  })
+
+  registerForceFlushTabs(() => {
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
+    persistTabs(useSessionStore)
+  })
+
+  // Publish one tabs snapshot as soon as restoration completes, so a Studio window
+  // mirror opened before the first user-driven persist still hydrates
+  // (view readiness: the mirror's boot pull must find a snapshot).
+  const unsubReady = useSessionStore.subscribe((state, prev) => {
+    if (state.tabsReady && !prev.tabsReady) {
+      persistTabs(useSessionStore)
+      unsubReady()
+    }
+  })
+
+}

@@ -1,0 +1,7 @@
+{
+  "type": "studio_command",
+  "id": "cmd-1",
+  "command": "graph.fit",
+  "args": {},
+  "timeoutMs": 28000
+}

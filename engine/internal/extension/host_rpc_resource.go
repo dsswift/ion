@@ -2,6 +2,7 @@
 //   ext/declare_resource  -- subprocess declares a resource kind (engine side)
 //   ext/publish_resource  -- subprocess publishes a delta (engine side)
 //   resource/query        -- engine queries extension for snapshot items (subprocess side)
+//   resource/export, resource/import, resource/forget -- see host_rpc_resource_transfer.go
 //   CommitPendingResourceDecls -- wires init-time declarations onto a broker
 //
 // Pattern mirrors host_rpc_async.go: parse params, get ctx, call the
@@ -48,6 +49,9 @@ func (h *Host) handleDeclareResource(id int64, raw []byte) {
 	ctx.HandleResourceQuery(req.Params.Kind, h.name_(), func(filter types.ResourceFilter) ([]types.ResourceItem, error) {
 		return h.CallResourceQuery(req.Params.Kind, filter)
 	})
+	if ctx.HandleResourceTransfer != nil {
+		ctx.HandleResourceTransfer(req.Params.Kind, h.name_(), h.ResourceTransferHandlers(req.Params.Kind))
+	}
 	utils.LogWithFields(utils.LevelInfo, "extension", "ext/declare_resource: registered", map[string]any{"model": h.name_(), "kind": req.Params.Kind})
 	resp, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local anonymous struct
 		OK   bool   `json:"ok"`
@@ -150,6 +154,7 @@ func (h *Host) CommitPendingResourceDecls(broker *resource.Broker) []error {
 		broker.SetQueryHandlerFor(kind, h.name_(), func(filter types.ResourceFilter) ([]types.ResourceItem, error) {
 			return h.CallResourceQuery(kind, filter)
 		})
+		broker.SetTransferHandlersFor(kind, h.name_(), h.ResourceTransferHandlers(kind))
 		utils.LogWithFields(utils.LevelInfo, "extension", "commitpendingresourcedecls: registered with query handler", map[string]any{"model": h.name_(), "kind": decl.Kind})
 	}
 	h.pendingInitResources = nil
@@ -179,6 +184,7 @@ func (h *Host) RewireResourceDecls(broker *resource.Broker) {
 		broker.RewireQueryHandlerAndResnapshotFor(kind, h.name_(), func(filter types.ResourceFilter) ([]types.ResourceItem, error) {
 			return h.CallResourceQuery(kind, filter)
 		})
+		broker.SetTransferHandlersFor(kind, h.name_(), h.ResourceTransferHandlers(kind))
 	}
 	h.pendingInitResources = nil
 	utils.LogWithFields(utils.LevelInfo, "extension", "rewireresourcedecls: kinds", map[string]any{"model": h.name_(), "count": len(decls)})

@@ -1,6 +1,6 @@
 /**
- * active-tab-notifier — single funnel for telling the main process which tab
- * is active.
+ * active-tab-notifier — single funnel for telling the server which tab is
+ * active.
  *
  * Previously only selectTab() fired notifyTabFocus, so tab-create paths
  * (createTab / createTabInDirectory set activeTabId directly) changed the
@@ -13,7 +13,8 @@
  * The focus publication stays deduplicated by active tab, while an explicit
  * click on the already-active row is handled by selectTab itself.
  */
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { host } from '../host/host-instance'
 
 let lastSent: string | null = null
 let unsubscribe: (() => void) | null = null
@@ -30,7 +31,10 @@ function send(state: { activeTabId: string | null; tabs: Array<{ id: string; eng
   // engineProfileId rides along so the Ion Studio can scope its
   // office seed per extension (per the tab-extension seed contract).
   const engineProfileId = state.tabs.find((t) => t.id === tabId)?.engineProfileId ?? null
-  window.ion.notifyTabFocus(tabId, engineProfileId)
+  // `presence.focus` on every host: presence for everyone, and for the local
+  // desktop also the Environment's operator focus (the Studio active tab and
+  // the engine's `desktop.focus` resource).
+  host.shell.notifyTabFocus(tabId, engineProfileId)
 }
 
 /** Start the notifier (idempotent). Called once from App mount. */

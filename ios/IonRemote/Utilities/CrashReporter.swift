@@ -77,15 +77,28 @@ enum CrashReporter {
         let content = String(decoding: data, as: UTF8.self)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !content.isEmpty else {
-            try? Data().write(to: URL(fileURLWithPath: path))
+            truncateBreadcrumb(at: path)
             return false
         }
         DiagnosticLog.log("crash breadcrumb from previous launch", tag: "crash", level: .error, fields: [
             "reason": content
         ])
         // Truncate so the breadcrumb forwards exactly once.
-        try? Data().write(to: URL(fileURLWithPath: path))
+        truncateBreadcrumb(at: path)
         return true
+    }
+
+    /// Empty the breadcrumb file. A failed truncate means the same breadcrumb
+    /// is forwarded again on the next launch, so it is logged.
+    private static func truncateBreadcrumb(at path: String) {
+        do {
+            try Data().write(to: URL(fileURLWithPath: path))
+        } catch {
+            DiagnosticLog.log("crash breadcrumb truncate failed", tag: "crash", level: .warn, fields: [
+                "path": path,
+                "error": error.localizedDescription
+            ])
+        }
     }
 }
 

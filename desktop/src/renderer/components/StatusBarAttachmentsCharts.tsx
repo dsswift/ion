@@ -16,6 +16,7 @@ import { transitions } from '../theme-tokens'
 import { rInfo } from '../rendererLogger'
 import { AttachmentRow } from './StatusBarAttachmentsRow'
 import type { ChartAttachmentEntry } from './chart-attachment'
+import { host } from '../host/host-instance'
 
 interface ChartsSectionProps {
   charts: ChartAttachmentEntry[]
@@ -78,7 +79,7 @@ export function ChartsSection({
             rInfo('attachments', 'chart row activated', {
               chart_id: chart.chartId, revision: chart.revision,
             })
-            window.ion.requestChartJump({
+            host.shell.requestChartJump({
               tabId: activeTabId,
               chartId: chart.chartId,
               messageId: chart.toolMessageId,

@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sessionTabs: Array<{ id: string; workingDirectory: string }> = []
 let activeSessionTabId: string | null = 'tab-1'
-vi.mock('../../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: { getState: () => ({ openFileInEditor: vi.fn(), tabs: sessionTabs, activeTabId: activeSessionTabId }) },
 }))
-vi.mock('../../../stores/session-store-helpers', () => ({
+vi.mock('@ion/server/store/session-store-helpers', () => ({
   editorDirForTab: (tab: { workingDirectory: string }) => tab.workingDirectory,
 }))
 vi.mock('../../../preferences', () => ({
@@ -14,6 +14,7 @@ vi.mock('../../../preferences', () => ({
 }))
 
 import { flushSurfacePersist, resetSurfaceHydrationForTests, useSurfaceStore } from '../surface-store'
+import { installFakeWire } from '../../../host/__tests__/fake-wire'
 
 function browserInstances(): string[] {
   return useSurfaceStore.getState().tabs.flatMap((tab) => (tab.kind === 'browser' ? [tab.instanceId] : []))
@@ -27,7 +28,7 @@ beforeEach(() => {
   sessionTabs.length = 0
   sessionTabs.push({ id: 'tab-1', workingDirectory: '/repo' }, { id: 'tab-2', workingDirectory: '/other' })
   activeSessionTabId = 'tab-1'
-  ;(window as unknown as { ion: unknown }).ion = {
+  ;(window as unknown as { ion: unknown }).ion = installFakeWire({
     terminalDestroy: vi.fn().mockResolvedValue(undefined),
     studioBrowserViewEnsure: vi.fn().mockResolvedValue(true),
     studioBrowserViewBounds: vi.fn(),
@@ -37,7 +38,7 @@ beforeEach(() => {
     onStudioBrowserViewState: vi.fn(() => () => undefined),
     studioSetSetting: vi.fn().mockResolvedValue(true),
     studioGetSettings: vi.fn().mockResolvedValue({}),
-  }
+  })
   resetSurfaceHydrationForTests()
   useSurfaceStore.setState({ tabs: [], activeTabId: null, pinnedTabs: [], notification: null, conversations: {}, currentConversationId: 'tab-1', visible: false, surfaceWidth: null, hydrated: true, diffReveal: null })
   useSurfaceStore.getState().selectConversation(null)
@@ -220,7 +221,7 @@ describe('background conversations', () => {
 })
 
 describe('persist on quit', () => {
-  it('writes pending surface state instead of losing it', () => {
+  it('writes pending surface state instead of losing it', async () => {
     const setSetting = vi.fn().mockResolvedValue(true)
     ;(window as unknown as { ion: Record<string, unknown> }).ion.studioSetSetting = setSetting
 
@@ -230,6 +231,9 @@ describe('persist on quit', () => {
     expect(setSetting).not.toHaveBeenCalled()
 
     flushSurfacePersist()
+    // `studio.setSetting` crosses the wire now, so the call reaches the stub
+    // one microtask after the synchronous flush returns.
+    await Promise.resolve()
 
     expect(setSetting).toHaveBeenCalledWith('studioSurface', expect.objectContaining({ version: 4 }))
     const written = setSetting.mock.calls[0]![1] as { conversations: Record<string, { tabs: { kind: string }[] }> }

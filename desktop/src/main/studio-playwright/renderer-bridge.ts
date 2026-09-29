@@ -15,7 +15,7 @@
  * surface a model-visible "Studio required" error rather than pretending the
  * call succeeded.
  */
-import type { StudioBrowserCommand, StudioBrowserCommandResult } from '../../shared/studio-browser-types'
+import type { StudioBrowserCommand, StudioBrowserCommandResult } from '@ion/shared/studio-browser-types'
 
 export type BrowserCommandSender = (command: StudioBrowserCommand, timeoutMs: number) => Promise<StudioBrowserCommandResult>
 

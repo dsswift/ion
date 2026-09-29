@@ -10,7 +10,7 @@
  *
  * The selector reads `useSessionStore(selectorFn)`. We stub the store so the
  * call form invokes our selector against a fixed snapshot (pure fold, no
- * React, no DOM) — mirroring TabStripShared-running-children.test.ts.
+ * React, no DOM) — mirroring conversation-status-running-children.test.ts.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
@@ -24,7 +24,7 @@ const state: { tabs: any[]; activeTabId: string | null; conversationPanes: Map<s
 // useActiveEngineAgentRunningCount calls `useSessionStore(selector)`, so the
 // store mock must invoke the selector with the current state (the hook form),
 // and also expose getState() for any sibling that uses it.
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (s: typeof state) => unknown) => selector(state),
     { getState: () => state },
@@ -36,7 +36,7 @@ vi.mock('zustand/shallow', () => ({
 }))
 
 // StatusBarEngineHelpers now imports effectiveRunningChildrenCount from
-// TabStripShared, which transitively imports @phosphor-icons/react and
+// conversation-status, which transitively imports @phosphor-icons/react and
 // preferences.ts (both touch the DOM at module-load time in a browser
 // environment). Mock them so this node-pure test doesn't fail with
 // "document is not defined".

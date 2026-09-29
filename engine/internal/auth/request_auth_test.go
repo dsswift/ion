@@ -71,10 +71,10 @@ func TestBearerAuthenticator_ProviderError(t *testing.T) {
 func TestSigV4Authenticator_SignsRequest(t *testing.T) {
 	provider := &mockAWSProvider{
 		creds: &AWSCredentials{
-			AccessKeyID:    "AKID",
+			AccessKeyID:     "AKID",
 			SecretAccessKey: "secret",
-			SessionToken:   "sess-tok",
-			ExpiresAt:      time.Now().Add(time.Hour),
+			SessionToken:    "sess-tok",
+			ExpiresAt:       time.Now().Add(time.Hour),
 		},
 	}
 	fixedTime := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)

@@ -1,15 +1,24 @@
 // Recipe: Ion Wire Latency (uid ion-wire-latency-001).
 //
-// Per-event_type send/receive latency between desktop and iOS. Every metric
-// panel is a legitimate windowed statistic (quantile/avg over a rolling window)
-// or a rolling decode-error count — all class windowed-stat, so the fixed
-// windows are correct by design. The window is NOT pinned in these titles
-// (statistical smoothing convention: titles read "p50 / p95", not "(1m)").
-// Migrated semantically-identical.
+// How long the Studio wire takes, per connected client. Two sources, one
+// picture: the server writes a `wire window` line per connection per minute
+// (round trip, queue wait, bytes, frames, decode errors, its own time per
+// action), and each client writes a `client window` line for the action
+// latency a person actually waits through. A low server time beside a high
+// client time is the wire, not the work.
+//
+// Every panel is a windowed statistic over a rolling window, which is correct
+// by design for this dashboard — the window is not pinned in the titles
+// (statistical smoothing convention: "p50 / p95", not "(1m)").
+//
+// This replaced a set of panels that timed desktop→iOS transport frames. That
+// transport is gone (ADR-035 put every client on the Studio wire), nothing had
+// emitted those fields since, and a dashboard reading them looked exactly like
+// a quiet system. Its test now fails if a panel queries a field nothing emits.
 
 import type { Dashboard } from '../dashboard.ts';
 import { text, timeseries } from '../panels.ts';
-import { transportQuantile, skewEstimateAvg, decodeErrorRate } from '../queries-latency.ts';
+import { wireWindowStat, wireWindowRate, clientWindowStat } from '../queries-latency.ts';
 
 const line = (unit: string, fillOpacity = 10) => ({
   defaults: { unit, custom: { lineWidth: 2, fillOpacity } },
@@ -21,77 +30,101 @@ const legend = () => ({
 });
 
 const INTRO =
-  '## Ion Wire Latency\n\nPer-event_type send and receive latency between the desktop and iOS companion. **Desktop-send panels** show real-time data from `desktop.jsonl`. **iOS-receive panels** are bounded by the ~30 s diagnostic-log pull interval (see commit 10) — data may be up to 30 s stale.\n\nClock-skew correction is applied to iOS receive latency via a heartbeat-seeded exponential moving average (`adj_latency_ms = raw_latency_ms − skew_est_ms`).';
+  '## Ion Wire Latency\n\nHow long the Studio wire takes, per client. **Server panels** time a round trip on the server\'s own clock (`studio_ping`/`studio_pong`), so there is no clock skew between machines to correct, and they read the same for Studio, a browser and a phone, over a local socket, TCP or a relay.\n\n**Client panels** show what a person waits through: an action leaving the client and its result arriving back. A low server time beside a high client time is the wire, not the work.\n\niOS lines arrive through the diagnostic-log pull, so they may be up to ~30 s behind; server and desktop lines are current.';
 
 export function wireLatencyDashboard(): Dashboard {
   const panels = [
-    { ...text(1, { h: 3, w: 24, x: 0, y: 0 }, INTRO), datasource: undefined },
+    { ...text(1, { h: 4, w: 24, x: 0, y: 0 }, INTRO), datasource: undefined },
     timeseries({
       id: 2,
-      title: 'Desktop → iOS: send queue dwell by event_type (p50 / p95)',
+      title: 'Round trip to each client (p50 / p95)',
       description:
-        'Time from event entering the send queue to frame build, per event_type. High dwell indicates a blocked send queue (transport backpressure or slow encryption). Source: desktop.jsonl tag=transport-frame fields.queue_dwell_ms.',
-      gridPos: { h: 8, w: 12, x: 0, y: 3 },
+        'Server-timed `studio_ping` → `studio_pong`, per client kind. One clock, both readings — no skew correction. Source: server.jsonl tag=wire-latency msg="wire window" fields.rtt_p50_ms / rtt_p95_ms.',
+      gridPos: { h: 8, w: 12, x: 0, y: 4 },
       fieldConfig: line('ms'),
       options: legend(),
       targets: [
-        { e: transportQuantile({ q: 0.5, component: 'desktop', tag: 'transport-frame', field: 'fields_queue_dwell_ms', window: '1m' }), legend: 'p50 {{fields_event_type}}' },
-        { e: transportQuantile({ q: 0.95, component: 'desktop', tag: 'transport-frame', field: 'fields_queue_dwell_ms', window: '1m' }), legend: 'p95 {{fields_event_type}}', refId: 'B' },
+        { e: wireWindowStat({ field: 'fields_rtt_p50_ms', window: '5m' }), legend: 'p50 {{fields_client_kind}}' },
+        { e: wireWindowStat({ field: 'fields_rtt_p95_ms', window: '5m' }), legend: 'p95 {{fields_client_kind}}', refId: 'B' },
       ],
     }),
     timeseries({
       id: 3,
-      title: 'Desktop → iOS: payload bytes by event_type (p50 / p95)',
+      title: 'Probes lost per window',
       description:
-        'Compressed payload size per outbound frame. Large payloads (snapshot, conversation_history) drive bandwidth usage. Source: desktop.jsonl tag=transport-frame fields.payload_bytes.',
-      gridPos: { h: 8, w: 12, x: 12, y: 3 },
-      fieldConfig: line('bytes'),
+        'Probes a client never answered within the timeout. A non-zero line is a client that is connected but not reading its socket. Source: server.jsonl fields.pings_lost.',
+      gridPos: { h: 8, w: 12, x: 12, y: 4 },
+      fieldConfig: line('short', 20),
       options: legend(),
-      targets: [
-        { e: transportQuantile({ q: 0.5, component: 'desktop', tag: 'transport-frame', field: 'fields_payload_bytes', window: '1m' }), legend: 'p50 {{fields_event_type}}' },
-        { e: transportQuantile({ q: 0.95, component: 'desktop', tag: 'transport-frame', field: 'fields_payload_bytes', window: '1m' }), legend: 'p95 {{fields_event_type}}', refId: 'B' },
-      ],
+      targets: [{ e: wireWindowRate({ field: 'fields_pings_lost', window: '5m' }), legend: '{{fields_client_kind}}' }],
     }),
     timeseries({
       id: 4,
-      title: 'iOS receive: adjusted latency by event_type (p50 / p95)',
+      title: 'Outbound queue wait (p95)',
       description:
-        'Clock-skew-corrected one-way latency from desktop frame-build to iOS decode, per event_type. adj_latency_ms = raw_latency_ms − skew_est_ms. Source: ios-diagnostic-logs.jsonl tag=transport.receive msg="frame received", bounded by ~30 s pull interval (freshness caveat).',
-      gridPos: { h: 8, w: 12, x: 0, y: 11 },
+        'How long a frame sat between entering the send queue and leaving the socket. High wait means backpressure on this connection, not a slow network. Source: server.jsonl fields.dwell_p95_ms.',
+      gridPos: { h: 8, w: 12, x: 0, y: 12 },
       fieldConfig: line('ms'),
       options: legend(),
-      targets: [
-        { e: transportQuantile({ q: 0.5, component: 'ios', tag: 'transport.receive', field: 'fields_adj_latency_ms', window: '5m' }), legend: 'p50 {{fields_event_type}}' },
-        { e: transportQuantile({ q: 0.95, component: 'ios', tag: 'transport.receive', field: 'fields_adj_latency_ms', window: '5m' }), legend: 'p95 {{fields_event_type}}', refId: 'B' },
-      ],
+      targets: [{ e: wireWindowStat({ field: 'fields_dwell_p95_ms', window: '5m' }), legend: 'p95 {{fields_client_kind}}' }],
     }),
     timeseries({
       id: 5,
-      title: 'iOS receive: heartbeat clock-skew estimate over time',
+      title: 'Peak send-queue depth',
       description:
-        'The rolling clock-skew estimate (α=0.25 EMA) from heartbeat round-trips. A stable non-zero value is expected and normal — iOS and desktop clocks rarely agree perfectly. Rapid drift may indicate NTP problems on either device. Source: ios-diagnostic-logs.jsonl tag=transport.receive msg="heartbeat received".',
-      gridPos: { h: 8, w: 12, x: 12, y: 11 },
-      fieldConfig: line('ms'),
+        'The deepest the bounded send queue got in the window. A connection that crosses its cap is closed with slow_client, so this climbing is the warning before that. Source: server.jsonl fields.queue_max.',
+      gridPos: { h: 8, w: 12, x: 12, y: 12 },
+      fieldConfig: line('bytes'),
       options: legend(),
-      targets: [{ e: skewEstimateAvg('5m'), legend: 'skew_est_ms (avg)' }],
+      targets: [{ e: wireWindowStat({ field: 'fields_queue_max', window: '5m' }), legend: '{{fields_client_kind}}' }],
     }),
     timeseries({
       id: 6,
-      title: 'DECODE-ERR drop rate (frames/min)',
+      title: 'Bytes out per window',
       description:
-        'Number of incoming frames that failed JSON decode or schema validation per minute. A non-zero rate indicates a wire mismatch (possible version skew between desktop and iOS builds). Source: desktop.jsonl and ios-diagnostic-logs.jsonl. The desktop emits decode errors at ERROR level with tag=transport; iOS emits them at ERROR level with tag=transport.receive in TransportManager+Receive.swift.',
-      gridPos: { h: 8, w: 24, x: 0, y: 19 },
+        'Outbound volume per client kind. A phone on a relay paying for a snapshot shows up here. Source: server.jsonl fields.bytes_out.',
+      gridPos: { h: 8, w: 12, x: 0, y: 20 },
+      fieldConfig: line('bytes'),
+      options: legend(),
+      targets: [{ e: wireWindowRate({ field: 'fields_bytes_out', window: '5m' }), legend: '{{fields_client_kind}}' }],
+    }),
+    timeseries({
+      id: 7,
+      title: 'Server time per action (p95)',
+      description:
+        'The server\'s own work on one studio_action, receipt to result sent — the wire is not in this number. Compare against the client-felt panel below: the gap between them is the wire. Source: server.jsonl fields.action_p95_ms.',
+      gridPos: { h: 8, w: 12, x: 12, y: 20 },
+      fieldConfig: line('ms'),
+      options: legend(),
+      targets: [{ e: wireWindowStat({ field: 'fields_action_p95_ms', window: '5m' }), legend: 'p95 {{fields_client_kind}}' }],
+    }),
+    timeseries({
+      id: 8,
+      title: 'Client-felt action latency (p50 / p95)',
+      description:
+        'What a person waits through: an action leaving the client and its result arriving back, from each client\'s own window. desktop = Studio and Electron main; web = a browser tab (forwarded through POST /log); ios = the phone (through its diagnostic pull, so up to ~30 s behind). Source: each client\'s log, tag=wire-latency msg="client window".',
+      gridPos: { h: 8, w: 12, x: 0, y: 28 },
+      fieldConfig: line('ms'),
+      options: legend(),
+      targets: [
+        { e: clientWindowStat({ field: 'fields_action_p50_ms', window: '5m' }), legend: 'p50 {{service_name}}' },
+        { e: clientWindowStat({ field: 'fields_action_p95_ms', window: '5m' }), legend: 'p95 {{service_name}}', refId: 'B' },
+      ],
+    }),
+    timeseries({
+      id: 9,
+      title: 'Client action timeouts, and server decode errors',
+      description:
+        'Two ways the wire fails rather than slows. Timeouts are actions a client gave up on, counted separately from the percentiles so a 30 s wait does not read as merely sluggish. Decode errors are frames the server could not parse — a version skew between a client and this server. Sources: client windows fields.action_timeouts; server windows fields.decode_errors.',
+      gridPos: { h: 8, w: 12, x: 12, y: 28 },
       fieldConfig: {
         defaults: { unit: 'short', custom: { lineWidth: 2, fillOpacity: 20 } },
-        overrides: [
-          { matcher: { id: 'byName', options: 'decode errors (desktop)' }, properties: [{ id: 'color', value: { mode: 'fixed', fixedColor: 'orange' } }] },
-          { matcher: { id: 'byName', options: 'decode errors (ios)' }, properties: [{ id: 'color', value: { mode: 'fixed', fixedColor: 'red' } }] },
-        ],
+        overrides: [],
       },
       options: legend(),
       targets: [
-        { e: decodeErrorRate({ component: 'desktop', tag: 'transport', msgPattern: '.*(decode|decompress|JSON parse|failed to parse).*', window: '1m' }), legend: 'decode errors (desktop)' },
-        { e: decodeErrorRate({ component: 'ios', tag: 'transport.receive', msgPattern: '.*(decode|decompression|JSON|failed to parse).*', window: '1m' }), legend: 'decode errors (ios)', refId: 'B' },
+        { e: clientWindowStat({ field: 'fields_action_timeouts', window: '5m' }), legend: 'action timeouts ({{service_name}})' },
+        { e: wireWindowRate({ field: 'fields_decode_errors', window: '5m' }), legend: 'decode errors ({{fields_client_kind}})', refId: 'B' },
       ],
     }),
   ];
@@ -100,8 +133,8 @@ export function wireLatencyDashboard(): Dashboard {
     uid: 'ion-wire-latency-001',
     title: 'Ion Wire Latency',
     description:
-      'Wire latency between desktop and iOS — per-event_type send latency and iOS receive latency with clock-skew correction.\n\n**Freshness caveat:** iOS diagnostic logs are pulled periodically (~30 s per the commit-10 pull interval). Data on the iOS-receive panels may be up to ~30 s stale relative to actual receipt time. The desktop-send panels are real-time (logs land in desktop.jsonl immediately).',
-    tags: ['ion', 'wire', 'latency', 'ios', 'transport'],
+      'How long the Studio wire takes, per client. Server panels time a round trip on the server\'s own clock; client panels show the action latency a person waits through.\n\n**Freshness caveat:** iOS lines arrive through the diagnostic-log pull and may be up to ~30 s behind. Server and desktop lines are current.',
+    tags: ['ion', 'wire', 'latency', 'studio', 'transport'],
     schemaVersion: 38,
     version: 1,
     graphTooltip: 1,
@@ -111,8 +144,20 @@ export function wireLatencyDashboard(): Dashboard {
     file: 'ion-wire-latency',
     panels,
     annotations: [
-      { name: 'Desktop send frames', expr: '{component="desktop"} | json | tag="transport-frame"', iconColor: 'green', step: '60s', titleFormat: 'send: {{fields_event_type}} seq={{fields_seq}} dwell={{fields_queue_dwell_ms}}ms' },
-      { name: 'iOS receive frames', expr: '{component="ios"} | json | tag="transport.receive" | msg="frame received"', iconColor: 'blue', step: '60s', titleFormat: 'recv: {{fields_event_type}} adj={{fields_adj_latency_ms}}ms' },
+      {
+        name: 'Server wire windows',
+        expr: '{service_name="ion-server", event_name=""} | json | tag="wire-latency" | msg="wire window"',
+        iconColor: 'green',
+        step: '60s',
+        titleFormat: '{{fields_client_kind}} rtt p95={{fields_rtt_p95_ms}}ms dwell p95={{fields_dwell_p95_ms}}ms',
+      },
+      {
+        name: 'Client windows',
+        expr: '{service_name=~"ion-(desktop|web|ios)", event_name=""} | json | tag="wire-latency" | msg="client window"',
+        iconColor: 'blue',
+        step: '60s',
+        titleFormat: '{{service_name}} action p95={{fields_action_p95_ms}}ms',
+      },
     ],
   };
 }

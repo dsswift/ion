@@ -1,15 +1,14 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import type { WebContents } from 'electron'
-import type { SurfacePlan } from '../surface-launch'
 
 const splash = { isDestroyed: () => false, destroy: vi.fn(), webContents: { id: 99 } }
-const mainWindow = { webContents: { id: 7 } }
-const mockState = { splashWindow: splash as any, mainWindow: mainWindow as any, studioWindow: null as any }
+const studioWindow = { webContents: { id: 7 } }
+const mockState = { splashWindow: splash as any, mainWindow: null as any, studioWindow: studioWindow as any }
 
-const showWindow = vi.fn()
 const createTray = vi.fn()
 const revealStudioWindow = vi.fn()
-const registerActiveUiShortcuts = vi.fn()
+const openStudioWindow = vi.fn()
+const registerStudioShortcuts = vi.fn()
 const broadcast = vi.fn()
 const warn = vi.fn()
 const log = vi.fn()
@@ -18,32 +17,41 @@ vi.stubGlobal('__ION_DESKTOP_VERSION__', '1.83.0-dev.abcdef123456')
 
 vi.mock('electron', () => ({ app: { getVersion: () => '1.2.3', relaunch: vi.fn(), exit: vi.fn(), quit: vi.fn() } }))
 vi.mock('../state', () => ({ state: mockState }))
-vi.mock('../logger', () => ({ log: (...a: unknown[]) => log(...a), warn: (...a: unknown[]) => warn(...a) }))
+const debug = vi.fn()
+vi.mock('../logger', () => ({ log: (...a: unknown[]) => log(...a), warn: (...a: unknown[]) => warn(...a), debug: (...a: unknown[]) => debug(...a) }))
 vi.mock('../startup-window', () => ({ createStartupWindow: vi.fn() }))
 vi.mock('../window-manager', () => ({
-  showWindow: (...a: unknown[]) => showWindow(...a),
   createTray: () => createTray(),
 }))
-vi.mock('../active-ui', () => ({ registerActiveUiShortcuts: (...a: unknown[]) => registerActiveUiShortcuts(...a) }))
+vi.mock('../studio-shortcuts', () => ({ registerStudioShortcuts: (...a: unknown[]) => registerStudioShortcuts(...a) }))
 vi.mock('../studio-window-manager', () => ({
-  openStudioWindow: vi.fn(),
+  openStudioWindow: (...a: unknown[]) => openStudioWindow(...a),
   revealStudioWindow: (...a: unknown[]) => revealStudioWindow(...a),
 }))
 const signIn = vi.fn()
 
-vi.mock('../oauth/entra-auth', () => ({ signIn: (...args: unknown[]) => signIn(...args) }))
+// The engine-owned sign-in runs in the Studio server; the coordinator asks
+// for it over the wire. `signIn` stands in for the server's flow.
+vi.mock('../connections/broker-instance', () => ({
+  broker: {
+    sendAction: async (_env: string, action: string) => {
+      if (action !== 'entra.signIn') throw new Error(`unexpected action ${action}`)
+      try {
+        return { ok: true, identity: await signIn() }
+      } catch (err) {
+        return { ok: false, error: (err as Error).message }
+      }
+    },
+  },
+}))
 vi.mock('../broadcast', () => ({ broadcast: (...a: unknown[]) => broadcast(...a) }))
 
-const overlayPlan = {
-  activeUi: 'overlay',
-  showOverlayOnLaunch: true,
-  openStudioOnLaunch: false,
-  studioEnabled: false,
-  overlayEnabled: true,
-  studioShortcut: '',
-} as unknown as SurfacePlan
+const studio = studioWindow.webContents as unknown as WebContents
 
-const owner = mainWindow.webContents as unknown as WebContents
+/** The LOCAL server's terminal report, as the studio bridge relays it off the wire. */
+function serverReady(c: typeof import('../startup-coordinator'), sequence = 40): boolean {
+  return c.relayServerStartupReport('local', { type: 'studio_event', channel: 'startup:progress', payload: { source: 'server', sequence, status: 'Workspace ready', ready: true } })
+}
 
 async function freshCoordinator(): Promise<typeof import('../startup-coordinator')> {
   vi.resetModules()
@@ -60,52 +68,106 @@ describe('startup coordinator', () => {
   it('publishes the version in the first startup state', async () => {
     const c = await freshCoordinator()
     expect(c.getStartupState().appVersion).toBe('1.83.0-dev.abcdef123456')
-    c.startStartup(overlayPlan)
+    c.startStartup()
     expect(c.getStartupState().appVersion).toBe('1.83.0-dev.abcdef123456')
   })
 
-  it('reveals the target and destroys the splash on the owner ready report', async () => {
+  it('reveals Studio and destroys the splash once both the server and the studio report ready', async () => {
     const c = await freshCoordinator()
-    c.startStartup(overlayPlan)
+    c.startStartup()
+    expect(serverReady(c)).toBe(true)
     for (let i = 1; i <= 78; i++) {
-      c.reportStartup({ source: 'owner', sequence: i, status: `Restoring tab ${i}…` }, owner)
+      c.reportStartup({ source: 'studio', sequence: i, status: `Restoring tab ${i}…` }, studio)
     }
     expect(c.isStartupRevealed()).toBe(false)
 
-    expect(c.reportStartup({ source: 'owner', sequence: 79, status: 'Ion is ready', ready: true }, owner)).toBe(true)
+    expect(c.reportStartup({ source: 'studio', sequence: 79, status: 'Ion is ready', ready: true }, studio)).toBe(true)
 
-    expect(c.getStartupState().ownerReady).toBe(true)
+    expect(c.getStartupState().studioReady).toBe(true)
+    expect(c.getStartupState().serverReady).toBe(true)
     expect(c.isStartupRevealed()).toBe(true)
-    expect(showWindow).toHaveBeenCalledWith('startup complete')
+    expect(revealStudioWindow).toHaveBeenCalledWith('startup complete')
+    expect(registerStudioShortcuts).toHaveBeenCalled()
     expect(createTray).toHaveBeenCalled()
     expect(splash.destroy).toHaveBeenCalled()
   })
 
-  it('drops a ready report that trails its own source, and says so in the log', async () => {
-    // The shipped wedge: two renderer modules reported as `owner` with private
-    // counters, so the ready report arrived at sequence 4 behind progress at
-    // 78 and was discarded — splash up forever, product window never shown.
+  // The renderer's bootstrap finishes seconds before the server has restored
+  // every tab. Shipped once the store moved into the server: the splash came
+  // down on the renderer's ready alone, over a sidebar that filled in chunk
+  // by chunk behind a "Syncing" placeholder for the rest of the restore.
+  it('keeps the splash up on the studio ready report until the LOCAL server reports its workspace ready', async () => {
     const c = await freshCoordinator()
-    c.startStartup(overlayPlan)
+    c.startStartup()
+    c.relayServerStartupReport('local', { type: 'studio_event', channel: 'startup:progress', payload: { source: 'server', sequence: 3, status: 'Restoring tab 4 of 28…' } })
+    expect(c.reportStartup({ source: 'studio', sequence: 1, status: 'Ion Studio is ready', ready: true }, studio)).toBe(true)
+
+    expect(c.getStartupState().studioReady).toBe(true)
+    expect(c.getStartupState().serverReady).toBe(false)
+    expect(c.isStartupRevealed()).toBe(false)
+    expect(revealStudioWindow).not.toHaveBeenCalled()
+    expect(splash.destroy).not.toHaveBeenCalled()
+    // The splash keeps showing the restore while it waits.
+    c.relayServerStartupReport('local', { type: 'studio_event', channel: 'startup:progress', payload: { source: 'server', sequence: 4, status: 'Starting restored sessions 1 of 25…' } })
+    expect(c.getStartupState().status).toBe('Starting restored sessions 1 of 25…')
+    expect(c.isStartupRevealed()).toBe(false)
+
+    expect(serverReady(c, 5)).toBe(true)
+    expect(c.isStartupRevealed()).toBe(true)
+    expect(revealStudioWindow).toHaveBeenCalledWith('startup complete')
+    expect(splash.destroy).toHaveBeenCalled()
+  })
+
+  it('reveals on the studio ready report when the server was ready first, as on a fast restore', async () => {
+    const c = await freshCoordinator()
+    c.startStartup()
+    // A small workspace finishes restoring before the desktop's wire opens;
+    // the server replays its terminal report on attach.
+    expect(serverReady(c, 2)).toBe(true)
+    expect(c.isStartupRevealed()).toBe(false)
+    c.reportStartup({ source: 'studio', sequence: 1, status: 'Ion Studio is ready', ready: true }, studio)
+    expect(c.isStartupRevealed()).toBe(true)
+  })
+
+  it('notes a server replay after reveal without counting it as a dropped report', async () => {
+    const c = await freshCoordinator()
+    c.startStartup()
+    serverReady(c, 9)
+    c.reportStartup({ source: 'studio', sequence: 1, status: 'Ion Studio is ready', ready: true }, studio)
+    expect(c.isStartupRevealed()).toBe(true)
+    warn.mockClear()
+    // The wire reconnects; the server replays the same terminal report.
+    expect(serverReady(c, 9)).toBe(false)
+    expect(warn).not.toHaveBeenCalled()
+    expect(debug).toHaveBeenCalledWith('startup', 'server startup report after reveal ignored', expect.objectContaining({ sequence: 9, ready: true }))
+  })
+
+  it('drops a ready report that trails its own source, and says so in the log', async () => {
+    // The shipped wedge: a renderer module's ready report arrived at a
+    // sequence behind progress already accepted, and was discarded —
+    // splash up forever, product window never shown.
+    const c = await freshCoordinator()
+    c.startStartup()
+    serverReady(c)
     for (let i = 1; i <= 78; i++) {
-      c.reportStartup({ source: 'owner', sequence: i, status: `Restoring tab ${i}…` }, owner)
+      c.reportStartup({ source: 'studio', sequence: i, status: `Restoring tab ${i}…` }, studio)
     }
 
-    expect(c.reportStartup({ source: 'owner', sequence: 4, status: 'Ion is ready', ready: true }, owner)).toBe(false)
+    expect(c.reportStartup({ source: 'studio', sequence: 4, status: 'Ion is ready', ready: true }, studio)).toBe(false)
 
-    expect(c.getStartupState().ownerReady).toBe(false)
+    expect(c.getStartupState().studioReady).toBe(false)
     expect(c.isStartupRevealed()).toBe(false)
     expect(splash.destroy).not.toHaveBeenCalled()
     expect(warn).toHaveBeenCalledWith(
       'startup',
       'startup report dropped: sequence not ahead of source',
-      expect.objectContaining({ source: 'owner', report_sequence: 4, last_accepted_sequence: 78, ready: true }),
+      expect.objectContaining({ source: 'studio', report_sequence: 4, last_accepted_sequence: 78, ready: true }),
     )
   })
 
   it('enters required authentication mode without revealing product UI', async () => {
     const c = await freshCoordinator()
-    c.startStartup(overlayPlan)
+    c.startStartup()
     c.requireStartupAuthentication()
 
     expect(c.getStartupState()).toMatchObject({
@@ -114,13 +176,13 @@ describe('startup coordinator', () => {
       status: 'Sign in to continue',
     })
     expect(c.isStartupRevealed()).toBe(false)
-    expect(showWindow).not.toHaveBeenCalled()
+    expect(revealStudioWindow).not.toHaveBeenCalled()
     expect(splash.destroy).not.toHaveBeenCalled()
   })
 
   it('completes required authentication and returns to loading state', async () => {
     const c = await freshCoordinator()
-    c.startStartup(overlayPlan)
+    c.startStartup()
     c.requireStartupAuthentication()
 
     await c.authenticateStartup()
@@ -134,25 +196,23 @@ describe('startup coordinator', () => {
     })
   })
 
-  // The reveal gate refuses while mode is 'authentication'. Both ready reports
+  // The reveal gate refuses while mode is 'authentication'. The ready report
   // can land before signIn() settles -- the main-process wait loop polls the
   // engine every 250ms and proceeds on the engine's view of the grant, which
-  // flips the moment the token exchange completes. Observed on Windows: owner
-  // ready 19:03:06.645, studio ready 19:03:07.081, both refused, then
-  // authentication completed 19:03:07.736 with nothing left to retry the
-  // reveal. The splash sat on "Signed in. Preparing your workspace…" over a
-  // fully booted app, and quitting was the only way out.
+  // flips the moment the token exchange completes. The splash must not sit on
+  // "Signed in. Preparing your workspace…" over a fully booted app forever.
   it('reveals when the surface became ready during the sign-in', async () => {
     const c = await freshCoordinator()
-    c.startStartup(overlayPlan)
+    c.startStartup()
     c.requireStartupAuthentication()
 
     let release: ((v: { user: string }) => void) | undefined
     signIn.mockImplementationOnce(() => new Promise((resolve) => { release = resolve }))
     const pending = c.authenticateStartup()
 
-    // The surface finishes booting while the gate is still up.
-    c.reportStartup({ source: 'owner', sequence: 1, status: 'Ion is ready', ready: true }, owner)
+    // Both surfaces finish booting while the gate is still up.
+    serverReady(c)
+    c.reportStartup({ source: 'studio', sequence: 1, status: 'Ion is ready', ready: true }, studio)
     expect(c.isStartupRevealed()).toBe(false)
 
     release?.({ user: 'someone@example.com' })
@@ -169,7 +229,7 @@ describe('startup coordinator', () => {
   // the full five minutes with quitting the app as the only way out.
   it('cancelling a sign-in attempt restores a usable gate', async () => {
     const c = await freshCoordinator()
-    c.startStartup(overlayPlan)
+    c.startStartup()
     c.requireStartupAuthentication()
 
     let release: (() => void) | undefined
@@ -198,7 +258,7 @@ describe('startup coordinator', () => {
   // label on a dead end.
   it('allows a fresh attempt after a cancel', async () => {
     const c = await freshCoordinator()
-    c.startStartup(overlayPlan)
+    c.startStartup()
     c.requireStartupAuthentication()
 
     let release: (() => void) | undefined
@@ -219,7 +279,7 @@ describe('startup coordinator', () => {
 
   it('ignores a cancel when no sign-in gate is active', async () => {
     const c = await freshCoordinator()
-    c.startStartup(overlayPlan)
+    c.startStartup()
 
     c.cancelStartupAuthentication()
 
@@ -228,11 +288,56 @@ describe('startup coordinator', () => {
 
   it('rejects a report whose sender is not the source window', async () => {
     const c = await freshCoordinator()
-    c.startStartup(overlayPlan)
+    c.startStartup()
     const impostor = { id: 1234 } as unknown as WebContents
 
-    expect(c.reportStartup({ source: 'owner', sequence: 1, status: 'Ion is ready', ready: true }, impostor)).toBe(false)
-    expect(c.getStartupState().ownerReady).toBe(false)
+    expect(c.reportStartup({ source: 'studio', sequence: 1, status: 'Ion is ready', ready: true }, impostor)).toBe(false)
+    expect(c.getStartupState().studioReady).toBe(false)
     expect(c.isStartupRevealed()).toBe(false)
+  })
+})
+
+describe('server startup reports', () => {
+  const frame = (channel: string, payload: unknown) => ({ type: 'studio_event' as const, channel, payload })
+  const report = (sequence: number, status: string) => ({ source: 'server', sequence, status })
+
+  // The payload is the bare report object: a one-argument `broadcast()` is
+  // condensed to its single value by the server's formatEventPayload. The
+  // replay-on-attach used to wrap it in an array, and this test pinned the
+  // array -- so the replay passed and every live report was rejected, which
+  // is exactly how the splash froze on "Restoring tab 21 of 28" for a whole
+  // restoration.
+  it('rejects the old array-wrapped shape, which no producer sends any more', async () => {
+    const mod = await import('../startup-coordinator')
+    mod.startStartup()
+    expect(mod.relayServerStartupReport('local', frame('startup:progress', [report(0, 'Restoring tab 1 of 12…')]))).toBe(false)
+  })
+
+  it('relays the LOCAL server restore progress into the splash without a sender window', async () => {
+    const mod = await import('../startup-coordinator')
+    mod.startStartup()
+    expect(mod.relayServerStartupReport('local', frame('startup:progress', report(0, 'Restoring tab 1 of 12…')))).toBe(true)
+    expect(mod.getStartupState().status).toBe('Restoring tab 1 of 12…')
+    expect(mod.getStartupState().source).toBe('server')
+    expect(mod.getStartupState().studioReady).toBe(false)
+  })
+
+  it('ignores a remote environment, other channels, and reports claiming another source', async () => {
+    const mod = await import('../startup-coordinator')
+    mod.startStartup()
+    expect(mod.relayServerStartupReport('remote-1', frame('startup:progress', report(5, 'Restoring 3 tabs…')))).toBe(false)
+    expect(mod.relayServerStartupReport('local', frame('ion:settings-changed', report(5, 'x')))).toBe(false)
+    expect(mod.relayServerStartupReport('local', frame('startup:progress', { source: 'studio', sequence: 5, status: 'x', ready: true }))).toBe(false)
+    expect(mod.relayServerStartupReport('local', { type: 'studio_welcome' } as never)).toBe(false)
+    expect(mod.getStartupState().studioReady).toBe(false)
+  })
+
+  it('keeps its own sequence per source, so server and studio never block each other', async () => {
+    const mod = await import('../startup-coordinator')
+    mod.startStartup()
+    expect(mod.relayServerStartupReport('local', frame('startup:progress', report(7, 'Loading saved tabs…')))).toBe(true)
+    expect(mod.relayServerStartupReport('local', frame('startup:progress', report(7, 'stale')))).toBe(false)
+    expect(mod.relayServerStartupReport('local', frame('startup:progress', report(8, 'Restoring 3 tabs…')))).toBe(true)
+    expect(mod.getStartupState().status).toBe('Restoring 3 tabs…')
   })
 })

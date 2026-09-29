@@ -1,4 +1,3 @@
-// @file-size-exception: Event dispatch remains one exhaustive lifecycle switch; branch response handling adds one wire case.
 import UIKit
 
 extension SessionViewModel {
@@ -9,14 +8,11 @@ extension SessionViewModel {
         case .unpair:
             handleUnpair()
 
-        case .relayConfig(let relayUrl, let relayApiKey, let authMode, let relayOidcIssuer, let relayOidcAudience, let relayOidcRequiredScope, let relayOidcClientId):
-            handleRelayConfig(relayUrl: relayUrl, relayApiKey: relayApiKey, authMode: authMode, relayOidcIssuer: relayOidcIssuer, relayOidcAudience: relayOidcAudience, relayOidcRequiredScope: relayOidcRequiredScope, relayOidcClientId: relayOidcClientId)
-
         case .transportReconnecting:
             cancelTranscriptCopy()
             if connectionState == .connected {
                 connectionState = .reconnecting
-                markActiveDesktopTransientlyDisconnected(source: "transport_reconnecting")
+                markActiveServerTransientlyDisconnected(source: "transport_reconnecting")
             }
             connectionQuality.transportState = transport?.state ?? .disconnected
 
@@ -24,20 +20,13 @@ extension SessionViewModel {
             connectionQuality.transportState = transport?.state ?? .disconnected
             connectionQuality.recordHeartbeat(senderTs: senderTs, buffered: buffered)
 
-        case .resendUnavailable:
-            // Gap-recovery control event. The TransportManager already cleared
-            // its pending-resend range on receipt; nothing more to do at the
-            // ViewModel layer — the snapshot reconcile heals the gap. Observed
-            // here only to keep the event switch exhaustive.
-            break
-
         case .peerDisconnected:
             cancelTranscriptCopy()
             // Don't tear down the transport — the relay auto-reconnects and
             // startRelayStateObservation re-sends sync when the peer returns.
             if connectionState == .connected || connectionState == .connecting {
                 connectionState = .reconnecting
-                markActiveDesktopTransientlyDisconnected(source: "peer_disconnected")
+                markActiveServerTransientlyDisconnected(source: "peer_disconnected")
                 startReconnectSafetyTimer()
             }
             connectionQuality.transportState = transport?.state ?? .disconnected
@@ -46,11 +35,14 @@ extension SessionViewModel {
         case .lanAuthRejected:
             handleLANAuthRejected()
 
-        case .lanSecretUnusable:
-            handleLANSecretUnusable()
+        case .settledTabs(let tabs):
+            // The complete settled set, on its own channel rather than inside
+            // the snapshot. Replaces what is held, exactly as the snapshot's
+            // own settledTabs field did.
+            settledTabs = tabs
 
-        case .snapshot(let snapshotTabs, let recentDirs, let snapshotGroupMode, let snapshotGroups, let snapshotPreferredModel, let snapshotEngineDefaultModel, let snapshotAvailableModels, let snapshotCustomName, let snapshotCustomIcon, let snapshotRemoteDisplayUpdatedAt, let snapshotResources, let snapshotProjects, let snapshotWorktreeStates, let snapshotSettledTabs):
-            handleSnapshot(snapshotTabs: snapshotTabs, recentDirs: recentDirs, groupMode: snapshotGroupMode, groups: snapshotGroups, preferredModel: snapshotPreferredModel, engineDefaultModel: snapshotEngineDefaultModel, availableModels: snapshotAvailableModels, projects: snapshotProjects, worktreeStates: snapshotWorktreeStates, settledTabs: snapshotSettledTabs)
+        case .snapshot(let snapshotTabs, let recentDirs, let snapshotAvailableModels, let snapshotCustomName, let snapshotCustomIcon, let snapshotRemoteDisplayUpdatedAt, let snapshotResources, let snapshotProjects, let snapshotWorktreeStates, let snapshotSettledTabs):
+            handleSnapshot(snapshotTabs: snapshotTabs, recentDirs: recentDirs, availableModels: snapshotAvailableModels, projects: snapshotProjects, worktreeStates: snapshotWorktreeStates, settledTabs: snapshotSettledTabs)
             applySnapshotRemoteDisplay(customName: snapshotCustomName, customIcon: snapshotCustomIcon, updatedAt: snapshotRemoteDisplayUpdatedAt)
             if let snapshotResources {
                 resourceStore.applyCompleteManifest(snapshotResources)
@@ -79,38 +71,8 @@ extension SessionViewModel {
         case .tabStatus(let tabId, let status, let resync):
             handleTabStatus(tabId: tabId, status: status, resync: resync)
 
-        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, let lastActivityAt, let lastMessageAt, let lastMessage, let messageCount, let pillColor, let pillIcon):
-            handleTabMeta(tabId: tabId, title: title, totalCostUsd: totalCostUsd, groupId: groupId, convFingerprint: convFingerprint, lastActivityAt: lastActivityAt, lastMessageAt: lastMessageAt, lastMessage: lastMessage, messageCount: messageCount, pillColor: pillColor, pillIcon: pillIcon)
-
-        case .textChunk(let tabId, let text):
-            // desktop_text_chunk is NOT sent by the current desktop: the desktop
-            // suppresses it (event-wiring-remote.ts isCoveredByEngineBridge) and
-            // forwards assistant text as engine_text_delta → desktop_text_delta
-            // for EVERY conversation, which iOS applies via handleEngineTextDelta
-            // (appends to the transcript, no conversationLoaded guard). This case
-            // is retained only so a frame from an older desktop build still
-            // decodes without throwing; for a loaded conversation it updates the
-            // tab-list preview and is otherwise a no-op. Do NOT append this to the
-            // transcript for a loaded conversation — the desktop_text_delta path
-            // already renders the reply, and doing both duplicates the row (the
-            // duplication the desktop comment at event-wiring-remote.ts documents).
-            if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
-                let preview = liveText(tabId) + text
-                tabs[idx].lastMessage = String(preview.suffix(64))
-                    .replacingOccurrences(of: "\n", with: " ")
-            }
-            guard !conversationLoaded.contains(tabId) else { break }
-            appendLiveText(tabId: tabId, text)
-
-        case .toolCall(let tabId, let toolName, _):
-            guard !conversationLoaded.contains(tabId) else { break }
-            appendLiveText(tabId: tabId, "\n> \(toolName)\n")
-
-        case .toolResult(let tabId, _, let content, let isError):
-            guard !conversationLoaded.contains(tabId) else { break }
-            let prefix = isError ? "[error]" : "[ok]"
-            let truncated = content.prefix(200)
-            appendLiveText(tabId: tabId, "\(prefix) \(truncated)\n")
+        case .tabMeta(let tabId, let title, let totalCostUsd, let lastActivityAt, let lastMessageAt, let lastMessage, let messageCount, let pillColor):
+            handleTabMeta(tabId: tabId, title: title, totalCostUsd: totalCostUsd, lastActivityAt: lastActivityAt, lastMessageAt: lastMessageAt, lastMessage: lastMessage, messageCount: messageCount, pillColor: pillColor)
 
         case .taskComplete(let tabId, _, _, let durationMs, let reason):
             handleTaskComplete(tabId: tabId, durationMs: durationMs, reason: reason)
@@ -126,23 +88,10 @@ extension SessionViewModel {
         case .transcript(let tabId, let requestId, let transcript, let error):
             handleTranscript(tabId: tabId, requestId: requestId, transcript: transcript, error: error)
 
-        case .conversationHistory(let tabId, let newMessages, let hasMore, let cursor, let before):
-            handleConversationHistory(tabId: tabId, newMessages: newMessages, hasMore: hasMore, cursor: cursor, before: before)
-
-        case .messageAdded(let tabId, let message):
-            handleMessageAdded(tabId: tabId, message: message)
-
-        case .messageUpdated(let tabId, let messageId, let content, let toolStatus, let toolInput):
-            handleMessageUpdated(tabId: tabId, messageId: messageId, content: content, toolStatus: toolStatus, toolInput: toolInput)
-
         case .queueUpdate(let tabId, let prompts):
             if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
                 tabs[idx].queuedPrompts = prompts
             }
-
-        case .error(let tabId, let message):
-            guard !conversationLoaded.contains(tabId) else { break }
-            appendLiveText(tabId: tabId, "\n[error] \(message)\n")
 
         case .inputPrefill(let tabId, let text, let switchTo, let instanceId):
             handleInputPrefill(tabId: tabId, text: text, switchTo: switchTo, instanceId: instanceId)
@@ -153,6 +102,9 @@ extension SessionViewModel {
 
         case .terminalExit(let tabId, let instanceId, let exitCode):
             TerminalOutputRouter.shared.routeExit(tabId: tabId, instanceId: instanceId, exitCode: exitCode)
+
+        case .terminalRestarted(let tabId, let instanceId):
+            TerminalOutputRouter.shared.routeRestart(tabId: tabId, instanceId: instanceId)
 
         case .terminalInstanceAdded(let tabId, let instance):
             terminalInstances[tabId, default: []].append(instance)
@@ -198,9 +150,6 @@ extension SessionViewModel {
 
         case .engineStatus(let tabId, let instanceId, let fields, _):
             mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.statusFields = fields }
-            // Detect engine restarts: a changed sessionId means a new engine
-            // binary is running and all cached dispatch snapshots may be stale.
-            handleEngineSessionIdChange(tabId: tabId, sessionId: fields.sessionId)
 
         case .engineSessionStatus(let tabId, let instanceId, let sessionStatus, _):
             // Phase 3 of the state-management overhaul. The typed
@@ -213,12 +162,6 @@ extension SessionViewModel {
         case .engineWorkingMessage(let tabId, let instanceId, let message, _):
             _ = instanceId // vestigial post-#256; working message is per-tab
             setWorkingMessage(tabId: tabId, message)
-
-        case .engineToolStart(let tabId, let instanceId, let toolName, let toolId):
-            handleEngineToolStart(tabId: tabId, instanceId: instanceId, toolName: toolName, toolId: toolId)
-
-        case .engineToolEnd(let tabId, let instanceId, let toolId, let result, let isError, let backgroundTaskId):
-            handleEngineToolEnd(tabId: tabId, instanceId: instanceId, toolId: toolId, result: result, isError: isError, backgroundTaskId: backgroundTaskId)
 
         case .engineToolStalled(let tabId, let instanceId, let toolId, _, _):
             _ = instanceId // unused post-#256, bare tabId is the key
@@ -239,27 +182,8 @@ extension SessionViewModel {
                 handleBackgroundTaskTerminal(tabId: tabId, instanceId: instanceId, taskId: taskId, status: "stopped")
             }
 
-        case .engineImageContent(let tabId, let instanceId, let path, let mediaType, let contentHash, let source, let toolId):
-            handleEngineImageContent(tabId: tabId, instanceId: instanceId, path: path, mediaType: mediaType, contentHash: contentHash, source: source, toolId: toolId)
-
         case .engineRunStalled(let tabId, let instanceId, let stalledDuration, let lastActivity):
             handleEngineRunStalled(tabId: tabId, instanceId: instanceId, stalledDuration: stalledDuration, lastActivity: lastActivity)
-
-        case .engineRunRecovery(let tabId, let instanceId, let recoveryId, let phase, let attempt, let maxAttempts, let reason):
-            handleEngineRunRecovery(tabId: tabId, instanceId: instanceId, recoveryId: recoveryId, phase: phase, attempt: attempt, maxAttempts: maxAttempts, reason: reason)
-
-        case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId, _, let machineAuthored):
-            if machineAuthored != true {
-                handleEngineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength, clientMessageId: clientMessageId, entryId: entryId)
-            }
-
-        case .engineDispatchLost(let tabId, let instanceId, let lost):
-            handleEngineDispatchLost(tabId: tabId, instanceId: instanceId, agentName: lost.agentName)
-
-        case .engineSteerDegraded(let tabId, let instanceId, let messageLength, _, let machineAuthored):
-            if machineAuthored != true {
-                handleEngineSteerDegraded(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
-            }
 
         case .engineSteerInterruptedStream(let tabId, _, let blocksKept, let queuedSteers):
             // Scheduling notice only — no transcript mutation. The assistant
@@ -295,46 +219,6 @@ extension SessionViewModel {
                 title: "Rewind not applied",
                 detail: error ?? "The engine rejected this rewind."
             ))
-
-        case .enginePromptInjected(let tabId, let instanceId, let prompt, _, let kind, let machineAuthored):
-            // A degraded self-steer needs no case here: the engine emits
-            // `engine_steer_degraded` alongside this event, so the divider is
-            // appended by that handler. This arm only decides whether the TURN
-            // renders, and a machine-authored one does not.
-            //
-            // A machine-to-machine injection is not a turn the user authored —
-            // a dispatch callback, a background command's result, a scheduled
-            // check-in, or the expanded body of a slash command whose display
-            // turn is persisted separately. The model sees them all in its
-            // context; rendering them puts internal signalling on screen as
-            // user messages.
-            //
-            // The verdict comes from InjectionPolicy, shared with the history
-            // filter in SessionViewModel+PermissionMessageEvents so live and
-            // reload CANNOT disagree. This used to be three hardcoded kind
-            // strings here and two there — they had already drifted.
-            guard !InjectionPolicy.suppresses(machineAuthored: machineAuthored, injectionKind: kind) else { break }
-            handleEnginePromptInjected(tabId: tabId, instanceId: instanceId, prompt: prompt)
-
-        // Extended-thinking events (issue #158). A thinking block is OPTIONAL
-        // per turn; the delta may be gated off for low-bandwidth. The
-        // accumulator in SessionViewModel+ThinkingEvents.swift binds
-        // block_start → deltas → block_end into a single `.thinking` row.
-        case .engineThinkingBlockStart(let tabId, let instanceId):
-            handleEngineThinkingBlockStart(tabId: tabId, instanceId: instanceId)
-
-        case .engineThinkingDelta(let tabId, let instanceId, let thinkingText):
-            handleEngineThinkingDelta(tabId: tabId, instanceId: instanceId, thinkingText: thinkingText)
-
-        case .engineThinkingBlockEnd(let tabId, let instanceId, let totalTokens, let elapsedSeconds, let redacted):
-            handleEngineThinkingBlockEnd(tabId: tabId, instanceId: instanceId, totalTokens: totalTokens, elapsedSeconds: elapsedSeconds, redacted: redacted)
-
-        // Accumulate streaming tool input chunks onto the running tool row.
-        // The desktop streams partialInput deltas via desktop_tool_update;
-        // iOS appends each chunk to build the full toolInput JSON string,
-        // matching the desktop renderer's event-slice accumulation.
-        case .engineToolUpdate(let tabId, _, let toolId, let partialInput):
-            handleEngineToolUpdate(tabId: tabId, toolId: toolId, partialInput: partialInput)
 
         // No-op: engineToolComplete, engineScheduleFired, engineLlmCall are
         // decoded to prevent the 123 decode-errors/session diagnostic finding
@@ -385,14 +269,8 @@ extension SessionViewModel {
                 }
             }
 
-        case .engineDispatchActivity(_, _, let agentId, let conversationId, let kind, let seq, let resetAfterSeq, let toolName, let toolId, let textDelta, let isError, let ts):
-            handleDispatchActivity(dispatchAgentId: agentId, conversationId: conversationId, kind: kind, seq: seq, resetAfterSeq: resetAfterSeq, ts: ts, toolName: toolName, toolId: toolId, textDelta: textDelta, isError: isError)
-
         case .engineError(let tabId, let instanceId, let message, _):
             handleEngineError(tabId: tabId, instanceId: instanceId, message: message)
-
-        case .engineNotify(let tabId, let instanceId, let message, let level, _):
-            handleEngineNotify(tabId: tabId, instanceId: instanceId, message: message, level: level)
 
         case .engineDialog(let tabId, let instanceId, let dialogId, let method, let title, let options, let defaultValue):
             _ = instanceId // unused post-#256
@@ -402,34 +280,21 @@ extension SessionViewModel {
             _ = instanceId // unused post-#256
             engineDialogs[tabId] = nil
 
-        case .engineTextDelta(let tabId, let instanceId, let text):
-            handleEngineTextDelta(tabId: tabId, instanceId: instanceId, text: text)
+        case .engineMessageEnd(let tabId, let instanceId, let inputTokens, _, let contextPercent, _, _, _):
+            handleEngineMessageEnd(tabId: tabId, instanceId: instanceId, inputTokens: inputTokens, contextPercent: contextPercent)
 
-        case .engineStreamReset(let tabId, let instanceId):
-            handleEngineStreamReset(tabId: tabId, instanceId: instanceId)
+        case .transcriptPatch(let patch):
+            if patch.conversationId != nil { handleDispatchTranscriptPatch(patch) } else { handleTranscriptPatch(patch) }
 
-        case .engineMessageEnd(let tabId, let instanceId, let inputTokens, _, let contextPercent, _, let entryId, let userEntryId):
-            handleEngineMessageEnd(tabId: tabId, instanceId: instanceId, inputTokens: inputTokens, contextPercent: contextPercent, entryId: entryId, userEntryId: userEntryId)
+        case .transcriptPage(let page):
+            if page.conversationId != nil { handleDispatchTranscriptPage(page) } else { handleTranscriptPage(page) }
 
-        case .engineUserTurnPersisted(let tabId, let instanceId, let entryId, let slashModelAlias, let slashModelEffective, let slashFrontmatter):
-            handleEngineUserTurnPersisted(tabId: tabId, instanceId: instanceId, entryId: entryId, slashModelAlias: slashModelAlias, slashModelEffective: slashModelEffective, slashFrontmatter: slashFrontmatter)
-
-        case .engineHarnessMessage(let tabId, let instanceId, let message, _, _, let dedupKey, let dedupMode):
-            handleEngineHarnessMessage(tabId: tabId, instanceId: instanceId, message: message, dedupKey: dedupKey, dedupMode: dedupMode)
-
-        // engineConversationHistory event removed (WI-004 / #259).
-        // The unified desktop_conversation_history response maps to
-        // conversationHistory, handled above. Any stale event from an old
-        // desktop build is simply unrecognized and dropped by the decoder.
-
-        case .enginePlanModeChanged(let tabId, let instanceId, let planModeEnabled, let planFilePath, let planSlug):
-            handleEnginePlanModeChanged(tabId: tabId, instanceId: instanceId, planModeEnabled: planModeEnabled, planFilePath: planFilePath, planSlug: planSlug)
-
-        case .enginePlanFileWritten(let tabId, let instanceId, let operation, let planFilePath, let planSlug):
-            handleEnginePlanFileWritten(tabId: tabId, instanceId: instanceId, operation: operation, planFilePath: planFilePath, planSlug: planSlug)
-
-        case .agentConversationHistory(let agentName, let conversationId, let messages):
-            handleAgentConversationHistory(agentName: agentName, conversationId: conversationId, messages: messages)
+        case .transcriptUnavailable(let tabId, let conversationId, let dispatchId, let isNewest, let reason):
+            if let conversationId {
+                handleDispatchTranscriptUnavailable(conversationId: conversationId, dispatchId: dispatchId ?? "", isNewest: isNewest, reason: reason)
+            } else {
+                handleTranscriptUnavailable(tabId: tabId, isNewest: isNewest, reason: reason)
+            }
 
         case .engineDead(let tabId, let instanceId, let exitCode, let signal, let stderrTail):
             handleEngineDead(tabId: tabId, instanceId: instanceId, exitCode: exitCode, signal: signal, stderrTail: stderrTail)
@@ -474,20 +339,29 @@ extension SessionViewModel {
             // exportFormat drives the shared file's extension.
             handleEngineExport(tabId: tabId, payload: message, format: exportFormat)
 
-        case .desktopSettingsSnapshot(let settings, let schema, let groups, let newConversationPolicy, let themePolicy):
-            // Per-desktop user-preferences projection. Snapshot semantics
+        case .desktopSettingsSnapshot(let settings, let schema, let groups, let newConversationPolicy, let themePolicy, let canManageEnvironment, let pages):
+            // Per-server settings projection. Snapshot semantics
             // — replace the cached state wholesale. The view layer binds
-            // to `viewModel.desktopSettings` and re-renders the Settings
+            // to `viewModel.serverSettings` and re-renders the Settings
             // detail screen automatically when this assignment fires.
             //
-            // Per-desktop scoping: this snapshot describes the currently-
-            // connected desktop only. Switching to a different paired
-            // desktop (via `switchToDevice`) clears the cache and the
-            // new desktop's initial snapshot will repopulate it.
-            desktopSettings = DesktopSettingsState(
-                settings: settings,
+            // Per-server scoping: this snapshot describes the currently-
+            // connected server only. Switching to a different paired
+            // server (via `switchToDevice`) clears the cache and the
+            // new server's initial snapshot will repopulate it.
+            // The phone's own keys (Personal and Device): carry over what the server still holds from
+            // before they moved to the client, show this phone's own values,
+            // and declare them to this connection.
+            let clientOwnedKeys = schema.filter { PersonalPreferencesStore.isClientOwned(scope: $0.scope) }.map(\.key)
+            PersonalPreferencesStore.adopt(from: settings, clientOwnedKeys: clientOwnedKeys)
+            declarePersonalPreferences()
+            registerPushAddress()
+            serverSettings = ServerSettingsState(
+                settings: PersonalPreferencesStore.overlay(settings, clientOwnedKeys: clientOwnedKeys),
                 schema: schema,
                 groups: groups,
+                canManageEnvironment: canManageEnvironment ?? false,
+                pages: pages ?? []
             )
             // Enterprise new-conversation policy. Nil means no enterprise config
             // (or pre-#256 desktop); non-nil + locked=true means the
@@ -515,6 +389,14 @@ extension SessionViewModel {
 
         case .worktreeOpResult(let result):
             handleWorktreeOpResult(result)
+
+        // FR-02 presence
+        case .presence(let entries, let driving):
+            handlePresence(entries: entries, driving: driving)
+
+        // System Metrics — handler in SessionViewModel+SystemMetrics.swift.
+        case .systemMetrics(let summary):
+            handleSystemMetrics(summary)
 
         // Guided Questions — handler in SessionViewModel+Questions.swift.
         case .questionsState(let tabId, let state):
@@ -624,9 +506,6 @@ extension SessionViewModel {
                 requestNextPlanPage(questionId: questionId, planFilePath: planFilePath, nextOffset: nextOffset)
             }
 
-        case .engineIntercept(let tabId, let instanceId, let level, let title, let message, _, _):
-            handleEngineIntercept(tabId: tabId, instanceId: instanceId, level: level, title: title, message: message)
-
         case .desktopContextBreakdown(let tabId, let instanceId, let payload):
             handleContextBreakdown(tabId: tabId, instanceId: instanceId, payload: payload)
 
@@ -637,14 +516,13 @@ extension SessionViewModel {
         case .promptResult(let tabId, let clientMsgId, let status, let error):
             handlePromptResult(tabId: tabId, clientMsgId: clientMsgId, status: status, error: error)
 
-        case .backgroundWorkDelivered(let tabId, let instanceId, let message):
-            handleBackgroundWorkDelivered(tabId: tabId, instanceId: instanceId, message: message)
-
         case .backgroundTaskStopResult(let requestId, let taskId, let status, let error):
             handleBackgroundTaskStopResult(requestId: requestId, taskId: taskId, status: status, error: error)
 
         default:
-            handleLateLifecycleEvent(event)
+            // Observed only: DiagnosticLog.logEvent above records it, and
+            // nothing on the phone acts on it.
+            break
         }
     }
 }

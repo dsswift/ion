@@ -13,6 +13,28 @@ var boolFlags = map[string]bool{
 	"no-extensions": true,
 	"attach":        true,
 	"no-browser":    true,
+	// `ion studio` switches (cmd_studio.go). `--relay` is a bare switch for
+	// `studio pair` but takes a URL for `studio install`, so it is not listed:
+	// parseArgs already yields "true" when nothing follows it.
+	"system":     true,
+	"yes":        true,
+	"json":       true,
+	"purge-data": true,
+	"no-latest":  true,
+	// `ion fleet` switches (cmd_fleet.go).
+	"ask-sudo":        true,
+	"no-pair":         true,
+	"allow-downgrade": true,
+	"dry-run":         true,
+	"quit-ion":        true,
+	"backup":          true,
+	"open":            true,
+	"relay-oidc":      true,
+	"no-build":        true,
+	// `ion studio relay` switches (cmd_studio_relay.go).
+	"oidc":       true,
+	"key-stdin":  true,
+	"no-restart": true,
 }
 
 // multiFlags lists flags that can be specified multiple times.

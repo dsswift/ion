@@ -98,7 +98,9 @@ func (a *localPeerAuthorizer) authorize(conn net.Conn) (peerIdentity, error) {
 
 	id, err := a.resolve(local, remote)
 	if err != nil {
-		return peerIdentity{}, err
+		// id keeps the PID when the lookup got that far, so the refusal log
+		// names the process it could not read.
+		return id, err
 	}
 	if id.SID == "" {
 		return id, errors.New("peer identity resolved with an empty SID")

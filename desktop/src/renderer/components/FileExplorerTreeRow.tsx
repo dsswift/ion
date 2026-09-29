@@ -5,7 +5,7 @@ import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState
 import { transitions } from '../theme-tokens'
 import { Chevron } from './Chevron'
 import { getFileIcon } from './FileExplorerIcons'
-import type { FsEntry } from '../../shared/types'
+import type { FsEntry } from '@ion/shared/types'
 
 /** Single row in the tree (file or directory). */
 export function FileExplorerTreeRow({

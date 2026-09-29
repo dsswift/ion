@@ -123,6 +123,9 @@ type resourceRegistry struct {
 	mu       sync.RWMutex
 	handlers map[string]ResourceQueryHandler
 	pending  []ResourceDeclaration
+	// transfer holds each kind's export/import/forget handlers
+	// (resources_transfer.go).
+	transfer map[string]*resourceTransferHandlers
 }
 
 func newResourceRegistry(s *SDK) *resourceRegistry {

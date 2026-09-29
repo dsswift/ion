@@ -18,55 +18,6 @@ final class ElicitationCodecTests: XCTestCase {
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
 
-    func testEncodeRespondElicitationApprove() throws {
-        let cmd = RemoteCommand.respondElicitation(
-            tabId: "t1", requestId: "elicit-1", response: [:], cancelled: false
-        )
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_respond_elicitation")
-        XCTAssertEqual(json["tabId"] as? String, "t1")
-        XCTAssertEqual(json["requestId"] as? String, "elicit-1")
-        XCTAssertEqual(json["cancelled"] as? Bool, false)
-    }
-
-    func testEncodeRespondElicitationCancel() throws {
-        let cmd = RemoteCommand.respondElicitation(
-            tabId: "t2", requestId: "elicit-2", response: nil, cancelled: true
-        )
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_respond_elicitation")
-        XCTAssertEqual(json["requestId"] as? String, "elicit-2")
-        XCTAssertEqual(json["cancelled"] as? Bool, true)
-        // response omitted on cancel (encodeIfPresent).
-        XCTAssertNil(json["response"])
-    }
-
-    func testEncodeRespondElicitationDecline() throws {
-        let cmd = RemoteCommand.respondElicitation(
-            tabId: "t4", requestId: "elicit-4", response: nil, cancelled: false, declined: true
-        )
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["cancelled"] as? Bool, false)
-        XCTAssertEqual(json["declined"] as? Bool, true)
-    }
-    func testRespondElicitationRoundTrip() throws {
-        let cmd = RemoteCommand.respondElicitation(
-            tabId: "t3", requestId: "elicit-3", response: [:], cancelled: false
-        )
-        let data = try encoder.encode(cmd)
-        let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        guard case let .respondElicitation(tabId, requestId, _, cancelled, declined) = decoded else {
-            return XCTFail("decoded to wrong case: \(decoded)")
-        }
-        XCTAssertEqual(tabId, "t3")
-        XCTAssertEqual(requestId, "elicit-3")
-        XCTAssertFalse(cancelled)
-        XCTAssertFalse(declined)
-    }
-
     func testTabStateElicitationQueueDecodes() throws {
         let json = """
         { "id": "t1", "title": "T", "status": "running", "workingDirectory": "/x",

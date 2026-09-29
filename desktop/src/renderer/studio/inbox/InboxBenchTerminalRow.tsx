@@ -1,12 +1,13 @@
 import React, { useState } from 'react'
 import { PushPin, Terminal, Globe, X } from '@phosphor-icons/react'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../../theme'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
 import { transitions } from '../../theme-tokens'
 import { InboxBenchTerminalMenu } from './InboxBenchTerminalMenu'
 import { Tooltip } from '../../components/git/Tooltip'
 import { contentRouter } from '../../lib/file-open-router'
+import { host } from '../../host/host-instance'
 
 /**
  * The bench's dedicated terminal, rendered as its own occupant row beneath the
@@ -63,7 +64,7 @@ export function InboxBenchTerminalRow({
           const app = activity.applications[0]
           const router = contentRouter()
           if (router?.openWebApplication) router.openWebApplication(tabId, app.url)
-          else void window.ion.openExternal(app.url)
+          else void host.openExternal(app.url)
         }} style={{ display: 'inline-flex', border: 'none', background: 'transparent', color: colors.statusBash, cursor: 'pointer', padding: 0 }}><Globe size={12} /></button>
           : <Terminal size={12} weight="fill" color={colors.statusBash} aria-label="Running terminal command" />}
       </Tooltip>}

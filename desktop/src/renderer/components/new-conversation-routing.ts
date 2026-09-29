@@ -1,5 +1,5 @@
-import type { EngineProfile, NewConversationDefaultsPolicy } from '../../shared/types'
-import type { ProjectProfileOverride } from '../../shared/project-registry'
+import type { EngineProfile, NewConversationDefaultsPolicy } from '@ion/shared/types'
+import type { ProjectProfileOverride } from '@ion/shared/project-registry'
 
 export type ConversationProfileAction =
   | { kind: 'plain'; source: string }

@@ -60,6 +60,12 @@ type TimeoutsConfig struct {
 	SshDefaultMs        int64 `json:"sshDefaultMs,omitempty"`        // default: 120000
 	ExtensionRpcMs      int64 `json:"extensionRpcMs,omitempty"`      // default: 30000
 	HookDefaultMs       int64 `json:"hookDefaultMs,omitempty"`       // default: 30000
+	// ShutdownMs bounds graceful shutdown: how long the engine waits for
+	// session teardown before exiting under its own control rather than being
+	// killed by its supervisor. Zero uses the compiled 15-second default. See
+	// TimeoutsConfig.Shutdown() for why the bound exists and how it relates to
+	// the supervisor's own exit timeout.
+	ShutdownMs int64 `json:"shutdownMs,omitempty"` // default: 15000 (15s)
 	// ElicitationMs is the human-wait timeout. It governs BOTH elicitation
 	// requests (ctx.elicit) AND permission dialogs that block on a user
 	// decision — both are "the engine is blocked waiting for a person to
@@ -256,6 +262,26 @@ func (t *TimeoutsConfig) HookDefault() time.Duration {
 	return t.durationOr(t.field(func(c *TimeoutsConfig) int64 { return c.HookDefaultMs }), 30000)
 }
 
+// Shutdown returns how long graceful shutdown may take before the engine stops
+// waiting for teardown and exits under its own control. Zero uses the compiled
+// 15-second default.
+//
+// The engine runs under a supervisor that kills it when shutdown overruns a
+// grace window (launchd reports `exit timeout` for the job; a Windows Scheduled
+// Task behaves equivalently). Being killed there is strictly worse than giving
+// up: the exit becomes non-zero, which is indistinguishable from a crash, so
+// KeepAlive respawns the daemon — and on a host whose teardown reliably
+// overruns, that is an unbounded restart loop. Bounding shutdown in-process
+// means the engine always exits 0 on a graceful signal and names in the log
+// whatever teardown did not finish.
+//
+// The default is deliberately below the supervisor's own window (the shipped
+// LaunchAgent declares ExitTimeOut=30) so the engine's deadline fires first and
+// the supervisor's kill stays a backstop rather than the normal path.
+func (t *TimeoutsConfig) Shutdown() time.Duration {
+	return t.durationOr(t.field(func(c *TimeoutsConfig) int64 { return c.ShutdownMs }), 15000)
+}
+
 // HumanWait returns the human-wait timeout and whether it is finite. It governs
 // both elicitation and permission dialogs (see TimeoutsConfig.ElicitationMs).
 //
@@ -418,6 +444,9 @@ func MergeTimeouts(dst, src *TimeoutsConfig) *TimeoutsConfig {
 	}
 	if src.HookDefaultMs != 0 {
 		dst.HookDefaultMs = src.HookDefaultMs
+	}
+	if src.ShutdownMs != 0 {
+		dst.ShutdownMs = src.ShutdownMs
 	}
 	if src.ElicitationMs != 0 {
 		// ElicitationMs == 0 means "wait indefinitely" (the shipped default),

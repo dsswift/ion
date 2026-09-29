@@ -22,6 +22,9 @@ type WorktreeListEntry struct {
 	CreatedAt    int64  `json:"createdAt,omitempty"`
 	LandedAt     int64  `json:"landedAt,omitempty"`
 	Landed       bool   `json:"landed,omitempty"`
+	// MovedTo names the Environment the worktree now lives on; the copy
+	// here is sealed.
+	MovedTo string `json:"movedTo,omitempty"`
 	// IsSelf is true for the entry matching the calling conversation's own
 	// cwd.
 	IsSelf bool `json:"isSelf,omitempty"`
@@ -96,6 +99,7 @@ func (c *Checker) WorktreeList(ctx context.Context, cwd string) WorktreeListResu
 			CreatedAt:    e.CreatedAt,
 			LandedAt:     e.LandedAt,
 			Landed:       e.Landed(),
+			MovedTo:      movedTo(e),
 			IsSelf:       self != nil && self.WorktreePath == e.WorktreePath,
 			ExistsOnDisk: exists,
 		}
@@ -109,4 +113,12 @@ func (c *Checker) WorktreeList(ctx context.Context, cwd string) WorktreeListResu
 		"cwd": cwd, "repo": repoPath, "entry_count": len(res.Entries),
 	})
 	return res
+}
+
+// movedTo is the Environment a moved worktree lives on, else empty.
+func movedTo(e WorktreeEntry) string {
+	if e.Moved() {
+		return e.TransferredTo.EnvironmentID
+	}
+	return ""
 }

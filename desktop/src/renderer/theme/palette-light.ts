@@ -5,7 +5,7 @@
  * palette-parity.test.ts).
  */
 
-import type { ColorPalette } from "./palette-dark";
+import type { ColorPalette } from "@ion/server/renderer/theme/palette-dark";
 
 export const lightColors: ColorPalette = {
   // Container (glass surfaces)

@@ -10,12 +10,13 @@
  * loadSkeletonMessages is the mirror-local hydration path.
  */
 import React, { useEffect } from "react";
-import { useSessionStore } from "../stores/sessionStore";
+import { useSessionStore } from "@ion/server/store/sessionStore";
 import {
   activeInstance,
   needsHistoryHydration,
-} from "../stores/conversation-instance";
+} from "@ion/server/store/conversation-instance";
 import { ConversationView } from "../components/ConversationView";
+import { ConversationErrorBoundary } from "../components/conversation";
 import { InputBar } from "../components/InputBar";
 import { TerminalPanel } from "../components/TerminalPanel";
 import { TerminalBigScreen } from "../components/TerminalBigScreen";
@@ -24,10 +25,11 @@ import { activeDispatchSplit } from "./dispatch-split-state";
 import { useResizablePane } from "../hooks/useResizablePane";
 import { useColors } from "../theme";
 import { rDebug } from "../rendererLogger";
+import { useComposerDragStore } from "../components/composer/composer-drag-store";
 import {
   STUDIO_LAYOUT_BOUNDS,
   type StudioLayout,
-} from "../../shared/types-studio";
+} from "@ion/shared/types-studio";
 
 export interface StudioCenterProps {
   layout: StudioLayout;
@@ -41,6 +43,7 @@ export interface StudioCenterProps {
 
 export function StudioCenter(props: StudioCenterProps): React.JSX.Element {
   const colors = useColors();
+  const composerDragging = useComposerDragStore((s) => s.dragging);
   const activeTabId = useSessionStore((s) => s.activeTabId);
   const activeTab = useSessionStore((s) =>
     s.tabs.find((tab) => tab.id === s.activeTabId),
@@ -126,7 +129,9 @@ export function StudioCenter(props: StudioCenterProps): React.JSX.Element {
                     overflowY: "auto",
                   }}
                 >
-                  <ConversationView key={activeTabId} tabId={activeTabId} />
+                  <ConversationErrorBoundary>
+                    <ConversationView key={activeTabId} tabId={activeTabId} />
+                  </ConversationErrorBoundary>
                 </div>
                 {dispatchSplitOpen && (
                   <div
@@ -141,15 +146,16 @@ export function StudioCenter(props: StudioCenterProps): React.JSX.Element {
                   </div>
                 )}
               </div>
-              <div style={{ flexShrink: 0, padding: "10px 12px 12px" }}>
+              <div style={{ flexShrink: 0, padding: "10px 12px 12px", position: "relative" }}>
                 <div
                   className="ion-input-shell"
                   style={{
                     minHeight: 50,
-                    borderRadius: 25,
-                    padding: "0 6px 0 16px",
+                    borderRadius: 22,
+                    padding: "0 8px 0 14px",
                     background: colors.inputPillBg,
-                    border: `1px solid ${colors.containerBorder}`,
+                    // A static color swap marks the drop target; no animation.
+                    border: `1px solid ${composerDragging ? colors.accent : colors.containerBorder}`,
                   }}
                 >
                   <InputBar />

@@ -1,9 +1,9 @@
 import { useShallow } from 'zustand/shallow'
-import { useSessionStore } from '../stores/sessionStore'
-import type { StatusFields } from '../../shared/types'
-import { tabHasExtensions } from '../../shared/tab-predicates'
-import { heldBackgroundShellCount, liveBackgroundShellCount } from '../../shared/background-shell-counts'
-import { effectiveRunningChildrenCount } from './TabStripShared'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import type { StatusFields } from '@ion/shared/types'
+import { tabHasExtensions } from '@ion/shared/tab-predicates'
+import { heldBackgroundShellCount, liveBackgroundShellCount } from '@ion/shared/background-shell-counts'
+import { effectiveRunningChildrenCount } from './conversation-status'
 
 /**
  * Resolve the currently-active engine instance's `StatusFields` snapshot.
@@ -44,7 +44,7 @@ export function useActiveEngineStatusFields(): StatusFields | null {
  * TAB-TYPE-AGNOSTIC: the `Agent` tool dispatches sub-agents
  * regardless of whether a harness is loaded, so a plain conversation can have
  * running children too. Uses `effectiveRunningChildrenCount` (imported from
- * TabStripShared.ts) — the canonical helper that folds both `inst.agentStates`
+ * conversation-status.ts) — the canonical helper that folds both `inst.agentStates`
  * and `inst.statusFields.backgroundAgents` via max, so the "awaiting children"
  * pulse fires for plain tabs dispatching background agents as well — consistent
  * with the close guard that now blocks closing any tab with running children.

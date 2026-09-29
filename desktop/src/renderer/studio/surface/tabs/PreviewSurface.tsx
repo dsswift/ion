@@ -9,10 +9,12 @@ import React, { useCallback, useRef } from 'react'
 import { DownloadSimple, FolderOpen } from '@phosphor-icons/react'
 import { useImageDataUrl } from '../../../components/ImageViewer'
 import { useColors } from '../../../theme'
+import { host } from '../../../host/host-instance'
+import { pathBasename } from '@ion/shared/paths'
 
 export function PreviewSurface({ filePath, dataUrl: initialDataUrl }: { filePath: string; dataUrl?: string }): React.JSX.Element {
   const colors = useColors()
-  const fileName = filePath.split('/').pop() ?? filePath
+  const fileName = pathBasename(filePath)
   const dataUrl = useImageDataUrl(filePath, initialDataUrl)
   const linkRef = useRef<HTMLAnchorElement>(null)
 
@@ -27,7 +29,11 @@ export function PreviewSurface({ filePath, dataUrl: initialDataUrl }: { filePath
   }, [dataUrl, fileName])
 
   const handleReveal = useCallback(() => {
-    void window.ion.fsRevealInFinder(filePath)
+    // Reveal needs a Finder/Explorer, not a filesystem: 'nativeShell'. File
+    // reads and writes are wire-served on every host; only the OS window is
+    // not, so a browser client is the one host that skips this.
+    if (!host.capabilities().includes('nativeShell')) return
+    void host.shell.fsRevealInFinder(filePath)
   }, [filePath])
 
   return (

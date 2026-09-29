@@ -2,14 +2,14 @@ import React, { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { CaretRight, CaretDown, Brain, LockSimple } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
-import type { Message } from '../../../shared/types'
+import type { Message } from '@ion/shared/types'
 import {
   PREVIEW_LINES,
   PREVIEW_CHAR_BUDGET,
   tailForPreview,
   buildSummary,
   isExpandable as computeExpandable,
-} from './thinking-block-helpers'
+} from '@ion/server/conversation/thinking-block-helpers'
 
 /**
  * ThinkingBlock — collapsed-by-default extended-thinking affordance

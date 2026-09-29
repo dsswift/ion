@@ -18,7 +18,7 @@ const { sessionState, rDebug, rWarn, clipboardWriteText, fsSaveDialog, fsWriteFi
   fsWriteFile: vi.fn(async () => ({ ok: true })),
 }))
 
-vi.mock('../../../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: (selector: (state: typeof sessionState) => unknown) => selector(sessionState),
 }))
 vi.mock('../../../../theme', () => ({
@@ -33,7 +33,21 @@ vi.mock('../../../../components/git/Tooltip', () => ({
 vi.mock('../../../../rendererLogger', () => ({ rDebug, rWarn }))
 
 import { PlanSurface } from '../PlanSurface'
-import { formatImplementDivider } from '../../../../../shared/clear-divider'
+import { formatImplementDivider } from '@ion/shared/clear-divider'
+import { installFakeWire } from '../../../../host/__tests__/fake-wire'
+
+/**
+ * Flush until the surface has settled.
+ *
+ * One microtask turn used to be enough: `fsReadFile` resolved straight off
+ * the preload. It now crosses the Studio wire -- send a `studio_action`,
+ * receive a `studio_action_result` -- which costs an extra turn or two, so a
+ * single flush can observe the render before the read has landed.
+ */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 5; i++) await act(async () => { await Promise.resolve() })
+}
+
 
 const firstPath = '/plans/first.md'
 const secondPath = '/plans/second.md'
@@ -74,14 +88,16 @@ describe('PlanSurface', () => {
       configurable: true,
       value: { writeText: clipboardWriteText },
     })
-    window.ion = {
-      fsReadFile: vi.fn(async (path: string) => ({ content: path === firstPath ? '# first plan' : '# second plan' })),
+    window.ion = installFakeWire({
+      // The stub stands in for the SERVER, so it receives the packed shape
+      // `fs.readFile` receives -- `{ filePath }`, not a bare string.
+      fsReadFile: vi.fn(async ({ filePath }: { filePath: string }) => ({ content: filePath === firstPath ? '# first plan' : '# second plan' })),
       fsSaveDialog,
       fsWriteFile,
       fsWatchFile: vi.fn(async () => ({ ok: true })),
       fsUnwatchFile: vi.fn(async () => undefined),
       onFileChanged: vi.fn(() => () => undefined),
-    } as never
+    }) as never
   })
 
   afterEach(() => { document.body.replaceChildren() })
@@ -89,21 +105,21 @@ describe('PlanSurface', () => {
   it('shows reserved state without reading a plan file before the agent writes it', async () => {
     sessionState.conversationPanes = new Map([['tab-1', pane(firstPath, [])]])
     const view = render()
-    await act(async () => {})
+    await settle()
 
     expect(view.host.querySelector('[data-testid="plan-reserved-state"]')?.textContent).toContain('Plan reserved')
-    expect(window.ion.fsReadFile).not.toHaveBeenCalled()
-    expect(window.ion.fsWatchFile).not.toHaveBeenCalled()
+    expect((window.ion as unknown as { fsReadFile: ReturnType<typeof vi.fn> }).fsReadFile).not.toHaveBeenCalled()
+    expect((window.ion as unknown as { fsWatchFile: ReturnType<typeof vi.fn> }).fsWatchFile).not.toHaveBeenCalled()
     view.unmount()
   })
 
   it('keeps implemented plan visible after current plan path clears', async () => {
     const view = render()
-    await act(async () => {})
+    await settle()
 
     expect(view.host.textContent).toContain('# first plan')
     expect(view.host.querySelector('[data-testid="plan-implementation-status"]')?.textContent).toContain('Implemented')
-    expect(window.ion.fsReadFile).toHaveBeenCalledWith(firstPath)
+    expect((window.ion as unknown as { fsReadFile: ReturnType<typeof vi.fn> }).fsReadFile).toHaveBeenCalledWith({ filePath: firstPath })
     view.unmount()
   })
 
@@ -113,7 +129,7 @@ describe('PlanSurface', () => {
       { role: 'user', content: 'Implement the following plan:\n\n# first plan', implementationPhase: true, timestamp: 123 },
     ])]])
     const view = render()
-    await act(async () => {})
+    await settle()
 
     expect(view.host.querySelector('[data-testid="plan-implementation-status"]')?.textContent).toContain('Implemented')
     view.unmount()
@@ -129,7 +145,7 @@ describe('PlanSurface', () => {
       { role: 'system', content: '── Plan created', planFilePath: firstPath },
     ])]])
     const view = render()
-    await act(async () => {})
+    await settle()
 
     expect(view.host.textContent).toContain('# first plan')
     expect(view.host.querySelector('[data-testid="plan-implementation-status"]')?.textContent).toContain('Not implemented')
@@ -138,7 +154,7 @@ describe('PlanSurface', () => {
 
   it('shows the resolved path and copies the plan path or contents', async () => {
     const view = render()
-    await act(async () => {})
+    await settle()
 
     expect(view.host.querySelector('[data-testid="plan-file-path"]')?.textContent).toBe(firstPath)
 
@@ -150,14 +166,14 @@ describe('PlanSurface', () => {
     expect(menuItems.map((item) => item.textContent)).toEqual(['Copy Plan Path', 'Copy Plan Contents', 'Download Plan'])
 
     act(() => { menuItems[0]?.click() })
-    await act(async () => {})
+    await settle()
     expect(clipboardWriteText).toHaveBeenLastCalledWith(firstPath)
 
     act(() => { actionsButton?.click() })
     const copyContents = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
       .find((item) => item.textContent === 'Copy Plan Contents')
     act(() => { copyContents?.click() })
-    await act(async () => {})
+    await settle()
     expect(clipboardWriteText).toHaveBeenLastCalledWith('# first plan')
     view.unmount()
   })
@@ -166,15 +182,15 @@ describe('PlanSurface', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2027, 2, 5, 9, 7))
     const view = render()
-    await act(async () => {})
+    await settle()
 
     act(() => { view.host.querySelector<HTMLButtonElement>('button[aria-label="Plan actions"]')?.click() })
     const download = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
       .find((item) => item.textContent === 'Download Plan')
     await act(async () => { download?.click(); await Promise.resolve() })
 
-    expect(fsSaveDialog).toHaveBeenCalledWith(undefined, 'first-20270305-0907.md')
-    expect(fsWriteFile).toHaveBeenCalledWith('/exports/first-export.md', '# first plan')
+    expect(fsSaveDialog).toHaveBeenCalledWith(undefined, 'first-20270305-0907.md', undefined)
+    expect(fsWriteFile).toHaveBeenCalledWith({ filePath: '/exports/first-export.md', content: '# first plan' })
     view.unmount()
     vi.useRealTimers()
   })
@@ -182,7 +198,7 @@ describe('PlanSurface', () => {
   it('does not write a plan when the export dialog is cancelled', async () => {
     fsSaveDialog.mockResolvedValueOnce({ filePath: null })
     const view = render()
-    await act(async () => {})
+    await settle()
 
     act(() => { view.host.querySelector<HTMLButtonElement>('button[aria-label="Plan actions"]')?.click() })
     const download = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
@@ -197,13 +213,13 @@ describe('PlanSurface', () => {
   it('logs clipboard failures with the plan path', async () => {
     clipboardWriteText.mockRejectedValueOnce(new Error('clipboard unavailable'))
     const view = render()
-    await act(async () => {})
+    await settle()
 
     act(() => { view.host.querySelector<HTMLButtonElement>('button[aria-label="Plan actions"]')?.click() })
     const copyPath = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
       .find((item) => item.textContent === 'Copy Plan Path')
     act(() => { copyPath?.click() })
-    await act(async () => {})
+    await settle()
 
     expect(rWarn).toHaveBeenCalledWith('studio.plan', 'copy plan value failed', {
       path: firstPath,
@@ -215,18 +231,18 @@ describe('PlanSurface', () => {
 
   it('retargets to newer live plan instead of retained implementation plan', async () => {
     const view = render()
-    await act(async () => {})
+    await settle()
 
     sessionState.conversationPanes = new Map([['tab-1', pane(secondPath, [
       { role: 'system', content: '── Implementing plan', planFilePath: firstPath },
       { role: 'system', content: '── Plan created', planFilePath: secondPath },
     ])]])
     view.rerender()
-    await act(async () => {})
+    await settle()
 
     expect(view.host.textContent).toContain('# second plan')
     expect(view.host.querySelector('[data-testid="plan-implementation-status"]')?.textContent).toContain('Not implemented')
-    expect(window.ion.fsReadFile).toHaveBeenLastCalledWith(secondPath)
+    expect((window.ion as unknown as { fsReadFile: ReturnType<typeof vi.fn> }).fsReadFile).toHaveBeenLastCalledWith({ filePath: secondPath })
     view.unmount()
   })
 })

@@ -2,7 +2,7 @@
  * chain — derive the dispatch chain (ancestors + descendants) of an agent
  * from an agent-state snapshot, for the focus-mode highlight. Pure.
  */
-import type { AgentStateUpdate } from '../../../../shared/types'
+import type { AgentStateUpdate } from '@ion/shared/types'
 import { getDispatches, meta } from '../../../lib/agent-helpers'
 
 export function dispatchChainOf(agents: readonly AgentStateUpdate[], name: string): Set<string> {

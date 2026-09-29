@@ -12,7 +12,7 @@ const sessionTabs: Array<{
   worktree?: { repoPath: string };
 }> = [];
 let activeSessionTabId: string | null = "tab-1";
-vi.mock("../../../stores/sessionStore", () => ({
+vi.mock("@ion/server/store/sessionStore", () => ({
   useSessionStore: {
     getState: () => ({
       openFileInEditor: openFileInEditorMock,
@@ -22,7 +22,7 @@ vi.mock("../../../stores/sessionStore", () => ({
     }),
   },
 }));
-vi.mock("../../../stores/session-store-helpers", () => ({
+vi.mock("@ion/server/store/session-store-helpers", () => ({
   editorDirForTab: (tab: {
     worktree?: { repoPath: string };
     workingDirectory: string;

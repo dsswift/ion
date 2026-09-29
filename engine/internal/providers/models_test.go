@@ -160,6 +160,7 @@ func TestModelCatalogAnthropicDisplayNames(t *testing.T) {
 	want := map[string]string{
 		"claude-fable-5-1":          "Claude Fable 5.1",
 		"claude-fable-5":            "Claude Fable 5",
+		"claude-opus-5-5":           "Claude Opus 5.5",
 		"claude-opus-5":             "Claude Opus 5",
 		"claude-sonnet-5":           "Claude Sonnet 5",
 		"claude-opus-4-8":           "Claude Opus 4.8",
@@ -203,6 +204,26 @@ func TestModelCatalogAnthropicDisplayNames(t *testing.T) {
 		f.CostPer1kInput != 0.01 || f.CostPer1kOutput != 0.05 ||
 		f.CostPer1kCacheCreation != 0.0125 || f.CostPer1kCacheRead != 0.001 {
 		t.Errorf("claude-fable-5 pricing = %+v", f)
+	}
+
+	// Opus 5.5 is the first Anthropic model whose cache read is 5% of the input
+	// rate rather than the family's usual 10%, so a "correct the ratio" edit
+	// would quietly overcharge every cached read. Pin all four rates, plus the
+	// adaptive capability set the request builder branches on.
+	o55 := GetModelInfo("claude-opus-5-5")
+	if o55 == nil {
+		t.Fatal("claude-opus-5-5 not registered from catalog")
+	}
+	if o55.CostPer1kInput != 0.004 || o55.CostPer1kOutput != 0.02 ||
+		o55.CostPer1kCacheCreation != 0.005 || o55.CostPer1kCacheRead != 0.0002 {
+		t.Errorf("claude-opus-5-5 pricing = %+v", o55)
+	}
+	if o55.ContextWindow != 1000000 || o55.MaxOutputTokens != 128000 {
+		t.Errorf("claude-opus-5-5 limits = ctx %d, maxOut %d", o55.ContextWindow, o55.MaxOutputTokens)
+	}
+	if o55.ThinkingMode != "adaptive" || !o55.SupportsThinking ||
+		!o55.SupportsCaching || !o55.SupportsImages {
+		t.Errorf("claude-opus-5-5 capabilities = %+v", o55)
 	}
 }
 

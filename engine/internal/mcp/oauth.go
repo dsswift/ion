@@ -44,7 +44,6 @@ type OAuthConfig struct {
 	TokenURL     string `json:"token_url"`
 	Scope        string `json:"scope,omitempty"`
 	RedirectURI  string `json:"redirect_uri,omitempty"`
-	UsePKCE      bool   `json:"use_pkce,omitempty"`
 	// Resource is the RFC 8707 resource indicator for this server.
 	Resource string `json:"resource,omitempty"`
 }
@@ -58,8 +57,7 @@ type OAuthStore struct {
 
 // NewOAuthStore creates a token store backed by ~/.ion/mcp-tokens.json.
 func NewOAuthStore() *OAuthStore {
-	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
-	storePath := filepath.Join(home, ".ion", "mcp-tokens.json")
+	storePath := filepath.Join(utils.IonDir(), "mcp-tokens.json")
 
 	store := &OAuthStore{
 		tokens: make(map[string]*OAuthToken),
@@ -262,8 +260,7 @@ var (
 )
 
 func getOAuthStore() *OAuthStore {
-	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home matches NewOAuthStore fallback
-	path := filepath.Join(home, ".ion", "mcp-tokens.json")
+	path := filepath.Join(utils.IonDir(), "mcp-tokens.json")
 
 	globalOAuthStoreMu.Lock()
 	defer globalOAuthStoreMu.Unlock()
@@ -271,78 +268,4 @@ func getOAuthStore() *OAuthStore {
 		globalOAuthStore = NewOAuthStore()
 	}
 	return globalOAuthStore
-}
-
-// resolveOAuthHeaders returns auth headers for a server, refreshing if needed.
-//
-// oauthConfig is the operator's explicit engine.json `oauth` block, or nil.
-// When nil, a stored client registration (from `ion mcp login`, which may have
-// been created by dynamic registration) supplies the refresh endpoints — that
-// is what lets a zero-config `mcpServers` entry carry a token at all. Before
-// the login path existed, a nil config meant "no auth possible"; now it means
-// "no auth CONFIGURED", which is not the same thing.
-//
-// Returns nil when no token is available, which is not necessarily an error:
-// a server that requires no auth is the common case. Connect proceeds, and a
-// server that does require auth answers 401 with the remediation Connect adds.
-func resolveOAuthHeaders(serverName string, oauthConfig *OAuthConfig) map[string]string {
-	effective := oauthConfig
-	if effective == nil {
-		// No explicit block: fall back to what a completed login stored.
-		reg := getClientStore().Get(serverName)
-		if reg == nil {
-			utils.LogWithFields(utils.LevelDebug, "mcp.oauth", "no oauth config and no stored client registration; connecting unauthenticated", map[string]any{"serverName": serverName})
-			return nil
-		}
-		effective = &OAuthConfig{
-			ClientID:     reg.ClientID,
-			ClientSecret: reg.ClientSecret,
-			AuthURL:      reg.AuthURL,
-			TokenURL:     reg.TokenURL,
-			Scope:        reg.Scope,
-			RedirectURI:  reg.RedirectURI,
-			UsePKCE:      true,
-		}
-		utils.LogWithFields(utils.LevelDebug, "mcp.oauth", "using stored client registration for token resolution", map[string]any{
-			"serverName": serverName, "clientId": reg.ClientID,
-		})
-	}
-
-	store := getOAuthStore()
-	token := store.GetToken(serverName)
-
-	// Try refresh if token is expired but refresh token exists.
-	if token == nil {
-		var err error
-		token, err = store.RefreshToken(serverName, effective)
-		if err != nil {
-			// Refresh failure: the connection proceeds unauthenticated, the
-			// server 401s, and every tool disappears. Log so this is not silent.
-			utils.LogWithFields(utils.LevelError, "mcp.oauth", "token refresh failed; connecting without auth", map[string]any{"serverName": serverName, "error": err.Error()})
-			return nil
-		}
-	}
-
-	if token == nil {
-		// No stored or refreshed token — connect unauthenticated. Warn so a
-		// missing token is visible when the server subsequently rejects calls.
-		utils.LogWithFields(utils.LevelWarn, "mcp.oauth", "no oauth token available; connecting without auth", map[string]any{"serverName": serverName})
-		return nil
-	}
-
-	tokenType := token.TokenType
-	if tokenType == "" {
-		tokenType = "Bearer"
-	}
-	// Capitalize first letter of token type (e.g. "bearer" -> "Bearer").
-	if len(tokenType) > 0 {
-		tokenType = strings.ToUpper(tokenType[:1]) + tokenType[1:]
-	}
-	utils.LogWithFields(utils.LevelInfo, "mcp.oauth", "resolved oauth authorization header", map[string]any{
-		"serverName": serverName, "tokenType": tokenType,
-		"expiresAt": token.ExpiresAt.Format(time.RFC3339),
-	})
-	return map[string]string{
-		"Authorization": tokenType + " " + token.AccessToken,
-	}
 }

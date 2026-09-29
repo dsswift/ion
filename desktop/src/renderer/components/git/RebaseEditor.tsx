@@ -4,6 +4,7 @@ import type { ColorPalette } from '../../theme-tokens'
 import { FloatingPanel } from '../FloatingPanel'
 import { DotsSixVertical } from '@phosphor-icons/react'
 import { rError } from '../../rendererLogger'
+import { host } from '../../host/host-instance'
 
 type RebaseAction = 'pick' | 'reword' | 'edit' | 'squash' | 'fixup' | 'drop'
 const ACTIONS: RebaseAction[] = ['pick', 'reword', 'edit', 'squash', 'fixup', 'drop']
@@ -71,7 +72,7 @@ export function RebaseEditor({ directory, onto, initialCommits, onClose, onCompl
   const handleExecute = useCallback(async () => {
     setExecuting(true)
     setError(null)
-    const result = await window.ion.gitRebaseExec(
+    const result = await host.shell.gitRebaseExec(
       directory, onto,
       commits.map(c => ({ hash: c.hash, action: c.action })),
     )
@@ -84,7 +85,7 @@ export function RebaseEditor({ directory, onto, initialCommits, onClose, onCompl
   }, [directory, onto, commits, onComplete])
 
   const handleAbort = useCallback(async () => {
-    await window.ion.gitRebaseAbort(directory)
+    await host.shell.gitRebaseAbort(directory)
     onClose()
   }, [directory, onClose])
 

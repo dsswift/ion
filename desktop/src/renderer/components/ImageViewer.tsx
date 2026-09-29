@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { DownloadSimple, FolderOpen, CaretLeft, CaretRight } from '@phosphor-icons/react'
 import { FloatingPanel } from './FloatingPanel'
 import { useColors } from '../theme'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { rError } from '../rendererLogger'
+import { host } from '../host/host-instance'
 
 /** Module-level cache so the same image isn't re-read from disk per render. */
 const dataUrlCache = new Map<string, string>()
@@ -42,7 +43,7 @@ function useImageDataUrl(path: string, initialDataUrl?: string, enabled = true):
     }
     if (!enabled) return
     let cancelled = false
-    window.ion.readImageDataUrl(path).then((res) => {
+    host.shell.readImageDataUrl(path).then((res) => {
       if (cancelled) return
       if (res.dataUrl) {
         dataUrlCache.set(path, res.dataUrl)
@@ -138,7 +139,11 @@ export function ImageViewer({ filePath, fileName, onClose, siblings, index = 0, 
   }, [dataUrl, fileName])
 
   const handleReveal = useCallback(() => {
-    void window.ion.fsRevealInFinder(filePath)
+    // Reveal needs a Finder/Explorer, not a filesystem: 'nativeShell'. A
+    // browser client reads and writes files over the wire but has no OS
+    // file manager to reveal in.
+    if (!host.capabilities().includes('nativeShell')) return
+    void host.shell.fsRevealInFinder(filePath)
   }, [filePath])
 
   return (

@@ -1,6 +1,9 @@
 package server
 
 import (
+	"context"
+
+	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/backend"
 	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/providers"
@@ -39,13 +42,35 @@ func (s *Server) cliAuthedProbe() func(kind string) bool {
 // the same decision HybridBackend routing makes, via the shared helper — so
 // every server-side projection (provider entries, discovery skip set, model
 // feeding) matches what routing actually picks.
-func (s *Server) effectiveBackendFor(providerID string) string {
+//
+// cc is the acting principal's CredentialContext, or nil for the
+// process-wide/unattributed projection (startup probing, discovery, and any
+// caller with no connection principal in scope). When non-nil, cc's own
+// RequiresPrincipalCredential and a contextKeyHaver-equivalent HasKey check
+// supersede the process-wide resolver, so listing agrees with what THAT
+// principal's next run will pick (child 06, R-13) rather than the process's.
+func (s *Server) effectiveBackendFor(providerID string, cc *auth.CredentialContext) string {
 	var keys backend.KeyHaver
-	if s.authResolver != nil {
+	requiresPrincipalCredential := false
+	if cc != nil {
+		keys = ccKeyHaver{cc: cc}
+		requiresPrincipalCredential = cc.RequiresPrincipalCredential()
+	} else if s.authResolver != nil {
 		keys = s.authResolver
 	}
 	pref := ionconfig.ExplicitBackendPref(s.config, providerID)
-	return backend.EffectiveBackendForProvider(providerID, keys, s.cliAuthedProbe(), pref)
+	return backend.EffectiveBackendForProvider(providerID, keys, s.cliAuthedProbe(), pref, requiresPrincipalCredential)
+}
+
+// ccKeyHaver adapts a *auth.CredentialContext to backend.KeyHaver using
+// context.Background() -- listing has no per-request context to thread
+// through providerCliStatus/buildProviderEntries, and HasCredential's own
+// network calls (principal source resolution) are expected to be fast local
+// lookups, not a live provider fetch.
+type ccKeyHaver struct{ cc *auth.CredentialContext }
+
+func (k ccKeyHaver) HasKey(providerID string) (bool, string) {
+	return k.cc.HasCredential(context.Background(), providerID)
 }
 
 // selectedCliBackedProviders returns the providers whose credential-derived
@@ -54,7 +79,7 @@ func (s *Server) effectiveBackendFor(providerID string) string {
 func (s *Server) selectedCliBackedProviders() map[string]string {
 	out := make(map[string]string)
 	for _, pid := range ionconfig.CliBackedProviderIDs() {
-		kind := s.effectiveBackendFor(pid)
+		kind := s.effectiveBackendFor(pid, nil)
 		if isCliKind(kind) {
 			out[pid] = kind
 		}
@@ -124,13 +149,14 @@ func (s *Server) RefreshProviderProbes() {
 // providerCliStatus projects a cached probe onto the wire status type. Returns
 // nil when the provider has no CLI backend option. The second return is the
 // credential-derived effective backend (what routing will actually pick), not
-// a stored preference.
-func (s *Server) providerCliStatus(providerID string) (*types.ProviderCliStatus, string) {
+// a stored preference. cc is forwarded to effectiveBackendFor unchanged (nil
+// for the process-wide/unattributed projection).
+func (s *Server) providerCliStatus(providerID string, cc *auth.CredentialContext) (*types.ProviderCliStatus, string) {
 	kind, ok := ionconfig.CliBackendKind(providerID)
 	if !ok {
 		return nil, ""
 	}
-	effective := s.effectiveBackendFor(providerID)
+	effective := s.effectiveBackendFor(providerID, cc)
 	if s.probes == nil {
 		return nil, effective
 	}

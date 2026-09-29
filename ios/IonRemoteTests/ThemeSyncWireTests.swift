@@ -101,20 +101,4 @@ final class ThemeSyncWireTests: XCTestCase {
         XCTAssertEqual(hash, "h1")
     }
 
-    func testRequestThemeAssetCommandEncodesWireShape() throws {
-        let cmd = RemoteCommand.requestThemeAsset(themeId: "acme-corp", slot: "background")
-        let data = try JSONEncoder().encode(cmd)
-        let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertEqual(obj["type"] as? String, "desktop_request_theme_asset")
-        XCTAssertEqual(obj["themeId"] as? String, "acme-corp")
-        XCTAssertEqual(obj["slot"] as? String, "background")
-
-        // And the desktop→iOS decode path accepts the same shape.
-        let decoded = try JSONDecoder().decode(RemoteCommand.self, from: data)
-        guard case .requestThemeAsset(let themeId, let slot) = decoded else {
-            return XCTFail("round trip changed the case")
-        }
-        XCTAssertEqual(themeId, "acme-corp")
-        XCTAssertEqual(slot, "background")
-    }
 }

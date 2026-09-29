@@ -30,7 +30,14 @@ import (
 // runID / traceID identify the run this saving was realized on; both are
 // omit-when-empty (see withRunCorrelation), so a caller with no run in flight
 // simply produces an event without them.
-func emitCacheSavings(telem *telemetry.Collector, model string, usage types.UsageData, key, conversationID, extName, extVersion, runID, traceID string) {
+//
+// principalIdentity is the acting session's SessionPrincipal.AttributionForTelemetry()
+// (FR-05 child 10, R-41), stamped into the context so this cost-bearing event
+// agrees with its sibling llm.call/tool.execute/run.execute/run.complete
+// spans about who caused it, instead of falling back to the process-wide
+// operator identity (see telemetry_ctx.go's stampPrincipalIdentity). Omit-
+// when-empty, same as every other field here.
+func emitCacheSavings(telem *telemetry.Collector, model string, usage types.UsageData, key, conversationID, extName, extVersion, runID, traceID, principalIdentity string) {
 	if telem == nil {
 		return
 	}
@@ -70,6 +77,6 @@ func emitCacheSavings(telem *telemetry.Collector, model string, usage types.Usag
 		"cache_read_price_per_1k": cacheReadPricePer1k,
 		"savings_usd":             savingsUsd,
 		"pricing_source":          pricingSource,
-	}, withRunCorrelation(correlationCtxExt(key, conversationID, extName, extVersion), runID, traceID))
+	}, stampContextIdentity(withRunCorrelation(correlationCtxExt(key, conversationID, extName, extVersion), runID, traceID), principalIdentity))
 	utils.LogWithFields(utils.LevelDebug, "session", "cache.savings telemetry emitted", map[string]any{"key": key, "model": model, "cache_read_tokens": cacheReadTokens, "savings_usd": savingsUsd})
 }

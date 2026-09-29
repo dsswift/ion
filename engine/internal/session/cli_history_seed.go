@@ -43,6 +43,9 @@ func (m *Manager) seedCliHistory(s *engineSession, opts *types.RunOptions) {
 	if err != nil || len(msgs) == 0 {
 		return // no prior history to seed (fresh conversation, or load failure)
 	}
+	// This dispatch's own user turn may already be on disk. It follows the
+	// transcript as the prompt, so bridging it too would send it twice.
+	msgs = withoutEntry(msgs, opts.PrePersistedUserEntryID)
 	transcript := buildCliHistoryTranscript(msgs, cliHistoryTranscriptMaxBytes)
 	if transcript == "" {
 		return
@@ -109,4 +112,20 @@ func buildCliHistoryTranscript(msgs []types.SessionMessage, maxBytes int) string
 	sb.WriteString("</prior-conversation>\n\n")
 	sb.WriteString("Continue the conversation. The user's new message follows.")
 	return sb.String()
+}
+
+// withoutEntry drops every row the tree entry entryID produced. Rows carry the
+// entry id itself, or "<entryId>:<n>" for an entry that renders as several.
+func withoutEntry(msgs []types.SessionMessage, entryID string) []types.SessionMessage {
+	if entryID == "" {
+		return msgs
+	}
+	kept := make([]types.SessionMessage, 0, len(msgs))
+	for _, msg := range msgs {
+		if msg.ID == entryID || strings.HasPrefix(msg.ID, entryID+":") {
+			continue
+		}
+		kept = append(kept, msg)
+	}
+	return kept
 }

@@ -1,7 +1,7 @@
 {
   "name": "ion",
   "version": "1.82.0",
-  "description": "Ion — AI-powered developer desktop",
+  "description": "Ion Studio",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -15,9 +15,10 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "build:web": "node scripts/patch-zustand.js && vite build --config vite.web.config.ts",
     "preview": "electron-vite preview",
     "dist": "node scripts/build-dev-app.js",
-    "dist:win": "electron-vite build --mode production && electron-builder --win --publish never",
+    "dist:win": "node scripts/stage-server-bundle.js && electron-vite build --mode production && electron-builder --win --publish never && node scripts/check-packaged-requires.js",
     "pkg": "bash scripts/build-pkg.sh",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -52,6 +53,8 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@ion/server": "*",
+    "@ion/shared": "*",
     "@parcel/watcher": "^2.6.0",
     "@phosphor-icons/react": "^2.1.10",
     "@sigma/edge-curve": "3.1.0",
@@ -77,6 +80,7 @@
     "immer": "^11.1.18",
     "node-pty": "^1.1.0",
     "playwright-core": "1.62.1",
+    "qrcode-generator": "2.0.4",
     "react-chartjs-2": "5.3.1",
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^16.1.1",
@@ -109,9 +113,13 @@
       "resources/**/*",
       "!resources/engine/**/*",
       "package.json",
-      "!**/*.pdb"
+      "!**/*.pdb",
+      "!node_modules/@ion/**",
+      "dist/server/**/*"
     ],
     "asarUnpack": [
+      "dist/server/**",
+      "resources/studio/**",
       "**/node_modules/node-pty/**",
       "**/node_modules/@parcel/watcher*/**"
     ],
@@ -119,6 +127,17 @@
       {
         "from": "resources/engine/extensions",
         "to": "engine/extensions"
+      },
+      {
+        "from": "../packages/studio-sdk",
+        "to": "studio-sdk",
+        "filter": [
+          "contract.json",
+          "ts/index.ts",
+          "ts/package.json",
+          "go/studio.go",
+          "go/go.mod"
+        ]
       }
     ],
     "afterPack": "scripts/afterPack.js",
@@ -213,7 +232,7 @@
     "@types/yauzl": "^3.4.0",
     "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.5.5",
-    "electron": "^35.7.5",
+    "electron": "35.7.5",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "eslint": "^9.39.5",
@@ -227,6 +246,7 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.69.0",
     "vite": "^6.0.0",
+    "vite-plugin-compression": "^0.5.1",
     "vitest": "^4.1.10"
   },
   "overrides": {

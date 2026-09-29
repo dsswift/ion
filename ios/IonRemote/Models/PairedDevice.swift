@@ -20,7 +20,6 @@ struct PairedDevice: Codable, Identifiable, Sendable {
     let sharedSecret: Data
     var relayURL: String?
     var relayAPIKey: String?
-    var apnsToken: String?
 
     // MARK: - Enterprise Relay Phase 1 (OIDC)
 
@@ -63,7 +62,7 @@ struct PairedDevice: Codable, Identifiable, Sendable {
 
     /// Per-pairing authority to render desktop-owned cached data. Optional so
     /// Keychain blobs written before ADR-026 decode unchanged.
-    var desktopAccess: DesktopAccessRecord?
+    var desktopAccess: ServerAccessRecord?
 
     /// Last account whose credential was explicitly removed during a cancelled
     /// account switch. Displayed as historical context, never as signed-in state.
@@ -74,6 +73,24 @@ struct PairedDevice: Codable, Identifiable, Sendable {
     /// record, replacing the hostname-based heuristic. Optional so Keychain
     /// blobs written before this field existed decode unchanged.
     var desktopId: String?
+
+    // MARK: - Ion Studio Server
+
+    /// How a pairing stored before the `desktop_*` wire was removed connected.
+    /// `"direct"` marked a bearer-token connection that held no shared secret,
+    /// which is why `StudioServerMigration` refuses to migrate one. Never
+    /// written any more; read only to recognise those stored records.
+    var connectionKind: String?
+
+    /// How this device was paired: `"studio"` for a pairing made against a
+    /// server's own code, or one of the older `"lan"` / `"relay"` / `"direct"`
+    /// values on a record stored before the `desktop_*` wire was removed. Nil
+    /// is equivalent to `"lan"` for pairings that predate this field.
+    var pairedVia: String?
+    /// Relay URLs to try in order, carried from the pairing payload's
+    /// `relayUrls`. Empty/nil for a device that resolves its relay URL from
+    /// `relayURL` instead.
+    var relayUrls: [String]?
 
     /// User-supplied override for the desktop's display name. Empty/whitespace
     /// is treated as "no override" and the original `name` (host name) is used.

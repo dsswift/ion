@@ -9,8 +9,8 @@ import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { AgentStateUpdate } from "../../../shared/types";
-import type { DispatchTelemetryEntry } from "../../../shared/types-engine";
+import type { AgentStateUpdate } from "@ion/shared/types";
+import type { DispatchTelemetryEntry } from "@ion/shared/types-engine";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -29,9 +29,9 @@ vi.mock("../../preferences", () => ({
 
 const mockGetConversation = vi.fn();
 (globalThis as any).window = globalThis.window ?? {};
-(globalThis as any).window.ion = { getConversation: mockGetConversation };
+(globalThis as any).window.ion = installFakeWire({ getConversation: mockGetConversation });
 
-vi.mock("../../stores/sessionStore", () => ({
+vi.mock("@ion/server/store/sessionStore", () => ({
   useSessionStore: (sel: (s: Record<string, unknown>) => unknown) =>
     sel({
       agentDetailGeometry: { x: 60, y: 80, w: 600, h: 500 },
@@ -123,7 +123,7 @@ function DispatchStopControlMock(props: {
   );
 }
 
-vi.mock("../agent-conversation-mapper", () => ({
+vi.mock("@ion/shared/transcript/agent-conversation-mapper", () => ({
   mapConversationMessages: (msgs: any[]) =>
     msgs.map((m: any, i: number) => ({
       id: `mapped-${i}`,
@@ -134,7 +134,7 @@ vi.mock("../agent-conversation-mapper", () => ({
 }));
 
 import { AgentDetailPanel } from "../AgentDetailPanel";
-import type { BreadcrumbFrame } from "../agent-panel-helpers";
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 function makeAgent(name: string): AgentStateUpdate {
   return { name, status: "done", metadata: { displayName: name } };
@@ -462,44 +462,6 @@ describe("AgentDetailPanel nested dispatches", () => {
 
     const text = container.textContent || "";
     expect(text).toContain("claude-sonnet-4-6");
-    expect(text).not.toContain("claude-opus-4-8");
-    unmount();
-  });
-
-  it("renders no meta row for a drilled-in dispatch neither pills nor telemetry know", () => {
-    // Deep-link entry to a child frame with no durable pill and no telemetry:
-    // the header must omit the Model/Duration row entirely rather than borrow
-    // the parent frame's dispatch meta.
-    const initialStack: BreadcrumbFrame[] = [
-      {
-        dispatchId: "d1",
-        conversationId: "conv-1",
-        agentDisplayName: "dev-lead",
-      },
-      {
-        dispatchId: "d-unknown",
-        conversationId: "conv-x",
-        agentDisplayName: "ios-dev",
-      },
-    ];
-
-    const { container, unmount } = renderPanel({
-      agent: makeAgent("dev-lead"),
-      loadedMessages: [
-        { id: "u1", role: "user", content: "Root msg", timestamp: 0 },
-      ],
-      loading: false,
-      dispatches: [makeDispatch("d1", "conv-1", "claude-opus-4-8", 68)],
-      selectedDispatch: 0,
-      onSelectDispatch: () => {},
-      onClose: () => {},
-      dispatchTelemetry: [],
-      allAgents: [makeAgent("dev-lead")],
-      initialStack,
-    });
-
-    const text = container.textContent || "";
-    expect(text).not.toContain("Model:");
     expect(text).not.toContain("claude-opus-4-8");
     unmount();
   });

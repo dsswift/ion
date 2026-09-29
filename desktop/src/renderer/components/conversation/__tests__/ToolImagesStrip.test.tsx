@@ -23,7 +23,7 @@ import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { Message } from '../../../../shared/types'
+import type { Message } from '@ion/shared/types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -45,10 +45,11 @@ const readImageDataUrl = vi.fn(async (path: string) => ({ dataUrl: `data:image/p
 
 beforeEach(() => {
   ;(globalThis as unknown as { window: { ion: unknown } }).window = globalThis as unknown as { ion: unknown }
-  ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = { readImageDataUrl, openExternal: vi.fn() }
+  ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = installFakeWire({ readImageDataUrl, openExternal: vi.fn() })
 })
 
 import { ToolImagesStrip } from '../ToolImagesStrip'
+import { installFakeWire } from '../../../host/__tests__/fake-wire'
 
 function toolMsg(id: string, paths: string[]): Message {
   return {

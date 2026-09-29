@@ -25,6 +25,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 // ─── xterm stubs ──────────────────────────────────────────────────────────────
 //
@@ -37,6 +38,7 @@ const fakeTerminals: FakeTerminal[] = []
 
 class FakeTerminal {
   readonly writes: string[] = []
+  resets = 0
   buffer = { active: { getLine: () => null } }
   constructor() { fakeTerminals.push(this) }
   // The component mutates `options` in a second effect (readOnly/theme sync),
@@ -45,7 +47,8 @@ class FakeTerminal {
   write(data: string): void { this.writes.push(data); written.push(data) }
   open(): void { /* no-op: nothing to attach in jsdom */ }
   focus(): void { /* no-op */ }
-  reset(): void { /* no-op */ }
+  reset(): void { this.resets++ }
+  writeln(data: string): void { this.write(data + '\n') }
   dispose(): void { /* no-op */ }
   loadAddon(): void { /* no-op */ }
   hasSelection(): boolean { return false }
@@ -76,7 +79,7 @@ vi.mock('../../preferences', () => ({
     { getState: () => ({ terminalFontFamily: 'monospace', terminalFontSize: 12, uiZoom: 1, quickTools: [] }) },
   ),
 }))
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (sel: (s: unknown) => unknown) => sel({ staticInfo: { homePath: '/Users/test' } }),
     {
@@ -103,6 +106,12 @@ const onTerminalExit = vi.fn((cb: (key: string, exitCode: number) => void) => {
   exitCallback = cb
   return () => { exitCallback = null }
 })
+let restartedCallback: ((key: string, startError: string | null) => void) | null = null
+const onTerminalRestarted = vi.fn((cb: (key: string, startError: string | null) => void) => {
+  restartedCallback = cb
+  return () => { restartedCallback = null }
+})
+const terminalResize = vi.fn()
 const terminalGetScrollback = vi.fn<(key: string) => Promise<string>>()
 const terminalAttach = vi.fn<(key: string, opts?: { restartIfNotRunning?: boolean; cwd?: string }) => Promise<{
   history: string
@@ -113,10 +122,10 @@ const terminalAttach = vi.fn<(key: string, opts?: { restartIfNotRunning?: boolea
 }>>()
 
 function installIonBridge(): void {
-  ;(globalThis as unknown as { window: Record<string, unknown> }).window.ion = {
+  ;(globalThis as unknown as { window: Record<string, unknown> }).window.ion = installFakeWire({
     terminalCreate: vi.fn().mockResolvedValue(undefined),
     terminalWrite: vi.fn(),
-    terminalResize: vi.fn(),
+    terminalResize,
     terminalDestroy: vi.fn().mockResolvedValue(undefined),
     studioBrowserViewEnsure: vi.fn().mockResolvedValue(true),
     studioBrowserViewBounds: vi.fn(),
@@ -128,10 +137,11 @@ function installIonBridge(): void {
     terminalGetScrollback,
     onTerminalData,
     onTerminalExit,
+    onTerminalRestarted,
     openExternal: vi.fn(),
     fsExists: vi.fn().mockResolvedValue({ exists: false }),
     fsOpenNative: vi.fn(),
-  }
+  })
 }
 
 // ResizeObserver is not implemented in jsdom.
@@ -150,8 +160,10 @@ describe('TerminalInstance scrollback restoration', () => {
     terminalGetScrollback.mockReset()
     terminalGetScrollback.mockResolvedValue('')
     terminalAttach.mockReset()
-    terminalAttach.mockImplementation(async (key) => ({
-      history: await terminalGetScrollback(key),
+    // `terminal.attach` receives one packed object now, so the key is a
+    // property on it rather than the first positional argument.
+    terminalAttach.mockImplementation(async (packed) => ({
+      history: await terminalGetScrollback((packed as unknown as { key: string }).key),
       running: true,
       exitCode: null,
       cwd: '/repo',
@@ -223,7 +235,10 @@ describe('TerminalInstance scrollback restoration', () => {
   it('uses the saved buffer when main has no scrollback after restart', async () => {
     await mount('tab-c:inst-c', { savedBuffer: 'restored from disk\n' })
 
-    expect(terminalAttach).toHaveBeenCalledWith('tab-c:inst-c', {
+    // The stub stands in for the server: `terminal.attach` receives one
+    // object with the key merged into the options, not two positional args.
+    expect(terminalAttach).toHaveBeenCalledWith({
+      key: 'tab-c:inst-c',
       restartIfNotRunning: true,
       cwd: '/repo',
     })
@@ -244,6 +259,31 @@ describe('TerminalInstance scrollback restoration', () => {
     expect(fakeTerminals).toHaveLength(2)
     expect(fakeTerminals[0].writes).not.toContain('SECOND')
     expect(fakeTerminals[1].writes).toContain('SECOND')
+  })
+
+  it('clears the viewer and publishes its size when the owner restarts the terminal', async () => {
+    await mount('tab-g:inst-g')
+    terminalResize.mockClear()
+    const terminal = fakeTerminals[fakeTerminals.length - 1]
+    // jsdom has no layout; the viewer must measure as on screen to publish.
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 640, height: 480 } as DOMRect)
+
+    restartedCallback!('tab-g:inst-g', null)
+    rect.mockRestore()
+
+    expect(terminal.resets).toBe(1)
+    expect(terminalResize).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(terminalResize.mock.calls[0])).toContain('tab-g:inst-g')
+  })
+
+  it('shows why a restarted terminal failed to start', async () => {
+    await mount('tab-h:inst-h')
+    const terminal = fakeTerminals[fakeTerminals.length - 1]
+
+    restartedCallback!('tab-h:inst-h', 'posix_spawnp failed.')
+
+    expect(terminal.resets).toBe(1)
+    expect(terminal.writes.join('')).toContain('posix_spawnp failed.')
   })
 
   it('orders late-arriving live output after the fetched history', async () => {

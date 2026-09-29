@@ -19,8 +19,8 @@ import {
   getToolDescription,
   toolSummary,
   toolFailureSummary,
-} from "./tool-helpers";
-import type { Message } from "../../../shared/types";
+} from "@ion/server/conversation/tool-helpers";
+import type { Message } from "@ion/shared/types";
 
 interface ToolGroupProps {
   tools: Message[];

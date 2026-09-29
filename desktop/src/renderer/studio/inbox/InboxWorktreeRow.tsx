@@ -1,19 +1,19 @@
 import React, { useState } from 'react'
 import { CaretDown, CaretRight, GitBranch } from '@phosphor-icons/react'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { WorktreeRowMenu } from '../../components/WorktreeRowMenu'
 import { WorktreeStateSlot } from '../../components/WorktreeStateSlot'
 import { WorktreeStageSlot } from '../../components/WorktreeStageSlot'
 import { WorktreeEnrollmentSlot } from '../../components/WorktreeEnrollmentSlot'
 import { resolveRowState, resolveRowWords } from '../../components/worktreeRowState'
-import { findActiveAutoFix } from '../../stores/slices/conflict-assist-dedupe'
+import { findActiveAutoFix } from '@ion/server/store/slices/conflict-assist-dedupe'
 import { ConflictsDialog } from '../../components/git/ConflictsDialog'
 import { BenchConflictDialog } from '../../components/git/BenchConflictDialog'
 import { BenchVerificationDialog } from '../../components/git/BenchVerificationDialog'
 import { useColors } from '../../theme'
 import { rError, rInfo } from '../../rendererLogger'
 import { operationIsPending, operationMessage, pipelineIsRunning, useBenchOperation, useWorktreeOperation, useWorktreePipeline } from './worktreeOperationSelectors'
-import type { WorkStage } from '../../../shared/types'
+import type { WorkStage } from '@ion/shared/types'
 import type { InboxNavigatorGroup } from './inbox-navigator'
 
 /** One enriched, collapsible worktree GROUP HEADER. Conversation rows belong below it. */
@@ -67,8 +67,13 @@ export function InboxWorktreeRow({
     && workspace.lastAssemblyVerification?.replayedBranches.includes(entry.branchName)
     ? { command: workspace.lastAssemblyVerification.command }
     : undefined
-  const rowState = resolveRowState({ entry, membership, syncing, verificationSuspect, hasActiveResolver: activeBenchResolver !== null })
-  const words = resolveRowWords({ entry, membership, syncing, verificationSuspect }).join(' · ')
+  // An obstruction leaves no detail on the member — nothing collided, so there
+  // are no paths — and the reason lives on the workspace's assembly error.
+  const obstruction = workspace?.lastAssemblyFailure === 'obstructed' && workspace.lastAssemblyError
+    ? { reason: workspace.lastAssemblyError }
+    : undefined
+  const rowState = resolveRowState({ entry, membership, syncing, verificationSuspect, obstruction, hasActiveResolver: activeBenchResolver !== null })
+  const words = resolveRowWords({ entry, membership, syncing, verificationSuspect, obstruction }).join(' · ')
   const enrolled = !!membership
 
   const sync = (): void => {

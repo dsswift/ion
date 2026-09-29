@@ -123,6 +123,12 @@ fi
 if touched "^desktop/"; then
   run "desktop typecheck" bash -c "cd desktop && npm run typecheck"
   run "desktop tests"     bash -c "cd desktop && npm test --silent"
+fi
+
+# The renderer bundles the server's session store and packages/shared, so a
+# Node-only import added under server/ or packages/shared/ breaks this build
+# while every server check passes.
+if touched "^desktop/|^server/|^packages/shared/"; then
   run "desktop build"     bash -c "cd desktop && npm run build"
 fi
 

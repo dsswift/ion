@@ -11,12 +11,12 @@ const mocks = vi.hoisted(() => ({
   writeSettings: vi.fn(),
 }));
 
-vi.mock("../worktree/registry", () => ({ loadRegistry: mocks.loadRegistry }));
-vi.mock("../integration/bench-store", () => ({ loadWorkspaces: mocks.loadWorkspaces }));
-vi.mock("../settings-store", () => ({
+vi.mock("@ion/server/worktree/registry", async (importOriginal) => ({ ...(await importOriginal()), ...{ loadRegistry: mocks.loadRegistry } }));
+vi.mock('@ion/server/integration/bench-store', () => ({ loadWorkspaces: mocks.loadWorkspaces }));
+vi.mock("@ion/server/persistence/settings-store", async (importOriginal) => ({ ...(await importOriginal()), ...{
   readSettings: mocks.readSettings,
   writeSettings: mocks.writeSettings,
-}));
+} }));
 vi.mock("../logger", () => ({ log: vi.fn(), warn: vi.fn() }));
 
 import {

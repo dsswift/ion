@@ -13,15 +13,15 @@ describe('managed defaults marker', () => {
   // The whole contract: an unlocked policy seeds a value once, and after that
   // the user owns the setting.
   it('reports unapplied before, applied after', () => {
-    expect(hasAppliedManagedDefault('tabStrip')).toBe(false)
-    markManagedDefaultApplied('tabStrip')
-    expect(hasAppliedManagedDefault('tabStrip')).toBe(true)
+    expect(hasAppliedManagedDefault('environments')).toBe(false)
+    markManagedDefaultApplied('environments')
+    expect(hasAppliedManagedDefault('environments')).toBe(true)
   })
 
   it('is idempotent', () => {
-    markManagedDefaultApplied('tabStrip')
-    markManagedDefaultApplied('tabStrip')
-    expect(JSON.parse(localStorage.getItem('ion_managedDefaultsApplied') ?? '[]')).toEqual(['tabStrip'])
+    markManagedDefaultApplied('environments')
+    markManagedDefaultApplied('environments')
+    expect(JSON.parse(localStorage.getItem('ion_managedDefaultsApplied') ?? '[]')).toEqual(['environments'])
   })
 
   // The defect this replaced: the first marker used "is the key present in
@@ -29,8 +29,8 @@ describe('managed defaults marker', () => {
   // every save, so all 87 keys exist from the first unrelated preference
   // write. The marker must be independent of the settings object entirely.
   it('does not live in the settings object', () => {
-    markManagedDefaultApplied('tabStrip')
-    expect(localStorage.getItem('ion_managedDefaultsApplied')).toContain('tabStrip')
+    markManagedDefaultApplied('environments')
+    expect(localStorage.getItem('ion_managedDefaultsApplied')).toContain('environments')
   })
 
   // A corrupt marker must not wedge startup, and must fail toward re-applying
@@ -39,7 +39,7 @@ describe('managed defaults marker', () => {
     'treats a corrupt marker (%s) as unapplied',
     (raw) => {
       localStorage.setItem('ion_managedDefaultsApplied', raw)
-      expect(hasAppliedManagedDefault('tabStrip')).toBe(false)
+      expect(hasAppliedManagedDefault('environments')).toBe(false)
     },
   )
 })

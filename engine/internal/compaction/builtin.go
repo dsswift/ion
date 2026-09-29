@@ -57,8 +57,10 @@ func (MicroCompactStrategy) Compact(messages []types.LlmMessage, _ *CompactionOp
 // Requires opts.Summarize to be set.
 type SummaryCompactStrategy struct{}
 
-func (SummaryCompactStrategy) Name() string        { return "summary-compact" }
-func (SummaryCompactStrategy) Description() string { return "Replace older messages with an LLM summary" }
+func (SummaryCompactStrategy) Name() string { return "summary-compact" }
+func (SummaryCompactStrategy) Description() string {
+	return "Replace older messages with an LLM summary"
+}
 
 func (SummaryCompactStrategy) CanHandle(messages []types.LlmMessage, opts *CompactionOptions) bool {
 	return len(messages) > 2 && opts != nil && opts.Summarize != nil

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { SETTINGS_DEFAULTS } from '../settings-store'
+import { SETTINGS_DEFAULTS } from '@ion/server/persistence/settings-store'
 import { DEFAULT_MONO_FONT } from '../../renderer/typography'
 
 // The terminal wrapped at roughly a third of its pane width on Windows. The

@@ -1,23 +1,25 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useViewportClamp } from "../hooks/useViewportClamp";
+import { zoomAnchorEdges } from "../viewport-zoom";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { CaretDown, Check, Brain } from "@phosphor-icons/react";
-import { useSessionStore } from "../stores/sessionStore";
-import { usePreferencesStore } from "../preferences";
-import { useModelStore } from "../stores/model-store";
+import { useSessionStore } from "@ion/server/store/sessionStore";
+import { runningConversationModel } from "@ion/shared/conversation-model";
+import { useModelStore } from "@ion/server/store/model-store";
+import { useActiveTabEnvironmentId } from "../studio/connection/tab-environment";
 import { usePopoverLayer } from "./PopoverLayer";
 import { useColors } from "../theme";
 import {
   useInteractiveState,
   interactiveBg,
 } from "../hooks/useInteractiveState";
-import { activeInstance } from "../stores/conversation-instance";
+import { activeInstance } from "@ion/server/store/conversation-instance";
 import {
   resolveThinkingControlState,
   thinkingTriggerLabel,
 } from "./thinking-control-state";
-import type { ThinkingEffort } from "../../shared/types-session";
+import type { ThinkingEffort } from "@ion/shared/types-session";
 
 /* ─── Thinking Effort Picker ─── */
 
@@ -89,14 +91,11 @@ export function ThinkingPicker() {
   });
 
   // Resolve the active model to read its allowed thinking efforts — from the
-  // same active instance (modelOverride / sessionModel), else preferred model.
-  const preferredModel = usePreferencesStore((s) => s.preferredModel);
-  const activeModelId = useSessionStore((s) => {
-    const inst = activeInstance(s.conversationPanes, s.activeTabId);
-    return inst?.modelOverride || inst?.sessionModel || preferredModel;
-  });
-  const findModel = useModelStore((s) => s.findModel);
-  const modelEntry = activeModelId ? findModel(activeModelId) : undefined;
+  // same active instance, ending at the default its server resolved.
+  const activeModelId = useSessionStore((s) => runningConversationModel(activeInstance(s.conversationPanes, s.activeTabId)));
+  const thinkingEnvironmentId = useActiveTabEnvironmentId();
+  const findModelIn = useModelStore((s) => s.findModelIn);
+  const modelEntry = activeModelId ? findModelIn(thinkingEnvironmentId, activeModelId) : undefined;
   // Resolver owns the rendering rules (off-row label, offered levels, enabled).
   // A model missing from availableModels resolves to a disabled control.
   const controlState = resolveThinkingControlState(
@@ -128,8 +127,8 @@ export function ThinkingPicker() {
 
   const updatePos = useCallback(() => {
     if (!triggerRef.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
-    setPos({ bottom: window.innerHeight - rect.top + 6, left: rect.left });
+    const rect = zoomAnchorEdges(triggerRef.current.getBoundingClientRect());
+    setPos({ bottom: rect.fromBottom + 6, left: rect.left });
   }, []);
 
   useEffect(() => {
@@ -177,7 +176,11 @@ export function ThinkingPicker() {
         title={title}
       >
         <Brain size={11} weight={isActive ? "fill" : "regular"} />
-        {`Think: ${label}`}
+        {/* The icon already says what this control is, so the chip carries
+            only its current value — the same shape as the mode chip beside
+            it. The "Think:" prefix spent a third of the row's width
+            restating the brain. */}
+        {label}
         {interactive && <CaretDown size={10} style={{ opacity: 0.6 }} />}
       </button>
 

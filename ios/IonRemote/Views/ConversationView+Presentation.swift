@@ -113,8 +113,8 @@ extension ConversationView {
                 PlanContentView(path: item.path)
                     .environment(viewModel)
             }
-            // File-preview cover, opened when the user taps a file-path chip
-            // (an ion-file:// link) in assistant markdown. Mirrors the
+            // File-preview cover for a text file link, opened with the path
+            // the server resolved (ConversationView+FileLinks). Mirrors the
             // plan-preview path above.
             .fullScreenCover(item: $selectedFilePath) { item in
                 NavigationStack {
@@ -130,17 +130,6 @@ extension ConversationView {
                     }
                 }
             }
-    }
-
-    /// Resolve a tapped `ion-file://` path and present the file preview.
-    /// Relative paths resolve against the tab's working directory; absolute
-    /// paths pass through. Lives here (not ConversationView.swift) with the
-    /// cover it drives, keeping the main file under the size cap.
-    func openFilePreview(_ path: String) {
-        let resolved = path.hasPrefix("/")
-            ? path
-            : (workingDirectory as NSString).appendingPathComponent(path)
-        selectedFilePath = IdentifiablePath(path: resolved)
     }
 
     @ViewBuilder
@@ -185,7 +174,7 @@ extension ConversationView {
             .confirmationDialog("Attach", isPresented: $showAttachMenu) {
                 Button("Photo Library") { showPhotoPicker = true }
                 Button("Choose File") { showDocumentPicker = true }
-                Button("Browse Desktop Files") { showFilePicker = true }
+                Button("Browse Server Files") { showFilePicker = true }
                 Button("Cancel", role: .cancel) {}
             }
             .confirmationDialog(
@@ -247,7 +236,7 @@ extension ConversationView {
             }
         }
 
-        guard let (_, targetDispatch) = dispatchMap[dispatchId] else { return [] }
+        guard dispatchMap[dispatchId] != nil else { return [] }
 
         // Walk the chain from target up to the root, collecting entries.
         var chain: [BreadcrumbEntry] = []

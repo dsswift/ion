@@ -1,0 +1,209 @@
+/**
+ * EngineBridge.remapSession — unit tests
+ *
+ * Tests the key-alias mechanism on EngineBridge directly, without opening a
+ * socket. The constructor does not connect, so `new EngineBridge()` is safe.
+ * Private fields are accessed via bracket notation where needed.
+ */
+
+import { describe, it, expect, vi } from 'vitest'
+
+// Mock filesystem and child_process — these are imported at module load
+// even though they're only used in connect/start paths.
+vi.mock('fs', () => ({
+  existsSync: vi.fn(() => false),
+  readFileSync: vi.fn(() => ''),
+}))
+vi.mock('child_process', () => ({
+  spawn: vi.fn(),
+  execSync: vi.fn(() => ''),
+}))
+vi.mock('../../logger', () => ({
+  log: vi.fn(),
+  debug: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}))
+// Without this the real logger runs inside the test worker: it writes to the
+// log file and, where `fs` is mocked, fails on an export the mock does not
+// provide.
+vi.mock('../../logger', () => ({ log: vi.fn(), trace: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
+
+import { EngineBridge } from '../engine-bridge'
+import { correlate } from '@ion/shared/log-correlation'
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+function makeBridge() {
+  const bridge = new EngineBridge()
+  const events: Array<{ key: string; event: any }> = []
+  bridge.on('event', (key: string, event: any) => events.push({ key, event }))
+  return { bridge, events }
+}
+
+function injectMessage(bridge: EngineBridge, key: string, type = 'desktop_text_chunk') {
+  const line = JSON.stringify({ key, event: { type, text: 'hello' } })
+  ;(bridge as any)['_handleMessage'](line)
+}
+
+// ── tests ─────────────────────────────────────────────────────────────────────
+
+describe('EngineBridge.remapSession', () => {
+  it('moves activeSessions entry from oldKey to newKey', () => {
+    const { bridge } = makeBridge()
+    const activeSessions: Map<string, any> = (bridge as any)['activeSessions']
+    activeSessions.set('A:i1', { config: { profileId: 'p1', extensions: [], workingDirectory: '/tmp' } })
+
+    bridge.remapSession('A:i1', 'B:i1')
+
+    expect(activeSessions.has('B:i1')).toBe(true)
+    expect(activeSessions.has('A:i1')).toBe(false)
+    expect(activeSessions.get('B:i1')!.config.profileId).toBe('p1')
+  })
+
+  it('rewrites incoming event key via alias', () => {
+    const { bridge, events } = makeBridge()
+    bridge.remapSession('A:i1', 'B:i1')
+    injectMessage(bridge, 'A:i1')
+
+    expect(events).toHaveLength(1)
+    expect(events[0].key).toBe('B:i1')
+  })
+
+  it('passes through events for unaliased keys unchanged', () => {
+    const { bridge, events } = makeBridge()
+    injectMessage(bridge, 'C:i1')
+
+    expect(events).toHaveLength(1)
+    expect(events[0].key).toBe('C:i1')
+  })
+
+  it('chained remap (A→B then B→C) routes A events to C', () => {
+    const { bridge, events } = makeBridge()
+    bridge.remapSession('A:i1', 'B:i1')
+    bridge.remapSession('B:i1', 'C:i1')
+
+    injectMessage(bridge, 'A:i1')
+
+    expect(events).toHaveLength(1)
+    expect(events[0].key).toBe('C:i1')
+  })
+
+  it('chained remap routes B events to C after second remap', () => {
+    const { bridge, events } = makeBridge()
+    bridge.remapSession('A:i1', 'B:i1')
+    bridge.remapSession('B:i1', 'C:i1')
+
+    injectMessage(bridge, 'B:i1')
+
+    expect(events).toHaveLength(1)
+    expect(events[0].key).toBe('C:i1')
+  })
+
+  it('is a no-op for activeSessions when key is unknown but alias still installs', () => {
+    const { bridge, events } = makeBridge()
+    const activeSessions: Map<string, any> = (bridge as any)['activeSessions']
+
+    bridge.remapSession('X:i1', 'Y:i1')
+
+    // activeSessions unchanged (no entry to move)
+    expect(activeSessions.size).toBe(0)
+
+    // But events keyed by X are rewritten to Y
+    injectMessage(bridge, 'X:i1')
+    expect(events[0].key).toBe('Y:i1')
+  })
+
+  it('preserves event payload through alias rewrite', () => {
+    const { bridge, events } = makeBridge()
+    bridge.remapSession('OLD:i1', 'NEW:i1')
+
+    const line = JSON.stringify({ key: 'OLD:i1', event: { type: 'desktop_status', fields: { label: 'my-label' } } })
+    ;(bridge as any)['_handleMessage'](line)
+
+    expect(events[0].event.fields.label).toBe('my-label')
+  })
+
+  it('ignores unparseable lines without throwing', () => {
+    const { bridge } = makeBridge()
+    expect(() => {
+      ;(bridge as any)['_handleMessage']('not json at all {{')
+    }).not.toThrow()
+  })
+
+  it('remaps activeSessions preserving conversationId', () => {
+    const { bridge } = makeBridge()
+    const activeSessions: Map<string, any> = (bridge as any)['activeSessions']
+    activeSessions.set('A:i2', {
+      config: { profileId: 'p2', extensions: [], workingDirectory: '/home' },
+      conversationId: 'conv-123',
+    })
+
+    bridge.remapSession('A:i2', 'B:i2')
+
+    const entry = activeSessions.get('B:i2')
+    expect(entry).toBeDefined()
+    expect(entry.conversationId).toBe('conv-123')
+  })
+})
+
+/**
+ * The bridge installs the logger's conversation resolver, because its
+ * activeSessions map is the authoritative `session key -> conversationId`
+ * binding. Correlation must survive a remap: remapSession MOVES the entry to
+ * the new key, so a line logged against the OLD key resolves only if the
+ * resolver takes the same alias hop that incoming events already take.
+ */
+describe('EngineBridge conversation resolver', () => {
+  it('resolves a live session key to its conversation', () => {
+    const { bridge } = makeBridge()
+    const activeSessions: Map<string, any> = (bridge as any)['activeSessions']
+    activeSessions.set('tab-a', { config: {}, conversationId: 'conv-a' })
+
+    expect(correlate({ fields: { tab_id: 'tab-a' } }).conversation_id).toBe('conv-a')
+  })
+
+  it('keeps two live conversations apart', () => {
+    const { bridge } = makeBridge()
+    const activeSessions: Map<string, any> = (bridge as any)['activeSessions']
+    activeSessions.set('tab-a', { config: {}, conversationId: 'conv-a' })
+    activeSessions.set('tab-b', { config: {}, conversationId: 'conv-b' })
+
+    expect(correlate({ fields: { tab_id: 'tab-a' } }).conversation_id).toBe('conv-a')
+    expect(correlate({ fields: { key: 'tab-b' } }).conversation_id).toBe('conv-b')
+  })
+
+  it('still resolves the old key after a remap', () => {
+    const { bridge } = makeBridge()
+    const activeSessions: Map<string, any> = (bridge as any)['activeSessions']
+    activeSessions.set('A:i1', { config: {}, conversationId: 'conv-a' })
+
+    bridge.remapSession('A:i1', 'B:i1')
+
+    // New key resolves directly; old key resolves through the alias.
+    expect(correlate({ fields: { key: 'B:i1' } }).conversation_id).toBe('conv-a')
+    expect(correlate({ fields: { key: 'A:i1' } }).conversation_id).toBe('conv-a')
+  })
+
+  it('leaves an unknown key unstamped', () => {
+    makeBridge()
+    const ids = correlate({ fields: { tab_id: 'never-started' } })
+    expect(ids.session_id).toBe('never-started')
+    expect('conversation_id' in ids).toBe(false)
+  })
+})
+
+describe('EngineBridge global snapshots', () => {
+  it('forwards engine_model_tiers snapshots without a session key', () => {
+    const { bridge, events } = makeBridge()
+    ;(bridge as any)['_handleMessage'](JSON.stringify({
+      key: '',
+      event: { type: 'engine_model_tiers', modelTiers: [{ name: 'standard', model: 'provider/model', fallbacks: [] }] },
+    }))
+
+    expect(events).toEqual([{
+      key: '',
+      event: { type: 'engine_model_tiers', modelTiers: [{ name: 'standard', model: 'provider/model', fallbacks: [] }] },
+    }])
+  })
+})

@@ -27,7 +27,7 @@ func TestReferenceEnterpriseConfigOverridesUser(t *testing.T) {
 	user := &types.EngineRuntimeConfig{
 		DefaultModel: "some-other/model",
 		Providers: map[string]types.ProviderConfig{
-			"gateway": {BaseURL: "https://evil.example", AuthHeader: "authorization", APIKey: "sk-user-key"},
+			"gateway":         {BaseURL: "https://evil.example", AuthHeader: "authorization", APIKey: "sk-user-key"},
 			"personal-openai": {BaseURL: "https://api.openai.com", APIKey: "sk-personal"},
 		},
 		Auth: &types.AuthConfig{IdentityProvider: "none", RequireOperatorIdentity: false},
@@ -81,17 +81,4 @@ func TestReferenceEnterpriseConfigOverridesUser(t *testing.T) {
 		t.Errorf("disableAutoUpdate = %v, want true", desktop["disableAutoUpdate"])
 	}
 
-	// tabStripPolicy carries no "locked" key on purpose: it is a managed
-	// default the user may override, not an enforcement. A locked:true added
-	// here would seal a preference the deployment deliberately leaves open.
-	strip, ok := desktop["tabStripPolicy"].(map[string]any)
-	if !ok {
-		t.Fatalf("tabStripPolicy = %#v, want a map", desktop["tabStripPolicy"])
-	}
-	if strip["visible"] != false {
-		t.Errorf("tabStripPolicy.visible = %v, want false", strip["visible"])
-	}
-	if _, locked := strip["locked"]; locked {
-		t.Errorf("tabStripPolicy carries locked=%v; the reference is a managed default, not an enforcement", strip["locked"])
-	}
 }

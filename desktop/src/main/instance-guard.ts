@@ -43,17 +43,32 @@ export function detectRunningIon(): RunningIon | null {
   }
 
   try {
-    const output = execFileSync('pgrep', ['-f', 'Ion.app/Contents/MacOS/Ion$'], { encoding: 'utf8' })
-    for (const value of output.split(/\s+/)) {
-      const pid = Number.parseInt(value, 10)
+    for (const pid of scanIonProcesses()) {
       if (isLiveForeignPid(pid)) {
         log('instance guard found live Ion from process scan', { pid })
         return { pid, source: 'process_scan' }
       }
     }
   } catch (err) {
+    // pgrep exits 1 when nothing matched; that is an answer, not a failure.
     const code = (err as { status?: number }).status
     if (code !== 1) warn('instance guard process scan failed', { error: String(err) })
   }
   return null
+}
+
+/**
+ * Every Ion process the platform's own process lister can see, by pid.
+ * darwin asks pgrep for the app bundle's executable; win32 has no pgrep and
+ * asks tasklist for Ion.exe, whose CSV rows carry the pid in the second
+ * column and whose "no tasks" answer is an unquoted sentence that matches
+ * nothing. Exported for testing.
+ */
+export function scanIonProcesses(platform: NodeJS.Platform = process.platform): number[] {
+  if (platform === 'win32') {
+    const output = execFileSync('tasklist.exe', ['/FI', 'IMAGENAME eq Ion.exe', '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true })
+    return [...output.matchAll(/^"Ion\.exe","(\d+)"/gm)].map((m) => Number.parseInt(m[1], 10))
+  }
+  const output = execFileSync('pgrep', ['-f', 'Ion.app/Contents/MacOS/Ion$'], { encoding: 'utf8' })
+  return output.split(/\s+/).map((value) => Number.parseInt(value, 10)).filter((pid) => Number.isSafeInteger(pid))
 }

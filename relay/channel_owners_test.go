@@ -156,68 +156,18 @@ func TestChannelOwnerStore_MemoryOnly(t *testing.T) {
 // The returned closeFn must be called to clean up.
 func startOIDCRelay(t *testing.T, oidcCfg *OIDCConfig) (*httptest.Server, *Hub, *channelOwnerStore) {
 	t.Helper()
+	// The production routes, not a copy of them: these tests are about who may
+	// join a channel, and a hand-written stand-in for that rule tests itself.
 	hub := NewHub()
-	owners := newChannelOwnerStore(t.TempDir())
 	auth := NewAuthMiddleware("", oidcCfg)
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /v1/auth/config", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"oidc":true,"psk":false,"capabilities":{"mobileForwardAck":true}}`))
-	})
-	mux.HandleFunc("GET /v1/channel/{channelId}", func(w http.ResponseWriter, r *http.Request) {
-		identity, ok := auth.Validate(r)
-		if !ok {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		channelID := r.PathValue("channelId")
-		role := r.URL.Query().Get("role")
-		if role != "ion" && role != "mobile" {
-			http.Error(w, "bad role", http.StatusBadRequest)
-			return
-		}
-		if identity != nil {
-			if !owners.Bind(channelID, identity.Subject) {
-				http.Error(w, "forbidden", http.StatusForbidden)
-				return
-			}
-		}
-		hub.HandleWebSocket(w, r, channelID, role, nil, identity)
-	})
-	mux.HandleFunc("GET /v1/channel/{channelId}/status", func(w http.ResponseWriter, r *http.Request) {
-		identity, ok := auth.Validate(r)
-		if !ok {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		channelID := r.PathValue("channelId")
-		// Mirror production least-privilege presence: live presence only for a
-		// channel the subject already owns; unbound or other-owned returns
-		// empty presence (never a live-presence oracle).
-		if identity != nil {
-			owner, owned := owners.Owner(channelID)
-			if !owned || owner != identity.Subject {
-				w.Header().Set("Content-Type", "application/json")
-				_, _ = w.Write([]byte(`{"ion":false,"mobile":false}`))
-				return
-			}
-		}
-		ion, mobile := hub.ChannelStatus(channelID)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ion":` + boolStr(ion) + `,"mobile":` + boolStr(mobile) + `}`))
-	})
-
-	srv := httptest.NewServer(mux)
+	hub.oidcRegistry = NewOIDCRegistry("")
+	for _, issuer := range auth.issuers {
+		hub.oidcRegistry.Trust(issuer)
+	}
+	owners := newChannelOwnerStore(t.TempDir())
+	srv := httptest.NewServer(newRelayMux(hub, auth, owners, nil))
 	t.Cleanup(func() { hub.CloseAll(); srv.Close() })
 	return srv, hub, owners
-}
-
-func boolStr(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
 }
 
 // dialWSWithToken dials the relay WebSocket with a JWT bearer.
@@ -441,5 +391,94 @@ func TestStatusEndpoint_UnboundChannelNoOracle(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	if strings.Contains(string(body), "true") {
 		t.Errorf("unbound channel must not reveal live presence to a non-owner; got %q", string(body))
+	}
+}
+
+// The lock-out this rule exists to prevent: a client joined a server's
+// channel while the server was away, the relay bound the channel to the
+// client's account, and the server was refused on its own channel from then
+// on. Only the ion role claims a channel now.
+func TestChannelIsolation_AClientNeverClaimsAChannel(t *testing.T) {
+	key := genRSAKey(t)
+	oidcSrv := startFakeOIDCServer(t, &key.PublicKey)
+	oidcCfg, err := NewOIDCConfig(oidcSrv.URL, "test-audience", "")
+	if err != nil {
+		t.Fatalf("NewOIDCConfig: %v", err)
+	}
+	relaySrv, _, owners := startOIDCRelay(t, oidcCfg)
+
+	clientClaims := standardClaims(oidcSrv.URL, "test-audience")
+	clientClaims["oid"] = "personal-account"
+	clientToken := makeJWT(t, key, clientClaims)
+
+	client, _, err := dialWSWithToken(t, relaySrv, "squat-chan", "mobile", clientToken)
+	if err != nil {
+		t.Fatalf("a client must still join a channel nobody owns: %v", err)
+	}
+	t.Cleanup(func() { client.CloseNow() })
+	// The relay greets a mobile join with a control frame; read it so the next
+	// read sees the eviction rather than the greeting.
+	readExpected(t, client, "mobile-ready")
+	if owner, owned := owners.Owner("squat-chan"); owned {
+		t.Fatalf("the client claimed the channel as %q", owner)
+	}
+
+	serverClaims := standardClaims(oidcSrv.URL, "test-audience")
+	serverClaims["oid"] = "work-account"
+	serverClaims["sub"] = "work-account"
+	server, _, err := dialWSWithToken(t, relaySrv, "squat-chan", "ion", makeJWT(t, key, serverClaims))
+	if err != nil {
+		t.Fatalf("the server was refused on its own channel: %v", err)
+	}
+	t.Cleanup(func() { server.CloseNow() })
+
+	owner, owned := owners.Owner("squat-chan")
+	if !owned || owner != "work-account" {
+		t.Fatalf("channel owner = %q (owned=%v), want the server's account", owner, owned)
+	}
+	// The squatter is gone: it could not join now, so it does not stay.
+	readCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if _, _, err := client.Read(readCtx); err == nil {
+		t.Error("the client from another account stayed on the claimed channel")
+	}
+}
+
+// The client that IS the owner stays put when the server claims.
+func TestChannelIsolation_TheOwnersOwnClientIsNotEvicted(t *testing.T) {
+	key := genRSAKey(t)
+	oidcSrv := startFakeOIDCServer(t, &key.PublicKey)
+	oidcCfg, err := NewOIDCConfig(oidcSrv.URL, "test-audience", "")
+	if err != nil {
+		t.Fatalf("NewOIDCConfig: %v", err)
+	}
+	relaySrv, _, _ := startOIDCRelay(t, oidcCfg)
+
+	claims := standardClaims(oidcSrv.URL, "test-audience")
+	claims["oid"] = "one-account"
+	token := makeJWT(t, key, claims)
+
+	client, _, err := dialWSWithToken(t, relaySrv, "same-chan", "mobile", token)
+	if err != nil {
+		t.Fatalf("mobile join: %v", err)
+	}
+	t.Cleanup(func() { client.CloseNow() })
+	server, _, err := dialWSWithToken(t, relaySrv, "same-chan", "ion", token)
+	if err != nil {
+		t.Fatalf("ion join: %v", err)
+	}
+	t.Cleanup(func() { server.CloseNow() })
+
+	server.Write(context.Background(), websocket.MessageText, []byte(`{"msg":"still here"}`)) //nolint:errcheck // test
+	// Control frames (the join greeting, the peer's arrival) come first.
+	var got string
+	for i := 0; i < 4; i++ {
+		got = string(readExpected(t, client, "mobile"))
+		if !strings.Contains(got, `"type":"relay:`) {
+			break
+		}
+	}
+	if got != `{"msg":"still here"}` {
+		t.Errorf("client got %s", got)
 	}
 }

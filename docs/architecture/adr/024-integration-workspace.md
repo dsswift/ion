@@ -323,7 +323,7 @@ engine's typed model-tier administration; this fallback order is Desktop policy,
 not an engine default.
 
 Every assisted operation has an independent complete prompt template under
-**Settings → AI Workflows**. Templates declare their dynamic placeholders and
+**Settings → Servers → the server → Agent rules → AI workflow prompts**. Templates declare their dynamic placeholders and
 are validated before save and use; unknown placeholders never reach a model.
 Reset removes the persisted override and restores the current source default.
 These prompts remain Desktop-local because iOS cannot launch these assisted

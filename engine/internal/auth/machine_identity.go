@@ -34,6 +34,10 @@ func NewMachineIdentityManager(provider string, cfg types.OAuthConfig, refreshTh
 	if cfg.MachineIdentity == nil {
 		return nil, fmt.Errorf("machine identity config is missing")
 	}
+	cfg, err := withResolvedClientID(provider, cfg)
+	if err != nil {
+		return nil, err
+	}
 	mi := cfg.MachineIdentity
 	if err := validateMachineIdentityShape(mi); err != nil {
 		return nil, err
@@ -50,7 +54,6 @@ func NewMachineIdentityManager(provider string, cfg types.OAuthConfig, refreshTh
 		cache:           newMachineTokenCache(threshold),
 	}
 
-	var err error
 	switch mi.Source {
 	case "client_secret":
 		var secret string
@@ -167,7 +170,7 @@ func (m *MachineIdentityManager) GetTokenWithAudience(ctx context.Context, scope
 	if audience == "" {
 		audience = m.defaultAudience
 	}
-	return m.cache.getOrAcquire(ctx, m.provider, m.sourceKind, scope, audience, func(ctx context.Context) (string, time.Time, error) {
+	return m.cache.getOrAcquire(ctx, "", m.provider, m.sourceKind, scope, audience, func(ctx context.Context) (string, time.Time, error) {
 		return m.source.Acquire(ctx, scope, audience)
 	})
 }
@@ -182,7 +185,7 @@ func (m *MachineIdentityManager) LastExpiry(scope, audience string) string {
 	if audience == "" {
 		audience = m.defaultAudience
 	}
-	expiry := m.cache.expiry(scope, audience)
+	expiry := m.cache.expiry("", scope, audience)
 	if expiry.IsZero() {
 		return ""
 	}

@@ -1,69 +1,86 @@
 /**
- * secondary-store — boots the session store in MIRROR mode for the Studio window
- * window (see shared/studio-mirror-actions.ts and the Studio shell ADR).
+ * secondary-store — boots the session store in MIRROR mode for the Studio
+ * window as the UNION of every connected Environment (ADR-033; see
+ * shared/studio-mirror-actions.ts). Each Environment's server publishes its
+ * own tabs, terminals, and worktrees; the hydrators here merge each one into
+ * the single store, keyed by the Environment it came from, so the Inbox
+ * shows everything at once and every action is routed back to the
+ * server that owns the tab it names (`connection/tab-environment.ts`).
  *
- * Importing the sessionStore module in this window already skips
- * persistence (window-role detection). This module applies the second half
- * of the mirror discipline: every FORWARDED action is swapped for an IPC
- * forwarder, so owner-durable mutations execute in the overlay renderer —
- * Zustand actions are plain state fields, so the swap is a setState.
+ * Importing the sessionStore module never wires persistence; only the server
+ * boot does that. This module applies the rest of the mirror discipline: it
+ * declares this process a mirror, and every FORWARDED action is swapped for a
+ * `studio_action` round trip over the local server's Studio wire (the same
+ * seam a remote environment uses), so owner-durable mutations execute in the
+ * server process that actually owns `useSessionStore` — Zustand actions are
+ * plain state fields, so the swap is a setState.
  */
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { destroyTerminalInstance } from '../../components/TerminalInstance'
 import {
   isStudioConversationTerminalSnapshot,
   removedConversationTerminalKeys,
   terminalPaneMap,
-  type StudioConversationTerminalSnapshot,
-} from '../../../shared/studio-conversation-terminal-sync'
-import { FORWARDED_ACTIONS } from '../../../shared/studio-mirror-actions'
-import { tabsFromSnapshot, mergePanes } from './hydrate-tabs'
-import { commitInstance } from '../../stores/conversation-instance'
-import type { FileAttachment, Message, PersistedTabState } from '../../../shared/types'
-import type { RewindResult } from '../../stores/session-store-types'
-import type { StudioUserMessageEcho, StudioHistoryReplace, StudioWorktreeSnapshot } from '../../../shared/types-studio'
-import { rDebug, rInfo, rWarn } from '../../rendererLogger'
+} from '@ion/shared/studio-conversation-terminal-sync'
+import { FORWARDED_ACTIONS } from '@ion/shared/studio-mirror-actions'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
+import { resolveActionEnvironment, activeTabIdForAction, tabEnvironmentId } from '../connection/tab-environment'
+import { environmentAvailability } from '../connection/environment-availability'
+import { StudioActionFailure } from '@ion/shared/studio-wire/action-failure'
+import { tabsFromSnapshot, mergePanes, nextActiveTabId, type ResolvedModelMap } from './hydrate-tabs'
+import { commitInstance } from '@ion/server/store/conversation-instance'
+import type { ConversationPane } from '@ion/shared/types'
+import type { FileAttachment, Message, PersistedTabState } from '@ion/shared/types'
+import type { StudioUserMessageEcho, StudioHistoryReplace } from '@ion/shared/types-studio'
+// The worktree read model's sync lives beside this module; re-exported so
+// every existing import path keeps resolving.
+export { hydrateWorktreeFromSync } from './secondary-store-worktree-sync'
+import { rDebug, rWarn } from '../../rendererLogger'
+import { declareMirrorWindow } from '@ion/server/lib/window-role'
+import { host, action } from '../../host/host-instance'
+import { reconcileAttachmentTabs, reconcileForwardedAttachments, reconcileForwardedRewind, reconcileForwardedCloseIntent, applyOptimisticDraft } from './secondary-store-reconcile'
+
+export { reconcileAttachmentTabs, reconcileForwardedRewind, reconcileForwardedCloseIntent, applyOptimisticDraft }
 
 let applied = false
 
-let tabsSyncPromise: Promise<void> | null = null
-let terminalSyncPromise: Promise<void> | null = null
-let resolveTerminalSync: (() => void) | null = null
-let lastSnapshotRevision = -1
-let lastTerminalSnapshotRevision = -1
-let lastWorktreeSnapshotRevision = -1
-let worktreeSyncPromise: Promise<void> | null = null
-let worktreeReady = false
-let resolveWorktreeSync: (() => void) | null = null
+/**
+ * Applied-revision cursors, one per Environment: revisions are minted per
+ * server, so grover's revision 3 says nothing about the local server's
+ * revision 40.
+ */
+const lastSnapshotRevision = new Map<string, number>()
+const lastTerminalSnapshotRevision = new Map<string, number>()
+
+/**
+ * Forget one Environment's applied-revision cursors.
+ *
+ * Revisions are minted per server and restart at zero with it, so a cursor
+ * kept across a disconnect makes the FIRST snapshot after a server restart
+ * look stale and drops it -- the tabs would then only reappear on whatever
+ * later revision happened to climb past the old high-water mark. Called
+ * when an Environment is dropped and again on every welcome, which is the
+ * start of a new session with that server either way.
+ */
+export function clearEnvironmentSyncCursors(environmentId: string): void {
+  lastSnapshotRevision.delete(environmentId)
+  lastTerminalSnapshotRevision.delete(environmentId)
+}
+
+function isStale(cursors: Map<string, number>, environmentId: string, revision: number): boolean {
+  if (revision <= (cursors.get(environmentId) ?? -1)) return true
+  cursors.set(environmentId, revision)
+  return false
+}
 
 const pendingUserMessageEchoes = new Map<string, StudioUserMessageEcho[]>()
 const pendingHistoryReplacements = new Map<string, StudioHistoryReplace>()
-let pendingActiveTabId: string | null = null
 
 function hasMirrorTab(tabId: string): boolean {
   const state = useSessionStore.getState()
   return state.tabs.some((tab) => tab.id === tabId) && state.conversationPanes.has(tabId)
 }
 
-/** Apply an owner active-tab target only after owner sync creates its pane. */
-export function consumeStudioActiveTab(tabId: string): void {
-  if (!hasMirrorTab(tabId)) {
-    pendingActiveTabId = tabId
-    rDebug('studio.mirror', 'active tab queued until owner sync', { tab_id: tabId })
-    return
-  }
-  pendingActiveTabId = null
-  useSessionStore.setState({ activeTabId: tabId })
-}
-
-function drainActiveTab(): void {
-  if (pendingActiveTabId && hasMirrorTab(pendingActiveTabId)) {
-    const tabId = pendingActiveTabId
-    pendingActiveTabId = null
-    useSessionStore.setState({ activeTabId: tabId })
-    rDebug('studio.mirror', 'queued active tab applied after owner sync', { tab_id: tabId })
-  }
-}
 /** Insert a typed echo once its owner tab and conversation pane exist. */
 export function applyUserMessageEcho(tabId: string, echo: StudioUserMessageEcho): boolean {
   if (!hasMirrorTab(tabId)) {
@@ -80,6 +97,9 @@ export function applyUserMessageEcho(tabId: string, echo: StudioUserMessageEcho)
           content: echo.content,
           timestamp: echo.timestamp,
           ...(echo.implementationPhase ? { implementationPhase: true } : {}),
+          // The inline image previews render from this array; the content only
+          // holds a stripped marker. Dropping it here shows the words alone.
+          ...(echo.attachments && echo.attachments.length > 0 ? { attachments: echo.attachments } : {}),
           // Carries the questions-submission classification so the mirror
           // renders the same frame the Overlay does. The mirror constructs
           // the Message itself, so an omission here is invisible until the
@@ -111,83 +131,122 @@ export function drainUserMessageEchoes(): void {
   }
 }
 
-/** Wait for one structurally valid owner snapshot, rejecting rejected boot pulls. */
-export function waitForTabsSync(): Promise<void> {
-  if (useSessionStore.getState().tabsReady) return Promise.resolve()
-  if (tabsSyncPromise) return tabsSyncPromise
-  tabsSyncPromise = new Promise((resolve, reject) => {
-    const unsubscribe = useSessionStore.subscribe((next) => {
-      if (next.tabsReady) {
-        unsubscribe()
-        resolve()
-      }
-    })
-    void window.ion.studioGetTabsSync().then((snapshot) => {
-      if (!snapshot) throw new Error('owner tabs snapshot unavailable')
-      hydrateTabsFromSync(snapshot)
-    }).catch((err) => {
-      unsubscribe()
-      tabsSyncPromise = null
-      reject(err)
-    })
-  })
-  return tabsSyncPromise
-}
 
 /**
- * Replace the mirror's tab metadata from an owner-published snapshot.
+ * Replace ONE Environment's slice of the mirror's tab metadata from that
+ * server's snapshot, leaving every other Environment's tabs untouched.
  * Existing conversation panes are kept (lazy-loaded messages, live streams);
- * panes for owner-closed tabs are dropped.
+ * panes for tabs that server has closed are dropped. Tab ids are UUIDs
+ * minted per server, so the union is keyed by tab id alone.
  */
-export function hydrateTabsFromSync(snapshot: unknown): void {
+/** The local owner's active tab as of its last sync, so a CHANGE there can be told from its steady state. */
+let lastLocalOwnerActiveTabId: string | null = null
+
+/** TEST ONLY. */
+export function _resetLocalOwnerActiveTabForTest(): void { lastLocalOwnerActiveTabId = null }
+
+export function hydrateTabsFromSync(snapshot: unknown, environmentId: string = LOCAL_ENVIRONMENT_ID): void {
   if (snapshot == null || typeof snapshot !== 'object' || !Array.isArray((snapshot as PersistedTabState).tabs)) {
-    rWarn('studio.mirror', 'tabs-sync snapshot malformed, ignored')
+    rWarn('studio.mirror', 'tabs-sync snapshot malformed, ignored', { environment_id: environmentId })
     return
   }
   const revision = (snapshot as { revision?: unknown }).revision
-  if (typeof revision === 'number' && Number.isSafeInteger(revision)) {
-    if (revision <= lastSnapshotRevision) return
-    lastSnapshotRevision = revision
-  }
+  if (typeof revision === 'number' && Number.isSafeInteger(revision) && isStale(lastSnapshotRevision, environmentId, revision)) return
   const typed = snapshot as PersistedTabState
   const liveTabStatus = (snapshot as { liveTabStatus?: Record<string, string> }).liveTabStatus
   const queuedAttachments = (snapshot as { queuedAttachments?: Record<string, FileAttachment[]> }).queuedAttachments
   const liveIsCompacting = (snapshot as { liveIsCompacting?: Record<string, boolean> }).liveIsCompacting
-  const { tabs, settledHistory, activeTabId } = tabsFromSnapshot(typed, liveTabStatus, useSessionStore.getState().tabs, queuedAttachments, liveIsCompacting)
-  useSessionStore.setState((s) => ({
-    tabs,
-    settledHistory,
-    // The owner's active tab is authoritative; studio:active-tab pushes keep it
-    // fresh between syncs.
-    activeTabId: activeTabId ?? s.activeTabId,
-    conversationPanes: mergePanes(s.conversationPanes, typed, tabs),
-    tabsReady: true,
-  }))
-  drainActiveTab()
+  // The welcome snapshot names it `resolvedModels`; the tabs sync, `liveResolvedModel`.
+  const resolvedModels = (snapshot as { liveResolvedModel?: ResolvedModelMap; resolvedModels?: ResolvedModelMap }).liveResolvedModel
+    ?? (snapshot as { resolvedModels?: ResolvedModelMap }).resolvedModels
+  const before = useSessionStore.getState()
+  const { tabs: envTabs, settledHistory: envSettled, activeTabId: ownerActiveTabId } = tabsFromSnapshot(typed, liveTabStatus, before.tabs, queuedAttachments, liveIsCompacting, environmentId)
+  useSessionStore.setState((s) => {
+    const otherTabs = s.tabs.filter((t) => tabEnvironmentId(t) !== environmentId)
+    const otherSettled = s.settledHistory.filter((t) => tabEnvironmentId(t) !== environmentId)
+    // Local first, then each remote Environment in the order it arrived, so
+    // the Inbox does not reshuffle when one server re-publishes.
+    const tabs = environmentId === LOCAL_ENVIRONMENT_ID ? [...envTabs, ...otherTabs] : [...otherTabs, ...envTabs]
+    const settledHistory = environmentId === LOCAL_ENVIRONMENT_ID ? [...envSettled, ...otherSettled] : [...otherSettled, ...envSettled]
+    const envPanes = mergePanes(s.conversationPanes, typed, envTabs, resolvedModels)
+    const conversationPanes = new Map<string, ConversationPane>()
+    for (const t of otherTabs) {
+      const pane = s.conversationPanes.get(t.id)
+      if (pane) conversationPanes.set(t.id, pane)
+    }
+    for (const [id, pane] of envPanes) conversationPanes.set(id, pane)
+    const current = tabs.find((t) => t.id === s.activeTabId)
+    const activeTabId = nextActiveTabId({
+      environmentId,
+      ownerActiveTabId: ownerActiveTabId ?? null,
+      ownerChanged: environmentId === LOCAL_ENVIRONMENT_ID && (ownerActiveTabId ?? null) !== lastLocalOwnerActiveTabId,
+      currentTabId: current ? s.activeTabId : null,
+      currentEnvironmentId: current ? tabEnvironmentId(current) : null,
+      firstTabId: tabs[0]?.id ?? null,
+    }) ?? s.activeTabId
+    if (environmentId === LOCAL_ENVIRONMENT_ID) lastLocalOwnerActiveTabId = ownerActiveTabId ?? null
+    return { tabs, settledHistory, activeTabId, conversationPanes, tabsReady: true }
+  })
   drainHistoryReplacements()
   drainUserMessageEchoes()
-  rDebug('studio.mirror', 'tabs hydrated from owner sync', { tab_count: tabs.length })
+  rDebug('studio.mirror', 'tabs hydrated from owner sync', { environment_id: environmentId, tab_count: envTabs.length, union_tab_count: useSessionStore.getState().tabs.length })
 }
 
-/** Boot + live wiring for owner tab-metadata sync. Returns unsubscribe. */
-export function initTabsSync(): () => void {
-  void waitForTabsSync().catch((err) => rWarn('studio.mirror', 'initial tabs sync failed', { error: String(err) }))
-  return window.ion.onStudioTabsSync((snapshot) => hydrateTabsFromSync(snapshot))
+/**
+ * How every client learns what tabs exist: tabsReady is set ONLY inside
+ * hydrateTabsFromSync, and the InputBar and Inbox block on it. (An Electron-only
+ * IPC pull of the same data once ran alongside this for the LOCAL
+ * Environment; it was deleted with the `windowMirrorSync` capability.)
+ *
+ * The server fans out the identical data two ways: `studio_welcome`
+ * carries the current tabs as StudioSnapshotTab[] (Omit<PersistedTab,
+ * 'terminalBuffers' | 'conversationPane'> -- deliberately the same shape
+ * family hydrateTabsFromSync already consumes) at connect time, and ongoing
+ * changes arrive as studio_event frames on the 'studio:tabs-sync' channel
+ * with the exact PersistedTabState payload (server/src/broadcast.ts's publishStudioEvent, fed by
+ * the same call sites IPC.STUDIO_TABS_SYNC used to reach). Missing
+ * terminalBuffers/conversationPane fields are tolerated by tabsFromSnapshot
+ * the same way a fresh hydration with no prior pane state already is.
+ */
+export function initTabsSyncFromWire(): () => void {
+  return host.onFrame((environmentId, frame) => {
+    if (frame.type === 'studio_welcome' || frame.type === 'studio_snapshot') {
+      // A welcome starts a fresh session with that server, whose revision
+      // counters may have restarted below the ones we applied last time.
+      if (frame.type === 'studio_welcome') clearEnvironmentSyncCursors(environmentId)
+      hydrateTabsFromSync({ tabs: frame.snapshot.tabs, resolvedModels: frame.snapshot.resolvedModels }, environmentId)
+    } else if (frame.type === 'studio_event' && frame.channel === 'studio:tabs-sync') {
+      hydrateTabsFromSync(frame.payload, environmentId)
+    }
+  })
 }
 
-/** Apply one complete Conversation Terminal Panel snapshot to the mirror. */
-export function hydrateConversationTerminals(snapshot: unknown): boolean {
+/**
+ * Apply ONE Environment's complete Conversation Terminal Panel snapshot to
+ * the mirror, leaving every other Environment's terminal panes in place.
+ * A pane belongs to the Environment that owns its tab (`tabEnvironmentId`);
+ * a pane whose tab is not in the store yet is attributed to the publishing
+ * Environment.
+ */
+export function hydrateConversationTerminals(snapshot: unknown, environmentId: string = LOCAL_ENVIRONMENT_ID): boolean {
   if (!isStudioConversationTerminalSnapshot(snapshot)) {
-    rWarn('studio.terminal-sync', 'terminal snapshot malformed, ignored')
+    rWarn('studio.terminal-sync', 'terminal snapshot malformed, ignored', { environment_id: environmentId })
     return false
   }
-  if (snapshot.revision <= lastTerminalSnapshotRevision) return false
+  if (isStale(lastTerminalSnapshotRevision, environmentId, snapshot.revision)) return false
 
   const current = useSessionStore.getState()
-  const terminalPanes = terminalPaneMap(snapshot)
-  const removedKeys = removedConversationTerminalKeys(current.terminalPanes, terminalPanes)
-  lastTerminalSnapshotRevision = snapshot.revision
-  const openTabIds = new Set(snapshot.openTabIds)
+  const ownedBy = (tabId: string): string => {
+    const tab = current.tabs.find((t) => t.id === tabId)
+    return tab ? tabEnvironmentId(tab) : environmentId
+  }
+  const envPanes = terminalPaneMap(snapshot)
+  const previousEnvPanes = new Map([...current.terminalPanes].filter(([tabId]) => ownedBy(tabId) === environmentId))
+  const removedKeys = removedConversationTerminalKeys(previousEnvPanes, envPanes)
+  const terminalPanes = new Map([...current.terminalPanes].filter(([tabId]) => ownedBy(tabId) !== environmentId))
+  for (const [tabId, pane] of envPanes) terminalPanes.set(tabId, pane)
+  const openTabIds = new Set([...current.terminalOpenTabIds].filter((tabId) => ownedBy(tabId) !== environmentId))
+  for (const tabId of snapshot.openTabIds) openTabIds.add(tabId)
   useSessionStore.setState({
     terminalPanes,
     terminalOpenTabIds: openTabIds,
@@ -199,104 +258,14 @@ export function hydrateConversationTerminals(snapshot: unknown): boolean {
       : {}),
   })
   for (const key of removedKeys) destroyTerminalInstance(key)
-  resolveTerminalSync?.()
-  resolveTerminalSync = null
   rDebug('studio.terminal-sync', 'terminal snapshot hydrated', {
+    environment_id: environmentId,
     revision: snapshot.revision,
     conversation_count: snapshot.panes.length,
     terminal_count: snapshot.panes.reduce((total, pane) => total + pane.instances.length, 0),
     removed_viewer_count: removedKeys.length,
   })
   return true
-}
-
-/** Wait until Studio has the owner's current Conversation Terminal Panel state. */
-export function waitForConversationTerminalSync(): Promise<void> {
-  if (lastTerminalSnapshotRevision >= 0) return Promise.resolve()
-  if (terminalSyncPromise) return terminalSyncPromise
-  terminalSyncPromise = new Promise((resolve, reject) => {
-    resolveTerminalSync = resolve
-    void window.ion.studioGetConversationTerminals().then((snapshot) => {
-      if (snapshot) hydrateConversationTerminals(snapshot)
-      else rDebug('studio.terminal-sync', 'owner terminal snapshot not ready; waiting for live push')
-    }).catch((error) => {
-      terminalSyncPromise = null
-      resolveTerminalSync = null
-      reject(error)
-    })
-  })
-  return terminalSyncPromise
-}
-
-/** Boot pull plus live owner snapshot subscription. */
-export function initConversationTerminalSync(): () => void {
-  const unsubscribe = window.ion.onStudioConversationTerminals((snapshot: StudioConversationTerminalSnapshot) => {
-    hydrateConversationTerminals(snapshot)
-  })
-  void waitForConversationTerminalSync().catch((error) =>
-    rWarn('studio.terminal-sync', 'initial terminal sync failed', { error: String(error) }))
-  return unsubscribe
-}
-
-/** Replace the mirror's derived worktree state from one complete owner snapshot. */
-export function hydrateWorktreeFromSync(snapshot: StudioWorktreeSnapshot): boolean {
-  if (!snapshot || typeof snapshot !== 'object' || !Number.isSafeInteger(snapshot.revision)) {
-    rWarn('studio.mirror', 'worktree snapshot malformed, ignored')
-    return false
-  }
-  if (snapshot.revision <= lastWorktreeSnapshotRevision) return false
-  lastWorktreeSnapshotRevision = snapshot.revision
-  useSessionStore.setState({
-    worktreeInventory: new Map(Object.entries(snapshot.inventory)),
-    benchWorkspaces: new Map(Object.entries(snapshot.workspaces)),
-    benchSourceTips: new Map(snapshot.benchSourceTips),
-    benchRetired: new Map(snapshot.benchRetired.map(([repoPath, entries]) => [repoPath, new Map(entries)])),
-    gitConflictAlerts: new Map(snapshot.gitConflictAlerts),
-    worktreePipeline: snapshot.worktreePipeline as never,
-    workspaceOperationLedger: new Map(snapshot.workspaceOperationLedger.map((operation) => [operation.id, operation])),
-  })
-  rDebug('studio.mirror', 'worktree snapshot hydrated', {
-    revision: snapshot.revision,
-    ready: String(snapshot.ready),
-    repositories: Object.keys(snapshot.inventory).length,
-  })
-  if (snapshot.ready) {
-    worktreeReady = true
-    resolveWorktreeSync?.()
-    resolveWorktreeSync = null
-  }
-  return snapshot.ready
-}
-
-/** Wait for the owner worktree read model so Inbox does not render an empty cache. */
-export function waitForWorktreeSync(): Promise<void> {
-  if (worktreeReady) return Promise.resolve()
-  if (worktreeSyncPromise) return worktreeSyncPromise
-  worktreeSyncPromise = new Promise((resolve, reject) => {
-    resolveWorktreeSync = resolve
-    const consume = (snapshot: StudioWorktreeSnapshot | null): void => {
-      if (!snapshot) throw new Error('owner worktree snapshot unavailable')
-      if (hydrateWorktreeFromSync(snapshot) || snapshot.ready) {
-        resolveWorktreeSync = null
-        resolve()
-      }
-    }
-    void window.ion.studioGetWorktreeSync().then(consume).catch((error) => {
-      worktreeSyncPromise = null
-      resolveWorktreeSync = null
-      reject(error)
-    })
-  })
-  return worktreeSyncPromise
-}
-
-/** Boot pull plus live owner snapshot subscription. */
-export function initWorktreeSync(): () => void {
-  void waitForWorktreeSync().catch((error) => rWarn('studio.mirror', 'initial worktree sync failed', { error: String(error) }))
-  return window.ion.onStudioWorktreeSync((snapshot) => {
-    const ready = hydrateWorktreeFromSync(snapshot)
-    if (ready && worktreeSyncPromise === null) worktreeSyncPromise = Promise.resolve()
-  })
 }
 
 /**
@@ -325,7 +294,7 @@ export function removeResolvedPermission(tabId: string, questionId: string): voi
 
 /** Wire the resolution push. Returns unsubscribe. */
 export function initPermissionResolutionSync(): () => void {
-  return window.ion.onStudioPermissionResolved((tabId, questionId) => removeResolvedPermission(tabId, questionId))
+  return host.shell.onStudioPermissionResolved((tabId, questionId) => removeResolvedPermission(tabId, questionId))
 }
 
 /**
@@ -335,7 +304,7 @@ export function initPermissionResolutionSync(): () => void {
  * (overlay, Studio, iOS) submitted the prompt.
  */
 export function initUserMessageEcho(): () => void {
-  return window.ion.onStudioUserMessageEcho((tabId, echo) => {
+  return host.shell.onStudioUserMessageEcho((tabId, echo) => {
     if (
       typeof echo?.id === 'string' && echo.id.length > 0 &&
       typeof echo.content === 'string' && echo.content.length > 0 &&
@@ -414,7 +383,7 @@ function drainHistoryReplacements(): void {
  * logged and dropped rather than queued.
  */
 export function initHistoryReplace(): () => void {
-  return window.ion.onStudioHistoryReplace((payload) => {
+  return host.shell.onStudioHistoryReplace((payload) => {
     if (
       typeof payload?.tabId === 'string' && payload.tabId.length > 0 &&
       Array.isArray(payload.messages)
@@ -433,100 +402,22 @@ export function initHistoryReplace(): () => void {
   })
 }
 
-export function reconcileAttachmentTabs(
-  tabs: ReturnType<typeof useSessionStore.getState>['tabs'],
-  activeTabId: string | null,
-  action: string,
-  args: unknown[],
-): ReturnType<typeof useSessionStore.getState>['tabs'] {
-  if (!activeTabId || !['addAttachments', 'removeAttachment', 'clearAttachments'].includes(action)) return tabs
-
-  return tabs.map((tab) => {
-    if (tab.id !== activeTabId) return tab
-    if (action === 'addAttachments' && Array.isArray(args[0])) {
-      return { ...tab, attachments: [...tab.attachments, ...(args[0] as FileAttachment[])] }
-    }
-    if (action === 'removeAttachment' && typeof args[0] === 'string') {
-      return { ...tab, attachments: tab.attachments.filter((attachment) => attachment.id !== args[0]) }
-    }
-    if (action === 'clearAttachments') return { ...tab, attachments: [] }
-    return tab
-  })
-}
-
-export function reconcileForwardedAttachments(action: string, args: unknown[]): void {
-  useSessionStore.setState((state) => ({
-    tabs: reconcileAttachmentTabs(state.tabs, state.activeTabId, action, args),
-  }))
-}
-
 /**
- * Restore the rewound turn in the Studio-local composer after the owner accepts
- * a forwarded rewind. History replacement and composer restoration are separate
- * state changes: the former removes the stale transcript tail, while this result
- * carries the user text and resendable attachments that no longer exist in that
- * transcript.
- */
-export function reconcileForwardedRewind(action: string, args: unknown[], value: unknown): boolean {
-  if (action !== 'rewindEngineInstance') return false
-  const result = value as RewindResult | undefined
-  if (!result?.ok) return false
-  const tabId = args[0]
-  const instanceId = args[1]
-  const prefill = result.prefill
-  if (
-    typeof tabId !== 'string' || typeof instanceId !== 'string' ||
-    typeof prefill?.text !== 'string' || !Array.isArray(prefill.attachments)
-  ) {
-    rWarn('studio.mirror', 'rewind prefill result malformed, ignored', {
-      tab_id: typeof tabId === 'string' ? tabId : '',
-      instance_id: typeof instanceId === 'string' ? instanceId : '',
-    })
-    return false
-  }
-
-  const current = useSessionStore.getState()
-  const pane = current.conversationPanes.get(tabId)
-  const instanceIndex = pane?.instances.findIndex((instance) => instance.id === instanceId) ?? -1
-  if (!pane || instanceIndex < 0 || !current.tabs.some((tab) => tab.id === tabId)) {
-    rWarn('studio.mirror', 'rewind prefill target missing, ignored', {
-      tab_id: tabId,
-      instance_id: instanceId,
-    })
-    return false
-  }
-
-  const instances = pane.instances.slice()
-  instances[instanceIndex] = { ...instances[instanceIndex], draftInput: prefill.text }
-  const conversationPanes = new Map(current.conversationPanes)
-  conversationPanes.set(tabId, { ...pane, instances })
-  useSessionStore.setState({
-    conversationPanes,
-    tabs: current.tabs.map((tab) => tab.id === tabId
-      ? { ...tab, pendingInput: prefill.text, attachments: prefill.attachments }
-      : tab),
-  })
-  rInfo('studio.mirror', 'rewind prefill restored', {
-    tab_id: tabId,
-    instance_id: instanceId,
-    text_length: prefill.text.length,
-    attachment_count: prefill.attachments.length,
-  })
-  return true
-}
-
-/**
- * Swap forwarded actions for IPC forwarders. Idempotent. Returns the list of
- * swapped action names (for logging/tests).
+ * Swap forwarded actions for `studio_action` round trips against the
+ * Environment that owns the tab each call names (`resolveActionEnvironment`:
+ * explicit target, else the named tab's owner, else local). Idempotent.
+ * Returns the list of swapped action names (for logging/tests).
  *
  * ── The forwarder's return contract ─────────────────────────────────────────
- * Every override returns a PROMISE that resolves to the OWNER'S actual return
- * value, so a forwarded action behaves in the mirror the way its signature says
- * it does. The round trip is `studioCallAction`: main mints a callId, relays it to
- * the owner renderer, and resolves when the owner replies with the value its
- * store action produced.
+ * Every override returns a PROMISE that resolves to the real store action's
+ * return value, so a forwarded action behaves in this window the way its
+ * signature says it does. The round trip is `host.action`: the same
+ * `studio_action` frame a remote environment answers, sent here to the local
+ * server, which runs `useSessionStore.getState()[action](...args)` and
+ * replies with `ok/value/refusal/error` (`server/src/protocol/actions.ts`).
  *
- * Both halves of that matter, and both were once wrong:
+ * Both halves of that matter, and both were once wrong (back when the round
+ * trip was IPC to a separate Overlay owner window):
  *
  *   - Returning a promise at all. The real store actions are `async` and call
  *     sites chain on that — `.then()`, `.catch()`, `.finally()`, `await`. A
@@ -542,16 +433,19 @@ export function reconcileForwardedRewind(action: string, args: unknown[], value:
  *     `undefined`, so an await-and-inspect call site still could not work in the
  *     mirror. Now it can.
  *
- * The promise never rejects. A transport fault (no owner window, owner did not
- * reply before main's deadline) resolves `undefined` and is logged here, because
- * "the round trip failed" and "the action returned nothing" are the same thing
- * from a caller's perspective: no answer is available. Domain failures are
- * unaffected — an action that returns `{ ok: false, error }` delivers exactly
- * that, and the caller reads it normally.
+ * The promise never rejects. A transport fault (`StudioActionFailure`, e.g.
+ * the local server is unreachable) resolves `undefined` and is logged here,
+ * because "the round trip failed" and "the action returned nothing" are the
+ * same thing from a caller's perspective: no answer is available. Domain
+ * failures are unaffected — an action that returns `{ ok: false, error }`
+ * delivers exactly that, and the caller reads it normally.
  */
 export function applyMirrorOverrides(): string[] {
   if (applied) return []
   applied = true
+  // Before any reducer runs here: owner-only side effects in the shared
+  // reducers check this, and they must not repeat in a Studio client.
+  declareMirrorWindow()
   const state = useSessionStore.getState() as unknown as Record<string, unknown>
   const overrides: Record<string, unknown> = {}
   const missing: string[] = []
@@ -561,32 +455,55 @@ export function applyMirrorOverrides(): string[] {
       continue
     }
     overrides[name] = async (...args: unknown[]): Promise<unknown> => {
-      rDebug('studio.mirror', 'forwarding action to owner', { action: name, arg_count: args.length })
+      const environmentId = resolveActionEnvironment(name, args)
+      const activeTabId = activeTabIdForAction(name)
+      // A mutation aimed at a remote Environment this desktop cannot reach
+      // is refused here, not queued. The broker WOULD hold it and send it on
+      // reconnect, which is right for the local server (a restart is a blip
+      // on this machine's own state) and wrong for another machine: the
+      // action was decided against rows that stopped being current the
+      // moment the wire dropped, and replaying it minutes later applies an
+      // old intent to a conversation that has moved on.
+      if (environmentId !== LOCAL_ENVIRONMENT_ID && environmentAvailability.availabilityOf(environmentId) !== 'connected') {
+        rWarn('studio.mirror', 'refused an action for an environment this desktop cannot reach', {
+          action: name, environment_id: environmentId, availability: environmentAvailability.availabilityOf(environmentId),
+        })
+        return undefined
+      }
+      rDebug('studio.mirror', 'forwarding action to owning environment', { action: name, arg_count: args.length, environment_id: environmentId, active_tab_id: activeTabId ?? '' })
       // Selection is visually local but owner-durable. Reflect it immediately so
-      // Studio does not wait for the IPC round trip plus active-tab push before
-      // painting the requested conversation. The owner remains authoritative:
-      // transport failure rolls this optimistic value back, and the normal owner
-      // push converges successful selections.
+      // Studio does not wait for the wire round trip plus active-tab push before
+      // painting the requested conversation. The server remains authoritative:
+      // transport failure rolls this optimistic value back, and the normal
+      // tabs-sync push converges successful selections.
       const optimisticTabId = name === 'selectTab' && typeof args[0] === 'string' ? args[0] : null
       const previousTabId = optimisticTabId ? useSessionStore.getState().activeTabId : undefined
       if (optimisticTabId && hasMirrorTab(optimisticTabId)) useSessionStore.setState({ activeTabId: optimisticTabId })
-      const reply = await window.ion.studioCallAction(name, args)
-      if (!reply.ok) {
+      // The composer reads the draft back out of this store on the next tab
+      // switch, which can happen before the round trip lands.
+      applyOptimisticDraft(name, args)
+      let value: unknown
+      try {
+        value = await action(environmentId, name, args, activeTabId ? { activeTabId } : {})
+      } catch (err) {
         if (optimisticTabId && useSessionStore.getState().activeTabId === optimisticTabId) {
           useSessionStore.setState({ activeTabId: previousTabId })
         }
-        // Transport-level: the call never reached a conclusion. Warn rather
-        // than throw — the caller's `.catch` is for the action's own failures,
-        // and a wedged owner window is not something a click handler can
-        // meaningfully recover from beyond reporting "no result".
+        // Transport-level or domain-level: the call never produced a usable
+        // value. Warn rather than throw — the caller's `.catch` is for the
+        // action's own failures, and an unreachable local server is not
+        // something a click handler can meaningfully recover from beyond
+        // reporting "no result".
+        const failure = err instanceof StudioActionFailure ? err.message : String(err)
         rWarn('studio.mirror', 'forwarded action did not complete', {
-          action: name, error: reply.error ?? '',
+          action: name, error: failure,
         })
         return undefined
       }
       reconcileForwardedAttachments(name, args)
-      reconcileForwardedRewind(name, args, reply.value)
-      return reply.value
+      reconcileForwardedRewind(name, args, value)
+      reconcileForwardedCloseIntent(name, value)
+      return value
     }
   }
   if (missing.length > 0) {

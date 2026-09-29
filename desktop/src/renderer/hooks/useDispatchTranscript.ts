@@ -19,13 +19,14 @@
  * agent-level sentinel (agent with no registered dispatch yet).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { getDispatches, dispatchKey, mostRecentDispatch } from '../components/agent-panel-helpers'
-import { mapConversationMessages } from '../components/agent-conversation-mapper'
-import { reconcileActivity } from '../components/agent-dispatch-activity'
+import { mapConversationMessages } from '@ion/shared/transcript/agent-conversation-mapper'
+import { mergeDispatchTranscript } from '@ion/server/components/agent-dispatch-activity'
 import type { DispatchInfo } from '../components/agent-panel-helpers'
-import type { AgentStateUpdate, Message } from '../../shared/types'
+import type { AgentStateUpdate, Message } from '@ion/shared/types'
 import { rDebug, rError } from '../rendererLogger'
+import { host } from '../host/host-instance'
 
 export interface DispatchSubject {
   agentName: string
@@ -89,7 +90,7 @@ export function useDispatchTranscript(subject: DispatchSubject | null, subjectAg
     }
     try {
       rDebug('dispatch-transcript', 'fetching conversation', { conversation_id: convId, show_loading: showLoading })
-      const data = await window.ion.getConversation(convId, 0, 200)
+      const data = await host.shell.getConversation(convId, 0, 200)
       const msgs: Message[] = mapConversationMessages(data.messages || [])
       setConvMessages((prev) => {
         const next = new Map(prev)
@@ -154,13 +155,7 @@ export function useDispatchTranscript(subject: DispatchSubject | null, subjectAg
       // cover are appended so the view streams in real time. Keyed by
       // dispatch id — two dispatches can share a conversationId.
       const pushMsgs = activeDispatch?.id ? dispatchActivity?.[activeDispatch.id] : undefined
-      let mergedMsgs = rawMsgs
-      if (pushMsgs && pushMsgs.length > 0) {
-        mergedMsgs = reconcileActivity(rawMsgs ?? [], {
-          order: pushMsgs.map((_, i) => `idx:${i}`),
-          entries: Object.fromEntries(pushMsgs.map((m, i) => [`idx:${i}`, { key: `idx:${i}`, seq: i, ts: m.timestamp ?? 0, message: m }])),
-        })
-      }
+      const mergedMsgs = mergeDispatchTranscript(rawMsgs, pushMsgs)
       return { dispatches, dispIdx, slicedMsgs: mergedMsgs, isLoading }
     },
     [selectedDispatch, convMessages, convLoading, dispatchActivity, defaultDispatchIndex],

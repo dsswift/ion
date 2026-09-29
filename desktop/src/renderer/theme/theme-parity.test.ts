@@ -15,7 +15,7 @@
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
-import { IOS_THEME_TOKEN_KEYS } from '../../shared/theme-pack-types'
+import { IOS_THEME_TOKEN_KEYS } from '@ion/shared/theme-pack-types'
 import { classicColors, darkColors, lightColors, contrastDarkColors, contrastLightColors, themes, type ColorPalette } from '../theme-tokens'
 
 interface ParityToken {

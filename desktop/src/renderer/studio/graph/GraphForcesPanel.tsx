@@ -12,7 +12,7 @@
 import React from 'react'
 import { useColors } from '../../theme'
 import { useGraphStore } from './graph-store'
-import { LAYOUT_FORCES_COMPACT, LAYOUT_FORCES_LOBES, type LayoutForces } from '../../../shared/graph-view-types'
+import { LAYOUT_FORCES_COMPACT, LAYOUT_FORCES_LOBES, type LayoutForces } from '@ion/shared/graph-view-types'
 
 interface SliderSpec {
   key: keyof LayoutForces

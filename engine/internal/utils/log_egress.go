@@ -67,7 +67,7 @@ const defaultEgressBufferMaxRecords = 50_000
 // egressRecord is the structured payload shipped to downstream egress targets.
 // It mirrors the canonical log schema (docs/observability/log-schema.md) so
 // the egress stream is parseable by the same tooling as the local JSONL file,
-// and mirrors the desktop EgressRecord (desktop/src/main/log-egress.ts) so
+// and mirrors the TypeScript EgressRecord (packages/shared/src/log-egress.ts) so
 // engine and desktop egress are byte-shape identical for the same record.
 //
 // Correlation-ID placement follows the operational log schema exactly:
@@ -81,7 +81,7 @@ const defaultEgressBufferMaxRecords = 50_000
 //     ambient-correlation path carries only session/conversation/trace), so no
 //     span_id field is added here — a field nothing writes would be dead weight.
 //   - user is the attribution carrier (R20), top-level and omit-when-empty,
-//     matching the desktop EgressRecord and the telemetry envelope.
+//     matching the TypeScript EgressRecord and the telemetry envelope.
 type egressRecord struct {
 	Ts             string         `json:"ts"`
 	Level          string         `json:"level"`
@@ -106,8 +106,8 @@ type egressRecord struct {
 	// of stuffing the raw JSON into Msg — which the remote ion_otlp_unwrap
 	// pipeline cannot recognize as telemetry. All omitempty so operational
 	// records serialize unchanged and the fields survive the spool JSON
-	// round-trip. Mirrors the desktop EgressRecord index-signature carrying the
-	// parsed telemetry event (desktop/src/main/log-egress-otel.ts).
+	// round-trip. Mirrors the TypeScript EgressRecord index-signature carrying the
+	// parsed telemetry event (packages/shared/src/log-egress-otel.ts).
 	Name      string         `json:"name,omitempty"`
 	Payload   map[string]any `json:"payload,omitempty"`
 	Context   map[string]any `json:"context,omitempty"`
@@ -142,9 +142,11 @@ type EgressForwarder struct {
 	// the timeout is scoped to egress only and does not affect other callers.
 	httpClient *http.Client
 	// ambientFields are stable machine-identity fields (host, machine_id,
-	// mdm_device_id, mdm_serial) merged into every egress record. Populated
-	// once at construction from getMachineIdentity(); never mutated after that.
-	// Caller-supplied fields take precedence — ambient only fills absent keys.
+	// mdm_device_id, mdm_serial) stamped on every egress record. The install
+	// is the shipped resource's service.instance.id, not a field.
+	// Populated once at construction from getMachineIdentity(); never mutated
+	// after that. They win over a caller field of the same name
+	// (withMachineIdentity).
 	ambientFields map[string]any
 
 	// bufferMax caps how many records may sit in the in-memory buffer. The
@@ -246,8 +248,7 @@ func newEgressForwarder(cfg types.LoggingConfig) *EgressForwarder {
 	}
 
 	// Locate the spool alongside ~/.ion/engine.jsonl.
-	home, _ := UserHomeDir() //nolint:errcheck // empty home handled by caller
-	spoolPath := filepath.Join(home, ".ion", ".engine-egress-spool.jsonl")
+	spoolPath := filepath.Join(IonDir(), egressSpoolFileName())
 
 	f := &EgressForwarder{
 		cfg:           cfg,
@@ -260,7 +261,7 @@ func newEgressForwarder(cfg types.LoggingConfig) *EgressForwarder {
 		loggedErrs:    make(map[string]bool),
 		stopCh:        make(chan struct{}),
 		flushDone:     make(chan struct{}),
-		ambientFields: ambientFieldsFromIdentity(getMachineIdentity()),
+		ambientFields: machineFieldsFromIdentity(getMachineIdentity()),
 	}
 	interval := time.Duration(cfg.EgressFlushIntervalMs) * time.Millisecond
 	f.flushTicker = time.NewTicker(interval)
@@ -289,9 +290,8 @@ func (f *EgressForwarder) shipTailed(rec egressRecord) {
 }
 
 // enqueue is the shared buffer-append + batch-flush trigger behind ship and
-// shipTailed. Stamps a per-record event_id (when absent) and merges ambient
-// machine-identity fields into the record before buffering: ambient fills
-// absent keys; caller-supplied fields take precedence.
+// shipTailed. Stamps a per-record event_id (when absent) and the machine
+// identity (winning over a caller field of the same name) before buffering.
 func (f *EgressForwarder) enqueue(rec egressRecord) {
 	// Stamp a unique event_id when the record does not already carry one. This
 	// is the single construction chokepoint both ship and shipTailed funnel
@@ -301,21 +301,7 @@ func (f *EgressForwarder) enqueue(rec egressRecord) {
 	if rec.EventID == "" {
 		rec.EventID = GenEventID()
 	}
-	if len(f.ambientFields) > 0 {
-		if rec.Fields == nil {
-			merged := make(map[string]any, len(f.ambientFields))
-			for k, v := range f.ambientFields {
-				merged[k] = v
-			}
-			rec.Fields = merged
-		} else {
-			for k, v := range f.ambientFields {
-				if _, exists := rec.Fields[k]; !exists {
-					rec.Fields[k] = v
-				}
-			}
-		}
-	}
+	rec.Fields = withMachineIdentity(rec.Fields, f.ambientFields)
 	f.mu.Lock()
 	f.buffer = append(f.buffer, rec)
 	// Evict oldest on overflow (same drop-oldest policy as the spool cap).

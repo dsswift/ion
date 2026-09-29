@@ -35,6 +35,10 @@ func captureNestingLogs(t *testing.T) func() []capturedNestingLog {
 	t.Helper()
 	nestingLogMu.Lock()
 	utils.ResetLogRateLimitForTest()
+	nestingLoggedMu.Lock()
+	nestingLogged = map[string]map[string]string{}
+	emittedCounts = map[string]int{}
+	nestingLoggedMu.Unlock()
 
 	var mu sync.Mutex
 	var logs []capturedNestingLog
@@ -239,4 +243,98 @@ func TestAgentSnapshotNestingReadsJSONNumbers(t *testing.T) {
 	if !warned {
 		t.Fatal("a float64 depth was not recognised as nested: a rehydrated snapshot would be misclassified as root-level")
 	}
+}
+
+// A snapshot that repeats the previous one (every heartbeat tick) must not add
+// INFO lines: only a change does. This line was 15% of engine.jsonl, which
+// rotated a day of evidence down to a few hours.
+func TestAgentSnapshotNestingRepeatIsDebugAndChangeIsInfo(t *testing.T) {
+	read := captureNestingLogs(t)
+	prevLevel := utils.GetLevel()
+	utils.SetLevel(utils.LevelDebug)
+	t.Cleanup(func() { utils.SetLevel(prevLevel) })
+	child := func(status string) []types.AgentStateUpdate {
+		a := nestingAgent("dispatch-poll-check-1", "poll-check", map[string]interface{}{
+			"dispatchParentId": "dispatch-agent-1", "dispatchDepth": 2,
+		})
+		a.Status = status
+		return []types.AgentStateUpdate{a}
+	}
+	levels := func() []utils.LogLevel {
+		var out []utils.LogLevel
+		for _, e := range read() {
+			out = append(out, e.level)
+		}
+		return out
+	}
+
+	logAgentSnapshotNesting("sess-1", "dispatch_start", child("running"))
+	logAgentSnapshotNesting("sess-1", "heartbeat", child("running"))
+	logAgentSnapshotNesting("sess-1", "dispatch_end", child("done"))
+	got := levels()
+	want := []utils.LogLevel{utils.LevelInfo, utils.LevelInfo, utils.LevelDebug, utils.LevelDebug, utils.LevelInfo, utils.LevelDebug}
+	if len(got) != len(want) {
+		t.Fatalf("levels = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("levels = %v, want %v (entry, summary per snapshot)", got, want)
+		}
+	}
+
+	// A stopped session is forgotten, so its next snapshot is news again.
+	forgetAgentSnapshotNesting("sess-1", true)
+	logAgentSnapshotNesting("sess-1", "dispatch_start", child("done"))
+	if last := levels(); last[len(last)-2] != utils.LevelInfo {
+		t.Fatalf("after forget the entry must be INFO again: %v", last)
+	}
+}
+
+// The emission line is INFO when the roster size changes or the emission is
+// forced, DEBUG when a heartbeat repeats it.
+func TestAgentSnapshotEmittedLevel(t *testing.T) {
+	captureNestingLogs(t)
+	steps := []struct {
+		count int
+		force bool
+		want  utils.LogLevel
+	}{
+		{0, false, utils.LevelInfo},  // first emission for the session
+		{0, false, utils.LevelDebug}, // empty heartbeat repeat
+		{2, false, utils.LevelInfo},  // roster grew
+		{2, false, utils.LevelDebug},
+		{2, true, utils.LevelInfo},  // forced
+		{0, false, utils.LevelInfo}, // roster emptied
+	}
+	for i, st := range steps {
+		if got := agentSnapshotEmittedLevel("sess-e", st.count, st.force); got != st.want {
+			t.Fatalf("step %d: level = %v, want %v", i, got, st.want)
+		}
+	}
+	forgetAgentSnapshotNesting("sess-e", true)
+	if got := agentSnapshotEmittedLevel("sess-e", 0, false); got != utils.LevelInfo {
+		t.Fatalf("a stopped session starts over at INFO, got %v", got)
+	}
+}
+
+// Concurrent snapshots for one session each read the published description
+// map as prev; a map still being filled must never be published.
+func TestLogAgentSnapshotNesting_ConcurrentSameSession(t *testing.T) {
+	logs := captureNestingLogs(t)
+	defer logs()
+	snapshot := []types.AgentStateUpdate{{
+		ID: "child", Name: "m", Status: "running",
+		Metadata: map[string]interface{}{"dispatchParentId": "parent", "dispatchDepth": 2},
+	}}
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 50 {
+				logAgentSnapshotNesting("sess-race", "tick", snapshot)
+			}
+		}()
+	}
+	wg.Wait()
 }

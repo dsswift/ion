@@ -2,34 +2,31 @@ import { app, type WebContents } from 'electron'
 
 declare const __ION_DESKTOP_VERSION__: string
 
-import type { StartupReport, StartupSource, StartupState, StartupTarget } from '../shared/startup-state'
+import { STARTUP_PROGRESS_CHANNEL, isStartupReport, type StartupReport, type StartupSource, type StartupState } from '@ion/shared/startup-state'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
+import type { StudioFrame } from '@ion/shared/studio-wire/types'
 import { state } from './state'
-import { log, warn } from './logger'
+import { debug, log, warn } from './logger'
 import { createStartupWindow } from './startup-window'
-import { showWindow, createTray } from './window-manager'
-import { registerActiveUiShortcuts } from './active-ui'
+import { createTray } from './window-manager'
+import { registerStudioShortcuts } from './studio-shortcuts'
 import { openStudioWindow, revealStudioWindow } from './studio-window-manager'
-import { signIn } from './oauth/entra-auth'
+import { broker } from './connections/broker-instance'
 import { broadcast } from './broadcast'
 
-import type { SurfacePlan } from './surface-launch'
-
-let target: StartupTarget | null = null
-let launchPlan: SurfacePlan | null = null
 let stateValue: StartupState = {
   sequence: 0,
-  target: null,
   source: 'main',
   status: 'Starting Ion…',
   mode: 'loading',
   authenticationBusy: false,
   authenticationError: null,
   appVersion: __ION_DESKTOP_VERSION__,
-  ownerReady: false,
   studioReady: false,
+  serverReady: false,
   error: null,
 }
-const sourceSequence: Record<StartupSource, number> = { main: -1, owner: -1, studio: -1 }
+const sourceSequence: Record<StartupSource, number> = { main: -1, studio: -1, server: -1 }
 let revealed = false
 
 function publish(): void {
@@ -37,40 +34,47 @@ function publish(): void {
 }
 
 function expectedSender(source: StartupSource): WebContents | null {
-  if (source === 'owner') return state.mainWindow?.webContents ?? null
   if (source === 'studio') return state.studioWindow?.webContents ?? null
+  // `main` reports come from this process; `server` reports arrive only
+  // through relayServerStartupReport, off the LOCAL environment's wire.
   return null
 }
 
+/**
+ * Reveal needs both ready reports. The renderer's arrives seconds before the
+ * server's on any boot with saved tabs: the server restores tabs and starts
+ * sessions for the long part of a boot, and the renderer's own bootstrap
+ * does not wait on that (tabs hydrate from the wire as frames arrive).
+ * Revealing on the renderer alone put a sidebar filling in chunk by chunk
+ * over a "Syncing" placeholder on screen, which is the loading the splash
+ * exists to cover. This is the owner-ready half of the gate the monolithic
+ * desktop had; it went missing when the store moved into the server.
+ */
 function maybeReveal(): void {
-  if (revealed || stateValue.mode === 'authentication' || stateValue.error || !target || !stateValue.ownerReady) return
-  if (target === 'studio' && !stateValue.studioReady) return
+  if (revealed || stateValue.mode === 'authentication' || stateValue.error) return
+  if (!stateValue.studioReady || !stateValue.serverReady) return
   revealed = true
-  if (target === 'overlay') showWindow('startup complete')
-  else revealStudioWindow('startup complete')
-  registerActiveUiShortcuts(launchPlan!)
+  revealStudioWindow('startup complete')
+  registerStudioShortcuts()
   createTray()
   const splash = state.splashWindow
   if (splash && !splash.isDestroyed()) splash.destroy()
-  log('startup', 'startup target revealed', { target })
+  log('startup', 'startup target revealed')
 }
 
-export function startStartup(surfacePlan: SurfacePlan): void {
-  target = surfacePlan.activeUi
-  launchPlan = surfacePlan
+export function startStartup(): void {
   revealed = false
   sourceSequence.main = -1
-  sourceSequence.owner = -1
   sourceSequence.studio = -1
+  sourceSequence.server = -1
   stateValue = {
     ...stateValue,
-    target,
     mode: 'loading',
     authenticationBusy: false,
     authenticationError: null,
     appVersion: __ION_DESKTOP_VERSION__,
-    ownerReady: false,
     studioReady: false,
+    serverReady: false,
     error: null,
   }
   createStartupWindow()
@@ -78,7 +82,10 @@ export function startStartup(surfacePlan: SurfacePlan): void {
 }
 
 export function reportStartup(report: StartupReport, sender?: WebContents): boolean {
-  if (report.source !== 'main') {
+  // Only the renderer source carries a sender to check: `main` is this
+  // process, and `server` reaches here solely through relayServerStartupReport
+  // (ipc/startup.ts refuses any window claiming another source).
+  if (report.source === 'studio') {
     const expected = expectedSender(report.source)
     if (!expected || sender?.id !== expected.id) {
       warn('startup', 'startup report rejected: unexpected sender', { source: report.source })
@@ -107,8 +114,8 @@ export function reportStartup(report: StartupReport, sender?: WebContents): bool
     status: report.status,
     authenticationBusy: stateValue.authenticationBusy,
     authenticationError: stateValue.authenticationError,
-    ownerReady: stateValue.ownerReady || (report.source === 'owner' && report.ready === true),
     studioReady: stateValue.studioReady || (report.source === 'studio' && report.ready === true),
+    serverReady: stateValue.serverReady || (report.source === 'server' && report.ready === true),
     mode: report.error ? 'error' : stateValue.mode,
     error: report.error ?? stateValue.error,
   }
@@ -121,7 +128,6 @@ export function reportStartup(report: StartupReport, sender?: WebContents): bool
     error: report.error ?? '',
   })
   publish()
-  if (report.source === 'owner' && report.ready && target === 'studio') prepareStudioStartup()
   maybeReveal()
   return true
 }
@@ -188,7 +194,10 @@ export async function authenticateStartup(): Promise<void> {
   publish()
   log('startup', 'required operator authentication started')
   try {
-    const identity = await signIn()
+    // The engine-owned PKCE flow, through the local server (`entra.signIn`).
+    const result = await broker.sendAction(LOCAL_ENVIRONMENT_ID, 'entra.signIn', []) as { ok: boolean; identity?: { user: string }; error?: string }
+    if (!result.ok || !result.identity) throw new Error(result.error ?? 'sign-in failed')
+    const identity = result.identity
     stateValue = {
       ...stateValue,
       sequence: stateValue.sequence + 1,
@@ -198,7 +207,7 @@ export async function authenticateStartup(): Promise<void> {
       status: 'Signed in. Preparing your workspace…',
     }
     publish()
-    log('startup', 'required operator authentication completed', { user: identity.user })
+    log('startup', 'required operator authentication completed', { signed_in_user: identity.user })
     // The gate blocks reveal while mode is 'authentication', and both ready
     // reports can arrive before this promise settles: the main-process wait
     // loop polls the engine every 250ms and proceeds on the engine's own view
@@ -242,8 +251,8 @@ export function isSplashSender(sender: WebContents): boolean {
   return sender.id === splash.webContents.id
 }
 
+/** Create the (hidden) Studio window so its renderer can start loading and reporting readiness. Revealed later by {@link maybeReveal} once it reports ready. */
 export function prepareStudioStartup(): void {
-  if (target !== 'studio') return
   openStudioWindow('startup', false)
 }
 
@@ -256,4 +265,43 @@ export function restartStartup(): void {
 export function quitStartup(): void {
   log('startup', 'quit requested from splash')
   app.quit()
+}
+
+/**
+ * The server-sourced startup report carried by a wire frame, or null when the
+ * frame is anything else. Only the LOCAL environment's server drives this
+ * desktop's splash: a remote environment restoring its tabs is not this
+ * boot. A report claiming another source is dropped, since `server` is the
+ * only source that may arrive without a sender window.
+ */
+export function serverStartupReportFromFrame(environmentId: string, frame: StudioFrame): StartupReport | null {
+  if (environmentId !== LOCAL_ENVIRONMENT_ID) return null
+  if (frame.type !== 'studio_event' || frame.channel !== STARTUP_PROGRESS_CHANNEL) return null
+  // `broadcast(channel, report)` is a one-argument publish, which the
+  // server's formatEventPayload delivers as the bare report object.
+  const report: unknown = frame.payload
+  if (!isStartupReport(report) || report.source !== 'server') {
+    warn('startup', 'server startup report rejected: malformed or wrong source', { environment_id: environmentId })
+    return null
+  }
+  return report
+}
+
+/**
+ * Relays a server startup report into the coordinator; a no-op for any other
+ * frame. The server replays its latest report to every connection that
+ * attaches, including the terminal "ready" one, so a desktop that connects
+ * after a fast restore still sees it. Once the window is revealed those
+ * replays (on every reconnect) say nothing the splash can use, so they are
+ * noted rather than pushed through the sequence check, which would log each
+ * one as a dropped report.
+ */
+export function relayServerStartupReport(environmentId: string, frame: StudioFrame): boolean {
+  const report = serverStartupReportFromFrame(environmentId, frame)
+  if (!report) return false
+  if (revealed) {
+    debug('startup', 'server startup report after reveal ignored', { sequence: report.sequence, status: report.status, ready: report.ready === true })
+    return false
+  }
+  return reportStartup(report)
 }

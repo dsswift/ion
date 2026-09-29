@@ -17,6 +17,11 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
+// keychainLookup is the indirection tests substitute to exercise the
+// keychain resolution level without touching the real OS credential store.
+// Production code always uses the platform GetKeychainPassword.
+var keychainLookup = GetKeychainPassword
+
 // Well-known environment variable names for provider API keys.
 var providerEnvVars = map[string][]string{
 	"anthropic":  {"ANTHROPIC_API_KEY"},
@@ -33,6 +38,12 @@ var providerEnvVars = map[string][]string{
 	"cerebras":   {"CEREBRAS_API_KEY"},
 	"xai":        {"XAI_API_KEY"},
 	"deepseek":   {"DEEPSEEK_API_KEY"},
+	// foundry was constructor-only (foundry.go) before this entry: the
+	// constructor tried ANTHROPIC_FOUNDRY_API_KEY, falling back to
+	// ANTHROPIC_API_KEY. This makes that same fallback resolvable through
+	// ResolveKey/HasKey so the resolver, not the constructor, is the single
+	// path (baseline.md §1.2).
+	"foundry": {"ANTHROPIC_FOUNDRY_API_KEY", "ANTHROPIC_API_KEY"},
 }
 
 // oauthToken holds an OAuth access token along with its refresh token and expiry.
@@ -93,8 +104,25 @@ func (r *Resolver) SetProgrammatic(providerID, apiKey string) {
 // any credentials available (programmatic, env var, keychain, file store, or
 // legacy credentials.json). Unlike ResolveKey, it does not attempt an OAuth
 // refresh. Returns whether credentials exist and the auth source description
-// (e.g. "env", "filestore").
+// (e.g. "env", "filestore"). This is the unattributed ("" subject) case --
+// the KeyHaver interface's own shape has no subject parameter, so every
+// existing caller (server-side listing with no principal, the routing
+// fall-through path via keys.HasKey) is the process-wide question this
+// answers, byte for byte unchanged (B-21).
 func (r *Resolver) HasKey(provider string) (bool, string) {
+	return r.HasKeyForSubject("", provider)
+}
+
+// HasKeyForSubject is HasKey generalized over subject (child 07, R-14): the
+// negative-result cache is keyed by (subject, provider) rather than provider
+// alone, so a negative cached while answering for one principal's
+// CredentialContext.HasCredential fall-through never masks a different
+// principal's cache entry for the same provider. The five resolution levels
+// below are process-wide and do not themselves vary by subject -- only the
+// CACHE KEY does, which is what keeps the fall-through answer isolated per
+// principal rather than shared process-wide the way the pre-child-07 cache
+// was.
+func (r *Resolver) HasKeyForSubject(subject, provider string) (bool, string) {
 	provider = strings.ToLower(provider)
 
 	// A cached negative skips levels 3-4c, which are the I/O ones (keychain
@@ -102,12 +130,12 @@ func (r *Resolver) HasKey(provider string) (bool, string) {
 	// cached: serving a stale positive would keep handing out a credential the
 	// operator revoked. Every credential write invalidates this, so the TTL is
 	// a backstop rather than the mechanism.
-	if hasNegative(provider) {
-		utils.LogWithFields(utils.LevelDebug, "auth", "has key negative cache hit", map[string]any{"provider": provider})
+	if hasNegative(subject, provider) {
+		utils.LogWithFields(utils.LevelDebug, "auth", "has key negative cache hit", map[string]any{"subject": subject, "provider": provider})
 		return false, ""
 	}
 
-	utils.LogWithFields(utils.LevelDebug, "auth", "has key checking", map[string]any{"provider": provider})
+	utils.LogWithFields(utils.LevelDebug, "auth", "has key checking", map[string]any{"subject": subject, "provider": provider})
 
 	// Level 1: Programmatic
 	if key, ok := r.programmatic[provider]; ok && key != "" {
@@ -116,8 +144,15 @@ func (r *Resolver) HasKey(provider string) (bool, string) {
 	}
 	utils.LogWithFields(utils.LevelDebug, "auth", "has key miss", map[string]any{"provider": provider, "reason": "programmatic"})
 
-	// Level 2: Environment variables
-	if resolveFromEnv(provider) != "" {
+	// Level 2: Environment variables. A provider with a declared multi-value
+	// set (Bedrock, Vertex) reports true only when its whole required set is
+	// present -- otherwise a "configured" Bedrock with a missing secret would
+	// report keyless to routing (child 06 depends on this).
+	if _, ok := ResolveProviderEnv(provider); ok {
+		utils.LogWithFields(utils.LevelDebug, "auth", "has key found", map[string]any{"provider": provider, "reason": "env"})
+		return true, "env"
+	}
+	if _, isMultiValue := providerEnvSets[provider]; !isMultiValue && resolveFromEnv(provider) != "" {
 		utils.LogWithFields(utils.LevelDebug, "auth", "has key found", map[string]any{"provider": provider, "reason": "env"})
 		return true, "env"
 	}
@@ -128,7 +163,7 @@ func (r *Resolver) HasKey(provider string) (bool, string) {
 	if r.config != nil && r.config.SecureStore != nil && r.config.SecureStore.ServiceName != "" {
 		serviceName = r.config.SecureStore.ServiceName
 	}
-	if key, err := GetKeychainPassword(serviceName, provider); err == nil && key != "" {
+	if key, err := keychainLookup(serviceName, provider); err == nil && key != "" {
 		utils.LogWithFields(utils.LevelDebug, "auth", "has key found", map[string]any{"provider": provider, "reason": "keychain"})
 		return true, "keychain"
 	}
@@ -156,9 +191,20 @@ func (r *Resolver) HasKey(provider string) (bool, string) {
 	}
 	utils.LogWithFields(utils.LevelDebug, "auth", "has key miss", map[string]any{"provider": provider, "reason": "credentials.json"})
 
-	rememberNegative(provider)
-	utils.LogWithFields(utils.LevelInfo, "auth", "has key no credentials found", map[string]any{"provider": provider})
+	rememberNegative(subject, provider)
+	utils.LogWithFields(utils.LevelInfo, "auth", "has key no credentials found", map[string]any{"subject": subject, "provider": provider})
 	return false, ""
+}
+
+// ResolveProviderValues resolves the multi-value environment set for a
+// provider (Bedrock's access key/secret/session token/region, Vertex's
+// token/project) via auth.Resolver, so a caller that needs the whole set does
+// not reach past the resolver into the environment directly. ResolveKey's
+// signature is unchanged; this is an additional accessor for providers whose
+// credential is not a single string. Returns (nil, false) for a provider with
+// no declared set -- ResolveKey answers those.
+func (r *Resolver) ResolveProviderValues(provider string) (*ProviderEnvValues, bool) {
+	return ResolveProviderEnv(provider)
 }
 
 // ResolveKey resolves an API key for the given provider using a 5-level chain:
@@ -191,7 +237,7 @@ func (r *Resolver) ResolveKey(provider string) (string, error) {
 		serviceName = r.config.SecureStore.ServiceName
 	}
 	utils.LogWithFields(utils.LevelDebug, "auth", "resolve key trying keychain", map[string]any{"provider": provider})
-	if key, err := GetKeychainPassword(serviceName, provider); err == nil && key != "" {
+	if key, err := keychainLookup(serviceName, provider); err == nil && key != "" {
 		utils.LogWithFields(utils.LevelInfo, "auth", "resolve key resolved via keychain", map[string]any{"provider": provider, "count": len(key)})
 		return key, nil
 	}
@@ -237,6 +283,10 @@ func (r *Resolver) ResolveKey(provider string) (string, error) {
 // present, a new access token is fetched from the token endpoint. The refreshed
 // token is written back to the store before returning.
 func (r *Resolver) refreshOAuthToken(provider string, cfg types.OAuthConfig, fs *FileStore) (string, error) {
+	cfg, err := withResolvedClientID(provider, cfg)
+	if err != nil {
+		return "", err
+	}
 	storeKey := "oauth:" + provider
 
 	raw, err := fs.GetKey(storeKey)
@@ -359,35 +409,53 @@ func doRefreshTokenGrant(clientID, refreshToken, tokenURL, scope, audience, audi
 // ListStored returns a list of credentials known to the resolver, drawn from the
 // encrypted file store and the legacy credentials.json. Keychain entries are not
 // enumerable via the security CLI without prompting, so they are not included.
+// ListStored returns a list of credentials known to the resolver, drawn from the
+// encrypted file store and the legacy plaintext credentials.json. This is the
+// unattributed ("" subject) view -- ListStoredFor is the principal-aware
+// counterpart (child 08, R-38).
 func (r *Resolver) ListStored() []StoredCredential {
+	return r.ListStoredFor("")
+}
+
+// ListStoredFor returns the credentials in subject's own partition (child 08,
+// R-38): an attributed principal sees only what THEY stored, never another
+// principal's entries and never the unattributed partition's. subject ""
+// preserves ListStored's exact pre-existing behavior byte for byte
+// (encrypted file store entries, minus internal oauth: grants, plus the
+// legacy credentials.json -- which is unattributed-only and never
+// partitioned, B-09).
+func (r *Resolver) ListStoredFor(subject string) []StoredCredential {
 	var out []StoredCredential
 
-	// Encrypted file store
 	fs := NewFileStore()
-	if creds, _, err := fs.readFile(); err == nil {
-		for provider := range creds.Keys {
+	if names, err := fs.ListFor(subject); err == nil {
+		for _, name := range names {
 			// Skip internal oauth token entries; expose only plain provider keys.
-			if strings.HasPrefix(provider, "oauth:") {
+			if strings.HasPrefix(name, "oauth:") {
 				continue
 			}
-			out = append(out, StoredCredential{Provider: provider, Source: "filestore"})
+			out = append(out, StoredCredential{Provider: name, Source: "filestore"})
 		}
 	}
 
-	// Legacy credentials.json
-	home, err := utils.UserHomeDir()
-	if err == nil {
-		path := filepath.Join(home, ".ion", "credentials.json")
-		if data, err := os.ReadFile(path); err == nil {
-			var legacyCreds map[string]string
-			if err := json.Unmarshal(data, &legacyCreds); err == nil {
-				for provider := range legacyCreds {
-					out = append(out, StoredCredential{Provider: provider, Source: "credentials.json"})
+	// Legacy credentials.json is unattributed-only (B-09): it predates this
+	// program entirely and is never written to by any partitioned path, so
+	// it only ever appears in the unattributed listing.
+	if subject == "" {
+		if dir := utils.IonDir(); dir != "" {
+			path := filepath.Join(dir, "credentials.json")
+			if data, err := os.ReadFile(path); err == nil {
+				var legacyCreds map[string]string
+				if err := json.Unmarshal(data, &legacyCreds); err == nil {
+					for provider := range legacyCreds {
+						out = append(out, StoredCredential{Provider: provider, Source: "credentials.json"})
+					}
 				}
 			}
 		}
 	}
 
+	utils.LogWithFields(utils.LevelDebug, "auth", "list stored credentials", map[string]any{"subject": subject, "count": len(out)})
 	return out
 }
 
@@ -414,11 +482,11 @@ func resolveFromEnv(provider string) string {
 // credentialsFile is a JSON file at ~/.ion/credentials.json with
 // structure: { "provider_name": "api_key_value", ... }
 func resolveFromCredentialsFile(provider string) string {
-	home, err := utils.UserHomeDir()
-	if err != nil {
+	dir := utils.IonDir()
+	if dir == "" {
 		return ""
 	}
-	path := filepath.Join(home, ".ion", "credentials.json")
+	path := filepath.Join(dir, "credentials.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""

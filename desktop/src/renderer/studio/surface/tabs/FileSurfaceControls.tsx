@@ -9,13 +9,13 @@
  */
 import React from 'react'
 import { Eye, PencilSimple, LockSimple, LockSimpleOpen, TextAlignLeft, FloppyDisk } from '@phosphor-icons/react'
-import { useSessionStore } from '../../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { usePreferencesStore } from '../../../preferences'
 import { isMarkdownFile } from '../../../components/FileEditorShared'
 import { useColors } from '../../../theme'
 import { useInteractiveState, interactiveBg } from '../../../hooks/useInteractiveState'
 import { transitions } from '../../../theme-tokens'
-import type { FileEditorTab } from '../../../stores/sessionStore'
+import type { FileEditorTab } from '@ion/server/store/sessionStore'
 
 function ControlButton({
   title,

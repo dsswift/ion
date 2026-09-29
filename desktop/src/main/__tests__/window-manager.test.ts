@@ -1,199 +1,74 @@
 /**
- * window-manager — overlay window level regression
+ * window-manager — tray lifecycle (Studio-only build).
  *
- * Asserts that createWindow() sets the window level to 'modal-panel', not
- * 'screen-saver'. 'screen-saver' (CGWindowLevel 2000) sits above macOS TCC
- * and permission dialogs (~1000), hiding them behind the overlay in tall mode.
- * 'modal-panel' keeps the overlay above normal apps but below system dialogs.
- *
- * If this test fails after a change to window-manager.ts, the window level
- * was raised back to 'screen-saver' (or higher). Do not suppress — fix it.
+ * The overlay glass window, its `createWindow`/`showWindow`/`toggleWindow`
+ * lifecycle, and the `resolveSurfacePlan` gate are gone with the Overlay
+ * (see the desktop overlay removal spec). What remains here is tray
+ * creation and the CSP installer — this file tests the tray.
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest'
-
-// ─── Shared mock state (hoisted so factory closures can capture it) ───────────
-
-const { mockSetAlwaysOnTop, _mockSetVisibleOnAllWorkspaces, mockWindowInstance } = vi.hoisted(() => {
-  const mockSetAlwaysOnTop = vi.fn()
-  const _mockSetVisibleOnAllWorkspaces = vi.fn()
-
-  const mockWindowInstance = {
-    setAlwaysOnTop: mockSetAlwaysOnTop,
-    setVisibleOnAllWorkspaces: _mockSetVisibleOnAllWorkspaces,
-    webContents: {
-      on: vi.fn(),
-      setWindowOpenHandler: vi.fn(),
-      focus: vi.fn(),
-    },
-    once: vi.fn(),
-    on: vi.fn(),
-    loadURL: vi.fn().mockResolvedValue(undefined),
-    loadFile: vi.fn().mockResolvedValue(undefined),
-    show: vi.fn(),
-    hide: vi.fn(),
-    setBounds: vi.fn(),
-    isVisible: vi.fn().mockReturnValue(false),
-    isDestroyed: vi.fn().mockReturnValue(false),
-  }
-
-  return { mockSetAlwaysOnTop, _mockSetVisibleOnAllWorkspaces, mockWindowInstance }
-})
 
 const mockTrayOn = vi.fn()
 const mockOpenStudioWindow = vi.fn()
 
 vi.mock('electron', () => {
-  // BrowserWindow must be a real constructor function so `new BrowserWindow()`
-  // works. The constructor ignores its arguments and returns the shared mock
-  // instance, which carries the spy methods we assert on.
-  function BrowserWindow() {
-    return mockWindowInstance
-  }
-  BrowserWindow.getAllWindows = vi.fn().mockReturnValue([])
-
   return {
     app: {
       getPath: vi.fn().mockReturnValue('/tmp'),
       on: vi.fn(),
-    },
-    BrowserWindow,
-    screen: {
-      getCursorScreenPoint: vi.fn().mockReturnValue({ x: 0, y: 0 }),
-      getDisplayNearestPoint: vi.fn().mockReturnValue({
-        id: 1,
-        workArea: { x: 0, y: 0, width: 1920, height: 1080 },
-      }),
+      quit: vi.fn(),
     },
     session: {
       defaultSession: {
         webRequest: { onHeadersReceived: vi.fn() },
       },
     },
-    globalShortcut: { unregisterAll: vi.fn() },
     Menu: { buildFromTemplate: vi.fn((template: any) => template) },
     nativeImage: { createFromPath: vi.fn().mockReturnValue({ setTemplateImage: vi.fn() }) },
     Tray: vi.fn().mockImplementation(function () {
       return { setToolTip: vi.fn(), setContextMenu: vi.fn(), on: mockTrayOn, isDestroyed: vi.fn().mockReturnValue(false), destroy: vi.fn() }
     }),
-    dialog: { showMessageBoxSync: vi.fn().mockReturnValue(2) },
-    ipcMain: { on: vi.fn(), handle: vi.fn() },
   }
 })
 
-vi.mock('../state', () => ({
-  enterprisePolicyCache: { policy: null },
-  state: { mainWindow: null, tray: null, toggleSequence: 0, forceQuit: false },
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{
+  state: { tray: null },
   SPACES_DEBUG: false,
-  sessionPlane: { hasRunningTabs: vi.fn().mockReturnValue(false), shutdown: vi.fn() },
-  engineBridge: { shutdownAndWait: vi.fn().mockResolvedValue(undefined) },
-}))
+} }))
 
 vi.mock('../logger', () => ({
   log: vi.fn(),
-  flushLogs: vi.fn(),
+  error: vi.fn(),
 }))
 
-vi.mock('../broadcast', () => ({ broadcast: vi.fn() }))
-
-vi.mock('../terminal-manager-instance', () => ({
-  terminalManager: { destroyAll: vi.fn() },
+vi.mock('../local-server-instance', () => ({
+  localServer: { restart: vi.fn() },
 }))
 
 // Resolves rather than returns: restartEngineDaemon shells out to launchctl
 // asynchronously so the tray click never blocks the main thread.
 const mockRestartEngineDaemon = vi.fn().mockResolvedValue(true)
-const mockSurfacePlan = vi.fn(() => ({ activeUi: 'overlay', overlayEnabled: true, studioEnabled: false }))
-vi.mock('../surface-launch', () => ({ resolveSurfacePlan: mockSurfacePlan }))
-vi.mock('../engine-bootstrap', () => ({
+vi.mock('@ion/server/engine/engine-bootstrap', () => ({
   restartEngineDaemon: mockRestartEngineDaemon,
 }))
 
-const mockReassertPolicy = vi.hoisted(() => vi.fn())
 vi.mock('../studio-window-manager', () => ({
   openStudioWindow: mockOpenStudioWindow,
-  reassertStudioActivationPolicy: mockReassertPolicy,
 }))
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
-
-describe('window-manager createWindow()', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mockSurfacePlan.mockReturnValue({ activeUi: 'overlay', overlayEnabled: true, studioEnabled: false })
-  })
-
-  it('calls setAlwaysOnTop with modal-panel, not screen-saver', async () => {
-    const { createWindow } = await import('../window-manager')
-    createWindow()
-
-    expect(mockSetAlwaysOnTop).toHaveBeenCalled()
-
-    // The level is the second positional argument.
-    const levelArg = mockSetAlwaysOnTop.mock.calls[0][1]
-    expect(levelArg).toBe('modal-panel')
-  })
-
-  it('does NOT use screen-saver level (regression guard)', async () => {
-    const { createWindow } = await import('../window-manager')
-    createWindow()
-
-    const usedScreenSaver = mockSetAlwaysOnTop.mock.calls.some((args) => args[1] === 'screen-saver')
-    expect(usedScreenSaver).toBe(false)
-  })
-
-  it('always passes true as the first argument to setAlwaysOnTop', async () => {
-    const { createWindow } = await import('../window-manager')
-    createWindow()
-
-    const enabledArg = mockSetAlwaysOnTop.mock.calls[0][0]
-    expect(enabledArg).toBe(true)
-  })
-
-  it('refuses to show Overlay glass while Studio is the active UI', async () => {
-    mockSurfacePlan.mockReturnValueOnce({ activeUi: 'studio', overlayEnabled: false, studioEnabled: true })
-    const { showWindow } = await import('../window-manager')
-    showWindow('studio regression test')
-    expect(mockWindowInstance.show).not.toHaveBeenCalled()
-  })
-
-  it('re-asserts the activation policy after setVisibleOnAllWorkspaces (accessory side-effect regression)', async () => {
-    // visibleOnFullScreen flips the app to 'accessory' as a macOS/Electron
-    // side effect. With the Studio window open ('regular' policy) that removed Ion
-    // from Cmd-Tab and backgrounded the Studio window on every overlay show.
-    const { createWindow, showWindow } = await import('../window-manager')
-    createWindow()
-    expect(_mockSetVisibleOnAllWorkspaces).toHaveBeenCalled()
-    expect(mockReassertPolicy).toHaveBeenCalled()
-    expect(
-      mockReassertPolicy.mock.invocationCallOrder[mockReassertPolicy.mock.invocationCallOrder.length - 1],
-    ).toBeGreaterThan(_mockSetVisibleOnAllWorkspaces.mock.invocationCallOrder[0])
-
-    mockReassertPolicy.mockClear()
-    _mockSetVisibleOnAllWorkspaces.mockClear()
-    showWindow('test')
-    expect(_mockSetVisibleOnAllWorkspaces).toHaveBeenCalled()
-    expect(mockReassertPolicy).toHaveBeenCalled()
-    expect(
-      mockReassertPolicy.mock.invocationCallOrder[0],
-    ).toBeGreaterThan(_mockSetVisibleOnAllWorkspaces.mock.invocationCallOrder[0])
-  })
-})
 
 describe('window-manager createTray()', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockSurfacePlan.mockReturnValue({ activeUi: 'overlay', overlayEnabled: true, studioEnabled: false })
   })
 
   // window-all-closed keeps Ion resident whenever a tray exists, on the premise
   // that the tray can bring it back. On Windows and Linux a context menu opens
   // on right-click only, so without a 'click' handler the icon is inert and a
   // closed Studio window leaves a running app with no way into it.
-  it('surfaces the active UI on a tray left-click off darwin', async () => {
+  it('opens Ion Studio on a tray left-click off darwin', async () => {
     const original = process.platform
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
-    mockSurfacePlan.mockReturnValue({ activeUi: 'studio', overlayEnabled: false, studioEnabled: true })
     try {
       const { createTray } = await import('../window-manager')
       createTray()

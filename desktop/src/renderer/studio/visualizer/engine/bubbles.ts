@@ -3,7 +3,7 @@
  * long. Each kind is a distinct live-state signal (waiting, permission,
  * error, dispatch-mail).
  */
-import type { StudioBubbleKind } from '../../../../shared/types-studio'
+import type { StudioBubbleKind } from '@ion/shared/types-studio'
 
 export interface BubbleState {
   kind: StudioBubbleKind

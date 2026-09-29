@@ -47,7 +47,7 @@ func TestBuildProviderEntries_CodexSelected_AuthedFromProbe(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("OPENAI_API_KEY", "")
 	s := serverWithCodex(t, true)
-	entries := s.buildProviderEntries()
+	entries := s.buildProviderEntries(nil)
 
 	openai := findEntry(entries, "openai")
 	if openai == nil {
@@ -71,7 +71,7 @@ func TestBuildProviderEntries_CodexSelected_NotAuthed(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("OPENAI_API_KEY", "")
 	s := serverWithCodex(t, false)
-	entries := s.buildProviderEntries()
+	entries := s.buildProviderEntries(nil)
 
 	openai := findEntry(entries, "openai")
 	if openai == nil {
@@ -87,7 +87,7 @@ func TestBuildProviderEntries_CodexSelected_NotAuthed(t *testing.T) {
 
 func TestBuildProviderEntries_CursorAppearsViaUnion(t *testing.T) {
 	s := serverWithCodex(t, true)
-	entries := s.buildProviderEntries()
+	entries := s.buildProviderEntries(nil)
 	// cursor has no HTTP provider registration but must appear via the union.
 	if findEntry(entries, "cursor") == nil {
 		t.Fatal("expected cursor provider entry from the CLI-backed union")
@@ -101,7 +101,7 @@ func TestProviderCliStatus_NoProbeYet(t *testing.T) {
 		probes: reg,
 		config: &types.EngineRuntimeConfig{Providers: map[string]types.ProviderConfig{"openai": {Backend: "codex"}}},
 	}
-	status, selected := s.providerCliStatus("openai")
+	status, selected := s.providerCliStatus("openai", nil)
 	if status != nil {
 		t.Errorf("expected nil cli status before probe, got %+v", status)
 	}

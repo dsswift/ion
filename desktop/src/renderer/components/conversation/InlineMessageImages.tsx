@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react'
 import { ImageGallery } from './ImageGallery'
-import type { Attachment, FileAttachment } from '../../../shared/types'
+import type { Attachment, FileAttachment } from '@ion/shared/types'
 
 const ATTACHED_IMAGE_RE = /\[Attached image: ([^\]]+)\]/g
 

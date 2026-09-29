@@ -2,7 +2,7 @@
   "annotations": {
     "list": []
   },
-  "description": "Ion mobile — which iOS devices are running Ion, on what version, paired to which desktop?",
+  "description": "Ion mobile — which iOS devices are running Ion, on what version, paired to which server?",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
@@ -21,7 +21,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "## Which iOS devices are running Ion, on what version, paired to which desktop?\n\nThe per-device mobile view over the **iOS log stream** (`{component=\"ios\"}`). iOS emits no telemetry, so this pack does not appear on [Ion Fleet](/d/ion-fleet) — it reads the operational logs the paired desktop collects.\n\nEvery line carries **device identity** stamped by iOS: `device_id` (stable per-device UUID from `identifierForVendor` — survives re-pairings), `device_model` (hardware model e.g. `iPhone15,3`), OS version, and app version+build. On MDM-enrolled devices, `mdm_device_id` and `mdm_serial` enable cross-reference to Intune. The desktop stamps `pairing_id` (the ECDH channel ID for the specific pairing session) and `desktop_host`.\n\nThe **device→desktop pairing** table below is the \"which device connected where\" matrix. `desktop_host` matches the telemetry `host`, so a pairing row cross-references the Fleet board for the same machine.\n\nAll panels honor the dashboard time picker except **Device last-seen**, a liveness detector with a fixed 24h lookback so a quiet device stays visible.\n\n| Related | Dashboard |\n|---|---|\n| Landing | [Ion Overview](/d/ion-overview) |\n| Desktop/host view | [Ion Fleet](/d/ion-fleet) |\n| Live logs | [Ion Live Logs](/d/ion-logs) |"
+        "content": "## Which iOS devices are running Ion, on what version, paired to which server?\n\nThe per-device mobile view over the **iOS log stream** (`{service_name=\"ion-ios\", event_name=\"\"}`). iOS emits no telemetry, so this pack does not appear on [Ion Fleet](/d/ion-fleet) — it reads the operational logs the paired server collects.\n\nEvery line carries **device identity** stamped by iOS: `device_id` (stable per-device UUID from `identifierForVendor` — survives re-pairings), `device_model` (hardware model e.g. `iPhone15,3`), OS version, and app version+build. On MDM-enrolled devices, `mdm_device_id` and `mdm_serial` enable cross-reference to Intune. The server stamps `pairing_id` (the ECDH channel ID for the specific pairing session) and `desktop_host`.\n\nThe **device→server pairing** table below is the \"which device connected where\" matrix. `desktop_host` matches the telemetry `host`, so a pairing row cross-references the Fleet board for the same machine.\n\nAll panels honor the dashboard time picker except **Device last-seen**, a liveness detector with a fixed 24h lookback so a quiet device stays visible.\n\n| Related | Dashboard |\n|---|---|\n| Landing | [Ion Overview](/d/ion-overview) |\n| Server/host view | [Ion Fleet](/d/ion-fleet) |\n| Live logs | [Ion Live Logs](/d/ion-logs) |"
       },
       "datasource": null
     },
@@ -74,7 +74,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "count(sum by (device_id) (count_over_time({component=\"ios\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__range])))",
+          "expr": "count(sum by (device_id) (count_over_time({service_name=\"ion-ios\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__range])))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -142,7 +142,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "count(sum by (app_version) (count_over_time({component=\"ios\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__range])))",
+          "expr": "count(sum by (app_version) (count_over_time({service_name=\"ion-ios\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__range])))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -198,7 +198,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({component=\"ios\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__range]))",
+          "expr": "sum(count_over_time({service_name=\"ion-ios\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -265,7 +265,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({component=\"ios\", level=\"ERROR\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__range]))",
+          "expr": "sum(count_over_time({service_name=\"ion-ios\", event_name=\"\", level=\"ERROR\", host_name=~\"$host\", user=~\"$user\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"
@@ -334,7 +334,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "(vector(${__to:date:seconds}) - on() group_right() max by (device_id, device_model) (max_over_time({component=\"ios\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" | label_format ts_unix=\"{{ __timestamp__ | unixEpoch }}\" | unwrap ts_unix [24h]))) / 60",
+          "expr": "(vector(${__to:date:seconds}) - on() group_right() max by (device_id, device_model) (max_over_time({service_name=\"ion-ios\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" | label_format ts_unix=\"{{ __timestamp__ | unixEpoch }}\" | unwrap ts_unix [24h]))) / 60",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "instant",
@@ -415,7 +415,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (device_id, device_model, pairing_id, mdm_device_id, mdm_serial, app_version, app_build, os_version) (count_over_time({component=\"ios\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__range]))",
+          "expr": "sum by (device_id, device_model, pairing_id, mdm_device_id, mdm_serial, app_version, app_build, os_version) (count_over_time({service_name=\"ion-ios\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "instant",
@@ -426,14 +426,14 @@
     {
       "id": 12,
       "type": "table",
-      "title": "Device → desktop pairing",
+      "title": "Device → server pairing",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
         "y": 9
       },
-      "description": "Every device × desktop_host pair that produced iOS logs in the window. device_id is the stable hardware identity (survives re-pairings); pairing_id is the ECDH channel for the specific session. A device paired to two desktops yields two rows; several devices on one desktop yield several rows for that host. desktop_host matches the telemetry host on the Ion Fleet board.",
+      "description": "Every device × desktop_host pair that produced iOS logs in the window. device_id is the stable hardware identity (survives re-pairings); pairing_id is the ECDH channel for the specific session. A device paired to two servers yields two rows; several devices on one server yield several rows for that host. desktop_host matches the telemetry host on the Ion Fleet board.",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -467,7 +467,7 @@
               "device_id": "Device ID",
               "device_model": "Model",
               "pairing_id": "Pairing ID",
-              "desktop_host": "Desktop host",
+              "desktop_host": "Server host",
               "mdm_device_id": "MDM Device ID",
               "mdm_serial": "Serial",
               "Value": "Lines"
@@ -481,7 +481,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (device_id, device_model, pairing_id, mdm_device_id, mdm_serial, desktop_host) (count_over_time({component=\"ios\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__range]))",
+          "expr": "sum by (device_id, device_model, pairing_id, mdm_device_id, mdm_serial, desktop_host) (count_over_time({service_name=\"ion-ios\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "instant",
@@ -525,7 +525,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (device_id, device_model) (count_over_time({component=\"ios\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__range]))",
+          "expr": "sum by (device_id, device_model) (count_over_time({service_name=\"ion-ios\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -585,7 +585,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (device_id, device_model) (count_over_time({component=\"ios\", level=\"ERROR\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__range]))",
+          "expr": "sum by (device_id, device_model) (count_over_time({service_name=\"ion-ios\", event_name=\"\", level=\"ERROR\", host_name=~\"$host\", user=~\"$user\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -652,7 +652,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (device_id, device_model) (count_over_time({component=\"ios\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__interval]))",
+          "expr": "sum by (device_id, device_model) (count_over_time({service_name=\"ion-ios\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -706,7 +706,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (device_id, device_model) (count_over_time({component=\"ios\", level=\"ERROR\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__interval]))",
+          "expr": "sum by (device_id, device_model) (count_over_time({service_name=\"ion-ios\", event_name=\"\", level=\"ERROR\", host_name=~\"$host\", user=~\"$user\"} | json device_id=\"fields.device_id\", device_model=\"fields.device_model\", pairing_id=\"fields.pairing_id\", desktop_host=\"fields.desktop_host\", app_version=\"fields.app_version\", app_build=\"fields.app_build\", os_version=\"fields.os_version\", mdm_device_id=\"fields.mdm_device_id\", mdm_serial=\"fields.mdm_serial\" | __error__=\"\" | device_model=~\"$device\" [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -716,7 +716,7 @@
     },
     {
       "id": 17,
-      "type": "logs",
+      "type": "table",
       "title": "iOS log tail",
       "gridPos": {
         "h": 12,
@@ -728,23 +728,215 @@
         "type": "loki",
         "uid": "loki"
       },
-      "options": {
-        "showTime": true,
-        "showLabels": true,
-        "showCommonLabels": false,
-        "wrapLogMessage": true,
-        "prettifyLogMessage": false,
-        "enableLogDetails": true,
-        "dedupStrategy": "none",
-        "sortOrder": "Descending"
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 200
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "level"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "ERROR": {
+                        "color": "red"
+                      },
+                      "WARN": {
+                        "color": "orange"
+                      },
+                      "INFO": {
+                        "color": "green"
+                      },
+                      "DEBUG": {
+                        "color": "blue"
+                      },
+                      "TRACE": {
+                        "color": "grey"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "service_name"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              },
+              {
+                "id": "displayName",
+                "value": "service"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "host_name"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 140
+              },
+              {
+                "id": "displayName",
+                "value": "host"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "tag"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "msg"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 320
+              },
+              {
+                "id": "displayName",
+                "value": "message"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "conversation_id"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              },
+              {
+                "id": "displayName",
+                "value": "conversation"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "trace_id"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              },
+              {
+                "id": "displayName",
+                "value": "trace"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Line"
+            },
+            "properties": [
+              {
+                "id": "custom.displayMode",
+                "value": "json-view"
+              },
+              {
+                "id": "displayName",
+                "value": "payload"
+              }
+            ]
+          }
+        ]
       },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        },
+        "sortBy": [
+          {
+            "displayName": "Time",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels",
+            "replace": false
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "pattern": "^(Time|Line|level|tag|component|service_name|host_name|msg|session_id|conversation_id|trace_id)$"
+            }
+          }
+        }
+      ],
       "targets": [
         {
           "datasource": {
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{component=\"ios\"} | json device_model=\"fields.device_model\" | __error__=\"\" | device_model=~\"$device\"",
+          "expr": "{service_name=\"ion-ios\", event_name=\"\", host_name=~\"$host\", user=~\"$user\"} | json device_model=\"fields.device_model\" | __error__=\"\" | device_model=~\"$device\"",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "instant"
@@ -760,6 +952,56 @@
   ],
   "templating": {
     "list": [
+      {
+        "name": "host",
+        "label": "Device",
+        "type": "query",
+        "description": "The device a line came from (label `host_name`, the OTLP host.name). Multi-select; All includes lines with no device.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(host_name)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
+      {
+        "name": "user",
+        "label": "User",
+        "type": "query",
+        "description": "The signed-in operator (Alloy label `user`). Multi-select; All includes lines with no identity.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(user)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
       {
         "name": "device",
         "label": "Device model",

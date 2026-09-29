@@ -32,7 +32,7 @@ extension SessionViewModel {
     ///   not a branch on tab type: `resolveSubmitInstanceId` returns nil unless
     ///   the tab is engine-hosted, and a nil `instanceId` is simply dropped from
     ///   the encoded JSON (`encodeIfPresent`).
-    /// - Optimistic insert + pinned prompt + status are all driven the same way
+    /// - Pending bubble + pinned prompt + status are all driven the same way
     ///   for both tab types; attachment-marker content is built whenever
     ///   attachments are present (data), independent of tab type.
     @MainActor
@@ -68,16 +68,10 @@ extension SessionViewModel {
         // pipeline). See resolveSubmitInstanceId.
         let instanceId = resolveSubmitInstanceId(tabId: tabId)
 
-        // Stable client message id. The SAME id is used for the optimistic
-        // local insert AND sent on the wire as `clientMsgId`, so the desktop's
-        // user-message echo (`desktop_message_added`) carries this exact id back.
-        // iOS `handleMessageAdded` reconciles by id and REPLACES the optimistic
-        // bubble in place instead of appending a second one. Without a shared id
-        // the optimistic insert used a throwaway UUID the echo could never match,
-        // so the user's message rendered twice until a full history reload
-        // deduped it. This is the single seam that fixes outgoing duplication for
-        // both tab types: the desktop CLI echo resolves `id = cmd.clientMsgId`
-        // (tabs-prompt.ts) and the engine echo threads the same id through reqId.
+        // Stable client message id. The pending bubble carries it as its id and
+        // the prompt carries it on the wire; the server stamps the row it makes
+        // for this prompt with the same `clientMsgId`, which is how the bubble
+        // knows its row has arrived (SessionViewModel+PendingPrompts.swift).
         let clientMsgId = UUID().uuidString
 
         // Pin the just-sent prompt so it renders above the scrollback while the
@@ -99,34 +93,16 @@ extension SessionViewModel {
             }
         }
 
-        // Optimistic local insert so the user's message (with inline image
-        // previews when attachments are present) appears immediately — dismisses
-        // the empty state and enables scroll-to-bottom — rather than waiting for
-        // the desktop to echo it back. Mirrors the desktop renderer's optimistic
-        // insert.
+        // Show the prompt at once, before the server has made its row. It is
+        // held apart from the transcript (the pending prompt overlay) and
+        // leaves when the server's row for it arrives.
         //
-        // The insert fires UNCONDITIONALLY (no `conversationLoaded` gate). The
-        // previous gate skipped the insert on fresh or just-reloaded conversations
-        // where `loadConversation` had removed the tab from `conversationLoaded`
-        // and the history response had not yet returned — producing a MISSING
-        // bubble until the desktop echo arrived over the relay round-trip. This
-        // was near-guaranteed on a brand-new conversation's first prompt.
-        //
-        // Removing the gate is safe: `mutateConversationMessages` calls
-        // `ensureMainInstance` internally, so writing before load creates the
-        // instance correctly. When the full history response arrives via
-        // `handleConversationHistory`, the merge logic retains any pending
-        // optimistic messages not yet confirmed by a desktop echo (see
-        // SessionViewModel+PermissionMessageEvents.swift). The desktop echo
-        // then reconciles by `clientMsgId` (id-replace, not append) leaving
-        // exactly one bubble.
-        //
-        // The content string is built the same way the desktop builds it before
-        // broadcasting: each attachment becomes a `[Attached <type>: <path>]`
+        // The content string is built the same way the server builds it before
+        // storing: each attachment becomes a `[Attached <type>: <path>]`
         // marker line prepended to the user text, separated by a blank line. The
         // user bubble parses those markers and renders each path as an inline
         // attachment image, finding the local bytes already primed under the
-        // desktop path by the upload-result handler.
+        // server path by the upload-result handler.
         let optimisticContent: String
         let optimisticAttachments: [MessageAttachment]?
         if let attachments, !attachments.isEmpty {
@@ -156,53 +132,46 @@ extension SessionViewModel {
             // NormalizedEvent+Lifecycle, RemoteCommand+Encode) and the ms
             // shape MessageBubble.relativeTimestamp divides by 1000 to
             // reconstruct seconds for Date(timeIntervalSince1970:). Without
-            // the * 1000 the optimistic bubble briefly shows "56 years ago"
-            // before the desktop echoes the canonical message back.
+            // the * 1000 the pending bubble briefly shows "56 years ago"
+            // before the server's row replaces it.
             timestamp: Date().timeIntervalSince1970 * 1000,
             source: .remote
         )
         optimistic.attachments = optimisticAttachments
-        // RC-11: mark the optimistic row as live so a first-page history replace
-        // that races the desktop echo preserves it via the isLive boundary
-        // rather than a timestamp estimate.
-        optimistic.isLive = true
         optimistic.deliveryState = .queued
         // Mid-turn steer: the tab was already running when the user sent this,
-        // so the desktop routes it through the engine's steer path rather than
-        // opening a new turn. Mark it pending until the engine confirms the
-        // drain (handleEngineSteerInjected), which pairs the bubble with its
-        // "Steer applied" divider so the grouping pass can relocate it there.
-        // Desktop parity: the steerPending branch in send-slice.ts submit().
+        // so the server routes it through the engine's steer path rather than
+        // opening a new turn. The server's row carries the steer state from
+        // there on.
         if tabs.first(where: { $0.id == tabId })?.status == .running {
             optimistic.steerPending = true
         }
-        // Slash-command provenance on the optimistic insert. When the raw
-        // text starts with a `/command`, populate the metadata fields so the
-        // pill renders immediately. The desktop echo and eventual history
-        // reload will carry the canonical metadata; this ensures the pill
-        // is visible from the first frame. Uses the same parseSlashCommand
-        // that EngineMessageRow consults for the fallback path.
+        // Slash-command provenance on the pending bubble. When the raw text
+        // starts with a `/command`, populate the metadata fields so the pill
+        // renders immediately; the server's row carries the canonical
+        // metadata. Uses the same parseSlashCommand that EngineMessageRow
+        // consults for the fallback path.
         if let slash = parseSlashCommand(text) {
             optimistic.slashCommand = slash.command
             optimistic.slashArgs = slash.args
         }
-        // Unified store write — lands on the tab's single ConversationInstanceInfo
-        // regardless of tab type. ensureMainInstance (inside the mutator)
-        // creates the instance if it doesn't exist yet.
-        let targetInstanceId = conversationInstances[tabId]?.first?.id ?? "(will-create)"
         DiagnosticLog.log("optimistic insert", tag: "session.submit", fields: [
             "tab_id": String(tabId.prefix(8)),
             "reason": String(clientMsgId.prefix(8)),
-            "status": targetInstanceId,
             "count": instanceId ?? "nil"
         ])
-        mutateConversationMessages(tabId: tabId) { $0.append(optimistic) }
+        addPendingPrompt(tabId: tabId, optimistic)
 
         // The single, unified wire command. instanceId is the data field that
-        // selects the desktop pipeline; nil is dropped on encode. clientMsgId
-        // carries the optimistic insert's id so the desktop echoes the user
-        // message back under the same id and iOS reconciles by id (no duplicate).
-        send(.prompt(tabId: tabId, text: text, clientMsgId: clientMsgId, attachments: attachments, instanceId: instanceId), intent: .userInitiated)
+        // selects the server pipeline; nil is dropped on encode. clientMsgId
+        // is the pending bubble's id, stamped by the server on the row it makes.
+        // The prompt's trace starts here; the span ends on the server's answer
+        // (handlePromptResult).
+        let span = PromptTraceBook.shared.open(clientMsgId: clientMsgId, tabId: tabId, conversationId: tab(for: tabId)?.conversationId)
+        send(.prompt(
+            tabId: tabId, text: text, clientMsgId: clientMsgId, attachments: attachments, instanceId: instanceId,
+            traceparent: span.traceparent
+        ), intent: .userInitiated)
     }
 
     /// Resolve the `instanceId` to carry on a `.prompt` for the given tab.
@@ -223,7 +192,7 @@ extension SessionViewModel {
     /// no engine-vs-plain code fork.
     ///
     /// - Wire command: always `.setTabModel` (`desktop_set_tab_model`). The
-    ///   desktop's `handleSetTabModel` applies the override to the tab's ACTIVE
+    ///   server's `setTabModel` action applies the override to the tab's ACTIVE
     ///   conversation instance via `commitInstance` (which falls back to the
     ///   first instance when no active pointer is set), so it is correct for
     ///   both tab types post-#256 — every tab owns exactly one conversation
@@ -238,7 +207,7 @@ extension SessionViewModel {
     ///   updates instantly; plain tabs additionally mirror it onto
     ///   `tab.modelOverride` for the legacy tab-level reader.
     @MainActor
-    func setModel(tabId: String, model: String) {
+    func setModel(tabId: String, model: String, providerId: String = "") {
         // Optimistic write onto the tab's single conversation instance — the
         // unified home for the per-conversation model override (matches the
         // desktop store, which keeps modelOverride on the instance for every
@@ -250,8 +219,11 @@ extension SessionViewModel {
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
             tabs[idx].modelOverride = model
         }
-        // Single unified wire command for every tab type.
-        send(.setTabModel(tabId: tabId, model: model), intent: .userInitiated)
+        // Single unified wire command for every tab type. providerId, when
+        // known, lets the server qualify the wire model id so this explicit
+        // pick can never be silently rerouted by the operator's configured
+        // defaultProvider (see server's resolvePromptModel/send-slice.ts).
+        send(.setTabModel(tabId: tabId, model: model, providerId: providerId.isEmpty ? nil : providerId), intent: .userInitiated)
     }
 
     @MainActor

@@ -6,6 +6,7 @@ import { Campus } from "./Campus";
 import { canvasPointFromClient } from "./canvas-coordinates";
 import type { AgentCache, StudioActiveState } from "./state/agent-cache";
 import { type Tooltip, type Phase } from "./visualizer-types";
+import { useSessionStore } from '@ion/server/store/sessionStore'
 
 interface VisualizerCanvasProps {
   phase: Phase;
@@ -99,7 +100,9 @@ export function VisualizerCanvas({
         <Campus
           seed={seed}
           onSelect={(tabId) => {
-            window.ion.studioFocusTab(tabId);
+            // Selecting the building's conversation is the store action every
+            // client forwards; the Studio shell follows the active tab.
+            useSessionStore.getState().selectTab(tabId);
             setCampus(false);
           }}
           onExit={() => setCampus(false)}

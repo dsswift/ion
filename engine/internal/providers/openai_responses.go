@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -23,24 +22,19 @@ import (
 // (gpt-*-codex) are Responses-native; enterprise gateways advertise them
 // with dialect "openai-responses".
 type openaiResponsesProvider struct {
-	id         string
-	apiKey     string
-	baseURL    string
-	authHeader string
-	client     *http.Client
+	id      string
+	baseURL string
+	client  *http.Client
 }
 
 // NewOpenAIResponsesProvider creates a Responses API provider. Options follow
-// the same contract as NewOpenAIProvider (ID/BaseURL/AuthHeader overrides for
-// gateways and compatible endpoints).
+// the same contract as NewOpenAIProvider (ID/BaseURL overrides for gateways
+// and compatible endpoints). Holds no credential (R-23): authentication is
+// resolved per request from the context via applyRequestAuth.
 func NewOpenAIResponsesProvider(opts *ProviderOptions) LlmProvider {
-	apiKey := ""
 	baseURL := "https://api.openai.com"
 	id := "openai-responses"
 	if opts != nil {
-		if opts.APIKey != "" {
-			apiKey = opts.APIKey
-		}
 		if opts.BaseURL != "" {
 			baseURL = opts.BaseURL
 		}
@@ -48,26 +42,11 @@ func NewOpenAIResponsesProvider(opts *ProviderOptions) LlmProvider {
 			id = opts.ID
 		}
 	}
-	// OPENAI_API_KEY is OpenAI's own credential, so the fallback is gated on
-	// OpenAI provider identity (matching NewOpenAIProvider's `id == "openai"`
-	// gate). Every gateway inner client is constructed with the gateway's ID,
-	// so without this gate a stray OPENAI_API_KEY in the daemon environment
-	// would be sent to an unrelated enterprise endpoint as its credential.
-	if apiKey == "" && (id == "openai" || id == "openai-responses") {
-		apiKey = os.Getenv("OPENAI_API_KEY")
-	}
-
-	authHeader := "bearer"
-	if opts != nil && opts.AuthHeader != "" {
-		authHeader = opts.AuthHeader
-	}
 
 	return &openaiResponsesProvider{
-		id:         id,
-		apiKey:     apiKey,
-		baseURL:    baseURL,
-		authHeader: authHeader,
-		client:     &http.Client{Transport: network.GetHTTPTransport()},
+		id:      id,
+		baseURL: baseURL,
+		client:  &http.Client{Transport: network.GetHTTPTransport()},
 	}
 }
 
@@ -116,11 +95,9 @@ func (p *openaiResponsesProvider) doStream(ctx context.Context, opts types.LlmSt
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	apiKey := p.apiKey
-	if apiKey == "" {
-		apiKey = GetProviderKey(p.id)
+	if pe := applyRequestAuth(ctx, req, raw, p.id); pe != nil {
+		return pe
 	}
-	setAuthHeader(req, p.authHeader, apiKey)
 	req.Header.Set("Accept", "text/event-stream")
 
 	resp, err := p.client.Do(req)
@@ -140,7 +117,7 @@ func (p *openaiResponsesProvider) doStream(ctx context.Context, opts types.LlmSt
 		respBody, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read of error-response body
 		utils.LogWithFields(utils.LevelError, "OpenAIResponses", "do stream http error", map[string]any{"status": resp.StatusCode, "path": endpoint, "error": string(respBody)})
 		return FromOpenAIError(
-			fmt.Errorf("openai responses API error: %s", string(respBody)),
+			providerAPIError(p.id, "openai responses", resp.StatusCode, string(respBody)),
 			resp.StatusCode,
 			string(respBody),
 		)
@@ -345,7 +322,7 @@ func (p *openaiResponsesProvider) doStream(ctx context.Context, opts types.LlmSt
 				code = ev.Code
 			}
 			utils.LogWithFields(utils.LevelError, "OpenAIResponses", "do stream in-stream error", map[string]any{"provider": p.id, "model": opts.Model, "reason": code, "error": msg})
-			return FromOpenAIError(fmt.Errorf("openai responses API error: %s", msg), 0, msg)
+			return FromOpenAIError(providerAPIError(p.id, "openai responses", 0, msg), 0, msg)
 		}
 	}
 

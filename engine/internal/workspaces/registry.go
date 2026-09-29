@@ -57,12 +57,36 @@ type WorktreeEntry struct {
 	// branch, which changes what a redirect to that worktree would mean.
 	CreatedAt int64 `json:"createdAt,omitempty"`
 	LandedAt  int64 `json:"landedAt,omitempty"`
+	// TransferredTo names another Environment this worktree was moved to,
+	// back when a transfer left the copy here in place. No current writer
+	// sets it: a transfer now removes the worktree it moves, so the only
+	// records carrying it are ones written by an older build. They are still
+	// honored — such a copy is real, sits on disk, and has a live twin
+	// elsewhere that a commit here could never be merged with.
+	TransferredTo *WorktreeTransfer `json:"transferredTo,omitempty"`
+}
+
+// WorktreeTransfer names where a worktree went and when (Unix ms).
+type WorktreeTransfer struct {
+	EnvironmentID string `json:"environmentId"`
+	At            int64  `json:"at,omitempty"`
 }
 
 // Landed reports whether the worktree's work has already reached its source
 // branch. A landed worktree is a poor redirect target: its contribution is in
 // the base, so an edit there is no longer pending work.
 func (e WorktreeEntry) Landed() bool { return e.LandedAt > 0 }
+
+// Moved reports whether a legacy record says this worktree lives on another
+// Environment, which seals the copy here. Always false for a worktree
+// created or transferred by a current build.
+func (e WorktreeEntry) Moved() bool {
+	return e.TransferredTo != nil && e.TransferredTo.EnvironmentID != ""
+}
+
+// Sealed reports whether writes are refused in this worktree for either
+// reason: its work landed, or it moved to another Environment.
+func (e WorktreeEntry) Sealed() bool { return e.Landed() || e.Moved() }
 
 // Registry reads the worktree record with mtime-validated caching.
 //
@@ -99,12 +123,12 @@ func (r *Registry) dir() string {
 	if r.ionDir != "" {
 		return r.ionDir
 	}
-	home, err := utils.UserHomeDir()
-	if err != nil {
-		utils.LogWithFields(utils.LevelWarn, logTag, "cannot resolve home dir, workspace records unreadable", map[string]any{"error": err.Error()})
+	dir := utils.IonDir()
+	if dir == "" {
+		utils.LogWithFields(utils.LevelWarn, logTag, "cannot resolve ion data dir, workspace records unreadable", nil)
 		return ""
 	}
-	return filepath.Join(home, ".ion")
+	return dir
 }
 
 // Worktrees returns the registered worktrees, re-reading the file when its

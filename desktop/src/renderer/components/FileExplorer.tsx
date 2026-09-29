@@ -17,21 +17,20 @@
  * invisible selection. Root collapse is window-local session state
  * (fileExplorerRootCollapsed, MIRROR_LOCAL).
  */
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useCallback } from 'react'
 import { X, ArrowsClockwise, ArrowsInLineVertical, Eye, EyeSlash, Folders } from '@phosphor-icons/react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
 import { usePreferencesStore } from '../preferences'
+import { useWorkspaceRoots } from '../hooks/useWorkspaceRoots'
 import { usePanelVerticalResize } from '../hooks/usePanelVerticalResize'
 import { FileExplorerRootSection } from './FileExplorerRootSection'
 import { ImageViewer } from './ImageViewer'
-import { orderedWorkspaceRoots } from '../../shared/workspace-roots'
-import { useProjectDir } from '../hooks/useProjectDir'
 import { Tooltip } from './git/Tooltip'
 import { rDebug, rError } from '../rendererLogger'
-import { pathSegments } from '../../shared/paths'
+import { pathSegments } from '@ion/shared/paths'
 
 /**
  * Header icon button (close X, Add Folder to Workspace, Refresh, Collapse All).
@@ -90,24 +89,12 @@ export function FileExplorer({
 }) {
   const colors = useColors()
   const activeTabId = useSessionStore((s) => s.activeTabId)
-  const tabs = useSessionStore((s) => s.tabs)
   const rootCollapsed = useSessionStore((s) => s.fileExplorerRootCollapsed)
   const { collapseAllExplorer, toggleFileExplorer, setExplorerRootCollapsed } = useSessionStore.getState()
-  const workspaceFolders = usePreferencesStore((s) => s.workspaceFolders)
+  const { projectDir, roots, allRoots, folders } = useWorkspaceRoots()
+  const { add: addWorkspaceFolder, remove: removeWorkspaceFolder, pick: pickWorkspaceFolder } = folders
   const showHiddenFiles = usePreferencesStore((s) => s.showHiddenFiles)
   const setShowHiddenFiles = usePreferencesStore((s) => s.setShowHiddenFiles)
-  const addWorkspaceFolder = usePreferencesStore((s) => s.addWorkspaceFolder)
-  const removeWorkspaceFolder = usePreferencesStore((s) => s.removeWorkspaceFolder)
-
-  const activeTab = useMemo(() => tabs.find((t) => t.id === activeTabId), [tabs, activeTabId])
-  const workingDir = activeTab?.workingDirectory || null
-  const projectDir = useProjectDir(workingDir, activeTab?.worktree)
-
-  const roots = useMemo(() => orderedWorkspaceRoots(workingDir, projectDir, workspaceFolders), [workingDir, projectDir, workspaceFolders])
-  const allRoots = useMemo(
-    () => (roots.primary ? [roots.primary, ...roots.secondary] : []),
-    [roots],
-  )
 
   const [imagePreview, setImagePreview] = useState<{ path: string; name: string } | null>(null)
   const [inlineCreate, setInlineCreate] = useState<{ rootDir: string; type: 'file' | 'folder'; parentDir: string; depth: number } | null>(null)
@@ -128,21 +115,20 @@ export function FileExplorer({
 
   const handleAddFolder = useCallback(() => {
     if (!projectDir) return
-    void window.ion
-      .selectDirectory()
+    // The picker asks on the conversation's server: the native dialog browses
+    // this machine only.
+    void pickWorkspaceFolder(projectDir)
       .then((dir) => {
         if (dir) addWorkspaceFolder(projectDir, dir)
       })
       .catch((err) => rError('file-explorer', 'add workspace folder failed', { error: String(err) }))
-  }, [projectDir, addWorkspaceFolder])
+  }, [projectDir, addWorkspaceFolder, pickWorkspaceFolder])
 
-  const expandedUI = usePreferencesStore((s) => s.expandedUI)
   // Declared BEFORE the early return: hooks must run on every render. The same
   // hook the git panel uses, so the two cannot drift apart in either their
   // default height or their drag behaviour.
   const { height: panelHeight, renderHandle } = usePanelVerticalResize({
     panelId: 'file-explorer',
-    expandedUI,
     override: usePreferencesStore((s) => s.fileExplorerHeight),
     onCommit: usePreferencesStore((s) => s.setFileExplorerHeight),
   })

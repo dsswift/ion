@@ -35,7 +35,9 @@ func TestParseRouteGatewayMissing(t *testing.T) {
 
 func TestWarmLocalNetworkRetriesUntilReady(t *testing.T) {
 	origSchedule, origGw, origProbe, origSupported := lanWarmupSchedule, gatewayFn, probeFn, lanWarmupSupported
-	defer func() { lanWarmupSchedule, gatewayFn, probeFn, lanWarmupSupported = origSchedule, origGw, origProbe, origSupported }()
+	defer func() {
+		lanWarmupSchedule, gatewayFn, probeFn, lanWarmupSupported = origSchedule, origGw, origProbe, origSupported
+	}()
 	lanWarmupSupported = true
 
 	lanWarmupSchedule = []time.Duration{0, 0, 0, 0}
@@ -70,7 +72,9 @@ func TestWarmLocalNetworkRetriesUntilReady(t *testing.T) {
 
 func TestWarmLocalNetworkGivesUpAfterSchedule(t *testing.T) {
 	origSchedule, origGw, origProbe, origSupported := lanWarmupSchedule, gatewayFn, probeFn, lanWarmupSupported
-	defer func() { lanWarmupSchedule, gatewayFn, probeFn, lanWarmupSupported = origSchedule, origGw, origProbe, origSupported }()
+	defer func() {
+		lanWarmupSchedule, gatewayFn, probeFn, lanWarmupSupported = origSchedule, origGw, origProbe, origSupported
+	}()
 	lanWarmupSupported = true
 
 	lanWarmupSchedule = []time.Duration{0, 0}

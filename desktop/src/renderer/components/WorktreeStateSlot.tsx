@@ -117,6 +117,20 @@ export function WorktreeStateSlot(props: WorktreeStateSlotProps): React.JSX.Elem
       )
     }
 
+    case 'bench-obstructed':
+      return (
+        <Tooltip text={state.reason
+          ? `The assembly could not merge this contribution, and nothing collided: ${state.reason}`
+          : 'The assembly could not merge this contribution, and nothing collided. There are no conflicting files to resolve.'}>
+          <span
+            data-testid={`worktree-bench-obstructed-${branchName}`}
+            style={iconButtonStyle(colors.dangerFg, false)}
+          >
+            <Warning size={11} />
+          </span>
+        </Tooltip>
+      )
+
     case 'bench-verification':
       return (
         <Tooltip text="This contribution merged, but the assembly failed project verification. Click for detail.">

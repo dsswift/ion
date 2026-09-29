@@ -1,0 +1,1203 @@
+{
+  "triggers": [
+    {
+      "event": "conversation:message-submitted",
+      "label": "A message is submitted",
+      "provides": {
+        "worktree": true,
+        "conversation": true
+      },
+      "fields": [
+        {
+          "path": "payload.messageKind",
+          "label": "Message kind",
+          "type": "enum",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ],
+          "values": [
+            {
+              "value": "prompt",
+              "label": "Operator prompt"
+            },
+            {
+              "value": "slash",
+              "label": "Slash command"
+            },
+            {
+              "value": "structured",
+              "label": "Guided Questions answer"
+            },
+            {
+              "value": "machine",
+              "label": "Machine-authored"
+            }
+          ]
+        },
+        {
+          "path": "payload.permissionMode",
+          "label": "Permission mode",
+          "type": "enum",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ],
+          "values": [
+            {
+              "value": "plan",
+              "label": "Plan mode"
+            },
+            {
+              "value": "auto",
+              "label": "Auto mode"
+            }
+          ]
+        },
+        {
+          "path": "payload.isSteer",
+          "label": "Sent during an active run (steer)",
+          "type": "boolean",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.source",
+          "label": "Change source",
+          "type": "enum",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ],
+          "values": [
+            {
+              "value": "desktop",
+              "label": "Desktop"
+            },
+            {
+              "value": "remote",
+              "label": "iOS / remote"
+            },
+            {
+              "value": "machine",
+              "label": "Machine"
+            }
+          ]
+        },
+        {
+          "path": "payload.worktreePath",
+          "label": "Worktree",
+          "type": "path",
+          "operators": [
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.stage",
+          "label": "Current worktree stage",
+          "type": "enum",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ],
+          "values": [
+            {
+              "value": "plan",
+              "label": "Planning"
+            },
+            {
+              "value": "build",
+              "label": "Building"
+            },
+            {
+              "value": "test",
+              "label": "Needs testing"
+            },
+            {
+              "value": "bug",
+              "label": "Issue found"
+            },
+            {
+              "value": "verified",
+              "label": "Verified"
+            },
+            {
+              "value": "merge",
+              "label": "Merge checks"
+            },
+            {
+              "value": "ready",
+              "label": "Ready to land"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "event": "prompt:submitted",
+      "label": "A prompt is submitted (legacy)",
+      "provides": {
+        "worktree": true,
+        "conversation": true
+      },
+      "fields": [
+        {
+          "path": "payload.permissionMode",
+          "label": "Permission mode",
+          "type": "enum",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ],
+          "values": [
+            {
+              "value": "plan",
+              "label": "Plan mode"
+            },
+            {
+              "value": "auto",
+              "label": "Auto mode"
+            }
+          ]
+        },
+        {
+          "path": "payload.slashCommand",
+          "label": "Slash command name",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.source",
+          "label": "Change source",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.worktreePath",
+          "label": "Worktree",
+          "type": "path",
+          "operators": [
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.stage",
+          "label": "Current worktree stage",
+          "type": "enum",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ],
+          "values": [
+            {
+              "value": "plan",
+              "label": "Planning"
+            },
+            {
+              "value": "build",
+              "label": "Building"
+            },
+            {
+              "value": "test",
+              "label": "Needs testing"
+            },
+            {
+              "value": "bug",
+              "label": "Issue found"
+            },
+            {
+              "value": "verified",
+              "label": "Verified"
+            },
+            {
+              "value": "merge",
+              "label": "Merge checks"
+            },
+            {
+              "value": "ready",
+              "label": "Ready to land"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "event": "conversation:slash",
+      "label": "A slash command is submitted (legacy)",
+      "provides": {
+        "worktree": true,
+        "conversation": true
+      },
+      "fields": [
+        {
+          "path": "payload.slashCommand",
+          "label": "Slash command name",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.source",
+          "label": "Change source",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.worktreePath",
+          "label": "Worktree",
+          "type": "path",
+          "operators": [
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.stage",
+          "label": "Current worktree stage",
+          "type": "enum",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ],
+          "values": [
+            {
+              "value": "plan",
+              "label": "Planning"
+            },
+            {
+              "value": "build",
+              "label": "Building"
+            },
+            {
+              "value": "test",
+              "label": "Needs testing"
+            },
+            {
+              "value": "bug",
+              "label": "Issue found"
+            },
+            {
+              "value": "verified",
+              "label": "Verified"
+            },
+            {
+              "value": "merge",
+              "label": "Merge checks"
+            },
+            {
+              "value": "ready",
+              "label": "Ready to land"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "event": "conversation:slash-resolved",
+      "label": "A slash command resolves",
+      "provides": {
+        "worktree": true,
+        "conversation": true
+      },
+      "fields": [
+        {
+          "path": "payload.slashCommand",
+          "label": "Slash command name",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.worktreePath",
+          "label": "Worktree",
+          "type": "path",
+          "operators": [
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.stage",
+          "label": "Current worktree stage",
+          "type": "enum",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ],
+          "values": [
+            {
+              "value": "plan",
+              "label": "Planning"
+            },
+            {
+              "value": "build",
+              "label": "Building"
+            },
+            {
+              "value": "test",
+              "label": "Needs testing"
+            },
+            {
+              "value": "bug",
+              "label": "Issue found"
+            },
+            {
+              "value": "verified",
+              "label": "Verified"
+            },
+            {
+              "value": "merge",
+              "label": "Merge checks"
+            },
+            {
+              "value": "ready",
+              "label": "Ready to land"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "event": "conversation:completed",
+      "label": "A conversation completes",
+      "provides": {
+        "worktree": true,
+        "conversation": true
+      },
+      "fields": [
+        {
+          "path": "payload.completionReason",
+          "label": "Completion reason",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.lastSlashCommand",
+          "label": "Last slash command",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.endedWithQuestion",
+          "label": "Ended with a question",
+          "type": "boolean",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.worktreePath",
+          "label": "Worktree",
+          "type": "path",
+          "operators": [
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.stage",
+          "label": "Current worktree stage",
+          "type": "enum",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ],
+          "values": [
+            {
+              "value": "plan",
+              "label": "Planning"
+            },
+            {
+              "value": "build",
+              "label": "Building"
+            },
+            {
+              "value": "test",
+              "label": "Needs testing"
+            },
+            {
+              "value": "bug",
+              "label": "Issue found"
+            },
+            {
+              "value": "verified",
+              "label": "Verified"
+            },
+            {
+              "value": "merge",
+              "label": "Merge checks"
+            },
+            {
+              "value": "ready",
+              "label": "Ready to land"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "event": "plan:implemented",
+      "label": "A plan is implemented",
+      "provides": {
+        "worktree": true,
+        "conversation": true
+      },
+      "fields": [
+        {
+          "path": "payload.planFilePath",
+          "label": "Plan file path",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.worktreePath",
+          "label": "Worktree",
+          "type": "path",
+          "operators": [
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.stage",
+          "label": "Current worktree stage",
+          "type": "enum",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ],
+          "values": [
+            {
+              "value": "plan",
+              "label": "Planning"
+            },
+            {
+              "value": "build",
+              "label": "Building"
+            },
+            {
+              "value": "test",
+              "label": "Needs testing"
+            },
+            {
+              "value": "bug",
+              "label": "Issue found"
+            },
+            {
+              "value": "verified",
+              "label": "Verified"
+            },
+            {
+              "value": "merge",
+              "label": "Merge checks"
+            },
+            {
+              "value": "ready",
+              "label": "Ready to land"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "event": "engine:status",
+      "label": "Engine status changes",
+      "provides": {
+        "worktree": false,
+        "conversation": true
+      },
+      "fields": [
+        {
+          "path": "payload.state",
+          "label": "Engine state",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.completionReason",
+          "label": "Completion reason",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        }
+      ]
+    },
+    {
+      "event": "worktree:pin-advanced",
+      "label": "A worktree update reaches the bench",
+      "provides": {
+        "worktree": true,
+        "conversation": false
+      },
+      "fields": [
+        {
+          "path": "payload.worktreePath",
+          "label": "Worktree",
+          "type": "path",
+          "operators": [
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.stage",
+          "label": "Current worktree stage",
+          "type": "enum",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ],
+          "values": [
+            {
+              "value": "plan",
+              "label": "Planning"
+            },
+            {
+              "value": "build",
+              "label": "Building"
+            },
+            {
+              "value": "test",
+              "label": "Needs testing"
+            },
+            {
+              "value": "bug",
+              "label": "Issue found"
+            },
+            {
+              "value": "verified",
+              "label": "Verified"
+            },
+            {
+              "value": "merge",
+              "label": "Merge checks"
+            },
+            {
+              "value": "ready",
+              "label": "Ready to land"
+            }
+          ]
+        },
+        {
+          "path": "payload.branchName",
+          "label": "Branch name",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.sourceBranch",
+          "label": "Source branch",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        }
+      ]
+    },
+    {
+      "event": "worktree:stage-changed",
+      "label": "A worktree stage changes",
+      "provides": {
+        "worktree": true,
+        "conversation": false
+      },
+      "fields": [
+        {
+          "path": "payload.worktreePath",
+          "label": "Worktree",
+          "type": "path",
+          "operators": [
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.stage",
+          "label": "Current worktree stage",
+          "type": "enum",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ],
+          "values": [
+            {
+              "value": "plan",
+              "label": "Planning"
+            },
+            {
+              "value": "build",
+              "label": "Building"
+            },
+            {
+              "value": "test",
+              "label": "Needs testing"
+            },
+            {
+              "value": "bug",
+              "label": "Issue found"
+            },
+            {
+              "value": "verified",
+              "label": "Verified"
+            },
+            {
+              "value": "merge",
+              "label": "Merge checks"
+            },
+            {
+              "value": "ready",
+              "label": "Ready to land"
+            }
+          ]
+        },
+        {
+          "path": "payload.previousStage",
+          "label": "Previous worktree stage",
+          "type": "enum",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ],
+          "values": [
+            {
+              "value": "plan",
+              "label": "Planning"
+            },
+            {
+              "value": "build",
+              "label": "Building"
+            },
+            {
+              "value": "test",
+              "label": "Needs testing"
+            },
+            {
+              "value": "bug",
+              "label": "Issue found"
+            },
+            {
+              "value": "verified",
+              "label": "Verified"
+            },
+            {
+              "value": "merge",
+              "label": "Merge checks"
+            },
+            {
+              "value": "ready",
+              "label": "Ready to land"
+            }
+          ]
+        },
+        {
+          "path": "payload.source",
+          "label": "Change source",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ]
+        }
+      ]
+    },
+    {
+      "event": "worktree:created",
+      "label": "A worktree is created",
+      "provides": {
+        "worktree": true,
+        "conversation": false
+      },
+      "fields": [
+        {
+          "path": "payload.worktreePath",
+          "label": "Worktree",
+          "type": "path",
+          "operators": [
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.branchName",
+          "label": "Branch name",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.sourceBranch",
+          "label": "Source branch",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.source",
+          "label": "Change source",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ]
+        }
+      ]
+    },
+    {
+      "event": "worktree:landed",
+      "label": "A worktree lands",
+      "provides": {
+        "worktree": true,
+        "conversation": false
+      },
+      "fields": [
+        {
+          "path": "payload.worktreePath",
+          "label": "Worktree",
+          "type": "path",
+          "operators": [
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.branchName",
+          "label": "Branch name",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.sourceBranch",
+          "label": "Source branch",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.landMode",
+          "label": "Land mode",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "exists",
+            "not-exists"
+          ]
+        }
+      ]
+    },
+    {
+      "event": "worktree:retired",
+      "label": "A worktree is retired",
+      "provides": {
+        "worktree": true,
+        "conversation": false
+      },
+      "fields": [
+        {
+          "path": "payload.worktreePath",
+          "label": "Worktree",
+          "type": "path",
+          "operators": [
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.branchName",
+          "label": "Branch name",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        }
+      ]
+    },
+    {
+      "event": "bench:member-added",
+      "label": "A worktree joins an integration bench",
+      "provides": {
+        "worktree": true,
+        "conversation": false
+      },
+      "fields": [
+        {
+          "path": "payload.worktreePath",
+          "label": "Worktree",
+          "type": "path",
+          "operators": [
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.sourceBranch",
+          "label": "Source branch",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.branchName",
+          "label": "Branch name",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        }
+      ]
+    },
+    {
+      "event": "bench:member-removed",
+      "label": "A worktree leaves an integration bench",
+      "provides": {
+        "worktree": true,
+        "conversation": false
+      },
+      "fields": [
+        {
+          "path": "payload.worktreePath",
+          "label": "Worktree",
+          "type": "path",
+          "operators": [
+            "exists",
+            "not-exists"
+          ]
+        },
+        {
+          "path": "payload.sourceBranch",
+          "label": "Source branch",
+          "type": "string",
+          "operators": [
+            "equals",
+            "not-equals",
+            "contains",
+            "not-contains",
+            "matches",
+            "exists",
+            "not-exists"
+          ]
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "kind": "record",
+      "label": "Record this run only",
+      "target": "none",
+      "config": []
+    },
+    {
+      "kind": "worktree:set-stage",
+      "label": "Set the worktree stage",
+      "target": "worktree",
+      "config": [
+        {
+          "key": "stage",
+          "label": "New stage",
+          "type": "enum",
+          "required": true,
+          "values": [
+            {
+              "value": "plan",
+              "label": "Planning"
+            },
+            {
+              "value": "build",
+              "label": "Building"
+            },
+            {
+              "value": "test",
+              "label": "Needs testing"
+            },
+            {
+              "value": "bug",
+              "label": "Issue found"
+            },
+            {
+              "value": "verified",
+              "label": "Verified"
+            },
+            {
+              "value": "merge",
+              "label": "Merge checks"
+            },
+            {
+              "value": "ready",
+              "label": "Ready to land"
+            }
+          ]
+        },
+        {
+          "key": "onlyIfStage",
+          "label": "Only if current stage is",
+          "type": "enum",
+          "required": false,
+          "values": [
+            {
+              "value": "plan",
+              "label": "Planning"
+            },
+            {
+              "value": "build",
+              "label": "Building"
+            },
+            {
+              "value": "test",
+              "label": "Needs testing"
+            },
+            {
+              "value": "bug",
+              "label": "Issue found"
+            },
+            {
+              "value": "verified",
+              "label": "Verified"
+            },
+            {
+              "value": "merge",
+              "label": "Merge checks"
+            },
+            {
+              "value": "ready",
+              "label": "Ready to land"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "desktop:notification",
+      "label": "Show a desktop notification",
+      "target": "none",
+      "config": [
+        {
+          "key": "title",
+          "label": "Title",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "body",
+          "label": "Body",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "kind": "conversation:run",
+      "label": "Start an AI conversation",
+      "target": "directory",
+      "config": [
+        {
+          "key": "prompt",
+          "label": "Prompt",
+          "type": "string",
+          "required": true
+        }
+      ]
+    },
+    {
+      "kind": "conversation:slash",
+      "label": "Run a slash command",
+      "target": "directory",
+      "config": [
+        {
+          "key": "command",
+          "label": "Command",
+          "type": "string",
+          "required": true
+        },
+        {
+          "key": "args",
+          "label": "Arguments",
+          "type": "string",
+          "required": false
+        }
+      ]
+    },
+    {
+      "kind": "tab:set-color",
+      "label": "Set the tab color",
+      "target": "conversation",
+      "config": [
+        {
+          "key": "color",
+          "label": "Color",
+          "type": "string",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

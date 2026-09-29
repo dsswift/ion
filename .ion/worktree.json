@@ -8,12 +8,6 @@
         "staleWhen": ["package-lock.json"]
       },
       {
-        "path": "desktop/node_modules",
-        "build": "npm ci",
-        "cwd": "desktop",
-        "staleWhen": ["desktop/package-lock.json"]
-      },
-      {
         "path": "graphify-out/graph.json",
         "link": true
       }

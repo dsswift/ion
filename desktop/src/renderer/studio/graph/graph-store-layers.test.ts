@@ -10,9 +10,10 @@ import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 import { useGraphStore } from './graph-store'
 import { SECTION_NODE_BUDGET } from './graph-store-corpus'
 import { clearAllSessions } from './session-park'
-import { GRAPH_VIEW_DEFAULTS, LAYOUT_FORCES_COMPACT } from '../../../shared/graph-view-types'
-import type { GraphViewConfig } from '../../../shared/graph-view-types'
-import type { CorpusDocument, CorpusSnapshot } from '../../../shared/graph-corpus-types'
+import { GRAPH_VIEW_DEFAULTS, LAYOUT_FORCES_COMPACT } from '@ion/shared/graph-view-types'
+import type { GraphViewConfig } from '@ion/shared/graph-view-types'
+import type { CorpusDocument, CorpusSnapshot } from '@ion/shared/graph-corpus-types'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 function config(): GraphViewConfig {
   return {
@@ -55,16 +56,22 @@ function snapshot(): CorpusSnapshot {
 
 let setUserConfig: ReturnType<typeof vi.fn>
 
-beforeEach(async () => {
-  setUserConfig = vi.fn(async () => ({ ok: true }))
-  window.ion = {
+/** The server-side verbs the store reaches over the loopback wire. */
+function ionStub(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
     graphViewGetConfig: vi.fn(async () => config()),
     graphViewSetUserConfig: setUserConfig,
     onGraphViewConfigChanged: vi.fn(() => () => undefined),
     graphCorpusSubscribe: vi.fn(async () => snapshot()),
     graphCorpusUnsubscribe: vi.fn(async () => ({ ok: true })),
     onGraphCorpusDelta: vi.fn(() => () => undefined),
-  } as unknown as typeof window.ion
+    ...overrides,
+  }
+}
+
+beforeEach(async () => {
+  setUserConfig = vi.fn(async () => ({ ok: true }))
+  window.ion = installFakeWire(ionStub()) as unknown as typeof window.ion
   await useGraphStore.getState().init('/root')
   useGraphStore.getState().setLayoutState('settled')
 })
@@ -244,14 +251,13 @@ describe('section scope', () => {
     clearAllSessions()
     const documents: CorpusDocument[] = []
     for (let i = 0; i < count; i++) documents.push(doc(`n${i}`, [], { sections }))
-    window.ion = {
-      ...window.ion,
+    window.ion = installFakeWire(ionStub({
       graphCorpusSubscribe: vi.fn(async (): Promise<CorpusSnapshot> => ({
         revision: 1,
         roots: [{ path: '/root', exists: true, documentCount: count }],
         documents,
       })),
-    } as unknown as typeof window.ion
+    })) as unknown as typeof window.ion
     await useGraphStore.getState().init('/root')
     useGraphStore.getState().setLayoutState('settled')
   }

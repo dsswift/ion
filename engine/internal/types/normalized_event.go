@@ -16,6 +16,15 @@ type NormalizedEvent struct {
 	Data NormalizedEventData
 }
 
+// Type is the event's wire type discriminator ("text_chunk", "tool_call", ...),
+// or "" when Data is nil.
+func (e NormalizedEvent) Type() string {
+	if e.Data == nil {
+		return ""
+	}
+	return e.Data.eventType()
+}
+
 // MarshalJSON produces a flat JSON object with "type" merged into the variant fields.
 func (e NormalizedEvent) MarshalJSON() ([]byte, error) {
 	if e.Data == nil {

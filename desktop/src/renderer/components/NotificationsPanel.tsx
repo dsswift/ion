@@ -1,17 +1,19 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useViewportClamp } from '../hooks/useViewportClamp'
+import { zoomAnchorEdges } from '../viewport-zoom'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { Bell, X } from '@phosphor-icons/react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { ResourceViewer } from './ResourceViewer'
 import { contentRouter } from '../lib/file-open-router'
 import { selectTrayResources } from './notifications-tray-filter'
-import type { ResourceItem } from '../../shared/types-engine'
-import { resourceIdentity } from '../../shared/resource-identity'
+import type { ResourceItem } from '@ion/shared/types-engine'
+import { resourceIdentity } from '@ion/shared/resource-identity'
+import { host } from '../host/host-instance'
 
 function formatTime(iso: string): string {
   try {
@@ -39,14 +41,14 @@ function ResourceCard({
 
   const handleClick = () => {
     onOpen(item, { title, content: item.content })
-    window.ion?.markResourceRead?.(item.kind, item.id, item.producer)
+    host.shell.markResourceRead(item.kind, item.id, item.producer)
   }
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation()
     if (!window.confirm('Delete this notification?')) return
     onDelete()
-    window.ion?.publishResourceDelete?.(item.kind, item.id, item.producer)
+    host.shell.publishResourceDelete(item.kind, item.id, item.producer)
   }
 
   return (
@@ -127,16 +129,16 @@ export function NotificationsPanel() {
 
   const updatePos = useCallback(() => {
     if (!triggerRef.current) return
-    const rect = triggerRef.current.getBoundingClientRect()
+    const rect = zoomAnchorEdges(triggerRef.current.getBoundingClientRect())
     const gap = 6
     const margin = 8
-    const right = window.innerWidth - rect.right
+    const right = rect.fromRight
     if (isExpanded) {
       const top = rect.bottom + gap
-      setPos({ top, right, maxHeight: Math.max(120, window.innerHeight - top - margin) })
+      setPos({ top, right, maxHeight: Math.max(120, rect.viewport.height - top - margin) })
       return
     }
-    setPos({ bottom: window.innerHeight - rect.top + gap, right, maxHeight: undefined })
+    setPos({ bottom: rect.fromBottom + gap, right, maxHeight: undefined })
   }, [isExpanded])
 
   useEffect(() => {
@@ -284,5 +286,5 @@ export function NotificationsPanel() {
   )
 }
 
-/** Bell button with unread badge for use in the TabStrip. */
+/** Bell button with unread badge for the Studio title bar. */
 export { NotificationsPanel as NotificationsBell }

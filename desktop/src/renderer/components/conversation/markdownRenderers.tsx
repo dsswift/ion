@@ -21,6 +21,7 @@ import { CodeBlock } from './CodeBlock'
 import { rWarn } from '../../rendererLogger'
 import type { FileClickModifiers } from '../../lib/open-file-intent'
 import { openClickedLink } from '../../lib/open-link'
+import { host as studioHost } from '../../host/host-instance'
 
 // ─── Table scroll wrapper with fade edges ───
 
@@ -90,7 +91,7 @@ export function ImageCard({ src, alt, colors }: { src?: string; alt?: string; co
   const [failed, setFailed] = useState(false)
   useEffect(() => { setFailed(false) }, [src])
   const label = alt || 'Image'
-  const open = () => { if (src) void window.ion.openExternal(String(src)).catch((err) => rWarn('conversation', 'open image failed', { error: String(err) })) }
+  const open = () => { if (src) void studioHost.shell.openExternal(String(src)).catch((err) => rWarn('conversation', 'open image failed', { error: String(err) })) }
 
   if (failed || !src) {
     return (
@@ -187,13 +188,13 @@ export function FaviconLink({
   useEffect(() => {
     if (skip || !host) return
     let alive = true
-    void window.ion.getFavicon(host).then((dataUrl) => {
+    void studioHost.faviconFor(host).then((dataUrl) => {
       if (!alive) return
       if (dataUrl) setIcon(dataUrl)
       else faviconMisses.add(host)
     }).catch((err) => {
       faviconMisses.add(host)
-      rWarn('conversation', 'favicon ipc failed', { host, error: String(err) })
+      rWarn('conversation', 'favicon ipc failed', { url_host: host, error: String(err) })
     })
     return () => { alive = false }
   }, [host, skip])

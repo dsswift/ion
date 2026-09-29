@@ -13,9 +13,9 @@ import {
   CompactionRow,
   BackgroundWorkGroup,
 } from "./index";
-import type { BackgroundTaskState } from "../../../shared/types-engine";
-import type { GroupedItem } from "./tool-helpers";
-import type { Message } from "../../../shared/types-session";
+import type { BackgroundTaskState } from "@ion/shared/types-engine";
+import type { GroupedItem } from "@ion/server/conversation/tool-helpers";
+import type { Message } from "@ion/shared/types-session";
 import {
   ESTIMATED_ROW_HEIGHT,
   ESTIMATED_CHART_ROW_HEIGHT,
@@ -212,6 +212,7 @@ const TranscriptRow = memo(function TranscriptRow({
           message={item.message}
           skipMotion
           actions={actions?.(item.message)}
+          tabId={tabId}
         />
       );
     case "assistant":

@@ -134,6 +134,12 @@ func (h *relayHandler) Handle(ctx context.Context, r slog.Record) error {
 		return true
 	})
 
+	if _, ok := fieldsMap["host"]; !ok {
+		if host := relayHostName(); host != "" {
+			fieldsMap["host"] = host
+		}
+	}
+
 	// Build a new record containing only top-level (reserved) attrs plus a
 	// canonical "fields" attribute, always present ({} when empty).
 	nr := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
@@ -202,6 +208,8 @@ func rotateRelayLogLocked() {
 // "file", or "both".
 // RELAY_LOG_MAX_FILES sets the number of rotated archive generations to keep
 // alongside the live file (default 3).
+// RELAY_OTLP_ENDPOINT, when set, also tees every line to the OTLP shipper
+// (otlp_egress.go) and sets relayOTLP.
 func initLogger() *slog.Logger {
 	// ── Level ──────────────────────────────────────────────────────────────
 	minLevel := slog.LevelInfo
@@ -271,13 +279,44 @@ func initLogger() *slog.Logger {
 		dst = io.MultiWriter(writers...)
 	}
 
-	// ── Build handler chain ────────────────────────────────────────────────
-	base := slog.NewJSONHandler(dst, handlerOpts)
-	h := &levelGatedHandler{
-		inner: &relayHandler{base: base},
-		min:   minLevel,
+	// ── OTLP shipping (optional) ───────────────────────────────────────────
+	// The local logger writes to dst only. The shipper reports its own
+	// failures through it, so they never loop back into the shipping tee.
+	local := newRelayLogger(dst, handlerOpts, minLevel)
+	relayOTLP = nil
+	shipDst := dst
+	otlpCfg, otlpEnabled, otlpErr := otlpConfigFromEnv()
+	switch {
+	case otlpErr != nil:
+		local.Error("otlp shipping disabled: invalid config", "tag", "relay.otlp", "err", otlpErr)
+	case otlpEnabled:
+		relayOTLP = newOTLPShipper(otlpCfg, local)
+		relayOTLP.start()
+		// Shipper first: it always accepts the full line, so a short write on
+		// the local target can never stop the line reaching the shipper.
+		shipDst = io.MultiWriter(relayOTLP, dst)
 	}
 
+	log := newRelayLogger(shipDst, handlerOpts, minLevel)
+	if relayOTLP != nil {
+		log.Info("otlp shipping enabled", "tag", "relay.otlp",
+			"endpoint", otlpCfg.Endpoint, "auth_mode", string(otlpCfg.AuthMode),
+			"token_url", otlpCfg.TokenURL, "client_id", otlpCfg.ClientID)
+	}
+	return log
+}
+
+// relayOTLP is the OTLP shipper initLogger started, or nil when
+// RELAY_OTLP_ENDPOINT is unset. main wires it into the hub for forward spans
+// and flushes it on shutdown.
+var relayOTLP *otlpShipper
+
+// newRelayLogger builds the canonical handler chain over dst.
+func newRelayLogger(dst io.Writer, opts *slog.HandlerOptions, minLevel slog.Level) *slog.Logger {
+	h := &levelGatedHandler{
+		inner: &relayHandler{base: slog.NewJSONHandler(dst, opts)},
+		min:   minLevel,
+	}
 	return slog.New(h).With("component", "relay")
 }
 

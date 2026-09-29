@@ -105,51 +105,54 @@ final class ToolDescriptionTextTests: XCTestCase {
 
 // MARK: - toolInput streaming accumulation
 
+/// A running tool row's input streams in as `append` patches on its
+/// `toolInput`, and the description reads the accumulated value.
 @MainActor
 final class ToolInputAccumulationTests: XCTestCase {
 
-    private func seedTab(_ vm: SessionViewModel, id: String) {
-        vm.tabs = [RemoteTabState(
-            id: id, title: id, customTitle: nil, status: .running,
-            workingDirectory: "/tmp", permissionMode: .auto, thinkingEffort: nil,
-            permissionQueue: [], hasEngineExtension: false
-        )]
+    private typealias T = TranscriptTestSupport
+
+    private func openWithRunningTool(_ vm: SessionViewModel, toolId: String) {
+        vm.tabs = [T.tab("t", status: .running)]
+        var tool = T.row(toolId, .tool)
+        tool.toolName = "Bash"
+        tool.toolId = toolId
+        tool.toolStatus = .running
+        vm.handleTranscriptPage(T.page(tabId: "t", rows: [tool]))
     }
 
     func testPartialInputAccumulatesOnRunningRow() {
         let vm = SessionViewModel()
-        seedTab(vm, id: "t")
+        openWithRunningTool(vm, toolId: "tool-1")
 
-        vm.handleEngineToolStart(tabId: "t", instanceId: nil, toolName: "Bash", toolId: "tool-1")
-
-        // Simulate two desktop_tool_update chunks arriving
-        vm.handleEngineToolUpdate(tabId: "t", toolId: "tool-1", partialInput: #"{"command":"git "#)
-        vm.handleEngineToolUpdate(tabId: "t", toolId: "tool-1", partialInput: #"status"}"#)
+        vm.handleTranscriptPatch(T.patch(tabId: "t", baseRev: 0, total: 1, change: .append(index: 0, id: "tool-1", field: .toolInput, text: #"{"command":"git "#)))
+        vm.handleTranscriptPatch(T.patch(tabId: "t", baseRev: 1, total: 1, change: .append(index: 0, id: "tool-1", field: .toolInput, text: #"status"}"#)))
 
         let row = vm.conversationMessages("t").first { $0.id == "tool-1" }
         XCTAssertEqual(row?.toolInput, #"{"command":"git status"}"#,
-            "partialInput chunks must be concatenated in order onto the tool row")
-    }
-
-    func testAccumulationIgnoresMissingRow() {
-        // toolId that was never started — must not crash or leave spurious state.
-        let vm = SessionViewModel()
-        seedTab(vm, id: "t")
-
-        vm.handleEngineToolUpdate(tabId: "t", toolId: "ghost-tool", partialInput: "chunk")
-        XCTAssertTrue(vm.conversationMessages("t").isEmpty)
+            "streamed input must be concatenated in order onto the tool row")
     }
 
     func testDescriptionVisibleAfterAccumulation() {
         let vm = SessionViewModel()
-        seedTab(vm, id: "t")
-
-        vm.handleEngineToolStart(tabId: "t", instanceId: nil, toolName: "Bash", toolId: "tool-2")
-        vm.handleEngineToolUpdate(tabId: "t", toolId: "tool-2", partialInput: #"{"command":"ls -la"}"#)
+        openWithRunningTool(vm, toolId: "tool-2")
+        vm.handleTranscriptPatch(T.patch(tabId: "t", baseRev: 0, total: 1, change: .append(index: 0, id: "tool-2", field: .toolInput, text: #"{"command":"ls -la"}"#)))
 
         let row = vm.conversationMessages("t").first { $0.id == "tool-2" }
-        let desc = toolDescriptionText(name: row?.toolName, input: row?.toolInput)
-        XCTAssertEqual(desc, "ls -la",
+        XCTAssertEqual(toolDescriptionText(name: row?.toolName, input: row?.toolInput), "ls -la",
             "toolDescriptionText on accumulated toolInput must return the Bash command")
+    }
+
+    func testRunningToolRowsAreTheActiveTools() {
+        let vm = SessionViewModel()
+        openWithRunningTool(vm, toolId: "tool-3")
+        XCTAssertEqual(vm.activeTools["t"]?.keys.sorted(), ["tool-3"])
+
+        var done = T.row("tool-3", .tool)
+        done.toolName = "Bash"
+        done.toolId = "tool-3"
+        done.toolStatus = .completed
+        vm.handleTranscriptPatch(T.patch(tabId: "t", baseRev: 0, total: 1, change: .splice(at: 0, deleteCount: 1, rows: [done])))
+        XCTAssertNil(vm.activeTools["t"], "a finished tool row is no longer an active tool")
     }
 }

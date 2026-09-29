@@ -1,5 +1,5 @@
-import type { AgentStateUpdate } from '../../shared/types'
-import type { DispatchInfo, DispatchTelemetryEntry } from '../../shared/types-engine'
+import type { AgentStateUpdate } from '@ion/shared/types'
+import type { DispatchInfo, DispatchTelemetryEntry } from '@ion/shared/types-engine'
 
 // Re-export so existing renderer imports keep working.
 export type { DispatchInfo }
@@ -265,7 +265,7 @@ export interface StatusDot {
 /**
  * A `StatusDot` plus its rank, so an aggregate over several dispatches can pick
  * the most important state to show (higher wins) the way
- * `getGroupStatusColor` folds a group of tabs down to one dot.
+ * `getTabStatusColor` ranks a single tab.
  *
  * Deliberately a SEPARATE type rather than a field on `StatusDot`: `getStatusDot`
  * is consumed by callers that compare its result exactly, so widening the base
@@ -413,7 +413,7 @@ export function isAgentActive(agent: AgentStateUpdate, allAgents: AgentStateUpda
 
 /**
  * Map an agent's status to the platform's standardized status-dot vocabulary,
- * the same cascade `StatusDot` (TabStripStatusDot.tsx) and the status bar use.
+ * the same cascade `StatusDot` (StatusDot.tsx) and the status bar use.
  *
  * Thin delegator to `resolveDotForStatus` — that function documents and owns
  * the cascade, so there is exactly ONE place the ordering lives. Kept pure:
@@ -500,63 +500,4 @@ export function rootDispatches(
   telemetry: DispatchTelemetryEntry[],
 ): DispatchTelemetryEntry[] {
   return telemetry.filter((e) => !e.dispatchParentId)
-}
-
-
-/**
- * Build the full ancestor breadcrumb stack for a deep-linked dispatch.
- *
- * Walks dispatchParentId up through durable agentStates to produce an ordered
- * chain: root → ... → target. All data is already on agentStates; no network
- * call required.
- *
- * This closes the "missing breadcrumbs on cold open" gap described in plan
- * modest-leaping-waffle.md §7a: AgentDetailPanel.stack initializes with only
- * the root frame (AgentDetailPanel.tsx:75-81); intermediate frames only exist
- * via manual drill-down. Pre-populating with this function lets deep-links from
- * the StatusDrawer arrive at the correct tier without the user drilling down.
- *
- * @param targetDispatchId  - The dispatch the user clicked in the Status Drawer.
- * @param allAgents         - Flat agentStates from the active instance.
- * @returns Ordered BreadcrumbFrame[] (root first, target last), or null if the
- *          target dispatch cannot be found in agentStates.
- */
-export function buildBreadcrumbStack(
-  targetDispatchId: string,
-  allAgents: AgentStateUpdate[],
-): BreadcrumbFrame[] | null {
-  // Find the agent that owns this dispatch id
-  const findAgent = (dispatchId: string): AgentStateUpdate | undefined =>
-    allAgents.find((a) => getDispatches(a).some((d) => d.id === dispatchId))
-
-  const targetAgent = findAgent(targetDispatchId)
-  if (!targetAgent) return null
-
-  const targetDispatch = getDispatches(targetAgent).find((d) => d.id === targetDispatchId)
-  if (!targetDispatch) return null
-
-  // Build ancestor chain by walking dispatchParentId
-  const frames: BreadcrumbFrame[] = []
-  let currentDispatchId = targetDispatchId
-  let currentAgent: AgentStateUpdate | undefined = targetAgent
-
-  // Walk up to root (max 20 levels to guard infinite loops)
-  const visited = new Set<string>()
-  while (currentAgent && !visited.has(currentDispatchId)) {
-    visited.add(currentDispatchId)
-    const dispatch = getDispatches(currentAgent).find((d) => d.id === currentDispatchId)
-    if (!dispatch) break
-    frames.unshift({
-      dispatchId: dispatch.id,
-      conversationId: dispatch.conversationId,
-      agentDisplayName: meta<string>(currentAgent, 'displayName', currentAgent.name),
-    })
-    const parentId = meta<string>(currentAgent, 'dispatchParentId', '')
-    if (!parentId) break
-    currentDispatchId = parentId
-    currentAgent = findAgent(parentId)
-    // findAgent returns the agent owning the PARENT dispatch id
-  }
-
-  return frames.length > 0 ? frames : null
 }

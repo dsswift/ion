@@ -1,0 +1,32 @@
+{
+  "type": "studio_welcome",
+  "protocolVersion": 1,
+  "environmentId": "env-9f8e7d6c",
+  "label": "Josh's MacBook Pro",
+  "platform": "darwin",
+  "serverVersion": "0.1.0",
+  "engineVersion": "1.4.2",
+  "capabilities": ["graph", "browser", "terminal"],
+  "principal": { "subject": "local:josh", "displayName": "josh" },
+  "scopes": ["conversations:read", "conversations:operate", "terminal:operate", "git:write", "admin"],
+  "enterprisePolicy": null,
+  "settingsHiddenGroups": [],
+  "snapshot": {
+    "tabs": [],
+    "settings": {},
+    "worktrees": {
+      "revision": 0,
+      "ready": true,
+      "inventory": {},
+      "workspaces": {},
+      "benchSourceTips": [],
+      "benchRetired": [],
+      "gitConflictAlerts": [],
+      "worktreePipeline": null,
+      "workspaceOperationLedger": []
+    },
+    "automations": [],
+    "engine": { "connected": true, "version": "1.4.2" },
+    "presence": { "entries": [], "driving": {} }
+  }
+}

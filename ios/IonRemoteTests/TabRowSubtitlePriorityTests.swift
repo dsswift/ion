@@ -23,7 +23,7 @@ import XCTest
 ///   4. idle + hasRunningChildren, empty queue → "Working… · …", yellow.
 ///
 /// Desktop↔iOS parity: mirrors the running-children > plan-ready ordering the
-/// desktop folds for both dot and subtitle. See AGENTS.md § "Common parity
+/// desktop folds for both dot and subtitle. See docs/architecture/cross-platform-parity.md § "Common parity
 /// surfaces".
 final class TabRowSubtitlePriorityTests: XCTestCase {
 

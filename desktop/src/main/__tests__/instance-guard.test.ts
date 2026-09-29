@@ -16,7 +16,7 @@ vi.mock('node:child_process', () => ({
 }))
 vi.mock('../logger', () => ({ log: vi.fn(), warn: vi.fn() }))
 
-import { detectRunningIon } from '../instance-guard'
+import { detectRunningIon, scanIonProcesses } from '../instance-guard'
 
 const originalKill = process.kill
 beforeEach(() => {
@@ -38,7 +38,8 @@ describe('detectRunningIon', () => {
   })
 
   it('falls back to a live Ion process when the pid file is stale', () => {
-    state.scan = '456\n'
+    // The scan reads this OS's process lister: tasklist CSV on win32, pgrep elsewhere.
+    state.scan = process.platform === 'win32' ? '"Ion.exe","456","Console","1","64,120 K"\r\n' : '456\n'
     state.existing.add(456)
     expect(detectRunningIon()).toEqual({ pid: 456, source: 'process_scan' })
   })
@@ -46,5 +47,22 @@ describe('detectRunningIon', () => {
   it('does not treat the new process as an already running Ion', () => {
     state.pidFile = String(process.pid)
     expect(detectRunningIon()).toBeNull()
+  })
+})
+
+describe('scanIonProcesses', () => {
+  it('reads pids out of tasklist CSV rows on win32', () => {
+    state.scan = '"Ion.exe","4780","Console","1","120,004 K"\r\n"Ion.exe","8296","Console","1","64,120 K"\r\n'
+    expect(scanIonProcesses('win32')).toEqual([4780, 8296])
+  })
+
+  it('finds nothing in tasklist\'s no-match sentence on win32', () => {
+    state.scan = 'INFO: No tasks are running which match the specified criteria.\r\n'
+    expect(scanIonProcesses('win32')).toEqual([])
+  })
+
+  it('reads pgrep output on darwin', () => {
+    state.scan = '456\n789\n'
+    expect(scanIonProcesses('darwin')).toEqual([456, 789])
   })
 })

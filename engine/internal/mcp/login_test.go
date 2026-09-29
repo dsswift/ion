@@ -33,6 +33,8 @@ type authServerFixture struct {
 	tokenForm url.Values
 	tokenResp map[string]any
 	tokenCode int
+	// registeredRedirects holds the redirect_uris of each registration request.
+	registeredRedirects [][]string
 }
 
 func newAuthServerFixture(t *testing.T) *authServerFixture {
@@ -52,6 +54,13 @@ func newAuthServerFixture(t *testing.T) *authServerFixture {
 	fix.server = httptest.NewServer(mux)
 
 	mux.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
+		var body registrationRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode registration: %v", err)
+		}
+		fix.mu.Lock()
+		fix.registeredRedirects = append(fix.registeredRedirects, body.RedirectURIs)
+		fix.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		if err := json.NewEncoder(w).Encode(map[string]any{"client_id": "dcr-client"}); err != nil {
@@ -255,11 +264,15 @@ func TestBeginLogin_AuthorizedHeaderReachesConnect(t *testing.T) {
 		t.Fatal("login did not complete")
 	}
 
-	headers := resolveOAuthHeaders("srv", nil)
-	if headers == nil {
-		t.Fatal("no auth headers resolved for a logged-in server with no oauth config block")
+	resolver := newTokenResolver("srv", nil)
+	if resolver == nil {
+		t.Fatal("no token resolver for a logged-in server with no oauth config block")
 	}
-	if got := headers["Authorization"]; got != "Bearer access-xyz" {
+	got, err := resolver.Token()
+	if err != nil {
+		t.Fatalf("Token: %v", err)
+	}
+	if got != "Bearer access-xyz" {
 		t.Errorf("Authorization = %q, want a capitalized Bearer header", got)
 	}
 }
@@ -267,9 +280,9 @@ func TestBeginLogin_AuthorizedHeaderReachesConnect(t *testing.T) {
 // TestConnect_SendsStoredTokenWithoutOAuthConfigBlock pins the same guarantee
 // at the seam that actually matters: Connect itself.
 //
-// This is deliberately a Connect-level test rather than a resolveOAuthHeaders
+// This is deliberately a Connect-level test rather than a tokenResolver
 // one. The gate that was wrong is in Connect ("only resolve a token when
-// config.OAuth != nil"), and a unit test calling resolveOAuthHeaders directly
+// config.OAuth != nil"), and a unit test calling the resolver directly
 // passes with that gate still in place — false coverage. Here the MCP server
 // demands a Bearer token and answers 401 without one, so a Connect that fails
 // to attach the stored token cannot succeed.

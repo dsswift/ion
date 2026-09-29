@@ -1,7 +1,6 @@
 /**
- * controls-bus — mirror-local UI state connecting the TabStrip's Studio button
- * (which, in the Studio window, opens the window-controls popover instead of
- * launching the window) to the canvas host (VisualizerRoot), which owns the actual
+ * controls-bus — mirror-local UI state connecting the visualizer toolbar's
+ * settings button (which opens the window-controls popover) to the canvas host (VisualizerRoot), which owns the actual
  * sound/seed/theme state and actions.
  *
  * VisualizerRoot PUBLISHES its current values + action callbacks; the popover reads
@@ -9,7 +8,7 @@
  * session-store mirror contract.
  */
 import { create } from 'zustand'
-import type { StudioThemeListEntry } from '../../../shared/types-studio'
+import type { StudioThemeListEntry } from '@ion/shared/types-studio'
 
 export interface StudioControlsActions {
   toggleSound(): void

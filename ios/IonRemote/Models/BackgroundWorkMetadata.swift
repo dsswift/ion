@@ -9,12 +9,15 @@ struct BackgroundWorkMetadata: Codable, Sendable, Equatable {
     let remainingTaskIds: [String]?
 }
 
+/// Mirrors the shared `BackgroundWorkItem`, where `source` and `exitCode` are
+/// optional: an item delivered before its process reported an exit carries
+/// neither, and requiring them failed the whole row that held the item.
 struct BackgroundWorkItem: Codable, Sendable, Equatable {
     let id: String
-    let source: String
+    let source: String?
     let label: String?
     let status: String
-    let exitCode: Int
+    let exitCode: Int?
     let elapsedMs: Int?
     let outputPath: String?
 }

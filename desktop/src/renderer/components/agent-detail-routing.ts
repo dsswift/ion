@@ -1,5 +1,5 @@
-import type { AgentStateUpdate } from '../../shared/types'
-import type { DispatchInfo } from '../../shared/types-engine'
+import type { AgentStateUpdate } from '@ion/shared/types'
+import type { DispatchInfo } from '@ion/shared/types-engine'
 import { contentRouter } from '../lib/file-open-router'
 import { meta, mostRecentDispatch } from './agent-panel-helpers'
 

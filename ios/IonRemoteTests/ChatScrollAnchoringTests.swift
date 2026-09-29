@@ -281,3 +281,134 @@ final class HistoryPrependTailingTests: XCTestCase {
         ))
     }
 }
+
+/// Tail pinning.
+///
+/// The defect these pin: a freshly opened conversation landed part-way up
+/// instead of at its newest turn. The previous implementation placed the
+/// viewport at the bottom and then held it from a timed loop that stopped
+/// after a few quiet main-queue turns — roughly 100ms after the apply. The
+/// transcript's rows kept growing well past that (asynchronous markdown, code
+/// highlighting, remote images), so every later growth moved the bottom away
+/// with nothing watching.
+///
+/// `tailCorrection` is stateless and carries no window: whenever the layout
+/// reports a height, the answer depends only on who owns the viewport and
+/// where the bottom now is. A growth arriving one second or ten seconds after
+/// the apply is corrected identically, which is the property the timed loop
+/// did not have.
+final class ChatTailPinTests: XCTestCase {
+
+    // MARK: - bottomContentOffset
+
+    func testBottomOffsetAccountsForTheBottomInset() {
+        // A 32414pt transcript in a 702pt viewport with a 150pt composer inset.
+        XCTAssertEqual(
+            bottomContentOffset(
+                contentHeight: 32_414, viewportHeight: 852, topInset: 0, bottomInset: 150
+            ),
+            31_712, accuracy: 0.001
+        )
+    }
+
+    func testContentShorterThanTheViewportRestsAtTheTop() {
+        XCTAssertEqual(
+            bottomContentOffset(
+                contentHeight: 120, viewportHeight: 800, topInset: 60, bottomInset: 0
+            ),
+            -60, accuracy: 0.001,
+            "a short transcript must sit at the top inset, not scrolled past it"
+        )
+    }
+
+    // MARK: - tailCorrection
+
+    /// THE REGRESSION. The view was placed at the bottom of a 32414pt
+    /// transcript, then asynchronous content grew it to 45000pt. Under the old
+    /// time-boxed pin the growth arrived after the loop had reported "settled
+    /// at bottom" and was never corrected, leaving the operator at ~70% — the
+    /// reported "three-quarters of the way down".
+    func testLateGrowthIsStillCorrected() {
+        let corrected = tailCorrection(
+            tailIntent: true,
+            isUserInteracting: false,
+            contentOffsetY: 31_712,
+            contentHeight: 45_000,
+            viewportHeight: 852,
+            topInset: 0,
+            bottomInset: 150
+        )
+        XCTAssertEqual(corrected ?? -1, 44_298, accuracy: 0.001,
+            "content growing after the viewport settled must pull it back to the bottom")
+    }
+
+    /// The pin is silent when the view is already where it belongs, so it does
+    /// not write contentOffset on every layout pass.
+    func testNoCorrectionWhenAlreadyAtTheBottom() {
+        XCTAssertNil(tailCorrection(
+            tailIntent: true,
+            isUserInteracting: false,
+            contentOffsetY: 31_712,
+            contentHeight: 32_414,
+            viewportHeight: 852,
+            topInset: 0,
+            bottomInset: 150
+        ))
+    }
+
+    func testSubPointDriftIsRoundingNotDrift() {
+        XCTAssertNil(tailCorrection(
+            tailIntent: true,
+            isUserInteracting: false,
+            contentOffsetY: 31_711.7,
+            contentHeight: 32_414,
+            viewportHeight: 852,
+            topInset: 0,
+            bottomInset: 150
+        ), "a fraction of a point must not trigger a write")
+    }
+
+    /// The operator reading history owns the viewport. Nothing the transcript
+    /// does may move them.
+    func testNoCorrectionWithoutTailIntent() {
+        XCTAssertNil(tailCorrection(
+            tailIntent: false,
+            isUserInteracting: false,
+            contentOffsetY: 4_000,
+            contentHeight: 45_000,
+            viewportHeight: 852,
+            topInset: 0,
+            bottomInset: 150
+        ))
+    }
+
+    /// A gesture always wins, even while the tail still holds the intent —
+    /// the flag is cleared on drag-begin, and this is the second guard for the
+    /// layout passes that run inside the same gesture.
+    func testGestureWinsOverThePin() {
+        XCTAssertNil(tailCorrection(
+            tailIntent: true,
+            isUserInteracting: true,
+            contentOffsetY: 10_000,
+            contentHeight: 45_000,
+            viewportHeight: 852,
+            topInset: 0,
+            bottomInset: 150
+        ))
+    }
+
+    /// Content SHRINKING (a rewind, a heal) leaves the offset past the new
+    /// bottom. The pin corrects in that direction too.
+    func testShrinkingContentPullsTheOffsetBack() {
+        let corrected = tailCorrection(
+            tailIntent: true,
+            isUserInteracting: false,
+            contentOffsetY: 31_712,
+            contentHeight: 9_000,
+            viewportHeight: 852,
+            topInset: 0,
+            bottomInset: 150
+        )
+        XCTAssertEqual(corrected ?? -1, 8_298, accuracy: 0.001)
+    }
+}

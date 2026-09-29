@@ -65,7 +65,7 @@ final class ConnectionQuality {
 
     /// Wall-clock time the last heartbeat was received, or nil if none yet.
     /// Tracked for liveness/diagnostics; the wire-level watchdog lives in
-    /// `TransportManager`, but the ViewModel records the receive time here too.
+    /// the transport, but the ViewModel records the receive time here too.
     var lastHeartbeatAt: Date?
 
     // MARK: - Computed

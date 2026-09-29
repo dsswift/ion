@@ -20,8 +20,8 @@
 import type { Page } from 'playwright-core'
 import { devices } from 'playwright-core'
 import { log as _log } from '../logger'
-import type { BrowserEmulationState, BrowserOrientation } from '../../shared/studio-browser-types'
-import { MAX_EMULATION_DIMENSION, MAX_EMULATION_SCALE_FACTOR, MIN_EMULATION_DIMENSION } from '../../shared/studio-browser-types'
+import type { BrowserEmulationState, BrowserOrientation } from '@ion/shared/studio-browser-types'
+import { MAX_EMULATION_DIMENSION, MAX_EMULATION_SCALE_FACTOR, MIN_EMULATION_DIMENSION } from '@ion/shared/studio-browser-types'
 
 const TAG = 'studio-playwright'
 

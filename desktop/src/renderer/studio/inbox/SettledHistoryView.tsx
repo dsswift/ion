@@ -8,15 +8,16 @@
  */
 import React, { useCallback, useMemo, useState } from 'react'
 import { ArrowLeft, MagnifyingGlass } from '@phosphor-icons/react'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../../theme'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
 import { transitions } from '../../theme-tokens'
-import { formatRelativeShort } from '../../components/TabStripShared'
+import { formatRelativeShort } from '../../components/conversation-status'
 import { inboxProjectFor, inboxWorktreeFor } from './inbox-grouping'
 import { searchSettledTabs, paginateSettled } from './settled-history'
-import { settledRecordRestorableFromInventory } from '../../stores/settled-worktree'
-import type { TabState, IntegrationWorkspace } from '../../../shared/types'
+import { settledRecordRestorableFromInventory } from '@ion/server/store/settled-worktree'
+import { tabListKey } from '../connection/tab-environment'
+import type { TabState, IntegrationWorkspace } from '@ion/shared/types'
 
 /* ------------------------------------------------------------------ */
 /*  Row                                                               */
@@ -187,7 +188,7 @@ export function SettledHistoryView({ history, onBack }: {
           </div>
         ) : paginated.page.map((tab) => (
           <HistoryRow
-            key={tab.id}
+            key={tabListKey(tab)}
             tab={tab}
             projectName={inboxProjectFor(tab, benches).name}
             worktreeTitle={tab.worktree ? inboxWorktreeFor(tab, benches, inventory).label : null}

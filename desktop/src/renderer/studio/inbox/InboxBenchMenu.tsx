@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowsClockwise, ChatCircle, MagnifyingGlass, Terminal, Trash, Warning } from '@phosphor-icons/react'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../../theme'
 import { usePopoverLayer } from '../../components/PopoverLayer'
 import { useAnchoredPopover } from '../../hooks/useAnchoredPopover'
@@ -9,7 +9,7 @@ import { useOutsideDismiss } from '../../hooks/useOutsideDismiss'
 import { rError } from '../../rendererLogger'
 import { ConfirmDialog } from '../../components/git/ConfirmDialog'
 import { ConflictsDialog } from '../../components/git/ConflictsDialog'
-import type { IntegrationWorkspace } from '../../../shared/types'
+import type { IntegrationWorkspace } from '@ion/shared/types'
 
 export function InboxBenchMenu({ repoPath, workspace, anchor, onClose }: { repoPath: string; workspace: IntegrationWorkspace; anchor: { x: number; y: number }; onClose(): void }): React.JSX.Element | null {
   const colors = useColors()

@@ -336,7 +336,8 @@
       "payloadKind": "object",
       "payloadFields": [
         "identity",
-        "reason"
+        "reason",
+        "sessionKey"
       ],
       "result": "none"
     },
@@ -747,6 +748,7 @@
     "resources",
     "schedules",
     "tools",
+    "version",
     "webhooks"
   ],
   "wireConstants": {

@@ -36,6 +36,8 @@ struct SettingsVoiceView: View {
                     withAnimation { keySaved = true }
                     Haptic.success()
                     Task {
+                        // Only CancellationError can surface; the saved badge is hidden either way.
+                        // swiftlint:disable:next silent_try_optional
                         try? await Task.sleep(nanoseconds: 2_000_000_000)
                         withAnimation { keySaved = false }
                     }
@@ -75,7 +77,7 @@ struct SettingsVoiceView: View {
                     }
                 )) {
                     Text("Client-Only").tag(VoiceService.VoiceMode.clientOnly)
-                    Text("Desktop-Assisted").tag(VoiceService.VoiceMode.desktopAssisted)
+                    Text("Server-Assisted").tag(VoiceService.VoiceMode.desktopAssisted)
                 } label: {
                     Label("Processing", systemImage: "cpu")
                 }
@@ -113,7 +115,7 @@ struct SettingsVoiceView: View {
                 if !viewModel.voiceService.isEnabled {
                     Text("Voice is off.")
                 } else if viewModel.voiceService.voiceMode == .desktopAssisted {
-                    Text("Desktop shapes LLM output for voice before iOS speaks it.")
+                    Text("The server shapes LLM output for voice before iOS speaks it.")
                 } else {
                     Text("iOS speaks assistant responses with client-side filtering.")
                 }

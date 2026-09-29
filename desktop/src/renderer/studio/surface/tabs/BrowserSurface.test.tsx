@@ -55,6 +55,6 @@ describe('view bounds reporting', () => {
     const code = push.split('\n').filter((line) => !line.trim().startsWith('//')).join('\n')
     expect(code).not.toMatch(/zoomRect\s*\(/)
     expect(code).not.toMatch(/\/\s*zoom/)
-    expect(code).toContain('host.getBoundingClientRect()')
+    expect(code).toContain('bodyEl.getBoundingClientRect()')
   })
 })

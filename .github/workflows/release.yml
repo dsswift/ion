@@ -10,6 +10,19 @@ on:
       - 'relay/**'
       - 'ios/**'
       - 'sdk/**'
+      # `server` is its own release unit -- release-please-config.json gives it
+      # a component, a CHANGELOG and a VERSION, .commit.json scopes `server/`
+      # to it, and build.yml's build-server job is gated only on the release
+      # report listing it. It was missing here, which meant a server-only
+      # change produced no release, so no release report, so no image: the one
+      # component that can build entirely on its own was the one that could
+      # never trigger its own build.
+      - 'server/**'
+      # `packages/` is a workspace member that the server image (server's
+      # Dockerfile COPYs it) and the browser Studio client both build against.
+      # A change confined to it alters both shipped artifacts and, before this,
+      # released neither.
+      - 'packages/**'
       - 'release-please-*.json'
   workflow_dispatch:
     inputs:

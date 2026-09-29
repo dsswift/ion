@@ -18,7 +18,7 @@ import { join, relative } from 'node:path'
  */
 
 const RENDERER_ROOT = join(__dirname, '..')
-const SCAN_ROOTS = [join(RENDERER_ROOT, 'components'), join(RENDERER_ROOT, 'studio'), join(RENDERER_ROOT, 'App.tsx')]
+const SCAN_ROOTS = [join(RENDERER_ROOT, 'components'), join(RENDERER_ROOT, 'studio')]
 
 // Hex colors (#fff, #ffffff, #ffffff80) and functional notations.
 // Word-boundary keeps css-id-like strings ('#root') from matching; 3-4 digit

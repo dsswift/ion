@@ -18,18 +18,22 @@ import (
 // duplicate turns. Native children have no file, so the recorder creates one
 // with the dispatch task and then persists normalized text/tool activity.
 type DispatchTranscriptRecorder struct {
-	mu       sync.Mutex
-	task     string
-	model    string
-	convID   string
-	conv     *Conversation
-	text     string
-	disabled bool
-	closed   bool
+	mu               sync.Mutex
+	task             string
+	model            string
+	workingDirectory string
+	convID           string
+	conv             *Conversation
+	text             string
+	disabled         bool
+	closed           bool
 }
 
-func NewDispatchTranscriptRecorder(task, model string) *DispatchTranscriptRecorder {
-	return &DispatchTranscriptRecorder{task: task, model: model}
+// NewDispatchTranscriptRecorder builds a recorder for one dispatch. The
+// workingDirectory is the directory the child runs in; it is stamped on the
+// mirror's header so the child is grouped with the work it belongs to.
+func NewDispatchTranscriptRecorder(task, model, workingDirectory string) *DispatchTranscriptRecorder {
+	return &DispatchTranscriptRecorder{task: task, model: model, workingDirectory: workingDirectory}
 }
 
 // SetConversationID binds the recorder once SessionInit reveals the backend's
@@ -53,6 +57,7 @@ func (r *DispatchTranscriptRecorder) SetConversationID(conversationID string) {
 			return
 		}
 		r.conv = existing
+		SyncWorkingDirectory(r.conv, r.workingDirectory, conversationID)
 		if r.task != "" {
 			AddUserMessage(r.conv, r.task)
 		}
@@ -67,6 +72,7 @@ func (r *DispatchTranscriptRecorder) SetConversationID(conversationID string) {
 	}
 	r.conv = CreateConversation(conversationID, "", r.model)
 	r.conv.DispatchTranscriptMirror = true
+	SyncWorkingDirectory(r.conv, r.workingDirectory, conversationID)
 	if r.task != "" {
 		AddUserMessage(r.conv, r.task)
 	}

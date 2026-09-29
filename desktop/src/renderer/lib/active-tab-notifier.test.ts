@@ -35,10 +35,14 @@ const store = {
   },
 }
 
-vi.mock('../stores/sessionStore', () => ({ useSessionStore: store }))
+vi.mock('@ion/server/store/sessionStore', () => ({ useSessionStore: store }))
 
+import { installFakeWire } from '../host/__tests__/fake-wire'
+
+// The server-side `presence.focus` stub; the loopback wire dispatches to it
+// with the packed shape `(tabId, engineProfileId)`.
 const notifyTabFocus = vi.fn()
-;(globalThis as any).window = { ion: { notifyTabFocus } }
+;(globalThis as any).window = { ion: installFakeWire({ notifyTabFocus }) }
 
 describe('initActiveTabNotifier', () => {
   beforeEach(async () => {
@@ -77,5 +81,17 @@ describe('initActiveTabNotifier', () => {
     expect(notifyTabFocus).toHaveBeenCalledTimes(2)
     expect(notifyTabFocus).toHaveBeenLastCalledWith('b', 'profile-b')
     stop()
+  })
+
+  it('publishes focus on a browser host too, and never throws on the first tab switch', async () => {
+    // No `window.ion` -- the one discriminator `host-instance.ts` uses to
+    // resolve `BrowserStudioHost` instead of `ElectronStudioHost`. The verb
+    // is `presence.focus` over the wire on every host now; with no wire
+    // connected the send is queued or dropped by the host, never thrown.
+    delete (globalThis as { window?: { ion?: unknown } }).window?.ion
+    ;(globalThis as any).window = {}
+    const { initActiveTabNotifier } = await import('./active-tab-notifier')
+    expect(() => initActiveTabNotifier()).not.toThrow()
+    ;(globalThis as any).window = { ion: installFakeWire({ notifyTabFocus }) }
   })
 })

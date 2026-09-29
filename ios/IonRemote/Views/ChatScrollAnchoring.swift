@@ -163,3 +163,74 @@ func anchoredOffset(
     guard maxOffset > minOffset else { return minOffset }
     return min(max(target, minOffset), maxOffset)
 }
+
+// MARK: - Tail pinning
+
+/// The `contentOffset.y` that places the viewport at the very bottom.
+///
+/// One definition, used by every caller that needs the bottom. It was written
+/// out inline in four places, which is three chances for one of them to drift
+/// away from the others.
+///
+/// Floors at `-topInset` so content shorter than the viewport resolves to the
+/// top rather than to a negative-scroll position past it.
+func bottomContentOffset(
+    contentHeight: CGFloat,
+    viewportHeight: CGFloat,
+    topInset: CGFloat,
+    bottomInset: CGFloat
+) -> CGFloat {
+    max(contentHeight - viewportHeight + bottomInset, -topInset)
+}
+
+/// The offset a layout pass must apply to keep the viewport at the bottom, or
+/// `nil` when it must leave the offset alone.
+///
+/// ── Why this is decided per layout pass rather than per apply ───────────────
+/// A transcript's real height is not known when its rows are applied. Rows
+/// self-size, and a row's content can keep growing long after that: markdown
+/// re-renders, code highlights, and remote images all resolve asynchronously,
+/// and each one grows its row — which pushes the bottom further down while the
+/// viewport stays where it was.
+///
+/// THE BUG THIS FIXES: the previous implementation pinned the bottom from a
+/// timed loop that stopped after a few quiet main-queue turns. On a freshly
+/// opened conversation it reported "settled at bottom" ~100ms after the apply —
+/// correctly, for the height the layout knew at that instant — and then let go.
+/// Every later growth moved the bottom away with nothing watching, so the
+/// conversation opened part-way up and the operator had to press
+/// scroll-to-bottom. Opening the same conversation a second time looked fine,
+/// because the asynchronous content was cached and measured on the first pass.
+///
+/// Holding the tail for as long as the operator has not taken the scroll over
+/// removes the guess entirely: there is no window to expire, and no assumption
+/// about how long measurement takes.
+///
+/// - Parameters:
+///   - tailIntent: the viewport belongs to the tail — nothing has claimed it
+///     since (no drag, no jump).
+///   - isUserInteracting: `isTracking || isDragging || isDecelerating`. Their
+///     gesture always wins over a pin they did not ask for.
+///   - contentOffsetY: the current offset.
+/// - Returns: the offset to set, or `nil` when there is nothing to correct.
+func tailCorrection(
+    tailIntent: Bool,
+    isUserInteracting: Bool,
+    contentOffsetY: CGFloat,
+    contentHeight: CGFloat,
+    viewportHeight: CGFloat,
+    topInset: CGFloat,
+    bottomInset: CGFloat
+) -> CGFloat? {
+    guard tailIntent, !isUserInteracting else { return nil }
+    let bottom = bottomContentOffset(
+        contentHeight: contentHeight,
+        viewportHeight: viewportHeight,
+        topInset: topInset,
+        bottomInset: bottomInset
+    )
+    // Sub-point differences are rounding, not drift. Correcting them would
+    // write contentOffset on every layout pass forever.
+    guard abs(bottom - contentOffsetY) > 0.5 else { return nil }
+    return bottom
+}

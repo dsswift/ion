@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -38,14 +37,24 @@ type bedrockProvider struct {
 	region string
 	signer awssig.Signer
 	client *http.Client
-	// credentials resolves rotating workload credentials before every signed
-	// request. Nil means explicit/static credentials in signer are authoritative.
-	credentials func(context.Context) (awssig.Credentials, error)
+	// explicitCredentials is true when BedrockOptions provided a static
+	// access key/secret at construction (an operator-configured credential,
+	// not a per-principal or environment one). Holds no environment-derived
+	// value: R-23 -- Bedrock, like every other provider, no longer reads
+	// AWS_* at construction. See resolveCredentials for the per-request
+	// dynamic path.
+	explicitCredentials bool
 }
 
 // NewBedrockProvider creates an AWS Bedrock provider that uses the ConverseStream
 // API with AWS Signature V4 signing. Translates Bedrock events to Anthropic
 // canonical format.
+//
+// Holds no environment-derived credential (R-23): when opts carries no
+// explicit static credentials, signing resolves dynamically per request (see
+// resolveCredentials) rather than snapshotting AWS_* environment variables
+// once at construction -- the prior behavior meant a credential change after
+// startup was never picked up.
 func NewBedrockProvider(opts *BedrockOptions) LlmProvider {
 	region := "us-east-1"
 	var accessKey, secretKey, sessionToken string
@@ -61,24 +70,7 @@ func NewBedrockProvider(opts *BedrockOptions) LlmProvider {
 		explicitCredentials = accessKey != "" || secretKey != "" || sessionToken != ""
 	}
 
-	if accessKey == "" {
-		accessKey = os.Getenv("AWS_ACCESS_KEY_ID")
-	}
-	if secretKey == "" {
-		secretKey = os.Getenv("AWS_SECRET_ACCESS_KEY")
-	}
-	if sessionToken == "" {
-		sessionToken = os.Getenv("AWS_SESSION_TOKEN")
-	}
-	if region == "us-east-1" {
-		if r := os.Getenv("AWS_REGION"); r != "" {
-			region = r
-		} else if r := os.Getenv("AWS_DEFAULT_REGION"); r != "" {
-			region = r
-		}
-	}
-
-	provider := &bedrockProvider{
+	return &bedrockProvider{
 		region: region,
 		signer: awssig.Signer{
 			Service: "bedrock",
@@ -89,39 +81,71 @@ func NewBedrockProvider(opts *BedrockOptions) LlmProvider {
 				SessionToken:    sessionToken,
 			},
 		},
-		client: &http.Client{Transport: network.GetHTTPTransport()},
+		client:              &http.Client{Transport: network.GetHTTPTransport()},
+		explicitCredentials: explicitCredentials,
 	}
-	if !explicitCredentials {
-		fallbackCredentials := provider.signer.Creds
-		provider.credentials = func(ctx context.Context) (awssig.Credentials, error) {
-			credentialProvider := auth.CurrentAWSCredentialsProvider()
-			if credentialProvider == nil {
-				if fallbackCredentials.AccessKeyID == "" || fallbackCredentials.SecretAccessKey == "" {
-					return awssig.Credentials{}, fmt.Errorf("AWS credentials not configured")
-				}
-				return fallbackCredentials, nil
-			}
-			credentials, err := credentialProvider.Retrieve(ctx)
-			if err != nil {
-				return awssig.Credentials{}, err
-			}
-			return awssig.Credentials{
-				AccessKeyID: credentials.AccessKeyID, SecretAccessKey: credentials.SecretAccessKey,
-				SessionToken: credentials.SessionToken,
-			}, nil
-		}
-	}
-	return provider
 }
 
-func (p *bedrockProvider) signRequest(ctx context.Context, request *http.Request, payload []byte) error {
-	signer := p.signer
-	if p.credentials != nil {
-		credentials, err := p.credentials(ctx)
-		if err != nil {
-			return err
+// resolveCredentials returns the AWS credentials and region to sign this
+// request with, in order: an operator-configured static credential
+// (explicitCredentials, unchanged since construction); a request-scoped
+// authenticator on ctx (a registered PrincipalCredentialSource resolved one
+// for the acting principal -- R-02, R-03); the workload identity provider
+// (auth.CurrentAWSCredentialsProvider, unchanged); the resolver's env set
+// (auth.ResolveProviderEnv("bedrock"), read fresh per call so a credential
+// change after startup is picked up, unlike the old construction-time
+// snapshot). A request-scoped SigV4Authenticator signs req directly and
+// reports handled=true so the caller skips its own signRequest.
+func (p *bedrockProvider) resolveCredentials(ctx context.Context, req *http.Request, payload []byte) (creds awssig.Credentials, region string, handled bool, err error) {
+	if p.explicitCredentials {
+		return p.signer.Creds, p.region, false, nil
+	}
+	if a, ok := RequestCredentialFrom(ctx); ok && a != nil {
+		if sigErr := a.Authenticate(ctx, req, payload); sigErr != nil {
+			return awssig.Credentials{}, "", true, sigErr
 		}
-		signer.Creds = credentials
+		return awssig.Credentials{}, "", true, nil
+	}
+	if credentialProvider := auth.CurrentAWSCredentialsProvider(); credentialProvider != nil {
+		workloadCreds, wErr := credentialProvider.Retrieve(ctx)
+		if wErr != nil {
+			return awssig.Credentials{}, "", false, wErr
+		}
+		return awssig.Credentials{
+			AccessKeyID: workloadCreds.AccessKeyID, SecretAccessKey: workloadCreds.SecretAccessKey,
+			SessionToken: workloadCreds.SessionToken,
+		}, p.region, false, nil
+	}
+	envValues, ok := auth.ResolveProviderEnv("bedrock")
+	if !ok {
+		return awssig.Credentials{}, "", false, fmt.Errorf("AWS credentials not configured")
+	}
+	region = envValues.Values["region"]
+	if region == "" {
+		region = p.region
+	}
+	return awssig.Credentials{
+		AccessKeyID: envValues.Values["accessKeyID"], SecretAccessKey: envValues.Values["secretAccessKey"],
+		SessionToken: envValues.Values["sessionToken"],
+	}, region, false, nil
+}
+
+// signRequest signs request for Bedrock's SigV4 scheme, resolving credentials
+// per the precedence in resolveCredentials. When a request-scoped
+// authenticator on ctx already signed the request directly (handled=true),
+// this is a no-op -- the two signing paths never both apply.
+func (p *bedrockProvider) signRequest(ctx context.Context, request *http.Request, payload []byte) error {
+	creds, region, handled, err := p.resolveCredentials(ctx, request, payload)
+	if err != nil {
+		return err
+	}
+	if handled {
+		return nil
+	}
+	signer := p.signer
+	signer.Creds = creds
+	if region != "" {
+		signer.Region = region
 	}
 	return signer.SignRequest(request, payload)
 }

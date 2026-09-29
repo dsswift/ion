@@ -47,6 +47,34 @@ launchctl unsetenv ANTHROPIC_API_KEY
 
 **Note:** The engine daemon inherits its environment from launchd, not from your shell. `launchctl setenv` is the way to make credentials visible to a GUI/agent-launched engine.
 
+## This Mac and other Environments
+
+A desktop install carries its own Studio Server, so every Mac running Ion is
+an Environment, and one desktop can work in several at once. Settings →
+Environments lists this Mac first and every other Environment you have
+added. Their conversations share one Inbox; nothing is switched.
+
+To use another Mac's Ion from this one, pair with it. On the other Mac,
+Settings → Servers → This Mac → Access & pairing:
+
+- **Pairing link**, then paste the link here under Settings → All servers →
+  Add server → Pairing link. Works anywhere the two can reach each other.
+- **Discovery → make it discoverable** for 15 minutes or an hour, then find
+  it here under All servers → Add server → **Nearby** and type the code it shows.
+  Works on the same local network, and an organization can turn it off.
+
+A headless host is added the same ways, or directly over SSH (Add
+server → SSH installs the server there). To install Ion itself on
+another Mac without walking over to it, see
+[Pushing the desktop to another Mac](studio-server.md#pushing-the-desktop-to-another-mac).
+The full guide is [Ion Studio Server](studio-server.md), and
+[Three machines, start to finish](multi-machine-walkthrough.md) walks one
+laptop through pairing with a headless host and with a second laptop.
+
+A device that pairs with this Mac acts as you: it sees this Mac's
+conversations and can administer its Environment page. Pairing is one way,
+so this Mac gains no access to the device that paired with it.
+
 ## Build
 
 ```bash
@@ -105,7 +133,7 @@ Ion.app (Electron)
     ├── Preload (contextBridge, typed IPC)
     │
     └── Renderer (React + Zustand + Tailwind)
-        ├── TabStrip
+        ├── Inbox
         ├── ConversationView
         ├── InputBar
         └── MarketplacePanel
@@ -149,6 +177,55 @@ Ion Desktop uses a transparent, always-on-top window with click-through on trans
 1. Quit Ion Desktop
 2. Delete `~/Library/Application Support/Ion/` preferences
 3. Relaunch
+
+### Studio actions time out, settling or sending does nothing for a minute
+
+Check whether more than one Studio server is running:
+
+```bash
+ps -axo pid,ppid,lstart,command | grep 'dist/server/main.js' | grep -v grep
+lsof -U | grep studio.sock
+```
+
+The desktop reaches its LOCAL environment through `~/.ion/studio.sock`, so
+whichever server bound it first is the one the desktop talks to. A server
+whose parent pid is `1` is an orphan of an earlier desktop: it is running
+that earlier build, it still adopts every tab against the engine, and the
+current desktop's own server child (`server.jsonl` line `another Studio
+server owns the local socket; refusing to run a second instance`) exited
+rather than run beside it. Quit Ion, stop the orphan, relaunch:
+
+```bash
+pkill -f 'dist/server/main.js'
+```
+
+Three layers keep this from recurring: every desktop exit path stops its
+server child (`app.exit()` skips `will-quit`, which is where the only stop
+used to live), the server exits on its own when the desktop pid it was
+given in `ION_SUPERVISOR_PID` is gone, and a second server refuses to start
+against an owned socket instead of running half-bound. Every `server.jsonl`
+line carries `fields.pid`, so two processes writing one file are
+distinguishable.
+
+### Terminal opens to a blinking cursor and no shell
+
+The PTY never started. Since the terminal surfaces a start failure, the
+terminal itself prints `terminal failed to start: ...` with the reason and
+shows a `failed to start — type to retry` banner; typing retries the spawn.
+The same text is in `~/.ion/server.jsonl` as `terminal pty failed to start`,
+with the `spawn_helper_*` fields that name the usual cause: node-pty's
+prebuilt `spawn-helper` without its execute bit. npm extracts that file 0644,
+so a build has to set the bit explicitly. Three layers do:
+
+- the repo's root `postinstall` (`scripts/node-pty-spawn-helper.js`) fixes
+  the dev tree's copy under `node_modules`;
+- `desktop/scripts/afterPack.js` fixes the copy electron-builder places in
+  `app.asar.unpacked`, and `check-packaged-requires.js` fails the build if
+  the packed helper is still not executable (pkgbuild preserves the mode it
+  finds, so this is what fixes `/Applications`);
+- the server repairs the bit itself before each spawn when it can. It cannot
+  under the root-owned `/Applications` bundle, which is why the build step is
+  the fix and the runtime repair is only the backstop.
 
 ### DevTools not accessible
 

@@ -76,7 +76,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (payload_model) (count_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json [$__range]))",
+          "expr": "sum by (payload_model) (count_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json [$__range]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "instant",
@@ -131,7 +131,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (payload_model) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | unwrap payload_run_cost_usd [$__interval])) / sum by (payload_model) (count_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json [$__interval]))",
+          "expr": "sum by (payload_model) (sum_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json | unwrap payload_run_cost_usd [$__interval])) / sum by (payload_model) (count_over_time({event_name=\"run.complete\", host_name=~\"$host\", user=~\"$user\"} | json [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "windowed-stat",
@@ -206,7 +206,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "quantile_over_time(0.5, {service_name=\"ion-telemetry\", kind=\"provider.ttft\"} | json | unwrap payload_ttft_ms [$__range]) by (payload_model)",
+          "expr": "quantile_over_time(0.5, {event_name=\"provider.ttft\", host_name=~\"$host\", user=~\"$user\"} | json | unwrap payload_ttft_ms [$__range]) by (payload_model)",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "windowed-stat",
@@ -217,7 +217,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (payload_model) (count_over_time({service_name=\"ion-telemetry\", kind=\"provider.stall\"} | json [$__range]))",
+          "expr": "sum by (payload_model) (count_over_time({event_name=\"provider.stall\", host_name=~\"$host\", user=~\"$user\"} | json [$__range]))",
           "queryType": "instant",
           "refId": "B",
           "__ionClass": "instant",
@@ -228,7 +228,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (payload_model) (count_over_time({service_name=\"ion-telemetry\", kind=\"provider.retry\"} | json [$__range]))",
+          "expr": "sum by (payload_model) (count_over_time({event_name=\"provider.retry\", host_name=~\"$host\", user=~\"$user\"} | json [$__range]))",
           "queryType": "instant",
           "refId": "C",
           "__ionClass": "instant",
@@ -239,7 +239,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "label_replace(sum by (payload_requested_model) (count_over_time({service_name=\"ion-telemetry\", kind=\"provider.fallback\"} | json [$__range])), \"payload_model\", \"$1\", \"payload_requested_model\", \"(.+)\")",
+          "expr": "label_replace(sum by (payload_requested_model) (count_over_time({event_name=\"provider.fallback\", host_name=~\"$host\", user=~\"$user\"} | json [$__range])), \"payload_model\", \"$1\", \"payload_requested_model\", \"(.+)\")",
           "queryType": "instant",
           "refId": "D",
           "__ionClass": "instant",
@@ -293,7 +293,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (payload_reason) (count_over_time({service_name=\"ion-telemetry\", kind=\"provider.fallback\"} | json [$__interval]))",
+          "expr": "sum by (payload_reason) (count_over_time({event_name=\"provider.fallback\", host_name=~\"$host\", user=~\"$user\"} | json [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -356,7 +356,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "topk(15, sum by (tool) (count_over_time({service_name=\"ion-telemetry\", kind=\"tool.execute\"} [$__range])))",
+          "expr": "topk(15, sum by (tool) (count_over_time({event_name=\"tool.execute\", host_name=~\"$host\", user=~\"$user\"} [$__range])))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "instant",
@@ -429,7 +429,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({service_name=\"ion-telemetry\", kind=\"permission.decision\"} | json | payload_decision=\"allow\" [$__interval])) / sum(count_over_time({service_name=\"ion-telemetry\", kind=\"permission.decision\"} | json [$__interval]))",
+          "expr": "sum(count_over_time({event_name=\"permission.decision\", host_name=~\"$host\", user=~\"$user\"} | json | payload_decision=\"allow\" [$__interval])) / sum(count_over_time({event_name=\"permission.decision\", host_name=~\"$host\", user=~\"$user\"} | json [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -483,7 +483,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (payload_agent) (count_over_time({service_name=\"ion-telemetry\", kind=\"dispatch.agent\"} | json [$__interval]))",
+          "expr": "sum by (payload_agent) (count_over_time({event_name=\"dispatch.agent\", host_name=~\"$host\", user=~\"$user\"} | json [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -537,7 +537,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (payload_dispatch_depth) (count_over_time({service_name=\"ion-telemetry\", kind=\"dispatch.agent\"} | json [$__interval]))",
+          "expr": "sum by (payload_dispatch_depth) (count_over_time({event_name=\"dispatch.agent\", host_name=~\"$host\", user=~\"$user\"} | json [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -606,7 +606,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(sum_over_time({service_name=\"ion-telemetry\", kind=\"cache.savings\"} | json | unwrap payload_savings_usd [$__interval]))",
+          "expr": "sum(sum_over_time({event_name=\"cache.savings\", host_name=~\"$host\", user=~\"$user\"} | json | unwrap payload_savings_usd [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -660,7 +660,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (payload_trigger) (sum_over_time({service_name=\"ion-telemetry\", kind=\"compaction\"} | json | unwrap payload_tokens_reclaimed [$__interval]))",
+          "expr": "sum by (payload_trigger) (sum_over_time({event_name=\"compaction\", host_name=~\"$host\", user=~\"$user\"} | json | unwrap payload_tokens_reclaimed [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -746,7 +746,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({service_name=\"ion-telemetry\", kind=\"tool.failure\"} | json [$__interval]))",
+          "expr": "sum(count_over_time({event_name=\"tool.failure\", host_name=~\"$host\", user=~\"$user\"} | json [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "__ionClass": "accumulation",
@@ -757,7 +757,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({service_name=\"ion-telemetry\", kind=\"tool.execute\"} [$__interval]))",
+          "expr": "sum(count_over_time({event_name=\"tool.execute\", host_name=~\"$host\", user=~\"$user\"} [$__interval]))",
           "queryType": "range",
           "refId": "B",
           "__ionClass": "accumulation",
@@ -774,6 +774,56 @@
   ],
   "templating": {
     "list": [
+      {
+        "name": "host",
+        "label": "Device",
+        "type": "query",
+        "description": "The device a line came from (label `host_name`, the OTLP host.name). Multi-select; All includes lines with no device.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(host_name)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
+      {
+        "name": "user",
+        "label": "User",
+        "type": "query",
+        "description": "The signed-in operator (Alloy label `user`). Multi-select; All includes lines with no identity.",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values(user)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0
+      },
       {
         "name": "model",
         "label": "Model",

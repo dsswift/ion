@@ -7,7 +7,7 @@ import { usePopoverLayer } from '../../components/PopoverLayer'
 import { useColors } from '../../theme'
 import { rWarn } from '../../rendererLogger'
 import { scrollableMenuStyle } from '../../menu-viewport'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 
 export function InboxBenchTerminalMenu({
   anchor,

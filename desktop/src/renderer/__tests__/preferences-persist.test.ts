@@ -25,8 +25,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { SETTINGS_DEFAULTS, type PreferencesState } from '../preferences-types'
+import { SETTINGS_DEFAULTS, type PreferencesState } from '@ion/server/preferences-types'
 import { getAllSettings, loadPersistedSettings } from '../preferences-persist'
+import { installFakeWire } from '../host/__tests__/fake-wire'
 
 // `isDark` is set inside loadPersistedSettings as a derived field. It
 // belongs to the state but not to the persisted-defaults surface.
@@ -84,9 +85,9 @@ describe('preferences-persist round-trip — structural', () => {
       }
 
       ;(globalThis as { window?: { ion?: unknown } }).window = {
-        ion: {
+        ion: installFakeWire({
           loadSettings: () => Promise.resolve(diskPayload),
-        },
+        }),
       } as unknown as Window & typeof globalThis
 
       // Minimal document stub for the `document.documentElement.style.zoom`
@@ -151,7 +152,7 @@ describe('loadPersistedSettings — ephemeral workspace migration', () => {
   it('removes legacy worktree and bench recents plus usage counters before saving', async () => {
       const saveSettings = vi.fn(() => Promise.resolve())
       ;(globalThis as { window?: { ion?: unknown } }).window = {
-        ion: {
+        ion: installFakeWire({
           loadSettings: () => Promise.resolve({
             recentBaseDirectories: [
               '/Volumes/projects/alpha',
@@ -165,7 +166,7 @@ describe('loadPersistedSettings — ephemeral workspace migration', () => {
             },
           }),
           saveSettings,
-        },
+        }),
       } as unknown as Window & typeof globalThis
 
       const setState = vi.fn()
@@ -200,7 +201,7 @@ describe('loadPersistedSettings — defaultThinkingEffort validation', () => {
   // the following save wrote `high` back to disk, destroying the choice.
   //
   // Worse, the two readers of the same key diverged: this renderer validator
-  // said `high` while main/settings-store.ts `readDefaultThinkingEffort` said
+  // said `high` while the server's reader of the same key said
   // `xhigh`, so EngineConfig.thinking.effort disagreed with what every new
   // conversation was seeded with.
   //
@@ -226,7 +227,7 @@ describe('loadPersistedSettings — defaultThinkingEffort validation', () => {
   /** Hydrate from a disk payload carrying just this key; return the emitted patch. */
   async function hydrate(diskValue: unknown): Promise<Record<string, unknown>> {
     ;(globalThis as { window?: { ion?: unknown } }).window = {
-      ion: { loadSettings: () => Promise.resolve({ defaultThinkingEffort: diskValue }) },
+      ion: installFakeWire({ loadSettings: () => Promise.resolve({ defaultThinkingEffort: diskValue }) }),
     } as unknown as Window & typeof globalThis
 
     const setStateMock = vi.fn()
@@ -252,15 +253,15 @@ describe('loadPersistedSettings — defaultThinkingEffort validation', () => {
 
   // 'adaptive' is a valid ThinkingEffort but NOT a valid value for this
   // preference: it seeds effort-based models, and adaptive models derive their
-  // default from capability metadata. Mirrors readDefaultThinkingEffort.
+  // default from capability metadata. Mirrors `defaultThinkingEffortOf` on the server.
   it("rejects 'adaptive' — this preference seeds effort-based models only", async () => {
     const patch = await hydrate('adaptive')
-    expect(patch.defaultThinkingEffort).toBe('high')
+    expect(patch.defaultThinkingEffort).toBe('medium')
   })
 
-  it.each([['garbage'], [42], [null], [undefined]])('defaults to high for the invalid value %s', async (bad) => {
+  it.each([['garbage'], [42], [null], [undefined]])('defaults to medium for the invalid value %s', async (bad) => {
     const patch = await hydrate(bad)
-    expect(patch.defaultThinkingEffort).toBe('high')
+    expect(patch.defaultThinkingEffort).toBe('medium')
   })
 })
 
@@ -283,7 +284,7 @@ describe('loadPersistedSettings — Studio surface switch mode validation', () =
 
   async function hydrate(diskValue: unknown): Promise<Record<string, unknown>> {
     ;(globalThis as { window?: { ion?: unknown } }).window = {
-      ion: { loadSettings: () => Promise.resolve({ studioSurfaceSwitchMode: diskValue }) },
+      ion: installFakeWire({ loadSettings: () => Promise.resolve({ studioSurfaceSwitchMode: diskValue }) }),
     } as unknown as Window & typeof globalThis
     const setStateMock = vi.fn()
     loadPersistedSettings(
@@ -328,10 +329,10 @@ describe('loadPersistedSettings applies forced-scheme theme by id on startup', (
 
   it('calls applyTheme with theme id string when selectedTheme is a forced-scheme theme', async () => {
     ;(globalThis as { window?: { ion?: unknown } }).window = {
-      ion: {
+      ion: installFakeWire({
         loadSettings: () =>
           Promise.resolve({ selectedTheme: 'jarvis-hud', themeMode: 'dark' }),
-      },
+      }),
     } as unknown as Window & typeof globalThis
 
     const setStateMock = vi.fn()
@@ -349,10 +350,10 @@ describe('loadPersistedSettings applies forced-scheme theme by id on startup', (
 
   it('calls applyTheme with the theme id for standard themes too', async () => {
     ;(globalThis as { window?: { ion?: unknown } }).window = {
-      ion: {
+      ion: installFakeWire({
         loadSettings: () =>
           Promise.resolve({ selectedTheme: 'ion-dark' }),
-      },
+      }),
     } as unknown as Window & typeof globalThis
 
     const setStateMock = vi.fn()
@@ -370,10 +371,10 @@ describe('loadPersistedSettings applies forced-scheme theme by id on startup', (
 
   it('migrates a legacy save with no selectedTheme from the retired themeMode', async () => {
     ;(globalThis as { window?: { ion?: unknown } }).window = {
-      ion: {
+      ion: installFakeWire({
         loadSettings: () =>
           Promise.resolve({ themeMode: 'light' }),
-      },
+      }),
     } as unknown as Window & typeof globalThis
 
     const setStateMock = vi.fn()
@@ -392,14 +393,14 @@ describe('loadPersistedSettings — AI-assisted prompt override validation', () 
   it('keeps known non-empty workflow prompts and drops unknown or malformed entries', async () => {
     const originalIon = (globalThis as { window?: { ion?: unknown } }).window?.ion
     ;(globalThis as { window?: { ion?: unknown } }).window = {
-      ion: { loadSettings: () => Promise.resolve({
+      ion: installFakeWire({ loadSettings: () => Promise.resolve({
         aiAssistPromptOverrides: {
           'rebase-resolution': 'custom {{directory}}',
           'merge-resolution': '   ',
           unknown: 'must drop',
           'cherry-pick-resolution': 42,
         },
-      }) },
+      }) }),
     } as unknown as Window & typeof globalThis
     ;(globalThis as { document?: unknown }).document = {
       documentElement: { style: {}, classList: { toggle: () => {}, add: () => {}, remove: () => {} } },
@@ -434,7 +435,7 @@ describe('loadPersistedSettings — retired preference keys are ignored', () => 
 
   it('agentDetailPopup from legacy disk payload is not hydrated into state', async () => {
     ;(globalThis as { window?: { ion?: unknown } }).window = {
-      ion: { loadSettings: () => Promise.resolve({ agentDetailPopup: false }) },
+      ion: installFakeWire({ loadSettings: () => Promise.resolve({ agentDetailPopup: false }) }),
     } as unknown as Window & typeof globalThis
 
     const setStateMock = vi.fn()
@@ -487,16 +488,14 @@ function sentinelFor(key: string, defaultValue: unknown): unknown {
     // gitOpsMode must be 'manual' or 'worktree'.
     // worktreeCompletionStrategy must be 'merge-ff' | 'merge' | 'pr'.
     // defaultPermissionMode must be 'auto' or 'plan'.
-    // tabGroupMode must be 'off' | 'auto' | 'manual'.
     if (key === 'themeMode') return 'light'
     if (key === 'gitOpsMode') return 'worktree'
     if (key === 'worktreeCompletionStrategy') return 'merge'
     if (key === 'defaultPermissionMode') return 'auto'
-    if (key === 'tabGroupMode') return 'manual'
     return 'sentinel'
   }
   if (Array.isArray(defaultValue)) {
-    // engineProfiles / quickTools / tabGroups / pairedDevices have
+    // engineProfiles / quickTools / pairedDevices have
     // per-item shape filters; an empty array is fine for the hydration
     // shape check.
     return []

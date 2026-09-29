@@ -1,0 +1,521 @@
+/**
+ * log-egress-otel.test.ts — tests for the LOSSLESS OTLP egress serializer
+ * (Part G2), mirroring the engine table test
+ * (engine/internal/utils/log_egress_otel_test.go).
+ *
+ * The serializer carries the canonical record to every OTLP log record: the
+ * full serialized Ion JSONL as the body; tag, the session and conversation ids,
+ * and user as attributes; and every fields key flattened to a natively-typed
+ * attribute (string/bool/int/double scalars; JSON-stringified nested
+ * objects/arrays). What the resource and the LogRecord already state (the
+ * component, the trace, the host) is not repeated as an attribute.
+ *
+ * The parity block pins that the desktop output for a canonical record has the
+ * IDENTICAL attribute keys and value types the engine produces for the same
+ * record — the engine↔desktop byte-shape guarantee.
+ */
+
+import { describe, it, expect } from 'vitest'
+import type { EgressRecord } from '../log-egress'
+import {
+  buildOtlpPayload,
+  EVENT_NAME_ATTR,
+  otlpAttrsFromRecord,
+  otlpAttrsFromTelemetryEvent,
+  otlpAttrValFromAny,
+  otlpSeverityNumber,
+  normalizeSeverityText,
+  isTelemetryEventRecord,
+  telemetryEventBody,
+  OtlpLogAttr,
+  OtlpLogAttrVal,
+} from '../log-egress-otel'
+
+// canonicalRecord is the fixture pinned by both this test and the engine table
+// test. It carries a mixed-scalar + nested fields map, all three populated
+// top-level correlation IDs, and user. run_id lives inside fields (per the
+// operational schema) and must survive as its own attribute.
+function canonicalRecord(): EgressRecord {
+  return {
+    ts: '2024-11-15T22:04:05.123456789Z',
+    level: 'INFO',
+    msg: 'session started',
+    component: 'engine',
+    tag: 'session',
+    session_id: 'sess-abc',
+    conversation_id: '1780093348767-c1c03e998388',
+    trace_id: '4bf92f3577b34da6a3ce929d0e0e4736',
+    user: 'user@example.com',
+    fields: {
+      run_id: 'run-xyz',
+      model: 'claude-opus-4-5',
+      turn: 3,
+      cost_usd: 0.0123,
+      cache_hit: true,
+      duration_ms: 42,
+      nested: { a: 1, b: 'two' },
+      list: ['x', 'y', 'z'],
+      whole_float: 5.0,
+    },
+  }
+}
+
+function attrMap(attrs: OtlpLogAttr[]): Record<string, OtlpLogAttrVal> {
+  const m: Record<string, OtlpLogAttrVal> = {}
+  for (const a of attrs) {
+    expect(m[a.key], `duplicate attribute key ${a.key}`).toBeUndefined()
+    m[a.key] = a.value
+  }
+  return m
+}
+
+describe('OTLP lossless serialization', () => {
+  it('every canonical key becomes a native-typed attribute', () => {
+    const rec = canonicalRecord()
+    const attrs = attrMap(otlpAttrsFromRecord(rec))
+
+    // Expected attribute set: tag, session and conversation ids, user, and
+    // every fields key (run_id included). The component is service.name and
+    // the trace is the LogRecord traceId. Missing or extra key fails.
+    const wantKeys = [
+      'tag',
+      'session_id', 'conversation_id', 'user',
+      'run_id', 'model', 'turn', 'cost_usd', 'cache_hit',
+      'duration_ms', 'nested', 'list', 'whole_float',
+    ].sort()
+    expect(Object.keys(attrs).sort()).toEqual(wantKeys)
+
+    // Native typing.
+    expect(attrs.tag).toEqual({ stringValue: 'session' })
+    expect(attrs.session_id).toEqual({ stringValue: 'sess-abc' })
+    expect(attrs.conversation_id).toEqual({ stringValue: '1780093348767-c1c03e998388' })
+    expect(attrs.user).toEqual({ stringValue: 'user@example.com' })
+    // run_id rides inside fields but surfaces as its own attribute.
+    expect(attrs.run_id).toEqual({ stringValue: 'run-xyz' })
+    expect(attrs.model).toEqual({ stringValue: 'claude-opus-4-5' })
+    // Integer scalar → intValue string.
+    expect(attrs.turn).toEqual({ intValue: '3' })
+    expect(attrs.duration_ms).toEqual({ intValue: '42' })
+    // Non-integer number → doubleValue.
+    expect(attrs.cost_usd).toEqual({ doubleValue: 0.0123 })
+    // bool → boolValue.
+    expect(attrs.cache_hit).toEqual({ boolValue: true })
+    // Whole-valued number → intValue (spool round-trip stability).
+    expect(attrs.whole_float).toEqual({ intValue: '5' })
+    // Nested object / array → JSON-stringified stringValue.
+    expect(JSON.parse(attrs.nested.stringValue!)).toEqual({ a: 1, b: 'two' })
+    expect(JSON.parse(attrs.list.stringValue!)).toEqual(['x', 'y', 'z'])
+  })
+
+  it('body is the full JSONL; severity maps correctly', () => {
+    const payload = buildOtlpPayload([canonicalRecord()], 'ion-desktop')
+    const lr = payload.resourceLogs[0].scopeLogs[0].logRecords[0]
+    // Body must be the full serialized JSONL — parseable JSON containing msg, component, tag.
+    const parsed = JSON.parse(lr.body.stringValue)
+    expect(parsed.msg).toBe('session started')
+    expect(parsed.component).toBe('engine')
+    expect(parsed.tag).toBe('session')
+    // Must not be just the bare msg string.
+    expect(lr.body.stringValue).not.toBe('session started')
+    expect(lr.severityText).toBe('INFO')
+    expect(lr.severityNumber).toBe(9)
+  })
+
+  it('omits absent correlation IDs and user', () => {
+    const rec: EgressRecord = {
+      ts: '2024-11-15T22:04:05.123456789Z',
+      level: 'WARN',
+      msg: 'socket already exists',
+      component: 'engine',
+      tag: 'server',
+      fields: { path: '/tmp/x.sock' },
+    }
+    const attrs = attrMap(otlpAttrsFromRecord(rec))
+    for (const absent of ['session_id', 'conversation_id', 'trace_id', 'user']) {
+      expect(attrs[absent], `${absent} must be omitted when not in scope`).toBeUndefined()
+    }
+    expect(attrs.component).toBeUndefined()
+    expect(attrs.tag).toEqual({ stringValue: 'server' })
+    expect(attrs.path).toEqual({ stringValue: '/tmp/x.sock' })
+  })
+
+  it('is stable across a JSON spool round-trip', () => {
+    const live = canonicalRecord()
+    const roundTripped = JSON.parse(JSON.stringify(live)) as EgressRecord
+
+    const liveAttrs = attrMap(otlpAttrsFromRecord(live))
+    const rtAttrs = attrMap(otlpAttrsFromRecord(roundTripped))
+    expect(rtAttrs).toEqual(liveAttrs)
+  })
+
+  it('maps every level to its severity number', () => {
+    const cases: Array<[string, number]> = [
+      ['TRACE', 1], ['DEBUG', 5], ['INFO', 9], ['WARN', 13], ['ERROR', 17],
+    ]
+    for (const [level, num] of cases) {
+      expect(otlpSeverityNumber(level)).toBe(num)
+    }
+  })
+
+  it('attribute list is sorted by key (deterministic, engine-parity)', () => {
+    const attrs = otlpAttrsFromRecord(canonicalRecord())
+    const keys = attrs.map((a) => a.key)
+    const sorted = [...keys].sort()
+    expect(keys).toEqual(sorted)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Engine↔desktop parity assertion
+// ---------------------------------------------------------------------------
+
+/**
+ * ENGINE_CANONICAL_ATTRS is the attribute set the engine exporter produces for
+ * the identical canonical record, pinned in
+ * engine/internal/utils/log_egress_otel_test.go
+ * (TestOtelExporterLossless_EveryKeyBecomesAttribute). It is reproduced here as
+ * the parity oracle: the desktop serializer must produce the same keys with the
+ * same value types. If either side changes its typing convention, this test
+ * fails and forces both sides back into agreement.
+ *
+ * Values are matched structurally (same discriminant field + value), which is
+ * exactly what "byte-shape parity for the same canonical record" means for the
+ * OTLP AnyValue encoding.
+ */
+const ENGINE_CANONICAL_ATTRS: Record<string, OtlpLogAttrVal> = {
+  tag: { stringValue: 'session' },
+  session_id: { stringValue: 'sess-abc' },
+  conversation_id: { stringValue: '1780093348767-c1c03e998388' },
+  user: { stringValue: 'user@example.com' },
+  run_id: { stringValue: 'run-xyz' },
+  model: { stringValue: 'claude-opus-4-5' },
+  turn: { intValue: '3' },
+  duration_ms: { intValue: '42' },
+  cost_usd: { doubleValue: 0.0123 },
+  cache_hit: { boolValue: true },
+  whole_float: { intValue: '5' },
+  // Nested/array compared via parsed JSON below (key presence + string type).
+  nested: { stringValue: '{"a":1,"b":"two"}' },
+  list: { stringValue: '["x","y","z"]' },
+}
+
+describe('engine↔desktop OTLP parity', () => {
+  it('desktop output matches the engine attribute set for the canonical record', () => {
+    const desktopAttrs = attrMap(otlpAttrsFromRecord(canonicalRecord()))
+
+    // Same key set.
+    expect(Object.keys(desktopAttrs).sort()).toEqual(Object.keys(ENGINE_CANONICAL_ATTRS).sort())
+
+    // Same value shape per key. Nested/array are compared as parsed JSON so
+    // key-ordering inside the stringified blob doesn't create a false mismatch.
+    for (const [key, engineVal] of Object.entries(ENGINE_CANONICAL_ATTRS)) {
+      const desktopVal = desktopAttrs[key]
+      expect(desktopVal, `desktop missing engine attribute ${key}`).toBeDefined()
+      if (key === 'nested' || key === 'list') {
+        expect(desktopVal.stringValue, `${key} must be a stringValue on both sides`).toBeTypeOf('string')
+        expect(JSON.parse(desktopVal.stringValue!)).toEqual(JSON.parse(engineVal.stringValue!))
+      } else {
+        expect(desktopVal).toEqual(engineVal)
+      }
+    }
+  })
+
+  it('otlpAttrValFromAny follows the shared native-scalar convention', () => {
+    expect(otlpAttrValFromAny('s')).toEqual({ stringValue: 's' })
+    expect(otlpAttrValFromAny(true)).toEqual({ boolValue: true })
+    expect(otlpAttrValFromAny(7)).toEqual({ intValue: '7' })
+    expect(otlpAttrValFromAny(7.0)).toEqual({ intValue: '7' })
+    expect(otlpAttrValFromAny(1.5)).toEqual({ doubleValue: 1.5 })
+    expect(otlpAttrValFromAny(null)).toEqual({ stringValue: '' })
+    expect(otlpAttrValFromAny(undefined)).toEqual({ stringValue: '' })
+    expect(JSON.parse(otlpAttrValFromAny({ x: 1 }).stringValue!)).toEqual({ x: 1 })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Regression: missing-field records must not wedge the spool drain
+// ---------------------------------------------------------------------------
+
+/**
+ * These tests pin the fix for the production egress outage: the tailer ships
+ * ~/.ion/telemetry.jsonl verbatim, and those cost-telemetry EVENT records
+ * ({name, ts, schema, component, event_id, payload}) carry no `level` and no
+ * `msg`. Before the fix, buildOtlpPayload called `r.level.toUpperCase()` on
+ * every record; a telemetry record's undefined `level` threw
+ * "Cannot read properties of undefined (reading 'toUpperCase')", which aborted
+ * the whole `records.map()`, set spoolFailed, and left a 23 MB spool undrained.
+ *
+ * The contract these tests pin:
+ *   1. A record missing `level` maps to the INFO default instead of throwing.
+ *   2. buildOtlpPayload never throws on such a record — the batch is built and
+ *      the record ships (severityText "INFO", severityNumber 9, empty body).
+ *   3. One mis-shaped record in a batch does not abort the other records: the
+ *      whole batch still builds and every mappable record is present.
+ *
+ * Revert the normalization in buildOtlpPayload / otlpSeverityNumber and these
+ * go red with the exact production error string.
+ */
+describe('OTLP missing-field resilience (spool-drain regression)', () => {
+  // A verbatim cost-telemetry event line as it lands in telemetry.jsonl and is
+  // shipped by the tailer: no `level`, no `msg`. Cast through unknown because
+  // the shape deliberately violates the operational EgressRecord contract —
+  // that mismatch is exactly the production condition.
+  function telemetryEventRecord(): EgressRecord {
+    return {
+      name: 'dispatch.agent',
+      ts: '2026-07-08T01:00:04.615215Z',
+      schema: 3,
+      component: 'engine',
+      install_id: '00000000-0000-4000-8000-000000000001',
+      event_id: '9bcfdf62c9f04d08',
+      payload: { agent: 'dev-lead', cost_usd: 2.0167875 },
+    } as unknown as EgressRecord
+  }
+
+  it('normalizeSeverityText maps a missing/empty/non-string level to INFO', () => {
+    expect(normalizeSeverityText(undefined)).toBe('INFO')
+    expect(normalizeSeverityText('')).toBe('INFO')
+    expect(normalizeSeverityText('   ')).toBe('INFO')
+    expect(normalizeSeverityText(3)).toBe('INFO')
+    // A present level is still honored and uppercased.
+    expect(normalizeSeverityText('warn')).toBe('WARN')
+    expect(normalizeSeverityText('ERROR')).toBe('ERROR')
+  })
+
+  it('otlpSeverityNumber does not throw on an undefined level (defaults to 9)', () => {
+    expect(() => otlpSeverityNumber(undefined)).not.toThrow()
+    expect(otlpSeverityNumber(undefined)).toBe(9)
+  })
+
+  it('buildOtlpPayload ships a telemetry record missing level/msg instead of throwing', () => {
+    const rec = telemetryEventRecord()
+
+    let payload!: ReturnType<typeof buildOtlpPayload>
+    expect(() => { payload = buildOtlpPayload([rec], 'ion-desktop') }).not.toThrow()
+
+    const logRecords = payload.resourceLogs[0].scopeLogs[0].logRecords
+    // The record was NOT dropped — it drained.
+    expect(logRecords).toHaveLength(1)
+    const lr = logRecords[0]
+    // Missing level → INFO default (parity with the engine exporter's switch default).
+    expect(lr.severityText).toBe('INFO')
+    expect(lr.severityNumber).toBe(9)
+    // Telemetry event body is the verbatim event JSON (NOT empty) so a
+    // dashboard's `| json | unwrap payload_*` can flatten the payload.
+    expect(lr.body.stringValue.length).toBeGreaterThan(0)
+    expect(JSON.parse(lr.body.stringValue)).toMatchObject({
+      name: 'dispatch.agent',
+      payload: { agent: 'dev-lead', cost_usd: 2.0167875 },
+    })
+    // The event keeps its name, which the operational mapper would drop.
+    const attrs = attrMap(lr.attributes)
+    expect(attrs[EVENT_NAME_ATTR]).toEqual({ stringValue: 'dispatch.agent' })
+  })
+
+  it('one malformed record does not abort the batch — the good records still ship', () => {
+    const good = canonicalRecord()
+    const telemetry = telemetryEventRecord()
+
+    const payload = buildOtlpPayload([good, telemetry, good], 'ion-desktop')
+    // The telemetry record names its own install, so it may group under a
+    // different resource than the host's canonical records.
+    const logRecords = payload.resourceLogs.flatMap((r) => r.scopeLogs[0].logRecords)
+    const bodies = logRecords.map((lr) => JSON.parse(lr.body.stringValue))
+
+    // All three records built — the flush completes shipping the whole batch,
+    // not zero rows. This is the anti-wedge guarantee.
+    expect(logRecords).toHaveLength(3)
+    // The two canonical records keep their real severity. Body is full JSONL.
+    const canonical = logRecords.filter((_, i) => bodies[i].msg === 'session started')
+    expect(canonical).toHaveLength(2)
+    for (const lr of canonical) expect(lr.severityText).toBe('INFO')
+    // The telemetry record drained with the default severity.
+    const drained = logRecords.find((_, i) => bodies[i].name === 'dispatch.agent')
+    expect(drained?.severityText).toBe('INFO')
+    expect(drained?.severityNumber).toBe(9)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Telemetry EVENT records survive OTLP with full fidelity (the strip fix)
+// ---------------------------------------------------------------------------
+
+/**
+ * These tests pin the root-cause fix for the empty prod Cost / Runs / Extensions
+ * dashboards: before the fix, a telemetry event serialized to OTLP carried a
+ * single `component` attribute — the operational-log mapper (otlpAttrsFromRecord)
+ * reads only msg/level/tag/correlation-ids/fields, none of which a telemetry
+ * event ({name, payload:{...}, context:{...}}) populates. Every cost, kind,
+ * token, and attribution field was silently discarded before the bytes left the
+ * desktop, so no downstream Alloy/Loki/dashboard change could recover them.
+ *
+ * The contract these tests pin:
+ *   1. A telemetry event is recognized as such (isTelemetryEventRecord).
+ *   2. name → event.name; payload.* and context.* → attributes, with the
+ *      EXACT names the local telemetry pipeline
+ *      (docs/observability/alloy-config.alloy) uses.
+ *   3. The OTLP body is the verbatim event JSON, so `| json | unwrap payload_*`
+ *      resolves identically to the file-tail raw line.
+ *   4. Nothing the resource or LogRecord states (install, version, host,
+ *      component, trace) is repeated as an attribute.
+ *
+ * Revert the telemetry branch in buildOtlpPayload (route the event through
+ * otlpAttrsFromRecord) and assertions 2-4 go red: the payload/kind/context
+ * attributes vanish and the body becomes empty — the exact production strip.
+ */
+describe('telemetry event OTLP fidelity (dashboard strip fix)', () => {
+  // A REAL run.complete event line as it lands in telemetry.jsonl and is
+  // shipped verbatim by the tailer (shape from live Loki sample).
+  function runCompleteRecord(): EgressRecord {
+    return {
+      name: 'run.complete',
+      ts: '2026-07-09T12:06:59.845721Z',
+      schema: 3,
+      component: 'engine',
+      install_id: '00000000-0000-4000-8000-000000000001',
+      host: 'jolteon',
+      version: 'dev',
+      event_id: '86693acc4aa9560e',
+      payload: {
+        aggregate_cost_usd: 766.8477343999997,
+        cache_creation_input_tokens: 176086,
+        cache_read_input_tokens: 348822,
+        dispatch_depth: 0,
+        duration_ms: 31341,
+        input_tokens: 6,
+        model: 'claude-opus-4-8',
+        num_turns: 3,
+        output_tokens: 1758,
+        run_cost_usd: 1.3189285000000002,
+      },
+      context: {
+        conversation_id: '1783339918596-0a78dd0c12ca',
+        extension: 'ion-dev',
+        extension_version: '0.2.0',
+        session_id: '230dad54-0960-4c08-ace2-35f75a8f23be',
+      },
+    } as unknown as EgressRecord
+  }
+
+  it('recognizes telemetry events and does not misclassify operational records', () => {
+    expect(isTelemetryEventRecord(runCompleteRecord())).toBe(true)
+    expect(isTelemetryEventRecord(canonicalRecord())).toBe(false)
+  })
+
+  it('maps name→event.name and payload/context to file-tail-named attributes', () => {
+    const attrs = attrMap(otlpAttrsFromTelemetryEvent(runCompleteRecord()))
+
+    // event.name names the event and tells it from an operational line.
+    expect(attrs[EVENT_NAME_ATTR]).toEqual({ stringValue: 'run.complete' })
+
+    // payload.* with the file-tail rename map (aggregate_cost_usd→agg_cost_usd,
+    // cache_*_input_tokens→cache_*_tokens). Native typing: int→intValue,
+    // non-integer→doubleValue.
+    expect(attrs.run_cost_usd).toEqual({ doubleValue: 1.3189285000000002 })
+    expect(attrs.agg_cost_usd).toEqual({ doubleValue: 766.8477343999997 })
+    expect(attrs.model).toEqual({ stringValue: 'claude-opus-4-8' })
+    expect(attrs.num_turns).toEqual({ intValue: '3' })
+    expect(attrs.input_tokens).toEqual({ intValue: '6' })
+    expect(attrs.output_tokens).toEqual({ intValue: '1758' })
+    expect(attrs.cache_read_tokens).toEqual({ intValue: '348822' })
+    expect(attrs.cache_creation_tokens).toEqual({ intValue: '176086' })
+    expect(attrs.duration_ms).toEqual({ intValue: '31341' })
+    // dispatch_depth is a present zero — it must still be emitted.
+    expect(attrs.dispatch_depth).toEqual({ intValue: '0' })
+
+    // context.* attribution.
+    expect(attrs.context_extension).toEqual({ stringValue: 'ion-dev' })
+    expect(attrs.context_extension_version).toEqual({ stringValue: '0.2.0' })
+    expect(attrs.context_conversation_id).toEqual({ stringValue: '1783339918596-0a78dd0c12ca' })
+    expect(attrs.context_session_id).toEqual({ stringValue: '230dad54-0960-4c08-ace2-35f75a8f23be' })
+
+    expect(attrs.schema_version).toEqual({ intValue: '3' })
+    // The install, version, and host are the resource; event_id rides in the body.
+    for (const absent of ['install_id', 'engine_version', 'host', 'event_id', 'trace_id', 'component', 'kind', 'service', 'loki.attribute.labels']) {
+      expect(attrs[absent], `${absent} must not be an attribute`).toBeUndefined()
+    }
+  })
+
+  it('omits absent payload/context fields (no empty-string noise)', () => {
+    // llm.call has no run_cost_usd / num_turns / tokens.
+    const llmCall = {
+      name: 'llm.call',
+      ts: '2026-07-09T12:06:59.240797Z',
+      schema: 3,
+      component: 'engine',
+      payload: { duration_ms: 5820, model: 'claude-opus-4-8', stop_reason: 'end_turn' },
+      context: { session_id: 's1' },
+    } as unknown as EgressRecord
+    const attrs = attrMap(otlpAttrsFromTelemetryEvent(llmCall))
+    expect(attrs[EVENT_NAME_ATTR]).toEqual({ stringValue: 'llm.call' })
+    expect(attrs.duration_ms).toEqual({ intValue: '5820' })
+    expect(attrs.stop_reason).toEqual({ stringValue: 'end_turn' })
+    // Absent fields are not emitted at all.
+    for (const absent of ['run_cost_usd', 'num_turns', 'input_tokens', 'context_extension']) {
+      expect(attrs[absent], `${absent} must be omitted when absent`).toBeUndefined()
+    }
+  })
+
+  it('buildOtlpPayload: body is verbatim event JSON with payload.run_cost_usd intact', () => {
+    const payload = buildOtlpPayload([runCompleteRecord()], 'ion-desktop')
+    const lr = payload.resourceLogs[0].scopeLogs[0].logRecords[0]
+
+    // Body is the verbatim event JSON — `| json | unwrap payload_run_cost_usd`
+    // flattens payload.run_cost_usd → payload_run_cost_usd on the dashboard.
+    const parsed = JSON.parse(lr.body.stringValue)
+    expect(parsed.name).toBe('run.complete')
+    expect(parsed.payload.run_cost_usd).toBe(1.3189285000000002)
+    expect(parsed.payload.model).toBe('claude-opus-4-8')
+
+    // The event's own install, build, and host are its resource.
+    const res = attrMap(payload.resourceLogs[0].resource.attributes)
+    expect(res['service.name']).toEqual({ stringValue: 'ion-engine' })
+    expect(res['service.instance.id']).toEqual({ stringValue: '00000000-0000-4000-8000-000000000001' })
+    expect(res['service.version']).toEqual({ stringValue: 'dev' })
+    expect(res['host.name']).toEqual({ stringValue: 'jolteon' })
+  })
+
+  it('telemetryEventBody reproduces the ingestible line and never throws', () => {
+    const body = telemetryEventBody(runCompleteRecord())
+    expect(() => JSON.parse(body)).not.toThrow()
+    expect(JSON.parse(body).payload.run_cost_usd).toBe(1.3189285000000002)
+  })
+
+  it('operational records repeat no resource or LogRecord field as an attribute', () => {
+    const rec = { ...canonicalRecord(), fields: { ...canonicalRecord().fields, host: 'box', install_id: 'iid', span_id: '00f067aa0ba902b7' } }
+    const payload = buildOtlpPayload([rec], 'ion-desktop')
+    const attrs = attrMap(payload.resourceLogs[0].scopeLogs[0].logRecords[0].attributes)
+    for (const absent of ['component', 'trace_id', 'host', 'install_id', 'span_id', 'loki.attribute.labels']) {
+      expect(attrs[absent], `${absent} must not be an attribute`).toBeUndefined()
+    }
+    // The operational payload is intact (body is the full JSONL, fields flattened as attrs).
+    expect(JSON.parse(payload.resourceLogs[0].scopeLogs[0].logRecords[0].body.stringValue).msg).toBe('session started')
+    expect(attrs.run_id).toEqual({ stringValue: 'run-xyz' })
+  })
+})
+
+// A field named like one of the record's own attributes never becomes a second
+// attribute with that key. A line logging the OS account as fields.user used to
+// ship two `user` attributes, and the collector kept the field's value over the
+// signed-in user's. Mirrored in engine log_egress_eventid_test.go.
+describe('otlpAttrsFromRecord: record keys win over same-named fields', () => {
+  it('ships one user, session_id, and tag attribute, each the record value', () => {
+    const attrs = otlpAttrsFromRecord({
+      ts: '2026-01-01T00:00:00.000Z',
+      level: 'INFO',
+      msg: 'm',
+      component: 'desktop',
+      tag: 'test',
+      user: 'user@example.com',
+      session_id: 's-1',
+      fields: { user: 'osuser', session_id: 's-1', tag: 'other', kept: 'yes' },
+    } as EgressRecord)
+    for (const key of ['user', 'session_id', 'tag']) {
+      expect(attrs.filter((a) => a.key === key)).toHaveLength(1)
+    }
+    const byKey = Object.fromEntries(attrs.map((a) => [a.key, a.value.stringValue]))
+    expect(byKey.user).toBe('user@example.com')
+    expect(byKey.tag).toBe('test')
+    expect(byKey.kept).toBe('yes')
+  })
+})

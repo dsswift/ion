@@ -11,8 +11,9 @@ import XCTest
 /// The critical guard here is `testNonIdleStatesRenderTheDot`: "full restraint"
 /// must not silently eat a failure signal. A dead background agent has to stay
 /// distinguishable from an idle conversation on the only screen that lists both,
-/// and the status dot is a documented desktop↔iOS parity surface (root
-/// AGENTS.md § "Common parity surfaces": snapshot.ts → RemoteTabState.status →
+/// and the status dot is a documented desktop↔iOS parity surface
+/// (docs/architecture/cross-platform-parity.md § "Common parity surfaces":
+/// snapshot.ts → RemoteTabState.status →
 /// TabRowView.statusInfo).
 final class TabRowRestraintTests: XCTestCase {
 
@@ -186,7 +187,7 @@ final class TabRowRestraintTests: XCTestCase {
     }
 
     /// The base-moved indicator is the ONE metadata glyph that survives, because
-    /// root AGENTS.md § "Common parity surfaces" names TabRowView as its iOS
+    /// docs/architecture/cross-platform-parity.md § "Common parity surfaces" names TabRowView as its iOS
     /// render site (`RemoteWorktree.needsSync`). Removing it with the rest of the
     /// strip would have broken a documented contract silently.
     func testBaseMovedIndicatorSurvives() throws {
@@ -204,33 +205,6 @@ final class TabRowRestraintTests: XCTestCase {
             (root AGENTS.md → RemoteWorktree.needsSync → "Tab row indicator \
             (TabRowView)"). It must survive the restraint pass.
             """
-        )
-    }
-
-    // MARK: - Header restraint
-
-    /// The grey slab behind each section header was a regression: it made five
-    /// filled bars the heaviest elements on the screen. The header is text on
-    /// the list background.
-    func testGroupHeaderCarriesNoFilledSlab() throws {
-        let src = try String(
-            contentsOf: URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .appendingPathComponent("IonRemote/Views/TabListGroupHeader.swift"),
-            encoding: .utf8
-        )
-        XCTAssertFalse(
-            src.contains("RoundedRectangle"),
-            """
-            The section header must not paint a filled container. It reads as \
-            quiet text on the list background; a slab competes with the rows it \
-            labels.
-            """
-        )
-        XCTAssertFalse(
-            src.contains("theme.surfaceSecondary"),
-            "the header surface stays transparent so the list background shows through"
         )
     }
 }

@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 
 /**
  * Returns a stable callback that clears the active instance's

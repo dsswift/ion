@@ -1,10 +1,15 @@
-import type { GitChangedFile } from '../../shared/types'
+import type { GitChangedFile } from '@ion/shared/types'
+import { GIT_STATUS_COLOR_KEYS as GIT_STATUS_COLOR_KEYS_RAW } from '@ion/server/store/git/types'
+import type { ColorPalette } from '../theme-tokens'
 
 // ─── Status badge colors ───
 // Single source of truth for the status → theme-token-key mapping lives in
-// the git store (`stores/git/types.ts`); re-exported here for component-side
-// consumers. Resolve via `useColors()`: `colors[GIT_STATUS_COLOR_KEYS[status]]`.
-export { GIT_STATUS_COLOR_KEYS } from '../stores/git/types'
+// the git store (`stores/git/types.ts`), which keeps the values as plain
+// strings so the server package has no dependency on the desktop renderer's
+// theme types. This is the one seam where those strings are typed against
+// the real `ColorPalette` shape. Resolve via `useColors()`:
+// `colors[GIT_STATUS_COLOR_KEYS[status]]`.
+export const GIT_STATUS_COLOR_KEYS: Record<string, keyof ColorPalette> = GIT_STATUS_COLOR_KEYS_RAW as Record<string, keyof ColorPalette>
 
 export const STATUS_LETTERS: Record<string, string> = {
   added: 'A',

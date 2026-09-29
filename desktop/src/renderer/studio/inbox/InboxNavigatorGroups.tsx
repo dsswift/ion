@@ -1,15 +1,17 @@
+import { isStringRecord, serverSettingOf } from "../state/use-server-setting";
 import React, { useState } from "react";
+import { isWorktreeSealed } from '@ion/shared/worktree-seal'
 import { CaretDown, CaretRight, Folder } from "@phosphor-icons/react";
-import { useSessionStore } from "../../stores/sessionStore";
+import { useSessionStore } from "@ion/server/store/sessionStore";
 import { useColors } from "../../theme";
 import { rError, rInfo } from "../../rendererLogger";
 import { WorktreePipelinePanel } from "../../components/WorktreePipelinePanel";
 import {
   collectAllDirConversations,
   pickDirTerminal,
-} from "../../../shared/worktree-conversations";
-import { benchMemberSummary } from "../../../shared/worktree-list";
-import type { TabState } from "../../../shared/types";
+} from "@ion/shared/worktree-conversations";
+import { benchMemberSummary } from "@ion/shared/worktree-list";
+import type { TabState } from "@ion/shared/types";
 import type { InboxNavigatorProject } from "./inbox-navigator";
 import type { InboxRowVariant } from "./InboxRow";
 import {
@@ -24,7 +26,6 @@ import { InboxBenchTerminalRow } from "./InboxBenchTerminalRow";
 import { InboxWorktreeRow } from "./InboxWorktreeRow";
 import { InboxProjectMenu } from "./InboxProjectMenu";
 import { NewConversationPicker } from "../../components/NewConversationPicker";
-import { usePreferencesStore } from "../../preferences";
 import {
   caretStyle,
   groupStyle,
@@ -74,11 +75,13 @@ export function InboxNavigatorGroups({
   } | null>(null);
   const [projectMenu, setProjectMenu] = useState<{
     repoPath: string;
+    environmentId: string;
     projectName: string;
     anchor: { x: number; y: number };
   } | null>(null);
   const [conversationPicker, setConversationPicker] = useState<{
     directory: string;
+    environmentId: string;
     useWorktree: boolean;
     sourceBranch?: string;
   } | null>(null);
@@ -152,11 +155,15 @@ export function InboxNavigatorGroups({
       }),
     );
   };
-  const openProjectConversation = (directory: string, useWorktree: boolean): void => {
+  // `directory` is a path on `environmentId`, the header's own machine; the
+  // picker opens the conversation there. The saved branch default is yours
+  // on THAT machine, keyed by a path that exists there.
+  const openProjectConversation = (directory: string, environmentId: string, useWorktree: boolean): void => {
     const sourceBranch = useWorktree
-      ? usePreferencesStore.getState().worktreeBranchDefaults[directory]
+      ? serverSettingOf(environmentId, 'worktreeBranchDefaults', isStringRecord, {})[directory]
       : undefined;
-    setConversationPicker({ directory, useWorktree, sourceBranch });
+    rInfo("inbox.navigator", "project conversation requested", { directory, environment_id: environmentId, use_worktree: useWorktree });
+    setConversationPicker({ directory, environmentId, useWorktree, sourceBranch });
   };
   const parts: React.JSX.Element[] = [];
   const workingTabIds = new Set(
@@ -217,6 +224,7 @@ export function InboxNavigatorGroups({
           event.stopPropagation();
           setProjectMenu({
             repoPath: project.key,
+            environmentId: projectNode.environmentId,
             projectName: project.name,
             anchor: { x: event.clientX, y: event.clientY },
           });
@@ -264,7 +272,7 @@ export function InboxNavigatorGroups({
         );
         const terminal = pickDirTerminal(tabs, workspace.benchPath);
         const entries = inventory.get(project.key) ?? [];
-        const showSyncAll = entries.some((entry) => entry.needsSync && entry.landedAt == null);
+        const showSyncAll = entries.some((entry) => entry.needsSync && !isWorktreeSealed(entry));
         const available =
           useSessionStore.getState().benchWorkspaces.get(project.key) ?? [];
         // Any bench-mutating operation for THIS repo+branch still running --
@@ -495,10 +503,10 @@ export function InboxNavigatorGroups({
         key="inbox-project-menu"
         anchor={projectMenu.anchor}
         onNewConversation={() =>
-          openProjectConversation(projectMenu.repoPath, false)
+          openProjectConversation(projectMenu.repoPath, projectMenu.environmentId, false)
         }
         onNewWorktreeConversation={() =>
-          openProjectConversation(projectMenu.repoPath, true)
+          openProjectConversation(projectMenu.repoPath, projectMenu.environmentId, true)
         }
         onClose={() => setProjectMenu(null)}
       />,
@@ -509,6 +517,7 @@ export function InboxNavigatorGroups({
       <NewConversationPicker
         key="inbox-project-conversation-picker"
         initialDirectory={conversationPicker.directory}
+        initialEnvironmentId={conversationPicker.environmentId}
         initialUseWorktree={conversationPicker.useWorktree}
         initialSourceBranch={conversationPicker.sourceBranch}
         onClose={() => setConversationPicker(null)}

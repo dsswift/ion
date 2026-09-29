@@ -12,8 +12,9 @@ import { computeGraphLayout } from '../../utils/gitGraphLayout'
 import { VirtualCommitList } from './VirtualCommitList'
 import { FloatingPanel } from '../FloatingPanel'
 import { DiffPane } from './DiffPane'
-import type { GitCommit, GitCommitDetail, GitCommitFile, GitDiffResult } from '../../../shared/types'
+import type { GitCommit, GitCommitDetail, GitCommitFile, GitDiffResult } from '@ion/shared/types'
 import { rWarn } from '../../rendererLogger'
+import { host } from '../../host/host-instance'
 
 interface Props {
   directory: string
@@ -33,7 +34,7 @@ export function FileHistoryPanel({ directory, path, onClose }: Props) {
 
   useEffect(() => {
     setLoading(true)
-    window.ion.gitGraph(directory, 0, 200, undefined, undefined, { path })
+    host.shell.gitGraph(directory, 0, 200, undefined, undefined, { path })
       .then((r) => setCommits(r.commits))
       .catch(() => setCommits([]))
       .finally(() => setLoading(false))
@@ -46,9 +47,9 @@ export function FileHistoryPanel({ directory, path, onClose }: Props) {
     setExpanded(commit.hash)
     try {
       const [detail, files, fileDiff] = await Promise.all([
-        window.ion.gitCommitDetail(directory, commit.hash),
-        window.ion.gitCommitFiles(directory, commit.hash),
-        window.ion.gitCommitFileDiff(directory, commit.hash, path),
+        host.shell.gitCommitDetail(directory, commit.hash),
+        host.shell.gitCommitFiles(directory, commit.hash),
+        host.shell.gitCommitFileDiff(directory, commit.hash, path),
       ])
       setCommitDetail(detail)
       setCommitFiles(files.files as GitCommitFile[])

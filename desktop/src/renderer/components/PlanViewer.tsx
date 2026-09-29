@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react'
 import { FloatingPanel } from './FloatingPanel'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { PlanContent } from './PlanContent'
 
 interface PlanViewerProps {

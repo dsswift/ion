@@ -27,6 +27,13 @@ const (
 	// source branch, so the checkout is sealed: no writes, no edits, no Bash
 	// mutations. Reads and unrelated directories are unaffected.
 	RefusalLandedWorktree RefusalKind = "landed_worktree"
+	// RefusalMovedWorktree — a legacy record says this worktree lives on
+	// another Environment, so the copy here is sealed: no writes, no edits,
+	// no Bash mutations. Only reachable for a worktree moved by a build that
+	// left its source in place; a transfer now removes what it moves, so
+	// nothing writes this state any more. Continue in the Environment that
+	// has it, or move it back.
+	RefusalMovedWorktree RefusalKind = "moved_worktree"
 )
 
 // Refusal is the typed verdict for a refused tool call. Reason is the complete
@@ -376,6 +383,14 @@ func isWithin(path, root string) bool {
 
 func isBash(tool string) bool { return tool == "Bash" || tool == "bash" }
 
+// ExtractTargetPath is extractTargetPath's exported form, for other
+// engine-internal path-based checkers (FR-03's principalboundary package)
+// that need the identical "resolve a write tool's target to an absolute
+// path" logic without a second implementation to drift from this one.
+func ExtractTargetPath(input map[string]interface{}, cwd string) string {
+	return extractTargetPath(input, cwd)
+}
+
 // extractTargetPath resolves a write tool's target to an absolute path.
 // Field names cover the core write tools (file_path) and common variants.
 func extractTargetPath(input map[string]interface{}, cwd string) string {
@@ -404,10 +419,10 @@ func worktreeReason(target, owner, worktreePath string) string {
 		target, owner, worktreePath, worktreePath)
 }
 
-// checkLanded returns a refusal when the cwd is inside a worktree whose work
-// has already landed. A landed worktree is sealed: every gated tool is refused,
-// not just cross-worktree writes. The caller has already verified the tool is
-// gated.
+// checkLanded returns a refusal when the cwd is inside a sealed worktree: one
+// whose work has already landed, or one that moved to another Environment.
+// A sealed worktree refuses every gated tool, not just cross-worktree
+// writes. The caller has already verified the tool is gated.
 func (c *Checker) checkLanded(containment Containment) *Refusal {
 	wc := containment.Worktree
 	if wc == nil {
@@ -415,15 +430,40 @@ func (c *Checker) checkLanded(containment Containment) *Refusal {
 	}
 	entries := c.reg.Worktrees()
 	for _, e := range entries {
-		if e.WorktreePath == wc.WorktreePath && e.Landed() {
+		if e.WorktreePath != wc.WorktreePath {
+			continue
+		}
+		if e.Landed() {
 			return &Refusal{
 				Kind:   RefusalLandedWorktree,
 				Target: wc.WorktreePath,
 				Reason: landedWorktreeReason(wc),
 			}
 		}
+		if e.Moved() {
+			utils.LogWithFields(utils.LevelInfo, logTag, "write refused: worktree moved to another environment", map[string]any{
+				"worktree_path": wc.WorktreePath, "environment_id": e.TransferredTo.EnvironmentID,
+			})
+			return &Refusal{
+				Kind:   RefusalMovedWorktree,
+				Target: wc.WorktreePath,
+				Reason: movedWorktreeReason(wc, e.TransferredTo.EnvironmentID),
+			}
+		}
 	}
 	return nil
+}
+
+// movedWorktreeReason builds the refusal message for a write into a worktree
+// that now lives on another Environment.
+func movedWorktreeReason(wc *WorktreeContainment, environmentID string) string {
+	branch := wc.BranchName
+	if branch == "" {
+		branch = "its branch"
+	}
+	return fmt.Sprintf(
+		"Refused: this worktree (%s) is sealed — it now lives on the Environment %s, and this copy is a read-only record. Writes, edits, and Bash mutations are refused here because a commit made in this copy could not be merged with the live copy once its history moves on. Continue the work in that Environment, or bring the worktree back here first.",
+		branch, environmentID)
 }
 
 // landedWorktreeReason builds the refusal message for a write into a sealed

@@ -35,31 +35,32 @@ vi.mock('../../platform/mod-key', () => ({
 
 import { segmentText, NavigableLink, NavigableCode, LinkSegment, remarkNavigableLinks, useNavigableText } from '../useNavigableLinks'
 import { registerSurfaceFileRouter } from '../../lib/file-open-router'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 // A real markdown link routes through window.ion.openExternal. Stub it so the
 // external-open branch is exercisable and its target is observable.
 const externalOpens: string[] = []
-const fsExists = vi.fn<(path: string) => Promise<{ exists: boolean }>>()
+const resolveFileLink = vi.fn<(request: { tabId: string; path: string; cwd: string }) => Promise<{ path: string; exists: boolean; isDirectory: boolean; size: number }>>()
 const fsOpenNative = vi.fn<(path: string) => Promise<{ ok: boolean; error?: string }>>()
 const logWrite = vi.fn()
 const legacyOpenFile = vi.fn()
 let unregisterRouter: (() => void) | null = null
 
 beforeAll(() => {
-  ;(globalThis as any).window.ion = {
+  ;(globalThis as any).window.ion = installFakeWire({
     platform: 'darwin',
     openExternal: (url: string) => { externalOpens.push(url); return Promise.resolve() },
-    fsExists,
+    resolveFileLink,
     fsOpenNative,
     logWrite,
-  }
+  })
 })
 
 beforeEach(() => {
-  fsExists.mockReset().mockResolvedValue({ exists: true })
+  resolveFileLink.mockReset().mockImplementation(async ({ path }) => ({ path, exists: true, isDirectory: false, size: 10 }))
   fsOpenNative.mockReset().mockResolvedValue({ ok: true })
   logWrite.mockClear()
   legacyOpenFile.mockClear()
@@ -117,7 +118,7 @@ describe('useNavigableText file routing', () => {
 
     await commandClickFilePath(absolutePath)
 
-    expect(fsExists).toHaveBeenCalledWith(absolutePath)
+    expect(resolveFileLink).toHaveBeenCalledWith({ tabId: 'tab-1', path: absolutePath, cwd: '/active/repository' })
     expect(openTextFile).toHaveBeenCalledWith('/active/repository', 'tab-1', absolutePath)
     expect(legacyOpenFile).not.toHaveBeenCalled()
   })
@@ -150,8 +151,8 @@ describe('useNavigableText file routing', () => {
     )
   })
 
-  it('logs an existence-check failure without trying either file route', async () => {
-    fsExists.mockRejectedValueOnce(new Error('filesystem unavailable'))
+  it('logs a path-resolve failure without trying either file route', async () => {
+    resolveFileLink.mockRejectedValueOnce(new Error('filesystem unavailable'))
 
     await commandClickFilePath('/outside/knowledge/standard.md')
 
@@ -160,8 +161,12 @@ describe('useNavigableText file routing', () => {
     expect(logWrite).toHaveBeenCalledWith(
       'WARN',
       'navigable-links',
-      'file existence check failed',
-      expect.objectContaining({ error: 'Error: filesystem unavailable' }),
+      'file link resolve failed',
+      // Matched on the message, not the exact `String(err)` prefix: the
+      // rejection crosses the wire now, so the caller sees a
+      // StudioActionFailure carrying the server's message rather than the
+      // original Error instance. The message is the part that is contractual.
+      expect.objectContaining({ error: expect.stringContaining('filesystem unavailable') }),
     )
   })
 

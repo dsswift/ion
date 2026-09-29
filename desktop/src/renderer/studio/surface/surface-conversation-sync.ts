@@ -1,5 +1,5 @@
 import { usePreferencesStore } from '../../preferences'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useSurfaceStore } from './surface-store'
 import { rInfo } from '../../rendererLogger'
 

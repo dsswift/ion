@@ -4,21 +4,28 @@ import { Brain, NotePencil } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { CopyButton } from './CopyButton'
 import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
+import { MessageFileChips } from './MessageFileChips'
 import { stripAttachmentMarkers, structuredAnswerDisplayText } from './message-text'
-import { resolveSlashPill } from './slash-pill'
+import { resolveSlashPill } from '@ion/server/conversation/slash-pill'
+import { useModelStore, environmentModels } from '@ion/server/store/model-store'
+import { useTabEnvironmentId } from '../../studio/connection/tab-environment'
 import { UserMarkdown } from './UserMarkdown'
 import { CollapsibleUserBody } from './CollapsibleUserBody'
 import { StructuredAnswerFrame } from './StructuredAnswerFrame'
-import type { Message } from '../../../shared/types'
+import type { Message } from '@ion/shared/types'
 
 interface MessageBubbleProps {
   message: Message
   skipMotion?: boolean
   actions?: React.ReactNode
+  /** The conversation this message belongs to; its Environment's models name the command pill's model. */
+  tabId?: string
 }
 
-export function MessageBubble({ message, skipMotion, actions }: MessageBubbleProps) {
+export function MessageBubble({ message, skipMotion, actions, tabId }: MessageBubbleProps) {
   const colors = useColors()
+  const environmentId = useTabEnvironmentId(tabId)
+  const models = useModelStore((s) => environmentModels(s, environmentId).models)
   const isBashCmd = !!message.userExecuted
 
   const structuredAnswer = message.injectionKind === 'structured_answer'
@@ -29,7 +36,7 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
   const displayContent = structuredAnswer
     ? structuredAnswerDisplayText(stripAttachmentMarkers(message.content || ''))
     : stripAttachmentMarkers(message.content || '').trim()
-  const slashPill = useMemo(() => resolveSlashPill(message, displayContent), [message, displayContent])
+  const slashPill = useMemo(() => resolveSlashPill(message, displayContent, models), [message, displayContent, models])
 
   const inlineImages = deriveMessageImages(message.content || '', message.attachments)
   const hasInlineImages = inlineImages.length > 0
@@ -86,6 +93,7 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
     >
       {steerTag}
       {hasInlineImages && <InlineMessageImages content={message.content || ''} attachments={message.attachments} />}
+      <MessageFileChips content={message.content || ''} attachments={message.attachments} tabId={tabId} />
       {displayContent.trim() && (
         <CollapsibleUserBody text={displayContent}>
           <div

@@ -1,4 +1,4 @@
-import type { EngineProfile } from '../../../shared/types'
+import type { EngineProfile } from '@ion/shared/types'
 
 export interface ProfileEditState {
   name: string

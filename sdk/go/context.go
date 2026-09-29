@@ -92,6 +92,28 @@ type ContextIdentity struct {
 	Attribution string         `json:"attribution,omitempty"`
 	Source      string         `json:"source,omitempty"`
 	Claims      map[string]any `json:"claims,omitempty"`
+	// StorageRoot is the absolute directory this identity's conversations
+	// live under, mirroring the engine's StartSessionResult.StorageRoot --
+	// present only when principal partitioning is enabled and Subject is
+	// non-empty; empty otherwise, meaning "unchanged from the
+	// pre-partitioning behavior."
+	StorageRoot string `json:"storageRoot,omitempty"`
+}
+
+// SessionPrincipal is the person or service attributed to an engine session
+// (manifest C1/C2). A harness that mirrors the engine's start_session /
+// send_prompt principal field uses this shape. The engine never validates
+// Subject against any identity provider -- the caller has already done
+// that; the engine only carries, stores, and reports what it is told.
+type SessionPrincipal struct {
+	Subject     string `json:"subject"`
+	Provider    string `json:"provider"`
+	Kind        string `json:"kind"`
+	Username    string `json:"username,omitempty"`
+	DisplayName string `json:"displayName,omitempty"`
+	Attribution string `json:"attribution,omitempty"`
+	// Claims is never persisted to disk; wire and hook consumption only.
+	Claims map[string]any `json:"claims,omitempty"`
 }
 
 // ctxEnvelope is the wire shape of the _ctx key.

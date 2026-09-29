@@ -8,10 +8,15 @@
  * queries, the agent's screenshots, and the visible tab all agree on one
  * viewport. Anything less would let an agent report a passing mobile layout
  * while the operator watches a desktop one.
+ *
+ * Bodies only: each entry is `{ name, execute }`. The matching declarations
+ * (description, input schema) live in the server package at
+ * `server/src/studio-playwright/tool-declarations.ts` and are joined by name in
+ * `./tools.ts`.
  */
 import { log as _log } from '../logger'
-import type { BrowserToolContext, BrowserToolResult, StudioBrowserTool } from './tool-contracts'
-import { BOOL, ENUM, INT, STRING, fail, intArg, ok, schema, stringArg } from './tool-contracts'
+import type { BrowserToolContext, BrowserToolResult, StudioBrowserToolBody } from '@ion/server/studio-playwright/tool-contracts'
+import { fail, intArg, ok, stringArg } from '@ion/server/studio-playwright/tool-contracts'
 import { formatError, formatResponse } from './responses'
 import { applyEmulation, knownDevices, resolveEmulation } from './emulation'
 import { closeLinkedBrowser, noteEmulationApplied, pushEmulationToRenderer, resolveBrowser, runExclusive } from './runtime'
@@ -34,11 +39,9 @@ function safeUrl(raw: string): string | null {
   }
 }
 
-export const navigationTools: StudioBrowserTool[] = [
+export const navigationBodies: StudioBrowserToolBody[] = [
   {
     name: 'browser_navigate',
-    description: 'Navigate the conversation browser tab to a URL. Opens the tab when none exists yet.',
-    inputSchema: schema({ url: STRING('Absolute http(s) URL to open', 8192) }, ['url']),
     execute: async (input, ctx) => {
       const url = stringArg(input, 'url', 8192)
       if (!url) return fail('url is required and must be an absolute http(s) URL')
@@ -50,7 +53,7 @@ export const navigationTools: StudioBrowserTool[] = [
         try {
           attachNetworkRecorder(resolved.page)
           await resolved.page.goto(safe, { timeout: NAV_TIMEOUT_MS, waitUntil: 'domcontentloaded' })
-          _log(TAG, 'browser navigated', { conversation_id: resolved.conversationId, instance_id: resolved.instanceId, host: hostOf(safe) })
+          _log(TAG, 'browser navigated', { conversation_id: resolved.conversationId, instance_id: resolved.instanceId, url_host: hostOf(safe) })
           return ok(formatResponse({ code: `await page.goto(${JSON.stringify(safe)});`, page: await pageSummary(resolved.page) }))
         } catch (err) {
           return fail(formatError('browser_navigate', err))
@@ -60,20 +63,14 @@ export const navigationTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_navigate_back',
-    description: 'Go back one entry in the conversation browser history.',
-    inputSchema: schema({}),
     execute: (input, ctx) => historyStep(ctx, 'back'),
   },
   {
     name: 'browser_navigate_forward',
-    description: 'Go forward one entry in the conversation browser history.',
-    inputSchema: schema({}),
     execute: (input, ctx) => historyStep(ctx, 'forward'),
   },
   {
     name: 'browser_reload',
-    description: 'Reload the current page in the conversation browser tab.',
-    inputSchema: schema({}),
     execute: async (_input, ctx) => {
       const resolved = await resolveBrowser(ctx.sessionKey, { create: false })
       if ('error' in resolved) return fail(resolved.error)
@@ -89,8 +86,6 @@ export const navigationTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_close',
-    description: 'Close the conversation browser tab. A later browser call opens a fresh one.',
-    inputSchema: schema({}),
     execute: async (_input, ctx) => {
       const resolved = await resolveBrowser(ctx.sessionKey, { create: false })
       if ('error' in resolved) return fail(resolved.error)
@@ -105,11 +100,6 @@ export const navigationTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_resize',
-    description: 'Resize the conversation browser viewport to an exact CSS pixel size.',
-    inputSchema: schema({
-      width: INT('Viewport width in CSS pixels', 1, 8192),
-      height: INT('Viewport height in CSS pixels', 1, 8192),
-    }, ['width', 'height']),
     execute: async (input, ctx) => {
       const width = intArg(input, 'width')
       const height = intArg(input, 'height')
@@ -119,32 +109,6 @@ export const navigationTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_emulate',
-    description: 'Emulate a device or specific viewport, scale factor, touch, user agent, locale, timezone, media preferences, geolocation, or offline state. Pass reset to restore the responsive view.',
-    inputSchema: schema({
-      device: STRING('Playwright device name, for example "iPhone 15" or "Pixel 7"', 128),
-      width: INT('Viewport width in CSS pixels', 1, 8192),
-      height: INT('Viewport height in CSS pixels', 1, 8192),
-      screenWidth: INT('Screen width in CSS pixels', 1, 8192),
-      screenHeight: INT('Screen height in CSS pixels', 1, 8192),
-      deviceScaleFactor: { type: 'number', description: 'Device pixel ratio', minimum: 0.1, maximum: 5 },
-      isMobile: BOOL('Enable mobile mode, which applies the meta viewport'),
-      hasTouch: BOOL('Enable touch events'),
-      userAgent: STRING('User agent override', 512),
-      locale: STRING('Locale such as en-GB', 35),
-      timezoneId: STRING('IANA timezone such as Europe/London', 64),
-      orientation: ENUM('Screen orientation', ['portrait', 'landscape']),
-      colorScheme: ENUM('prefers-color-scheme', ['light', 'dark', 'no-preference']),
-      reducedMotion: ENUM('prefers-reduced-motion', ['reduce', 'no-preference']),
-      forcedColors: ENUM('forced-colors', ['active', 'none']),
-      geolocation: schema({
-        latitude: { type: 'number', minimum: -90, maximum: 90 },
-        longitude: { type: 'number', minimum: -180, maximum: 180 },
-        accuracy: { type: 'number', minimum: 0 },
-      }, ['latitude', 'longitude']),
-      offline: BOOL('Emulate an offline network'),
-      javaScriptEnabled: BOOL('Set false to disable page JavaScript'),
-      reset: BOOL('Clear every override and restore the responsive view'),
-    }),
     execute: async (input, ctx) => {
       const code = input.reset === true
         ? '// cleared all emulation overrides'

@@ -22,6 +22,8 @@ package integration
 import (
 	"encoding/json"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -41,6 +43,28 @@ func asyncCanaryEntry(t *testing.T) string {
 		t.Fatalf("resolve async-canary path: %v", err)
 	}
 	return abs
+}
+
+// asyncCanaryStaticScheduleIDs names every schedule the canary declares at
+// init, in a stable order. Tests compare against this set by name so adding a
+// schedule to the canary is a one-line change here rather than a hunt for
+// hardcoded counts.
+var asyncCanaryStaticScheduleIDs = []string{
+	"async-canary-missed-early",
+	"async-canary-missed-late",
+	"async-canary-missed-probe",
+	"async-canary-slow-handler",
+	"async-canary-tick",
+}
+
+// scheduleJobIDs returns the sorted job IDs of a schedule list.
+func scheduleJobIDs(jobs []extension.ScheduleJob) []string {
+	ids := make([]string, 0, len(jobs))
+	for _, j := range jobs {
+		ids = append(ids, j.JobID)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // loadAsyncCanary loads the extension into a fresh host and returns
@@ -121,28 +145,13 @@ func TestAsyncCanary_StaticInitRegistrations(t *testing.T) {
 	}
 
 	schedules := host.Schedules()
-	if len(schedules) != 2 {
-		t.Fatalf("expected 2 schedules (async-canary-slow-handler + async-canary-tick), got %d: %+v", len(schedules), schedules)
+	if got := scheduleJobIDs(schedules); !reflect.DeepEqual(got, asyncCanaryStaticScheduleIDs) {
+		t.Fatalf("static schedules = %v, want %v", got, asyncCanaryStaticScheduleIDs)
 	}
-	// Verify both expected schedule IDs are present (order-independent).
-	foundTick := false
-	foundSlow := false
 	for _, s := range schedules {
-		if s.JobID == "async-canary-tick" {
-			foundTick = true
-			if s.Kind != extension.ScheduleInterval {
-				t.Errorf("async-canary-tick kind = %q, want interval", s.Kind)
-			}
+		if s.JobID == "async-canary-tick" && s.Kind != extension.ScheduleInterval {
+			t.Errorf("async-canary-tick kind = %q, want interval", s.Kind)
 		}
-		if s.JobID == "async-canary-slow-handler" {
-			foundSlow = true
-		}
-	}
-	if !foundTick {
-		t.Fatalf("async-canary-tick not in schedules: %+v", schedules)
-	}
-	if !foundSlow {
-		t.Fatalf("async-canary-slow-handler not in schedules: %+v", schedules)
 	}
 }
 
@@ -164,8 +173,8 @@ func TestAsyncCanary_LifecycleHooksFireAtInit(t *testing.T) {
 	if errs := host.CommitPendingAsyncDecls(); len(errs) != 0 {
 		t.Fatalf("commit errors: %v", errs)
 	}
-	if len(seen) != 3 {
-		t.Fatalf("expected 3 lifecycle fires (1 webhook + 2 schedules), got %d: %+v", len(seen), seen)
+	if want := 1 + len(asyncCanaryStaticScheduleIDs); len(seen) != want {
+		t.Fatalf("expected %d lifecycle fires (1 webhook + %d schedules), got %d: %+v", want, len(asyncCanaryStaticScheduleIDs), len(seen), seen)
 	}
 	for _, info := range seen {
 		if info.Origin != string(asyncreg.OriginInit) {

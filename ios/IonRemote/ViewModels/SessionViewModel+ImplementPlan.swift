@@ -71,74 +71,6 @@ extension SessionViewModel {
         }
     }
 
-    // MARK: - Implement + unpin (ordered)
-
-    /// Unpin the tab from its group, then send the implement_plan command in a
-    /// single awaited Task so the unpin wire command is guaranteed to arrive at
-    /// the desktop BEFORE implement_plan.
-    ///
-    /// The desktop's implement-plan handler suppresses auto-grouping only when
-    /// `!tab.groupPinned` — so the unpin must complete before the implement
-    /// command is processed. Firing the two commands in separate Tasks (the old
-    /// `implementAndUnpin` code) gives no ordering guarantee; this method fixes
-    /// that by chaining them in one Task with sequential `try await` calls,
-    /// following the same pattern as `moveTabToGroupAndPin` in
-    /// SessionViewModel+TabGroupCommands.swift.
-    ///
-    /// Mirrors the optimistic-update and diagnostic-logging discipline of
-    /// `sendImplementPlanIntent` and `moveTabToGroupAndPin`.
-    func sendUnpinThenImplementPlanIntent(tabId: String, questionId: String, clearContext: Bool = false) {
-        let hasEngineExtension = tabs.first(where: { $0.id == tabId })?.hasEngineExtension == true
-        let instanceId = hasEngineExtension
-            ? activeEngineInstance[tabId] ?? conversationInstances[tabId]?.first?.id
-            : nil
-
-        // Optimistic local update: unpin and advance status immediately so the
-        // UI reflects the final state without waiting for a desktop snapshot.
-        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
-            tabs[idx].groupPinned = false
-            tabs[idx].permissionMode = .auto
-            tabs[idx].status = .connecting
-        }
-
-        DiagnosticLog.log("unpin then implement plan intent", tag: "session.implplan", fields: [
-            "tab_id": String(tabId.prefix(8)),
-            "question_id": String(questionId.prefix(12)),
-            "reason": String(clearContext),
-            "agent": String(hasEngineExtension)
-        ])
-        DiagnosticLog.logCommand(.toggleTabGroupPin(tabId: tabId))
-        DiagnosticLog.logCommand(.implementPlan(tabId: tabId, questionId: questionId, instanceId: instanceId, clearContext: clearContext))
-
-        guard let transport else {
-            Task { @MainActor [weak self] in
-                self?.showToast(ToastMessage(style: .error, title: "Not connected", detail: "Command could not be sent"))
-            }
-            return
-        }
-        // Chain both commands through the transport in order. We do NOT use
-        // the convenience `send(...)` helper here because that fires the
-        // command on a new Task without ordering guarantees relative to a
-        // sibling Task; using a single Task that awaits both keeps the
-        // unpin strictly before implement_plan on the wire.
-        Task { [weak self] in
-            do {
-                try await transport.send(.toggleTabGroupPin(tabId: tabId))
-                try await transport.send(.implementPlan(
-                    tabId: tabId,
-                    questionId: questionId,
-                    instanceId: instanceId,
-                    clearContext: clearContext
-                ))
-            } catch {
-                let detail = error.localizedDescription
-                await MainActor.run {
-                    self?.showToast(ToastMessage(style: .error, title: "Send failed", detail: detail))
-                }
-            }
-        }
-    }
-
     // MARK: - Plan content paging
 
     /// Initiate a paged fetch of the plan body from the desktop. Sends the
@@ -164,8 +96,7 @@ extension SessionViewModel {
             "path": String(planFilePath.suffix(40))
         ])
         guard let transport else { return }
-        Task { [weak self] in
-            guard let self else { return }
+        Task {
             do {
                 try await transport.send(.requestPlanContent(
                     tabId: tabId,
@@ -184,6 +115,9 @@ extension SessionViewModel {
 
     /// Request the next page of plan content when hasMore=true arrived.
     /// Called from the plan_content event handler in EventHandlers.
+
+    /// Request the next page of plan content when hasMore=true arrived.
+    /// Called from the plan_content event handler in EventHandlers.
     func requestNextPlanPage(questionId: String, planFilePath: String, nextOffset: Int) {
         let tabId = planContentStore.tabId(for: questionId)
         guard !tabId.isEmpty, let transport else {
@@ -197,8 +131,7 @@ extension SessionViewModel {
             "question_id": String(questionId.prefix(12)),
             "count": String(nextOffset)
         ])
-        Task { [weak self] in
-            guard let self else { return }
+        Task {
             do {
                 try await transport.send(.requestPlanContent(
                     tabId: tabId,

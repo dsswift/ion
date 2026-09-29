@@ -1,8 +1,8 @@
 import React from 'react'
 import type { useColors } from '../../theme'
-import type { QuestionSpec } from '../../../shared/questions-schema'
-import { resolveQuestionDisplay } from '../../../shared/questions-schema'
-import type { QuestionDraftAnswer } from '../../../shared/questions-state'
+import type { QuestionSpec } from '@ion/shared/questions-schema'
+import { resolveQuestionDisplay } from '@ion/shared/questions-schema'
+import type { QuestionDraftAnswer } from '@ion/shared/questions-state'
 import { AutoGrowTextarea } from './AutoGrowTextarea'
 import { QuestionAttachmentRow } from './QuestionAttachmentRow'
 

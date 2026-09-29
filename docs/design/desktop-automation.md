@@ -69,7 +69,7 @@ Every control offers only what the catalog allows for the selected trigger: the 
 
 Main process evaluates events, persistence, conditions, causation, and main-owned worktree actions. Renderer-owned actions are typed commands sent to the owner session store and require an acknowledgement. Automation never reaches into a renderer using injected JavaScript.
 
-Actions are finite named operations: `worktree:set-stage`, `desktop:notification`, `conversation:run`, `conversation:slash`, `tab:set-color`, `tab:set-icon`, and `tab:set-group`. An action's target is derived from the triggering event, never asked for as a raw id: a worktree/directory action uses the event's `worktreePath` (or an operator-chosen fixed directory when the trigger cannot supply one), and a tab action targets the triggering conversation. Renderer-owned actions run only through the owner-renderer command bridge.
+Actions are finite named operations: `worktree:set-stage`, `desktop:notification`, `conversation:run`, `conversation:slash`, and `tab:set-color`. An action's target is derived from the triggering event, never asked for as a raw id: a worktree/directory action uses the event's `worktreePath` (or an operator-chosen fixed directory when the trigger cannot supply one), and a tab action targets the triggering conversation. Renderer-owned actions run only through the owner-renderer command bridge.
 
 Every derived event carries a causation root and workflow chain. A workflow already in its own chain is blocked; a non-cyclic chain is capped. Blocked/failing work is recorded in local history and logged.
 

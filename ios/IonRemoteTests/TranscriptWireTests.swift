@@ -2,22 +2,6 @@ import XCTest
 @testable import IonRemote
 
 final class TranscriptWireTests: XCTestCase {
-    func testRequestTranscriptRoundTrips() throws {
-        let command = RemoteCommand.requestTranscript(tabId: "tab-1", requestId: "request-1")
-        let data = try JSONEncoder().encode(command)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-
-        XCTAssertEqual(json["type"] as? String, "desktop_request_transcript")
-        XCTAssertEqual(json["tabId"] as? String, "tab-1")
-        XCTAssertEqual(json["requestId"] as? String, "request-1")
-
-        guard case let .requestTranscript(tabId, requestId) = try JSONDecoder().decode(RemoteCommand.self, from: data) else {
-            return XCTFail("Expected requestTranscript")
-        }
-        XCTAssertEqual(tabId, "tab-1")
-        XCTAssertEqual(requestId, "request-1")
-    }
-
     func testTranscriptResponseRoundTrips() throws {
         let event = RemoteEvent.transcript(
             tabId: "tab-1",

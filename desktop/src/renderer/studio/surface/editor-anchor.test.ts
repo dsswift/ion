@@ -11,7 +11,7 @@
  */
 import { describe, expect, it, beforeEach } from 'vitest'
 import { recordTabActivation, lastEditorFilePath, forgetAnchorIfGone, clearAllAnchors } from './editor-anchor'
-import type { SurfaceTab } from '../../../shared/studio-surface-types'
+import type { SurfaceTab } from '@ion/shared/studio-surface-types'
 
 function fileTab(id: string, filePath: string): SurfaceTab {
   return { kind: 'file', id, filePath, dir: '/repo', tabId: 'conv-1' } as SurfaceTab

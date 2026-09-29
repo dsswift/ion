@@ -7,9 +7,10 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 import { useGraphStore } from './graph-store'
 import { clearAllSessions } from './session-park'
-import { GRAPH_VIEW_DEFAULTS } from '../../../shared/graph-view-types'
-import type { GraphViewConfig } from '../../../shared/graph-view-types'
-import type { CorpusDocument, CorpusSnapshot } from '../../../shared/graph-corpus-types'
+import { GRAPH_VIEW_DEFAULTS } from '@ion/shared/graph-view-types'
+import type { GraphViewConfig } from '@ion/shared/graph-view-types'
+import type { CorpusDocument, CorpusSnapshot } from '@ion/shared/graph-corpus-types'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 function config(): GraphViewConfig {
   return {
@@ -44,14 +45,14 @@ function snapshot(): CorpusSnapshot {
 }
 
 beforeEach(async () => {
-  window.ion = {
+  window.ion = installFakeWire({
     graphViewGetConfig: vi.fn(async () => config()),
     graphViewSetUserConfig: vi.fn(async () => ({ ok: true })),
     onGraphViewConfigChanged: vi.fn(() => () => undefined),
     graphCorpusSubscribe: vi.fn(async () => snapshot()),
     graphCorpusUnsubscribe: vi.fn(async () => ({ ok: true })),
     onGraphCorpusDelta: vi.fn(() => () => undefined),
-  } as unknown as typeof window.ion
+  }) as unknown as typeof window.ion
   await useGraphStore.getState().init('/root')
 })
 

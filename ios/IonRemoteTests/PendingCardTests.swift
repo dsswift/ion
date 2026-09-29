@@ -70,4 +70,23 @@ final class PendingCardTests: XCTestCase {
             return XCTFail("expected .found — clear before the question must not suppress")
         }
     }
+
+    /// The server names the plan an ExitPlanMode row leaves plan mode with
+    /// (`planFilePath` on the row) even when the call's own input does not.
+    /// The restored card carries it so it can fetch the plan's body.
+    func testRestoredPlanCardCarriesThePlanPathFromTheRow() {
+        var exit = msg("p1", .tool, toolName: "ExitPlanMode")
+        exit.toolInput = "{}"
+        exit.planFilePath = "/home/.ion/plans/a.md"
+        let card = PendingCard.restoredCard(for: [msg("a", .assistant, content: "plan"), exit])
+        XCTAssertEqual(card?.toolInput?["planFilePath"]?.value as? String, "/home/.ion/plans/a.md")
+    }
+
+    func testRestoredPlanCardKeepsThePathItsOwnInputNames() {
+        var exit = msg("p1", .tool, toolName: "ExitPlanMode")
+        exit.toolInput = #"{"planFilePath":"/own.md"}"#
+        exit.planFilePath = "/home/.ion/plans/a.md"
+        let card = PendingCard.restoredCard(for: [exit])
+        XCTAssertEqual(card?.toolInput?["planFilePath"]?.value as? String, "/own.md")
+    }
 }

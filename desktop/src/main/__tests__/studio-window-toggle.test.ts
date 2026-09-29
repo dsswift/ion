@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => {
   const events = new Map<string, Array<(...args: unknown[]) => void>>()
-  const settings: Record<string, unknown> = { activeUi: 'studio' }
+  const settings: Record<string, unknown> = { studioTheme: 'ion-works' }
   const normalBounds = { x: 120, y: 80, width: 1440, height: 900 }
   const window = {
     isDestroyed: vi.fn(() => false),
@@ -52,18 +52,17 @@ vi.mock('electron', () => ({
   BrowserWindow: vi.fn(function BrowserWindow() { return mocks.window }),
 }))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), trace: vi.fn() }))
-vi.mock('../state', () => ({
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{
   enterprisePolicyCache: { policy: null },
   state: { mainWindow: null, studioWindow: null, forceQuit: false },
-}))
-vi.mock('../settings-store', () => ({
+} }))
+vi.mock('@ion/server/persistence/settings-store', () => ({
   readSettings: () => mocks.settings,
   writeSettings: mocks.writeSettings,
 }))
-vi.mock('../surface-launch', () => ({ resolveSurfacePlan: () => ({ activeUi: 'studio' }) }))
-vi.mock('../studio-state-cache', () => ({ getStudioState: vi.fn(() => ({ agents: [] })) }))
+vi.mock('@ion/server/engine/studio-state-cache', () => ({ getStudioState: vi.fn(() => ({ agents: [] })) }))
 vi.mock('../studio-beacon', () => ({ clearBeacon: vi.fn() }))
-vi.mock('../deeplink/confirm', () => ({
+vi.mock('@ion/server/deeplink/confirm', () => ({
   markDeepLinkConfirmationReady: vi.fn(),
   markDeepLinkConfirmationUnavailable: vi.fn(),
 }))
@@ -80,7 +79,7 @@ function fire(event: string): void {
 beforeEach(() => {
   vi.useFakeTimers()
   mocks.events.clear()
-  mocks.settings.activeUi = 'studio'
+  mocks.settings.studioTheme = 'ion-works'
   delete mocks.settings.studioBounds
   vi.clearAllMocks()
   Object.assign(mocks.window, {
@@ -101,7 +100,7 @@ describe('Studio shortcut window lifecycle', () => {
     toggleStudioWindow('test shortcut')
 
     expect(mocks.writeSettings).toHaveBeenCalledWith({
-      activeUi: 'studio',
+      studioTheme: 'ion-works',
       studioBounds: { bounds: mocks.normalBounds, maximized: true },
     })
     expect(mocks.window.minimize).toHaveBeenCalledTimes(1)
@@ -149,7 +148,7 @@ describe('Studio shortcut window lifecycle', () => {
     fire('close')
 
     expect(mocks.writeSettings).toHaveBeenCalledWith({
-      activeUi: 'studio',
+      studioTheme: 'ion-works',
       studioBounds: { bounds: mocks.normalBounds, maximized: true },
     })
   })

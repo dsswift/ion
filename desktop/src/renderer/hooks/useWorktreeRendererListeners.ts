@@ -1,53 +1,40 @@
 import { useEffect } from 'react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { rError, rInfo } from '../rendererLogger'
+import { host } from '../host/host-instance'
+import { withTargetEnvironment } from '../studio/connection/tab-environment'
 
 /**
- * Worktree renderer listeners kept outside App so app composition stays within
- * the file-size cap. These broadcasts update both overlay and Studio through the
- * shared owner store.
+ * Worktree announcements from every connected Environment, answered on the
+ * Environment that made them.
+ *
+ * Each payload names paths on the announcing server's disk. A forwarded store
+ * action that names no tab goes to the local server, so every re-read here is
+ * pinned to the announcing Environment with `withTargetEnvironment`: a remote
+ * worktree's rows are refreshed on the machine that has the worktree.
+ *
+ * Routine freshness is not here. Each server's own freshness poll refreshes
+ * its store; these listeners only shorten the wait after a title or a land.
  */
 export function useWorktreeRendererListeners(): void {
   useEffect(() => {
-    return window.ion.onWorktreeTitled(({ repoPath, worktreePath, title }) => {
-      rInfo('worktree', 'worktree titled', { repo_path: repoPath, worktree_path: worktreePath, title })
+    return host.shell.onWorktreeTitled(({ repoPath, worktreePath, title }, environmentId) => {
+      rInfo('worktree', 'worktree titled', { repo_path: repoPath, worktree_path: worktreePath, title, environment_id: environmentId })
       if (!repoPath) return
-      void useSessionStore.getState().refreshWorktreeInventory(repoPath)
-        .catch((err) => rError('worktree', 'inventory refresh after titling failed', { error: String(err) }))
+      void withTargetEnvironment(environmentId, () => useSessionStore.getState().refreshWorktreeInventory(repoPath))
+        .catch((err) => rError('worktree', 'inventory refresh after titling failed', { error: String(err), environment_id: environmentId }))
     })
   }, [])
 
   useEffect(() => {
-    return window.ion.onWorktreeLanded(({ repoPath, worktreePath }) => {
-      void useSessionStore.getState().sealLandedWorktree(worktreePath)
-        .then(() => useSessionStore.getState().refreshWorkspaceViews(repoPath))
+    return host.shell.onWorktreeLanded(({ repoPath, worktreePath }, environmentId) => {
+      void withTargetEnvironment(environmentId, () => useSessionStore.getState().sealLandedWorktree(worktreePath))
+        .then(() => withTargetEnvironment(environmentId, () => useSessionStore.getState().refreshWorkspaceViews(repoPath)))
         .catch((err) => rError('worktree', 'landed-worktree seal failed', {
           worktree_path: worktreePath,
+          environment_id: environmentId,
           error: String(err),
         }))
-    })
-  }, [])
-
-  // The main-process freshness poll is the ONLY thing that keeps worktree rows
-  // current during a working session. Nothing else re-reads git: the Inbox's
-  // own refresh effect is keyed on the set of projects, which does not change
-  // while the operator works, so without this a row's dirty marker, unlanded
-  // count, and bench pin verdict freeze at whatever they were when the Inbox
-  // first mounted.
-  //
-  // `refreshWorkspaceViews` is safe to call on every tick because both halves
-  // compare structurally and keep the previous store reference when git has not
-  // moved — that is what stops a 5-second timer from becoming a 5-second
-  // re-render of every worktree surface.
-  useEffect(() => {
-    return window.ion.onWorktreeFreshnessTick(({ repoPaths }) => {
-      const refresh = useSessionStore.getState().refreshWorkspaceViews
-      for (const repoPath of repoPaths) {
-        void refresh(repoPath).catch((err) => rError('worktree', 'freshness refresh failed', {
-          repo_path: repoPath,
-          error: String(err),
-        }))
-      }
     })
   }, [])
 }

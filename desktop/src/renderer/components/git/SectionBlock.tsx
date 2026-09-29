@@ -11,7 +11,7 @@ import { useColors } from '../../theme'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
 import { transitions } from '../../theme-tokens'
 import { Chevron } from '../Chevron'
-import type { GitChangedFile } from '../../../shared/types'
+import type { GitChangedFile } from '@ion/shared/types'
 import { VirtualFlatFileList, TreeFileList } from './VirtualFileList'
 
 interface Props {

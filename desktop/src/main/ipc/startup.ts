@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
-import { IPC } from '../../shared/types'
-import { isStartupReport } from '../../shared/startup-state'
+import { IPC } from '@ion/shared/types'
+import { isStartupReport } from '@ion/shared/startup-state'
 import {
   authenticateStartup,
   cancelStartupAuthentication,
@@ -15,7 +15,9 @@ import { warn } from '../logger'
 export function registerStartupIpc(): void {
   ipcMain.handle(IPC.STARTUP_GET_STATE, () => getStartupState())
   ipcMain.on(IPC.STARTUP_REPORT, (event, report: unknown) => {
-    if (!isStartupReport(report) || report.source === 'main') {
+    // A window may only ever report as `studio`; `main` is this process and
+    // `server` arrives off the wire (startup-coordinator's relay).
+    if (!isStartupReport(report) || report.source !== 'studio') {
       warn('startup', 'startup report rejected: malformed or unauthorized payload')
       return
     }

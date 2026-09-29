@@ -1,4 +1,4 @@
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { rDebug, rWarn } from '../rendererLogger'
 
 /** Add a shell to the active conversation through the owner-forwarded action. */

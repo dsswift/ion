@@ -5,7 +5,7 @@ import SwiftUI
 struct OIDCAuthenticationContextView: View {
     @Environment(\.appTheme) private var theme
     let device: PairedDevice
-    let record: DesktopAccessRecord
+    let record: ServerAccessRecord
     let onContinue: () -> Void
     let onNotNow: () -> Void
 
@@ -14,10 +14,10 @@ struct OIDCAuthenticationContextView: View {
             Image(systemName: device.displayIcon)
                 .font(.system(size: 42)) // design-type: authentication context icon sized as icon geometry
                 .foregroundStyle(theme.accent)
-            Text(DesktopAccessPolicy.recoveryTitle(for: record))
+            Text(ServerAccessPolicy.recoveryTitle(for: record))
                 .font(.title2.bold())
             Text(device.displayName).font(.headline)
-            Text(DesktopAccessPolicy.recoveryMessage(for: record))
+            Text(ServerAccessPolicy.recoveryMessage(for: record))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             if let issuer = device.oidcIssuerHost {

@@ -1,13 +1,13 @@
 package workspaces
 
-// Schema-pinning tests: the engine reads the record the DESKTOP writes, and
+// Schema-pinning tests: the engine reads the record the SERVER writes, and
 // both sides fail open on mismatch — so a field rename on either side would
 // silently disable the containment guard rather than fail anything. These
 // tests load the shared fixture (testdata/worktree-registry.fixture.json, the
-// desktop writer's current output shape) through the real Registry read path
+// server writer's current output shape) through the real Registry read path
 // and assert every field the engine consumes decodes to its expected value.
-// The desktop asserts the same fixture against its live writer
-// (desktop/src/main/__tests__/workspace-record-parity.test.ts), so the
+// The server asserts the same fixture against its live writer
+// (server/src/integration/__tests__/workspace-record-parity.test.ts), so the
 // fixture is the single source of truth and drift on either side goes red.
 
 import (

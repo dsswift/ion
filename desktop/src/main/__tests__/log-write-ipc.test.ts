@@ -31,7 +31,7 @@ vi.mock('electron', () => ({
 
 import * as logger from '../logger'
 import { registerLogIpc } from '../ipc/log'
-import { IPC } from '../../shared/types'
+import { IPC } from '@ion/shared/types'
 
 /** Invoke the registered handler directly, mimicking the IPC call from the renderer. */
 function invoke(payload: unknown): unknown {

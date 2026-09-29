@@ -1,12 +1,148 @@
-import React from 'react'
-import { Folder, FolderOpen, FolderSimple, GitBranch, Plus } from '@phosphor-icons/react'
+import React, { useState } from 'react'
+import { Folder, FolderOpen, GitBranch, Plus, Desktop, CaretDown, CaretRight } from '@phosphor-icons/react'
 import { useColors } from '../theme'
-import type { EngineDirListing, EngineProfile, WorktreeInventoryEntry } from '../../shared/types'
-import type { EffectiveProjectEntry } from '../../shared/project-registry'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
+import type { EngineDirListing, EngineProfile } from '@ion/shared/types'
+import type { MergedProjectRow } from '../studio/connection/environment-projects'
+import type { ProjectGroup } from './new-conversation-project-order'
+import { PickerMenu, PickerMenuOption } from './NewConversationPickerMenu'
+import { actingHolder, isLocalEnvironment, machineControlFor } from './new-conversation-machine-control'
 
-export function ProjectRows({ projects, highlighted, colors, onHover, onChoose }: { projects: readonly EffectiveProjectEntry[]; highlighted: number; colors: ReturnType<typeof useColors>; onHover(index: number): void; onChoose(path: string): void }): React.JSX.Element {
-  if (projects.length === 0) return <PickerMessage colors={colors} message="No loaded projects match this search." />
-  return <><PickerSection colors={colors} label="Projects" />{projects.map((project, index) => <PickerRow key={project.dir} active={index === highlighted} colors={colors} icon={<Folder size={16} />} title={project.displayName} detail={project.managed ? `Managed · ${project.dir}` : project.dir} onMouseEnter={() => onHover(index)} onClick={() => onChoose(project.dir)} />)}</>
+/**
+ * Repository rows.
+ *
+ * Where a row opens is said in its second line, by colouring the machine
+ * name: this machine in the accent, any other in `iconPurple`.
+ * That is what keeps a remote row from reading like a local one while the
+ * list stays quiet -- a tinted word rather than a badge per row. The colour
+ * is dropped inside a per-machine section, where the heading already names
+ * the machine for every row under it.
+ *
+ * The right-hand side is only ever the offer: the other machines this project
+ * could open on, which most projects do not have. See
+ * `new-conversation-machine-control.ts` for the split.
+ *
+ * Sections come from `groupProjectRows`; a labelled one is collapsible, and
+ * the single unlabelled section is the whole list. Row position for the
+ * keyboard comes from `indexOf` rather than a second walk over the sections,
+ * so the drawn order and the walked order cannot drift.
+ */
+export function ProjectRows({ groups, collapsed, indexOf, highlighted, colors, showMachines, actingEnvironment, onHover, onChoose, onToggleGroup }: {
+  groups: readonly ProjectGroup[]
+  collapsed: ReadonlySet<string>
+  indexOf(groupKey: string, rowKey: string): number
+  highlighted: number
+  colors: ReturnType<typeof useColors>
+  /** False when only one machine is connected: there is no machine to name and none to offer. */
+  showMachines: boolean
+  actingEnvironment(row: MergedProjectRow, groupEnvironmentId: string | null): string
+  onHover(index: number): void
+  onChoose(row: MergedProjectRow, environmentId?: string): void
+  onToggleGroup(groupKey: string): void
+}): React.JSX.Element {
+  // One menu at a time, held here because a row cannot own state inside a map.
+  const [machineMenu, setMachineMenu] = useState<{ rowKey: string; groupKey: string; anchor: { x: number; y: number }; trigger: HTMLElement } | null>(null)
+  if (groups.length === 0) return <PickerMessage colors={colors} message="No loaded projects match this search." />
+  return <>{groups.map((group) => {
+    const isCollapsed = group.label !== null && collapsed.has(group.key)
+    const header = group.label === null
+      ? <PickerSection colors={colors} label="Projects" />
+      : <PickerGroupHeader colors={colors} label={group.label} count={group.rows.length} collapsed={isCollapsed} onToggle={() => onToggleGroup(group.key)} />
+    const inMachineSection = group.environmentId !== null
+    return <React.Fragment key={group.key}>
+      {header}
+      {!isCollapsed && group.rows.map((row) => {
+        const index = indexOf(group.key, row.key)
+        const acting = actingEnvironment(row, group.environmentId)
+        const holder = actingHolder(row, acting)
+        const path = holder ? (holder.entry.managed ? `Managed · ${holder.entry.dir}` : holder.entry.dir) : row.dir
+        const namesMachine = showMachines && !inMachineSection && !!holder
+        const detail = namesMachine && holder
+          ? <><span style={{ color: isLocalEnvironment(holder.environmentId) ? colors.accent : colors.iconPurple }}>{holder.label}</span>{` · ${path}`}</>
+          : path
+        const control = showMachines ? machineControlFor(row, acting, { inMachineSection }) : { kind: 'none' as const }
+        const open = machineMenu?.rowKey === row.key && machineMenu.groupKey === group.key
+        const openMenu = (event: React.MouseEvent<HTMLSpanElement>): void => {
+          if (open) { setMachineMenu(null); return }
+          const rect = event.currentTarget.getBoundingClientRect()
+          setMachineMenu({ rowKey: row.key, groupKey: group.key, anchor: { x: rect.left, y: rect.bottom }, trigger: event.currentTarget })
+        }
+        return <React.Fragment key={`${group.key}:${row.key}`}>
+          <PickerRow
+            active={index === highlighted}
+            colors={colors}
+            icon={<Folder size={16} />}
+            title={row.displayName}
+            detail={detail}
+            trailing={control.kind === 'none' ? undefined : control.kind === 'alternative'
+              ? <MachineChip colors={colors} label={control.holder.label} ariaLabel={`Open it on ${control.holder.label}`} onClick={() => onChoose(row, control.holder.environmentId)} />
+              : <MachineChip colors={colors} label={`+${control.alternatives.length}`} caret ariaLabel={`Open it on another machine (${control.alternatives.length} others)`} onClick={openMenu} />}
+            onMouseEnter={() => onHover(index)}
+            onClick={() => onChoose(row, acting)}
+          />
+          {open && control.kind === 'alternatives' && <PickerMenu anchor={machineMenu.anchor} ariaLabel={`Open ${row.displayName} on another machine`} heading="OPEN IT ON" triggerEl={machineMenu.trigger} width={240} deps={[control.alternatives.length]} onClose={() => setMachineMenu(null)}>
+            {control.alternatives.map((alternative) => (
+              <PickerMenuOption
+                key={alternative.environmentId}
+                label={alternative.label}
+                detail={alternative.entry.dir}
+                icon={<Desktop size={13} />}
+                onClick={() => { setMachineMenu(null); onChoose(row, alternative.environmentId) }}
+              />
+            ))}
+          </PickerMenu>}
+        </React.Fragment>
+      })}
+    </React.Fragment>
+  })}</>
+}
+
+/**
+ * One offered machine, or the count of them. Muted at rest, because it is an
+ * option rather than a statement about where the row goes -- that is the
+ * second line's job -- and it brightens under the pointer so it reads as
+ * clickable rather than as a label.
+ *
+ * A span with a button role, because the row itself is a button and buttons
+ * do not nest; the pointer handlers still bubble, so hovering the chip keeps
+ * highlighting the row under it.
+ */
+function MachineChip({ colors, label, caret, ariaLabel, onClick }: {
+  colors: ReturnType<typeof useColors>
+  label: string
+  caret?: boolean
+  ariaLabel: string
+  onClick(event: React.MouseEvent<HTMLSpanElement>): void
+}): React.JSX.Element {
+  const { hover, pressed, handlers } = useInteractiveState()
+  return <span
+    role="button"
+    tabIndex={-1}
+    aria-label={ariaLabel}
+    {...handlers}
+    onClick={(event) => { event.stopPropagation(); onClick(event) }}
+    style={{
+      display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10,
+      padding: '1px 6px', borderRadius: 999,
+      border: `1px solid ${hover || pressed ? colors.accentBorderMedium : colors.containerBorder}`,
+      color: hover || pressed ? colors.textPrimary : colors.textTertiary,
+      background: interactiveBg(colors, { hover, pressed }),
+      cursor: 'pointer', whiteSpace: 'nowrap',
+      transition: `background ${transitions.fast}, color ${transitions.fast}, border-color ${transitions.fast}`,
+    }}
+  >
+    <Desktop size={11} />{label}{caret && <CaretDown size={9} />}
+  </span>
+}
+
+/** A collapsible machine section header. */
+export function PickerGroupHeader({ colors, label, count, collapsed, onToggle }: { colors: ReturnType<typeof useColors>; label: string; count: number; collapsed: boolean; onToggle(): void }): React.JSX.Element {
+  return <button className="ion-focusable" aria-expanded={!collapsed} onClick={onToggle} style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '4px 10px 6px', border: 'none', background: 'transparent', color: colors.textTertiary, fontSize: 11, fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}>
+    {collapsed ? <CaretRight size={11} weight="bold" /> : <CaretDown size={11} weight="bold" />}
+    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+    <span style={{ opacity: 0.7, fontWeight: 500 }}>{count}</span>
+  </button>
 }
 
 export function DirectoryRows({ loading, error, listing, names, selectedDirectory, highlighted, colors, onHover, onChooseDirectory, onChooseEntry }: { loading: boolean; error: string | null; listing: EngineDirListing | null; names: string[]; selectedDirectory: string | null; highlighted: number; colors: ReturnType<typeof useColors>; onHover(index: number): void; onChooseDirectory(): void; onChooseEntry(name: string): void }): React.JSX.Element {
@@ -17,10 +153,6 @@ export function DirectoryRows({ loading, error, listing, names, selectedDirector
   return <><PickerSection colors={colors} label={listing.path} />{selectedDirectory && <PickerRow active={index++ === highlighted} colors={colors} icon={<Plus size={16} />} title="Add and use this directory" detail={selectedDirectory} onMouseEnter={() => onHover(0)} onClick={onChooseDirectory} />}{names.map((name) => { const current = index++; return <PickerRow key={name} active={current === highlighted} colors={colors} icon={<FolderOpen size={16} />} title={name} onMouseEnter={() => onHover(current)} onClick={() => onChooseEntry(name)} /> })}{names.length === 0 && !selectedDirectory && <PickerMessage colors={colors} message="No matching directories." />}{listing.truncated && <PickerMessage colors={colors} message="Directory list is truncated. Type more of the path." />}</>
 }
 
-export function WorkspaceRows({ repoPath, worktrees, canCreateWorktree, highlighted, loading, error, colors, onHover, onSource, onWorktree, onNewWorktree }: { repoPath: string; worktrees: readonly WorktreeInventoryEntry[]; canCreateWorktree: boolean; highlighted: number; loading: boolean; error: string | null; colors: ReturnType<typeof useColors>; onHover(index: number): void; onSource(): void; onWorktree(entry: WorktreeInventoryEntry): void; onNewWorktree(): void }): React.JSX.Element {
-  if (loading) return <PickerMessage colors={colors} message="Loading worktrees…" />
-  return <><PickerSection colors={colors} label="Choose workspace" />{error && <PickerMessage colors={colors} message={`Could not load worktrees: ${error}`} />}<PickerRow active={highlighted === 0} colors={colors} icon={<FolderSimple size={16} />} title="Source repository" detail={repoPath} onMouseEnter={() => onHover(0)} onClick={onSource} />{worktrees.map((entry, index) => <PickerRow key={entry.worktreePath} active={highlighted === index + 1} colors={colors} icon={<GitBranch size={16} />} title={entry.title || entry.label} detail={`${entry.branchName} · ${entry.worktreePath}`} onMouseEnter={() => onHover(index + 1)} onClick={() => onWorktree(entry)} />)}{canCreateWorktree && <PickerRow active={highlighted === worktrees.length + 1} colors={colors} icon={<Plus size={16} />} title="Create a new worktree" detail="Choose a source branch" onMouseEnter={() => onHover(worktrees.length + 1)} onClick={onNewWorktree} />}</>
-}
 
 export function BranchRows({ branches, highlighted, loading, error, currentBranch, colors, onHover, onChoose }: { branches: readonly string[]; highlighted: number; loading: boolean; error: string | null; currentBranch: string; colors: ReturnType<typeof useColors>; onHover(index: number): void; onChoose(branch: string): void }): React.JSX.Element {
   if (loading) return <PickerMessage colors={colors} message="Loading branches…" />
@@ -33,8 +165,8 @@ export function ProfileRows({ profiles, highlighted, colors, onHover, onPlain, o
   return <><PickerSection colors={colors} label="Choose conversation type" /><PickerRow active={highlighted === 0} colors={colors} icon={<Folder size={16} />} title="Plain conversation" detail="No extensions" onMouseEnter={() => onHover(0)} onClick={onPlain} />{profiles.map((profile, index) => <PickerRow key={profile.id} active={highlighted === index + 1} colors={colors} icon={<Folder size={16} />} title={profile.name} detail={profile.extensions.map((extension) => extension.split('/').slice(-2).join('/')).join(', ')} onMouseEnter={() => onHover(index + 1)} onClick={() => onProfile(profile.id)} />)}{profiles.length === 0 && <PickerMessage colors={colors} message="No conversation profiles match this search." />}</>
 }
 
-export function PickerRow({ active, colors, icon, title, detail, onMouseEnter, onClick }: { active: boolean; colors: ReturnType<typeof useColors>; icon: React.ReactNode; title: string; detail?: string; onMouseEnter(): void; onClick(): void }): React.JSX.Element {
-  return <button className="ion-focusable" onMouseEnter={onMouseEnter} onClick={onClick} style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 10, padding: '8px 10px', border: 'none', borderRadius: 6, background: active ? colors.tabActive : 'transparent', color: colors.textPrimary, cursor: 'pointer', textAlign: 'left' }}><span style={{ color: colors.textTertiary, display: 'flex' }}>{icon}</span><span style={{ minWidth: 0, flex: 1 }}><span style={{ display: 'block', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>{detail && <span style={{ display: 'block', color: colors.textTertiary, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detail}</span>}</span></button>
+export function PickerRow({ active, colors, icon, title, detail, trailing, onMouseEnter, onClick }: { active: boolean; colors: ReturnType<typeof useColors>; icon: React.ReactNode; title: string; detail?: React.ReactNode; trailing?: React.ReactNode; onMouseEnter(): void; onClick(): void }): React.JSX.Element {
+  return <button className="ion-focusable" onMouseEnter={onMouseEnter} onClick={onClick} style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 10, padding: '8px 10px', border: 'none', borderRadius: 6, background: active ? colors.tabActive : 'transparent', color: colors.textPrimary, cursor: 'pointer', textAlign: 'left' }}><span style={{ color: colors.textTertiary, display: 'flex' }}>{icon}</span><span style={{ minWidth: 0, flex: 1 }}><span style={{ display: 'block', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>{detail && <span style={{ display: 'block', color: colors.textTertiary, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detail}</span>}</span>{trailing && <span style={{ flexShrink: 0 }}>{trailing}</span>}</button>
 }
 
 export function PickerSection({ colors, label }: { colors: ReturnType<typeof useColors>; label: string }): React.JSX.Element { return <div style={{ padding: '4px 10px 6px', color: colors.textTertiary, fontSize: 11, fontWeight: 600 }}>{label}</div> }

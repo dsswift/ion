@@ -1,6 +1,6 @@
 import React from 'react'
-import type { TabState } from '../../shared/types'
-import { useSessionStore } from '../stores/sessionStore'
+import type { TabState } from '@ion/shared/types'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 
 /** Recovery actions for conversations the operator can no longer extend. */
 export function InputLockNotice({ tab, accent }: { tab: TabState; accent: string }): React.JSX.Element {

@@ -94,6 +94,9 @@
     ],
     "ResourcesAPI": [
       "Declare",
+      "OnExport",
+      "OnForget",
+      "OnImport",
       "OnQuery"
     ],
     "ScheduleAPI": [

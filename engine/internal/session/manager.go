@@ -359,12 +359,17 @@ func (m *Manager) ListSessions() []SessionInfo {
 		for _, conn := range s.mcpConns {
 			toolCount += len(conn.Tools())
 		}
+		principalSubject := ""
+		if s.principal != nil {
+			principalSubject = s.principal.Subject
+		}
 		result = append(result, SessionInfo{
-			Key:            s.key,
-			HasActiveRun:   s.requestID != "",
-			ToolCount:      toolCount,
-			ConversationID: s.conversationID,
-			ExtensionName:  s.extensionName,
+			Key:              s.key,
+			HasActiveRun:     s.requestID != "",
+			ToolCount:        toolCount,
+			ConversationID:   s.conversationID,
+			ExtensionName:    s.extensionName,
+			PrincipalSubject: principalSubject,
 		})
 	}
 	return result
@@ -541,7 +546,9 @@ func (m *Manager) StopByPrefix(prefix string) {
 	}
 }
 
-// StopAll stops every active session.
+// StopAll stops every active session. Teardown runs bounded-parallel — see
+// stopAllSessions in stop_all_parallel.go for why, and for the shutdown-overrun
+// regression a serial loop caused.
 func (m *Manager) StopAll() error {
 	m.mu.RLock()
 	keys := make([]string, 0, len(m.sessions))
@@ -550,9 +557,7 @@ func (m *Manager) StopAll() error {
 	}
 	m.mu.RUnlock()
 
-	for _, k := range keys {
-		m.StopSession(k) //nolint:errcheck // best-effort stop; not-found is benign
-	}
+	m.stopAllSessions(keys)
 	return nil
 }
 
@@ -772,6 +777,14 @@ func (m *Manager) ReconcileState(key string) {
 	// are engine-side) or receives the authoritative [] that clears a
 	// stale card from before the disconnect.
 	m.emitClientToolState(key)
+
+	// Re-emit the extension command registry under the same rule. It is
+	// otherwise emitted only when extensions wire up and when the command
+	// table changes, so a consumer that attaches to a session already
+	// running would never receive it and would hold no command set for
+	// the session at all. An empty list is the authoritative "no
+	// extension commands" signal, so this is unconditional.
+	m.emitCommandRegistry(key)
 
 	// Re-emit status via the shared snapshot helper so the legacy
 	// engine_status and the Phase 3 engine_session_status both ship

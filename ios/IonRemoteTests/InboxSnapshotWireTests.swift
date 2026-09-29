@@ -11,7 +11,7 @@ final class InboxSnapshotWireTests: XCTestCase {
         """.data(using: .utf8)!
 
         let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
-        guard case let .snapshot(_, _, _, _, _, _, _, _, _, _, _, _, states, settled) = event else {
+        guard case let .snapshot(_, _, _, _, _, _, _, _, states, settled) = event else {
             return XCTFail("Expected snapshot")
         }
         XCTAssertEqual(states?.map(\.repoPath), ["/repo"])
@@ -28,7 +28,7 @@ final class InboxSnapshotWireTests: XCTestCase {
         """.data(using: .utf8)!
 
         let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
-        guard case let .snapshot(_, _, _, _, _, _, _, _, _, _, _, _, _, settled) = event else {
+        guard case let .snapshot(_, _, _, _, _, _, _, _, _, settled) = event else {
             return XCTFail("Expected snapshot")
         }
         XCTAssertEqual(settled?.first?.inboxState, "settled")
@@ -45,19 +45,6 @@ final class InboxSnapshotWireTests: XCTestCase {
         XCTAssertTrue(source.contains("tab.settledOverride == \"auto\""))
         XCTAssertTrue(source.contains("Text(\"Auto\")"))
         XCTAssertTrue(source.contains("accessibilityLabel(\"Automatically settled\")"))
-    }
-
-    func testDeleteConversationCommandUsesDesktopWireType() throws {
-        let data = try JSONEncoder().encode(RemoteCommand.tabDelete(tabId: "conversation-1"))
-        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        XCTAssertEqual(object?["type"] as? String, "desktop_tab_delete")
-        XCTAssertEqual(object?["tabId"] as? String, "conversation-1")
-
-        let decoded = try JSONDecoder().decode(RemoteCommand.self, from: data)
-        guard case .tabDelete(let tabId) = decoded else {
-            return XCTFail("Expected tabDelete command")
-        }
-        XCTAssertEqual(tabId, "conversation-1")
     }
 
     func testInboxDeleteMenuOffersSettleDeleteAndCancel() throws {
@@ -78,10 +65,4 @@ final class InboxSnapshotWireTests: XCTestCase {
         XCTAssertTrue(dialog.contains("viewModel.deleteTab(tabId: tab.id)"))
     }
 
-    func testReviewSettledCommandUsesDesktopWireType() throws {
-        let data = try JSONEncoder().encode(RemoteCommand.reviewSettledTab(tabId: "settled-1"))
-        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        XCTAssertEqual(object?["type"] as? String, "desktop_review_settled_tab")
-        XCTAssertEqual(object?["tabId"] as? String, "settled-1")
-    }
 }

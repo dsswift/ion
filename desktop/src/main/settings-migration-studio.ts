@@ -11,14 +11,16 @@
  *
  * Key decisions encoded here (see the Ion Studio plan, phase A1):
  *   - atvBeta/studioBeta: DROPPED at release (F2). The gate shipped the
- *     phases; activeUi: 'studio' alone now launches Studio.
- *   - launchSurface → activeUi with value maps atv→studio and both→overlay.
- *     Single-UI exclusivity (decision D1): there is no 'both' anymore.
- *   - surfacePolicy: folded into activeUi (atv-only→studio, overlay-only→
- *     overlay, both→no-op) and DROPPED. The enterprise lock moves to the
- *     MDM policy blob, not user settings.
+ *     phases; the Studio shell needs no gate to launch anymore.
+ *   - activeUi/activeUiPolicy/surfacePolicy/launchSurface: DROPPED outright
+ *     (spec 17). These encoded single-UI exclusivity (decision D1) between
+ *     the Overlay glass and Studio; the Overlay is deleted, Studio is the
+ *     only conversation UI, and there is nothing left to pick between.
  *   - atvAutoDrawer: DROPPED. The Studio shell always shows the
  *     conversation; the auto-drawer concept is obsolete.
+ *   - atvDockPresence/studioDockPresence: DROPPED (spec 17). This toggle
+ *     protected the deleted Overlay glass's Cmd-Tab visibility; Studio
+ *     always runs with a Dock icon now.
  *   - atvLayout: only dockTab survives, mapped onto the studioLayout
  *     leftSidebarView ('files'→'explorer', 'worktrees'→'git',
  *     'conversation'→default). dockOpen/dockWidth die with the old dock.
@@ -27,8 +29,8 @@ import { existsSync, renameSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import { log } from "./logger";
-import { readSettings, writeSettings } from "./settings-store";
-import { normalizeStudioLayout } from "../shared/types-studio";
+import { readSettings, writeSettings } from "@ion/server/persistence/settings-store";
+import { normalizeStudioLayout } from "@ion/shared/types-studio";
 
 /** Old key → new key. Copy-if-absent, then delete old. */
 const KEY_RENAMES: ReadonlyArray<readonly [string, string]> = [
@@ -37,7 +39,6 @@ const KEY_RENAMES: ReadonlyArray<readonly [string, string]> = [
   ["atvZoom", "studioZoom"],
   ["atvSeed", "studioSeed"],
   ["atvSeeds", "studioSeeds"],
-  ["atvDockPresence", "studioDockPresence"],
   ["atvHeat", "studioHeat"],
   ["atvBeacon", "studioBeacon"],
   ["atvSound", "studioSound"],
@@ -67,15 +68,23 @@ const DROPPED_KEYS: readonly string[] = [
   // normal desktop window now (never setAlwaysOnTop).
   "atvPinned",
   "studioPinned",
+  // Dock/Cmd-Tab presence is no longer a preference: spec 17 deleted the
+  // Overlay glass this toggle existed to protect (hiding the Dock icon kept
+  // the transparent glass out of Cmd-Tab while Studio was closed). Studio
+  // always runs with a Dock icon now (studio-window-manager.ts's
+  // applyStudioActivationPolicy always sets 'regular').
+  "atvDockPresence",
+  "studioDockPresence",
 ];
 
-/** launchSurface / surfacePolicy value → activeUi value. */
-function mapLaunchSurface(value: unknown): "overlay" | "studio" | null {
-  if (value === "atv") return "studio";
-  if (value === "both") return "overlay"; // D1: single-UI exclusivity — no 'both'
-  if (value === "overlay") return "overlay";
-  return null;
-}
+/**
+ * Single-UI exclusivity keys (D1), retired entirely now that spec 17 deleted
+ * the Overlay: Studio is the only conversation UI, so there is nothing left
+ * to pick between and nothing for these to encode. Deleted outright, not
+ * folded into anything — unlike the atv* renames above, these have no
+ * successor key.
+ */
+const SINGLE_UI_KEYS: readonly string[] = ["activeUi", "activeUiPolicy", "surfacePolicy", "launchSurface"];
 
 /**
  * Legacy dockTab → studioLayout.leftSidebarView. The worktrees dock pane's
@@ -157,43 +166,13 @@ export function migrateStudioSettings(): boolean {
     changed = true;
   }
 
-  // launchSurface → activeUi (value-mapped), only when activeUi absent.
-  if ("launchSurface" in settings) {
-    if (!("activeUi" in settings)) {
-      const mapped = mapLaunchSurface(settings.launchSurface);
-      if (mapped !== null) {
-        settings.activeUi = mapped;
-        applied.push(
-          `launchSurface(${String(settings.launchSurface)})→activeUi(${mapped})`,
-        );
-      } else {
-        applied.push(
-          `launchSurface(${String(settings.launchSurface)}) invalid, dropped`,
-        );
-      }
-    } else {
-      applied.push("launchSurface dropped (activeUi present)");
-    }
-    delete settings.launchSurface;
-    changed = true;
-  }
-
-  // Legacy surfacePolicy fold: an enforced single-surface policy becomes the
-  // activeUi value (the operator's intent — that surface is the UI); 'both'
-  // is a no-op. The key is dropped either way: the enterprise lock lives in
-  // the MDM policy blob now, never in user settings.
-  if ("surfacePolicy" in settings) {
-    const policy = settings.surfacePolicy;
-    if (policy === "atv-only" && !("activeUi" in settings)) {
-      settings.activeUi = "studio";
-      applied.push("surfacePolicy(atv-only)→activeUi(studio)");
-    } else if (policy === "overlay-only" && !("activeUi" in settings)) {
-      settings.activeUi = "overlay";
-      applied.push("surfacePolicy(overlay-only)→activeUi(overlay)");
-    } else {
-      applied.push(`surfacePolicy(${String(policy)}) dropped`);
-    }
-    delete settings.surfacePolicy;
+  // Single-UI exclusivity (D1) is retired: spec 17 deleted the Overlay, so
+  // there is no longer a picker for these keys to encode. Deleted outright
+  // — no successor key, no value mapping.
+  for (const key of SINGLE_UI_KEYS) {
+    if (!(key in settings)) continue;
+    delete settings[key];
+    applied.push(`${key} dropped (single-UI exclusivity retired)`);
     changed = true;
   }
 
@@ -217,15 +196,10 @@ export function migrateStudioSettings(): boolean {
     changed = true;
   }
 
-  // The old navigation choice coupled Inbox selection to Tab Strip visibility.
-  // Preserve only the visibility intent, then remove the retired key.
+  // The old navigation choice is retired with the Tab Strip itself. Nothing
+  // it decided survives: the Inbox is the only conversation switcher.
   if ("conversationNav" in settings) {
-    if (!("studioTabStripVisible" in settings)) {
-      settings.studioTabStripVisible = settings.conversationNav !== "inbox";
-      applied.push(`conversationNav(${String(settings.conversationNav)})→studioTabStripVisible(${String(settings.studioTabStripVisible)})`);
-    } else {
-      applied.push("conversationNav dropped (studioTabStripVisible present)");
-    }
+    applied.push("conversationNav dropped (tab strip retired)");
     delete settings.conversationNav;
     changed = true;
   }

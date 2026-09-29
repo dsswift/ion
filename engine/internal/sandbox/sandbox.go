@@ -22,6 +22,12 @@ type FSConfig struct {
 	AllowWrite []string
 	DenyWrite  []string
 	DenyRead   []string
+	// AllowRead carves a read exception out of a broader DenyRead subpath
+	// (FR-03: a session's own principal partition stays readable even
+	// though DenyRead covers the whole principals/ tree). Entries not
+	// nested under any DenyRead path are a no-op -- there is nothing to
+	// carve an exception out of.
+	AllowRead []string
 }
 
 // NetConfig controls network access.
@@ -229,6 +235,13 @@ func generateSeatbeltProfile(cfg Config) string {
 		fmt.Fprintf(&sb, "(deny file-read* (subpath \"%s\"))\n", path)
 	}
 
+	// Read exceptions carved out of a broader deny above (FR-03: the
+	// session's own principal partition inside a denied principals/ tree).
+	// Written AFTER every deny so the more specific, later rule governs.
+	for _, path := range cfg.Filesystem.AllowRead {
+		fmt.Fprintf(&sb, "(allow file-read* (subpath \"%s\"))\n", path)
+	}
+
 	// Allow write paths.
 	for _, path := range cfg.Filesystem.AllowWrite {
 		fmt.Fprintf(&sb, "(allow file-write* (subpath \"%s\"))\n", path)
@@ -287,6 +300,16 @@ func generateBwrapArgs(cfg Config) []string {
 	// Deny read paths (tmpfs overlay to hide contents).
 	for _, path := range cfg.Filesystem.DenyRead {
 		args = append(args, "--tmpfs", path)
+	}
+
+	// Read exceptions carved out of a broader deny above: a --ro-bind of the
+	// allowed subpath AFTER its enclosing --tmpfs re-exposes just that
+	// directory (FR-03: the session's own principal partition inside a
+	// denied principals/ tree). Read-only, since AllowRead is a read
+	// exception, not a write grant -- AllowWrite above is the separate,
+	// explicit write grant.
+	for _, path := range cfg.Filesystem.AllowRead {
+		args = append(args, "--ro-bind", path, path)
 	}
 
 	// PID namespace isolation.

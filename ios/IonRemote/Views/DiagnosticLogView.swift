@@ -18,7 +18,7 @@ struct DiagnosticLogView: View {
     var body: some View {
         List {
             if entries.isEmpty {
-                Text("No diagnostic entries yet.\nConnect or switch desktops to generate logs.")
+                Text("No diagnostic entries yet.\nConnect or switch servers to generate logs.")
                     .foregroundStyle(.secondary)
                     .font(.caption)
             } else {

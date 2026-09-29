@@ -1,11 +1,10 @@
 /**
  * useViewportClamp — keeps a portaled popover inside the window bounds.
  *
- * Popovers across the app compute anchor positions assuming the overlay's
- * geometry (TabStrip at the bottom of a full-screen glass). The Studio shell
- * renders the same components in a normal window where the strip sits at
- * the TOP — anchor math that opens "above" flies off-screen. Rather than
- * forking per-component positioning, this hook measures the rendered
+ * Popovers across the app compute anchor positions from their trigger, and
+ * anchor math that opens "above" or "beside" a trigger near a window edge
+ * flies off-screen. Rather than forking per-component positioning, this
+ * hook measures the rendered
  * element after layout and nudges it back into the viewport via the CSS
  * `translate` property (which composes with — and never fights — Framer
  * Motion's `transform`).

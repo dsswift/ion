@@ -1,4 +1,4 @@
-import type { WorktreeOverlapAnalysis } from '../../shared/types-worktree-overlap'
+import type { WorktreeOverlapAnalysis } from '@ion/shared/types-worktree-overlap'
 
 /** Limit visualization evidence to worktrees with changed paths matching filter. */
 export function filterOverlapAnalysis(analysis: WorktreeOverlapAnalysis | null, filter: string): WorktreeOverlapAnalysis | null {

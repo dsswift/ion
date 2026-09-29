@@ -42,6 +42,7 @@ Open a terminal pane inside a conversation. In the Desktop client this targets t
 | `title` | no | Pane label. Falls back to Ion's `Shell N` numbering. |
 | `cmd` | no | A single-line command to run in the new pane. |
 | `dir` | no | Working directory for the new process. Defaults to the conversation's directory. **Pass the service/project directory when the command resolves files relative to itself** (`func start`, `dotnet watch --project file.csproj`, `npm run dev`). |
+| `key` | no | Launch key. A stable identity for this launch, unique within the conversation. See [Reusing a pane](#reusing-a-pane). |
 | `token` | no | Capability token. See [Trust](#trust). |
 
 ```bash
@@ -56,6 +57,30 @@ open 'ion://terminal?tabId=<id>&title=api&dir=/Users/me/src/app/services/api&cmd
 
 Ion never falls back to "whichever conversation is in front". A pane opening in a
 background conversation does not pull you out of the one you are reading.
+
+#### Reusing a pane
+
+Without `key`, every request adds a pane. A tool that launches the same services
+on every run should send a `key` per service, so a rerun reuses the panes of the
+last run instead of piling up new ones.
+
+When the conversation already has a pane that was opened with the same `key`:
+
+1. Every process running in that pane is stopped: the whole process tree under
+   its shell, not only the shell. Processes get `SIGTERM` and five seconds to
+   exit, then `SIGKILL`.
+2. A fresh shell starts in the same pane, in `dir` (or the pane's previous
+   directory when `dir` is absent). `title`, when given, renames the pane.
+3. `cmd` runs in the new shell.
+
+When no pane holds the key, a new pane opens and takes it. Closing the pane
+releases the key. Keys are scoped to one conversation: the same key in two
+conversations names two panes. Two requests for one key run one after the
+other, so they never open two panes.
+
+The key survives an app restart with the pane it names. `dev run` sends
+`dev.yaml/<checkout>/<service>`, where `<checkout>` is the repository folder name
+plus a short hash of its path. Any stable string up to 200 characters works.
 
 #### Getting a `tabId`
 

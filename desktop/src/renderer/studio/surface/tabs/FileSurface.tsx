@@ -9,9 +9,9 @@
  * readError banner the floating editor shows (D10: never a silent blank
  * buffer).
  */
-import React, { useCallback, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { EditorView } from '@codemirror/view'
-import { useSessionStore } from '../../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useFileEditorContent } from '../../../hooks/useFileEditorContent'
 import { gotoLine } from '@codemirror/search'
 import { FileEditorCodeMirror, type CursorPosition } from '../../../components/FileEditorCodeMirror'
@@ -19,7 +19,10 @@ import { FileEditorPreview } from '../../../components/FileEditorPreview'
 import { FileEditorStatusBar } from '../../../components/FileEditorStatusBar'
 import { FileSurfaceControls } from './FileSurfaceControls'
 import { useColors } from '../../../theme'
-import { rError } from '../../../rendererLogger'
+import { rDebug, rError, rWarn } from '../../../rendererLogger'
+import { useSurfaceStore } from '../surface-store'
+import { applyFileReveal } from '../file-reveal'
+import { useCodeMirrorFind } from '../surface-find'
 
 export function FileSurface({ dir, filePath }: { dir: string; filePath: string }): React.JSX.Element {
   const colors = useColors()
@@ -41,6 +44,35 @@ export function FileSurface({ dir, filePath }: { dir: string; filePath: string }
   const handleGoToLine = useCallback(() => {
     if (editorViewRef.current) gotoLine(editorViewRef.current)
   }, [])
+
+  // Find drives the code editor while editing; a preview is searched as page text.
+  useCodeMirrorFind(editorViewRef, !!activeFile && !activeFile.isPreview)
+
+  // A Workspace Search result asked for a line in this file. It waits for the
+  // buffer to load; a markdown tab in preview switches to its source, since a
+  // line only exists there. Child effects run first, so the editor already
+  // holds the loaded text when this runs.
+  const reveal = useSurfaceStore((s) => (s.fileReveal?.filePath === filePath ? s.fileReveal : null))
+  const toggleEditorPreview = useSessionStore((s) => s.toggleEditorPreview)
+  useEffect(() => {
+    if (!reveal || !activeFile) return
+    const consume = useSurfaceStore.getState().consumeFileReveal
+    if (activeFile.readError) {
+      rWarn('studio.file-surface', 'file reveal dropped: file could not be read', { path: filePath, error: activeFile.readError })
+      consume(reveal.nonce)
+      return
+    }
+    if (!activeFile.isLoaded) return
+    if (activeFile.isPreview) {
+      toggleEditorPreview(dir, activeFile.id)
+      return
+    }
+    const view = editorViewRef.current
+    if (!view) return
+    applyFileReveal(view, reveal)
+    consume(reveal.nonce)
+    rDebug('studio.file-surface', 'file reveal applied', { path: filePath, line: reveal.line, column: reveal.column })
+  }, [reveal, activeFile, dir, filePath, toggleEditorPreview])
 
   if (!activeFile) {
     // Buffer gone (closed via the floating editor or dirty-close): the tab

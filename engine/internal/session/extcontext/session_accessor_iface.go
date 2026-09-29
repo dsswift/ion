@@ -46,6 +46,19 @@ type SessionAccessor interface {
 	// enterprise consumer attributing a sub-agent's tool call to a tab needs
 	// the parent's identity, not a separate one the child never had.
 	AppContext() map[string]string
+	// Principal returns the session's stamped principal (manifest C1/C2), or
+	// nil when nobody attributed one. NewExtContext uses this as the
+	// SESSION-level identity fallback: Context.Identity() prefers it over
+	// the process-level operator identity, since a session's own attributed
+	// principal is a more specific answer to "who is speaking" than the
+	// engine's ambient operator identity.
+	Principal() *types.SessionPrincipal
+	// WirePrincipalRunConfig stamps the session principal's per-person run
+	// wiring onto a dispatched child's RunConfig: provider credentials, git
+	// identity and tool environment, OS sandbox, and principal boundary --
+	// the wiring the session's own runs get. A child acts as its parent's
+	// person.
+	WirePrincipalRunConfig(cfg *backend.RunConfig)
 	WorkingDirectory() string
 	CurrentModel() string
 	Emit(ev types.EngineEvent)

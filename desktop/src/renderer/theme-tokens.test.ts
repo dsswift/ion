@@ -10,7 +10,7 @@ import {
   resolveCustomThemeDefinition,
   themes,
 } from './theme-tokens'
-import type { CustomThemeForRenderer } from '../shared/theme-pack-types'
+import type { CustomThemeForRenderer } from '@ion/shared/theme-pack-types'
 
 function acmePayload(overrides: Partial<CustomThemeForRenderer> = {}): CustomThemeForRenderer {
   return {

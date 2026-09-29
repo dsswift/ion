@@ -15,7 +15,7 @@
  */
 
 import { lightColors } from './palette-light'
-import { type ColorPalette } from './palette-dark'
+import { type ColorPalette } from '@ion/server/renderer/theme/palette-dark'
 
 export const contrastLightColors: ColorPalette = {
   ...lightColors,

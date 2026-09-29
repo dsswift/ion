@@ -31,6 +31,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/session"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -104,6 +105,13 @@ func (s *Server) dispatchGetPlanContent(conn net.Conn, cmd *protocol.ClientComma
 			allowed = true
 			break
 		}
+	}
+	// A plan in a conversation's own folder (<conversationsDir>/<id>/plans/)
+	// is allowed too. The check is on the path's shape, so it needs no
+	// knowledge of which conversation the session is bound to.
+	if !allowed && conversation.IsOwnedPlanPath(checkPath) {
+		allowed = true
+		utils.LogWithFields(utils.LevelDebug, "server", "get plan content allowed conversation-owned plan", map[string]any{"session_id": key, "path": checkPath})
 	}
 	if !allowed {
 		utils.LogWithFields(utils.LevelWarn, "server", "get plan content rejected path outside plan dirs", map[string]any{"session_id": key, "path": reqPath})

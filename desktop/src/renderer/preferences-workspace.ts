@@ -8,18 +8,66 @@
  * writes its Project's list rather than one of its own. Removal also prunes
  * the removed root's persisted git-panel collapse state.
  */
-import type { PreferencesState } from "./preferences-types";
-import { saveSettings, getAllSettings } from "./preferences-persist";
-import { normalizeWorkspacePath } from "../shared/workspace-roots";
+import type { PreferencesState } from "@ion/server/preferences-types";
+import { persist } from "./preferences-persist";
+import { normalizeWorkspacePath } from "@ion/shared/workspace-roots";
 import {
   isManagedWorkspacePath,
   normalizeProjectDir,
-} from "../shared/project-registry";
-import { isAbsolutePath } from "../shared/paths";
+} from "@ion/shared/project-registry";
+import { isAbsolutePath } from "@ion/shared/paths";
 import { rDebug } from "./rendererLogger";
 
 type Set = (partial: Partial<PreferencesState>) => void;
 type Get = () => PreferencesState;
+
+type WorkspaceFolders = PreferencesState["workspaceFolders"];
+
+/**
+ * `folders` with `dir` mounted under the Project `primaryDir`, or `null` when
+ * nothing changes. Pure, so the same rule writes the local server's list and
+ * another server's (`useWorkspaceFolders`).
+ */
+export function withWorkspaceFolderAdded(
+  folders: WorkspaceFolders,
+  primaryDir: string,
+  dir: string,
+): WorkspaceFolders | null {
+  const primary = normalizeWorkspacePath(primaryDir);
+  const entry = normalizeWorkspacePath(dir);
+  if (!isAbsolutePath(primary) || !isAbsolutePath(entry) || entry === primary) {
+    rDebug("workspace", "rejected non-absolute workspace folder entry", {
+      primary,
+      entry,
+    });
+    return null;
+  }
+  // A worktree or bench is a checkout inside a Project, never a Project of
+  // its own, so it can never become a key again. Keys written before the
+  // callers resolved the Project are remapped at startup by
+  // main/workspace-folder-migration.ts.
+  if (isManagedWorkspacePath(primary)) return null;
+  const list = folders[primary] ?? [];
+  if (list.includes(entry)) return null;
+  return { ...folders, [primary]: [...list, entry] };
+}
+
+/** `folders` without `dir` under the Project `primaryDir`, or `null` when nothing changes. */
+export function withWorkspaceFolderRemoved(
+  folders: WorkspaceFolders,
+  primaryDir: string,
+  dir: string,
+): WorkspaceFolders | null {
+  const primary = normalizeWorkspacePath(primaryDir);
+  const entry = normalizeWorkspacePath(dir);
+  const list = folders[primary];
+  if (!list) return null;
+  const next = { ...folders };
+  const filtered = list.filter((d) => d !== entry);
+  if (filtered.length > 0) next[primary] = filtered;
+  else delete next[primary];
+  return next;
+}
 
 export function createWorkspaceFolderActions(
   set: Set,
@@ -32,85 +80,47 @@ export function createWorkspaceFolderActions(
 > {
   return {
     addWorkspaceFolder: (primaryDir, dir) => {
-      const primary = normalizeWorkspacePath(primaryDir);
-      const entry = normalizeWorkspacePath(dir);
-      if (
-        !isAbsolutePath(primary) ||
-        !isAbsolutePath(entry) ||
-        entry === primary
-      ) {
-        rDebug("workspace", "rejected non-absolute workspace folder entry", {
-          primary,
-          entry,
-        });
-        return;
-      }
-      // A worktree or bench is a checkout inside a Project, never a Project of
-      // its own, so it can never become a key again. Keys written before the
-      // callers resolved the Project are remapped at startup by
-      // main/workspace-folder-migration.ts.
-      if (isManagedWorkspacePath(primary)) return;
-      const current = get().workspaceFolders;
-      const list = current[primary] ?? [];
-      if (list.includes(entry)) return;
-      set({ workspaceFolders: { ...current, [primary]: [...list, entry] } });
-      saveSettings(getAllSettings(get));
+      const next = withWorkspaceFolderAdded(get().workspaceFolders, primaryDir, dir);
+      if (next) persist(set, { workspaceFolders: next });
     },
     removeWorkspaceFolder: (primaryDir, dir) => {
-      const primary = normalizeWorkspacePath(primaryDir);
-      const entry = normalizeWorkspacePath(dir);
-      const current = get().workspaceFolders;
-      const list = current[primary];
-      if (!list) return;
-      const next = { ...current };
-      const filtered = list.filter((d) => d !== entry);
-      if (filtered.length > 0) next[primary] = filtered;
-      else delete next[primary];
+      const next = withWorkspaceFolderRemoved(get().workspaceFolders, primaryDir, dir);
+      if (!next) return;
       // Prune the removed root's persisted collapse state too.
       const collapsed = { ...get().gitPanelRepoSectionsCollapsed };
-      delete collapsed[entry];
-      set({ workspaceFolders: next, gitPanelRepoSectionsCollapsed: collapsed });
-      saveSettings(getAllSettings(get));
+      delete collapsed[normalizeWorkspacePath(dir)];
+      persist(set, { workspaceFolders: next, gitPanelRepoSectionsCollapsed: collapsed });
     },
     setGitPanelRepoSectionCollapsed: (dir, isCollapsed) => {
       const key = normalizeWorkspacePath(dir);
-      set({
+      persist(set, {
         gitPanelRepoSectionsCollapsed: {
           ...get().gitPanelRepoSectionsCollapsed,
           [key]: isCollapsed,
         },
       });
-      saveSettings(getAllSettings(get));
     },
   };
 }
 
 export function createInboxPreferenceActions(
   set: Set,
-  get: Get,
+  _get: Get,
 ): Pick<
   PreferencesState,
   | "setInboxAutoSettleDays"
   | "setInboxAutoSettleOnMerge"
-  | "setStudioTabStripVisible"
   | "setGitWatcherIgnoredDirectories"
 > {
   return {
     setGitWatcherIgnoredDirectories: (dirs) => {
-      set({ gitWatcherIgnoredDirectories: dirs });
-      saveSettings(getAllSettings(get));
+      persist(set, { gitWatcherIgnoredDirectories: dirs });
     },
     setInboxAutoSettleDays: (days) => {
-      set({ inboxAutoSettleDays: Math.min(90, Math.max(0, Math.round(days))) });
-      saveSettings(getAllSettings(get));
+      persist(set, { inboxAutoSettleDays: Math.min(90, Math.max(0, Math.round(days))) });
     },
     setInboxAutoSettleOnMerge: (enabled) => {
-      set({ inboxAutoSettleOnMerge: enabled });
-      saveSettings(getAllSettings(get));
-    },
-    setStudioTabStripVisible: (visible) => {
-      set({ studioTabStripVisible: visible });
-      saveSettings(getAllSettings(get));
+      persist(set, { inboxAutoSettleOnMerge: enabled });
     },
   };
 }
@@ -135,10 +145,9 @@ export function createProjectRegistryActions(
       }
       const current = get().projects;
       if (current[key]) return;
-      set({
+      persist(set, {
         projects: { ...current, [key]: { addedManually: true, lastUsedAt: 0 } },
       });
-      saveSettings(getAllSettings(get));
     },
     removeProject: (dir) => {
       const key = normalizeProjectDir(dir);
@@ -146,13 +155,12 @@ export function createProjectRegistryActions(
       if (!(key in current)) return;
       const next = { ...current };
       delete next[key];
-      set({ projects: next });
-      saveSettings(getAllSettings(get));
+      persist(set, { projects: next });
     },
     setDefaultProject: (dir) => {
       const key = dir ? normalizeProjectDir(dir) : null;
       const current = get().projects;
-      set({
+      persist(set, {
         projects: Object.fromEntries(
           Object.entries(current).map(([path, entry]) => [
             path,
@@ -160,14 +168,13 @@ export function createProjectRegistryActions(
           ]),
         ),
       });
-      saveSettings(getAllSettings(get));
     },
     setProjectName: (dir, name) => {
       const key = normalizeProjectDir(dir);
       const entry = get().projects[key];
       if (!entry) return;
       const normalized = name?.trim();
-      set({
+      persist(set, {
         projects: {
           ...get().projects,
           [key]: {
@@ -176,13 +183,12 @@ export function createProjectRegistryActions(
           },
         },
       });
-      saveSettings(getAllSettings(get));
     },
     setProjectProfileOverride: (dir, profileOverride) => {
       const key = normalizeProjectDir(dir);
       const entry = get().projects[key];
       if (!entry) return;
-      set({
+      persist(set, {
         projects: {
           ...get().projects,
           [key]: {
@@ -193,7 +199,6 @@ export function createProjectRegistryActions(
           },
         },
       });
-      saveSettings(getAllSettings(get));
     },
   };
 }

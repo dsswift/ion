@@ -56,6 +56,8 @@ struct OIDCAccountIdentity: Codable, Sendable, Equatable {
         let segments = idToken.split(separator: ".", omittingEmptySubsequences: false)
         guard segments.count == 3 else { return nil }
         guard let payloadData = base64URLDecode(String(segments[1])) else { return nil }
+        // A non-JSON id_token payload yields nil, the documented 'identity unavailable' answer.
+        // swiftlint:disable:next silent_try_optional
         guard let json = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any] else {
             return nil
         }

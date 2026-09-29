@@ -2,7 +2,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { extractTodos } from '../TodoListPanel'
-import type { Message } from '../../../shared/types'
+import type { Message } from '@ion/shared/types'
 
 // Build a minimal tool-call Message. toolInput is the JSON string the engine
 // tool call carries as its input.

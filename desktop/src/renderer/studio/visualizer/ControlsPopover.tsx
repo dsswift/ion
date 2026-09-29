@@ -1,6 +1,6 @@
 /**
- * ControlsPopover — window-specific controls behind the TabStrip's Studio
- * button (mirror window only). Bespoke Studio widget by design: these are
+ * ControlsPopover — window-specific controls behind the visualizer toolbar's
+ * settings button. Bespoke Studio widget by design: these are
  * canvas-coupled window controls (sound, office generator), not a shared
  * conversation surface — the Settings popover stays conversation settings.
  *

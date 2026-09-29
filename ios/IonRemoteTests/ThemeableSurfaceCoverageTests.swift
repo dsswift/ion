@@ -292,29 +292,6 @@ final class ThemeableSurfaceCoverageTests: XCTestCase {
         )
     }
 
-    /// A themeable surface is not the same thing as a NEEDED surface. When the
-    /// opaque-system-color sweep reached the tab-list section header, the header
-    /// was given a filled `RoundedRectangle(theme.surfaceSecondary)` — which
-    /// satisfied the rule above and simultaneously turned five quiet text labels
-    /// into the heaviest elements on the screen.
-    ///
-    /// The correct fix for a section header is a transparent surface with themed
-    /// TEXT, letting the list background show through. This pins that: reaching
-    /// for a filled box to "make it themeable" is the regression, and the rule
-    /// above must not be satisfiable that way again.
-    func testSectionHeaderIsNotMadeThemeableWithAFilledSlab() throws {
-        let url = sourceRoot.appendingPathComponent("Views/TabListGroupHeader.swift")
-        let src = try String(contentsOf: url, encoding: .utf8)
-        XCTAssertFalse(
-            src.contains("RoundedRectangle"),
-            """
-            The tab-list section header must not paint a filled container. Theme \
-            the header's TEXT (theme.textTertiary) and leave the surface \
-            transparent — a slab competes with the rows the header labels.
-            """
-        )
-    }
-
     /// No view may inline the `jarvis-hud` navy (or any other theme's palette
     /// value) as a literal. Two of these shipped in `TabListView`, painting one
     /// theme's background into a view every theme renders.

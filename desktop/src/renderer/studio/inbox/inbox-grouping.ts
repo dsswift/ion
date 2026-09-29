@@ -1,4 +1,5 @@
-import type { IntegrationWorkspace, TabState, WorktreeInventoryEntry } from '../../../shared/types'
+import type { IntegrationWorkspace, TabState, WorktreeInventoryEntry } from '@ion/shared/types'
+import { pathBasename } from '@ion/shared/paths'
 
 export interface InboxProject {
   key: string
@@ -20,7 +21,7 @@ export interface InboxProjectGroup {
 }
 
 function baseName(path: string): string {
-  return path.split('/').filter(Boolean).at(-1) ?? path
+  return pathBasename(path)
 }
 
 function benchFor(tab: TabState, benches: ReadonlyMap<string, readonly IntegrationWorkspace[]>): IntegrationWorkspace | null {

@@ -14,7 +14,7 @@ vi.mock("fs", () => ({
     renameSyncMock(a, b);
   },
 }));
-vi.mock("../settings-store", () => ({
+vi.mock("@ion/server/persistence/settings-store", () => ({
   readSettings: (): Record<string, unknown> =>
     readSettingsMock() as Record<string, unknown>,
   writeSettings: (s: Record<string, unknown>): void => {
@@ -47,7 +47,6 @@ describe("migrateStudioSettings", () => {
   it("no legacy keys → no write (idempotent steady state)", () => {
     readSettingsMock.mockReturnValue({
       studioTheme: "ion-works",
-      activeUi: "studio",
     });
     expect(migrateStudioSettings()).toBe(false);
     expect(writeSettingsMock).not.toHaveBeenCalled();
@@ -62,7 +61,6 @@ describe("migrateStudioSettings", () => {
       atvZoom: 3,
       atvSeed: "office",
       atvSeeds: { local: "seed" },
-      atvDockPresence: false,
       atvHeat: true,
       atvBeacon: false,
       atvSound: false,
@@ -77,7 +75,6 @@ describe("migrateStudioSettings", () => {
       studioZoom: 3,
       studioSeed: "office",
       studioSeeds: { local: "seed" },
-      studioDockPresence: false,
       studioHeat: true,
       studioBeacon: false,
       studioSound: false,
@@ -89,6 +86,20 @@ describe("migrateStudioSettings", () => {
     // renamed one may survive the migration.
     expect(s).not.toHaveProperty("studioWindowOpen");
     for (const key of Object.keys(s)) expect(key.startsWith("atv")).toBe(false);
+  });
+
+  it("dock/Cmd-Tab presence keys (atv* and studio*) are dropped without replacement", () => {
+    // spec 17: this toggle protected the deleted Overlay glass's Cmd-Tab
+    // visibility. Studio always runs with a Dock icon now, so there is no
+    // successor key.
+    readSettingsMock.mockReturnValue({
+      atvDockPresence: false,
+      studioDockPresence: false,
+    });
+    migrateStudioSettings();
+    const s = written();
+    expect("atvDockPresence" in s).toBe(false);
+    expect("studioDockPresence" in s).toBe(false);
   });
 
   it("pin keys are dropped (Studio is a normal window — no always-on-top)", () => {
@@ -118,57 +129,21 @@ describe("migrateStudioSettings", () => {
     expect("atvTheme" in s).toBe(false);
   });
 
-  it("launchSurface value maps: atv→studio, both→overlay (D1: no both), overlay→overlay", () => {
-    for (const [from, to] of [
-      ["atv", "studio"],
-      ["both", "overlay"],
-      ["overlay", "overlay"],
-    ] as const) {
-      readSettingsMock.mockReturnValue({ launchSurface: from });
-      writeSettingsMock.mockReset();
-      migrateStudioSettings();
-      const s = written();
-      expect(s.activeUi).toBe(to);
-      expect("launchSurface" in s).toBe(false);
-    }
-  });
-
-  it("invalid launchSurface is dropped without minting an activeUi", () => {
-    readSettingsMock.mockReturnValue({ launchSurface: "bogus" });
-    migrateStudioSettings();
-    const s = written();
-    expect("activeUi" in s).toBe(false);
-    expect("launchSurface" in s).toBe(false);
-  });
-
-  it("surfacePolicy folds into activeUi then is dropped", () => {
-    readSettingsMock.mockReturnValue({ surfacePolicy: "atv-only" });
-    migrateStudioSettings();
-    expect(written()).toMatchObject({ activeUi: "studio" });
-
-    writeSettingsMock.mockReset();
-    readSettingsMock.mockReturnValue({ surfacePolicy: "overlay-only" });
-    migrateStudioSettings();
-    expect(written()).toMatchObject({ activeUi: "overlay" });
-
-    writeSettingsMock.mockReset();
-    readSettingsMock.mockReturnValue({ surfacePolicy: "both" });
-    migrateStudioSettings();
-    const s = written();
-    expect("activeUi" in s).toBe(false);
-    expect("surfacePolicy" in s).toBe(false);
-  });
-
-  it("launchSurface preference wins over the surfacePolicy fold", () => {
-    // launchSurface is the user's own choice; surfacePolicy was the operator
-    // clamp. When both exist the user preference sets activeUi first and the
-    // policy fold sees activeUi present and only drops its key.
+  it("single-UI exclusivity keys are dropped outright, no successor key (spec 17: Overlay deleted)", () => {
     readSettingsMock.mockReturnValue({
+      activeUi: "studio",
+      activeUiPolicy: { ui: "studio", locked: true },
+      surfacePolicy: "atv-only",
       launchSurface: "atv",
-      surfacePolicy: "overlay-only",
+      unrelated: "stays",
     });
-    migrateStudioSettings();
-    expect(written().activeUi).toBe("studio");
+    expect(migrateStudioSettings()).toBe(true);
+    const s = written();
+    expect("activeUi" in s).toBe(false);
+    expect("activeUiPolicy" in s).toBe(false);
+    expect("surfacePolicy" in s).toBe(false);
+    expect("launchSurface" in s).toBe(false);
+    expect(s.unrelated).toBe("stays");
   });
 
   it("atvAutoDrawer is dropped without replacement", () => {
@@ -212,29 +187,17 @@ describe("migrateStudioSettings", () => {
     expect("atvLayout" in s).toBe(false);
   });
 
-  it("migrates retired conversation navigation to independent tab-strip visibility", () => {
+  it("drops the retired conversation navigation choice", () => {
     readSettingsMock.mockReturnValue({ conversationNav: "inbox" });
     migrateStudioSettings();
-    expect(written()).toMatchObject({ studioTabStripVisible: false });
     expect(written()).not.toHaveProperty("conversationNav");
-
-    writeSettingsMock.mockReset();
-    readSettingsMock.mockReturnValue({ conversationNav: "tabs" });
-    migrateStudioSettings();
-    expect(written()).toMatchObject({ studioTabStripVisible: true });
-  });
-
-  it("keeps an explicit tab-strip setting while deleting conversationNav", () => {
-    readSettingsMock.mockReturnValue({ conversationNav: "inbox", studioTabStripVisible: true });
-    migrateStudioSettings();
-    expect(written()).toMatchObject({ studioTabStripVisible: true });
-    expect(written()).not.toHaveProperty("conversationNav");
+    expect(written()).not.toHaveProperty("studioTabStripVisible");
   });
 
   it("second run after migration is a no-op", () => {
     readSettingsMock.mockReturnValue({
       atvTheme: "ion-works",
-      launchSurface: "atv",
+      activeUi: "studio",
     });
     migrateStudioSettings();
     const migrated = written();

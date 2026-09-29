@@ -1,9 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
+
+	"github.com/dsswift/ion/engine/internal/protocol"
 )
 
 func cmdStart(flags map[string]string, listFlags map[string][]string) {
@@ -52,28 +56,65 @@ func cmdAttach(flags map[string]string) {
 	attachStream(socketPathOrExit(), flags["key"], 0)
 }
 
-func cmdStatus() {
-	result, err := connectAndSend(socketPathOrExit(), map[string]interface{}{
-		"cmd": "list_sessions",
-	})
-	if err != nil {
+func cmdStatus(flags map[string]string) {
+	if err := runStatus(os.Stdout, socketPathOrExit(), flags["json"] == "true"); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
+}
 
-	sessions, _ := result["data"].([]interface{}) //nolint:errcheck // missing/!slice data yields nil -> "No active sessions"
+// runStatus lists the engine's sessions as `list_sessions` reports them: the
+// session key, its conversation, whether a run is active, and its tool count.
+func runStatus(w io.Writer, sock string, asJSON bool) error {
+	result, err := connectAndSend(sock, map[string]interface{}{
+		"cmd": "list_sessions",
+	})
+	if err != nil {
+		return err
+	}
+	if errMsg, ok := result["error"].(string); ok && errMsg != "" {
+		return fmt.Errorf("list_sessions: %s", errMsg)
+	}
+	sessions, err := decodeSessionList(result["data"])
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		_, err := fmt.Fprintln(w, string(mustMarshalCLI(sessions)))
+		return err
+	}
 	if len(sessions) == 0 {
-		fmt.Println("No active sessions")
-		return
+		_, err := fmt.Fprintln(w, "No active sessions")
+		return err
 	}
-
-	fmt.Printf("%-16s %-16s %-16s %-16s\n", "KEY", "PROFILE", "DIRECTORY", "STATE")
-	fmt.Println(strings.Repeat("-", 64))
+	var b strings.Builder
+	fmt.Fprintf(&b, "%-24s %-38s %-7s %s\n", "KEY", "CONVERSATION", "ACTIVE", "TOOLS")
+	b.WriteString(strings.Repeat("-", 78) + "\n")
 	for _, s := range sessions {
-		sm, _ := s.(map[string]interface{}) //nolint:errcheck // non-object row prints as zero-value fields
-		fmt.Printf("%-16s %-16s %-16s %-16s\n",
-			sm["key"], sm["profile"], sm["directory"], sm["state"])
+		active := "no"
+		if s.HasActiveRun {
+			active = "yes"
+		}
+		fmt.Fprintf(&b, "%-24s %-38s %-7s %d\n", s.Key, orDash(s.ConversationID), active, s.ToolCount)
 	}
+	_, err = io.WriteString(w, b.String())
+	return err
+}
+
+// decodeSessionList reads a `list_sessions` result's data array.
+func decodeSessionList(data interface{}) ([]protocol.SessionInfo, error) {
+	sessions := []protocol.SessionInfo{}
+	if data == nil {
+		return sessions, nil
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("re-encode list_sessions data: %w", err)
+	}
+	if err := json.Unmarshal(raw, &sessions); err != nil {
+		return nil, fmt.Errorf("decode list_sessions data: %w", err)
+	}
+	return sessions, nil
 }
 
 func cmdStop(flags map[string]string) {

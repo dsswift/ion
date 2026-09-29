@@ -48,10 +48,14 @@ iPhone --[WebSocket, TLS]-----> Relay server --> Ion Desktop (remote)
 
 ## Pairing
 
-1. Open Ion Desktop settings, go to the Remote tab
-2. A QR code appears with connection details
+1. On the desktop, or on a phone already paired with admin, open Settings → Servers → the server → Access & pairing → Pair a phone
+2. A QR code appears with the pairing link
 3. Scan the QR code from Ion Remote on your phone
 4. Devices exchange encryption keys and connect
+
+## Administering a server
+
+Settings → Servers → a server opens the same pages the desktop has, for any paired server. What a phone may change depends on its pairing's scopes. See [`docs/deployment/ios.md`](../docs/deployment/ios.md#administering-a-server).
 
 Once paired, the phone reconnects automatically on the same network. For remote access (different networks), both devices connect through the relay server.
 

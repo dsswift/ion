@@ -6,8 +6,8 @@
  * function with one test, and so the handler file stays about sequencing.
  */
 import type { GraphState } from './graph-store-types'
-import type { ChannelDimension } from '../../../shared/graph-view-types'
-import type { GraphToolNeighbor, GraphToolNode, GraphToolState } from '../../../shared/studio-graph-types'
+import type { ChannelDimension } from '@ion/shared/graph-view-types'
+import type { GraphToolNeighbor, GraphToolNode, GraphToolState } from '@ion/shared/studio-graph-types'
 
 /** The summary every successful command carries. */
 export function buildGraphToolState(state: GraphState): GraphToolState {

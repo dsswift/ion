@@ -35,6 +35,10 @@ type Subscription struct {
 	pending    bool
 	delivering bool
 	queued     []ResourceMessage
+	// covered names the (kind, producer) pairs this subscription has had a
+	// snapshot for. A workspace subscription uses it to take exactly one
+	// snapshot per producer that comes online after it subscribed.
+	covered map[string]struct{}
 }
 
 func (s *Subscription) deliverMessage(msg ResourceMessage) {
@@ -94,6 +98,8 @@ type Broker struct {
 	subscribers map[string][]*Subscription           // keyed by kind
 	subsByID    map[string]*Subscription
 	nextSubID   atomic.Int64
+	// onQueryHandlerSet is told when a producer can first answer queries.
+	onQueryHandlerSet func(kind, producer string)
 }
 
 // NewBroker returns a ready-to-use Broker.
@@ -126,8 +132,18 @@ func (b *Broker) RegisterProducerFor(kind, producer string, host ProducerHost, d
 		entries = make(map[string]*producerEntry)
 		b.producers[kind] = entries
 	}
-	if _, exists := entries[producer]; exists {
-		return fmt.Errorf("resource broker: producer %q for kind %q already registered", producer, kind)
+	if existing, exists := entries[producer]; exists {
+		// The same producer declaring the same kind again is a re-declaration,
+		// not a conflict: an extension that declares lazily (on the first
+		// event that needs the kind) does so every time that event recurs,
+		// and refusing the second declaration left its later publishes with
+		// nowhere to go. The entry is replaced so the newest host and
+		// declaration serve queries; subscribers are unaffected because an
+		// item's identity is (kind, producer, id), which does not change.
+		existing.host = host
+		existing.decl = decl
+		utils.LogWithFields(utils.LevelInfo, "resource", "producer re-registered", map[string]any{"kind": kind, "producer": producer})
+		return nil
 	}
 	entries[producer] = &producerEntry{kind: kind, producer: producer, host: host, decl: decl}
 	utils.LogWithFields(utils.LevelInfo, "resource", "producer registered", map[string]any{"kind": kind, "producer": producer})
@@ -312,7 +328,9 @@ func (b *Broker) SubscribeDirectWithSnapshot(
 	b.subsByID[subID] = sub
 	b.mu.Unlock()
 	if buildSnapshot != nil {
-		sub.finishInitialSnapshot(buildSnapshot(subID))
+		messages := buildSnapshot(subID)
+		sub.markCovered(messages)
+		sub.finishInitialSnapshot(messages)
 	}
 	utils.LogWithFields(utils.LevelDebug, "resource", "subscribe direct", map[string]any{
 		"kind": kind, "producer": filter.Producer, "subscription_id": subID, "snapshot": buildSnapshot != nil,
@@ -324,6 +342,9 @@ func (b *Broker) SubscribeDirectWithSnapshot(
 type FuncProducerHost struct {
 	mu      sync.RWMutex
 	handler func(types.ResourceFilter) ([]types.ResourceItem, error)
+	// transfer holds the producer's optional export/import/forget handlers
+	// (transfer.go). Zero value: the producer supports none of them.
+	transfer TransferHandlers
 }
 
 func (f *FuncProducerHost) HandleQuery(filter types.ResourceFilter) ([]types.ResourceItem, error) {
@@ -352,9 +373,13 @@ func (b *Broker) SetQueryHandlerFor(kind, producer string, handler func(types.Re
 	}
 	if fph, ok := entry.host.(*FuncProducerHost); ok {
 		fph.mu.Lock()
+		first := fph.handler == nil && handler != nil
 		fph.handler = handler
 		fph.mu.Unlock()
-		utils.LogWithFields(utils.LevelDebug, "resource", "query handler set", map[string]any{"kind": kind, "producer": producer})
+		utils.LogWithFields(utils.LevelDebug, "resource", "query handler set", map[string]any{"kind": kind, "producer": producer, "first": first})
+		if first {
+			b.notifyQueryHandlerSet(kind, producer)
+		}
 	}
 }
 

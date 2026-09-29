@@ -30,6 +30,3 @@ export function segmentText(text: string): TextSegment[] {
   if (last < text.length) segments.push({ type: 'plain', value: text.slice(last) })
   return segments
 }
-
-/** Extensions that open in Ion's own editor rather than the OS handler. */
-export const EDITABLE_EXTS = new Set(['.md', '.txt', '.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml', '.toml', '.py', '.rs', '.go', '.css', '.html'])

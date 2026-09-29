@@ -5,7 +5,7 @@
  * only place the graphology instance is (re)built.
  */
 
-import { buildGraphModel } from '../../../shared/graph-model'
+import { buildGraphModel } from '@ion/shared/graph-model'
 import { rDebug, rInfo, rWarn, rError } from '../../rendererLogger'
 import { syncSigmaGraph, harvestPositions } from './graph-sigma-graph'
 import { computeVisibility } from './filter/visibility'
@@ -13,11 +13,12 @@ import { buildSearchIndex } from './search/search-index'
 import { computeEmphasis } from './selection/emphasis'
 import { useSurfaceStore } from '../surface/surface-store'
 import { lastEditorFilePath } from '../surface/editor-anchor'
-import { isGraphViewAvailable, type GraphViewConfig, type ChannelBindings } from '../../../shared/graph-view-types'
-import type { CorpusDelta, CorpusSnapshot } from '../../../shared/graph-corpus-types'
-import type { GraphModel } from '../../../shared/graph-model-types'
+import { isGraphViewAvailable, type GraphViewConfig, type ChannelBindings } from '@ion/shared/graph-view-types'
+import type { CorpusDelta, CorpusSnapshot } from '@ion/shared/graph-corpus-types'
+import type { GraphModel } from '@ion/shared/graph-model-types'
 import { extractGraphData, parkSession, releaseSession, resumeSession } from './session-park'
 import { initialGraphData, sampleValues, type ChannelName, type GraphState, type StoreGet, type StoreSet } from './graph-store-types'
+import { host } from '../../host/host-instance'
 
 let unsubscribeDelta: (() => void) | null = null
 let unsubscribeConfigChanged: (() => void) | null = null
@@ -32,11 +33,11 @@ let initGeneration = 0
 function attachSubscriptions(get: StoreGet): void {
   unsubscribeDelta?.()
   unsubscribeConfigChanged?.()
-  unsubscribeDelta = window.ion.onGraphCorpusDelta((deltaProjectPath, delta) => {
+  unsubscribeDelta = host.shell.onGraphCorpusDelta((deltaProjectPath, delta) => {
     if (deltaProjectPath !== get().projectPath) return
     get().applyDelta(delta)
   })
-  unsubscribeConfigChanged = window.ion.onGraphViewConfigChanged((changedProjectPath, nextConfig) => {
+  unsubscribeConfigChanged = host.shell.onGraphViewConfigChanged((changedProjectPath, nextConfig) => {
     if (changedProjectPath !== get().projectPath) return
     get().applyConfig(nextConfig)
   })
@@ -293,7 +294,7 @@ export function createCorpusActions(set: StoreSet, get: StoreGet): Pick<GraphSta
     async checkAvailability(projectPath: string) {
       if (!projectPath || projectPath === '~') return
       try {
-        const config = await window.ion.graphViewGetConfig(projectPath)
+        const config = await host.shell.graphViewGetConfig(projectPath)
         // Only update `available` when no full session is active for a
         // DIFFERENT project — a live `init()` for this same path already
         // keeps `available` current, and overwriting it here with a
@@ -332,7 +333,7 @@ export function createCorpusActions(set: StoreSet, get: StoreGet): Pick<GraphSta
 
       set({ projectPath, error: null })
       try {
-        const config = await window.ion.graphViewGetConfig(projectPath)
+        const config = await host.shell.graphViewGetConfig(projectPath)
         if (!ownsInit()) return
         const available = isGraphViewAvailable(config)
         set({ config, available })
@@ -342,9 +343,9 @@ export function createCorpusActions(set: StoreSet, get: StoreGet): Pick<GraphSta
           return
         }
 
-        const snapshot = await window.ion.graphCorpusSubscribe(projectPath)
+        const snapshot = await host.shell.graphCorpusSubscribe(projectPath)
         if (!ownsInit()) {
-          void window.ion.graphCorpusUnsubscribe(projectPath)
+          void host.shell.graphCorpusUnsubscribe(projectPath)
           return
         }
         // The section layer starts where the corpus configured it; from
@@ -459,7 +460,7 @@ export function createCorpusActions(set: StoreSet, get: StoreGet): Pick<GraphSta
       } else if (projectPath) {
         // Nothing worth parking (init failed, or no corpus): release the
         // reference now rather than leaking it until the tab closes.
-        void window.ion.graphCorpusUnsubscribe(projectPath)
+        void host.shell.graphCorpusUnsubscribe(projectPath)
       }
       rInfo('graph_view', 'graph_view: surface unmounted', { projectPath: projectPath ?? 'none', parked: Boolean(projectPath && data.model) })
       set(initialGraphData())
@@ -477,7 +478,7 @@ export function createCorpusActions(set: StoreSet, get: StoreGet): Pick<GraphSta
         set(initialGraphData())
       }
       if (wasParked || isLive) {
-        void window.ion.graphCorpusUnsubscribe(projectPath)
+        void host.shell.graphCorpusUnsubscribe(projectPath)
       }
       rInfo('graph_view', 'graph_view: session closed', { projectPath, wasParked, wasLive: isLive })
     },

@@ -12,13 +12,14 @@
 import type {
   AgentStateUpdate,
   NormalizedEvent,
-} from "../../../../shared/types";
-import type { StudioTabState } from "../../../../shared/types-studio";
-import type { BackgroundWorkItem } from "../../../../shared/types-events";
+} from "@ion/shared/types";
+import type { StudioTabState } from "@ion/shared/types-studio";
+import type { BackgroundWorkItem } from "@ion/shared/types-events";
 import { StudioStats } from "./stats";
 import { StudioRecorder } from "./recorder";
-import { tabIdFromKey } from "../../../../shared/session-key";
-import { rInfo, rTrace } from "../../../rendererLogger";
+import { tabIdFromKey } from "@ion/shared/session-key";
+import { rInfo, rTrace, rWarn } from "../../../rendererLogger";
+import { host } from '../../../host/host-instance'
 
 export interface StudioActiveState {
   tabId: string;
@@ -58,19 +59,30 @@ export class AgentCache {
 
   start(listener: AgentCacheListener): void {
     this.listener = listener;
+    // The server names the new active tab; its cached state comes back on
+    // the same `studioGetState` read the initial hydration below uses.
     this.disposers.push(
-      window.ion.onStudioActiveTab((tabId, snapshot, profileId) => {
-        this.adopt(tabId, snapshot, profileId);
+      host.shell.onStudioActiveTab((tabId) => {
+        void host.shell
+          .studioGetState(tabId)
+          .then((result) => {
+            if (result?.activeTabId && result.state) {
+              this.adopt(result.activeTabId, result.state, result.activeProfileId);
+            }
+          })
+          .catch((err: unknown) => {
+            rWarn("studio", "active tab state read failed", { tab_id: tabId, error: String(err) });
+          });
       }),
     );
     this.disposers.push(
-      window.ion.onEvent((rawTabId, event) => {
+      host.shell.onEvent((rawTabId, event) => {
         this.ingest(rawTabId, event);
       }),
     );
     // Initial hydration: whatever tab is active right now (view readiness —
     // the office must be correct on first paint, not after the first switch).
-    window.ion
+    host.shell
       .studioGetState()
       .then((result) => {
         if (result?.activeTabId && result.state) {

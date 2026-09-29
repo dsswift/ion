@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"testing"
@@ -356,7 +357,7 @@ func TestLiveCliBackendIonAgentTool(t *testing.T) {
 		t.Fatal("TestBuildAgentToolHandler returned nil")
 	}
 
-	result, err := handler(map[string]interface{}{
+	result, err := handler(context.Background(), map[string]interface{}{
 		"prompt": "What is 12*12? Reply with just the number.",
 		"name":   "math-helper",
 	})

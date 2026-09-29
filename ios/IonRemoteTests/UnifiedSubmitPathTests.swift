@@ -51,23 +51,21 @@ final class UnifiedSubmitPathTests: XCTestCase {
     func testSubmitOnEngineTabUsesUnifiedConnectingStatus() {
         let vm = SessionViewModel()
         vm.tabs = [makeTab(id: "eng", engine: true)]
-        vm.conversationLoaded.insert("eng")
         vm.submit(tabId: "eng", text: "hi")
         // #256 follow-up: the engine path no longer forks to a `.running`
         // optimistic status. The unified submit sets `.connecting` for EVERY
         // tab; the engine's own text/message events promote to `.running`.
         XCTAssertEqual(vm.tabs.first?.status, .connecting)
-        // The optimistic user message landed on the unified store.
-        XCTAssertEqual(vm.conversationMessages("eng").last?.role, .user)
+        // The pending bubble shows at once.
+        XCTAssertEqual(vm.renderedMessages(tabId: "eng").last?.role, .user)
     }
 
     func testSubmitOnPlainTabUsesUnifiedConnectingStatus() {
         let vm = SessionViewModel()
         vm.tabs = [makeTab(id: "plain", engine: false)]
-        vm.conversationLoaded.insert("plain")
         vm.submit(tabId: "plain", text: "hi")
         XCTAssertEqual(vm.tabs.first?.status, .connecting)
-        XCTAssertEqual(vm.conversationMessages("plain").last?.role, .user)
+        XCTAssertEqual(vm.renderedMessages(tabId: "plain").last?.role, .user)
     }
 
     func testInputLockedTabRejectsSubmitWithoutOptimisticMessage() {
@@ -79,7 +77,7 @@ final class UnifiedSubmitPathTests: XCTestCase {
         vm.submit(tabId: "locked", text: "must not send")
 
         XCTAssertEqual(vm.tabs.first?.status, .idle)
-        XCTAssertTrue(vm.conversationMessages("locked").isEmpty)
+        XCTAssertTrue(vm.renderedMessages(tabId: "locked").isEmpty)
     }
 
     /// Settled conversations are input-locked with reason "settled". The
@@ -95,7 +93,7 @@ final class UnifiedSubmitPathTests: XCTestCase {
 
         XCTAssertEqual(vm.tabs.first?.status, .idle,
             "settled lock must block submit identically to other lock reasons")
-        XCTAssertTrue(vm.conversationMessages("settled").isEmpty)
+        XCTAssertTrue(vm.renderedMessages(tabId: "settled").isEmpty)
     }
 
     /// There is no way to steer a compaction in progress, so submit() refuses
@@ -112,7 +110,7 @@ final class UnifiedSubmitPathTests: XCTestCase {
         vm.submit(tabId: "compacting", text: "must not send")
 
         XCTAssertEqual(vm.tabs.first?.status, .idle)
-        XCTAssertTrue(vm.conversationMessages("compacting").isEmpty)
+        XCTAssertTrue(vm.renderedMessages(tabId: "compacting").isEmpty)
     }
 
     /// The DATA seam: an extension-backed tab carries an `instanceId`, a plain
@@ -157,24 +155,6 @@ final class UnifiedSubmitPathTests: XCTestCase {
         let promptSends = src.components(separatedBy: "send(.prompt(").count - 1
         XCTAssertEqual(promptSends, 1,
             "submit must emit `desktop_prompt` exactly once, for every tab type")
-    }
-
-    func testSetModelEmitsSameWireCommandForBothTabTypes() throws {
-        // The single setModel path emits `desktop_set_tab_model` regardless of
-        // tab type — pin the wire command name is identical for both. We capture
-        // the encoded command shape (no transport is wired in a unit test); the
-        // command the VM constructs is the contract.
-        let encoder = JSONEncoder()
-        let engineCmd = RemoteCommand.setTabModel(tabId: "eng", model: "m")
-        let plainCmd = RemoteCommand.setTabModel(tabId: "plain", model: "m")
-        let engineType = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: encoder.encode(engineCmd)) as? [String: Any])["type"] as? String
-        let plainType = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: encoder.encode(plainCmd)) as? [String: Any])["type"] as? String
-        XCTAssertEqual(engineType, "desktop_set_tab_model")
-        XCTAssertEqual(plainType, "desktop_set_tab_model")
-        XCTAssertEqual(engineType, plainType,
-            "setModel must emit the SAME wire command for every tab type — no engine-vs-plain fork")
     }
 
     func testSetModelOnEngineTabWritesInstanceOverride() {
@@ -224,55 +204,6 @@ final class UnifiedSubmitPathTests: XCTestCase {
     func testRestoredCardNilWhenLastToolIsNotSpecial() {
         let msgs = [toolMessage(id: "t1", toolName: "Bash", toolInput: "{}")]
         XCTAssertNil(PendingCard.restoredCard(for: msgs))
-    }
-
-    // MARK: - Outgoing message reconciliation (no duplicate user bubble)
-
-    /// Regression for the iOS Remote outgoing-duplication bug. The optimistic
-    /// user bubble is inserted under a stable id; the desktop echoes the user
-    /// message back under that SAME id (`clientMsgId`). handleMessageAdded must
-    /// reconcile by id and REPLACE in place, leaving exactly ONE user message.
-    /// Before the fix the optimistic insert used a throwaway UUID the echo could
-    /// never match, so the echo appended a second user bubble. Revert the fix
-    /// (optimistic id back to a fresh UUID, or drop clientMsgId on the wire) and
-    /// this goes RED with two user messages.
-    func testEngineTabUserEchoReconcilesByIdNoDuplicate() {
-        let vm = SessionViewModel()
-        vm.tabs = [makeTab(id: "eng", engine: true)]
-        vm.conversationInstances["eng"] = [ConversationInstanceInfo(id: "main", label: "Main")]
-        vm.activeEngineInstance["eng"] = "main"
-        vm.conversationLoaded.insert("eng")
-
-        vm.submit(tabId: "eng", text: "do the thing")
-
-        // The optimistic bubble's id IS the clientMsgId sent on the wire.
-        let optimisticId = vm.conversationMessages("eng").last { $0.role == .user }?.id
-        XCTAssertNotNil(optimisticId)
-
-        // Simulate the desktop echo arriving under the same id.
-        let echo = Message(id: optimisticId!, role: .user, content: "do the thing", timestamp: 2)
-        vm.handleMessageAdded(tabId: "eng", message: echo)
-
-        let userMsgs = vm.conversationMessages("eng").filter { $0.role == .user }
-        XCTAssertEqual(userMsgs.count, 1,
-            "The desktop echo must REPLACE the optimistic bubble by id, not append a duplicate")
-    }
-
-    func testPlainTabUserEchoReconcilesByIdNoDuplicate() {
-        let vm = SessionViewModel()
-        vm.tabs = [makeTab(id: "plain", engine: false)]
-        vm.conversationLoaded.insert("plain")
-
-        vm.submit(tabId: "plain", text: "hello")
-        let optimisticId = vm.conversationMessages("plain").last { $0.role == .user }?.id
-        XCTAssertNotNil(optimisticId)
-
-        let echo = Message(id: optimisticId!, role: .user, content: "hello", timestamp: 2)
-        vm.handleMessageAdded(tabId: "plain", message: echo)
-
-        let userMsgs = vm.conversationMessages("plain").filter { $0.role == .user }
-        XCTAssertEqual(userMsgs.count, 1,
-            "CLI echo (id = clientMsgId) must replace the optimistic bubble, not append a duplicate")
     }
 
     /// The optimistic id and the wire `clientMsgId` must be the SAME value. We

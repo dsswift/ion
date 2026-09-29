@@ -204,7 +204,7 @@ func TestProviderFallbackTelemetry(t *testing.T) {
 		},
 	}
 	opts := types.RunOptions{Model: "no-such-model-xyz", SessionKey: "sess-fb"}
-	provider, model := b.resolveProviderForRun(run, &opts)
+	provider, model, _ := b.resolveProviderForRun(context.Background(), run, &opts)
 	if provider == nil {
 		t.Fatal("expected fallback to resolve a provider")
 	}

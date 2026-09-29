@@ -1,6 +1,6 @@
 import { rDebug } from '../rendererLogger'
-import { useSessionStore } from '../stores/sessionStore'
-import type { DispatchSplitSubject } from '../stores/session-store-types'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import type { DispatchSplitSubject } from '@ion/server/store/session-store-types'
 
 /** Return split subject only while its originating conversation remains active. */
 export function activeDispatchSplit(

@@ -5,12 +5,12 @@ import XCTest
 ///
 /// Pinning test: verifies that typeKey returns the correct wire type string
 /// for representative RemoteEvent cases. Without this property, the per-frame
-/// receive latency logging in TransportManager+Receive.swift would fail to
+/// receive latency logging on the transport's receive path would fail to
 /// compile.
 ///
 /// Also pins the lenient-decode contract: unknown type strings throw
 /// RemoteEventDecodeError.unknownType (not DecodingError), so
-/// TransportManager+Receive.swift can handle them at trace level without
+/// the receive path can handle them at trace level without
 /// triggering a resync.
 final class NormalizedEventTypeKeyTests: XCTestCase {
     func testHeartbeatTypeKey() {
@@ -21,7 +21,7 @@ final class NormalizedEventTypeKeyTests: XCTestCase {
     func testSnapshotTypeKey() throws {
         // Build a minimal snapshot JSON and decode it so we have a real .snapshot case.
         let json = """
-        {"type":"desktop_snapshot","tabs":[],"recentDirectories":[],"tabGroupMode":"off","tabGroups":[]}
+        {"type":"desktop_snapshot","tabs":[],"recentDirectories":[]}
         """.data(using: .utf8)!
         let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
         XCTAssertEqual(event.typeKey, "desktop_snapshot")
@@ -78,7 +78,7 @@ final class NormalizedEventTypeKeyTests: XCTestCase {
 
     /// An unrecognized type string must throw RemoteEventDecodeError.unknownType,
     /// not a generic DecodingError. This is the regression pin: the
-    /// TransportManager+Receive.swift caller catches these two error types
+    /// The receive-path caller catches these two error types
     /// separately — unknown types are dropped at trace level with no resync;
     /// DecodingErrors trigger error-level logging + resync.
     func testUnknownTypeThrowsRemoteEventDecodeError() throws {

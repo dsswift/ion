@@ -29,7 +29,7 @@ struct TabRowContextMenu: ViewModifier {
             // navigations away, and these are the actions an operator reaches
             // for while scanning the tab list.
             if let (state, wt) = worktreeForTab {
-                if !wt.isLanded {
+                if !wt.isSealed {
                     Button {
                         viewModel.newWorktreeConversation(worktreePath: wt.worktreePath)
                     } label: {
@@ -82,7 +82,7 @@ struct TabRowContextMenu: ViewModifier {
                 Label("Rename", systemImage: "pencil")
             }
 
-            // -- Pill appearance --
+            // -- Pill color --
             Menu("Color") {
                 Button {
                     viewModel.setPillColor(tabId: tab.id, color: nil)
@@ -96,79 +96,6 @@ struct TabRowContextMenu: ViewModifier {
                 pillColorButton(hex: "#b06de8", label: "Purple", systemImage: "circle.fill")
                 pillColorButton(hex: "#f5c842", label: "Gold",   systemImage: "circle.fill")
             }
-            Menu("Icon") {
-                Button {
-                    viewModel.setPillIcon(tabId: tab.id, icon: nil)
-                } label: {
-                    Label("Default", systemImage: "circle.fill")
-                }
-                pillIconButton(icon: "diamond",  label: "Diamond",  sfSymbol: "diamond.fill")
-                pillIconButton(icon: "square",   label: "Square",   sfSymbol: "square.fill")
-                pillIconButton(icon: "star",     label: "Star",     sfSymbol: "star.fill")
-                pillIconButton(icon: "triangle", label: "Triangle", sfSymbol: "triangle.fill")
-                pillIconButton(icon: "heart",    label: "Heart",    sfSymbol: "heart.fill")
-                pillIconButton(icon: "hexagon",  label: "Hexagon",  sfSymbol: "hexagon.fill")
-                pillIconButton(icon: "lightning",label: "Lightning",sfSymbol: "bolt.fill")
-                pillIconButton(icon: "mobile",   label: "Mobile",   sfSymbol: "iphone")
-                pillIconButton(icon: "desktop",  label: "Desktop",  sfSymbol: "desktopcomputer")
-                pillIconButton(icon: "gear",     label: "Gear",     sfSymbol: "gearshape.fill")
-            }
-
-            // Pin/unpin and move-to-group-and-pin are irrelevant for
-            // engine tabs — they are multiplexed (multiple sub-conversations)
-            // and shouldn't auto-move between groups.
-            if viewModel.tabGroupMode == "manual" && tab.hasEngineExtension != true {
-                Button {
-                    viewModel.toggleTabGroupPin(tabId: tab.id)
-                } label: {
-                    Label(
-                        tab.groupPinned == true ? "Unpin from Group" : "Pin to Group",
-                        systemImage: tab.groupPinned == true ? "pin.slash" : "pin"
-                    )
-                }
-                let targets = viewModel.tabGroups.filter { $0.id != tab.groupId }
-                if !targets.isEmpty {
-                    Menu {
-                        ForEach(targets) { target in
-                            Button(target.label) {
-                                viewModel.moveTabToGroup(tabId: tab.id, groupId: target.id)
-                            }
-                        }
-                    } label: {
-                        Label("Move to Group", systemImage: "arrow.right.arrow.left")
-                    }
-                    // Combined "Move to Group AND Pin": same target list as the
-                    // plain "Move to Group" submenu above, but each selection
-                    // routes through moveTabToGroupAndPin which also sets
-                    // groupPinned=true so the destination tab is protected from
-                    // any subsequent auto-group-movement. Mirrors the desktop
-                    // pattern (TabStripTabContextMenu's PushPin row).
-                    Menu {
-                        ForEach(targets) { target in
-                            Button(target.label) {
-                                viewModel.moveTabToGroupAndPin(tabId: tab.id, groupId: target.id)
-                            }
-                        }
-                    } label: {
-                        Label("Move to Group and Pin", systemImage: "pin")
-                    }
-                }
-            } else if viewModel.tabGroupMode == "manual" && tab.hasEngineExtension == true {
-                // Engine tabs: allow plain move-to-group (manual
-                // organization) but skip pin/unpin and move-and-pin.
-                let targets = viewModel.tabGroups.filter { $0.id != tab.groupId }
-                if !targets.isEmpty {
-                    Menu {
-                        ForEach(targets) { target in
-                            Button(target.label) {
-                                viewModel.moveTabToGroup(tabId: tab.id, groupId: target.id)
-                            }
-                        }
-                    } label: {
-                        Label("Move to Group", systemImage: "arrow.right.arrow.left")
-                    }
-                }
-            }
         }
     }
 
@@ -181,15 +108,6 @@ struct TabRowContextMenu: ViewModifier {
         } label: {
             Label(label, systemImage: systemImage)
                 .foregroundStyle(Color(hex: hex))
-        }
-    }
-
-    @ViewBuilder
-    private func pillIconButton(icon: String, label: String, sfSymbol: String) -> some View {
-        Button {
-            viewModel.setPillIcon(tabId: tab.id, icon: icon)
-        } label: {
-            Label(label, systemImage: sfSymbol)
         }
     }
 }

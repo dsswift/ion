@@ -42,6 +42,7 @@ func (m *Manager) DiscoverSlashCommands(workingDir string, claudeCompat bool) []
 // roots are skipped entirely when claudeCompat is false.
 func discoverSlashCommands(workingDir string, claudeCompat bool) []types.SlashCommandListing {
 	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	ionDir := utils.IonDir()
 
 	type root struct {
 		dir    string
@@ -52,11 +53,11 @@ func discoverSlashCommands(workingDir string, claudeCompat bool) []types.SlashCo
 	if workingDir != "" {
 		roots = append(roots, root{dir: filepath.Join(workingDir, ".ion", "commands"), source: slashSourceIon})
 	}
-	roots = append(roots, root{dir: filepath.Join(home, ".ion", "commands"), source: slashSourceIon})
+	roots = append(roots, root{dir: filepath.Join(ionDir, "commands"), source: slashSourceIon})
 	if workingDir != "" {
 		roots = append(roots, root{dir: filepath.Join(workingDir, ".ion", "skills"), source: slashSourceSkill, skills: true})
 	}
-	roots = append(roots, root{dir: filepath.Join(home, ".ion", "skills"), source: slashSourceSkill, skills: true})
+	roots = append(roots, root{dir: filepath.Join(ionDir, "skills"), source: slashSourceSkill, skills: true})
 	if claudeCompat {
 		if workingDir != "" {
 			roots = append(roots, root{dir: filepath.Join(workingDir, ".claude", "commands"), source: slashSourceClaude})

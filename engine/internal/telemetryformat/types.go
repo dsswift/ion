@@ -28,9 +28,10 @@ type Event struct {
 	// empty — an event emitted outside any active run has no trace to
 	// report, but the field's presence must stay stable across every event
 	// so a consumer can rely on the key existing rather than testing for its
-	// absence. ParentSpanID is legitimately empty until the engine tracks a
-	// per-turn span ID of its own; it is present now so its future
-	// population is additive rather than a new key appearing later.
+	// absence. ParentSpanID is the span this event was emitted under: a
+	// run's span for events inside a run, the caller's span (from its
+	// traceparent) for the run span itself. Empty outside any span. A
+	// frame stores it in the correlation context's parent_span_id.
 	TraceID      string `json:"trace_id"`
 	ParentSpanID string `json:"parent_span_id"`
 }

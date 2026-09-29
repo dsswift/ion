@@ -44,11 +44,7 @@ func isWindowsDriveAbsolutePath(path string) bool {
 // filesystem paths (PID lock, socket, conversations, scheduler).
 // When unset the default ~/.ion/ is returned.
 func ionDataDir() string {
-	if v := os.Getenv("ION_DATA_DIR"); v != "" {
-		return v
-	}
-	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home falls back to a relative .ion path
-	return filepath.Join(home, ".ion")
+	return utils.IonDir()
 }
 
 // resolveSocketPath returns the address this engine listens on and clients

@@ -67,6 +67,8 @@ enum PeerStatusPoller {
                 ])
                 return nil
             }
+            // The else branch logs the JSON decode failure and returns nil.
+            // swiftlint:disable:next silent_try_optional
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Bool] else {
                 DiagnosticLog.log("peer status poll: JSON decode failed", tag: "transport.peerstatus", level: .warn, fields: [
                     "channel_id": channelId,

@@ -1,97 +1,40 @@
 import SwiftUI
 
-/// Top-level settings screen. Shows category rows that push into
-/// dedicated detail views, matching the iOS Settings.app pattern.
+/// The root of Settings, in three groups:
 ///
-/// Layout
-/// ──────
-/// 1. Active-device picker (only when ≥2 paired desktops). Tapping a
-///    different device switches transports immediately — no Connect
-///    button, no drilling into Desktops & Connection. Single-device
-///    setups skip this picker entirely to avoid wasting space.
-/// 2. Category rows:
-///    - Desktops & Connection — pairing list, connection diagnostics,
-///      and per-desktop projected settings.
-///    - Appearance — merged iOS-local appearance/interface settings
-///      (theme + new-tab default + tab list + agent panel + tab groups).
-///    - Models — conversation/engine model pickers.
-///    - Voice — voice toggle, API key, mode, prompt.
-///    - Diagnostics & About — transport info, log, version.
+/// - This iPhone: what this phone keeps for itself (Appearance, Behavior,
+///   Voice, Notifications, Diagnostics & About).
+/// - You: what follows you to every server (Defaults).
+/// - Servers: every paired server, each opening its settings pages, which
+///   server this phone chats on, and adding another.
 ///
-/// Per-desktop scoping
-/// ───────────────────
-/// All "desktop settings" land in the Desktops & Connection → Desktop
-/// Settings nested screen, scoped to the currently-active pairing.
-/// Switching desktops from the picker at the top of this screen brings
-/// up a fresh snapshot from the newly-active desktop, and that snapshot
-/// drives every per-desktop projected control downstream.
+/// Search matches page, section, and setting names across the phone's own
+/// pages and the connected server's.
 struct SettingsView: View {
     @Environment(SessionViewModel.self) private var viewModel
     @Environment(\.appTheme) private var theme
     @Environment(\.dismiss) private var dismiss
 
+    @State private var query = ""
+    /// Bumped to rebuild the navigation stack at its root.
+    @State private var stackGeneration = 0
+
     var body: some View {
         NavigationStack {
             List {
-                // Multi-device picker, shown only when the user has
-                // paired ≥2 desktops. With a single pairing the picker
-                // is useless decoration so we hide it.
-                if viewModel.pairedDevices.count >= 2 {
-                    Section {
-                        activeDevicePicker
-                    } header: {
-                        Text("Active Desktop")
-                    } footer: {
-                        Text("Switch between paired desktops without leaving Settings.")
-                    }
-                }
-
-                categoryLink(
-                    "Desktops & Connection",
-                    icon: "desktopcomputer",
-                    color: theme.categoryTileConnection,
-                    detail: viewModel.activeDevice?.displayName
-                ) {
-                    SettingsDesktopsView()
-                }
-
-                categoryLink(
-                    "Appearance",
-                    icon: "paintbrush",
-                    color: theme.categoryTileAppearance,
-                    detail: currentThemeName
-                ) {
-                    SettingsAppearanceView()
-                }
-
-                categoryLink(
-                    "Models",
-                    icon: "cpu",
-                    color: theme.categoryTileModels,
-                    detail: currentModelLabel
-                ) {
-                    SettingsModelsView()
-                }
-
-                categoryLink(
-                    "Voice",
-                    icon: "waveform",
-                    color: theme.categoryTileVoice,
-                    detail: viewModel.voiceService.isEnabled ? "On" : "Off"
-                ) {
-                    SettingsVoiceView()
-                }
-
-                interceptToggleSection
-
-                categoryLink(
-                    "Diagnostics & About",
-                    icon: "stethoscope",
-                    color: theme.categoryTileDiagnostics
-                ) {
-                    SettingsDiagnosticsView()
+                if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    pagesSection(.thisPhone, header: "This iPhone")
+                    pagesSection(.you, header: "You")
+                    SettingsServersSection()
+                } else {
+                    SettingsSearchResultsView(results: SettingsSearchIndex.results(
+                        for: query,
+                        state: viewModel.serverSettings,
+                        serverLabel: viewModel.activeDevice?.displayName
+                    ))
                 }
             }
+            .searchable(text: $query, prompt: "Search settings")
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -100,175 +43,30 @@ struct SettingsView: View {
                 }
             }
         }
+        .id(stackGeneration)
+        .environment(\.settingsNavigation, SettingsNavigation(popToRoot: {
+            DiagnosticLog.log("settings returned to root", tag: "view.settings")
+            stackGeneration += 1
+        }))
     }
 
-    // MARK: - Active device picker
-
-    /// Inline picker row for switching the active desktop. Mirrors the
-    /// `DesktopPickerMenu` toolbar pill (used in the main app
-    /// toolbar) but rendered as a Settings-style row so it fits the
-    /// surrounding List visual language.
-    ///
-    /// Tapping a non-active device calls `switchToDevice(id:)`, which
-    /// tears down the current transport and brings up the new one.
-    /// The active-device row shows a checkmark and is non-tappable.
-    private var activeDevicePicker: some View {
-        Menu {
-            ForEach(viewModel.pairedDevices) { device in
-                let isActive = device.id == viewModel.activeDeviceId
-                    || (viewModel.activeDeviceId == nil && device.id == viewModel.pairedDevices.first?.id)
-                Button {
-                    if !isActive {
-                        DiagnosticLog.log("settings active picker switching", tag: "view.settings", fields: [
-                            "device": device.id
-                        ])
-                        viewModel.switchToDevice(id: device.id)
-                        Haptic.success()
-                    }
+    private func pagesSection(_ heading: PhoneSettingsPage.Heading, header: String) -> some View {
+        Section(header) {
+            ForEach(PhoneSettingsPage.allCases.filter { $0.heading == heading }) { page in
+                NavigationLink {
+                    PhoneSettingsDestination(page: page)
                 } label: {
-                    HStack {
-                        Label(device.displayName, systemImage: device.displayIcon)
-                        if isActive { Image(systemName: "checkmark") }
-                    }
+                    SettingsCategoryLabel(title: page.title, symbol: page.symbol, tint: page.tint(in: theme), detail: detail(for: page))
                 }
-                .disabled(isActive)
             }
-        } label: {
-            HStack(spacing: 12) {
-                if let device = viewModel.activeDevice {
-                    Image(systemName: device.displayIcon)
-                        .font(.system(size: 16, weight: .semibold)) // design-type: SF Symbol device-avatar glyph sized as icon geometry, not text
-                        .foregroundStyle(.white)
-                        .frame(width: 28, height: 28)
-                        .background(activeStatusColor, in: RoundedRectangle(cornerRadius: IonRadius.control))
-                } else {
-                    Image(systemName: "questionmark")
-                        .font(.system(size: 16, weight: .semibold)) // design-type: SF Symbol device-avatar glyph sized as icon geometry, not text
-                        .foregroundStyle(.white)
-                        .frame(width: 28, height: 28)
-                        .background(theme.statusIdle, in: RoundedRectangle(cornerRadius: IonRadius.control))
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(viewModel.activeDevice?.displayName ?? "No active desktop")
-                        .foregroundStyle(.primary)
-                    Text(connectionStateLabel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-            .contentShape(Rectangle())
         }
     }
 
-    /// Status-color dot color for the active device. Green when
-    /// connected, orange when reconnecting/connecting, red otherwise.
-    private var activeStatusColor: Color {
-        switch viewModel.connectionState {
-        case .connected: .green
-        case .reconnecting, .connecting: .orange
-        default: .red
-        }
-    }
-
-    /// Connection-state subtitle for the picker row. Mirrors
-    /// `DesktopPickerMenu.connectionStateLabel`.
-    private var connectionStateLabel: String {
-        let connection = viewModel.connectionState.label
-        switch viewModel.transportState {
-        case .lanPreferred:
-            return "\(connection) · LAN"
-        case .relayOnly:
-            return "\(connection) · Relay"
-        case .disconnected:
-            return connection
-        }
-    }
-
-    // MARK: - Intercept toggle
-
-    /// Inline toggle section for the "Allow conversation intercepts" preference.
-    /// Backed by `UserDefaults` key "interceptEnabled" (default true).
-    /// Toggling immediately sends a `report_focus` command so the desktop's
-    /// `deviceFocusMap` reflects the new preference without waiting for the
-    /// next tab-switch or app-foreground event.
-    private var interceptToggleSection: some View {
-        Section {
-            Toggle(isOn: Binding(
-                get: {
-                    UserDefaults.standard.object(forKey: "interceptEnabled") as? Bool ?? true
-                },
-                set: { newValue in
-                    UserDefaults.standard.set(newValue, forKey: "interceptEnabled")
-                    // Re-send focus so desktop immediately reflects the change.
-                    viewModel.sendReportFocus(tabId: viewModel.focusedTabId)
-                }
-            )) {
-                HStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.bubble")
-                        .font(.system(size: 14, weight: .semibold)) // design-type: SF Symbol row-icon glyph sized as icon geometry, not text
-                        .foregroundStyle(.white)
-                        .frame(width: 28, height: 28)
-                        // The palette's neutral, not the Models orange this row
-                        // used to reuse. Intercept permission is not one of the
-                        // four navigational categories, and sharing Models'
-                        // tile color gave two unrelated rows in one list the
-                        // same fill.
-                        .background(theme.categoryTileDiagnostics, in: RoundedRectangle(cornerRadius: IonRadius.control))
-                    Text("Allow conversation intercepts")
-                }
-            }
-        } footer: {
-            Text("When on, background automations can redirect your active conversation with an urgent alert. Turn off to receive only passive banners.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    // MARK: - Helpers
-
-    private var currentThemeName: String {
-        // The ThemeManager already resolves the selected id (including the
-        // ion-dark fallback for stale ids and desktop-synced custom themes),
-        // so its displayName is always the name of the theme actually
-        // rendering.
-        theme.displayName
-    }
-
-    private var currentModelLabel: String {
-        viewModel.availableModels.first { $0.id == viewModel.preferredModel }?.label ?? viewModel.preferredModel
-    }
-
-    /// Reusable category row with icon, label, optional detail, and chevron.
-    private func categoryLink<Destination: View>(
-        _ title: String,
-        icon: String,
-        color: Color,
-        detail: String? = nil,
-        @ViewBuilder destination: () -> Destination
-    ) -> some View {
-        NavigationLink(destination: destination) {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold)) // design-type: SF Symbol row-icon glyph sized as icon geometry, not text
-                    .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
-                    .background(color, in: RoundedRectangle(cornerRadius: IonRadius.control))
-
-                Text(title)
-
-                Spacer()
-
-                if let detail {
-                    Text(detail)
-                        .foregroundStyle(.secondary)
-                        .font(.subheadline)
-                        .lineLimit(1)
-                }
-            }
+    private func detail(for page: PhoneSettingsPage) -> String? {
+        switch page {
+        case .appearance: return theme.displayName
+        case .voice: return viewModel.voiceService.isEnabled ? "On" : "Off"
+        case .behavior, .notifications, .diagnostics, .defaults: return nil
         }
     }
 }

@@ -17,13 +17,6 @@ import XCTest
 
 final class RequestContextBreakdownTests: XCTestCase {
 
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
-
-    private func jsonObject(from command: RemoteCommand) throws -> [String: Any] {
-        let data = try encoder.encode(command)
-        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-    }
 
     // MARK: - 1. TypeKey: requestContextBreakdown has correct raw value
 
@@ -37,27 +30,7 @@ final class RequestContextBreakdownTests: XCTestCase {
 
     // MARK: - 2. Encode: requestContextBreakdown produces correct JSON
 
-    func test_requestContextBreakdown_encodesToCorrectJSON() throws {
-        let cmd = RemoteCommand.requestContextBreakdown(tabId: "tab-xyz")
-        let json = try jsonObject(from: cmd)
-
-        XCTAssertEqual(json["type"] as? String, "desktop_request_context_breakdown")
-        XCTAssertEqual(json["tabId"] as? String, "tab-xyz")
-    }
-
     // MARK: - 3. Decode: desktop_request_context_breakdown round-trips
-
-    func test_requestContextBreakdown_decodeRoundTrip() throws {
-        let original = RemoteCommand.requestContextBreakdown(tabId: "tab-round-trip")
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(RemoteCommand.self, from: data)
-
-        guard case .requestContextBreakdown(let tabId) = decoded else {
-            XCTFail("Expected .requestContextBreakdown after round-trip, got: \(decoded)")
-            return
-        }
-        XCTAssertEqual(tabId, "tab-round-trip")
-    }
 
     // MARK: - 4. Session ID: StatusDrawerView does not truncate to 8 chars (§11)
 
@@ -65,11 +38,8 @@ final class RequestContextBreakdownTests: XCTestCase {
         // Read the StatusDrawerView source and assert the .prefix(8) truncation
         // was removed in §11. The full ID is shown; CSS overflow (lineLimit +
         // truncationMode(.middle)) handles layout overflow.
-        let fileURL = Bundle(for: type(of: self)).resourceURL?
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
         // The source file is not embedded in the test bundle; use a relative path
-        // from the test file's location via __file.
+        // from the test file's location via #file.
         let sourceURL = URL(fileURLWithPath: #file)
             .deletingLastPathComponent()   // IonRemoteTests/
             .deletingLastPathComponent()   // ios/

@@ -119,43 +119,42 @@ protocol TransportProtocol {
 
 ## Settings tab
 
-The Settings tab is a single `NavigationStack` containing an Apple-style
-grouped `List`. Sections (top to bottom): Connection, Desktop Settings,
-Voice, Diagnostics, New Tab, Tab List, Models, Tab Groups, Paired
-Desktops, About.
+Settings is one navigation stack with search, in three groups that match
+the desktop's This Device / You / Servers headings:
 
-**Desktop Settings (per-desktop projection).** A single
-`NavigationLink` row labeled with the active desktop's display name,
-gated on `connectionState == .connected && desktopSettings != nil` so
-the row only appears when a meaningful destination exists. Tapping
-pushes a `DesktopSettingsView` detail screen titled with the desktop
-name (matches Apple's pattern: Settings → Wi-Fi → [network] → titled
-with the network).
+- **This iPhone**: what the phone keeps for itself (Appearance, Behavior,
+  Voice, Notifications, Diagnostics & About). Never written to a server.
+- **You**: Defaults, which follow the person to every server.
+- **Servers**: every paired server, a Chat on picker when two or more are
+  paired, and Add server.
 
-The detail screen renders the projection schema received over the
-wire, one `Section` per group descriptor with a header label and
-`Toggle` rows. Each row shows the setting's `label` as the title and
-its `description` as caption text below — so the user can read what a
-toggle does without leaving the row.
+**A server's pages.** Tapping a server opens its pages, named and ordered
+by the shared settings taxonomy (`packages/shared/src/settings-taxonomy.ts`),
+which the server sends as `pages` on `desktop_settings_snapshot`. Each page
+lists its sections; each section shows its admin screen, if it has one, and
+then the projected settings the snapshot places in it. A projected row
+saves through `settings.setProjectable`; an admin screen calls the server's
+`studio_action`s directly, and every action it may call is listed in
+`packages/shared/src/studio-wire/phone-actions.json`.
 
-**Per-desktop scoping.** The view shows settings for the
-currently-connected desktop only. Other paired desktops keep their own
-preferences; switching transports (via the Paired Desktops section)
-clears the cached projection and the new desktop's initial snapshot
-repopulates the screen.
+**Any paired server, not only the one chatted on.** A per-server admin
+session serves each server's pages. For the server the phone chats on it
+uses the live connection. For any other it opens a dedicated connection
+while the pages are on screen, keeps that connection's settings snapshot and
+granted scopes, and closes it shortly after the last page leaves. The live
+session is never touched.
 
-**Schema-on-the-wire.** The desktop ships both values and metadata
-(label, description, group, type, defaultValue) on every snapshot. The
-iOS UI auto-renders new settings the moment they land on the wire —
-adding a setting to the desktop's allowlist requires zero Swift
-changes. Unknown group identifiers from newer desktops render under a
-generic "Other" section.
+**Scopes.** Each connection keeps the scopes its welcome granted. An action
+or a setting the pairing may not change is shown with the scope it needs,
+and is refused on the phone before anything is sent.
 
-**Edit round-trip.** A toggle flip calls
-`viewModel.setDesktopSetting(key:value:)` which sends
-`set_desktop_setting` over the transport. The desktop validates the
-key + type, persists via `writeSettings`, and broadcasts a fresh
-`desktop_settings_snapshot` to every paired device. The iOS view
-re-renders on the snapshot — a rejected write (unknown key, wrong
-type) simply leaves the UI showing the prior cached state. No
-optimistic state is held locally; the desktop is the source of truth.
+**Schema on the wire.** The server ships values and metadata (label,
+description, page, section, type, default) on every snapshot, so a new
+projected setting appears on the phone with no Swift change. The snapshot is
+the source of truth: a rejected write leaves the prior value on screen.
+
+**Admin events.** The environment channels an admin screen refreshes on
+(MCP servers, paired clients, discovery, relays, provider sign-in, model
+tiers, default provider, projects and project jobs) are delivered to the
+phone and routed to a per-server event store rather than to the
+conversation event path.

@@ -13,6 +13,7 @@ package integration
 
 import (
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -56,8 +57,8 @@ func TestRespawn_StaticDeclsRestoredDynamicDecsLost(t *testing.T) {
 	if len(host.Webhooks()) != 1 {
 		t.Fatalf("expected 1 static webhook pre-respawn, got %d", len(host.Webhooks()))
 	}
-	if len(host.Schedules()) != 2 {
-		t.Fatalf("expected 2 static schedules pre-respawn (async-canary-slow-handler + async-canary-tick), got %d", len(host.Schedules()))
+	if got := scheduleJobIDs(host.Schedules()); !reflect.DeepEqual(got, asyncCanaryStaticScheduleIDs) {
+		t.Fatalf("static schedules pre-respawn = %v, want %v", got, asyncCanaryStaticScheduleIDs)
 	}
 
 	// Add dynamic registrations.
@@ -72,8 +73,8 @@ func TestRespawn_StaticDeclsRestoredDynamicDecsLost(t *testing.T) {
 	if len(host.Webhooks()) != 2 {
 		t.Fatalf("expected 2 webhooks after dynamic, got %d: %+v", len(host.Webhooks()), host.Webhooks())
 	}
-	if len(host.Schedules()) != 3 {
-		t.Fatalf("expected 3 schedules after dynamic (2 static + 1 dynamic), got %d: %+v", len(host.Schedules()), host.Schedules())
+	if want := len(asyncCanaryStaticScheduleIDs) + 1; len(host.Schedules()) != want {
+		t.Fatalf("expected %d schedules after dynamic (%d static + 1 dynamic), got %d: %+v", want, len(asyncCanaryStaticScheduleIDs), len(host.Schedules()), host.Schedules())
 	}
 
 	// Kill the subprocess.
@@ -120,17 +121,8 @@ func TestRespawn_StaticDeclsRestoredDynamicDecsLost(t *testing.T) {
 		t.Errorf("post-respawn webhook = %q, want /test/hello", webhooks[0].Path)
 	}
 	schedules := host.Schedules()
-	if len(schedules) != 2 {
-		t.Fatalf("post-respawn schedule count = %d, want 2 (static only: async-canary-slow-handler + async-canary-tick)", len(schedules))
-	}
-	foundTick := false
-	for _, s := range schedules {
-		if s.JobID == "async-canary-tick" {
-			foundTick = true
-		}
-	}
-	if !foundTick {
-		t.Errorf("post-respawn schedules missing async-canary-tick: %+v", schedules)
+	if got := scheduleJobIDs(schedules); !reflect.DeepEqual(got, asyncCanaryStaticScheduleIDs) {
+		t.Fatalf("post-respawn schedules = %v, want static only %v", got, asyncCanaryStaticScheduleIDs)
 	}
 
 	// Sanity: the dynamic path is genuinely gone from the registry,

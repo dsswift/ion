@@ -13,7 +13,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { TabState } from '../../../shared/types'
+import type { TabState } from '@ion/shared/types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -36,7 +36,7 @@ const state = {
   convertToWorktree,
 }
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (value: typeof state) => unknown) => selector(state),
     { getState: () => state },
@@ -56,6 +56,7 @@ vi.mock('./ConversationHoverCard', () => ({
 }))
 
 import { InboxRow } from './InboxRow'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 function tab(over: Partial<TabState> = {}): TabState {
   return {
@@ -101,10 +102,10 @@ function convertButton(): HTMLButtonElement | undefined {
 
 describe('InboxRowMenu — Convert to worktree', () => {
   it('shows an enabled row for a plain conversation over a clean git repo', async () => {
-    window.ion = {
+    window.ion = installFakeWire({
       gitIsRepo: vi.fn().mockResolvedValue({ isRepo: true }),
       gitChanges: vi.fn().mockResolvedValue({ files: [] }),
-    } as unknown as typeof window.ion
+    }) as unknown as typeof window.ion
 
     await openMenu(tab())
 
@@ -115,10 +116,10 @@ describe('InboxRowMenu — Convert to worktree', () => {
   })
 
   it('calls the same convertToWorktree store action the tab-strip menu uses', async () => {
-    window.ion = {
+    window.ion = installFakeWire({
       gitIsRepo: vi.fn().mockResolvedValue({ isRepo: true }),
       gitChanges: vi.fn().mockResolvedValue({ files: [] }),
-    } as unknown as typeof window.ion
+    }) as unknown as typeof window.ion
 
     await openMenu(tab())
     act(() => { convertButton()!.click() })
@@ -129,10 +130,10 @@ describe('InboxRowMenu — Convert to worktree', () => {
   })
 
   it('disables the row and names the reason when the checkout is dirty', async () => {
-    window.ion = {
+    window.ion = installFakeWire({
       gitIsRepo: vi.fn().mockResolvedValue({ isRepo: true }),
       gitChanges: vi.fn().mockResolvedValue({ files: [{ path: 'a.ts', status: 'M' }] }),
-    } as unknown as typeof window.ion
+    }) as unknown as typeof window.ion
 
     await openMenu(tab())
 
@@ -146,10 +147,10 @@ describe('InboxRowMenu — Convert to worktree', () => {
   })
 
   it('omits the row entirely when the tab is already a worktree', async () => {
-    window.ion = {
+    window.ion = installFakeWire({
       gitIsRepo: vi.fn().mockResolvedValue({ isRepo: true }),
       gitChanges: vi.fn().mockResolvedValue({ files: [] }),
-    } as unknown as typeof window.ion
+    }) as unknown as typeof window.ion
 
     await openMenu(tab({
       worktree: {
@@ -161,10 +162,10 @@ describe('InboxRowMenu — Convert to worktree', () => {
   })
 
   it('omits the row when the working directory is not a git repo', async () => {
-    window.ion = {
+    window.ion = installFakeWire({
       gitIsRepo: vi.fn().mockResolvedValue({ isRepo: false }),
       gitChanges: vi.fn(),
-    } as unknown as typeof window.ion
+    }) as unknown as typeof window.ion
 
     await openMenu(tab())
 

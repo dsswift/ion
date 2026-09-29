@@ -1,13 +1,14 @@
 import React, { useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useShallow } from 'zustand/shallow'
-import { useSessionStore } from '../stores/sessionStore'
-import { getDynamicContextWindow } from '../stores/model-labels'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { getDynamicContextWindow } from '@ion/server/store/model-labels'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { useViewportClamp } from '../hooks/useViewportClamp'
-import { usePreferencesStore } from '../preferences'
-import { activeInstance } from '../stores/conversation-instance'
+import { zoomAnchorEdges } from '../viewport-zoom'
+import { runningConversationModel } from '@ion/shared/conversation-model'
+import { activeInstance } from '@ion/server/store/conversation-instance'
 import { ContextRadial } from './StatusBarContextRadial'
 import { resolveContextDisplay, resolveContextInputs, formatTokens } from './context-usage'
 import { contentRouter } from '../lib/file-open-router'
@@ -21,8 +22,7 @@ import { contentRouter } from '../lib/file-open-router'
 export function ContextIndicator() {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
-  const preferredModel = usePreferencesStore((s) => s.preferredModel)
-  const { contextTokens, engineWindow, modelOverride, sessionModel } = useSessionStore(
+  const { contextTokens, engineWindow, effectiveModel } = useSessionStore(
     useShallow((s) => {
       const tab = s.tabs.find((t) => t.id === s.activeTabId)
       // Per-conversation state (model + engine status) lives on the active
@@ -34,8 +34,7 @@ export function ContextIndicator() {
       return {
         contextTokens: tokens,
         engineWindow,
-        modelOverride: inst?.modelOverride ?? null,
-        sessionModel: inst?.sessionModel ?? null,
+        effectiveModel: runningConversationModel(inst),
       }
     }),
   )
@@ -50,12 +49,12 @@ export function ContextIndicator() {
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
   const toggleStatusDrawer = useSessionStore((s) => s.toggleStatusDrawer)
 
-  // Effective picker-model: per-tab override > session model > global
-  // preferred. This is the denominator, always — see resolveContextDisplay.
+  // Effective model: the conversation's override, then what the engine last
+  // ran, then the default its server resolved. This is the denominator,
+  // always — see resolveContextDisplay.
   // The engine-reported window backs it up for models neither the dynamic
   // store nor the static catalog knows, so an unrecognized id can no longer
   // silently divide by the 200k floor.
-  const effectiveModel = modelOverride || sessionModel || preferredModel
   const windowSize = getDynamicContextWindow(effectiveModel, engineWindow)
 
   // The radial is a persistent status-bar affordance, not a data-availability
@@ -71,8 +70,8 @@ export function ContextIndicator() {
 
   const handleEnter = () => {
     if (ref.current) {
-      const rect = ref.current.getBoundingClientRect()
-      setPos({ bottom: window.innerHeight - rect.top + 4, left: rect.left + rect.width / 2 })
+      const rect = zoomAnchorEdges(ref.current.getBoundingClientRect())
+      setPos({ bottom: rect.fromBottom + 4, left: rect.centerX })
     }
     setHover(true)
   }

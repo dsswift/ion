@@ -1,9 +1,15 @@
-import type { WorktreeInfo } from '../../shared/types'
+import type { WorktreeInfo } from '@ion/shared/types'
 
 /** Known routing context for a new-conversation picker invocation. */
 export interface NewConversationPickerTarget {
   /** Start from a selected project or workspace rather than project search. */
   initialDirectory?: string
+  /**
+   * The Environment `initialDirectory` is a path on. A caller that names a
+   * directory knows which machine it read that directory from and says so
+   * here; the picker never infers it. Absent means this machine.
+   */
+  initialEnvironmentId?: string
   /** Existing worktree selected before the conversation-type picker opens. */
   initialWorktree?: WorktreeInfo
   /** Force the conversation-type picker and ignore the saved Project choice. */

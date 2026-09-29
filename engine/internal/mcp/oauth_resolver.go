@@ -212,11 +212,14 @@ func (r *tokenResolver) HasCredentials() bool {
 // explicit engine.json block when present, otherwise the endpoints a completed
 // `ion mcp login` stored. Returns nil when neither exists.
 //
-// Extracted from resolveOAuthHeaders so the per-request resolver and the
-// connect-time header path share one precedence rule.
+// An explicit block may name only a client_id and leave the endpoints to
+// discovery. Login discovers them and stores them with the registration, so the
+// gaps are filled from that registration when it belongs to the same client.
+// Without this, the first refresh after the access token expires has no token
+// endpoint and the server silently loses its authorization.
 func effectiveOAuthConfig(serverName string, oauthConfig *OAuthConfig) *OAuthConfig {
 	if oauthConfig != nil {
-		return oauthConfig
+		return completeFromStoredRegistration(serverName, oauthConfig)
 	}
 	reg := getClientStore().Get(serverName)
 	if reg == nil {
@@ -232,9 +235,42 @@ func effectiveOAuthConfig(serverName string, oauthConfig *OAuthConfig) *OAuthCon
 		TokenURL:     reg.TokenURL,
 		Scope:        reg.Scope,
 		RedirectURI:  reg.RedirectURI,
-		UsePKCE:      true,
 		Resource:     reg.Resource,
 	}
+}
+
+// completeFromStoredRegistration fills an explicit config's empty endpoint,
+// scope, and resource fields from the registration a login stored for the same
+// client_id. The operator's non-empty values always win, and a registration for
+// a different client is never mixed in: its endpoints belong to another grant.
+func completeFromStoredRegistration(serverName string, explicit *OAuthConfig) *OAuthConfig {
+	if explicit.AuthURL != "" && explicit.TokenURL != "" {
+		return explicit
+	}
+	reg := getClientStore().Get(serverName)
+	if reg == nil || reg.ClientID != explicit.ClientID {
+		utils.LogWithFields(utils.LevelDebug, "mcp.oauth", "explicit oauth config has no endpoints and no matching stored registration", map[string]any{
+			"serverName": serverName, "clientId": explicit.ClientID, "hasStoredRegistration": reg != nil,
+		})
+		return explicit
+	}
+	merged := *explicit
+	if merged.AuthURL == "" {
+		merged.AuthURL = reg.AuthURL
+	}
+	if merged.TokenURL == "" {
+		merged.TokenURL = reg.TokenURL
+	}
+	if merged.Scope == "" {
+		merged.Scope = reg.Scope
+	}
+	if merged.Resource == "" {
+		merged.Resource = reg.Resource
+	}
+	utils.LogWithFields(utils.LevelDebug, "mcp.oauth", "explicit oauth config completed from stored registration", map[string]any{
+		"serverName": serverName, "clientId": merged.ClientID, "tokenUrl": merged.TokenURL,
+	})
+	return &merged
 }
 
 // bearerValue renders a stored token as an Authorization header value,

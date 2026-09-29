@@ -14,7 +14,8 @@ struct MarkdownContentView: View {
     var blankLineHeight: CGFloat = 20
     /// When set, `ion-file://` links emitted by the formatter's file-path
     /// detection (see MarkdownFormatter + FilePathDetector) route here with
-    /// the decoded path; every other URL falls through to the system.
+    /// the decoded path; every other URL falls through to the system. A
+    /// conversation's `fileLinkActions` take precedence for a block with links.
     var onOpenFile: ((String) -> Void)?
 
     var body: some View {
@@ -77,9 +78,13 @@ struct MarkdownContentView: View {
         text: AttributedString
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(text)
-                .font(headingFont(level))
-                .fixedSize(horizontal: false, vertical: true)
+            if LinkableTextRenderer.hasLinks(text) {
+                LinkableText(text: text, style: .init(textStyle: headingTextStyle(level), bold: true), onOpenFile: onOpenFile)
+            } else {
+                Text(text)
+                    .font(headingFont(level))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             if level <= 2 {
                 Rectangle()
@@ -98,11 +103,31 @@ struct MarkdownContentView: View {
         }
     }
 
+    private func headingTextStyle(_ level: Int) -> UIFont.TextStyle {
+        switch level {
+        case 1: .title1
+        case 2: .title2
+        case 3: .title3
+        default: .headline
+        }
+    }
+
     // MARK: - Paragraph
 
     private func paragraphView(text: AttributedString) -> some View {
-        Text(text)
-            .fixedSize(horizontal: false, vertical: true)
+        inlineText(text)
+    }
+
+    /// A block's inline text. One that holds a link is drawn by UIKit so each
+    /// link gets its own long-press menu (see `LinkableText`).
+    @ViewBuilder
+    private func inlineText(_ text: AttributedString, style: LinkableTextRenderer.Style = .init()) -> some View {
+        if LinkableTextRenderer.hasLinks(text) {
+            LinkableText(text: text, style: style, onOpenFile: onOpenFile)
+        } else {
+            Text(text)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     // MARK: - Code block
@@ -143,9 +168,8 @@ struct MarkdownContentView: View {
                 .fill(theme.accent.opacity(0.6))
                 .frame(width: 3.5)
 
-            Text(text)
+            inlineText(text, style: .init(color: .secondaryLabel))
                 .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
                 .padding(.leading, 10) // design-geometry: 10pt gap between compactGap and contentGap; off the 4pt ratio scale
         }
         .padding(.vertical, IonSpace.hairlineGap)
@@ -164,8 +188,7 @@ struct MarkdownContentView: View {
                 .frame(width: 24, alignment: .trailing)
                 .foregroundStyle(.secondary)
 
-            Text(text)
-                .fixedSize(horizontal: false, vertical: true)
+            inlineText(text)
                 .padding(.leading, IonSpace.compactInset)
         }
     }
@@ -238,9 +261,20 @@ struct MarkdownContentView: View {
         case .center: .center
         default: .leading
         }
-        return Text(text)
-            .font(isHeader ? .subheadline.bold() : .subheadline)
-            .multilineTextAlignment(textAlign)
+        let nsAlign: NSTextAlignment = switch alignment {
+        case .trailing: .right
+        case .center: .center
+        default: .natural
+        }
+        return Group {
+            if LinkableTextRenderer.hasLinks(text) {
+                LinkableText(text: text, style: .init(textStyle: .subheadline, bold: isHeader, alignment: nsAlign), onOpenFile: onOpenFile)
+            } else {
+                Text(text)
+                    .font(isHeader ? .subheadline.bold() : .subheadline)
+                    .multilineTextAlignment(textAlign)
+            }
+        }
             .frame(
                 maxWidth: .infinity,
                 alignment: Alignment(

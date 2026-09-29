@@ -1,0 +1,13 @@
+# Prometheus for the local observability stack: the metrics store the engine's
+# OTLP metrics export writes to (see docker-compose.yml). Nothing is scraped;
+# every series arrives on the OTLP receiver (--web.enable-otlp-receiver).
+global:
+  evaluation_interval: 1m
+
+otlp:
+  # Keep OTel resource attributes queryable as labels on every series, so a
+  # dashboard can split by host and install.
+  promote_resource_attributes:
+    - service.name
+    - service.instance.id
+    - host.name

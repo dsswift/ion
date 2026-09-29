@@ -5,7 +5,7 @@ import Foundation
 // Extracted from SessionViewModel+Commands.swift to keep that file under the
 // Swift 600-line cap. See CLAUDE.md → "When a file exceeds the cap": split
 // along natural seams rather than collapsing comments. These methods are a
-// cohesive group of engine-default / dialog / abort commands.
+// cohesive group of engine dialog / abort commands.
 //
 // #256 follow-up: the former `submitEnginePrompt`, `setTabModel(tabId:model:)`,
 // and `setEngineModel(tabId:model:)` methods were REMOVED from this file. They
@@ -20,16 +20,6 @@ import Foundation
 // prevents the divergence from silently regrowing.
 
 extension SessionViewModel {
-
-    func setPreferredModelDefault(_ model: String) {
-        preferredModel = model
-        send(.setPreferredModel(model: model), intent: .userInitiated)
-    }
-
-    func setEngineDefaultModelDefault(_ model: String) {
-        engineDefaultModel = model
-        send(.setEngineDefaultModel(model: model), intent: .userInitiated)
-    }
 
     func abortEngine(tabId: String) {
         let instanceId = activeEngineInstance[tabId]

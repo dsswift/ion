@@ -1,16 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useViewportClamp } from '../hooks/useViewportClamp'
+import { zoomAnchorEdges } from '../viewport-zoom'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { FolderOpen, Plus, X } from '@phosphor-icons/react'
 import { useShallow } from 'zustand/shallow'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { compactPath } from './StatusBarShared'
-import { pickDirectoryForSession } from '../stores/remote-fs-store'
-import { activeInstance, instanceMessageCount } from '../stores/conversation-instance'
+import { pickDirectoryForSession } from '@ion/server/store/remote-fs-store'
+import { activeInstance, instanceMessageCount } from '@ion/server/store/conversation-instance'
 import { rError } from '../rendererLogger'
 
 /* ─── Directory Picker (button + popover for base/additional dirs) ─── */
@@ -78,9 +79,9 @@ export function DirectoryPicker() {
   const handleDirClick = () => {
     if (isRunning) return
     if (!dirOpen && dirRef.current) {
-      const rect = dirRef.current.getBoundingClientRect()
+      const rect = zoomAnchorEdges(dirRef.current.getBoundingClientRect())
       setDirPos({
-        bottom: window.innerHeight - rect.top + 6,
+        bottom: rect.fromBottom + 6,
         left: rect.left,
       })
     }

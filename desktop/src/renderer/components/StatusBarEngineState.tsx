@@ -1,7 +1,7 @@
 import React from 'react'
 import { useShallow } from 'zustand/shallow'
 import { useColors } from '../theme'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useActiveEngineAgentRunningCount, useActiveEngineBackgroundShellCount, useActiveEngineHeldShellCount, useActiveEngineStatusFields } from './StatusBarEngineHelpers'
 
 /**
@@ -68,7 +68,7 @@ import { useActiveEngineAgentRunningCount, useActiveEngineBackgroundShellCount, 
  *
  * Foreground orange beats background yellow because the orchestrator's
  * own activity is the strongest signal — matches the priority cascade
- * in `TabStripShared.getTabStatusColor`. The live ring reuses
+ * in `conversation-status.getTabStatusColor`. The live ring reuses
  * `.ion-dot-live`, only the dot colour differs between the two live branches.
  */
 export function StatusBarEngineState() {

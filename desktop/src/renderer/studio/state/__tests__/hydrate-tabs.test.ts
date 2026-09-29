@@ -6,9 +6,9 @@
  * existing panes survive re-sync while owner-closed tabs' panes are dropped.
  */
 import { describe, it, expect } from 'vitest'
-import { tabsFromSnapshot, mergePanes } from '../hydrate-tabs'
-import { makeMainPane } from '../../../stores/conversation-instance'
-import type { PersistedTabState } from '../../../../shared/types'
+import { tabsFromSnapshot, mergePanes, nextActiveTabId } from '../hydrate-tabs'
+import { makeMainPane } from '@ion/server/store/conversation-instance'
+import type { PersistedTabState } from '@ion/shared/types'
 
 function snapshot(): PersistedTabState {
   return {
@@ -24,11 +24,10 @@ function snapshot(): PersistedTabState {
         workingDirectory: '/w/alpha',
         hasChosenDirectory: true,
         additionalDirs: [],
-        groupId: 'g1',
         pillColor: '#123456',
         conversationPane: {
           activeInstanceId: 'main',
-          instances: [{ id: 'main', messageCount: 7, modelOverride: 'claude-x', permissionMode: 'plan' }],
+          instances: [{ id: 'main', messageCount: 7, modelOverride: 'claude-x', permissionMode: 'plan', draftInput: 'half a thought' }],
         },
       },
       {
@@ -51,7 +50,6 @@ describe('tabsFromSnapshot', () => {
     const { tabs, activeTabId } = tabsFromSnapshot(snapshot())
     expect(tabs.map((t) => t.id)).toEqual(['tab-a', 'tab-b'])
     expect(activeTabId).toBe('tab-b')
-    expect(tabs[0].groupId).toBe('g1')
     expect(tabs[0].pillColor).toBe('#123456')
     expect(tabs[1].customTitle).toBe('My Beta')
     expect(tabs[1].engineProfileId).toBe('ion-dev')
@@ -130,6 +128,45 @@ describe('mergePanes', () => {
     expect(shellA.instances[0].messageCount).toBe(7)
     expect(shellA.instances[0].modelOverride).toBe('claude-x')
     expect(shellA.instances[0].permissionMode).toBe('plan')
+  })
+})
+
+describe('the restored draft reaches the mirror pane', () => {
+  // The defect this pins: the owner restored the draft from tabs.json and put
+  // it on the wire, but every field the mirror seeds is enumerated by hand and
+  // draftInput was not among them. So the pane was always built with '', the
+  // composer adopted '', and a draft that had survived the restart on disk
+  // still came back empty on screen. Both arms below fail without the seed.
+  it('a pane shell carries the persisted draft', () => {
+    const s = snapshot()
+    const { tabs } = tabsFromSnapshot(s)
+    const merged = mergePanes(new Map(), s, tabs)
+
+    expect(merged.get('tab-a')!.instances[0].draftInput).toBe('half a thought')
+  })
+
+  it('a conversation with no persisted draft gets an empty one, not undefined', () => {
+    const s = snapshot()
+    const { tabs } = tabsFromSnapshot(s)
+    const merged = mergePanes(new Map(), s, tabs)
+
+    expect(merged.get('tab-b')!.instances[0].draftInput).toBe('')
+  })
+
+  it('a kept pane takes a draft written by another client', () => {
+    const s = snapshot()
+    const { tabs } = tabsFromSnapshot(s)
+    const first = mergePanes(new Map(), s, tabs)
+    // The operator typed on their phone; the owner's next sync carries it.
+    const after = structuredClone(s)
+    ;(after.tabs[0] as { conversationPane?: { instances: Array<Record<string, unknown>> } }).conversationPane = {
+      activeInstanceId: 'main',
+      instances: [{ id: 'main', messageCount: 7, draftInput: 'typed on the phone' }],
+    } as never
+
+    const merged = mergePanes(first, after, tabsFromSnapshot(after).tabs)
+
+    expect(merged.get('tab-a')!.instances[0].draftInput).toBe('typed on the phone')
   })
 })
 
@@ -259,5 +296,30 @@ describe('live compaction indicator (compaction-status parity)', () => {
     // event-driven isCompacting survives instead of resetting to false.
     const second = tabsFromSnapshot(s, undefined, first.tabs)
     expect(second.tabs.find((t) => t.id === 'tab-a')!.isCompacting).toBe(true)
+  })
+})
+
+describe('nextActiveTabId', () => {
+  const base = { ownerActiveTabId: 'local-1', firstTabId: 'local-1' }
+
+  // The window was on a conversation on another environment; anything local
+  // re-publishing (a running local conversation does so constantly) snapped
+  // it back to the local server's active tab.
+  it('a local sync does not pull the window off a remote conversation', () => {
+    expect(nextActiveTabId({ ...base, environmentId: 'local', ownerChanged: false, currentTabId: 'grover-1', currentEnvironmentId: 'env-grover' })).toBe('grover-1')
+  })
+
+  it('a local sync still follows the local server when it makes a NEW selection', () => {
+    expect(nextActiveTabId({ ...base, environmentId: 'local', ownerActiveTabId: 'local-2', ownerChanged: true, currentTabId: 'grover-1', currentEnvironmentId: 'env-grover' })).toBe('local-2')
+  })
+
+  it('on a local tab the local owner stays authoritative', () => {
+    expect(nextActiveTabId({ ...base, environmentId: 'local', ownerActiveTabId: 'local-2', ownerChanged: false, currentTabId: 'local-1', currentEnvironmentId: 'local' })).toBe('local-2')
+  })
+
+  it('a remote sync never moves the window, and only fills in when nothing is selected', () => {
+    expect(nextActiveTabId({ environmentId: 'env-grover', ownerActiveTabId: 'grover-9', ownerChanged: false, currentTabId: 'local-1', currentEnvironmentId: 'local', firstTabId: 'local-1' })).toBe('local-1')
+    expect(nextActiveTabId({ environmentId: 'env-grover', ownerActiveTabId: 'grover-9', ownerChanged: false, currentTabId: null, currentEnvironmentId: null, firstTabId: 'local-1' })).toBe('grover-9')
+    expect(nextActiveTabId({ environmentId: 'env-grover', ownerActiveTabId: null, ownerChanged: false, currentTabId: null, currentEnvironmentId: null, firstTabId: 'local-1' })).toBe('local-1')
   })
 })

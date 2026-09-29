@@ -48,7 +48,7 @@ const benchDiscardMemberRecordings = vi.fn(async () => ({
   forgottenCount: 1,
 }));
 
-vi.mock("../../../stores/sessionStore", () => ({
+vi.mock("@ion/server/store/sessionStore", () => ({
   useSessionStore: Object.assign(
     (sel: (s: unknown) => unknown) =>
       sel({ openBenchVerificationAnalysis, benchDiscardMemberRecordings }),
@@ -62,7 +62,7 @@ vi.mock("../../../stores/sessionStore", () => ({
 }));
 
 import { BenchVerificationDialog } from "../BenchVerificationDialog";
-import type { IntegrationWorkspace } from "../../../../shared/types";
+import type { IntegrationWorkspace } from "@ion/shared/types";
 
 function failedWorkspace(
   over: Partial<IntegrationWorkspace> = {},

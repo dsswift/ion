@@ -3,8 +3,8 @@
  * complete furniture set + dressing templates) and agent-state builders that
  * produce the dispatch attribution shapes the roster derivation consumes.
  */
-import type { AgentStateUpdate } from '../../../../../shared/types'
-import type { StudioDressingTemplate, StudioFurnitureManifest } from '../../../../../shared/types-studio'
+import type { AgentStateUpdate } from '@ion/shared/types'
+import type { StudioDressingTemplate, StudioFurnitureManifest } from '@ion/shared/types-studio'
 import type { GenTheme } from '../types'
 
 function furniture(partial: Partial<StudioFurnitureManifest> & { id: string }): StudioFurnitureManifest {

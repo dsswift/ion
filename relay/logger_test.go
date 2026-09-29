@@ -102,8 +102,31 @@ func TestRelayFieldsAlwaysPresent(t *testing.T) {
 	if !ok {
 		t.Fatalf("fields is not an object: %T %v", fields, fields)
 	}
+	// host is the only field every line carries (see host.go).
+	delete(m, "host")
 	if len(m) != 0 {
-		t.Errorf("expected empty fields, got %v", m)
+		t.Errorf("expected no fields besides host, got %v", m)
+	}
+}
+
+// TestRelayStampsHostOnEveryLine pins fields.host, which log collection reads
+// to slice the relay by device.
+func TestRelayStampsHostOnEveryLine(t *testing.T) {
+	var buf bytes.Buffer
+	log := buildTestLogger(&buf, slog.LevelInfo)
+	log.Info("hello", "component", "relay")
+	fields, ok := parseLastLine(t, &buf)["fields"].(map[string]any)
+	if !ok {
+		t.Fatal("fields is not an object")
+	}
+	if want := relayHostName(); want == "" || fields["host"] != want {
+		t.Errorf("fields.host = %v, want %q", fields["host"], want)
+	}
+
+	log.Info("explicit", "component", "relay", "host", "other")
+	fields, _ = parseLastLine(t, &buf)["fields"].(map[string]any) //nolint:errcheck // asserted above
+	if fields["host"] != "other" {
+		t.Errorf("an explicit host attr was overwritten: %v", fields["host"])
 	}
 }
 

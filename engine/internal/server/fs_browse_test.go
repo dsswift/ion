@@ -5,14 +5,17 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
+	"github.com/dsswift/ion/engine/internal/conversation"
+	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 func TestComputeHostInfoShape(t *testing.T) {
-	info := computeHostInfo()
-	for _, key := range []string{"home", "username", "hostname", "os", "pathSep"} {
+	info := computeHostInfo("1.2.3")
+	for _, key := range []string{"home", "username", "hostname", "os", "pathSep", "version", "installId", "principalPartitioning"} {
 		if _, ok := info[key]; !ok {
 			t.Errorf("expected key %q in host info", key)
 		}
@@ -22,6 +25,60 @@ func TestComputeHostInfoShape(t *testing.T) {
 	}
 	if got := info["pathSep"].(string); got != string(os.PathSeparator) {
 		t.Errorf("pathSep=%q want %q", got, string(os.PathSeparator))
+	}
+}
+
+func TestComputeHostInfoVersion(t *testing.T) {
+	hostInfoOnce = sync.Once{}
+	hostInfoCached = nil
+	if got := computeHostInfo("1.2.3")["version"]; got != "1.2.3" {
+		t.Errorf("version=%v want %q", got, "1.2.3")
+	}
+}
+
+func TestComputeHostInfoVersionDefaultsToDev(t *testing.T) {
+	hostInfoOnce = sync.Once{}
+	hostInfoCached = nil
+	if got := computeHostInfo("")["version"]; got != "dev" {
+		t.Errorf("version=%v want %q", got, "dev")
+	}
+}
+
+func TestComputeHostInfo_PrincipalPartitioningReflectsDisabledByDefault(t *testing.T) {
+	conversation.ResetPartitioningForTest()
+	hostInfoOnce = sync.Once{}
+	hostInfoCached = nil
+
+	info := computeHostInfo("1.2.3")
+	pp, ok := info["principalPartitioning"].(map[string]any)
+	if !ok {
+		t.Fatalf("principalPartitioning is not a map: %#v", info["principalPartitioning"])
+	}
+	if pp["enabled"] != false {
+		t.Errorf("expected enabled=false with no partitioning configured, got %v", pp["enabled"])
+	}
+	if pp["enforcement"] != string(types.EnforcementNone) {
+		t.Errorf("expected enforcement=%q, got %v", types.EnforcementNone, pp["enforcement"])
+	}
+}
+
+func TestComputeHostInfo_PrincipalPartitioningReflectsEnabledConfig(t *testing.T) {
+	root := t.TempDir()
+	conversation.ConfigurePartitioning(root, &types.PrincipalPartitioningConfig{Enabled: true})
+	t.Cleanup(conversation.ResetPartitioningForTest)
+	hostInfoOnce = sync.Once{}
+	hostInfoCached = nil
+
+	info := computeHostInfo("1.2.3")
+	pp := info["principalPartitioning"].(map[string]any)
+	if pp["enabled"] != true {
+		t.Errorf("expected enabled=true, got %v", pp["enabled"])
+	}
+	if pp["enforcement"] != string(types.EnforcementStrict) {
+		t.Errorf("expected default enforcement strict once enabled, got %v", pp["enforcement"])
+	}
+	if pp["root"] != root {
+		t.Errorf("root=%v want %q", pp["root"], root)
 	}
 }
 

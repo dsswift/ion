@@ -27,6 +27,8 @@ struct MessageAttachmentImages: View {
     /// tapped, so the row can drive its full-screen preview sheet. Used by the
     /// single-image path; the gallery presents its own paged preview.
     let onPreview: (UIImage, String) -> Void
+    /// Opens a document chip's file. Nil leaves the chip as a label.
+    var onOpenFile: ((String) -> Void)? = nil
 
     /// Index into `images` the paged preview is open on, or nil when closed.
     @State private var galleryIndex: Int?
@@ -90,17 +92,36 @@ struct MessageAttachmentImages: View {
     }
 
     private func documentChip(_ att: MessageAttachment) -> some View {
-        HStack(spacing: 3) {
+        MessageDocumentChip(name: att.name, onTap: onOpenFile.map { open in { open(att.path) } })
+    }
+}
+
+/// One document a message was sent with. Tapping opens it when the row can.
+/// Desktop parity: `MessageFileChips.tsx`.
+struct MessageDocumentChip: View {
+    let name: String
+    let onTap: (() -> Void)?
+
+    var body: some View {
+        let label = HStack(spacing: 3) {
             Image(systemName: "doc")
                 .font(.caption2)
-            Text(att.name)
+            Text(name)
                 .font(.caption2)
                 .lineLimit(1)
+                .truncationMode(.middle)
         }
         .padding(.horizontal, IonSpace.compactInset)
         .padding(.vertical, 2) // design-geometry: tight 2pt inset; below the 4pt rhythm floor
         .background(Color(.secondarySystemFill))
         .clipShape(Capsule())
         .foregroundStyle(.secondary)
+        if let onTap {
+            Button(action: onTap) { label }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open \(name)")
+        } else {
+            label
+        }
     }
 }

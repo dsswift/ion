@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { IPC } from '../../shared/types'
+import { IPC } from '@ion/shared/types'
 import type { LogLevel } from '../logger'
 import { trace, debug, info, warn, error } from '../logger'
 

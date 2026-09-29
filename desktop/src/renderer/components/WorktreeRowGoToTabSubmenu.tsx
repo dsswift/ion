@@ -12,7 +12,7 @@
  *
  * Two hosts, two anchor directions:
  * - The worktree row menu (`WorktreeRowMenu`) opens this as a hover submenu to
- *   the RIGHT of its own "Go to tab" row, modeled on `TabStripMoveToGroupSubmenu`.
+ *   the RIGHT of its own "Go to tab" row.
  * - `BenchBar`'s toolbar button opens this straight BELOW itself — there is no
  *   parent menu row to sit beside, just a persistent toolbar icon.
  * `prefer` selects between them; defaults to the row-menu behaviour since that
@@ -26,12 +26,12 @@
 import React, { useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
 import { WorktreeConversationStatusDot } from './WorktreeConversationStatusDot'
-import { conversationRoleLabel, type DirConversation } from '../../shared/worktree-conversations'
+import { conversationRoleLabel, type DirConversation } from '@ion/shared/worktree-conversations'
 import { scrollableMenuStyle } from '../menu-viewport'
 
 interface WorktreeRowGoToTabSubmenuProps {

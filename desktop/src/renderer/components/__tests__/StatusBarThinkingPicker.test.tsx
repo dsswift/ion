@@ -12,8 +12,13 @@
  *    slot, while the model condition already rendered the trigger disabled.
  *    So the regression assertions below go red on the pre-fix code in the
  *    adaptive-label case
- *    (trigger read "Think: Off" for a model that always thinks), and the
+ *    (trigger read "Off" for a model that always thinks), and the
  *    model-support cases pin the disabled behavior that must not regress.
+ *
+ * 3. THE CHIP CARRIES ONLY ITS VALUE. The brain icon already says what the
+ *    control is, so a "Think:" prefix was width spent restating it. The
+ *    assertions below would pass on a chip that still carried the prefix
+ *    (toContain), so each one also asserts the prefix is gone.
  */
 
 import React, { act } from "react";
@@ -117,24 +122,25 @@ vi.mock("../../hooks/useInteractiveState", () => ({
   interactiveBg: () => "token-bg",
 }));
 vi.mock("../PopoverLayer", () => ({ usePopoverLayer: () => null }));
-vi.mock("../../stores/conversation-instance", () => ({
-  activeInstance: () => ({ thinkingEffort: "off" }),
+vi.mock("@ion/server/store/conversation-instance", () => ({
+  // The model comes from the instance (what the conversation's server
+  // resolved), never from this client's own default model.
+  activeInstance: () => ({ thinkingEffort: "off", resolvedModel: "m1" }),
 }));
-vi.mock("../../stores/sessionStore", () => ({
+vi.mock("@ion/server/store/sessionStore", () => ({
   useSessionStore: (sel: (s: unknown) => unknown) =>
     sel({
       conversationPanes: new Map(),
       activeTabId: "t1",
+      // The picker resolves the active tab's Environment (ADR-033) to look
+      // the model up in that server's catalog; no tab here means local.
+      tabs: [],
       setThinkingEffort: () => {},
     }),
 }));
-vi.mock("../../preferences", () => ({
-  usePreferencesStore: (sel: (s: unknown) => unknown) =>
-    sel({ preferredModel: "m1" }),
-}));
-vi.mock("../../stores/model-store", () => ({
+vi.mock("@ion/server/store/model-store", () => ({
   useModelStore: (sel: (s: unknown) => unknown) =>
-    sel({ findModel: () => mockModel }),
+    sel({ findModelIn: () => mockModel }),
 }));
 
 import { ThinkingPicker } from "../StatusBarThinkingPicker";
@@ -160,7 +166,8 @@ describe("ThinkingPicker is never hidden", () => {
     mockModel = { thinkingMode: "none", thinkingEfforts: [] };
     const { html, disabled } = renderPicker();
     expect(html).not.toBe("");
-    expect(html).toContain("Think: Off");
+    expect(html).toContain(">Off<");
+    expect(html).not.toContain("Think:");
     expect(disabled).toBe(true);
   });
 
@@ -168,7 +175,8 @@ describe("ThinkingPicker is never hidden", () => {
     mockModel = undefined;
     const { html, disabled } = renderPicker();
     expect(html).not.toBe("");
-    expect(html).toContain("Think: Off");
+    expect(html).toContain(">Off<");
+    expect(html).not.toContain("Think:");
     expect(disabled).toBe(true);
   });
 
@@ -178,7 +186,8 @@ describe("ThinkingPicker is never hidden", () => {
       thinkingEfforts: ["low", "medium", "high"],
     };
     const { html, disabled } = renderPicker();
-    expect(html).toContain("Think: Adaptive");
+    expect(html).toContain(">Adaptive<");
+    expect(html).not.toContain("Think:");
     expect(disabled).toBe(false);
   });
 });

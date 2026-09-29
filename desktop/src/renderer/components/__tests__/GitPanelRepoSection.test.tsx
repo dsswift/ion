@@ -10,16 +10,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { usePreferencesStore } from '../../preferences'
-import { useGitStore } from '../../stores/git'
+import { useGitStore } from '@ion/server/store/git'
 import { GitPanelRepoSection } from '../GitPanelRepoSection'
 import { PopoverLayerProvider } from '../PopoverLayer'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 beforeEach(() => {
-  ;(window as unknown as { ion: unknown }).ion = {
+  ;(window as unknown as { ion: unknown }).ion = installFakeWire({
     gitSubscribe: vi.fn().mockResolvedValue({ snapshot: null }),
     gitUnsubscribe: vi.fn().mockResolvedValue(undefined),
     gitRefresh: vi.fn().mockResolvedValue(undefined),
@@ -29,7 +30,7 @@ beforeEach(() => {
     fsReadFile: vi.fn().mockResolvedValue({ content: null }),
     saveTabs: vi.fn().mockResolvedValue(undefined),
     saveTabContent: vi.fn().mockResolvedValue(undefined),
-  }
+  })
   useSessionStore.setState({ activeTabId: 'tab-1' })
   usePreferencesStore.setState({ gitPanelRepoSectionsCollapsed: {}, gitChangesTreeView: false })
   useGitStore.setState({
@@ -101,7 +102,7 @@ describe('GitPanelRepoSection', () => {
     })
     expect(onFileDiffClick).toHaveBeenCalledWith({ repoDir: '/repo/secondary', filePath: 'src/x.ts', staged: false })
     await act(async () => { await Promise.resolve() })
-    expect((window as unknown as { ion: { gitDiff: ReturnType<typeof vi.fn> } }).ion.gitDiff).toHaveBeenCalledWith('/repo/secondary', 'src/x.ts', false)
+    expect((window as unknown as { ion: { gitDiff: ReturnType<typeof vi.fn> } }).ion.gitDiff).toHaveBeenCalledWith({ directory: '/repo/secondary', path: 'src/x.ts', staged: false })
     unmount()
   })
 })

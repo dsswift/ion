@@ -4,6 +4,7 @@ import { Microphone, SpinnerGap, X, Check } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { useInteractiveState } from '../hooks/useInteractiveState'
 import { blobToWavBase64 } from './InputBarVoiceUtils'
+import { host } from '../host/host-instance'
 
 export type VoiceState = 'idle' | 'recording' | 'transcribing'
 
@@ -59,7 +60,7 @@ export function useVoiceRecording(appendTranscript: (text: string) => void): Use
       try {
         const blob = new Blob(chunksRef.current, { type: mimeType })
         const wavBase64 = await blobToWavBase64(blob)
-        const result = await window.ion.transcribeAudio(wavBase64)
+        const result = await host.shell.transcribeAudio(wavBase64)
         if (result.error) setVoiceError(result.error)
         else if (result.transcript) appendTranscript(result.transcript)
       } catch (err: any) { setVoiceError(`Voice failed: ${err.message}`) }

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import type { StartupState } from '../../shared/startup-state'
+import type { StartupState } from '@ion/shared/startup-state'
 import { SplashApp } from './SplashApp'
 import './splash.css'
 
@@ -20,15 +20,14 @@ declare global {
 function Root(): React.JSX.Element {
   const [state, setState] = useState<StartupState>({
     sequence: -1,
-    target: null,
     source: 'main',
     status: 'Starting Ion…',
     mode: 'loading',
     authenticationBusy: false,
     authenticationError: null,
     appVersion: '',
-    ownerReady: false,
     studioReady: false,
+    serverReady: false,
     error: null,
   })
   useEffect(() => {

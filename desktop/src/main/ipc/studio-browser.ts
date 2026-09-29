@@ -1,5 +1,5 @@
 import { ipcMain, type BrowserWindow, type WebContents } from 'electron'
-import { IPC } from '../../shared/types'
+import { IPC } from '@ion/shared/types'
 import { log as _log, warn as _warn } from '../logger'
 import { setStudioBrowserTabRequestHandler } from '../studio-browser-tab-request'
 import {
@@ -16,7 +16,7 @@ import {
   parseBrowserCommandResult,
   type StudioBrowserCommand,
   type StudioBrowserCommandResult,
-} from '../../shared/studio-browser-types'
+} from '@ion/shared/studio-browser-types'
 
 const TAG = 'studio-browser-ipc'
 
@@ -34,10 +34,10 @@ let resolveStudioWindow: () => BrowserWindow | null = () => null
  *
  * Commands run the other way. Main owns the Playwright runtime but not Surface
  * descriptors, so creating, closing, or re-sizing the agent's tab is a request
- * the renderer applies and acknowledges. The correlation lives here for the
- * same reason it does for STUDIO_CALL_ACTION: main is the only party that knows
- * whether a Studio window exists, so a missing or wedged renderer produces a
- * resolved refusal instead of a caller hanging forever.
+ * the renderer applies and acknowledges. The correlation lives here because
+ * main is the only party that knows whether a Studio window exists, so a
+ * missing or wedged renderer produces a resolved refusal instead of a caller
+ * hanging forever.
  */
 export function setStudioBrowserWindowResolver(resolver: () => BrowserWindow | null): void {
   resolveStudioWindow = resolver
@@ -143,11 +143,11 @@ export function registerStudioBrowserIpc(): void {
 export function requestStudioBrowserTab(url: string): void {
   const studio = resolveStudioWindow()
   if (!studio || studio.isDestroyed()) {
-    _log(TAG, 'browser tab request dropped, no studio window', { host: hostOf(url) })
+    _log(TAG, 'browser tab request dropped, no studio window', { url_host: hostOf(url) })
     return
   }
   studio.webContents.send(IPC.STUDIO_BROWSER_OPEN_URL, url)
-  _log(TAG, 'browser tab requested for clicked link', { host: hostOf(url) })
+  _log(TAG, 'browser tab requested for clicked link', { url_host: hostOf(url) })
 }
 
 /** Host only: a full URL in a log line can carry tokens in its query. */

@@ -1,4 +1,4 @@
-import type { DiscoveredCommand } from "../../shared/types";
+import type { DiscoveredCommand } from "@ion/shared/types";
 
 /**
  * Pre-send gate for a slash command that clears the conversation.

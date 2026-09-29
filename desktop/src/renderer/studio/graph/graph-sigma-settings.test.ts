@@ -7,7 +7,7 @@ vi.mock('@sigma/edge-curve', () => ({ default: class {}, EdgeCurvedArrowProgram:
 
 import Graph from 'graphology'
 import { createSigmaSettings, HIDE_EDGES_ON_MOVE_ABOVE } from './graph-sigma-settings'
-import { darkColors } from '../../theme/palette-dark'
+import { darkColors } from '@ion/server/renderer/theme/palette-dark'
 
 function graphWithEdges(count: number): Graph {
   const g = new Graph({ multi: true })

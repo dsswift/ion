@@ -5,7 +5,7 @@
 # defined in ADR-019 (docs/architecture/adr/019-logging-architecture-and-standards.md)
 # and docs/observability/log-schema.md.
 #
-# Eight check categories:
+# Nine check categories:
 #
 #   GO-INTERP    — Go logger call whose msg argument is a fmt.Sprintf(...)
 #                  or uses string concatenation with +. Covers utils.Log,
@@ -38,6 +38,14 @@
 #                  silent failures" rule: a caught error must be observable.
 #                  Opt out with a trailing `// silent-ok: <reason>` comment.
 #
+#   RESERVED-KEY — A logger call site whose fields use a machine-identity key
+#                  (host, machine_id, mdm_device_id, mdm_serial). Every logger
+#                  stamps these on each line and pipelines label lines with the
+#                  device by them, so a URL's host logged as `host` would
+#                  relabel the line with a fake device. Name the value for what
+#                  it is (url_host, git_host, bind_host). Opt out with a
+#                  trailing `// log-key-ok: <reason>`.
+#
 #   OS-LOGGER    — iOS `Logger(subsystem:)` (Apple unified logging) outside
 #                  DiagnosticLog.swift. os.Logger only reaches Console.app, never
 #                  the operator's ~/.ion/ios-diagnostic-logs.jsonl. All iOS
@@ -69,11 +77,13 @@ SCOPE="${1:-all}"
 cnt_go_interp=0
 cnt_relay_flat=0
 cnt_renderer=0
+cnt_node_console=0
 cnt_ts_interp=0
 cnt_swift_interp=0
 cnt_non_canon=0
 cnt_silent_catch=0
 cnt_os_logger=0
+cnt_reserved_key=0
 total_violations=0
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -88,11 +98,13 @@ report() {
     GO-INTERP)    cnt_go_interp=$(( cnt_go_interp + 1 )) ;;
     RELAY-FLAT)   cnt_relay_flat=$(( cnt_relay_flat + 1 )) ;;
     RENDERER)     cnt_renderer=$(( cnt_renderer + 1 )) ;;
+    NODE-CONSOLE) cnt_node_console=$(( cnt_node_console + 1 )) ;;
     TS-INTERP)    cnt_ts_interp=$(( cnt_ts_interp + 1 )) ;;
     SWIFT-INTERP) cnt_swift_interp=$(( cnt_swift_interp + 1 )) ;;
     NON-CANON)    cnt_non_canon=$(( cnt_non_canon + 1 )) ;;
     SILENT-CATCH) cnt_silent_catch=$(( cnt_silent_catch + 1 )) ;;
     OS-LOGGER)    cnt_os_logger=$(( cnt_os_logger + 1 )) ;;
+    RESERVED-KEY) cnt_reserved_key=$(( cnt_reserved_key + 1 )) ;;
   esac
   total_violations=$(( total_violations + 1 ))
 }
@@ -158,6 +170,12 @@ check_go_interp() {
   scan_grep "GO-INTERP" \
     'utils\.(Log|Debug|Info|Warn|Error|Trace|LogWithFields|TraceWithFields)\s*\([^,]+,\s*[A-Za-z_][A-Za-z0-9_.()]*\s*\+\s*"' \
     "${files[@]}"
+
+  # A printf verb in a literal msg: these loggers never format, so the verb
+  # is written as-is ("type=%t") and the value it meant is lost.
+  scan_grep "GO-INTERP" \
+    'utils\.(Log|Debug|Info|Warn|Error|Trace|LogWithFields|TraceWithFields)\s*\([^)]*"[^"]*%[-+# 0-9.]*[sdvtqxXfgewT][^"]*"' \
+    "${files[@]}"
 }
 
 check_relay_go_interp() {
@@ -199,19 +217,34 @@ check_renderer_console() {
   scan_grep "RENDERER" 'console\.(log|debug|info|warn|error|trace)\s*\(' "${files[@]}"
 }
 
+# Same rule, every other TypeScript surface that has a real logger: desktop
+# main, the server, and packages/shared. console.* in any of them goes to a
+# stream nobody collects -- in a packaged Electron app or a container, nowhere
+# at all -- while the file the operator reads says nothing happened. The scan
+# was renderer-only, which is how server/src kept `no-console: off`.
+check_node_console() {
+  local files=("$@")
+  [[ ${#files[@]} -eq 0 ]] && return
+  scan_grep "NODE-CONSOLE" 'console\.(log|debug|info|warn|error|trace)\s*\(' "${files[@]}"
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CHECK 4: TypeScript interpolated msg
 # ─────────────────────────────────────────────────────────────────────────────
 #
-# Flags main/renderer logger calls where the msg argument is a template literal
-# containing ${...}. Covers log(), debug(), info(), warn(), error(), trace() in
-# main/logger.ts and rTrace/rDebug/rInfo/rWarn/rError in rendererLogger.ts.
+# Flags logger calls where the msg argument is a template literal containing
+# ${...}. Covers log(), debug(), info(), warn(), error(), trace() and the
+# rTrace/rDebug/rInfo/rWarn/rError renderer family -- each with an optional
+# leading underscore, which is how both server/src and desktop/src/main alias
+# the imported logger before wrapping it (`import { log as _log }`). A plain
+# \b never fires before an underscore, so every one of those wrappers used to
+# slip the scan.
 
 check_ts_interp() {
   local files=("$@")
   [[ ${#files[@]} -eq 0 ]] && return
   scan_grep "TS-INTERP" \
-    '\b(log|debug|info|warn|error|trace|rTrace|rDebug|rInfo|rWarn|rError)\s*\([^`]*`[^`]*\$\{' \
+    '(^|[^A-Za-z0-9])_?(log|debug|info|warn|error|trace|rTrace|rDebug|rInfo|rWarn|rError)\s*\([^`]*`[^`]*\$\{' \
     "${files[@]}"
 }
 
@@ -248,19 +281,23 @@ check_swift_interp() {
 #   elapsed_ms -> duration_ms  (shadow)
 #   errMsg / errorMsg / errStr -> error
 
-check_non_canon() {
+# shellcheck source=scripts/check-logging-non-canon.sh
+source "$REPO_ROOT/scripts/check-logging-non-canon.sh"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CHECK 6b: Machine-identity keys at logger call sites (RESERVED-KEY)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# The scan walks each logger call's whole argument list, so it lives in
+# check-logging-reserved-keys.py rather than a one-line grep.
+
+check_reserved_key() {
   local files=("$@")
   [[ ${#files[@]} -eq 0 ]] && return
-  local key_pat='"(runID|sessionID|convID|durationMs|elapsedMs|elapsed_ms|errMsg|errorMsg|errStr)"'
   local file linenum rest
   while IFS=: read -r file linenum rest; do
-    # Skip Go struct JSON tag lines — they are wire-protocol contract fields,
-    # not logger field keys. Tag lines contain `json:" before the matched key.
-    case "$rest" in
-      *'`json:"'*) continue ;;
-    esac
-    report "NON-CANON" "$file" "$linenum" "$rest"
-  done < <(grep -EHn "$key_pat" "${files[@]}" 2>/dev/null || true)
+    report "RESERVED-KEY" "$file" "$linenum" "$rest"
+  done < <(printf '%s\n' "${files[@]}" | python3 scripts/check-logging-reserved-keys.py)
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -342,6 +379,7 @@ if [[ "$SCOPE" == "all" || "$SCOPE" == "engine" ]]; then
   while IFS= read -r f; do ENGINE_GO+=("$f"); done < <(find_go engine/)
   check_go_interp engine ${ENGINE_GO[@]+"${ENGINE_GO[@]}"}
   check_non_canon ${ENGINE_GO[@]+"${ENGINE_GO[@]}"}
+  check_reserved_key ${ENGINE_GO[@]+"${ENGINE_GO[@]}"}
 fi
 
 # Relay Go
@@ -368,13 +406,28 @@ if [[ "$SCOPE" == "all" || "$SCOPE" == "renderer" ]]; then
   check_renderer_console ${RENDERER_TS[@]+"${RENDERER_TS[@]}"}
 fi
 
-# Desktop TS interpolated msg (main + renderer)
+# Desktop TS interpolated msg (main + renderer). Also covers packages/shared
+# and server, both split out of desktop/src/shared and desktop/src/main by the
+# Ion Studio Server program's repo-restructure child: the same canonical-field
+# and silent-catch discipline applies wherever main-process logic now lives.
 if [[ "$SCOPE" == "all" || "$SCOPE" == "ts" ]]; then
   DESKTOP_TS=()
-  while IFS= read -r f; do DESKTOP_TS+=("$f"); done < <(find_ts desktop/src/)
+  while IFS= read -r f; do DESKTOP_TS+=("$f"); done < <(find_ts desktop/src/ packages/shared/src/ server/src/)
   check_ts_interp ${DESKTOP_TS[@]+"${DESKTOP_TS[@]}"}
   check_non_canon ${DESKTOP_TS[@]+"${DESKTOP_TS[@]}"}
+  check_reserved_key ${DESKTOP_TS[@]+"${DESKTOP_TS[@]}"}
   check_silent_catch_ts ${DESKTOP_TS[@]+"${DESKTOP_TS[@]}"}
+
+  # console.* outside the renderer. The CLI is excluded: `server/src/cli/`
+  # talks to a person on a terminal, where stdout IS the interface.
+  NODE_TS=()
+  while IFS= read -r f; do
+    case "$f" in
+      server/src/cli/*) continue ;;
+    esac
+    NODE_TS+=("$f")
+  done < <(find_ts desktop/src/main/ packages/shared/src/ server/src/)
+  check_node_console ${NODE_TS[@]+"${NODE_TS[@]}"}
 fi
 
 # iOS Swift interpolation
@@ -396,11 +449,13 @@ echo "check-logging summary:"
 printf "  %-12s (%s)\n" "GO-INTERP"    "interpolated msg in Go logger call:       $cnt_go_interp"
 printf "  %-12s (%s)\n" "RELAY-FLAT"   "bare slog pkg call bypassing relayHandler: $cnt_relay_flat"
 printf "  %-12s (%s)\n" "RENDERER"     "console.* in shipped renderer code:        $cnt_renderer"
+printf "  %-12s (%s)\n" "NODE-CONSOLE" "console.* in main/server/shared code:      $cnt_node_console"
 printf "  %-12s (%s)\n" "TS-INTERP"    "template literal msg in TS logger call:    $cnt_ts_interp"
 printf "  %-12s (%s)\n" "SWIFT-INTERP" "\\( interpolation in DiagnosticLog call:    $cnt_swift_interp"
 printf "  %-12s (%s)\n" "NON-CANON"    "non-canonical field key in logger call:    $cnt_non_canon"
 printf "  %-12s (%s)\n" "SILENT-CATCH" "swallowed .catch / empty Swift catch:      $cnt_silent_catch"
 printf "  %-12s (%s)\n" "OS-LOGGER"    "iOS os.Logger outside DiagnosticLog:       $cnt_os_logger"
+printf "  %-12s (%s)\n" "RESERVED-KEY" "machine-identity key in logger call:       $cnt_reserved_key"
 echo "  ─────────────────────────────────────────────────────────────────────────"
 echo "  TOTAL:     $total_violations"
 

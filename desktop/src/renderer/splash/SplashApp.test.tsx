@@ -11,8 +11,8 @@ describe('SplashApp', () => {
     expect(ionIcon).toContain('ion-icon.png')
     const node = SplashApp({
       state: {
-        sequence: 1, target: 'overlay', source: 'owner', status: 'Loading…', mode: 'loading',
-        authenticationBusy: false, authenticationError: null, appVersion: '1.0.0', ownerReady: false, studioReady: false, error: null,
+        sequence: 1, source: 'studio', status: 'Loading…', mode: 'loading',
+        authenticationBusy: false, authenticationError: null, appVersion: '1.0.0', studioReady: false, serverReady: false, error: null,
       },
     })
     expect(node).toBeTruthy()
@@ -21,8 +21,8 @@ describe('SplashApp', () => {
   it('renders exact startup status without product controls', () => {
     const node = SplashApp({
       state: {
-        sequence: 1, target: 'overlay', source: 'owner', status: 'Restoring 3 tabs…', mode: 'loading',
-        authenticationBusy: false, authenticationError: null, appVersion: '1.0.0', ownerReady: false, studioReady: false, error: null,
+        sequence: 1, source: 'studio', status: 'Restoring 3 tabs…', mode: 'loading',
+        authenticationBusy: false, authenticationError: null, appVersion: '1.0.0', studioReady: false, serverReady: false, error: null,
       },
     })
     expect(node).toBeTruthy()
@@ -31,8 +31,8 @@ describe('SplashApp', () => {
   it('renders required authentication as a browser sign-in gate', () => {
     const node = SplashApp({
       state: {
-        sequence: 2, target: 'studio', source: 'main', status: 'Sign in to continue', mode: 'authentication',
-        authenticationBusy: false, authenticationError: null, appVersion: '1.0.0', ownerReady: false, studioReady: false, error: null,
+        sequence: 2, source: 'main', status: 'Sign in to continue', mode: 'authentication',
+        authenticationBusy: false, authenticationError: null, appVersion: '1.0.0', studioReady: false, serverReady: false, error: null,
       },
     })
     expect(node).toBeTruthy()

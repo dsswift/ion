@@ -3,15 +3,14 @@ import XCTest
 
 /// Pins the slash-command pill rendering for iOS-originated slash commands:
 ///
-/// 1. The optimistic insert carries `slashCommand`/`slashArgs` metadata so
+/// 1. The pending bubble carries `slashCommand`/`slashArgs` metadata so
 ///    the pill renders immediately from the first frame.
-/// 2. A desktop echo with slash metadata reconciles by id and preserves the
-///    pill (the canonical echo replaces the optimistic, carrying metadata).
-/// 3. A conversation history load with slash metadata (engine resolveSlash
-///    path) renders the pill from metadata, not fallback content parsing.
+/// 2. The server's row for the prompt replaces the pending bubble and keeps
+///    the pill, from the row's own metadata.
+/// 3. A transcript row with slash metadata renders the pill from metadata,
+///    not fallback content parsing.
 /// 4. The fallback parser (`parseSlashCommand`) pills raw `/command` content
-///    even without metadata (extension commands, optimistic bubbles before
-///    the echo arrives).
+///    even without metadata (extension commands, pending bubbles).
 @MainActor
 final class SlashPillOptimisticTests: XCTestCase {
 
@@ -37,9 +36,9 @@ final class SlashPillOptimisticTests: XCTestCase {
 
         vm.submit(tabId: "tab-s1", text: "/align the changes")
 
-        let msgs = vm.conversationMessages("tab-s1")
+        let msgs = vm.renderedMessages(tabId: "tab-s1")
         XCTAssertEqual(msgs.count, 1,
-            "Optimistic insert must appear immediately")
+            "The pending bubble must appear immediately")
         let msg = msgs[0]
         XCTAssertEqual(msg.role, .user)
         XCTAssertEqual(msg.slashCommand, "/align",
@@ -56,7 +55,7 @@ final class SlashPillOptimisticTests: XCTestCase {
 
         vm.submit(tabId: "tab-s2", text: "/clear")
 
-        let msgs = vm.conversationMessages("tab-s2")
+        let msgs = vm.renderedMessages(tabId: "tab-s2")
         XCTAssertEqual(msgs.count, 1)
         let msg = msgs[0]
         XCTAssertEqual(msg.slashCommand, "/clear",
@@ -73,7 +72,7 @@ final class SlashPillOptimisticTests: XCTestCase {
 
         vm.submit(tabId: "tab-s3", text: "hello world")
 
-        let msgs = vm.conversationMessages("tab-s3")
+        let msgs = vm.renderedMessages(tabId: "tab-s3")
         XCTAssertEqual(msgs.count, 1)
         let msg = msgs[0]
         XCTAssertNil(msg.slashCommand,
@@ -82,82 +81,35 @@ final class SlashPillOptimisticTests: XCTestCase {
             "Non-slash prompt must not have slashArgs metadata")
     }
 
-    // MARK: - Test 4: echo with slash metadata reconciles to a single pill
+    // MARK: - Test 4: the server's row replaces the pending bubble
 
-    func testEchoWithSlashMetadataReconciles() {
+    func testServerRowReplacesPendingSlashBubble() throws {
         let vm = SessionViewModel()
         vm.tabs = [makeTab(id: "tab-s4")]
-
-        // Submit slash command (optimistic insert with metadata).
         vm.submit(tabId: "tab-s4", text: "/align the changes")
-        let optimisticId = vm.conversationMessages("tab-s4").first?.id
-        XCTAssertNotNil(optimisticId)
+        let clientMsgId = try XCTUnwrap(vm.renderedMessages(tabId: "tab-s4").first?.id)
 
-        // Desktop echo arrives with slash metadata under the same id.
-        var echo = Message(
-            id: optimisticId!,
-            role: .user,
-            content: "/align the changes",
-            timestamp: 1_700_000_001_000
-        )
-        echo.slashCommand = "/align"
-        echo.slashArgs = "the changes"
-        echo.slashSource = "extension"
-        vm.handleMessageAdded(tabId: "tab-s4", message: echo)
+        var row = Message(id: "entry-align", role: .user, content: "/align the changes", timestamp: 1_700_000_001_000)
+        row.slashCommand = "/align"
+        row.slashArgs = "the changes"
+        row.slashSource = "extension"
+        row.clientMsgId = clientMsgId
+        vm.handleTranscriptPage(TranscriptTestSupport.page(tabId: "tab-s4", rows: [row]))
 
-        // Must reconcile to exactly one user message, with metadata.
-        let userMsgs = vm.conversationMessages("tab-s4").filter { $0.role == .user }
-        XCTAssertEqual(userMsgs.count, 1,
-            "Echo must REPLACE the optimistic by id, not append a duplicate")
-        XCTAssertEqual(userMsgs[0].slashCommand, "/align",
-            "Reconciled message must carry slashCommand from the echo")
-        XCTAssertEqual(userMsgs[0].slashArgs, "the changes")
-
-        // The pill resolver prefers metadata over fallback.
+        let userMsgs = vm.renderedMessages(tabId: "tab-s4").filter { $0.role == .user }
+        XCTAssertEqual(userMsgs.map(\.id), ["entry-align"],
+            "The server's row must replace the pending bubble, not sit beside it")
         let segments = userMsgs[0].slashSegments(fallbackText: userMsgs[0].content)
-        XCTAssertNotNil(segments, "Slash segments must resolve for the pill")
         XCTAssertEqual(segments?.command, "/align")
     }
 
-    // MARK: - Test 5: history with slash metadata renders pill
+    // MARK: - Test 5: a transcript row with slash metadata renders the pill
 
-    func testHistoryWithSlashMetadataRendersPill() {
-        let vm = SessionViewModel()
-        vm.tabs = [makeTab(id: "tab-s5")]
-
-        // Simulate history load with slash metadata (engine resolveSlash path).
-        var userMsg = Message(
-            id: "engine-turn-001",
-            role: .user,
-            content: "/align the changes",
-            timestamp: 1_700_000_000_000
-        )
-        userMsg.slashCommand = "/align"
-        userMsg.slashArgs = "the changes"
-        userMsg.slashSource = "ion"
-
-        let assistantMsg = Message(
-            id: "engine-turn-002",
-            role: .assistant,
-            content: "I'll review the changes now.",
-            timestamp: 1_700_000_001_000
-        )
-
-        vm.handleConversationHistory(
-            tabId: "tab-s5",
-            newMessages: [userMsg, assistantMsg],
-            hasMore: false,
-            cursor: nil
-        )
-
-        let msgs = vm.conversationMessages("tab-s5")
-        let user = msgs.first { $0.role == .user }
-        XCTAssertNotNil(user)
-        XCTAssertEqual(user?.slashCommand, "/align",
-            "History message must carry slash metadata through to rendering")
-
-        let segments = user?.slashSegments(fallbackText: user!.content)
-        XCTAssertNotNil(segments)
+    func testTranscriptRowWithSlashMetadataRendersPill() throws {
+        let json = #"{"id":"engine-turn-001","role":"user","content":"/align the changes","timestamp":1700000000000,"slashCommand":"/align","slashArgs":"the changes","slashSource":"ion"}"#
+        let user = try JSONDecoder().decode(TranscriptRow.self, from: Data(json.utf8)).message
+        XCTAssertEqual(user.slashCommand, "/align")
+        let segments = user.slashSegments(fallbackText: user.content)
         XCTAssertEqual(segments?.command, "/align")
     }
 
@@ -172,24 +124,12 @@ final class SlashPillOptimisticTests: XCTestCase {
         XCTAssertEqual(result?.args, "the auth flow")
     }
 
-    func testLivePersistedTurnStampsModelProvenance() {
-        let vm = SessionViewModel()
-        vm.tabs = [makeTab(id: "tab-model")]
-        vm.submit(tabId: "tab-model", text: "/align")
-
-        vm.handleEngineUserTurnPersisted(
-            tabId: "tab-model",
-            instanceId: nil,
-            entryId: "entry-align",
-            slashModelAlias: "fast",
-            slashModelEffective: "dci-marketing/gpt-5.6-luna"
-        )
-
-        let message = vm.conversationMessages("tab-model").first
-        XCTAssertEqual(message?.id, "entry-align")
-        XCTAssertEqual(message?.slashModelAlias, "fast")
-        XCTAssertEqual(message?.slashModelEffective, "dci-marketing/gpt-5.6-luna")
-        XCTAssertEqual(message?.slashModelDisplay, "Fast · GPT 5.6 Luna")
+    func testTranscriptRowCarriesModelProvenance() throws {
+        let json = #"{"id":"entry-align","role":"user","content":"/align","timestamp":1,"slashCommand":"/align","slashModelAlias":"fast","slashModelEffective":"dci-marketing/gpt-5.6-luna"}"#
+        let message = try JSONDecoder().decode(TranscriptRow.self, from: Data(json.utf8)).message
+        XCTAssertEqual(message.slashModelAlias, "fast")
+        XCTAssertEqual(message.slashModelEffective, "dci-marketing/gpt-5.6-luna")
+        XCTAssertEqual(message.slashModelDisplay, "Fast · GPT 5.6 Luna")
     }
 
     func testSlashWithoutConfiguredModelHasNoProvenanceDisplay() {

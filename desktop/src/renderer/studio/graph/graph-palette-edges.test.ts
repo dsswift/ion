@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { parseColor } from './color-alpha'
-import { darkColors } from '../../theme/palette-dark'
+import { darkColors } from '@ion/server/renderer/theme/palette-dark'
 import { lightColors } from '../../theme/palette-light'
 import { classicColors } from '../../theme/palette-classic'
 import { hudColors } from '../../theme/palette-hud'

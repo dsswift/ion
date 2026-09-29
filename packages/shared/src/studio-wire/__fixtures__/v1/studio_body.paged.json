@@ -1,0 +1,9 @@
+{
+  "type": "studio_body",
+  "tabId": "tab-123",
+  "instanceId": "instance-1",
+  "rows": [],
+  "hasMore": true,
+  "cursor": "msg-0012",
+  "before": "msg-0042"
+}

@@ -169,9 +169,9 @@ func entryParentID(conv *conversation.Conversation, entryID string) string {
 	return ""
 }
 
-// persistCliTurn appends a completed delegated-CLI turn (the provider prompt,
-// its optional display text, and the assistant's final text) to Ion's
-// conversation store, advancing the conversation leaf. This is what makes
+// persistCliTurn appends a completed delegated-CLI turn's output (and its user
+// turn, when dispatch did not already write it) to Ion's conversation store,
+// advancing the conversation leaf. This is what makes Ion's store the
 // source of truth for CLI-served turns: without it, delegated-CLI turns are
 // invisible to Ion and a later cross-provider turn's transcript bridge misses
 // them entirely (the continuity-loss bug — a claude turn a subsequent gpt turn
@@ -196,6 +196,8 @@ func (m *Manager) persistCliTurn(key, convID string) {
 		return
 	}
 	userText := s.pendingCliUserTurn
+	prePersistedUserEntryID := s.pendingCliUserEntryID
+	s.pendingCliUserEntryID = ""
 	displayText := s.pendingCliDisplayText
 	injectionKind := s.pendingCliInjectionKind
 	assistantText := s.pendingCliAssistantText
@@ -210,12 +212,19 @@ func (m *Manager) persistCliTurn(key, convID string) {
 	// run has already been cleared by the time the turn is persisted; an empty
 	// value is logged as-is rather than guessed at.
 	turnRunID := s.requestID
+	// The directory this delegated turn ran in, recorded on the header by the
+	// append below for the same reason as servingModel.
+	workingDirectory := s.config.WorkingDirectory
 	planMarker := s.pendingCliPlanMarker
 	slashInvocation := s.pendingCliSlashInvocation
 	// The provider accounting this run reported, retained from its usage
 	// events (see cli_turn_usage.go). Nil when the run reported none.
 	turnUsage := s.pendingCliUsage
 	s.pendingCliUsage = nil
+	runCostUsd := s.pendingCliRunCostUsd
+	runUsage := s.pendingCliRunUsage
+	s.pendingCliRunCostUsd = 0
+	s.pendingCliRunUsage = types.LlmUsage{}
 	s.pendingCliPlanMarker = nil
 	s.pendingCliUserTurn = ""
 	s.pendingCliDisplayText = ""
@@ -244,12 +253,21 @@ func (m *Manager) persistCliTurn(key, convID string) {
 	// between this load and its save would otherwise be erased by it.
 	leaf := ""
 	wroteStructured := false
+	// The canonical ids of the assistant messages this turn writes. Announced
+	// after a successful save so consumers can re-key the rows they built from
+	// the live stream; see EngineEvent.AssistantEntryIDs for why message_end
+	// cannot carry them on this path.
+	var assistantEntryIDs []string
 	wrotePlanMarker := false
 	appendTurn := func(conv *conversation.Conversation) (bool, error) {
-		// Recovery-enabled sessions persist their canonical user turn before the
-		// delegated CLI starts. On exit only append CLI output: writing userText
-		// again would duplicate the exact turn recovery relies on.
-		if journal := conversation.ActiveRunRecovery(conv); journal == nil || journal.UserEntryID == "" {
+		// The user turn is normally on disk before the delegated CLI starts:
+		// written by the recovery journal commit, or alone at dispatch. On exit
+		// only append CLI output: writing userText again would duplicate it.
+		// The append below is the fallback for a dispatch-time write that
+		// failed or had no conversation id yet.
+		journal := conversation.ActiveRunRecovery(conv)
+		journalHasTurn := journal != nil && journal.UserEntryID != ""
+		if prePersistedUserEntryID == "" && !journalHasTurn {
 			var userEntry *conversation.SessionEntry
 			switch {
 			case slashInvocation != nil:
@@ -272,6 +290,7 @@ func (m *Manager) persistCliTurn(key, convID string) {
 		// last ran on. A CLI-served conversation reaches none of the API
 		// runloop, so this is the only place the header advances for it.
 		conversation.SyncModel(conv, servingModel, turnRunID)
+		conversation.SyncWorkingDirectory(conv, workingDirectory, turnRunID)
 		hasRecordedText := false
 		for _, it := range structuredItems {
 			if it.kind == "text" {
@@ -289,7 +308,7 @@ func (m *Manager) persistCliTurn(key, convID string) {
 		if fallbackWillRun {
 			structuredUsage = nil
 		}
-		wroteStructured = appendStructuredCliTurn(conv, structuredItems, servingModel, structuredUsage)
+		wroteStructured, assistantEntryIDs = appendStructuredCliTurn(conv, structuredItems, servingModel, structuredUsage)
 		if (!wroteStructured || !hasRecordedText) && assistantText != "" {
 			// Text-only fallback, and the completion for a structured recording
 			// whose stream carried no text chunks (some backends report the
@@ -308,6 +327,9 @@ func (m *Manager) persistCliTurn(key, convID string) {
 			} else {
 				conversation.AddAssistantMessageNoUsage(conv, blocks, servingModel)
 			}
+			if id := conversation.LastMessageEntryID(conv); id != "" {
+				assistantEntryIDs = append(assistantEntryIDs, id)
+			}
 		}
 		// Append the plan marker LAST, after the turn's content, so the tree
 		// order matches when the plan was captured: the marker sits after the
@@ -318,6 +340,12 @@ func (m *Manager) persistCliTurn(key, convID string) {
 		if planMarker != nil {
 			conversation.AppendEntry(conv, conversation.EntryPlanMarker, *planMarker)
 			wrotePlanMarker = true
+		}
+		if runCostUsd > 0 {
+			conversation.UpdateCost(conv, runCostUsd)
+		}
+		if runUsage != (types.LlmUsage{}) {
+			conversation.AddRunUsageTotals(conv, runUsage)
 		}
 		if conv.LeafID != nil {
 			leaf = *conv.LeafID
@@ -341,6 +369,24 @@ func (m *Manager) persistCliTurn(key, convID string) {
 		})
 		return
 	}
+	// Announce the canonical ids so consumers re-key the assistant rows they
+	// built from the live stream. Logged either way: a turn that wrote no
+	// assistant entry (tool-only, or a save that produced none) is a real
+	// outcome, and silence here would be indistinguishable from a dropped
+	// emit when a client later reports a stale transcript.
+	if len(assistantEntryIDs) > 0 {
+		utils.LogWithFields(utils.LevelInfo, "session.native_session", "persistCliTurn: announcing persisted assistant entries", map[string]any{
+			"key": key, "conversation_id": convID, "count": len(assistantEntryIDs),
+		})
+		m.emit(key, types.EngineEvent{
+			Type:              "engine_assistant_turn_persisted",
+			AssistantEntryIDs: assistantEntryIDs,
+		})
+	} else {
+		utils.LogWithFields(utils.LevelDebug, "session.native_session", "persistCliTurn: no assistant entries to announce", map[string]any{
+			"key": key, "conversation_id": convID,
+		})
+	}
 	slashCommand := ""
 	if slashInvocation != nil {
 		slashCommand = slashInvocation.Command
@@ -350,6 +396,8 @@ func (m *Manager) persistCliTurn(key, convID string) {
 		"plan_marker": wrotePlanMarker, "plan_slug": planMarkerSlug(planMarker),
 		"structured_items": len(structuredItems), "user_bytes": len(userText), "display_bytes": len(displayText), "assistant_bytes": len(assistantText),
 		"slash_command": slashCommand, "usage_recorded": turnUsage != nil, "occupancy_tokens": occupancyTokens(turnUsage),
+		"run_cost_usd": runCostUsd, "input_tokens": runUsage.InputTokens, "output_tokens": runUsage.OutputTokens,
+		"cache_read_input_tokens": runUsage.CacheReadInputTokens, "cache_creation_input_tokens": runUsage.CacheCreationInputTokens,
 	})
 }
 

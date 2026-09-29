@@ -442,7 +442,7 @@ the unlanded count, the state indicator — sits in a fixed-width gutter at the
 START of the row, with the worktree name trailing and ellipsising.
 
 The **activity dot** is the aggregate status of the conversations living in that
-worktree, in the same colour vocabulary the tab and group pills use: it pulses
+worktree, in the same colour vocabulary the Inbox row's status dot uses: it pulses
 while something is running, shows the waiting colour when a conversation is
 blocked on background work, greys when everything is idle, and renders as a
 hollow ring when no conversation is open there at all. The **dirty marker** is a
@@ -463,15 +463,16 @@ in words as well, since colour must never be the only carrier.
 Line 2 of each row leads with the **worktree ID** — the directory name under
 `~/.ion/worktrees/`, which is also the suffix of the branch (`wt/<id>`) — before
 the last commit subject, in monospace. That is the token the Inbox worktree row
-and the tab strip have in common: a conversation's title is renamed by its first
-prompt and a worktree carries its own label, so without the ID the two surfaces
-share no visible string to correlate. The same ID appears on the iOS row.
+and the conversation row have in common: a conversation's title is renamed by
+its first prompt and a worktree carries its own label, so without the ID the two
+rows share no visible string to correlate. The same ID appears on the iOS row.
 
-These surfaces are deliberately complementary rather than redundant. The tab
-strip says which *tab* is focused and how work is grouped; the workspace
-indicator says which conversations are live or waiting across every group; Inbox
-says which *checkout* you are standing in and what git thinks of it. The activity dot appearing in two of them is one shared fold rendered twice,
-not two opinions — which is why it cannot drift.
+These surfaces are deliberately complementary rather than redundant. The
+conversation row says which conversation is focused; the workspace indicator
+says which conversations are live or waiting across every project; the worktree
+row says which *checkout* you are standing in and what git thinks of it. The
+activity dot appearing in two of them is one shared fold rendered twice, not two
+opinions — which is why it cannot drift.
 
 The gutter deliberately carries no conversation button and no `⋯` button. The
 first duplicated the row click while wearing the same glyph as the bench bar's

@@ -1,0 +1,345 @@
+{
+  "$comment": "Every studio_action the phone calls directly through its admin client, with the scope the server requires for it. Not the legacy desktop_* command map (phone-command-map.json). server/src/protocol/__tests__/phone-actions.test.ts checks each entry against the server's registrations.",
+  "actions": [
+    {
+      "action": "aiAssist.workflows",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "auth.completeSignIn",
+      "scope": "admin"
+    },
+    {
+      "action": "auth.createPairingLink",
+      "scope": "admin"
+    },
+    {
+      "action": "auth.listClients",
+      "scope": "admin"
+    },
+    {
+      "action": "auth.revokeClient",
+      "scope": "admin"
+    },
+    {
+      "action": "automation.delete",
+      "scope": "conversations:operate"
+    },
+    {
+      "action": "automation.duplicate",
+      "scope": "conversations:operate"
+    },
+    {
+      "action": "automation.history",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "automation.listing",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "automation.setProjectEnabled",
+      "scope": "conversations:operate"
+    },
+    {
+      "action": "automation.upsert",
+      "scope": "conversations:operate"
+    },
+    {
+      "action": "entra.identity",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "entra.signIn",
+      "scope": "admin"
+    },
+    {
+      "action": "entra.signOut",
+      "scope": "admin"
+    },
+    {
+      "action": "environment.discovery.close",
+      "scope": "admin"
+    },
+    {
+      "action": "environment.discovery.mintCode",
+      "scope": "admin"
+    },
+    {
+      "action": "environment.discovery.open",
+      "scope": "admin"
+    },
+    {
+      "action": "environment.discovery.status",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "environment.fs.browse",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "environment.git.author.get",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "environment.git.author.set",
+      "scope": "git:write"
+    },
+    {
+      "action": "environment.git.hostKeys",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "environment.git.test",
+      "scope": "git:write"
+    },
+    {
+      "action": "environment.host.toolchains",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "environment.jobs.cancel",
+      "scope": "git:write"
+    },
+    {
+      "action": "environment.jobs.list",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "environment.projects.add",
+      "scope": "git:write"
+    },
+    {
+      "action": "environment.projects.appraiseRemoval",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "environment.projects.clone",
+      "scope": "git:write"
+    },
+    {
+      "action": "environment.projects.list",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "environment.projects.relocate",
+      "scope": "git:write"
+    },
+    {
+      "action": "environment.projects.remove",
+      "scope": "git:write"
+    },
+    {
+      "action": "environment.projects.setup",
+      "scope": "git:write"
+    },
+    {
+      "action": "environment.projects.trust",
+      "scope": "git:write"
+    },
+    {
+      "action": "environment.purge.appraise",
+      "scope": "admin"
+    },
+    {
+      "action": "environment.purge.run",
+      "scope": "admin"
+    },
+    {
+      "action": "environment.server.info",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "environment.server.logTail",
+      "scope": "admin"
+    },
+    {
+      "action": "environment.server.restart",
+      "scope": "admin"
+    },
+    {
+      "action": "environment.server.update",
+      "scope": "admin"
+    },
+    {
+      "action": "environment.systemMetrics.history",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "environment.systemMetrics.latest",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "environment.systemMetrics.watch",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "fs.readFileData",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "fs.resolveLink",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "gitIdentity.authorize",
+      "scope": "git:write"
+    },
+    {
+      "action": "gitIdentity.list",
+      "scope": "git:write"
+    },
+    {
+      "action": "gitIdentity.mintSshKey",
+      "scope": "git:write"
+    },
+    {
+      "action": "gitIdentity.remove",
+      "scope": "git:write"
+    },
+    {
+      "action": "gitIdentity.setSshKey",
+      "scope": "git:write"
+    },
+    {
+      "action": "gitIdentity.setToken",
+      "scope": "git:write"
+    },
+    {
+      "action": "mcp.add",
+      "scope": "admin"
+    },
+    {
+      "action": "mcp.list",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "mcp.login",
+      "scope": "admin"
+    },
+    {
+      "action": "mcp.logout",
+      "scope": "admin"
+    },
+    {
+      "action": "mcp.remove",
+      "scope": "admin"
+    },
+    {
+      "action": "mcp.update",
+      "scope": "admin"
+    },
+    {
+      "action": "model.list",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "model.listTiers",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "model.refresh",
+      "scope": "admin"
+    },
+    {
+      "action": "model.removeTier",
+      "scope": "admin"
+    },
+    {
+      "action": "model.setTier",
+      "scope": "admin"
+    },
+    {
+      "action": "oauth.deviceCode",
+      "scope": "admin"
+    },
+    {
+      "action": "oauth.devicePoll",
+      "scope": "admin"
+    },
+    {
+      "action": "oauth.logout",
+      "scope": "admin"
+    },
+    {
+      "action": "oauth.start",
+      "scope": "admin"
+    },
+    {
+      "action": "planBashAllowlist.get",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "planBashAllowlist.set",
+      "scope": "admin"
+    },
+    {
+      "action": "policy.getFull",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "provider.getDefault",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "provider.login",
+      "scope": "admin"
+    },
+    {
+      "action": "provider.loginCancel",
+      "scope": "admin"
+    },
+    {
+      "action": "provider.loginCode",
+      "scope": "admin"
+    },
+    {
+      "action": "provider.logout",
+      "scope": "admin"
+    },
+    {
+      "action": "provider.setDefault",
+      "scope": "admin"
+    },
+    {
+      "action": "provider.storeCredential",
+      "scope": "admin"
+    },
+    {
+      "action": "remote.discoverRelays",
+      "scope": "admin"
+    },
+    {
+      "action": "remote.getDisplay",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "remote.relayAuthConfig",
+      "scope": "admin"
+    },
+    {
+      "action": "remote.setDisplay",
+      "scope": "conversations:operate"
+    },
+    {
+      "action": "remote.stopDiscovery",
+      "scope": "admin"
+    },
+    {
+      "action": "remote.testRelay",
+      "scope": "admin"
+    },
+    {
+      "action": "settings.load",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "settings.save",
+      "scope": "conversations:read"
+    },
+    {
+      "action": "settings.setProjectable",
+      "scope": "conversations:operate"
+    }
+  ]
+}

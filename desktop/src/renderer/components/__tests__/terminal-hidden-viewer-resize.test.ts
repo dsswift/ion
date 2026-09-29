@@ -1,18 +1,19 @@
 import { describe, it, expect } from 'vitest'
 
 /**
- * Two windows, one pty.
+ * One window, one pty -- but a hidden or minimized window still has a live
+ * DOM (Electron's BrowserWindow.hide() does not touch document.hidden or
+ * layout), so a renderer cannot rely on that flag to know it is off screen.
  *
- * The Overlay renderer stays alive and hidden while Studio is the active UI
- * (it owns the session store), and BOTH presentations mount TerminalPanel
- * against the SAME pty key. Every viewer fits its own xterm and publishes the
- * result, so the last writer wins regardless of which window is on screen.
- *
- * Measured on Windows: the visible Studio pane fit 207 columns, the hidden
- * Overlay fit 55, and the pty kept 55 -- the pane rendered at roughly a
- * quarter of its width. The operator's own observation pinned the mechanism:
- * dragging the pane divider by a pixel made the NEXT command use the full
- * width, because that resize came from the visible window and re-won the race.
+ * This originated as a two-window bug (spec 17 deleted the Overlay window
+ * that used to stay alive and hidden while Studio was active, both mounting
+ * TerminalPanel against the same pty key): the visible pane fit 207 columns,
+ * the hidden one fit 55, and the pty kept 55 -- the pane rendered at roughly
+ * a quarter of its width. Dragging the pane divider by a pixel made the NEXT
+ * command use the full width, because that resize came from the visible
+ * window and re-won the race. The guard survives Overlay's removal because
+ * the same false-visible failure mode still applies to Studio's own window
+ * when it is hidden or minimized.
  *
  * These pin the predicate that decides who may publish. The component itself
  * needs a DOM host and an xterm instance; the rule is what matters and it is
@@ -83,21 +84,20 @@ describe('the race the guard removes', () => {
   })
 })
 
-describe('the window-level arbitration lives in the main process', () => {
+describe('the last line of defence is the server, not the renderer', () => {
   // The renderer cannot see that its own window is hidden: BrowserWindow.hide()
-  // leaves document.hidden false and layout intact. A renderer-side guard was
-  // shipped, logged ZERO suppressions, and the wrong size kept reaching the
-  // pty -- the check has to run where the BrowserWindow is.
-  it('drops a resize from a hidden sender window', async () => {
+  // leaves document.hidden false and layout intact. The Electron adapter that
+  // used to drop a resize from a hidden sender window went with the terminal
+  // IPC (the server owns the PTY, ADR-033); what remains is the server's own
+  // refusal of the measurement a hidden or collapsed element produces, which
+  // holds for every client, not only an Electron window.
+  it('the terminal manager refuses an implausible measurement before touching the pty', async () => {
     const { readFileSync } = await import('node:fs')
     const src = readFileSync(
-      new URL('../../../main/ipc/terminal.ts', import.meta.url),
+      new URL('../../../../../server/src/terminal/terminal-manager.ts', import.meta.url),
       'utf-8',
     )
-    expect(src).toContain('BrowserWindow.fromWebContents(event.sender)')
-    expect(src).toContain('!sender.isVisible()')
-    // It must return before touching the pty, not merely log.
-    expect(src).toMatch(/isVisible\(\)[\s\S]{0,200}?return/)
+    expect(src).toMatch(/cols < 2 \|\| rows < 2[\s\S]{0,200}?return/)
   })
 
   // A renderer-side document.hidden test is the approach that failed; keeping
@@ -120,7 +120,7 @@ describe('the guard is wired into every publish site', () => {
       new URL('../TerminalInstance.tsx', import.meta.url),
       'utf-8',
     )
-    const publishes = src.match(/window\.ion\.terminalResize\(/g) ?? []
+    const publishes = src.match(/host\.shell\.terminalResize\(/g) ?? []
     const guards = src.match(/isViewerVisible\(/g) ?? []
     expect(publishes.length).toBeGreaterThan(0)
     // One definition plus one guard per publish site.

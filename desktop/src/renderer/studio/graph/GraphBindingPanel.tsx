@@ -9,7 +9,7 @@ import React from 'react'
 import { useColors } from '../../theme'
 import { buildDimensionCatalog, type CatalogEntry } from './channels/dimension-catalog'
 import { useGraphStore, defaultChannelBindings } from './graph-store'
-import type { ChannelBindings, ChannelDimension, ChannelValueType } from '../../../shared/graph-view-types'
+import type { ChannelBindings, ChannelDimension, ChannelValueType } from '@ion/shared/graph-view-types'
 
 type ChannelName = keyof ChannelBindings
 

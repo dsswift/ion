@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -17,23 +16,20 @@ import (
 )
 
 type openaiProvider struct {
-	id         string
-	apiKey     string
-	baseURL    string
-	authHeader string // "bearer" (default) or "x-api-key"
-	client     *http.Client
+	id      string
+	baseURL string
+	client  *http.Client
 }
 
 // NewOpenAIProvider creates an OpenAI provider that uses raw HTTP SSE and
 // translates OpenAI streaming events to Anthropic canonical format.
+//
+// Holds no credential (R-23): authentication is resolved per request from
+// the context via applyRequestAuth.
 func NewOpenAIProvider(opts *ProviderOptions) LlmProvider {
-	apiKey := ""
 	baseURL := "https://api.openai.com"
 	id := "openai"
 	if opts != nil {
-		if opts.APIKey != "" {
-			apiKey = opts.APIKey
-		}
 		if opts.BaseURL != "" {
 			baseURL = opts.BaseURL
 		}
@@ -41,23 +37,13 @@ func NewOpenAIProvider(opts *ProviderOptions) LlmProvider {
 			id = opts.ID
 		}
 	}
-	if apiKey == "" && id == "openai" {
-		apiKey = os.Getenv("OPENAI_API_KEY")
-	}
-
-	authHeader := "bearer"
-	if opts != nil && opts.AuthHeader != "" {
-		authHeader = opts.AuthHeader
-	}
 
 	result := &openaiProvider{
-		id:         id,
-		apiKey:     apiKey,
-		baseURL:    baseURL,
-		authHeader: authHeader,
-		client:     &http.Client{Transport: network.GetHTTPTransport()},
+		id:      id,
+		baseURL: baseURL,
+		client:  &http.Client{Transport: network.GetHTTPTransport()},
 	}
-	utils.LogWithFields(utils.LevelInfo, "OpenAI", "new openai provider", map[string]any{"provider": id, "path": baseURL, "count": len(apiKey), "reason": authHeader})
+	utils.LogWithFields(utils.LevelInfo, "OpenAI", "new openai provider", map[string]any{"provider": id, "path": baseURL})
 	return result
 }
 
@@ -103,20 +89,9 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	apiKey := p.apiKey
-	keySource := "constructor"
-	if apiKey == "" {
-		apiKey = GetProviderKey(p.id)
-		keySource = "registry:" + p.id
-	}
-	utils.LogWithFields(utils.LevelInfo, "OpenAI", "do stream auth resolved", map[string]any{"provider": p.id, "reason": keySource, "count": len(apiKey), "status": p.authHeader})
-	// Fail fast on a keyless request to the canonical hosted endpoint — a
-	// guaranteed 401; see requireKeyForHost (auth.go). Custom base URLs
-	// (gateways, local runtimes) may be legitimately keyless and pass.
-	if pe := requireKeyForHost(req.URL.Host, p.id, apiKey); pe != nil {
+	if pe := applyRequestAuth(ctx, req, raw, p.id); pe != nil {
 		return pe
 	}
-	setAuthHeader(req, p.authHeader, apiKey)
 	req.Header.Set("Accept", "text/event-stream")
 
 	resp, err := p.client.Do(req)
@@ -141,7 +116,7 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 		respBody, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read of error-response body
 		utils.LogWithFields(utils.LevelError, "OpenAI", "do stream http error", map[string]any{"status": resp.StatusCode, "path": endpoint, "error": string(respBody)})
 		return FromOpenAIError(
-			fmt.Errorf("openai API error: %s", string(respBody)),
+			providerAPIError(p.id, "openai", resp.StatusCode, string(respBody)),
 			resp.StatusCode,
 			string(respBody),
 		)

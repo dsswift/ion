@@ -187,11 +187,11 @@ func stringsFromRaw(raw interface{}) []string {
 }
 
 func modelsConfigPath() string {
-	home, err := utils.UserHomeDir()
-	if err != nil {
+	dir := utils.IonDir()
+	if dir == "" {
 		return ""
 	}
-	return filepath.Join(home, ".ion", "models.json")
+	return filepath.Join(dir, "models.json")
 }
 
 func withModelsConfig(fn func(map[string]interface{}) error) error {

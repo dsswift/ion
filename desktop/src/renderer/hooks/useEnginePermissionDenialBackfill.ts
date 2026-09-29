@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { rDebug, rWarn } from '../rendererLogger'
+import { host } from '../host/host-instance'
 
 /**
  * Backfill pending AskUserQuestion / ExitPlanMode denials for engine
@@ -34,7 +35,7 @@ import { rDebug, rWarn } from '../rendererLogger'
  *       needed) or a synthesized entry that needs toolInput enrichment.
  *
  * What we read:
- *   `window.ion.loadSession(sessionId)` returns engine messages from
+ *   `host.shell.loadSession(sessionId)` returns engine messages from
  *   `loadEngineConversationMessages` (see main/session-meta.ts). Each
  *   `role: 'tool'` entry carries `toolName`, `toolId`, and `toolInput`
  *   (JSON string of the tool_use input). We scan from the end and
@@ -128,7 +129,7 @@ async function backfillForKey(
   expectedToolUseId: string,
 ): Promise<void> {
   try {
-    const msgs = await window.ion.loadSession(sessionId)
+    const msgs = await host.shell.loadSession(sessionId)
     if (!Array.isArray(msgs) || msgs.length === 0) {
       rDebug('denial-backfill', 'no messages in conversation file', { key, session_id: sessionId.slice(0, 20) })
       return

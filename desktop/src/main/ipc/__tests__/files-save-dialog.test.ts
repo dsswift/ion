@@ -1,12 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { join } from 'path'
-import { IPC } from '../../../shared/types'
+import { IPC } from '@ion/shared/types'
 
 const {
   handlers,
   showSaveDialog,
   fromWebContents,
-  overlayWindow,
   studioWindow,
   showWindow,
   log,
@@ -16,7 +15,6 @@ const {
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
   showSaveDialog: vi.fn(async () => ({ canceled: true, filePath: undefined as string | undefined })),
   fromWebContents: vi.fn(),
-  overlayWindow: { hide: vi.fn() },
   studioWindow: { hide: vi.fn() },
   showWindow: vi.fn(),
   log: vi.fn(),
@@ -32,7 +30,6 @@ vi.mock('electron', () => ({
   shell: { showItemInFolder: vi.fn(), openPath: vi.fn() },
 }))
 vi.mock('../../state', () => ({
-  state: { mainWindow: overlayWindow },
   fileWatchers: new Map(),
   recentlyWrittenPaths: new Set(),
 }))
@@ -44,7 +41,7 @@ import { registerFilesIpc } from '../files'
 
 registerFilesIpc()
 
-async function save(payload: { defaultPath?: unknown; defaultFileName?: unknown }): Promise<unknown> {
+async function save(payload: { defaultPath?: unknown; defaultFileName?: unknown; filters?: unknown }): Promise<unknown> {
   const handler = handlers.get(IPC.FS_SAVE_DIALOG)
   if (!handler) throw new Error('save dialog handler not registered')
   return handler({ sender: {} }, payload)
@@ -56,7 +53,11 @@ describe('filesystem save dialog', () => {
     showSaveDialog.mockResolvedValue({ canceled: true, filePath: undefined })
   })
 
-  it('opens from Studio with a Downloads filename and leaves the overlay visible', async () => {
+  it('opens from Studio with a Downloads filename, parented to the sender, with no hide/restore dance', async () => {
+    // Studio is a normal window (unlike the deleted Overlay glass): the
+    // native dialog renders on top of it with no hide/restore needed. See
+    // ipc/file-dialog.ts's identical rationale and commit 4ca319fa8, which
+    // removed this dance from ipc/files.ts.
     fromWebContents.mockReturnValue(studioWindow)
 
     await save({ defaultFileName: 'release-plan-20270305-0907.md' })
@@ -64,18 +65,24 @@ describe('filesystem save dialog', () => {
     expect(showSaveDialog).toHaveBeenCalledWith(studioWindow, {
       defaultPath: join(DOWNLOADS_DIR, 'release-plan-20270305-0907.md'),
     })
-    expect(overlayWindow.hide).not.toHaveBeenCalled()
+    expect(studioWindow.hide).not.toHaveBeenCalled()
     expect(showWindow).not.toHaveBeenCalled()
   })
 
-  it('hides and restores the overlay when the overlay opens the dialog', async () => {
-    fromWebContents.mockReturnValue(overlayWindow)
+  it('passes a well-formed type filter to the dialog and refuses a malformed one', async () => {
+    fromWebContents.mockReturnValue(studioWindow)
+    showSaveDialog.mockResolvedValue({ canceled: false, filePath: '/tmp/x.zip' })
 
-    await save({ defaultPath: '/tmp/plan.md' })
+    await save({ defaultFileName: 'x.zip', filters: [{ name: 'Zip Archive', extensions: ['zip'] }] })
+    expect(showSaveDialog).toHaveBeenCalledWith(studioWindow, {
+      defaultPath: join(DOWNLOADS_DIR, 'x.zip'),
+      filters: [{ name: 'Zip Archive', extensions: ['zip'] }],
+    })
 
-    expect(overlayWindow.hide).toHaveBeenCalledTimes(1)
-    expect(showSaveDialog).toHaveBeenCalledWith(overlayWindow, { defaultPath: '/tmp/plan.md' })
-    expect(showWindow).toHaveBeenCalledWith('dialog-return')
+    showSaveDialog.mockClear()
+    const result = await save({ defaultFileName: 'x.zip', filters: [{ name: 'Any', extensions: ['*.zip'] }] })
+    expect(result).toEqual({ filePath: null, error: 'Invalid filters' })
+    expect(showSaveDialog).not.toHaveBeenCalled()
   })
 
   it('rejects a default filename that can escape Downloads', async () => {

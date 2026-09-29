@@ -56,7 +56,14 @@ fi
 
 # ── 2. Fallback: pattern-based kill for anything missed ──
 
-leftover_pids=$(pgrep -f "$REPO_DIR/node_modules/electron" 2>/dev/null || true)
+# The electron binary a dev run launches lives wherever npm installed it,
+# which under a workspace install is the repo root rather than desktop/.
+ELECTRON_DIR=$(node -p "require('$REPO_DIR/scripts/resolve-package').packageDir('electron','$REPO_DIR') || ''" 2>/dev/null || echo "")
+
+leftover_pids=""
+if [ -n "$ELECTRON_DIR" ]; then
+  leftover_pids=$(pgrep -f "$ELECTRON_DIR" 2>/dev/null || true)
+fi
 leftover_pids="$leftover_pids $(pgrep -f "$REPO_DIR/dist/main" 2>/dev/null || true)"
 leftover_pids=$(echo "$leftover_pids" | xargs)
 
@@ -77,7 +84,10 @@ fi
 # ── 3. Verify ──
 
 sleep 0.5
-remaining=$(pgrep -f "$REPO_DIR/node_modules/electron" 2>/dev/null || true)
+remaining=""
+if [ -n "$ELECTRON_DIR" ]; then
+  remaining=$(pgrep -f "$ELECTRON_DIR" 2>/dev/null || true)
+fi
 remaining="$remaining $(pgrep -f "$REPO_DIR/dist/main" 2>/dev/null || true)"
 remaining=$(echo "$remaining" | xargs)
 

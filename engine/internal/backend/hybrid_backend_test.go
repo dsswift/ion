@@ -45,7 +45,7 @@ func TestHybrid_DefaultRule_AnthropicNoCredentialsGoesApi(t *testing.T) {
 	h := NewHybridBackend()
 	// No resolver, no CLI-auth probe: credential-based routing degrades to api
 	// (the old hardcoded anthropic → claude-code default is gone).
-	if kind := h.kindFor("claude-test-sonnet"); kind != "api" {
+	if kind := h.kindFor("claude-test-sonnet", false, nil); kind != "api" {
 		t.Fatalf("expected api for anthropic model with no credentials, got %q", kind)
 	}
 	if got := h.ResolveFor("claude-test-sonnet"); got != h.InnerApi() {
@@ -56,7 +56,7 @@ func TestHybrid_DefaultRule_AnthropicNoCredentialsGoesApi(t *testing.T) {
 func TestHybrid_DefaultRule_OpenAIGoesApi(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackend()
-	if kind := h.kindFor("gpt-test-4o"); kind != "api" {
+	if kind := h.kindFor("gpt-test-4o", false, nil); kind != "api" {
 		t.Fatalf("expected api for openai model under default rule, got %q", kind)
 	}
 	if got := h.ResolveFor("gpt-test-4o"); got != h.InnerApi() {
@@ -75,7 +75,7 @@ func TestHybrid_DefaultRule_GoogleGoesApi(t *testing.T) {
 func TestHybrid_DefaultRule_UnknownModelGoesApi(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackend()
-	if kind := h.kindFor("totally-unknown-model"); kind != "api" {
+	if kind := h.kindFor("totally-unknown-model", false, nil); kind != "api" {
 		t.Fatalf("expected api for unknown model (safe default), got %q", kind)
 	}
 	if got := h.ResolveFor("totally-unknown-model"); got != h.InnerApi() {
@@ -100,7 +100,7 @@ func TestHybrid_Prefs_OpenAIPinnedToCodex(t *testing.T) {
 	h := NewHybridBackendWithPrefs(map[string]string{"openai": "codex"})
 	// The routing DECISION honors the preference (red on the old hardcoded
 	// anthropic-only rule, which always sent openai to api).
-	if kind := h.kindFor("gpt-test-4o"); kind != "codex" {
+	if kind := h.kindFor("gpt-test-4o", false, nil); kind != "codex" {
 		t.Fatalf("expected codex for openai when pinned, got %q", kind)
 	}
 	// The codex backend is buildable, so ResolveFor returns a *CodexBackend
@@ -114,7 +114,7 @@ func TestHybrid_Prefs_AnthropicPinnedToApi(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackendWithPrefs(map[string]string{"anthropic": "api"})
 	// Preference overrides the default anthropic → claude-code rule.
-	if kind := h.kindFor("claude-test-sonnet"); kind != "api" {
+	if kind := h.kindFor("claude-test-sonnet", false, nil); kind != "api" {
 		t.Fatalf("expected api for anthropic when pinned to api, got %q", kind)
 	}
 	if got := h.ResolveFor("claude-test-sonnet"); got != h.InnerApi() {
@@ -126,11 +126,11 @@ func TestHybrid_Prefs_DoNotLeakToOtherProviders(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackendWithPrefs(map[string]string{"openai": "codex"})
 	// Anthropic follows the credential rule (no creds here → api).
-	if kind := h.kindFor("claude-test-sonnet"); kind != "api" {
+	if kind := h.kindFor("claude-test-sonnet", false, nil); kind != "api" {
 		t.Fatalf("expected anthropic to follow credential rule (api), got %q", kind)
 	}
 	// Google follows the credential rule too.
-	if kind := h.kindFor("gemini-test-pro"); kind != "api" {
+	if kind := h.kindFor("gemini-test-pro", false, nil); kind != "api" {
 		t.Fatalf("expected google to keep api, got %q", kind)
 	}
 }
@@ -227,10 +227,15 @@ func TestHybrid_IsRunning_UnknownRunID_ReturnsFalse(t *testing.T) {
 	}
 }
 
-func TestHybrid_WriteToStdin_UnknownRunID_NoError(t *testing.T) {
+// An unknown run has no stdin to write to. Reporting success would make the
+// session tell the client a steer was delivered that went nowhere.
+func TestHybrid_WriteToStdin_UnknownRunID_Errors(t *testing.T) {
 	h := NewHybridBackend()
-	if err := h.WriteToStdin("never-started", map[string]any{"k": "v"}); err != nil {
-		t.Fatalf("expected nil error for unknown requestID, got %v", err)
+	if err := h.WriteToStdin("never-started", map[string]any{"k": "v"}); err == nil {
+		t.Fatal("expected an error for an unknown requestID")
+	}
+	if err := h.SteerViaStdin("never-started", "hello", "", ""); err == nil {
+		t.Fatal("expected an error for an unknown requestID")
 	}
 }
 
@@ -392,7 +397,7 @@ func TestHybrid_NewChild_PropagatesPrefs(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackendWithPrefs(map[string]string{"openai": "codex"})
 	child := h.NewChild()
-	if kind := child.kindFor("gpt-test-4o"); kind != "codex" {
+	if kind := child.kindFor("gpt-test-4o", false, nil); kind != "codex" {
 		t.Fatalf("expected child to inherit openai→codex preference, got %q", kind)
 	}
 }

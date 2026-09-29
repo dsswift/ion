@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -56,14 +57,26 @@ type credentialFile struct {
 // NewFileStore creates a FileStore at ~/.ion/credentials.enc with its
 // keyfile at ~/.ion/credentials.key.
 func NewFileStore() *FileStore {
-	home, err := utils.UserHomeDir()
-	if err != nil {
-		utils.LogWithFields(utils.LevelInfo, "auth.filestore", "cannot determine home dir", map[string]any{"error": err.Error()})
-		home = "."
+	dir := utils.IonDir()
+	if dir == "" {
+		dir = "."
 	}
 	return &FileStore{
-		path:    filepath.Join(home, ".ion", "credentials.enc"),
-		keyPath: filepath.Join(home, ".ion", "credentials.key"),
+		path:    filepath.Join(dir, "credentials.enc"),
+		keyPath: filepath.Join(dir, "credentials.key"),
+	}
+}
+
+// ErrKeyNotFound is GetKey's answer for a name the store does not hold.
+var ErrKeyNotFound = errors.New("key not found")
+
+// NewFileStoreAt creates a FileStore at <dir>/credentials.enc with its keyfile
+// beside it, for a tool that keeps its own secrets apart from the engine's
+// (`ion fleet` stores its pairings in ~/.ion/fleet).
+func NewFileStoreAt(dir string) *FileStore {
+	return &FileStore{
+		path:    filepath.Join(dir, "credentials.enc"),
+		keyPath: filepath.Join(dir, "credentials.key"),
 	}
 }
 
@@ -84,7 +97,7 @@ func (fs *FileStore) GetKey(provider string) (string, error) {
 
 	key, ok := creds.Keys[provider]
 	if !ok {
-		return "", fmt.Errorf("no key for provider %q in filestore", provider)
+		return "", fmt.Errorf("%w: no key for provider %q in filestore", ErrKeyNotFound, provider)
 	}
 	return key, nil
 }
@@ -167,6 +180,138 @@ func (fs *FileStore) DeleteKey(provider string) error {
 	}
 
 	delete(creds.Keys, provider)
+	return fs.writeFile(creds)
+}
+
+// partitionKey namespaces name (a provider id, or "oauth:<provider>") under
+// subject (child 08, R-37/R-39). subject "" returns name UNCHANGED -- this
+// is what keeps every pre-existing entry on disk resolvable with zero
+// rewrite (B-07..B-10): an upgrading install's entries have no subject
+// prefix, so they simply ARE the unattributed partition, already in place.
+// url.PathEscape prevents a subject containing "/" from escaping into a
+// different provider's key or a different subject's partition.
+func partitionKey(subject, name string) string {
+	if subject == "" {
+		return name
+	}
+	return "p/" + url.PathEscape(subject) + "/" + name
+}
+
+// GetKeyFor retrieves subject's own key for provider. An attributed
+// principal (subject != "") with no entry in their own partition returns
+// ErrNotFound -- it does NOT fall back to the unattributed partition, which
+// would re-open exactly the shared-read path child 04's refusal mode
+// exists to close. subject "" is GetKey's own unpartitioned behavior,
+// unchanged.
+func (fs *FileStore) GetKeyFor(subject, provider string) (string, error) {
+	return fs.GetKey(partitionKey(subject, provider))
+}
+
+// SetKeyFor stores a key in subject's own partition. Invalidates only that
+// (subject, provider) pair's HasKey negative -- a write to one partition
+// has no bearing on any other subject's cached state, unlike the
+// unattributed SetKey path (whose scope is unknown to the caller and
+// therefore sweeps every subject as a conservative default, see
+// InvalidateHasKey's doc comment).
+func (fs *FileStore) SetKeyFor(subject, provider, value string) error {
+	if subject == "" {
+		return fs.SetKey(provider, value)
+	}
+	InvalidateHasKeySubject(subject, provider)
+	return fs.setKeyRaw(partitionKey(subject, provider), value)
+}
+
+// DeleteKeyFor removes subject's own key for provider. See SetKeyFor for the
+// invalidation-scoping rationale.
+func (fs *FileStore) DeleteKeyFor(subject, provider string) error {
+	if subject == "" {
+		return fs.DeleteKey(provider)
+	}
+	InvalidateHasKeySubject(subject, provider)
+	return fs.deleteKeyRaw(partitionKey(subject, provider))
+}
+
+// ListFor returns the provider ids (or "oauth:<provider>" grant keys) stored
+// in subject's own partition, with the partition prefix stripped -- so a
+// caller sees the same shape ListStored has always returned, scoped to one
+// subject. subject "" returns every UNPREFIXED key (today's ListStored
+// behavior, unaffected by any partitioned entry that may also exist in the
+// same file).
+func (fs *FileStore) ListFor(subject string) ([]string, error) {
+	fs.mu.RLock()
+	creds, legacy, err := fs.readFile()
+	fs.mu.RUnlock()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if legacy {
+		fs.migrateLegacy()
+	}
+
+	prefix := ""
+	if subject != "" {
+		prefix = "p/" + url.PathEscape(subject) + "/"
+	}
+	var out []string
+	for k := range creds.Keys {
+		if subject == "" {
+			// Unattributed: every key with NO "p/" partition prefix at all --
+			// not just ones failing to match some OTHER subject's prefix,
+			// which would incorrectly include them.
+			if strings.HasPrefix(k, "p/") {
+				continue
+			}
+			out = append(out, k)
+			continue
+		}
+		if rest, ok := strings.CutPrefix(k, prefix); ok {
+			out = append(out, rest)
+		}
+	}
+	return out, nil
+}
+
+// setKeyRaw is SetKey's read-modify-write body operating on an already
+// partitioned key, factored out so SetKeyFor shares the exact same
+// backup/re-encrypt/write semantics without duplicating them.
+func (fs *FileStore) setKeyRaw(key, value string) error {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	creds, _, err := fs.readFile()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			utils.LogWithFields(utils.LevelInfo, "auth.filestore", "credentials file absent; creating new store", map[string]any{"path": fs.path})
+		} else {
+			bak := fmt.Sprintf("%s.bak-%d", fs.path, time.Now().Unix())
+			utils.LogWithFields(utils.LevelError, "auth.filestore", "credentials file undecryptable; preserving backup and starting fresh", map[string]any{"error": err.Error(), "path": fs.path, "backup": bak})
+			if renameErr := os.Rename(fs.path, bak); renameErr != nil {
+				utils.LogWithFields(utils.LevelError, "auth.filestore", "credentials backup rename failed", map[string]any{"error": renameErr.Error(), "path": fs.path, "backup": bak})
+			}
+		}
+		creds = &credentialFile{Version: 1, Keys: make(map[string]string)}
+	}
+
+	creds.Keys[key] = value
+	return fs.writeFile(creds)
+}
+
+// deleteKeyRaw is DeleteKey's body operating on an already partitioned key.
+func (fs *FileStore) deleteKeyRaw(key string) error {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	creds, _, err := fs.readFile()
+	if err != nil {
+		return err
+	}
+	if _, ok := creds.Keys[key]; !ok {
+		return nil
+	}
+	delete(creds.Keys, key)
 	return fs.writeFile(creds)
 }
 

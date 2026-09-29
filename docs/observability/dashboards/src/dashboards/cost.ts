@@ -6,7 +6,7 @@
 // the Tier-4 cache/sub-agent/fallback intelligence panels.
 
 import type { Dashboard } from '../dashboard.ts';
-import { row, text, stat, timeseries, piechart, logs, table } from '../panels.ts';
+import { row, text, stat, timeseries, piechart, logsTable, table } from '../panels.ts';
 import { instant, accumulation, telemetry } from '../queries.ts';
 import {
   totalSpendBare,
@@ -167,11 +167,11 @@ export function costDashboard(): Dashboard {
       },
       targets: [{ e: accumulation(`sum(count_over_time(${RUN}[$__interval]))`, '$__interval'), legend: 'runs' }],
     }),
-    logs({
+    logsTable({
       id: 10,
       title: 'Recent runs — full cost detail',
       gridPos: { h: 10, w: 24, x: 0, y: 24 },
-      target: { e: { expr: RUN, cls: 'instant', window: null } },
+      target: { e: { expr: `${RUN} | json`, cls: 'instant', window: null } },
     }),
     { ...row(11, 'Tier-4 cost intelligence', 34) },
     stat({
@@ -376,14 +376,14 @@ export function costDashboard(): Dashboard {
     annotations: [
       {
         name: 'Model fallback',
-        expr: '{service_name="ion-telemetry", kind="provider.fallback"} | json',
+        expr: '{event_name="provider.fallback"} | json',
         iconColor: 'orange',
         step: '60s',
         titleFormat: 'fallback: {{payload_requested_model}} -> {{payload_fallback_model}} ({{payload_reason}})',
       },
       {
         name: 'Compaction',
-        expr: '{service_name="ion-telemetry", kind="compaction"} | json',
+        expr: '{event_name="compaction"} | json',
         iconColor: 'blue',
         step: '60s',
         titleFormat: 'compaction: {{payload_trigger}} tokens_reclaimed={{payload_tokens_reclaimed}}',

@@ -1,0 +1,44 @@
+{
+  "name": "@ion/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts",
+    "./oauth": "./src/oauth/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint 'src/**/*.ts'",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "build": "node scripts/build.mjs"
+  },
+  "dependencies": {
+    "@ion/shared": "*",
+    "archiver": "^8.0.0",
+    "bonjour-service": "^1.4.4",
+    "chokidar": "^4.0.3",
+    "jose": "^6.2.12",
+    "jpeg-js": "^0.4.4",
+    "node-pty": "^1.1.0",
+    "picomatch": "^4.0.7",
+    "pngjs": "^7.0.0",
+    "ws": "^8.21.3",
+    "yauzl": "^3.4.0",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/archiver": "^8.0.0",
+    "@types/node": "^22.19.15",
+    "@types/picomatch": "^4.0.3",
+    "@types/pngjs": "^6.0.5",
+    "@types/ws": "^8.18.1",
+    "@types/yauzl": "^3.4.0",
+    "esbuild": "^0.25.12",
+    "eslint": "^9.39.5",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.69.0",
+    "vitest": "^4.1.10"
+  }
+}

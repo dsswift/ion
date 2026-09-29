@@ -34,7 +34,7 @@
  *     standalone path so conversation tabs that track the current
  *     plan via `tab.planFilePath` still surface it.
  */
-import { findPlanImplementation } from '../../shared/plan-implementation'
+import { findPlanImplementation } from '@ion/shared/plan-implementation'
 
 export interface ParsedAttachment {
   kind: 'image' | 'file' | 'plan'

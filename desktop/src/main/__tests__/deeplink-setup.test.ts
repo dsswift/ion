@@ -18,6 +18,8 @@ vi.mock('../logger', () => ({
 // Imported for its side-effect-free helper only; the module's other exports
 // touch app/window singletons that belong to integration, not unit, coverage.
 vi.mock('../window-manager', () => ({ showWindow: vi.fn() }))
+vi.mock('../connections/broker-instance', () => ({ broker: { sendAction: vi.fn(async () => ({ ok: true })) } }))
+vi.mock('../studio-window-manager', () => ({ openStudioWindow: vi.fn() }))
 vi.mock('../deeplink/dispatch', () => ({
   handleDeepLink: vi.fn(), configureDeepLinks: vi.fn(),
 }))

@@ -38,34 +38,21 @@ final class SessionViewModel {
     /// `tabs` still holds the previous session's list. Only an applied snapshot
     /// makes tab absence authoritative.
     var hasAppliedTabSnapshot = false
-    /// Mirror of each tab's conversation message count. Kept in sync by the
-    /// unified conversation accessors (SessionViewModel+Conversation.swift) and
-    /// mutateEngineInstance. Views observe this for scroll-to-bottom triggers.
-    /// The messages themselves live on the single per-tab ConversationInstanceInfo
-    /// (post-#256 unification) — read via `conversationMessages(_:)`.
+    /// The server transcript stream each conversation's rows come from, by
+    /// tab. See SessionViewModel+Transcript.swift, the only writer of rows.
+    var transcriptStreams: [String: TranscriptStream] = [:]
+    /// Conversations whose newest page has been asked for and not answered.
+    /// Patches for them are superseded by that page and are not applied.
+    var transcriptResyncing: Set<String> = []
+    /// Conversations with an older page asked for and not answered.
+    var transcriptOlderInFlight: Set<String> = []
+    /// Prompts this phone sent that the server has not made a row for yet,
+    /// by tab. See SessionViewModel+PendingPrompts.swift.
+    var pendingPrompts: [String: [Message]] = [:]
+    /// Conversations whose newest page is being fetched (the view's spinner),
+    /// and those whose fetch gave up (the view's retry banner).
     var loadingConversation: Set<String> = []
-    var conversationLoaded: Set<String> = []
-    var conversationHasMore: [String: Bool] = [:]
-    var conversationCursor: [String: String] = [:]
     var conversationLoadFailed: Set<String> = []
-    /// Drives background backfill of older history pages so scrolling back and
-    /// jumping to an older row never wait on a round trip. See
-    /// ConversationBackfill for why this is not scroll-driven.
-    let conversationBackfill = ConversationBackfill()
-    /// Per-tab debounce clock for the snapshot staleness reconcile. When the
-    /// desktop snapshot's authoritative last-activity timestamp is newer than
-    /// the newest local message (dropped live deltas — e.g. a LAN↔relay
-    /// transport switch), the snapshot handler re-issues loadConversation to
-    /// heal the gap. This map throttles that heal per tab so a burst of
-    /// snapshots during a legitimately-streaming run does not thrash the
-    /// re-fetch. See SessionViewModel+Snapshot.swift.
-    var lastConversationReconcileAt: [String: Date] = [:]
-    /// Timestamp of the last reconnect allowed to bypass the per-tab reconcile
-    /// debounce. A flapping transport would otherwise re-trigger a full reload of
-    /// every diverged tab on every reconnect, flooding the desktop with
-    /// load_conversation requests; the bypass is granted at most once per
-    /// reconnectReloadDebounce window. See SessionViewModel+Snapshot.swift.
-    var lastReconnectReconcileAt: Date?
     var conversationLoadRetryCount: [String: Int] = [:]
     var conversationLoadTimers: [String: Task<Void, Never>] = [:]
     /// Tracks dismissed restored special cards (ExitPlanMode/AskUserQuestion from history)
@@ -89,70 +76,51 @@ final class SessionViewModel {
     // Engine state (per engine tab)
     var engineDialogs: [String: EngineDialogInfo?] = [:]
     var enginePinnedPrompt: [String: String] = [:]
-    var engineTurnHasText: Set<String> = []                      // compoundKeys where current LLM sub-turn produced text
-    // Agent dispatch conversation history (per conversationId for dispatch pager)
-    var agentConversationMessages: [String: [Message]] = [:]     // conversationId -> messages (merged: snapshot + live push)
-    var agentConversationLoading: Set<String> = []               // conversationIds currently loading
-    // Live dispatched-agent transcript (architecture C — push + reconcile).
-    // agentSnapshotByConvId holds the last file-backed snapshot (the authority);
-    // agentDispatchActivity holds the in-flight push entries folded from
-    // engine_dispatch_activity. recomputeDispatchTranscript merges them into
-    // agentConversationMessages (what the popup reads). See
-    // SessionViewModel+EngineEvents.swift.
-    var agentSnapshotByConvId: [String: [Message]] = [:]         // conversationId -> last file snapshot
-    var agentDispatchActivity: [String: [Message]] = [:]         // dispatchAgentId -> folded push entries (ordered)
-    /// Parallel seq storage for sort tiebreaking. Indexed in lockstep with
-    /// agentDispatchActivity: agentDispatchSeqs[dispatchId][i] is the seq for
-    /// agentDispatchActivity[dispatchId][i]. Cleared with agentDispatchActivity.
-    var agentDispatchSeqs: [String: [Int]] = [:]                 // dispatchAgentId -> per-entry seq values
-    /// Maps conversationId -> most recent dispatchAgentId. Used by
-    /// recomputeDispatchTranscript when invoked from handleAgentConversationHistory
-    /// (which knows the convId but not the dispatchAgentId). Updated each time
-    /// handleDispatchActivity receives an event for a given dispatchAgentId.
-    var activeDispatchIdByConvId: [String: String] = [:]
-    /// Tracks dispatchAgentIds whose push cache has already been cleared on the
-    /// terminal edge. clearTerminalDispatchCaches is level-triggered (fires every
-    /// engineAgentState tick) so this set gates the clear to run exactly once
-    /// per dispatch, preventing repeated recomputeDispatchTranscript calls on
-    /// every tick after a dispatch finishes.
-    var terminalClearedDispatches: Set<String> = []
-    /// Last-seen StatusFields.sessionId per tabId. Used by
-    /// handleEngineSessionIdChange (SessionViewModel+DispatchCacheInvalidation.swift)
-    /// to detect when the engine process restarts — a changed sessionId means
-    /// all cached dispatch snapshots may be stale and must be re-fetched.
-    var lastKnownEngineSessionId: [String: String] = [:]
+    /// Dispatched agents' transcript rows, keyed by `dispatchKey` (and, for
+    /// an agent with no registered dispatch, by agent name). Written only by
+    /// SessionViewModel+DispatchTranscripts.swift, from the server's streams.
+    var agentConversationMessages: [String: [Message]] = [:]
+    /// Dispatch keys (and agent names) whose newest page is being fetched.
+    var agentConversationLoading: Set<String> = []
+    /// The server transcript stream each dispatch's rows come from.
+    var dispatchStreams: [String: TranscriptStream] = [:]
+    /// Dispatch keys whose newest page has been asked for and not answered.
+    var dispatchResyncing: Set<String> = []
+    /// The tab each dispatch stream was opened through (a resync asks again
+    /// through the same tab).
+    var dispatchTabs: [String: String] = [:]
+    /// Agent name -> the dispatch keys whose rows, concatenated, are its
+    /// transcript (an agent with no registered dispatch).
+    var agentConversationGroups: [String: [String]] = [:]
     // Engine instance state (per engine tab)
     var conversationInstances: [String: [ConversationInstanceInfo]] = [:]   // tabId -> instances
     var activeEngineInstance: [String: String] = [:]              // tabId -> active instanceId
-    /// Engine profiles synced from the desktop settings.
+    /// Engine profiles synced from the server's settings.
     var engineProfiles: [EngineProfile] = []
-    /// Preferred model default for new tabs (synced from desktop settings).
-    var preferredModel: String = "claude-sonnet-4-6"
-    /// Engine default model (synced from desktop settings).
-    var engineDefaultModel: String = ""
-    /// Available models from the desktop (dynamic list from engine).
+    /// Available models from the server (dynamic list from engine).
     /// Falls back to default Claude models until the first snapshot with model data arrives.
     var availableModels: [RemoteModelEntry] = SessionViewModel.defaultModels
 
-    /// Currently-connected desktop's projectable user preferences,
-    /// surfaced in the Settings UI under "Desktop Settings". Replaced
+    /// The connected server's projected settings, shown on its settings
+    /// pages and, for the phone's own keys, under This iPhone and You. Replaced
     /// wholesale on every `desktopSettingsSnapshot` event (snapshot
-    /// semantics — never merge). `nil` while no desktop is paired or
+    /// semantics — never merge). `nil` while no server is paired or
     /// during the brief window before the first snapshot arrives on a
     /// new pairing.
     ///
-    /// Per-desktop scoping: the field tracks only the currently-active
-    /// pairing's settings. Switching to a different paired desktop
-    /// clears the field via `switchToDevice`, and the new desktop's
+    /// Per-server scoping: the field tracks only the currently-active
+    /// pairing's settings. Switching to a different paired server
+    /// clears the field via `switchToDevice`, and the new server's
     /// initial snapshot repopulates it.
-    var desktopSettings: DesktopSettingsState? = nil
+    var serverSettings: ServerSettingsState? = nil
 
-    /// Enterprise new-conversation policy projected from the desktop via
+    /// Enterprise new-conversation policy projected from the server via
     /// `desktop_settings_snapshot.newConversationPolicy`. Non-nil + locked=true
     /// means `resolveNewConversationAction` must return `.locked` and iOS
     /// must skip all pickers. Nil means no enterprise config (or pre-#256
     /// desktop build — treat as unlocked).
     var enterpriseNewConversationPolicy: RemoteNewConversationPolicy? = nil
+
 
     /// The app's ThemeManager, wired by IonRemoteApp at launch (same
     /// pattern as appDelegate.sessionViewModel). Event handlers route
@@ -189,6 +157,14 @@ final class SessionViewModel {
     // Worktree + integration bench state. Accessors and the state shape live
     // in SessionViewModel+WorktreeState.swift (this file is at its size cap).
     var worktreeUI = WorktreeUIState()
+
+    // FR-02 presence state. Accessors and the state shape live in
+    // SessionViewModel+Presence.swift.
+    var presenceUI = PresenceUIState()
+
+    // The connected Environment's load. Accessors live in
+    // SessionViewModel+SystemMetrics.swift.
+    var systemMetricsUI = SystemMetricsUIState()
 
     // File explorer state (per directory/path)
     var fileListings: [String: FsDirListingResponse] = [:]   // directory -> listing
@@ -235,10 +211,6 @@ final class SessionViewModel {
     /// Exact task IDs with a stop request awaiting an authoritative result.
     var stoppingBackgroundTaskIds: Set<String> = []
 
-    /// Tab group mode synced from the desktop: "off", "auto", or "manual".
-    var tabGroupMode: String = "auto"
-    /// Manual tab group definitions from the desktop (only meaningful when tabGroupMode == "manual").
-    var tabGroups: [RemoteTabGroup] = []
 
     var pairedDevices: [PairedDevice] = []
     var connectionState: ConnectionState = .disconnected
@@ -260,19 +232,6 @@ final class SessionViewModel {
     /// the UI offers "Switch Account" instead of spinning a backoff ladder.
     var relayIdentityMismatch: Set<String> = []
 
-    /// Automatic pairing-repair attempts made per device id, for the LAN
-    /// close-4004 path (`handleLANSecretUnusable`).
-    ///
-    /// The repair runs with no user interaction, so an unbounded retry would be
-    /// an invisible loop: the phone would keep rediscovering the desktop and
-    /// re-pairing while the user sees only a stalled connection. The counter
-    /// caps that, after which the desktop is locked and manual re-pairing is
-    /// surfaced. A successful repair clears the entry.
-    var pairingRepairAttempts: [String: Int] = [:]
-
-    /// Cap on consecutive automatic pairing repairs for one device id.
-    static let maxPairingRepairAttempts = 3
-
     /// Blocks deferred until the transport reaches `.connected` (i.e. the
     /// first snapshot has arrived and confirmed the round-trip works).
     /// Populated by `runWhenConnected(_:)` and drained inside
@@ -286,17 +245,6 @@ final class SessionViewModel {
     /// `SessionViewModel+OnConnected.swift` for the helper and
     /// `IonRemoteApp.swift`'s `.active` handler for the call sites.
     var pendingOnConnected: [() -> Void] = []
-
-    /// True for the duration of the single snapshot handler invocation that
-    /// corresponds to the first snapshot received after a (re)connect transition.
-    /// Set to `true` inside `handleSnapshot` when `connectionState` flips from
-    /// non-connected to `.connected`, and reset to `false` at the end of the
-    /// same tab-processing loop. Read by `maybeReconcileStaleConversation` to
-    /// bypass the running-status suppression guard: on a reconnect iOS has no
-    /// in-flight stream — it missed all events during the gap — so a diverged
-    /// fingerprint means genuinely stale content and must trigger an immediate
-    /// reload rather than waiting for the post-run heal.
-    var isReconnectSnapshot = false
 
     /// Keyed deferred queue for `.automaticEssential` sends that arrive
     /// while the transport is not yet `.connected`.
@@ -318,9 +266,15 @@ final class SessionViewModel {
     var pendingEssentialQueue: [(key: String, command: RemoteCommand)] = []
 
     /// Which desktop is currently selected (persisted in UserDefaults).
+    /// Selecting a pairing is what attributes log lines to it, so the log's
+    /// pairing stamp moves with this value rather than with any one connect
+    /// path.
     var activeDeviceId: String? {
-        get { UserDefaults.standard.string(forKey: "activeDeviceId") }
-        set { UserDefaults.standard.set(newValue, forKey: "activeDeviceId") }
+        get { UserDefaults.standard.string(forKey: DiagnosticLog.selectedPairingDefaultsKey) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: DiagnosticLog.selectedPairingDefaultsKey)
+            DiagnosticLog.setPairingId(newValue)
+        }
     }
 
     /// The currently active paired device, falling back to the first device.
@@ -387,6 +341,10 @@ final class SessionViewModel {
     /// draft store, post-#256). Updated on every keystroke via the InputBar
     /// binding. See SessionViewModel+Drafts.swift.
     var draftInputByTab: [String: String] = [:]
+    /// Pending debounced `desktop_set_draft` sends, one per conversation.
+    /// Replacing an entry cancels the previous keystroke's send, so a burst of
+    /// typing produces one frame per pause. See SessionViewModel+Drafts.swift.
+    var draftSendWork: [String: DispatchWorkItem] = [:]
     /// Whether to show the branch/ahead/behind row in the tab list (off by default).
     var showGitInfoInTabList: Bool {
         get { UserDefaults.standard.bool(forKey: "showGitInfoInTabList") }
@@ -420,16 +378,24 @@ final class SessionViewModel {
 
     var transportState: TransportState { transport?.state ?? .disconnected }
 
-    var transport: TransportManager?
+    /// The live transport. Every path that builds one assigns it here, so
+    /// this is the single place that guarantees log lines written while a
+    /// transport exists carry the pairing that transport serves — the same id
+    /// the diagnostic export filters on. Clearing the transport keeps the
+    /// stamp: lines written while suspended still belong to that pairing.
+    var transport: (any RemoteTransport)? {
+        didSet {
+            guard let deviceId = transport?.deviceId else { return }
+            DiagnosticLog.setPairingId(deviceId)
+        }
+    }
+    /// One admin session per paired server a settings page has opened, keyed
+    /// by the server's `clientId`. See `SessionViewModel+ServerAdmin.swift`.
+    @ObservationIgnored var adminSessionsByServer: [String: ServerAdminSession] = [:]
     var eventTask: Task<Void, Never>?
     var flushTask: Task<Void, Never>?
     /// Safety timer: if `.reconnecting` lingers too long, force a full reconnect.
     var reconnectSafetyTask: Task<Void, Never>?
-    /// Delays between in-place retries of a *transient* LAN auth failure in
-    /// `connectLAN` (socket dropped / cooldown close / timeout — the desktop
-    /// delivered no verdict). Instance-configurable so tests can shrink the
-    /// waits; production keeps 2s then 5s. Definitive rejections never retry.
-    var lanAuthRetryDelays: [Duration] = [.seconds(2), .seconds(5)]
     let eventBatcher = EventBatcher()
     /// Standalone browser for pairing discovery (before a transport exists).
     private(set) var pairingBrowser = BonjourBrowser()
@@ -445,7 +411,7 @@ final class SessionViewModel {
     /// default engine profile; empty means "unset" (show the picker).
     /// Matches how `resolveNewConversationAction` reads `defaultId`.
     var defaultEngineProfileId: String {
-        (desktopSettings?.currentValue(for: "defaultEngineProfileId")?.value as? String) ?? ""
+        (serverSettings?.currentValue(for: "defaultEngineProfileId")?.value as? String) ?? ""
     }
 
     // MARK: - Voice
@@ -464,6 +430,8 @@ final class SessionViewModel {
         }
         let id = message.id
         Task { @MainActor [weak self] in
+            // Only CancellationError can surface and this untracked task is never cancelled; the toast is dismissed either way.
+            // swiftlint:disable:next silent_try_optional
             try? await Task.sleep(for: .seconds(message.duration))
             self?.dismissToast(id: id)
         }
@@ -487,6 +455,10 @@ final class SessionViewModel {
             }
         })
         loadPairedDevices()
+        // The logger seeds its stamp from the persisted selection. When no
+        // selection is persisted the active device falls back to the first
+        // paired one, which only this model can resolve.
+        DiagnosticLog.setPairingId(activeDevice?.id)
         // Restore hasConnectedBefore from UserDefaults
         hasConnectedBefore = UserDefaults.standard.bool(forKey: "hasConnectedBefore")
         hydrateDrafts()

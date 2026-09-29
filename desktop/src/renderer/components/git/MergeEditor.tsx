@@ -42,6 +42,7 @@ import {
   buildMergeModel, setSideDecision, unresolvedCount, composeResult, composeChunk, isUnresolved,
   type MergeModel, type MergeChunk,
 } from './merge-model'
+import { host } from '../../host/host-instance'
 
 interface Stages {
   base: string | null
@@ -82,7 +83,7 @@ export function MergeEditor({
   const [editedText, setEditedText] = useState('')
 
   useEffect(() => {
-    window.ion.gitConflictStages(directory, path).then((result) => {
+    host.shell.gitConflictStages(directory, path).then((result) => {
       if (!result.ok) {
         setError(result.error ?? 'Could not read the conflict stages.')
         return
@@ -119,14 +120,14 @@ export function MergeEditor({
         // An empty result on a delete-conflict means the deletion won. Stage
         // the removal rather than an empty file the deleting side never wrote.
         const side = stages?.ours === null ? 'ours' : 'theirs'
-        const accepted = await window.ion.gitConflictAccept(directory, path, side)
+        const accepted = await host.shell.gitConflictAccept(directory, path, side)
         if (!accepted.ok) {
           rWarn('git.merge', 'delete-acceptance failed', { path, error: accepted.error ?? '' })
           setError(accepted.error ?? 'Could not accept the deletion.')
           return
         }
       } else {
-        const written = await window.ion.gitResolveConflict(directory, path, text)
+        const written = await host.shell.gitResolveConflict(directory, path, text)
         if (!written.ok) {
           rWarn('git.merge', 'resolve write failed', { path, error: written.error ?? '' })
           setError(written.error ?? 'Could not write the resolution.')

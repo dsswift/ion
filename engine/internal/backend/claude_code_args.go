@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -65,6 +66,10 @@ func buildClaudeArgs(opts types.RunOptions) []string {
 		"--input-format", "stream-json",
 		"--verbose",
 		"--include-partial-messages",
+		// Echo each stdin user message back, flagged isReplay, at the point
+		// the CLI consumes it. That echo is the only exact signal of where a
+		// mid-turn steer took effect. See claude_code_steer.go.
+		"--replay-user-messages",
 	}
 
 	permMode := "bypassPermissions"
@@ -93,7 +98,9 @@ func buildClaudeArgs(opts types.RunOptions) []string {
 	}
 
 	if opts.Model != "" {
-		args = append(args, "--model", opts.Model)
+		// Bare id on the CLI: a provider-qualified id ("anthropic/<model>")
+		// is engine routing identity that `claude --model` does not accept.
+		args = append(args, "--model", providers.WireModelID(opts.Model))
 	}
 	if opts.MaxTurns > 0 {
 		args = append(args, "--max-turns", strconv.Itoa(opts.MaxTurns))

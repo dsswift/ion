@@ -126,6 +126,7 @@ The engine fetches `{baseURL}/v1/models` using the provider's configured `authHe
   "data": [
     {
       "id": "claude-opus-5",
+      "display_name": "Claude Opus 5",
       "dialect": "anthropic",
       "contextWindow": 1000000,
       "costPer1kInput": 0.005,
@@ -138,6 +139,7 @@ The engine fetches `{baseURL}/v1/models` using the provider's configured `authHe
     },
     {
       "id": "gpt-5.2-codex",
+      "display_name": "GPT-5.2 Codex",
       "dialect": "openai-responses",
       "contextWindow": 400000,
       "maxOutputTokens": 128000,
@@ -156,6 +158,17 @@ The engine fetches `{baseURL}/v1/models` using the provider's configured `authHe
 ```
 
 Every extended field is optional. A gateway that returns ids only behaves exactly like a plain OpenAI-compatible provider, and discovered metadata never erases what the engine already knows about a model — live values fill in and override, they do not subtract.
+
+#### Model names
+
+Publish each model's name as `display_name`. That is the Anthropic Models API field, and it is the one Claude Code reads when it discovers models from a gateway, so one field serves both. The engine also reads Ion's camelCase `displayName`; when an entry carries both, `display_name` wins.
+
+A model the gateway does not name is named, in order, from:
+
+1. The engine's model catalog, when the gateway serves a model the catalog knows under the same id.
+2. The model id, for well-known id shapes: `claude-opus-4-8` becomes "Claude Opus 4.8", `gpt-5.2-codex` becomes "GPT-5.2 Codex", `gemini-2.5-flash` becomes "Gemini 2.5 Flash".
+
+Any other model stays unnamed, and clients show its id.
 
 The `dialect` values and the protocol each one selects are listed in [models.json → Dialect routing](../configuration/models.md#dialect-routing). If your gateway cannot advertise `dialect` in its `/models` response, set it per model in `models.json` instead:
 

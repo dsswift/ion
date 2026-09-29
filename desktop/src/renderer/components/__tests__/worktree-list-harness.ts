@@ -13,7 +13,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { vi } from 'vitest'
 
-import type { WorktreeInventoryEntry, IntegrationMember, IntegrationWorkspace } from '../../../shared/types'
+import type { WorktreeInventoryEntry, IntegrationMember, IntegrationWorkspace } from '@ion/shared/types'
 
 /** The props the section takes, so the render helper stays type-checked. */
 export interface WorktreeListProps {
@@ -133,7 +133,7 @@ export function workspace(members: IntegrationMember[]): IntegrationWorkspace {
  * The mount lifecycle and DOM queries the test files share.
  *
  * The ELEMENT to render is passed in rather than imported here: this module is
- * reached from inside the `vi.mock('../../stores/sessionStore')` factory, so
+ * reached from inside the `vi.mock('@ion/server/store/sessionStore')` factory, so
  * importing the component would close a cycle (harness -> component -> mocked
  * store factory -> harness) that hangs the run before any test executes.
  *

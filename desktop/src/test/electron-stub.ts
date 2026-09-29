@@ -13,8 +13,7 @@
  * The vitest config aliases 'electron' to this stub so module loading always
  * succeeds. Tests that need specific electron behavior keep using
  * vi.mock('electron', ...) — vi.mock takes precedence over the alias — or a
- * module's dedicated injection seam (e.g. _setNativeImageForTest,
- * _setElectronForTest).
+ * module's dedicated injection seam (e.g. _setElectronForTest).
  *
  * Every export is intentionally minimal: enough shape for module-load-time
  * access patterns (property reads, method calls guarded behind runtime
@@ -28,6 +27,7 @@ const noop = (): undefined => undefined
 export const app = {
   isPackaged: false,
   getPath: (_name: string): string => '/tmp/electron-stub',
+  getAppPath: (): string => '/tmp/electron-stub/app',
   getName: (): string => 'electron-stub',
   getVersion: (): string => '0.0.0',
   on: noop,
@@ -52,10 +52,10 @@ export const safeStorage = {
 
 export const nativeImage = {
   createFromBuffer: (_b: Buffer): never => {
-    throw new Error('electron-stub: nativeImage unavailable in unit tests (use _setNativeImageForTest)')
+    throw new Error('electron-stub: nativeImage unavailable in unit tests (use vi.mock or the module seam)')
   },
   createFromPath: (_p: string): never => {
-    throw new Error('electron-stub: nativeImage unavailable in unit tests (use _setNativeImageForTest)')
+    throw new Error('electron-stub: nativeImage unavailable in unit tests (use vi.mock or the module seam)')
   },
 }
 

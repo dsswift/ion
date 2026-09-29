@@ -6,8 +6,8 @@
 import { describe, expect, it } from 'vitest'
 import Graph from 'graphology'
 import { computeVisibility } from './visibility'
-import type { GraphFilterRule } from '../../../../shared/graph-view-types'
-import type { GraphModel, GraphNode } from '../../../../shared/graph-model-types'
+import type { GraphFilterRule } from '@ion/shared/graph-view-types'
+import type { GraphModel, GraphNode } from '@ion/shared/graph-model-types'
 
 function node(id: string, frontMatter: Record<string, unknown> = {}): GraphNode {
   return { id, kind: 'document', label: id, frontMatter, sizeBytes: 0, modifiedMs: 0, degree: 0, community: 0, centrality: 0, orphan: false }

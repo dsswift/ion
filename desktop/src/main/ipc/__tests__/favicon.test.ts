@@ -28,7 +28,7 @@ vi.mock('fs', () => ({
 }))
 
 import { registerFaviconIpc, __resetFaviconCacheForTests } from '../favicon'
-import { isValidFaviconHost } from '../../ipc-validation'
+import { isValidFaviconHost } from '@ion/server/ipc-validation'
 
 const fetchMock = vi.fn()
 

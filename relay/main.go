@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,13 +13,15 @@ import (
 
 // Config holds all relay server configuration.
 type Config struct {
-	Port       string
-	APIKey     string
-	APNsKey    string
-	APNsKeyID  string
-	APNsTeamID string
-	APNsTopic  string
-	OIDC       *OIDCConfig
+	Port        string
+	APIKey      string
+	APNsKeyPath string // APNS_KEY_PATH: a file holding the .p8 key
+	APNsKeyPEM  string // APNS_KEY: the .p8 key's PEM text itself
+	APNsKeyID   string
+	APNsTeamID  string
+	APNsTopic   string
+	OIDC        *OIDCConfig   // primary issuer; nil in PSK-only mode
+	OIDCMore    []*OIDCConfig // further accepted issuers (RELAY_OIDC_ISSUERS)
 }
 
 func loadConfig() (Config, error) {
@@ -31,45 +32,63 @@ func loadConfig() (Config, error) {
 
 	apiKey := os.Getenv("RELAY_API_KEY")
 
-	issuer := os.Getenv("RELAY_OIDC_ISSUER")
-	audience := os.Getenv("RELAY_OIDC_AUDIENCE")
-	requiredScope := os.Getenv("RELAY_OIDC_REQUIRED_SCOPE")
+	// Every accepted org-wide issuer, primary first: the single-issuer
+	// variables, then RELAY_OIDC_ISSUERS. A malformed list is fatal rather
+	// than ignored, because an operator who listed a second tenant and got a
+	// relay that silently refuses it has no way to tell from the outside.
+	specs, err := parseOIDCIssuerSpecs(
+		os.Getenv("RELAY_OIDC_ISSUER"),
+		os.Getenv("RELAY_OIDC_AUDIENCE"),
+		os.Getenv("RELAY_OIDC_REQUIRED_SCOPE"),
+		os.Getenv("RELAY_OIDC_ISSUERS"),
+	)
+	if err != nil {
+		return Config{}, fmt.Errorf("oidc config: %w", err)
+	}
 
-	// Build OIDC config (nil when issuer is empty).
-	oidcCfg, oidcErr := NewOIDCConfig(issuer, audience, requiredScope)
-
-	oidcConfigured := issuer != "" && oidcErr == nil && oidcCfg != nil
-
-	// Log both sides so the resolved auth posture is always observable. A
-	// misconfiguration (issuer set, audience empty, or a startup JWKS failure)
-	// disables OIDC and falls back to PSK-only — that decision must not be
-	// silent, or an operator who intended OIDC ships a relay that quietly
-	// serves PSK-only (or, worse, would have served an audience-unbound OIDC).
-	switch {
-	case issuer != "" && oidcErr != nil:
-		logger.Error("oidc requested but disabled; falling back to PSK-only",
-			"tag", "relay.startup", "issuer", issuer, "err", oidcErr)
-	case oidcConfigured:
-		logger.Info("oidc enabled",
-			"tag", "relay.startup", "issuer", issuer, "audience", audience)
-	default:
-		logger.Info("oidc not configured; PSK-only mode",
-			"tag", "relay.startup")
+	// A startup JWKS failure keeps the issuer: its key set is refetched the
+	// first time a token names an unknown kid, so it heals without a
+	// restart. Until then every token from it is refused.
+	var issuers []*OIDCConfig
+	for _, spec := range specs {
+		cfg, err := NewOIDCConfig(spec.Issuer, spec.Audience, spec.RequiredScope)
+		if cfg == nil {
+			return Config{}, fmt.Errorf("oidc issuer %q: %w", spec.Issuer, err)
+		}
+		if err != nil {
+			logger.Error("oidc issuer accepted with no keys yet; its tokens are refused until the JWKS loads",
+				"tag", "relay.startup", "issuer", spec.Issuer, "err", err)
+		} else {
+			logger.Info("oidc issuer enabled",
+				"tag", "relay.startup", "issuer", spec.Issuer, "audience", spec.Audience, "primary", len(issuers) == 0)
+		}
+		issuers = append(issuers, cfg)
+	}
+	if len(issuers) == 0 {
+		logger.Info("oidc not configured; PSK-only mode", "tag", "relay.startup")
 	}
 
 	// Require at least one auth mode.
-	if apiKey == "" && !oidcConfigured {
-		return Config{}, fmt.Errorf("no auth configured: set RELAY_API_KEY and/or RELAY_OIDC_ISSUER+RELAY_OIDC_AUDIENCE")
+	if apiKey == "" && len(issuers) == 0 {
+		return Config{}, fmt.Errorf("no auth configured: set RELAY_API_KEY and/or RELAY_OIDC_ISSUER+RELAY_OIDC_AUDIENCE (or RELAY_OIDC_ISSUERS)")
+	}
+
+	var primary *OIDCConfig
+	var more []*OIDCConfig
+	if len(issuers) > 0 {
+		primary, more = issuers[0], issuers[1:]
 	}
 
 	return Config{
-		Port:       port,
-		APIKey:     apiKey,
-		APNsKey:    os.Getenv("APNS_KEY_PATH"),
-		APNsKeyID:  os.Getenv("APNS_KEY_ID"),
-		APNsTeamID: os.Getenv("APNS_TEAM_ID"),
-		APNsTopic:  os.Getenv("APNS_TOPIC"),
-		OIDC:       oidcCfg,
+		Port:        port,
+		APIKey:      apiKey,
+		APNsKeyPath: os.Getenv("APNS_KEY_PATH"),
+		APNsKeyPEM:  os.Getenv("APNS_KEY"),
+		APNsKeyID:   os.Getenv("APNS_KEY_ID"),
+		APNsTeamID:  os.Getenv("APNS_TEAM_ID"),
+		APNsTopic:   os.Getenv("APNS_TOPIC"),
+		OIDC:        primary,
+		OIDCMore:    more,
 	}, nil
 }
 
@@ -83,6 +102,7 @@ func main() {
 	}
 
 	hub := NewHub()
+	hub.otlp = relayOTLP
 
 	// Apply optional env var overrides for relay timeouts.
 	if v := os.Getenv("RELAY_WRITE_TIMEOUT_MS"); v != "" {
@@ -106,149 +126,26 @@ func main() {
 		}
 	}
 
-	auth := NewAuthMiddleware(cfg.APIKey, cfg.OIDC)
+	auth := NewAuthMiddleware(cfg.APIKey, cfg.OIDC, cfg.OIDCMore...)
+
+	// An issuer the relay itself accepts is one it already fetches keys for,
+	// so a host may announce it for the joining side without the operator
+	// listing it a second time in RELAY_TRUSTED_ISSUERS.
+	for _, issuer := range auth.issuers {
+		hub.oidcRegistry.Trust(issuer)
+	}
+	if trusted := hub.oidcRegistry.TrustedIssuers(); len(trusted) > 0 {
+		logger.Info("server-announced trust enabled", "tag", "relay.announce", "trusted_issuers", trusted)
+	} else {
+		logger.Info("server-announced trust disabled: no issuer is configured or listed in RELAY_TRUSTED_ISSUERS; every announced-trust join refuses with issuer_not_trusted", "tag", "relay.announce")
+	}
 
 	// Channel ownership store — shared across both WebSocket routes.
 	owners := newChannelOwnerStore(os.Getenv("RELAY_STATE_DIR"))
 
-	var pusher *APNsPusher
-	if cfg.APNsKey != "" && cfg.APNsKeyID != "" && cfg.APNsTeamID != "" {
-		var err error
-		pusher, err = NewAPNsPusher(cfg.APNsKey, cfg.APNsKeyID, cfg.APNsTeamID, cfg.APNsTopic)
-		if err != nil {
-			logger.Warn("APNs init failed", "tag", "relay.startup", "err", err)
-		} else {
-			pusher.Start()
-			logger.Info("APNs push notifications enabled", "tag", "relay.startup")
-		}
-	}
+	pusher := startAPNs(cfg)
 
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`)) //nolint:errcheck // health endpoint; client hangup is irrelevant
-	})
-
-	// GET /v1/auth/config — unauthenticated; tells clients which auth modes are active.
-	mux.HandleFunc("GET /v1/auth/config", func(w http.ResponseWriter, r *http.Request) {
-		type capabilitiesBlock struct {
-			MobileForwardAck bool `json:"mobileForwardAck"`
-		}
-		type authConfigResponse struct {
-			OIDC          bool              `json:"oidc"`
-			Issuer        string            `json:"issuer,omitempty"`
-			Audience      string            `json:"audience,omitempty"`
-			RequiredScope string            `json:"requiredScope,omitempty"`
-			PSK           bool              `json:"psk"`
-			Capabilities  capabilitiesBlock `json:"capabilities"`
-		}
-		resp := authConfigResponse{
-			PSK:          len(auth.apiKey) > 0,
-			Capabilities: capabilitiesBlock{MobileForwardAck: true},
-		}
-		if auth.oidc != nil {
-			resp.OIDC = true
-			resp.Issuer = auth.oidc.Issuer
-			resp.Audience = auth.oidc.Audience
-			resp.RequiredScope = auth.oidc.RequiredScope
-		}
-		logger.Info("serving auth config",
-			"tag", "relay.auth_config",
-			"psk", resp.PSK,
-			"oidc", resp.OIDC,
-			"capabilities_mobile_forward_ack", resp.Capabilities.MobileForwardAck,
-		)
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			logger.Warn("auth config encode error", "tag", "relay.auth_config_error", "err", err)
-		}
-	})
-
-	mux.HandleFunc("GET /v1/channel/{channelId}", func(w http.ResponseWriter, r *http.Request) {
-		identity, reason := auth.ValidateDetailed(r)
-		if reason != "" {
-			logAuthFailure(r, reason)
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		channelID := r.PathValue("channelId")
-		role := r.URL.Query().Get("role")
-		if role != "ion" && role != "mobile" {
-			http.Error(w, "role must be 'ion' or 'mobile'", http.StatusBadRequest)
-			return
-		}
-		if !validChannelID(channelID) {
-			http.Error(w, "invalid channel id", http.StatusBadRequest)
-			return
-		}
-
-		// OIDC channel isolation: enforce subject-based ownership before upgrade.
-		if identity != nil {
-			if !owners.Bind(channelID, identity.Subject) {
-				owner, _ := owners.Owner(channelID)
-				logger.Warn("oidc: channel access denied — subject mismatch",
-					"tag", "relay.channel.denied",
-					"channel_id", channelID,
-					"subject", identity.Subject,
-					"owner", owner)
-				http.Error(w, "forbidden: channel owned by another identity", http.StatusForbidden)
-				return
-			}
-		}
-
-		logAuthSuccess(identity, "psk or jwt")
-		hub.HandleWebSocket(w, r, channelID, role, pusher, identity)
-	})
-
-	mux.HandleFunc("GET /v1/channel/{channelId}/status", func(w http.ResponseWriter, r *http.Request) {
-		identity, reason := auth.ValidateDetailed(r)
-		if reason != "" {
-			logAuthFailure(r, reason)
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		channelID := r.PathValue("channelId")
-		if !validChannelID(channelID) {
-			http.Error(w, "invalid channel id", http.StatusBadRequest)
-			return
-		}
-
-		// OIDC mode: least-privilege presence. A subject may see live presence
-		// only for a channel it already owns. An unbound channel (owned==false)
-		// must NOT reveal live hub presence — otherwise a subject could probe a
-		// channel it does not own (e.g. one a PSK client is connected to, or one
-		// another subject is about to bind) and read its presence booleans, a
-		// cross-tenant presence oracle. Status never binds (binding here would
-		// let a subject squat another's channel by probing), so an unowned or
-		// other-owned channel returns empty presence without touching the hub.
-		if identity != nil {
-			owner, owned := owners.Owner(channelID)
-			if !owned || owner != identity.Subject {
-				if owned {
-					logger.Warn("oidc: status access denied — subject mismatch",
-						"tag", "relay.channel.denied",
-						"channel_id", channelID,
-						"subject", identity.Subject,
-						"owner", owner)
-				}
-				w.Header().Set("Content-Type", "application/json")
-				if err := json.NewEncoder(w).Encode(map[string]bool{"ion": false, "mobile": false}); err != nil {
-					logger.Warn("channel status encode error", "tag", "relay.status_error", "err", err)
-				}
-				return
-			}
-		}
-
-		ion, mobile := hub.ChannelStatus(channelID)
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]bool{"ion": ion, "mobile": mobile}); err != nil {
-			logger.Warn("channel status encode error", "tag", "relay.status_error", "err", err)
-		}
-	})
+	mux := newRelayMux(hub, auth, owners, pusher)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -285,12 +182,22 @@ func main() {
 	defer cancel()
 
 	hub.CloseAll()
-	if err := server.Shutdown(ctx); err != nil {
-		logger.Error("shutdown error", "tag", "relay.shutdown", "err", err)
-		os.Exit(1)
+	shutdownErr := server.Shutdown(ctx)
+	if shutdownErr != nil {
+		logger.Error("shutdown error", "tag", "relay.shutdown", "err", shutdownErr)
+	} else {
+		logger.Info("relay stopped", "tag", "relay.shutdown")
 	}
 
-	logger.Info("relay stopped", "tag", "relay.shutdown")
+	// Ship what is still queued, including the lines above, within a bound
+	// so a dead collector cannot hold the process open.
+	flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	relayOTLP.Shutdown(flushCtx)
+	flushCancel()
+
+	if shutdownErr != nil {
+		os.Exit(1)
+	}
 }
 
 // logAuthSuccess emits a structured auth.success audit log entry.

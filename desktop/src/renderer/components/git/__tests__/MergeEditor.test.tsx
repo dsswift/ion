@@ -32,6 +32,7 @@ vi.mock('../Tooltip', () => ({
 }))
 
 import { MergeEditor } from '../MergeEditor'
+import { installFakeWire } from '../../../host/__tests__/fake-wire'
 
 const DIR = '/wt/proj-a1'
 const gitConflictStages = vi.fn()
@@ -59,9 +60,9 @@ function click(testid: string): Promise<void> {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  ;(window as unknown as { ion: Record<string, unknown> }).ion = {
+  ;(window as unknown as { ion: Record<string, unknown> }).ion = installFakeWire({
     gitConflictStages, gitResolveConflict, gitConflictAccept,
-  }
+  })
   // base line2 contested: ours says OURS, theirs says THEIRS.
   gitConflictStages.mockResolvedValue({
     ok: true,
@@ -117,7 +118,7 @@ describe('MergeEditor — per-side accept/exclude', () => {
     gitResolveConflict.mockResolvedValue({ ok: true })
     await click('merge-save')
 
-    expect(gitResolveConflict).toHaveBeenCalledWith(DIR, 'shared.txt', 'line1\nOURS\nTHEIRS\nline3\n')
+    expect(gitResolveConflict).toHaveBeenCalledWith({ directory: DIR, path: 'shared.txt', content: 'line1\nOURS\nTHEIRS\nline3\n' })
     expect(onResolved).toHaveBeenCalled()
   })
 
@@ -127,7 +128,7 @@ describe('MergeEditor — per-side accept/exclude', () => {
     await click(`merge-exclude-theirs-${CONFLICT}`)
     gitResolveConflict.mockResolvedValue({ ok: true })
     await click('merge-save')
-    expect(gitResolveConflict).toHaveBeenCalledWith(DIR, 'shared.txt', 'line1\nline2\nline3\n')
+    expect(gitResolveConflict).toHaveBeenCalledWith({ directory: DIR, path: 'shared.txt', content: 'line1\nline2\nline3\n' })
   })
 
   it('bulk "all left" / "all right" decide every unresolved conflict', async () => {
@@ -135,7 +136,7 @@ describe('MergeEditor — per-side accept/exclude', () => {
     await click('merge-take-all-theirs')
     gitResolveConflict.mockResolvedValue({ ok: true })
     await click('merge-save')
-    expect(gitResolveConflict).toHaveBeenCalledWith(DIR, 'shared.txt', 'line1\nTHEIRS\nline3\n')
+    expect(gitResolveConflict).toHaveBeenCalledWith({ directory: DIR, path: 'shared.txt', content: 'line1\nTHEIRS\nline3\n' })
   })
 
   it('decisions are reversible before saving', async () => {
@@ -147,7 +148,7 @@ describe('MergeEditor — per-side accept/exclude', () => {
     await click(`merge-accept-theirs-${CONFLICT}`)
     gitResolveConflict.mockResolvedValue({ ok: true })
     await click('merge-save')
-    expect(gitResolveConflict).toHaveBeenCalledWith(DIR, 'shared.txt', 'line1\nTHEIRS\nline3\n')
+    expect(gitResolveConflict).toHaveBeenCalledWith({ directory: DIR, path: 'shared.txt', content: 'line1\nTHEIRS\nline3\n' })
   })
 })
 

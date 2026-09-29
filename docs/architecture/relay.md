@@ -98,6 +98,8 @@ mDNS is best-effort. If it fails to start (common in containers without host net
 
 ## APNs integration
 
-When all three APNs environment variables are configured (`APNS_KEY_PATH`, `APNS_KEY_ID`, `APNS_TEAM_ID`), the relay can send push notifications to wake the iOS app when a message arrives and the mobile peer is disconnected.
+When the APNs environment variables are configured (the key as `APNS_KEY_PATH` or `APNS_KEY`, plus `APNS_KEY_ID`, `APNS_TEAM_ID`, and the required `APNS_TOPIC`), the relay can send push notifications to wake the iOS app when a message arrives and the mobile peer is disconnected.
 
 This is a user-visible alert notification (with title, body, and sound) that also sets `content-available` to wake the app in the background.
+
+Each push goes to the Apple environment that issued the phone's token. A development build (Xcode, `make ios`) registers with the sandbox and a TestFlight or App Store build with production. The relay keeps no push addresses. Each paired phone registers its token and environment with its server (`device.registerPush`, over whatever connection it has), and the server sends them with every push it rings, so one relay serves every build, server, and person at once. The server decides who is rung: a push about a conversation reaches only the devices of the people who may see that conversation. `APNS_PRODUCTION` only picks the environment for a push that arrives without one.

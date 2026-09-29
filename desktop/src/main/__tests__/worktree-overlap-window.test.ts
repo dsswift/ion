@@ -28,7 +28,7 @@ vi.mock('electron', () => ({
   BrowserWindow: vi.fn(function BrowserWindow() { return mocks.window }),
 }))
 vi.mock('../logger', () => ({ log: vi.fn(), error: vi.fn() }))
-vi.mock('../state', () => ({ state: { worktreeOverlapWindow: null } }))
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{ state: { worktreeOverlapWindow: null } } }))
 vi.mock('../studio-window-manager', () => ({ applyStudioActivationPolicy: vi.fn() }))
 
 import { BrowserWindow } from 'electron'

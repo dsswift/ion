@@ -1091,12 +1091,14 @@ An empty kind means the injection is a genuine extension-initiated turn with no 
 
 #### engine_steer_injected
 
-A live run-loop checkpoint drained a steer message into the conversation before the next LLM call. This event is emitted only for that live-drain path; it does not describe a steer accepted as a fresh prompt after the owning run became idle.
+A live run-loop checkpoint drained a steer message into the conversation before the next LLM call. This event is emitted only for that live-drain path; it does not describe a steer accepted as a fresh prompt after the owning run became idle. On a Claude CLI run it fires when the CLI reports consuming the steer, and `steerEntryId` is absent because that turn is written to the conversation when the run exits.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `type` | `"engine_steer_injected"` | Event type |
 | `steerMessageLength` | integer | Character count of the drained message |
+| `steerClientMessageId` | string | Optional. The `clientMessageId` the client sent on `steer_agent`, for a steer a person sent. |
+| `steerEntryId` | string | Optional. The conversation entry the steer was persisted under, when it is known at this point. |
 | `steerKind` | string | Optional injection classification. Empty for a user-authored steer. |
 | `steerMachineAuthored` | boolean | Engine-derived classification for the steer source. |
 
@@ -1164,12 +1166,13 @@ Complete operator identity snapshot. **Snapshot-replace semantics:** consumers r
 | `oidcSignedIn` | boolean | Whether an operator is signed in. Always present, including `false` when signed out. |
 | `oidcProvider` | string | Identity provider ID (present when signed in) |
 | `oidcSubject` | string | Subject claim (present when signed in) |
+| `oidcIssuer` | string | The issuer that signed the identity: the verified id_token's `iss` claim (present when signed in). A client offered several accepted issuers by a resource server uses it to pick its own. |
 | `oidcUsername` | string | Username / preferred-username claim (present when signed in) |
 | `oidcDisplayName` | string | Display name claim (present when signed in) |
 
 #### engine_mcp_login_url
 
-Emitted to the **requesting client only** (requester-scoped, not broadcast) after `mcp_login` starts a flow. Carries the authorization URL the consumer must open and the name of the server it authorizes — a consumer may have more than one login in flight. The engine owns the rest: its loopback callback server completes the code exchange and persists the grant with no further client involvement. Not retained or replayed on reconnect.
+Emitted to the **requesting client only** (requester-scoped, not broadcast) after `mcp_login` starts a flow. Carries the authorization URL the consumer must open and the name of the server it authorizes — a consumer may have more than one login in flight. The engine owns the rest: its loopback callback server completes the code exchange and persists the grant with no further client involvement. When `mcp_login` carried `mcpRedirectUri`, the caller instead returns the redirect through `mcp_login_complete`. Not retained or replayed on reconnect.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -1177,11 +1180,64 @@ Emitted to the **requesting client only** (requester-scoped, not broadcast) afte
 | `mcpServerName` | string | Server being authorized |
 | `mcpAuthorizationUrl` | string | Authorization URL for the consumer to open |
 
+#### engine_system_metrics
+
+One complete System Metrics sample. **Snapshot semantics:** a consumer replaces its copy with each event and never merges; a process absent from `processes` is no longer running. **Delivered only to a connection that asked** with [`system_metrics_watch`](client-commands.md#system_metrics_watch), at the interval it asked for, and never broadcast. Sent with an empty session key: it describes the engine process, not a conversation.
+
+A sample never carries a command line, an argument, or an environment value.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_system_metrics"` | Event type |
+| `systemMetrics.sampledAt` | int | Unix ms the sample was taken |
+| `systemMetrics.intervalMs` | int | Sampling interval in effect |
+| `systemMetrics.host.cpuUtilization` | number \| null | Share of all CPUs in use since the previous sample, 0..1 (steal time counts as busy). `null` on the first sample |
+| `systemMetrics.host.cpuCount` | int | Logical CPUs |
+| `systemMetrics.host.effectiveCpuCount` | number | `cpuCount`, or the container's CPU quota when a cgroup v2 `cpu.max` limits it (fractional) |
+| `systemMetrics.host.memoryTotalBytes` | int | Physical memory |
+| `systemMetrics.host.memoryAvailableBytes` | int | Memory available to new work; inside a memory-limited container, the limit minus current use |
+| `systemMetrics.host.memoryLimitBytes` | int | The container's memory limit (cgroup v2 `memory.max`), `0` when none applies |
+| `systemMetrics.host.containerLimited` | boolean | A cgroup limit narrowed CPU or memory |
+| `systemMetrics.host.load1` | number \| null | One-minute load average; `null` on Windows |
+| `systemMetrics.host.diskPath` | string | Directory whose volume the disk fields describe (`systemMetrics.diskPath`, default `~/.ion`) |
+| `systemMetrics.host.diskTotalBytes` / `diskFreeBytes` | int | That volume's size and free space |
+| `systemMetrics.processes[].pid` / `startTimeMs` | int | Process identity; together they survive pid reuse |
+| `systemMetrics.processes[].role` | string | `engine`, `extension`, `mcp`, `backend`, or `tool` (any other descendant) |
+| `systemMetrics.processes[].name` | string | Extension name, MCP server name, backend tag, or executable base name |
+| `systemMetrics.processes[].cpuPercent` | number \| null | CPU since the previous sample; 100 = one full core. `null` on a process's first sample |
+| `systemMetrics.processes[].cpuTimeMs` | int | Total CPU time (user + system) |
+| `systemMetrics.processes[].rssBytes` | int | Resident memory |
+| `systemMetrics.runtime.heapBytes` / `sysBytes` | int | Go heap in use / memory obtained from the OS |
+| `systemMetrics.runtime.memLimitBytes` | int | Soft heap ceiling in effect |
+| `systemMetrics.runtime.goroutines` / `numGC` / `sessions` | int | Goroutines, completed GC cycles, live sessions |
+
+Only the engine's own process tree is walked, never the whole host. Roles come from the spawn sites that started each child; the `ion mcp-bridge` processes a delegated Claude CLI starts are recognised by their first argument and reported as `mcp` / `mcp-bridge`.
+
+#### engine_telemetry_health
+
+Delivery health of one telemetry egress target (`http` or `eventhub`, for the `telemetry` or `conversationEvents` collector). **Snapshot semantics per target:** a consumer replaces its view of that target. Broadcast with an empty session key on a crossing of 50/75/85/95% of `retryQueueSoftWarnMB`, on recovery to a drained queue, on a change in the stuck state, on a new quarantine, and immediately on a critical condition (a queue write failed because the disk is full). Current state on demand: [`health`](client-commands.md#health)'s `telemetryHealth`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_telemetry_health"` | Event type |
+| `telemetryTarget` | string | `http` or `eventhub` |
+| `telemetryHealthy` | boolean | Always present, also when `false` |
+| `telemetryQueuedBatches` / `telemetryQueuedEvents` / `telemetryQueuedBytes` | int | The on-disk retry backlog |
+| `telemetryOldestAgeMs` | int | Age of the oldest undelivered batch |
+| `telemetrySoftWarnBytes` / `telemetryPercentOfSoftWarn` / `telemetryCrossedThreshold` | int | The advisory threshold, the backlog as a share of it, and the fraction just crossed (0 when none) |
+| `telemetryStuck` / `telemetryStuckAfterMs` | boolean / int | The oldest batch has waited past `retryQueueStuckAfterMinutes` |
+| `telemetryMaxAttempts` | int | Highest redelivery attempt of any queued batch |
+| `telemetryQuarantinedEvents` / `telemetryQuarantinedBytes` | int | Cumulative events set aside because the transport could never carry them |
+| `telemetryCritical` | boolean | Durability actually lost |
+| `telemetryLastError` | string | The latest delivery failure |
+
+The Ion Studio Server retains the latest state per target and replays it on the Studio snapshot (`telemetryHealth`), so a client that connects mid-outage sees it without waiting for the next transition. See [Telemetry](../enterprise/telemetry.md) for the thresholds.
+
 #### engine_mcp_servers
 
 Complete MCP server snapshot. **Snapshot-replace semantics:** consumers replace their local server list with this payload and never merge. An absent or empty `mcpServers` array is the authoritative "no MCP servers configured" signal.
 
-Broadcast to all clients on every state transition — `mcp_add`, `mcp_remove`, `mcp_logout`, and both the success and failure paths of `mcp_login` (the failure broadcast is how a consumer learns the attempt left the server unauthorized). An `mcp_list` request also delivers it requester-scoped.
+Broadcast to all clients on every state transition — `mcp_add`, `mcp_update`, `mcp_remove`, `mcp_logout`, and both the success and failure paths of `mcp_login` and `mcp_login_complete` (the failure broadcast is how a consumer learns the attempt left the server unauthorized). An `mcp_list` request also delivers it requester-scoped.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -1190,6 +1246,8 @@ Broadcast to all clients on every state transition — `mcp_add`, `mcp_remove`, 
 | `mcpServers[].transport` | string | `http` \| `sse` \| `ws` \| `stdio` |
 | `mcpServers[].url` | string | Endpoint for a network transport (optional) |
 | `mcpServers[].command` | string | Executable for a stdio server (optional) |
+| `mcpServers[].args` | string[] | Arguments for a stdio server (optional) |
+| `mcpServers[].oauth` | object | Operator-configured OAuth client: `clientId`, `authUrl`, `tokenUrl`, `scope`, `resource`, and `hasClientSecret`. The secret itself is never reported. Absent when the server relies on discovery alone (optional) |
 | `mcpServers[].connected` | boolean | Whether at least one live session holds a connection |
 | `mcpServers[].authenticated` | boolean | Whether a usable (unexpired) OAuth token is stored |
 | `mcpServers[].toolCount` | int | Tools the live connection exposed; `0` when not connected (optional) |
@@ -1264,9 +1322,9 @@ The `load_session_history` response includes these fields on user-role `SessionM
 | `slashModelEffective` | string | The resolved model ID used for this invocation (for example, `"dci-marketing/gpt-5.6-terra"` or an unqualified direct model ID). Present only when `slashModelAlias` is set. |
 | `implementationPhase` | boolean | `true` when this user turn began the implementation half of a plan-then-implement flow. Absent for ordinary and legacy turns. |
 
-### `desktop_message_added` / `desktop_conversation_history` — RemoteMessage
+### Thin-client transcript — TranscriptRow
 
-The same fields appear on `RemoteMessage` objects sent to paired iOS clients via `desktop_message_added` and `desktop_conversation_history` remote events. When `slashCommand` is non-empty, the iOS client renders a pill showing the command name; `slashArgs` and `slashSource` supply the pill's detail text and badge.
+The same fields appear on the `TranscriptRow`s a thin client receives, in a `studio_body` snapshot and in `desktop_transcript_patch` events (see [Studio wire](studio-wire.md) § "Transcript streams"). When `slashCommand` is non-empty, the iOS client renders a pill showing the command name; `slashArgs` and `slashSource` supply the pill's detail text and badge.
 
 | Field            | Type   | Description |
 |------------------|--------|-------------|

@@ -6,6 +6,7 @@ const commandsDir = join(__dirname, '..', '..', '..', 'commands')
 const finderEntryPath = join(commandsDir, 'install-app.command')
 const coordinatorPath = join(commandsDir, 'install-post-build.command')
 const developerBuildPath = join(commandsDir, 'install-bg.command')
+const stageEngineResourcesPath = join(__dirname, '..', '..', '..', '..', 'scripts', 'stage-engine-resources.sh')
 
 describe('developer package coordinator', () => {
   it('is executable and accepts the built package as its only install input', () => {
@@ -32,11 +33,18 @@ describe('developer package coordinator', () => {
     expect(body).not.toContain('cp -R')
   })
 
+  // The SDK staging itself lives in the shared stager every Ion.app-producing
+  // path runs, so `make desktop-pkg` and the developer build stage the same
+  // inputs. Both halves are pinned: the developer build must call the stager,
+  // and the stager must stage both SDKs.
   it('stages both SDKs before building the local package', () => {
-    const body = readFileSync(developerBuildPath, 'utf8')
-    expect(body).toContain('rm -rf resources/engine/extensions/sdk resources/engine/extensions/sdk-go')
-    expect(body).toContain('cp -R ../engine/extensions/sdk resources/engine/extensions/sdk')
-    expect(body).toContain('cp -R ../sdk/go resources/engine/extensions/sdk-go')
+    expect(readFileSync(developerBuildPath, 'utf8'))
+      .toContain('bash ../scripts/stage-engine-resources.sh')
+
+    const stager = readFileSync(stageEngineResourcesPath, 'utf8')
+    expect(stager).toContain('rm -rf "$RES/extensions/sdk" "$RES/extensions/sdk-go"')
+    expect(stager).toContain('cp -R "$REPO_ROOT/engine/extensions/sdk" "$RES/extensions/sdk"')
+    expect(stager).toContain('cp -R "$REPO_ROOT/sdk/go" "$RES/extensions/sdk-go"')
   })
 
   it('builds the local package and dispatches the coordinator with that package', () => {

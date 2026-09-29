@@ -110,10 +110,10 @@ func TestOpenAIImageProviderGenerate(t *testing.T) {
 
 	p := NewOpenAIImageProvider(&ProviderOptions{
 		BaseURL: srv.URL,
-		APIKey:  "test-key",
 	})
 
-	results, err := p.Generate(context.Background(), types.ImageGenerateOptions{
+	ctx := WithRequestCredential(context.Background(), testStaticAuthenticator{key: "test-key"})
+	results, err := p.Generate(ctx, types.ImageGenerateOptions{
 		Model:  wantModel,
 		Prompt: wantPrompt,
 	})
@@ -183,11 +183,10 @@ func TestOpenAIImageProviderAuthHeader(t *testing.T) {
 			defer srv.Close()
 
 			p := NewOpenAIImageProvider(&ProviderOptions{
-				BaseURL:    srv.URL,
-				APIKey:     "test-key",
-				AuthHeader: tc.authHeader,
+				BaseURL: srv.URL,
 			})
-			if _, err := p.Generate(context.Background(), types.ImageGenerateOptions{
+			ctx := WithRequestCredential(context.Background(), testStaticAuthenticator{key: "test-key", header: tc.authHeader})
+			if _, err := p.Generate(ctx, types.ImageGenerateOptions{
 				Model:  "dall-e-3",
 				Prompt: "test",
 			}); err != nil {

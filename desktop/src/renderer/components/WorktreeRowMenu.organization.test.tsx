@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { WorktreeAppraisalWire, WorktreeInventoryEntry } from '../../shared/types'
+import type { WorktreeAppraisalWire, WorktreeInventoryEntry } from '@ion/shared/types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -17,6 +17,11 @@ const mocks = vi.hoisted(() => ({
   retireWorktree: vi.fn(async () => ({ ok: true, workingDirectory: '/repo' })),
   landAndRetireWorktree: vi.fn(async () => ({ ok: true })),
   recordConflictAlert: vi.fn(),
+  repoEnvironment: vi.fn<(repoPath: string) => string | null>(() => 'local'),
+}))
+
+vi.mock('../studio/state/secondary-store-worktree-sync', () => ({
+  environmentOfWorktreeRepo: (repoPath: string) => mocks.repoEnvironment(repoPath),
 }))
 
 vi.mock('framer-motion', () => ({
@@ -42,7 +47,7 @@ const WT = '/Users/dev/.ion/worktrees/ion-menu'
 const REPO = '/Users/dev/src/ion'
 let tabs: Array<{ id: string; workingDirectory: string; title: string; customTitle: null; status: string }> = []
 
-vi.mock('../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (state: { benchWorkspaces: Map<string, never>; tabs: typeof tabs; workspaceOperationLedger: Map<string, never> }) => unknown) =>
       selector({ benchWorkspaces: new Map<string, never>(), tabs, workspaceOperationLedger: new Map<string, never>() }),
@@ -64,12 +69,20 @@ vi.mock('../stores/sessionStore', () => ({
   ),
 }))
 
+// The dialog and its host are pinned by their own tests; here only that the
+// row asks for it, on which conversation, and in which mode.
+const openTransferDialog = vi.fn()
+vi.mock('../studio/transfer/TransferDialogHost', () => ({
+  openTransferDialog: (request: unknown) => openTransferDialog(request),
+}))
+
 vi.mock('../rendererLogger', () => ({
   rInfo: vi.fn(), rWarn: vi.fn(), rError: vi.fn(), rDebug: vi.fn(), rTrace: vi.fn(),
 }))
 
 import { PopoverLayerProvider } from './PopoverLayer'
 import { WorktreeRowMenu } from './WorktreeRowMenu'
+import { installFakeWire } from '../host/__tests__/fake-wire'
 
 function entry(over: Partial<WorktreeInventoryEntry> = {}): WorktreeInventoryEntry {
   return {
@@ -126,6 +139,7 @@ async function press(label: string): Promise<void> {
 
 beforeEach(() => {
   closed = 0
+  openTransferDialog.mockClear()
   tabs = []
   mocks.newWorktreeConversation.mockClear()
   mocks.setWorktreeStage.mockClear()
@@ -136,11 +150,11 @@ beforeEach(() => {
     fullyLanded: true,
     safeToDiscard: true,
   })
-  ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = {
+  ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = installFakeWire({
     gitWorktreeAppraise: mocks.appraise,
     gitWorktreeRetirePreview: vi.fn(async () => ({ prunedBenchPaths: [] })),
     revealPath: vi.fn(async () => undefined),
-  }
+  })
   container = document.createElement('div')
   document.body.appendChild(container)
   root = createRoot(container)
@@ -167,11 +181,36 @@ describe('WorktreeRowMenu organization', () => {
       // (hint stays "Commit changes first"), but with nothing to land the
       // label now says what actually happens — discard, not merge.
       'Retire (nothing to land)Commit changes first',
+      // A whole worktree moves as a clean unit, so a dirty one refuses.
+      'Transfer worktree…Commit changes first',
       'Reveal in Finder',
       'Re-provision',
       'Discard worktree…',
           ])
     expect(document.querySelectorAll('[data-testid="worktree-menu-separator"]')).toHaveLength(5)
+  })
+
+  // The worktree's own Transfer moves it whole: the checkout and every
+  // conversation in it. It opens the Transfer dialog already in that mode.
+  it('opens Transfer worktree in whole-worktree mode on one of its conversations', async () => {
+    tabs = [
+      { id: 'tab-1', workingDirectory: WT, title: 'First', customTitle: null, status: 'idle' },
+      { id: 'tab-2', workingDirectory: WT, title: 'Second', customTitle: null, status: 'idle' },
+    ]
+    render(entry({ isDirty: false }))
+    await press('Transfer worktree…')
+    expect(openTransferDialog).toHaveBeenCalledWith({ tabId: 'tab-1', initialMode: 'worktree' })
+    // The menu closes: the window-level host owns the dialog, so it survives
+    // this row disappearing when the worktree leaves the machine.
+    expect(closed).toBe(1)
+    expect(document.querySelector('[data-testid="worktree-row-menu"]')).toBeNull()
+  })
+
+  it('refuses Transfer worktree with nothing in it to carry', () => {
+    render(entry({ isDirty: false }))
+    const row = [...document.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Transfer worktree…'))!
+    expect(row.textContent).toContain('No conversation in it to carry')
+    expect(row.disabled).toBe(true)
   })
 
   it('opens a confirmation before discarding a worktree', async () => {
@@ -184,7 +223,11 @@ describe('WorktreeRowMenu organization', () => {
     expect(document.activeElement?.textContent).toBe('Keep it')
   })
 
-  it('opens the conversation-type picker for the selected worktree', async () => {
+  // The row names the machine its worktree was read from. The picker once
+  // took the active conversation's machine instead, and a worktree on one
+  // machine got its new conversation created on another.
+  it('opens the conversation-type picker for the selected worktree, on the machine that has it', async () => {
+    mocks.repoEnvironment.mockReturnValue('grover')
     let pickerTarget: unknown
     const pickerListener = vi.fn((event: Event) => {
       pickerTarget = (event as CustomEvent).detail
@@ -196,8 +239,10 @@ describe('WorktreeRowMenu organization', () => {
 
     expect(mocks.newWorktreeConversation).not.toHaveBeenCalled()
     expect(pickerListener).toHaveBeenCalledOnce()
+    expect(mocks.repoEnvironment).toHaveBeenCalledWith(REPO)
     expect(pickerTarget).toEqual({
       initialDirectory: WT,
+      initialEnvironmentId: 'grover',
       initialWorktree: {
         repoPath: REPO,
         worktreePath: WT,

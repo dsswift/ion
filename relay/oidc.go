@@ -16,7 +16,14 @@ import (
 
 // UserIdentity represents an authenticated user from OIDC.
 type UserIdentity struct {
-	Subject  string
+	Subject string
+	// Issuer is the verified iss claim of the token that proved Subject.
+	Issuer string
+	// OwnerKey is what channel ownership binds to: Subject for the relay's
+	// primary issuer, issuer-qualified for any other (see
+	// validateAgainstIssuers). Empty for an announced-trust join, which
+	// never binds.
+	OwnerKey string
 	Username string
 	Roles    []string
 	// TokenExpiry is the JWT expiry time; zero means no expiry (e.g. PSK).
@@ -224,14 +231,36 @@ func rsaPublicKeyFromJWK(nStr, eStr string) (*rsa.PublicKey, error) {
 	}, nil
 }
 
-// ValidateJWT parses and validates a JWT bearer token. Returns the caller's
-// UserIdentity on success, or an error describing why validation failed.
-// The 60-second leeway applies to exp and nbf.
+// ValidateJWT parses and validates a JWT bearer token against cfg's own
+// configured Audience and RequiredScope. Returns the caller's UserIdentity
+// on success, or an error describing why validation failed. The 60-second
+// leeway applies to exp and nbf.
 func (cfg *OIDCConfig) ValidateJWT(tokenStr string) (*UserIdentity, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("oidc not configured")
 	}
+	return cfg.validateJWTFor(tokenStr, cfg.Audience, cfg.RequiredScope)
+}
 
+// ValidateJWTFor parses and validates a JWT bearer token against an
+// explicit audience and scope, overriding cfg's own configured values. Used
+// by OIDCRegistry (announce.go): a single cached OIDCConfig per issuer
+// (JWKS is per-issuer, not per-channel) may be asked to validate against a
+// DIFFERENT announced audience/scope on each call, because two channels on
+// the same issuer can announce different audiences. cfg.Audience and
+// cfg.RequiredScope are otherwise unused by this path.
+func (cfg *OIDCConfig) ValidateJWTFor(tokenStr, audience, scope string) (*UserIdentity, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("oidc not configured")
+	}
+	return cfg.validateJWTFor(tokenStr, audience, scope)
+}
+
+// validateJWTFor is the shared implementation both ValidateJWT and
+// ValidateJWTFor call, parameterized on audience and requiredScope so the
+// same signature/issuer/claims logic serves both a fixed org-wide config
+// and a per-announcement override.
+func (cfg *OIDCConfig) validateJWTFor(tokenStr, audience, requiredScope string) (*UserIdentity, error) {
 	parser := jwt.NewParser(
 		jwt.WithLeeway(60*time.Second),
 		jwt.WithExpirationRequired(),
@@ -267,25 +296,25 @@ func (cfg *OIDCConfig) ValidateJWT(tokenStr string) (*UserIdentity, error) {
 	}
 
 	// Validate audience.
-	if cfg.Audience != "" {
+	if audience != "" {
 		aud, err := claims.GetAudience()
 		if err != nil {
 			return nil, fmt.Errorf("audience claim: %w", err)
 		}
 		found := false
 		for _, a := range aud {
-			if a == cfg.Audience {
+			if a == audience {
 				found = true
 				break
 			}
 		}
 		if !found {
-			return nil, fmt.Errorf("audience mismatch: %v does not include %q", aud, cfg.Audience)
+			return nil, fmt.Errorf("audience mismatch: %v does not include %q", aud, audience)
 		}
 	}
 
 	// Validate required scope — handles both "scp" (Entra v1) and "scope" (Entra v2).
-	if cfg.RequiredScope != "" {
+	if requiredScope != "" {
 		scopeStr := ""
 		if v, ok := claims["scp"].(string); ok {
 			scopeStr = v
@@ -293,22 +322,22 @@ func (cfg *OIDCConfig) ValidateJWT(tokenStr string) (*UserIdentity, error) {
 			scopeStr = v
 		}
 		if scopeStr == "" {
-			return nil, fmt.Errorf("required scope %q missing: no scp/scope claim", cfg.RequiredScope)
+			return nil, fmt.Errorf("required scope %q missing: no scp/scope claim", requiredScope)
 		}
 		found := false
 		for _, s := range strings.Fields(scopeStr) {
-			if s == cfg.RequiredScope {
+			if s == requiredScope {
 				found = true
 				break
 			}
 		}
 		if !found {
-			return nil, fmt.Errorf("required scope %q not in %q", cfg.RequiredScope, scopeStr)
+			return nil, fmt.Errorf("required scope %q not in %q", requiredScope, scopeStr)
 		}
 	}
 
 	// Extract identity.
-	identity := &UserIdentity{}
+	identity := &UserIdentity{Issuer: iss}
 
 	// Subject: prefer "oid", fall back to "sub".
 	if oid, ok := claims["oid"].(string); ok && oid != "" {

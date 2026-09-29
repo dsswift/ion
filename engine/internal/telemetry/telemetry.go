@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -80,62 +81,6 @@ const (
 // Event is one expanded telemetry data point. The file target compacts a flush
 // into a v4 telemetry frame; in-memory and non-file targets retain this shape.
 type Event = telemetryformat.Event
-
-// SpanHandle tracks a timed operation in progress.
-//
-// start is captured at full monotonic-clock resolution (time.Time), not
-// truncated to integer milliseconds. Truncating at capture time floored every
-// sub-millisecond span (a fast tool.execute, a cache-hit llm.call, a quick
-// dispatch.agent) to a 0ms duration, blanking the p99 duration panels for those
-// spans. Retaining the time.Time lets End emit the fractional millisecond that
-// float64(d.Microseconds())/1000.0 preserves, mirroring the extension.hook_latency
-// precision fix. The OtelBridge still receives integer-millisecond start/end
-// timestamps because the OTLP wire encodes nanoseconds-since-epoch derived from
-// them; span *duration* precision lives in the duration_ms payload field.
-type SpanHandle struct {
-	name      string
-	start     time.Time
-	attrs     map[string]any
-	ctx       map[string]any
-	collector *Collector
-}
-
-// End completes the span and records it as an event. Optional extra attributes
-// and an error message can be provided. The span's stored context (set via
-// StartSpanCtx) is forwarded to Collector.Event so span-based events carry the
-// same session_id / conversation_id as every other telemetry event.
-func (s *SpanHandle) End(attrs map[string]any, errMsg ...string) {
-	end := time.Now()
-	// Sub-millisecond precision: microseconds→float milliseconds preserves the
-	// fractional value that end.Sub(start).Milliseconds() would floor to 0.
-	durationMs := float64(end.Sub(s.start).Microseconds()) / 1000.0
-	payload := make(map[string]any, len(s.attrs)+len(attrs)+1)
-	for k, v := range s.attrs {
-		payload[k] = v
-	}
-	for k, v := range attrs {
-		payload[k] = v
-	}
-	// R7: snake_case duration key.
-	payload["duration_ms"] = durationMs
-	if len(errMsg) > 0 && errMsg[0] != "" {
-		payload["error"] = errMsg[0]
-	}
-	s.collector.Event(s.name, payload, s.ctx)
-
-	// Forward span timing to OtelBridge if attached. The bridge receives both
-	// payload and correlation context: trace_id lives in the latter, and losing
-	// it here used to make llm.call/tool.execute OTLP spans mint a fresh trace
-	// per event even while their JSONL telemetry correctly carried the run trace.
-	// Keep the two maps separate so correlation keys remain ctx.* attributes on
-	// the OTLP event path rather than silently colliding with payload keys.
-	s.collector.mu.Lock()
-	bridge := s.collector.otelBridge
-	s.collector.mu.Unlock()
-	if bridge != nil {
-		bridge.RecordSpan(s.name, s.start.UnixMilli(), end.UnixMilli(), payload, s.ctx)
-	}
-}
 
 // Collector buffers telemetry events and flushes them to configured targets.
 type Collector struct {
@@ -227,7 +172,7 @@ func normalizeTelemetryConfig(cfg types.TelemetryConfig) types.TelemetryConfig {
 	if cfg.FilePath == "" {
 		for _, t := range cfg.Targets {
 			if t == "file" {
-				cfg.FilePath = utils.ExpandHomePath("~/.ion/telemetry.jsonl")
+				cfg.FilePath = filepath.Join(utils.IonDir(), "telemetry.jsonl")
 				break
 			}
 		}
@@ -283,6 +228,8 @@ func NewCollector(config types.TelemetryConfig) *Collector {
 			Headers:            config.Otel.Headers,
 			ServiceName:        config.Otel.ServiceName,
 			ResourceAttributes: config.Otel.ResourceAttributes,
+			TokenScope:         config.Otel.TokenScope,
+			TokenProvider:      config.Otel.TokenProvider,
 		}
 		if config.FlushIntervalMs > 0 {
 			bridgeConfig.FlushInterval = time.Duration(config.FlushIntervalMs) * time.Millisecond
@@ -477,11 +424,16 @@ func (c *Collector) Event(name string, payload, ctx map[string]any) {
 		Version:       engineVersion(),
 		// EventID: per-event unique ID for downstream dedup (R22).
 		EventID: genSpanID(),
-		// User: populated when enterprise OIDC auth context is present (R20).
-		User:    resolvedUserIdentity(),
-		Payload: payload,
-		Context: ctx,
-		TraceID: traceIDFromCorrelationContext(ctx),
+		// User: the acting principal's attribution when this event's ctx
+		// carries one (FR-05 child 10, R-41), falling back to the
+		// process-wide resolvedUserIdentity() (R20) when it does not --
+		// unattributed work (startup, an engine with no per-principal
+		// context wired) is unaffected, preserving B-23.
+		User:         identityForEvent(ctx),
+		Payload:      payload,
+		Context:      ctx,
+		TraceID:      traceIDFromCorrelationContext(ctx),
+		ParentSpanID: parentSpanIDFromCorrelationContext(ctx),
 	}
 	c.mu.Lock()
 	c.buffer = append(c.buffer, e)
@@ -532,13 +484,6 @@ func (c *Collector) LogFlushError(err error) {
 	})
 }
 
-// StartSpan begins a timed span. Call End on the returned handle to complete it.
-// The emitted event carries no correlation context; use StartSpanCtx when the
-// caller holds a run context (session_id / conversation_id).
-func (c *Collector) StartSpan(name string, attrs map[string]any) *SpanHandle {
-	return c.StartSpanCtx(name, attrs, nil)
-}
-
 // PrivacyLevel returns the collector's configured privacy level, defaulting
 // to "minimal" when unset. This mirrors normalizeTelemetryConfig's own
 // default pattern (see above) so an operator who never sets privacyLevel
@@ -549,20 +494,6 @@ func (c *Collector) PrivacyLevel() string {
 		return "minimal"
 	}
 	return c.config.PrivacyLevel
-}
-
-// StartSpanCtx begins a timed span with an explicit correlation context.
-// ctx is stored on the handle and forwarded to Collector.Event when End is
-// called, so the emitted event carries session_id and conversation_id just
-// like every direct Collector.Event call site that passes buildTelemCtx(run).
-func (c *Collector) StartSpanCtx(name string, attrs, ctx map[string]any) *SpanHandle {
-	return &SpanHandle{
-		name:      name,
-		start:     time.Now(),
-		attrs:     attrs,
-		ctx:       ctx,
-		collector: c,
-	}
 }
 
 // BufferedEvents returns a copy of the events currently buffered but not yet
@@ -704,6 +635,7 @@ var engineVer atomic.Value
 // linked-in version var). Safe to call multiple times; last write wins.
 func SetEngineVersion(v string) {
 	engineVer.Store(v)
+	utils.SetServiceVersion(v)
 }
 
 // engineVersion returns the stored engine version, defaulting to "dev".
@@ -719,12 +651,11 @@ var (
 	resolvedH string
 )
 
-// resolvedHost returns the machine hostname, resolved once per process.
+// resolvedHost returns the host this process reports as (utils.HostName),
+// resolved once per process.
 func resolvedHost() string {
 	hostOnce.Do(func() {
-		if h, err := os.Hostname(); err == nil {
-			resolvedH = h
-		}
+		resolvedH = utils.HostName()
 	})
 	return resolvedH
 }
@@ -755,6 +686,28 @@ func resolvedUserIdentity() string {
 		return v
 	}
 	return ""
+}
+
+// identityForEvent is Event's single stamping-point resolution (FR-05 child
+// 10, R-41): the acting principal's attribution when ctx carries one
+// (stamped into ctx["principal_identity"] by buildTelemCtx from the run's
+// ParentCtx, itself set via utils.WithPrincipalIdentity at prompt dispatch),
+// falling back to the process-wide resolvedUserIdentity() when it does not.
+// This is the ONE place either identity is chosen, so every event type is
+// covered by this one edit -- there is no per-call-site attribution logic
+// to keep in sync. ctx is the plain map[string]any correlation context
+// Event already threads (not a real context.Context); the run loop is what
+// bridges the two by writing this key from the real context at
+// buildTelemCtx time.
+func identityForEvent(ctx map[string]any) string {
+	if ctx != nil {
+		if id, ok := ctx["principal_identity"].(string); ok && id != "" {
+			utils.LogWithFields(utils.LevelDebug, "telemetry", "identity from context", map[string]any{"source": "principal"})
+			return id
+		}
+	}
+	utils.LogWithFields(utils.LevelDebug, "telemetry", "identity from process value", map[string]any{"source": "process"})
+	return resolvedUserIdentity()
 }
 
 // ---------------------------------------------------------------------------

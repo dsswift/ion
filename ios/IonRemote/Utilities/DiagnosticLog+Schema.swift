@@ -21,14 +21,27 @@ extension DiagnosticLog {
         let session_id: String?
         let conversation_id: String?
         let pairing_id: String?
+        /// Set on a span line only (`DiagnosticLog+Spans.swift`).
+        var trace_id: String?
         let fields: [String: String]
+        /// Numeric `fields` entries, encoded as JSON numbers beside the string ones.
+        var numericFields: [String: Double] = [:]
 
         enum CodingKeys: String, CodingKey {
             case ts, level, component, tag, msg
             case session_id
             case conversation_id
             case pairing_id
+            case trace_id
             case fields
+        }
+
+        /// `fields` holds strings and numbers side by side.
+        private struct FieldKey: CodingKey {
+            let stringValue: String
+            init(stringValue: String) { self.stringValue = stringValue }
+            var intValue: Int? { nil }
+            init?(intValue: Int) { nil }
         }
 
         func encode(to encoder: Encoder) throws {
@@ -51,14 +64,23 @@ extension DiagnosticLog {
             if let pairing_id, !pairing_id.isEmpty {
                 try c.encode(pairing_id, forKey: .pairing_id)
             }
+            if let trace_id, !trace_id.isEmpty {
+                try c.encode(trace_id, forKey: .trace_id)
+            }
             // fields is REQUIRED and always present ({} when empty).
-            try c.encode(fields, forKey: .fields)
+            var f = c.nestedContainer(keyedBy: FieldKey.self, forKey: .fields)
+            for (k, v) in fields where numericFields[k] == nil {
+                try f.encode(v, forKey: FieldKey(stringValue: k))
+            }
+            for (k, v) in numericFields {
+                try f.encode(v, forKey: FieldKey(stringValue: k))
+            }
         }
     }
 
     /// Build one JSONL line (including trailing `\n`) for an entry.
     /// Called on `writeQueue`, so correlation-ID reads are already serialized.
-    func encodeLine(entry: Entry, fields: [String: String]) -> String {
+    func encodeLine(entry: Entry, fields: [String: String], span: SpanStamp? = nil) -> String {
         // Merge the immutable device-identity fields and a fresh monotonic seq
         // into every line's `fields`. Call-site fields win on key collision so a
         // caller can never be silently shadowed; device_model/app_version/etc.
@@ -67,17 +89,22 @@ extension DiagnosticLog {
         var merged = deviceFields
         for (k, v) in fields { merged[k] = v }
         merged["seq"] = String(_nextSeqOnQueue())
-        let line = LogLine(
+        var line = LogLine(
             ts: tsFormatter.string(from: entry.timestamp),
             level: entry.level,
             component: "ios",
             tag: entry.tag,
             msg: entry.message,
             session_id: currentSessionId,
-            conversation_id: currentConversationId,
+            // A span names its own conversation; any other line takes the active one.
+            conversation_id: span?.conversationId ?? currentConversationId,
             pairing_id: currentPairingId,
             fields: merged
         )
+        line.trace_id = span?.traceId
+        line.numericFields = span?.numbers ?? [:]
+        // The else branch emits a minimal fallback line instead.
+        // swiftlint:disable:next silent_try_optional
         guard let data = try? jsonEncoder.encode(line),
               let json = String(data: data, encoding: .utf8) else {
             // Fallback: emit a minimal valid line so a bad payload never

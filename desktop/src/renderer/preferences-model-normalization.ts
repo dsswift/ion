@@ -1,8 +1,8 @@
-import type { ModelEntry } from '../shared/types-models'
-import { normalizeModelPreferences } from '../shared/model-identity'
+import type { ModelEntry } from '@ion/shared/types-models'
+import { normalizeModelPreferences } from '@ion/shared/model-identity'
 import { rWarn } from './rendererLogger'
-import { getAllSettings, saveSettings } from './preferences-persist'
-import type { PreferencesState } from './preferences-types'
+import { saveSettingsFor } from './preferences-persist'
+import type { PreferencesState } from '@ion/server/preferences-types'
 
 export function normalizePreferencesModels(
   set: (partial: Partial<PreferencesState>) => void,
@@ -22,5 +22,10 @@ export function normalizePreferencesModels(
   rWarn('preferences', 'legacy model preferences normalized to engine-canonical IDs', {
     fields: changed.map(([key]) => key).join(','),
   })
-  saveSettings(getAllSettings(get))
+  // Only the model-preference fields this function itself computed -- never
+  // the full snapshot, which would freeze every other in-memory field into
+  // this identity's overlay too. See persist()'s doc comment.
+  // To the server THIS store is bound to: these are Account settings, and a
+  // store built for another server must never write them to the local one.
+  saveSettingsFor(set, { ...next })
 }

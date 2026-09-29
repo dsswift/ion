@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# The Linux npm gates bind-mount the repo and run `npm ci`, which rewrites every
+# workspace's node_modules. Each one must be an anonymous container volume, or
+# the gate replaces the host's install with Linux binaries. The repo must also
+# be git-safe for ionci, not just root, since the desktop build reads git.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+dirs=(node_modules)
+while IFS= read -r ws; do
+  for d in $ws; do [ -f "$d/package.json" ] && dirs+=("$d/node_modules"); done
+done < <(node -e 'for (const w of require("./package.json").workspaces) console.log(w)')
+
+fail=0
+for target in test-linux-desktop-run test-linux-server-run; do
+  cmd="$(make -n "$target" | grep 'docker run')"
+  for d in "${dirs[@]}"; do
+    if ! grep -qF -- "-v /src/$d " <<<"$cmd "; then
+      echo "  $target does not isolate /src/$d"
+      fail=1
+    fi
+  done
+  # root marks the tree safe, ionci runs the build that reads git.
+  if ! make -n "$target" | grep -qF 'git config --system --add safe.directory /src'; then
+    echo "  $target does not mark /src safe for every container user"
+    fail=1
+  fi
+done
+[ "$fail" -eq 0 ] || { echo "❌ a Linux npm gate is misconfigured"; exit 1; }
+echo "linux gate mounts: ${#dirs[@]} node_modules isolated and /src marked safe in both npm gates"

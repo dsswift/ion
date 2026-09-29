@@ -3,7 +3,7 @@ import { diffSnapshots, eventIntents } from "../mapping";
 import type {
   AgentStateUpdate,
   NormalizedEvent,
-} from "../../../../../shared/types";
+} from "@ion/shared/types";
 
 function agent(
   name: string,

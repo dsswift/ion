@@ -14,17 +14,21 @@
  *      atomic writes of ~/.ion/settings.json.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { PreferencesState } from '../preferences-types'
+import type { PreferencesState } from '@ion/server/preferences-types'
 import { loadPersistedSettings } from '../preferences-persist'
+import { installFakeWire } from '../host/__tests__/fake-wire'
 
 let originalIon: unknown
 
 function stubIon(disk: Record<string, unknown>, saveSpy?: (s: Record<string, unknown>) => void): void {
   // jsdom provides window/document; only the ion bridge is stubbed.
-  ;(window as unknown as { ion: unknown }).ion = {
+  ;(window as unknown as { ion: unknown }).ion = installFakeWire({
     loadSettings: () => Promise.resolve(disk),
-    saveSettings: (s: Record<string, unknown>) => { saveSpy?.(s); return Promise.resolve() },
-  }
+    // Panel heights are Device settings: they are kept on this client, one
+    // write per key, and never sent to a server.
+    // The one-time adoption marker is written at boot; it is not a panel save.
+    hostSetDeviceSetting: (key: string, value: unknown) => { if (key !== 'clientSettingsAdopted') saveSpy?.({ [key]: value }); return Promise.resolve() },
+  })
 }
 
 beforeEach(() => {
@@ -88,5 +92,26 @@ describe('panel height save debouncing', () => {
     vi.advanceTimersByTime(500)
     expect(saves.length, 'exactly one trailing-edge write').toBe(1)
     expect(saves[0].gitPanelHeight).toBe(700)
+    // Only the field that actually changed -- not the whole in-memory
+    // snapshot. See persist()'s doc comment in preferences-persist.ts for
+    // why sending untouched fields on every save is the defect class this
+    // pins: it freezes them into the server-side overlay forever.
+    expect(Object.keys(saves[0])).toEqual(['gitPanelHeight'])
+  })
+
+  it('merges both panels into one save when both change inside the same debounce window', () => {
+    vi.useFakeTimers()
+    const saves: Record<string, unknown>[] = []
+    stubIon({}, (s) => saves.push(s))
+
+    vi.resetModules()
+    return import('../preferences').then(({ usePreferencesStore }) => {
+      usePreferencesStore.getState().setGitPanelHeight(500)
+      usePreferencesStore.getState().setFileExplorerHeight(300)
+
+      vi.advanceTimersByTime(500)
+      // One trailing-edge flush carrying both panels, one write per key.
+      expect(saves).toEqual([{ gitPanelHeight: 500 }, { fileExplorerHeight: 300 }])
+    })
   })
 })

@@ -7,11 +7,25 @@
  */
 
 import { existsSync, readFileSync } from 'fs'
+import { app } from 'electron'
 import { log as _log } from './logger'
-import { ENGINE_CONFIG_FILE, readSettings } from './settings-store'
-import { configureEgress, setEgressUser, type EgressConfig, type AuthHeaderProvider } from './log-egress'
-import { startEgressTailers } from './log-egress-tailer'
-import { getAccessToken, getSignedInIdentity } from './oauth/entra-auth'
+import { engineConfigFile, readSettings } from '@ion/server/persistence/settings-store'
+import { configureEgress, setEgressUser, type EgressConfig, type AuthHeaderProvider } from '@ion/shared/log-egress'
+import { startEgressTailers } from '@ion/shared/log-egress-tailer'
+import { broker } from './connections/broker-instance'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
+
+/** The engine-minted OIDC token for the telemetry scope, through the local server (`entra.accessToken`). */
+async function getAccessToken(): Promise<string | null> {
+  const result = await broker.sendAction(LOCAL_ENVIRONMENT_ID, 'entra.accessToken', []) as { token: string | null }
+  return result.token
+}
+
+/** The signed-in operator, if any, through the local server (`entra.identity`). */
+async function getSignedInIdentity(): Promise<{ user: string } | null> {
+  const result = await broker.sendAction(LOCAL_ENVIRONMENT_ID, 'entra.identity', []) as { identity: { user: string } | null }
+  return result.identity
+}
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -27,9 +41,9 @@ function log(msg: string, fields?: Record<string, unknown>): void {
  * engine.json contains.
  */
 export function initEgressFromEngineConfig(): void {
-  if (!existsSync(ENGINE_CONFIG_FILE)) return
+  if (!existsSync(engineConfigFile())) return
   try {
-    const raw = JSON.parse(readFileSync(ENGINE_CONFIG_FILE, 'utf-8')) as Record<string, unknown>
+    const raw = JSON.parse(readFileSync(engineConfigFile(), 'utf-8')) as Record<string, unknown>
     const logging = raw.logging as Record<string, unknown> | undefined
     if (!logging) return
 
@@ -45,17 +59,22 @@ export function initEgressFromEngineConfig(): void {
       egressBatchSize: typeof logging.egressBatchSize === 'number' ? logging.egressBatchSize : undefined,
       egressFlushIntervalMs: typeof logging.egressFlushIntervalMs === 'number' ? logging.egressFlushIntervalMs : undefined,
       egressOtel: typeof logging.egressOtel === 'object' && logging.egressOtel !== null
-        ? logging.egressOtel as import('./log-egress').EgressOtelConfig
+        ? logging.egressOtel as import('@ion/shared/log-egress').EgressOtelConfig
         : undefined,
     }
 
     // Shipping-responsibility matrix: the desktop's share is
     // logging.egressClientShipSources. Unset preserves the legacy
     // single-collection-point default (the desktop ships everything).
+    //
+    // `server` is in that default because before the server was split out of
+    // this process its lines WERE desktop lines: leaving it out would quietly
+    // drop from a workstation's shipment everything the store, worktrees and
+    // the Studio wire now log.
     const rawClientSources = logging.egressClientShipSources
     const clientSources: string[] = Array.isArray(rawClientSources)
       ? (rawClientSources as string[])
-      : ['desktop', 'engine', 'ios', 'telemetry']
+      : ['desktop', 'engine', 'server', 'ios', 'telemetry']
     if (clientSources.length === 0) {
       log('app_lifecycle: matrix assigns the desktop no sources; egress left to the engine', { targets })
       return
@@ -81,6 +100,8 @@ export function initEgressFromEngineConfig(): void {
     configureEgress(cfg, oidcHeaderProvider, {
       shipOwnRecords: clientSources.includes('desktop'),
       source: 'engine',
+      process: 'desktop',
+      version: app.getVersion(),
     })
     // F4: populate user-attribution field on egress records. Read the signed-in
     // identity (from the engine's snapshot) so the field is set before the first
@@ -127,7 +148,7 @@ export function initEgressFromSettingsConfig(): void {
       egressBatchSize: typeof logging.egressBatchSize === 'number' ? logging.egressBatchSize : undefined,
       egressFlushIntervalMs: typeof logging.egressFlushIntervalMs === 'number' ? logging.egressFlushIntervalMs : undefined,
       egressOtel: typeof logging.egressOtel === 'object' && logging.egressOtel !== null
-        ? logging.egressOtel as import('./log-egress').EgressOtelConfig
+        ? logging.egressOtel as import('@ion/shared/log-egress').EgressOtelConfig
         : undefined,
     }
 
@@ -147,14 +168,14 @@ export function initEgressFromSettingsConfig(): void {
       return {} as Record<string, string>
     }
 
-    // Desktop always ships all four local sources when settings egress is enabled.
-    // No shipping matrix needed: the desktop is the sole shipper for these files
+    // Desktop ships every local source when settings egress is enabled. No
+    // shipping matrix needed: the desktop is the sole shipper for these files
     // in this deployment; the engine is configured separately via engine.json.
-    configureEgress(cfg, oidcHeaderProvider, { shipOwnRecords: true, source: 'settings' })
+    configureEgress(cfg, oidcHeaderProvider, { shipOwnRecords: true, source: 'settings', process: 'desktop', version: app.getVersion() })
     getSignedInIdentity().then((identity) => {
       if (identity) setEgressUser(identity.user)
     }).catch((err) => log("app_lifecycle: egress user identity read failed", { error: String(err) }))
-    startEgressTailers(['desktop', 'engine', 'ios', 'telemetry'])
+    startEgressTailers(['desktop', 'engine', 'server', 'ios', 'telemetry'])
     log('app_lifecycle: settings egress configured', { targets })
   } catch (err) {
     log('app_lifecycle: settings egress config read failed (non-fatal)', {

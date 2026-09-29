@@ -30,12 +30,11 @@ import (
 // strictly safer than aborting the cleanup with zero guards.
 func loadDesktopProtectedIDs(homeDir string) []string {
 	if homeDir == "" {
-		home, err := utils.UserHomeDir()
-		if err != nil {
-			utils.LogWithFields(utils.LevelError, "server", "load desktop protected ids cannot resolve home dir", map[string]any{"error": err.Error()})
+		homeDir = utils.IonDir()
+		if homeDir == "" {
+			utils.LogWithFields(utils.LevelError, "server", "load desktop protected ids cannot resolve home dir", nil)
 			return nil
 		}
-		homeDir = filepath.Join(home, ".ion")
 	}
 
 	ids := make(map[string]bool)

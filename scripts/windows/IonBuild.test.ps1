@@ -280,17 +280,25 @@ Assert-Equal $true ($sync -match 'git ls-files') `
   'the sync enumerates every tracked file'
 Assert-Equal $false ($sync -match 'git diff --name-only') `
   'the sync does not ship only the current diff'
-foreach ($root in @('engine', 'desktop', 'scripts')) {
-  Assert-Equal $true ($sync -match "\b$root\b") "the sync covers $root"
+# server/ and packages/ are what the desktop imports as @ion/server and
+# @ion/shared; sdk/ is what the engine build stages beside ion.exe. A sync
+# without them builds a desktop that cannot spawn its own server.
+foreach ($root in @('engine', 'server', 'packages', 'sdk', 'desktop', 'scripts')) {
+  Assert-Equal $true ($sync -match "ROOTS=\([^)]*\b$root\b") "the sync covers $root"
 }
 # Named individually because the VM builds by running make.ps1, which arrived
 # there by hand once and then drifted -- the per-file failure this script
 # exists to remove. release-please-manifest.json is what the version resolver
 # reads.
-foreach ($rootFile in @('make\.ps1', 'bootstrap\.ps1', 'release-please-manifest\.json')) {
+# package.json and package-lock.json are the npm workspace root; without them
+# the VM installs desktop/ standalone and never resolves the workspace
+# packages.
+foreach ($rootFile in @('make\.ps1', 'bootstrap\.ps1', 'release-please-manifest\.json', 'package\.json', 'package-lock\.json', '\.npmrc')) {
   Assert-Equal $true ($sync -match "ROOTS=\([^)]*$rootFile") `
     "the sync ships the root file $($rootFile -replace '\\', '')"
 }
+Assert-Equal $true ($sync -match 'COPYFILE_DISABLE=1') `
+  'the sync archive carries no AppleDouble sidecar files'
 
 # An unreachable VM must fail loudly. A silent failure is what leaves a retest
 # measuring a stale binary.
@@ -694,6 +702,10 @@ try {
 $ionDesktop = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'IonDesktop.ps1') -Raw
 Assert-Equal $true ($ionDesktop -match 'Resolve-IonDesktopVersion') `
   'Build-IonInstaller resolves the version rather than letting the tools guess'
+# The engine binary is stamped from the same stamp, ahead of git, or a synced
+# tree's stale .git metadata names a commit nobody synced in every log line.
+Assert-Equal $true ($ionDesktop -match "(?s)function Build-IonEngine.*?\.ion-sync-stamp\.json.*?git -C \`$Root describe") `
+  'Build-IonEngine stamps the engine from the sync stamp before consulting git'
 Assert-Equal $true ($ionDesktop -match [regex]::Escape('-c.extraMetadata.version=$version')) `
   'the resolved version is passed to electron-builder instead of editing package.json'
 Assert-Equal $true ($ionDesktop -match [regex]::Escape('$env:ION_DESKTOP_VERSION = $version')) `
@@ -702,6 +714,18 @@ Assert-Equal $true ($ionDesktop -match 'Assert-IonInstallerVersion') `
   'the build asserts its artifacts carry the version it resolved'
 Assert-Equal $true ($ionDesktop -match 'Assert-IonManifestVersion') `
   'the build asserts its provenance manifest carries the version it resolved'
+
+# The desktop spawns the Studio server it ships, and only the staging script
+# produces that bundle. Dependencies resolve only from the workspace root,
+# where @ion/server and @ion/shared live as sibling packages.
+Assert-Equal $true ($ionDesktop -match "(?s)stage-server-bundle\.js.*?electron-vite', 'build'") `
+  'the server bundle is staged before the renderer build packages the tree'
+Assert-Equal $true ($ionDesktop -match "(?s)Assert-IonInstallerVersion -InstallerPath.*?check-packaged-requires\.js") `
+  'the built installer is proved to load its own module graph'
+Assert-Equal $true ($ionDesktop -match "Invoke-IonNative 'npm' @\('ci'[^\n]*-WorkingDirectory \`$Root\b") `
+  'npm ci runs at the workspace root, not inside desktop/'
+Assert-Equal $true ($ionDesktop -match "\`$lock\s*=\s*Join-Path \`$Root 'package-lock\.json'") `
+  'the install stamp keys on the workspace lockfile'
 
 # Provenance is required, not best-effort.
 #

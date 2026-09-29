@@ -103,7 +103,13 @@ final class ModernSpeechEngine: SpeechEngine {
                 DiagnosticLog.log("audio converter creation failed", tag: "speech.modern", level: .error, fields: [
                     "error": msg
                 ])
-                try? session.setActive(false, options: .notifyOthersOnDeactivation)
+                do {
+                    try session.setActive(false, options: .notifyOthersOnDeactivation)
+                } catch {
+                    DiagnosticLog.log("audio session deactivate failed", tag: "speech.modern", level: .warn, fields: [
+                        "error": error.localizedDescription
+                    ])
+                }
                 throw SpeechEngineError.audioSessionFailed(msg)
             }
             converter = conv
@@ -209,50 +215,40 @@ final class ModernSpeechEngine: SpeechEngine {
 
     private func runTranscription(transcriber: SpeechTranscriber, inputStream: AsyncStream<AnalyzerInput>) async {
         DiagnosticLog.log("SPEECH-MODERN: runTranscription starting")
-        do {
-            let analyzer = SpeechAnalyzer(modules: [transcriber])
-            DiagnosticLog.log("SPEECH-MODERN: SpeechAnalyzer created")
+        let analyzer = SpeechAnalyzer(modules: [transcriber])
+        DiagnosticLog.log("SPEECH-MODERN: SpeechAnalyzer created")
 
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask {
-                    do {
-                        _ = try await analyzer.analyzeSequence(inputStream)
-                        DiagnosticLog.log("analyze sequence complete", tag: "speech.modern")
-                    } catch {
-                        DiagnosticLog.log("analyze sequence error", tag: "speech.modern", level: .error, fields: [
-                            "error": error.localizedDescription
-                        ])
-                    }
-                }
-
-                group.addTask { [weak self] in
-                    guard let self else { return }
-                    do {
-                        for try await result in transcriber.results {
-                            let segmentText = String(result.text.characters)
-                            let isFinal = result.isFinal
-                            DiagnosticLog.trace("transcriber result", tag: "speech.modern", fields: [
-                                "is_final": String(isFinal),
-                                "segment": String(segmentText.prefix(60))
-                            ])
-                            await MainActor.run { self.applyResult(segmentText, isFinal: isFinal) }
-                        }
-                    } catch {
-                        DiagnosticLog.log("transcriber results error", tag: "speech.modern", level: .error, fields: [
-                            "error": error.localizedDescription
-                        ])
-                        await MainActor.run { self.errorMessage = error.localizedDescription }
-                    }
-                    DiagnosticLog.log("results loop ended", tag: "speech.modern")
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                do {
+                    _ = try await analyzer.analyzeSequence(inputStream)
+                    DiagnosticLog.log("analyze sequence complete", tag: "speech.modern")
+                } catch {
+                    DiagnosticLog.log("analyze sequence error", tag: "speech.modern", level: .error, fields: [
+                        "error": error.localizedDescription
+                    ])
                 }
             }
-        } catch {
-            DiagnosticLog.log("speech analyzer init error", tag: "speech.modern", level: .error, fields: [
-                "error": error.localizedDescription
-            ])
-            await MainActor.run {
-                self.errorMessage = error.localizedDescription
-                self.isRecording = false
+
+            group.addTask { [weak self] in
+                guard let self else { return }
+                do {
+                    for try await result in transcriber.results {
+                        let segmentText = String(result.text.characters)
+                        let isFinal = result.isFinal
+                        DiagnosticLog.trace("transcriber result", tag: "speech.modern", fields: [
+                            "is_final": String(isFinal),
+                            "segment": String(segmentText.prefix(60))
+                        ])
+                        await MainActor.run { self.applyResult(segmentText, isFinal: isFinal) }
+                    }
+                } catch {
+                    DiagnosticLog.log("transcriber results error", tag: "speech.modern", level: .error, fields: [
+                        "error": error.localizedDescription
+                    ])
+                    await MainActor.run { self.errorMessage = error.localizedDescription }
+                }
+                DiagnosticLog.log("results loop ended", tag: "speech.modern")
             }
         }
 
@@ -319,7 +315,13 @@ final class ModernSpeechEngine: SpeechEngine {
             audioEngine.stop()
         }
 
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        } catch {
+            DiagnosticLog.log("audio session deactivate failed", tag: "speech.modern", level: .warn, fields: [
+                "error": error.localizedDescription
+            ])
+        }
         NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: nil)
 
         isRecording = false

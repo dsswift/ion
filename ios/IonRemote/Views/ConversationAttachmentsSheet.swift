@@ -10,6 +10,8 @@ func countConversationAttachments(_ messages: [Message], desktopCache: [TabAttac
     // this source line is edited into an invalid regex — a build-time mistake,
     // not a runtime condition an operator could act on. The fallback returns
     // the desktop cache count, which is the authoritative number anyway.
+    // Compiled from a constant pattern; see the comment above for the fallback.
+    // swiftlint:disable:next silent_try_optional
     guard let regex = try? NSRegularExpression(
         pattern: #"^\[Attached (image|file|plan): (.+)\]$"#,
         options: []
@@ -419,6 +421,8 @@ struct ConversationAttachmentsSheet: View {
     /// in plan documents or user prose that matches the marker format.
     private func extractAttachments(from messages: [Message]) -> [ExtractedAttachment] {
         // Compile-time literal pattern, as above: no runtime failure mode.
+        // Compiled from a constant pattern; see the comment above for the fallback.
+        // swiftlint:disable:next silent_try_optional
         guard let regex = try? NSRegularExpression(
             pattern: #"^\[Attached (image|file|plan): (.+)\]$"#,
             options: []

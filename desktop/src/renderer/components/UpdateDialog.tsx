@@ -3,10 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { createPortal } from 'react-dom'
 import { ArrowCircleUp } from '@phosphor-icons/react'
 import { usePopoverLayer } from './PopoverLayer'
-import { useUpdateStore } from '../stores/update-store'
+import { useUpdateStore } from '@ion/server/store/update-store'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
+import { host } from '../host/host-instance'
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
 
@@ -124,7 +125,15 @@ export function UpdateDialog(): React.ReactElement | null {
             </button>
             {!updateError && progress === null && (
               <button
-                onClick={() => staged ? window.ion.restartForUpdate() : window.ion.installUpdate()}
+                onClick={() => {
+                  // Self-update is Electron-only with no wire equivalent
+                  // (same `updates` gate `useUpdateEvents.ts` checks) -- this
+                  // dialog is only ever populated by that gated listener, but
+                  // guard the click directly rather than rely on that.
+                  if (!host.capabilities().includes('updates')) return
+                  if (staged) host.shell.restartForUpdate()
+                  else host.shell.installUpdate()
+                }}
                 {...installIx.handlers}
                 className="ion-focusable flex-1 py-1.5 rounded-lg text-[12px] font-medium"
                 style={{

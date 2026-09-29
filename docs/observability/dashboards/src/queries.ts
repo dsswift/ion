@@ -72,16 +72,11 @@ export function instant(expr: string, window: Window | null): Expr {
 // Shared LogQL fragment helpers
 // ---------------------------------------------------------------------------
 
-// The telemetry stream selector for a given event kind.
-// Uses service_name because:
-//   - Cluster OTLP path: otelcol.exporter.loki promotes resource service.name
-//     as service_name (dot → underscore conversion is automatic and cannot be
-//     suppressed in the exporter). The loki.process stage cannot rename it.
-//   - Local file-tail path: path_targets sets both service and service_name
-//     so both stacks emit service_name for the telemetry stream.
-// Dashboards targeting both stacks must use service_name.
+// The telemetry stream selector for a given event kind: the event_name label,
+// the event's OTLP event.name. An operational line has no event_name, so a
+// log selector says `event_name=""` to leave telemetry out.
 export function telemetry(kind: string): string {
-  return `{service_name="ion-telemetry", kind="${kind}"}`;
+  return `{event_name="${kind}"}`;
 }
 
 // Coalesce an empty/absent `context_extension` into the literal "unattributed"
@@ -100,6 +95,32 @@ export function telemetry(kind: string): string {
 // into the pipeline immediately before the range-vector selector.
 export function coalesceUnattributed(inner: string): string {
   return coalesceLabel(inner, 'context_extension', 'unattributed');
+}
+
+// Coalesce an empty/absent extension label into "no extension", for the
+// version-comparison panels (spend/runs per version, the dispatch drill-down
+// table) whose legend renders extension AND version side by side. These panels
+// predate `coalesceUnattributed` and never adopted it, so an unattributed run
+// left `context_extension`/`payload_extension` absent going into the group-by
+// and rendered as an empty legend segment. Distinct wording from "unattributed"
+// (used by the extension-only panels above) is deliberate: this call site is
+// about the extension half of a combined extension+version legend, not the
+// dashboard's general unattributed-run bucket.
+export function coalesceNoExtension(inner: string, label: 'context_extension' | 'payload_extension'): string {
+  return coalesceLabel(inner, label, 'no extension');
+}
+
+// Coalesce an empty/absent version label into "unversioned". Pairs with
+// coalesceNoExtension on the same version-comparison panels. Before this, a
+// legend template hardcoded a literal "v" prefix in front of the version field
+// (`v{{context_extension_version}}`), so an unversioned extension (or an
+// extension.json-less compiled extension whose init handshake predates the
+// version field) rendered as a dangling "v" with nothing after it. The fix
+// coalesces the field itself and drops the hardcoded "v" prefix from the
+// legend, so a real version still reads naturally (e.g. "1.2.3") and an empty
+// one reads "unversioned" instead of "v".
+export function coalesceUnversioned(inner: string, label: 'context_extension_version' | 'payload_extension_version'): string {
+  return coalesceLabel(inner, label, 'unversioned');
 }
 
 // Generalised coalesce: guarantee `label` is PRESENT and non-empty on every

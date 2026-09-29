@@ -22,9 +22,25 @@ type exitRecord struct {
 	StartedAt int64  `json:"startedAt"` // Unix ms
 	LastBeat  int64  `json:"lastBeat"`  // Unix ms
 	ExitedAt  int64  `json:"exitedAt"`  // Unix ms; 0 when running
-	Status    string `json:"status"`    // "running", "clean", "panic"
+	Status    string `json:"status"`    // "running", "stopping", "clean", "panic"
 	Reason    string `json:"reason,omitempty"`
 	Stack     string `json:"stack,omitempty"`
+
+	// ShutdownStartedAt is when a graceful shutdown began — the moment the
+	// signal arrived or the shutdown command was accepted. Set by
+	// writeStopping and left in place by writeClean so the duration of a
+	// completed teardown is recoverable from the record.
+	//
+	// It exists because "clean" used to be written at the TOP of the shutdown
+	// handler, before any teardown ran. A process SIGKILLed mid-teardown —
+	// which is what a supervisor does when graceful shutdown overruns its exit
+	// timeout — therefore left a record claiming a clean exit. An engine
+	// restarting in a loop logged `prior exit: clean` on every cycle, so the
+	// one artifact built to diagnose unclean deaths was the artifact hiding
+	// this one. Status now moves running -> stopping -> clean, and a record
+	// still reading "stopping" on the next start is positive evidence that
+	// teardown was cut short.
+	ShutdownStartedAt int64 `json:"shutdownStartedAt,omitempty"` // Unix ms
 
 	// LastHeapBytes / LastSysBytes capture the process's memory footprint at the
 	// most recent heartbeat. When the process is later found to have died unclean
@@ -75,8 +91,37 @@ func beat(path string) {
 	}
 }
 
-// writeClean atomically rewrites the breadcrumb with status "clean".
-// Called from both graceful shutdown arms before srv.Stop().
+// writeStopping atomically rewrites the breadcrumb with status "stopping".
+// Called from both graceful shutdown arms the moment shutdown is decided,
+// BEFORE any teardown runs.
+//
+// This is the record that survives if teardown never finishes: a supervisor
+// that SIGKILLs the process for overrunning its exit timeout leaves the file
+// reading "stopping", which logPriorExit reports as a killed shutdown rather
+// than as a clean one. writeClean replaces it only once teardown has actually
+// completed.
+func writeStopping(path, reason string) {
+	data, err := os.ReadFile(path)
+	var rec exitRecord
+	if err == nil {
+		if uerr := json.Unmarshal(data, &rec); uerr != nil {
+			utils.LogWithFields(utils.LevelWarn, "breadcrumb", "prior breadcrumb unreadable; writing fresh stopping record", map[string]any{"path": path, "error": utils.ErrStr(uerr)})
+		}
+	}
+	rec.Status = "stopping"
+	rec.Reason = reason
+	rec.ShutdownStartedAt = time.Now().UnixMilli()
+	rec.LastBeat = time.Now().UnixMilli()
+	if err := atomicWriteRecord(path, rec); err != nil {
+		utils.LogWithFields(utils.LevelWarn, "breadcrumb", "writestopping failed", map[string]any{"reason": reason, "error": utils.ErrStr(err)})
+		return
+	}
+	utils.LogWithFields(utils.LevelInfo, "breadcrumb", "writestopping", map[string]any{"reason": reason, "run_id": rec.Pid})
+}
+
+// writeClean atomically rewrites the breadcrumb with status "clean". Called
+// from main() AFTER graceful teardown has completed, so the record means
+// "shutdown finished", not "shutdown started".
 func writeClean(path, reason string) {
 	data, err := os.ReadFile(path)
 	var rec exitRecord
@@ -127,10 +172,12 @@ func writePanic(path string, reason string, stack string) {
 //
 // Classification:
 //
-//	absent         -> prior exit: none (first start or breadcrumb cleared)
-//	status=clean   -> prior exit: clean reason=<...> prevPid=<...> uptime=<...>
-//	status=running -> prior exit: UNCLEAN -- process died without shutdown
-//	status=panic   -> prior exit: PANIC reason=<...> prevPid=<...>
+//	absent          -> prior exit: none (first start or breadcrumb cleared)
+//	status=clean    -> prior exit: clean reason=<...> prevPid=<...> uptime=<...>
+//	status=stopping -> prior exit: KILLED DURING SHUTDOWN -- teardown began and
+//	                   never completed (supervisor exit timeout, SIGKILL)
+//	status=running  -> prior exit: UNCLEAN -- process died without shutdown
+//	status=panic    -> prior exit: PANIC reason=<...> prevPid=<...>
 func logPriorExit(path string) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -150,6 +197,27 @@ func logPriorExit(path string) {
 			uptime = fmt.Sprintf("%dms", rec.ExitedAt-rec.StartedAt)
 		}
 		utils.LogWithFields(utils.LevelInfo, "breadcrumb", "prior exit: clean", map[string]any{"reason": rec.Reason, "pid": rec.Pid, "uptime": uptime})
+
+	case "stopping":
+		// Graceful shutdown began and never finished: the process was killed
+		// partway through teardown. The overwhelmingly common cause is the
+		// supervisor's exit timeout elapsing — launchd reports `exit timeout`
+		// for the job and SIGKILLs at that mark — which makes the exit
+		// non-zero and, under KeepAlive, respawns the daemon immediately. A
+		// repeating pair of this line and a short uptime IS the restart-loop
+		// diagnosis.
+		teardownMs := int64(0)
+		if rec.ShutdownStartedAt > 0 {
+			teardownMs = time.Now().UnixMilli() - rec.ShutdownStartedAt
+		}
+		uptime := "unknown"
+		if rec.StartedAt > 0 && rec.ShutdownStartedAt > 0 {
+			uptime = fmt.Sprintf("%dms", rec.ShutdownStartedAt-rec.StartedAt)
+		}
+		utils.LogWithFields(utils.LevelError, "breadcrumb", "prior exit: KILLED DURING SHUTDOWN", map[string]any{
+			"reason": rec.Reason, "pid": rec.Pid, "uptime": uptime,
+			"teardown_ms": teardownMs, "pid_confirmed_dead": !isProcessAliveByPID(rec.Pid),
+		})
 
 	case "panic":
 		utils.LogWithFields(utils.LevelError, "breadcrumb", "prior exit: panic", map[string]any{"reason": rec.Reason, "pid": rec.Pid, "stack": rec.Stack})
@@ -227,8 +295,7 @@ func atomicWriteRecord(path string, rec exitRecord) error {
 }
 
 // isProcessAliveByPID checks whether a process with the given PID is alive.
-// Uses signal 0 on Unix (same approach as filelock.isProcessAlive) via the
-// platform-specific signalZeroAlive helper.
+// Uses signal 0 on Unix via the platform-specific signalZeroAlive helper.
 func isProcessAliveByPID(pid int) bool {
 	if pid <= 0 {
 		return false

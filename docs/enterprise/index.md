@@ -104,3 +104,4 @@ See [Sealed config](sealed-config.md) for the full sealing semantics.
 - [Telemetry](telemetry.md) -- telemetry targets, OTEL, and privacy
 - [Compliance](compliance.md) -- model, provider, tool, and MCP controls
 - [New-conversation policy](new-conversation-policy.md) -- mandate working directory and engine profile for new conversations
+- [Git identity setup](../deployment/git-identity-setup.md) -- Entra, Azure DevOps, GitLab, and GitHub app registration for per-principal git credentials (ADR-034)

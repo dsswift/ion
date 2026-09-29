@@ -21,6 +21,8 @@ type noopPluginMethods struct{}
 func (noopPluginMethods) PluginSessionMessages() []types.LlmMessage      { return nil }
 func (noopPluginMethods) PluginTurnMessages(_ string) []types.LlmMessage { return nil }
 func (noopPluginMethods) EngineBuildIdentity() string                    { return "" }
+func (noopPluginMethods) Principal() *types.SessionPrincipal             { return nil }
+func (noopPluginMethods) WirePrincipalRunConfig(_ *backend.RunConfig)    {}
 func (noopPluginMethods) PersistDispatchRegistered(_, _, _, _, _, _ string, _ int) {
 }
 func (noopPluginMethods) PersistDispatchTerminal(_ string) {}

@@ -7,14 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../../rendererLogger', () => ({ rInfo: vi.fn(), rDebug: vi.fn(), rWarn: vi.fn(), rError: vi.fn(), rTrace: vi.fn() }))
 const sessionState = { fileEditorStates: new Map(), activeTabId: 'tab-1', tabs: [] as unknown[] }
-vi.mock('../../../stores/sessionStore', () => {
+vi.mock('@ion/server/store/sessionStore', () => {
   // Used BOTH as a hook (dirty-path selector in the strip) and via getState
   // (the surface store's conversation fallback), so the mock must be callable.
   const useSessionStore = (selector?: (s: typeof sessionState) => unknown): unknown =>
     (selector ? selector(sessionState) : sessionState)
   return { useSessionStore: Object.assign(useSessionStore, { getState: () => sessionState }) }
 })
-vi.mock('../../../stores/session-store-helpers', () => ({ editorDirForTab: () => '/repo' }))
+vi.mock('@ion/server/store/session-store-helpers', () => ({ editorDirForTab: () => '/repo' }))
 vi.mock('../../../preferences', () => ({
   usePreferencesStore: { getState: () => ({ studioSurfaceSwitchMode: 'preserve' }) },
 }))

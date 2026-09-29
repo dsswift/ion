@@ -90,6 +90,13 @@ type SteerInjectedEvent struct {
 	// Kind and MachineAuthored preserve source classification for machine steers.
 	Kind            string `json:"kind,omitempty"`
 	MachineAuthored bool   `json:"machineAuthored,omitempty"`
+
+	// Text is the injected message itself, for the engine's own persistence.
+	// Set by a backend whose turn is written to the conversation after the run
+	// rather than during it (a delegated CLI), so the session layer can record
+	// the steer at the exact point in the turn where it took effect. Never
+	// serialized: the wire deliberately carries only the length.
+	Text string `json:"-"`
 }
 
 func (SteerInjectedEvent) eventType() string { return EventSteerInjected }

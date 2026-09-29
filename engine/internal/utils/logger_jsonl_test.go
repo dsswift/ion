@@ -103,13 +103,16 @@ func TestLogLineIsValidJSONL(t *testing.T) {
 		t.Errorf("msg = %v, want hello world", got)
 	}
 
-	// fields must be present and be an object ({} when empty).
+	// fields must be present and be an object: the machine identity alone
+	// when the caller passed none.
 	fields, ok := obj["fields"].(map[string]any)
 	if !ok {
 		t.Fatalf("fields missing or not an object: %v", obj["fields"])
 	}
-	if len(fields) != 0 {
-		t.Errorf("fields = %v, want empty object", fields)
+	for k := range fields {
+		if _, isIdentity := lineIdentity()[k]; !isIdentity {
+			t.Errorf("fields = %v, want only the machine identity", fields)
+		}
 	}
 
 	// ts must be present, parse as RFC3339Nano, and carry a full date
@@ -276,5 +279,43 @@ func TestInitLoggerDiscardsUnderTestByDefault(t *testing.T) {
 	}
 	if gotFile != nil {
 		t.Errorf("expected logFile to remain nil in discard branch, got %v", gotFile)
+	}
+}
+
+// setLineIdentityForTest pins the identity stamped on every line. Not for
+// t.Parallel tests: it swaps a package variable.
+func setLineIdentityForTest(t *testing.T, identity map[string]any) {
+	t.Helper()
+	lineIdentity() // settle the Once so it never overwrites the pin
+	saved := lineIdentityFields
+	lineIdentityFields = identity
+	t.Cleanup(func() { lineIdentityFields = saved })
+}
+
+// TestLogLineCarriesMachineIdentity pins that every engine.jsonl line names
+// the device it came from, the way the server and desktop lines do, and that
+// a caller's `host` meaning something else cannot relabel it.
+func TestLogLineCarriesMachineIdentity(t *testing.T) {
+	dir := t.TempDir()
+	resetLoggerForTest(t, dir)
+	setLineIdentityForTest(t, map[string]any{"host": "device-a", "machine_id": "hw-1"})
+
+	Info("test-tag", "no fields")
+	fields, _ := readLastLine(t, dir)["fields"].(map[string]any)
+	if fields["host"] != "device-a" || fields["machine_id"] != "hw-1" {
+		t.Fatalf("a line with no fields must still carry the identity: %v", fields)
+	}
+
+	caller := map[string]any{"host": "github.com", "status": 404}
+	LogWithFields(LevelInfo, "test-tag", "caller host", caller)
+	fields, _ = readLastLine(t, dir)["fields"].(map[string]any)
+	if fields["host"] != "device-a" {
+		t.Fatalf("the machine identity must win over a caller host: %v", fields)
+	}
+	if fields["status"] != float64(404) {
+		t.Fatalf("caller fields must be kept: %v", fields)
+	}
+	if caller["host"] != "github.com" || len(caller) != 2 {
+		t.Fatalf("the caller's map must not be mutated: %v", caller)
 	}
 }

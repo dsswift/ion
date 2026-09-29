@@ -90,6 +90,34 @@ final class AttachmentSegmentParsingTests: XCTestCase {
         XCTAssertEqual(structuredAnswerDisplayText(raw), "**Who decides?**\n- Agent decides")
     }
 
+    // MARK: - Documents: [Attached file: PATH]
+
+    func testAttachedFileMarkerBecomesADocumentNotText() {
+        // A large paste is sent as a stored text file; its marker must become
+        // a chip, never literal text in the bubble. Desktop parity:
+        // deriveMessageFiles / stripAttachmentMarkers.
+        let raw = "[Attached file: /data/ab12.txt]\n\nPlease verify the attached tf output"
+        let result = parseAttachmentSegments(raw)
+        XCTAssertEqual(result.files, ["/data/ab12.txt"])
+        XCTAssertTrue(result.images.isEmpty)
+        XCTAssertEqual(result.text, "Please verify the attached tf output")
+    }
+
+    func testFileAndImageMarkersSplitApart() {
+        let raw = "[Attached image: /a.png]\n[Attached file: /b.docx]\n[Attached file: /c.md]\n\nboth"
+        let result = parseAttachmentSegments(raw)
+        XCTAssertEqual(result.images, ["/a.png"])
+        XCTAssertEqual(result.files, ["/b.docx", "/c.md"])
+        XCTAssertEqual(result.text, "both")
+    }
+
+    func testFileMarkerMidSentenceIsLeftAlone() {
+        let raw = "the form is [Attached file: /x] inline"
+        let result = parseAttachmentSegments(raw)
+        XCTAssertTrue(result.files.isEmpty)
+        XCTAssertEqual(result.text, raw)
+    }
+
     // MARK: - No markers
 
     func testNoMarkersPassesThrough() {

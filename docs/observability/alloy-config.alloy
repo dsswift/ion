@@ -1,10 +1,20 @@
 // Ion observability — Grafana Alloy River config.
 //
+// Every record lands in Loki under the names its OTLP form carries (Ion
+// telemetry schema v2, docs/observability/log-schema.md § "Names in Loki"):
+// the service that wrote it is the `service_name` label (OTLP service.name,
+// ion-<component>), a telemetry event's name is the `event_name` label (OTLP
+// event.name), the device is the `host_name` label (OTLP host.name), and the
+// trace and span are the `trace_id` and `span_id` structured metadata (the
+// OTLP LogRecord traceId and spanId). An operational line has no event_name.
+//
 // Two pipelines:
-//   1. ion_parse     — tails engine.jsonl, desktop.jsonl, ios-diagnostic-logs.jsonl
-//                      and promotes component/level/tag as Loki stream labels.
-//   2. ion_telemetry — tails telemetry.jsonl (when enabled) and promotes the
-//                      event name as the low-cardinality "kind" label; all
+//   1. ion_parse     — tails engine.jsonl, server.jsonl, desktop.jsonl and
+//                      ios-diagnostic-logs.jsonl, and promotes
+//                      service_name/level/tag as Loki stream labels.
+//   2. ion_telemetry — receives expanded telemetry events from the
+//                      telemetry-forwarder and promotes the event name as the
+//                      low-cardinality event_name label; all
 //                      numeric/high-cardinality fields go into structured_metadata.
 //                      Also extracts the standalone conversation.* family
 //                      (conv_* keys below) when an operator points
@@ -14,7 +24,7 @@
 //                      choice, not by contract.
 //
 // Label cardinality discipline (see Loki docs):
-//   stage.labels           — only low-cardinality, enumerable values (component, level, tag, kind)
+//   stage.labels           — only low-cardinality, enumerable values (service_name, level, tag, event_name, host_name, user)
 //   stage.structured_metadata — high-cardinality or numeric (model, cost_usd, duration_ms, etc.)
 //   Mixing these causes Loki cardinality explosions.
 //
@@ -27,7 +37,7 @@
 // restarting Alloy). See README.md for the one-line engine.json snippet.
 
 // ---------------------------------------------------------------------------
-// 1. STRUCTURED LOG PIPELINE — engine.jsonl / desktop.jsonl / ios logs
+// 1. STRUCTURED LOG PIPELINE — engine / server / desktop / ios logs
 //
 // Explicit file list (not a glob) to prevent telemetry.jsonl from being
 // ingested by this pipeline. If a glob were used, telemetry.jsonl would be
@@ -37,6 +47,11 @@
 local.file_match "ion_logs" {
   path_targets = [
     {"__path__" = "/ion-logs/engine.jsonl"},
+    // The Ion Studio Server's own lines (component=server) and the browser
+    // client lines it records for them (component=web). Absent until the
+    // server split made them their own file, which is how they went
+    // uncollected.
+    {"__path__" = "/ion-logs/server.jsonl"},
     {"__path__" = "/ion-logs/desktop.jsonl"},
     {"__path__" = "/ion-logs/ios-diagnostic-logs.jsonl"},
   ]
@@ -49,27 +64,65 @@ loki.source.file "ion_jsonl" {
 }
 
 loki.process "ion_parse" {
-  // Parse the JSON body to extract label fields.
   stage.json {
     expressions = {
-      component = "component",
-      level     = "level",
-      tag       = "tag",
+      component       = "component",
+      level           = "level",
+      tag             = "tag",
+      trace_id        = "trace_id",
+      line_span_id    = "span_id",
+      fields_span_id  = "fields.span_id",
+      ios_device_id   = "fields.device_id",
+      ios_app_version = "fields.app_version",
     }
   }
 
-  // Promote only the three low-cardinality fields to stream labels.
-  // session_id / conversation_id / trace_id stay in the body — query
-  // them with | json | session_id = "..." to avoid cardinality explosion.
+  // service_name is the OTLP service.name: ion-<component>.
+  stage.template {
+    source   = "service_name"
+    template = "{{ if .component }}ion-{{ .component }}{{ end }}"
+  }
+
+  // span_id is the span the line is about: a span line's own fields.span_id,
+  // else the span the line was logged under.
+  stage.template {
+    source   = "span_id"
+    template = "{{ if .fields_span_id }}{{ .fields_span_id }}{{ else if .line_span_id }}{{ .line_span_id }}{{ end }}"
+  }
+
+  // An iOS line describes the device that wrote it: its instance and build
+  // are the device's (OTLP service.instance.id, service.version).
+  stage.template {
+    source   = "service_instance_id"
+    template = "{{ if and .component (eq .component \"ios\") .ios_device_id }}{{ .ios_device_id }}{{ end }}"
+  }
+
+  stage.template {
+    source   = "service_version"
+    template = "{{ if and .component (eq .component \"ios\") .ios_app_version }}{{ .ios_app_version }}{{ end }}"
+  }
+
+  // Promote only the low-cardinality fields to stream labels. The ids stay
+  // off the index as structured metadata, filtered with `| trace_id = "..."`
+  // (no json parse); session_id and conversation_id stay in the body.
   stage.labels {
     values = {
-      component = "component",
-      level     = "level",
-      tag       = "tag",
+      service_name = "service_name",
+      level        = "level",
+      tag          = "tag",
     }
   }
 
-  forward_to = [loki.write.local.receiver]
+  stage.structured_metadata {
+    values = {
+      trace_id            = "trace_id",
+      span_id             = "span_id",
+      service_instance_id = "service_instance_id",
+      service_version     = "service_version",
+    }
+  }
+
+  forward_to = [loki.process.ion_identity.receiver]
 }
 
 // ---------------------------------------------------------------------------
@@ -81,9 +134,11 @@ loki.process "ion_parse" {
 // Alloy receives those entries through its Loki API endpoint. It must not tail
 // telemetry.jsonl directly: a frame can contain more than one event.
 //
-// The forwarder preserves the dashboard label contract: service and
-// service_name are both ion-telemetry, and this processor adds kind. All other
-// fields remain structured metadata. Dashboard queries therefore stay unchanged.
+// The forwarder labels each stream service_name=ion-<component>, the
+// service that recorded the event. This processor adds the event_name label
+// and the structured metadata below; the event's install and build become
+// service_instance_id and service_version, its trace trace_id, and the span
+// it is about span_id, as its OTLP form carries them.
 // ---------------------------------------------------------------------------
 
 loki.source.api "telemetry" {
@@ -96,23 +151,10 @@ loki.source.api "telemetry" {
 }
 
 loki.process "ion_telemetry" {
-  stage.labels {
-    values = {
-      "service"      = "",
-      "service_name" = "",
-    }
-  }
-
-  // The forwarder expands each compact frame before it posts the event. Event
-  // time remains the telemetry ts field, not the forwarding time.
-  stage.timestamp {
-    source = "ts"
-    format = "RFC3339Nano"
-  }
-
   stage.json {
     expressions = {
-      "kind"                      = "name",
+      "ts"                        = "ts",
+      "event_name"                = "name",
       "model"                     = "payload.model",
       "tool"                      = "payload.tool",
       "stop_reason"               = "payload.stop_reason",
@@ -127,9 +169,11 @@ loki.process "ion_telemetry" {
       "cache_creation_tokens"     = "payload.cache_creation_input_tokens",
       "error"                     = "payload.error",
       "trace_id"                  = "trace_id",
+      "payload_span_id"           = "payload.span_id",
+      "context_parent_span_id"    = "context.parent_span_id",
       "schema_version"            = "schema",
-      "install_id"                = "install_id",
-      "engine_version"            = "version",
+      "service_instance_id"       = "install_id",
+      "service_version"           = "version",
       "context_conversation_id"   = "context.conversation_id",
       "context_session_id"        = "context.session_id",
       "context_extension"         = "context.extension",
@@ -158,9 +202,22 @@ loki.process "ion_telemetry" {
     }
   }
 
+  // Event time is the telemetry ts field, not the forwarding time.
+  stage.timestamp {
+    source = "ts"
+    format = "RFC3339Nano"
+  }
+
+  // span_id is the span the event is about: a span event's own id, else
+  // the span it was emitted under.
+  stage.template {
+    source   = "span_id"
+    template = "{{ if .payload_span_id }}{{ .payload_span_id }}{{ else if .context_parent_span_id }}{{ .context_parent_span_id }}{{ end }}"
+  }
+
   stage.labels {
     values = {
-      "kind" = "",
+      "event_name" = "",
     }
   }
 
@@ -180,9 +237,10 @@ loki.process "ion_telemetry" {
       "cache_creation_tokens"     = "",
       "error"                     = "",
       "trace_id"                  = "",
+      "span_id"                   = "",
       "schema_version"            = "",
-      "install_id"                = "",
-      "engine_version"            = "",
+      "service_instance_id"       = "",
+      "service_version"           = "",
       "context_conversation_id"   = "",
       "context_session_id"        = "",
       "context_extension"         = "",
@@ -200,6 +258,50 @@ loki.process "ion_telemetry" {
       "conv_cost_read_tokens"     = "",
       "conv_cost_creation_tokens" = "",
       "conv_cost_usd"             = "",
+    }
+  }
+
+  forward_to = [loki.process.ion_identity.receiver]
+}
+
+// ---------------------------------------------------------------------------
+// IDENTITY — the device and person every record came from, as stream labels.
+//
+// Both pipelines above pass through here on their way to Loki, so every line
+// carries the same two labels whatever shape it arrived in:
+//
+//   host_name  the OTLP host.name. Telemetry events carry it top-level
+//              (`host`); operational log lines carry it in `fields.host` (every
+//              logger stamps it). `.local` is trimmed so one machine has one
+//              name, as the OTLP resource does.
+//   user       the signed-in operator (`user`, top-level on both shapes),
+//              present when the engine or desktop had an identity to report.
+//
+// A line with neither leaves the label unset; a dashboard's `host_name=~".*"`
+// still matches it. These are the only identity labels: machine_id and the
+// MDM ids stay in the body because they are one-per-install and would
+// multiply streams. Every dashboard filters on them through the global
+// $host / $user variables (docs/observability/dashboards/src/dashboard.ts).
+// ---------------------------------------------------------------------------
+
+loki.process "ion_identity" {
+  stage.json {
+    expressions = {
+      id_host        = "host",
+      id_fields_host = "fields.host",
+      user           = "user",
+    }
+  }
+
+  stage.template {
+    source   = "host_name"
+    template = "{{ if .id_host }}{{ TrimSuffix .id_host \".local\" }}{{ else if .id_fields_host }}{{ TrimSuffix .id_fields_host \".local\" }}{{ end }}"
+  }
+
+  stage.labels {
+    values = {
+      host_name = "host_name",
+      user      = "user",
     }
   }
 
@@ -226,6 +328,11 @@ loki.write "local" {
 // 4. OPENTELEMETRY / TEMPO (optional — comment out if not using trace correlation)
 // ---------------------------------------------------------------------------
 
+// A log shipper pointed at this stack (logging.egressOtel.endpoint =
+// http://localhost:4318) posts its logs before its spans, and sends the spans
+// only once the logs are accepted. This stack already reads every Ion log file
+// from disk (section 1), so OTLP logs are accepted and dropped here rather
+// than stored twice. Traces go to Tempo.
 otelcol.receiver.otlp "default" {
   grpc {
     endpoint = "0.0.0.0:4317"
@@ -234,8 +341,21 @@ otelcol.receiver.otlp "default" {
     endpoint = "0.0.0.0:4318"
   }
   output {
+    logs   = [otelcol.exporter.loki.otlp_logs_already_tailed.input]
     traces = [otelcol.exporter.otlp.tempo.input]
   }
+}
+
+otelcol.exporter.loki "otlp_logs_already_tailed" {
+  forward_to = [loki.process.drop_otlp_logs.receiver]
+}
+
+loki.process "drop_otlp_logs" {
+  stage.drop {
+    expression = ".*"
+    drop_counter_reason = "otlp_log_already_tailed_from_file"
+  }
+  forward_to = []
 }
 
 otelcol.exporter.otlp "tempo" {

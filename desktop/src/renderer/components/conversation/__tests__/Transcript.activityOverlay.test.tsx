@@ -20,7 +20,7 @@ vi.mock('../../../theme', () => ({
 
 const mockAbortDispatch = vi.fn()
 const mockAbortDispatches = vi.fn()
-vi.mock('../../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: (sel: (s: Record<string, unknown>) => unknown) =>
     sel({ dispatchActivity: {}, abortDispatch: mockAbortDispatch, abortDispatches: mockAbortDispatches }),
 }))

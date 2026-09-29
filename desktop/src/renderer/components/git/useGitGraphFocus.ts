@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { rDebug, rError, rInfo, rWarn } from '../../rendererLogger'
-import type { GitCommit } from '../../../shared/types'
+import type { GitCommit } from '@ion/shared/types'
 import type { GraphFilters } from './GraphFilterBar'
 
 export interface GraphFocusRequest {

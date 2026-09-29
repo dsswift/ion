@@ -74,13 +74,20 @@ type RunOptions struct {
 	// (e.g. a desktop "clear context" that starts a new conversation for an
 	// existing tab). Ignored when resuming an existing conversation. Additive
 	// and non-breaking: an absent value leaves parentId empty as before.
-	ParentConversationID string   `json:"parentConversationId,omitempty"`
-	AllowedTools         []string `json:"allowedTools,omitempty"`
-	SuppressTools        []string `json:"suppressTools,omitempty"`
-	MaxTurns             int      `json:"maxTurns,omitempty"`
-	MaxBudgetUsd         float64  `json:"maxBudgetUsd,omitempty"`
-	SystemPrompt         string   `json:"systemPrompt,omitempty"`
-	Model                string   `json:"model,omitempty"`
+	ParentConversationID string `json:"parentConversationId,omitempty"`
+	// Principal is the session's attributed owner (manifest C1/C2), threaded
+	// through so a fresh conversation created by this run stamps its header
+	// the moment it is minted. Nil when the session carries no principal;
+	// the header is left with no owner, exactly as before this field existed.
+	// Ignored when resuming an existing conversation -- a header's owner is
+	// set once, at mint, and never overwritten by a later run.
+	Principal     *SessionPrincipal `json:"-"`
+	AllowedTools  []string          `json:"allowedTools,omitempty"`
+	SuppressTools []string          `json:"suppressTools,omitempty"`
+	MaxTurns      int               `json:"maxTurns,omitempty"`
+	MaxBudgetUsd  float64           `json:"maxBudgetUsd,omitempty"`
+	SystemPrompt  string            `json:"systemPrompt,omitempty"`
+	Model         string            `json:"model,omitempty"`
 	// ModelOrigin controls provider-selection authority for Model. Empty is
 	// config for backward compatibility with existing deterministic callers.
 	ModelOrigin        ModelOrigin `json:"-"`
@@ -88,8 +95,8 @@ type RunOptions struct {
 	AddDirs            []string    `json:"addDirs,omitempty"`
 	PermissionModeCli  string      `json:"permissionModeCli,omitempty"`
 	AppendSystemPrompt string      `json:"appendSystemPrompt,omitempty"`
-	Source         string `json:"source,omitempty"`
-	McpConfig      string `json:"mcpConfig,omitempty"`
+	Source             string      `json:"source,omitempty"`
+	McpConfig          string      `json:"mcpConfig,omitempty"`
 	// CliMcpServers carries structured per-session MCP-server specs to inject
 	// into a delegated-CLI backend that accepts inline MCP servers on session
 	// creation — the ACP backends (grok, cursor) pass these on `session/new`.

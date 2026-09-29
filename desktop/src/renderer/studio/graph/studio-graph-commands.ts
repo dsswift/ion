@@ -1,10 +1,10 @@
 /**
- * Studio-side handler for main's graph tool commands.
+ * Studio-side handler for the graph tool commands.
  *
- * Main owns the tool declarations; this renderer owns the graph store. So
- * every graph tool call arrives here as one correlated command, is applied
- * to the store, and is acknowledged exactly once — after the picture has
- * actually changed. Two waits make that true:
+ * The server owns the tool declarations; this renderer owns the graph store.
+ * So every graph tool call arrives here as one correlated command, is
+ * applied to the store, and is acknowledged exactly once — after the picture
+ * has actually changed. Two waits make that true:
  *
  *   - a camera move is acknowledged only once `cameraAppliedSeq` reaches the
  *     seq the command requested, which the render layer reports after the
@@ -20,19 +20,27 @@
  * working directory, never by the model. The graph store follows the visible
  * conversation's directory (see `GraphSurface`), so a command for another
  * directory is refused with a message that says which one is on stage.
+ *
+ * Commands arrive on the studio-wire as `studio_command` frames whose
+ * `command` is `graph.<kind>` (`server/src/protocol/commands.ts`), from
+ * whichever Environment runs the calling conversation; the reply is a
+ * `studio_command_result` to that same Environment. Every host takes this
+ * one path, and the desktop advertises `graph` in its hello for that reason
+ * (`main/connections/client-capabilities.ts`).
  */
 import { useEffect } from 'react'
 import { useGraphStore } from './graph-store'
 import { useSurfaceStore } from '../surface/surface-store'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 import { buildGraphToolState, describeNode, neighborsOf } from './studio-graph-describe'
 import type { CameraCommand } from './graph-camera'
-import type {
-  StudioGraphCommand,
-  StudioGraphCommandEnvelope,
-  StudioGraphCommandResult,
-} from '../../../shared/studio-graph-types'
+import {
+  parseGraphCommand,
+  type StudioGraphCommand,
+  type StudioGraphCommandResult,
+} from '@ion/shared/studio-graph-types'
+import { host } from '../../host/host-instance'
 
 const TAG = 'studio.graph'
 /**
@@ -51,28 +59,56 @@ export function useStudioGraphCommands(): void {
   useEffect(() => registerStudioGraphCommands(), [])
 }
 
-/** Install the handler. Returns an unsubscribe for window teardown. */
+/** Install the wire receiver. Returns an unsubscribe for window teardown. */
 export function registerStudioGraphCommands(): () => void {
-  return window.ion.onStudioGraphCommand((envelope: StudioGraphCommandEnvelope) => {
-    const started = Date.now()
-    void applyGraphCommand(envelope.command)
-      .then((outcome) => {
-        window.ion.studioGraphCommandResult({ callId: envelope.callId, ...outcome })
-        rInfo(TAG, 'graph command answered', {
-          call_id: envelope.callId,
-          kind: envelope.command.kind,
-          ok: outcome.ok,
-          latency_ms: Date.now() - started,
-          ...(outcome.error ? { error: outcome.error } : {}),
-          ...(outcome.note ? { note: outcome.note } : {}),
-        })
+  return registerWireReceiver()
+}
+
+/**
+ * Apply one command and hand the outcome to `reply`, which is called exactly
+ * once. A thrown handler still owes an answer: a refusal the model can read
+ * beats a timeout it cannot explain.
+ */
+function answer(callId: string, command: StudioGraphCommand, reply: (result: StudioGraphCommandResult) => void): void {
+  const started = Date.now()
+  void applyGraphCommand(command)
+    .then((outcome) => {
+      reply({ callId, ...outcome })
+      rInfo(TAG, 'graph command answered', {
+        call_id: callId,
+        kind: command.kind,
+        ok: outcome.ok,
+        latency_ms: Date.now() - started,
+        ...(outcome.error ? { error: outcome.error } : {}),
+        ...(outcome.note ? { note: outcome.note } : {}),
       })
-      .catch((err: unknown) => {
-        // Never leave main waiting: a thrown handler still owes an answer, and
-        // a refusal the model can read beats a timeout it cannot explain.
-        rWarn(TAG, 'graph command failed', { call_id: envelope.callId, kind: envelope.command.kind, error: String(err) })
-        window.ion.studioGraphCommandResult({ callId: envelope.callId, ok: false, error: String(err) })
-      })
+    })
+    .catch((err: unknown) => {
+      rWarn(TAG, 'graph command failed', { call_id: callId, kind: command.kind, error: String(err) })
+      reply({ callId, ok: false, error: String(err) })
+    })
+}
+
+/**
+ * The studio-wire receiver: every host. The frame's `args` is the command
+ * the server's graph tool built; it is re-validated here so the two sides
+ * can never disagree about what a legal command is. A malformed one is
+ * answered as a refusal rather than dropped, so the tool call resolves.
+ */
+function registerWireReceiver(): () => void {
+  return host.onFrame((environmentId, frame) => {
+    if (frame.type !== 'studio_command' || !frame.command.startsWith('graph.')) return
+    const reply = (result: StudioGraphCommandResult): void => {
+      host.send(environmentId, { type: 'studio_command_result', id: frame.id, ok: true, value: result })
+    }
+    const command = parseGraphCommand(frame.args)
+    if (!command) {
+      rWarn(TAG, 'graph command rejected as malformed', { environment_id: environmentId, id: frame.id, command: frame.command })
+      reply({ callId: frame.id, ok: false, error: `graph command ${frame.command} was rejected as malformed` })
+      return
+    }
+    rDebug(TAG, 'graph command received on the wire', { environment_id: environmentId, id: frame.id, kind: command.kind })
+    answer(frame.id, command, reply)
   })
 }
 

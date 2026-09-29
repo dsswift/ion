@@ -37,6 +37,10 @@ services:
       image: grafana/alloy:v1.17.1
       ports:
         - "12345:12345"
+        # OTLP in, for a log shipper pointed at this stack: traces go on to
+        # Tempo, logs are dropped because the files are already tailed.
+        - "4317:4317"
+        - "4318:4318"
       volumes:
         # Config at the image's default CMD path — no command override needed.
         - ./docs/observability/alloy-config.alloy:/etc/alloy/config.alloy:ro
@@ -83,7 +87,9 @@ services:
         - loki
 
   # Expands v1-v4 telemetry file records and posts standard events to Alloy's
-  # Loki Push API. The image owns the reader and frame-decoding mechanics.
+  # Loki Push API, one stream per recording service (service_name). The image
+  # owns the reader and frame-decoding mechanics; rebuild it when the
+  # forwarder source changes.
   telemetry-forwarder:
     tier: docker
     compose:
@@ -129,13 +135,14 @@ services:
     compose:
       # tempo has no default CMD — we build a thin image that COPYs the config
       # and sets CMD explicitly. Context is docs/observability/ so COPY finds
-      # tempo-config.yaml and Dockerfile.tempo in that directory.
+      # tempo-config.yaml and Dockerfile.tempo in that directory. The Tempo
+      # image tag lives in Dockerfile.tempo; docker-compose.yml names the same
+      # tag directly, so change both together.
       build:
         context: ./docs/observability
         dockerfile: Dockerfile.tempo
-      ports:
-        - "4317:4317"
-        - "4318:4318"
+      # No published OTLP ports: spans come in through Alloy, which owns
+      # 4317/4318. Grafana reaches Tempo inside the network on 3200.
       volumes:
         - tempo-data:/var/tempo
 
@@ -278,7 +285,7 @@ services:
 # =============================================================================
 # GRAPH
 # =============================================================================
-# Log-flow: engine/desktop/ios JSONL -> alloy -> loki -> grafana
+# Log-flow: engine/server/desktop/ios JSONL -> alloy -> loki -> grafana
 #           telemetry JSONL -> telemetry-forwarder -> alloy API
 #           tempo <- otlp (from alloy)
 
@@ -286,12 +293,17 @@ graph:
   host:
     - name: engine-logs
       label: "engine.jsonl"
+    - name: server-logs
+      label: "server.jsonl"
     - name: desktop-logs
       label: "desktop.jsonl"
     - name: ios-logs
       label: "ios-diagnostic-logs.jsonl"
   edges:
     - from: engine-logs
+      to: alloy
+      label: "tail (ro)"
+    - from: server-logs
       to: alloy
       label: "tail (ro)"
     - from: desktop-logs
@@ -403,15 +415,17 @@ utilities:
   clear-logs:
     command: |
       : > ~/.ion/engine.jsonl && \
+      : > ~/.ion/server.jsonl && \
       : > ~/.ion/desktop.jsonl && \
       : > ~/.ion/telemetry.jsonl && \
       : > ~/.ion/ios-diagnostic-logs.jsonl && \
       rm -f ~/.ion/engine.jsonl.[1-9] \
+             ~/.ion/server.jsonl.[1-9] \
              ~/.ion/desktop.jsonl.[1-9] \
              ~/.ion/ios-diagnostic-logs.jsonl.[1-9] \
              ~/.ion/telemetry.jsonl.[1-9] && \
       echo "Log files cleared:" && \
-      echo "  Cleared live files:     engine.jsonl, desktop.jsonl, telemetry.jsonl, ios-diagnostic-logs.jsonl" && \
+      echo "  Cleared live files:     engine.jsonl, server.jsonl, desktop.jsonl, telemetry.jsonl, ios-diagnostic-logs.jsonl" && \
       echo "  Removed archives:       *.jsonl.1 through *.jsonl.9"
     description: "Clear live logs and remove .1 through .9 archives"
 
@@ -421,6 +435,7 @@ utilities:
       echo ""
       echo "Will re-ingest on next observability-profile deploy:"
       echo "  ~/.ion/engine.jsonl              (engine + extension logs)"
+      echo "  ~/.ion/server.jsonl              (Studio server logs, and browser-client logs it records)"
       echo "  ~/.ion/desktop.jsonl             (desktop logs)"
       echo "  ~/.ion/ios-diagnostic-logs.jsonl (iOS client logs)"
       echo "  ~/.ion/telemetry.jsonl           (telemetry events, if present)"

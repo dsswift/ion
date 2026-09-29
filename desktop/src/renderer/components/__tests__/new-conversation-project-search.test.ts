@@ -8,6 +8,11 @@ const projects = [
 ]
 
 describe('new conversation project search', () => {
+  it('browses a Windows directory typed with backslashes', () => {
+    expect(parseDirectoryBrowseQuery('C:\\Users\\example\\rep')).toEqual({ parentPath: 'C:\\Users\\example', filter: 'rep', hasTrailingSeparator: false })
+    expect(parseDirectoryBrowseQuery('C:\\Users\\example\\')).toEqual({ parentPath: 'C:\\Users\\example', filter: '', hasTrailingSeparator: true })
+    expect(joinDirectoryPath('C:\\Users\\example', 'repo')).toBe('C:\\Users\\example\\repo')
+  })
   it('filters loaded projects by both name and full path without changing their order', () => {
     expect(filterProjects(projects, 'ion').map((project) => project.dir)).toEqual(['/work/ion', '/work/other/ion'])
     expect(filterProjects(projects, 'other').map((project) => project.dir)).toEqual(['/work/other/ion'])

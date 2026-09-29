@@ -1,13 +1,17 @@
+import { useEnvironmentSettingsStore } from '../state/environment-settings-store'
+import { isNonNegativeNumber } from '../state/use-server-setting'
+import { tabEnvironmentId } from '../connection/tab-environment'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import { useEffect, useMemo, useState } from 'react'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { usePreferencesStore } from '../../preferences'
-import { activeInstance } from '../../stores/conversation-instance'
-import { waitingStateOfPane } from '../../components/TabStripShared'
-import { classifyInbox, inboxUnread, wokeAt, type InboxTabView } from '../../../shared/inbox-classify'
-import { liveBackgroundShellCount } from '../../../shared/background-shell-counts'
-import { sortPinnedByOrder } from '../../../shared/inbox-pin-order'
-import type { TabState } from '../../../shared/types'
-import { useQuestionsStore, openWorkflowsForTab } from '../../stores/questions-store'
+import { activeInstance } from '@ion/server/store/conversation-instance'
+import { waitingStateOfPane } from '../../components/conversation-status'
+import { classifyInbox, inboxUnread, wokeAt, type InboxTabView } from '@ion/shared/inbox-classify'
+import { liveBackgroundShellCount } from '@ion/shared/background-shell-counts'
+import { sortPinnedByOrder } from '@ion/shared/inbox-pin-order'
+import type { TabState } from '@ion/shared/types'
+import { useQuestionsStore, openWorkflowsForTab, activeQuestionsCount } from '../../stores/questions-store'
 
 export interface InboxMeta {
   unread: boolean
@@ -59,7 +63,11 @@ export function useInboxPartition(): InboxPartition {
   const tabs = useSessionStore((s) => s.tabs)
   const panes = useSessionStore((s) => s.conversationPanes)
   const questionWorkflows = useQuestionsStore((s) => s.workflows)
-  const autoSettleDays = usePreferencesStore((s) => s.inboxAutoSettleDays)
+  // Auto-settle is one window PER SERVER. Each conversation is classified with
+  // its own server's window, never this Mac's: a conversation on a server with
+  // auto-settle off must not be shown as settled because this Mac's is on.
+  const localAutoSettleDays = usePreferencesStore((s) => s.inboxAutoSettleDays)
+  const serverSettings = useEnvironmentSettingsStore((s) => s.byEnvironment)
   const [, setClock] = useState(0)
 
   useEffect(() => {
@@ -80,7 +88,7 @@ export function useInboxPartition(): InboxPartition {
       // Active guided-question workflows are pending asks: they raise the
       // hand and block snooze/auto-settle. Subscribed reactively above.
       const pendingAskCount = (instance?.permissionQueue.length ?? 0) + (instance?.elicitationQueue.length ?? 0) + openWorkflowsForTab(questionWorkflows, tab.id).length
-      const waiting = waitingStateOfPane(panes.get(tab.id), tab.id) !== null
+      const waiting = waitingStateOfPane(panes.get(tab.id), activeQuestionsCount(tab.id)) !== null
       const agentCount = instance?.agentStates.filter((agent) => agent.status === 'running').length ?? 0
       const backgroundAgents = instance?.statusFields?.backgroundAgents ?? 0
       const shells = liveBackgroundShellCount(instance?.statusFields)
@@ -91,6 +99,9 @@ export function useInboxPartition(): InboxPartition {
         wokeAt: wokeAt(view, now),
         backgroundLiveness: Math.max(agentCount, backgroundAgents) > 0 ? 'working' : shells > 0 ? 'monitoring' : null,
       })
+      const environmentId = tabEnvironmentId(tab)
+      const remoteDays = serverSettings[environmentId]?.settings.inboxAutoSettleDays
+      const autoSettleDays = environmentId === LOCAL_ENVIRONMENT_ID ? localAutoSettleDays : (isNonNegativeNumber(remoteDays) ? remoteDays : 0)
       const state = classifyInbox(view, now, autoSettleDays > 0 ? autoSettleDays : null)
       if (state === 'snoozed') snoozed.push(tab)
       else if (tab.pinnedAt != null) pinned.push(tab)
@@ -102,5 +113,5 @@ export function useInboxPartition(): InboxPartition {
     snoozed.sort((left, right) => (left.snoozedUntil ?? 0) - (right.snoozedUntil ?? 0) || left.id.localeCompare(right.id))
     settled.sort((left, right) => (right.settledAt ?? right.lastMessageAt ?? 0) - (left.settledAt ?? left.lastMessageAt ?? 0) || left.id.localeCompare(right.id))
     return { pinned, inbox, snoozed, settled, meta }
-  }, [tabs, panes, questionWorkflows, autoSettleDays])
+  }, [tabs, panes, questionWorkflows, localAutoSettleDays, serverSettings])
 }

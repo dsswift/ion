@@ -1,14 +1,12 @@
 // Canonical fleet & audience expressions (host / install / version / user).
 //
-// Identity fields live at the TOP LEVEL of every telemetry line (`host`,
-// `install_id`, `version`, `user`), but `host` and `user` are NOT promoted by
-// Alloy as structured metadata — they exist only in the raw JSON body. Every
-// expression here therefore parses with `| json`, which yields the bare labels
-// (`host`, `user`, `install_id`, `version`) and the `payload_`-prefixed payload
-// fields. `| json` is the deliberate choice even for the fields Alloy does
-// promote: promotion is not retroactive, so a metadata-only query silently
-// drops every historical line; the parser works uniformly on old and new
-// entries.
+// A telemetry event's source is labeled and indexed under its OTLP resource
+// names: the `host_name` stream label (host.name) and the
+// `service_instance_id` and `service_version` structured metadata
+// (service.instance.id, service.version), which Alloy sets from the event
+// (alloy-config.alloy, `ion_telemetry` and `ion_identity`). Every dashboard's
+// selectors carry the global $host / $user matchers (dashboard.ts), so the
+// fleet pipe only parses the body.
 //
 // `user` is populated only on enterprise installs with an OIDC auth context
 // (log-schema.md R20) and on newer default-install lines where the engine had
@@ -19,16 +17,28 @@ import type { Expr, Window } from './types.ts';
 import { accumulation, instant, registerQuery, telemetry, coalesceStage } from './queries.ts';
 
 // All telemetry, any kind — for distinct-count and activity expressions.
-const ALL = '{service_name="ion-telemetry"}';
+const ALL = '{event_name=~".+"}';
 const RUN = telemetry('run.complete');
 
-// Stream pipe for the fleet pack: parse the body, scope by the $host variable.
-export const HOST_PIPE = ' | json | host=~"$host"';
+// Stream pipe for the fleet pack: parse the body. The $host scope is the
+// selector's host_name matcher.
+export const HOST_PIPE = ' | json';
 
 // Stream pipe for the users pack: parse, coalesce absent user to "unassigned"
 // (before the filter, so the default-install population is selectable), then
 // scope by the $user and $install variables.
-export const USER_PIPE = ` | json ${coalesceStage('user', 'unassigned')} | user=~"$user" | install_id=~"$install"`;
+export const USER_PIPE = ` | json ${coalesceStage('user', 'unassigned')} | user=~"$user" | service_instance_id=~"$install"`;
+
+// "Active users" counts people, so it counts signed-in users only: a line
+// with no user (a default install, or an isolated engine's machine-level
+// metrics) is activity, not a person. The unassigned bucket stays selectable
+// and visible everywhere else on the users pack.
+export const SIGNED_IN_USERS_PIPE = `${USER_PIPE} | user!="unassigned"`;
+
+// The same count with no pack-local scope, for a dashboard that carries only
+// the global $host / $user matchers (the overview). The global $user matcher
+// is applied by the selector, so it is not repeated here.
+export const SIGNED_IN_USERS_COUNT_PIPE = ` | json | user!=""`;
 
 // ---------------------------------------------------------------------------
 // Distinct counts (headline stats)
@@ -47,15 +57,15 @@ export const distinctLabelCount = (label: string, pipe: string, window: Window):
     accumulation(`count(sum by (${label}) (count_over_time(${ALL}${pipe} [${window}])))`, window),
   );
 
-// Distinct install_ids per host (instant bargauge). More than one means
+// Distinct installs per host (instant bargauge). More than one means
 // several engine instances (e.g. headless daemons) share a machine.
 export const installsPerHost = (window: Window): Expr =>
   registerQuery(
     'Installs per host',
-    'Distinct install_id count grouped by host. A host with more than one install is ' +
+    'Distinct service_instance_id count grouped by host. A host with more than one install is ' +
       'running several engine instances (e.g. headless daemons) side by side.',
     accumulation(
-      `count by (host) (sum by (host, install_id) (count_over_time(${ALL}${HOST_PIPE} [${window}])))`,
+      `count by (host_name) (sum by (host_name, service_instance_id) (count_over_time(${ALL}${HOST_PIPE} [${window}])))`,
       window,
     ),
   );
@@ -117,7 +127,7 @@ export const errorEventsBy = (by: readonly string[], pipe: string, window: Windo
 // ---------------------------------------------------------------------------
 
 // Same detector shape as ingestFreshnessMinutes (queries-logs.ts), grouped by
-// host instead of component. Fixed [24h] lookback, NOT $__range: a host that
+// host instead of service. Fixed [24h] lookback, NOT $__range: a host that
 // went quiet hours ago must stay VISIBLE as a growing red value instead of
 // dropping out of a narrow range — the point of a last-seen detector
 // (ADR-022 detector class).
@@ -130,7 +140,7 @@ export const hostLastSeenMinutes = (window: Window): Expr =>
       'than dropping out of a narrow dashboard range.',
     instant(
       `(vector(\${__to:date:seconds}) - on() group_right() ` +
-        `max by (host) (max_over_time(${ALL}${HOST_PIPE} ` +
+        `max by (host_name) (max_over_time(${ALL}${HOST_PIPE} ` +
         `| label_format ts_unix="{{ __timestamp__ | unixEpoch }}" | unwrap ts_unix [${window}]))) / 60`,
       window,
     ),

@@ -79,6 +79,7 @@ Configure the relay with these OIDC vars (all required for OIDC mode):
 | `RELAY_OIDC_ISSUER` | `https://login.microsoftonline.com/<tenant-id>/v2.0` | OIDC issuer URL (Entra v2 format if using Entra). Must match token's `iss` claim exactly. |
 | `RELAY_OIDC_AUDIENCE` | `<relay-app-id>` | OAuth2 audience (the relay app registration client ID). Relay validates token's `aud` claim includes this. |
 | `RELAY_OIDC_REQUIRED_SCOPE` | `Relay.Access` | Bare scope name. Relay validates token's `scp`/`scope` claim includes this. |
+| `RELAY_OIDC_ISSUERS` | `[{"issuer":"https://login.microsoftonline.com/<other-tenant>/v2.0","audience":"<app-id-in-that-tenant>","requiredScope":"Relay.Access"}]` | (optional) Further issuers accepted alongside the one above, as a JSON array. See [Several tenants on one relay](#several-tenants-on-one-relay). |
 | `RELAY_OIDC_ADMIN_ROLE` | (optional) | Role name from token's `roles` claim for admin access (Phase 4). |
 
 The relay also supports `RELAY_API_KEY` alongside these for PSK mode. Both can be active simultaneously (see [Coexistence](#coexistence)).
@@ -128,7 +129,7 @@ iOS acquires tokens independently when offline from the desktop:
 
 The redirect URI is hardcoded as `ionremote://auth` (custom scheme callback).
 
-When the desktop is reachable, it pushes tokens to iOS via `desktop_relay_config`, and iOS uses those instead of acquiring its own. When offline, iOS falls back to the three-tier flow.
+iOS always acquires its own token. It signs in as the **client registration** the server it is paired with signs in as: the server names that app as `clientId` on each relay it advertises (`relay-oidc` mode, alongside the tenant `issuer`), read from the server's `engine.json` (`auth.oauth.<identityProvider>.clientId`). The token is for the relay's entry in that tenant (`api://<audience>/<requiredScope>`). The relay's `audience` is never the sign-in app unless the server names none; then iOS keeps the app the pairing already signs in with for that tenant, and only as a last resort tries the relay's registration, which works only when one registration is both the relay API and a client with `ionremote://auth`.
 
 ## Configuration Example: Entra
 
@@ -213,7 +214,7 @@ Both applications seed the client registration ID into their configuration:
   }
   ```
 
-- **iOS** receives `relayOidcClientId` via `desktop_relay_config` when the desktop is reachable.
+- **iOS** is told the same client registration ID by the server it pairs with (`clientId` on the advertised relay), so it needs no configuration of its own.
 
 ## Coexistence: OIDC and PSK
 
@@ -225,11 +226,95 @@ The relay can serve both OIDC and PSK (pre-shared key) authentication simultaneo
 
 Per request, a JWT-shaped bearer token routes to OIDC validation; a non-JWT bearer routes to PSK comparison. Both can coexist for phased migration or multi-consumer scenarios.
 
+## Several tenants on one relay
+
+One person can be signed in to different identity tenants on different machines: a personal tenant on one laptop, a work tenant on another. A relay with one `RELAY_OIDC_ISSUER` refuses the second machine outright, because its token names a different issuer. `RELAY_OIDC_ISSUERS` lists the others:
+
+```
+RELAY_OIDC_ISSUER=https://login.microsoftonline.com/<personal-tenant>/v2.0
+RELAY_OIDC_AUDIENCE=api://<relay-app-in-personal-tenant>
+RELAY_OIDC_REQUIRED_SCOPE=Relay.Access
+RELAY_OIDC_ISSUERS=[{"issuer":"https://login.microsoftonline.com/<work-tenant>/v2.0","audience":"api://<relay-app-in-work-tenant>","requiredScope":"Relay.Access"}]
+```
+
+Each entry carries its own audience and scope, because a token is minted by the tenant the person is signed in to, for a resource registration that exists **in that tenant**. The work entry above names the relay registration the work tenant already has; nothing is registered or consented across tenants. A token is routed to the entry whose `issuer` equals its `iss` claim and is validated against that entry only, so a work token minted for the personal audience is refused.
+
+- The single-issuer variables, when set, are the first entry; the first entry is the **primary**. The list may also stand alone.
+- A malformed list, or an entry with no issuer or no audience, stops the relay at startup with the reason. An issuer whose keys cannot be fetched at startup is kept and heals on the first token that names it.
+- `GET /v1/auth/config` reports every entry under `issuers[]`, primary first, and repeats the primary in its top-level `issuer`/`audience`/`requiredScope` for a client that reads only those. A client picks the entry whose issuer is the tenant it is signed in to.
+- Every configured issuer is also trusted for [server-announced trust](#server-announced-trust), with no second listing in `RELAY_TRUSTED_ISSUERS`.
+
+### Two desktops, two tenants
+
+A desktop serves its own Environment through its relay, and another desktop joins that channel. Each signs in to the relay as itself: it reads `issuers[]`, takes the entry for the tenant it is signed in to, and presents a token for that entry. The hosting desktop owns the channel under its own subject. The joining desktop told the host who it is signed in as when it paired, and the host announces exactly that identity on the channel (see `subject` under [Server-Announced Trust](#server-announced-trust)), so the relay admits that one person from the other tenant and nobody else. The engine reports which issuer signed the operator's identity (`oidcIssuer` on `engine_oidc_identity`), which is how each desktop knows its own.
+
+A desktop's own relay connection, the one its phone reaches it through, resolves its sign-in the same way at every start, and keeps the result only for the relay it was resolved against. Pointing a desktop at a different relay therefore takes that relay's entry for the desktop's tenant, not the previous relay's audience. A relay that accepts a single issuer is used as it is, with no matching.
+
+Channel ownership binds to the bare subject for the primary issuer, so bindings made before a list existed still match, and to `<issuer>|<subject>` for every other entry, because two issuers can hand out the same subject string.
+
 ## Subject-Based Channel Ownership (OIDC Only)
 
-When OIDC is enabled, the relay binds channels to identity subjects. The first identity to connect to a channel owns it; subsequent connections from a different identity are rejected.
+When OIDC is enabled, the relay binds channels to identity subjects. A channel belongs to the server that holds the pairing, so only the **ion** role claims one: the first server identity to connect owns it, and any other identity is rejected from then on.
+
+A client (the `mobile` role) never claims a channel. It may join one nobody owns yet, and it must match the owner once there is one. The moment a server claims a channel, a client on it under another identity is closed, because it could not join now.
+
+That split is not cosmetic. While binding happened on any role, a client that reached an unowned channel first took ownership of it: the server that owned the pairing then joined with its own account, was refused on its own channel, and stayed refused, because a binding is persisted and never expires. Recovering meant deleting the channel's `owner-<channelID>.json` from `RELAY_STATE_DIR` by hand.
 
 This prevents one OIDC user from eavesdropping on another's relay sessions. PSK connections (non-authenticated) bypass ownership entirely, so OIDC + PSK coexistence means some sessions are gated by identity and some are not.
+
+## Server-Announced Trust
+
+The org-wide `RELAY_OIDC_ISSUER`/`RELAY_OIDC_AUDIENCE` above validate every peer against ONE Entra tenant registration -- workable for a relay serving one organization, not for a relay hosting Ion Studio Servers whose people are gated by different tenants. Server-announced trust is a per-channel override that lets each server name its OWN issuer, audience, and scope, without requiring every one of its people to also be enrolled in the relay's own org-wide registration.
+
+### How it works
+
+The ion peer (the server) sends, as its very first text frame after the WebSocket upgrade, a `relay_announce` frame:
+
+```json
+{"type":"relay_announce","trust":{"issuer":"https://login.microsoftonline.com/<tenant>/v2.0","audience":"api://server-app-id","scope":"Studio.Access"}}
+```
+
+The relay stores this per channel, in memory only, replacing any prior announcement for that channel outright. A mobile or client peer that later joins the SAME channel is validated against the ANNOUNCED issuer/audience/scope instead of the relay's own org-wide OIDC -- but only when the announced issuer appears in `RELAY_TRUSTED_ISSUERS` (see below). A channel whose ion peer never announces is validated exactly as before this feature existed: the relay's own org-wide `RELAY_OIDC_ISSUER`, or PSK.
+
+An announcement may also name the one subject allowed to join:
+
+```json
+{"type":"relay_announce","trust":{"issuer":"https://login.microsoftonline.com/<joiner-tenant>/v2.0","audience":"api://<app-id>","scope":"Relay.Access","subject":"<joiner-oid>"}}
+```
+
+With `subject` set, a valid token for the announced issuer that proves anyone else is refused with `subject_not_announced` (HTTP 403). This is how a channel that belongs to one paired device admits its owner when that person is signed in to a different tenant than the host: the host owns the channel under its own subject, and announces the joiner's. A join that reaches the announced issuer's keys but presents a token they refuse reports `jwt_validation_failed`; `jwks_unavailable` means the keys themselves could not be loaded.
+
+The announcement is scoped to the connection that made it: when the announcing ion peer disconnects, its channel's announcement is cleared. A reconnecting ion peer re-announces (or doesn't) independently on its next connection.
+
+### `RELAY_TRUSTED_ISSUERS`
+
+```
+RELAY_TRUSTED_ISSUERS=https://login.microsoftonline.com/tenant-a/v2.0,https://login.microsoftonline.com/tenant-b/v2.0
+```
+
+A comma-separated allowlist of issuer URLs the relay is willing to fetch JWKS for and validate an announced-trust bearer against. **JWKS is fetched only for an allowlisted issuer** -- an ion peer announcing an issuer outside this list is refused with `issuer_not_trusted` (HTTP 403) before any network call, so an unlisted issuer can never trigger an outbound fetch from the relay. Leaving this variable unset trusts no issuer at all: every announced-trust join then refuses with `issuer_not_trusted`, which is the safe default (a relay operator who has not populated the allowlist gets a relay that refuses every announced-trust join, not one that silently accepts any issuer an ion peer names).
+
+Each trusted issuer's JWKS is fetched and cached once (same daily-refresh, rate-limited-refetch behavior as the org-wide `RELAY_OIDC_ISSUER` above), independent of how many channels announce that issuer. Two channels announcing the same issuer with different audiences are each validated against their OWN announced audience.
+
+### Pairing channels
+
+A one-time pairing channel is a special announcement used for the initial device-pairing handshake (a phone scanning or entering a code from a server's Studio UI). Its id is prefixed `pairing:` (e.g. `pairing:3f9a2b1c...`, 32 hex characters), and its announcement carries `pairing:true` and an expiry instead of an issuer/audience:
+
+```json
+{"type":"relay_announce","trust":{"pairing":true,"expiresAt":1735689600000}}
+```
+
+- Valid for 5 minutes from the announcement (or the explicit `expiresAt`, whichever is sooner).
+- Single use: the first successful mobile join marks it used; every later join -- even from the same peer -- is refused with HTTP 410 (Gone).
+- No bearer token is validated for a pairing channel. Its identity guarantee comes from the DH pairing handshake the two peers run over the forwarded frames after the relay accepts the join, not from anything the relay itself checks.
+
+### `GET /v1/channel/{id}/status`
+
+Status applies the identical announced-trust check as join: a channel with an announcement (including a pairing channel) validates the requester the same way a join would, before revealing any presence information.
+
+### No listing endpoint
+
+There is no endpoint that lists active channels, announced or otherwise. A relay operator (or an attacker) cannot enumerate channels; a channel's existence is only observable by someone who already knows its id.
 
 Ownership is persisted to disk (when `RELAY_STATE_DIR` is configured) and survives relay restarts. Admins can unbind channels manually (Phase 4).
 
@@ -241,7 +326,7 @@ A single phone can be paired with desktops that authenticate against **different
 
 | State | Scope | Where it lives |
 |---|---|---|
-| Issuer, client ID, scope | Per pairing | `PairedDevice`, pushed by that desktop's `relay_config` |
+| Issuer, client ID, scope | Per pairing | `PairedDevice`, from the tenant and sign-in app that server advertises for its relay and the relay's `issuers[]` entry for that tenant |
 | Access token (in memory) | Per pairing | One `OIDCTokenManager` per device ID |
 | Refresh token | Per pairing | Keychain, keyed `com.ion.oidc.refresh.<deviceId>` |
 | Account identity (display) | Per pairing | `PairedDevice`, parsed from that pairing's `id_token` |
@@ -263,7 +348,7 @@ Unpairing a desktop also deletes that pairing's refresh token, so an unpaired wo
 
 ### "Wrong account for this desktop" (HTTP 403)
 
-The relay binds a channel to the first subject that connects to it (see *Subject-Based Channel Ownership* above) and answers `403 forbidden: channel owned by another identity` to any other subject. On the phone this surfaces as **Wrong account for this desktop** on the pairing, and the app stops reconnecting for it.
+The relay binds a channel to the first **server** identity that connects to it (see *Subject-Based Channel Ownership* above) and answers `403 forbidden: channel owned by another identity` to any other subject. On the phone this surfaces as **Wrong account for this desktop** on the pairing, and the app stops reconnecting for it.
 
 That stop is deliberate. A 403 is not an expired credential: refreshing produces a token for the **same** subject, so a retry loop can never succeed and would only drain the battery. Recover with **Switch Account** and pick the account that owns the channel.
 
@@ -295,9 +380,10 @@ The signing-in account is not a member or guest of the tenant that owns the app 
 
 ### AADSTS500113 (Entra-specific)
 
-The redirect URI is missing from the client registration's public-client section. Verify both redirect URIs are registered:
-- `ionremote://auth`
-- `http://localhost/callback`
+The app the client signed in as has no redirect URI. Check which app ID the sign-in page was opened with (`client_id` in the authorization URL) before editing a registration:
+
+- It is the **client registration**: register both redirect URIs in its public-client section, `ionremote://auth` and `http://localhost/callback`.
+- It is the relay's **resource registration** (the relay's `audience`): the client was not told the server's sign-in app. The server names it from `engine.json` (`auth.oauth.<identityProvider>.clientId`); check that it is set on the server, then reconnect the phone to that server once on the same network so it receives it. Do not add a redirect URI to the resource registration.
 
 ### Relay Never Logs JWT Reason
 

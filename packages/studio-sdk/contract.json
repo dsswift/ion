@@ -1,0 +1,19 @@
+{
+  "$comment": "The Studio SDK wire contract. One shape, pinned by a test in every language that produces or consumes it. The engine carries these resources as opaque content and never reads this file.",
+  "controlKindPrefix": "ion-studio.",
+  "composerAction": {
+    "kind": "ion-studio.composer-action",
+    "contentFields": {
+      "label": { "type": "string", "required": true, "maxLength": 80 },
+      "icon": { "type": "string", "required": false, "maxLength": 40 },
+      "command": { "type": "string", "required": true, "maxLength": 200, "pattern": "^/[A-Za-z0-9_:-]+( .*)?$" }
+    },
+    "example": {
+      "id": "briefing",
+      "kind": "ion-studio.composer-action",
+      "title": "Briefing",
+      "content": "{\"label\":\"Briefing\",\"icon\":\"Newspaper\",\"command\":\"/briefing\"}",
+      "createdAt": "2026-01-01T00:00:00Z"
+    }
+  }
+}

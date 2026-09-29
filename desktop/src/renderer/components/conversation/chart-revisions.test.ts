@@ -33,10 +33,10 @@ import {
   cloneSpec,
   groupedBarScenario,
   multiLineScenario,
-} from '../../../shared/__tests__/chart-scenario-fixtures'
-import type { ChartSpec } from '../../../shared/chart-schema'
-import { formatChartResultSummary } from '../../../shared/chart-result'
-import type { Message } from '../../../shared/types'
+} from '@ion/shared/__tests__/chart-scenario-fixtures'
+import type { ChartSpec } from '@ion/shared/chart-schema'
+import { formatChartResultSummary } from '@ion/shared/chart-result'
+import type { Message } from '@ion/shared/types'
 
 /** An engine tool-use id, in the shape a real transcript row carries. */
 function rowId(n: number): string {

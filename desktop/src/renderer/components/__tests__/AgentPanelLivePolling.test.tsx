@@ -30,7 +30,7 @@ vi.mock('../../preferences', () => ({
     sel({ agentPanelDefaultOpen: true, unifiedTurnView: false }),
 }))
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: (sel: (s: Record<string, unknown>) => unknown) =>
     sel({
       agentDetailGeometry: { x: 60, y: 80, w: 600, h: 500 },
@@ -66,7 +66,7 @@ vi.mock('../conversation', () => ({
 // The popup path renders messages through the real Transcript, which uses
 // TranscriptRows + tool-helpers.groupMessages (NOT the barrel above). Stub those
 // so the popup transcript content is assertable as plain text.
-vi.mock('../conversation/tool-helpers', () => ({
+vi.mock('@ion/server/conversation/tool-helpers', () => ({
   groupMessages: (msgs: Array<{ id: string; content: string }>) =>
     msgs.map((m) => ({ kind: 'user' as const, message: m })),
   suppressUserImageEchoes: (msgs: unknown[]) => msgs,
@@ -81,7 +81,8 @@ vi.mock('../conversation/TranscriptRows', () => ({
 }))
 
 import { AgentPanel } from '../AgentPanel'
-import type { AgentStateUpdate } from '../../../shared/types'
+import type { AgentStateUpdate } from '@ion/shared/types'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 const RUNNING_CONV = 'live-conv-id'
 
@@ -136,7 +137,7 @@ describe('AgentPanel slow reconcile backstop', () => {
             ]
       return { messages, total: messages.length }
     })
-    ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = { getConversation }
+    ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = installFakeWire({ getConversation })
 
     const container = document.createElement('div')
     document.body.appendChild(container)
@@ -226,7 +227,7 @@ describe('AgentPanel slow reconcile backstop', () => {
         resolveReconcile = res
       })
     })
-    ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = { getConversation }
+    ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = installFakeWire({ getConversation })
 
     const container = document.createElement('div')
     document.body.appendChild(container)
@@ -246,10 +247,10 @@ describe('AgentPanel slow reconcile backstop', () => {
     await act(async () => {
       label!.click()
     })
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    // The conversation fetch crosses the wire now: send a studio_action,
+    // receive a studio_action_result. That costs a couple more turns than the
+    // direct preload promise these two flushes were sized for.
+    for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve() })
     // Initial one-shot load populated the popup.
     expect(container.textContent).toContain('first step')
 

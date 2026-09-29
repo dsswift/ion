@@ -4,6 +4,7 @@ import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { useStackedDiffs } from './useStackedDiffs'
+import { installFakeWire } from '../../../host/__tests__/fake-wire'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -50,7 +51,7 @@ function renderHook(repoDir: string, revision: number): {
 
 describe('useStackedDiffs', () => {
   beforeEach(() => {
-    ;(window as unknown as { ion: unknown }).ion = { gitDiff: vi.fn() }
+    ;(window as unknown as { ion: unknown }).ion = installFakeWire({ gitDiff: vi.fn() })
   })
 
   it('drops late old-repository response after binding changes', async () => {
@@ -61,11 +62,11 @@ describe('useStackedDiffs', () => {
     const hook = renderHook('/worktrees/ion', 1)
 
     act(() => hook.result().fetchDiff('old.ts', false))
-    expect(gitDiff).toHaveBeenLastCalledWith('/worktrees/ion', 'old.ts', false)
+    expect(gitDiff).toHaveBeenLastCalledWith({ directory: '/worktrees/ion', path: 'old.ts', staged: false })
 
     hook.rerender('/repos/ion-website', 2)
     act(() => hook.result().fetchDiff('site.ts', true))
-    expect(gitDiff).toHaveBeenLastCalledWith('/repos/ion-website', 'site.ts', true)
+    expect(gitDiff).toHaveBeenLastCalledWith({ directory: '/repos/ion-website', path: 'site.ts', staged: true })
 
     await act(async () => {
       oldRequest.resolve({ diff: 'old diff' })

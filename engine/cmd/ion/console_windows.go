@@ -37,12 +37,14 @@ const (
 // no console is ever created. This call remains the belt for anyone running
 // `ion serve --supervised` by hand under the legacy console host.
 func hideOwnConsole() (string, error) {
-	hwnd, _, _ := procGetConsoleWindow.Call()
+	// These three report through their return value; Call's error is the
+	// thread's last-error, which none of them sets on the paths read here.
+	hwnd, _, _ := procGetConsoleWindow.Call() //nolint:errcheck // result is the return value; last-error carries nothing
 	if hwnd == 0 {
 		return consoleNone, nil
 	}
-	visible, _, _ := procIsWindowVisible.Call(hwnd)
-	_, _, _ = procShowWindow.Call(hwnd, swHide)
+	visible, _, _ := procIsWindowVisible.Call(hwnd) //nolint:errcheck // result is the return value; last-error carries nothing
+	_, _, _ = procShowWindow.Call(hwnd, swHide)     //nolint:errcheck // returns the previous visibility, not a failure
 	if visible == 0 {
 		return consoleNotOwnWindow, nil
 	}

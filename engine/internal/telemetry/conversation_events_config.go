@@ -3,6 +3,7 @@ package telemetry
 import (
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
+	"path/filepath"
 )
 
 // conversation_events_config.go normalizes ConversationEventsConfig and
@@ -40,7 +41,7 @@ func normalizeConversationEventsConfig(cfg types.ConversationEventsConfig) types
 	if cfg.FilePath == "" {
 		for _, t := range cfg.Targets {
 			if t == "file" {
-				cfg.FilePath = utils.ExpandHomePath("~/.ion/conversation-events.jsonl")
+				cfg.FilePath = filepath.Join(utils.IonDir(), "conversation-events.jsonl")
 				break
 			}
 		}

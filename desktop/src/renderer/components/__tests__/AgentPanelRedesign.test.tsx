@@ -20,7 +20,7 @@ import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { AgentStateUpdate } from '../../../shared/types'
+import type { AgentStateUpdate } from '@ion/shared/types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -43,7 +43,7 @@ const contentRouterMock = vi.fn<() => { openDispatch: typeof openDispatch } | nu
 vi.mock('../../lib/file-open-router', () => ({
   contentRouter: () => contentRouterMock(),
 }))
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: (selector: (s: Record<string, unknown>) => unknown) =>
     selector({
       dispatchActivity: {},
@@ -61,15 +61,16 @@ vi.mock('../FloatingPanel', () => ({
 
 // Import after mocks so the component graph binds the mocked modules.
 import { AgentPanel } from '../AgentPanel'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 beforeEach(() => {
   getConversation.mockClear()
   openDispatch.mockClear()
   contentRouterMock.mockReturnValue(null)
-  ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = {
+  ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = installFakeWire({
     getConversation,
     log: () => {},
-  }
+  })
 })
 
 function mount(agents: AgentStateUpdate[], props: Record<string, unknown> = {}) {
@@ -222,7 +223,7 @@ describe('AgentPanel detail subject parity', () => {
 
     // Same dispatch AgentRow uses as foreground dot and duration must be first
     // detail load. Reverting defaults to array-last requests conv-early first.
-    expect(getConversation).toHaveBeenNthCalledWith(1, 'conv-late', 0, 200)
+    expect(getConversation).toHaveBeenNthCalledWith(1, { conversationId: 'conv-late', offset: 0, limit: 200 })
     act(() => { root.unmount() })
   })
 })
@@ -237,7 +238,7 @@ describe('AgentPanel stable popup subject', () => {
     const { container, root } = mount([initial])
     clickRow(container, 'Agent')
     await act(async () => { await Promise.resolve() })
-    expect(getConversation).toHaveBeenCalledWith('conv-opened', 0, 200)
+    expect(getConversation).toHaveBeenCalledWith({ conversationId: 'conv-opened', offset: 0, limit: 200 })
 
     const refreshed = {
       ...initial, metadata: { ...initial.metadata, dispatches: [
@@ -270,7 +271,7 @@ describe('AgentPanel stable popup subject', () => {
       ] },
     } as AgentStateUpdate
     act(() => { root.render(<AgentPanel agents={[replacement]} />) })
-    expect(getConversation).not.toHaveBeenCalledWith('conv-replacement', 0, 200)
+    expect(getConversation).not.toHaveBeenCalledWith({ conversationId: 'conv-replacement', offset: 0, limit: 200 })
     act(() => { root.unmount() })
   })
 })

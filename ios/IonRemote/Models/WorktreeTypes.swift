@@ -217,6 +217,11 @@ struct RemoteWorktree: Codable, Identifiable, Hashable {
     /// assembly retires the member outright.
     var isLanded: Bool { landedAt != nil }
 
+    /// True when no mutating verb may run here. Landing is the only way in:
+    /// a transfer moves a worktree and deletes the copy it came from, so
+    /// there is never a moved copy left behind to seal.
+    var isSealed: Bool { isLanded }
+
     /// Membership is binary: a worktree is either in a bench or it is not.
     var isBenchMember: Bool { membership != nil }
 }
@@ -515,3 +520,4 @@ struct RemoteWorktreeOpResult: Codable, Hashable {
     /// on every other operation and from an older desktop.
     var retired: Int?
 }
+

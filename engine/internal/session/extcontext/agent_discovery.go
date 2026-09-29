@@ -26,7 +26,7 @@ func BuildDiscoverAgentsFunc(sa SessionAccessor) func(extension.DiscoverAgentsOp
 		var dirs []string
 		sourceMap := make(map[string]string) // dir -> source label
 
-		home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
+		ionDir := utils.IonDir()
 
 		// Collect extension directories from all hosts in the group.
 		// Each host knows its own ExtensionDir from Load(); the session-wide
@@ -56,8 +56,8 @@ func BuildDiscoverAgentsFunc(sa SessionAccessor) func(extension.DiscoverAgentsOp
 				}
 				continue
 			case "user":
-				if home != "" {
-					dir = filepath.Join(home, ".ion", "agents")
+				if ionDir != "" {
+					dir = filepath.Join(ionDir, "agents")
 				}
 			case "project":
 				if cwd != "" {

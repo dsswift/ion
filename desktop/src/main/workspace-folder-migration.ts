@@ -12,12 +12,12 @@
  * sees the corrected map. Idempotent: a settled file matches no known checkout
  * and is left untouched without a write.
  */
-import { loadRegistry } from "./worktree/registry";
-import { loadWorkspaces } from "./integration/bench-store";
-import { readSettings, writeSettings } from "./settings-store";
+import { loadRegistry } from "@ion/server/worktree/registry";
+import { loadWorkspaces } from '@ion/server/integration/bench-store';
+import { readSettings, writeSettings } from "@ion/server/persistence/settings-store";
 import { log as _log, warn as _warn } from "./logger";
-import { isAbsolutePath } from "../shared/paths";
-import { normalizeWorkspacePath } from "../shared/workspace-roots";
+import { isAbsolutePath } from "@ion/shared/paths";
+import { normalizeWorkspacePath } from "@ion/shared/workspace-roots";
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log("main", msg, fields);

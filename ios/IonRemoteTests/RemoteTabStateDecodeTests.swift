@@ -2,7 +2,7 @@ import XCTest
 @testable import IonRemote
 
 /// Decode tests for RemoteTabState fields that use non-trivial CodingKey
-/// mappings: convFingerprint and engineProfileId.
+/// mappings: engineProfileId.
 ///
 /// Each test also has a "goes red on wrong CodingKey" companion assertion
 /// that decodes a payload with a deliberately wrong key and verifies the
@@ -24,30 +24,24 @@ final class RemoteTabStateDecodeTests: XCTestCase {
         """.data(using: .utf8)!
     }
 
-    // MARK: - convFingerprint
+    // MARK: - resolvedModel
 
-    func testConvFingerprintDecodes() throws {
-        let data = minimalTab(extra: #""convFingerprint": "abc123""#)
+    /// The model a conversation runs on is decided by its server. The phone
+    /// decodes it at both levels and substitutes nothing when it is absent.
+    func testResolvedModelDecodesOnTabAndInstance() throws {
+        let data = minimalTab(extra: #"""
+        "resolvedModel": "acme-gateway/claude-sonnet-5",
+        "conversationInstances": [{ "id": "main", "label": "Main", "resolvedModel": "acme-gateway/claude-sonnet-5" }]
+        """#)
         let tab = try decoder.decode(RemoteTabState.self, from: data)
-        XCTAssertEqual(tab.convFingerprint, "abc123",
-            "convFingerprint should decode from the 'convFingerprint' JSON key")
+        XCTAssertEqual(tab.resolvedModel, "acme-gateway/claude-sonnet-5")
+        XCTAssertEqual(tab.conversationInstances?.first?.resolvedModel, "acme-gateway/claude-sonnet-5")
     }
 
-    func testConvFingerprintNilWhenAbsent() throws {
-        let data = minimalTab()
-        let tab = try decoder.decode(RemoteTabState.self, from: data)
-        XCTAssertNil(tab.convFingerprint,
-            "convFingerprint should be nil when key is absent (back-compat)")
-    }
-
-    /// Goes red on wrong CodingKey: if the Swift property were mapped to a
-    /// different JSON key (e.g. "conv_fingerprint"), this assertion fails.
-    func testConvFingerprintWrongKeyDecodesNil() throws {
-        // Use a snake_case key that would match a misnamed CodingKey.
-        let data = minimalTab(extra: #""conv_fingerprint": "should-not-decode""#)
-        let tab = try decoder.decode(RemoteTabState.self, from: data)
-        XCTAssertNil(tab.convFingerprint,
-            "convFingerprint must not decode from 'conv_fingerprint' — wrong key")
+    func testResolvedModelNilWhenAbsent() throws {
+        let tab = try decoder.decode(RemoteTabState.self, from: minimalTab(extra: #""conversationInstances": [{ "id": "main", "label": "Main" }]"#))
+        XCTAssertNil(tab.resolvedModel)
+        XCTAssertNil(tab.conversationInstances?.first?.resolvedModel)
     }
 
     // MARK: - engineProfileId
@@ -108,15 +102,6 @@ final class RemoteTabStateDecodeTests: XCTestCase {
 
         XCTAssertEqual(object["isStarting"] as? Bool, true)
         XCTAssertNil(object["is_starting"])
-    }
-
-    // MARK: - Both fields together
-
-    func testBothFieldsDecodeFromSamePayload() throws {
-        let data = minimalTab(extra: #""convFingerprint": "fp-1", "engineProfileId": "prof-2""#)
-        let tab = try decoder.decode(RemoteTabState.self, from: data)
-        XCTAssertEqual(tab.convFingerprint, "fp-1")
-        XCTAssertEqual(tab.engineProfileId, "prof-2")
     }
 
     // MARK: - latest run metadata
@@ -253,7 +238,7 @@ extension RemoteTabStateDecodeTests {
         """.data(using: .utf8)!
 
         let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
-        guard case let .snapshot(_, _, _, _, _, _, _, _, _, _, _, projects, _, _) = event else {
+        guard case let .snapshot(_, _, _, _, _, _, _, projects, _, _) = event else {
             return XCTFail("Expected desktop snapshot")
         }
         let project = try XCTUnwrap(projects.first)
@@ -270,7 +255,7 @@ extension RemoteTabStateDecodeTests {
     func testDesktopSnapshotProjectsAreOptionalForOlderDesktops() throws {
         let json = #"{"type":"desktop_snapshot","tabs":[]}"#.data(using: .utf8)!
         let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
-        guard case let .snapshot(_, _, _, _, _, _, _, _, _, _, _, projects, _, _) = event else {
+        guard case let .snapshot(_, _, _, _, _, _, _, projects, _, _) = event else {
             return XCTFail("Expected desktop snapshot")
         }
         XCTAssertTrue(projects.isEmpty)

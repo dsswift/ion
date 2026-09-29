@@ -328,9 +328,30 @@ ionAclDirOk:
   ${IfNot} ${FileExists} "$1\Ion\Remove-IonEngineTasks.ps1"
     !insertmacro ionLog "uninstall: WARNING -- $1\Ion\Remove-IonEngineTasks.ps1 is missing; scheduled tasks were NOT removed"
   ${Else}
-    nsExec::ExecToLog 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$1\Ion\Remove-IonEngineTasks.ps1" -InstallRoot "$INSTDIR"'
+    ; This uninstaller is a 32-bit x86 program, so a bare powershell.exe
+    ; resolves to the x86 copy in SysWOW64. On ARM64 Windows that copy runs
+    ; under x86 emulation, and it has been seen to finish the script and then
+    ; spin in process teardown indefinitely, holding the whole upgrade.
+    ; Sysnative is a 32-bit process's view of the native System32, so this
+    ; runs the machine's own PowerShell. It does not exist on 32-bit Windows,
+    ; where System32 already holds the native copy.
+    StrCpy $2 "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+    ${IfNot} ${FileExists} "$2"
+      StrCpy $2 "$WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
+    ${EndIf}
+    !insertmacro ionLog "uninstall: running Remove-IonEngineTasks.ps1 with $2"
+    ; The script prints a line per task it considers. Two minutes with no
+    ; output means it is stuck, not slow: nsExec then terminates it and
+    ; returns "timeout". nsExec still waits for the process to end, so this
+    ; frees a script hung while it runs; only running the native PowerShell
+    ; above avoids the emulated teardown that ignores termination.
+    nsExec::ExecToLog /TIMEOUT=120000 '"$2" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$1\Ion\Remove-IonEngineTasks.ps1" -InstallRoot "$INSTDIR"'
     Pop $0
-    !insertmacro ionLog "uninstall: Remove-IonEngineTasks.ps1 exit code $0"
+    ${If} $0 == "timeout"
+      !insertmacro ionLog "uninstall: Remove-IonEngineTasks.ps1 printed nothing for 2 minutes and was stopped"
+    ${Else}
+      !insertmacro ionLog "uninstall: Remove-IonEngineTasks.ps1 exit code $0"
+    ${EndIf}
     ${If} $0 != 0
       ; $\" is how NSIS escapes a quote. A backslash is not an escape character
       ; to its parser, so the \" this line used to carry ended the macro's only

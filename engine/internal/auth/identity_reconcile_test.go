@@ -17,7 +17,7 @@ import (
 // startup the engine silently refreshes it with the existing refresh token,
 // verifies the fresh id_token, and re-persists at the current schema with the
 // identity snapshot — no interactive re-login. Reverting the reconcile leaves
-// the grant below currentIdentityVersion and Identity() nil.
+// the grant below IdentityStoreVersion and Identity() nil.
 func TestReconcileAtStartup_UpgradesLegacyGrantToCurrentVersion(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	fixture := newVerifierFixture(t)
@@ -87,8 +87,8 @@ func TestReconcileAtStartup_UpgradesLegacyGrantToCurrentVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load stored grant after reconcile: %v", err)
 	}
-	if stored.IdentityVersion != currentIdentityVersion {
-		t.Fatalf("stored IdentityVersion = %d, want %d", stored.IdentityVersion, currentIdentityVersion)
+	if stored.IdentityVersion != IdentityStoreVersion {
+		t.Fatalf("stored IdentityVersion = %d, want %d", stored.IdentityVersion, IdentityStoreVersion)
 	}
 	if stored.RefreshToken != "rt-2" {
 		t.Fatalf("stored refresh token = %q, want rotated rt-2", stored.RefreshToken)
@@ -123,7 +123,7 @@ func TestRenewNow_ProviderRejectionLosesVerification(t *testing.T) {
 	past := time.Now().Add(-time.Hour)
 	stored := oauthToken{
 		AccessToken: "stale", RefreshToken: "rt-dead", ExpiresAt: past, Scope: "openid",
-		IdentityVersion:   currentIdentityVersion,
+		IdentityVersion:   IdentityStoreVersion,
 		PersistedIdentity: &persistedIdentity{Username: "josh@example.com", ExpiresAt: past},
 	}
 	encoded, err := json.Marshal(stored)
@@ -171,7 +171,7 @@ func TestIdentity_HydratesFromPersistedSnapshotWithoutNetwork(t *testing.T) {
 		RefreshToken:    "rt-1",
 		ExpiresAt:       future,
 		Scope:           "openid",
-		IdentityVersion: currentIdentityVersion,
+		IdentityVersion: IdentityStoreVersion,
 		PersistedIdentity: &persistedIdentity{
 			Subject: "oid-1", Username: "josh@example.com", Name: "Josh", ExpiresAt: future,
 		},

@@ -2,7 +2,7 @@ import XCTest
 @testable import IonRemote
 
 /// Pins the outbound send-deadline mechanism (SendDeadline.swift) that bounds
-/// every relay/LAN socket write. A wedged TCP connection keeps the WebSocket
+/// every Studio socket write. A wedged TCP connection keeps the WebSocket
 /// task `.running` while `send` never completes; pre-fix, commands awaited
 /// indefinitely and later failed en masse with "Operation canceled".
 final class SendDeadlineTests: XCTestCase {
@@ -43,10 +43,4 @@ final class SendDeadlineTests: XCTestCase {
         }
     }
 
-    /// The timeout errors surfaced by the transport clients are distinct,
-    /// descriptive error cases (they drive teardown + user-visible requeue).
-    func testClientTimeoutErrorDescriptions() {
-        XCTAssertTrue(RelayClientError.sendTimeout.errorDescription?.contains("timed out") ?? false)
-        XCTAssertTrue(LANClientError.sendTimeout.errorDescription?.contains("timed out") ?? false)
-    }
 }

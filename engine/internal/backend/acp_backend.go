@@ -37,6 +37,10 @@ type acpSpec struct {
 type AcpBackend struct {
 	spec acpSpec
 
+	// telem carries per-call telemetry for runs given a collector
+	// (delegated_telemetry.go).
+	telem delegatedTelemetry
+
 	mu          sync.Mutex
 	client      *acp.Client
 	kill        func()
@@ -175,10 +179,12 @@ func (b *AcpBackend) IsRunning(requestID string) bool {
 // FlushConversations is a no-op: the ACP agent persists its own sessions.
 func (b *AcpBackend) FlushConversations() {}
 
-// WriteToStdin is a no-op: ACP has no mid-prompt steering channel.
+// WriteToStdin refuses: ACP has no mid-prompt steering channel. The error is
+// what makes the caller report the message as undelivered; returning nil made
+// a dropped steer look delivered.
 func (b *AcpBackend) WriteToStdin(requestID string, msg interface{}) error {
-	utils.LogWithFields(utils.LevelDebug, "backend.acp", "WriteToStdin ignored (ACP has no steer)", map[string]any{"kind": b.spec.kind, "request_id": requestID})
-	return nil
+	utils.LogWithFields(utils.LevelWarn, "backend.acp", "WriteToStdin refused (ACP has no steer)", map[string]any{"kind": b.spec.kind, "request_id": requestID})
+	return fmt.Errorf("%s runs have no mid-prompt input channel", b.spec.kind)
 }
 
 // StartRun begins a run. Plan mode maps onto the agent's native plan/architect
@@ -194,7 +200,13 @@ func (b *AcpBackend) WriteToStdin(requestID string, msg interface{}) error {
 // runtime check in runPrompt remains as the backstop for direct backend
 // consumers and for live sessions that advertise fewer modes than the spec.
 func (b *AcpBackend) StartRun(requestID string, options types.RunOptions) {
+	b.telem.begin(requestID, b.spec.kind, options)
 	go b.runPrompt(requestID, options)
+}
+
+// SetRunTelemetry implements RunTelemetrySetter.
+func (b *AcpBackend) SetRunTelemetry(requestID string, telem TelemetryCollector) {
+	b.telem.SetRunTelemetry(requestID, telem)
 }
 
 // emitPlanModeUnsupported surfaces the clean plan-mode-unsupported error for
@@ -215,6 +227,9 @@ func (b *AcpBackend) emitPlanModeUnsupported(requestID, sessionID string) {
 
 // runPrompt ensures the agent+session, then runs one blocking prompt.
 func (b *AcpBackend) runPrompt(requestID string, options types.RunOptions) {
+	if options.ParentCtx != nil {
+		defer installAmbientLogging(options.ParentCtx)()
+	}
 	client, loadCapable, err := b.ensureStarted()
 	if err != nil {
 		b.emitError(requestID, fmt.Errorf("%s start failed: %w", b.spec.kind, err))
@@ -443,6 +458,7 @@ func (b *AcpBackend) emit(runID string, event types.NormalizedEvent) {
 	if event.Data == nil {
 		return
 	}
+	b.telem.observe(runID, event)
 	b.mu.Lock()
 	fn := b.onNormalized
 	b.mu.Unlock()
@@ -453,6 +469,7 @@ func (b *AcpBackend) emit(runID string, event types.NormalizedEvent) {
 
 func (b *AcpBackend) emitExit(runID string, code *int, signal *string, sessionID string) {
 	utils.LogWithFields(utils.LevelInfo, "backend.acp", "emitExit", map[string]any{"kind": b.spec.kind, "run_id": runID, "session_id": sessionID})
+	b.telem.end(runID)
 	b.mu.Lock()
 	fn := b.onExit
 	b.mu.Unlock()

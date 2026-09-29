@@ -31,7 +31,7 @@ vi.mock('../../../rendererLogger', () => ({
 const benchResolveConflict = vi.fn(async (): Promise<string | null> => null)
 const openWorktreeConversation = vi.fn(async () => 'tab-1')
 
-vi.mock('../../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (sel: (s: unknown) => unknown) => sel({ benchResolveConflict, openWorktreeConversation }),
     { getState: () => ({ benchResolveConflict, openWorktreeConversation }) },
@@ -39,7 +39,7 @@ vi.mock('../../../stores/sessionStore', () => ({
 }))
 
 import { BenchConflictDialog } from '../BenchConflictDialog'
-import type { IntegrationMember } from '../../../../shared/types'
+import type { IntegrationMember } from '@ion/shared/types'
 
 function conflictedMember(over: Partial<IntegrationMember> = {}): IntegrationMember {
   return {

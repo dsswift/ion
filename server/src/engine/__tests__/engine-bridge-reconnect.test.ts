@@ -1,0 +1,480 @@
+/**
+ * Engine bridge reconnect correctness regressions.
+ *
+ * Pins the fixes for:
+ *  - stale socket close/error events re-arming the reconnect loop after
+ *    disconnect (conn nullified before destroy; close handler checks identity)
+ *  - consecutiveTimeouts carrying across connections (reset on connect)
+ *  - stale request-timeout timers bumping consecutiveTimeouts after
+ *    _failPendingRequests already settled them (has() guard)
+ *  - reRegisterSessions generation cancellation (batch aborts when
+ *    _reRegisterGeneration advances mid-flight)
+ *  - scheduleReconnect timer respecting reconnectDisabled at fire time
+ *  - a persistently failing reconnect re-asserting the supervisor instead of
+ *    retrying a socket nobody is going to bind
+ *  - supervisor re-assert being a capability a process must claim (by
+ *    bootstrapping the daemon) rather than one it gets from the import, so a
+ *    test worker holding a bridge cannot restart the operator's engine
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+
+// ── Socket mock ──
+
+type CloseHandler = () => void
+type ErrorHandler = (err: NodeJS.ErrnoException) => void
+type ConnectHandler = () => void
+
+let connectResults: boolean[] = []
+let defaultReachable = false
+let lastCreatedConn: ReturnType<typeof makeMockConn> | null = null
+
+function makeMockConn() {
+  const handlers = new Map<string, Array<(...a: unknown[]) => void>>()
+  const conn = {
+    on: vi.fn((ev: string, cb: (...a: unknown[]) => void) => {
+      const list = handlers.get(ev) ?? []
+      list.push(cb)
+      handlers.set(ev, list)
+      return conn
+    }),
+    write: vi.fn(),
+    end: vi.fn(),
+    destroy: vi.fn(),
+    destroyed: false,
+    _handlers: handlers,
+    _fireConnect() { for (const cb of handlers.get('connect') ?? []) (cb as ConnectHandler)() },
+    _fireClose() { for (const cb of handlers.get('close') ?? []) (cb as CloseHandler)() },
+    _fireError(err: NodeJS.ErrnoException) { for (const cb of handlers.get('error') ?? []) (cb as ErrorHandler)(err) },
+  }
+  return conn
+}
+
+vi.mock('net', () => ({
+  createConnection: vi.fn(() => {
+    const reachable = connectResults.length > 0 ? connectResults.shift()! : defaultReachable
+    const conn = makeMockConn()
+    lastCreatedConn = conn
+    queueMicrotask(() => {
+      if (reachable) {
+        conn._fireConnect()
+      } else {
+        const err = Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }) as NodeJS.ErrnoException
+        conn._fireError(err)
+      }
+    })
+    return conn
+  }),
+}))
+vi.mock('fs', () => ({ existsSync: vi.fn(() => false), readFileSync: vi.fn(() => '') }))
+// execFileSync: see engine-bridge-connect.test.ts's identical mock for why
+// this is required for the retry ladder to reach net.createConnection on
+// win32 (currentUserSid() shells out to whoami.exe there).
+vi.mock('child_process', () => ({
+  spawn: vi.fn(),
+  execSync: vi.fn(() => ''),
+  execFileSync: vi.fn(() => '"host\\user","S-1-5-21-111111111-222222222-333333333-1001"'),
+}))
+// Without this the real logger runs inside the test worker: it writes to the
+// log file and, where `fs` is mocked, fails on an export the mock does not
+// provide.
+vi.mock('../../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
+
+// vi.mock factories are hoisted above module scope, so the spy has to be
+// created with vi.hoisted to exist by the time the factory runs.
+const { mockRestartEngineDaemon } = vi.hoisted(() => ({ mockRestartEngineDaemon: vi.fn(async () => true) }))
+vi.mock('../engine-bootstrap', () => ({ restartEngineDaemon: mockRestartEngineDaemon }))
+
+import { createConnection } from 'net'
+import { EngineBridge } from '../engine-bridge'
+import {
+  scheduleReconnect,
+  enableSupervisorReassert,
+  supervisorReassertAllowed,
+  resetSupervisorReassertForTest,
+} from '../engine-bridge-connection'
+import { disconnect } from '../engine-bridge-lifecycle'
+import { reRegisterSessions } from '../engine-bridge-start-session'
+
+let bridge: EngineBridge
+
+beforeEach(() => {
+  vi.useFakeTimers()
+  // Module-level capability: reset per case so the default-off arm is real and
+  // an enabling case cannot leak the capability into the next one.
+  resetSupervisorReassertForTest()
+  mockRestartEngineDaemon.mockClear()
+  connectResults = []
+  defaultReachable = false
+  lastCreatedConn = null
+  bridge = new EngineBridge()
+})
+
+afterEach(() => {
+  bridge.reconnectDisabled = true
+  if (bridge.reconnectTimer) {
+    clearTimeout(bridge.reconnectTimer)
+    bridge.reconnectTimer = null
+  }
+  vi.useRealTimers()
+})
+
+// ── disconnect: stale close does not re-arm ──
+
+describe('disconnect settles cleanly without reconnect storm', () => {
+  it('async close event from destroyed socket does not schedule a reconnect', async () => {
+    connectResults = [true]
+    await bridge.connect()
+    const oldConn = lastCreatedConn!
+    expect(bridge.connected).toBe(true)
+
+    await disconnect(bridge)
+
+    expect(bridge.conn).toBeNull()
+    expect(bridge.connected).toBe(false)
+
+    // Simulate the async close event from the old socket firing after
+    // disconnect has already nullified bridge.conn.
+    oldConn._fireClose()
+
+    expect(bridge.reconnectTimer).toBeNull()
+  })
+
+  it('async error event from destroyed socket does not schedule a reconnect', async () => {
+    connectResults = [true]
+    await bridge.connect()
+    const oldConn = lastCreatedConn!
+
+    await disconnect(bridge)
+
+    const err = Object.assign(new Error('ECONNRESET'), { code: 'ECONNRESET' }) as NodeJS.ErrnoException
+    oldConn._fireError(err)
+
+    expect(bridge.reconnectTimer).toBeNull()
+  })
+
+  it('destroys a socket that connects after teardown instead of reviving bridge state', async () => {
+    // Keep the connect event pending so disconnect runs while doConnect is live.
+    const pendingConn = makeMockConn()
+    vi.mocked(createConnection).mockImplementationOnce(() => pendingConn as any)
+
+    const connecting = bridge.connect()
+    await Promise.resolve()
+    await disconnect(bridge)
+
+    pendingConn._fireConnect()
+
+    await expect(connecting).rejects.toThrow('stopped during connect')
+    expect(pendingConn.destroy).toHaveBeenCalledOnce()
+    expect(bridge.conn).toBeNull()
+    expect(bridge.connected).toBe(false)
+    expect(bridge.reconnectTimer).toBeNull()
+  })
+})
+
+// ── consecutiveTimeouts reset ──
+
+describe('consecutiveTimeouts resets on new connection', () => {
+  it('a timeout counter from the old connection does not carry into a new one', async () => {
+    connectResults = [true]
+    await bridge.connect()
+
+    // Simulate one timeout on the first connection.
+    bridge.consecutiveTimeouts = 1
+
+    // Reconnect.
+    connectResults = [true]
+    bridge.connected = false
+    bridge.conn = null
+    await bridge.connect()
+
+    expect(bridge.consecutiveTimeouts).toBe(0)
+  })
+})
+
+// ── Stale request timeout ──
+
+describe('stale request timeout after _failPendingRequests', () => {
+  it('does not increment consecutiveTimeouts when request was already settled', async () => {
+    connectResults = [true]
+    await bridge.connect()
+
+    const p = bridge._sendWithResult({ cmd: 'test_cmd' })
+
+    // Settle all pending requests (simulating connection close).
+    bridge._failPendingRequests('Connection closed')
+
+    // The promise resolves immediately with the error.
+    const result = await p
+    expect(result.ok).toBe(false)
+
+    // Now advance past the 30s timeout timer. The timer should be a
+    // no-op because the callback was already invoked by _failPendingRequests.
+    bridge.consecutiveTimeouts = 0
+    vi.advanceTimersByTime(30000)
+
+    expect(bridge.consecutiveTimeouts).toBe(0)
+  })
+})
+
+// ── scheduleReconnect respects reconnectDisabled at fire time ──
+
+describe('scheduleReconnect timer respects reconnectDisabled', () => {
+  it('does not call connect() if reconnectDisabled is set before the timer fires', async () => {
+    scheduleReconnect(bridge)
+    expect(bridge.reconnectTimer).not.toBeNull()
+
+    bridge.reconnectDisabled = true
+
+    // Advance past the first reconnect delay (500ms).
+    await vi.advanceTimersByTimeAsync(600)
+
+    // No connect attempt was made: no new socket was created.
+    expect(lastCreatedConn).toBeNull()
+  })
+})
+
+// ── Reconnect alone cannot recover a daemon that is gone ──
+
+// ── Supervisor re-assert is a claimed capability, not an import-time one ──
+
+describe('supervisor re-assert capability gate', () => {
+  // The regression: re-asserting the supervisor shells out to `launchctl
+  // kickstart -k` (or schtasks), which restarts the operator's live engine.
+  // That capability used to arrive with the import, so any process holding an
+  // engine bridge could fire it -- and one did. broker.test.ts drives the
+  // Broker's five-failed-attempts case, which pulls in the `state.ts` bridge
+  // singleton through `@ion/server/protocol`, pushed the ladder past
+  // SUPERVISOR_REASSERT_AFTER_ATTEMPTS, and restarted the developer's engine
+  // once per test run. HOME isolation cannot catch it: a launchd domain
+  // reference does not resolve through HOME.
+  //
+  // This arm fails on the unfixed code -- there, an un-owning process with a
+  // stale ladder calls restartEngineDaemon.
+  it('does not shell out to the supervisor in a process that never claimed the daemon', async () => {
+    expect(supervisorReassertAllowed()).toBe(false)
+    bridge.reconnectAttempts = 3
+    connectResults = [false]
+
+    scheduleReconnect(bridge)
+    await vi.advanceTimersByTimeAsync(10000)
+
+    expect(mockRestartEngineDaemon).not.toHaveBeenCalled()
+  })
+
+  // ensureEngineDaemon is what registers the supervisor definition and starts
+  // the daemon, so calling it is what makes a process the daemon's owner.
+  it('shells out once the process has claimed the daemon', async () => {
+    enableSupervisorReassert()
+    expect(supervisorReassertAllowed()).toBe(true)
+    bridge.reconnectAttempts = 3
+    connectResults = [false]
+
+    scheduleReconnect(bridge)
+    await vi.advanceTimersByTimeAsync(10000)
+
+    expect(mockRestartEngineDaemon).toHaveBeenCalled()
+  })
+})
+
+describe('supervisor re-assert during a long outage', () => {
+  // Every case below exercises the escalation itself, so each one runs as the
+  // daemon's owner. The gate is pinned separately above.
+  beforeEach(() => {
+    enableSupervisorReassert()
+  })
+
+  // Reconnecting assumes the daemon is up and only its address is not bound
+  // yet. When the daemon is actually gone nothing else brings it back:
+  // startup asks the supervisor once, and on Windows a `schtasks /Run` while
+  // the previous instance is still shutting down is a no-op whose readiness
+  // probe the outgoing process answers. Both then exit, and without this the
+  // loop retries a dead address forever.
+  it('asks the supervisor to restart the engine once reconnects keep failing', async () => {
+    bridge.reconnectAttempts = 3
+    connectResults = [false]
+
+    scheduleReconnect(bridge)
+    await vi.advanceTimersByTimeAsync(10000)
+
+    expect(mockRestartEngineDaemon).toHaveBeenCalled()
+  })
+
+  // The supervisor call shells out, and a genuinely slow start must not be
+  // interrupted by a second one.
+  it('does not re-assert again while still in cooldown', async () => {
+    bridge.reconnectAttempts = 3
+    connectResults = [false, false]
+
+    scheduleReconnect(bridge)
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(mockRestartEngineDaemon).toHaveBeenCalledTimes(1)
+
+    // The next tick of the same outage must not shell out again.
+    scheduleReconnect(bridge)
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(mockRestartEngineDaemon).toHaveBeenCalledTimes(1)
+  })
+
+  // The ordinary case -- the engine still binding its address right after a
+  // start -- must be covered by plain reconnects, not by restarting it again.
+  it('leaves an early reconnect to plain retries', async () => {
+    bridge.reconnectAttempts = 0
+    connectResults = [false]
+
+    scheduleReconnect(bridge)
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(mockRestartEngineDaemon).not.toHaveBeenCalled()
+  })
+})
+
+// ── Deferred interrupt survives reconnect ──
+
+describe('interrupt issued while the socket is down', () => {
+  it('records the abort instead of dropping it, then delivers it on reconnect', async () => {
+    connectResults = [true]
+    await bridge.connect()
+    const firstConn = lastCreatedConn!
+
+    // Socket dies; the operator hits interrupt before reconnect completes.
+    firstConn.destroyed = true
+    bridge.sendAbort('tab-1')
+    expect(bridge.pendingAborts.has('tab-1')).toBe(true)
+    expect(firstConn.write).not.toHaveBeenCalled()
+
+    const delivered: string[] = []
+    bridge.on('abort-delivered', (key: string) => delivered.push(key))
+
+    // Reconnect: the deferred abort goes out and the session is retired.
+    bridge.activeSessions.set('tab-1', { config: {} as never, conversationId: 'conv-1' } as never)
+    connectResults = [true]
+    bridge.connected = false
+    bridge.conn = null
+    bridge.reconnectAttempts = 1
+    await bridge.connect()
+
+    const sent = (lastCreatedConn!.write.mock.calls as Array<[string]>).map(([line]) => JSON.parse(line))
+    expect(sent.some((m) => m.cmd === 'abort' && m.key === 'tab-1')).toBe(true)
+    // The engine's all-scope abort owns complete teardown (recalls every
+    // registry dispatch and kills every extension-registered process handle),
+    // so the deferred-flush path sends exactly one scoped abort and no
+    // redundant abort_agent — abort_agent no longer exists on the wire.
+    expect(sent.some((m) => m.cmd === 'abort_agent')).toBe(false)
+    expect(bridge.pendingAborts.size).toBe(0)
+    expect(bridge.activeSessions.has('tab-1')).toBe(false)
+    expect(delivered).toEqual(['tab-1'])
+  })
+
+  it('coalesces repeated interrupts on the same key into one pending abort', async () => {
+    connectResults = [true]
+    await bridge.connect()
+    lastCreatedConn!.destroyed = true
+
+    bridge.sendAbort('tab-1')
+    bridge.sendAbort('tab-1')
+    bridge.sendAbort('tab-1')
+
+    expect([...bridge.pendingAborts.keys()]).toEqual(['tab-1'])
+  })
+
+  it('retains a deferred abort when either reconnect write fails', () => {
+    bridge._reRegisterGeneration = 2
+    bridge.pendingAborts.set('tab-1', 1)
+    bridge.activeSessions.set('tab-1', { config: {} as never, conversationId: 'conv-1' } as never)
+    const delivered: string[] = []
+    bridge.on('abort-delivered', (key: string) => delivered.push(key))
+    vi.spyOn(bridge, '_send').mockReturnValue(false)
+
+    bridge.flushPendingAborts()
+
+    expect(bridge.pendingAborts.get('tab-1')).toBe(1)
+    expect(bridge.activeSessions.has('tab-1')).toBe(true)
+    expect(delivered).toEqual([])
+  })
+
+  it('delivers a retained abort only on a newer connection generation', () => {
+    bridge._reRegisterGeneration = 2
+    bridge.pendingAborts.set('tab-1', 2)
+    const send = vi.spyOn(bridge, '_send').mockReturnValue(true)
+
+    bridge.flushPendingAborts()
+    expect(send).not.toHaveBeenCalled()
+    expect(bridge.pendingAborts.has('tab-1')).toBe(true)
+
+    bridge._reRegisterGeneration = 3
+    bridge.flushPendingAborts()
+    expect(bridge.pendingAborts.has('tab-1')).toBe(false)
+  })
+
+  it('does not re-register a session whose interrupt is still pending', () => {
+    bridge.activeSessions.set('tab-aborted', { config: {} as never, conversationId: 'conv-a' } as never)
+    bridge.activeSessions.set('tab-live', { config: {} as never, conversationId: 'conv-b' } as never)
+    bridge.pendingAborts.set('tab-aborted', bridge._reRegisterGeneration)
+
+    const sendWithResult = vi.spyOn(bridge, '_sendWithResult').mockResolvedValue({ ok: true })
+    reRegisterSessions(bridge)
+
+    const keys = sendWithResult.mock.calls.map(([msg]) => (msg as { key: string }).key)
+    expect(keys).toEqual(['tab-live'])
+  })
+})
+
+// ── reRegisterSessions generation cancellation ──
+
+describe('reRegisterSessions generation cancellation', () => {
+  it('cancels in-flight re-registration when _reRegisterGeneration advances', async () => {
+    connectResults = [true]
+    await bridge.connect()
+
+    for (let i = 0; i < 8; i++) {
+      bridge.activeSessions.set(`key-${i}`, { config: {} as any })
+    }
+
+    const sentKeys: string[] = []
+    // Deferred promises let us control exactly when each batch settles,
+    // so we can advance the generation between batch 1 completing and
+    // batch 2 starting.
+    const resolvers: Array<(v: { ok: boolean }) => void> = []
+    bridge._sendWithResult = vi.fn((msg: any) => {
+      sentKeys.push(msg.key)
+      return new Promise<{ ok: boolean }>(resolve => { resolvers.push(resolve) })
+    })
+
+    const gen = bridge._reRegisterGeneration
+    reRegisterSessions(bridge)
+
+    // Flush microtasks — the IIFE runs to `await Promise.all(batch1)`,
+    // creating 5 deferred promises.
+    await vi.advanceTimersByTimeAsync(0)
+    expect(sentKeys.length).toBe(5)
+    expect(resolvers.length).toBe(5)
+
+    // Advance generation BEFORE resolving batch 1.
+    bridge._reRegisterGeneration = gen + 1
+
+    // Resolve batch 1 and flush — the for-loop resumes, sees generation
+    // mismatch, and returns without creating batch 2.
+    for (const r of resolvers) r({ ok: true })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(sentKeys.length).toBe(5)
+  })
+})
+
+// ── _reRegisterGeneration increments on connect ──
+
+describe('connection generation tracking', () => {
+  it('increments _reRegisterGeneration on each successful connect', async () => {
+    const gen0 = bridge._reRegisterGeneration
+    connectResults = [true]
+    await bridge.connect()
+    expect(bridge._reRegisterGeneration).toBe(gen0 + 1)
+
+    // Reconnect.
+    bridge.connected = false
+    bridge.conn = null
+    connectResults = [true]
+    await bridge.connect()
+    expect(bridge._reRegisterGeneration).toBe(gen0 + 2)
+  })
+})

@@ -31,7 +31,7 @@ vi.mock('../git/Tooltip', () => ({
 }))
 
 import { WorktreeRow, WORKTREE_ROW_GUTTER_WIDTH } from '../WorktreeRow'
-import type { WorktreeInventoryEntry } from '../../../shared/types'
+import type { WorktreeInventoryEntry } from '@ion/shared/types'
 
 const BRANCH = 'wt/a1'
 

@@ -69,16 +69,6 @@ final class ConnectionHealth {
         }
     }
 
-    // MARK: - Relay capability
-
-    /// Relay delivery ACK mode discovered by the capability probe.
-    /// Exposed here so the banner and any diagnostic UI can surface it.
-    private(set) var relayAckMode: RelayCapabilities.AckMode = .unavailable
-
-    func updateRelayAckMode(_ mode: RelayCapabilities.AckMode) {
-        relayAckMode = mode
-    }
-
     // MARK: - State
 
     /// When the last successful snapshot was received from the desktop.
@@ -153,6 +143,5 @@ final class ConnectionHealth {
         cacheRestoredAt = nil
         cacheOriginalDate = nil
         isShowingCachedData = false
-        relayAckMode = .unavailable
     }
 }

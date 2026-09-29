@@ -301,64 +301,11 @@ input::placeholder {
   to { transform: rotate(360deg); }
 }
 
-/* ─── Stacking circle buttons ─── */
-.circles-out {
-  position: absolute;
-  right: calc(100% + 10px);
-  bottom: 0;
-  height: 46px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
+/* ─── Find highlights (useDomFind, CSS Custom Highlight API) ─── */
+::highlight(ion-find) {
+  background-color: var(--ion-accent-light);
 }
-
-.btn-stack {
-  position: relative;
-  width: 160px;
-  height: 46px;
-  overflow: visible;
-}
-.btn-stack.has-3 {
-  width: 200px;
-}
-
-.stack-btn {
-  position: absolute;
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ion-text-tertiary);
-  cursor: pointer;
-  transition: right 0.4s cubic-bezier(0.34, 1.3, 0.64, 1),
-              color 0.15s ease,
-              background 0.15s ease;
-}
-.stack-btn:hover:not(:disabled) { color: var(--ion-btn-hover-color); background: var(--ion-btn-hover-bg); }
-.stack-btn:disabled { color: var(--ion-btn-disabled); cursor: default; }
-
-/* Collapsed: stacked on the right, overlapping */
-.stack-btn-1 { right: 0;    z-index: 3; }
-.stack-btn-2 { right: 28px; z-index: 2; }
-.stack-btn-3 { right: 56px; z-index: 1; }
-
-/* Expanded on hover: spread evenly */
-.btn-stack:hover .stack-btn-1 { right: 0; }
-.btn-stack:hover .stack-btn-2 { right: 56px; }
-.btn-stack:hover .stack-btn-3 { right: 112px; }
-
-/* ─── Conversation search highlights ─── */
-mark[data-ion-search-match] {
-  background: var(--ion-accent-light);
-  color: inherit;
-  border-radius: 2px;
-  padding: 0 1px;
-  /* Reset browser default mark styling */
-  font: inherit;
-}
-mark[data-ion-search-match].ion-search-active {
-  background: var(--ion-accent);
+::highlight(ion-find-active) {
+  background-color: var(--ion-accent);
   color: var(--ion-text-on-accent);
 }

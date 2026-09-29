@@ -134,8 +134,12 @@ func (f *Forwarder) Run(ctx context.Context, interval time.Duration) error {
 	}
 }
 
+// push posts events as Loki streams labeled by the service that recorded
+// them (service_name, ion-<component>), the name an OTLP-ingested record's
+// resource gives it. The collector derives every other label and metadata key.
 func (f *Forwarder) push(ctx context.Context, events []telemetryformat.Event) error {
-	values := make([]lokiValue, 0, len(events))
+	streams := []lokiStream{}
+	byService := map[string]int{}
 	for index, event := range events {
 		timestamp, err := time.Parse(time.RFC3339Nano, event.Ts)
 		if err != nil {
@@ -145,12 +149,16 @@ func (f *Forwarder) push(ctx context.Context, events []telemetryformat.Event) er
 		if err != nil {
 			return fmt.Errorf("telemetry forwarder: event %d encode: %w", index, err)
 		}
-		values = append(values, lokiValue{fmt.Sprintf("%d", timestamp.UnixNano()), string(line)})
+		service := utils.ServiceNameForComponent(event.Component)
+		i, ok := byService[service]
+		if !ok {
+			i = len(streams)
+			byService[service] = i
+			streams = append(streams, lokiStream{Stream: map[string]string{"service_name": service}})
+		}
+		streams[i].Values = append(streams[i].Values, lokiValue{fmt.Sprintf("%d", timestamp.UnixNano()), string(line)})
 	}
-	body, err := json.Marshal(lokiPushRequest{Streams: []lokiStream{{
-		Stream: map[string]string{"service": "ion-telemetry", "service_name": "ion-telemetry"},
-		Values: values,
-	}}})
+	body, err := json.Marshal(lokiPushRequest{Streams: streams})
 	if err != nil {
 		return fmt.Errorf("telemetry forwarder: encode Loki request: %w", err)
 	}

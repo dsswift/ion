@@ -17,8 +17,8 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import type { ContextBreakdownCategory } from '../../../shared/types-engine'
-import type { NormalizedEvent } from '../../../shared/types-events'
+import type { ContextBreakdownCategory } from '@ion/shared/types-engine'
+import type { NormalizedEvent } from '@ion/shared/types-events'
 
 // ─── Mirror the groupCategories logic from StatusDrawer.tsx ──────────────────
 
@@ -301,17 +301,22 @@ describe('§8 — context_breakdown NormalizedEvent includes cache fields', () =
 // ─── §6: drawer-open dispatches get_context_breakdown ────────────────────────
 
 describe('§6 — drawer-open fires engine get_context_breakdown', () => {
-  it('App.tsx contains engineGetContextBreakdown call gated on statusDrawerOpen', async () => {
+  it('StatusDrawer.tsx contains engineGetContextBreakdown call gated on tabId', async () => {
     const { readFileSync } = await import('fs')
     const { resolve } = await import('path')
+    // Studio only mounts StatusDrawer while the Status surface tab is active
+    // (SurfacePanel's `if (!active) return null`), so mount === open; the
+    // effect fires on mount/tabId-change instead of an explicit
+    // statusDrawerOpen flag (which no longer exists once App.tsx's Overlay
+    // drawer toggle was replaced by Studio's surface-tab switching).
     const src = readFileSync(
-      resolve(__dirname, '../../App.tsx'),
+      resolve(__dirname, '../StatusDrawer.tsx'),
       'utf8',
     )
     // The effect should call engineGetContextBreakdown
     expect(src).toContain('engineGetContextBreakdown')
-    // Gated on statusDrawerOpen
-    expect(src).toContain('statusDrawerOpen')
+    // Gated on the active tab id
+    expect(src).toMatch(/useEffect\(\(\) => \{\s*if \(!tabId\) return/)
   })
 })
 

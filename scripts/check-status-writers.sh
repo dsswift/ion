@@ -1,53 +1,16 @@
 #!/usr/bin/env bash
-# Phase 4 of the state-management overhaul. CI-grade lint that prohibits
-# direct mutation of `tab.status` / `inst.statusFields` outside the
-# whitelisted dispatcher chokepoints.
+# CI-grade lint that prohibits direct mutation of `tab.status` /
+# `inst.statusFields` outside the whitelisted writer files.
 #
 # Why: the engine emits engine_status / engine_session_status as the
-# authoritative state-of-session signal. Every direct write in client
-# code is an opportunity to drift from the engine. Phase 4 funnels
-# every writer through one chokepoint per client so a future bug like
-# the Ion Operations stranding cannot be reintroduced silently.
+# authoritative state-of-session signal. Every direct write elsewhere is an
+# opportunity to drift from the engine, so the set of files allowed to write
+# is closed and listed here.
 #
-# Whitelisted files (the dispatcher chokepoints):
-#   - desktop/src/renderer/stores/slices/engine-event-status.ts
-#     (the canonical engine_status handler for engine-view tabs)
-#   - desktop/src/renderer/stores/slices/engine-event-slice.ts
-#     (handles engine_message_end / engine_error / engine_dead → status
-#      transitions for engine tabs)
-#   - desktop/src/renderer/stores/slices/event-slice.ts
-#     (handles task_complete / tab_status / engine_dead for CLI tabs)
-#   - desktop/src/renderer/stores/slices/event-slice-extension-surface.ts
-#     (extension-surface arms extracted from event-slice.ts to keep it under
-#      the 600-line cap; uses instPatch staging, not direct statusFields
-#      mutation — the commit happens in the parent event-slice.ts at line
-#      `next.statusFields = instPatch.statusFields!`, which IS whitelisted)
-#   - desktop/src/main/engine-control-plane.ts
-#     (CLI-tab control plane; _setStatus is the chokepoint)
-#   - desktop/src/main/engine-control-plane-events.ts
-#     (CLI-tab event handler; uses ctx.setStatus)
-#   - desktop/src/renderer/stores/slices/engine-slice.ts
-#     (engineStart writes 'connecting' as a local UI synthetic until
-#      the first engine_status arrives)
-#   - desktop/src/renderer/stores/slices/engine-slice-submit.ts
-#     (mirrors engine-slice for engine-view submits)
-#   - desktop/src/renderer/stores/slices/permissions-slice.ts
-#     (restoration injection)
-#   - desktop/src/renderer/stores/slices/send-slice.ts
-#     (CLI prompt submit writes 'connecting' as local synthetic)
-#   - desktop/src/renderer/stores/slices/event-slice.ts already covered
-#   - desktop/src/renderer/hooks/useHealthReconciliation.ts
-#     (periodic reconcile against main-process state)
-#   - desktop/src/renderer/hooks/useTabRestoration-engine.ts
-#     (statusFields default at restore)
-#   - desktop/src/main/prompt-pipeline-renderer.ts
-#     (status promotion on CLI handoff)
-#   - ios/IonRemote/ViewModels/SessionViewModel+SessionStatus.swift
-#     (Phase 3 dispatcher)
-#   - any *.test.ts / *Tests.swift file (tests are allowed to seed
-#     state directly)
+# The whitelist below carries one reason per file. Tests (*.test.ts,
+# *Tests.swift, __tests__/) may seed state directly and are not scanned.
 #
-# Run via `make check-status-writers` or as part of `make test-all`.
+# Run via `make check-status-writers`.
 
 set -euo pipefail
 
@@ -55,66 +18,75 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 # Whitelist: files that are permitted to mutate status / statusFields.
-# Newline-separated; paths relative to repo root.
-read -r -d '' WHITELIST <<'EOF' || true
-desktop/src/renderer/stores/slices/engine-event-status.ts
-desktop/src/renderer/stores/slices/engine-event-slice.ts
-desktop/src/renderer/stores/slices/event-slice.ts
-desktop/src/renderer/stores/slices/event-slice-extension-surface.ts
-desktop/src/renderer/stores/slices/engine-slice.ts
-desktop/src/renderer/stores/slices/engine-slice-submit.ts
-desktop/src/renderer/stores/slices/permissions-slice.ts
-desktop/src/renderer/stores/slices/send-slice.ts
-desktop/src/renderer/stores/slices/engine-event-slice-messages.ts
-desktop/src/renderer/hooks/useHealthReconciliation.ts
-desktop/src/renderer/hooks/useTabRestoration-engine.ts
-desktop/src/main/engine-control-plane.ts
-desktop/src/main/engine-control-plane-events.ts
-desktop/src/main/prompt-pipeline-renderer.ts
-desktop/src/main/state.ts
-desktop/src/renderer/studio/visualizer/state/agent-cache.ts
-desktop/src/main/studio-state-cache.ts
-ios/IonRemote/ViewModels/SessionViewModel+SessionStatus.swift
-ios/IonRemote/ViewModels/SessionViewModel+EventHandlers.swift
-ios/IonRemote/ViewModels/SessionViewModel+EngineEvents.swift
-ios/IonRemote/ViewModels/SessionViewModel+TabEventHandlers.swift
-ios/IonRemote/ViewModels/SessionViewModel+Commands.swift
-ios/IonRemote/ViewModels/SessionViewModel+EngineCommands.swift
-ios/IonRemote/ViewModels/SessionViewModel+ImplementPlan.swift
-ios/IonRemote/ViewModels/SessionViewModel+Snapshot.swift
-ios/IonRemote/ViewModels/SessionViewModel+Lifecycle.swift
+# One `path # reason` per line; paths relative to repo root.
+read -r -d '' WHITELIST_WITH_REASONS <<'EOF' || true
+server/src/store/slices/tab-status-transition.ts # setTabStatus, the seam for writes to the tabs array
+server/src/store/slices/event-slice.ts # normalized-event reducer: session_init promotion, statusFields commit
+server/src/store/slices/event-slice-task.ts # task and run-termination arms of the reducer
+server/src/store/slices/event-slice-extension-surface.ts # extension-surface arms of the reducer
+server/src/store/slices/engine-event-slice.ts # engine message-end / error / dead transitions
+server/src/store/slices/engine-event-slice-messages.ts # message arms of the engine-event reducer
+server/src/store/slices/engine-slice.ts # 'connecting' synthetic until the first engine_status
+server/src/store/slices/engine-slice-submit.ts # 'connecting' synthetic on submit
+server/src/store/slices/permissions-slice.ts # restoration injection
+server/src/store/slices/send-slice.ts # 'connecting' synthetic on prompt submit
+server/src/hooks/useTabRestoration-engine.ts # statusFields default at restore
+server/src/engine/engine-control-plane.ts # session plane; _setStatus
+server/src/engine/engine-control-plane-events.ts # session plane event handler; ctx.setStatus
+server/src/engine/engine-control-plane-tab.ts # session plane tab reset
+server/src/engine/studio-state-cache.ts # latest-status cache replayed to a late client
+desktop/src/renderer/hooks/useHealthReconciliation.ts # periodic reconcile against the server
+desktop/src/renderer/studio/visualizer/state/agent-cache.ts # visualizer's own agent cache
+ios/IonRemote/ViewModels/SessionViewModel+SessionStatus.swift # status dispatcher
+ios/IonRemote/ViewModels/SessionViewModel+EventHandlers.swift # engine status fields from the wire
 EOF
+WHITELIST="$(sed 's/ #.*$//' <<<"$WHITELIST_WITH_REASONS")"
+
+# A whitelist entry that names a missing file is stale: the writer moved, and
+# its new home is either unscanned or unlisted.
+while IFS= read -r listed; do
+  [ -z "$listed" ] && continue
+  if [ ! -f "$listed" ]; then
+    echo "FAIL: the whitelist names a file that does not exist: $listed"
+    echo "Update the whitelist in scripts/check-status-writers.sh to the writer's current path."
+    exit 1
+  fi
+done <<<"$WHITELIST"
 
 # Patterns that flag a direct status mutation.
 #   - `tab.status = …`
 #   - `tabs[i].status = …`
 #   - `t.status = …`
 #   - `updated.status = …`
-#   - `.statusFields = …`  (the legacy iOS-side write)
+#   - `.statusFields = …`
 PATTERN='(\.status\s*=\s*[''"]|\.statusFields\s*=\s*[A-Za-z])'
 
-# Files to scan: TS and Swift sources, excluding tests, build output,
-# and the whitelist.
+# Files to scan: TS and Swift sources, excluding tests and the whitelist.
 scan_paths=(
+  "server/src"
+  "packages/shared/src"
   "desktop/src"
   "ios/IonRemote"
 )
+
+for scan_path in "${scan_paths[@]}"; do
+  if [ ! -d "$scan_path" ]; then
+    echo "FAIL: scan path does not exist: $scan_path"
+    echo "Update scan_paths in scripts/check-status-writers.sh to where the code lives."
+    exit 1
+  fi
+done
 
 violations=()
 while IFS= read -r file; do
   # Skip test files — they may seed status for fixtures.
   case "$file" in
-    *.test.ts|*Tests.swift|*Tests/*.swift|*__tests__*) continue ;;
+    *.test.ts|*.test.tsx|*Tests.swift|*Tests/*.swift|*__tests__*) continue ;;
   esac
   # Skip whitelist.
   if grep -Fxq "$file" <<<"$WHITELIST"; then
     continue
   fi
-  # Skip the pure helper that is a specification, not a writer.
-  case "$file" in
-    desktop/src/main/remote/snapshot-derive.ts) continue ;;
-    desktop/src/main/remote/snapshot.ts) continue ;;  # IIFE inline derivation, separately reviewed
-  esac
   if grep -EHn "$PATTERN" "$file" >/dev/null 2>&1; then
     while IFS= read -r match; do
       violations+=("$match")
@@ -123,12 +95,12 @@ while IFS= read -r file; do
 done < <(find "${scan_paths[@]}" \( -name '*.ts' -o -name '*.tsx' -o -name '*.swift' \) -type f 2>/dev/null)
 
 if [ ${#violations[@]} -gt 0 ]; then
-  echo "FAIL: status writers found outside whitelisted dispatcher files."
+  echo "FAIL: status writers found outside whitelisted writer files."
   echo ""
   echo "Every write to tab.status / inst.statusFields must go through"
-  echo "the dispatcher chokepoint. If your change legitimately needs"
-  echo "a new write site, add it to the WHITELIST in"
-  echo "scripts/check-status-writers.sh and explain why in the PR."
+  echo "a whitelisted writer. If your change legitimately needs"
+  echo "a new write site, add it to the whitelist in"
+  echo "scripts/check-status-writers.sh with its reason."
   echo ""
   echo "Violations:"
   for v in "${violations[@]}"; do

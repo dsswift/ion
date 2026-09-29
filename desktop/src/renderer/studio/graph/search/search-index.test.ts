@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { buildSearchIndex, query } from './search-index'
-import type { GraphModel, GraphNode } from '../../../../shared/graph-model-types'
+import type { GraphModel, GraphNode } from '@ion/shared/graph-model-types'
 
 function node(id: string, label: string, path?: string): GraphNode {
   return { id, kind: 'document', label, path, frontMatter: {}, sizeBytes: 0, modifiedMs: 0, degree: 0, community: 0, centrality: 0, orphan: false }

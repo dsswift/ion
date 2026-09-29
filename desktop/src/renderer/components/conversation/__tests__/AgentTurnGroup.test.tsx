@@ -76,7 +76,7 @@ vi.mock('framer-motion', () => ({
     React.createElement(React.Fragment, null, children),
 }))
 
-import type { Message } from '../../../../shared/types'
+import type { Message } from '@ion/shared/types'
 import { AgentTurnGroup } from '../AgentTurnGroup'
 
 function makeMessage(id: string, role: Message['role'], content = 'text'): Message {

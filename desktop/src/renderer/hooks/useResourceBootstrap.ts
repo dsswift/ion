@@ -1,8 +1,9 @@
 import { useEffect } from 'react'
-import { useSessionStore } from '../stores/sessionStore'
-import type { ResourceItem } from '../../shared/types-engine'
-import { resourceIdentity } from '../../shared/resource-identity'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import type { ResourceItem } from '@ion/shared/types-engine'
+import { resourceIdentity } from '@ion/shared/resource-identity'
 import { rInfo } from '../rendererLogger'
+import { host } from '../host/host-instance'
 
 /**
  * Resource bootstrap: seed the store from the main-process catalog.
@@ -33,8 +34,8 @@ let catalogListenerInstalled = false
  */
 async function readCatalogIntoStore(): Promise<void> {
   const [readResult, resourcesResult] = await Promise.allSettled([
-    window.ion.getReadResourceIds(),
-    window.ion.getPersistedResources() as Promise<ResourceItem[]>,
+    host.shell.getReadResourceIds(),
+    host.shell.getPersistedResources(),
   ])
   const readIds = readResult.status === 'fulfilled' ? readResult.value : []
   const items = resourcesResult.status === 'fulfilled' ? resourcesResult.value : []
@@ -113,9 +114,8 @@ export function bootstrapResources(): Promise<void> {
  */
 function subscribeToCatalogChanges(): void {
   if (catalogListenerInstalled) return
-  if (typeof window === 'undefined' || !window.ion?.onResourceCatalogChanged) return
   catalogListenerInstalled = true
-  window.ion.onResourceCatalogChanged(() => {
+  host.shell.onResourceCatalogChanged(() => {
     rInfo('resource.bootstrap', 'catalog change announced; re-reading')
     void bootstrapResources()
   })

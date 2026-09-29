@@ -61,8 +61,7 @@ type ClientStore struct {
 // NewClientStore creates a registration store backed by
 // ~/.ion/mcp-clients.json.
 func NewClientStore() *ClientStore {
-	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home degrades to a relative path; Get/Set log their own failures
-	storePath := filepath.Join(home, ".ion", "mcp-clients.json")
+	storePath := filepath.Join(utils.IonDir(), "mcp-clients.json")
 
 	store := &ClientStore{
 		clients: make(map[string]*ClientRegistration),
@@ -165,8 +164,7 @@ var (
 )
 
 func getClientStore() *ClientStore {
-	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home matches NewClientStore fallback
-	path := filepath.Join(home, ".ion", "mcp-clients.json")
+	path := filepath.Join(utils.IonDir(), "mcp-clients.json")
 
 	globalClientStoreMu.Lock()
 	defer globalClientStoreMu.Unlock()
@@ -194,6 +192,9 @@ func resetStoresForTest() {
 	// leak the same way: a fixture's answer for one server URL would otherwise
 	// be served to the next test that probes it.
 	resetDiscoveryCaches()
+	pendingCallerLoginsMu.Lock()
+	pendingCallerLogins = map[string]*pendingCallerLogin{}
+	pendingCallerLoginsMu.Unlock()
 }
 
 // storeErrUnwritable is returned when a registration cannot be persisted; the

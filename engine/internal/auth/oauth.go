@@ -358,41 +358,18 @@ func StartPKCEFlow(cfg PKCEFlowConfig) (*PKCEFlowResult, error) {
 	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 
-		if errParam := q.Get("error"); errParam != "" {
-			desc := q.Get("error_description")
-			errCh <- fmt.Errorf("authorization error: %s: %s", errParam, desc)
-			w.Header().Set("Content-Type", "text/html")
-			if _, err := fmt.Fprintf(w, "<html><body><p>Authorization failed. You can close this tab.</p></body></html>"); err != nil {
-				utils.LogWithFields(utils.LevelInfo, "auth.oauth", "pkce write failure page", map[string]any{"error": err.Error()})
+		code, rejection := validateAuthorizationCallback(q, state, cfg.ExpectedIssuer)
+		if rejection != nil {
+			errCh <- rejection
+			if rejection.Reason == CallbackReasonProviderError {
+				w.Header().Set("Content-Type", "text/html")
+				if _, err := fmt.Fprintf(w, "<html><body><p>Authorization failed. You can close this tab.</p></body></html>"); err != nil {
+					utils.LogWithFields(utils.LevelInfo, "auth.oauth", "pkce write failure page", map[string]any{"error": err.Error()})
+				}
+			} else {
+				http.Error(w, rejection.httpText, http.StatusBadRequest)
 			}
-			go windDown("auth-error")
-			return
-		}
-
-		// RFC 9207: validate the `iss` parameter before checking state.
-		// A missing `iss` is tolerated when the server did not advertise
-		// support, but a present `iss` that does not match is always fatal.
-		if cfg.ExpectedIssuer != "" {
-			if iss := q.Get("iss"); iss != "" && iss != cfg.ExpectedIssuer {
-				errCh <- fmt.Errorf("issuer mismatch: callback iss=%q, expected %q", iss, cfg.ExpectedIssuer)
-				http.Error(w, "issuer mismatch", http.StatusBadRequest)
-				go windDown("iss-mismatch")
-				return
-			}
-		}
-
-		if q.Get("state") != state {
-			errCh <- fmt.Errorf("state mismatch")
-			http.Error(w, "state mismatch", http.StatusBadRequest)
-			go windDown("state-mismatch")
-			return
-		}
-
-		code := q.Get("code")
-		if code == "" {
-			errCh <- fmt.Errorf("no authorization code in callback")
-			http.Error(w, "missing code", http.StatusBadRequest)
-			go windDown("missing-code")
+			go windDown(rejection.Reason)
 			return
 		}
 

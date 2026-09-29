@@ -14,7 +14,6 @@
 // Ported from patch-zustand.sh to run on every platform (postinstall.js is
 // Node, not bash, so it works identically on Windows).
 const fs = require('fs')
-const path = require('path')
 
 const PATCHED_SOURCE = `import React from 'react';
 import { createStore } from 'zustand/vanilla';
@@ -67,6 +66,12 @@ export { create, useStore };
  * prints its outcome, matching the original bash script's console output.
  */
 function patchZustand(filePath) {
+  // undefined when zustand is not installed at all — the resolver's answer for
+  // an absent package, kept distinct from "installed but already patched".
+  if (!filePath) {
+    console.log('zustand patch skipped — zustand is not installed')
+    return
+  }
   if (!fs.existsSync(filePath)) return
   const contents = fs.readFileSync(filePath, 'utf8')
   if (!/React\.useCallback[^\n]*selector/.test(contents)) {
@@ -80,5 +85,5 @@ function patchZustand(filePath) {
 module.exports = { patchZustand }
 
 if (require.main === module) {
-  patchZustand(path.join(__dirname, '..', 'node_modules', 'zustand', 'esm', 'react.mjs'))
+  patchZustand(require('./resolve-package').packagePath('zustand', 'esm', 'react.mjs'))
 }

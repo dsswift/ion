@@ -59,13 +59,14 @@ type registrationResponse struct {
 // registration and persists it.
 //
 // Idempotent: when a registration is already stored for serverName whose
-// endpoints still match the supplied metadata, that record is returned and no
-// HTTP request is made. A metadata mismatch (the provider moved its endpoints,
+// endpoints and redirect URI still match, that record is returned and no HTTP
+// request is made. A metadata mismatch (the provider moved its endpoints,
 // or the operator repointed the server at a different issuer) re-registers,
 // because the stored client_id belongs to the OLD authorization server and
-// would be rejected by the new one.
+// would be rejected by the new one. A redirect mismatch re-registers because
+// the provider would reject the new redirect for the old client.
 //
-// redirectURI must be the exact loopback URI the PKCE flow will use. RFC 7591
+// redirectURI must be the exact URI the authorization request will use. RFC 7591
 // registration binds the redirect URI, so a mismatch at authorization time is
 // rejected by the provider. Because auth.StartPKCEFlow assigns an ephemeral
 // port, callers register the fixed-port URI they then pin the flow to (see
@@ -77,14 +78,15 @@ func RegisterClient(serverName string, meta *ServerMetadata, redirectURI, scope 
 
 	store := getClientStore()
 	if existing := store.Get(serverName); existing != nil {
-		if existing.AuthURL == meta.AuthorizationEndpoint && existing.TokenURL == meta.TokenEndpoint {
+		if existing.AuthURL == meta.AuthorizationEndpoint && existing.TokenURL == meta.TokenEndpoint &&
+			redirectCompatible(existing.RedirectURI, redirectURI) {
 			utils.LogWithFields(utils.LevelInfo, "mcp.register", "reusing stored client registration", map[string]any{
 				"serverName": serverName, "clientId": existing.ClientID, "issuer": existing.Issuer,
 			})
 			return existing, nil
 		}
-		utils.LogWithFields(utils.LevelWarn, "mcp.register", "stored registration endpoints no longer match; re-registering", map[string]any{
-			"serverName": serverName,
+		utils.LogWithFields(utils.LevelWarn, "mcp.register", "stored registration endpoints or redirect no longer match; re-registering", map[string]any{
+			"serverName": serverName, "storedRedirect": existing.RedirectURI, "redirectUri": redirectURI,
 			"storedAuth": existing.AuthURL, "discoveredAuth": meta.AuthorizationEndpoint,
 			"storedToken": existing.TokenURL, "discoveredToken": meta.TokenEndpoint,
 		})

@@ -6,8 +6,8 @@
  * this whole feature exists to avoid.
  */
 
-import type { ChannelDimension, GraphViewCuratedField, TagTreatment } from '../../../../shared/graph-view-types'
-import type { GraphModel } from '../../../../shared/graph-model-types'
+import type { ChannelDimension, GraphViewCuratedField, TagTreatment } from '@ion/shared/graph-view-types'
+import type { GraphModel } from '@ion/shared/graph-model-types'
 
 export interface CatalogEntry {
   dimension: ChannelDimension

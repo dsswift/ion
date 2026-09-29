@@ -7,7 +7,8 @@ import { usePopoverLayer } from './PopoverLayer'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
 import { rError } from '../rendererLogger'
-import type { GitBranchInfo } from '../../shared/types'
+import type { GitBranchInfo } from '@ion/shared/types'
+import { host } from '../host/host-instance'
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
 
@@ -45,8 +46,8 @@ export function BranchPickerDialog({ repoPath, onSelect, onCancel }: BranchPicke
 
   // Load branches on mount; fire-and-forget fetch
   useEffect(() => {
-    void window.ion.gitFetch(repoPath)
-    window.ion.gitBranches(repoPath).then((result) => {
+    void host.shell.gitFetch(repoPath)
+    host.shell.gitBranches(repoPath).then((result) => {
       setBranches(result.branches)
       setCurrentBranch(result.current)
       setLoading(false)

@@ -1,0 +1,10 @@
+{
+  "quickTools": [
+    {
+      "id": "build-desktop",
+      "name": "Build desktop",
+      "icon": "Hammer",
+      "command": "make desktop"
+    }
+  ]
+}

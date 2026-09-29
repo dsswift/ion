@@ -1,0 +1,188 @@
+/**
+ * Scrollback divider helpers (session-start, plan-created, implement, /clear).
+ *
+ * Shared between the renderer (InputBarCommandHandlers.ts, SystemMessage.tsx,
+ * EngineMessageRow rendering) and the main process (slash-intercept.ts,
+ * ipc/engine.ts) so the divider text and its sentinel-prefix detection stay
+ * in lockstep across both processes.
+ *
+ * Each divider follows the pattern `── <Label> at <H:MM AM/PM> ──` and is
+ * rendered by SystemMessage.tsx (and any future iOS divider styling) as a
+ * full-width horizontal rule instead of a normal system-message bubble.
+ */
+
+/**
+ * Format the divider system message inserted into scrollback after a
+ * `/clear` checkpoint.
+ */
+export function formatClearDivider(at: Date): string {
+  const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  return `── Cleared at ${time} ──`
+}
+
+/** Sentinel-prefix check used by message renderers to switch into divider mode. */
+export function isClearDivider(content: string): boolean {
+  return content.startsWith('── Cleared')
+}
+
+/**
+ * Format the `/clear --keep-plan` divider. Keeps the `── Cleared` sentinel so
+ * `isClearDivider` still matches (renderers switch into divider mode), and
+ * appends the keep-plan outcome after ` · `:
+ *
+ *   - `keptSlug` set   → `── Cleared at 3:04 PM · plan kept: happy-jumping-rabbit ──`
+ *   - `keptSlug` empty → `── Cleared at 3:04 PM · no plan to keep ──`
+ *
+ * The engine carries the outcome on `engine_command_result{clear}`
+ * (`clearKeepPlan` / `clearKeptPlanSlug`); callers pass the slug through here.
+ */
+export function formatClearKeepPlanDivider(at: Date, keptSlug?: string | null): string {
+  const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  if (keptSlug) {
+    return `── Cleared at ${time} · plan kept: ${keptSlug} ──`
+  }
+  return `── Cleared at ${time} · no plan to keep ──`
+}
+
+/**
+ * Pick the clear divider for a `/clear` outcome: the keep-plan notice when the
+ * flag was requested, otherwise the plain "Cleared" divider. One helper so every
+ * clear path (main relay, renderer, no-session short-circuit) renders identically.
+ */
+export function formatClearDividerForOutcome(at: Date, keepPlan?: boolean, keptSlug?: string | null): string {
+  return keepPlan ? formatClearKeepPlanDivider(at, keptSlug) : formatClearDivider(at)
+}
+
+/**
+ * Format the divider system message inserted into scrollback when the user
+ * clicks "Implement" on a plan. Mirrors `formatClearDivider` but signals an
+ * implementation-phase transition rather than a `/clear` checkpoint. If `slug`
+ * is provided it is appended after a ` · ` separator (same shape as the
+ * plan-created / plan-updated dividers) so the user can identify which plan is
+ * being implemented and the renderer can make the slug a clickable link.
+ */
+export function formatImplementDivider(at: Date, slug?: string): string {
+  const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  if (slug) {
+    return `── Implementing plan at ${time} · ${slug} ──`
+  }
+  return `── Implementing plan at ${time} ──`
+}
+
+/** Sentinel-prefix check for implement dividers. */
+export function isImplementDivider(content: string): boolean {
+  return content.startsWith('── Implementing plan')
+}
+
+/**
+ * Extract the human-readable slug portion of a plan file path: the basename
+ * minus the trailing `.md` extension. Mirrors the engine's PlanSlugFromPath
+ * (engine/internal/types/normalized_event.go) so the implement divider shows
+ * the same slug the engine puts on the plan-created / plan-updated dividers.
+ * Empty/undefined path → empty string.
+ */
+export function planSlugFromPath(path?: string | null): string {
+  if (!path) return ''
+  const base = path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1)
+  return base.endsWith('.md') ? base.slice(0, -3) : base
+}
+
+/**
+ * Format the divider system message inserted into scrollback when a new
+ * session begins (e.g. after app launch or reconnection).
+ */
+export function formatSessionStartDivider(at: Date): string {
+  const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  return `── Session started at ${time} ──`
+}
+
+/**
+ * Format the divider system message inserted into scrollback when a new
+ * plan is created.  If `slug` is provided it is appended after a ` · `
+ * separator so the user can identify which plan the divider refers to.
+ */
+export function formatPlanCreatedDivider(at: Date, slug?: string): string {
+  const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  if (slug) {
+    return `── Plan created at ${time} · ${slug} ──`
+  }
+  return `── Plan created at ${time} ──`
+}
+
+/** Sentinel-prefix check for plan-created dividers. */
+export function isPlanCreatedDivider(content: string): boolean {
+  return content.startsWith('── Plan created')
+}
+
+/**
+ * Format the divider system message inserted into scrollback when an
+ * EXISTING plan is written again (a subsequent plan-mode entry for the same
+ * plan file). Mirrors `formatPlanCreatedDivider` but signals an update of the
+ * same plan rather than the first creation. The created-vs-updated decision is
+ * made by the consumer: the first divider for a given plan path is "created",
+ * any subsequent divider for the same path is "updated".
+ */
+export function formatPlanUpdatedDivider(at: Date, slug?: string): string {
+  const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  if (slug) {
+    return `── Plan updated at ${time} · ${slug} ──`
+  }
+  return `── Plan updated at ${time} ──`
+}
+
+/** Sentinel-prefix check for plan-updated dividers. */
+export function isPlanUpdatedDivider(content: string): boolean {
+  return content.startsWith('── Plan updated')
+}
+
+/**
+ * Format the divider system message inserted into scrollback when the
+ * engine confirms a mid-turn steer message was injected into the
+ * conversation. `messageLength` is included so the user can distinguish
+ * a one-word nudge from a multi-sentence steer at a glance.
+ */
+export function formatSteerAppliedDivider(at: Date, messageLength: number): string {
+  const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  return `── Steer applied at ${time} · ${messageLength} chars ──`
+}
+
+/** Sentinel-prefix check for steer-applied dividers. */
+export function isSteerAppliedDivider(content: string): boolean {
+  return content.startsWith('── Steer applied')
+}
+
+/**
+ * Format the divider system message inserted into scrollback when
+ * background work results are delivered into the conversation.
+ */
+export function formatBackgroundWorkDivider(at: Date, count: number): string {
+  const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  const label = count === 1 ? '1 result' : `${count} results`
+  return `── Background work delivered at ${time} · ${label} ──`
+}
+
+/** Sentinel-prefix check for background-work-delivered dividers. */
+export function isBackgroundWorkDivider(content: string): boolean {
+  return content.startsWith('── Background work delivered')
+}
+
+/**
+ * Format the divider system message inserted into scrollback when the engine
+ * reports that a dispatch was lost.
+ *
+ * A dispatch is "lost" when the engine process died while it was running: the
+ * child is unrecoverable, and the engine announces one of these per orphan
+ * during dispatch-state rehydration. The operator otherwise has no way to learn
+ * that an agent stopped — the agent panel marks the row errored, but a
+ * conversation that was waiting on that agent simply goes quiet.
+ */
+export function formatDispatchLostDivider(at: Date, agentName: string): string {
+  const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  const who = agentName || 'agent'
+  return `── ${who} was lost when the engine restarted at ${time} ──`
+}
+
+/** Sentinel-prefix check for dispatch-lost dividers. */
+export function isDispatchLostDivider(content: string): boolean {
+  return content.startsWith('── ') && content.includes('was lost when the engine restarted')
+}

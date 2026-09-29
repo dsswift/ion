@@ -6,7 +6,9 @@ import { CaretDown, Plus, GitBranch, Trash, Check, MagnifyingGlass, Clock } from
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { useViewportClamp } from '../hooks/useViewportClamp'
-import type { GitBranchInfo } from '../../shared/types'
+import { zoomAnchorEdges } from '../viewport-zoom'
+import type { GitBranchInfo } from '@ion/shared/types'
+import { host } from '../host/host-instance'
 
 function rank(name: string, query: string): number {
   if (!query) return 0
@@ -57,7 +59,7 @@ export function BranchPicker({
 
   const loadBranches = useCallback(async () => {
     try {
-      const result = await window.ion.gitBranches(directory)
+      const result = await host.shell.gitBranches(directory)
       setBranches(result.branches)
       setError(null)
     } catch (err) {
@@ -68,7 +70,7 @@ export function BranchPicker({
   useEffect(() => {
     if (open) {
       loadBranches().catch((err) => rError('git', 'loadBranches failed', { directory, error: String(err) }))
-      window.ion.gitRecentRefs(directory, 20).then((r) => { if (r.ok) setRecent(r.refs.slice(0, 5)) }).catch((err) => rDebug("git", "gitRecentRefs failed", { directory, error: String(err) }))
+      host.shell.gitRecentRefs(directory, 20).then((r) => { if (r.ok) setRecent(r.refs.slice(0, 5)) }).catch((err) => rDebug("git", "gitRecentRefs failed", { directory, error: String(err) }))
     }
   }, [open, directory, loadBranches])
 
@@ -86,8 +88,8 @@ export function BranchPicker({
 
   const handleToggle = () => {
     if (!open && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect()
-      setPos({ bottom: window.innerHeight - rect.bottom - rect.height + 6, left: rect.left })
+      const rect = zoomAnchorEdges(triggerRef.current.getBoundingClientRect())
+      setPos({ bottom: rect.viewport.height - rect.bottom - (rect.bottom - rect.top) + 6, left: rect.left })
     }
     setOpen((o) => !o)
     setCreating(false)
@@ -96,7 +98,7 @@ export function BranchPicker({
   }
 
   const handleCheckout = async (branch: string) => {
-    const result = await window.ion.gitCheckout(directory, branch)
+    const result = await host.shell.gitCheckout(directory, branch)
     if (result.ok) {
       setOpen(false)
       onRefresh()
@@ -107,7 +109,7 @@ export function BranchPicker({
 
   const handleCreate = async () => {
     if (!newName.trim()) return
-    const result = await window.ion.gitCreateBranch(directory, newName.trim())
+    const result = await host.shell.gitCreateBranch(directory, newName.trim())
     if (result.ok) {
       setOpen(false)
       setCreating(false)
@@ -119,7 +121,7 @@ export function BranchPicker({
   }
 
   const handleDelete = async (branch: string) => {
-    const result = await window.ion.gitDeleteBranch(directory, branch)
+    const result = await host.shell.gitDeleteBranch(directory, branch)
     if (result.ok) {
       loadBranches().catch((err) => rError('git', 'loadBranches after delete failed', { directory, error: String(err) }))
     } else {

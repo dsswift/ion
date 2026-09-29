@@ -1,14 +1,15 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useViewportClamp } from '../hooks/useViewportClamp'
+import { zoomAnchorEdges } from '../viewport-zoom'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { CaretDown, Check, ShieldCheck, ListChecks } from '@phosphor-icons/react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
-import { effectivePermissionMode } from '../stores/conversation-instance'
-import { tabHasExtensions } from '../../shared/tab-predicates'
+import { effectivePermissionMode } from '@ion/server/store/conversation-instance'
+import { tabHasExtensions } from '@ion/shared/tab-predicates'
 
 /* ─── Permission Mode Picker ─── */
 
@@ -88,9 +89,9 @@ export function PermissionModePicker() {
 
   const updatePos = useCallback(() => {
     if (!triggerRef.current) return
-    const rect = triggerRef.current.getBoundingClientRect()
+    const rect = zoomAnchorEdges(triggerRef.current.getBoundingClientRect())
     setPos({
-      bottom: window.innerHeight - rect.top + 6,
+      bottom: rect.fromBottom + 6,
       left: rect.left,
     })
   }, [])

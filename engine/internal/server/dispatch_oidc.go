@@ -114,7 +114,7 @@ func (s *Server) dispatchOidcBeginLogin(conn net.Conn, cmd *protocol.ClientComma
 				utils.LogWithFields(utils.LevelInfo, "server.oidc", "device login did not complete", map[string]any{"error": err.Error()})
 				return
 			}
-			utils.LogWithFields(utils.LevelInfo, "server.oidc", "device login completed", map[string]any{"user": identity.AttributionValue()})
+			utils.LogWithFields(utils.LevelInfo, "server.oidc", "device login completed", map[string]any{"signed_in_user": identity.AttributionValue()})
 			s.broadcastOidcIdentity()
 		}()
 
@@ -136,7 +136,7 @@ func (s *Server) dispatchOidcBeginLogin(conn net.Conn, cmd *protocol.ClientComma
 		go func() {
 			select {
 			case identity := <-login.Done:
-				utils.LogWithFields(utils.LevelInfo, "server.oidc", "interactive login completed", map[string]any{"user": identity.AttributionValue()})
+				utils.LogWithFields(utils.LevelInfo, "server.oidc", "interactive login completed", map[string]any{"signed_in_user": identity.AttributionValue()})
 				s.broadcastOidcIdentity()
 			case err := <-login.Err:
 				utils.LogWithFields(utils.LevelInfo, "server.oidc", "interactive login did not complete", map[string]any{"error": err.Error()})
@@ -197,6 +197,7 @@ func (s *Server) dispatchOidcIdentity(conn net.Conn, cmd *protocol.ClientCommand
 		"signedIn":                evt.OidcSignedIn != nil && *evt.OidcSignedIn,
 		"requireOperatorIdentity": s.operatorIdentityRequired(),
 		"subject":                 evt.OidcSubject,
+		"issuer":                  evt.OidcIssuer,
 		"username":                evt.OidcUsername,
 		"name":                    evt.OidcDisplayName,
 		"provider":                evt.OidcProvider,
@@ -277,6 +278,7 @@ func (s *Server) oidcIdentityEvent() types.EngineEvent {
 			signedIn = true
 			evt.OidcProvider = id.Provider
 			evt.OidcSubject = id.Subject
+			evt.OidcIssuer = id.Issuer()
 			evt.OidcUsername = id.Username
 			evt.OidcDisplayName = id.Name
 		}
@@ -310,8 +312,8 @@ func (s *Server) broadcastOidcIdentity() {
 	line := protocol.SerializeServerEvent("", json.RawMessage(raw))
 	s.broadcast(line, evt.Type)
 	utils.LogWithFields(utils.LevelInfo, "server.oidc", "identity snapshot broadcast", map[string]any{
-		"signed_in": evt.OidcSignedIn != nil && *evt.OidcSignedIn,
-		"user":      evt.OidcUsername,
+		"signed_in":      evt.OidcSignedIn != nil && *evt.OidcSignedIn,
+		"signed_in_user": evt.OidcUsername,
 	})
 }
 

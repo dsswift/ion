@@ -5,22 +5,23 @@
  * middle-click close), not the conversation TabStrip. Dirty dots for file
  * tabs read sessionStore.fileEditorStates — the buffer owner.
  */
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { Plus, ChartBar, FileText, FolderOpen, GitBranch, GitDiff, Globe, GraphIcon, Question, Robot, TerminalWindow, Image, File as FileIcon, Bell, Rectangle, ChartDonut } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
 import { transitions } from '../../theme-tokens'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useSurfaceStore } from './surface-store'
 import { Tooltip } from '../../components/git/Tooltip'
-import { isSingleton, type SurfaceTab } from '../../../shared/studio-surface-types'
+import { isSingleton, type SurfaceTab } from '@ion/shared/studio-surface-types'
 import { SurfaceAddMenu } from './SurfaceAddMenu'
 import { SurfaceTabContextMenu } from './SurfaceTabContextMenu'
 import { canvasTabCommand, CANVAS_TAB_COMMAND_IDS } from './canvas-tab-commands'
 import { ShortcutHint } from '../../shortcuts/ShortcutHint'
 import { useRevealedShortcuts } from '../../shortcuts/useShortcutHints'
+import { pathBasename } from '@ion/shared/paths'
 
-function tabIcon(tab: SurfaceTab, activity: import('../../../shared/terminal-activity').TerminalActivity | null, colors: ReturnType<typeof useColors>): React.JSX.Element {
+function tabIcon(tab: SurfaceTab, activity: import('@ion/shared/terminal-activity').TerminalActivity | null, colors: ReturnType<typeof useColors>): React.JSX.Element {
   const size = 12
   switch (tab.kind) {
     case 'singleton':
@@ -64,7 +65,7 @@ function tabLabel(tab: SurfaceTab): string {
       return 'Visualizer'
     case 'file':
     case 'preview':
-      return tab.filePath.split('/').pop() ?? tab.filePath
+      return pathBasename(tab.filePath)
     case 'scratch':
       return tab.fileName
     case 'notification':
@@ -206,13 +207,22 @@ export function SurfaceTabStrip(): React.JSX.Element {
   )
   const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; tab: SurfaceTab } | null>(null)
-  const dirtyPaths = useSessionStore((s) => {
+  // `fileEditorStates` selects the stable Map reference; the derived Set is
+  // computed in `useMemo`, not the zustand selector itself. A selector that
+  // builds a fresh Set on every call (as this one did) never returns the
+  // same reference twice, so `useSyncExternalStore` (which zustand's
+  // `useStore` is built on) sees a "changed" snapshot on every single
+  // render -- including the render it triggers to re-check itself -- and
+  // React's tearing detection gives up with "Maximum update depth exceeded"
+  // (React error #185). This is what crashed the Surface panel on open.
+  const fileEditorStates = useSessionStore((s) => s.fileEditorStates)
+  const dirtyPaths = useMemo(() => {
     const dirty = new Set<string>()
-    for (const dirState of s.fileEditorStates.values()) {
+    for (const dirState of fileEditorStates.values()) {
       for (const f of dirState.files) if (f.isDirty && f.filePath) dirty.add(f.filePath)
     }
     return dirty
-  })
+  }, [fileEditorStates])
 
   const pinnedTabs = useSurfaceStore((s) => s.pinnedTabs)
   // Canvas tabs reveal their chord on ⌘⌥. File, browser, and terminal tabs

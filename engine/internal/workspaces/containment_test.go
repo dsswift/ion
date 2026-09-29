@@ -361,6 +361,38 @@ func TestLandedWorktreeRefusesWriteInsideOwnWorktree(t *testing.T) {
 	}
 }
 
+// A worktree that moved to another Environment is sealed the same way a
+// landed one is: the copy here must not gain commits the live copy cannot
+// merge. The refusal names where the worktree lives now.
+func TestMovedWorktreeRefusesWritesAndNamesTheEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	writeWorktreeRegistry(t, dir, []WorktreeEntry{
+		{WorktreePath: minePath, RepoPath: repoPath, BranchName: "wt/mine", TransferredTo: &WorktreeTransfer{EnvironmentID: "env-grover", At: 1700000500000}},
+		{WorktreePath: sibling, RepoPath: repoPath},
+	})
+	c := NewCheckerAt(dir)
+
+	for _, tool := range []string{"Write", "Edit"} {
+		r := c.Check(tool, writeInput(filepath.Join(minePath, "x.go")), minePath)
+		if r == nil || r.Kind != RefusalMovedWorktree {
+			t.Fatalf("%s in a moved worktree must be refused as moved_worktree, got %+v", tool, r)
+		}
+		if !contains(r.Reason, "env-grover") || !contains(r.Reason, "sealed") {
+			t.Errorf("reason must name the environment and say sealed: %s", r.Reason)
+		}
+	}
+	r := c.Check("Bash", map[string]interface{}{"command": "git commit -m x"}, minePath)
+	if r == nil || r.Kind != RefusalMovedWorktree {
+		t.Fatalf("Bash in a moved worktree must be refused, got %+v", r)
+	}
+
+	// An entry whose transferredTo names no environment is not moved.
+	writeWorktreeRegistry(t, dir, []WorktreeEntry{{WorktreePath: minePath, RepoPath: repoPath, TransferredTo: &WorktreeTransfer{}}})
+	if r := NewCheckerAt(dir).Check("Write", writeInput(filepath.Join(minePath, "x.go")), minePath); r != nil {
+		t.Fatalf("an empty transferredTo must not seal, got %+v", r)
+	}
+}
+
 func TestLandedWorktreeRefusesEditInsideOwnWorktree(t *testing.T) {
 	dir := t.TempDir()
 	landedRegistry(t, dir)

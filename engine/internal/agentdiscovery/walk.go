@@ -23,9 +23,8 @@ func WalkAgentFiles(opts WalkOptions) ([]string, error) {
 	}
 
 	if opts.IncludeUserDir {
-		home, err := utils.UserHomeDir()
-		if err == nil {
-			dirs = append(dirs, filepath.Join(home, ".ion", "agents"))
+		if dir := utils.IonDir(); dir != "" {
+			dirs = append(dirs, filepath.Join(dir, "agents"))
 		}
 	}
 

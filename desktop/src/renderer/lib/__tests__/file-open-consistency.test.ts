@@ -15,13 +15,23 @@ import { describe, expect, it } from 'vitest'
  * FORGOTTEN. A behavioural test only covers the surfaces someone remembered to
  * write a case for, which is the same blind spot that produced the bug.
  */
-const SURFACES = [
-  // Transcripts, markdown previews, and anything using navigable links.
+/** Where a clicked file path is decided: transcripts, terminals, and markdown previews all call it. */
+const FILE_LINK = 'src/renderer/lib/open-file-link.ts'
+
+const DECIDERS = [
+  FILE_LINK,
+  // The file explorer tree.
+  'src/renderer/components/FileExplorerRootSection.tsx',
+]
+
+/** Surfaces that open a clicked path; each must hand it to the shared handler rather than decide itself. */
+const LINK_SURFACES = [
+  // Transcripts, plans, resources, and anything using navigable links.
   'src/renderer/hooks/useNavigableLinks.tsx',
   // Terminal output paths.
   'src/renderer/components/TerminalInstance.tsx',
-  // The file explorer tree.
-  'src/renderer/components/FileExplorerRootSection.tsx',
+  // Links inside a previewed markdown file.
+  'src/renderer/components/FileEditorPreview.tsx',
 ]
 
 function read(relative: string): string {
@@ -29,34 +39,30 @@ function read(relative: string): string {
 }
 
 describe('file-open gesture consistency', () => {
-  it.each(SURFACES)('%s resolves intent through the shared helper', (surface) => {
+  it.each(DECIDERS)('%s resolves intent through the shared helper', (surface) => {
     const source = read(surface)
     // A surface that hand-rolls `event.shiftKey` instead of calling this is
     // exactly how the four paths drifted apart before.
     expect(source).toContain('fileOpenIntent(')
   })
 
-  it.each(SURFACES)('%s honours the native-open intent', (surface) => {
+  it.each(DECIDERS)('%s honours the native-open intent', (surface) => {
+    expect(read(surface)).toMatch(/intent === 'native'/)
+  })
+
+  it.each(LINK_SURFACES)('%s opens clicked paths through the shared file-link handler', (surface) => {
     const source = read(surface)
-    expect(source).toMatch(/intent === 'native'/)
+    expect(source).toContain('openFileLink(')
+    expect(source).not.toContain('fsOpenNative(')
   })
 
-  it('renders html from the surfaces that can reach a browser', () => {
-    // The explorer already rendered HTML; these two are the ones that did not,
-    // which is the inconsistency being fixed.
-    for (const surface of ['src/renderer/hooks/useNavigableLinks.tsx', 'src/renderer/components/TerminalInstance.tsx']) {
-      const source = read(surface)
-      expect(source).toContain('isRenderableHtml(')
-      expect(source).toContain('router.openHtml(')
-    }
-  })
-
-  it('falls back to source when no browser surface exists', () => {
+  it('renders html where a browser surface can reach the file, and falls back to source otherwise', () => {
+    const source = read(FILE_LINK)
+    expect(source).toContain('isRenderableHtml(')
+    expect(source).toContain('router.openHtml(')
     // The Overlay registers no content router. Silently doing nothing would
     // read as a broken click, so HTML degrades to the editor there.
-    for (const surface of ['src/renderer/hooks/useNavigableLinks.tsx', 'src/renderer/components/TerminalInstance.tsx']) {
-      expect(read(surface)).toContain('no surface router')
-    }
+    expect(source).toContain('The Overlay has no browser surface')
   })
 
   it('keeps every file click gated on the platform mod key', () => {

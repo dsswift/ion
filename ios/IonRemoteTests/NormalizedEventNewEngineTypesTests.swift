@@ -18,67 +18,6 @@ final class NormalizedEventNewEngineTypesTests: XCTestCase {
 
     // MARK: - engine_tool_update
 
-    func testDecodeEngineToolUpdate() throws {
-        let json = """
-        {"type":"desktop_tool_update","tabId":"t1","instanceId":"i1","toolId":"tool-abc","partialInput":"chunk1"}
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineToolUpdate(let tabId, let instanceId, let toolId, let partialInput) = event {
-            XCTAssertEqual(tabId, "t1")
-            XCTAssertEqual(instanceId, "i1")
-            XCTAssertEqual(toolId, "tool-abc")
-            XCTAssertEqual(partialInput, "chunk1")
-        } else {
-            XCTFail("Expected engineToolUpdate, got \(event)")
-        }
-    }
-
-    func testRoundTripEngineToolUpdate() throws {
-        let original = RemoteEvent.engineToolUpdate(tabId: "t1", instanceId: "i1", toolId: "tool-abc", partialInput: "{\"command\":\"ls\"}")
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(RemoteEvent.self, from: data)
-        if case .engineToolUpdate(let tabId, let instanceId, let toolId, let partialInput) = decoded {
-            XCTAssertEqual(tabId, "t1")
-            XCTAssertEqual(instanceId, "i1")
-            XCTAssertEqual(toolId, "tool-abc")
-            XCTAssertEqual(partialInput, "{\"command\":\"ls\"}")
-        } else {
-            XCTFail("Round-trip engineToolUpdate failed")
-        }
-    }
-
-    func testDecodeEngineToolUpdateWithoutInstanceId() throws {
-        let json = """
-        {"type":"desktop_tool_update","tabId":"t1","toolId":"tid","partialInput":"chunk"}
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineToolUpdate(let tabId, let instanceId, let toolId, let partialInput) = event {
-            XCTAssertEqual(tabId, "t1")
-            XCTAssertNil(instanceId)
-            XCTAssertEqual(toolId, "tid")
-            XCTAssertEqual(partialInput, "chunk")
-        } else {
-            XCTFail("Expected engineToolUpdate, got \(event)")
-        }
-    }
-
-    /// Missing toolId and partialInput (legacy event before the field expansion)
-    /// must not throw — both decode to empty strings via decodeIfPresent fallback.
-    func testDecodeEngineToolUpdateMissingFields() throws {
-        let json = """
-        {"type":"desktop_tool_update","tabId":"t1","instanceId":"i1"}
-        """.data(using: .utf8)!
-        let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineToolUpdate(let tabId, let instanceId, let toolId, let partialInput) = event {
-            XCTAssertEqual(tabId, "t1")
-            XCTAssertEqual(instanceId, "i1")
-            XCTAssertEqual(toolId, "")
-            XCTAssertEqual(partialInput, "")
-        } else {
-            XCTFail("Expected engineToolUpdate, got \(event)")
-        }
-    }
-
     // MARK: - engine_tool_complete
 
     func testDecodeEngineToolComplete() throws {

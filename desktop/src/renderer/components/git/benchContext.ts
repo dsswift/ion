@@ -23,7 +23,7 @@
  * Both sections are therefore hidden in a bench, and the panel says which bench
  * you are in instead.
  */
-import type { IntegrationWorkspace, IntegrationMember } from '../../../shared/types'
+import type { IntegrationWorkspace, IntegrationMember } from '@ion/shared/types'
 
 /**
  * Path separators, checked without importing Node's `path`.

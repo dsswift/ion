@@ -55,7 +55,7 @@ import type Graph from 'graphology'
 import { nodeRenderSize } from './graph-node-size'
 import { createConvergenceMonitor, type ConvergenceMonitor, type ConvergenceSample } from './graph-layout-convergence'
 import { createLayoutSupervisor, type LayoutTickTiming, type StaleReplyInfo } from './graph-layout-supervisor'
-import { LAYOUT_FORCES_LOBES, type LayoutForces } from '../../../shared/graph-view-types'
+import { LAYOUT_FORCES_LOBES, type LayoutForces } from '@ion/shared/graph-view-types'
 
 /** Below this the convergence monitor is not consulted; the seed is still being pulled apart. */
 export const MIN_RUN_MS = 400

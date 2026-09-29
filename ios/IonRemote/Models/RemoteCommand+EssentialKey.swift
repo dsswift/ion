@@ -25,6 +25,8 @@ extension RemoteCommand {
         switch self {
         case .loadConversation(let tabId, _, _):
             return "loadConversation:\(tabId)"
+        case .loadDispatchTranscript(_, let conversationId, let dispatchId, _, _):
+            return "loadDispatchTranscript:\(conversationId):\(dispatchId)"
         case .loadAttachments(let tabId):
             return "loadAttachments:\(tabId)"
         case .discoverCommands(let dir):
@@ -55,6 +57,10 @@ extension RemoteCommand {
             return "fsListDir:\(dir):\(includeHidden)"
         case .sync:
             return "sync"
+        // Latest address wins: a token that changed while disconnected
+        // supersedes the one queued before it.
+        case .registerPush:
+            return "registerPush"
         case .reportFocus(let tabId, _):
             // Keyed by tabId (nil = backgrounded). Each focus state is distinct.
             return "reportFocus:\(tabId ?? "nil")"
@@ -77,7 +83,14 @@ extension RemoteCommand {
             // this key, a toggle sent while the transport is down is dropped with
             // an error toast and never delivered — the mode switch is permanently lost.
             return "setPermissionMode:\(tabId)"
-        case .prompt(let tabId, _, _, let clientMsgId, _, _, _):
+        case .setDraft(let tabId, _):
+            // The draft must survive a wedged transport: text typed while the
+            // phone is reconnecting is exactly the text this whole feature
+            // exists to keep. Last-write-wins by tabId is right because a
+            // draft IS idempotent state — the newest value is the only one
+            // worth delivering, and an older queued keystroke would undo it.
+            return "setDraft:\(tabId)"
+        case .prompt(let tabId, _, _, let clientMsgId, _, _, _, _):
             // User prompts are eligible for the essential queue so a message
             // sent over a wedged/reconnecting transport is re-enqueued and
             // delivered on the reconnect flush instead of being silently lost

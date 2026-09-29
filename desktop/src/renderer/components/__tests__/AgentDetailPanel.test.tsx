@@ -3,8 +3,8 @@ import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { AgentStateUpdate } from '../../../shared/types'
-import type { DispatchTelemetryEntry } from '../../../shared/types-engine'
+import type { AgentStateUpdate } from '@ion/shared/types'
+import type { DispatchTelemetryEntry } from '@ion/shared/types-engine'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -21,9 +21,9 @@ vi.mock('../../preferences', () => ({
 
 const mockGetConversation = vi.fn()
 ;(globalThis as any).window = globalThis.window ?? {}
-;(globalThis as any).window.ion = { getConversation: mockGetConversation }
+;(globalThis as any).window.ion = installFakeWire({ getConversation: mockGetConversation })
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: (sel: (s: Record<string, unknown>) => unknown) =>
     sel({
       agentDetailGeometry: { x: 60, y: 80, w: 600, h: 500 },
@@ -64,7 +64,7 @@ vi.mock('../conversation/Transcript', () => ({
   },
 }))
 
-vi.mock('../agent-conversation-mapper', () => ({
+vi.mock('@ion/shared/transcript/agent-conversation-mapper', () => ({
   mapConversationMessages: (msgs: any[]) => msgs.map((m: any, i: number) => ({
     id: `mapped-${i}`,
     role: m.role || 'assistant',
@@ -74,7 +74,7 @@ vi.mock('../agent-conversation-mapper', () => ({
 }))
 
 import { AgentDetailPanel } from '../AgentDetailPanel'
-import type { BreadcrumbFrame } from '../agent-panel-helpers'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 function makeAgent(name: string): AgentStateUpdate {
   return { name, status: 'done', metadata: { displayName: name } }
@@ -321,7 +321,7 @@ describe('AgentDetailPanel', () => {
 
     // Wait for the async loadConversation to fire
     await vi.waitFor(() => {
-      expect(mockGetConversation).toHaveBeenCalledWith('conv-child', 0, 200)
+      expect(mockGetConversation).toHaveBeenCalledWith({ conversationId: 'conv-child', offset: 0, limit: 200 })
     })
 
     unmount()
@@ -357,7 +357,7 @@ describe('AgentDetailPanel', () => {
     // with a NEW `agent` object and NEW telemetry/allAgents arrays of the same
     // identity. The breadcrumb reset effect must NOT refire on that ref churn —
     // the drilled-in child must remain the active frame. Reverting the effect
-    // deps (adding `agent` / `initialStack` back) resets the stack to root here
+    // deps (adding `agent` back) resets the stack to root here
     // and this test goes red.
     const telemetry: DispatchTelemetryEntry[] = [
       entry({ dispatchId: 'd1', dispatchParentId: '', dispatchAgent: 'dev-lead', conversationId: 'conv-1' }),
@@ -399,46 +399,6 @@ describe('AgentDetailPanel', () => {
     // The breadcrumb must still show engine-dev as the drilled-in frame.
     const breadcrumbAfter = container.querySelector('[style*="flex-wrap"]')
     expect(breadcrumbAfter?.textContent).toContain('engine-dev')
-    unmount()
-  })
-
-  it('re-adopts a NEW deep-link target stack across a heartbeat (initialStack target change still resets)', () => {
-    // The fix keys the reset on the deep-link TARGET dispatch id, not the array
-    // ref. A genuinely different deep-link target must still re-seed the stack,
-    // while a rebuilt-but-identical initialStack (heartbeat) must not clobber it.
-    const stackA: BreadcrumbFrame[] = [
-      { dispatchId: 'd1', conversationId: 'conv-1', agentDisplayName: 'dev-lead' },
-      { dispatchId: 'd2', conversationId: 'conv-2', agentDisplayName: 'engine-dev' },
-    ]
-    const stackB: BreadcrumbFrame[] = [
-      { dispatchId: 'd1', conversationId: 'conv-1', agentDisplayName: 'dev-lead' },
-      { dispatchId: 'd3', conversationId: 'conv-3', agentDisplayName: 'security-officer' },
-    ]
-
-    const baseProps: Parameters<typeof AgentDetailPanel>[0] = {
-      agent: makeAgent('dev-lead'),
-      loadedMessages: [{ id: 'u1', role: 'user', content: 'Root msg', timestamp: 0 }],
-      loading: false,
-      dispatches: [makeDispatch('d1', 'conv-1')],
-      selectedDispatch: 0,
-      onSelectDispatch: () => {},
-      onClose: () => {},
-      initialStack: stackA,
-    }
-
-    const { container, rerender, unmount } = renderPanel(baseProps)
-    expect(container.querySelector('[style*="flex-wrap"]')?.textContent).toContain('engine-dev')
-
-    // Heartbeat with a rebuilt-but-identical stack (new array, same target): no
-    // clobber — engine-dev stays.
-    rerender({ ...baseProps, agent: makeAgent('dev-lead'), initialStack: [...stackA] })
-    expect(container.querySelector('[style*="flex-wrap"]')?.textContent).toContain('engine-dev')
-
-    // New deep-link target (different last dispatchId): re-seed to the new stack.
-    rerender({ ...baseProps, agent: makeAgent('dev-lead'), initialStack: stackB })
-    const breadcrumb = container.querySelector('[style*="flex-wrap"]')
-    expect(breadcrumb?.textContent).toContain('security-officer')
-    expect(breadcrumb?.textContent).not.toContain('engine-dev')
     unmount()
   })
 })

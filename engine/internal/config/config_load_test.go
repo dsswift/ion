@@ -91,8 +91,8 @@ func TestLoadConfig_MalformedJSON(t *testing.T) {
 	if cfg.Backend != "api" {
 		t.Fatalf("expected default backend=api, got %q", cfg.Backend)
 	}
-	if cfg.DefaultModel != "claude-sonnet-4-6" {
-		t.Fatalf("expected default model, got %q", cfg.DefaultModel)
+	if cfg.DefaultModel != "" {
+		t.Fatalf("expected default model empty (engine ships with no model opinion), got %q", cfg.DefaultModel)
 	}
 	// Defaults ship unopinionated -- limits remain unset.
 	if cfg.Limits.MaxTurns != nil {
@@ -189,8 +189,8 @@ func TestLoadConfig_EmptyJSON(t *testing.T) {
 	if cfg.Backend != "api" {
 		t.Fatalf("expected backend=api, got %q", cfg.Backend)
 	}
-	if cfg.DefaultModel != "claude-sonnet-4-6" {
-		t.Fatalf("expected default model, got %q", cfg.DefaultModel)
+	if cfg.DefaultModel != "" {
+		t.Fatalf("expected default model empty (engine ships with no model opinion), got %q", cfg.DefaultModel)
 	}
 }
 

@@ -23,6 +23,10 @@ import (
 type CodexBackend struct {
 	mu sync.Mutex
 
+	// telem carries per-call telemetry for runs given a collector
+	// (delegated_telemetry.go).
+	telem delegatedTelemetry
+
 	client  *codexrpc.Client
 	kill    func()
 	started bool
@@ -156,11 +160,20 @@ func (b *CodexBackend) FlushConversations() {}
 // StartRun begins a run. Plan mode maps onto codex's native collaboration
 // mode (see runTurn); no engine-side gating is layered on top.
 func (b *CodexBackend) StartRun(requestID string, options types.RunOptions) {
+	b.telem.begin(requestID, "codex", options)
 	go b.runTurn(requestID, options)
+}
+
+// SetRunTelemetry implements RunTelemetrySetter.
+func (b *CodexBackend) SetRunTelemetry(requestID string, telem TelemetryCollector) {
+	b.telem.SetRunTelemetry(requestID, telem)
 }
 
 // runTurn ensures the process is up, opens/reuses the thread, and starts a turn.
 func (b *CodexBackend) runTurn(requestID string, options types.RunOptions) {
+	if options.ParentCtx != nil {
+		defer installAmbientLogging(options.ParentCtx)()
+	}
 	if err := b.ensureStarted(); err != nil {
 		b.emitError(requestID, fmt.Errorf("codex start failed: %w", err))
 		b.emitExit(requestID, intPtr(1), nil, "")
@@ -496,6 +509,7 @@ func probeThreadID(params json.RawMessage) string {
 // --- emit helpers (same shape as the claude-code backend) ---
 
 func (b *CodexBackend) emit(runID string, event types.NormalizedEvent) {
+	b.telem.observe(runID, event)
 	b.mu.Lock()
 	fn := b.onNormalized
 	b.mu.Unlock()
@@ -506,6 +520,7 @@ func (b *CodexBackend) emit(runID string, event types.NormalizedEvent) {
 
 func (b *CodexBackend) emitExit(runID string, code *int, signal *string, sessionID string) {
 	utils.LogWithFields(utils.LevelInfo, "backend.codex", "emitExit", map[string]any{"run_id": runID, "session_id": sessionID})
+	b.telem.end(runID)
 	b.mu.Lock()
 	fn := b.onExit
 	b.mu.Unlock()

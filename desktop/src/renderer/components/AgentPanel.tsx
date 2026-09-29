@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useColors } from "../theme";
 import { usePreferencesStore } from "../preferences";
-import { useSessionStore } from "../stores/sessionStore";
+import { useSessionStore } from "@ion/server/store/sessionStore";
 import {
   meta,
   isAgentVisible,
@@ -12,17 +12,16 @@ import {
   dispatchKey,
   isAgentActive,
 } from "./agent-panel-helpers";
-import { reconcileActivity } from "./agent-dispatch-activity";
-import { mapConversationMessages } from "./agent-conversation-mapper";
+import { mergeDispatchTranscript } from "@ion/server/components/agent-dispatch-activity";
 import { AgentPanelView } from "./AgentPanelView";
 import { useAgentDetailOpener } from "../hooks/useAgentDetailOpener";
 import { useAgentPanelResize } from "./agent-panel-resize";
-import type { AgentStateUpdate } from "../../shared/types";
-import type { Message } from "../../shared/types";
+import { useAgentPanelConversationCache } from "./agent-panel-conversation-cache";
+import type { AgentStateUpdate } from "@ion/shared/types";
 import type {
   DispatchInfo,
   DispatchTelemetryEntry,
-} from "../../shared/types-engine";
+} from "@ion/shared/types-engine";
 import { rDebug, rError } from "../rendererLogger";
 import { mostRecentDispatchIndex, routeAgentDetailToSurface } from "./agent-detail-routing";
 
@@ -95,13 +94,11 @@ export function AgentPanel({
   // file-backed snapshot below.
   const dispatchActivity = useSessionStore((s) => s.dispatchActivity);
   const [panelCollapsed, setPanelCollapsed] = useState(true);
-  // Keyed by conversationId — each dispatch's conversation is loaded independently
-  const [convMessages, setConvMessages] = useState<Map<string, Message[]>>(
-    new Map(),
-  );
-  const [convLoading, setConvLoading] = useState<Map<string, boolean>>(
-    new Map(),
-  );
+  // Keyed by conversationId — each dispatch's conversation is loaded
+  // independently. Extracted to agent-panel-conversation-cache.ts (600-line
+  // cap); mirrors useDispatchTranscript.ts's identical mechanism.
+  const { convMessages, convLoading, refetchConversation, loadSingleConversation } =
+    useAgentPanelConversationCache();
   // Track which dispatch index is selected, keyed by DISPATCH ID (see above).
   const [selectedDispatch, setSelectedDispatch] = useState<Map<string, number>>(
     new Map(),
@@ -194,74 +191,6 @@ export function AgentPanel({
     }
     prevVisibleCount.current = visible.length;
   }, [visible.length, agentPanelDefaultOpen]);
-
-  /** Force-refetch a conversation, bypassing the "already loaded" guard.
-   *  Used by the live poller so an open popup's running dispatch keeps
-   *  pulling newly persisted messages as the child agent works. The child
-   *  conversation file grows incrementally on disk (the engine saves after
-   *  every assistant turn and tool result), so each refetch returns a longer
-   *  transcript until the dispatch reaches a terminal state.
-   *
-   *  `showLoading` gates the "Loading conversation..." placeholder. It is set
-   *  only for the initial one-shot load, when there is nothing to show yet. A
-   *  BACKGROUND reconcile (the 12s poller, the terminal-transition refetch)
-   *  must NOT raise the loading flag: the popup already has a cached transcript
-   *  (plus the live push transcript) to display, and flipping loading true on
-   *  every poll cycle blanks the panel to the placeholder while the fetch is in
-   *  flight — the ~12s flashing between content and "Loading conversation...".
-   *  Per the View readiness principle, no loading placeholder for data we have. */
-  const refetchConversation = useCallback(
-    async (convId: string, showLoading = false) => {
-      if (!convId) return;
-      if (showLoading) {
-        setConvLoading((prev) => {
-          const next = new Map(prev);
-          next.set(convId, true);
-          return next;
-        });
-      }
-      try {
-        rDebug("agent-panel", "fetching conversation", {
-          conversation_id: convId,
-          show_loading: showLoading,
-        });
-        const data = await window.ion.getConversation(convId, 0, 200);
-        const msgs: Message[] = mapConversationMessages(data.messages || []);
-        rDebug("agent-panel", "loaded conversation messages", {
-          conversation_id: convId,
-          count: msgs.length,
-        });
-        setConvMessages((prev) => {
-          const next = new Map(prev);
-          next.set(convId, msgs);
-          return next;
-        });
-      } catch (err) {
-        rError("agent-panel", "loadConversation error", { error: String(err) });
-      } finally {
-        if (showLoading) {
-          setConvLoading((prev) => {
-            const next = new Map(prev);
-            next.set(convId, false);
-            return next;
-          });
-        }
-      }
-    },
-    [],
-  );
-
-  /** One-shot load: fetch the conversation only if it hasn't been loaded
-   *  yet. The live poller uses refetchConversation to force a refresh. */
-  const loadSingleConversation = useCallback(
-    async (convId: string) => {
-      if (!convId || convMessages.has(convId)) return;
-      // First load for this conversation — nothing cached yet, so surface the
-      // loading placeholder. Background reconciles refetch silently.
-      return refetchConversation(convId, true);
-    },
-    [convMessages, refetchConversation],
-  );
 
   /** Load the conversation for the selected dispatch of an agent,
    *  then lazily preload the remaining dispatches in the background. */
@@ -429,18 +358,7 @@ export function AgentPanel({
       const pushMsgs = activeDispatch?.id
         ? dispatchActivity?.[activeDispatch.id]
         : undefined;
-      let mergedMsgs = rawMsgs;
-      if (pushMsgs && pushMsgs.length > 0) {
-        mergedMsgs = reconcileActivity(rawMsgs ?? [], {
-          order: pushMsgs.map((_, i) => `idx:${i}`),
-          entries: Object.fromEntries(
-            pushMsgs.map((m, i) => [
-              `idx:${i}`,
-              { key: `idx:${i}`, seq: i, ts: m.timestamp ?? 0, message: m },
-            ]),
-          ),
-        });
-      }
+      const mergedMsgs = mergeDispatchTranscript(rawMsgs, pushMsgs);
       return { dispatches, dispIdx, slicedMsgs: mergedMsgs, isLoading };
     },
     [

@@ -3,7 +3,6 @@ package providers
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -23,12 +22,13 @@ type azureOpenAIProvider struct {
 // NewAzureOpenAIProvider creates an Azure OpenAI provider. Uses the same
 // streaming translation as the standard OpenAI provider, but with Azure
 // endpoint format.
+//
+// Holds no environment-derived credential (R-23): the inner OpenAI provider
+// authenticates per request from the context via applyRequestAuth, exactly
+// like NewOpenAIProvider. opts.APIKey is accepted but unused -- kept on
+// AzureOptions for callers that construct it explicitly; a per-principal or
+// resolver-derived credential attaches at request time instead.
 func NewAzureOpenAIProvider(opts *AzureOptions) LlmProvider {
-	apiKey := opts.APIKey
-	if apiKey == "" {
-		apiKey = os.Getenv("AZURE_OPENAI_API_KEY")
-	}
-
 	apiVersion := opts.APIVersion
 	if apiVersion == "" {
 		apiVersion = "2024-02-01"
@@ -41,7 +41,6 @@ func NewAzureOpenAIProvider(opts *AzureOptions) LlmProvider {
 	baseURL := fmt.Sprintf("%s/openai/deployments/%s?api-version=%s", opts.Endpoint, opts.DeploymentName, apiVersion)
 
 	inner := NewOpenAIProvider(&ProviderOptions{
-		APIKey:  apiKey,
 		BaseURL: baseURL,
 	})
 

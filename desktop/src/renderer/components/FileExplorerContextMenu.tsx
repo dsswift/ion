@@ -1,16 +1,17 @@
 import React, { useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Paperclip, Copy, FolderOpen as FolderOpenIcon, ArrowSquareOut, PencilSimple, FilePlus, FolderPlus } from '@phosphor-icons/react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
 import { transitions } from '../theme-tokens'
-import { maybeCloseExplorerBeforeExternal } from '../utils/externalLaunch'
 import { surfaceRouter } from '../lib/file-open-router'
 import { rError } from '../rendererLogger'
-import type { FsEntry } from '../../shared/types'
+import type { FsEntry } from '@ion/shared/types'
 import { scrollableMenuStyle } from '../menu-viewport'
+import { host } from '../host/host-instance'
+import { pathDirname } from '@ion/shared/paths'
 
 export interface ContextMenuState {
   x: number
@@ -107,8 +108,8 @@ export function FileExplorerContextMenu({
       : menu.entry.path
     const ext = menu.entry.name.includes('.') ? '.' + menu.entry.name.split('.').pop()!.toLowerCase() : ''
     const isHtml = ext === '.html' || ext === '.htm'
-    const lastSlash = menu.entry.path.lastIndexOf('/')
-    const createParent = menu.entry.isDirectory ? menu.entry.path : (lastSlash > 0 ? menu.entry.path.slice(0, lastSlash) : workingDir)
+    const entryParent = pathDirname(menu.entry.path)
+    const createParent = menu.entry.isDirectory ? menu.entry.path : (entryParent && entryParent !== '/' ? entryParent : workingDir)
     const createDepth = menu.entry.isDirectory ? menu.depth + 1 : menu.depth
     return [
       { label: 'New File', icon: FilePlus, action: () => onCreate('file', createParent, createDepth) },
@@ -133,11 +134,15 @@ export function FileExplorerContextMenu({
             { separator: true as const },
           ]
         : []),
+      // Describing a file for attachment is a filesystem read, which the
+      // server performs over the wire ('fs.attachByPath'). Unlike Reveal and
+      // Open Natively below, this needs no operating system.
       { label: 'Attach to Conversation', icon: Paperclip, action: () => {
+        const tabId = useSessionStore.getState().activeTabId
+        if (!tabId) return
         void (async () => {
-          const attachment = await window.ion.attachFileByPath(menu.entry.path)
+          const attachment = await host.shell.attachFileByPath(tabId, menu.entry.path)
           if (attachment) addAttachments([attachment])
-          maybeCloseExplorerBeforeExternal()
         })().catch((err) => rError('file-explorer', 'attach file by path failed', { error: String(err) }))
       }},
       { separator: true as const },
@@ -151,8 +156,8 @@ export function FileExplorerContextMenu({
       // rename UX consistent with creation.
       { label: 'Rename', icon: PencilSimple, action: () => onRename(menu.entry) },
       { separator: true as const },
-      { label: 'Reveal in Finder', icon: FolderOpenIcon, action: () => { maybeCloseExplorerBeforeExternal(); void window.ion.fsRevealInFinder(menu.entry.path) } },
-      { label: 'Open in Native App', icon: ArrowSquareOut, action: () => { maybeCloseExplorerBeforeExternal(); void window.ion.fsOpenNative(menu.entry.path) } },
+      { label: 'Reveal in Finder', icon: FolderOpenIcon, action: () => { if (!host.capabilities().includes('nativeShell')) return; void host.shell.fsRevealInFinder(menu.entry.path) } },
+      { label: 'Open in Native App', icon: ArrowSquareOut, action: () => { if (!host.capabilities().includes('nativeShell')) return; void host.shell.fsOpenNative(menu.entry.path) } },
     ]
   }, [menu.entry, menu.depth, workingDir, onRename, onCreate, addAttachments])
 

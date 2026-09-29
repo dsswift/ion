@@ -2,6 +2,7 @@ import React, { useCallback } from 'react'
 import { ChartLine, ArrowDown } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { rDebug } from '../../rendererLogger'
+import { host } from '../../host/host-instance'
 
 /**
  * ChartMovedMarker — what an earlier chart revision's location shows once the
@@ -33,7 +34,7 @@ export const ChartMovedMarker = React.memo(function ChartMovedMarker({
     rDebug('conversation.chart', 'moved marker jump', {
       chart_id: chartId, target: targetMessageId.slice(0, 12),
     })
-    window.ion.requestChartJump({ tabId, chartId, messageId: targetMessageId })
+    host.shell.requestChartJump({ tabId, chartId, messageId: targetMessageId })
   }, [tabId, chartId, targetMessageId])
 
   return (

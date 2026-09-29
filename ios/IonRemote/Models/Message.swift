@@ -1,13 +1,13 @@
 import Foundation
 
-/// A single message in a conversation. Matches `RemoteMessage` in protocol.ts.
-/// Also used for engine conversations (formerly EngineMessage).
+/// A single row of a conversation.
+///
+/// A conversation's rows are the server's transcript, decoded by
+/// `TranscriptRow`; field meanings are the shared `Message`'s
+/// (`packages/shared/src/types-session.ts`). The phone computes none of them:
+/// the steer, thinking, and intercept fields arrive on the row like any other.
+/// Dispatched-agent history still decodes through `init(engineJSON:)`.
 struct Message: Codable, Identifiable, Sendable {
-    /// Mutable so `handleEngineMessageEnd` can RE-KEY a locally-streamed row
-    /// (UUID / clientMsgId) to its canonical persisted tree-entry id carried
-    /// on desktop_message_end (`entryId` / `userEntryId`). History pages key
-    /// rows by those canonical ids, so the re-key is what lets a subsequent
-    /// wholesale-replace anchor on the live rows instead of duplicating them.
     var id: String
     let role: MessageRole
     var content: String
@@ -32,91 +32,41 @@ struct Message: Codable, Identifiable, Sendable {
     var slashModelAlias: String?
     var slashModelEffective: String?
     var slashFrontmatter: [String: AnyCodable]?
-    /// Desktop-local reconciliation key (RC-9). On a `desktop_conversation_history`
-    /// user row, the clientMsgId this device originally sent for that turn,
-    /// annotated by the desktop from its clientMsgId↔entryId map. `submit` stamps
-    /// the optimistic bubble's `id` with the same clientMsgId, so the first-page
-    /// merge can collapse the optimistic row against the canonical history row by
-    /// this key even when the live re-key events (user_turn_persisted /
-    /// message_end) were dropped — the fix for the duplicate user bubble rendered
-    /// under the agent reply. Desktop↔iOS wire only (the engine has no client id).
+    /// On a user row the server made for a prompt a client sent, the
+    /// `clientMsgId` that prompt carried. A pending bubble whose id matches
+    /// has arrived (SessionViewModel+PendingPrompts.swift).
     var clientMsgId: String? = nil
-    /// Dedup key carried on harness messages with relocate semantics. When
-    /// present, a second harness message with the same key relocates (removes
-    /// the old entry and appends the new one at the end). Decoded from the
-    /// desktop history-replay wire so dedup state survives reconnect.
-    /// NOT persisted beyond the in-memory message store.
-    var dedupKey: String? = nil
-    /// Dedup mode paired with `dedupKey`. "relocate" means move-forward;
-    /// absent/empty means suppress-later (default). Decoded from the desktop
-    /// history-replay wire alongside `dedupKey`. NOT persisted beyond the
-    /// in-memory message store.
-    var dedupMode: String? = nil
+    /// Tool output the server cut to its wire cap: `content` is the head, and
+    /// `contentBytes` is the UTF-8 size of the whole value.
+    var contentTruncated: Bool = false
+    var contentBytes: Int? = nil
+    /// A `!` shell line the user ran themselves rather than a prompt.
+    var userExecuted: Bool? = nil
     /// Background work delivery metadata. Present on messages that represent
     /// a completed background agent's work being delivered into the conversation.
-    /// Decoded from the `desktop_background_work_delivered` event and from
-    /// history replay. Mirrors the compaction pattern: one message per delivery.
     var backgroundWork: BackgroundWorkMetadata?
-    /// Background task identifier. When present on a tool-end event, the tool
-    /// stays in `.asyncPending` state until the matching
-    /// `background_work_delivered` event arrives and folds the delivery onto
-    /// this tool row. Forward-compatible: the engine/desktop wire field does
-    /// not exist yet; iOS prepares the type surface.
+    /// Background task a tool row started. The server folds the task's
+    /// delivery onto the row when it arrives.
     var backgroundTaskId: String?
-    /// Local UI state only -- NOT a wire protocol field, NOT persisted.
-    /// Set to true by engine_message_end so the next engine_text_delta
-    /// opens a fresh assistant message instead of appending to this one.
-    var sealed: Bool = false
-    /// Local boundary marker (RC-11) — NOT a wire field, NOT persisted. True for
-    /// a row appended by a LIVE event (streamed after the last history load):
-    /// optimistic submit, text-delta/tool/image/harness/etc. handlers. A
-    /// first-page history replace preserves exactly the rows still marked live
-    /// (minus any the page now contains), instead of estimating the live tail
-    /// from timestamps — the estimate dropped rows with nil/equal timestamps
-    /// (the "only the most recent turn" symptom). Rows decoded from the history
-    /// wire default to false (the key is excluded from CodingKeys), so a
-    /// persisted row is never mistaken for a live one.
-    var isLive: Bool = false
-    /// Local UI state only -- NOT a wire protocol field, NOT persisted.
-    /// Set to true on the optimistic user bubble when the tab was already
-    /// running at submit time (the desktop routes that send through the
-    /// engine's mid-turn steer path). Cleared when the steer is confirmed.
+    /// A mid-turn steer the engine has not drained yet.
     var steerPending: Bool = false
-    /// Local UI state only -- NOT a wire protocol field, NOT persisted.
-    /// Set to true when the steer was drained into the conversation. Marks the
-    /// bubble as a mid-turn steer rather than a turn-opening prompt.
+    /// A steer the engine could not deliver.
+    var steerFailed: Bool = false
+    /// A steer the engine drained into the conversation: the bubble is a
+    /// mid-turn steer rather than a turn-opening prompt.
     var steerApplied: Bool = false
-    /// Local UI state only -- NOT a wire protocol field, NOT persisted.
-    /// The id of the "── Steer applied" divider that `handleEngineSteerInjected`
-    /// appended for this bubble. The two rows share this key so the grouping
-    /// pass (groupConversationItems in ToolGrouping.swift) can RELOCATE the
-    /// bubble out of its send position and re-emit it directly after its
-    /// divider — the point where the steer actually took effect.
-    ///
-    /// Live-session only, mirroring the desktop's `Message.steerAppliedDividerId`.
-    /// The optimistic bubble is inserted where the user typed it, but the engine
-    /// applies the steer later; without this pairing the text is stranded rows
-    /// above the divider that announces it. On a history reload the engine's
-    /// conversation file already carries the turn at its applied position and
-    /// this field is absent, so no relocation happens (and none is needed).
+    /// The id of the "── Steer applied" divider for this steer. The two rows
+    /// share this key so the grouping pass (groupConversationItems in
+    /// ToolGrouping.swift) can re-emit the bubble directly after its divider,
+    /// the point where the steer actually took effect.
     var steerAppliedDividerId: String? = nil
-    /// Intercept level carried from `engine_intercept.interceptLevel`.
-    /// Populated only on `role: .harness` messages pushed by the
-    /// `engineIntercept` handler in SessionViewModel+EngineEvents.swift.
-    /// Values: "banner" (informational) | "redirect" (urgent, run aborted).
-    /// EngineMessageRow reads this to choose the intercept banner style.
-    /// Client-only field — NOT part of the wire protocol, NOT persisted.
+    /// On an intercept's harness row: "banner" (informational) or "redirect"
+    /// (urgent, run aborted). EngineMessageRow reads this to choose visual weight.
     var interceptLevel: String? = nil
-    /// Path to the plan file associated with a plan-lifecycle divider message.
-    /// Populated only on `role: .system` divider messages whose content starts
-    /// with "── Plan created", "── Plan updated", or "── Implementing plan"
-    /// (built by handleEnginePlanFileWritten in
-    /// SessionViewModel+EngineEvents.swift from the engine_plan_file_written
-    /// event, and carried across a history reload by the desktop history mapper
-    /// — engine-history.ts — which decodes here via the engineJSON path).
+    /// Path to the plan file a plan-lifecycle divider ("── Plan created",
+    /// "── Plan updated", "── Implementing plan") or an ExitPlanMode row names.
     /// EngineMessageRow reads it to make the plan slug a tappable link that
     /// opens the plan preview. Mirrors the desktop `Message.planFilePath`.
-    /// Decoded from the wire on the engineJSON path; not a persisted local field.
     var planFilePath: String? = nil
     /// Marker discriminator carried on system-role marker rows the engine yields
     /// on historical reload: "compaction" | "plan" | "steer" (mirrors the engine
@@ -135,11 +85,9 @@ struct Message: Codable, Identifiable, Sendable {
     /// delivery was engine-authored background work.
     var markerMachineAuthored: Bool? = nil
 
-    /// Classifies engine-side injected user turns on historical reload.
-    /// "agent_completion" marks a machine-to-machine dispatch callback (a child
-    /// agent's result routed to its parent) rather than a turn the user authored.
-    /// Absent (or nil) means an ordinary user turn. Additive/optional — absent
-    /// on legacy history rows. See `InjectionPolicy` for how it is interpreted.
+    /// Classifies an injected user turn ("structured_answer", "plan_retained",
+    /// ...). Absent means an ordinary user turn. The server's transcript
+    /// already leaves out the machine-to-machine injections nobody should see.
     var injectionKind: String? = nil
 
     /// Engine-derived phase for persisted implementation work. Optional for
@@ -147,20 +95,14 @@ struct Message: Codable, Identifiable, Sendable {
     var implementationPhase: Bool? = nil
 
     /// Engine-derived: an engine-side actor authored this turn, not a user.
-    ///
-    /// Read by `InjectionPolicy.suppresses` so the history filter and the
-    /// live-event filter classify from the SAME field and cannot disagree.
-    /// Absent on rows persisted before the flag existed, where the kind is the
-    /// fallback. Additive/optional.
+    /// Carried on dispatched-agent history rows (`init(engineJSON:)`).
     var machineAuthored: Bool? = nil
 
     // MARK: - Extended-thinking summary (issue #158)
     //
-    // These fields are populated ONLY on `role: .thinking` messages, which
-    // are synthesized locally by the thinking accumulator
-    // (SessionViewModel+ThinkingEvents.swift) from the desktop_thinking_*
-    // events. They are client-only render hints — NOT wire-protocol fields
-    // and NOT persisted — so they are excluded from CodingKeys below.
+    // Populated ONLY on `role: .thinking` rows. They arrive on the server's
+    // transcript rows (TranscriptRow); the legacy CodingKeys below do not
+    // carry them.
 
     /// True while a thinking block is in progress (between block_start and
     /// block_end). Drives the live activity indicator and the "Thinking…"
@@ -179,10 +121,9 @@ struct Message: Codable, Identifiable, Sendable {
     /// rather than promising text that does not exist.
     var thinkingRedacted: Bool = false
 
-    /// Local UI state only -- NOT a wire protocol field, NOT persisted.
-    /// Tracks whether the desktop has acknowledged a remotely-submitted prompt
-    /// (queued while awaiting desktop_prompt_result, then accepted/rejected).
-    /// Only meaningful on user messages created by the iOS submit path.
+    /// Local UI state only, never on the wire. Whether the server has
+    /// answered a prompt this phone sent (queued until desktop_prompt_result,
+    /// then accepted or rejected). Set only on pending prompt bubbles.
     var deliveryState: PromptDeliveryState? = nil
 
     var isUser: Bool { role == .user }
@@ -211,17 +152,9 @@ struct Message: Codable, Identifiable, Sendable {
         case slashCommand, slashArgs, slashSource, slashModelAlias, slashModelEffective, slashFrontmatter
         case planFilePath, markerKind, markerMessageLength, markerMachineAuthored
         case injectionKind, implementationPhase, machineAuthored
-        // clientMsgId: desktop-local reconciliation key on history user rows (RC-9).
         case clientMsgId
-        // dedupKey / dedupMode: decoded from the desktop history-replay wire
-        // (desktop_conversation_history) so relocate semantics survive reconnect.
-        // Client-only render state — NOT persisted beyond the in-memory store.
-        case dedupKey, dedupMode
         case backgroundWork
         case backgroundTaskId
-        // interceptLevel and the thinking* summary fields are deliberately
-        // excluded — they are transient client-only render hints that are
-        // never serialized to or from the wire.
     }
 }
 
@@ -320,9 +253,7 @@ extension Message {
 
         // injectionKind classifies engine-side injected user turns, and
         // machineAuthored is the engine's derived verdict on whether an
-        // engine-side actor authored the turn. Both are decoded so
-        // InjectionPolicy can filter these rows in handleConversationHistory
-        // rather than rendering a dispatch completion as a user bubble.
+        // engine-side actor authored the turn.
         injectionKind = try container.decodeIfPresent(String.self, forKey: .injectionKind)
         implementationPhase = try container.decodeIfPresent(Bool.self, forKey: .implementationPhase)
         machineAuthored = try container.decodeIfPresent(Bool.self, forKey: .machineAuthored)

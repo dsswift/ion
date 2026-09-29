@@ -5,7 +5,7 @@ export {
   toolSummary,
   toolFailureSummary,
   type GroupedItem,
-} from "./tool-helpers";
+} from "@ion/server/conversation/tool-helpers";
 export { ToolIcon } from "./ToolIcon";
 export { ToolRow } from "./ToolRow";
 export { ToolGroup } from "./ToolGroup";

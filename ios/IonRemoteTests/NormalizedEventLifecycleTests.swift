@@ -22,7 +22,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         {"type":"desktop_snapshot","tabs":[\(sampleTabJSON)]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _, _) = event {
+        if case .snapshot(let tabs, _, _, _, _, _, _, _, _, _) = event {
             XCTAssertEqual(tabs.count, 1)
             XCTAssertEqual(tabs[0].id, "t1")
             XCTAssertEqual(tabs[0].title, "Tab 1")
@@ -131,7 +131,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         {"type":"desktop_snapshot","tabs":[\(sampleTabJSON),\(tab2)]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _, _) = event {
+        if case .snapshot(let tabs, _, _, _, _, _, _, _, _, _) = event {
             XCTAssertEqual(tabs.count, 2)
             XCTAssertEqual(tabs[1].id, "t2")
             XCTAssertEqual(tabs[1].customTitle, "My Tab")
@@ -150,7 +150,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         {"type":"desktop_snapshot","tabs":[]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _, _) = event {
+        if case .snapshot(let tabs, _, _, _, _, _, _, _, _, _) = event {
             XCTAssertTrue(tabs.isEmpty)
         } else {
             XCTFail("Expected snapshot with empty tabs")
@@ -162,13 +162,6 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         {"type":"unknown_event","tabId":"t1"}
         """.data(using: .utf8)!
         XCTAssertThrowsError(try decoder.decode(RemoteEvent.self, from: json))
-    }
-
-    func testDecodeInvalidCommandTypeThrows() {
-        let json = """
-        {"type":"unknown_command"}
-        """.data(using: .utf8)!
-        XCTAssertThrowsError(try decoder.decode(RemoteCommand.self, from: json))
     }
 
     // MARK: - Display title
@@ -220,10 +213,6 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         let original = RemoteEvent.snapshot(
             tabs: [tab],
             recentDirectories: ["/Users/test/project"],
-            tabGroupMode: nil,
-            tabGroups: nil,
-            preferredModel: nil,
-            engineDefaultModel: nil,
             availableModels: nil,
             customName: nil,
             customIcon: nil,
@@ -232,7 +221,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         )
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(RemoteEvent.self, from: data)
-        if case .snapshot(let tabs, let recentDirs, _, _, _, _, _, _, _, _, _, _, _, _) = decoded {
+        if case .snapshot(let tabs, let recentDirs, _, _, _, _, _, _, _, _) = decoded {
             XCTAssertEqual(recentDirs, ["/Users/test/project"])
             XCTAssertEqual(tabs.count, 1)
             XCTAssertEqual(tabs[0].id, "rt1")
@@ -248,157 +237,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
 
     // MARK: - Generic commands
 
-    func testEncodeSync() throws {
-        let cmd = RemoteCommand.sync
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_sync")
-        // sync has no extra fields beyond type
-        XCTAssertEqual(json.count, 1)
-    }
-
-    func testEncodeCreateTab() throws {
-        let cmd = RemoteCommand.createTab(workingDirectory: "/home/user/project")
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_create_tab")
-        XCTAssertEqual(json["workingDirectory"] as? String, "/home/user/project")
-    }
-
-    func testEncodeCreateTabWithNilDirectory() throws {
-        let cmd = RemoteCommand.createTab(workingDirectory: nil)
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_create_tab")
-        // workingDirectory should be absent (encodeIfPresent skips nil)
-        XCTAssertNil(json["workingDirectory"])
-    }
-
-    func testEncodeCloseTab() throws {
-        let cmd = RemoteCommand.closeTab(tabId: "t99")
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_close_tab")
-        XCTAssertEqual(json["tabId"] as? String, "t99")
-    }
-
-    func testEncodeCancel() throws {
-        let cmd = RemoteCommand.cancel(tabId: "t3")
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_cancel")
-        XCTAssertEqual(json["tabId"] as? String, "t3")
-    }
-
-    func testEncodeRenameTab() throws {
-        let cmd = RemoteCommand.renameTab(tabId: "t1", customTitle: "My Tab")
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_rename_tab")
-        XCTAssertEqual(json["tabId"] as? String, "t1")
-        XCTAssertEqual(json["customTitle"] as? String, "My Tab")
-    }
-
-    func testEncodeRenameTabNullTitle() throws {
-        let cmd = RemoteCommand.renameTab(tabId: "t1", customTitle: nil)
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_rename_tab")
-        XCTAssertEqual(json["tabId"] as? String, "t1")
-        XCTAssertTrue(json["customTitle"] == nil || json["customTitle"] is NSNull)
-    }
-
     // MARK: - Generic command round-trips
-
-    func testCommandRoundTripSync() throws {
-        let original = RemoteCommand.sync
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .sync = decoded {
-            // pass
-        } else {
-            XCTFail("Round-trip sync failed")
-        }
-    }
-
-    func testCommandRoundTripCreateTab() throws {
-        let original = RemoteCommand.createTab(workingDirectory: "/var/log")
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .createTab(let wd, let pinToGroupId, _, _, _, _, _) = decoded {
-            XCTAssertEqual(wd, "/var/log")
-            // pinToGroupId defaults to nil when omitted from the constructor;
-            // the round-trip must preserve that.
-            XCTAssertNil(pinToGroupId)
-        } else {
-            XCTFail("Round-trip createTab failed")
-        }
-    }
-
-    func testCommandRoundTripCreateTabWithPinToGroup() throws {
-        // The createTab command was extended in commit 7b39b6bb to accept an
-        // optional pinToGroupId so the desktop can pin a newly-created tab to
-        // a specific tab group on creation. Verify both associated values
-        // round-trip through encode→decode without loss.
-        let original = RemoteCommand.createTab(workingDirectory: "/Users/me/code", pinToGroupId: "group-abc")
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .createTab(let wd, let pinToGroupId, _, _, _, _, _) = decoded {
-            XCTAssertEqual(wd, "/Users/me/code")
-            XCTAssertEqual(pinToGroupId, "group-abc")
-        } else {
-            XCTFail("Round-trip createTab with pinToGroupId failed")
-        }
-    }
-
-    func testCommandRoundTripCloseTab() throws {
-        let original = RemoteCommand.closeTab(tabId: "close-me")
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .closeTab(let tabId) = decoded {
-            XCTAssertEqual(tabId, "close-me")
-        } else {
-            XCTFail("Round-trip closeTab failed")
-        }
-    }
-
-    func testCommandRoundTripCancel() throws {
-        let original = RemoteCommand.cancel(tabId: "c1")
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .cancel(let tabId, let scope) = decoded {
-            XCTAssertEqual(tabId, "c1")
-            // Unscoped cancel stays unscoped through the round trip; the
-            // desktop reads a nil scope as full teardown.
-            XCTAssertNil(scope)
-        } else {
-            XCTFail("Round-trip cancel failed")
-        }
-    }
-
-    func testCommandRoundTripRenameTab() throws {
-        let original = RemoteCommand.renameTab(tabId: "t1", customTitle: "Custom Name")
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .renameTab(let tabId, let customTitle) = decoded {
-            XCTAssertEqual(tabId, "t1")
-            XCTAssertEqual(customTitle, "Custom Name")
-        } else {
-            XCTFail("Expected renameTab, got \(decoded)")
-        }
-    }
-
-    func testCommandRoundTripRenameTabNullTitle() throws {
-        let original = RemoteCommand.renameTab(tabId: "t1", customTitle: nil)
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .renameTab(let tabId, let customTitle) = decoded {
-            XCTAssertEqual(tabId, "t1")
-            XCTAssertNil(customTitle)
-        } else {
-            XCTFail("Expected renameTab, got \(decoded)")
-        }
-    }
 
     // MARK: - engine_plan_mode_changed (state event)
 
@@ -474,7 +313,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         }
     }
 
-    // MARK: - lanAuthRejected (synthesized by TransportManager)
+    // MARK: - lanAuthRejected (synthesized by the transport)
 
     /// Pins the codec for the transport-synthesized definitive-rejection
     /// event. Payload-free like peerDisconnected/transportReconnecting; the

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { sanitizeKeyboardShortcuts } from '../preferences-shortcuts'
+import { installFakeWire } from '../host/__tests__/fake-wire'
 
 describe('per-view keyboard shortcut persistence', () => {
   it('keeps overlay and Studio overrides isolated', () => {
@@ -28,7 +29,7 @@ describe('per-view keyboard shortcut persistence', () => {
 
   it('persists nested per-view overrides', async () => {
     const { getAllSettings } = await import('../preferences-persist')
-    const { SETTINGS_DEFAULTS } = await import('../preferences-types')
+    const { SETTINGS_DEFAULTS } = await import('@ion/server/preferences-types')
     const keyboardShortcuts = { overlay: { 'tab.next': 'Mod+]' }, studio: {} }
     const state = { ...SETTINGS_DEFAULTS, keyboardShortcuts } as any
     expect(getAllSettings(() => state).keyboardShortcuts).toEqual(keyboardShortcuts)
@@ -52,8 +53,15 @@ describe('per-view keyboard shortcut persistence', () => {
 
   it('hydrates nested per-view overrides', async () => {
     const { loadPersistedSettings } = await import('../preferences-persist')
-    ;(globalThis as any).window = { ion: { loadSettings: () => Promise.resolve({ keyboardShortcuts: { overlay: { 'tab.next': 'Mod+]' }, studio: { 'tab.prev': 'Mod+[' } } }) } }
+    ;(globalThis as any).window = { ion: installFakeWire({ loadSettings: () => Promise.resolve({ keyboardShortcuts: { overlay: { 'tab.next': 'Mod+]' }, studio: { 'tab.prev': 'Mod+[' } } }) }) }
     ;(globalThis as any).document = { documentElement: { style: {} } }
+    // The funnel reaches the stub through `host.shell` now. host-instance
+    // re-decides Electron-vs-browser on every access, but it caches the host
+    // INSTANCES; an ElectronStudioHost built by an earlier test already holds
+    // a bridged shell bound to the previous `window.ion`, so drop it and let
+    // the next access build one against the fake wire installed above.
+    const { resetHostInstanceForTests } = await import('../host/host-instance')
+    resetHostInstanceForTests()
     const setState = vi.fn()
     loadPersistedSettings(setState, () => ({}) as any, vi.fn())
     await new Promise((resolve) => setImmediate(resolve))

@@ -1,6 +1,6 @@
 import React from 'react'
 import { useColors } from '../../theme'
-import type { TaskCompletionReason } from '../../../shared/types-events'
+import type { TaskCompletionReason } from '@ion/shared/types-events'
 
 export function formatRunDuration(durationMs: number): string {
   if (!Number.isFinite(durationMs) || durationMs < 1_000) return '<1s'

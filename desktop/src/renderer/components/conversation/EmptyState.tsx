@@ -1,8 +1,8 @@
 import React from 'react'
 import { FolderOpen } from '@phosphor-icons/react'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../../theme'
-import { pickDirectoryForSession } from '../../stores/remote-fs-store'
+import { pickDirectoryForSession } from '@ion/server/store/remote-fs-store'
 import { rError } from '../../rendererLogger'
 import { useShallow } from 'zustand/shallow'
 

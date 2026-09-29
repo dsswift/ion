@@ -27,13 +27,13 @@ vi.mock('../../theme', () => ({
 vi.mock('../../rendererLogger', () => ({
   rInfo: vi.fn(), rDebug: vi.fn(), rWarn: vi.fn(), rError: vi.fn(), rTrace: vi.fn(),
 }))
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(vi.fn(), { getState: vi.fn(), setState: vi.fn(), subscribe: vi.fn() }),
 }))
 
 import { selectAttachmentsData } from '../StatusBarAttachmentsButton'
-import { makeMainPane } from '../../stores/conversation-instance'
-import type { ResourceItem } from '../../../shared/types-engine'
+import { makeMainPane } from '@ion/server/store/conversation-instance'
+import type { ResourceItem } from '@ion/shared/types-engine'
 
 function makeState(withResources: boolean) {
   const resource = {

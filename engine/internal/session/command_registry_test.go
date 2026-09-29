@@ -317,6 +317,48 @@ func TestEmitCommandRegistry_InitialSnapshot(t *testing.T) {
 	}
 }
 
+// TestReconcileState_ReEmitsCommandRegistry pins the reconnect half of the
+// snapshot contract: a consumer that attaches to a session already running
+// asks for reconcile_state, and must receive the session's complete command
+// set — including the empty list for a session with no extensions. Without
+// it, the registry reaches only consumers connected at extension load.
+func TestReconcileState_ReEmitsCommandRegistry(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	ec := newEventCollector(mgr)
+
+	const withExt, plain = "reconcile-registry-ext", "reconcile-registry-plain"
+	for _, key := range []string{withExt, plain} {
+		if _, err := mgr.StartSession(key, defaultConfig()); err != nil {
+			t.Fatalf("StartSession(%s) failed: %v", key, err)
+		}
+		k := key
+		t.Cleanup(func() { _ = mgr.StopSession(k) })
+	}
+	group := extension.NewExtensionGroup()
+	group.Add(newTestHostWithCommands(map[string]string{"briefing": "daily briefing"}))
+	mgr.TestSetExtGroup(withExt, group)
+
+	before := len(ec.byType("engine_command_registry"))
+	mgr.ReconcileState(withExt)
+	mgr.ReconcileState(plain)
+
+	results := ec.byType("engine_command_registry")[before:]
+	if len(results) != 2 {
+		t.Fatalf("expected one engine_command_registry per reconcile, got %d", len(results))
+	}
+	byKey := map[string][]types.EngineCommandListing{}
+	for _, r := range results {
+		byKey[r.key] = r.event.Commands
+	}
+	if got := byKey[withExt]; len(got) != 1 || got[0].Name != "briefing" {
+		t.Errorf("extension session: expected [briefing], got %+v", got)
+	}
+	if got, ok := byKey[plain]; !ok || got == nil || len(got) != 0 {
+		t.Errorf("plain session: expected an empty non-nil command list, got %+v (present=%v)", got, ok)
+	}
+}
+
 // TestEmitCommandRegistry_EmptyGroupSnapshot locks in the snapshot-contract
 // invariant: a session with no extensions still emits a registry event with an
 // empty list (not nil, not absent). Consumers use the event's arrival as the

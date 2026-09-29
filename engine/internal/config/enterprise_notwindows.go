@@ -21,3 +21,10 @@ func readWindows() *types.EnterpriseConfig {
 func windowsPolicySources() []string {
 	return []string{"programdata", "registry-hklm"}
 }
+
+// readUserSourceWindowsRegistry is the non-windows stub for the per-user
+// HKCU reader (manifest C11). loadUserEnvironmentLayer only calls this on
+// runtime.GOOS == "windows" in production.
+func readUserSourceWindowsRegistry() (map[string]any, bool) {
+	return nil, false
+}

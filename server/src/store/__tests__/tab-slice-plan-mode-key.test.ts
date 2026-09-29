@@ -1,0 +1,166 @@
+/**
+ * tab-slice setPermissionMode — engine session-key regression test.
+ *
+ * Pins the #256-followup fix: on an extension-hosted (engineProfileId) tab,
+ * setPermissionMode must call window.ion.engineSetPlanMode with the BARE
+ * tabId, not the old compound `${tabId}:${instanceId}` key.
+ *
+ * After session-key unification (#256) the engine keys sessions by the bare
+ * tabId (sessionKey() returns tabId), and SetPlanMode looks up
+ * m.sessions[key] (engine/internal/session/plan_mode.go). The compound key
+ * missed the map and silently no-op'd, so plan-mode toggling was broken on
+ * extension-hosted tabs.
+ *
+ * Reverting the fix (passing `${activeTabId}:${instanceId}`) makes the
+ * "bare key" assertions below go red — this test distinguishes the fixed
+ * behavior from the broken one.
+ */
+
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+
+vi.mock('../../components/TerminalPanel', () => ({
+  destroyTerminalInstance: vi.fn(),
+}))
+
+vi.mock('../session-store-helpers', () => ({
+  makeLocalTab: vi.fn(() => ({ id: 'mock-tab' })),
+  initialModelOverride: vi.fn(() => null),
+  nextMsgId: vi.fn(() => `msg-${Math.random()}`),
+  playNotificationIfHidden: vi.fn(async () => {}),
+  cancelDoneGroupMove: vi.fn(() => false),
+  scheduleDoneGroupMove: vi.fn(),
+}))
+
+const preferenceState = vi.hoisted(() => ({
+  preferredModel: null,
+  defaultPermissionMode: 'auto' as const,
+  planModelSplitEnabled: false,
+  planModeModel: null as string | null,
+  addRecentBaseDirectory: vi.fn(),
+  engineProfiles: [],
+  engineDefaultModel: null,
+}))
+
+vi.mock('../../persistence/preferences', () => ({
+  usePreferencesStore: {
+    getState: vi.fn(() => preferenceState),
+  },
+}))
+
+const mockEngineSetPlanMode = vi.fn()
+const mockSetPermissionMode = vi.fn()
+vi.mock('../host-api', () => ({
+  echoUserTurnToStudio: vi.fn(),
+  engineSetPlanMode: (...args: any[]) => mockEngineSetPlanMode(...args),
+  setPermissionMode: (...args: any[]) => mockSetPermissionMode(...args),
+  closeTab: vi.fn(),
+  createTab: vi.fn(),
+  deleteTabContent: vi.fn(),
+  saveSessionLabel: vi.fn(),
+  start: vi.fn(),
+  tabMetaChanged: vi.fn(),
+  terminalDestroy: vi.fn(),
+}))
+
+import { createTabSlice } from '../slices/tab-slice'
+import type { State } from '../session-store-types'
+import type { TabState } from '@ion/shared/types'
+import type { ConversationInstance } from '@ion/shared/types-engine'
+import { seedMainPane } from './helpers/conversation-test-helpers'
+
+function makeTab(overrides: Partial<TabState> = {}): TabState {
+  return {
+    id: 'tab-1', conversationId: null, historicalSessionIds: [], lastKnownSessionId: null,
+    status: 'idle', activeRequestId: null, lastEventAt: null, lastActivityAt: null, idleSince: null, lastCompletionAt: null, settledOverride: null, settledAt: null, snoozedUntil: null, snoozedAt: null, lastVisitedAt: null, manualUnread: false, currentActivity: '',
+    attachments: [], title: 'New Tab', customTitle: null, lastResult: null, sessionTools: [],
+    sessionMcpServers: [], sessionSkills: [], sessionVersion: null, queuedPrompts: [],
+    workingDirectory: '/home/test', hasChosenDirectory: true, additionalDirs: [],
+    bashResults: [], bashExecuting: false, bashExecId: null, pillColor: null,
+    forkedFromSessionId: null, worktree: null, pendingWorktreeSetup: false,
+    contextTokens: null, contextWindow: null,
+    isCompacting: false, isTerminalOnly: false,
+    inputLocked: false, engineProfileId: null, lastMessagePreview: null,
+    ...overrides,
+  }
+}
+
+function buildHarness(
+  initialTab: TabState,
+  instanceOverrides: Partial<ConversationInstance> = {},
+) {
+  const state: any = {
+    tabs: [initialTab],
+    activeTabId: initialTab.id,
+    conversationPanes: seedMainPane(initialTab.id, { ...instanceOverrides }),
+  }
+
+  const set = vi.fn((updater: any) => {
+    const patch = typeof updater === 'function' ? updater(state) : updater
+    Object.assign(state, patch)
+  })
+  const get = () => state as State
+
+  const tabSlice = createTabSlice(set, get)
+  Object.assign(state, tabSlice)
+  return { state }
+}
+
+describe('setPermissionMode — engine session key', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    preferenceState.planModelSplitEnabled = false
+    preferenceState.planModeModel = null
+  })
+
+  it('passes the bare tabId to engineSetPlanMode when entering plan mode on an extension-hosted tab', () => {
+    const { state } = buildHarness(makeTab({ engineProfileId: 'profile-x' }))
+
+    state.setPermissionMode('plan', 'user')
+
+    expect(mockEngineSetPlanMode).toHaveBeenCalledWith('tab-1', true)
+    // The old compound key form must never be sent.
+    expect(mockEngineSetPlanMode).not.toHaveBeenCalledWith('tab-1:main', expect.anything())
+  })
+
+  it('passes the bare tabId to engineSetPlanMode when leaving plan mode on an extension-hosted tab', () => {
+    const { state } = buildHarness(makeTab({ engineProfileId: 'profile-x' }), {
+      permissionMode: 'plan',
+    })
+
+    state.setPermissionMode('auto', 'user')
+
+    expect(mockEngineSetPlanMode).toHaveBeenCalledWith('tab-1', false)
+    expect(mockEngineSetPlanMode).not.toHaveBeenCalledWith('tab-1:main', expect.anything())
+  })
+
+  it('routes plain (non-engine) tabs through setPermissionMode, not engineSetPlanMode', () => {
+    const { state } = buildHarness(makeTab({ engineProfileId: null }))
+
+    state.setPermissionMode('plan', 'user')
+
+    expect(mockEngineSetPlanMode).not.toHaveBeenCalled()
+    expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'plan', 'user', undefined)
+  })
+
+  it('marks a plan-split model as automatic rather than user-selected', () => {
+    preferenceState.planModelSplitEnabled = true
+    preferenceState.planModeModel = 'gpt-5.6-sol'
+    const { state } = buildHarness(makeTab({ engineProfileId: null }))
+
+    state.setPermissionMode('plan', 'user')
+
+    const instance = state.conversationPanes.get('tab-1').instances[0]
+    expect(instance.modelOverride).toBe('gpt-5.6-sol')
+    expect(instance.modelOverrideSource).toBe('automatic')
+  })
+
+  it('marks a direct model selection as user-selected', () => {
+    const { state } = buildHarness(makeTab({ engineProfileId: null }))
+
+    state.setTabModel('tab-1', 'gpt-5.6-terra')
+
+    const instance = state.conversationPanes.get('tab-1').instances[0]
+    expect(instance.modelOverride).toBe('gpt-5.6-terra')
+    expect(instance.modelOverrideSource).toBe('user')
+  })
+})

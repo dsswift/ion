@@ -152,7 +152,7 @@ extension TabListView {
         }
         .contextMenu {
             Button {
-                requestNewConversation(directory: project.id, pinToGroupId: nil)
+                requestNewConversation(directory: project.id)
             } label: {
                 Label("New conversation", systemImage: "plus.bubble")
             }
@@ -457,7 +457,7 @@ extension TabListView {
         }
     }
 
-    private var filteredTabsForInbox: [RemoteTabState] {
+    var filteredTabsForInbox: [RemoteTabState] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return viewModel.tabs }
         return viewModel.tabs.filter {

@@ -8,6 +8,11 @@
 # ~/.ion/engine.jsonl. A consumer install stays on INFO, which is why this is a
 # bootstrap step and not a shipped default.
 #
+# DEBUG writes several times what INFO does, so the default rotation (4 files
+# of 20 MB) kept only a few hours of it. The same step raises the engine's
+# retention to 5 files of 60 MB (about a day at DEBUG), unless the operator
+# already set either value.
+#
 # The engine resolves logLevel ONCE at daemon start, from the global config
 # only — `LoadConfig("")` at cmd/ion/cmd_serve.go is the sole serve call site,
 # and it passes no project directory. A project-level `.ion/engine.json` cannot
@@ -50,10 +55,21 @@ else:
     config = {}
 
 current = config.get("logLevel")
-if current == target:
+logging = config.get("logging")
+if logging is None:
+    logging = {}
+if not isinstance(logging, dict):
+    print(f"⚠️  {path} has a non-object \"logging\"; leaving it alone.")
+    sys.exit(0)
+retention = {"maxSizeMB": 60, "maxFiles": 5}
+missing = {k: v for k, v in retention.items() if k not in logging}
+if current == target and not missing:
     sys.exit(0)  # Already correct. Say nothing.
 
 config["logLevel"] = target
+if missing:
+    logging.update(missing)
+    config["logging"] = logging
 
 os.makedirs(os.path.dirname(path), exist_ok=True)
 handle = tempfile.NamedTemporaryFile(
@@ -71,7 +87,10 @@ except BaseException:
     raise
 
 was = current if current else "unset"
-print(f"▶ engine logLevel: {was} → {target}")
+if current != target:
+    print(f"▶ engine logLevel: {was} → {target}")
+for key, value in missing.items():
+    print(f"▶ engine logging.{key}: unset → {value}")
 print("   Restart the engine for this to take effect; the level is read once at")
 print("   daemon start. Until then ~/.ion/engine.jsonl stays at the old level.")
 PY

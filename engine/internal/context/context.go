@@ -75,7 +75,7 @@ func (c WalkerConfig) homeRoots() []string {
 	if err != nil || home == "" {
 		return nil
 	}
-	roots := []string{filepath.Join(home, ".ion")}
+	roots := []string{utils.IonDir()}
 	if c.ClaudeCompat {
 		roots = append(roots, filepath.Join(home, ".claude"))
 	}

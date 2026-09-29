@@ -1,429 +1,389 @@
 ---
-description: Context-aware alignment. When in plan mode, it reviews the active plan. Otherwise, it reviews all branch changes against Ion quality gates and principles, implements the fixes and commits them after operator approval.
+description: Context-aware alignment. In plan mode it audits the active plan and folds the amendments in. Otherwise it reviews the branch, a named branch, or a pull request against Ion's principles, authors a fix plan, and after approval implements and commits the fixes.
 allowed_bash_commands: [ls, stat, git, gh pr view, gh pr diff, gh pr list, gh pr checks, gh pr checkout]
 ---
 
-You are running the `/align` command. This command operates in two modes depending on context. Detect the active mode first, then follow the instructions for that mode.
+# /align
 
-**Invocation arguments.** The raw arguments passed to this invocation (referred to as **ARGS** throughout this document) are:
+**ARGS** means the raw arguments of this invocation:
 
 ```
 $ARGUMENTS
 ```
 
-If the block above is empty, the command was invoked with no arguments. Everywhere this document says "ARGS", it means the exact raw string above — the engine substitutes it here once, at this single point, and nowhere else.
+An empty block means no arguments were passed.
 
-**Hard rules. These apply in both modes.**
+`/align` has two modes.
 
-- **Review the whole target; never ask the operator to narrow scope by size.** The review surface is fixed by the mode and arguments, not by how large it is: Mode A audits the attached plan in full; Mode B (Local) reviews the entire `{base}...HEAD` diff in full; Mode B (PR/branch) reviews the entire target diff in full. A large diff — any number of commits, files, or scopes — is reviewed completely; it is never a reason to stop and ask the operator which slice to review. The **only** scope narrowing that exists is explicit operator input parsed in B-Step 1 (a `<focus>` instruction, or a PR / branch target — explicit `in PR` / `in branch`, or a bare PR reference like `287` / `#287` / `PR 287`). Absent that input, there is no scope question. Do not emit an `AskUserQuestion` (or any prose prompt) asking the operator to pick a subset, confirm scope, or choose between "recent commits" and "whole branch" — proceed and review everything. A genuinely enormous diff yields a large report, not a smaller review.
-- You will not squash, re-cut, split, reorder, or force-push commits, and you will not push or open/modify a PR. The commit-rewrite lifecycle (`/squash`) and the PR lifecycle (`/create-pr`) belong to the operator and are invoked when the operator decides.
-- **Amending in place is the default delivery mechanism for a finding whose defect originated in a commit on the active branch** — see B-Step 6. Amending a branch-local commit is not a commit rewrite in the `/squash` sense: the commit count, order, and scope seams are unchanged; only the content of the commit that introduced the defect changes, so the branch's history reads as though the defect never shipped. This applies **only** to commits that originated on the active branch (present in `{base}..HEAD`, where `{base}` is the resolved review base — a worktree's source branch, else `main`) and have not been pushed. Never amend a commit that exists on `{base}`, on `main`, on a remote, or in a PR's published history.
-- You will not run `gh pr create`, `gh pr merge`, `gh pr review`, `gh pr comment`, `git push`, `git push --force`, or any other remote-mutating command. `git commit --amend` and a `git rebase -i` limited to `edit`-ing branch-local commits are permitted **only** as the B-Step 6 amend mechanism described above; a rebase that reorders, squashes, drops, or rewords beyond the fix is not.
-- **Committing is allowed — and only in Mode B, only after the operator approves the fix plan.** When Mode B implements an approved fix plan (B-Step 6), it delivers the completed work into the branch's history: **amended into the originating commit** when the defect came from a commit on the active branch, or as a new conventional, correctly-scoped commit when it did not (see root `AGENTS.md` § "Commits"). In PR mode fixes always land as **new** commits on top of the PR's head branch in a dedicated worktree (see B-Step 6) — that history is published, so it is never amended; local commits on the PR branch are not "modifying the PR", and only pushing updates the PR, which stays the operator's. It never squashes commits together, never reorders or splits them, and never pushes — the operator handles squashing and PRs. Mode A never commits (no code exists yet — there is nothing to commit). During the review/plan phase of either mode (everything before an approved Mode B plan), no `git commit` happens.
-- **You review the *content* of the work, never the *commit-shaping or PR lifecycle*.** You will not author findings, amendments, recommendations, plan steps, or open items that direct the operator to squash, split/re-cut/reorder commits, choose a merge strategy, or open/sequence a pull request. Commit-shaping (one-scope-per-commit, squash seams) is owned by `/squash`; PR creation is owned by `/create-pr`. Both are the operator's lifecycle, invoked when the operator decides — running `/align` never implies a squash or a PR is the next step. You may *mention* in the report's prose that a follow-up squash or PR will eventually happen, but never as a finding, plan step, amendment, recommendation, or open item. Amending a fix into its originating branch-local commit is a *delivery* decision made in B-Step 6, not a commit-shaping finding — it never appears as a finding either.
-- Your analysis output is a single markdown report in this chat response. After the report, Mode A writes only the plan file (folding in the amendments); Mode B writes the plan file and then — once the operator approves — implements the fix plan, which edits source and lands the result (amended into the originating branch-local commits, or new commits). No other lifecycle action (squash, reorder, push, PR) is permitted in either mode.
-- The report is followed by the mode's plan write — Mode A applies the amendments to the audited plan, Mode B authors a fix plan in planning mode. Mode A stops after the plan write and never implements. Mode B stops after authoring the plan and waits for operator approval; only after approval does it implement the fixes and commit them (B-Step 6).
+| Mode | Runs when | Reviews | Writes |
+|---|---|---|---|
+| **A: Plan Alignment** | The conversation is in plan mode | The plan, before any code exists | The plan file only |
+| **B: Post-Changes Alignment** | Everything else | A diff: the local branch, a named branch, or a pull request | A fix plan, then after approval the fixes and their commits |
 
----
+## Limits
 
-## Mode Detection
+These hold in both modes.
 
-**Plan mode active at invocation → Mode A. Not in plan mode → Mode B.** That is the whole rule. It is binary, it requires no interpretation, and it needs no fallback heuristics.
+1. **Review the whole target.** Mode and ARGS set the review surface. Size never does. A large diff produces a large report. The only narrowing is a focus or a target the operator typed in ARGS, so there is never a question to ask about scope.
+2. **Review content, not commit shape or PR lifecycle.** `/squash` owns commit partitioning. `/create-pr` owns the pull request. The operator invokes both. No finding, amendment, recommendation, plan step, or open item sends the operator to either one, asks for a merge strategy, or asks for commits to be split, reordered, or squashed.
+3. **No remote writes.** No `git push`, no `gh pr create`, `gh pr merge`, `gh pr review`, or `gh pr comment`.
+4. **No history reshaping.** Commit count, order, and scope seams stay as they are. The one permitted rewrite is the amend delivery in B-Step 6.
+5. **No commit before approval.** Mode A never commits. Mode B commits only after the operator approves its fix plan.
+6. **One report.** The analysis is a single markdown report in this chat. The plan write follows it.
 
-- **Plan mode active → Mode A (Plan Alignment).** A plan exists and the operator wants it audited before implementation.
-- **Plan mode not active → Mode B (Post-Changes Alignment).** Review the branch, or whatever ARGS points at.
+## Pick the mode
 
-> **Sample the flag at invocation, not later.** Mode B *enters* planning mode partway through its own run (B-Step 5) to author its fix plan. That is an output action downstream of detection and says nothing about which mode to run — it happens after the review report is already emitted. Read the flag when `/align` fires and decide once.
+Decide once, when the command fires. Use the first row that matches.
 
-**Mode A (Plan Alignment)** runs when the conversation is in plan mode. Resolve and read the plan per A-Step 1, then audit it.
+| ARGS or state | Mode |
+|---|---|
+| ARGS is only PR references, or starts with `in PR` | B, PR mode |
+| ARGS starts with `in branch` | B, Branch mode |
+| Plan mode is active | A |
+| Anything else | B, Local mode |
 
-**Mode B (Post-Changes Alignment)** runs when the conversation is not in plan mode.
+A PR reference is `287`, `#287`, `PR 287`, `PR #287`, or a list of these separated by commas or spaces. A PR or branch target wins over plan mode and over the state of the local checkout, because the operator named what to review.
 
-**Step zero — parse ARGS for a target BEFORE any local git check.** Parse ARGS for target and focus (see the argument grammar in Mode B). **PR-target arguments force Mode B (PR mode) regardless of plan-mode state and regardless of local branch state.** A PR target is either the explicit `in PR` prefix or a bare PR reference: `287`, `#287`, `PR 287`, `PR #287`, or a comma/whitespace-separated list of these. When the operator passes a PR reference, they are asking for alignment of *that pull request* — not the local checkout. Do not review, diff, or even orient against the local branch; go straight to Mode B Step 1B. Likewise, `in branch` forces Mode B (Branch mode). **When ARGS carries a PR or branch target, every check below this paragraph is skipped** — the local branch being even with its base, dirty, or clean carries zero signal about the target, and the "Nothing to align" stop-rule below never applies to a targeted run.
+Mode B enters plan mode itself in B-Step 5. That happens after detection and does not change the mode.
 
-Only when ARGS carries **no** PR or branch target, and the conversation is **not** in plan mode, check the local branch against its resolved base (see B-Step 1's "Resolve the review base"): `git log {base}..HEAD --oneline`
+## Grounding
 
-**A branch ahead of its base (or a dirty tree) outside plan mode is NOT ambiguous — it is the standard Mode B case. Run Mode B over the branch without asking.** This is the common steady state: the user runs `/align` to review the work on their branch. Never ask the user which mode to run; the binary rule above already decided.
+Read the root `AGENTS.md` on every run. Its § "Engine consumers" governs every engine finding.
 
-If none of the above applies (no PR/branch target in ARGS, not in plan mode, branch is even with its base, no uncommitted work), report: "Nothing to align — not in plan mode and branch is even with its base `{base}`." and stop. This stop-rule exists for the *untargeted* invocation only; it is unreachable when ARGS names a PR or branch, and it never applies in plan mode (where the plan is the target).
+Read the `AGENTS.md` of each component in scope: `engine/`, `server/`, `desktop/`, `ios/`. The relay and the shared packages have none; the root file governs them.
 
+Read each doc below when its trigger matches the plan or the diff. Read it on this run, even if an earlier session read it.
 
----
+| Trigger | Read |
+|---|---|
+| `engine/` is in scope | `docs/engine-grounding.md` |
+| Engine or extension surface | `docs/architecture/adr/001-engine-vs-harness.md` |
+| Events, agent lifecycle, snapshot semantics | `docs/architecture/agent-state.md`, `docs/protocol/normalized-events.md` |
+| `server/`, Environments, the desktop as a client | `docs/architecture/adr/033-ion-studio-server-and-environments.md` |
+| Auth, tenancy, per-principal visibility | `docs/architecture/adr/034-principal-isolation-and-tenancy.md` |
+| Studio wire members or fixtures | `docs/architecture/adr/035-one-wire.md`, `docs/protocol/studio-wire.md` |
+| Transcripts, iOS or thin-view rendering | `docs/architecture/adr/036-thin-clients-render-the-server-transcript.md` |
+| Wire or event naming | `docs/architecture/adr/008-wire-event-naming-and-ownership.md` |
+| Studio extension points | `docs/extensions/studio-sdk.md` |
+| Hooks or the extension SDK | `docs/hooks/reference.md` |
+| Tool instructions or tool definitions | `docs/architecture/adr/017-opinionless-tool-instructions.md` |
+| Provider routing or backend selection | `docs/architecture/hybrid-backend.md` |
+| Logging surface | `docs/architecture/adr/019-logging-architecture-and-standards.md`, `docs/observability/log-schema.md` |
+| Files added, or a touched file near its cap | `docs/architecture/file-organization.md` |
+| A new shared concept or name | `docs/vocabulary/terms.json` |
 
-## Grounding docs (both modes — scope-triggered)
+A check that looks beyond the diff is a targeted search for one symbol (`graphify explain "<symbol>"`, or a grep). It is never a sweep of the codebase.
 
-Grounding reads are tiered. Read the mandatory doc every invocation; read each conditional doc **only when its trigger matches the scope of the diff or plan**. Whatever set is triggered must actually be read on this invocation — do not operate from memory, and do not skip a triggered doc because it was read in a previous session.
+## What counts as a resolution
 
-**Always read:**
+A plan entry (Mode A) or a fix (Mode B) resolves a finding only when it is one of these:
 
-- `AGENTS.md` (repo root) — logging policy, commit rules, contract stability, layered architecture, **and § "Engine consumers" — who the engine ships for, and the forbidden review question *"does desktop use this?"***. This section is load-bearing for every engine finding; an audit that re-derives the consumer list from its own prose without anchoring to § "Engine consumers" is malformed.
+1. **Code change.** Named files, with the change described.
+2. **Contract change.** A wire member, type, or hook signature, with the rationale the contract rules require.
+3. **Code deletion.** Dead surface removed.
+4. **Test.** A named test with the assertion that pins the behavior.
+5. **Decision to change nothing.** Stated plainly, with the reason.
 
-**Read when the trigger matches:**
+Anything that records the defect and leaves it in place is not a resolution. That covers a `TODO`, `FIXME`, `HACK`, or `XXX` marker; a comment that explains a known fragility; a follow-up issue; a warning log on the bad path; a "later phase"; and a note in the PR description. Flag every one of these in a plan, and never write one into a fix plan.
 
-- `docs/engine-grounding.md` — when `engine/` is in scope. Non-negotiable engine framing (matches root `AGENTS.md`: "Before any work that touches `engine/`").
-- `docs/architecture/adr/001-engine-vs-harness.md` — when engine or extension surface is touched. Engine-vs-harness boundary.
-- `docs/architecture/agent-state.md` — when events, agent lifecycle, or snapshot semantics are touched. The exemplar of how event contracts are reasoned about.
-- `docs/architecture/file-organization.md` — when code files are added or any touched file is near its size cap. Cohesion of change, size caps, file-organization rules.
-- `docs/architecture/adr/021-studio-shell-mirror-store.md` and `desktop/src/renderer/studio/README.md` — when `desktop/src/renderer/` or store slices are touched. Overlay↔Studio mirror-store parity.
-- `docs/architecture/adr/019-logging-architecture-and-standards.md` and `docs/observability/log-schema.md` — when logging surface is touched (new log statements, logger plumbing, log schema fields).
-- `docs/architecture/adr/008-wire-event-naming-and-ownership.md` — when wire events or protocol members are touched.
-- `docs/architecture/adr/017-opinionless-tool-instructions.md` — when tool instructions or tool definitions are touched.
+A finding about a commit message is resolved by correcting that message.
 
-Then read the per-component `AGENTS.md` for every component in scope:
-- `engine/AGENTS.md` — if engine is touched.
-- `desktop/AGENTS.md` — if desktop is touched.
-- `ios/AGENTS.md` — if iOS is touched.
-- (Relay has no per-component `AGENTS.md`; relay changes are governed by the root `AGENTS.md`.)
+## Dimensions
 
-If a subsystem with its own doc page is in scope:
-- `docs/architecture/hybrid-backend.md` — if provider routing or backend selection is involved.
-- `docs/hooks/reference.md` — if hooks or the extension SDK are involved.
-- `docs/protocol/normalized-events.md` — if events or wire protocol are involved.
+Both modes review the same dimensions. Mode A reads the plan. Mode B reads the diff.
 
-**Efficiency guardrail.** The review is thorough where the diff or plan actually goes, and silent everywhere else. Never read a grounding doc whose trigger does not match the scope. Dimension checks that require looking beyond the diff (e.g. verifying a dead-code keep's producer/consumer, or a contract mirror's presence) are **targeted greps for the specific symbol**, never codebase-wide sweeps. The report stays proportional to findings — dimensions with nothing to say emit the single `No findings.` line and nothing more.
+Tag each finding **BLOCKER**, **CONCERN**, or **NIT**. Every finding carries a citation: the plan section (Mode A), or the file and line range or commit SHA (Mode B). A claim with no citation is dropped.
 
----
+### 1. Layer choice
 
-## Plan resolution rules — no "document-instead-of-fix" moves
+Every change belongs to one layer: engine, server, harness, or client (root `AGENTS.md` § "Layered architecture").
 
-This rule applies in both modes. When evaluating whether a plan entry (Mode A) or a fix recommendation (Mode B) resolves a finding, every resolution must *change code*, *change a contract*, *delete code*, *add a test that pins behavior*, or *explicitly decide to do nothing with a stated rationale*. The following moves are **forbidden** because they look like fixes but aren't:
+For each engine change, write one sentence that answers: why is this in the engine and not in the server, the harness, or a client? In Mode B, an engine commit with no answer in its diff is a BLOCKER.
 
-- **Adding a `TODO` / `FIXME` / `HACK` / `XXX` comment** describing the defect. The repository policy already forbids these markers; planning ones in is just slow-motion forbidding.
-- **Adding a "narrative" / "boundary" / "intentional scope" comment** that documents a known fragility instead of removing it. A comment that says "this parser is intentionally minimal; replace with X when Y" is an aspirational comment by another name.
-- **"Open a follow-up issue / file a tracking ticket"** as the resolution. Issues filed during a fix-plan generation are documenting the problem to the issue tracker rather than to a code comment, but it's the same anti-pattern: deferring the work without doing it. If the fix is genuinely out of scope, name the scope boundary explicitly and justify it.
-- **"Add a `console.warn` / `log.Warn` when the bad case happens"** as the fix. Logging the symptom is not preventing it.
-- **"Mark this for the next decomposition phase" / "address in Phase N"** without a corresponding code change in this branch. Phase markers without phase work are aspirational.
-- **"Flag this in the PR description so reviewers know"** as the resolution. Reviewer-aware notes don't close defects.
-- **"Run `/squash`", "split / re-cut / reorder these commits", "decide the merge strategy", "before `/create-pr` …", or any step that routes the operator through the commit-rewrite or PR lifecycle.** These are not align resolutions — they are operator-lifecycle work owned by `/squash` and `/create-pr`. A finding about commit *content* (a malformed commit message, a missing issue trailer) is resolved by fixing that content — amended into the originating branch-local commit per B-Step 6 — not by directing a squash, a re-cut, a merge-strategy choice, or a PR. Commit partitioning / squash shape is not a finding align raises at all (see the Commit-message-quality dimension). Such steps must not appear as a finding resolution, amendment, plan step, or open item in either mode.
-- **Plain narrative comments establishing the intentional scope of a known-fragile implementation** — same anti-pattern as the TODO marker, with the marker stripped. The defect is still documented, not fixed.
-
-Each resolution must be one of:
-
-1. **Code change**: source files modified, with the specific change described.
-2. **Contract change**: wire protocol, type definition, or hook signature modified (with documented rationale per the contract-stability rules).
-3. **Code deletion**: dead surface removed.
-4. **Test addition**: a new test that *pins* the intended behavior so future regressions fail loudly. Must reference the specific assertion, not just "add a test".
-5. **Explicit do-nothing**: state plainly that the right answer is no change, and explain why (e.g. "this would be a breaking change to consumers without an ADR; we accept the documented limitation"). Decide-not-to-fix is a valid resolution; document-and-leave-it is not.
-
-If a plan entry or recommendation uses "add a TODO", "document the limitation with…", "open a follow-up issue for…", "add a narrative comment explaining…", or "track in Phase N" — **flag it**. These are not fixes.
-
-The plan and any fix plan generated from this review are themselves subject to the root `AGENTS.md` "Aspirational comments" and "Solution quality — no cheap substitutes" rules. A plan that resolves a finding by documenting it is an aspirational artifact; the rule applies to plans, not just to code.
-
----
-
----
-
-# Mode A: Plan Alignment (pre-implementation)
-
-You are reviewing the current plan before any code is written. The goal is to catch misalignment with Ion's architectural principles while the plan is still cheap to change. You produce findings, then apply the amendments to the plan file so the plan is aligned and ready to execute.
-
-**Additional hard rules for Mode A.**
-
-- After the report, you apply the amendments to the resolved plan file. The amendments are folded in, not merely proposed. The user can revert any amendment afterward.
-- You will not start implementing the plan.
-
-**Sister command:** Mode B reviews the same dimensions against actual code (post-implementation). If you add a grounding document, dimension, or plan-resolution rule to Mode A, add it to Mode B too.
-
-## A-Step 1: Resolve and read the plan
-
-> **Plan selection is anchored to the conversation, not to filesystem mtime.**
->
-> Parallel planning is the common case — the user often has several plan-mode conversations open at once (one per worktree, one per topic, one per AI assistant window). Every plan-mode conversation has the *exact* plan it was opened against already pinned in the agent's context window: the harness names it in the plan-mode preamble (`**Your plan file for this session: <absolute-path>**`), or attaches it as `[Attached plan: <absolute-path>]` / an `Implement the following plan:` block. That pinned path is the authoritative source for which plan this conversation is auditing.
->
-> **Resolution order — use the first one that applies:**
-
-1. **ARGS provided.** Resolve as the user passed it:
-   - Absolute path: use it directly.
-   - Bare filename or hash (with or without `.md`): resolve from `~/.ion/plans/`.
-   - Unique hash prefix: glob `~/.ion/plans/{prefix}*.md`. If zero or more than one match, stop and report ambiguity — do not fall back to context-derived or mtime-derived defaults silently.
-
-2. **ARGS empty, in plan mode.** This is the standard Mode A default. The harness pins the session's plan path in context; find it and use it without further lookup. The recognised forms are exhaustive:
-   - **Ion harness preamble** (what Ion itself emits, via `buildPlanModePrompt` in `engine/internal/backend/plan_mode_prompt.go`): `**Your plan file for this session: <absolute-path>**`, followed by either `The plan file already exists. You MUST Read it first...` or `No plan file exists yet. Create it using the Write tool...`. The path on that line **is** this conversation's plan. When the preamble says the file already exists, read it and audit it. When it says no plan file exists yet, the conversation entered plan mode without authoring one — say so and stop; there is nothing to audit.
-   - `[Attached plan: <path>]`
-   - `Implement the following plan:` followed by the plan markdown.
-
-   If more than one appears, the most recent wins. No other form counts — do not infer a plan from prose that merely mentions a path.
-
-3. **ARGS empty and no plan-mode context at all.** Last resort, reachable only when the conversation is not in plan mode and yet a plan audit was requested. Even here, verify before proceeding:
-   - List the three most-recently-modified plan files: `ls -1t ~/.ion/plans/*.md 2>/dev/null | head -3`.
-   - Read the first heading (`#`) of each candidate.
-   - Compare against any topic signals the conversation provides (recent prompts, the working branch name, recent commit messages, recent tool calls).
-   - **If exactly one candidate's title matches the conversation topic**, use it and clearly mark `Selected by: mtime-fallback + topic-match` in the orientation block.
-   - **If zero candidates match, or more than one is plausible**, stop and report the ambiguity to the user. List the candidates and their titles. Ask which plan to audit. **Do not silently pick the newest.**
-
-> **The forbidden move:** Defaulting to the most recently modified plan in `~/.ion/plans/` without verifying it matches the conversation. With parallel planning sessions, the newest plan globally is *very often not* this conversation's plan — and silently auditing the wrong plan is worse than asking the user.
-
-If no plan exists at any of the resolution paths above, stop: "No plan found in `~/.ion/plans/` and no plan attachment in this conversation. Create a plan first, or pass a plan path as an argument."
-
-Read the resolved plan in full. Run `git branch --show-current` and `git status --porcelain`.
-
-Print a one-paragraph orientation: plan file path, plan title (first `#` heading), how the plan was selected (one of: `argument`, `conversation attachment`, `mtime-fallback + topic-match`), branch it would land on, one-line summary of what the plan proposes. The user must see exactly which plan is being audited before reading any findings.
-
-If the plan is empty, a stub, or not a plan (a session note, a transcript), say so and stop.
-
-## A-Step 2: Ground in the principles
-
-Read all grounding docs listed in the Grounding section above, for every component the plan proposes to touch.
-
-## A-Step 3: Audit the plan across these dimensions
-
-Tag every finding: **BLOCKER**, **CONCERN**, or **NIT**.
-Cite the exact plan section (heading or quoted line) for every finding. A finding without a plan citation is not a finding.
-
-> **Run the engine-consumer test before flagging any engine change.**
->
-> The engine is the product. The desktop, iOS, and relay applications in this repo are reference implementations. External consumers are the canonical audience: TypeScript SDK extensions, Go SDK harnesses, third-party clients, automation pipelines, IDE plugins, server agents.
->
-> The question *"does desktop use this?"* is **forbidden** as a justification for flagging a proposed engine change. Use *"would any plausible external consumer want this?"* instead. The absence of an in-repo caller for new engine surface is the **expected default**, not a smell. See root [`AGENTS.md`](../AGENTS.md) § "Engine consumers". **This rule is load-bearing; a finding that violates it must be removed before the report is emitted.**
-
-### Layer choice
-
-Walk the plan and check every proposed change for correct layer assignment (engine, harness, or client):
-
-- Engine changes must be justified as core engine mechanics. The default verdict on a proposed engine change is "this should live in the harness or client" unless the plan proves otherwise.
-- UI policy (retention rules, what to render, when to clear) belongs in the consumer.
-- User preferences and cross-session memory belong in the harness or client.
-- Hook payloads shaped to a specific renderer's needs ("for the desktop sidebar") must be reshaped to be UI-agnostic.
-- Plan steps that propose conditional branches inside engine packages keyed on consumer identity ("if desktop, do X") are BLOCKER.
-- **Opinionless mechanics:** a planned engine feature that hardcodes an opinion — one fixed behavior with no config field **and** no hook/SDK seam for a consumer to override it — is an incomplete feature (root `AGENTS.md` § "Opinionless mechanics, extensible opinions"). Flag it; the plan must name the seam.
-- **Typed-event corollary:** when the plan has the engine communicate a signal, it emits one typed `NormalizedEvent` variant and stops. Plans that also surface the same signal in stream content (appending to `TaskCompleteEvent.Result`, mutating `TextChunkEvent`, synthetic system messages, log-line-as-source-of-truth) are double-surfacing — flag it.
-
-For every proposed engine touch: write one sentence answering *Why does this need to be in the engine and not the harness or client?*
-
-### Contract impact
-
-If the plan proposes changes to wire protocol, NormalizedEvent variants, SDK types, or hook payloads:
-- Is it additive (allowed) or does it remove/rename/retype something (forbidden)?
-- Does the plan name the regen step (`cd engine && go test ./internal/types/ -run TestContractManifest -update`) and the cross-language mirror updates (TS in `desktop/src/shared/`, Swift in `ios/IonRemote/Models/`)?
-- Does every proposed new wire member carry the owner prefix from its first commit (`engine_` on the engine socket, `desktop_` on the desktop↔iOS wire — ADR-008)? A plan introducing an unprefixed or cross-prefixed member is BLOCKER.
-- Distinguish the wires: the **engine wire is scrutinized** (breaking changes need explicit operator approval), but the **desktop↔iOS wire is lockstep** — a rename that updates every side in the same PR (`desktop/src/main/remote/protocol.ts`, `RemoteCommand.swift`, `NormalizedEvent.swift` TypeKeys, string-switching handlers) is conforming. Do not flag lockstep-wire renames as published-contract breaks; the only gate is same-PR parity, and the plan must name all sides.
-
-Missing regen step for a contract change = BLOCKER.
-
-### Cross-platform completeness
-
-A plan that names one half of a cross-platform feature without its counterpart is a half-baked plan:
-- Shared Go type changes → does the plan name `desktop/src/shared/types-engine.ts`, `contract-sync.test.ts`, and the Swift model?
-- Desktop user-facing change → does the plan acknowledge the iOS counterpart?
-- New SDK hook or type → does the plan name the SDK and hook reference docs?
-- Overlay UI/state change → does the plan address the Studio shell (root `AGENTS.md` § "Cross-client parity (overlay ↔ Studio)", ADR-021)? A shared surface is ONE component mounted in both windows; a plan proposing a bespoke Studio widget for a surface the overlay already has a component for is a finding.
-- New store action → does the plan classify it in `desktop/src/shared/studio-mirror-actions.ts` (FORWARDED vs MIRROR_LOCAL, with justification)? Unclassified actions fail `mirror-parity.test.ts`.
-- New main-process event push → does the plan route it through `broadcast()`? Direct `webContents.send` outside the owner-only allowlist fails `make check-studio-parity`.
-
-List the exact companion file paths the plan should add.
-
-> **What this section is not.** The parity rule does not require every engine change to have a desktop or iOS counterpart. New engine surface with no in-repo consumer is the steady state; it is **not** a parity gap.
-
-### Abstraction posture
+Judge engine surface by the question "would a plausible external consumer want this?" New engine surface with no caller in this repo is the expected state (root `AGENTS.md` § "Engine consumers"). Remove any finding that rests on whether the desktop, the server, or iOS uses it.
 
 Flag:
-- "Quick fix" or "workaround" language where a proper extension point exists.
-- Conditional branches inside engine packages keyed on consumer identity.
-- TODO/HACK/FIXME/XXX markers as deliverables.
-- Code added to a file allowlisted in `.file-size-allowlist.yml` (or carrying `@file-size-exception`) when a sibling file would be cohesive.
-- Comment-stripping to satisfy file-size caps (comments are load-bearing; splitting is correct).
-- New state bolted into existing types rather than introducing a new typed concept.
-- **Dead-code discipline** (root `AGENTS.md` § "Dead code is not load-bearing until proven otherwise"): a plan step that keeps a no-op / pass-through / vestigial layer on an unverified "some consumer might need it" claim is a finding — a keep is legitimate only with a cited live producer/consumer. Conversely, a plan step that deletes such a layer must show the layer check (wire decoder vs typed case vs handler body) so only genuinely dead layers are removed.
-- **Volatile counts** (root `AGENTS.md` § "Volatile counts"): a plan step that writes a hand-encoded "N of X" count into docs or comments (hook count, provider count, tool count) is a finding — qualitative phrasing or by-name lists instead. Sole exception: the top-level `README.md` header badge.
 
-### Logging plan
+- Engine code keyed on who the consumer is.
+- UI words in engine code, comments, or docs: tab, panel, render, highlight.
+- Engine code that waits on a person at the socket, persists preferences, or reads them at runtime.
+- A policy hardcoded in an engine package: which agent loads, delegation routing, retention.
+- A hook payload shaped for one renderer.
+- An engine feature with one fixed behavior, no config field, and no hook or SDK seam (§ "Opinionless mechanics, extensible opinions").
+- A signal surfaced twice: a typed `NormalizedEvent` plus stream content, a synthetic system message, or a log line (§ "The typed-event corollary").
+- An engine change that only covers for a gap the consumer could close.
+- Session, store, or orchestration logic in `desktop/src/main`. It belongs in `server/`.
+- A store action that reaches outside the store without going through `server/src/store/host-api-*.ts`, or an Electron import under `server/src/store/`.
+- A multi-step flow written as a component handler. It is one store action (`desktop/AGENTS.md` § "Studio shell rules").
+- A Studio extension point added to the engine SDK. It belongs in `packages/studio-sdk/`, and a Studio capability changes no file under `engine/`.
+- A setting with no scope in `packages/shared/src/settings-registry.ts`, or a remote server that narrows a visiting desktop's own UI (§ "Two enterprise policies").
 
-Does the plan pre-commit to instrumentation and to the "No silent failures" standard (root `AGENTS.md`)?
-- Which operations will log success and failure?
-- Are both sides of new conditionals covered?
-- Engine Go code: `utils.Log`/`utils.Debug`/`utils.Error` — never `log.Printf` or `fmt.Printf`. No bare `_ =` on an error; a genuinely-unactionable discard carries `//nolint:errcheck // <reason>`.
-- Desktop TS: no floating promises, no empty `catch {}`, no swallowed `.catch(() => {})`; a benign swallow carries `// silent-ok: <reason>`. Main process uses `main/logger`; renderer uses `renderer/rendererLogger` (`rInfo`/`rDebug`/`rWarn`/`rError`/`rTrace`) — **no `console.*` in shipped renderer code, no exceptions** (`make check-logging`, ADR-019).
-- Swift: no empty `catch {}`; errors route through `DiagnosticLog.log()`, never `os.Logger`/`print()`.
+### 2. Contract impact
 
-Silent plan for non-trivial behavior = CONCERN. A plan whose failure branches are invisible in logs is planning a defect.
+The engine wire is scrutinized. Its surfaces are `engine/internal/protocol/`, `engine/internal/types/`, and `engine/internal/extension/sdk_*.go`. These are BLOCKERs:
 
-### Test plan
+- A removed or renamed field, type, constant, hook, or event variant.
+- A retyped field.
+- Reordered positional arguments in an SDK callback.
+- A non-additive payload change on an existing hook.
+- A change to framing or envelope structure.
+- A change to event semantics with the shape unchanged, such as snapshot to incremental.
+- A shared type changed without the regenerated manifest in the same commit: `cd engine && go test ./internal/types/ -run TestContractManifest -update`.
+- A new wire member without its owner's prefix: `engine_`, `desktop_`, or `ion-studio.` (ADR-008).
 
-Does the plan name the specific test files and what they validate?
-- Agent lifecycle changes → `manager_agent_lifecycle_test.go`
-- New hook wiring → a test that the hook fires
-- Contract changes → `TestContractManifest -update`
-- Desktop logic → corresponding `*.test.ts`
-- Bug-fix steps → a **regression test that fails on the unfixed code** (red-on-revert). "Add a test" without naming the distinguishing assertion is not a test plan.
-- New behavior → the test must pin the behavior's **value** (the new field's value at the changed path, the serialized wire shape for a cross-boundary field), not merely that plumbing ran. A planned test that only asserts "a payload arrived" is false coverage.
-- Cross-client parity → a field that flows through the snapshot to one client needs a test pinning that it reaches the other, or an explicit documented decision that it does not apply.
+The Studio wire is lockstep. A rename there is conforming when one change updates every side: `packages/shared/src/studio-wire/`, `server/src/remote/protocol.ts`, the iOS `RemoteCommand.swift` and `NormalizedEvent.swift` TypeKeys, `StudioTransportCommandMapping.swift`, and each handler that switches on the string. The only finding available there is a side left behind. A changed golden fixture under `packages/shared/src/studio-wire/__fixtures__` needs its version note in `docs/protocol/studio-wire.md` (`make check-studio-wire`).
 
-Contract change with no test plan = BLOCKER. Behavior change with no test plan = CONCERN.
+### 3. Cross-platform and cross-surface completeness
 
-### File organization
+Name the exact companion paths that are missing.
 
-- Are changes cohesive in one folder per feature?
-- Does any planned file approach the hard cap (600 TS / 800 Go / 1500 Go test / 600 Swift)?
-- Is code being added to a file allowlisted in `.file-size-allowlist.yml` when a sibling file would be correct? (The allowlist file is the source of truth for which files are exempt — do not carry a memorized list.)
+| Change | Companions |
+|---|---|
+| Shared Go type | `packages/shared/src/types-engine.ts`, `types-events.ts`, or `types-engine-event.ts`; `packages/shared/src/__tests__/contract-sync.test.ts`; the Swift model in `ios/IonRemote/Models/` and `ContractSyncTests.swift` |
+| New store action | Classified in `packages/shared/src/studio-wire/actions.ts`, or `mirror-parity.test.ts` fails |
+| New main-process event push | Sent through `broadcast()`, or `make check-server-parity` fails |
+| New phone command | A row in `packages/shared/src/studio-wire/phone-command-map.json` |
+| New setting | `SETTINGS_DEFAULTS`, the key allowlist, `StudioSettings`, and its scope (`server/AGENTS.md` § "Studio wire rules") |
+| Feature on both clients | The iOS side in the same change, or a stated reason it does not apply |
+| Anything visible in Studio | Present in the snapshot iOS receives, or derivable from it |
+| New SDK hook or type | `docs/extensions/sdk-typescript.md`, `sdk-go.md`, `sdk-raw.md`, and `docs/hooks/reference.md` |
+| New event variant or field | `docs/protocol/normalized-events.md` or `docs/protocol/server-events.md` |
+| New shared concept | An entry in `docs/vocabulary/terms.json`, then `make generate-vocabulary` and `make check-vocabulary` |
+| Log, span, or metric schema change | The schema version bump and every consumer under `docs/observability/` (§ "Telemetry schema moves forward") |
 
-### Necessity and correctness
+An engine change needs no client counterpart. That is not a parity gap.
 
-For each logical change in the plan, answer both:
-1. **Who is the consumer?** Name the canonical consumer audience. For engine changes, the default answer is "external SDK users and third-party harnesses." If the plan's answer is "the in-repo desktop/iOS app" for an *engine* change, that's the smell — see § "Engine consumers" in root `AGENTS.md`.
-2. **Does the change serve that consumer well?** Right layer, right primitive, right place?
+### 4. Abstraction posture
 
-**Harness completeness** (root `AGENTS.md` §§ "Harnesses and extensions are in scope" / "Missing engine/SDK capability is fixed at the root"):
-- When the plan's engine/SDK surface exists to serve a **named** in-repo or installed harness (the harness is the reported bug's source or the feature's end-goal consumer), the consuming harness upgrade must be in the same plan. Mechanism-without-consumer is a finding.
-- Inverse: a plan step that has a harness route around a missing engine/SDK primitive (a raw timer standing in for a missing schedule kind, a polling loop standing in for a missing event, a local reimplementation of engine-owned mechanics) is a finding — the root-cause engine/SDK enhancement is the fix, planned alongside the harness consumption.
+Flag:
 
-Where the honest answer is "not really," recommend the smaller, cleaner alternative and propose the specific plan section that should change.
+- A workaround where an extension point exists.
+- `TODO`, `HACK`, `FIXME`, or `XXX` added. In Mode B, quote each with file and line.
+- Copied blocks that belong in one helper.
+- Code added to a file listed in `.file-size-allowlist.yml` or marked `@file-size-exception`. The allowlist file is the list; read it.
+- Comments stripped or whitespace collapsed to fit a cap.
+- New state bolted onto an existing type where a new typed concept fits.
+- A no-op, pass-through, or vestigial layer kept without a cited live producer or consumer, or deleted without showing which layer is dead (§ "Dead code is not load-bearing until proven otherwise").
+- A count the code determines, written into docs or comments (§ "Volatile counts").
+- A comment describing behavior the code lacks (§ "Aspirational comments").
 
-### Unstated assumptions
+### 5. Logging
 
-List assumptions the plan makes but doesn't state:
-- That a particular client is the only consumer
-- That an event is incremental when it is a snapshot
-- That a hook fires somewhere it doesn't currently fire
-- That code is already instrumented when it isn't
+Check against root `AGENTS.md` § "Logging policy" and § "No silent failures", using the logger that section names for each surface.
 
-## A-Step 4: Emit the alignment report
+- Each new operation logs its outcome with identifiers.
+- Each new branch logs which side ran, on both sides.
+- Each failure is handled and logged, or marked benign with a reason.
 
-The report is structured for **terminal-first reading**: the user's cursor lands at the bottom of the streamed output, so the most actionable content goes there. Scrolling up walks the user backward through the narrative. The conventional Header/Verdict-at-top order is *inverted* here on purpose.
+In Mode A, a plan for non-trivial behavior that names no logging is a CONCERN.
 
-Render the sections in this exact order, top-to-bottom:
+### 6. Tests
 
-```
-1. Header                           (plan path, scope orientation)
-2. What was not audited             (scope boundary; boring; goes early)
-3. Findings                         (grouped by dimension, each with severity + action class)
-4. Proposed plan amendments         (numbered list)
-5. ⚠️ Destructive Plan Steps        (only if any exist)
-6. Critical Plan Actions Summary    (scannable table, all amendments)
-7. Verdict                          (final line — last thing on screen)
-```
+| Change | Expect |
+|---|---|
+| Engine behavior | A `*_test.go` or integration test. Absent is a BLOCKER. |
+| Agent lifecycle | `manager_agent_lifecycle_test.go` extended |
+| New hook wiring | A test that the hook fires |
+| Contract change | `TestContractManifest` rerun. With no test at all, a BLOCKER. |
+| Server, desktop, or shared logic | The matching `*.test.ts` |
+| Bug fix | A test that fails with the fix reverted |
+| New behavior | A test that pins the value: the field at the changed path, or the serialized shape of a cross-boundary field |
+| Field that reaches one client through the snapshot | A test that it reaches the other, or a recorded decision that it does not apply |
 
-When the report streams complete, the user sees the **Verdict** first (without scrolling), then the **Critical Plan Actions Summary** one screen up, then any **Destructive Plan Steps** loudly called out above that.
+A test that only proves a payload arrived is false coverage. In Mode A, "add a test" with no named file and assertion is not a test plan.
+
+### 7. File size and organization
+
+Caps are in root `AGENTS.md` § "File-size caps". A file over its cap is a BLOCKER unless allowlisted or marked. A file close to its cap is a CONCERN. Flag a feature spread across many folders.
+
+### 8. Harness completeness
+
+This dimension applies only when a named harness is the source of the bug or the consumer the feature exists for (§ "Harnesses and extensions are in scope").
+
+- The engine or SDK mechanism ships with the harness upgrade that consumes it, committed in the harness's own tree.
+- A harness that routes around a missing primitive, such as a timer for a missing schedule kind or polling for a missing event, is a finding. The fix is the engine or SDK primitive.
+
+### 9. Necessity and correctness
+
+For each logical change, name the consumer and say whether the change serves it: right layer, right primitive, tested, documented, additive where possible. When the honest answer is no, recommend the smaller alternative. "This belongs in the harness" and "this did not need to be done" are valid findings.
+
+### 10. Unstated assumptions (Mode A)
+
+List what the plan assumes and does not say: that one client is the only consumer, that an event is incremental when it is a snapshot, that a hook fires where it does not, that code is already instrumented.
+
+### 11. Commit messages (Mode B)
+
+Check each commit message against root `AGENTS.md` § "Commits". Legal scopes are the `scope-enum` in `commitlint.config.js`. Work from an issue needs the ` (#N)` subject suffix and a `Fixes #N` or `Closes #N` line.
+
+## Report
+
+The reader's cursor lands at the bottom of the output, so the verdict goes last. Render the sections in this order.
+
+| # | Mode A | Mode B |
+|---|---|---|
+| 1 | Header | Header |
+| 2 | What was not audited | What was not reviewed |
+| 3 | Findings | Findings |
+| 4 | Proposed plan amendments | Recommendations |
+| 5 | ⚠️ Destructive Plan Steps | ⚠️ Destructive Recommendations |
+| 6 | Critical Plan Actions Summary | Critical Actions Summary |
+| 7 | Verdict | Verdict |
 
 ### 1. Header
 
+Mode A:
+
 ```
-Plan: <absolute path to plan file>
-Selected by: <one of: argument: "<arg as passed>" | conversation attachment | mtime-fallback + topic-match>
+Plan: <absolute path>
+Selected by: <argument "<arg>" | conversation attachment | mtime-fallback + topic-match>
 Title: <first heading of the plan>
 Branch: <git branch --show-current>
 Uncommitted work for this plan: yes/no
-Scopes the plan proposes to touch: <engine/desktop/relay/ios/docs/repo>
+Scopes the plan touches: <scopes per .commit.json>
 ```
 
-### 2. What was not audited
+Mode B, Local and Branch:
 
-Be explicit about the boundaries of this alignment pass. Name anything you skipped or could not evaluate from the plan alone.
+```
+Mode: local | branch
+Branch: <name>
+Range: {base}..<HEAD or branch> (<N> commits)
+Files changed: <N>
+Scopes touched: <scopes per .commit.json>
+Uncommitted changes: yes/no        (Local mode only)
+Focus: <quoted instruction or "none">
+```
+
+Mode B, PR: see "PR mode batch report" below.
+
+### 2. What was not audited or reviewed
+
+Name what was skipped or could not be evaluated: binary assets, vendored dependencies, generated files, runtime behavior that needs execution.
 
 ### 3. Findings
 
-Group findings by dimension in the order they appear in A-Step 3. Under each dimension, list findings with severity prefixes AND an action class icon:
+Group by dimension, in dimension order. A dimension with nothing to report gets the single line `No findings.`
 
 ```
 🛑 [BLOCKER] 🟢 CONSTRUCTIVE — Add <one-sentence claim>
-  Plan section: <heading or quoted line>
-  Why: <concise reasoning, citing the principle being violated>
+  <Plan section: | Where:> <citation>
+  Why: <the principle it breaks>
 
 🔶 [CONCERN] ⚠️ DESTRUCTIVE — Remove <one-sentence claim>
-  Plan section: ...
-  Why: ...
-  (Any DESTRUCTIVE amendment must also appear in the dedicated
-   Destructive Plan Steps section below, with the four-check
-   gate explicitly addressed.)
+  ...
 
-💬 [NIT] 🟢 CONSTRUCTIVE — Replace ...
+💬 [NIT] 🟢 CONSTRUCTIVE — Replace <one-sentence claim>
+  ...
 ```
 
-Severity is BLOCKER / CONCERN / NIT (urgency). Action class is CONSTRUCTIVE / DESTRUCTIVE (effect on the plan). The two are orthogonal.
+Severity is urgency. Action class is the effect on the plan or the shipped code. They are independent.
 
-If a dimension has no findings, write a single line: `No findings.` Do not pad. Do not invent.
+| Action class | Mode A | Mode B |
+|---|---|---|
+| 🟢 CONSTRUCTIVE | Add, Move, Replace, Strengthen | Add, Refactor, Fix, Document |
+| ⚠️ DESTRUCTIVE | Remove, Revert planned change, Narrow planned scope | Revert, Remove feature, Narrow contract |
 
-### 4. Proposed plan amendments
+### 4. Amendments or recommendations
 
-A numbered list of concrete amendments to the plan, in priority order. Each amendment is one of:
+A numbered list in priority order. Each item names its finding and gives the exact change.
 
-- **Add** — a section, step, file path, or verification step the plan currently omits.
-- **Move** — a step from one layer to another.
-- **Remove** — a step that should not happen at all.
-- **Replace** — wording or approach in a specific plan section.
+- Mode A: quote the plan section and write the replacement or added text, ready to apply.
+- Mode B: give the command or the file change. "Regenerate the contract manifest, then mirror `StatusFields.foo` in `packages/shared/src/types-engine.ts`" is a recommendation. "Maintain contract stability" is not.
 
-For every amendment, quote the plan section it modifies and write the proposed replacement text or addition. Be concrete enough for copy/paste application — these amendments are applied to the plan file in A-Step 5.
+### 5. Destructive items
 
-### 5. ⚠️ Destructive Plan Steps (only render if any exist)
+Omit this section when there are none.
 
-If the audit produces zero destructive amendments, **omit this section entirely**.
-
-If one or more destructive amendments exist, render each in its own subsection:
+A plan that reached `/align` is committed thinking, and code that reached it has passed its tests. Removing either costs the author real work. A destructive item must clear all four checks. If one fails, recommend a constructive alternative.
 
 ```
-⚠️ Destructive Plan Step #N — <one-line summary>
+⚠️ Destructive <Plan Step | Recommendation> #N — <one-line summary>
 
 What is lost:
-  <Name the functionality, consistency, or capability the plan proposes
-   to remove or that the amendment would remove from the plan.>
+  <the functionality, consistency, or capability that goes away>
 
 Higher-bar justification:
-  <Why this destructive action is necessary instead of a constructive
-   alternative. Cite the consumer impact, not a rule book.>
+  <why a constructive alternative will not do, in terms of consumer impact>
 
 Alternatives considered:
-  - <Constructive alternative #1, with reason rejected.>
-  - <Constructive alternative #2, with reason rejected.>
-  (At minimum one constructive alternative must be named and explicitly
-   rejected with a reason. "No alternative considered" is itself a
-   gate failure.)
+  - <constructive alternative, and why it was rejected>
 
 Four-check gate:
-  1. Concrete failure mode: <name the consumer, the failure, the repro>
-  2. Constructive alternative considered: <name it; explain why rejected>
-  3. Preserves prior investment: <yes/no, with brief justification>
-  4. Surfaced in Critical Plan Actions Summary: <yes>
+  1. Concrete failure mode: <the consumer, the failure, the repro>
+  2. Constructive alternative considered: <which, and why rejected>
+  3. Preserves prior investment: <yes/no, and why>
+  4. Surfaced in the summary table: <yes>
 ```
 
-The **destructive-amendment gate**: before recommending any destructive amendment, clear all four checks. If any check fails, recommend a constructive alternative instead.
+### 6. Summary table
 
-**Plan-equivalent-to-production principle.** A plan that has reached `/align` represents committed thinking. Recommending that the plan remove a step is asking the author to undo their thinking; the bar is the same as recommending a code revert at post-changes review. It had better be failing thinking, and there had better be no other way to reach the right outcome.
-
-### 6. Critical Plan Actions Summary
-
-A single table directly above the Verdict line. Render every proposed amendment as one row:
+One row per amendment or recommendation. Destructive rows are bold.
 
 ```
-| # | Severity | Action class | Amendment | Plan section | One-line rationale |
+| # | Severity | Action class | What | <Plan section | Files> | One-line rationale |
 |---|---|---|---|---|---|
-| 1 | 🛑 BLOCKER | 🟢 CONSTRUCTIVE — Add | <amendment> | <section> | <rationale> |
-| 2 | 🔶 CONCERN | ⚠️ **DESTRUCTIVE — Remove** | <amendment> | <section> | <rationale> |
-| 3 | 💬 NIT | 🟢 CONSTRUCTIVE — Replace | <amendment> | <section> | <rationale> |
+| 1 | 🛑 BLOCKER | 🟢 CONSTRUCTIVE — Add | ... | ... | ... |
+| 2 | 🔶 CONCERN | ⚠️ **DESTRUCTIVE — Remove** | ... | ... | ... |
 ```
 
-Action class labels:
-- 🟢 **CONSTRUCTIVE — Add** (new plan step, missing file path, missing verification)
-- 🟢 **CONSTRUCTIVE — Move** (relocate a plan step to a different layer)
-- 🟢 **CONSTRUCTIVE — Replace** (rewrite wording without changing intent)
-- 🟢 **CONSTRUCTIVE — Strengthen** (tighten an existing step's scope or success criterion)
-- ⚠️ **DESTRUCTIVE — Remove** (delete a plan step entirely)
-- ⚠️ **DESTRUCTIVE — Revert planned change** (the plan calls for a change; this amendment says don't make it)
-- ⚠️ **DESTRUCTIVE — Narrow planned scope** (the plan calls for a broad change; this amendment narrows it past the consumer's intent)
-
-Destructive rows are bolded in the table.
+In Mode B with more than eight actions, put the constructive rows in their own table above section 5.
 
 ### 7. Verdict
 
-Exactly one of:
+The verdict is the last line of the report. Include the counts.
 
-- ✅ **ALIGNED** — {0 blockers, 0 concerns}. The plan is ready to execute as written.
-- 💬 **ALIGNED WITH NITS** — {0 blockers, 0 concerns, N nits}. Execute as-is; consider folding the nits in.
-- 🔶 **NEEDS AMENDMENT** — {N concerns, 0 blockers}. Amend the plan before starting implementation, or explicitly justify each concern.
-- 🛑 **MISALIGNED** — {N blockers}. Do not start implementation. The plan needs material change first.
+| Findings | Mode A | Mode B |
+|---|---|---|
+| None | ✅ **ALIGNED** | ✅ **READY** |
+| Nits only | 💬 **ALIGNED WITH NITS** | 💬 **READY WITH NITS** |
+| Concerns, no blockers | 🔶 **NEEDS AMENDMENT** | 🔶 **NEEDS WORK** |
+| Any blocker | 🛑 **MISALIGNED** | 🛑 **BLOCKED** |
 
-Include the actual counts. The verdict is conservative: any unresolved BLOCKER → `MISALIGNED`. Any CONCERN with no BLOCKERs → at most `NEEDS AMENDMENT`.
+---
 
-The verdict is the final line on screen. Place it last; nothing else follows.
+# Mode A: Plan Alignment
 
-## A-Step 5: Apply the amendments to the plan
+## A-Step 1: Resolve and read the plan
 
-After emitting the report, edit the resolved plan file to fold in the amendments. This is the step that makes the alignment durable — the plan that lands in implementation is the aligned plan, not the original.
+The plan is the one this conversation is pinned to. Several plan-mode conversations are often open at once, so the newest file on disk is often a different conversation's plan.
 
-- **Apply every CONSTRUCTIVE amendment** (Add / Move / Replace / Strengthen) directly at the plan section it cites.
-- **Apply every DESTRUCTIVE amendment too** (Remove / Revert planned change / Narrow scope). These already cleared the four-check destructive-amendment gate in A-Step 4 to even be recommended, so they are applied — but in the report (and in a one-line note at the top of the edited plan section) call out exactly what was removed so the user can revert it. The user can always revert; applying is the default.
-- **Preserve the plan's existing structure and headings.** Integrate each amendment at the cited section — replace the affected lines, insert the added step in place, relocate the moved step to its new layer. Do not append a dump of amendments to the end of the plan.
-- **Do not introduce a forbidden resolution while applying.** The "Plan resolution rules — no document-instead-of-fix moves" section above governs the amended plan exactly as it governs the original: no TODO/FIXME/HACK/XXX markers, no "open a follow-up issue", no narrative-scope comments standing in for a fix. An amendment that would inject one of these is itself non-conforming — fix it properly or record it as an explicit do-nothing with rationale.
+Use the first source that applies.
 
-The verdict, counts, and findings in the report are computed against the plan **as audited** (before this edit). Do not recompute them after applying.
+1. **ARGS.** An absolute path is used as given. A bare filename or hash, with or without `.md`, resolves under `~/.ion/plans/`. A hash prefix resolves through `~/.ion/plans/{prefix}*.md` and must match exactly one file. With zero or several matches, report the ambiguity and stop.
+2. **The plan pinned in context.** One of these forms, the most recent if several appear:
+   - `**Your plan file for this session: <absolute-path>**`. If the text after it says no plan file exists yet, report that there is nothing to audit and stop.
+   - `[Attached plan: <path>]`
+   - `Implement the following plan:` followed by the plan.
+3. **Neither.** List the three newest plans with `ls -1t ~/.ion/plans/*.md | head -3` and read each first heading. Compare them with the conversation topic, the branch name, and recent commits. Use a plan only when exactly one matches, and mark it `mtime-fallback + topic-match`. Otherwise list the candidates and ask which to audit.
+
+If no plan is found: "No plan found in `~/.ion/plans/` and no plan attachment in this conversation. Create a plan first, or pass a plan path as an argument."
+
+Read the plan in full. Run `git branch --show-current` and `git status --porcelain`. If the file is empty, a stub, or not a plan, say so and stop.
+
+Print a one-paragraph orientation: the plan path, its title, how it was selected, the branch, and one line on what the plan proposes.
+
+## A-Step 2: Ground
+
+Read the grounding docs for every component the plan touches.
+
+## A-Step 3: Audit
+
+Run dimensions 1 through 10 against the plan.
+
+## A-Step 4: Report
+
+Emit the report in the format above.
+
+## A-Step 5: Apply the amendments
+
+Edit the plan file.
+
+- Apply every amendment at the section it cites. Replace the affected lines, insert the added step in place, move the moved step to its new layer.
+- Keep the plan's structure and headings. Do not append a list of amendments at the end.
+- For each destructive amendment, add one line at the top of the edited section that says what was removed.
+- Every amendment obeys "What counts as a resolution".
+
+The verdict and counts describe the plan as audited. Do not recompute them after the edit.
 
 ## A-Step 6: Stop
 
@@ -431,81 +391,39 @@ Print:
 
 `✅ Alignment check complete — {verdict} with {N blockers, N concerns, N nits}. Plan updated with the amendments.`
 
-End with:
+> Alignment check complete and the plan has been updated with the amendments above. I have not made code changes or started implementation. Review the amended plan. If an amendment is not what you wanted, tell me to revert it; the original wording is in the findings above.
 
-> Alignment check complete and the plan has been updated with the amendments above. I have not made code changes or started implementation from this command. Review the amended plan; if any amendment isn't what you wanted, tell me to revert it — the original wording is in the findings above. When you are ready, we move to implementation.
-
-Stop. Do not offer to implement. Do not start implementation.
-
-**Mode A completion invariant.** Mode A never edits source, never commits, never implements. The only file it writes is the plan (folding in amendments). If you find yourself about to run `git commit`, edit a source file, or execute a plan step, you are violating Mode A. Stop and re-read this section.
+Mode A ends here. It writes the plan file and nothing else.
 
 ---
 
----
+# Mode B: Post-Changes Alignment
 
-# Mode B: Post-Changes Alignment (pre-PR gate)
-
-You are running the alignment gate. Your job is to analyze the branch changes against Ion's quality standards, report findings, author a fix plan, and — after the operator approves that plan — implement and commit the fixes.
-
-**Additional hard rules for Mode B.**
-
-- After the report, you enter planning mode and author a fix plan for the findings (B-Step 5). During the review-and-plan phase, the only write is the plan file — you do not edit source, commit, amend, push, squash, or open/modify a PR yet.
-- **Do not start fixing before the plan is approved.** Author the fix plan and wait. Implementation happens only after the operator approves the plan through the normal plan-approval flow.
-- **After approval, implement the fix plan and land the result (B-Step 6).** You edit source to resolve the findings, run the scoped quality gates, and land the work in the branch's history: **amended into the commit that introduced the defect** when that commit originated on the active branch (the default — it keeps the branch's history honest), otherwise as a new conventional, correctly-scoped commit (root `AGENTS.md` § "Commits"). You still never squash, split, reorder, push, or touch a PR, and never amend published history — the operator owns squashing and the PR lifecycle.
-
-**Sister command:** Mode A reviews the same dimensions against a plan (pre-implementation). If you add a grounding document, dimension, or plan-resolution rule to Mode B, add it to Mode A too.
-
-## B-Step 1: Parse arguments and determine scope
-
-### Argument grammar
+## B-Step 1: Parse ARGS and set the scope
 
 ```
-ARGS ::= [<target>] [<focus>]
-
-<target> ::=
-  | "in PR" <pr-list>         → PR mode   (Step 1B)
-  | "in branch" <branch-name> → Branch mode (Step 1C)
-  | (empty)                   → Local mode  (Step 1A)
-
-<pr-list> ::= <pr-ref> ("," <pr-ref>)*
-<pr-ref>  ::= ("PR")? "#"? <positive-integer>    e.g. #161, 162, PR #163
-
-<focus> ::= free text not matching any target pattern
+ARGS     ::= [<target>] [<focus>]
+<target> ::= "in PR" <pr-list> | <pr-list> | "in branch" <branch-name> | (empty)
+<pr-list>::= <pr-ref> (("," | " ") <pr-ref>)*
+<pr-ref> ::= ("PR")? "#"? <positive-integer>
+<focus>  ::= any remaining text
 ```
 
-### Parsing algorithm
+Apply in order to the trimmed ARGS. Prefixes are case-insensitive.
 
-Apply these rules in order against the trimmed ARGS string (the raw invocation arguments quoted at the top of this document):
+1. Empty: Local mode, no focus.
+2. Only PR references: PR mode, no focus.
+3. Starts with `in PR`: PR mode. The text after the last PR number is the focus.
+4. Starts with `in branch`: Branch mode. The next token is the branch. The rest is the focus.
+5. Anything else: Local mode, and the whole string is the focus.
 
-0. **Empty or whitespace-only** → Local mode (Step 1A), no focus. Done.
+A focus runs the matching dimensions at full depth and gives each other dimension a one-paragraph pass. Grounding is always read in full.
 
-1. **Bare PR reference auto-detect:** Check if the *entire* string consists of nothing but PR-reference tokens (positive integers with optional `#` and/or `PR` prefixes, separated by commas and/or whitespace). All of these match: `287`, `#287`, `PR 287`, `PR #287`, `pr287`, `161, 162`, `PR #161, #162`. If yes, this is **implicit PR mode** — the operator is targeting pull requests, not the local checkout. Run Step 1B with no focus. Done. **Never treat a bare PR reference as a focus instruction, and never fall through to Local mode when one is present.** Misreading `/align 287` as "align my local branch, focused on something called 287" is the exact defect this rule exists to prevent.
+### Resolve the review base
 
-2. **Explicit `in PR` prefix** (case-insensitive): Extract PR numbers after `in PR`. Everything after the last PR-number token is the **focus instruction**. Run Step 1B. Done.
+The range is measured from `{base}`, the branch this work was cut from. A worktree is usually cut from a long-lived source branch, so measuring from `main` would pull that whole branch into the review and offer its commits as amend targets.
 
-3. **Explicit `in branch` prefix** (case-insensitive): The next whitespace-delimited token is the **branch name**. Everything after the branch name is the **focus instruction**. Run Step 1C. Done.
-
-4. **Fallback — focus only:** The entire string is a focus instruction. Run Local mode (Step 1A) with focus applied. Done.
-
-### What "focus" does
-
-When a focus instruction is present, Step 3 (review dimensions) is narrowed: only the matching dimensions are evaluated in full depth; remaining dimensions get a brief pass (one-paragraph summary). The report header includes a `Focus: "<quoted instruction>"` line. Step 2 (grounding docs) is **never** skipped regardless of focus.
-
-### Step 1A: Local mode
-
-Run:
-
-```bash
-git branch --show-current
-```
-
-If the result is `main`, stop: "Review is meaningless on `main`. Switch to a feature branch and rerun, or pass PR numbers to review specific pull requests." Do nothing else.
-
-#### Resolve the review base before diffing
-
-**The review range is relative to `{base}`, not `main`.** A checkout under `~/.ion/worktrees/` is a worktree cut from a **source branch** — frequently a long-lived feature branch (`josh`), not `main`. Its own work is `{base}..HEAD`; everything before that belongs to the source branch and is shared with every other worktree cut from it. Reviewing against `main` inside such a worktree pulls the entire source branch into the review surface, so the report audits dozens of commits the operator did not write, and — far worse — the amend-delivery table in B-Step 6 nominates *source-branch* commits as amend targets, rewriting landed history that every sibling worktree shares.
-
-Resolve the source branch from the worktree registry, keyed by the checkout's root path:
+Look the checkout up in the worktree registry by path. For Branch mode, match on `branchName` instead of the path.
 
 ```bash
 ROOT=$(git rev-parse --show-toplevel)
@@ -524,14 +442,15 @@ for e in entries:
 "
 ```
 
-- **Non-empty result** → that is `{base}`. This checkout is a registered worktree.
-- **Empty result / no registry / not registered** → `{base}` is `main`. This is the primary clone or an unregistered checkout.
-
-Verify the resolved base exists (`git rev-parse --verify {base}`). If the registry names a branch that no longer exists locally, do **not** silently fall back to `main` — that substitution is the defect this step prevents. Stop and report:
+- A result is `{base}`.
+- No result means `{base}` is `main`.
+- Verify it with `git rev-parse --verify {base}`. If the registry names a branch that does not exist, stop:
 
 > The worktree registry names source branch `{base}`, which does not exist in this checkout. Cannot determine a safe review base. Resolve the missing branch (`git fetch`, or correct the registry) and re-run.
 
-State the resolved base in the orientation paragraph and in the report header.
+### Local mode
+
+If `git branch --show-current` is `main`, stop: "Review is meaningless on `main`. Switch to a feature branch and rerun, or pass PR numbers to review specific pull requests."
 
 ```bash
 git status --porcelain
@@ -543,486 +462,196 @@ git diff {base}...HEAD --stat
 git diff {base}...HEAD
 ```
 
-If `git log {base}..HEAD --oneline` is empty AND there are no uncommitted changes, stop: "Nothing to review — branch is even with its base `{base}` and the working tree is clean."
+If the log is empty and the tree is clean, stop: "Nothing to align — branch is even with its base `{base}` and the working tree is clean."
 
-Print a one-paragraph orientation: branch name, resolved base `{base}`, number of commits ahead of `{base}`, number of files changed, scopes touched (engine/desktop/relay/ios/docs/repo), focus instruction (if any).
+### Branch mode
 
-> **Review the WHOLE branch. Never ask the operator to narrow scope by size.** The review surface in Local mode is the entire `{base}...HEAD` diff — every commit, every file, every scope — no matter how large. A branch that is 5 commits or 50 commits, 10 files or 500 files, is reviewed in full at this depth. A large diff is **not** a reason to stop and ask "this is too big, which slice should I review?" — that question is **forbidden**. The operator invoked `/align` with no focus argument precisely because they want the whole branch reviewed; second-guessing that with a scope-narrowing prompt contradicts the command's contract (see the description: "reviews all branch changes"). The **only** ways scope is ever narrowed are explicit operator inputs already parsed in B-Step 1: a `<focus>` instruction in ARGS, or `in PR` / `in branch` targets. Absent those, there is no narrowing and no scope question — proceed to grounding (Step 2) and review everything. If the diff is genuinely enormous, that is a large report, not a smaller review; produce the large report.
+Verify the branch with `git rev-parse --verify <name>`, then `origin/<name>`. If both fail, stop: "Branch `<name>` not found locally or on origin."
 
-
-### Step 1B: PR mode
-
-**PR mode reviews the pull request as the merge candidate for `main`.** The review target is the PR's head branch as it exists on the remote — the thing that will merge — not the local checkout. The local branch, its commits, and its working tree are irrelevant to this run and must not influence any finding.
-
-For each parsed PR number:
-
-1. `gh pr view <N> --json number,title,author,state,baseRefName,headRefName,headRefOid,baseRefOid,additions,deletions,changedFiles,body,labels,isDraft,mergeable,mergeStateStatus,url` — if the PR does not exist or `gh` errors, capture the failure and continue to the next PR; surface it in the "What was not reviewed" section.
-2. `gh pr diff <N>` — the full diff. This is the primary review surface for that PR.
-3. `gh pr checks <N>` — CI state. **A PR is not aligned unless CI is passing.** Every failed check is a finding: BLOCKER if it is a required check or a contract-sync / file-size gate, CONCERN otherwise. Pending checks are noted in the header. A CI-failure finding is resolved like any other finding — the fix plan diagnoses the failure and fixes it on top of the PR (B-Step 6); "wait for CI" or "re-run the job" is not a resolution unless the failure is a proven infrastructure flake, which must be stated with evidence.
-
-Print a one-paragraph orientation: how many PRs are being reviewed, their numbers and titles, total files changed, scopes touched, focus instruction (if any).
-
-In PR mode, do not run `git status`, `git diff`, or `git log {base}..HEAD` against the local checkout — the PR's own diff is the source of truth. The local branch may be mid-flight on unrelated work; it is out of scope by definition.
-
-If ARGS contained PR numbers but every one failed to resolve via `gh`, stop and report the failures. Do not fall back to local mode.
-
-### Step 1C: Branch mode
-
-1. Verify the branch exists: `git rev-parse --verify <name>`. If that fails, try `git rev-parse --verify origin/<name>`. If both fail, stop: "Branch `<name>` not found locally or on origin."
-2. Resolve `{base}` for the **named branch**, not the current checkout. Look the branch up in the worktree registry by its `branchName`; if an entry matches, its `sourceBranch` is `{base}`, otherwise `{base}` is `main`:
-   ```bash
-   python3 -c "
-   import json, os
-   reg = os.path.expanduser('~/.ion/worktree-registry.json')
-   try:
-       entries = json.load(open(reg)).get('entries', [])
-   except Exception:
-       entries = []
-   for e in entries:
-       if e.get('branchName') == '<branch>':
-           print(e.get('sourceBranch') or '')
-           break
-   "
-   ```
-   Verify the result exists as a ref; on a missing ref, stop rather than falling back to `main` (same rule as Local mode).
-3. Run:
-   ```bash
-   git log {base}..<branch> --oneline
-   git log {base}..<branch> --format=fuller --no-merges
-   git diff {base}...<branch> --stat
-   git diff {base}...<branch>
-   ```
-
-Do **not** run `git status`, `git diff`, or `git diff --staged` — those are working-tree concepts irrelevant to a named branch.
-
-If `git log {base}..<branch> --oneline` is empty, stop: "Nothing to review — branch `<name>` is even with its base `{base}`."
-
-Print a one-paragraph orientation: branch name, resolved base, number of commits ahead of `{base}`, number of files changed, scopes touched, focus instruction (if any).
-
-## B-Step 2: Ground in the principles
-
-Read all grounding docs listed in the Grounding section above, for every component actually touched in the diff. In PR mode, "the change set" means the union of files touched across all PRs — read each relevant `AGENTS.md` once per invocation, not once per PR.
-
-## B-Step 3: Review across these dimensions
-
-Tag every finding: **BLOCKER**, **CONCERN**, or **NIT**.
-Cite concrete file paths, line ranges, and commit SHAs in every finding. A finding without a citation is not a finding.
-
-If a **focus instruction** was parsed, prioritize the matching dimensions at full depth; give remaining dimensions a brief pass (one-paragraph summary rather than line-by-line). If no focus was specified, all dimensions run at full depth.
-
-### Engine gravity
-
-Did the diff touch `engine/`? The burden of proof is on the diff: justify every engine change as core engine mechanics.
-
-> **Run the engine-consumer test before flagging.**
->
-> The question *"does desktop use this?"* is **forbidden** as a justification for flagging an engine change. Use *"would any plausible external consumer want this?"* instead. Engine surface ships ahead of reference implementations by design. The absence of an in-repo caller for new engine surface is the **expected default**, not a smell. See root [`AGENTS.md`](../AGENTS.md) § "Engine consumers". **This rule is load-bearing; a recommendation that violates it must be removed before the report is emitted.**
-
-Specifically flag:
-
-- UI-flavored language in engine code, comments, or docs ("clear the panel", "show as cancelled", "highlight the row", "tab", "panel", "render").
-- Renderer policy bleeding into engine events or hook payloads.
-- Engine code that blocks for user input.
-- Engine code that persists user preferences or reads them from disk at runtime.
-- Hardcoded policy decisions (which agent loads, delegation routing, retention rules) inside engine packages.
-- Engine changes that exist only to compensate for a consumer-side gap that could be fixed in the consumer.
-- **Opinionless mechanics:** an engine feature shipped in this diff that hardcodes an opinion — one fixed behavior with no config field **and** no hook/SDK seam for a consumer to override it — is an incomplete feature (root `AGENTS.md` § "Opinionless mechanics, extensible opinions"). Flag it.
-- **Typed-event corollary:** when the engine has signal to communicate, it emits one typed `NormalizedEvent` variant and stops. Double-surfacing the same signal into stream content (appending to `TaskCompleteEvent.Result`, mutating `TextChunkEvent`, synthetic system messages, log-line-as-source-of-truth) forces every consumer through one UI-shaped interpretation — flag it.
-
-For every engine commit: write one sentence answering *Why did this need to be in the engine?* If you cannot answer that from the diff, that is a BLOCKER.
-
-### Contract stability
-
-Inspect every diff hunk touching:
-- `engine/internal/protocol/` — wire protocol
-- `engine/internal/types/` — shared types
-- `engine/internal/extension/sdk_*.go` — SDK types, hook signatures
-
-Flag as BLOCKER:
-- Removed or renamed fields, types, constants, hook names, event variants.
-- Type changes on existing fields (`string` → `int`, `[]T` → `map`, etc.).
-- Reordered positional arguments in an SDK callback signature.
-- Non-additive payload changes on existing hooks.
-- Changes to wire-protocol framing or envelope structure.
-- Changes to **event semantics** even when wire shape is unchanged (snapshot ↔ incremental). Cross-reference `docs/architecture/agent-state.md`.
-- New wire members without the owner prefix (ADR-008): every new member carries its owner's prefix from its first commit — `engine_` on the engine socket, `desktop_` on the desktop↔iOS wire. Unprefixed or cross-prefixed members are BLOCKER.
-
-**Distinguish the wires.** The engine wire is **scrutinized** — breaking it requires explicit operator approval, and the BLOCKER list above applies in full. The desktop↔iOS wire is **lockstep** — all clients live in this repo, and a rename that updates every side in the same PR (`desktop/src/main/remote/protocol.ts`, `RemoteCommand.swift`, `NormalizedEvent.swift` TypeKey raw values, every handler that switches on the string) is conforming. Do not flag a lockstep-wire rename as a published-contract break; the only finding available there is a **parity gap** (a side not updated in the same PR).
-
-If `engine/internal/types/` changed: was `contracts.json` regenerated in the same commit? If not, BLOCKER: `cd engine && go test ./internal/types/ -run TestContractManifest -update`.
-
-### Cross-platform sync
-
-Flag every half-shipped feature:
-- Shared Go type changed → desktop (`desktop/src/shared/types-engine.ts` or `types-events.ts` AND `contract-sync.test.ts`) and iOS (`ios/IonRemote/Models/**`) mirrors updated?
-- Desktop user-facing setting changed → iOS counterpart considered (Remote settings tab, main-process write helper, broadcast path, sync snapshot)?
-- New SDK hook or type → SDK docs (`docs/extensions/sdk-typescript.md`, `sdk-go.md`, `sdk-raw.md`) and hook reference (`docs/hooks/reference.md`) updated?
-- New normalized event variant or field → protocol docs (`docs/protocol/normalized-events.md` and/or `docs/protocol/server-events.md`) updated?
-- Overlay UI/state change → Studio shell counterpart present (root `AGENTS.md` § "Cross-client parity (overlay ↔ Studio)", ADR-021)? A shared surface is ONE component mounted in both windows; a bespoke Studio widget for a surface the overlay already has a component for is a finding.
-- New store action → classified in `desktop/src/shared/studio-mirror-actions.ts` (FORWARDED vs MIRROR_LOCAL, with justification)? Unclassified actions fail `mirror-parity.test.ts`.
-- New main-process event push → routed through `broadcast()`? Direct `webContents.send` outside the owner-only allowlist fails `make check-studio-parity`.
-
-Name the exact missing file paths.
-
-> **What this section is not.** The parity rule does not require every engine change to have a desktop or iOS counterpart. New engine surface with no in-repo consumer is the steady state; it is **not** a parity gap.
-
-### SDK pace
-
-If engine hooks, hook payloads, tool definitions, or SDK types changed: are the TypeScript SDK / Go SDK / raw protocol docs current? Flag any divergence — including hooks that exist in `sdk_hooks_*.go` but are not documented, and SDK types that exist in `sdk_types.go` but have no mirror in the docs.
-
-### Abstraction and laziness
-
-Flag:
-- In-file workarounds where a proper extension point exists.
-- Consumer-specific conditionals inside engine packages.
-- `TODO`, `HACK`, `FIXME`, or `XXX` comments added in this diff (quote each with file and line).
-- Copy-pasted blocks that should be extracted into a helper.
-- Code added to files allowlisted in `.file-size-allowlist.yml` (or carrying `@file-size-exception` on line 1). The allowlist file is the source of truth for which files are exempt — do not carry a memorized list.
-- Comment-stripping or whitespace-collapsing edits done to satisfy file-size caps. Per root `AGENTS.md`: comments are load-bearing; splitting is the answer, not stripping.
-- **Dead-code discipline** (root `AGENTS.md` § "Dead code is not load-bearing until proven otherwise"): a no-op / pass-through / vestigial layer kept in this diff on an unverified "some consumer might need it" claim is a finding — a keep is legitimate only with a cited live producer/consumer (verify with a targeted grep for the specific symbol, not a sweep). Conversely, a deletion of such a layer must show the layer check (wire decoder vs typed case vs handler body) so the genuinely load-bearing layer survives.
-- **Volatile counts** (root `AGENTS.md` § "Volatile counts"): a hand-encoded "N of X" count added to docs or comments in this diff (hook count, provider count, tool count, event-variant count) is a finding — qualitative phrasing or by-name lists instead. Sole exception: the top-level `README.md` header badge.
-
-### Logging discipline
-
-Per the logging-policy and "No silent failures" sections of root `AGENTS.md`:
-- New operations must log success and failure with context.
-- New `if/else` branches must log which branch ran and why. Both sides.
-- **A failure invisible in the logs is a defect, regardless of whether it is otherwise handled.** Every failure branch is either acted-on-and-logged, or explicitly declared benign with a stated reason. Silence is never the third option.
-- Engine Go code: `utils.Log`/`utils.Debug`/`utils.Error` — never `log.Printf`, `fmt.Printf`, or `fmt.Println` for operational logging. No bare `_ =` on an error; a genuinely-unactionable discard carries `//nolint:errcheck // <reason>`.
-- Desktop TS: no floating promises, no empty `catch {}`, no swallowed `.catch(() => {})`; a benign swallow carries `// silent-ok: <reason>`. Main process uses the `log()` helper from `main/logger`; renderer uses `renderer/rendererLogger` (`rInfo`/`rDebug`/`rWarn`/`rError`/`rTrace`) — **no `console.*` in shipped renderer code, no exceptions** (`make check-logging` enforces ADR-019 with zero tolerance).
-- Swift: no empty `catch {}`, no `try?` discarding an error that matters; errors route through `DiagnosticLog.log()`, never `os.Logger`/`print()` (those never reach the operator's log file).
-- When the diff touches under-instrumented code, the "first, add comprehensive logging" rule applies.
-
-### File size and organization
-
-Read `docs/architecture/file-organization.md` and `.file-size-allowlist.yml`. Walk the diff:
-- Note the new line count for each changed file. Flag files approaching the hard cap (600 TS / 800 Go / 1500 Go test / 600 Swift) as CONCERN; exceeding the hard cap as BLOCKER (unless allowlisted or carrying `@file-size-exception` on line 1).
-- Flag new code added to files on the allowlist (the allowlist file is the source of truth; do not carry a memorized list).
-- Flag features whose changes are spread across many folders (violating cohesion-of-change).
-
-### Tests
-
-For every engine behavior change: corresponding `*_test.go` or integration test? Absent = BLOCKER.
-- Agent lifecycle changes: `manager_agent_lifecycle_test.go` extended?
-- New hook wiring: test that the hook fires?
-- Contract changes: `TestContractManifest` rerun?
-- Desktop logic changes: corresponding `*.test.ts` updated?
-- Bug fix: is there a **regression test that fails on the unfixed code** (red-on-revert)? A test that passes with the fix reverted does not pin the fix — flag it.
-- New behavior: does the test pin the behavior's **value** (the new field's value at the changed path, the serialized wire shape for a cross-boundary field), not merely that plumbing ran? A test asserting only "a payload arrived" is false coverage — flag it.
-- Cross-client parity: a field flowing through the snapshot to one client and silently not the other is a testable defect — expect a pinning test or an explicit documented decision that it does not apply.
-
-### Commit message quality
-
-Walk every commit on the branch and check each commit *message* is well-formed:
-- Conventional Commits with required scope: `type(scope): subject`
-- Allowed types: `feat`, `fix`, `chore`, `docs`, `feat!`
-- Allowed scopes (per `commitlint.config.js`): `engine`, `desktop`, `relay`, `ios`, `docs`, `repo`, `ci`, `deps`
-- Subject ≤ 65 chars (self-imposed target; commitlint's enforced `header-max-length` is 100), lowercase, imperative, no period. Body lines wrap ≤ 100 chars (commitlint enforces this).
-- Issue association (when working from an issue): subject must end with ` (#N)` AND body must include `Fixes #N` or `Closes #N` trailer. Both are required.
-
-**Out of scope for `/align`:** commit *partitioning* and *squash shape* — one-scope-per-commit, the Release-Damnit version-detection seams, whether commits should be re-cut or split. That is owned by `/squash` (see `squash.md` § "Scope enforcement"). Do not flag cross-commit bundling here, and do not propose re-cutting, splitting, squashing, or reordering commits in any finding, recommendation, or plan step. Align reviews whether each commit *message* is correct, not how the commits are partitioned.
-
-A malformed message on a **branch-local** commit is fixed by amending that commit in B-Step 6, not by adding a corrective commit on top. The same applies when a fix elsewhere in this run changes what an existing commit does: its message is updated in the same amend (see B-Step 6 § "Delivery").
-
-### Harness completeness
-
-Per root `AGENTS.md` §§ "Harnesses and extensions are in scope" and "Missing engine/SDK capability is fixed at the root":
-
-- When the diff's engine/SDK surface exists to serve a **named** in-repo or installed harness (the harness was the reported bug's source, or is the feature's end-goal consumer), the consuming harness upgrade must be in the same body of work — committed at its own scope seam, in its own working tree if the harness lives outside this repo. Mechanism shipped without wiring the named consumer is a finding: the reported bug stays unfixed in practice and the new capability stays unexercised.
-- Inverse: a harness-local workaround in the diff that routes around a missing engine/SDK primitive (a raw timer standing in for a missing schedule kind, a polling loop standing in for a missing event, a local reimplementation of mechanics the engine should own) is a finding — the root-cause engine/SDK enhancement is the fix, with the harness consuming it.
-- This dimension fires only when a specific harness is named as source or end-goal consumer. It does **not** resurrect the forbidden in-repo-caller question for generic engine surface — new engine surface with no consumer at all remains the expected default (§ "Engine consumers").
-
-### Necessity and correctness
-
-For each logical change in the diff:
-1. **Who is the consumer?** Name the canonical consumer audience. For engine changes, the default answer is "external SDK users and third-party harnesses." The forbidden answers for engine changes are "no one yet" and "desktop will use it."
-2. **Does the change serve that consumer well?** Correctly layered, correctly tested, correctly documented, additive where possible?
-
-Where the answer to either is "not really," recommend the smaller, cleaner, correctly-layered alternative. Be willing to say "this should have been done in the harness" or "this did not need to be done at all" when that is the honest answer.
-
-## B-Step 4: Emit the report
-
-The report is structured for **terminal-first reading**: the user's cursor lands at the bottom of the streamed output, so the most actionable content goes there. The conventional Header/Verdict-at-top order is *inverted* here on purpose.
-
-### Local mode and Branch mode — single report
-
-Render sections in this exact order, top-to-bottom:
-
-```
-1. Header              (mode, branch, scope orientation)
-2. What was not reviewed (scope boundary; boring; goes early)
-3. Findings            (grouped by dimension, each with severity + action class)
-4. Recommendations     (numbered list)
-5. ⚠️ Destructive Recommendations  (only if any exist)
-6. Critical Actions Summary        (scannable table, all actions)
-7. Verdict             (final line — last thing on screen)
+```bash
+git log {base}..<branch> --oneline
+git log {base}..<branch> --format=fuller --no-merges
+git diff {base}...<branch> --stat
+git diff {base}...<branch>
 ```
 
-#### Header (Local mode)
+The working tree is not part of a named branch, so skip `git status` and `git diff`. If the log is empty, stop: "Nothing to review — branch `<name>` is even with its base `{base}`."
 
-```
-Mode: local
-Branch: <name>
-Range: {base}..HEAD (<N> commits)
-Files changed: <N>
-Scopes touched: <comma-separated list>
-Uncommitted changes: yes/no
-Focus: <quoted instruction or "none">
-```
+### PR mode
 
-#### Header (Branch mode)
+The target is the PR's head branch as it exists on the remote. The local checkout plays no part: run no `git status`, `git diff`, or `git log` against it.
 
-```
-Mode: branch
-Branch: <name>
-Range: {base}..<branch> (<N> commits)
-Files changed: <N>
-Scopes touched: <comma-separated list>
-Focus: <quoted instruction or "none">
-```
+For each PR number:
 
-No `Uncommitted changes` field in branch mode.
+1. `gh pr view <N> --json number,title,author,state,baseRefName,headRefName,headRefOid,baseRefOid,additions,deletions,changedFiles,body,labels,isDraft,mergeable,mergeStateStatus,url`
+2. `gh pr diff <N>`
+3. `gh pr checks <N>`
 
-#### 2. What was not reviewed
+A PR that fails to resolve is recorded under "What was not reviewed" and the run continues. If every PR fails, report the failures and stop.
 
-Be explicit about the boundaries of this gate. Name anything you skipped or could not evaluate: binary assets, vendored dependencies, generated files, large refactors where spot-checking was the limit, runtime behavior requiring execution, anything outside the model's read scope.
+Each failed check is a finding: a BLOCKER for a required check, a contract-sync gate, or a file-size gate, and a CONCERN otherwise. Its resolution is a fix for the root cause. Note pending checks in the header.
 
-#### 3. Findings
+### Orientation
 
-Group findings by dimension. Under each dimension, list findings with severity prefixes AND action class icons:
+Print one paragraph: the mode, the branch or PRs, `{base}`, commits ahead, files changed, scopes touched, and the focus.
 
-```
-🛑 [BLOCKER] 🟢 CONSTRUCTIVE — Add <one-sentence claim>
-  Where: <file:line-range or commit SHA>
-  Why: <concise reasoning, citing the principle being violated>
+## B-Step 2: Ground
 
-🔶 [CONCERN] ⚠️ DESTRUCTIVE — Revert <one-sentence claim>
-  Where: ...
-  Why: ...
-  (Any DESTRUCTIVE finding must also appear in the dedicated
-   Destructive Recommendations section below, with the four-check
-   gate explicitly addressed.)
+Read the grounding docs for every component the diff touches. In PR mode that is the union across the PRs, each doc read once.
 
-💬 [NIT] 🟢 CONSTRUCTIVE — Refactor ...
-```
+## B-Step 3: Review
 
-Severity is BLOCKER / CONCERN / NIT (urgency). Action class is CONSTRUCTIVE / DESTRUCTIVE (effect on shipped code). The two are orthogonal — a 🟢 BLOCKER ("add this missing test") is normal; a ⚠️ BLOCKER ("revert this change") is rare and must be loudly justified.
+Run dimensions 1 through 9 and 11 against the diff.
 
-If a dimension has no findings, write a single line: `No findings.` Do not pad. Do not invent.
+## B-Step 4: Report
 
-#### 4. Recommendations
+Emit the report in the format above.
 
-A numbered list of concrete fixes in priority order. Each recommendation is an action with the exact command or file change — not a principle restatement. Good: "Regenerate the contract manifest: `cd engine && go test ./internal/types/ -run TestContractManifest -update`, then update `desktop/src/shared/types-engine.ts` to mirror the new `StatusFields.foo` field." Bad: "Maintain contract stability."
+### PR mode batch report
 
-Recommendations should map back to specific findings — reference the dimension and the file path so the user can trace each recommendation to its root finding.
-
-#### 5. ⚠️ Destructive Recommendations (only render if any exist)
-
-If the review produces zero destructive recommendations, **omit this section entirely**.
-
-If one or more destructive recommendations exist, render each in its own subsection:
-
-```
-⚠️ Destructive Recommendation #N — <one-line summary>
-
-What is lost:
-  <Name the functionality, consistency, error-surfacing channel, or
-   capability that disappears if the recommendation is followed.>
-
-Higher-bar justification:
-  <Why this destructive action is necessary instead of a constructive
-   alternative. Cite the consumer impact, not a rule book.>
-
-Alternatives considered:
-  - <Constructive alternative #1, with reason rejected.>
-  - <Constructive alternative #2, with reason rejected.>
-  (At minimum one constructive alternative must be named and explicitly
-   rejected with a reason. "No alternative considered" is itself a
-   gate failure.)
-
-Four-check gate:
-  1. Concrete failure mode: <name the consumer, the failure, the repro>
-  2. Constructive alternative considered: <name it; explain why rejected>
-  3. Preserves prior investment: <yes/no, with brief justification>
-  4. Surfaced in Critical Actions Summary: <yes>
-```
-
-The **destructive-recommendation gate**: before recommending any destructive action (revert, remove, narrow), clear all four checks. If any check fails, recommend a constructive alternative instead.
-
-**Production-equivalence principle.** Code arriving at `/align` post-changes has passed tests and is expected to ship. Recommending reverts at this gate is equivalent to destroying production work. The bar is the same: it had better be failing, and there had better be no other way to make it work.
-
-#### 6. Critical Actions Summary
-
-A single table directly above the Verdict line. Render every recommendation as one row:
-
-```
-| # | Severity | Action class | What | Files | One-line rationale |
-|---|---|---|---|---|---|
-| 1 | 🛑 BLOCKER | 🟢 CONSTRUCTIVE — Add | <action> | <files> | <rationale> |
-| 2 | 🔶 CONCERN | ⚠️ **DESTRUCTIVE — Revert** | <action> | <files> | <rationale> |
-| 3 | 💬 NIT | 🟢 CONSTRUCTIVE — Refactor | <action> | <files> | <rationale> |
-```
-
-Action class labels:
-- 🟢 **CONSTRUCTIVE — Add** (new tests, new logging, new fields, new hooks)
-- 🟢 **CONSTRUCTIVE — Refactor** (extracting, splitting, renaming locally, restructuring without behavior change)
-- 🟢 **CONSTRUCTIVE — Fix** (correcting a defect; behavior change for the better)
-- 🟢 **CONSTRUCTIVE — Document** (changing docs to reflect reality; not as a substitute for code work)
-- ⚠️ **DESTRUCTIVE — Revert** (removing or backing out work already shipped on this branch)
-- ⚠️ **DESTRUCTIVE — Remove feature** (deleting a method, hook, field, or capability that already works)
-- ⚠️ **DESTRUCTIVE — Narrow contract** (tightening a previously permissive surface in a way that may break consumers)
-
-Destructive rows are bolded.
-
-**Optional split:** When the action set is large (> 8 actions), render a separate `🟢 Constructive Actions Summary` table immediately above the Destructive Recommendations section. For small reviews (≤5 total actions) skip the split.
-
-#### 7. Verdict
-
-Exactly one of:
-
-- ✅ **READY** — {0 blockers, 0 concerns}. The PR is ready to open as-is.
-- 💬 **READY WITH NITS** — {0 blockers, 0 concerns, N nits}. The PR can be opened; consider addressing the nits in the same PR.
-- 🔶 **NEEDS WORK** — {N concerns, 0 blockers}. The PR should not be opened until the concerns are addressed or explicitly justified.
-- 🛑 **BLOCKED** — {N blockers}. The PR must not be opened until every blocker is resolved.
-
-Include the actual counts. The verdict is conservative: any unresolved BLOCKER → `BLOCKED`. Any CONCERN with no BLOCKERs → at most `NEEDS WORK`.
-
-The verdict is the final line on screen. Place it last; nothing else follows.
-
-### PR mode — batch report
-
-Open with a batch orientation block:
+Open with:
 
 ```
 Mode: pr
 PRs reviewed: <N>
-PR numbers: <comma-separated list>
+PR numbers: <list>
 Total files changed across batch: <N>
-Scopes touched across batch: <comma-separated list>
+Scopes touched across batch: <list>
 Focus: <quoted instruction or "none">
 ```
 
-Then produce one self-contained sub-report per PR, in the order the PRs were passed in. Each sub-report uses the same terminal-first inverted structure as local mode (Header → What was not reviewed → Findings → Recommendations → ⚠️ Destructive Recommendations (if any) → Critical Actions Summary → Verdict), except the Header reads:
+Then one full report per PR, in the order given, with this header:
 
 ```
 PR: #<N> — <title>
 Author: <author>
 Base → Head: <baseRefName> ← <headRefName> (<additions> additions, <deletions> deletions, <changedFiles> files)
 State: <state>, draft: <isDraft>, mergeable: <mergeable> (<mergeStateStatus>)
-CI: <summary of `gh pr checks` — passing / failing / pending>
+CI: <passing | failing | pending, from gh pr checks>
 URL: <url>
 ```
 
-After all per-PR sub-reports, emit a **Cross-PR section** if and only if the PRs interact (overlapping files, shared contract changes that could conflict, one depends on another, or they contradict each other). If none apply, omit the Cross-PR section.
+Add a **Cross-PR** section only when the PRs interact: overlapping files, contract changes that could conflict, a dependency, or a contradiction.
 
-Emit a **Batch verdict** line: e.g. `🛑 Batch verdict: BLOCKED (PR #138 has 2 blockers)` or `✅ Batch verdict: READY (all 3 PRs clean)`. The most severe per-PR verdict wins for the batch.
+End with `Batch verdict:` and the most severe per-PR verdict.
 
-## B-Step 5: Enter planning mode and author the fix plan
+## B-Step 5: Author the fix plan
 
-After emitting the report, **enter planning mode and author a fix plan** that resolves the findings. This applies in **all three sub-modes** (Local, Branch, PR): after any alignment review the natural next step is to plan the fixes, so the command always produces a plan. If the user does not want the fixes, they close the tab.
+Enter plan mode and author the fix plan. Plan mode creates the plan file and the approval flow.
 
-Entering planning mode creates the plan artifact automatically, and the user reviews and approves it through the normal plan-approval flow — **do not re-encode that mechanism**; just enter planning mode and author the plan. This mirrors `/resolve-dependabot-prs`: emit the summary, enter planning mode, author the plan, stop. While in planning mode the only write is the plan file — no source edits, no commits, no pushes, no PR mutations. Source edits and commits happen later, in B-Step 6, only after the operator approves the plan.
+The plan:
 
-**What the fix plan contains:**
+- Resolves every BLOCKER, CONCERN, and NIT, each by a resolution from "What counts as a resolution".
+- In PR mode, names each PR's head branch and the worktree path where it will be checked out. The local branch is never the target.
+- With no findings, is a short plan that says no alignment issues were found.
 
-- A resolution for **every BLOCKER, CONCERN, and NIT** in the report. Each finding maps to one or more plan steps.
-- Steps that obey the "Plan resolution rules — no document-instead-of-fix moves" section above: every finding is resolved by a **code change, contract change, code deletion, a test that pins behavior, or an explicit do-nothing with stated rationale**. Never "add a TODO", "open a follow-up issue", "add a narrative comment", or "address in Phase N" as a resolution.
-- **The fix plan resolves only the *content* findings.** It never includes a squash, a commit split / re-cut / reorder, a merge-strategy decision, or a PR-creation / PR-sequencing step or open item. (How each fix is *delivered* — amended into its originating branch-local commit, or a new commit — is B-Step 6 mechanics, not a plan step to enumerate.) If the branch's commit shape is non-ideal, that is for `/squash` (operator-invoked) and `/create-pr` — the fix plan does not mention, sequence, or gate on them. A fix plan that ends with "then run `/squash`" or "decide split-vs-accept before the PR" is non-conforming; strip it.
-- In **PR mode**, the plan covers the findings across the reviewed PR(s), and its implementation target is **the PR's head branch, not the local working branch**. The plan's fix steps land as commits on top of the PR so the pull request itself is brought into alignment before the operator approves and merges it. The plan names, per PR: the head branch (`headRefName`), the worktree path where it will be checked out (see B-Step 6), and the findings to be fixed there. The local checkout is never the implementation target in PR mode.
+Print the line for the mode:
 
-**If there are zero findings** (verdict `READY` / `ALIGNED`), still enter planning mode and author a short stub plan that states no alignment issues were found and there is nothing to fix. The plan being empty is the correct, expected outcome of a clean review — not a reason to skip planning mode.
+- Local: `✅ Review complete — {verdict} with {N blockers, N concerns, N nits}. Fix plan authored.`
+- Branch: `✅ Branch review complete — {verdict} with {N blockers, N concerns, N nits}. Fix plan authored.`
+- PR: `✅ PR review complete — {batch verdict} across {N} PRs. Fix plan authored.`
 
-Print:
+Then the handoff.
 
-Local mode: `✅ Review complete — {verdict} with {N blockers, N concerns, N nits}. Fix plan authored.`
-Branch mode: `✅ Branch review complete — {verdict} with {N blockers, N concerns, N nits}. Fix plan authored.`
-PR mode: `✅ PR review complete — {batch verdict} across {N} PRs. Fix plan authored.`
+Local and Branch:
 
-End with the appropriate handoff paragraph:
+> Review complete and a fix plan has been authored. I have not edited source or committed. Once you approve the plan, I implement the fixes and land them: amended into the branch commit that introduced each defect, and as new commits for anything else. If there was nothing to fix, the plan is empty.
 
-Local mode:
+PR:
 
-> Review complete and a fix plan addressing the findings has been authored in planning mode. I have not edited source, committed, squashed, pushed, or opened a PR yet. Review and approve the plan through the normal flow; once you approve, I implement the fixes and land them — amended into the branch commits that introduced each defect, so the history reads as though the flaw never shipped, and as new commits for anything else (I will not squash, push, or open a PR — you own those). If there was nothing to fix, the plan is empty — close the tab and move on.
+> Review complete and a fix plan has been authored. I have not changed these pull requests or your local branch. Once you approve the plan, I check out each PR's head branch in its own worktree, implement the fixes, and commit them on top of the PR. If there was nothing to fix, the plan is empty.
 
-Branch mode:
+Wait for approval.
 
-> Review complete and a fix plan addressing the findings has been authored in planning mode. I have not edited source, committed, squashed, pushed, or opened a PR yet. Review and approve the plan through the normal flow; once you approve, I implement the fixes and land them — amended into the branch commits that introduced each defect, so the history reads as though the flaw never shipped, and as new commits for anything else (I will not squash, push, or open a PR — you own those). If there was nothing to fix, the plan is empty — close the tab and move on.
+## B-Step 6: Implement and land
 
-PR mode:
+This step runs after the operator approves the fix plan.
 
-> Review complete and a fix plan addressing the findings across the reviewed PR(s) has been authored in planning mode. I have not edited, commented on, approved, requested changes on, or merged any of these pull requests, and I have not touched your local branch. Review and approve the plan through the normal flow; once you approve, I check out each PR's head branch in a dedicated worktree, implement the fixes, and commit them on top of the PR (I will not squash, push, or merge — you push the branch and close the PR when you're satisfied). If there was nothing to fix, the plan is empty — close the tab and move on.
+### Where the fixes land
 
-After authoring the plan, stop and wait for operator approval. Do not implement, edit source, commit, or run further mutating commands before approval. Once the operator approves the plan, proceed to B-Step 6.
-
-**Mode B completion invariant (pre-approval).** Before operator approval, Mode B writes only the plan file. It never edits source, never commits, never amends, never pushes, and never runs quality gates against uncommitted fixes. If you find yourself about to edit a source file or run `git commit` before the operator has approved the plan, you are violating Mode B. Stop and re-read B-Step 5.
-
-**Mode B completion invariant (post-approval).** After operator approval, Mode B implements the approved plan and lands the result per B-Step 6. It implements every plan step, runs scoped quality gates, and commits, including an allowed amend to the originating branch-local commit. It never amends commits on the base, a remote, or a PR branch; it never squashes, reorders, pushes, or opens a PR. When all fixes are landed, it reports and stops.
-
-## B-Step 6: Implement the approved fix plan and commit (post-approval only)
-
-This step runs **only after the operator approves the fix plan** authored in B-Step 5. Before approval, do nothing here.
-
-**Implementation target by sub-mode:**
-
-- **Local mode:** fixes land on the current working branch, as always.
-- **Branch mode:** fixes land on the named branch (check it out in a worktree if it is not the current checkout, so the operator's working tree is untouched).
-- **PR mode:** fixes land **on top of the PR's head branch** — the point of the run is to bring the pull request into alignment so the operator can approve and merge it. Never implement PR-mode fixes on the local working branch. Mechanics, per PR:
-  1. Fetch and check out the PR head branch in a dedicated worktree so the operator's checkout is untouched: `git fetch origin <headRefName>` then `git worktree add ../ion-align-pr-<N> <headRefName>` (or `gh pr checkout <N>` inside a fresh worktree for cross-fork PRs).
-  2. Implement the fixes and commit them **on that branch, in that worktree**, as ordinary commits on top of the PR's existing history. Never amend, rebase, squash, or force-anything over the PR's existing commits — that history is published.
-  3. If a finding was a CI failure, the fix must address the failure's root cause; verify with the scoped local equivalent of the failing check before committing.
-  4. Do **not** push. Report the worktree path and the branch name; the operator pushes (which updates the PR) and proceeds with PR closure when satisfied.
-  5. Leave the worktree in place for the operator to inspect; note its path in the final report.
-
-### Delivery: amend the originating commit by default (Local and Branch modes)
-
-**A fix for a defect that a branch-local commit introduced is amended into that commit.** This is the default and needs no operator instruction. It keeps the branch's history honest: the defect never appears in it, so a later reader (or bisect) never sees a commit that shipped the flaw followed by a commit apologizing for it. Commit count, order, and scope seams are all preserved — this is not a squash and not a re-cut.
-
-Classify every fix before landing anything:
-
-| The defect being fixed… | Delivery |
+| Mode | Target |
 |---|---|
-| was introduced by a commit on the active branch (present in `git log {base}..HEAD`, not pushed) | **Amend** that commit |
-| spans several branch-local commits | Amend **each** originating commit with its own portion |
-| pre-dates the branch (exists on `{base}`, or on `main`), or is in a PR's published history | **New commit** — never amend published history |
-| is genuinely new work the plan adds (a doc that never existed, a test for untested pre-existing code) | **New commit** at its own scope seam |
+| Local | The current branch |
+| Branch | The named branch, checked out in its own worktree when it is not the current checkout |
+| PR | The PR's head branch, in its own worktree |
 
-**`{base}` is the resolved review base, not `main`.** In a worktree, a commit that is reachable from the source branch is **not** branch-local, no matter that it is absent from `main`. Amending it rewrites history the source branch owns and every sibling worktree cut from that source shares. Before amending any commit, confirm it is in `{base}..HEAD`:
+PR mode, per PR:
+
+1. `git fetch origin <headRefName>`, then `git worktree add ../ion-align-pr-<N> <headRefName>`. For a cross-fork PR, run `gh pr checkout <N>` inside a fresh worktree.
+2. Commit the fixes as new commits on top of the PR's history. That history is published, so it is never amended.
+3. For a CI failure, verify the fix with the scoped local equivalent of the failing check.
+4. Leave the worktree in place and report its path and branch.
+
+### Implement
+
+1. Implement every plan step as written.
+2. Run the scoped gates for what changed, from root `AGENTS.md` § "Quality gates (run while developing)" and the component's own `AGENTS.md`:
+
+   | Touched | Gates |
+   |---|---|
+   | `engine/` | Scoped `go test` and `golangci-lint` for the packages |
+   | `server/` | `npm -w server run typecheck`, `npm -w server run lint`, scoped `npm -w server run test -- <pattern>` |
+   | `desktop/` | `npm run typecheck`, scoped `npm test -- <pattern>` |
+   | `packages/shared/` | `npm -w @ion/shared run typecheck`, scoped `npm -w @ion/shared test -- <pattern>` |
+   | Any code | `make check-file-sizes` |
+   | A shared type | `make check-contracts` |
+   | Logging | `make check-logging` |
+   | A main-process event push, or desktop main's imports | `make check-server-parity` |
+   | A Studio wire fixture | `make check-studio-wire` |
+   | `engine_status` or `engine_session_status` emitters | `make check-status-writers` |
+   | The vocabulary registry | `make check-vocabulary` |
+
+   The heavy gates in root `AGENTS.md` § "Heavy gates" stay with `/create-pr`.
+3. For a bug fix, revert the fix, watch the test fail, and restore the fix.
+
+### Deliver
+
+Classify each fix before landing anything.
+
+| The defect | Delivery |
+|---|---|
+| Came from one commit in `{base}..HEAD` that is not on a remote | Amend that commit |
+| Spans several such commits | Amend each with its own portion |
+| Exists on `{base}` or `main`, or in published history | New commit |
+| Is new work the plan adds | New commit at its own scope seam |
+
+Amending keeps the history honest: the defect never appears in it, and commit count, order, and scope stay the same.
+
+Find the originating commit from evidence: `git log {base}..HEAD --oneline -- <path>`, then `git log -L<start>,<end>:<path>` or `git blame` when several commits touched the file.
+
+A commit is an amend target only when both checks pass:
 
 ```bash
-git merge-base --is-ancestor <target-sha> {base} && echo "ON BASE — do not amend" || echo "branch-local"
+git merge-base --is-ancestor <sha> {base} && echo "on base: new commit" || echo "branch-local"
+git branch -r --contains <sha>     # any output means published: new commit
 ```
 
-If that reports `ON BASE`, the fix lands as a **new commit**; the commit is not yours to rewrite.
-
-Determine the originating commit from evidence, not assumption: `git log {base}..HEAD --oneline -- <path>` for the file, and `git log -L<start>,<end>:<path>` or `git blame` when several branch commits touched it. A file whose only history lies below `{base}` has no branch-local originating commit — that is the "pre-dates the branch" row, not an invitation to amend the source branch's commit.
-
-**Mechanics.** For the newest commit, `git commit --amend`. For an earlier one, a non-interactive `rebase -i` marking only that commit `edit`:
+Amend with a fixup commit and an autosquash rebase. Run the gates first, so the amend carries a verified fix.
 
 ```bash
-# Park the fixes so the rebase can start from a clean tree.
-git stash push -u -m "align-fixes" -- <paths>
-# Mark line N of the todo list (the target commit's position) as `edit`.
-GIT_SEQUENCE_EDITOR="sed -i '' '<N>s/^pick/edit/'" git rebase -i <target-sha>^
-git stash pop && git add <paths> && git commit --amend   # amend, do not create
-git rebase --continue                                     # replay the rest untouched
+git add <paths>
+git commit --fixup=<sha>
+GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash <sha>^
 ```
 
-Rules that make this safe:
+When the fix changes what the commit claims, carry the new message in the same step:
 
-- **Verify before amending.** Run the scoped gates on the working tree *first*. Never amend and then discover the fix was wrong — that compounds a rewrite on top of a rewrite.
-- **Rewrite only the target commit.** No reordering, no squashing, no dropping, no rewording of any other commit. After `git rebase --continue`, `git log --oneline` must show the same commit count and the same subjects (except the amended one's, if its body legitimately needed updating).
-- **Update the amended commit's message when the fix changes what it claims.** An amended commit whose body still describes the pre-fix behavior — or omits a regression bar the fix added — is a lying commit message, which the Commit-message-quality dimension forbids. This is the one case where rewording is required, not optional.
-- **Verify the amend landed the content.** `git show --stat HEAD` (or `git show <sha>`) after the rebase completes. An amend that silently no-ops (empty editor, wrong stash, an unstaged path) is a real failure mode.
-- **Leave no rebase artifacts or stashes.** After the sequence: `git status` clean, `git stash list` empty of the align stash, no `.git/rebase-merge` or `.git/rebase-apply`.
-- **If the rebase conflicts**, resolve it in favor of the plan's intended end state and continue. If it cannot be resolved cleanly, abort (`git rebase --abort`), land the fix as a new commit instead, and say so in the final report. A stuck rebase is never left mid-flight.
-- **Never amend across a push boundary, or below the base.** If any branch commit is already on a remote (`git log @{u}..HEAD` does not contain it, or `git branch -r --contains <sha>` finds it), that commit is published — append instead. Likewise if it is reachable from `{base}` (`git merge-base --is-ancestor <sha> {base}`), it belongs to the source branch — append instead.
+```bash
+git add <paths>
+git commit -m "amend! <original subject>" -m "<new subject>" -m "<new body>"
+GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash <sha>^
+```
 
-When the operator approves:
+After the rebase:
 
-1. **Implement every plan step.** Edit source to resolve each finding exactly as the plan specifies — code change, contract change, code deletion, or a test that pins behavior. Honor the "Plan resolution rules — no document-instead-of-fix moves" section: no TODO/FIXME/HACK/XXX markers, no "open a follow-up issue", no narrative-scope comments standing in for a fix.
-2. **Run the scoped quality gates for what you touched** (root `AGENTS.md` § "Quality gates (run while developing)"): scoped Go tests + `golangci-lint` for touched engine packages, `npm run typecheck` + scoped `npm test` for touched desktop areas, `make check-file-sizes`, `make check-contracts` when a shared type changed, `make check-logging` when logging-adjacent code changed, `make check-studio-parity` when main-process event pushes or the Studio shell changed, and `make check-status-writers` when `engine_status` / `engine_session_status` emitters changed. Do **not** run the heavy PR-time gates (`make test-linux`, full `go test -race ./...`, `govulncheck`, full `npm test`, `make ios-check`) — those are the operator's `/create-pr` gate.
-3. **For a bug-fix finding, confirm the test fails on the unfixed code** before claiming it pins the fix (revert the fix mentally or temporarily, watch the test go red). A test that passes with the fix reverted does not pin the fix.
-4. **Land the completed work** per the delivery table above — amended into each originating branch-local commit, or as a new conventional, correctly-scoped commit where no branch-local commit introduced the defect. New commits follow root `AGENTS.md` § "Commits": `type(scope): subject`, scope matching the primary path, subject ≤ 65 chars, body wrapped ≤ 100 chars (commitlint enforces this), and the issue trailer (`Fixes #N` / `Closes #N` + ` (#N)` subject suffix) when the work came from an issue. Split new commits at clean scope seams when the fixes span scopes (e.g. one `chore(engine)`, one `chore(desktop)`, one `docs(repo)`). An amended commit keeps its existing scope and trailer; update its body when the fix changed what the commit does.
-5. **Never** squash, split, reorder, drop, force-push, push, or open/modify a PR, and never amend a commit that exists on `{base}`, on `main`, on a remote, or in a PR's published history. Amending a genuinely branch-local commit (one in `{base}..HEAD`) is the sanctioned delivery mechanism (see above); every other form of history rewriting belongs to the operator's `/squash` and `/create-pr`.
+- `git log {base}..HEAD --oneline` shows the same count and the same subjects, apart from a message that was updated on purpose.
+- `git show --stat <new sha>` shows the fix in the amended commit.
+- `git status` is clean of this run's changes, and no `.git/rebase-merge` or `.git/rebase-apply` remains.
 
-After landing the work, report what changed (which commits were amended and which are new, and the gates that passed) and stop. Tell the operator the work is in the branch's history and ready, and that you have not squashed, pushed, or opened a PR. In PR mode, additionally report the worktree path and head branch carrying the fix commits, and that pushing the branch (which updates the PR) and closing the PR are the operator's next moves. Do not run `/squash` or `/create-pr` and do not suggest them as a next step you will take — they are the operator's to invoke.
+If the rebase cannot start because the tree holds changes this run did not make, or it conflicts and cannot be resolved toward the plan's end state, run `git rebase --abort`, land the fix as a new commit, and say so in the report.
+
+New commits follow root `AGENTS.md` § "Commits", one scope per commit.
+
+### Report and stop
+
+Report which commits were amended, which are new, and that the gates passed. In PR mode add the worktree path and the head branch that carry the fix commits.

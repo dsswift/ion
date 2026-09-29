@@ -10,7 +10,7 @@
  * the low thousands.
  */
 
-import type { GraphModel } from '../../../../shared/graph-model-types'
+import type { GraphModel } from '@ion/shared/graph-model-types'
 
 export const COARSEN_RATIO_THRESHOLD = 4
 export const MIN_COARSEN_MEMBERS = 25

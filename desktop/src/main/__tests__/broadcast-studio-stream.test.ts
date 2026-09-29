@@ -1,30 +1,19 @@
 /**
- * Full-stream gate to the Studio window (mirror-store architecture): while the
- * Studio window is open it receives EVERY normalized event (text deltas
- * included) plus tab-status/enriched-error pushes; the main-process Studio
- * cache still ingests only the canvas subset.
+ * The main process's `broadcast()` to its own windows: startup progress to
+ * the splash and the updater's lifecycle signals to the Studio window reach
+ * an open window and are dropped without a throw when the window is closed.
+ *
+ * Everything else is deliberately absent. The engine-event stream, terminal
+ * output, deep-link confirmations, resource and questions state, settings
+ * and theme changes, the device transport's relay and display changes: the
+ * Studio server owns every one of those producers (ADR-033) and fans them
+ * out as studio_event frames, which reach the window through
+ * `ipc/studio-bridge.ts`. A forwarding branch here for any of them would
+ * keep a dead path green while the window read the server's frames.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { updateStudioCacheMock } = vi.hoisted(() => ({ updateStudioCacheMock: vi.fn() }))
-vi.mock('../studio-state-cache', async (importOriginal) => {
-  const real = await importOriginal<typeof import('../studio-state-cache')>()
-  return { ...real, updateStudioCache: updateStudioCacheMock }
-})
-vi.mock('../studio-beacon', () => ({ maybeBeacon: vi.fn() }))
-vi.mock('../state', () => ({
-  state: {
-    mainWindow: null,
-    studioWindow: null,
-    remoteTransport: null,
-    terminalOutputFlushTimer: null,
-  },
-  terminalOutputAccumulator: new Map(),
-  terminalScrollback: new Map(),
-  MAX_SCROLLBACK_SIZE: 1024,
-}))
-
-import { IPC } from '../../shared/types'
+import { IPC } from '@ion/shared/types'
 import { broadcast } from '../broadcast'
 import { state } from '../state'
 
@@ -36,69 +25,47 @@ function fakeWindow() {
 }
 
 beforeEach(() => {
-  updateStudioCacheMock.mockClear()
-  ;(state as { studioWindow: unknown; mainWindow: unknown }).studioWindow = null
-  ;(state as { studioWindow: unknown; mainWindow: unknown }).mainWindow = null
+  state.studioWindow = null
+  state.splashWindow = null
 })
 
-describe('broadcast → Studio full-stream gate', () => {
-  it('forwards text deltas (non-canvas events) to an open Studio window', () => {
+describe('broadcast → window pushes', () => {
+  it('forwards updater lifecycle signals to an open Studio window', () => {
     const win = fakeWindow()
-    ;(state as { studioWindow: unknown }).studioWindow = win
-    broadcast('ion:normalized-event', 'tab-1', { type: 'text_chunk', text: 'hi' })
-    expect(win.webContents.send).toHaveBeenCalledWith('ion:normalized-event', 'tab-1', { type: 'text_chunk', text: 'hi' })
-    // The canvas cache ignores non-subset events.
-    expect(updateStudioCacheMock).not.toHaveBeenCalled()
+    state.studioWindow = win
+    broadcast(IPC.UPDATE_DOWNLOADED, { version: '1.2.3' })
+    broadcast(IPC.UPDATE_PROGRESS, { percent: 50 })
+    broadcast(IPC.UPDATE_STAGED)
+    broadcast(IPC.UPDATE_ERROR, { message: 'x' })
+    expect((win.webContents.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0])).toEqual([IPC.UPDATE_DOWNLOADED, IPC.UPDATE_PROGRESS, IPC.UPDATE_STAGED, IPC.UPDATE_ERROR])
+    expect(win.webContents.send).toHaveBeenCalledWith(IPC.UPDATE_DOWNLOADED, { version: '1.2.3' })
   })
 
-  it('caches canvas-subset events regardless of window state', () => {
-    broadcast('ion:normalized-event', 'tab-1', { type: 'agent_state', agents: [] })
-    expect(updateStudioCacheMock).toHaveBeenCalledTimes(1)
-  })
-
-  it('forwards tab-status and enriched-error pushes to the open Studio window', () => {
-    const win = fakeWindow()
-    ;(state as { studioWindow: unknown }).studioWindow = win
-    broadcast('ion:tab-status-change', 'tab-1', 'running', 'idle')
-    broadcast('ion:enriched-error', 'tab-1', { message: 'x' })
-    expect(win.webContents.send).toHaveBeenCalledTimes(2)
-  })
-
-  it('forwards engine-reconnected to the open Studio window so the mirror re-arms failed hydration', () => {
-    const win = fakeWindow()
-    ;(state as { studioWindow: unknown }).studioWindow = win
-    broadcast('ion:engine-reconnected')
-    expect(win.webContents.send).toHaveBeenCalledWith('ion:engine-reconnected')
-  })
-
-  it('forwards deep-link confirmation requests and settlements to open Studio window', () => {
-    const win = fakeWindow()
-    ;(state as { studioWindow: unknown }).studioWindow = win
-    broadcast(IPC.DEEPLINK_CONFIRM_REQUEST, { id: 'dl-1', owner: 'studio', action: 'terminal' })
-    broadcast(IPC.DEEPLINK_CONFIRM_SETTLED, 'dl-1')
-
-    expect(win.webContents.send).toHaveBeenCalledWith(
-      IPC.DEEPLINK_CONFIRM_REQUEST,
-      expect.objectContaining({ id: 'dl-1', owner: 'studio' }),
-    )
-    expect(win.webContents.send).toHaveBeenCalledWith(IPC.DEEPLINK_CONFIRM_SETTLED, 'dl-1')
-  })
-
-  it('routes Conversation Terminal Panel snapshots only to Studio', () => {
+  it('routes startup progress to the splash, never the Studio window', () => {
+    const splash = fakeWindow()
     const studio = fakeWindow()
-    const main = fakeWindow()
-    ;(state as { studioWindow: unknown; mainWindow: unknown }).studioWindow = studio
-    ;(state as { studioWindow: unknown; mainWindow: unknown }).mainWindow = main
-    const snapshot = { revision: 1, panes: [], openTabIds: [] }
-
-    broadcast(IPC.STUDIO_CONVERSATION_TERMINALS, snapshot)
-
-    expect(studio.webContents.send).toHaveBeenCalledWith(IPC.STUDIO_CONVERSATION_TERMINALS, snapshot)
-    expect(main.webContents.send).not.toHaveBeenCalled()
+    state.splashWindow = splash
+    state.studioWindow = studio
+    broadcast(IPC.STARTUP_STATE, 'engine-ready')
+    expect(splash.webContents.send).toHaveBeenCalledWith(IPC.STARTUP_STATE, 'engine-ready')
+    expect(studio.webContents.send).not.toHaveBeenCalled()
   })
 
-  it('drops nothing into the void: closed Studio window means no send, no throw', () => {
-    expect(() => broadcast('ion:normalized-event', 'tab-1', { type: 'text_chunk', text: 'hi' })).not.toThrow()
-    expect(() => broadcast('ion:tab-status-change', 'tab-1', 'running', 'idle')).not.toThrow()
+  it('does not forward server-owned channels: no producer in this process, the window reads server frames', () => {
+    const win = fakeWindow()
+    state.studioWindow = win
+    broadcast('ion:normalized-event', 'tab-1', { type: 'text_chunk', text: 'hi' })
+    broadcast('ion:tab-status-change', 'tab-1', 'running', 'idle')
+    broadcast(IPC.DEEPLINK_CONFIRM_REQUEST, { id: 'dl-1', owner: 'studio', action: 'terminal' })
+    broadcast(IPC.STUDIO_CONVERSATION_TERMINALS, { revision: 1, panes: [], openTabIds: [] })
+    broadcast(IPC.CHART_JUMP, { tabId: 't', chartId: 'c', messageId: 'm' })
+    broadcast(IPC.RESOURCE_CATALOG_CHANGED)
+    broadcast(IPC.TERMINAL_INCOMING, 'tab1:i1', 'ls\n')
+    expect(win.webContents.send).not.toHaveBeenCalled()
+  })
+
+  it('drops nothing into the void: a closed window means no send, no throw', () => {
+    expect(() => broadcast(IPC.UPDATE_DOWNLOADED, { version: '1.2.3' })).not.toThrow()
+    expect(() => broadcast(IPC.STARTUP_STATE, 'engine-ready')).not.toThrow()
   })
 })

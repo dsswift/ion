@@ -550,8 +550,8 @@ func TestMergeConfigs_EmptyConfig(t *testing.T) {
 	if result.Backend != "api" {
 		t.Fatalf("expected backend=api, got %q", result.Backend)
 	}
-	if result.DefaultModel != "claude-sonnet-4-6" {
-		t.Fatalf("expected default model, got %q", result.DefaultModel)
+	if result.DefaultModel != "" {
+		t.Fatalf("expected default model empty (engine ships with no model opinion), got %q", result.DefaultModel)
 	}
 	// Defaults ship unopinionated -- limits remain unset.
 	if result.Limits.MaxTurns != nil {

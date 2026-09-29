@@ -12,8 +12,8 @@ import XCTest
 /// hide or force-show the button.
 final class PlanApprovalCardGateTests: XCTestCase {
 
-    private func makeSettings(_ pairs: [String: AnyCodable]) -> DesktopSettingsState {
-        DesktopSettingsState(settings: pairs, schema: [], groups: [])
+    private func makeSettings(_ pairs: [String: AnyCodable]) -> ServerSettingsState {
+        ServerSettingsState(settings: pairs, schema: [], groups: [])
     }
 
     func testSettingOn_showsButton() {

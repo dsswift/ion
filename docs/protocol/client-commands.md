@@ -21,6 +21,7 @@ Start a new engine session.
 | `cmd`    | `"start_session"` | yes   | Command discriminator              |
 | `key`    | string         | yes      | Client-chosen session identifier   |
 | `config` | EngineConfig   | yes      | Session configuration object       |
+| `principal` | SessionPrincipal | no  | The person or service this session is attributed to. Stored on the session and stamped onto the conversation header the first time it is minted (or, for a pre-existing headerless header, the first time it binds to a session that carries one). `{subject, provider, kind, username?, displayName?, attribution?, claims?}` — `subject` is required and non-empty when the field is present at all; `claims` is never persisted. An idempotent re-`start_session` on an existing session REPLACES the stored principal wholesale when a non-nil value is supplied (never clears one an older client omits). |
 | `requestId` | string      | no       | Correlates with ServerResult       |
 
 **EngineConfig fields:**
@@ -43,12 +44,13 @@ Start a new engine session.
 | `appContext`       | object (string map) | no | Client-supplied application-context descriptor, stamped onto every `conversation.*` telemetry event this session emits under the event's `app_context` context key. The engine assigns no meaning to the keys — a desktop client might populate which tab or pane, a CLI or automation consumer whatever its own shell is, or nothing at all; this is deliberately opaque rather than a typed tab/sub-tab pair. Nil or empty means emitted events carry no `app_context` key. A later addressed command (`send_prompt`, a subsequent `start_session`) may carry an updated map; the newest non-nil value replaces the stored one for the rest of the session, so a renamed or moved surface is reflected without restarting it. |
 | `toolGate`         | object   | no       | Opt-in client tool gate: `{enabled, tools?, timeoutMs?, timeoutDecision?, clientTools?, clientToolTimeoutMs?}`. `clientTools` declares tools the client executes over the wire — the third tool provision path beside MCP servers and extensions. Each entry is `{name, description?, inputSchema?, planModeSafe?, humanWait?}`; `humanWait: true` marks the tool as an intentional HUMAN wait: on the engine-owned (API) backend the call PARKS the run — the request is retained as a `PermissionDenial` (re-published on every idle status snapshot), the run terminates, the session goes idle, and the user's answer arrives as the next `send_prompt`. Delegated-CLI backends exclude human-wait tools from their transports (the model uses the `AskUserQuestion` sentinel there). Machine tools (`humanWait` absent/false) keep the blocking wire round-trip bounded by `clientToolTimeoutMs`. On an idempotent re-`start_session` the declaration is REPLACED wholesale (nil clears); an in-flight run keeps the runtime it captured at dispatch, and the next run uses the new declaration. See [tool_gate_response](#tool_gate_response). |
 | `profileId` / `extensions` | string / string[] | no | When the resolved `newConversationDefaults.profileLocked` policy is true, the engine ignores these supplied profile values and applies the locked profile. A configured locked profile that is unavailable on the host refuses the start. |
+| `toolEnv` | object (string map) | no | Additive, session-scoped environment for tool subprocesses (currently Bash). A generic engine mechanism, not git-specific -- a caller may use it for any per-session subprocess environment it needs (e.g. an MCP tool's own auth). FR-04 uses the SAME injection point for git author/committer identity and credential env (`GIT_SSH_COMMAND`/`GIT_ASKPASS`), but that identity is resolved internally from the session's principal, never taken from this client-supplied map -- a key here can be overridden by the engine's own internal identity variables if they collide. |
 
 ```json
 {"cmd":"start_session","key":"abc-123","config":{"profileId":"default","extensions":["~/.ion/extensions/my-ext"],"workingDirectory":"/home/user/project"},"requestId":"r1"}
 ```
 
-**Response:** `ServerResult` with `ok: true` on success.
+**Response:** `ServerResult` with `ok: true` on success, `data: {existed, conversationId?, storageRoot?}`. `storageRoot` (ADR-034) is the absolute directory this session's conversation is (or would be) stored under, when `security.principalPartitioning` is enabled and the session carries a principal with a non-empty subject; absent/empty otherwise -- a harness deriving its own per-principal data root reads this instead of re-deriving the partitioning rule itself (see the cos2 harness's `journalroot.go`).
 
 ---
 
@@ -83,6 +85,7 @@ Send a user message to an active session.
 | `deliveryId`                | string   | no       | Stable client idempotency key. The engine accepts one prompt per session/conversation delivery ID, persists it with the user turn, and returns an already-accepted result for duplicate retries without starting another run. |
 | `displayText`               | string   | no       | Optional user-facing transcript text when it differs from `text`. The model receives `text`; history consumers receive `displayText`. The engine persists both so later context reconstruction still uses the full model prompt. Empty or absent means both views use `text`. |
 | `injectionKind`             | string   | no       | How this turn was authored, as an `InjectionKind` wire value. Lets a client state that the turn it delivers arrived through something other than the prompt box — a questions wizard, a form, a scheduler. The engine records it on the persisted turn and publishes the derived `machineAuthored` flag; what a consumer does with either is its own policy (ADR-017). Note that a kind is not automatically machine-authored: `structured_answer` (a form submission) is USER-authored, because a person chose every value — the kind tells a consumer to *label* the turn, not to hide it. **Validated, not trusted:** an unrecognized value is dropped and the turn is treated as user-authored, so a client cannot hide content by inventing a kind. Absent (the default) means an ordinary user turn. Known values: `agent_completion`, `slash_command`, `background_task_completion`, `checkin`, `revive`, `run_recovery`, `structured_answer`, `system_steer`, `steer`. |
+| `traceparent`               | string   | no       | The caller's W3C trace context, `00-<trace-id>-<parent-span-id>-<flags>`. When valid, the run joins the caller's trace: its `run.execute` span is a child of the caller's span, and every log line and span in the run carries the caller's `trace_id`. Absent or invalid: the engine starts a new trace for the run (an invalid value is logged). See [log schema § Spans](../observability/log-schema.md#spans). |
 | `planMode`                  | boolean  | no       | Start this run in plan mode. See [Plan Mode](../sessions/lifecycle.md#plan-mode). |
 | `planModeTools`             | string[] | no       | Override the tool allowlist for this plan-mode run. Defaults to `["Read","Grep","Glob","Agent","WebFetch","WebSearch"]`. |
 | `planFilePath`              | string   | no       | Path of the plan file for this plan-mode run. The engine enforces write-only access to this file while plan mode is active. |
@@ -103,6 +106,7 @@ Send a user message to an active session.
 | `resolveSlash`              | boolean  | no       | Backward-compatible direct-prompt command resolution. New clients should use `command`, which runs the complete command precedence chain in one request. When `true`, the engine resolves `text` as `/name args`, expands the template, feeds the expanded body to the model, and persists the raw invocation. Ordinary `/`-leading content remains unchanged when this field is absent. |
 | `slashModelTierApplyMidConversation` | boolean | no | Per-invocation override for a resolved command's `model:` tier. Omitted inherits `engine.json` `slashModelTier.applyMidConversation`; `true` permits a switch after history exists; `false` retains the serving model. `before_slash_model_boundary` has final say. |
 | `temporaryAutoFromPlan` | boolean | no | Runs one command with auto-mode tools while preserving the session Plan mode and plan file. A real user question pauses this workflow. A final successful completion emits the existing synthesized plan-approval proposal. Errors, cancellation, unresolved commands, and hook suppression preserve Plan mode without proposing approval. |
+| `principal`                 | SessionPrincipal | no | Overrides attribution for this single turn's hooks and telemetry only. Never changes the session's stored principal (set on `start_session`) or the conversation header's owner (set once, at mint). Absent uses the session's own principal. |
 
 ```json
 {"cmd":"send_prompt","key":"abc-123","text":"List all files in the current directory","requestId":"r2"}
@@ -204,7 +208,7 @@ Inject a steering message into a running agent. Fire-and-forget.
 | `key`             | string            | yes      | Session key                       |
 | `agentName`       | string            | yes      | Name of the agent to steer        |
 | `message`         | string            | yes      | Steering message text             |
-| `clientMessageId` | string            | no       | Client-generated correlation id for this one steer message. When the steer reaches a live API-backed main-loop run (`agentName` empty) and persists as a genuine user turn, the engine echoes this id back on `engine_steer_injected` alongside the durable `entryId` it assigned — so the sender can re-key its optimistic UI row by identity instead of trusting buffer position or arrival order. Omitted: no correlation identity is echoed (unchanged legacy behavior). |
+| `clientMessageId` | string            | no       | Client-generated correlation id for this one steer message. When the steer reaches a live main-loop run (`agentName` empty) and persists as a genuine user turn, the engine echoes this id back on `engine_steer_injected`, alongside the durable `entryId` it assigned when the run persists the steer immediately (an API-backed run; a Claude CLI run persists its turn at exit, so it echoes the id without an `entryId`) — so the sender can re-key its optimistic UI row by identity instead of trusting buffer position or arrival order. Omitted: no correlation identity is echoed (unchanged legacy behavior). |
 
 ```json
 {"cmd":"steer_agent","key":"abc-123","agentName":"researcher","message":"Focus on the API layer only"}
@@ -257,17 +261,20 @@ List all active sessions.
 |------------|--------------------|----------|--------------------------|
 | `cmd`      | `"list_sessions"`  | yes      | Command discriminator    |
 | `requestId`| string             | no       | Correlates with ServerResult |
+| `principalSubject` | string      | no       | Restrict the result to sessions whose stamped principal subject equals this value (or, with `includeUnowned`, also sessions with no principal). Empty (the default) returns every session, unchanged from before this field existed. |
+| `includeUnowned`    | boolean     | no       | When `principalSubject` is set, also include sessions that carry no principal at all. Ignored when `principalSubject` is empty. |
 
 ```json
 {"cmd":"list_sessions","requestId":"r5"}
+{"cmd":"list_sessions","requestId":"r5b","principalSubject":"local:alice","includeUnowned":true}
 ```
 
-**Response with requestId:** `ServerResult` with `data` containing an array of `SessionInfo` objects.
+**Response with requestId:** `ServerResult` with `data` containing an array of `SessionInfo` objects. Each entry gains `principalSubject` (omitted when the session has no principal).
 
 **Response without requestId:** `ServerSessionList` message:
 
 ```json
-{"cmd":"session_list","sessions":[{"key":"abc-123","hasActiveRun":true,"toolCount":14}]}
+{"cmd":"session_list","sessions":[{"key":"abc-123","hasActiveRun":true,"toolCount":14,"principalSubject":"local:alice"}]}
 ```
 
 **SessionInfo fields:**
@@ -600,6 +607,102 @@ Higher-precedence roots shadow same-name entries in lower-precedence roots. The 
 
 ---
 
+### get_host_info
+
+Read basic information about the machine the engine runs on. Stateless -- no session key is required.
+
+| Field       | Type              | Required | Description                  |
+|-------------|-------------------|----------|-------------------------------|
+| `cmd`       | `"get_host_info"` | yes      | Command discriminator        |
+| `requestId` | string            | no       | Correlates with ServerResult |
+
+```json
+{"cmd":"get_host_info","requestId":"r40"}
+```
+
+**Response:** `ServerResult` with `data`:
+
+| Field       | Type   | Description                                                                 |
+|-------------|--------|-------------------------------------------------------------------------------|
+| `home`      | string | The engine process's home directory                                          |
+| `username`  | string | The OS account the engine runs under                                         |
+| `hostname`  | string | The machine's hostname                                                       |
+| `os`        | string | `GOOS` (`"darwin"`, `"windows"`, `"linux"`)                                  |
+| `pathSep`   | string | The OS path separator (`"/"` or `"\\"`)                                     |
+| `installId` | string | The per-install anonymous UUID, minted once at `~/.ion/install_id` and stable for the life of the install. Distinct from the hardware-stable `machine_id` carried on telemetry/egress records. |
+| `principalPartitioning` | object | `{enabled, enforcement, root}` (ADR-034). `enabled` mirrors `engine.json`'s `security.principalPartitioning.enabled`. `enforcement` is the resolved level (`"none"`, `"read-only"`, or `"strict"`) -- `"none"` when partitioning is disabled. `root` is the flat conversations root partitioning was configured against (not the per-principal partition directory -- see [`start_session`](#start_session)'s `storageRoot` for that). A client or harness reads this to detect the mode without inferring it from file layout. |
+
+```json
+{"cmd":"result","requestId":"r40","ok":true,"data":{"home":"/Users/alice","username":"alice","hostname":"alices-mac","os":"darwin","pathSep":"/","installId":"3f9a2b1c-...","principalPartitioning":{"enabled":true,"enforcement":"strict","root":"/Users/alice/.ion/conversations"}}}
+```
+
+---
+
+### get_system_metrics
+
+Read the latest [System Metrics](../vocabulary/index.md) sample: how busy the host is, and what every process in the engine's own process tree is using. Stateless -- no session key is required. When no sample exists yet, the engine takes one before answering. Refused with `system metrics are disabled` when `systemMetrics.enabled` is `false`.
+
+| Field       | Type                   | Required | Description                  |
+|-------------|------------------------|----------|-------------------------------|
+| `cmd`       | `"get_system_metrics"` | yes      | Command discriminator        |
+| `requestId` | string                 | no       | Correlates with ServerResult |
+
+**Response:** `ServerResult` whose `data` is one complete `SystemMetricsSample`, the same object [`engine_system_metrics`](server-events.md#engine_system_metrics) carries.
+
+```json
+{"cmd":"get_system_metrics","requestId":"r41"}
+```
+
+---
+
+### system_metrics_watch
+
+Start, change, or stop delivery of [`engine_system_metrics`](server-events.md#engine_system_metrics) to **this connection only**. The event is never broadcast: a connection that does not watch receives none.
+
+| Field        | Type                     | Required | Description |
+|--------------|--------------------------|----------|-------------|
+| `cmd`        | `"system_metrics_watch"` | yes      | Command discriminator |
+| `intervalMs` | int                      | yes      | How often to deliver a sample. `0` stops watching. Clamped to `systemMetrics.minIntervalMs` (default 250) and 60000. |
+| `requestId`  | string                   | no       | Correlates with ServerResult |
+
+While any connection watches, the engine samples at the smallest interval any watcher asked for; each watcher receives samples at its own interval. With no watchers it samples every `systemMetrics.backgroundIntervalMs` (default 30000). A watch ends when the connection sends `intervalMs: 0` or disconnects. A relay-dispatched command has no socket to deliver to and is refused.
+
+**Response:** `ServerResult` with `data: {intervalMs, watchers}`: the interval in effect for this connection (`0` when stopped) and how many connections now watch.
+
+```json
+{"cmd":"system_metrics_watch","requestId":"r42","intervalMs":1000}
+{"cmd":"result","requestId":"r42","ok":true,"data":{"intervalMs":1000,"watchers":1}}
+```
+
+---
+
+### health
+
+Daemon liveness, answered on a lane that never queues behind a busy session. Stateless.
+
+| Field       | Type       | Required | Description                  |
+|-------------|------------|----------|-------------------------------|
+| `cmd`       | `"health"` | yes      | Command discriminator        |
+| `requestId` | string     | no       | Correlates with ServerResult |
+
+**Response:** `ServerResult` with `data`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ok` | boolean | `true`; `false` with `error` when the snapshot timed out (5 s) |
+| `version` | string | Engine version (`dev` for an unversioned build) |
+| `startedAt` | string | RFC 3339 start time |
+| `uptimeSec` | int | Seconds since start |
+| `sessionCount` | int | Live sessions |
+| `socketPath` | string | The socket this engine listens on |
+| `telemetryHealth` | object | Current delivery health of each telemetry collector's network targets, keyed `telemetry` and `conversationEvents`. Each value is a list of `{target, queuedBatches, queuedEvents, queuedBytes, oldestAgeMs, maxAttempts, stuck, stuckAfterMs, quarantinedEvents, quarantinedBytes, softWarnBytes, percentOfSoftWarn, crossedThreshold, healthy, lastError, critical}`, the same figures [`engine_telemetry_health`](server-events.md#engine_telemetry_health) reports on each transition. Empty when no network target is configured. |
+| `systemMetrics` | object | The latest `SystemMetricsSample`. Absent when sampling is disabled or no sample exists yet; `health` never takes a sample itself. |
+| `compat` | array | This engine's [Format Versions](../architecture/format-versions.md): one `{id, owner, version, rule, meaning}` per versioned format or protocol the engine reads or writes. `ion version --json` prints the same list from the binary alone. |
+
+`ion health` prints this object.
+
+---
+
 ### get_enterprise_policy
 
 Read the enterprise `NewConversationDefaults` policy so clients can decide whether the new-conversation flow is locked. Stateless -- no session key is required.
@@ -618,9 +721,11 @@ Read the enterprise `NewConversationDefaults` policy so clients can decide wheth
 | Field                     | Type         | Description                                                                                                   |
 |---------------------------|--------------|---------------------------------------------------------------------------------------------------------------|
 | `newConversationDefaults` | object\|null | The enterprise `NewConversationDefaults` policy object, or `null` when no enterprise config is loaded or no `NewConversationDefaults` section is present. |
+| `policy`                  | object\|null | The full merged `EnterpriseConfig` (D-004 passthrough), or `null` when none is loaded. |
+| `policyHash`              | string       | SHA-256 hex digest of `policy`'s canonical JSON. Stable across two calls with an unchanged policy; changes whenever the policy does. Lets a consumer detect a policy change without deep-comparing the whole blob. |
 
 ```json
-{"cmd":"result","requestId":"r41","ok":true,"data":{"newConversationDefaults":null}}
+{"cmd":"result","requestId":"r41","ok":true,"data":{"newConversationDefaults":null,"policy":null,"policyHash":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}}
 ```
 
 ---
@@ -750,7 +855,7 @@ The sentinel `resourceKind: "*"` subscribes to **every** resource kind on the ta
 
 - **Real kind in every envelope.** Each snapshot and delta still carries the real item `kind` (never `"*"`), so the consumer buckets items by their true kind.
 - **Per-session wildcard** (`resourceGlobal` omitted/`false`): the engine aggregates an initial snapshot by querying every registered producer, delivering one snapshot per producing kind, then streams all future kinds' deltas. It never errors on "no producer" — a broker with zero producers yields zero snapshots and still receives future kinds.
-- **Global wildcard** (`resourceGlobal: true`): a producer-less subscription across all kinds on the Manager-level broker. No initial producer query is performed (workspace-scoped resources published by clients may have no producer), so the subscriber receives the live delta stream only.
+- **Global wildcard** (`resourceGlobal: true`): a subscription across all kinds on the Manager-level broker. The initial snapshots carry the workspace-scoped items (no `conversationId`) of every producer live in any session at that moment. A producer that first comes online in a session after the subscription delivers one further snapshot of its workspace items, listing only itself in `resourceProducers`; each subscriber receives that at most once per producer, however many sessions offer it. Live deltas follow, including client-published items that have no producer.
 - **Pure data routing.** The wildcard is a routing addition; the engine encodes no render or UI policy. Exact-kind subscriptions are unchanged.
 
 ```json
@@ -802,6 +907,20 @@ Publish a resource operation from the client. Set `resourceGlobal: true` for a w
 **Response:** `ServerResult` with `ok: true`.
 
 ---
+
+### resource_export, resource_import, resource_forget
+
+Move the resources producers hold for a conversation to another machine. Each runs against the broker of the session named by `key`; its extensions are the producers. See [Resource Subsystem](../architecture/resource-subsystem.md#moving-a-conversations-resources).
+
+| Command | Fields | Result `data` |
+|---------|--------|---------------|
+| `resource_export` | `key`, `resourceConversationIds` (string[]) | `{producers: [{kind, producer, items, exportSupported, error?}]}`: every producer's items for those conversations, with full content. A producer that holds none is omitted. |
+| `resource_import` | `key`, `resourceItems` (ResourceItem[], each with its own `kind` and `producer`) | `{items: [{kind, producer, id, outcome, reason?}]}`, `outcome` one of `accepted`, `refused`, `no_producer`, `unsupported`, `failed`. |
+| `resource_forget` | `key`, `resourceConversationIds` (string[]) | `{producers: [{kind, producer, outcome, removed, error?}]}`, `outcome` one of `forgotten`, `unsupported`, `failed`. |
+
+```json
+{"cmd":"resource_export","key":"tab-1","resourceConversationIds":["1790000000000-abc123def456"],"requestId":"r30"}
+```
 
 ### resource_get
 
@@ -1017,7 +1136,7 @@ Request the current operator identity snapshot. Requires a configured identity p
 {"cmd":"oidc_identity","requestId":"r42"}
 ```
 
-**Response.** An `engine_oidc_identity` event is delivered to the requesting client. The `ServerResult` payload mirrors it: `{ signedIn: boolean, requireOperatorIdentity: boolean, subject, username, name, provider }`. The event carries the same policy as `oidcRequired`; both booleans are always present so consumers replace stale state when policy changes.
+**Response.** An `engine_oidc_identity` event is delivered to the requesting client. The `ServerResult` payload mirrors it: `{ signedIn: boolean, requireOperatorIdentity: boolean, subject, issuer, username, name, provider }`. The event carries the same policy as `oidcRequired`; both booleans are always present so consumers replace stale state when policy changes.
 
 ---
 
@@ -1283,6 +1402,7 @@ Add an MCP server to `~/.ion/engine.json`. Replaces any entry already stored und
 | `mcpArgs` | string[] | no | Arguments for a stdio server. |
 | `mcpEnv` | map[string]string | no | Environment variables for a stdio server's subprocess. |
 | `mcpHeaders` | map[string]string | no | Static HTTP headers for a network transport. |
+| `mcpOAuth` | McpOAuthSettings | no | Operator-configured OAuth client. See below. |
 | `requestId` | string | no | Correlates with ServerResult |
 
 ```json
@@ -1291,7 +1411,46 @@ Add an MCP server to `~/.ion/engine.json`. Replaces any entry already stored und
 
 **Response:** `ServerResult` with `data: { name, transport }`, then an `engine_mcp_servers` snapshot broadcast to every client.
 
-Rejected with an error when the transport and endpoint contradict each other, or when enterprise policy (`mcpDenylist` / `mcpAllowlist`, including its URL-host globs) forbids the server. The policy check runs **before** the write, so a refused server is never persisted.
+Rejected with an error when the transport and endpoint contradict each other, when the OAuth client is inconsistent, or when enterprise policy (`mcpDenylist` / `mcpAllowlist`, including its URL-host globs) forbids the server. The policy check runs **before** the write, so a refused server is never persisted.
+
+**`McpOAuthSettings`.** Written to the entry's `oauth` block. Every field is optional; whatever is left out, login fills from the server's discovery metadata. Set `clientId` alone when the authorization server cannot register a client dynamically (Microsoft Entra, for example). An empty or absent block writes no `oauth` block.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `clientId` | string | OAuth client ID. Required when any of `clientSecret`, `authUrl`, or `tokenUrl` is set. |
+| `clientSecret` | string | Secret for a confidential client. Never reported back. |
+| `authUrl` | string | Authorization endpoint. Absolute `http(s)` URL. |
+| `tokenUrl` | string | Token endpoint. Absolute `http(s)` URL. |
+| `scope` | string | Scope to request. |
+| `resource` | string | RFC 8707 resource indicator. |
+
+```json
+{"cmd":"mcp_add","mcpName":"exchange","mcpUrl":"https://api.example.com/exchange/mcp","mcpOAuth":{"clientId":"00000000-0000-0000-0000-000000000000"},"requestId":"r61"}
+```
+
+---
+
+### mcp_update
+
+Change one server already in `~/.ion/engine.json`, keeping every setting the command does not name (headers, env, timeouts, token forwarding, unknown keys). A server defined only in a project config is refused.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"mcp_update"` | yes | Command discriminator |
+| `mcpName` | string | yes | Server to change |
+| `mcpUrl` | string | no | New endpoint. Makes the entry a network server and drops any command and args. |
+| `mcpCommand` | string | no | New executable. Makes the entry a stdio server and drops any url. Not with `mcpUrl`. |
+| `mcpArgs` | string[] | no | Replaces the stdio arguments. An empty array clears them. |
+| `mcpTransport` | string | no | Replaces the transport. |
+| `mcpOAuth` | McpOAuthSettings | no | Replaces the configured OAuth client. An empty field removes that setting; an empty block removes the client. An absent `clientSecret` keeps the stored secret and `""` removes it. Absent `mcpOAuth` leaves the client untouched. |
+| `path` | string | no | Project directory for the follow-up snapshot |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"mcp_update","mcpName":"exchange","mcpOAuth":{"clientId":"00000000-0000-0000-0000-000000000000","scope":"api://example/.default offline_access"},"requestId":"r63"}
+```
+
+**Response:** `ServerResult` with `data: { name, changed, credentialsCleared }`, then an `engine_mcp_servers` broadcast. `changed` is false when the command matched what was stored; nothing is written. When the url or OAuth client changes, the stored token and client registration are dropped (they were minted for the old client) and `credentialsCleared` is true if any existed. A change reconnects the server on every live session.
 
 ---
 
@@ -1325,6 +1484,7 @@ The engine resolves the client in precedence order: an explicit `oauth` block in
 | `cmd` | `"mcp_login"` | yes | Command discriminator |
 | `mcpName` | string | yes | Server to authorize |
 | `mcpScope` | string | no | OAuth scope to request, overriding what the server's metadata advertises |
+| `mcpRedirectUri` | string | no | Redirect URI the caller owns (a custom app scheme or an https page). When set, the engine starts no loopback listener and the caller finishes with `mcp_login_complete` |
 | `path` | string | no | Project directory used to resolve the server |
 | `requestId` | string | no | Correlates with ServerResult |
 
@@ -1332,7 +1492,29 @@ The engine resolves the client in precedence order: an explicit `oauth` block in
 {"cmd":"mcp_login","mcpName":"mobbin","requestId":"r63"}
 ```
 
+**Caller-owned redirect.** With `mcpRedirectUri`, the client is registered (or re-registered) for that exact redirect and the authorization request carries it. The engine holds the pending login (PKCE verifier, state, client, redirect) for 10 minutes, keyed by `mcpName`; a new `mcp_login` for the same server replaces it. The response is the same as below, but nothing completes until `mcp_login_complete` arrives.
+
 **Response.** An `engine_mcp_login_url` event is delivered to the requesting client, and the `ServerResult` payload mirrors it: `{ name, authorizationUrl }`. The consumer opens that URL. When the flow settles, the engine reconnects the server across every live session and broadcasts `engine_mcp_servers` — on failure too, since the snapshot's `authenticated` flag is how a consumer learns the attempt left the server unauthorized.
+
+---
+
+### mcp_login_complete
+
+Finish a login started with `mcpRedirectUri` by handing the engine the URL the provider redirected to. The engine validates `state` (and `iss` when the provider sends it), exchanges the code with the stored verifier and redirect, and stores the grant exactly as the loopback flow does. The pending login is consumed by the attempt whatever its outcome.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"mcp_login_complete"` | yes | Command discriminator |
+| `mcpName` | string | yes | Server the login was started for |
+| `mcpCallbackUrl` | string | yes | Full callback URL carrying `code` and `state`, or the provider's `error` |
+| `path` | string | no | Project directory for the follow-up snapshot |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"mcp_login_complete","mcpName":"mobbin","mcpCallbackUrl":"ionremote://oauth/mcp?code=abc&state=xyz","requestId":"r64"}
+```
+
+**Response:** `ServerResult` with `data: { name }` on success. An error result names the cause: no pending login, an expired login, a state or issuer mismatch, the provider's `error` parameter, or a failed code exchange. Either way the engine then broadcasts `engine_mcp_servers`; on success it first reconnects the server across every live session.
 
 ---
 
@@ -1348,7 +1530,7 @@ Drop a server's stored token and client registration, leaving its configuration 
 | `requestId` | string | no | Correlates with ServerResult |
 
 ```json
-{"cmd":"mcp_logout","mcpName":"mobbin","requestId":"r64"}
+{"cmd":"mcp_logout","mcpName":"mobbin","requestId":"r65"}
 ```
 
 **Response:** `ServerResult` with `data: { name }`, then an `engine_mcp_servers` broadcast.

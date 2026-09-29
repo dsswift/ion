@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 
 	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -46,7 +45,6 @@ type ProviderOptions struct {
 
 type anthropicProvider struct {
 	id         string
-	apiKey     string
 	baseURL    string
 	authHeader string // "x-api-key" (default), "bearer", or custom header name
 	client     *http.Client
@@ -55,19 +53,15 @@ type anthropicProvider struct {
 // NewAnthropicProvider creates an Anthropic provider that uses raw HTTP SSE
 // (no SDK dependency). Events are already in canonical format so translation
 // is minimal.
+//
+// Holds no credential (R-23): authentication is resolved per request from
+// the context via applyRequestAuth (child 03). opts.APIKey is accepted but
+// unused -- kept on ProviderOptions for the struct's other constructors and
+// ignored here so ApplyConfig call sites need no change.
 func NewAnthropicProvider(opts *ProviderOptions) LlmProvider {
-	apiKey := ""
 	baseURL := "https://api.anthropic.com"
-	if opts != nil {
-		if opts.APIKey != "" {
-			apiKey = opts.APIKey
-		}
-		if opts.BaseURL != "" {
-			baseURL = opts.BaseURL
-		}
-	}
-	if apiKey == "" {
-		apiKey = os.Getenv("ANTHROPIC_API_KEY")
+	if opts != nil && opts.BaseURL != "" {
+		baseURL = opts.BaseURL
 	}
 
 	authHeader := "x-api-key"
@@ -82,7 +76,6 @@ func NewAnthropicProvider(opts *ProviderOptions) LlmProvider {
 
 	return &anthropicProvider{
 		id:         id,
-		apiKey:     apiKey,
 		baseURL:    baseURL,
 		authHeader: authHeader,
 		client:     &http.Client{Transport: network.GetHTTPTransport()},
@@ -121,19 +114,9 @@ func (p *anthropicProvider) doStream(ctx context.Context, opts types.LlmStreamOp
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	apiKey := p.apiKey
-	if apiKey == "" {
-		apiKey = GetProviderKey(p.id)
-	}
-	// Fail fast on a keyless request to the canonical hosted endpoint: it is
-	// a guaranteed 401 and burning a turn to learn that wastes the run (the
-	// 1785287375912 incident — the engine logged "no key for provider" and
-	// sent the request anyway). Custom base URLs (gateways, proxies) may be
-	// legitimately keyless and are never gated. See requireKeyForHost.
-	if pe := requireKeyForHost(req.URL.Host, p.id, apiKey); pe != nil {
+	if pe := applyRequestAuth(ctx, req, raw, p.id); pe != nil {
 		return pe
 	}
-	setAuthHeader(req, p.authHeader, apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 	req.Header.Set("Accept", "text/event-stream")
 
@@ -157,7 +140,7 @@ func (p *anthropicProvider) doStream(ctx context.Context, opts types.LlmStreamOp
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read of an error-response body
 		return FromAnthropicError(
-			fmt.Errorf("anthropic API error: %s", string(respBody)),
+			providerAPIError(p.id, "anthropic", resp.StatusCode, string(respBody)),
 			resp.StatusCode,
 			string(respBody),
 		)

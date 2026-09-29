@@ -143,7 +143,7 @@ extension SessionViewModel {
     }
 
 
-    func createTab(workingDirectory: String? = nil, pinToGroupId: String? = nil, profileId: String? = nil, useWorktree: Bool? = nil, sourceBranch: String? = nil) {
+    func createTab(workingDirectory: String? = nil, profileId: String? = nil, useWorktree: Bool? = nil, sourceBranch: String? = nil) {
         let dir = workingDirectory
         // Route through the confirm-or-resend tracker rather than a fire-once
         // `send(_:intent: .userInitiated)`: a create dropped into a wedged
@@ -151,19 +151,12 @@ extension SessionViewModel {
         // The `clientCmdId` correlates the desktop_tab_created echo back to this
         // pending create (also driving navigation). See SessionViewModel+PendingCreate.
         let clientCmdId = UUID().uuidString
-        // When `pinToGroupId` is supplied (e.g. via the per-group `+` button
-        // in TabListView's group header), include it on the wire so the
-        // desktop can create the tab inside that manual group with
-        // groupPinned=true from the start — preventing the first prompt's
-        // auto-group movement from yanking the tab away from the user's
-        // explicit choice. When nil, the desktop falls back to its default
-        // group placement (legacy behavior).
         // When `profileId` is supplied the desktop creates an engine tab with
         // that profile; nil creates a plain conversation tab. This is the
         // unified post-#256 wire path — both plain and engine tabs go through
         // the same `desktop_create_tab` command shape.
         sendTrackedCreate(
-            .createTab(workingDirectory: dir, pinToGroupId: pinToGroupId, profileId: profileId, clientCmdId: clientCmdId, useWorktree: useWorktree, sourceBranch: sourceBranch),
+            .createTab(workingDirectory: dir, profileId: profileId, clientCmdId: clientCmdId, useWorktree: useWorktree, sourceBranch: sourceBranch),
             clientCmdId: clientCmdId
         )
     }
@@ -174,10 +167,13 @@ extension SessionViewModel {
         tabs.removeAll { $0.id == tabId }
         conversationInstances.removeValue(forKey: tabId)
         activeEngineInstance.removeValue(forKey: tabId)
+        transcriptStreams.removeValue(forKey: tabId)
+        transcriptResyncing.remove(tabId)
+        transcriptOlderInFlight.remove(tabId)
+        pendingPrompts.removeValue(forKey: tabId)
         loadingConversation.remove(tabId)
-        conversationLoaded.remove(tabId)
-        conversationHasMore.removeValue(forKey: tabId)
-        conversationCursor.removeValue(forKey: tabId)
+        conversationLoadFailed.remove(tabId)
+        cancelLoadTimer(tabId: tabId)
     }
 
     func setPermissionMode(tabId: String, mode: PermissionMode) {
@@ -211,10 +207,6 @@ extension SessionViewModel {
     // SessionViewModel+ImplementPlan.swift to keep this file under the
     // Swift size cap. See CLAUDE.md → "When a file exceeds the cap".
 
-    // Tab-group commands (setTabGroupMode, moveTabToGroup,
-    // moveTabToGroupAndPin, toggleTabGroupPin, reorderTabGroups) live in
-    // SessionViewModel+TabGroupCommands.swift to keep this file under the
-    // Swift size cap. See CLAUDE.md → "When a file exceeds the cap".
 
     // MARK: - Terminal Commands
 
@@ -237,9 +229,6 @@ extension SessionViewModel {
     // moveEngineInstance, selectEngineInstance, renameEngineInstance) were removed
     // in #256 (single-instance collapse). The desktop already silently ignored
     // the corresponding wire commands; removing the iOS send path completes cleanup.
-
-    // loadEngineConversation removed (WI-004 / #259). History load is unified:
-    // loadConversation handles every tab via loadConversationHistory().
 
     func sendTerminalInput(tabId: String, instanceId: String, data: String) {
         send(.terminalInput(tabId: tabId, instanceId: instanceId, data: data), intent: .userInitiated)
@@ -292,14 +281,6 @@ extension SessionViewModel {
         send(.setPillColor(tabId: tabId, pillColor: color), intent: .userInitiated)
     }
 
-    func setPillIcon(tabId: String, icon: String?) {
-        // Optimistic local update -- the snapshot will confirm on the next sync.
-        if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
-            tabs[idx].pillIcon = icon
-        }
-        send(.setPillIcon(tabId: tabId, pillIcon: icon), intent: .userInitiated)
-    }
-
     func renameTerminalInstance(tabId: String, instanceId: String, label: String) {
         terminalInstanceLabels["\(tabId):\(instanceId)"] = label
         send(.renameTerminalInstance(tabId: tabId, instanceId: instanceId, label: label), intent: .userInitiated)
@@ -336,22 +317,56 @@ extension SessionViewModel {
         ), intent: .automaticFireAndForget) // rides next snapshot if disconnected
     }
 
-    /// Write a single projectable desktop setting on the currently-paired
-    /// desktop. The desktop validates the key against its allowlist and
+    /// Write a single projectable setting on the currently-paired
+    /// server. The server validates the key against its allowlist and
     /// the value's type against the declared schema, persists the
     /// change, and broadcasts a fresh `desktopSettingsSnapshot` back to
     /// every paired iOS device — including this one — which is how
-    /// `desktopSettings` is updated.
+    /// `serverSettings` is updated.
     ///
     /// Optimistic UI: SwiftUI Toggle bindings call this on every flip;
     /// the round-trip is short enough on LAN that we don't bother
-    /// pre-updating local state. The next snapshot wins. If the desktop
+    /// pre-updating local state. The next snapshot wins. If the server
     /// rejects the write (unknown key, wrong type), no snapshot fires
     /// and the SwiftUI control re-renders with the cached prior value
     /// on the next state read.
     @MainActor
-    func setDesktopSetting(key: String, value: AnyCodable) {
+    func setServerSetting(key: String, value: AnyCodable) {
+        // A Personal preference or a Device setting is this phone's own: it is
+        // stored here, never written into a server's settings. The ones a
+        // server consumes are then declared to it.
+        if let current = serverSettings, current.clientOwnedKeys.contains(key) {
+            PersonalPreferencesStore.set(key, value)
+            serverSettings = ServerSettingsState(
+                settings: PersonalPreferencesStore.overlay(current.settings, clientOwnedKeys: current.clientOwnedKeys),
+                schema: current.schema,
+                groups: current.groups,
+                canManageEnvironment: current.canManageEnvironment,
+                pages: current.pages
+            )
+            if PersonalPreferencesStore.isPersonal(key) { declarePersonalPreferences() }
+            return
+        }
         send(.setDesktopSetting(key: key, value: value), intent: .userInitiated)
+    }
+
+    /// Tell the connected server this phone's Personal preferences. Sent on
+    /// every settings snapshot (which opens every connection) and on change:
+    /// the server keeps nothing between connections.
+    func declarePersonalPreferences() {
+        send(.declarePreferences(preferences: PersonalPreferencesStore.declared()), intent: .userInitiated)
+    }
+
+    /// Tell the connected server where this phone receives pushes. Sent on
+    /// every settings snapshot (which opens every connection) and when APNs
+    /// hands the app a token, over whatever route is up: a phone on the
+    /// server's own network registers exactly as one on a relay does.
+    func registerPushAddress() {
+        guard let apnsToken, !apnsToken.isEmpty else {
+            DiagnosticLog.log("push address not registered: no APNs token yet", tag: "apns", level: .info)
+            return
+        }
+        send(.registerPush(token: apnsToken, env: APNsEnvironment.current.rawValue), intent: .automaticEssential)
     }
 
     /// Send the current focus state to the desktop for intercept routing.
@@ -364,6 +379,13 @@ extension SessionViewModel {
     /// defaulting to `true` so new installs participate in intercepts
     /// without any configuration step.
     func sendReportFocus(tabId: String?) {
+        // Leaving a conversation ends this device's ownership of its draft, so
+        // the queued write goes out now rather than on a timer. Without this,
+        // switching conversations and immediately backgrounding could strand
+        // the last few characters in a debounce that never fires.
+        if let leaving = focusedTabId, leaving != tabId {
+            flushDraftSend(leaving)
+        }
         let interceptEnabled = UserDefaults.standard.object(forKey: "interceptEnabled") as? Bool ?? true
         DiagnosticLog.log("report focus", tag: "session.commands", fields: [
             "tab_id": tabId?.prefix(8).description ?? "nil",

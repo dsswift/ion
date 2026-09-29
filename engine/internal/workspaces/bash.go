@@ -401,3 +401,68 @@ func tokenizeShell(segment string) []string {
 	flush()
 	return tokens
 }
+
+// GitSubcommandsIn returns every git subcommand (commit, push, merge, ...)
+// invoked anywhere in command, across every shell segment -- the same
+// extraction resolveBashDestinations already performs for containment
+// checking, exported for FR-04's git-identity refusal check (a Bash segment
+// invoking a git-mutating subcommand with no resolvable author identity is
+// refused before execution, same seam as the containment checks).
+func GitSubcommandsIn(command, cwd string) []string {
+	dest := resolveBashDestinations(command, cwd)
+	var subs []string
+	for _, seg := range dest.Segments {
+		subs = append(subs, seg.GitSubcommands...)
+	}
+	return subs
+}
+
+// BashSegmentDirs returns the effective working directory for every shell
+// segment in command (the same segmentation resolveBashDestinations uses:
+// `&&`/`;`/`|`-separated, with `cd`/`pushd` state carried forward across
+// segments), falling back to cwd for a segment that never changed
+// directory. FR-03's principal execution boundary uses this alongside
+// LiteralAbsolutePathTokens to judge a Bash call by every directory it
+// actually touches, not just its starting cwd -- `cd /principals/bob/... &&
+// cat x` must be judged in /principals/bob/..., not the session's own cwd.
+func BashSegmentDirs(command, cwd string) []string {
+	dest := resolveBashDestinations(command, cwd)
+	dirs := make([]string, 0, len(dest.Segments))
+	for _, seg := range dest.Segments {
+		dirs = append(dirs, effectiveDir(seg.Dir, cwd))
+	}
+	return dirs
+}
+
+// LiteralAbsolutePathTokens returns every token in command that is a literal
+// absolute path -- i.e. starts with "/" or is absolute on this platform (a
+// Windows drive or UNC path) -- and contains none of the dynamic
+// markers isDynamicToken already treats as unresolvable ($, `, *, ?, or a
+// leading ~). Quote wrappers are stripped first (tokenizeShell keeps them).
+//
+// This is deliberately NOT the destination-aware parser resolveBashDestinations
+// is (it does not track cd/git -C directory state, and it does not resolve a
+// RELATIVE path against a cwd) -- FR-03's principal execution boundary only
+// needs to catch a Bash call that names another principal's partition
+// directly (`cat /principals/bob/conversations/x.jsonl`), which is always an
+// absolute literal when an agent writes it, or the CWD/cd-tracked path the
+// same command's `cd`/`git -C` destinations already surface via
+// resolveBashDestinations. A relative path that happens to escape via `cd`
+// first is caught by the segment's Dir, not by this function.
+func LiteralAbsolutePathTokens(command string) []string {
+	var out []string
+	for _, rawSegment := range splitShellSegments(command) {
+		for _, tok := range tokenizeShell(rawSegment) {
+			tok = normalizeGroupingToken(tok)
+			unquoted := strings.Trim(tok, `'"`)
+			if !strings.HasPrefix(unquoted, "/") && !filepath.IsAbs(unquoted) {
+				continue
+			}
+			if isDynamicToken(unquoted) {
+				continue
+			}
+			out = append(out, unquoted)
+		}
+	}
+	return out
+}

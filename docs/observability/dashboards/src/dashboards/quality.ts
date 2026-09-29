@@ -192,8 +192,8 @@ export function qualityDashboard(): Dashboard {
       { name: 'model', label: 'Model', description: 'Filter by model name. Accepts regex. Default matches all.', type: 'textbox', current: { value: '.+' }, query: '.+', hide: 0 },
     ],
     annotations: [
-      { name: 'Compaction', type: 'logs', rawQuery: '{service_name="ion-telemetry", kind="compaction"} | json', iconColor: 'blue', titleFormat: 'compaction: {{payload_trigger}} reclaimed {{payload_tokens_reclaimed}} tokens' },
-      { name: 'Extension respawn', type: 'logs', rawQuery: '{service_name="ion-telemetry", kind="extension.respawn"} | json', iconColor: 'red', titleFormat: 'respawn: {{payload_extension}} attempt {{payload_attempt}}/{{payload_budget_max}}' },
+      { name: 'Compaction', type: 'logs', rawQuery: '{event_name="compaction"} | json', iconColor: 'blue', titleFormat: 'compaction: {{payload_trigger}} reclaimed {{payload_tokens_reclaimed}} tokens' },
+      { name: 'Extension respawn', type: 'logs', rawQuery: '{event_name="extension.respawn"} | json', iconColor: 'red', titleFormat: 'respawn: {{payload_extension}} attempt {{payload_attempt}}/{{payload_budget_max}}' },
     ],
   };
 }

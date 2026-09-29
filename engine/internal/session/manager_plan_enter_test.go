@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
-	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // ---------------------------------------------------------------------------
@@ -422,11 +422,14 @@ func TestRequestPlanModeEnter_HybridApiServed_UsesHomeDir(t *testing.T) {
 		t.Fatal("expected a non-empty planFilePath")
 	}
 
-	home, _ := utils.UserHomeDir()
-	wantPrefix := filepath.Join(home, ".ion", "plans") + string(filepath.Separator)
+	mgr.mu.Lock()
+	convID := mgr.sessions["hybrid-plan-dir"].conversationID
+	mgr.mu.Unlock()
+	wantPrefix := conversation.PlansDir(convID) + string(filepath.Separator)
 
 	// Before the fix: planFilePath was under cfg.WorkingDirectory (project dir).
-	// After the fix: planFilePath must be under ~/.ion/plans/.
+	// After the fix: planFilePath is Ion's own location, the conversation's
+	// plans folder, never the project.
 	if !strings.HasPrefix(planFilePath, wantPrefix) {
 		t.Errorf("hybrid api-served plan file = %q; want prefix %q\n"+
 			"(This failure means the project-dir branch is still being taken for api-served hybrid runs.)",

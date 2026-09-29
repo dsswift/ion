@@ -16,25 +16,60 @@ vi.mock('../StatusBarEngineState', () => ({
   StatusBarEngineState: () => <span data-testid="composer-activity-status">[running]</span>,
 }))
 
+vi.mock('../composer/useComposerActions', () => ({ useComposerActions: () => [] }))
+vi.mock('../composer/ComposerPlusMenu', () => ({ ComposerPlusMenu: () => <span>Plus</span> }))
+vi.mock('../composer/ComposerQuickToolsButton', () => ({ ComposerQuickToolsButton: () => <span>Quick</span> }))
+
 import { ComposerControls } from '../ComposerControls'
 
-describe('ComposerControls activity status', () => {
+function render(): { container: HTMLElement; unmount: () => void } {
+  const container = document.createElement('div')
+  const root = createRoot(container)
+  act(() => { root.render(<ComposerControls actions={<span>Send</span>} />) })
+  return { container, unmount: () => act(() => { root.unmount() }) }
+}
+
+describe('ComposerControls row', () => {
   afterEach(() => { document.body.replaceChildren() })
 
-  it('anchors aggregate activity status after all conversation controls', () => {
-    const container = document.createElement('div')
-    const root = createRoot(container)
-    act(() => { root.render(<ComposerControls />) })
+  it('puts the content readouts on the left and run activity beside send', () => {
+    const { container, unmount } = render()
 
     const controls = container.querySelector('[data-testid="composer-controls"]')
-    const statusInset = controls?.querySelector('[data-testid="composer-activity-status-inset"]') as HTMLElement
-    expect(statusInset.style.paddingRight).toBe('10px')
-    expect(statusInset.style.height).toBe('20px')
-    expect(statusInset.style.alignSelf).toBe('center')
-    expect(statusInset.style.transform).toBe('translateY(-5px)')
-    expect(statusInset.lastElementChild?.getAttribute('data-testid')).toBe('composer-activity-status')
-    expect(controls?.textContent).toContain('[running]')
+    // Attachments before the context radial: the fixed-width icon anchors the
+    // cluster. Run activity is not a reading of the prompt's contents — it
+    // reports on the run the send button starts, so it stays on the right,
+    // immediately left of the verbs it describes.
+    expect(controls?.textContent).toBe('PlusQuickModelThinkModeAttachmentsContext[running]Send')
+    expect(controls?.querySelector('[data-testid="composer-pickers-expanded"]')).not.toBeNull()
+    expect(controls?.getAttribute('data-collapsed')).toBe('false')
 
-    act(() => { root.unmount() })
+    unmount()
+  })
+
+  it('separates the readouts from the send controls with the growing spacer', () => {
+    // The readouts used to live on the right, where a hand-tuned gap was the
+    // only thing saying the attachments button was not one of the send
+    // buttons. They now sit with the controls they describe, and the flex
+    // spacer — not a gap value — is what holds the send cluster apart.
+    const { container, unmount } = render()
+
+    const readouts = container.querySelector('[data-testid="composer-readouts"]')
+    const activity = container.querySelector('[data-testid="composer-activity-status-inset"]')
+    const sendCluster = container.querySelector('[data-testid="composer-send-cluster"]')
+    expect(readouts?.textContent).toBe('AttachmentsContext')
+    expect(sendCluster?.textContent).toBe('Send')
+
+    const children = [...(container.querySelector('[data-testid="composer-controls"]')?.children ?? [])]
+    const spacer = container.querySelector('[data-testid="composer-row-spacer"]')
+    expect(spacer).not.toBeNull()
+    expect(children.indexOf(readouts as Element)).toBeLessThan(children.indexOf(spacer as Element))
+    const trailing = sendCluster?.parentElement as HTMLElement
+    expect(children.indexOf(spacer as Element)).toBeLessThan(children.indexOf(trailing))
+    // Run activity rides with the send controls, directly before them.
+    expect(activity?.parentElement).toBe(trailing)
+    expect(activity?.nextElementSibling).toBe(sendCluster)
+
+    unmount()
   })
 })

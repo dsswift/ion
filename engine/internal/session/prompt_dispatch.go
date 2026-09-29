@@ -121,8 +121,9 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// may be cleared by a concurrent run-exit before this frame reaches the
 	// ParentCtx assignment below, but the context this run carries must keep
 	// the ID it was dispatched with.
-	runTraceID := utils.NewTraceID()
+	runTraceID, runSpan := newRunTrace(key, requestID, overrides)
 	s.setRunIdentity(requestID, runTraceID)
+	s.setRunSpan(runSpan)
 	// Advance the run epoch under the same lock hold that assigns run
 	// identity, so no status snapshot can ever observe one without the other.
 	// This is the instant the engine accepts the prompt; every snapshot built
@@ -136,7 +137,6 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// that snapshot must carry the epoch THIS dispatch established.
 	runEpoch := s.runEpoch
 	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt: run epoch advanced", map[string]any{"key": key, "run_id": requestID, "run_epoch": runEpoch})
-	utils.LogWithFields(utils.LevelDebug, "session", "sendprompt: minted run trace id", map[string]any{"key": key, "run_id": requestID, "trace_id": runTraceID})
 	// A run is starting, so the session is no longer parked on outstanding
 	// background commands. Clear any park record here — under the same lock
 	// that assigns requestID — so the two can never disagree. This covers
@@ -300,7 +300,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 				utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: restored from client", map[string]any{"session_id": key, "plan_file_path": s.planFilePath})
 			} else {
 				utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: client not on disk, allocating new", map[string]any{"session_id": key, "plan_file_path": overrides.PlanFilePath})
-				s.planFilePath = allocateNewPlanFilePath(m.resolvedBackend(opts.Model).Capabilities(), s.config.WorkingDirectory)
+				s.planFilePath = allocateNewPlanFilePath(m.resolvedBackend(opts.Model).Capabilities(), s.config.WorkingDirectory, s.conversationID)
 				utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: allocated new", map[string]any{"key": key, "plan_file_path": s.planFilePath})
 			}
 		} else {
@@ -308,7 +308,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 			// (plan_slug.go). That helper keys the directory on
 			// caps.PlanFileProjectScoped, which is true only for claude-code.
 			// See its doc comment for the directory selection rules.
-			s.planFilePath = allocateNewPlanFilePath(m.resolvedBackend(opts.Model).Capabilities(), s.config.WorkingDirectory)
+			s.planFilePath = allocateNewPlanFilePath(m.resolvedBackend(opts.Model).Capabilities(), s.config.WorkingDirectory, s.conversationID)
 			utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: allocated new", map[string]any{"key": key, "plan_file_path": s.planFilePath})
 		}
 		// buildRunOptions snapshotted planFilePath before allocation; backfill.
@@ -377,8 +377,11 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// leave these fields empty. Reset all pending fields at dispatch so a prior
 	// turn can never leak into this one.
 	s.pendingCliAssistantText = ""
+	s.pendingCliUserEntryID = ""
 	s.pendingCliUsage = nil
 	s.pendingCliPlanMarker = nil
+	s.pendingCliRunCostUsd = 0
+	s.pendingCliRunUsage = types.LlmUsage{}
 	s.cliRunFailedTerminal = false
 	if caps.ContextModel == backend.ContextModelNativeSession {
 		s.pendingCliUserTurn = text
@@ -564,7 +567,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// it returns the inner backend that will actually handle this model.
 	var runCfg *backend.RunConfig
 	if apiBackend, ok := m.resolvedBackend(opts.Model).(*backend.ApiBackend); ok {
-		runCfg = m.buildRunConfig(s, key, requestID, apiBackend, extGroup, skipExtensions, permEng, telemCollector, mcpConns, opts.Model)
+		runCfg = m.buildRunConfig(s, key, requestID, apiBackend, extGroup, skipExtensions, permEng, telemCollector, mcpConns, opts.Model, turnPrincipal(s, overrides))
 	}
 
 	m.wirePermissionHookServer(s, key, &opts, permEng)
@@ -653,6 +656,11 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// megabytes; holding the manager lock here stalls every other session.
 	journalNeeded := opts.InjectionKind != string(types.InjectionKindRunRecovery) &&
 		!s.recoveryInProgress && m.recoveryEnabled(&s.config)
+	// A delegated-CLI run needs its user turn on disk before it starts whether
+	// or not recovery is on. With recovery on, the journal commit below writes
+	// it (or a recovered run already has it); otherwise it is written alone.
+	cliPrePersistNeeded := caps.ContextModel == backend.ContextModelNativeSession &&
+		!m.recoveryEnabled(&s.config)
 	m.mu.Unlock()
 	if journalNeeded {
 		entryID, recorded := m.recordRunRecovery(s, key, requestID, opts, overrides)
@@ -666,8 +674,13 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 			return fmt.Errorf("could not persist recovery journal for session %q", key)
 		}
 		opts.PrePersistedUserEntryID = entryID
+	} else if cliPrePersistNeeded {
+		opts.PrePersistedUserEntryID = m.prePersistCliUserTurn(s, key, requestID, opts)
 	}
 	m.mu.Lock()
+	if cliPrePersistNeeded {
+		s.pendingCliUserEntryID = opts.PrePersistedUserEntryID
+	}
 	current, stillActive = m.sessions[key]
 	if !stillActive || current != s || current.requestID != requestID {
 		conversationID := s.conversationID
@@ -714,8 +727,20 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// session_id/conversation_id but deliberately no trace_id), so every
 	// utils.LogCtx call made anywhere beneath this run — backend loop, tool
 	// execution, provider streaming — stamps trace_id automatically without
-	// each site having to thread it by hand.
-	opts.ParentCtx = utils.WithTraceID(s.rootContext(), runTraceID)
+	// each site having to thread it by hand. The run's span-id rides with it,
+	// so every span started beneath the run (llm.call, tool.execute, a
+	// foreground dispatch) records the run as its parent.
+	opts.ParentCtx = utils.WithSpanID(utils.WithTraceID(s.rootContext(), runTraceID), runSpan.spanID)
+	// The acting principal's attribution rides on the same context (FR-05
+	// child 10, R-41/R-42): telemetry's identityForEvent and the ambient
+	// logger's resolvedEgressUser both read this ahead of their
+	// process-wide fallback, so this run's events and log lines attribute
+	// to the person whose work produced them rather than whichever
+	// operator/machine identity happened to be set process-wide last. A nil
+	// principal (unattributed session) writes "" (WithPrincipalIdentity's
+	// own doc), which both readers treat identically to "absent" -- the
+	// pre-existing process-wide fallback applies unchanged (B-23).
+	opts.ParentCtx = utils.WithPrincipalIdentity(opts.ParentCtx, s.principal.AttributionForTelemetry())
 
 	// Resume-vs-bridge decision for delegated-CLI backends: resume the
 	// backend's native session when this session holds a still-valid cursor
@@ -728,44 +753,5 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	opts.SkipCliHistorySeed = overrides != nil && overrides.SkipCliHistorySeed
 	m.resolveCliContinuity(s, &opts)
 
-	// Dispatch to backend. ApiBackend uses the per-run config built above so
-	// every closure on this run sees this session's hooks/tools/perms.
-	// ClaudeCodeBackend ignores runCfg and follows its own subprocess wiring.
-	//
-	// HybridBackend implements both StartRun and StartRunWithConfig: it
-	// records the routing decision for opts.Model and forwards to the
-	// inner *ApiBackend (with runCfg) or inner *ClaudeCodeBackend (without).
-	// We dispatch through m.backend here (not resolvedBackend) so the
-	// hybrid layer sees the call and can record its routing table entry
-	// before forwarding.
-	// StartRun may schedule work immediately, and callbacks acquire Manager.mu.
-	// Validate ownership under the lock, then release it before launch. The run
-	// identity and routing binding remain committed, so a synchronous callback
-	// resolves normally instead of deadlocking on this manager.
-	m.mu.Lock()
-	current, stillActive = m.sessions[key]
-	if !stillActive || current != s || current.requestID != requestID {
-		m.mu.Unlock()
-		utils.LogWithFields(utils.LevelWarn, "session", "prompt dispatch abandoned before backend start", map[string]any{"key": key, "run_id": requestID})
-		return fmt.Errorf("session %q stopped before backend start", key)
-	}
-	launchAck := make(chan struct{})
-	s.launchingRunID = requestID
-	s.launchAck = launchAck
-	m.mu.Unlock()
-	if hybrid, ok := m.backend.(*backend.HybridBackend); ok {
-		hybrid.StartRunWithConfig(requestID, opts, runCfg)
-	} else if apiBackend, ok := m.backend.(*backend.ApiBackend); ok {
-		apiBackend.StartRunWithConfig(requestID, opts, runCfg)
-	} else {
-		m.backend.StartRun(requestID, opts)
-	}
-	m.mu.Lock()
-	if current, ok := m.sessions[key]; ok && current == s && current.launchAck == launchAck {
-		current.launchingRunID = ""
-		current.launchAck = nil
-	}
-	close(launchAck)
-	m.mu.Unlock()
-	return nil
+	return m.launchRun(key, s, requestID, opts, runCfg)
 }

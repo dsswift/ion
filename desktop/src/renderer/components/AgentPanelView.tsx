@@ -6,11 +6,11 @@ import {
   ArrowsInSimple,
 } from "@phosphor-icons/react";
 import { useColors } from "../theme";
-import type { AgentStateUpdate, Message } from "../../shared/types";
+import type { AgentStateUpdate, Message } from "@ion/shared/types";
 import type {
   DispatchInfo,
   DispatchTelemetryEntry,
-} from "../../shared/types-engine";
+} from "@ion/shared/types-engine";
 import { AgentRow } from "./AgentRow";
 import { AgentDetailPanel } from "./AgentDetailPanel";
 import {

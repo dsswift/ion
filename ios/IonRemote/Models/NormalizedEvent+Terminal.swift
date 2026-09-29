@@ -4,7 +4,7 @@ import Foundation
 
 extension RemoteEvent {
 
-    /// Decode terminal output, exit, and instance lifecycle events.
+    /// Decode terminal output, exit, restart, and instance lifecycle events.
     static func decodeTerminal(
         type: TypeKey,
         container: KeyedDecodingContainer<CodingKeys>
@@ -21,6 +21,11 @@ extension RemoteEvent {
             let instanceId = try container.decode(String.self, forKey: .instanceId)
             let exitCode = try container.decode(Int.self, forKey: .exitCode)
             return .terminalExit(tabId: tabId, instanceId: instanceId, exitCode: exitCode)
+
+        case .terminalRestarted:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decode(String.self, forKey: .instanceId)
+            return .terminalRestarted(tabId: tabId, instanceId: instanceId)
 
         case .terminalInstanceAdded:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -68,6 +73,12 @@ extension RemoteEvent {
             try container.encode(tabId, forKey: .tabId)
             try container.encode(instanceId, forKey: .instanceId)
             try container.encode(exitCode, forKey: .exitCode)
+            return true
+
+        case .terminalRestarted(let tabId, let instanceId):
+            try container.encode(TypeKey.terminalRestarted, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encode(instanceId, forKey: .instanceId)
             return true
 
         case .terminalInstanceAdded(let tabId, let instance):

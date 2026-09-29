@@ -5,8 +5,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import { matchesRule, passesFilters } from './filter-rules'
-import type { GraphFilterRule } from '../../../../shared/graph-view-types'
-import type { GraphModel, GraphNode } from '../../../../shared/graph-model-types'
+import type { GraphFilterRule } from '@ion/shared/graph-view-types'
+import type { GraphModel, GraphNode } from '@ion/shared/graph-model-types'
 
 function node(frontMatter: Record<string, unknown>): GraphNode {
   return { id: 'a', kind: 'document', label: 'a', frontMatter, sizeBytes: 0, modifiedMs: 0, degree: 0, community: 0, centrality: 0, orphan: false }

@@ -79,11 +79,12 @@ func main() {
 }
 ```
 
-Build it to a binary named `main` and drop the directory into `~/.ion/extensions/`. Stamp the exact engine identity into every production binary so the init handshake proves which SDK release was statically linked:
+Build it to a binary named `main` and drop the directory into `~/.ion/extensions/`. Stamp the exact engine identity into every production binary so the init handshake proves which SDK release was statically linked. A compiled extension has no `extension.json`, so also stamp its own `Version` -- otherwise it has no way to report one, and the Ion Extensions Grafana dashboard shows it as unversioned:
 
 ```bash
 ENGINE_BUILD_IDENTITY="$(ion version | awk '{print $2}')"
-go build -ldflags "-X github.com/dsswift/ion/sdk/go.BuildIdentity=${ENGINE_BUILD_IDENTITY}" -o main .
+EXT_VERSION="$(git describe --always --dirty)"
+go build -ldflags "-X github.com/dsswift/ion/sdk/go.BuildIdentity=${ENGINE_BUILD_IDENTITY} -X github.com/dsswift/ion/sdk/go.Version=${EXT_VERSION}" -o main .
 ```
 
 ```
@@ -317,6 +318,20 @@ notes.Publish(ctx, ion.ResourceOpCreate, ion.ResourceItem{
 ```
 
 An item with a `ConversationID` belongs to that conversation's attachments; without one it lands in the global inbox.
+
+When a conversation moves to another machine, its items move with it. Register three handlers per kind: `OnExport` hands over the items for the moving conversations (without it the engine reads them through `OnQuery`), `OnImport` persists items the same extension exported elsewhere (without it, a conversation holding items of this kind cannot move here), and `OnForget` drops them once they have moved away.
+
+```go
+sdk.Resources().OnExport("briefing", func(c context.Context, ids []string) ([]ion.ResourceItem, error) {
+	return loadBriefingsFor(ids)
+})
+sdk.Resources().OnImport("briefing", func(c context.Context, items []ion.ResourceItem) (ion.ResourceImportResult, error) {
+	return saveBriefings(items) // report accepted IDs, and any refused with a reason
+})
+sdk.Resources().OnForget("briefing", func(c context.Context, ids []string) (int, error) {
+	return deleteBriefingsFor(ids)
+})
+```
 
 ## Workspace context
 

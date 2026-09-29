@@ -1,6 +1,7 @@
 package config
 
 import (
+	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -92,4 +93,12 @@ func ResolvePlanModeMcpAllowlist(projectDir string) ([]string, bool) {
 	found := tools != nil
 	utils.LogWithFields(utils.LevelDebug, "config", "resolved plan-mode MCP allowlist fresh", map[string]any{"project_dir": projectDir, "found": found, "count": len(tools), "allowlist": tools})
 	return tools, found
+}
+
+// ResolveTimeouts returns the merged global timeouts block (defaults < global
+// engine.json < enterprise) with no process-global side effects. A CLI process
+// uses it to bound waits on the engine it talks to by the same budgets that
+// engine was configured with, without also configuring its own logging.
+func ResolveTimeouts() *types.TimeoutsConfig {
+	return mergeConfigLayers("").Timeouts
 }

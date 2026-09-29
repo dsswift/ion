@@ -42,50 +42,6 @@ func TestEgressEnqueue_PreservesExistingEventID(t *testing.T) {
 	}
 }
 
-// TestEgressEnqueue_MergesInstallIDAmbient pins that install_id is merged into
-// egress records from the ambient identity fields, and that machine_id is
-// unchanged (both ship — distinct identifiers).
-func TestEgressEnqueue_MergesInstallIDAmbient(t *testing.T) {
-	f := &EgressForwarder{
-		shipOwn: true,
-		buffer:  make([]egressRecord, 0, 2),
-		ambientFields: map[string]any{
-			"machine_id": "hw-uuid-1234",
-			"install_id": "install-uuid-5678",
-		},
-	}
-	f.ship(egressRecord{Ts: "t", Level: "INFO", Msg: "m", Component: "engine", Tag: "test"})
-	if len(f.buffer) != 1 {
-		t.Fatalf("expected 1 buffered record, got %d", len(f.buffer))
-	}
-	fields := f.buffer[0].Fields
-	if fields["install_id"] != "install-uuid-5678" {
-		t.Errorf("install_id ambient must be merged: got %v", fields["install_id"])
-	}
-	if fields["machine_id"] != "hw-uuid-1234" {
-		t.Errorf("machine_id ambient must be unchanged: got %v", fields["machine_id"])
-	}
-}
-
-// TestAmbientFieldsIncludeInstallID pins that ambientFieldsFromIdentity emits
-// install_id alongside machine_id (distinct identifiers).
-func TestAmbientFieldsIncludeInstallID(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	ResetInstallIDForTest()
-
-	m := ambientFieldsFromIdentity(machineIdentity{Host: "h", MachineID: "hw-id"})
-	if m["install_id"] == nil || m["install_id"] == "" {
-		t.Error("ambient fields must include a non-empty install_id")
-	}
-	if m["machine_id"] != "hw-id" {
-		t.Errorf("machine_id must be unchanged: got %v", m["machine_id"])
-	}
-	// install_id must equal the shared accessor's value.
-	if m["install_id"] != InstallID() {
-		t.Errorf("ambient install_id %v must match utils.InstallID() %v", m["install_id"], InstallID())
-	}
-}
-
 // TestOTLPAttrsIncludeEventID pins that the operational OTLP attribute mapper
 // promotes event_id when present.
 func TestOTLPAttrsIncludeEventID(t *testing.T) {
@@ -98,5 +54,36 @@ func TestOTLPAttrsIncludeEventID(t *testing.T) {
 	}
 	if !found {
 		t.Error("otlpAttrsFromRecord must include event_id when present")
+	}
+}
+
+// TestOTLPAttrsRecordKeysWinOverFields pins that a field named like one of the
+// record's own attributes never becomes a second attribute with that key. A
+// line logging the OS account as fields.user used to ship two "user"
+// attributes, and the collector kept the field's value over the signed-in
+// user's. Mirrored in packages/shared log-egress-otel.test.ts.
+func TestOTLPAttrsRecordKeysWinOverFields(t *testing.T) {
+	attrs := otlpAttrsFromRecord(egressRecord{
+		Component: "engine", Tag: "test", User: "user@example.com", SessionID: "s-1",
+		Fields: map[string]any{"user": "osuser", "session_id": "s-1", "tag": "other", "kept": "yes"},
+	})
+	counts := map[string]int{}
+	values := map[string]string{}
+	for _, a := range attrs {
+		counts[a.Key]++
+		if a.Value.StringValue != nil {
+			values[a.Key] = *a.Value.StringValue
+		}
+	}
+	for _, key := range []string{"user", "session_id", "tag"} {
+		if counts[key] != 1 {
+			t.Fatalf("%s attributes = %d, want 1", key, counts[key])
+		}
+	}
+	if values["user"] != "user@example.com" || values["tag"] != "test" {
+		t.Fatalf("record keys lost to fields: user=%q tag=%q", values["user"], values["tag"])
+	}
+	if values["kept"] != "yes" {
+		t.Fatal("an unrelated field must still become an attribute")
 	}
 }

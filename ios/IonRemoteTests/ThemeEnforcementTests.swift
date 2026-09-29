@@ -73,7 +73,7 @@ final class ThemeEnforcementTests: XCTestCase {
         }
         """
         let event = try JSONDecoder().decode(RemoteEvent.self, from: Data(json.utf8))
-        guard case .desktopSettingsSnapshot(_, _, _, _, let themePolicy) = event else {
+        guard case .desktopSettingsSnapshot(_, _, _, _, let themePolicy, _, _) = event else {
             return XCTFail("expected desktopSettingsSnapshot, got \(event)")
         }
         XCTAssertEqual(themePolicy, RemoteThemePolicy(themeId: "acme-corp", locked: true))
@@ -84,7 +84,7 @@ final class ThemeEnforcementTests: XCTestCase {
         { "type": "desktop_settings_snapshot", "settings": {}, "schema": [], "groups": [] }
         """
         let event = try JSONDecoder().decode(RemoteEvent.self, from: Data(json.utf8))
-        guard case .desktopSettingsSnapshot(_, _, _, _, let themePolicy) = event else {
+        guard case .desktopSettingsSnapshot(_, _, _, _, let themePolicy, _, _) = event else {
             return XCTFail("expected desktopSettingsSnapshot, got \(event)")
         }
         XCTAssertNil(themePolicy)

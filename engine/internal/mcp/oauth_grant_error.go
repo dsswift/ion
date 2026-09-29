@@ -165,7 +165,7 @@ func classifyGrantFailure(serverName string, status int, body []byte) *GrantErro
 // lastGrantErrors records the most recent unrecoverable refresh failure per
 // server, so a later connect failure can cite the real cause.
 //
-// Why this indirection is needed: when a grant is spent, resolveOAuthHeaders
+// Why this indirection is needed: when a grant is spent, the token resolver
 // cannot produce a token, so the request goes out unauthenticated and the server
 // answers a plain 401. By the time Connect builds its error, the specific reason
 // ("already used") is two layers back. Without carrying it, the operator is told

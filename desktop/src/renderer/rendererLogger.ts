@@ -1,3 +1,4 @@
+import { host } from './host/host-instance'
 /**
  * Structured logger for renderer-side code.
  *
@@ -17,11 +18,18 @@
  */
 
 function emit(level: string, tag: string, msg: string, fields?: Record<string, unknown>): void {
-  // window.ion is the contextBridge API exposed by the preload. Guard against
-  // the bridge not yet being loaded (e.g. renderer unit tests that don't
-  // configure the preload).
-  if (typeof window !== 'undefined' && window.ion && typeof window.ion.logWrite === 'function') {
-    window.ion.logWrite(level, tag, msg, fields)
+  // logWrite is real for BOTH hosts: ElectronStudioHost's shell IS window.ion
+  // (the preload contextBridge), and BrowserStudioHost's unsupportedShell()
+  // overrides logWrite specifically so it has a real POST /log transport
+  // (spec 18) -- it is the one shell method a browser tab actually
+  // implements. The old `window.ion &&` guard predates BrowserStudioHost and
+  // silently dropped every renderer log (including RootErrorBoundary's own
+  // crash reports) in a real browser tab, where window.ion is never defined
+  // by design. Checking that logWrite itself is callable is what the
+  // "bridge not loaded yet" guard actually needs (e.g. a renderer unit test
+  // with no host configured at all), without excluding a real browser host.
+  if (typeof host.shell?.logWrite === 'function') {
+    host.shell.logWrite(level, tag, msg, fields)
   }
 }
 

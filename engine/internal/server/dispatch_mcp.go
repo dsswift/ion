@@ -2,7 +2,8 @@ package server
 
 // dispatch_mcp.go — MCP server administration over the engine wire.
 //
-// Five commands: mcp_list, mcp_add, mcp_remove, mcp_login, mcp_logout. They
+// Commands: mcp_list, mcp_add, mcp_update (dispatch_mcp_update.go),
+// mcp_remove, mcp_login, mcp_login_complete, mcp_logout. They
 // give every consumer — the ion CLI, the desktop, a third-party client — the
 // same administration surface, so none of them has to reimplement discovery,
 // registration, or the PKCE exchange.
@@ -24,6 +25,29 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
+
+// dispatchMcp routes one MCP administration command to its handler.
+func (s *Server) dispatchMcp(conn net.Conn, cmd *protocol.ClientCommand) {
+	switch cmd.Cmd {
+	case "mcp_list":
+		s.dispatchMcpList(conn, cmd)
+	case "mcp_add":
+		s.dispatchMcpAdd(conn, cmd)
+	case "mcp_update":
+		s.dispatchMcpUpdate(conn, cmd)
+	case "mcp_remove":
+		s.dispatchMcpRemove(conn, cmd)
+	case "mcp_login":
+		s.dispatchMcpLogin(conn, cmd)
+	case "mcp_login_complete":
+		s.dispatchMcpLoginComplete(conn, cmd)
+	case "mcp_logout":
+		s.dispatchMcpLogout(conn, cmd)
+	default:
+		utils.LogWithFields(utils.LevelError, "server.mcp", "unrouted mcp command", map[string]any{"cmd": cmd.Cmd})
+		s.sendResult(conn, cmd, fmt.Errorf("unknown MCP command %q", cmd.Cmd), nil)
+	}
+}
 
 // dispatchMcpList answers with the complete MCP server snapshot, delivered as
 // an engine_mcp_servers event to the requester plus a result payload for the
@@ -66,6 +90,7 @@ func (s *Server) dispatchMcpAdd(conn net.Conn, cmd *protocol.ClientCommand) {
 
 	utils.LogWithFields(utils.LevelInfo, "server.mcp", "server added", map[string]any{
 		"server": cmd.McpName, "transport": cfg.Type, "url": cfg.URL, "command": cfg.Command,
+		"oauth_configured": cfg.OAuth != nil,
 	})
 	s.sendResult(conn, cmd, nil, map[string]any{"name": cmd.McpName, "transport": cfg.Type})
 	s.broadcastMcpServers(cmd.Path)
@@ -124,6 +149,11 @@ func (s *Server) dispatchMcpLogin(conn net.Conn, cmd *protocol.ClientCommand) {
 		return
 	}
 
+	if cmd.McpRedirectURI != "" {
+		s.beginCallerMcpLogin(conn, cmd, cfg)
+		return
+	}
+
 	login, err := mcp.BeginLogin(cmd.McpName, cfg, cmd.McpScope)
 	if err != nil {
 		utils.LogWithFields(utils.LevelError, "server.mcp", "login start failed", map[string]any{
@@ -151,20 +181,32 @@ func (s *Server) dispatchMcpLogin(conn net.Conn, cmd *protocol.ClientCommand) {
 	go func() {
 		select {
 		case <-login.Done:
-			reconnected := s.reconnectMcpAcrossSessions(name)
-			utils.LogWithFields(utils.LevelInfo, "server.mcp", "login completed", map[string]any{
-				"server": name, "sessions_reconnected": reconnected,
-			})
-			s.broadcastMcpServers(projectDir)
+			s.settleMcpLogin(name, projectDir, nil)
 		case loginErr := <-login.Err:
-			utils.LogWithFields(utils.LevelInfo, "server.mcp", "login did not complete", map[string]any{
-				"server": name, "error": loginErr.Error(),
-			})
-			// Broadcast anyway: the snapshot's authenticated flag is how a
-			// consumer learns the attempt left the server unauthorized.
-			s.broadcastMcpServers(projectDir)
+			s.settleMcpLogin(name, projectDir, loginErr)
 		}
 	}()
+}
+
+// settleMcpLogin is where every login attempt ends, whichever redirect it
+// used: a success reconnects the server across live sessions, and either way
+// the snapshot is broadcast — its authenticated flag is how a consumer learns
+// the attempt left the server unauthorized. When no live session reconnected,
+// a probe refreshes the recorded connect error, which otherwise still reports
+// the failure from before the sign-in.
+func (s *Server) settleMcpLogin(name, projectDir string, loginErr error) {
+	if loginErr != nil {
+		utils.LogWithFields(utils.LevelInfo, "server.mcp", "login did not complete", map[string]any{
+			"server": name, "error": loginErr.Error(),
+		})
+	} else {
+		reconnected := s.reconnectMcpAcrossSessions(name)
+		probed := reconnected == 0 && s.probeMcpServer(name, projectDir)
+		utils.LogWithFields(utils.LevelInfo, "server.mcp", "login completed", map[string]any{
+			"server": name, "sessions_reconnected": reconnected, "probed": probed,
+		})
+	}
+	s.broadcastMcpServers(projectDir)
 }
 
 // dispatchMcpLogout drops a server's stored token and client registration, then
@@ -190,14 +232,9 @@ func (s *Server) reconnectMcpAcrossSessions(name string) int {
 	return s.manager.ReconnectMcpServer(name)
 }
 
-// mcpConfigFromCommand builds a server config from an mcp_add command,
-// resolving the transport when the consumer did not state one.
-//
-// The transport default is inferred rather than required: a consumer supplying
-// a URL means a network server, and one supplying a command means stdio.
-// Forcing them to restate it would be an opinion the engine does not need to
-// hold. "http" (StreamableHTTP) is the default for a URL because it is the
-// current MCP transport; sse is the older one and is selected explicitly.
+// mcpConfigFromCommand builds a server config from an mcp_add command. The
+// transport is inferred when the consumer did not state one (see
+// config.NormalizeMcpServerConfig).
 func mcpConfigFromCommand(cmd *protocol.ClientCommand) (types.McpServerConfig, error) {
 	cfg := types.McpServerConfig{
 		Type:    cmd.McpTransport,
@@ -206,39 +243,47 @@ func mcpConfigFromCommand(cmd *protocol.ClientCommand) (types.McpServerConfig, e
 		Args:    cmd.McpArgs,
 		Env:     cmd.McpEnv,
 		Headers: cmd.McpHeaders,
+		OAuth:   mcpOAuthConfigFromSettings(cmd.McpOAuth),
 	}
-
-	if cfg.Type == "" {
-		switch {
-		case cfg.URL != "":
-			cfg.Type = "http"
-		case cfg.Command != "":
-			cfg.Type = "stdio"
-		default:
-			return types.McpServerConfig{}, fmt.Errorf("mcp_add requires either mcpUrl (http/sse/ws) or mcpCommand (stdio)")
-		}
+	if err := ionconfig.NormalizeMcpServerConfig(&cfg); err != nil {
+		return types.McpServerConfig{}, err
 	}
-
-	switch cfg.Type {
-	case "http", "sse", "ws", "websocket":
-		if cfg.URL == "" {
-			return types.McpServerConfig{}, fmt.Errorf("transport %q requires mcpUrl", cfg.Type)
-		}
-		if cfg.Command != "" {
-			return types.McpServerConfig{}, fmt.Errorf("transport %q takes mcpUrl, not mcpCommand", cfg.Type)
-		}
-	case "stdio":
-		if cfg.Command == "" {
-			return types.McpServerConfig{}, fmt.Errorf("transport \"stdio\" requires mcpCommand")
-		}
-		if cfg.URL != "" {
-			return types.McpServerConfig{}, fmt.Errorf("transport \"stdio\" takes mcpCommand, not mcpUrl")
-		}
-	default:
-		return types.McpServerConfig{}, fmt.Errorf("unsupported MCP transport %q (want http, sse, ws, or stdio)", cfg.Type)
-	}
-
 	return cfg, nil
+}
+
+// probeMcpServer refreshes a server's recorded connect error with a fresh
+// attempt. Returns whether a probe ran; a Server without a manager (tests) has
+// nothing to probe.
+func (s *Server) probeMcpServer(name, projectDir string) bool {
+	if s.manager == nil {
+		return false
+	}
+	//nolint:errcheck // the outcome is recorded as the server's connect error and logged by the probe
+	_ = s.manager.ProbeMcpServer(name, projectDir)
+	return true
+}
+
+// mcpOAuthConfigFromSettings converts the wire OAuth settings into an
+// engine.json oauth block, or nil when no setting is present: an empty block
+// on disk would read as "operator-configured" while configuring nothing.
+func mcpOAuthConfigFromSettings(settings *protocol.McpOAuthSettings) *types.McpOAuthConfig {
+	if settings == nil {
+		return nil
+	}
+	oauth := &types.McpOAuthConfig{
+		ClientID: settings.ClientID,
+		AuthURL:  settings.AuthURL,
+		TokenURL: settings.TokenURL,
+		Scope:    settings.Scope,
+		Resource: settings.Resource,
+	}
+	if settings.ClientSecret != nil {
+		oauth.ClientSecret = *settings.ClientSecret
+	}
+	if *oauth == (types.McpOAuthConfig{}) {
+		return nil
+	}
+	return oauth
 }
 
 // mcpServersEvent builds the complete server snapshot event.

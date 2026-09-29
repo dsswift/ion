@@ -15,7 +15,8 @@
 import { useEffect } from 'react'
 import { useSurfaceStore } from './surface-store'
 import { rDebug, rWarn } from '../../rendererLogger'
-import type { StudioBrowserCommandEnvelope, StudioBrowserCommandResult, StudioBrowserTabInfo } from '../../../shared/studio-browser-types'
+import type { StudioBrowserCommandEnvelope, StudioBrowserCommandResult, StudioBrowserTabInfo } from '@ion/shared/studio-browser-types'
+import { host } from '../../host/host-instance'
 
 /**
  * Open a link the operator cmd-clicked inside a browser guest.
@@ -28,7 +29,7 @@ function openClickedGuestLink(url: string): void {
   const store = useSurfaceStore.getState()
   store.openBrowserTab(url, 'browse')
   store.setVisible(true)
-  rDebug('studio.browser', 'opened guest link in a new browser tab', { host: hostOf(url) })
+  rDebug('studio.browser', 'opened guest link in a new browser tab', { url_host: hostOf(url) })
 }
 
 function hostOf(raw: string): string {
@@ -46,15 +47,19 @@ export function useStudioBrowserCommands(): void {
 
 /** Install the handlers. Returns an unsubscribe for window teardown. */
 export function registerStudioBrowserCommands(): () => void {
-  const stopOpenUrl = window.ion.onStudioBrowserOpenUrl(openClickedGuestLink)
-  const stopCommands = window.ion.onStudioBrowserCommand((envelope) => {
+  // Main owns the Playwright runtime this bridges to -- a browser tab has
+  // none. 'browser' already gates the Studio Browser Surface panel itself
+  // (SurfacePanel.tsx, PopoverLayer.tsx); this call site just never checked it.
+  if (!host.capabilities().includes('browser')) return () => {}
+  const stopOpenUrl = host.shell.onStudioBrowserOpenUrl(openClickedGuestLink)
+  const stopCommands = host.shell.onStudioBrowserCommand((envelope) => {
     try {
-      window.ion.studioBrowserCommandResult(apply(envelope))
+      host.shell.studioBrowserCommandResult(apply(envelope))
     } catch (err) {
       // Never leave main waiting: a thrown handler still owes an answer, and a
       // refusal the model can read beats a timeout it cannot explain.
       rWarn('studio.browser', 'browser command failed', { call_id: envelope.callId, error: String(err) })
-      window.ion.studioBrowserCommandResult({ callId: envelope.callId, ok: false, error: String(err) })
+      host.shell.studioBrowserCommandResult({ callId: envelope.callId, ok: false, error: String(err) })
     }
   })
   return () => {

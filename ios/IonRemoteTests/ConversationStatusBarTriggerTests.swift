@@ -34,7 +34,7 @@ final class ConversationStatusBarTriggerTests: XCTestCase {
             permissionMode: nil,
             availableModels: [],
             attachmentCount: 0,
-            onSelectModel: { _ in },
+            onSelectModel: { _, _ in },
             onToggleMode: {},
             onTapAttachments: {},
             onTapContextIndicator: { called = true }
@@ -61,7 +61,7 @@ final class ConversationStatusBarTriggerTests: XCTestCase {
             permissionMode: nil,
             availableModels: [],
             attachmentCount: 0,
-            onSelectModel: { _ in },
+            onSelectModel: { _, _ in },
             onToggleMode: {},
             onTapAttachments: {}
             // onTapContextIndicator intentionally omitted — must compile with default

@@ -3,6 +3,9 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/dsswift/ion/engine/internal/conversation"
+	"github.com/dsswift/ion/engine/internal/types"
 )
 
 const maxContextIdentityClaimBytes = 256 * 1024
@@ -18,6 +21,12 @@ type ContextIdentity struct {
 	Attribution string         `json:"attribution,omitempty"`
 	Source      string         `json:"source,omitempty"`
 	Claims      map[string]any `json:"claims,omitempty"`
+	// StorageRoot is the absolute directory this identity's conversations
+	// live under, mirroring StartSessionResult.StorageRoot -- present only
+	// when principal partitioning is enabled and Subject is non-empty;
+	// empty otherwise, meaning "unchanged from the pre-partitioning
+	// behavior" to every consumer (SDKs, hook handlers).
+	StorageRoot string `json:"storageRoot,omitempty"`
 }
 
 // ContextIdentityProvider optionally exposes verified identity state without
@@ -64,4 +73,27 @@ func cloneClaims(claims map[string]any) (map[string]any, error) {
 type ContextIdentityChange struct {
 	Identity *ContextIdentity
 	Reason   string
+}
+
+// FromSessionPrincipal projects a session-scoped SessionPrincipal (manifest
+// C1/C2) down to the credential-free ContextIdentity shape hooks and
+// Context.Identity() expect. Returns nil for a nil principal.
+func FromSessionPrincipal(principal *types.SessionPrincipal) *ContextIdentity {
+	if principal == nil {
+		return nil
+	}
+	var storageRoot string
+	if principal.Subject != "" && conversation.PartitioningEnabled() {
+		storageRoot = conversation.PartitionConversationsDir(principal.Subject)
+	}
+	return &ContextIdentity{
+		Kind:        principal.Kind,
+		Provider:    principal.Provider,
+		Subject:     principal.Subject,
+		Username:    principal.Username,
+		DisplayName: principal.DisplayName,
+		Attribution: principal.Attribution,
+		Claims:      cloneClaimsOrNil(principal.Claims),
+		StorageRoot: storageRoot,
+	}
 }

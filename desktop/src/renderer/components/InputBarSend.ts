@@ -25,9 +25,9 @@
  * flicker of a clear-then-restore is worth keeping for the common case where
  * both windows agree.
  */
-import { resolveAttachmentPrompt } from '../../shared/attachment-prompt'
-import { promptRefusal, type PromptAcceptanceTab } from '../../shared/prompt-acceptance'
-import type { PromptSubmitResult } from '../../shared/prompt-submit-result'
+import { resolveAttachmentPrompt } from '@ion/shared/attachment-prompt'
+import { promptRefusal, type PromptAcceptanceTab } from '@ion/shared/prompt-acceptance'
+import type { PromptSubmitResult } from '@ion/shared/prompt-submit-result'
 
 export interface SendSnapshot {
   tabs: Array<{ id: string } & PromptAcceptanceTab>

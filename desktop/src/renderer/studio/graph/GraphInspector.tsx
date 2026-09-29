@@ -15,7 +15,7 @@
 import React, { useMemo } from 'react'
 import { useColors } from '../../theme'
 import { useGraphStore } from './graph-store'
-import type { GraphModel, GraphNode } from '../../../shared/graph-model-types'
+import type { GraphModel, GraphNode } from '@ion/shared/graph-model-types'
 
 interface Neighbour {
   id: string

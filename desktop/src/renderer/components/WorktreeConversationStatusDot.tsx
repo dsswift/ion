@@ -1,8 +1,8 @@
 import React from 'react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../theme'
-import { getTabStatusColor } from './TabStripShared'
-import { StatusDot } from './TabStripStatusDot'
+import { getTabStatusColor } from './conversation-status'
+import { StatusDot } from './StatusDot'
 
 /**
  * WorktreeConversationStatusDot — live tab-status indicator for a conversation
@@ -31,7 +31,7 @@ export function WorktreeConversationStatusDot({ tabId }: { tabId: string }): Rea
       data-testid={`worktree-conversation-status-${tabId}`}
       style={{ display: 'inline-flex', width: 6, height: 6, flexShrink: 0 }}
     >
-      <StatusDot derived={getTabStatusColor(tab, colors)} pillIcon={tab.pillIcon} />
+      <StatusDot derived={getTabStatusColor(tab, colors)} />
     </span>
   )
 }
