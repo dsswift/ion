@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"os"
 	"testing"
+
+	"github.com/dsswift/ion/engine/internal/cliprobe"
 )
 
 func TestMain(m *testing.M) {
@@ -40,6 +42,17 @@ func TestMain(m *testing.M) {
 	if err := os.Setenv("HOME", tmpHome); err != nil {
 		fmt.Fprintf(os.Stderr, "server tests: cannot set HOME: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Every server built in this package would otherwise spawn the real
+	// delegated CLIs installed on the machine (grok, claude, codex) to probe
+	// them. A real CLI writes into HOME, which is a test's temp directory,
+	// while that directory is being removed, and the test then fails on
+	// cleanup. Tests that want a probe result install their own function.
+	newProbeRegistry = func() *cliprobe.Registry {
+		reg := cliprobe.NewRegistry()
+		reg.SetProbeFunc(func(kind string) cliprobe.Probe { return cliprobe.Probe{Kind: kind} })
+		return reg
 	}
 
 	code := m.Run()

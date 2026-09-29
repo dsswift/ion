@@ -202,7 +202,7 @@ func startBackgroundBashTask(ctx context.Context, ops BackgroundBashOperations, 
 		Owner:            owner,
 		PID:              handle.PID,
 		NotifyOnComplete: notifyOnComplete,
-		ToolID:           backgroundToolIDFromContext(ctx),
+		ToolID:           BackgroundToolIDFromContext(ctx),
 		stop:             handle.Stop,
 		tail:             handle.Tail,
 	}

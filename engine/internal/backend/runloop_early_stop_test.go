@@ -874,9 +874,9 @@ func TestMaybeContinueEarlyStop_AppendsUserMessage(t *testing.T) {
 
 // TestMaybeContinueEarlyStop_ClassifiesInjectedEntryAsSystemSteer pins the
 // bug fixed alongside this test: the persisted continuation entry must carry
-// InjectionKindSystemSteer / MachineAuthored=true so desktop's and iOS's
-// suppression policies (shared/injection-policy.ts, InjectionPolicy.swift)
-// hide it from the transcript on a history reload, exactly as they already
+// InjectionKindSystemSteer / MachineAuthored=true so the clients' suppression
+// policy (shared/injection-policy.ts) hides it from the transcript on a
+// history reload, exactly as it already
 // hide it during live streaming. Before the fix, injectSystemMessage's
 // persist branch called the plain (unclassified) conversation.AddUserMessage,
 // so the entry's InjectionKind/MachineAuthored were the zero value and every

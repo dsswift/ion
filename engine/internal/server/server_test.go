@@ -163,6 +163,24 @@ func readLines(t *testing.T, conn net.Conn, maxLines int, deadline time.Duration
 	return lines
 }
 
+// readLinesUntil reads lines until one satisfies done (that line is the
+// last returned) or the deadline passes. A server broadcasts on its own
+// schedule (provider probes finishing, for one), so a test waiting for a
+// reply reads until the reply rather than counting lines.
+func readLinesUntil(t *testing.T, conn net.Conn, deadline time.Duration, done func(string) bool) []string {
+	t.Helper()
+	conn.SetReadDeadline(time.Now().Add(deadline))
+	scanner := bufio.NewScanner(conn)
+	var lines []string
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+		if done(scanner.Text()) {
+			break
+		}
+	}
+	return lines
+}
+
 // findResult scans lines for a "result" cmd and returns it.
 func findResult(t *testing.T, lines []string) *protocol.ServerResult {
 	t.Helper()

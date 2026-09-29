@@ -82,8 +82,7 @@ func socketToken(sessionID string) string {
 
 // NewToolServer creates a tool server for the given session.
 func NewToolServer(sessionID string) *ToolServer {
-	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
-	sockDir := filepath.Join(home, ".ion", "mcp")
+	sockDir := filepath.Join(utils.IonDir(), "mcp")
 	os.MkdirAll(sockDir, 0o700) //nolint:errcheck // dir creation; failure surfaces on listen below
 
 	srv := mcp.NewServer(
@@ -151,7 +150,7 @@ func (ts *ToolServer) RegisterTool(name string, handler ToolHandler, description
 			}
 
 			utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "tools/call: invoking", map[string]any{"name": name})
-			result, err := h(ctx, args)
+			result, err := h(stampToolUseID(ctx, name, req.Params), args)
 			if err != nil {
 				utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "tool error", map[string]any{
 					"name":  name,
@@ -324,8 +323,7 @@ func mcpBridgeInvocation(sockPath string) (command string, args []string) {
 
 // McpConfigPath writes MCP config JSON for the Claude CLI --mcp-config flag.
 func (ts *ToolServer) McpConfigPath(sessionID string) (string, error) {
-	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
-	configDir := filepath.Join(home, ".ion", "mcp")
+	configDir := filepath.Join(utils.IonDir(), "mcp")
 
 	bridgeCmd, bridgeArgs := mcpBridgeInvocation(ts.sockPath)
 	config := map[string]interface{}{

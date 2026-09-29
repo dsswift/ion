@@ -51,6 +51,14 @@ type engineSession struct {
 	config         types.EngineConfig
 	identityPolicy identityPolicy
 	requestID      string // empty when no active run
+	// principal is the person or service this session was started for, set
+	// from start_session.principal (manifest C1/C2). Nil for a session
+	// nobody attributed -- session behavior is unchanged from before this
+	// field existed. Read by Context.Identity() (session principal takes
+	// priority over process identity), by list_sessions filtering, and
+	// stamped onto the conversation header the first time it is minted.
+	// Guarded by m.mu like every other engineSession field.
+	principal *types.SessionPrincipal
 	// acceptedDeliveryIDs makes duplicate deliveryId checks atomic before the
 	// user turn has been persisted. Persisted conversation entries remain the
 	// restart-safe authority once a run writes its first turn.
@@ -290,14 +298,20 @@ type engineSession struct {
 	convToolNames map[string]*convToolInfo
 	// pendingCliUserTurn holds the current run's original user prompt (the
 	// display text, before any transcript bridging mutated opts.Prompt) when
-	// the run is served by a native-session (delegated-CLI) backend. Together
-	// with pendingCliAssistantText it is persisted into Ion's conversation
-	// store at run exit so the delegated-CLI turn lands in Ion's transcript —
-	// the single source of truth. Without this, CLI turns are invisible to
+	// the run is served by a native-session (delegated-CLI) backend. It marks
+	// the run as delegated, and is the text persistCliTurn writes at run exit
+	// when dispatch could not write the user turn itself (see
+	// pendingCliUserEntryID). The delegated-CLI turn must land in Ion's
+	// transcript — the single source of truth. Without this, CLI turns are invisible to
 	// Ion and a later cross-provider turn's transcript bridge misses them (the
 	// continuity-loss bug). Empty for engine-owned backends, which persist
 	// their own turns via the runloop. Guarded by m.mu.
 	pendingCliUserTurn string
+	// pendingCliUserEntryID is the entry id of this run's user turn when
+	// dispatch already wrote it (prePersistCliUserTurn). Non-empty tells
+	// persistCliTurn the turn is on disk and must not be appended again.
+	// Guarded by m.mu.
+	pendingCliUserEntryID string
 	// pendingCliDisplayText is the optional transcript rendering paired with the
 	// provider-facing pendingCliUserTurn. It preserves structured client cards
 	// when a delegated-CLI backend owns the run.
@@ -349,6 +363,32 @@ type engineSession struct {
 	// delegated CLI. Set from PlanFileWrittenEvent in handleNormalizedEvent,
 	// drained by persistCliTurn. Guarded by m.mu.
 	pendingCliPlanMarker *conversation.PlanMarkerData
+	// pendingCliRunCostUsd and pendingCliRunUsage hold what the delegated CLI
+	// reported for the current run (TaskCompleteEvent.CostUsd and .Usage), so
+	// persistCliTurn can write them into the conversation header in the same
+	// save that appends the turn.
+	//
+	// CostUsd is the CLI's own valuation of the run at its per-token rates. It
+	// is not necessarily an amount anyone was charged: a subscription-
+	// authenticated CLI is not billed per token, which makes the figure an
+	// equivalent-rate valuation rather than spend. The engine never sees the
+	// CLI's auth mode and so cannot tell the two apart. It stores what was
+	// reported and leaves the interpretation to the consumer.
+	//
+	// Why the session owns these: only an engine-owned run reaches the runloop,
+	// which calls conversation.UpdateCost per turn. A delegated-CLI run has no
+	// conversation in the backend, so without this the CLI's reported cost lived
+	// only in the run-scoped lastTotalCost and died with the run — every
+	// delegated-CLI conversation reported a $0 header, and every consumer that
+	// reads that header (cost breakdown, conversation list, export, the
+	// aggregate_cost in run.complete telemetry) reported $0 with it.
+	//
+	// Both are last-write-wins rather than accumulated: the CLI's figures are
+	// already cumulative for the run, so a second result event for the same run
+	// carries a newer total, not an increment. Cleared at dispatch alongside
+	// pendingCliUserTurn, drained by persistCliTurn. Guarded by m.mu.
+	pendingCliRunCostUsd float64
+	pendingCliRunUsage   types.LlmUsage
 	// cliRunFailedTerminal marks the current delegated-CLI run as having
 	// reported a terminal error (an ErrorEvent from the CLI's result stream —
 	// e.g. its autocompactor thrashing until the process gives up). Set in
@@ -375,7 +415,10 @@ type engineSession struct {
 	// hook context (Context.TraceID / ctx.traceId) so a consumer can parent
 	// its own OTLP spans to the engine's trace, and it is stamped on every
 	// log line and telemetry event emitted during the run.
-	runTraceID                  string
+	runTraceID string
+	// runSpan is the active run's own span (see run_identity.go). Cleared
+	// with runTraceID.
+	runSpan                     runSpan
 	agents                      *agents.Registry
 	extensionName               string // friendly name broadcast by the extension
 	extensionVersion            string // version from extension.json manifest (empty when absent)
@@ -510,7 +553,7 @@ type engineSession struct {
 	modelMu       sync.RWMutex
 	lastModel     string
 	lastTotalCost float64 // run-scoped cost (alias: RunCostUsd)
-	lastConvCost  float64 // conversation-scoped cost (alias: ConversationCostUsd)
+	lastConvCost  float64 // conversation cost incl. live descendants (alias: ConversationCostUsd)
 	// lastCompletionReason is the authoritative terminal classification from the
 	// most recent TaskCompleteEvent. Status snapshots repeat it until the next
 	// prompt starts, so a client that processes the run-exit idle snapshot rather

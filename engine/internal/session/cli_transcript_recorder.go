@@ -35,7 +35,7 @@ import (
 
 // cliTranscriptItem is one ordered element of a delegated run's turn content.
 type cliTranscriptItem struct {
-	kind string // "text" | "tool_use" | "tool_result" | "native_compaction"
+	kind string // "text" | "tool_use" | "tool_result" | "native_compaction" | "steer"
 	// text (kind "text")
 	text string
 	// tool_use fields
@@ -48,6 +48,10 @@ type cliTranscriptItem struct {
 	// native_compaction payload (kind "native_compaction"): the delegated CLI
 	// compacted its own session at this point in the stream.
 	nativeCompaction *conversation.NativeCompactionData
+	// steer fields (kind "steer"): a mid-turn message the CLI consumed at
+	// this point in the stream. steerKind is a types.InjectionKind wire
+	// value, empty for a client steer; text carries the message.
+	steerKind string
 }
 
 // cliTranscriptRecorder accumulates one delegated root run's ordered turn
@@ -125,6 +129,16 @@ func (r *cliTranscriptRecorder) record(event types.NormalizedEvent) {
 			kind: "tool_result", toolID: e.ToolID,
 			resultContent: e.Content, resultIsError: e.IsError,
 		})
+	case *types.SteerInjectedEvent:
+		// Recorded where the CLI reported consuming it: after the output the
+		// model produced without it, before the output it produced with it.
+		// A steer without text came from a backend that persists its own
+		// steers; there is nothing to record here.
+		if e.Text == "" {
+			return
+		}
+		r.flushTextLocked()
+		r.items = append(r.items, cliTranscriptItem{kind: "steer", text: e.Text, steerKind: e.Kind})
 	case *types.NativeCompactionEvent:
 		// Recorded in stream order rather than appended at the end of the turn:
 		// a CLI compacts partway through its own work, and the marker is only
@@ -181,12 +195,17 @@ func (r *cliTranscriptRecorder) flushTextLocked() {
 // The items are grouped into ordered writes before anything is appended, so
 // "which assistant message is last" is known when the first one is written
 // rather than discovered afterwards.
-func appendStructuredCliTurn(conv *conversation.Conversation, items []cliTranscriptItem, model string, finalUsage *types.LlmUsage) bool {
+// Returns whether anything was written, and the canonical tree-entry ids of
+// the assistant messages written, in transcript order. The ids are what
+// engine_assistant_turn_persisted announces: this backend writes its turn at
+// run exit, so they cannot ride message_end the way an engine-owned run's do.
+func appendStructuredCliTurn(conv *conversation.Conversation, items []cliTranscriptItem, model string, finalUsage *types.LlmUsage) (bool, []string) {
 	// One ordered write. Exactly one of the two fields is populated.
 	type turnWrite struct {
 		assistant        []types.LlmContentBlock
 		results          []conversation.ToolResultEntry
 		nativeCompaction *conversation.NativeCompactionData
+		steer            *cliTranscriptItem
 	}
 	var writes []turnWrite
 	var assistantBlocks []types.LlmContentBlock
@@ -227,6 +246,13 @@ func appendStructuredCliTurn(conv *conversation.Conversation, items []cliTranscr
 			flushAssistant()
 			flushResults()
 			writes = append(writes, turnWrite{nativeCompaction: it.nativeCompaction})
+		case "steer":
+			// A steer is its own user message, after the tool results the
+			// model had already received and before its next reply.
+			flushAssistant()
+			flushResults()
+			steer := it
+			writes = append(writes, turnWrite{steer: &steer})
 		}
 	}
 	flushAssistant()
@@ -238,6 +264,7 @@ func appendStructuredCliTurn(conv *conversation.Conversation, items []cliTranscr
 			lastAssistant = i
 		}
 	}
+	assistantEntryIDs := make([]string, 0, len(writes))
 	for i := range writes {
 		if writes[i].nativeCompaction != nil {
 			// Appended as EntryNativeCompaction, never EntryCompaction: this
@@ -250,11 +277,60 @@ func appendStructuredCliTurn(conv *conversation.Conversation, items []cliTranscr
 			conversation.AddToolResults(conv, writes[i].results)
 			continue
 		}
-		if finalUsage != nil && i == lastAssistant {
-			conversation.AddAssistantMessageWithUsageAndModel(conv, writes[i].assistant, *finalUsage, model)
+		if steer := writes[i].steer; steer != nil {
+			appendCliSteer(conv, steer.text, steer.steerKind)
 			continue
 		}
-		conversation.AddAssistantMessageNoUsage(conv, writes[i].assistant, model)
+		if finalUsage != nil && i == lastAssistant {
+			conversation.AddAssistantMessageWithUsageAndModel(conv, writes[i].assistant, *finalUsage, model)
+		} else {
+			conversation.AddAssistantMessageNoUsage(conv, writes[i].assistant, model)
+		}
+		// Announce only the entries that carry TEXT. A history load flattens one
+		// assistant entry into a text row keyed by the entry id plus a tool row
+		// per tool_use keyed by its tool id, so a tool-only entry produces no
+		// row a consumer could re-key to this id. Announcing them anyway is what
+		// made the counts disagree -- a turn with nine tool calls announced ten
+		// ids against two text rows, and the consumer correctly refused the
+		// whole mapping rather than assign a wrong identity.
+		if !blocksCarryText(writes[i].assistant) {
+			continue
+		}
+		if id := conversation.LastMessageEntryID(conv); id != "" {
+			assistantEntryIDs = append(assistantEntryIDs, id)
+		}
 	}
-	return len(writes) > 0
+	return len(writes) > 0, assistantEntryIDs
+}
+
+// appendCliSteer persists one consumed steer the way the API run loop does: a
+// user turn classified by its injection kind, followed by the steer marker
+// that lets a reload show where the steer was applied.
+func appendCliSteer(conv *conversation.Conversation, text, kind string) {
+	entry := conversation.AddUserMessageWithKind(conv, text, kind)
+	conversation.AppendEntry(conv, conversation.EntrySteerMarker, conversation.SteerMarkerData{
+		MessageLength:   len(text),
+		Kind:            kind,
+		MachineAuthored: types.InjectionKind(kind).IsMachineToMachine(),
+	})
+	entryID := ""
+	if entry != nil {
+		entryID = entry.ID
+	}
+	utils.LogWithFields(utils.LevelInfo, "session.cli_transcript", "persisted consumed steer", map[string]any{
+		"conversation_id": conv.ID, "entry_id": entryID, "count": len(text), "kind": kind,
+	})
+}
+
+// blocksCarryText reports whether an assistant message has any text block.
+// Only such a message yields a non-tool row on a history load, which is what
+// makes its entry id re-keyable by a consumer; a tool-only message yields tool
+// rows alone, and those are keyed by tool id on both sides.
+func blocksCarryText(blocks []types.LlmContentBlock) bool {
+	for _, b := range blocks {
+		if b.Type == "text" && b.Text != "" {
+			return true
+		}
+	}
+	return false
 }

@@ -98,17 +98,17 @@ type LlmMessage struct {
 // emitted with omitempty so older consumers continue to round-trip the
 // block without loss.
 type LlmContentBlock struct {
-	Type      string         `json:"type"`
-	Text      string         `json:"text,omitempty"`
-	ID        string         `json:"id,omitempty"`
-	Name      string         `json:"name,omitempty"`
-	Input     map[string]any `json:"input,omitempty"`
-	ToolUseID string         `json:"tool_use_id,omitempty"`
-	Content   string         `json:"content,omitempty"`
-	IsError          *bool   `json:"is_error,omitempty"`
-	BackgroundTaskID string  `json:"background_task_id,omitempty"`
-	Thinking         string  `json:"thinking,omitempty"`
-	Source    *ImageSource   `json:"source,omitempty"`
+	Type             string         `json:"type"`
+	Text             string         `json:"text,omitempty"`
+	ID               string         `json:"id,omitempty"`
+	Name             string         `json:"name,omitempty"`
+	Input            map[string]any `json:"input,omitempty"`
+	ToolUseID        string         `json:"tool_use_id,omitempty"`
+	Content          string         `json:"content,omitempty"`
+	IsError          *bool          `json:"is_error,omitempty"`
+	BackgroundTaskID string         `json:"background_task_id,omitempty"`
+	Thinking         string         `json:"thinking,omitempty"`
+	Source           *ImageSource   `json:"source,omitempty"`
 	// Ephemeral marks provider input that must leave in-memory history after the
 	// current stream. It is never persisted or serialized to a provider API.
 	Ephemeral bool `json:"-"`
@@ -473,7 +473,31 @@ type ProviderEntry struct {
 	// openai→codex, xai→grok, cursor→cursor). Nil for API-only providers.
 	// Additive, omitempty.
 	Cli *ProviderCliStatus `json:"cli,omitempty"`
+	// LoginFlow names how this provider's delegated-CLI sign-in completes,
+	// so a client driving the engine from ANOTHER machine can tell up front
+	// whether the flow can finish at all. Empty for API-only providers.
+	//
+	//   browser-code:           the CLI prints an authorize URL and accepts a
+	//                           pasted code back (claude-code); works from any
+	//                           client, since the URL can be opened anywhere.
+	//   browser-or-device-code: the CLI opens a loopback-callback browser on
+	//                           the engine's host OR offers a device code
+	//                           (codex); only the device-code branch can
+	//                           finish from another machine.
+	//   browser-callback:       the CLI drives its own browser on the engine's
+	//                           host with a loopback callback (grok, cursor);
+	//                           it cannot finish from another machine.
+	//
+	// Additive, omitempty.
+	LoginFlow string `json:"loginFlow,omitempty"`
 }
+
+// Values of ProviderEntry.LoginFlow.
+const (
+	LoginFlowBrowserCode         = "browser-code"
+	LoginFlowBrowserOrDeviceCode = "browser-or-device-code"
+	LoginFlowBrowserCallback     = "browser-callback"
+)
 
 // ProviderCliStatus reports the install and authentication state of a
 // provider's delegated CLI (the codex/claude/grok/cursor binaries). It is a

@@ -11,7 +11,9 @@ func WithBackgroundToolID(ctx context.Context, toolID string) context.Context {
 	return context.WithValue(ctx, backgroundToolIDKey{}, toolID)
 }
 
-func backgroundToolIDFromContext(ctx context.Context) string {
+// BackgroundToolIDFromContext returns the tool-use ID stamped by
+// WithBackgroundToolID, or "" for a call no model tool-use started.
+func BackgroundToolIDFromContext(ctx context.Context) string {
 	toolID, _ := ctx.Value(backgroundToolIDKey{}).(string) //nolint:errcheck // absent means non-model invocation
 	return toolID
 }

@@ -1,6 +1,8 @@
 package session
 
 import (
+	"errors"
+
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -105,6 +107,14 @@ type steerableWithClientID interface {
 	SteerWithClientID(requestID, message, kind, clientMessageID string) backend.SteerResult
 }
 
+// stdinSteerable is a backend that writes a main-loop steer to a CLI's stdin
+// and confirms it with SteerInjectedEvent once the CLI reports consuming it.
+// A backend without it, or one returning backend.ErrStdinSteerUnsupported for
+// the run, gets a plain WriteToStdin: delivered, but never confirmed.
+type stdinSteerable interface {
+	SteerViaStdin(requestID, message, kind, clientMessageID string) error
+}
+
 type backgroundWorkSteerable interface {
 	SteerWithBackgroundWork(requestID, message, kind string, work types.BackgroundWorkInfo) backend.SteerResult
 }
@@ -159,10 +169,11 @@ func (m *Manager) SteerAgentWithKind(key, agentName, message, kind string) Steer
 }
 
 // SteerAgentWithClientID is the correlation-id-carrying variant of
-// SteerAgentWithKind. clientMessageID is only meaningful for the main-loop
-// (agentName == "") API-steer path — a named-agent stdin steer and the
-// stdin-pipe main-loop fallback have no channel to echo a confirmation
-// through, so the id is accepted but has no effect on those paths.
+// SteerAgentWithKind. clientMessageID is echoed on the confirming
+// SteerInjectedEvent for a main-loop (agentName == "") steer that the backend
+// confirms: the API run loop, or a stdinSteerable CLI. A named-agent stdin
+// steer and the unconfirmed WriteToStdin fallback have no channel to echo a
+// confirmation through, so the id has no effect on those paths.
 func (m *Manager) SteerAgentWithClientID(key, agentName, message, kind, clientMessageID string) SteerOutcome {
 	utils.LogWithFields(utils.LevelInfo, "session", "steeragent: attempt", map[string]any{"session_id": key, "agent_name": agentName, "count": len(message), "kind": kind, "client_message_id": clientMessageID})
 
@@ -218,8 +229,21 @@ func (m *Manager) SteerAgentWithClientID(key, agentName, message, kind, clientMe
 		} else {
 			utils.LogWithFields(utils.LevelInfo, "session", "steeragent: backend does not implement steerable, using stdin path", map[string]any{"session_id": key, "rid": rid})
 		}
-		// ClaudeCodeBackend (or hybrid CLI-routed): write follow-up message over
-		// stdin pipe of the Claude Code subprocess.
+		// A delegated CLI: write the follow-up message to its stdin. The Claude
+		// CLI confirms the steer when it consumes it, and the confirmation is
+		// what records it in the turn the session persists at run exit.
+		if steerer, ok := m.backend.(stdinSteerable); ok {
+			err := steerer.SteerViaStdin(rid, message, kind, clientMessageID)
+			if err == nil {
+				utils.LogWithFields(utils.LevelInfo, "session", "steeragent: delivered to main loop via stdin, confirmation pending", map[string]any{"session_id": key, "rid": rid, "count": len(message), "client_message_id": clientMessageID, "steer_delivered_via_stdin": SteerDeliveredViaStdin})
+				return SteerDeliveredViaStdin
+			}
+			if !errors.Is(err, backend.ErrStdinSteerUnsupported) {
+				utils.LogWithFields(utils.LevelWarn, "session", "steeragent: stdin steer write failed", map[string]any{"session_id": key, "rid": rid, "count": len(message), "error": err.Error(), "steer_rejected_no_run": SteerRejectedNoRun})
+				return SteerRejectedNoRun
+			}
+			utils.LogWithFields(utils.LevelInfo, "session", "steeragent: run has no confirmed stdin steer, writing unconfirmed", map[string]any{"session_id": key, "rid": rid})
+		}
 		stdinMsg := map[string]interface{}{
 			"type": "user",
 			"message": map[string]interface{}{

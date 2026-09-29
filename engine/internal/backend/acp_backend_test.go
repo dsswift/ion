@@ -722,3 +722,12 @@ func acpWaitFor(t *testing.T, cond func() bool, msg string) {
 	}
 	t.Fatalf("timeout waiting for %s", msg)
 }
+
+// ACP has no mid-prompt input channel. A steer written to it must be refused,
+// or the session reports a message delivered that the agent never received.
+func TestAcpBackend_WriteToStdinRefuses(t *testing.T) {
+	b, _ := newTestAcpBackend(t)
+	if err := b.WriteToStdin("any-run", map[string]any{"type": "user"}); err == nil {
+		t.Fatal("WriteToStdin must refuse on an ACP backend")
+	}
+}

@@ -639,3 +639,20 @@ func AddToolResultsWithSizeCheck(conv *Conversation, results []ToolResultEntry, 
 	}
 	AddToolResults(conv, results)
 }
+
+// LastMessageEntryID returns the canonical tree-entry id of the most recently
+// appended message, or "" when the conversation has none or keeps no entries.
+//
+// The Add*Message funnels stamp each message with the id of the entry they
+// wrote; this reads it back so a caller that persists a turn on a backend's
+// behalf can announce the ids it just minted. Delegated-CLI turns are the
+// case: they are written at run exit, so their ids cannot ride message_end
+// the way an engine-owned run's do.
+func LastMessageEntryID(conv *Conversation) string {
+	conv.lock()
+	defer conv.unlock()
+	if len(conv.Messages) == 0 {
+		return ""
+	}
+	return conv.Messages[len(conv.Messages)-1].EntryID
+}

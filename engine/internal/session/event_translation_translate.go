@@ -361,12 +361,16 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		// to be echoed back over the wire. ClientMessageID/EntryID ride
 		// along only for a genuine client-originated steer so a client
 		// can re-key its optimistic row by identity and retain the
-		// durable entry id as an exact future rewind target.
+		// durable entry id as an exact future rewind target. Kind and
+		// MachineAuthored let a client tell a machine injection from a
+		// person's steer, so it never renders one as the other.
 		return types.EngineEvent{
 			Type:                 "engine_steer_injected",
 			SteerMessageLength:   e.MessageLength,
 			SteerClientMessageID: e.ClientMessageID,
 			SteerEntryID:         e.EntryID,
+			SteerKind:            e.Kind,
+			SteerMachineAuthored: e.MachineAuthored,
 		}
 
 	case *types.SteerDegradedEvent:

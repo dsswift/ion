@@ -15,12 +15,18 @@ func (b *ApiBackend) announceUserTurnPersisted(run *activeRun, opts types.RunOpt
 	if runUserEntryID == "" {
 		return
 	}
-	b.emit(run, types.NormalizedEvent{Data: &types.UserTurnPersistedEvent{
-		EntryID:             runUserEntryID,
+	b.emit(run, userTurnPersistedEvent(opts, runUserEntryID))
+}
+
+// userTurnPersistedEvent builds the announcement for a persisted user turn.
+// Shared by every backend so the payload cannot differ by which one ran.
+func userTurnPersistedEvent(opts types.RunOptions, entryID string) types.NormalizedEvent {
+	return types.NormalizedEvent{Data: &types.UserTurnPersistedEvent{
+		EntryID:             entryID,
 		SlashModelAlias:     opts.ResolvedSlashModelAlias,
 		SlashModelEffective: opts.ResolvedSlashModelEffective,
 		SlashFrontmatter:    opts.ResolvedSlashFrontmatter,
-	}})
+	}}
 }
 
 // runloop_conversation_events.go extracts the two conversation.* telemetry
