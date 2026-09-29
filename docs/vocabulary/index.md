@@ -23,7 +23,7 @@ Registry: `docs/vocabulary/terms.json`. Its root object is `{ "version": 1, "ter
 | `qualifiers` | Optional string array. Permitted modifier words. Default: `[]`. |
 | `aliases` | Optional string array. Informal or alternate names. Default: `[]`. |
 | `legacyNames` | Optional string array. Retired names. Default: `[]`. |
-| `implementations` | Optional array, default `[]`. Each item has `platform` (`engine`, `sdk`, `desktop`, `studio`, `overlay`, `ios`, `relay`), `presentation` (`code`, `ui`, `wire`, `doc`), `language` (`go`, `typescript`, `swift`, `markdown`, `json`), `symbol`, and repo-root-relative `path`. The file and literal symbol must exist. |
+| `implementations` | Optional array, default `[]`. Each item has `platform` (`engine`, `sdk`, `server`, `desktop`, `studio`, `overlay`, `ios`, `relay`), `presentation` (`code`, `ui`, `wire`, `doc`), `language` (`go`, `typescript`, `swift`, `markdown`, `json`), `symbol`, and repo-root-relative `path`. The file and literal symbol must exist. |
 | `contract` | Required enum: `public-wire`, `public-sdk`, `internal`, `none`. |
 | `replacementId` | Optional string. Required only for deprecated entries and must name another entry. |
 | `notes` | Optional non-empty string. |
@@ -47,6 +47,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 
 - [APNs pusher](#term-apns-pusher)
 - [Abort Marker](#term-abort-marker)
+- [Account Setting](#term-account-setting)
 - [Agent](#term-agent)
 - [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
 - [Async delivery](#term-async-delivery)
@@ -54,11 +55,14 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Automation Editor](#term-automation-editor)
 - [Backend](#term-backend)
 - [Branch](#term-branch)
+- [Builder Host](#term-builder-host)
 - [Channel](#term-channel)
 - [Chart Output](#term-chart-output)
 - [Chart index reconciliation](#term-chart-index-reconciliation)
 - [Client command](#term-client-command)
 - [Compaction](#term-compaction)
+- [Composer Action](#term-composer-action)
+- [Composer Draft](#term-composer-draft)
 - [Configuration](#term-configuration)
 - [Connection](#term-connection)
 - [Context](#term-context)
@@ -69,7 +73,6 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Conversation Terminal Panel](#term-conversation-terminal-panel)
 - [Conversation Timeline Minimap](#term-conversation-timeline-minimap)
 - [Conversation View](#term-conversation-view)
-- [Conversation backfill](#term-conversation-backfill)
 - [Conversation events](#term-conversation-events)
 - [Conversation instance](#term-conversation-instance)
 - [Conversation persistence](#term-conversation-persistence)
@@ -79,6 +82,9 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Cost](#term-cost)
 - [Desktop](#term-desktop-client)
 - [Desktop Automation](#term-desktop-automation)
+- [Device Metrics](#term-device-metrics)
+- [Device Policy](#term-device-policy)
+- [Device Setting](#term-device-setting)
 - [Dialog](#term-dialog)
 - [Dispatch](#term-dispatch)
 - [Dispatch Alias](#term-dispatch-alias)
@@ -90,11 +96,22 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Engine event](#term-engine-event)
 - [Engine profile](#term-engine-profile)
 - [Engine server](#term-engine-server)
+- [Environment](#term-environment)
+- [Environment Availability](#term-environment-availability)
+- [Environment Catalog](#term-environment-catalog)
+- [Environment Page](#term-environment-page)
+- [Environment Policy](#term-environment-policy)
+- [Environment Purge](#term-environment-purge)
+- [Environment Setting](#term-environment-setting)
 - [Event segment](#term-event-segment)
 - [Explorer Tree State](#term-explorer-tree-state)
 - [Extension](#term-extension)
 - [Extension SDK](#term-extension-sdk)
 - [Extension context](#term-extension-context)
+- [External Host](#term-external-host)
+- [Fleet](#term-fleet)
+- [Format Version](#term-format-version)
+- [Git Identity](#term-git-identity)
 - [Graph Agent Highlight](#term-graph-agent-highlight)
 - [Graph Anchor Node](#term-graph-anchor-node)
 - [Graph Session](#term-graph-session)
@@ -108,7 +125,10 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Input Bar](#term-input-bar)
 - [Install worker](#term-install-worker)
 - [Integration bench](#term-integration-bench)
+- [Ion Studio Server](#term-ion-studio-server)
 - [Keepalive](#term-keepalive)
+- [LAN Discovery](#term-lan-discovery)
+- [Local Principal](#term-local-principal)
 - [Menu](#term-menu)
 - [Message](#term-message)
 - [Message forwarding](#term-forwarding)
@@ -120,24 +140,44 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [New Conversation Picker](#term-new-conversation-picker)
 - [Normalized event](#term-normalized-event)
 - [Notification](#term-notification)
-- [Overlay](#term-overlay)
+- [On Host](#term-on-host)
+- [Pairing Link](#term-pairing-link)
+- [Pane Find](#term-pane-find)
 - [Panel](#term-panel)
 - [Peer](#term-peer)
 - [Peer role](#term-peer-role)
 - [Permission](#term-permission)
+- [Personal Preference](#term-personal-preference)
+- [Phone Action List](#term-phone-action-list)
 - [Picker](#term-picker)
 - [Poll](#term-poll)
+- [Presence](#term-presence)
+- [Principal Partition](#term-principal-partition)
+- [Project Job](#term-project-job)
+- [Project Quick Tool](#term-project-quick-tool)
+- [Project Trust](#term-project-trust)
 - [Project Workspace](#term-project-workspace)
+- [Prompt trace](#term-prompt-trace)
 - [Provider](#term-provider)
+- [Push address](#term-push-address)
 - [Questions Wizard](#term-questions-wizard)
+- [Quick Tool](#term-quick-tool)
 - [Relay](#term-relay)
+- [Relay Trust Announcement](#term-relay-trust-announcement)
 - [Relay hub](#term-relay-hub)
+- [Relay-backed Environment](#term-relay-environment)
+- [Request Principal](#term-request-principal)
 - [Resource](#term-resource)
+- [SSH Door](#term-ssh-door)
 - [Schedule](#term-schedule)
 - [Schedule catch-up group](#term-schedule-catch-up-group)
 - [Scratch Document](#term-scratch-document)
+- [Server Admin Session](#term-server-admin-session)
 - [Server message](#term-server-message)
 - [Session](#term-session)
+- [Session Principal](#term-session-principal)
+- [Settings Side Panel](#term-settings-side-panel)
+- [Settings Taxonomy](#term-settings-taxonomy)
 - [Slash command](#term-slash-command)
 - [Status Drawer](#term-status-drawer)
 - [Steer](#term-steer)
@@ -147,25 +187,42 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Studio Browser Surface](#term-studio-browser-surface)
 - [Studio Center](#term-studio-center)
 - [Studio Left Dock](#term-studio-left-dock)
+- [Studio Resource Traffic](#term-studio-resource-traffic)
+- [Studio SDK](#term-studio-sdk)
+- [Studio Server Bundle](#term-studio-server-bundle)
 - [Studio Surface](#term-studio-surface)
 - [Studio Title Bar](#term-studio-title-bar)
+- [Studio Wire](#term-studio-wire)
 - [Surface](#term-surface)
+- [System Metrics](#term-system-metrics)
 - [Tab](#term-tab)
-- [Tab Strip](#term-tab-strip)
 - [Tag Treatment](#term-tag-treatment)
 - [Telemetry](#term-telemetry)
+- [Telemetry Health](#term-telemetry-health)
+- [Tenancy Mode](#term-tenancy-mode)
 - [Terminal](#term-terminal)
 - [Terminal Activity](#term-terminal-activity)
+- [Terminal Launch Key](#term-terminal-launch-key)
+- [Thin View](#term-thin-view)
 - [Tool](#term-tool)
+- [Tool Execution Boundary](#term-tool-execution-boundary)
 - [Transcript](#term-transcript)
+- [Transcript Patch](#term-transcript-patch)
+- [Transcript Row](#term-transcript-row)
+- [Transfer](#term-transfer)
+- [Transfer Preflight](#term-transfer-preflight)
+- [Transfer Verification](#term-transfer-verification)
 - [Transport](#term-transport)
 - [Turn](#term-turn)
+- [Union Store](#term-union-store)
 - [Visualizer Canvas](#term-visualizer-canvas)
 - [Vocabulary registry](#term-vocabulary-registry)
 - [Wake notification](#term-wake-notification)
 - [Web Application](#term-web-application)
+- [Web Client](#term-web-client)
 - [Webhook](#term-webhook)
 - [Workspace](#term-workspace)
+- [Workspace Search](#term-workspace-search)
 - [Worktree](#term-worktree)
 - [iOS](#term-ios-client)
 
@@ -202,7 +259,7 @@ One continuous thread of user prompts and agent responses, held in a tree that s
 - **Contract:** `public-wire`
 - **Implementations:**
   - `engine` / `code` / `go`: `type Conversation struct` in `engine/internal/conversation/conversation.go`
-  - `desktop` / `wire` / `typescript`: `export interface RemoteTabState` in `desktop/src/main/remote/protocol-remote-tab.ts`
+  - `desktop` / `wire` / `typescript`: `export interface RemoteTabState` in `server/src/remote/protocol-remote-tab.ts`
 
 #### Engine profile {#term-engine-profile}
 
@@ -216,7 +273,7 @@ A named set of extensions and defaults that a conversation loads at start. A pro
 - **Contract:** `public-wire`
 - **Implementations:**
   - `engine` / `wire` / `go`: `type EngineProfile struct` in `engine/internal/types/types.go`
-  - `desktop` / `code` / `typescript`: `engineProfileId` in `desktop/src/shared/remote-projection-types.ts`
+  - `desktop` / `code` / `typescript`: `engineProfileId` in `packages/shared/src/remote-projection-types.ts`
   - `ios` / `code` / `swift`: `EngineProfile` in `ios/IonRemote/Models/EngineProfile.swift`
 
 #### Message {#term-message}
@@ -511,7 +568,7 @@ A delegated CLI compacting its own native session. Distinct from Compaction: Ion
 - **Implementations:**
   - `engine` / `code` / `go`: `type NativeCompactionEvent struct` in `engine/internal/types/normalized_event.go`
   - `engine` / `code` / `go`: `EntryNativeCompaction` in `engine/internal/conversation/conversation.go`
-  - `desktop` / `code` / `typescript`: `export function buildNativeCompactionMarkerContent` in `desktop/src/shared/compaction-marker.ts`
+  - `desktop` / `code` / `typescript`: `export function buildNativeCompactionMarkerContent` in `packages/shared/src/compaction-marker.ts`
 
 #### Permission {#term-permission}
 
@@ -542,6 +599,21 @@ A bounded engine-owned inference loop. It dispatches check agents, re-arms only 
 - **Implementations:**
   - `engine` / `code` / `go`: `func PollTool` in `engine/internal/tools/poll.go`
   - `engine` / `code` / `go`: `func (m *Manager) startPoll` in `engine/internal/session/poll_driver.go`
+
+#### Principal Partition {#term-principal-partition}
+
+The subdirectory of the conversations root one principal's conversations live under on disk, keyed by a filesystem-safe hash of their subject, when engine.json's security.principalPartitioning.enabled is true. Absent/off means every principal's conversations still live in one flat directory, the pre-partitioning layout, byte-identical to before this feature existed.
+
+- **ID:** `principal-partition`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func PartitionConversationsDir` in `engine/internal/conversation/partition.go`
+  - `engine` / `code` / `go`: `func PartitioningEnabled` in `engine/internal/conversation/partition.go`
+- **Notes:** StartSessionResult.StorageRoot and ContextIdentity.StorageRoot both carry the resolved partition path so a harness or SDK consumer can locate it without re-deriving the partitioning rule.
 
 #### Provider {#term-provider}
 
@@ -627,6 +699,24 @@ The engine ending a provider call early because a steer arrived while the model 
   - `engine` / `wire` / `go`: `type SteerInterruptedStreamEvent struct` in `engine/internal/types/normalized_event_run_signals.go`
   - `engine` / `code` / `go`: `type SteeringConfig struct` in `engine/internal/types/config_steering.go`
 
+#### System Metrics {#term-system-metrics}
+
+How busy an Environment's host is and what Ion itself uses on it: host CPU, memory (container-aware), load and disk, and CPU and memory for every process in the engine's own process tree labeled by role, plus the Go runtime. Each sample is a complete snapshot. The engine samples it always and delivers it only to connections that watch (engine_system_metrics); the server merges in its own process and publishes it to watching clients; it leaves the machine only through a configured output (the system.metrics telemetry event, OTLP metrics). Never carries a command line.
+
+- **ID:** `system-metrics`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type SystemMetricsSample` in `engine/internal/types/system_metrics.go`
+  - `engine` / `code` / `go`: `type Sampler` in `engine/internal/sysmetrics/sampler.go`
+  - `desktop` / `code` / `typescript`: `class SystemMetricsPublisher` in `server/src/system-metrics/publisher.ts`
+  - `desktop` / `ui` / `typescript`: `HealthPage` in `desktop/src/renderer/components/settings/pages/HealthPage.tsx`
+  - `ios` / `code` / `swift`: `struct EnvironmentLoadSummary` in `ios/IonRemote/Models/EnvironmentLoadSummary.swift`
+  - `ios` / `code` / `swift`: `final class HealthAdminModel` in `ios/IonRemote/ViewModels/Admin/HealthAdminModel.swift`
+
 #### Telemetry {#term-telemetry}
 
 The versioned event stream that records engine work. Its compact file frames preserve the identity and correlation data needed to reconstruct each event.
@@ -639,6 +729,34 @@ The versioned event stream that records engine work. Its compact file frames pre
 - **Contract:** `internal`
 - **Implementations:**
   - `engine` / `code` / `go`: `type Event = telemetryformat.Event` in `engine/internal/telemetry/telemetry.go`
+
+#### Telemetry Health {#term-telemetry-health}
+
+The delivery health of one telemetry egress target: its on-disk retry backlog, whether it is stuck, what was quarantined, and whether durability was lost. The engine reports it as a complete per-target snapshot on each transition (engine_telemetry_health) and on demand in health; the server retains the latest state per target and replays it on the Studio snapshot.
+
+- **ID:** `telemetry-health`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type TelemetryHealth` in `engine/internal/telemetry/telemetry_health.go`
+  - `desktop` / `code` / `typescript`: `export function installTelemetryHealthConsumer` in `server/src/engine/telemetry-health.ts`
+
+#### Tool Execution Boundary {#term-tool-execution-boundary}
+
+A per-principal backstop that refuses a tool call whose path falls outside the session's own storage partition, checked directly at the tool call site rather than only advertised in a policy list a workaround could skip. Distinct from and lower-level than the enterprise tool-restrictions policy (security.toolRestrictions.principals[], enforced via IsToolAllowedFor): the boundary restricts WHERE a tool may act once it is already allowed to run, and defers the adversarial case for a shell to the OS-level sandbox (security.sandbox), which it wires with a deny-read on every other principal's partition.
+
+- **ID:** `tool-execution-boundary`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func New` in `engine/internal/principalboundary/checker.go`
+  - `engine` / `code` / `go`: `func IsToolAllowedFor` in `engine/internal/config/merge.go`
 
 #### Webhook {#term-webhook}
 
@@ -710,9 +828,39 @@ One outbound event that the engine writes to its socket. Every member of the out
 - **Contract:** `public-wire`
 - **Implementations:**
   - `engine` / `wire` / `go`: `type EngineEvent struct` in `engine/internal/types/engine_event.go`
-  - `desktop` / `wire` / `typescript`: `EngineEvent` in `desktop/src/shared/types-engine-event.ts`
+  - `desktop` / `wire` / `typescript`: `EngineEvent` in `packages/shared/src/types-engine-event.ts`
   - `ios` / `wire` / `swift`: `engine_status` in `ios/IonRemote/Models/EngineEventSupport.swift`
 - **Notes:** Published wire contract. See ADR-008 for prefix ownership.
+
+#### Environment Policy {#term-environment-policy}
+
+Enterprise constraints an engine enforces on itself (allowed models, allowed providers, tool restrictions, resource limits), republished to every connected client on studio_welcome.enterprisePolicy so policy-gated surfaces narrow per-Environment.
+
+- **ID:** `environment-policy`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type EnterpriseConfig struct` in `engine/internal/types/config.go`
+  - `desktop` / `code` / `typescript`: `environmentPolicy(environmentId: string): EnterprisePolicy | null` in `desktop/src/renderer/studio/connection/policy-store.ts`
+
+#### Format Version {#term-format-version}
+
+The version of one data format, stored schema, or wire protocol an Ion build reads or writes (the transfer archive, the Studio wire, the conversation file schema), with the rule that decides whether two builds can work together over it: exact, accepts-previous, reader-at-least, host-storage, or external. Each side keeps one registry that reads the constant its code already uses; a test fails when a new version constant is not registered.
+
+- **ID:** `format-version`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type Format` in `engine/internal/compat/compat.go`
+  - `server` / `code` / `typescript`: `SERVER_FORMAT_REGISTRY` in `server/src/compat/registry.ts`
+  - `server` / `wire` / `typescript`: `interface ServerVersionReport` in `packages/shared/src/format-versions.ts`
+  - `desktop` / `ui` / `typescript`: `ServerFactsGroup` in `desktop/src/renderer/components/settings/pages/OverviewPage.tsx`
 
 #### Hook {#term-hook}
 
@@ -743,8 +891,7 @@ The classification of how a turn was authored: typed at the prompt, synthesized 
 - **Implementations:**
   - `engine` / `code` / `go`: `type InjectionKind string` in `engine/internal/types/injection_kind.go`
   - `engine` / `wire` / `go`: `InjectionKind string` in `engine/internal/protocol/protocol.go`
-  - `desktop` / `code` / `typescript`: `export function suppressesInjection` in `desktop/src/shared/injection-policy.ts`
-  - `ios` / `code` / `swift`: `enum InjectionPolicy` in `ios/IonRemote/Utilities/InjectionPolicy.swift`
+  - `desktop` / `code` / `typescript`: `export function suppressesInjection` in `packages/shared/src/injection-policy.ts`
 
 #### Normalized event {#term-normalized-event}
 
@@ -774,6 +921,19 @@ One outbound NDJSON message from the engine to a consumer. It is either a broadc
 - **Implementations:**
   - `engine` / `wire` / `go`: `type ServerEvent struct` in `engine/internal/protocol/protocol_server.go`
   - `engine` / `wire` / `go`: `type ServerResult struct` in `engine/internal/protocol/protocol_server.go`
+
+#### Session Principal {#term-session-principal}
+
+A per-session identity attribution stamped on the engine session and, at mint, on the conversation header. Lets one shared engine serve several signed-in people without conflating whose conversation is whose.
+
+- **ID:** `session-principal`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type SessionPrincipal struct` in `engine/internal/types/identity.go`
 
 #### Tool {#term-tool}
 
@@ -919,6 +1079,19 @@ The published library that an extension imports to reach the engine. It exposes 
 
 ### product-concept
 
+#### Account Setting {#term-account-setting}
+
+A setting that belongs to one person but only makes sense on one Environment, because it names models or directories that exist there. It is stored in that server's per-identity overlay. Studio labels it Yours on this server.
+
+- **ID:** `account-setting`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `SETTINGS_REGISTRY` in `packages/shared/src/settings-registry.ts`
+
 #### Attachment {#term-attachment}
 
 A file or image that a user adds to a conversation, or that a tool result carries. Clients show attachments in a per-conversation list.
@@ -934,6 +1107,20 @@ A file or image that a user adds to a conversation, or that a tool result carrie
   - `desktop` / `ui` / `typescript`: `export function AttachmentChips` in `desktop/src/renderer/components/AttachmentChips.tsx`
   - `ios` / `ui` / `swift`: `struct AttachmentChipsView` in `ios/IonRemote/Views/AttachmentChipsView.swift`
 
+#### Builder Host {#term-builder-host}
+
+The fleet host that builds a dev deploy's artifact for its own platform when the machine running `ion fleet` cannot: a Windows desktop from a Mac, a Linux Studio Server bundle, a Mac desktop for another CPU. The deploy ships the checkout there with a version stamp, builds once, fetches the artifact back, and installs that one artifact on every host of the platform, the builder included.
+
+- **ID:** `builder-host`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type BuildPlan` in `engine/internal/fleet/builder.go`
+  - `engine` / `doc` / `markdown`: `Builds` in `docs/deployment/fleet.md`
+
 #### Chart Output {#term-chart-output}
 
 A chart the agent renders in a conversation from data it already holds. The model supplies a strict, versioned Ion chart spec through the RenderChart client tool and each client draws it natively, so the values are structured data rather than an inferred image. One tool call renders one chart, which may carry several datasets. A chart keeps a stable identity across updates: a later call that names the chart id replaces its spec and adds a revision, and the conversation's immutable tool rows are the revision history.
@@ -945,9 +1132,9 @@ A chart the agent renders in a conversation from data it already holds. The mode
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `export interface ChartSpec` in `desktop/src/shared/chart-schema.ts`
-  - `desktop` / `code` / `typescript`: `export function parseChartToolInput` in `desktop/src/shared/chart-parse.ts`
-  - `desktop` / `code` / `typescript`: `export function executeRenderChart` in `desktop/src/main/studio-chart-tool.ts`
+  - `desktop` / `code` / `typescript`: `export interface ChartSpec` in `packages/shared/src/chart-schema.ts`
+  - `desktop` / `code` / `typescript`: `export function parseChartToolInput` in `packages/shared/src/chart-parse.ts`
+  - `desktop` / `code` / `typescript`: `export function executeRenderChart` in `server/src/engine/studio-chart-tool.ts`
   - `desktop` / `ui` / `typescript`: `ChartOutputCard` in `desktop/src/renderer/components/conversation/ChartOutputCard.tsx`
   - `ios` / `code` / `swift`: `struct ChartSpec` in `ios/IonRemote/Models/ChartSpec.swift`
   - `ios` / `ui` / `swift`: `ChartCardView` in `ios/IonRemote/Views/ChartCardView.swift`
@@ -965,8 +1152,8 @@ The desktop client tool that measures conversation records on disk and returns c
 - **Legacy names:** None
 - **Contract:** `none`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `conversationTelemetryTool` in `desktop/src/main/telemetry/conversation-telemetry-tool.ts`
-  - `desktop` / `code` / `typescript`: `selectConversations` in `desktop/src/main/telemetry/conversation-telemetry-select.ts`
+  - `desktop` / `code` / `typescript`: `conversationTelemetryTool` in `server/src/telemetry/conversation-telemetry-tool.ts`
+  - `desktop` / `code` / `typescript`: `selectConversations` in `server/src/telemetry/conversation-telemetry-select.ts`
   - `desktop` / `doc` / `markdown`: `ConversationTelemetry` in `docs/tools/reference.md`
 
 #### Corpus Index {#term-corpus-index}
@@ -980,7 +1167,7 @@ The main-process data layer for Graph View: a recursive scan of every configured
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `export async function scanCorpus` in `desktop/src/main/graph-view/corpus-scan.ts`
+  - `desktop` / `code` / `typescript`: `export async function scanCorpus` in `server/src/graph-view/corpus-scan.ts`
 
 #### Corpus Root {#term-corpus-root}
 
@@ -993,7 +1180,7 @@ One configured directory Graph View scans for Markdown documents. The effective 
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `interface CorpusRootConfig` in `desktop/src/shared/graph-view-types.ts`
+  - `desktop` / `code` / `typescript`: `interface CorpusRootConfig` in `packages/shared/src/graph-view-types.ts`
 
 #### Desktop {#term-desktop-client}
 
@@ -1006,9 +1193,22 @@ One client application built on Electron. It owns the session store, persists co
 - **Legacy names:** None
 - **Contract:** `none`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `export type WindowRole` in `desktop/src/renderer/lib/window-role.ts`
-  - `desktop` / `code` / `typescript`: `export interface TabState` in `desktop/src/shared/types-session.ts`
+  - `desktop` / `code` / `typescript`: `export type WindowRole` in `server/src/lib/window-role.ts`
+  - `desktop` / `code` / `typescript`: `export interface TabState` in `packages/shared/src/types-session.ts`
 - **Notes:** Desktop is ONE client with two presentations: the Overlay and the Studio. Never call the presentations separate clients.
+
+#### Device Setting {#term-device-setting}
+
+A setting for the screen in use, such as the theme or a font size. It is stored on the client and read only there. Studio labels it This Device.
+
+- **ID:** `device-setting`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `SETTINGS_REGISTRY` in `packages/shared/src/settings-registry.ts`
 
 #### Editor Anchor {#term-editor-anchor}
 
@@ -1022,6 +1222,79 @@ The file a conversation most recently had open in its editor, recorded when that
 - **Contract:** `internal`
 - **Implementations:**
   - `desktop` / `code` / `typescript`: `export function recordTabActivation` in `desktop/src/renderer/studio/surface/editor-anchor.ts`
+
+#### Environment {#term-environment}
+
+One Ion Studio Server plus one Ion Engine, sharing a single ION_DATA_DIR. The unit a Studio client (desktop, iOS, browser) connects to. Runs identically on a desktop, in Docker Compose, or as a Kubernetes pod.
+
+- **ID:** `environment`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `type EnvironmentTarget` in `packages/shared/src/types-environments.ts`
+
+#### Environment Setting {#term-environment-setting}
+
+A setting with one value for a whole Environment. It is stored in that server's settings document, and only a connection holding the admin scope may change it. Auto-settle and conversation recovery are Environment Settings.
+
+- **ID:** `environment-setting`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `SETTINGS_REGISTRY` in `packages/shared/src/settings-registry.ts`
+
+#### External Host {#term-external-host}
+
+A fleet host deployed outside the fleet, such as a server in a cluster, registered by its address (`url`) instead of an SSH target. The fleet reads it (its public versions and formats, and with the fleet's own device-code sign-in its load, running conversations, and devices) and never changes it: deploy, restart, and relay set refuse it.
+
+- **ID:** `external-host`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func (h Host) External` in `engine/internal/fleet/config.go`
+  - `engine` / `doc` / `markdown`: `Hosts deployed outside the fleet` in `docs/deployment/fleet.md`
+
+#### Fleet {#term-fleet}
+
+The set of Studio hosts one operator manages from one machine with `ion fleet`: Studio Server hosts on macOS and Linux, and Macs and Windows PCs running the Ion desktop, listed in ~/.ion/fleet.json. The fleet reads each host's status and paired devices over SSH, or through the relay with its own read-only pairing, judges which hosts can work together by their Format Versions, and redeploys a selection or one host, building each platform once.
+
+- **ID:** `fleet`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type Config` in `engine/internal/fleet/config.go`
+  - `engine` / `code` / `go`: `type Model` in `engine/internal/fleettui/model.go`
+  - `engine` / `doc` / `markdown`: `Fleet` in `docs/deployment/fleet.md`
+
+#### Git Identity {#term-git-identity}
+
+The credential and author identity a git operation runs as, resolved per connected principal rather than per server. Resolution precedence: an admin-managed credential (a secret-store-backed SSH key or certificate scoped to a subject and host), a user-supplied credential entered in Studio Settings, then an OAuth exchange (Azure DevOps on-behalf-of, GitLab, or a GitHub App). The resolved identity is stamped into the engine's tool environment for every git operation a tool runs, so a commit's authorship matches who actually asked for it.
+
+- **ID:** `git-identity`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `export async function resolveGitCredential` in `server/src/git/identity/resolver.ts`
+  - `engine` / `code` / `go`: `func stampToolEnv` in `engine/internal/backend/runloop_git_identity.go`
+  - `desktop` / `ui` / `typescript`: `GitAccessPage` in `desktop/src/renderer/components/settings/pages/GitAccessPage.tsx`
+  - `ios` / `ui` / `swift`: `struct GitIdentitySummary` in `ios/IonRemote/Models/GitIdentitySummary.swift`
+  - `ios` / `ui` / `swift`: `struct AddGitCredentialSheet` in `ios/IonRemote/Views/Settings/Server/GitAccess/AddGitCredentialSheet.swift`
+- **Notes:** The phone's Git access page enters credentials as the desktop does: mint an SSH key on the server, paste a key, store a token, or start a git host's OAuth sign-in, which the phone opens itself from the returned authorizationUrl.
 
 #### Graph Agent Highlight {#term-graph-agent-highlight}
 
@@ -1048,7 +1321,7 @@ A virtual Graph View node drawn for one distinct value of a promoted note-descri
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `export function buildAnchorNodes` in `desktop/src/shared/graph-model-anchors.ts`
+  - `desktop` / `code` / `typescript`: `export function buildAnchorNodes` in `packages/shared/src/graph-model-anchors.ts`
 - **Notes:** Promoted fields are configured under `promotedFields` (desktop/src/shared/graph-view-types.ts); the depth and split options there decide which part of a value becomes the anchor.
 
 #### Graph Session {#term-graph-session}
@@ -1088,8 +1361,8 @@ A structured question round that the model opens with the AskUserQuestions clien
 - **Legacy names:** None
 - **Contract:** `public-wire`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `export class QuestionsCoordinator` in `desktop/src/main/questions/questions-coordinator.ts`
-  - `desktop` / `wire` / `typescript`: `export type RemoteQuestionsEvent` in `desktop/src/main/remote/protocol-questions.ts`
+  - `desktop` / `code` / `typescript`: `export class QuestionsCoordinator` in `server/src/questions/questions-coordinator.ts`
+  - `desktop` / `wire` / `typescript`: `export type RemoteQuestionsEvent` in `server/src/remote/protocol-questions.ts`
   - `engine` / `wire` / `go`: `type ClientToolCallState struct` in `engine/internal/types/tool_gate.go`
 
 #### Install worker {#term-install-worker}
@@ -1118,9 +1391,22 @@ A rebuildable checkout that assembles the feature branch plus each member worktr
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `wire` / `typescript`: `export interface RemoteBench` in `desktop/src/main/remote/protocol-worktree.ts`
+  - `desktop` / `wire` / `typescript`: `export interface RemoteBench` in `server/src/remote/protocol-worktree.ts`
   - `desktop` / `ui` / `typescript`: `BenchBar` in `desktop/src/renderer/components/BenchBar.tsx`
   - `ios` / `ui` / `swift`: `InboxBenchGroup` in `ios/IonRemote/Views/InboxBenchGroup.swift`
+
+#### Ion Studio Server {#term-ion-studio-server}
+
+The headless extraction of the desktop's former main-process store, Studio wire, auth, and per-Environment orchestration into a process with no Electron dependency. Pairs with one Ion Engine to form an Environment.
+
+- **ID:** `ion-studio-server`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `main` in `server/src/main.ts`
 
 #### iOS {#term-ios-client}
 
@@ -1136,6 +1422,21 @@ One client application built with SwiftUI. It is a thin client that renders the 
   - `ios` / `ui` / `swift`: `struct TabListView` in `ios/IonRemote/Views/TabListView.swift`
   - `ios` / `wire` / `swift`: `NormalizedEvent` in `ios/IonRemote/Models/NormalizedEvent.swift`
 
+#### LAN Discovery {#term-lan-discovery}
+
+A Studio Server announcing itself on its local network as `_ion-studio._tcp` so a desktop can list it under Add server without a pasted link. Off by default: a person opens a bounded window that closes itself, a headless host sets it as standing configuration, and an enterprise seal forbids it outright. The announcement is only an address; pairing still needs the one-time discovery code or a pairing link.
+
+- **ID:** `lan-discovery`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `DiscoveryWindow` in `server/src/discovery/window.ts`
+  - `desktop` / `ui` / `typescript`: `useNearbyDoor` in `desktop/src/renderer/components/settings/pages/add-server-nearby.tsx`
+  - `desktop` / `ui` / `typescript`: `DiscoverySection` in `desktop/src/renderer/components/settings/pages/access/DiscoverySection.tsx`
+
 #### Mounted Folder {#term-mounted-folder}
 
 An additional directory a Project mounts, browsable and editable beside the source directory in the file explorer and the git panel, and inherited by every checkout of that Project.
@@ -1147,8 +1448,79 @@ An additional directory a Project mounts, browsable and editable beside the sour
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `ui` / `typescript`: `ProjectFoldersSection` in `desktop/src/renderer/components/settings/ProjectFoldersSection.tsx`
+  - `desktop` / `ui` / `typescript`: `WorkspaceFolders` in `desktop/src/renderer/components/settings/pages/project-local.tsx`
   - `desktop` / `code` / `typescript`: `createWorkspaceFolderActions` in `desktop/src/renderer/preferences-workspace.ts`
+
+#### Pairing Link {#term-pairing-link}
+
+A one-time, five-minute `ion-studio://pair?code=…&url=…&env=…` link an Ion Studio Server mints (an admin over the Studio wire, or `ion studio pair` on the server host) that a client redeems against `POST /auth/pair` to obtain a paired credential for that Environment. Carries the server's advertised HTTP base so the link is self-contained, and optionally a relay pairing channel (`relay`, `channel`, `relayKey`) so a client off the LAN can complete the same exchange through the relay.
+
+- **ID:** `pairing-link`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `formatPairingLink` in `server/src/auth/pairing-links.ts`
+  - `desktop` / `code` / `typescript`: `parsePairingLink` in `packages/shared/src/pairing-link.ts`
+
+#### Personal Preference {#term-personal-preference}
+
+A setting that belongs to one person on every Environment. It is stored on the client. When the server needs the value, the client sends it with the request and the server stamps it onto the conversation; the server keeps no settings copy. Studio labels it You.
+
+- **ID:** `personal-preference`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `SETTINGS_REGISTRY` in `packages/shared/src/settings-registry.ts`
+
+#### Presence {#term-presence}
+
+Who is connected to an Environment, which tab each connection has focused, and which tab (if any) each connection is currently driving -- has an in-flight run it started still running. A full snapshot every change, sent to every connected client regardless of tenancy mode: presence is who else is here, which isolated tenancy mode is not designed to hide, unlike tab contents.
+
+- **ID:** `presence`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `export function presenceSnapshot` in `server/src/protocol/presence.ts`
+  - `desktop` / `ui` / `typescript`: `usePresenceStore` in `desktop/src/renderer/stores/presence-store.ts`
+  - `ios` / `ui` / `swift`: `struct PresenceAvatar` in `ios/IonRemote/Views/PresenceAvatar.swift`
+
+#### Project Quick Tool {#term-project-quick-tool}
+
+A Quick Tool a project ships in its committed .ion/studio.json, offered in every conversation in that project. It runs only after the operator has trusted the project's exact tool list, and the server reads the command from the file at run time.
+
+- **ID:** `project-quick-tool`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `export interface ProjectQuickTool` in `packages/shared/src/project-studio-config.ts`
+  - `desktop` / `code` / `typescript`: `export async function resolveProjectQuickTool` in `server/src/project-studio-config.ts`
+
+#### Project Trust {#term-project-trust}
+
+Whether Ion may run a project's own code on its host: the setup command and worktree seed builds it declares in `.ion/worktree.json`. A checkout Ion cloned starts untrusted and runs nothing until the operator trusts it, either with the clone request (Transfer's Clone and trust, which then runs the setup as soon as the clone lands) or later with Trust Project, which also provisions every worktree of it refused while untrusted. Every project the operator registered themselves is trusted.
+
+- **ID:** `project-trust`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `isProjectTrusted` in `server/src/environment/project-trust.ts`
+  - `desktop` / `code` / `typescript`: `setupCheck` in `desktop/src/renderer/studio/transfer/setup-check.ts`
+  - `desktop` / `code` / `typescript`: `cloneFixes` in `desktop/src/renderer/studio/transfer/clone-fixes.ts`
 
 #### Project Workspace {#term-project-workspace}
 
@@ -1161,8 +1533,66 @@ A Project's source directory together with its mounted folders. Every checkout o
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `resolveProjectDir` in `desktop/src/shared/project-workspace.ts`
-  - `desktop` / `code` / `typescript`: `orderedWorkspaceRoots` in `desktop/src/shared/workspace-roots.ts`
+  - `desktop` / `code` / `typescript`: `resolveProjectDir` in `packages/shared/src/project-workspace.ts`
+  - `desktop` / `code` / `typescript`: `orderedWorkspaceRoots` in `packages/shared/src/workspace-roots.ts`
+
+#### Push address {#term-push-address}
+
+Where a paired phone receives push notifications: its APNs device token and the APNs environment that issued it. The phone registers it with each server it is paired to; the server keeps it on the pairing record and sends it with every push. The relay only delivers and keeps none.
+
+- **ID:** `push-address`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `device token`, `APNs token`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `export interface PushAddress` in `server/src/auth/credentials-store.ts`
+  - `server` / `code` / `typescript`: `'device.registerPush'` in `server/src/auth/actions.ts`
+  - `ios` / `code` / `swift`: `func registerPushAddress()` in `ios/IonRemote/ViewModels/SessionViewModel+Commands.swift`
+  - `relay` / `code` / `go`: `type apnsDevice struct` in `relay/apns_device.go`
+
+#### Quick Tool {#term-quick-tool}
+
+A named shell command an operator runs from the lightning button in the Input Bar. It opens in a terminal pane of the active conversation. An operator defines their own in settings, scoped to directories if they choose.
+
+- **ID:** `quick-tool`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `export interface QuickTool` in `packages/shared/src/types-session.ts`
+  - `studio` / `ui` / `typescript`: `export function ComposerQuickToolsButton` in `desktop/src/renderer/components/composer/ComposerQuickToolsButton.tsx`
+
+#### Relay-backed Environment {#term-relay-environment}
+
+A paired Environment reached through an Ion Relay when its LAN address is unreachable. The server holds one end-to-end encrypted relay channel per paired desktop, keyed by the pairing secret, and admits that client's paired credential on it with the channel as the proof; the desktop dials the LAN first, falls back to the relay the pairing advertised, and returns to the LAN when it answers again.
+
+- **ID:** `relay-environment`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `startRelayStudioListeners` in `server/src/protocol/relay-listener.ts`
+  - `desktop` / `code` / `typescript`: `RelayStudioSocket` in `desktop/src/main/connections/transport-relay.ts`
+
+#### Request Principal {#term-request-principal}
+
+The identity attributed to one connection's studio-wire session -- subject, display name, and (when principal partitioning is enabled) a storage root. Every tab, conversation, and action the connection touches is gated against this principal, not a claim the request itself can override. Distinct from the engine's per-session SessionPrincipal that stamps a conversation's own header: the request principal is who is asking, the stamped principal is who a conversation belongs to.
+
+- **ID:** `request-principal`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `principal: StudioPrincipalSummary | null` in `server/src/protocol/connection.ts`
+  - `engine` / `code` / `go`: `type SessionPrincipal struct` in `engine/internal/types/identity.go`
 
 #### Scratch Document {#term-scratch-document}
 
@@ -1175,7 +1605,49 @@ An unsaved Studio document stored by source-project identity. It appears across 
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `studio` / `code` / `typescript`: `export interface ScratchDocument` in `desktop/src/shared/studio-surface-types.ts`
+  - `studio` / `code` / `typescript`: `export interface ScratchDocument` in `packages/shared/src/studio-surface-types.ts`
+
+#### Settings Taxonomy {#term-settings-taxonomy}
+
+The settings pages every client shows, in order under the This Device, You, and Servers headings, with the sections on each page and the settings group policy hides each section by. It also places every setting in one section. Studio renders it with its own icons and components, and the server sends it to the phone with the projected settings, so both clients name, order, and place settings the same way.
+
+- **ID:** `settings-taxonomy`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `SETTINGS_TAXONOMY` in `packages/shared/src/settings-taxonomy.ts`
+  - `ios` / `ui` / `swift`: `struct ServerPagesView` in `ios/IonRemote/Views/Settings/Server/ServerPagesView.swift`
+
+#### SSH Door {#term-ssh-door}
+
+The Add server path that takes only `user@host`: the desktop installs the Studio Server Bundle on the host over ssh, opens a loopback port forward to the server's port, mints a pairing link there, and completes the pairing through the forward. The result is a paired Environment with `via: 'ssh'` whose forward is re-opened before every connect.
+
+- **ID:** `ssh-door`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `addEnvironmentOverSsh` in `desktop/src/main/connections/ssh/ssh-add-environment.ts`
+  - `desktop` / `ui` / `typescript`: `useSshDoor` in `desktop/src/renderer/components/settings/pages/add-server-doors.tsx`
+
+#### Studio Server Bundle {#term-studio-server-bundle}
+
+The one tarball per platform (`ion-studio-server-<goos>-<goarch>.tar.gz`) a `server-v*` release carries: the engine binary, a Node runtime, the built Ion Studio Server and its dependencies, and a VERSION manifest. `install-studio-server.sh` extracts it under `~/.ion/studio-server/versions/<v>` and `ion studio` runs the services from the `current` symlink, so an update is an extract and a repoint.
+
+- **ID:** `studio-server-bundle`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `engine` / `code` / `go`: `cmdStudio` in `engine/cmd/ion/cmd_studio.go`
+  - `desktop` / `code` / `typescript`: `installOnHost` in `desktop/src/main/connections/ssh/ssh-bootstrap.ts`
 
 #### Tag Treatment {#term-tag-treatment}
 
@@ -1188,7 +1660,61 @@ How Graph View's configured tag field participates in the graph, chosen by the o
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `export type TagTreatment` in `desktop/src/shared/graph-view-types.ts`
+  - `desktop` / `code` / `typescript`: `export type TagTreatment` in `packages/shared/src/graph-view-types.ts`
+
+#### Tenancy Mode {#term-tenancy-mode}
+
+server.json's tenancy.mode: 'isolated' (default), enforcing every per-principal visibility and ownership gate, or 'shared', the explicit escape hatch where every gate shows every tab to every connection. Refused at boot when the engine's own principalPartitioning is also enabled, since partitioned storage with a shared-visibility UI is a leak, not a feature.
+
+- **ID:** `tenancy-mode`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `export function isSharedTenancy` in `server/src/config/current.ts`
+
+#### Union Store {#term-union-store}
+
+The Studio client's one mirror store holding every connected Environment's tabs, terminals, and worktree read model at once, each tab tagged with its Environment. Every action, shell call, body request, and event is routed to the server that owns the tab it concerns; the Inbox shows everything together, a remote row wears a badge naming its host, and the environment view filter is a filter over this union, never a reconnect.
+
+- **ID:** `union-store`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `hydrateTabsFromSync` in `desktop/src/renderer/studio/state/secondary-store.ts`
+  - `desktop` / `code` / `typescript`: `resolveActionEnvironment` in `desktop/src/renderer/studio/connection/tab-environment.ts`
+
+#### Web Client {#term-web-client}
+
+A browser build of Studio served by an Ion Studio Server at its own origin (server.json.web.enabled), signing in with OIDC PKCE. Has no desktop-only capabilities (no Browser Surface, no native window chrome) and reports their absence rather than degrading silently.
+
+- **ID:** `web-client`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `BrowserStudioHost` in `desktop/src/renderer/host/BrowserStudioHost.ts`
+
+#### Workspace Search {#term-workspace-search}
+
+The Studio sidebar view that finds literal text in every file of the active conversation's workspace folders and lists the matching lines grouped by file. Selecting a line opens that file in the canvas with the match selected.
+
+- **ID:** `workspace-search`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `search in files`, `find in files`, `grep`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `studio` / `code` / `typescript`: `export function WorkspaceSearchPanel` in `desktop/src/renderer/studio/search/WorkspaceSearchPanel.tsx`
+  - `server` / `code` / `typescript`: `export async function searchText` in `server/src/files/text-search.ts`
 
 #### Worktree {#term-worktree}
 
@@ -1201,7 +1727,7 @@ A registered git checkout that holds one branch of work. It refuses writes outsi
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `wire` / `typescript`: `export interface RemoteWorktree` in `desktop/src/main/remote/protocol-worktree.ts`
+  - `desktop` / `wire` / `typescript`: `export interface RemoteWorktree` in `server/src/remote/protocol-worktree.ts`
   - `desktop` / `ui` / `typescript`: `WorktreeRow` in `desktop/src/renderer/components/WorktreeRow.tsx`
   - `ios` / `ui` / `swift`: `struct WorktreeRowView` in `ios/IonRemote/Views/WorktreeRowView.swift`
 
@@ -1209,7 +1735,7 @@ A registered git checkout that holds one branch of work. It refuses writes outsi
 
 #### Automation Editor {#term-automation-editor}
 
-The shared Settings surface for Desktop Automation: one panel with three labeled sections (When / If / Then), not a wizard. It renders inline beside the source-aware rule list, offers only catalog-valid triggers, fields, operators, and finite values, derives action targets from the trigger, shows a plain-language preview, and disables Save until the rule is runnable. Constructs it cannot represent are shown read-only and preserved.
+The shared Settings surface for Desktop Automation: one panel with three labeled sections (When / If / Then), not a wizard. It opens in a Settings Side Panel from the source-aware rule list, offers only catalog-valid triggers, fields, operators, and finite values, derives action targets from the trigger, shows a plain-language preview, and disables Save until the rule is runnable. Constructs it cannot represent are shown read-only and preserved.
 
 - **ID:** `automation-editor`
 - **Status:** `canonical`
@@ -1218,8 +1744,9 @@ The shared Settings surface for Desktop Automation: one panel with three labeled
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `ui` / `typescript`: `export function AutomationEditor` in `desktop/src/renderer/components/settings/AutomationEditor.tsx`
-  - `desktop` / `code` / `typescript`: `AUTOMATION_TRIGGERS` in `desktop/src/shared/automation-catalog.ts`
+  - `desktop` / `ui` / `typescript`: `export function AutomationEditorPanel` in `desktop/src/renderer/components/settings/pages/integrations/AutomationEditorPanel.tsx`
+  - `desktop` / `code` / `typescript`: `AUTOMATION_TRIGGERS` in `packages/shared/src/automation-catalog.ts`
+  - `ios` / `ui` / `swift`: `struct AutomationEditorView` in `ios/IonRemote/Views/Settings/Server/Automations/AutomationEditorView.swift`
 
 #### Conversation Status Bar {#term-conversation-status-bar}
 
@@ -1323,6 +1850,21 @@ A region that slides in from an edge and holds detail for the current conversati
   - `desktop` / `ui` / `typescript`: `StatusDrawer` in `desktop/src/renderer/components/StatusDrawer.tsx`
   - `ios` / `ui` / `swift`: `ModalSheetBoundary` in `ios/IonRemote/Views/ModalSheetBoundary.swift`
 
+#### Environment Page {#term-environment-page}
+
+The Settings pages for one Environment, the local server included, listed under Servers in Settings: Overview (connection, server facts, lifecycle), Projects, Git access, Providers & models, Agent rules, Integrations, Workflow, Access & pairing, and Health. Add server lands on its Overview with a finish-setup notice; later reconfiguration is the same pages. Every verb they offer is a studio_action on that Environment's server. The desktop and the phone show the same pages for every server they are paired with; what a client may change follows its connection's scopes.
+
+- **ID:** `environment-page`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `desktop` / `ui` / `typescript`: `SETTINGS_PAGES` in `desktop/src/renderer/components/settings/settings-catalog.ts`
+  - `server` / `code` / `typescript`: `ENVIRONMENT_ACTIONS` in `server/src/environment/actions.ts`
+  - `ios` / `ui` / `swift`: `struct ServerPagesView` in `ios/IonRemote/Views/Settings/Server/ServerPagesView.swift`
+
 #### Graph View Minimap {#term-graph-view-minimap}
 
 A Studio-only overview canvas in the corner of the Graph View stage that draws every visible node as a dot and the current viewport as a rectangle. Clicking it centres the camera on that point. It is present only while the viewport shows less than the whole graph.
@@ -1362,7 +1904,7 @@ A short list of actions that opens from a control or from a long press. It close
 - **Legacy names:** None
 - **Contract:** `none`
 - **Implementations:**
-  - `desktop` / `ui` / `typescript`: `export function TabContextMenu` in `desktop/src/renderer/components/TabStripTabContextMenu.tsx`
+  - `desktop` / `ui` / `typescript`: `export function InboxRowMenu` in `desktop/src/renderer/studio/inbox/InboxRowMenu.tsx`
   - `ios` / `ui` / `swift`: `struct TabRowContextMenu` in `ios/IonRemote/Views/TabRowContextMenu.swift`
 
 #### New Conversation Picker {#term-new-conversation-picker}
@@ -1378,20 +1920,6 @@ The single entry point that starts a conversation. Normal creation selects a Pro
 - **Implementations:**
   - `desktop` / `ui` / `typescript`: `NewConversationPicker` in `desktop/src/renderer/components/NewConversationPicker.tsx`
   - `ios` / `ui` / `swift`: `struct TabListNewTabSheet` in `ios/IonRemote/Views/TabListNewTabSheet.swift`
-
-#### Overlay {#term-overlay}
-
-One of the Desktop client's two presentations. It is the transparent always-on-top glass window, and its renderer is the session-store owner.
-
-- **ID:** `overlay`
-- **Status:** `canonical`
-- **Qualifiers:** None
-- **Aliases:** `overlay glass`, `glass`
-- **Legacy names:** None
-- **Contract:** `none`
-- **Implementations:**
-  - `overlay` / `code` / `typescript`: `overlay` in `desktop/src/renderer/lib/window-role.ts`
-- **Notes:** A presentation of the Desktop client, never a separate client.
 
 #### Panel {#term-panel}
 
@@ -1435,6 +1963,19 @@ The shared client surface that renders a Guided Questions page: the answer form,
   - `desktop` / `ui` / `typescript`: `export function QuestionsWizard` in `desktop/src/renderer/components/questions/QuestionsWizard.tsx`
   - `desktop` / `ui` / `typescript`: `export function QuestionsSurface` in `desktop/src/renderer/studio/surface/tabs/QuestionsSurface.tsx`
 
+#### Settings Side Panel {#term-settings-side-panel}
+
+The panel that slides over the right of the Settings content for one add, edit, test, sign-in, or confirm flow, so a list stays one row per item and never grows an inline form that pushes the page down. Escape closes the top-most panel only.
+
+- **ID:** `settings-side-panel`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `desktop` / `ui` / `typescript`: `export function SidePanel` in `desktop/src/renderer/components/settings/kit/SidePanel.tsx`
+
 #### Status Drawer {#term-status-drawer}
 
 The region that opens beside a conversation to show its full status detail: the context breakdown, the run cost, and the active work.
@@ -1461,7 +2002,7 @@ The Studio Surface tab that renders one browser document. Each descriptor belong
 - **Contract:** `internal`
 - **Implementations:**
   - `studio` / `ui` / `typescript`: `export function BrowserSurface` in `desktop/src/renderer/studio/surface/tabs/BrowserSurface.tsx`
-  - `desktop` / `code` / `typescript`: `export interface BrowserTab` in `desktop/src/shared/studio-surface-types.ts`
+  - `desktop` / `code` / `typescript`: `export interface BrowserTab` in `packages/shared/src/studio-surface-types.ts`
 
 #### Studio Center {#term-studio-center}
 
@@ -1491,7 +2032,7 @@ The Studio region that holds the inbox, the file explorer, and the git views.
 
 #### Studio {#term-studio-shell}
 
-One of the Desktop client's two presentations. It is a standalone window with a conversation-centric workspace and the visualizer canvas as one surface.
+The desktop client's only window: a conversation-centric workspace with the visualizer canvas as one surface. Spec 17 deleted the Overlay presentation this term used to be defined against; Studio is no longer one of two presentations.
 
 - **ID:** `studio-shell`
 - **Status:** `canonical`
@@ -1501,7 +2042,7 @@ One of the Desktop client's two presentations. It is a standalone window with a 
 - **Contract:** `none`
 - **Implementations:**
   - `studio` / `ui` / `typescript`: `StudioShell` in `desktop/src/renderer/studio/StudioShell.tsx`
-- **Notes:** A presentation of the Desktop client, never a separate client. Exactly one presentation is active at a time.
+- **Notes:** The desktop's only conversation UI as of spec 17 (program: Ion Studio Server and Environments). See ADR-033.
 
 #### Studio Surface {#term-studio-surface}
 
@@ -1542,21 +2083,6 @@ One selectable content region that belongs to a conversation, such as a diff, a 
 - **Implementations:**
   - `studio` / `code` / `typescript`: `export interface SurfaceState` in `desktop/src/renderer/studio/surface/surface-store.ts`
 - **Notes:** Honest mismatch: the code uses surface for the Studio right-pane tab model, while prose also uses surface as a loose word for any UI region. The narrow Studio meaning is the one the code pins. The loose use needs a decision before the term is canonical.
-
-#### Tab Strip {#term-tab-strip}
-
-The region that shows every open conversation, its status dot, and its group pill, and that switches the active conversation.
-
-- **ID:** `tab-strip`
-- **Status:** `canonical`
-- **Qualifiers:** None
-- **Aliases:** `tab list`
-- **Legacy names:** None
-- **Contract:** `none`
-- **Implementations:**
-  - `desktop` / `ui` / `typescript`: `export function TabStrip` in `desktop/src/renderer/components/TabStrip.tsx`
-  - `studio` / `ui` / `typescript`: `TabStrip` in `desktop/src/renderer/studio/StudioShell.tsx`
-  - `ios` / `ui` / `swift`: `struct TabListView` in `ios/IonRemote/Views/TabListView.swift`
 
 #### Terminal {#term-terminal}
 
@@ -1613,9 +2139,24 @@ The single Studio Browser Surface tab in a conversation that agent browser tools
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `agentBrowserInstanceId` in `desktop/src/shared/studio-surface-types.ts`
+  - `desktop` / `code` / `typescript`: `agentBrowserInstanceId` in `packages/shared/src/studio-surface-types.ts`
   - `studio` / `code` / `typescript`: `export function bindAgentBrowserActions` in `desktop/src/renderer/studio/surface/surface-agent-browser.ts`
   - `desktop` / `code` / `typescript`: `export async function resolveBrowser` in `desktop/src/main/studio-playwright/runtime.ts`
+
+#### Composer Draft {#term-composer-draft}
+
+The unsent prompt text held for a conversation. Owned by the server: it lives on the conversation pane, is written to the tabs file, and is read back at boot, so a half-written prompt survives a restart. A client commits its edits on a debounce and adopts the stored value when it opens the conversation, never while its own composer is focused.
+
+- **ID:** `composer-draft`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `draft input`, `unsent prompt`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `setDraftInput` in `server/src/store/slices/attachments-slice.ts`
+  - `studio` / `ui` / `typescript`: `useComposerDraft` in `desktop/src/renderer/components/composer/useComposerDraft.ts`
+  - `ios` / `ui` / `swift`: `adoptRemoteDraft` in `ios/IonRemote/ViewModels/SessionViewModel+Drafts.swift`
 
 #### Conversation instance {#term-conversation-instance}
 
@@ -1628,7 +2169,7 @@ One engine session that a conversation holds. A conversation can carry more than
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `export interface ProjectedConversationInstance` in `desktop/src/shared/remote-projection-types.ts`
+  - `desktop` / `code` / `typescript`: `export interface ProjectedConversationInstance` in `packages/shared/src/remote-projection-types.ts`
   - `ios` / `ui` / `swift`: `struct EngineInstanceBar` in `ios/IonRemote/Views/EngineInstanceBar.swift`
 
 #### Conversation status {#term-conversation-status}
@@ -1643,8 +2184,21 @@ The current run state of a conversation, with its model, permission mode, contex
 - **Contract:** `internal`
 - **Implementations:**
   - `engine` / `wire` / `go`: `type StatusFields struct` in `engine/internal/types/types.go`
-  - `desktop` / `ui` / `typescript`: `StatusDot` in `desktop/src/renderer/components/TabStripStatusDot.tsx`
+  - `desktop` / `ui` / `typescript`: `StatusDot` in `desktop/src/renderer/components/StatusDot.tsx`
   - `ios` / `code` / `swift`: `TabStatusRollup` in `ios/IonRemote/Views/TabStatusRollup.swift`
+
+#### Environment Catalog {#term-environment-catalog}
+
+The desktop's own list of Environment targets it can connect to (local, paired, bearer), merged from user-added entries and enterprise-managed entries.
+
+- **ID:** `environment-catalog`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `readCatalog` in `desktop/src/renderer/studio/connection/catalog.ts`
 
 #### Inbox {#term-inbox}
 
@@ -1654,11 +2208,10 @@ The client view that groups conversations by attention state: active, snoozed, o
 - **Status:** `canonical`
 - **Qualifiers:** None
 - **Aliases:** `conversation inbox`
-- **Legacy names:** None
+- **Legacy names:** `Tab Strip`, `tab list`
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `export function classifyInbox` in `desktop/src/shared/inbox-classify.ts`
-  - `desktop` / `ui` / `typescript`: `export function InboxPanel` in `desktop/src/renderer/components/InboxPanel.tsx`
+  - `desktop` / `code` / `typescript`: `export function classifyInbox` in `packages/shared/src/inbox-classify.ts`
   - `studio` / `ui` / `typescript`: `InboxSidebar` in `desktop/src/renderer/studio/inbox/InboxSidebar.tsx`
   - `ios` / `ui` / `swift`: `InboxRowView` in `ios/IonRemote/Views/InboxRowView.swift`
 
@@ -1673,7 +2226,7 @@ The client-side row that holds one conversation and its instances, terminals, gr
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `export interface TabState` in `desktop/src/shared/types-session.ts`
+  - `desktop` / `code` / `typescript`: `export interface TabState` in `packages/shared/src/types-session.ts`
   - `ios` / `ui` / `swift`: `struct TabRowView` in `ios/IonRemote/Views/TabRowView.swift`
 
 #### Terminal Activity {#term-terminal-activity}
@@ -1687,8 +2240,22 @@ A live process tree owned by one Terminal. Clients aggregate it to the owning Co
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `export interface TerminalActivity` in `desktop/src/shared/terminal-activity.ts`
+  - `desktop` / `code` / `typescript`: `export interface TerminalActivity` in `packages/shared/src/terminal-activity.ts`
   - `ios` / `ui` / `swift`: `TerminalInstanceBar` in `ios/IonRemote/Views/TerminalInstanceBar.swift`
+
+#### Terminal Launch Key {#term-terminal-launch-key}
+
+A caller-chosen identity for a launch that opens a Terminal, unique within one Conversation. A later launch with the same key stops the processes of the Terminal that holds it and reuses that Terminal instead of opening another.
+
+- **ID:** `terminal-launch-key`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `launch key`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `launchKey?: string` in `packages/shared/src/types-session.ts`
+- **Notes:** Carried by the ion://terminal `key` parameter. dev.yaml sends one per service so a rerun of a profile reuses its panes.
 
 #### Web Application {#term-web-application}
 
@@ -1701,8 +2268,38 @@ A local HTML service whose listening process is owned by a Terminal. The Desktop
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `discoverTerminalWebApplications` in `desktop/src/main/terminal-application-discovery.ts`
+  - `desktop` / `code` / `typescript`: `discoverTerminalWebApplications` in `server/src/terminal/terminal-application-discovery.ts`
   - `ios` / `ui` / `swift`: `InboxRowView` in `ios/IonRemote/Views/InboxRowView.swift`
+
+### action
+
+#### Environment Purge {#term-environment-purge}
+
+Removing Ion from an Environment's host by degree: the Studio Server services and bundle always, and by choice the principal's git credentials, the repositories Ion cloned, and all Ion data. Appraised before it runs, executed on the host through its own `ion studio uninstall` scheduled detached. Distinct from forgetting the Environment on one device, which leaves the host untouched.
+
+- **ID:** `environment-purge`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `runPurge` in `server/src/environment/purge.ts`
+  - `desktop` / `ui` / `typescript`: `RemoveServerPanel` in `desktop/src/renderer/components/settings/pages/RemoveServerPanel.tsx`
+
+#### Transfer {#term-transfer}
+
+The explicit verb that moves a conversation's host binding: to another Environment, or to another checkout or worktree on the machine it is on. A conversation binds to exactly one Environment at draft time, locks on first prompt, and only Transfer moves it after that. It moves what the operator chose: a conversation on its own, leaving any worktree it lived in behind, or a whole worktree with every conversation in it. A move, not a copy: once the destination has verified every file it received against the digests the source recorded, the source deletes its conversation files, tab record, and, for a whole-worktree move, its worktree checkout, so the conversation exists on exactly one host at a time.
+
+- **ID:** `transfer`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `interface TransferManifest` in `server/src/transfer/manifest.ts`
+  - `server` / `code` / `typescript`: `resolveLanding` in `server/src/transfer/landing.ts`
 
 ### runtime-mechanic
 
@@ -1717,24 +2314,10 @@ Rebuilding a conversation's stored Chart Output records from the tool rows its a
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `export function rebuildFromHistory` in `desktop/src/main/chart-resource-store.ts`
-  - `desktop` / `code` / `typescript`: `export async function reconcileConversationCharts` in `desktop/src/main/chart-reconcile.ts`
-  - `desktop` / `code` / `typescript`: `export function reconcileChartsForBranch` in `desktop/src/renderer/lib/chart-reconcile-request.ts`
+  - `desktop` / `code` / `typescript`: `export function rebuildFromHistory` in `server/src/persistence/chart-resource-store.ts`
+  - `desktop` / `code` / `typescript`: `export async function reconcileConversationCharts` in `server/src/store/chart-reconcile.ts`
+  - `desktop` / `code` / `typescript`: `export function reconcileChartsForBranch` in `server/src/store/chart-reconcile-request.ts`
 - **Notes:** Desktop-owned. The Desktop is the producer for the chart resource kind, so it rebuilds the records and fans the deltas; iOS and the Studio mirror receive them through the generic resource broker.
-
-#### Conversation backfill {#term-conversation-backfill}
-
-Background retrieval of a conversation's older history pages after the newest page has rendered. The client shows the newest page immediately, then walks the page chain from newest to oldest until the transcript is complete, so scrolling back and jumping to an older row never wait on a round trip. The chain is sequential because each page carries the cursor for the next.
-
-- **ID:** `conversation-backfill`
-- **Status:** `canonical`
-- **Qualifiers:** None
-- **Aliases:** `history prefetch`, `history backfill`
-- **Legacy names:** None
-- **Contract:** `none`
-- **Implementations:**
-  - `ios` / `code` / `swift`: `final class ConversationBackfill` in `ios/IonRemote/ViewModels/ConversationBackfill.swift`
-- **Notes:** iOS only today. The Desktop keeps its own pagination and has not adopted prefetch; revisit if the Desktop shows the same scroll-back stutter.
 
 #### Desktop Automation {#term-desktop-automation}
 
@@ -1747,13 +2330,28 @@ The desktop-owned engine that runs declarative user, project, and enterprise rul
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `export class AutomationRuntime` in `desktop/src/main/automation/runtime.ts`
-  - `desktop` / `code` / `typescript`: `export function validateUserDefinition` in `desktop/src/shared/automation-catalog.ts`
-  - `desktop` / `ui` / `typescript`: `export function AutomationCategory` in `desktop/src/renderer/components/settings/AutomationCategory.tsx`
+  - `desktop` / `code` / `typescript`: `export class AutomationRuntime` in `server/src/automation/runtime.ts`
+  - `desktop` / `code` / `typescript`: `export function validateUserDefinition` in `packages/shared/src/automation-catalog.ts`
+  - `desktop` / `ui` / `typescript`: `export function AutomationSection` in `desktop/src/renderer/components/settings/pages/integrations/AutomationSection.tsx`
+
+#### Device Metrics {#term-device-metrics}
+
+What Ion Studio itself uses on the machine it runs on: CPU, memory, and GPU time of each of its own Electron processes (main, GPU helper, renderer, utility helpers), and the idle-repaint warning when the GPU helper or a renderer stays busy while nobody is looking at Studio. They describe the device, not an Environment, so they are read and kept on the device and never sent to a server or another client.
+
+- **ID:** `device-metrics`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `class DeviceMetricsSampler` in `desktop/src/main/device-metrics/sampler.ts`
+  - `desktop` / `code` / `typescript`: `class IdleRepaintDetector` in `desktop/src/main/device-metrics/idle-repaint.ts`
+  - `desktop` / `code` / `typescript`: `interface DeviceMetricsSample` in `packages/shared/src/types-device-metrics.ts`
 
 #### Engine Host Launcher {#term-engine-host-launcher}
 
-The Windows-only launcher the Engine Supervisor's Scheduled Task runs instead of the engine binary, so the engine daemon never puts a console window on screen. Task Scheduler always allocates a console for a console-subsystem image and offers no way to suppress it, and where the default terminal is Windows Terminal the visible window belongs to that process while the daemon can only reach the pseudoconsole host's already-invisible window. The launcher is linked for the GUI subsystem, so Windows gives it no console at all, and it starts the engine with CREATE_NO_WINDOW so the engine gets none either. It lives for as long as the engine, confines it to a kill-on-close job object, exits with its exit code, and captures its standard streams to the same two files the macOS LaunchAgent redirects to. It has no macOS counterpart because launchd never attaches a terminal.
+The Windows-only launcher the Engine Supervisor's Scheduled Task runs instead of the engine binary, so the engine daemon never puts a console window on screen. Task Scheduler always allocates a console for a console-subsystem image and offers no way to suppress it, and where the default terminal is Windows Terminal the visible window belongs to that process while the daemon can only reach the pseudoconsole host's already-invisible window. The launcher is linked for the GUI subsystem, so Windows gives it no console at all, and it starts the engine with CREATE_NO_WINDOW so the engine gets none either. It lives for as long as the engine, confines it to a kill-on-close job object, exits with its exit code, and captures its standard streams to the same two files the macOS LaunchAgent redirects to. It has no macOS counterpart because launchd never attaches a terminal. Has no pod counterpart: a containerized engine's stdout/stderr go to the container runtime's own log capture, not to redirected files a launcher would need to create.
 
 - **ID:** `engine-host-launcher`
 - **Status:** `canonical`
@@ -1763,12 +2361,12 @@ The Windows-only launcher the Engine Supervisor's Scheduled Task runs instead of
 - **Contract:** `internal`
 - **Implementations:**
   - `engine` / `code` / `go`: `runHost` in `engine/cmd/ion-engine-host/host_windows.go`
-  - `desktop` / `code` / `typescript`: `resolveTaskAction` in `desktop/src/main/engine-supervisor-schtasks.ts`
-  - `desktop` / `code` / `typescript`: `findBundledHost` in `desktop/src/main/engine-binary-install.ts`
+  - `desktop` / `code` / `typescript`: `resolveTaskAction` in `server/src/engine/engine-supervisor-schtasks.ts`
+  - `desktop` / `code` / `typescript`: `findBundledHost` in `server/src/engine/engine-binary-install.ts`
 
 #### Engine Supervisor {#term-engine-supervisor}
 
-The operating system service that keeps one user's engine daemon running independently of the desktop: a launchd LaunchAgent on macOS, a per-user Scheduled Task named "Ion Engine (<SID>)" on Windows. The desktop registers it, starts and stops it, and reads its state; it is what makes quitting the desktop leave the engine up and makes the engine present again at the next sign-in. A platform with no supervisor implementation resolves to none, and the desktop reports the engine as unmanaged rather than pretending to supervise it.
+The operating system service that keeps one user's engine daemon running independently of the desktop: a launchd LaunchAgent on macOS, a per-user Scheduled Task named "Ion Engine (<SID>)" on Windows. The desktop registers it, starts and stops it, and reads its state; it is what makes quitting the desktop leave the engine up and makes the engine present again at the next sign-in. A platform with no supervisor implementation resolves to none, and the desktop reports the engine as unmanaged rather than pretending to supervise it. Has no meaning in a headless Environment (a Kubernetes pod's engine is unmanaged by Kubernetes' own supervision instead); supervisorFor resolves to none there, same as any platform with no supervisor implementation.
 
 - **ID:** `engine-supervisor`
 - **Status:** `canonical`
@@ -1777,9 +2375,23 @@ The operating system service that keeps one user's engine daemon running indepen
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `supervisorFor` in `desktop/src/main/engine-supervisor.ts`
-  - `desktop` / `code` / `typescript`: `launchdSupervisor` in `desktop/src/main/engine-supervisor-launchd.ts`
-  - `desktop` / `code` / `typescript`: `schtasksSupervisor` in `desktop/src/main/engine-supervisor-schtasks.ts`
+  - `desktop` / `code` / `typescript`: `supervisorFor` in `server/src/engine/engine-supervisor.ts`
+  - `desktop` / `code` / `typescript`: `launchdSupervisor` in `server/src/engine/engine-supervisor-launchd.ts`
+  - `desktop` / `code` / `typescript`: `schtasksSupervisor` in `server/src/engine/engine-supervisor-schtasks.ts`
+
+#### Environment Availability {#term-environment-availability}
+
+Whether a client is talking to an Environment right now, and therefore whether that Environment's rows may be shown. Connected means the Studio wire is welcomed and its conversations are live and interactive. Reconnecting means the wire dropped within the last few seconds: its rows stay, visibly dimmed, and every input aimed at them is refused, so a brief blip does not reshuffle the window. Offline means the wire stayed down past that grace window, and the Environment's tabs, panes, terminals and worktree rows are dropped from the union store entirely, because a mirror of a machine that cannot be reached is a photograph and invites decisions against state that has already moved. The conversation being read survives as an empty shell so the window is not yanked elsewhere mid-read. Derived from the registry's transport phase; never a freshness heuristic.
+
+- **ID:** `environment-availability`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `environmentAvailability` in `desktop/src/renderer/studio/connection/environment-availability.ts`
+  - `desktop` / `code` / `typescript`: `dropEnvironmentState` in `desktop/src/renderer/studio/state/secondary-store-purge.ts`
 
 #### Explorer Tree State {#term-explorer-tree-state}
 
@@ -1792,9 +2404,9 @@ Which folders are expanded, which root sections are folded shut, and which row i
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `ExplorerStateSnapshot` in `desktop/src/shared/explorer-state.ts`
-  - `desktop` / `code` / `typescript`: `loadExplorerState` in `desktop/src/main/explorer-state-store.ts`
-  - `desktop` / `code` / `typescript`: `setupExplorerStateSync` in `desktop/src/renderer/stores/explorer-state-sync.ts`
+  - `desktop` / `code` / `typescript`: `ExplorerStateSnapshot` in `packages/shared/src/explorer-state.ts`
+  - `desktop` / `code` / `typescript`: `loadExplorerState` in `server/src/explorer-state-store.ts`
+  - `desktop` / `code` / `typescript`: `setupExplorerStateSync` in `server/src/store/explorer-state-sync.ts`
 
 #### Mirror store {#term-mirror-store}
 
@@ -1807,9 +2419,9 @@ The Studio presentation's copy of the session store. It reads the same event str
 - **Legacy names:** None
 - **Contract:** `internal`
 - **Implementations:**
-  - `desktop` / `code` / `typescript`: `isMirrorWindow` in `desktop/src/renderer/lib/window-role.ts`
-  - `desktop` / `code` / `typescript`: `MIRROR_LOCAL_ACTIONS` in `desktop/src/shared/studio-mirror-actions.ts`
-  - `studio` / `code` / `typescript`: `waitForTabsSync` in `desktop/src/renderer/studio/state/secondary-store.ts`
+  - `desktop` / `code` / `typescript`: `isMirrorWindow` in `server/src/lib/window-role.ts`
+  - `desktop` / `code` / `typescript`: `MIRROR_LOCAL_ACTIONS` in `packages/shared/src/studio-mirror-actions.ts`
+  - `studio` / `code` / `typescript`: `hydrateTabsFromSync` in `desktop/src/renderer/studio/state/secondary-store.ts`
 - **Notes:** See ADR-021. The Overlay renderer is the single owner; the Studio presentation is the mirror.
 
 #### Notification {#term-notification}
@@ -1825,6 +2437,248 @@ A signal that something needs attention. The push body is a doorbell string, not
 - **Implementations:**
   - `desktop` / `ui` / `typescript`: `export function NotificationsPanel` in `desktop/src/renderer/components/NotificationsPanel.tsx`
   - `ios` / `ui` / `swift`: `struct NotificationsView` in `ios/IonRemote/Views/NotificationsView.swift`
+
+#### Pane Find {#term-pane-find}
+
+Find within one pane of the Studio shell. The find shortcuts act on the pane that holds focus: the canvas when it was focused last and is on screen, the conversation otherwise. A code editor in edit mode uses its own search; other panes search their rendered text.
+
+- **ID:** `pane-find`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `find in page`, `find in conversation`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `studio` / `code` / `typescript`: `export function paneFindTarget` in `desktop/src/renderer/studio/find/pane-find.ts`
+
+#### Project Job {#term-project-job}
+
+Background work an Environment runs on one of its projects: a clone, a setup recipe, or a purge. Registered on the server, published as a full snapshot on `ion:project-job` at every change so any client renders the same progress, cancellable while running, retained briefly after it settles.
+
+- **ID:** `project-job`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `startJob` in `server/src/environment/jobs.ts`
+  - `desktop` / `code` / `typescript`: `useEnvironmentJobs` in `desktop/src/renderer/components/settings/environment/environment-client.ts`
+
+#### Prompt trace {#term-prompt-trace}
+
+The one W3C trace that follows a prompt from the client that sent it through the relay and the Ion server into the engine run. Each hop records one timed span, and the next hop joins the trace through a traceparent.
+
+- **ID:** `prompt-trace`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `traceparent`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `studio` / `code` / `typescript`: `export function submitWithTrace` in `desktop/src/renderer/lib/prompt-trace.ts`
+  - `server` / `code` / `typescript`: `export function startPromptHandleSpan` in `server/src/tracing/prompt-span.ts`
+  - `ios` / `code` / `swift`: `final class PromptTraceBook` in `ios/IonRemote/Utilities/PromptTraceBook.swift`
+  - `engine` / `wire` / `go`: `func ParseTraceparent` in `engine/internal/utils/traceparent.go`
+- **Notes:** Span record shapes and the hop chain: docs/observability/log-schema.md § Spans.
+
+#### Server Admin Session {#term-server-admin-session}
+
+The phone's connection for one paired server's Settings pages. For the server the phone chats on it uses the live connection. For any other it opens a dedicated connection while the pages are on screen, keeps that connection's settings snapshot and granted scopes, and closes it after the pages have been gone for a short idle time. The live session is never touched.
+
+- **ID:** `server-admin-session`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `ios` / `code` / `swift`: `final class ServerAdminSession` in `ios/IonRemote/Networking/Admin/ServerAdminSession.swift`
+
+#### Studio Resource Traffic {#term-studio-resource-traffic}
+
+Resources Ion Studio trades with extensions over the engine's resource pipe: a control resource an extension sends to Studio (kind ion-studio.*), and the operator focus Studio publishes for extensions (kind desktop.focus). It is never content for a person, so no notification inbox, attachments list, or mobile client shows it.
+
+- **ID:** `studio-resource-traffic`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `studio` / `code` / `typescript`: `export function isStudioTrafficKind` in `packages/shared/src/studio-sdk-contract.ts`
+  - `ios` / `code` / `swift`: `static func isStudioTraffic` in `ios/IonRemote/ViewModels/Settings/NotificationKinds.swift`
+
+#### Transfer Preflight {#term-transfer-preflight}
+
+The checks Transfer runs before moving a conversation: the source describes what it carries (`transfer.describe`), the destination answers whether it can take it (`transfer.preflight`) and what a chosen project offers to land in (`transfer.landings`), and the dialog shows a checklist with a fix per failing row: clone the repository there, trust a fresh clone before its setup runs, commit a dirty worktree before moving it whole (a dirty worktree is never carried). The answer also decides whether the export bundle carries the base branch.
+
+- **ID:** `transfer-preflight`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `useTransferPreflight` in `desktop/src/renderer/studio/transfer/useTransferPreflight.ts`
+  - `server` / `code` / `typescript`: `handleTransferPreflight` in `server/src/transfer/actions.ts`
+
+#### Transfer Verification {#term-transfer-verification}
+
+The proof that lets Transfer delete the source. The export records the sha256 of every archive entry in the manifest; the destination re-hashes what it extracted and what it committed and refuses on any mismatch. The source is removed only after that passes, so an interrupted or corrupted transfer always leaves the original intact.
+
+- **ID:** `transfer-verification`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `verifyAgainstDigests` in `server/src/transfer/entries.ts`
+
+### internal-type
+
+#### Device Policy {#term-device-policy}
+
+Enterprise constraints on a person's own desktop UI (theme lock, auto-update, the environment catalog it offers), read only from the LOCAL environment. A remote Environment can never narrow it.
+
+- **ID:** `device-policy`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `interface IonDesktopPolicyFields` in `packages/shared/src/types-enterprise.ts`
+
+#### Local Principal {#term-local-principal}
+
+The Session Principal a server stamps for the local, same-machine caller: subject local:<os-username>, provider os, kind local. Requires no sign-in.
+
+- **ID:** `local-principal`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `localPrincipal` in `server/src/identity/local-principal.ts`
+
+#### Transcript Patch {#term-transcript-patch}
+
+One change to a transcript stream, sent to thin clients after a snapshot: a streamed suffix appended to one row, a splice of rows, or a reset. Every patch names the revision it applies to, so a client that missed one knows it and takes a fresh snapshot.
+
+- **ID:** `transcript-patch`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `desktop_transcript_patch`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `server` / `wire` / `typescript`: `export interface TranscriptPatchEvent` in `packages/shared/src/transcript/transcript-patch.ts`
+  - `ios` / `code` / `swift`: `struct TranscriptStream` in `ios/IonRemote/ViewModels/TranscriptStream.swift`
+
+#### Transcript Row {#term-transcript-row}
+
+One row of a conversation as a thin client receives it: the server store's own message, projected for the wire. Owner-only reducer state is dropped and long tool output is cut and flagged, but nothing is derived, renamed, or reordered, so a thin client and Studio render the same rows.
+
+- **ID:** `transcript-row`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `thin transcript row`
+- **Legacy names:** None
+- **Contract:** `internal`
+- **Implementations:**
+  - `server` / `wire` / `typescript`: `export interface TranscriptRow` in `packages/shared/src/transcript/transcript-row.ts`
+  - `ios` / `code` / `swift`: `struct TranscriptRow` in `ios/IonRemote/Models/TranscriptRow.swift`
+
+### public-contract
+
+#### Composer Action {#term-composer-action}
+
+A row an extension adds to the + menu of the Input Bar through the Studio SDK. Choosing it sends a slash command the extension registered, through the normal prompt pipeline.
+
+- **ID:** `composer-action`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `studio` / `code` / `typescript`: `export interface ComposerAction` in `packages/shared/src/studio-sdk-contract.ts`
+  - `studio` / `ui` / `typescript`: `export function useComposerActions` in `desktop/src/renderer/components/composer/useComposerActions.tsx`
+
+#### On Host {#term-on-host}
+
+Whether a Studio wire connection runs on its server's own host, meaning it arrived on the local socket. Sent as studio_welcome.onHost. A sign-in that finishes on a loopback callback on the host can only finish for such a connection; the server refuses host-only sign-ins to any other and hands browser sign-ins back to the requester to finish with auth.completeSignIn. Keyed on the connection, never on an environment id. Absent from an older server, which reads as not on the host.
+
+- **ID:** `on-host`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `server` / `wire` / `typescript`: `onHost?: boolean` in `packages/shared/src/studio-wire/types.ts`
+  - `server` / `code` / `typescript`: `export function connectionOnHost` in `server/src/protocol/hello.ts`
+
+#### Phone Action List {#term-phone-action-list}
+
+The list of every studio_action the phone calls directly to administer a server, each with the scope the server requires for it. It is plain data both flavors read. A server test checks each entry against the server's own registration and refuses any action kept for the local desktop; an iOS test checks the phone's action table against it. The phone refuses an action its connection's scopes do not allow before sending it. Separate from the phone command map, which maps the older desktop_* commands.
+
+- **ID:** `phone-action-list`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `phone actions`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `server` / `wire` / `json`: `actions` in `packages/shared/src/studio-wire/phone-actions.json`
+  - `ios` / `code` / `swift`: `enum PhoneAction` in `ios/IonRemote/Networking/Admin/PhoneAction.swift`
+
+#### Studio SDK {#term-studio-sdk}
+
+The SDK an extension uses to extend Ion Studio. It is separate from the engine SDK because the engine has no concept of a user interface. A request to Studio travels as a resource whose kind starts with ion-studio., which the engine forwards as opaque content.
+
+- **ID:** `studio-sdk`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `studio` / `code` / `typescript`: `export function studio` in `packages/studio-sdk/ts/index.ts`
+  - `studio` / `code` / `go`: `func NewComposer` in `packages/studio-sdk/go/studio.go`
+  - `studio` / `code` / `typescript`: `export function isStudioControlKind` in `packages/shared/src/studio-sdk-contract.ts`
+
+#### Studio Wire {#term-studio-wire}
+
+The WebSocket protocol between an Ion Studio Server and a Studio client (desktop, iOS, browser): studio_hello/studio_welcome handshake, studio_action/studio_event for store forwarding, studio_command/studio_command_result for reverse RPC.
+
+- **ID:** `studio-wire`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `desktop` / `code` / `typescript`: `type StudioFrame` in `packages/shared/src/studio-wire/types.ts`
+
+#### Thin View {#term-thin-view}
+
+The view of an Environment a Studio wire client asks for with `view: 'thin'` at hello when it renders conversations but holds no store. The server derives what such a client needs (transcript rows, batched text deltas, tab and worktree state, settings, themes, questions, presence) and sends it on the single `studio:thin-event` channel, built and filtered for that connection's principal. A client that asks for nothing gets the mirror view, which is what Studio uses.
+
+- **ID:** `thin-view`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `thin client view`, `thin connection`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `server` / `code` / `typescript`: `export type StudioView` in `packages/shared/src/studio-wire/types.ts`
+  - `server` / `code` / `typescript`: `export function sendRemoteEvent` in `server/src/thin-view/remote-out.ts`
+  - `server` / `code` / `typescript`: `export async function sendThinFirstPaint` in `server/src/thin-view/thin-sync.ts`
+  - `ios` / `code` / `swift`: `final class StudioTransport` in `ios/IonRemote/Networking/StudioWire/StudioTransport.swift`
 
 
 ## relay
@@ -1971,8 +2825,21 @@ The published role name that a peer claims on connect. The engine side claims io
 - **Legacy names:** None
 - **Contract:** `public-wire`
 - **Implementations:**
-  - `relay` / `wire` / `go`: `role != "ion" && role != "mobile"` in `relay/main.go`
+  - `relay` / `wire` / `go`: `role != "ion" && role != "mobile"` in `relay/routes.go`
   - `relay` / `doc` / `markdown`: `role=ion` in `docs/architecture/relay.md`
+
+#### Relay Trust Announcement {#term-relay-trust-announcement}
+
+The relay_announce frame an ion peer (a server) sends as its first text frame after the relay WebSocket upgrade, naming its own issuer/audience/scope. Lets one relay broker connections for Environments across different Entra tenants.
+
+- **ID:** `relay-trust-announcement`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `relay` / `code` / `go`: `parseRelayAnnounce` in `relay/announce.go`
 
 ## Client parity matrix
 
@@ -1983,13 +2850,14 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Agent | None | None | None | `AgentStatusDotStack` | Desktop, Studio, Overlay |
 | Agent-linked Browser Tab | `agentBrowserInstanceId`, `export async function resolveBrowser` | `agentBrowserInstanceId`, `export function bindAgentBrowserActions`, `export async function resolveBrowser` | `agentBrowserInstanceId`, `export async function resolveBrowser` | None | iOS |
 | Attachment | `export function AttachmentChips` | `export function AttachmentChips` | `export function AttachmentChips` | `struct AttachmentChipsView` | None |
-| Automation Editor | `export function AutomationEditor`, `AUTOMATION_TRIGGERS` | `export function AutomationEditor`, `AUTOMATION_TRIGGERS` | `export function AutomationEditor`, `AUTOMATION_TRIGGERS` | None | iOS |
+| Automation Editor | `export function AutomationEditorPanel`, `AUTOMATION_TRIGGERS` | `export function AutomationEditorPanel`, `AUTOMATION_TRIGGERS` | `export function AutomationEditorPanel`, `AUTOMATION_TRIGGERS` | `struct AutomationEditorView` | None |
 | Chart index reconciliation | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | `export function rebuildFromHistory`, `export async function reconcileConversationCharts`, `export function reconcileChartsForBranch` | None | iOS |
 | Chart Output | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `export interface ChartSpec`, `export function parseChartToolInput`, `export function executeRenderChart`, `ChartOutputCard` | `struct ChartSpec`, `ChartCardView`, `enum ChartTranscript`, `ChartTranscriptCard` | None |
 | Compaction | None | None | None | `CompactionRowView` | Desktop, Studio, Overlay |
+| Composer Action | None | `export interface ComposerAction`, `export function useComposerActions` | None | None | Overlay, iOS |
+| Composer Draft | None | `useComposerDraft` | None | `adoptRemoteDraft` | Overlay |
 | Context | `export function ContextIndicator` | `export function ContextIndicator` | `export function ContextIndicator` | `ContextUsageRing` | None |
 | Conversation | `export interface RemoteTabState` | `export interface RemoteTabState` | `export interface RemoteTabState` | None | iOS |
-| Conversation backfill | None | None | None | `final class ConversationBackfill` | Desktop, Studio, Overlay |
 | Conversation instance | `export interface ProjectedConversationInstance` | `export interface ProjectedConversationInstance` | `export interface ProjectedConversationInstance` | `struct EngineInstanceBar` | None |
 | Conversation status | `StatusDot` | `StatusDot` | `StatusDot` | `TabStatusRollup` | None |
 | Conversation Status Bar | `export function ComposerControls` | `export function ComposerControls` | `export function ComposerControls` | `struct ConversationStatusBar` | None |
@@ -2000,8 +2868,10 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Corpus Index | `export async function scanCorpus` | `export async function scanCorpus` | `export async function scanCorpus` | None | iOS |
 | Corpus Root | `interface CorpusRootConfig` | `interface CorpusRootConfig` | `interface CorpusRootConfig` | None | iOS |
 | Cost | None | None | None | `StatusDrawerBreakdown` | Desktop, Studio, Overlay |
-| Desktop Automation | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationCategory` | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationCategory` | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationCategory` | None | iOS |
+| Desktop Automation | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationSection` | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationSection` | `export class AutomationRuntime`, `export function validateUserDefinition`, `export function AutomationSection` | None | iOS |
 | Desktop | `export type WindowRole`, `export interface TabState` | `export type WindowRole`, `export interface TabState` | `export type WindowRole`, `export interface TabState` | None | iOS |
+| Device Metrics | `class DeviceMetricsSampler`, `class IdleRepaintDetector`, `interface DeviceMetricsSample` | `class DeviceMetricsSampler`, `class IdleRepaintDetector`, `interface DeviceMetricsSample` | `class DeviceMetricsSampler`, `class IdleRepaintDetector`, `interface DeviceMetricsSample` | None | iOS |
+| Device Policy | `interface IonDesktopPolicyFields` | `interface IonDesktopPolicyFields` | `interface IonDesktopPolicyFields` | None | iOS |
 | Dialog | `SettingsDialog` | `SettingsDialog` | `SettingsDialog` | `struct EngineDialogSheet` | None |
 | Dispatch Split Pane | None | `DispatchSplitPane` | None | None | Overlay, iOS |
 | Drawer | `StatusDrawer` | `StatusDrawer` | `StatusDrawer` | `ModalSheetBoundary` | None |
@@ -2010,57 +2880,99 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Engine Host Launcher | `resolveTaskAction`, `findBundledHost` | `resolveTaskAction`, `findBundledHost` | `resolveTaskAction`, `findBundledHost` | None | iOS |
 | Engine profile | `engineProfileId` | `engineProfileId` | `engineProfileId` | `EngineProfile` | None |
 | Engine Supervisor | `supervisorFor`, `launchdSupervisor`, `schtasksSupervisor` | `supervisorFor`, `launchdSupervisor`, `schtasksSupervisor` | `supervisorFor`, `launchdSupervisor`, `schtasksSupervisor` | None | iOS |
+| Environment | `type EnvironmentTarget` | `type EnvironmentTarget` | `type EnvironmentTarget` | None | iOS |
+| Environment Availability | `environmentAvailability`, `dropEnvironmentState` | `environmentAvailability`, `dropEnvironmentState` | `environmentAvailability`, `dropEnvironmentState` | None | iOS |
+| Environment Catalog | `readCatalog` | `readCatalog` | `readCatalog` | None | iOS |
+| Environment Page | `SETTINGS_PAGES` | `SETTINGS_PAGES` | `SETTINGS_PAGES` | `struct ServerPagesView` | None |
+| Environment Policy | `environmentPolicy(environmentId: string): EnterprisePolicy \| null` | `environmentPolicy(environmentId: string): EnterprisePolicy \| null` | `environmentPolicy(environmentId: string): EnterprisePolicy \| null` | None | iOS |
+| Environment Purge | `RemoveServerPanel` | `RemoveServerPanel` | `RemoveServerPanel` | None | iOS |
 | Explorer Tree State | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | `ExplorerStateSnapshot`, `loadExplorerState`, `setupExplorerStateSync` | None | iOS |
+| Format Version | `ServerFactsGroup` | `ServerFactsGroup` | `ServerFactsGroup` | None | iOS |
+| Git Identity | `export async function resolveGitCredential`, `GitAccessPage` | `export async function resolveGitCredential`, `GitAccessPage` | `export async function resolveGitCredential`, `GitAccessPage` | `struct GitIdentitySummary`, `struct AddGitCredentialSheet` | None |
 | Graph Agent Highlight | `agentHighlightNodeIds` | `agentHighlightNodeIds` | `agentHighlightNodeIds` | None | iOS |
 | Graph Anchor Node | `export function buildAnchorNodes` | `export function buildAnchorNodes` | `export function buildAnchorNodes` | None | iOS |
 | Graph Session | `export function parkSession` | `export function parkSession` | `export function parkSession` | None | iOS |
 | Graph View | `export function GraphSurface` | `export function GraphSurface` | `export function GraphSurface` | None | iOS |
 | Graph View Minimap | None | `export function GraphMinimap` | None | None | Overlay, iOS |
 | Guided Questions | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | `export class QuestionsCoordinator`, `export type RemoteQuestionsEvent` | None | iOS |
-| Inbox | `export function classifyInbox`, `export function InboxPanel` | `export function classifyInbox`, `export function InboxPanel`, `InboxSidebar` | `export function classifyInbox`, `export function InboxPanel` | `InboxRowView` | None |
-| Injection Kind | `export function suppressesInjection` | `export function suppressesInjection` | `export function suppressesInjection` | `enum InjectionPolicy` | None |
+| Inbox | `export function classifyInbox` | `export function classifyInbox`, `InboxSidebar` | `export function classifyInbox` | `InboxRowView` | None |
+| Injection Kind | `export function suppressesInjection` | `export function suppressesInjection` | `export function suppressesInjection` | None | iOS |
 | Input Bar | `export function InputBar` | `export function InputBar`, `InputBar` | `export function InputBar` | `InputBar` | None |
 | Install worker | `install-worker`, `dispatchUpdateInstall` | `install-worker`, `dispatchUpdateInstall` | `install-worker`, `dispatchUpdateInstall` | None | iOS |
 | Integration bench | `export interface RemoteBench`, `BenchBar` | `export interface RemoteBench`, `BenchBar` | `export interface RemoteBench`, `BenchBar` | `InboxBenchGroup` | None |
+| Ion Studio Server | `main` | `main` | `main` | None | iOS |
 | iOS | None | None | None | `struct TabListView`, `NormalizedEvent` | Desktop, Studio, Overlay |
-| Menu | `export function TabContextMenu` | `export function TabContextMenu` | `export function TabContextMenu` | `struct TabRowContextMenu` | None |
+| LAN Discovery | `useNearbyDoor`, `DiscoverySection` | `useNearbyDoor`, `DiscoverySection` | `useNearbyDoor`, `DiscoverySection` | None | iOS |
+| Local Principal | `localPrincipal` | `localPrincipal` | `localPrincipal` | None | iOS |
+| Menu | `export function InboxRowMenu` | `export function InboxRowMenu` | `export function InboxRowMenu` | `struct TabRowContextMenu` | None |
 | Message | None | None | None | `struct Message` | Desktop, Studio, Overlay |
-| Mirror store | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS` | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS`, `waitForTabsSync` | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS` | None | iOS |
-| Mounted Folder | `ProjectFoldersSection`, `createWorkspaceFolderActions` | `ProjectFoldersSection`, `createWorkspaceFolderActions` | `ProjectFoldersSection`, `createWorkspaceFolderActions` | None | iOS |
+| Mirror store | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS` | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS`, `hydrateTabsFromSync` | `isMirrorWindow`, `MIRROR_LOCAL_ACTIONS` | None | iOS |
+| Mounted Folder | `WorkspaceFolders`, `createWorkspaceFolderActions` | `WorkspaceFolders`, `createWorkspaceFolderActions` | `WorkspaceFolders`, `createWorkspaceFolderActions` | None | iOS |
 | Native Session Compaction | `export function buildNativeCompactionMarkerContent` | `export function buildNativeCompactionMarkerContent` | `export function buildNativeCompactionMarkerContent` | None | iOS |
 | New Conversation Picker | `NewConversationPicker` | `NewConversationPicker` | `NewConversationPicker` | `struct TabListNewTabSheet` | None |
 | Normalized event | None | None | None | `NormalizedEvent` | Desktop, Studio, Overlay |
 | Notification | `export function NotificationsPanel` | `export function NotificationsPanel` | `export function NotificationsPanel` | `struct NotificationsView` | None |
-| Overlay | None | None | `overlay` | None | Studio, iOS |
+| Pairing Link | `parsePairingLink` | `parsePairingLink` | `parsePairingLink` | None | iOS |
+| Pane Find | None | `export function paneFindTarget` | None | None | Overlay, iOS |
 | Panel | `FloatingPanel` | `FloatingPanel` | `FloatingPanel` | `struct GitPaneView` | None |
 | Permission | `PermissionCard` | `PermissionCard` | `PermissionCard` | `struct PermissionCardView` | None |
+| Phone Action List | None | None | None | `enum PhoneAction` | Desktop, Studio, Overlay |
 | Picker | `ModelPickerPopover` | `ModelPickerPopover` | `ModelPickerPopover` | `struct ModelPickerSheet` | None |
+| Presence | `export function presenceSnapshot`, `usePresenceStore` | `export function presenceSnapshot`, `usePresenceStore` | `export function presenceSnapshot`, `usePresenceStore` | `struct PresenceAvatar` | None |
+| Project Job | `useEnvironmentJobs` | `useEnvironmentJobs` | `useEnvironmentJobs` | None | iOS |
+| Project Quick Tool | `export interface ProjectQuickTool`, `export async function resolveProjectQuickTool` | `export interface ProjectQuickTool`, `export async function resolveProjectQuickTool` | `export interface ProjectQuickTool`, `export async function resolveProjectQuickTool` | None | iOS |
+| Project Trust | `setupCheck`, `cloneFixes` | `setupCheck`, `cloneFixes` | `setupCheck`, `cloneFixes` | None | iOS |
 | Project Workspace | `resolveProjectDir`, `orderedWorkspaceRoots` | `resolveProjectDir`, `orderedWorkspaceRoots` | `resolveProjectDir`, `orderedWorkspaceRoots` | None | iOS |
+| Prompt trace | None | `export function submitWithTrace` | None | `final class PromptTraceBook` | Overlay |
+| Push address | None | None | None | `func registerPushAddress()` | Desktop, Studio, Overlay |
 | Questions Wizard | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | None | iOS |
+| Quick Tool | `export interface QuickTool` | `export interface QuickTool`, `export function ComposerQuickToolsButton` | `export interface QuickTool` | None | iOS |
+| Relay-backed Environment | `RelayStudioSocket` | `RelayStudioSocket` | `RelayStudioSocket` | None | iOS |
+| Request Principal | `principal: StudioPrincipalSummary \| null` | `principal: StudioPrincipalSummary \| null` | `principal: StudioPrincipalSummary \| null` | None | iOS |
 | Resource | `ResourceViewer` | `ResourceViewer` | `ResourceViewer` | `Resource` | None |
 | Scratch Document | None | `export interface ScratchDocument` | None | None | Overlay, iOS |
+| Server Admin Session | None | None | None | `final class ServerAdminSession` | Desktop, Studio, Overlay |
+| Settings Side Panel | `export function SidePanel` | `export function SidePanel` | `export function SidePanel` | None | iOS |
+| Settings Taxonomy | None | None | None | `struct ServerPagesView` | Desktop, Studio, Overlay |
 | Slash command | `SlashCommandMenu` | `SlashCommandMenu` | `SlashCommandMenu` | `struct SlashCommandMenu` | None |
+| SSH Door | `addEnvironmentOverSsh`, `useSshDoor` | `addEnvironmentOverSsh`, `useSshDoor` | `addEnvironmentOverSsh`, `useSshDoor` | None | iOS |
 | Status Drawer | `StatusDrawer` | `StatusDrawer` | `StatusDrawer` | `struct StatusDrawerView` | None |
 | Studio Browser Surface | `export interface BrowserTab` | `export function BrowserSurface`, `export interface BrowserTab` | `export interface BrowserTab` | None | iOS |
 | Studio Center | None | `StudioCenter` | None | None | Overlay, iOS |
 | Studio Left Dock | None | `StudioLeftSidebar` | None | None | Overlay, iOS |
+| Studio Resource Traffic | None | `export function isStudioTrafficKind` | None | `static func isStudioTraffic` | Overlay |
+| Studio SDK | None | `export function studio`, `func NewComposer`, `export function isStudioControlKind` | None | None | Overlay, iOS |
+| Studio Server Bundle | `installOnHost` | `installOnHost` | `installOnHost` | None | iOS |
 | Studio | None | `StudioShell` | None | None | Overlay, iOS |
 | Studio Surface | None | `StudioSurface` | None | None | Overlay, iOS |
 | Studio Title Bar | None | `StudioTitleBar` | None | None | Overlay, iOS |
+| Studio Wire | `type StudioFrame` | `type StudioFrame` | `type StudioFrame` | None | iOS |
 | Surface | None | `export interface SurfaceState` | None | None | Overlay, iOS |
+| System Metrics | `class SystemMetricsPublisher`, `HealthPage` | `class SystemMetricsPublisher`, `HealthPage` | `class SystemMetricsPublisher`, `HealthPage` | `struct EnvironmentLoadSummary`, `final class HealthAdminModel` | None |
 | Tab | `export interface TabState` | `export interface TabState` | `export interface TabState` | `struct TabRowView` | None |
-| Tab Strip | `export function TabStrip` | `export function TabStrip`, `TabStrip` | `export function TabStrip` | `struct TabListView` | None |
 | Tag Treatment | `export type TagTreatment` | `export type TagTreatment` | `export type TagTreatment` | None | iOS |
+| Telemetry Health | `export function installTelemetryHealthConsumer` | `export function installTelemetryHealthConsumer` | `export function installTelemetryHealthConsumer` | None | iOS |
+| Tenancy Mode | `export function isSharedTenancy` | `export function isSharedTenancy` | `export function isSharedTenancy` | None | iOS |
 | Terminal | `export function TerminalPanel` | `export function TerminalPanel` | `export function TerminalPanel` | `ConversationTerminalView` | None |
 | Terminal Activity | `export interface TerminalActivity` | `export interface TerminalActivity` | `export interface TerminalActivity` | `TerminalInstanceBar` | None |
+| Terminal Launch Key | `launchKey?: string` | `launchKey?: string` | `launchKey?: string` | None | iOS |
+| Thin View | None | None | None | `final class StudioTransport` | Desktop, Studio, Overlay |
 | Transcript | `MessageBubble` | `MessageBubble` | `MessageBubble` | `struct Transcript` | None |
+| Transcript Patch | None | None | None | `struct TranscriptStream` | Desktop, Studio, Overlay |
+| Transcript Row | None | None | None | `struct TranscriptRow` | Desktop, Studio, Overlay |
+| Transfer | `interface TransferManifest` | `interface TransferManifest` | `interface TransferManifest` | None | iOS |
+| Transfer Preflight | `useTransferPreflight` | `useTransferPreflight` | `useTransferPreflight` | None | iOS |
+| Union Store | `hydrateTabsFromSync`, `resolveActionEnvironment` | `hydrateTabsFromSync`, `resolveActionEnvironment` | `hydrateTabsFromSync`, `resolveActionEnvironment` | None | iOS |
 | Visualizer Canvas | None | `VisualizerRoot` | None | None | Overlay, iOS |
 | Web Application | `discoverTerminalWebApplications` | `discoverTerminalWebApplications` | `discoverTerminalWebApplications` | `InboxRowView` | None |
+| Web Client | `BrowserStudioHost` | `BrowserStudioHost` | `BrowserStudioHost` | None | iOS |
 | Workspace | `WorkspaceStatusIndicator` | `WorkspaceStatusIndicator` | `WorkspaceStatusIndicator` | None | iOS |
+| Workspace Search | None | `export function WorkspaceSearchPanel` | None | None | Overlay, iOS |
 | Worktree | `export interface RemoteWorktree`, `WorktreeRow` | `export interface RemoteWorktree`, `WorktreeRow` | `export interface RemoteWorktree`, `WorktreeRow` | `struct WorktreeRowView` | None |
 
 ## Alias and legacy-name index
 
+- Alias: `APNs token` → [Push address](#term-push-address)
 - Legacy name: `ATV` → [Studio](#term-studio-shell)
 - Legacy name: `Agent Team Visualizer` → [Studio](#term-studio-shell)
 - Alias: `Ion Desktop` → [Desktop](#term-desktop-client)
@@ -2073,6 +2985,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `SDK` → [Extension SDK](#term-extension-sdk)
 - Alias: `Studio browser` → [Studio Browser Surface](#term-studio-browser-surface)
 - Alias: `Studio shell` → [Studio](#term-studio-shell)
+- Legacy name: `Tab Strip` → [Inbox](#term-inbox)
 - Alias: `active shell` → [Terminal Activity](#term-terminal-activity)
 - Alias: `agent browser link` → [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
 - Alias: `agent dispatch` → [Dispatch](#term-dispatch)
@@ -2104,20 +3017,24 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `daemon` → [Engine server](#term-engine-server)
 - Alias: `desktop automation rules` → [Desktop Automation](#term-desktop-automation)
 - Alias: `desktop client` → [Desktop](#term-desktop-client)
+- Alias: `desktop_transcript_patch` → [Transcript Patch](#term-transcript-patch)
+- Alias: `device token` → [Push address](#term-push-address)
 - Alias: `dispatch split` → [Dispatch Split Pane](#term-dispatch-split-pane)
+- Alias: `draft input` → [Composer Draft](#term-composer-draft)
 - Alias: `drain checkpoint` → [Steer Drain Checkpoint](#term-steer-drain-checkpoint)
 - Alias: `engine configuration` → [Configuration](#term-configuration)
 - Alias: `engine session` → [Session](#term-session)
 - Alias: `engine tool` → [Tool](#term-tool)
 - Alias: `extension subprocess` → [Extension](#term-extension)
+- Alias: `find in conversation` → [Pane Find](#term-pane-find)
+- Alias: `find in files` → [Workspace Search](#term-workspace-search)
+- Alias: `find in page` → [Pane Find](#term-pane-find)
 - Alias: `floating panel` → [Panel](#term-panel)
 - Alias: `forwarding` → [Message forwarding](#term-forwarding)
 - Alias: `git worktree` → [Worktree](#term-worktree)
-- Alias: `glass` → [Overlay](#term-overlay)
+- Alias: `grep` → [Workspace Search](#term-workspace-search)
 - Alias: `grouped catch-up` → [Schedule catch-up group](#term-schedule-catch-up-group)
 - Alias: `harness layer` → [Harness](#term-harness)
-- Alias: `history backfill` → [Conversation backfill](#term-conversation-backfill)
-- Alias: `history prefetch` → [Conversation backfill](#term-conversation-backfill)
 - Alias: `hub` → [Relay hub](#term-relay-hub)
 - Alias: `iOS client` → [iOS](#term-ios-client)
 - Alias: `inbound webhook` → [Webhook](#term-webhook)
@@ -2126,6 +3043,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `intelligent poll` → [Poll](#term-poll)
 - Alias: `ion context` → [Extension context](#term-extension-context)
 - Alias: `ion serve` → [Engine server](#term-engine-server)
+- Alias: `launch key` → [Terminal Launch Key](#term-terminal-launch-key)
 - Alias: `left dock` → [Studio Left Dock](#term-studio-left-dock)
 - Alias: `left sidebar` → [Studio Left Dock](#term-studio-left-dock)
 - Alias: `lifecycle hook` → [Hook](#term-hook)
@@ -2138,9 +3056,9 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `new conversation flow` → [New Conversation Picker](#term-new-conversation-picker)
 - Alias: `office canvas` → [Visualizer Canvas](#term-visualizer-canvas)
 - Alias: `outbound engine event` → [Engine event](#term-engine-event)
-- Alias: `overlay glass` → [Overlay](#term-overlay)
 - Alias: `peer connection` → [Connection](#term-connection)
 - Alias: `permission request` → [Permission](#term-permission)
+- Alias: `phone actions` → [Phone Action List](#term-phone-action-list)
 - Alias: `ping frame` → [Keepalive](#term-keepalive)
 - Alias: `popover picker` → [Picker](#term-picker)
 - Alias: `profile` → [Engine profile](#term-engine-profile)
@@ -2158,6 +3076,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `run backend` → [Backend](#term-backend)
 - Alias: `scheduled job` → [Schedule](#term-schedule)
 - Alias: `scratch file` → [Scratch Document](#term-scratch-document)
+- Alias: `search in files` → [Workspace Search](#term-workspace-search)
 - Alias: `server event envelope` → [Server message](#term-server-message)
 - Alias: `shell pane` → [Terminal](#term-terminal)
 - Alias: `side drawer` → [Drawer](#term-drawer)
@@ -2172,13 +3091,18 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `sub-agent` → [Agent](#term-agent)
 - Alias: `surface pane` → [Studio Surface](#term-studio-surface)
 - Alias: `surface tab` → [Surface](#term-surface)
-- Alias: `tab list` → [Tab Strip](#term-tab-strip)
+- Legacy name: `tab list` → [Inbox](#term-inbox)
 - Alias: `term registry` → [Vocabulary registry](#term-vocabulary-registry)
 - Alias: `terminal panel` → [Conversation Terminal Panel](#term-conversation-terminal-panel)
+- Alias: `thin client view` → [Thin View](#term-thin-view)
+- Alias: `thin connection` → [Thin View](#term-thin-view)
+- Alias: `thin transcript row` → [Transcript Row](#term-transcript-row)
 - Alias: `thread` → [Conversation](#term-conversation)
 - Alias: `timeline minimap` → [Conversation Timeline Minimap](#term-conversation-timeline-minimap)
+- Alias: `traceparent` → [Prompt trace](#term-prompt-trace)
 - Alias: `transcript view` → [Conversation View](#term-conversation-view)
 - Alias: `turn authorship` → [Injection Kind](#term-injection-kind)
+- Alias: `unsent prompt` → [Composer Draft](#term-composer-draft)
 - Alias: `untitled document` → [Scratch Document](#term-scratch-document)
 - Alias: `update installer` → [Install worker](#term-install-worker)
 - Alias: `user turn` → [Turn](#term-turn)
