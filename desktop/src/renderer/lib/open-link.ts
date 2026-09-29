@@ -29,6 +29,7 @@
  */
 import { surfaceRouter } from './file-open-router'
 import { rDebug, rWarn } from '../rendererLogger'
+import { host } from '../host/host-instance'
 
 /** The modifier fields this helper needs, present on React and DOM events. */
 export interface LinkModifiers {
@@ -83,18 +84,18 @@ export function openClickedLink(url: string, event?: LinkModifiers | null, conte
     // it declines, so both an older router and a refusal fall through to the OS
     // rather than losing the click.
     if (router?.openUrl?.(target)) {
-      rDebug(context, 'opened link in studio surface browser', { host: hostOf(target) })
+      rDebug(context, 'opened link in studio surface browser', { url_host: hostOf(target) })
       return
     }
   } else if (wantsNativeBrowser(event)) {
     // Logged distinctly from the plain-click fallback below: this one was an
     // explicit escape, and knowing the operator asked for it is what separates
     // "they wanted their own browser" from "routing failed".
-    rDebug(context, 'opened link in the default browser by request', { host: hostOf(target) })
+    rDebug(context, 'opened link in the default browser by request', { url_host: hostOf(target) })
   }
 
-  void window.ion.openExternal(target).catch((err) => {
-    rWarn(context, 'open link failed', { host: hostOf(target), error: String(err) })
+  void host.openExternal(target).catch((err) => {
+    rWarn(context, 'open link failed', { url_host: hostOf(target), error: String(err) })
   })
 }
 

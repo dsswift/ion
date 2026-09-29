@@ -5,7 +5,7 @@ vi.mock('fs')
 // Mock the egress forwarder so we can assert exactly which log lines are
 // shipped to egress (vs. only written to desktop.jsonl).
 const shipToEgressMock = vi.fn()
-vi.mock('../log-egress', () => ({
+vi.mock('@ion/shared/log-egress', () => ({
   shipToEgress: (rec: unknown) => shipToEgressMock(rec),
 }))
 
@@ -16,11 +16,12 @@ import {
   debug,
   error,
   configureLogger,
+  initLoggerMachineIdentity,
   setLogLevel,
   flushLogs,
   _resetForTest,
 } from '../logger'
-import { setConversationResolver } from '../log-correlation'
+import { setConversationResolver } from '@ion/shared/log-correlation'
 
 /**
  * Read back the single line last written to the log. INFO lines are buffered
@@ -65,6 +66,12 @@ describe('logger structured JSONL', () => {
 
   afterEach(() => {
     _resetForTest()
+  })
+
+  it('names the device on every line, over a caller field of the same name', () => {
+    initLoggerMachineIdentity({ host: 'device-a', machineId: 'hw-1', mdmDeviceId: '', mdmSerial: '' })
+    log('favicon', 'favicon fetch non-ok', { host: 'github.com', status: 404 })
+    expect(lastLine().fields).toEqual({ host: 'device-a', machine_id: 'hw-1', status: 404 })
   })
 
   it('emits a schema-compliant INFO line', () => {
@@ -120,6 +127,18 @@ describe('logger structured JSONL', () => {
     const line = lastLine()
     expect('conversation_id' in line).toBe(false)
     expect(line.session_id).toBe('tab-a')
+  })
+
+  it('lifts a trace_id field to the top level of the line and the shipped record', () => {
+    const traceId = '4bf92f3577b34da6a3ce929d0e0e4736'
+    log('span', 'prompt.send', { trace_id: traceId, span_id: '00f067aa0ba902b7', duration_ms: 9, conversation_id: '1780093348767-c1c03e998388' })
+    const line = lastLine()
+    expect(line).toMatchObject({ tag: 'span', trace_id: traceId, conversation_id: '1780093348767-c1c03e998388' })
+    // A span line carries each lifted id once, at the top level.
+    expect(line.fields).toEqual({ span_id: '00f067aa0ba902b7', duration_ms: 9 })
+    expect(shipToEgressMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      trace_id: traceId, fields: { span_id: '00f067aa0ba902b7', duration_ms: 9 },
+    }))
   })
 
   it('writes ERROR lines synchronously', () => {

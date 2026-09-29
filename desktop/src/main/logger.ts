@@ -1,9 +1,10 @@
 import { appendFile, appendFileSync, statSync, renameSync, unlinkSync, mkdirSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
-import { shipToEgress } from './log-egress'
-import { admitLogLine, drainSuppressions, _resetForTest as resetRateLimitForTest } from './log-rate-limit'
-import { correlate, _resetForTest as resetCorrelationForTest } from './log-correlation'
+import { shipToEgress } from '@ion/shared/log-egress'
+import { admitLogLine, drainSuppressions, _resetForTest as resetRateLimitForTest } from '@ion/shared/log-rate-limit'
+import { correlate, lineFields, _resetForTest as resetCorrelationForTest } from '@ion/shared/log-correlation'
+import { setLogSink } from '@ion/shared/log-sink'
 
 const LOG_DIR = join(homedir(), '.ion')
 const LOG_FILE = join(LOG_DIR, 'desktop.jsonl')
@@ -31,6 +32,7 @@ interface LogLine {
   msg: string
   session_id?: string
   conversation_id?: string
+  trace_id?: string
   fields: Record<string, unknown>
 }
 
@@ -43,8 +45,11 @@ let disableRotation = false
 
 /**
  * Stable machine-identity fields stamped on every log line. Populated once via
- * initLoggerMachineIdentity() at app startup; empty until then. Caller-supplied
- * fields in each log call take precedence over these ambient values.
+ * initLoggerMachineIdentity() at app startup; empty until then. They win over
+ * a caller field of the same name: log pipelines label each line with the
+ * device these keys name, so a caller's `host` meaning a URL's host must not
+ * relabel the line (scripts/check-logging.sh RESERVED-KEY keeps call sites
+ * off these keys).
  */
 let ambientMachineFields: Record<string, string> = {}
 
@@ -62,9 +67,9 @@ function nowRfc3339Nano(): string {
 }
 
 function serialize(level: LogLevel, tag: string, msg: string, fields?: Record<string, unknown>): string {
-  // Ambient machine-identity fields fill absent keys; caller fields win on collision.
+  // Machine identity wins over a caller field of the same name.
   const mergedFields = Object.keys(ambientMachineFields).length > 0
-    ? { ...ambientMachineFields, ...(fields ?? {}) }
+    ? { ...(fields ?? {}), ...ambientMachineFields }
     : (fields ?? {})
   const line: LogLine = {
     ts: nowRfc3339Nano(),
@@ -82,6 +87,10 @@ function serialize(level: LogLevel, tag: string, msg: string, fields?: Record<st
   const ids = correlate({ fields: mergedFields })
   if (ids.session_id) line.session_id = ids.session_id
   if (ids.conversation_id) line.conversation_id = ids.conversation_id
+  // A caller states a line's prompt trace as a `trace_id` field; it is a
+  // top-level key, so it leaves `fields` once lifted (see lineFields).
+  if (ids.trace_id) line.trace_id = ids.trace_id
+  line.fields = lineFields(mergedFields, tag)
   return JSON.stringify(line) + '\n'
 }
 
@@ -184,12 +193,12 @@ function logAt(level: LogLevel, tag: string, msg: string, fields?: Record<string
   // observability (the drain-path instrumentation is fully visible there); they
   // simply do not recurse into the egress buffer.
   if (!tag.startsWith('log_egress')) {
-    const egressRec: import('./log-egress').EgressRecord = {
+    const egressRec: import('@ion/shared/log-egress').EgressRecord = {
       ts: new Date().toISOString().replace('Z', '') + '000000Z',
       level,
       msg,
       component: 'desktop',
-      fields: fields ?? {},
+      fields: lineFields(fields ?? {}, tag),
     }
     if (tag) egressRec.tag = tag
     // Same per-line resolution as the file record above: the egress copy must
@@ -198,6 +207,7 @@ function logAt(level: LogLevel, tag: string, msg: string, fields?: Record<string
     const egressIds = correlate({ fields: fields ?? {} })
     if (egressIds.session_id) egressRec.session_id = egressIds.session_id
     if (egressIds.conversation_id) egressRec.conversation_id = egressIds.conversation_id
+    if (egressIds.trace_id) egressRec.trace_id = egressIds.trace_id
     shipToEgress(egressRec)
   }
 
@@ -338,3 +348,12 @@ export function _resetForTest(): void {
 }
 
 export { LOG_FILE }
+
+/**
+ * Hand this process's logger to the shared log-shipping stack, for the same
+ * reason the server does: those modules run in both processes and must write
+ * to whichever one they are actually in.
+ */
+setLogSink((level, tag, msg, fields) => {
+  logAt(level, tag, msg, fields)
+})

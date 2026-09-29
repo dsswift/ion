@@ -21,7 +21,7 @@
  * hiding it is explicit (`setVisible(false)`) rather than a CSS side effect.
  */
 import { WebContentsView, type BrowserWindow, type WebContents } from 'electron'
-import { log as _log, warn as _warn } from './logger'
+import { debug as _debug, log as _log, warn as _warn } from './logger'
 import { getStudioBrowserWindow } from './studio-browser-window-resolver'
 import { registerStudioPlaywrightWebview, unregisterStudioPlaywrightWebview } from './studio-playwright/host'
 import { installGuestPolicy, previewPartitionFor } from './webview-policy'
@@ -209,7 +209,8 @@ export function setPopoverRects(rects: ViewBounds[]): void {
     if (!entry.visible || entry.view.webContents.isDestroyed()) continue
     applyBounds(entry)
   }
-  _log(TAG, 'browser popover regions changed', { count: rects.length })
+  // DEBUG: a popover that moves or animates changes its region every frame.
+  _debug(TAG, 'browser popover regions changed', { count: rects.length })
 }
 
 /** Does any popover overlap this rectangle? */

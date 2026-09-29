@@ -57,13 +57,18 @@ function queueResponse(cmd: string, resp: { ok: boolean; error?: string; data?: 
   bridgeState.responses.set(cmd, list)
 }
 
-vi.mock('electron', () => ({
-  app: { isPackaged: false },
-  shell: {
-    openExternal: vi.fn(async (url: string) => {
-      bridgeState.openedUrls.push(url)
-    }),
-  },
+vi.mock('electron', () => ({ app: { isPackaged: false } }))
+
+// The sign-in flow moved to `@ion/server/oauth/entra-flow` and asks
+// `openAuthUrl` to show the page rather than calling `shell.openExternal`
+// itself -- that indirection is what lets a browser Studio client run the
+// same flow. Registering an opener here records the URL exactly as the old
+// electron mock did.
+vi.mock('@ion/server/oauth/url-opener', () => ({
+  setAuthUrlOpener: vi.fn(),
+  openAuthUrl: vi.fn(async (url: string) => {
+    bridgeState.openedUrls.push(url)
+  }),
 }))
 
 vi.mock('../logger', () => ({
@@ -74,7 +79,7 @@ vi.mock('../logger', () => ({
   error: vi.fn(),
 }))
 
-vi.mock('../state', () => ({
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{
   engineBridge: {
     request: vi.fn(async (cmd: string, payload: Record<string, unknown> = {}) => {
       bridgeState.calls.push({ cmd, payload })
@@ -85,13 +90,13 @@ vi.mock('../state', () => ({
       return list.length === 1 ? list[0] : list.shift()!
     }),
   },
-}))
+} }))
 
 // Identity is deployment-configuration (engine.json auth block), never
 // hardcoded. Mock a configured identity so getAccessToken can resolve the
 // telemetry scope; a second suite below pins the unconfigured behavior.
-vi.mock('../settings-store', () => ({
-  ENGINE_CONFIG_FILE: '/tmp/engine.json',
+vi.mock('@ion/server/persistence/settings-store', async (importOriginal) => ({ ...(await importOriginal()), ...{
+  engineConfigFile: () => '/tmp/engine.json',
   readEngineConfig: vi.fn(() => ({
     auth: {
       identityProvider: 'entra',
@@ -104,13 +109,13 @@ vi.mock('../settings-store', () => ({
     },
   })),
   writeEngineConfig: vi.fn(),
-}))
+} }))
 
 // ---------------------------------------------------------------------------
 // Import after mocks are established
 // ---------------------------------------------------------------------------
 
-import { getAccessToken, getOperatorIdentityState, getSignedInIdentity, signIn, signOut } from '../oauth/entra-auth'
+import { getAccessToken, getOperatorIdentityState, getSignedInIdentity, signIn, signOut } from '@ion/server/oauth/entra-flow'
 import {
   setEgressUser,
   getEgressUser,
@@ -120,7 +125,7 @@ import {
   closeEgress,
   _resetEgressForTest,
   type EgressRecord,
-} from '../log-egress'
+} from '@ion/shared/log-egress'
 
 const SAMPLE_RECORD: EgressRecord = {
   ts: '2026-07-07T12:00:00.000000000Z',
@@ -219,8 +224,9 @@ describe('signIn', () => {
       data: { signedIn: true, subject: 'oid-1', username: 'josh@corp.example.com' },
     })
 
-    const identity = await signIn()
+    const { identity, authorizationUrl } = await signIn()
     expect(bridgeState.openedUrls).toEqual(['https://login.microsoftonline.com/x/authorize?state=s'])
+    expect(authorizationUrl).toBe('https://login.microsoftonline.com/x/authorize?state=s')
     expect(identity.user).toBe('josh@corp.example.com')
   }, 15_000)
 
@@ -351,12 +357,12 @@ describe('egress user-attribution (F4) and matrix gates', () => {
 
 describe('configured identity resolution', () => {
   it('getConfiguredOidcClientId reads the client ID from engine.json auth block', async () => {
-    const { getConfiguredOidcClientId } = await import('../oauth/entra-auth')
+    const { getConfiguredOidcClientId } = await import('@ion/server/oauth/entra-flow')
     expect(getConfiguredOidcClientId()).toBe('test-client-id')
   })
 
   it('getConfiguredTelemetryScope resolves the resource-scoped scope from configured scopes', async () => {
-    const { getConfiguredTelemetryScope } = await import('../oauth/entra-auth')
+    const { getConfiguredTelemetryScope } = await import('@ion/server/oauth/entra-flow')
     expect(getConfiguredTelemetryScope()).toBe('api://test-client-id/Telemetry.Write')
   })
 
@@ -371,7 +377,7 @@ describe('configured identity resolution', () => {
     // define any client/tenant GUID constants. A GUID literal appearing in
     // the module source is a deployment-specific identity leak.
     const { readFileSync } = await vi.importActual<typeof import('fs')>('fs')
-    const src = readFileSync(new URL('../oauth/entra-auth.ts', import.meta.url), 'utf-8')
+    const src = readFileSync(new URL('../../../../server/src/oauth/entra-flow.ts', import.meta.url), 'utf-8')
     const guidLiteral = /['"][0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}['"]/i
     expect(src).not.toMatch(guidLiteral)
   })
