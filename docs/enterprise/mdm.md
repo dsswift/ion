@@ -165,7 +165,7 @@ Use it for nested fields that have no top-level value name of their own:
 |---------|--------------------|
 | Require operator sign-in | `{"auth":{"requireOperatorIdentity":true}}` |
 | Disable the desktop auto-updater | `{"customFields":{"ion-desktop":{"disableAutoUpdate":true}}}` |
-| Pin the desktop presentation | `{"customFields":{"ion-desktop":{"activeUiPolicy":"studio"}}}` |
+| Lock the desktop theme | `{"customFields":{"ion-desktop":{"themePolicy":{"themeId":"<theme id>","locked":true}}}}` |
 
 ### Setting policy with PowerShell
 
