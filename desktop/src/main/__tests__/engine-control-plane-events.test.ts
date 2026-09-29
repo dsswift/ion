@@ -37,16 +37,16 @@ vi.mock('../logger', () => ({
 // minted id instead of looping. Default true so the existing #230 B1 tests
 // (which assume the tracked conversation is real) keep their behavior; the
 // phantom tests override per-case.
-vi.mock('../session-meta', () => ({
+vi.mock('@ion/server/session-meta', () => ({
   conversationExists: vi.fn(() => true),
 }))
 
-import { conversationExists } from '../session-meta'
+import { conversationExists } from '@ion/server/session-meta'
 const mockConversationExists = conversationExists as unknown as ReturnType<typeof vi.fn>
 
-import { handleEngineEvent } from '../engine-control-plane-events'
-import type { TabEntry, EventEmitterContext } from '../engine-control-plane-events'
-import type { EngineEvent } from '../../shared/types'
+import { handleEngineEvent } from '@ion/server/engine/engine-control-plane-events'
+import type { TabEntry, EventEmitterContext } from '@ion/server/engine/engine-control-plane-events'
+import type { EngineEvent } from '@ion/shared/types'
 
 function makeTab(overrides: Partial<TabEntry> = {}): TabEntry {
   return {
@@ -61,7 +61,6 @@ function makeTab(overrides: Partial<TabEntry> = {}): TabEntry {
     clearedSinceLastPrompt: false,
     resumedSavedConversation: false,
     permissionMode: 'auto',
-    approvedTools: [],
     startedAt: Date.now() - 1000,
     toolCallCount: 0,
     sawPermissionRequest: false,

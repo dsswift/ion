@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { useColors } from "../../theme";
 import { usePreferencesStore } from "../../preferences";
 import { InlineEditDiff } from "../InlineEditDiff";
-import type { Message } from "../../../shared/types";
+import type { Message } from "@ion/shared/types";
 
 export const ToolRow = React.memo(function ToolRow({
   tool,
@@ -17,8 +17,7 @@ export const ToolRow = React.memo(function ToolRow({
   const isAsync = isRunning && !!tool.backgroundTaskId;
   const expandToolResults = usePreferencesStore((s) => s.expandToolResults);
   const shouldAutoExpand =
-    !!tool.autoExpandResult ||
-    (expandToolResults && ["Edit", "Write"].includes(tool.toolName || ""));
+    expandToolResults && ["Edit", "Write", "NotebookEdit"].includes(tool.toolName || "");
   const [showResult, setShowResult] = useState(
     !!tool.userExecuted || shouldAutoExpand,
   );

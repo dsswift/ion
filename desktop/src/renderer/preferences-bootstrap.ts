@@ -7,15 +7,19 @@
  * argument (not imported) so this module has no import cycle back into
  * preferences.ts.
  */
+import { isClientOwnedSetting } from './preferences-scope-transport'
 import type { StoreApi, UseBoundStore } from 'zustand'
 import { applyTheme, onThemeRegistryChanged, registerCustomThemes } from './theme-tokens'
-import type { PreferencesState } from './preferences-types'
-import type { CustomThemeForRenderer } from '../shared/theme-pack-types'
-import { deriveEnterpriseThemePolicy } from '../shared/enterprise-theme-policy'
-import { deriveEnterpriseTabStripPolicy } from '../shared/enterprise-tab-strip-policy'
+import type { PreferencesState } from '@ion/server/preferences-types'
+import type { CustomThemeForRenderer } from '@ion/shared/theme-pack-types'
+import { deriveEnterpriseThemePolicy } from '@ion/shared/enterprise-theme-policy'
+import type { EnvironmentTarget } from '@ion/shared/types-environments'
 import { loadPersistedSettings } from './preferences-persist'
 import { hasAppliedManagedDefault, markManagedDefaultApplied } from './managed-defaults'
-import { rError, rInfo } from './rendererLogger'
+import { reconcileManagedCatalog } from './studio/connection/catalog'
+import { rError, rInfo, rWarn } from './rendererLogger'
+import { host } from './host/host-instance'
+import type { ShellApi } from './host/shell-api'
 
 type PreferencesStore = UseBoundStore<StoreApi<PreferencesState>>
 
@@ -41,6 +45,34 @@ export function bootstrapPreferencesReady(): Promise<void> {
   return preferencesReady ?? Promise.resolve()
 }
 
+type BootstrapVerbs = Pick<ShellApi, 'listCustomThemes' | 'onThemesChanged' | 'getEnterprisePolicy' | 'getEnterprisePolicyFull' | 'onSettingsChanged'>
+
+/**
+ * The five shell verbs this bootstrap needs, each falling back to an inert
+ * implementation that logs once when a partial double lacks it. Production
+ * hosts carry every verb; the fallback exists so a unit test that mocks
+ * `host-instance` with `shell: {}` can still import the preference store.
+ */
+function shellVerbs(shell: Partial<ShellApi> | undefined): BootstrapVerbs | null {
+  if (!shell) return null
+  const missing = (name: keyof BootstrapVerbs): void => {
+    rWarn('preferences', 'host shell lacks a bootstrap verb; that feature is unavailable in this client', { verb: name })
+  }
+  const pick = <K extends keyof BootstrapVerbs>(name: K, fallback: BootstrapVerbs[K]): BootstrapVerbs[K] => {
+    const fn = shell[name]
+    if (typeof fn === 'function') return fn.bind(shell) as BootstrapVerbs[K]
+    missing(name)
+    return fallback
+  }
+  return {
+    listCustomThemes: pick('listCustomThemes', async () => []),
+    onThemesChanged: pick('onThemesChanged', () => () => {}),
+    getEnterprisePolicy: pick('getEnterprisePolicy', async () => null),
+    getEnterprisePolicyFull: pick('getEnterprisePolicyFull', async () => null),
+    onSettingsChanged: pick('onSettingsChanged', () => () => {}),
+  }
+}
+
 export function bootstrapPreferences(store: PreferencesStore, savedThemeId: string): void {
   // Initialize CSS vars + scheme classes with the saved theme so the first
   // paint is already correct (disk hydration below may still change it).
@@ -64,45 +96,54 @@ export function bootstrapPreferences(store: PreferencesStore, savedThemeId: stri
     applyTheme(effectiveThemeId(store, store.getState().selectedTheme))
   })
 
+  // This runs at module load (preferences.ts calls it while creating the
+  // store), and a partial host double in a test may carry no `shell`, or a
+  // shell missing some of these verbs. A real client always has all of them;
+  // a missing one is treated as "no transport for that verb" and said so,
+  // the same rule preferences-persist applies to the settings transport.
+  const shell = shellVerbs((host as { shell?: Partial<ShellApi> }).shell)
+  if (!shell) {
+    rWarn('preferences', 'host has no shell; custom themes, enterprise policy and settings pushes are unavailable')
+    return
+  }
+
   // Custom theme packs: fetch the installed set once at boot. Built-ins are
   // compiled in, so this only affects users with packs on disk; the initial
   // applyTheme above already painted correctly for built-in selections.
-  window.ion?.listCustomThemes?.()?.then?.((customs: CustomThemeForRenderer[]) => {
+  // `themes.list` is a server read, so a browser client gets its packs too.
+  shell.listCustomThemes().then((customs: CustomThemeForRenderer[]) => {
     registerCustomThemes(customs ?? [])
-  })?.catch?.((err: unknown) => {
+  }).catch((err: unknown) => {
     rError('preferences', 'listCustomThemes failed; custom themes unavailable', { error: String(err) })
   })
 
-  // Live pack-set updates (fs watcher / sync-time rescan in main).
-  window.ion?.on?.('ion:themes-changed', (_e: unknown, customs: CustomThemeForRenderer[]) => {
+  // Live pack-set updates (the server's fs watcher / sync-time rescan).
+  shell.onThemesChanged((customs) => {
     registerCustomThemes(customs ?? [])
   })
 
-  // Load enterprise policy from engine at startup (async, not persisted).
+  // Load enterprise policy from the engine at startup (async, not persisted).
   // Errors are non-fatal: the app runs without enterprise constraints.
-  window.ion?.getEnterprisePolicy?.()?.then?.((policy) => {
+  shell.getEnterprisePolicy().then((policy) => {
     store.getState().setEnterpriseNewConversationDefaults(policy)
-  })?.catch?.(() => {
-    // Engine not yet ready or no enterprise config — leave null.
+  }).catch((err: unknown) => {
+    rInfo('preferences', 'enterprise new-conversation policy unavailable; running without it', { error: String(err) })
   })
 
   // Full enterprise policy blob (D-004): model allowlist (D-011) and every
   // other renderer-side enterprise constraint ride this. Same non-fatal
   // semantics as the new-conversation policy above.
-  // Sequenced after disk hydration on purpose: the tab-strip managed default
-  // asks whether the user has ever set the key, and persistedSettingKeys is
-  // only populated once loadPersistedSettings has read settings.json. Racing
-  // the two would let the policy see an empty set and overwrite a real user
-  // choice. The theme branch below is unaffected either way -- it reads
-  // localStorage, which is synchronous.
+  // Sequenced after disk hydration so the policy lands on the hydrated store,
+  // not on defaults that hydration would then overwrite. The theme branch below
+  // reads localStorage, which is synchronous.
   void (preferencesReady ?? Promise.resolve())
     .catch(() => {
       // Hydration already logs its own failure; the policy must still apply.
     })
-    .then(() => window.ion?.getEnterprisePolicyFull?.())?.then?.((policy) => {
+    .then(() => shell.getEnterprisePolicyFull()).then((policy) => {
     store.getState().setEnterprisePolicy(policy)
     // Enterprise theme policy: locked → the enforced theme renders now and
-    // the picker disables (AppearanceCategory reads the same derivation);
+    // the Settings theme picker disables (it reads the same derivation);
     // unlocked → managed DEFAULT, honored only when this profile has never
     // picked a theme (a fresh install on a managed machine boots branded).
     const themePolicy = deriveEnterpriseThemePolicy(policy)
@@ -114,47 +155,34 @@ export function bootstrapPreferences(store: PreferencesStore, savedThemeId: stri
       store.getState().setSelectedTheme(themePolicy.themeId)
     }
 
-    // Enterprise Tab Strip policy, same two-branch shape as the theme above.
-    // Locked applies on every launch; unlocked is a managed DEFAULT honoured
-    // only while this profile has never set the toggle itself, so a user who
-    // turns the strip back on keeps it through every later launch.
-    //
-    // "Never set it" is the key being absent from settings.json rather than a
-    // separate marker: loadPersistedSettings falls back to SETTINGS_DEFAULTS
-    // for a missing key, and setStudioTabStripVisible writes the whole
-    // settings object, so the key exists from the first time the user
-    // touches it and never before.
-    const tabStripPolicy = deriveEnterpriseTabStripPolicy(policy)
-    if (tabStripPolicy) {
-      if (tabStripPolicy.locked) {
-        rInfo('preferences', 'enterprise tab strip lock active', { visible: tabStripPolicy.visible })
-        store.getState().setStudioTabStripVisible(tabStripPolicy.visible)
-      } else if (!hasAppliedManagedDefault('tabStrip')) {
-        // Managed default: apply once, then never again, so a user who turns
-        // the strip back on keeps it. The marker is an explicit record of
-        // having applied it -- NOT the presence of studioTabStripVisible in
-        // settings.json. The desktop writes the whole settings object on
-        // every save, so that key exists (87 of them do) from the first time
-        // any unrelated preference is written, which would have made this
-        // branch a no-op on every real profile.
-        rInfo('preferences', 'enterprise managed default tab strip applied', { visible: tabStripPolicy.visible })
-        store.getState().setStudioTabStripVisible(tabStripPolicy.visible)
-        markManagedDefaultApplied('tabStrip')
-      } else {
-        rInfo('preferences', 'enterprise tab strip default already applied; leaving the user value', {
-          policy_visible: tabStripPolicy.visible,
-        })
-      }
+    // Managed environments (spec 14): customFields['ion-desktop'].environments
+    // become catalog entries with managed:true. Reconciliation itself is
+    // idempotent and re-runs on every policy fetch (spec 13 edge case: "the
+    // list is re-applied on policy-change") — the one-shot marker only
+    // records that this profile has seen the feature at least once, mirroring
+    // the theme marker's shape rather than gating every run.
+    const rawEnvironments = policy?.customFields?.['ion-desktop']
+      ? (policy.customFields['ion-desktop'] as { environments?: Array<Record<string, unknown>> }).environments
+      : undefined
+    if (Array.isArray(rawEnvironments) && rawEnvironments.length > 0) {
+      const targets = rawEnvironments.filter((e): e is EnvironmentTarget & Record<string, unknown> =>
+        typeof e === 'object' && e !== null && typeof (e as { kind?: unknown }).kind === 'string')
+      void reconcileManagedCatalog(targets).then(() => {
+        if (!hasAppliedManagedDefault('environments')) markManagedDefaultApplied('environments')
+      }).catch((err) => rWarn('preferences', 'managed environments reconciliation failed', { error: String(err) }))
     }
-  })?.catch?.(() => {
-    // Engine not yet ready or no enterprise config — leave null.
+  }).catch((err: unknown) => {
+    rInfo('preferences', 'enterprise policy unavailable; running without it', { error: String(err) })
   })
 
-  // Listen for settings changes pushed from the main process (e.g. iOS
+  // Listen for settings changes pushed from the server (e.g. iOS
   // `set_desktop_setting` writes). Without this, iOS-originated changes
   // only land on disk — the renderer Zustand store keeps the stale
   // in-memory value until the next restart.
-  window.ion?.on?.('ion:settings-changed', (_e: unknown, key: string, value: unknown) => {
+  shell.onSettingsChanged((key, value) => {
+    // A client-owned key is this client's: a server's copy of it is a leftover
+    // from before it moved, and must not overwrite what this client holds.
+    if (isClientOwnedSetting(key)) return
     const current = store.getState()
     if (!(key in current) || (current as unknown as Record<string, unknown>)[key] === value) return
     // Theme selection must go through the setter so the palette is applied

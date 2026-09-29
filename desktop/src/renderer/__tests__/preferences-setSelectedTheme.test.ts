@@ -1,6 +1,6 @@
 /**
- * Regression test: setSelectedTheme must call saveSettings so the selected
- * theme is persisted to disk immediately.
+ * Regression test: setSelectedTheme must persist the selected theme to disk
+ * immediately.
  *
  * Bug: setSelectedTheme wrote to localStorage and the Zustand store but never
  * called saveSettings, so settings.json always kept the last-saved theme (ion-dark
@@ -8,17 +8,25 @@
  * selectedTheme value from disk overwrote the correct localStorage value,
  * reverting the applied theme to the default on every restart.
  *
- * Fix: saveSettings(getAllSettings(get)) was added to setSelectedTheme.
+ * Fix: `persist(set, { selectedTheme: id })` was added to setSelectedTheme.
+ * Originally this was `saveSettings(getAllSettings(get))` (the whole settings
+ * snapshot); that shape was replaced 2026-09-16 because sending the whole
+ * snapshot on every setter freezes every OTHER in-memory field into this
+ * identity's server-side overlay too, permanently blocking that field's
+ * environment default from ever reaching the user again (see persist()'s
+ * doc comment in preferences-persist.ts). `persist()` sends only the
+ * `{ selectedTheme: id }` patch that actually changed.
  *
  * Test design — STRUCTURAL GUARD: reads preferences.ts source and asserts that
- * the saveSettings call is present inside setSelectedTheme's body. This goes red
- * the moment the saveSettings call is removed. Mirrors the established pattern
+ * the persist call is present inside setSelectedTheme's body. This goes red
+ * the moment the persist call is removed. Mirrors the established pattern
  * in ConversationView-selector-stability.test.ts (structural source read), which
  * avoids the top-level document/window side effects that prevent importing
  * preferences.ts directly in a node test environment.
  *
- * Revert contract: remove `saveSettings(getAllSettings(get))` from setSelectedTheme
- * and this test fails immediately, catching the regression before it reaches CI.
+ * Revert contract: remove `persist(set, { selectedTheme: id })` from
+ * setSelectedTheme and this test fails immediately, catching the regression
+ * before it reaches CI.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -50,18 +58,21 @@ describe('setSelectedTheme — persistence guard (structural)', () => {
     throw new Error('setSelectedTheme body never closed — malformed source?')
   }
 
-  it('[STRUCTURAL] setSelectedTheme body contains saveSettings call', () => {
-    // Goes red the instant saveSettings is removed from setSelectedTheme —
+  it('[STRUCTURAL] setSelectedTheme body contains a persist call', () => {
+    // Goes red the instant persistence is removed from setSelectedTheme —
     // the regression that caused themes to revert on every app restart.
     const body = extractSetSelectedThemeBody()
-    expect(body).toContain('saveSettings(')
+    expect(body).toContain('persist(')
   })
 
-  it('[STRUCTURAL] saveSettings call uses getAllSettings(get) as argument', () => {
-    // Pin the exact shape of the call so a trivial empty saveSettings('') would
-    // not satisfy the first assertion.
+  it('[STRUCTURAL] persist call carries only the selectedTheme patch, not the whole snapshot', () => {
+    // Pin the exact shape of the call: a trivial empty persist(set, {}) would
+    // not satisfy the first assertion, and reverting to
+    // saveSettings(getAllSettings(get)) -- sending every other in-memory
+    // field along with it -- must also fail here.
     const body = extractSetSelectedThemeBody()
-    expect(body).toContain('saveSettings(getAllSettings(get))')
+    expect(body).toContain('persist(set, { selectedTheme: id })')
+    expect(body).not.toContain('getAllSettings')
   })
 
   it('[STRUCTURAL] setSelectedTheme applies the selected theme by id', () => {

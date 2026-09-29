@@ -16,8 +16,8 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
-import { reconcileSessionWorkingDirectory, type ReconcileDeps } from '../engine-control-plane-cwd'
-import type { TabEntry } from '../engine-control-plane-events'
+import { reconcileSessionWorkingDirectory, type ReconcileDeps } from '@ion/server/engine/engine-control-plane-cwd'
+import type { TabEntry } from '@ion/server/engine/engine-control-plane-events'
 
 const REPO = '/Users/test/project'
 const WORKTREE = '/Users/test/.ion/worktrees/project-a3f1'
@@ -36,7 +36,6 @@ function makeTab(over: Partial<TabEntry> = {}): TabEntry {
     promptCountSinceCheckpoint: 0,
     clearedSinceLastPrompt: false,
     resumedSavedConversation: false,
-    approvedTools: [],
     startedAt: 0,
     toolCallCount: 0,
     sawPermissionRequest: false,

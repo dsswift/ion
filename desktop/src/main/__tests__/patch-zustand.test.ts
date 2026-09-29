@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { patchZustand } from '../../../scripts/patch-zustand.js'
+import desktopPackage from '../../../package.json'
 
 // The unpatched header line patchZustand looks for (the pre-patch zustand
 // 5.x shape): a bare inline selector passed to React.useCallback.
@@ -40,5 +41,11 @@ describe('patchZustand', () => {
 
   it('a missing file is a silent no-op', () => {
     expect(() => patchZustand(join(dir, 'does-not-exist.mjs'))).not.toThrow()
+  })
+
+  // The server image and CI install with --ignore-scripts, so postinstall
+  // never patches the zustand the browser Studio bundle is built from.
+  it('runs before every browser Studio build', () => {
+    expect(desktopPackage.scripts['build:web']).toMatch(/^node scripts\/patch-zustand\.js && vite build /)
   })
 })

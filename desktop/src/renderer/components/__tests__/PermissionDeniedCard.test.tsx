@@ -24,10 +24,10 @@ vi.mock('framer-motion', () => ({
 }))
 vi.mock('../../theme', () => ({ useColors: () => colors }))
 vi.mock('../../preferences', () => ({
-  usePreferencesStore: (selector: (value: { allowSettingsEdits: boolean; showImplementClearContext: boolean }) => unknown) =>
-    selector({ allowSettingsEdits: false, showImplementClearContext: false }),
+  usePreferencesStore: (selector: (value: { showImplementClearContext: boolean }) => unknown) =>
+    selector({ showImplementClearContext: false }),
 }))
-vi.mock('../../stores/sessionStore', () => ({ useSessionStore: { getState } }))
+vi.mock('@ion/server/store/sessionStore', () => ({ useSessionStore: { getState } }))
 vi.mock('../../lib/file-open-router', () => ({ surfaceRouter: () => ({ openPlan, openTextFile: vi.fn() }) }))
 vi.mock('../PlanViewer', () => ({ PlanViewer: () => null }))
 

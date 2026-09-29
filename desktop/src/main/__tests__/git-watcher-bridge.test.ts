@@ -7,9 +7,9 @@
 
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 
-vi.mock('../git-runner', () => ({ runGit: vi.fn(async () => '') }))
+vi.mock('@ion/server/git/git-runner', () => ({ runGit: vi.fn(async () => '') }))
 vi.mock('../logger', () => ({ log: vi.fn(), error: vi.fn() }))
-vi.mock('../remote/git-broadcast', () => ({ broadcastGitChanges: vi.fn(async () => {}) }))
+vi.mock('@ion/server/remote/git-broadcast', () => ({ broadcastGitChanges: vi.fn(async () => {}) }))
 // repository.ts imports settings-store (for readGitWatcherIgnoredDirectories),
 // which transitively imports utils/secretStore → 'electron'. Under
 // `npm ci --ignore-scripts` (CI) the Electron binary is not installed, so an
@@ -21,17 +21,17 @@ vi.mock('../settings-store', () => ({
   readGitWatcherIgnoredDirectories: vi.fn().mockReturnValue([]),
 }))
 
-import { GitRepository } from '../git/repository'
-import { createGitWatcher } from '../git/watcher'
-import type { ParcelModule } from '../git/watcher'
-import { focusState } from '../git/focus-state'
+import { GitRepository } from '@ion/server/git/repository'
+import { createGitWatcher } from '@ion/server/git/watcher'
+import type { WatchModule } from '@ion/server/git/watcher'
+import { focusState } from '@ion/server/git/focus-state'
 import {
   startGitWatcherBridge,
   stopGitWatcherBridge,
   reconcileGitWatchedDirectories,
-} from '../remote/git-watcher-bridge'
-import { broadcastGitChanges } from '../remote/git-broadcast'
-import { repositoryManager } from '../git/repositoryManager'
+} from '@ion/server/remote/git-watcher-bridge'
+import { broadcastGitChanges } from '@ion/server/remote/git-broadcast'
+import { repositoryManager } from '@ion/server/git/repositoryManager'
 
 const mockBroadcast = broadcastGitChanges as ReturnType<typeof vi.fn>
 
@@ -40,9 +40,9 @@ const mockBroadcast = broadcastGitChanges as ReturnType<typeof vi.fn>
 type WatchCb = (err: Error | null, events: Array<{ path: string; type: string }>) => void
 interface FakeSub { dir: string; cb: WatchCb; unsubscribe: ReturnType<typeof vi.fn> }
 
-function makeFakeParcel(): { mod: ParcelModule; subs: FakeSub[] } {
+function makeFakeWatchModule(): { mod: WatchModule; subs: FakeSub[] } {
   const subs: FakeSub[] = []
-  const mod: ParcelModule = {
+  const mod: WatchModule = {
     subscribe: (dir, cb) => {
       const unsubscribe = vi.fn<() => Promise<void>>(async () => {})
       subs.push({ dir, cb, unsubscribe })
@@ -57,7 +57,7 @@ const microtask = (): Promise<void> => Promise.resolve()
 const tick = async (): Promise<void> => { await microtask(); await microtask() }
 
 // Patch repositoryManager.get to create repos backed by a given fake watcher module.
-function patchManager(mod: ParcelModule): void {
+function patchManager(mod: WatchModule): void {
   vi.spyOn(repositoryManager, 'get').mockImplementation((path: string) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const map = (repositoryManager as any).repos as Map<string, GitRepository>
@@ -84,7 +84,7 @@ describe('git-watcher-bridge', () => {
   })
 
   it('start retains repos and sends initial broadcasts', async () => {
-    const { mod } = makeFakeParcel()
+    const { mod } = makeFakeWatchModule()
     patchManager(mod)
 
     startGitWatcherBridge(new Set(['/tmp/a', '/tmp/b']))
@@ -97,7 +97,7 @@ describe('git-watcher-bridge', () => {
   })
 
   it('reconcile releases repos removed from the directory set', async () => {
-    const { mod } = makeFakeParcel()
+    const { mod } = makeFakeWatchModule()
     patchManager(mod)
 
     startGitWatcherBridge(new Set(['/tmp/x']))
@@ -111,7 +111,7 @@ describe('git-watcher-bridge', () => {
   })
 
   it('watcher event triggers broadcast after debounce', async () => {
-    const { mod, subs } = makeFakeParcel()
+    const { mod, subs } = makeFakeWatchModule()
     patchManager(mod)
 
     startGitWatcherBridge(new Set(['/tmp/watch']))
@@ -127,7 +127,7 @@ describe('git-watcher-bridge', () => {
   })
 
   it('stop releases all retained repos', async () => {
-    const { mod } = makeFakeParcel()
+    const { mod } = makeFakeWatchModule()
     patchManager(mod)
 
     startGitWatcherBridge(new Set(['/tmp/p', '/tmp/q']))

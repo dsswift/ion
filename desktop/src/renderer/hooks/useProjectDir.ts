@@ -8,10 +8,10 @@
  * actually changes.
  */
 import { useMemo } from 'react'
-import { useSessionStore } from '../stores/sessionStore'
-import { usePreferencesStore } from '../preferences'
-import { selectProjectResolutionSources } from '../stores/project-workspace-sources'
-import { resolveProjectDir } from '../../shared/project-workspace'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { isProjectRegistry, NO_PROJECTS, useActiveServerSetting } from '../studio/state/use-server-setting'
+import { selectProjectResolutionSources } from '@ion/server/store/project-workspace-sources'
+import { resolveProjectDir } from '@ion/shared/project-workspace'
 
 export function useProjectDir(
   directory: string | null | undefined,
@@ -19,7 +19,9 @@ export function useProjectDir(
 ): string | null {
   const worktreeInventory = useSessionStore((s) => s.worktreeInventory)
   const benchWorkspaces = useSessionStore((s) => s.benchWorkspaces)
-  const projects = usePreferencesStore((s) => s.projects)
+  // The explorer and the git panel show the conversation on screen, so the
+  // registry is that conversation's server's.
+  const projects = useActiveServerSetting('projects', isProjectRegistry, NO_PROJECTS)
   const sources = useMemo(
     () => selectProjectResolutionSources({ worktreeInventory, benchWorkspaces }, { projects }),
     [worktreeInventory, benchWorkspaces, projects],

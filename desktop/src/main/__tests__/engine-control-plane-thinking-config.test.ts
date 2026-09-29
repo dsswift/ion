@@ -17,7 +17,7 @@
  * single start site is what makes them all correct by construction; these
  * tests pin that property rather than just the happy path.
  *
- * Revert proof: dropping the `?? resolveSessionThinkingConfig()` in
+ * Revert proof: dropping the `?? sessionThinkingConfigOf(...)` in
  * ensureSession fails the relocate-parity case.
  */
 
@@ -51,11 +51,11 @@ const mockBridge = {
   removeAllListeners: vi.fn(),
 }
 
-vi.mock('../engine-bridge', () => ({
+vi.mock('@ion/server/engine/engine-bridge', () => ({
   EngineBridge: function () { return mockBridge },
 }))
 
-vi.mock('../engine-bridge-fs', () => ({
+vi.mock('@ion/server/engine/engine-bridge-fs', () => ({
   engineIsRemote: vi.fn(() => false),
   getEngineHostInfo: vi.fn(() => Promise.resolve({ ok: false, error: 'not used' })),
   listEngineDirectory: vi.fn(() => Promise.resolve({ ok: false, error: 'not used' })),
@@ -63,14 +63,16 @@ vi.mock('../engine-bridge-fs', () => ({
 
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
-// Mocked so the suite never reads the operator's real ~/.ion/settings.json —
-// a test whose result depends on the developer's own preferences is not a test.
+// The session default comes from the conversation's Personal-preferences
+// stamp, looked up by tab id. Mocked so the suite controls the level, and so
+// it never depends on the developer's own settings.
 const mockThinking = { value: undefined as unknown }
-vi.mock('../settings-store', () => ({
+vi.mock('@ion/server/persistence/settings-store', async (importOriginal) => ({ ...(await importOriginal()), ...{
   readSettings: () => ({}),
-  SETTINGS_DEFAULTS: { enableClaudeCompat: false },
-  resolveSessionThinkingConfig: () => mockThinking.value,
-}))
+} }))
+vi.mock('@ion/server/conversation-preferences', async (importOriginal) => ({ ...(await importOriginal()), ...{
+  sessionThinkingConfigOf: () => mockThinking.value,
+} }))
 
 let uuidCounter = 0
 vi.mock('crypto', async () => {
@@ -78,8 +80,8 @@ vi.mock('crypto', async () => {
   return { ...actual, randomUUID: vi.fn(() => `tab-${String(++uuidCounter).padStart(3, '0')}`) }
 })
 
-import { EngineControlPlane } from '../engine-control-plane'
-import { EngineBridge } from '../engine-bridge'
+import { EngineControlPlane } from '@ion/server/engine/engine-control-plane'
+import { EngineBridge } from '@ion/server/engine/engine-bridge'
 
 function startedConfig() {
   return mockBridge.startSession.mock.calls[0][1] as any

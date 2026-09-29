@@ -47,14 +47,14 @@ vi.mock('../logger', () => ({
   error: vi.fn(),
 }))
 
-vi.mock('../session-meta', () => ({
+vi.mock('@ion/server/session-meta', () => ({
   conversationExists: vi.fn(() => true),
 }))
 
-import { handleEngineEvent } from '../engine-control-plane-events'
-import type { TabEntry, EventEmitterContext } from '../engine-control-plane-events'
-import { buildDispatchStartEntry } from '../../renderer/stores/slices/engine-event-slice-helpers'
-import type { NormalizedEvent } from '../../shared/types-events'
+import { handleEngineEvent } from '@ion/server/engine/engine-control-plane-events'
+import type { TabEntry, EventEmitterContext } from '@ion/server/engine/engine-control-plane-events'
+import { buildDispatchStartEntry } from '@ion/server/store/slices/engine-event-slice-helpers'
+import type { NormalizedEvent } from '@ion/shared/types-events'
 
 function makeTab(overrides: Partial<TabEntry> = {}): TabEntry {
   return {
@@ -69,7 +69,6 @@ function makeTab(overrides: Partial<TabEntry> = {}): TabEntry {
     clearedSinceLastPrompt: false,
     resumedSavedConversation: false,
     permissionMode: 'auto',
-    approvedTools: [],
     startedAt: Date.now() - 1000,
     toolCallCount: 0,
     sawPermissionRequest: false,

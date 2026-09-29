@@ -28,13 +28,13 @@ vi.mock('electron', () => ({
   shell: { openExternal: vi.fn() },
 }))
 
-vi.mock('../session-meta', () => ({
+vi.mock('@ion/server/session-meta', () => ({
   conversationExists: vi.fn().mockReturnValue(true),
 }))
 
-import { handleEngineEvent } from '../engine-control-plane-events'
-import type { TabEntry, EventEmitterContext } from '../engine-control-plane-events'
-import type { EngineEvent } from '../../shared/types'
+import { handleEngineEvent } from '@ion/server/engine/engine-control-plane-events'
+import type { TabEntry, EventEmitterContext } from '@ion/server/engine/engine-control-plane-events'
+import type { EngineEvent } from '@ion/shared/types'
 
 function makeTab(overrides: Partial<TabEntry> = {}): TabEntry {
   return {
@@ -49,7 +49,6 @@ function makeTab(overrides: Partial<TabEntry> = {}): TabEntry {
     clearedSinceLastPrompt: false,
     resumedSavedConversation: false,
     permissionMode: 'auto',
-    approvedTools: [],
     startedAt: Date.now() - 1000,
     toolCallCount: 0,
     sawPermissionRequest: false,

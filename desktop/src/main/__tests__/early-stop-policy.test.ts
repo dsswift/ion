@@ -38,8 +38,8 @@ import {
   buildContinueMessage,
   wireEarlyStopPolicy,
   type EarlyStopRequestEvent,
-} from '../early-stop-policy'
-import * as settingsStore from '../settings-store'
+} from '@ion/server/engine/early-stop-policy'
+import { registerConversationPreferencesLookup } from '@ion/server/store/conversation-preferences-read'
 
 // Build a representative request event with sensible defaults; tests
 // override only the fields relevant to the case they exercise.
@@ -175,22 +175,23 @@ describe('buildContinueMessage', () => {
 })
 
 describe('wireEarlyStopPolicy', () => {
-  let readSettingsSpy: ReturnType<typeof vi.spyOn>
+  // The policy reads the conversation's Personal-preferences stamp: the engine
+  // asks mid-run, where there is no client request to read a preference from.
+  const stampFor = (enabled: boolean) => registerConversationPreferencesLookup(() => ({ enableEarlyStopContinuation: enabled }))
   let bridge: { sendRaw: ReturnType<typeof vi.fn> }
   let sessionPlane: EventEmitter
 
   beforeEach(() => {
-    readSettingsSpy = vi.spyOn(settingsStore, 'readSettings')
     bridge = { sendRaw: vi.fn() }
     sessionPlane = new EventEmitter()
   })
 
   afterEach(() => {
-    readSettingsSpy.mockRestore()
+    registerConversationPreferencesLookup(() => undefined)
   })
 
   it('responds with the message when setting is on', () => {
-    readSettingsSpy.mockReturnValue({ enableEarlyStopContinuation: true })
+    stampFor(true)
     wireEarlyStopPolicy(sessionPlane as any, bridge as any)
 
     sessionPlane.emit('engine_early_stop_decision_request', 'tab-1', makeRequestEvent())
@@ -204,7 +205,7 @@ describe('wireEarlyStopPolicy', () => {
   })
 
   it('responds with forceContinue=false when setting is explicitly off', () => {
-    readSettingsSpy.mockReturnValue({ enableEarlyStopContinuation: false })
+    stampFor(false)
     wireEarlyStopPolicy(sessionPlane as any, bridge as any)
 
     sessionPlane.emit('engine_early_stop_decision_request', 'tab-2', makeRequestEvent())
@@ -215,14 +216,14 @@ describe('wireEarlyStopPolicy', () => {
     expect(payload.earlyStopContinueMessage).toBeUndefined()
   })
 
-  it('reads the setting on every event so flips take effect immediately', () => {
+  it('reads the stamp on every event so a change takes effect immediately', () => {
     // First event with setting on
-    readSettingsSpy.mockReturnValueOnce({ enableEarlyStopContinuation: true })
+    stampFor(true)
     wireEarlyStopPolicy(sessionPlane as any, bridge as any)
     sessionPlane.emit('engine_early_stop_decision_request', 'tab-3', makeRequestEvent())
 
     // Then setting flipped off mid-session
-    readSettingsSpy.mockReturnValueOnce({ enableEarlyStopContinuation: false })
+    stampFor(false)
     sessionPlane.emit('engine_early_stop_decision_request', 'tab-3', makeRequestEvent({ earlyStopRequestId: 'req-test-2' }))
 
     expect(bridge.sendRaw).toHaveBeenCalledTimes(2)
@@ -233,7 +234,7 @@ describe('wireEarlyStopPolicy', () => {
   })
 
   it('detach function stops further responses', () => {
-    readSettingsSpy.mockReturnValue({ enableEarlyStopContinuation: true })
+    stampFor(true)
     const detach = wireEarlyStopPolicy(sessionPlane as any, bridge as any)
 
     sessionPlane.emit('engine_early_stop_decision_request', 'tab-4', makeRequestEvent())
