@@ -49,14 +49,14 @@ vi.mock('../../persistence/preferences', () => ({
   },
 }))
 
-;(globalThis as any).window = (globalThis as any).window ?? {}
-;(globalThis as any).window.ion = {
+// The slice reaches shells through the host API; a real one would spawn a pty.
+vi.mock('../host-api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../host-api')>()),
   terminalCreate: vi.fn(() => Promise.resolve()),
   terminalDestroy: vi.fn(() => Promise.resolve()),
-  terminalWrite: vi.fn(() => Promise.resolve()),
-  closeTab: vi.fn(() => Promise.resolve()),
+  terminalWrite: vi.fn(),
   gitChanges: vi.fn(() => Promise.resolve({ branch: 'main' })),
-}
+}))
 
 if (!(globalThis as any).crypto?.randomUUID) {
   ;(globalThis as any).crypto = (globalThis as any).crypto ?? {}
