@@ -150,8 +150,9 @@ test-all: check-file-sizes check-contracts check-status-writers check-server-par
 #     and breaks cross-tree imports (desktop SDK tests import ../../engine/...,
 #     contract-sync reads engine/internal/types/testdata/contracts.json).
 #   - Pin the Go image to the version in engine/go.mod (single source of truth).
-#   - `git config --global --add safe.directory` is required because the mounted
-#     tree is owned by the host user, not the container user.
+#   - `safe.directory` is required because the mounted tree is owned by the host
+#     user, not the container user. The npm gates set it `--system`, since root
+#     writes it and ionci runs the build that reads git.
 #   - Desktop uses `npm ci --ignore-scripts`, exactly as CI does — this is what
 #     surfaces eager-`require('electron')` import failures.
 #   - Integration tests need `-tags integration`. They are behind a build tag,
@@ -326,8 +327,8 @@ test-linux-desktop-run:
 		-w /src/desktop $(DESKTOP_IMAGE) \
 		bash -c "chmod -R a+rX /src 2>/dev/null || true && \
 		         chown ionci:ionci $(NPM_WORKSPACE_MODULES) && \
-		         git config --global --add safe.directory /src && \
-		         git config --global --add safe.directory \"$(GIT_COMMON_DIR)\" && \
+		         git config --system --add safe.directory /src && \
+		         git config --system --add safe.directory \"$(GIT_COMMON_DIR)\" && \
 		         su ionci -c 'cd /src/desktop && npm ci --ignore-scripts && npm run lint && npm run typecheck && npm test && npm run build && npm run build:web'"
 	@bash scripts/gate-cache.sh save desktop $(DESKTOP_PLATFORM)
 
@@ -346,8 +347,8 @@ test-linux-server-run:
 		-w /src $(SERVER_IMAGE) \
 		bash -c "chmod -R a+rX /src 2>/dev/null || true && \
 		         chown ionci:ionci $(NPM_WORKSPACE_MODULES) && \
-		         git config --global --add safe.directory /src && \
-		         git config --global --add safe.directory \"$(GIT_COMMON_DIR)\" && \
+		         git config --system --add safe.directory /src && \
+		         git config --system --add safe.directory \"$(GIT_COMMON_DIR)\" && \
 		         su ionci -c 'cd /src && npm ci --ignore-scripts && \
 		                      npm -w @ion/shared run typecheck && npm -w @ion/shared test -- --run && \
 		                      npm -w server run typecheck && npm -w server run lint && npm -w server test -- --run'"
