@@ -97,31 +97,21 @@ describe('align.md lifecycle invariants', () => {
 
   it('description uses definitive "implements" not permissive "may implement"', () => {
     expect(fm.description).not.toContain('may implement')
-    expect(fm.description).toContain('implements the fixes and commits them')
+    expect(fm.description).toContain('after approval implements and commits the fixes')
   })
 
-  it('Mode A completion invariant is present', () => {
-    expect(content).toContain('Mode A completion invariant')
-    expect(content).toContain(
-      'Mode A never edits source, never commits, never implements',
-    )
+  it('Mode A writes only the plan and never commits', () => {
+    expect(content).toContain('Mode A never commits.')
+    expect(content).toContain('Mode A ends here. It writes the plan file and nothing else.')
   })
 
-  it('Mode B pre-approval completion invariant is present', () => {
-    expect(content).toContain(
-      'Mode B completion invariant (pre-approval)',
-    )
+  it('Mode B stops for approval before editing source', () => {
+    expect(content).toContain('I have not edited source or committed.')
+    expect(content).toContain('Wait for approval.')
   })
 
-  it('Mode B post-approval completion invariant is present', () => {
-    expect(content).toContain(
-      'Mode B completion invariant (post-approval)',
-    )
-  })
-
-  it('B-Step 6 requires operator approval', () => {
-    expect(content).toContain(
-      'only after the operator approves the fix plan',
-    )
+  it('B-Step 6 runs only after the operator approves the fix plan', () => {
+    expect(content).toContain('Mode B commits only after the operator approves its fix plan.')
+    expect(content).toContain('This step runs after the operator approves the fix plan.')
   })
 })
