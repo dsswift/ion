@@ -53,11 +53,13 @@ engine events.
 
 1. If the operator pinned that provider to a kind (`providers.<id>.backend` in
    `engine.json`), use it.
-2. Otherwise apply the **default rule**: `anthropic` → `claude-code`, every other
-   provider (including unregistered models) → `api`.
+2. Otherwise apply the **credential rule**, evaluated live on every run: an
+   available API key → `api`; no key and the provider's delegated CLI signed in
+   → that CLI kind; neither → `api`, or the CLI kind for a CLI-only provider.
+   Details: [Hybrid backend](hybrid-backend.md) § "Routing rule".
 
 Per-provider preferences (validated at config load — invalid values reset to the
-default rule with an ERROR log):
+credential rule with an ERROR log):
 
 | Provider | Allowed backends |
 |----------|------------------|
