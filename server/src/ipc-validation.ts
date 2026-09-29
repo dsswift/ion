@@ -1,0 +1,167 @@
+/**
+ * IPC input validation utilities.
+ *
+ * Pure functions used by IPC handlers to validate untrusted input
+ * from the renderer process before any side effects.
+ */
+import { isAbsolutePath } from '@ion/shared/paths'
+
+/** UUID v4 pattern -- only accepts canonical lowercase/uppercase hex UUIDs */
+const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Validate a projectPath for use in filesystem operations.
+ * Rejects null bytes, carriage returns, newlines, and non-absolute paths.
+ *
+ * "Absolute" is platform-aware, via the shared helper: a leading '/', a
+ * Windows drive letter ('C:\' or 'C:/'), or a UNC share ('\\server\share').
+ *
+ * This previously tested `path.startsWith('/')` directly, which rejects every
+ * Windows path. Twelve IPC surfaces gate on this function -- the file
+ * explorer, file read/write, git, worktrees, sessions -- so on Windows the
+ * explorer listed a real directory as empty and inline file creation silently
+ * did nothing: `C:\Users\josh` failed the check and every handler returned
+ * its empty-or-error shape before touching the disk.
+ */
+export function isValidProjectPath(path: string): boolean {
+  if (/[\0\r\n]/.test(path)) return false
+  return isAbsolutePath(path)
+}
+
+/**
+ * Resolve the working directory to forward to the engine's slash-command
+ * discovery from a renderer/iOS-supplied path.
+ *
+ * A tab that hasn't chosen a directory reports '~' (or empty). That is NOT an
+ * invalid path — it means "no project root", and user-level command/skill roots
+ * (~/.ion, ~/.claude) must still be discovered. We map '~'/empty to an empty
+ * string so the engine walks only the home roots (it skips project roots when
+ * the dir is empty). A present, non-'~' value must be an absolute path to be
+ * forwarded as a project root; anything else is malformed.
+ *
+ * Returns the working dir to forward ('' = user-only), or null when the path is
+ * present but malformed (caller should reject and return no commands).
+ */
+export function resolveDiscoveryWorkingDir(path: string | undefined | null): string | null {
+  if (!path || path === '~') return ''
+  if (!isValidProjectPath(path)) return null
+  return path
+}
+
+/**
+ * Validate a sessionId. Accepts UUIDs and engine-generated IDs (e.g. "1776636257802").
+ * Rejects path traversal and special characters since IDs may be used as filenames by the engine.
+ */
+export function isValidSessionId(sessionId: string): boolean {
+  if (!sessionId || sessionId.length > 128) return false
+  return /^[a-zA-Z0-9_-]+$/.test(sessionId)
+}
+
+/**
+ * Validate and normalize a URL for external opening.
+ * Uses the URL constructor for strict parsing, then checks protocol and hostname.
+ *
+ * Returns the normalized href if valid, or null if the URL should be rejected.
+ */
+export function validateExternalUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+    if (!parsed.hostname) return null
+    return parsed.href
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Validate a renderer-pushed remote tab-states payload
+ * (IPC.REMOTE_TAB_STATES_PUSH) before it is cached in
+ * `state.rendererSnapshotCache` and served to remote clients.
+ *
+ * Untrusted-input gate, not a full schema check: the payload is produced by
+ * our own renderer (remote-projection.ts) and mapped field-by-field by
+ * `projectRendererTab` downstream, so per-field coercion happens there. This
+ * validator rejects structurally malformed payloads (wrong container types,
+ * tabs without a string id) so a compromised or buggy renderer cannot poison
+ * the snapshot cache with shapes the mapping layer would choke on.
+ */
+export function isValidRemoteTabStatesPayload(payload: unknown): payload is {
+  tabs: Array<{ id: string } & Record<string, unknown>>
+  resourceManifest: Record<string, unknown>
+} {
+  if (typeof payload !== 'object' || payload === null) return false
+  const p = payload as Record<string, unknown>
+  if (!Array.isArray(p.tabs)) return false
+  for (const t of p.tabs) {
+    if (typeof t !== 'object' || t === null) return false
+    const id = (t as Record<string, unknown>).id
+    if (typeof id !== 'string' || id.length === 0 || id.length > 128) return false
+  }
+  if (typeof p.resourceManifest !== 'object' || p.resourceManifest === null || Array.isArray(p.resourceManifest)) return false
+  return true
+}
+
+/**
+ * Escape a string for safe embedding inside single quotes in a shell command.
+ *
+ * Single-quoted strings in POSIX shells do not expand variables ($), backticks,
+ * or backslashes. The only character that needs escaping is the single quote
+ * itself, done by ending the quoted string, adding an escaped literal quote,
+ * and reopening the quoted string: ' -> '\''
+ */
+export function shellSingleQuote(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'"
+}
+
+/**
+ * Escape a string for embedding inside an AppleScript double-quoted string.
+ * Doubles backslashes and escapes double quotes.
+ */
+export function escapeAppleScript(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
+/**
+ * Validate a hostname for the favicon fetch IPC (IPC.FAVICON_GET).
+ *
+ * The host is interpolated into a fetch URL query parameter, so this is the
+ * untrusted-input gate: RFC-1123-ish labels only (letters, digits, hyphens,
+ * dots), bounded length, no scheme/path/port/userinfo characters. Rejecting
+ * here (rather than sanitizing) keeps the cache keyed on real hostnames.
+ */
+export function isValidFaviconHost(host: string): boolean {
+  if (!host || host.length > 253) return false
+  return /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(host)
+}
+
+
+/** One native file-dialog type filter: a label and bare extensions (`['zip']`). */
+export interface DialogFilter {
+  name: string
+  extensions: string[]
+}
+
+const DIALOG_FILTER_EXTENSION = /^[A-Za-z0-9]{1,16}$/
+
+/**
+ * Validate a renderer-supplied dialog filter list. `undefined` (absent) is
+ * returned as `undefined`; anything present but malformed -- a non-array,
+ * an entry without a short plain label, an extension with a dot, a slash
+ * or a glob -- is `null`, so the caller can refuse rather than hand Electron
+ * a shape it would misread.
+ */
+export function sanitizeDialogFilters(value: unknown): DialogFilter[] | undefined | null {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value) || value.length === 0 || value.length > 16) return null
+  const out: DialogFilter[] = []
+  for (const entry of value) {
+    if (typeof entry !== 'object' || entry === null) return null
+    const { name, extensions } = entry as { name?: unknown; extensions?: unknown }
+    if (typeof name !== 'string' || name.length === 0 || name.length > 64 || /[\0\r\n]/.test(name)) return null
+    if (!Array.isArray(extensions) || extensions.length === 0 || extensions.length > 32) return null
+    if (!extensions.every((ext) => typeof ext === 'string' && DIALOG_FILTER_EXTENSION.test(ext))) return null
+    out.push({ name, extensions: [...(extensions as string[])] })
+  }
+  return out
+}

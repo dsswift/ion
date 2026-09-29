@@ -1,0 +1,99 @@
+/**
+ * Worktree naming — where the seed decision is made.
+ *
+ * A worktree's every identifier is a machine string, so it carries the name
+ * of the CONVERSATION that started it. That name is generated once, by the
+ * tab-titling path, and SEEDED here; this path never talks to a model.
+ *
+ * The decision table these tests pin:
+ *   - registered worktree, no title  → persist, announce
+ *   - registered worktree, has title → REFUSED, stored title untouched
+ *   - unregistered directory         → REFUSED
+ *   - empty/whitespace seed          → REFUSED
+ *   - the operator rename is the ONE path that may replace an existing name
+ *
+ * Regression direction: dropping the `registration.title` short-circuit turns
+ * first-prompt-wins red; leaking it into the rename turns the last test red.
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+
+const deps = vi.hoisted(() => ({ announceWorktreeTitle: vi.fn(async () => undefined) }))
+vi.mock('../../worktree/title-announce', () => ({ announceWorktreeTitle: deps.announceWorktreeTitle }))
+vi.mock('../../logger', () => ({ log: vi.fn(), trace: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }))
+
+import { lookupWorktreeTitle, registerWorktree, setWorktreeTitle } from '../../worktree/inventory'
+import { gitWorktreeSeedTitle, gitWorktreeSetTitle } from '../host-api-git'
+
+const REPO = '/Users/dev/src/ion'
+const WT = '/Users/dev/.ion/worktrees/ion-a3f1'
+
+let home: string
+let savedIonDataDir: string | undefined
+
+beforeEach(() => {
+  savedIonDataDir = process.env.ION_DATA_DIR
+  home = mkdtempSync(join(tmpdir(), 'ion-seed-title-'))
+  process.env.ION_DATA_DIR = join(home, '.ion')
+  deps.announceWorktreeTitle.mockClear()
+})
+
+afterEach(() => {
+  rmSync(home, { recursive: true, force: true })
+  if (savedIonDataDir === undefined) delete process.env.ION_DATA_DIR
+  else process.env.ION_DATA_DIR = savedIonDataDir
+})
+
+describe('seed-title decision', () => {
+  it('records the seed on an untitled registered worktree and announces it', async () => {
+    registerWorktree({ worktreePath: WT, repoPath: REPO, branchName: 'wt/ion-a3f1', sourceBranch: 'josh' })
+    expect(await gitWorktreeSeedTitle(WT, 'Fix the token expiry check')).toEqual({ ok: true, title: 'Fix the token expiry check' })
+    expect(lookupWorktreeTitle(WT)).toBe('Fix the token expiry check')
+    expect(deps.announceWorktreeTitle).toHaveBeenCalledWith(REPO, WT, 'Fix the token expiry check')
+  })
+
+  it('trims the seed before storing it', async () => {
+    registerWorktree({ worktreePath: WT, repoPath: REPO, branchName: 'wt/ion-a3f1', sourceBranch: 'josh' })
+    expect(await gitWorktreeSeedTitle(WT, '  Fix the token expiry check  ')).toEqual({ ok: true, title: 'Fix the token expiry check' })
+    expect(lookupWorktreeTitle(WT)).toBe('Fix the token expiry check')
+  })
+
+  it('refuses a second seed, so the first conversation to prompt names the worktree', async () => {
+    registerWorktree({ worktreePath: WT, repoPath: REPO, branchName: 'wt/ion-a3f1', sourceBranch: 'josh' })
+    expect(await gitWorktreeSeedTitle(WT, 'What the worktree is for')).toEqual({ ok: true, title: 'What the worktree is for' })
+    expect(await gitWorktreeSeedTitle(WT, 'A later conversation about something else')).toEqual({ ok: false, reason: 'already-titled', title: 'What the worktree is for' })
+    expect(lookupWorktreeTitle(WT)).toBe('What the worktree is for')
+  })
+
+  it('refuses a seed for an ordinary project directory', async () => {
+    expect(await gitWorktreeSeedTitle(REPO, 'A title from a normal project tab')).toEqual({ ok: false, reason: 'not-a-worktree' })
+    expect(deps.announceWorktreeTitle).not.toHaveBeenCalled()
+  })
+
+  it('refuses a whitespace-only seed rather than blanking the row', async () => {
+    registerWorktree({ worktreePath: WT, repoPath: REPO, branchName: 'wt/ion-a3f1', sourceBranch: 'josh' })
+    expect((await gitWorktreeSeedTitle(WT, '   ')).reason).toBe('empty-input')
+    expect(lookupWorktreeTitle(WT)).toBeNull()
+  })
+
+  it('applies an operator rename and refuses an empty one', async () => {
+    registerWorktree({ worktreePath: WT, repoPath: REPO, branchName: 'wt/ion-a3f1', sourceBranch: 'josh' })
+    setWorktreeTitle(WT, 'Seeded name')
+    expect(await gitWorktreeSetTitle({ worktreePath: WT, repoPath: REPO, title: '  Operator knows better  ' })).toEqual({ ok: true, title: 'Operator knows better' })
+    expect(lookupWorktreeTitle(WT)).toBe('Operator knows better')
+    const refused = await gitWorktreeSetTitle({ worktreePath: WT, repoPath: REPO, title: '   ' })
+    expect(refused.ok).toBe(false)
+    // The refusal must not have blanked the row.
+    expect(lookupWorktreeTitle(WT)).toBe('Operator knows better')
+  })
+
+  // The operator rename is the ONE path that may replace an existing name.
+  it('lets the operator rename a worktree that a seed already named', async () => {
+    registerWorktree({ worktreePath: WT, repoPath: REPO, branchName: 'wt/ion-a3f1', sourceBranch: 'josh' })
+    await gitWorktreeSeedTitle(WT, 'Seeded from the conversation')
+    await gitWorktreeSetTitle({ worktreePath: WT, repoPath: REPO, title: 'Renamed by hand' })
+    expect(lookupWorktreeTitle(WT)).toBe('Renamed by hand')
+  })
+})
