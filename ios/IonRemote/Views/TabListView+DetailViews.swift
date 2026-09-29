@@ -62,7 +62,7 @@ extension TabListView {
     var newTabButton: some View {
         Button {
             if let project = defaultProject {
-                requestNewConversation(project: project, pinToGroupId: nil)
+                requestNewConversation(project: project)
             } else {
                 showNewTab = true
             }
@@ -71,7 +71,7 @@ extension TabListView {
         }
         .contextMenu {
             if let project = defaultProject {
-                Button { requestNewConversation(project: project, pinToGroupId: nil) } label: {
+                Button { requestNewConversation(project: project) } label: {
                     Label("New Tab", systemImage: "plus")
                 }
                 Button { viewModel.createTerminalTab(workingDirectory: project.directory) } label: {
@@ -102,7 +102,7 @@ extension TabListView {
     @ViewBuilder
     var searchEmptyStateOverlay: some View {
         let isSearching = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        if isSearching && filteredDisplayGroups.isEmpty && !viewModel.tabs.isEmpty {
+        if isSearching && filteredTabsForInbox.isEmpty && !viewModel.tabs.isEmpty {
             VStack(spacing: 12) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 40)) // design-type: SF Symbol empty-state glyph sized as icon geometry, not text

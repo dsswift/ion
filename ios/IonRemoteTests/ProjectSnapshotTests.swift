@@ -29,8 +29,6 @@ final class ProjectSnapshotTests: XCTestCase {
         viewModel.handleSnapshot(
             snapshotTabs: [],
             recentDirs: [],
-            groupMode: nil,
-            groups: nil,
             projects: [first, second]
         )
         XCTAssertEqual(viewModel.projects, [first, second])
@@ -38,8 +36,6 @@ final class ProjectSnapshotTests: XCTestCase {
         viewModel.handleSnapshot(
             snapshotTabs: [],
             recentDirs: [],
-            groupMode: nil,
-            groups: nil,
             projects: [second]
         )
         XCTAssertEqual(viewModel.projects, [second])

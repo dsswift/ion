@@ -211,7 +211,7 @@ private struct InstancePulsingDot: View {
 /// only the fill color differs (theme.statusWaitingChildren ⇒
 /// "awaiting background work"). Matches the desktop's
 /// statusWaitingChildren palette and the yellow branch in
-/// TabStripStatusDot.tsx / TabStripShared.ts. Foreground orange
+/// StatusDot.tsx / conversation-status.ts. Foreground orange
 /// always wins over background yellow — this view is only
 /// instantiated when isRunning is false but runningAgentCount > 0.
 private struct InstanceWaitingChildrenDot: View {

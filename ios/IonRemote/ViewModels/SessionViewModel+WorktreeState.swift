@@ -19,8 +19,8 @@ struct WorktreeUIState {
     var states: [String: RemoteWorktreeState] = [:]
     /// Cold settled history comes from desktop_snapshot. It is separate from
     /// live tabs so a review-only record does not create a live conversation.
-    /// Worktree path with an operation in flight, for a per-row spinner.
     var settledTabs: [RemoteTabState] = []
+    /// Worktree path with an operation in flight, for a per-row spinner.
     var busyPath: String?
     /// A bench-level operation (assemble / update-all) is in flight.
     var benchBusy = false
@@ -32,6 +32,10 @@ struct WorktreeUIState {
     /// Live sync-pipeline projection per repo (desktop_worktree_pipeline).
     /// A nil phase clears the entry (pipeline dismissed on the desktop).
     var pipelines: [String: RemoteWorktreePipeline] = [:]
+    /// Bench directories by repository and source branch, for the one Studio
+    /// wire verb that names a bench by its path. Read off the main actor, so
+    /// it is a reference with its own lock rather than part of this value.
+    let benchPaths = StudioBenchPathIndex()
 }
 
 struct PendingBenchConversation {
@@ -45,7 +49,10 @@ extension SessionViewModel {
 
     var worktreeStates: [String: RemoteWorktreeState] {
         get { worktreeUI.states }
-        set { worktreeUI.states = newValue }
+        set {
+            worktreeUI.states = newValue
+            worktreeUI.benchPaths.update(from: Array(newValue.values))
+        }
     }
 
     var settledTabs: [RemoteTabState] {
@@ -76,6 +83,25 @@ extension SessionViewModel {
     var worktreePipelines: [String: RemoteWorktreePipeline] {
         get { worktreeUI.pipelines }
         set { worktreeUI.pipelines = newValue }
+    }
+
+    /// Forgets every worktree, bench, settled record, and pipeline. All of it
+    /// belongs to the server being left: kept across a switch to another
+    /// pairing, the previous server's repositories stayed in the Inbox as
+    /// projects of their own, holding that server's benches and worktrees.
+    /// The bench-navigation timeout is configuration, not server state, and
+    /// is left alone.
+    func resetWorktreeUI() {
+        let dropped = worktreeUI.states.count
+        worktreeUI.pendingBenchConversation?.timeoutTask?.cancel()
+        worktreeStates = [:]
+        worktreeUI.settledTabs = []
+        worktreeUI.busyPath = nil
+        worktreeUI.benchBusy = false
+        worktreeUI.pendingBenchConversation = nil
+        worktreeUI.pipelines = [:]
+        DiagnosticLog.log("worktree state reset for a pairing change", tag: "worktree",
+                          fields: ["projects_dropped": String(dropped)])
     }
 
     /// Fold one pipeline push into per-repo state. `phase == nil` is the

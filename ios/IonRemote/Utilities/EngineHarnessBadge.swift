@@ -6,12 +6,12 @@ import Foundation
 // so the user can see at a glance which harness is running — useful when
 // multiple engine-tab profiles are open side by side.
 //
-// Mirrors `abbreviateProfileName` in desktop's TabStripShared.ts (commit #256).
-// The abbreviation rules are intentionally identical so the badge reads the
-// same wherever it is rendered.
+// Mirrors `abbreviateProfileName` in desktop's conversation-status.ts. The
+// abbreviation rules are intentionally identical so the badge reads the same
+// wherever it is rendered.
 //
-// Render sites: the DESKTOP tab strip (TabStripDropdownTabRow.tsx,
-// TabStripGroupPill.tsx). The iOS tab row rendered it until the restraint pass,
+// Render site: the desktop Inbox row (InboxRow.tsx). The iOS tab row rendered
+// it until the restraint pass,
 // which reduced the row to a title plus one subtitle line; this helper stays
 // because the abbreviation rules are shared contract with the desktop and are
 // pinned by EngineHarnessBadgeTests.
@@ -26,7 +26,7 @@ import Foundation
 
 /// Abbreviate a profile name to at most 8 characters for the harness badge.
 ///
-/// Rules (applied in order, matching desktop TabStripShared.ts):
+/// Rules (applied in order, matching desktop conversation-status.ts):
 ///  1. Nil/empty name → "EXT"
 ///  2. Strip leading/trailing whitespace.
 ///  3. Stripped name ≤ 8 chars → return as-is (e.g. "COS"->"COS", "Orion"->"Orion", "ion-dev"->"ion-dev").

@@ -1,13 +1,11 @@
 import SwiftUI
 
-// MARK: - Group / per-tab status rollup
+// MARK: - Per-tab status classifier
 //
-// Single source of truth for the tab status-dot cascade on iOS. Both the
-// per-tab dot (`TabRowView.statusInfo`) and the group-header rollup dot
-// (`TabListGroupHeader` → `GroupStatusDot`) fold this one classifier, exactly
-// as the desktop folds `getTabStatusColor` for both the per-tab dot and the
-// group pill (`getGroupStatusColor` in TabStripGroupStatus.ts). Keeping a
-// single classifier is what stops the two surfaces from drifting.
+// Single source of truth for the tab status-dot cascade on iOS. The tab row
+// (`TabRowView.statusInfo`), the Inbox row, and the Inbox navigator all fold
+// this one classifier, as the desktop folds `getTabStatusColor`. Keeping a
+// single classifier is what stops those surfaces from drifting.
 //
 // ─── Priority cascade ───────────────────────────────────────────────────────
 //
@@ -120,14 +118,5 @@ enum TabStatusRollup {
         if question && (tab.status == .idle || tab.status == .completed) { return .init(priority: priorityQuestion, state: .question) }
         if tab.unread == true { return .init(priority: priorityUnread, state: .unread) }
         return .init(priority: priorityIdle, state: .idle)
-    }
-
-    static func groupStatus(tabs: [RemoteTabState]) -> GroupTabStatus {
-        var best = GroupTabStatus(priority: priorityIdle, state: .idle)
-        for tab in tabs where tab.isTerminalOnly != true {
-            let status = classify(tab)
-            if status.priority > best.priority { best = status }
-        }
-        return best
     }
 }

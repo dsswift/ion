@@ -137,11 +137,6 @@ extension TabListView {
     func conversationCreation<V: View>(_ content: V) -> some View {
         content
             .sheet(isPresented: $showNewTab, onDismiss: {
-                // Always clear the per-group pin target on dismiss so a
-                // subsequent toolbar `+` doesn't inherit it. Required because
-                // the sheet has multiple dismissal paths (Cancel button, tap
-                // on a row's `+`, swipe-down).
-                pendingPinToGroupId = nil
                 // Drain any pending new-conversation request that the sheet
                 // stored (instead of calling requestNewConversation immediately).
                 // Calling requestNewConversation from inside the sheet button's
@@ -150,23 +145,19 @@ extension TabListView {
                 // the .showPicker routing outcome. onDismiss fires after the
                 // animation completes, so the dialog presents cleanly.
                 if let project = pendingNewConversationProject {
-                    let pin = pendingNewConversationPin
                     pendingNewConversationProject = nil
-                    pendingNewConversationPin = nil
-                    requestNewConversation(project: project, pinToGroupId: pin)
+                    requestNewConversation(project: project)
                 }
             }) {
                 TabListNewTabSheet(
                     projects: viewModel.projects,
-                    pendingPinToGroupId: pendingPinToGroupId,
                     isPresented: $showNewTab,
-                    onNewConversation: { project, pin in
+                    onNewConversation: { project in
                         // Store the request; onDismiss drains it once the sheet
                         // animation completes. This prevents the confirmationDialog
                         // from being presented while the sheet is still animating out
                         // (SwiftUI silently drops overlapping sheet/dialog presentations).
                         pendingNewConversationProject = project
-                        pendingNewConversationPin = pin
                     },
                     onCreateWorktree: { repoPath, sourceBranch in
                         viewModel.createWorktree(repoPath: repoPath, sourceBranch: sourceBranch)
@@ -203,7 +194,6 @@ extension TabListView {
                     get: { conversationPickerProject != nil },
                     set: { if !$0 {
                         conversationPickerProject = nil
-                        conversationPickerPinToGroupId = nil
                         conversationPickerUseWorktree = nil
                         conversationPickerSourceBranch = nil
                     } }
@@ -213,39 +203,34 @@ extension TabListView {
                 // Plain conversation option — always first (mirrors desktop picker).
                 Button("Plain conversation") {
                     let project = conversationPickerProject
-                    let pin = conversationPickerPinToGroupId
                     let useWorktree = conversationPickerUseWorktree
                     let sourceBranch = conversationPickerSourceBranch
                     conversationPickerProject = nil
-                    conversationPickerPinToGroupId = nil
                     conversationPickerUseWorktree = nil
                     conversationPickerSourceBranch = nil
                     DiagnosticLog.log("new conv picker selected plain", tag: "view.tablist", fields: [
                         "directory": project?.directory ?? "nil"
                     ])
-                    viewModel.createTab(workingDirectory: project?.directory, pinToGroupId: pin, useWorktree: useWorktree, sourceBranch: sourceBranch)
+                    viewModel.createTab(workingDirectory: project?.directory, useWorktree: useWorktree, sourceBranch: sourceBranch)
                 }
                 // Engine profiles.
                 ForEach(viewModel.engineProfiles) { profile in
                     Button(profile.name) {
                         let project = conversationPickerProject
-                        let pin = conversationPickerPinToGroupId
                         let useWorktree = conversationPickerUseWorktree
                         let sourceBranch = conversationPickerSourceBranch
                         conversationPickerProject = nil
-                        conversationPickerPinToGroupId = nil
                         conversationPickerUseWorktree = nil
                         conversationPickerSourceBranch = nil
                         DiagnosticLog.log("new conv picker selected profile", tag: "view.tablist", fields: [
                             "reason": String(profile.id.prefix(8)),
                             "directory": project?.directory ?? "nil"
                         ])
-                        viewModel.createTab(workingDirectory: project?.directory, pinToGroupId: pin, profileId: profile.id, useWorktree: useWorktree, sourceBranch: sourceBranch)
+                        viewModel.createTab(workingDirectory: project?.directory, profileId: profile.id, useWorktree: useWorktree, sourceBranch: sourceBranch)
                     }
                 }
                 Button("Cancel", role: .cancel) {
                     conversationPickerProject = nil
-                    conversationPickerPinToGroupId = nil
                     conversationPickerUseWorktree = nil
                     conversationPickerSourceBranch = nil
                 }

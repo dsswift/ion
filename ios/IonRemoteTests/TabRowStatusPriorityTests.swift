@@ -65,11 +65,12 @@ final class TabRowStatusPriorityTests: XCTestCase {
         XCTAssertFalse(result.state.breathes)
     }
 
-    func testGroupRollupPreservesStartingWhenNoHigherStatusExists() {
-        let result = TabStatusRollup.groupStatus(tabs: [tab(status: .idle), tab(status: .starting)])
+    func testBackgroundShellIsExecutingState() {
+        var shell = tab()
+        shell.backgroundShellCount = 1
+        let result = TabStatusRollup.classify(shell)
 
-        XCTAssertEqual(result.state, .starting)
-        XCTAssertEqual(result.priority, TabStatusRollup.priorityStarting)
-        XCTAssertFalse(result.state.breathes)
+        XCTAssertEqual(result.state, .bash)
+        XCTAssertTrue(result.state.breathes)
     }
 }

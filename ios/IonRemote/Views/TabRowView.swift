@@ -36,7 +36,9 @@ struct TabRowView: View {
             // mixed list rather than shifting by the dot's width.
             ZStack {
                 if !isIdle {
-                    pillIndicator(color: statusInfo.state.color(theme))
+                    Circle()
+                        .fill(statusInfo.state.color(theme))
+                        .frame(width: 8, height: 8)
                         .opacity(statusInfo.state.breathes ? pulseOpacity : 1.0)
                         .shadow(color: statusInfo.state.breathes ? statusInfo.state.color(theme).opacity(0.6) : .clear, radius: 3)
                 }
@@ -67,6 +69,9 @@ struct TabRowView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if let presenceName = presenceIndicatorName {
+                PresenceAvatar(displayName: presenceName, isDriving: viewModel.drivingSubject(forTab: tab.id) != nil)
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 // `.body`, not `.headline`: a list of headline-weight titles
@@ -74,6 +79,19 @@ struct TabRowView: View {
                 Text(tab.displayTitle)
 .font(titleFont)
                     .lineLimit(1)
+
+                // Server environment label (child 19, Ion Studio Server).
+                // Renders only when the desktop snapshot carries a non-empty
+                // label — a desktop that predates environmentId/environmentLabel
+                // (or a tab with no environment association) omits the field,
+                // and this view renders exactly as it did before those fields
+                // existed.
+                if let environmentLabel = tab.environmentLabel, !environmentLabel.isEmpty {
+                    Text(environmentLabel)
+                        .font(IonType.microLabel)
+                        .foregroundStyle(theme.textTertiary)
+                        .lineLimit(1)
+                }
 
                 // Exactly ONE subtitle line. Previously the metadata row, the
                 // status line, and the message preview could all render at
@@ -111,6 +129,16 @@ struct TabRowView: View {
     /// never disagree with the dot's own color.
     var isIdle: Bool {
         TabStatusRollup.classify(tab).priority == TabStatusRollup.priorityIdle
+    }
+
+    /// FR-02 presence: whichever principal is driving this tab's in-flight
+    /// run, or (absent that) whoever else is focused on it. Driving outranks
+    /// mere focus -- an active run is the more actionable signal.
+    var presenceIndicatorName: String? {
+        if let drivingSubject = viewModel.drivingSubject(forTab: tab.id) {
+            return viewModel.presenceEntries.first { $0.subject == drivingSubject }?.displayName ?? drivingSubject
+        }
+        return viewModel.presenceFocusedOn(tab.id).first?.displayName
     }
 
     /// The single subtitle line, by precedence:
@@ -261,41 +289,7 @@ struct TabRowView: View {
         return "\(days)d ago"
     }
 
-    /// Render the status dot as an SF Symbol icon when `tab.pillIcon` is set,
-    /// or as a plain Circle otherwise. Both are sized at 8×8 to match.
-    @ViewBuilder
-    private func pillIndicator(color: Color) -> some View {
-        if let icon = tab.pillIcon, let sfSymbol = Self.pillIconToSFSymbol(icon) {
-            Image(systemName: sfSymbol)
-                .font(.system(size: 8, weight: .bold)) // design-type: SF Symbol pill glyph sized as icon geometry, not text
-                .foregroundStyle(color)
-                .frame(width: 8, height: 8)
-        } else {
-            Circle()
-                .fill(color)
-                .frame(width: 8, height: 8)
-        }
-    }
-
-    /// Map a desktop pill icon key to the corresponding SF Symbol name.
-    /// Returns nil for unknown keys (falls back to Circle).
-    private static func pillIconToSFSymbol(_ icon: String) -> String? {
-        switch icon {
-        case "diamond":  return "diamond.fill"
-        case "square":   return "square.fill"
-        case "star":     return "star.fill"
-        case "triangle": return "triangle.fill"
-        case "heart":    return "heart.fill"
-        case "hexagon":  return "hexagon.fill"
-        case "lightning": return "bolt.fill"
-        case "mobile":   return "iphone"
-        case "desktop":  return "desktopcomputer"
-        case "gear":     return "gearshape.fill"
-        default:         return nil
-        }
-    }
-
-    /// Status color and pulse state matching desktop TabStrip priority order.
+    /// Status color and pulse state matching the desktop status priority order.
     ///
     /// Delegates to the single shared classifier (`TabStatusRollup.classify`)
     /// so the per-tab dot and the group-header rollup dot fold the exact same

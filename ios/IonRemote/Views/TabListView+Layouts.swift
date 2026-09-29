@@ -23,7 +23,7 @@ extension TabListView {
                 // modifier on the NavigationSplitView would leave the other
                 // column on the system background.
                 .background(theme.background.ignoresSafeArea())
-                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: listViewMode == "inbox" ? "Search conversations or projects…" : "Search tabs…")
+                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search conversations or projects…")
                 .navigationTitle("")
                 .toolbar {
                     // Separate items, not a grouped HStack — same reasoning as
@@ -39,9 +39,6 @@ extension TabListView {
                         NotificationsBellButton(resourceStore: viewModel.resourceStore) {
                             showNotifications = true
                         }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        viewModeToggle
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         newTabButton
@@ -107,7 +104,7 @@ extension TabListView {
                 .safeAreaInset(edge: .top, spacing: 0) {
                     ConnectionBannerView()
                 }
-                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: listViewMode == "inbox" ? "Search conversations or projects…" : "Search tabs…")
+                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search conversations or projects…")
                 .navigationTitle("")
                 .toolbar {
                     ToolbarItem(placement: .principal) {
@@ -121,7 +118,7 @@ extension TabListView {
                                 .shadow(color: theme.accent.opacity(0.3), radius: 20)
                                 .opacity(flickerOpacity)
                         } else {
-                            DesktopPickerMenu(showPairingSheet: $showPairingSheet)
+                            ServerPickerMenu(showPairingSheet: $showPairingSheet)
                         }
                     }
                 }
@@ -129,7 +126,7 @@ extension TabListView {
                     // Each control is its own ToolbarItem rather than a single
                     // item wrapping an HStack. The HStack made the three glyphs
                     // read as one grouped pill competing with the principal
-                    // DesktopPickerMenu capsule; as separate items they render
+                    // ServerPickerMenu capsule; as separate items they render
                     // as plain toolbar glyphs and the capsule is the only
                     // container in the bar.
                     //
@@ -138,23 +135,31 @@ extension TabListView {
                     // diagnostics popover. That is a different fact from the
                     // picker's own dot, which reports connection STATE
                     // (connected / reconnecting / offline).
+                    // One item holding its own HStack, because the spacing
+                    // between these three glyphs is not otherwise ours to set.
+                    // Separate items, and a group, both take the toolbar's own
+                    // inter-item spacing -- two gaps wide enough to read as
+                    // three unrelated controls rather than one cluster.
+                    //
+                    // The older note here warned that an HStack would draw
+                    // them as a grouped pill competing with the principal
+                    // picker capsule. That is no longer a choice this code
+                    // makes: the toolbar draws a capsule around each placement
+                    // regardless, so the leading controls are already one
+                    // pill whichever shape is used. The only thing still in
+                    // our hands is what sits inside it.
                     ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            showSettings = true
-                        } label: {
-                            Image(systemName: "gearshape")
+                        HStack(spacing: IonSpace.compactGap) {
+                            Button {
+                                showSettings = true
+                            } label: {
+                                Image(systemName: "gearshape")
+                            }
+                            ConnectionQualityView(compact: true)
+                            NotificationsBellButton(resourceStore: viewModel.resourceStore) {
+                                showNotifications = true
+                            }
                         }
-                    }
-                    ToolbarItem(placement: .topBarLeading) {
-                        ConnectionQualityView(compact: true)
-                    }
-                    ToolbarItem(placement: .topBarLeading) {
-                        NotificationsBellButton(resourceStore: viewModel.resourceStore) {
-                            showNotifications = true
-                        }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        viewModeToggle
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         newTabButton
@@ -252,13 +257,21 @@ extension TabListView {
                 )
                 .task {
                     while !Task.isCancelled {
+                        // Only CancellationError can surface; the guard below re-checks cancellation.
+                        // swiftlint:disable:next silent_try_optional
                         try? await Task.sleep(for: .seconds(Double.random(in: 3.0...9.0)))
                         guard !Task.isCancelled else { break }
                         withAnimation(.easeInOut(duration: 0.05)) { flickerOpacity = 0.55 }
+                        // Cosmetic flicker step: a cancelled sleep just ends the animation early.
+                        // swiftlint:disable:next silent_try_optional
                         try? await Task.sleep(for: .milliseconds(60))
                         withAnimation(.easeInOut(duration: 0.05)) { flickerOpacity = 1.0 }
+                        // Cosmetic flicker step: a cancelled sleep just ends the animation early.
+                        // swiftlint:disable:next silent_try_optional
                         try? await Task.sleep(for: .milliseconds(90))
                         withAnimation(.easeInOut(duration: 0.04)) { flickerOpacity = 0.75 }
+                        // Cosmetic flicker step: a cancelled sleep just ends the animation early.
+                        // swiftlint:disable:next silent_try_optional
                         try? await Task.sleep(for: .milliseconds(50))
                         withAnimation(.easeInOut(duration: 0.1)) { flickerOpacity = 1.0 }
                     }

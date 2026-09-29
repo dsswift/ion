@@ -16,7 +16,7 @@ struct NotificationsView: View {
     /// Only the global/workspace tray honors this; conversation-scoped
     /// resources are never filtered (they live in the attachments panel).
     private var excludedKinds: Set<String> {
-        guard let raw = viewModel.desktopSettings?.currentValue(for: "excludedResourceKinds")?.value as? [AnyCodable] else {
+        guard let raw = viewModel.serverSettings?.currentValue(for: "excludedResourceKinds")?.value as? [AnyCodable] else {
             return []
         }
         return Set(raw.compactMap { $0.value as? String })
@@ -29,7 +29,7 @@ struct NotificationsView: View {
         let excluded = excludedKinds
         var all: [ResourceItem] = []
         for (kind, items) in resourceStore.items {
-            if excluded.contains(kind) { continue }
+            if excluded.contains(kind) || NotificationKinds.isStudioTraffic(kind) { continue }
             for item in items where item.conversationId == nil || item.conversationId?.isEmpty == true {
                 all.append(item)
             }

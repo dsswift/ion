@@ -4,7 +4,7 @@ import SwiftUI
 /// everything else.
 ///
 /// SwiftUI counterpart of the desktop `StatusDotStack`
-/// (renderer/components/TabStripStatusDot.tsx). The foreground dot carries a
+/// (renderer/components/StatusDot.tsx). The foreground dot carries a
 /// ring in the row's surface color so it reads distinctly from the background
 /// dot it partially covers, and the negative overlap keeps the pair's footprint
 /// close to a single dot.
