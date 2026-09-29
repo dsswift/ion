@@ -60,11 +60,18 @@ func ResolveModelForOrigin(requested, sessionModel string, origin types.ModelOri
 		return "", nil, providerLockedError(requested, sessionProvider)
 	}
 
-	if qualified := sessionProvider + "/" + requested; modelBelongsTo(qualified, sessionProvider) {
-		return qualified, nil, nil
-	}
+	// The bare id first: when the session provider serves it under that
+	// name, that is its registered identity and what the child runs as. The
+	// qualified alias is only for a provider (a gateway) whose registered
+	// entry for this model IS the qualified id. The registry now resolves
+	// "<provider>/<bare>" to the bare entry as well, so checking the
+	// qualified form first would hand back an alias the registry never
+	// registered for a model it knows by its bare name.
 	if modelBelongsTo(requested, sessionProvider) {
 		return requested, nil, nil
+	}
+	if qualified := sessionProvider + "/" + requested; modelBelongsTo(qualified, sessionProvider) {
+		return qualified, nil, nil
 	}
 	return "", nil, providerLockedError(requested, sessionProvider)
 }

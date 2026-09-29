@@ -46,9 +46,12 @@ func TestEnforceEnterprise_BlockedModels(t *testing.T) {
 		BlockedModels: []string{"gpt-4"},
 	}
 
+	// No AllowedModels to fall back to, so the blocked default clears to
+	// empty rather than substituting an unrelated model id the policy never
+	// vetted -- see merge.go's blocked-models branch.
 	result := EnforceEnterprise(cfg, enterprise)
-	if result.DefaultModel != "claude-sonnet-4-6" {
-		t.Fatalf("expected fallback to claude-sonnet-4-6, got %q", result.DefaultModel)
+	if result.DefaultModel != "" {
+		t.Fatalf("expected fallback to empty (no allowed models to fall back to), got %q", result.DefaultModel)
 	}
 }
 
@@ -67,7 +70,7 @@ func TestEnforceEnterprise_BlockedWithAllowed(t *testing.T) {
 	}
 }
 
-func TestEnforceEnterprise_BlockedFallsBackToSonnetWhenNoAllowed(t *testing.T) {
+func TestEnforceEnterprise_BlockedFallsBackToEmptyWhenNoAllowed(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.DefaultModel = "bad-model"
 
@@ -76,8 +79,8 @@ func TestEnforceEnterprise_BlockedFallsBackToSonnetWhenNoAllowed(t *testing.T) {
 	}
 
 	result := EnforceEnterprise(cfg, enterprise)
-	if result.DefaultModel != "claude-sonnet-4-6" {
-		t.Fatalf("expected fallback to claude-sonnet-4-6, got %q", result.DefaultModel)
+	if result.DefaultModel != "" {
+		t.Fatalf("expected fallback to empty (no allowed models to fall back to), got %q", result.DefaultModel)
 	}
 }
 

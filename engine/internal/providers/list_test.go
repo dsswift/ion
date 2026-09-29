@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -254,4 +255,58 @@ func setDiscoveredOnly(providerID string, models []types.ModelEntry) {
 	discoveryMu.Lock()
 	discoveryCache[providerID] = &providerDiscovery{models: models}
 	discoveryMu.Unlock()
+}
+
+// TestListModels_GatewayCopyInheritsCatalogDisplayName pins that a gateway
+// serving a catalog model without publishing a name is labeled with the
+// catalog's name, exactly as the same model is under its public provider.
+// Removing the DisplayName fill in ListModels's enrichment turns this red.
+func TestListModels_GatewayCopyInheritsCatalogDisplayName(t *testing.T) {
+	ResetDiscoveryCache()
+	t.Cleanup(ResetDiscoveryCache)
+
+	const gateway = "name-gw"
+	RegisterModel(gateway+"/claude-opus-4-8", types.ModelInfo{ProviderID: gateway, Dialect: "anthropic"})
+	RegisterModel(gateway+"/claude-sonnet-4-6", types.ModelInfo{ProviderID: gateway, Dialect: "anthropic"})
+	t.Cleanup(func() {
+		UnregisterModel(gateway + "/claude-opus-4-8")
+		UnregisterModel(gateway + "/claude-sonnet-4-6")
+	})
+	setDiscoveredOnly(gateway, []types.ModelEntry{
+		{ID: "claude-opus-4-8", ProviderID: gateway, Dialect: "anthropic"},
+		// A name the gateway publishes itself always wins over the catalog.
+		{ID: "claude-sonnet-4-6", ProviderID: gateway, Dialect: "anthropic", DisplayName: "Sonnet via Gateway"},
+		// Not in the catalog: nothing to inherit, the name stays empty.
+		{ID: "gateway-only-model", ProviderID: gateway},
+	})
+
+	byID := make(map[string]types.ModelEntry)
+	for _, m := range ListModels() {
+		if m.ProviderID == gateway {
+			byID[m.ID] = m
+		}
+	}
+	if got := byID[gateway+"/claude-opus-4-8"].DisplayName; got != "Claude Opus 4.8" {
+		t.Errorf("gateway copy of claude-opus-4-8 DisplayName = %q, want catalog name %q", got, "Claude Opus 4.8")
+	}
+	if got := byID[gateway+"/claude-sonnet-4-6"].DisplayName; got != "Sonnet via Gateway" {
+		t.Errorf("gateway-published DisplayName clobbered by catalog: got %q", got)
+	}
+	if got := byID["gateway-only-model"].DisplayName; got != "" {
+		t.Errorf("uncataloged model gained a DisplayName %q from nowhere", got)
+	}
+}
+
+// TestCatalogEntriesAllCarryDisplayName pins that every embedded catalog model
+// is named, so clients never need a name table of their own.
+func TestCatalogEntriesAllCarryDisplayName(t *testing.T) {
+	var entries []catalogEntry
+	if err := json.Unmarshal(modelCatalogJSON, &entries); err != nil {
+		t.Fatalf("parse catalog: %v", err)
+	}
+	for _, e := range entries {
+		if e.DisplayName == "" {
+			t.Errorf("catalog model %q (%s) has no displayName", e.ID, e.ProviderID)
+		}
+	}
 }

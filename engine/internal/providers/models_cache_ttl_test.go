@@ -102,12 +102,20 @@ func TestDefaultCacheTtl_IsTheShortestMajorProviderLifetime(t *testing.T) {
 }
 
 // Anthropic's published cache multipliers are 1.25x base input for a 5-minute
-// write and 0.1x for a read (0.025x on Fable 5.1 / Mythos 5.1). The catalog
-// carries explicit rates; this pins them against the multipliers so a mistyped
-// row cannot silently misprice a switch by an order of magnitude.
+// write and, for most of the line, 0.1x for a read. The read multiplier is NOT
+// uniform: it is published per model, and newer models have moved off 0.1x in
+// both directions. The catalog carries explicit rates; this pins them against
+// the published multiplier for each model so a mistyped row cannot silently
+// misprice a switch by an order of magnitude.
 func TestAnthropicCacheRates_MatchPublishedMultipliers(t *testing.T) {
-	// Models whose cache read is 0.025x base rather than the standard 0.1x.
-	quarterPointReadRate := map[string]bool{"claude-fable-5-1": true}
+	// Models whose published cache read is not the standard 0.1x of base input.
+	// Keyed by model id because the rate is a property of the model, not of a
+	// family or a generation — Opus 5.5 reads at 0.05x while Opus 5, one
+	// version earlier in the same family, reads at 0.1x.
+	readRateOverrides := map[string]float64{
+		"claude-fable-5-1": 0.025,
+		"claude-opus-5-5":  0.05,
+	}
 
 	for _, e := range ListModels() {
 		if e.ProviderID != "anthropic" || e.CostPer1kInput <= 0 {
@@ -124,8 +132,8 @@ func TestAnthropicCacheRates_MatchPublishedMultipliers(t *testing.T) {
 				e.ID, e.CostPer1kCacheCreation, wantCreation, e.CostPer1kInput)
 		}
 		readMultiplier := 0.1
-		if quarterPointReadRate[e.ID] {
-			readMultiplier = 0.025
+		if override, ok := readRateOverrides[e.ID]; ok {
+			readMultiplier = override
 		}
 		wantRead := e.CostPer1kInput * readMultiplier
 		if !closeEnough(e.CostPer1kCacheRead, wantRead) {

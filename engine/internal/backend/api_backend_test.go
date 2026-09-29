@@ -1383,3 +1383,34 @@ func TestTextChunksAccumulated(t *testing.T) {
 		t.Errorf("expected 'Hello world!', got %q", combined)
 	}
 }
+
+// A provider-qualified run model is engine routing identity; the provider's
+// wire receives the bare id. Only the gateway provider stripped its own
+// prefix before this, so an explicit "anthropic/<model>" pick reached the
+// public API verbatim.
+func TestStartRunSendsBareModelToProvider(t *testing.T) {
+	mock := setupTestProvider([][]types.LlmStreamEvent{
+		textResponse("bare wire model", 10, 5),
+	})
+
+	b := NewApiBackend()
+	c := collectEvents(b, "req-qualified")
+	b.StartRun("req-qualified", types.RunOptions{
+		Prompt:           "test",
+		ProjectPath:      "/tmp",
+		Model:            testProviderID + "/" + testModel,
+		EarlyStopEnabled: testEarlyStopDisabled(),
+	})
+	if !waitForExit(c, 5*time.Second) {
+		t.Fatal("timed out")
+	}
+
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+	if len(mock.requests) == 0 {
+		t.Fatal("provider never called")
+	}
+	if got := mock.requests[0].Model; got != testModel {
+		t.Errorf("provider wire model = %q, want %q", got, testModel)
+	}
+}

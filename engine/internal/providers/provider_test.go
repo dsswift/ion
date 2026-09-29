@@ -693,6 +693,9 @@ func TestResolveProviderAllPrefixes(t *testing.T) {
 	}{
 		// claude- prefix
 		{"claude-opus-4-6", "anthropic"},
+		// Two-part version segment ("-5-5"): the newest id shape must still
+		// resolve by prefix, not by any per-model table.
+		{"claude-opus-5-5", "anthropic"},
 		{"claude-sonnet-4-6", "anthropic"},
 		{"claude-haiku-4-5-20251001", "anthropic"},
 		{"claude-custom-model", "anthropic"},
@@ -776,6 +779,12 @@ func TestResolveProviderReturnsNilForUnknown(t *testing.T) {
 
 // --- Vertex provider tests ---
 
+// NewVertexProvider no longer requires or reads an access token at
+// construction (child 01/03 of FR-05): GOOGLE_ACCESS_TOKEN resolves through
+// auth.ResolveProviderEnv at request time (or the gcloud CLI), consulted by
+// vertexProvider.withResolvedToken on every Stream/CountTokens call. Project
+// ID is still resolved once at construction because it is baked into the
+// request URL.
 func TestVertexProviderConfigResolution(t *testing.T) {
 	t.Run("error when no project ID", func(t *testing.T) {
 		// Clear env
@@ -791,23 +800,10 @@ func TestVertexProviderConfigResolution(t *testing.T) {
 		}
 	})
 
-	t.Run("error when no access token", func(t *testing.T) {
+	t.Run("constructs with no access token", func(t *testing.T) {
 		t.Setenv("GOOGLE_ACCESS_TOKEN", "")
-		_, err := NewVertexProvider(VertexConfig{
-			ProjectID: "my-project",
-		})
-		if err == nil {
-			t.Fatal("expected error for missing access token")
-		}
-		if !strings.Contains(err.Error(), "access token") {
-			t.Errorf("error should mention access token: %s", err.Error())
-		}
-	})
-
-	t.Run("uses config access token", func(t *testing.T) {
 		p, err := NewVertexProvider(VertexConfig{
-			ProjectID:   "my-project",
-			AccessToken: "cfg-token",
+			ProjectID: "my-project",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -817,10 +813,10 @@ func TestVertexProviderConfigResolution(t *testing.T) {
 		}
 	})
 
-	t.Run("uses env var for access token", func(t *testing.T) {
-		t.Setenv("GOOGLE_ACCESS_TOKEN", "env-token")
+	t.Run("uses config access token", func(t *testing.T) {
 		p, err := NewVertexProvider(VertexConfig{
-			ProjectID: "my-project",
+			ProjectID:   "my-project",
+			AccessToken: "cfg-token",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -860,15 +856,19 @@ func TestVertexProviderConfigResolution(t *testing.T) {
 
 // --- Foundry provider tests ---
 
+// NewFoundryProvider no longer reads the environment or requires a base URL
+// at construction (child 01/03 of FR-05): ANTHROPIC_FOUNDRY_BASE_URL and
+// ANTHROPIC_FOUNDRY_API_KEY resolve through auth.ResolveProviderEnv at
+// request time via the per-run CredentialContext, pinned by
+// TestResolveProviderEnv_Foundry_FallsBackToAnthropic in internal/auth.
 func TestFoundryProviderConfigResolution(t *testing.T) {
-	t.Run("error when no base URL", func(t *testing.T) {
-		t.Setenv("ANTHROPIC_FOUNDRY_BASE_URL", "")
-		_, err := NewFoundryProvider(FoundryConfig{})
-		if err == nil {
-			t.Fatal("expected error for missing base URL")
+	t.Run("constructs with no config", func(t *testing.T) {
+		p, err := NewFoundryProvider(FoundryConfig{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
-		if !strings.Contains(err.Error(), "base URL") {
-			t.Errorf("error should mention base URL: %s", err.Error())
+		if p.ID() != "foundry" {
+			t.Errorf("expected ID 'foundry', got %q", p.ID())
 		}
 	})
 
@@ -888,33 +888,6 @@ func TestFoundryProviderConfigResolution(t *testing.T) {
 	t.Run("uses env var for base URL", func(t *testing.T) {
 		t.Setenv("ANTHROPIC_FOUNDRY_BASE_URL", "https://env-foundry.example.com")
 		p, err := NewFoundryProvider(FoundryConfig{})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if p.ID() != "foundry" {
-			t.Errorf("expected ID 'foundry', got %q", p.ID())
-		}
-	})
-
-	t.Run("uses ANTHROPIC_FOUNDRY_API_KEY env var", func(t *testing.T) {
-		t.Setenv("ANTHROPIC_FOUNDRY_API_KEY", "foundry-key")
-		p, err := NewFoundryProvider(FoundryConfig{
-			BaseURL: "https://foundry.example.com",
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if p.ID() != "foundry" {
-			t.Errorf("expected ID 'foundry', got %q", p.ID())
-		}
-	})
-
-	t.Run("falls back to ANTHROPIC_API_KEY", func(t *testing.T) {
-		t.Setenv("ANTHROPIC_FOUNDRY_API_KEY", "")
-		t.Setenv("ANTHROPIC_API_KEY", "default-key")
-		p, err := NewFoundryProvider(FoundryConfig{
-			BaseURL: "https://foundry.example.com",
-		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

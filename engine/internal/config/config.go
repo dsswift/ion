@@ -11,13 +11,21 @@ import (
 
 // DefaultConfig returns the baseline engine configuration.
 //
-// Limits are intentionally unset (nil pointers): the engine ships without
-// opinions on turn caps, budgets, or idle timeouts. Harness engineers and
-// operators set them via project/global/enterprise config or per-call options.
+// Limits are intentionally unset (nil pointers), and DefaultModel is
+// intentionally empty: the engine ships without opinions on turn caps,
+// budgets, idle timeouts, or which model/provider exists. A baked-in model
+// literal here would silently outlive whatever the operator actually
+// configured — a deployment with exactly one provider (no Anthropic access at
+// all, by design) would still resolve to an Anthropic model id no key was
+// ever meant to back, and fail with a confusing 401 instead of the clear
+// "no model configured" runloop_provider_resolve.go already raises. Harness
+// engineers and operators set the real default via project/global/enterprise
+// config (engine.json's own `defaultModel`) or per-call options; an
+// unconfigured engine correctly has none.
 func DefaultConfig() *types.EngineRuntimeConfig {
 	return &types.EngineRuntimeConfig{
 		Backend:      "api",
-		DefaultModel: "claude-sonnet-4-6",
+		DefaultModel: "",
 		Providers:    make(map[string]types.ProviderConfig),
 		Limits:       types.LimitsConfig{},
 		McpServers:   make(map[string]types.McpServerConfig),
@@ -125,13 +133,11 @@ func ExpandTilde(path string) string {
 }
 
 func globalConfigPath() string {
-	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
-	return filepath.Join(home, ".ion", "engine.json")
+	return filepath.Join(utils.IonDir(), "engine.json")
 }
 
 func settingsPath() string {
-	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
-	return filepath.Join(home, ".ion", "settings.json")
+	return filepath.Join(utils.IonDir(), "settings.json")
 }
 
 func loadProfiles() []types.EngineProfileConfig {

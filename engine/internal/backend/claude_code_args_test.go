@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -193,4 +194,22 @@ func TestCliResumeArgs(t *testing.T) {
 			}
 		})
 	}
+}
+
+// An explicit provider pick reaches the backend as "anthropic/<model>"; the
+// CLI only knows the bare id.
+func TestBuildClaudeArgs_QualifiedModelIsStripped(t *testing.T) {
+	providers.RegisterModel("args-qualified-model", types.ModelInfo{ProviderID: "args-qualified-provider"})
+	t.Cleanup(func() { providers.UnregisterModel("args-qualified-model") })
+
+	args := buildClaudeArgs(types.RunOptions{Model: "args-qualified-provider/args-qualified-model"})
+	for i, a := range args {
+		if a == "--model" {
+			if i+1 >= len(args) || args[i+1] != "args-qualified-model" {
+				t.Fatalf("--model value = %q, want bare id", args[i+1:])
+			}
+			return
+		}
+	}
+	t.Fatal("--model not passed")
 }
