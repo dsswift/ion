@@ -19,6 +19,7 @@ import { auditOvercount } from '../src/check.ts';
 import { buildDashboard } from '../src/dashboard.ts';
 import { RECIPES } from '../src/dashboards/index.ts';
 import { overviewDashboard } from '../src/dashboards/overview.ts';
+import { controlRoomDashboard } from '../src/dashboards/control-room.ts';
 import { semanticDiff } from '../src/semantic-diff.ts';
 
 // ---------------------------------------------------------------------------
@@ -326,4 +327,13 @@ test('semanticDiff catches a changed window (the overcount-fix signal)', () => {
   const { identical, changes } = semanticDiff(a, b);
   assert.equal(identical, false);
   assert.ok(changes.some((c) => c.includes('windows')));
+});
+
+test('the control room names no extension or tool: its lamps come from the data', () => {
+  const built = buildDashboard(controlRoomDashboard()) as { panels: { title: string; targets?: { expr: string }[] }[] };
+  for (const panel of built.panels) {
+    for (const t of panel.targets ?? []) {
+      assert.doesNotMatch(t.expr, /\b(tag|tool)="/, `${panel.title} filters on a fixed name: ${t.expr}`);
+    }
+  }
 });

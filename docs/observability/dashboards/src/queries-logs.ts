@@ -124,15 +124,19 @@ export const ingestFreshnessMinutes = (window: Window): Expr =>
 // Control-room lamps (instant activity counts over a fixed window)
 // ---------------------------------------------------------------------------
 
-// Instant count of lines for a component (optionally an extension tag) lamp.
-export const componentLamp = (component: string, window: Window, tag?: string): Expr => {
-  const sel = tag ? `{service_name="ion-${component}", event_name="", tag="${tag}"}` : `{service_name="ion-${component}", event_name=""}`;
-  return accumulation(`sum(count_over_time(${sel}[${window}]))`, window);
-};
+// Instant count of lines for a component lamp.
+export const componentLamp = (component: string, window: Window): Expr =>
+  accumulation(`sum(count_over_time({service_name="ion-${component}", event_name=""}[${window}]))`, window);
 
-// Instant count of telemetry tool.execute events for one tool (lamp).
-export const toolLamp = (tool: string, window: Window): Expr =>
-  accumulation(`sum(count_over_time(${telemetry('tool.execute')} | tool="${tool}" [${window}]))`, window);
+// Instant log-line count per extension (one lamp per extension active in the
+// window). The names come from the data, so any install's extensions appear.
+export const extensionLamps = (window: Window): Expr =>
+  accumulation(`sum by (tag) (count_over_time({service_name="ion-extension", event_name=""}[${window}]))`, window);
+
+// Instant tool.execute count per tool for the busiest tools in the window (one
+// lamp per tool). Built-in, MCP, and extension tools all qualify.
+export const toolLamps = (limit: number, window: Window): Expr =>
+  accumulation(`topk(${limit}, sum by (tool) (count_over_time(${telemetry('tool.execute')} [${window}])))`, window);
 
 // Instant count of telemetry events of a kind (lamp / "in flight" stat).
 export const kindCount = (kind: string, window: Window, useJson = false): Expr => {
