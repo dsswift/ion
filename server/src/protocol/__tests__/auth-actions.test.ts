@@ -115,6 +115,27 @@ describe('auth.* actions: admin scope required', () => {
   })
 })
 
+describe('auth.createOwnPairingLink over the wire', () => {
+  it('a non-admin connection mints a link for its own device where auth.createPairingLink is refused', async () => {
+    const store = new CredentialsStore(dataDir)
+    const secret = randomBytes(32)
+    store.add({ clientId: 'person-client', secret, scopes: ['conversations:read', 'git:write'], subject: 'person-sub', kind: 'desktop' })
+    const proof = createHmac('sha256', secret).update(Buffer.from(currentNonce(), 'base64url')).digest('base64')
+    const config = currentServerConfig()
+    setCurrentServerConfig({ ...config, tenancy: { mode: 'isolated' }, listen: { ...config.listen, tcp: { ...config.listen.tcp, allowUnsealedPaired: true } } })
+
+    const ws = connectTcp(harness)
+    await waitOpen(ws)
+    await helloAndWelcome(ws, { credential: { kind: 'paired', clientId: 'person-client', proof } })
+
+    expect(await runAction(ws, 'auth.createPairingLink', [{ label: 'Phone' }])).toMatchObject({ ok: false, refusal: { code: 'scope' } })
+    const own = await runAction(ws, 'auth.createOwnPairingLink', [{ label: 'Phone' }])
+    expect(own.ok).toBe(true)
+    expect((own.value as { code: string }).code).toMatch(/^[0-9a-f]{32}$/)
+    await closeSocket(ws)
+  })
+})
+
 describe('auth.createPairingLink: --as', () => {
   it('names the human on an isolated install and is refused on a shared one', async () => {
     const ws = connectLocal(harness)

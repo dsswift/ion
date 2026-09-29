@@ -14,6 +14,7 @@ import type { AuthResult } from '../protocol/hello'
 import { isSharedTenancy } from '../config/current'
 import { resolveLocalConnectionPrincipal } from '../identity/local-principal'
 import { isDeviceSubject } from '../identity/paired-subject'
+import { lookupPrincipal } from '../identity/principal-registry'
 import type { StudioPrincipalSummary } from '@ion/shared/studio-wire/types'
 import type { CredentialClientRecord } from './credentials-store'
 import { log as _log, warn as _warn } from '../logger'
@@ -53,6 +54,15 @@ export async function pairedPrincipal(record: Pick<CredentialClientRecord, 'subj
     const host = await resolveLocalConnectionPrincipal()
     log('shared-tenancy install: acts as the host identity', { client_id: record.clientId, stored_subject: record.subject, device_shaped: isDeviceSubject(record.subject), subject: host.subject })
     return { subject: host.subject, displayName: host.displayName ?? host.subject, provider: host.provider, kind: host.kind, username: host.username }
+  }
+  // A device paired as a person an identity provider signed in (a bearer's
+  // `sub`, from `auth.createOwnPairingLink`) is that person on another
+  // device: it carries their identity, so its sessions keep their username
+  // and email and its login does not overwrite them with a device label.
+  const known = lookupPrincipal(record.subject)
+  if (known?.kind === 'operator') {
+    log('isolated install: acts as the signed-in person the pairing names', { client_id: record.clientId, subject: known.subject, provider: known.provider ?? '' })
+    return { ...known }
   }
   return { subject: record.subject, displayName: record.label ?? record.subject }
 }

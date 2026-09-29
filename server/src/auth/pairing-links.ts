@@ -2,7 +2,8 @@
  * One-time pairing links with scope delegation (manifest requirement:
  * `auth.createPairingLink{scopes?, label}` -> `{url, code, expiresAt}`;
  * requested scopes must be a subset of the caller's scopes, default =
- * `pairing.defaultScopes`) and pairing completion (DH exchange reusing
+ * `pairing.defaultScopes`, narrowed to the caller's own for a caller without
+ * `admin`) and pairing completion (DH exchange reusing
  * `remote/crypto.ts`/`remote/pairing.ts`'s primitives, producing a
  * `credentials.json` client record per manifest C9).
  */
@@ -29,7 +30,7 @@ interface PairingLinkRecord {
   code: string
   scopes: Scope[]
   label: string
-  /** The human this link pairs a device for (`user:<name>`), on an isolated-tenancy install. */
+  /** The human this link pairs a device for (`user:<name>`, or a verified subject as-is), on an isolated-tenancy install. */
   subject?: string
   createdBySubject: string
   expiresAt: number
@@ -49,6 +50,12 @@ export interface CreatePairingLinkRequest {
   label?: string
   /** The human the joining device belongs to (`pair --as <name>`); the device then acts as `user:<name>`. Isolated tenancy only. */
   as?: string
+  /**
+   * The verified subject of the person the joining device belongs to, taken
+   * as-is (a bearer's raw `sub` included). Set by `auth.createOwnPairingLink`
+   * from the caller's own principal, never from client input; wins over `as`.
+   */
+  forSubject?: string
 }
 
 export type CreatePairingLinkResult =
@@ -108,13 +115,27 @@ function isSubsetOfCallerScopes(requested: readonly Scope[], caller: PairingCall
 }
 
 /**
+ * The scopes a link grants when the request names none: the server's
+ * pairing defaults, narrowed for a caller without `admin` to what that caller
+ * holds itself, so delegation never widens a person's reach.
+ */
+function defaultScopesFor(caller: PairingCaller, pairingDefaultScopes: readonly Scope[]): Scope[] {
+  if (caller.scopes.includes('admin')) return [...pairingDefaultScopes]
+  return pairingDefaultScopes.filter((s) => s !== 'admin' && caller.scopes.includes(s))
+}
+
+/**
  * Mints a one-time pairing link. `caller` is the requesting connection's own
  * principal/scopes -- passed explicitly (rather than read off a `Connection`)
  * so this function is testable independent of the wire's own admin-scope gate
  * on the `auth.createPairingLink` action itself.
  */
 export function createPairingLink(caller: PairingCaller, req: CreatePairingLinkRequest, pairingDefaultScopes: readonly Scope[], advertise: PairingAdvertise, relay?: PairingRelayAdvertise): CreatePairingLinkResult {
-  const requested = req.scopes && req.scopes.length > 0 ? req.scopes : [...pairingDefaultScopes]
+  const requested = req.scopes && req.scopes.length > 0 ? req.scopes : defaultScopesFor(caller, pairingDefaultScopes)
+  if (requested.length === 0) {
+    warn('pairing link refused: the caller holds none of the default pairing scopes', { subject: caller.subject, caller_scopes: caller.scopes, default_scopes: pairingDefaultScopes })
+    return { ok: false, refusal: 'scope' }
+  }
   if (!isSubsetOfCallerScopes(requested, caller)) {
     warn('pairing link refused: requested scopes exceed caller scopes', { subject: caller.subject, requested, caller_scopes: caller.scopes })
     return { ok: false, refusal: 'scope' }
@@ -122,7 +143,7 @@ export function createPairingLink(caller: PairingCaller, req: CreatePairingLinkR
 
   const code = randomBytes(16).toString('hex')
   const expiresAt = Date.now() + LINK_TTL_MS
-  const linkSubject = req.as?.trim() ? userSubject(req.as.trim()) : undefined
+  const linkSubject = req.forSubject ?? (req.as?.trim() ? userSubject(req.as.trim()) : undefined)
   links.set(code, { code, scopes: requested, label: req.label ?? '', ...(linkSubject ? { subject: linkSubject } : {}), createdBySubject: caller.subject, expiresAt, used: false })
   log('pairing link created', { subject: caller.subject, scope_count: requested.length, label: req.label ?? '', for_subject: linkSubject ?? '', advertise_url: advertise.url, relay_url: relay?.url ?? '', expires_at: expiresAt })
 

@@ -1,6 +1,8 @@
 /**
  * `auth.*` `studio_action`s (manifest requirement, admin scope):
  * `auth.createPairingLink{scopes?, label}`, `auth.listClients`,
+ * `auth.createOwnPairingLink{scopes?, label}` (a link for the caller's own
+ * devices, `conversations:read`),
  * `environment.devices` (the caller's own devices, `conversations:read`),
  * `auth.revokeClient{clientId}`, `auth.createPairingChannel{relayUrl}`,
  * `auth.cancelPairingChannel{channelId}`, `oidc.token{scope,audience}`, and
@@ -143,6 +145,44 @@ export const AUTH_ACTIONS: Record<string, AuthActionSpec> = {
       if (!result.ok) {
         return { ok: false, refusal: { code: result.refusal, message: 'requested scopes exceed your granted scopes' } }
       }
+      return { ok: true, value: result.value }
+    },
+  },
+  // [{ scopes?, label? }] -> { url, code, expiresAt }
+  // A link that pairs one of the CALLER's own devices, readable without
+  // admin: the device acts as the caller (the link carries the caller's own
+  // subject) and gets only scopes the caller holds, never admin. Naming
+  // another person (`as`) and opening a relay channel stay with
+  // `auth.createPairingLink`.
+  'auth.createOwnPairingLink': {
+    requiredScope: 'conversations:read',
+    handler: (conn, args) => {
+      const subject = conn.principal?.subject
+      if (!subject) {
+        warn('own pairing link refused: the connection has no principal', { connection_id: conn.id })
+        return { ok: false, refusal: { code: 'no_principal', message: 'this connection does not act as a person' } }
+      }
+      const a = firstArgObject(args)
+      if (a.as !== undefined || a.relay !== undefined) {
+        warn('own pairing link refused: as or relay needs admin', { connection_id: conn.id, subject, has_as: a.as !== undefined, has_relay: a.relay !== undefined })
+        return { ok: false, refusal: { code: 'admin_required', message: 'pairing a device for another person or through a relay needs admin (auth.createPairingLink)' } }
+      }
+      // On a shared install every paired device acts as the host identity,
+      // whoever minted its link: a link from anyone but an admin would hand
+      // its device the owner's identity.
+      if (isSharedTenancy() && !conn.scopes.includes('admin')) {
+        warn('own pairing link refused: shared tenancy', { connection_id: conn.id, subject })
+        return { ok: false, refusal: { code: 'shared_tenancy', message: 'this install is shared tenancy: every paired device acts as the host identity, so only an admin may pair one' } }
+      }
+      const scopes = Array.isArray(a.scopes) ? a.scopes.filter(isScope) : undefined
+      const label = typeof a.label === 'string' ? a.label : ''
+      const config = currentServerConfig()
+      const result = createPairingLink({ subject, scopes: conn.scopes }, { scopes, label, forSubject: subject }, config.pairing.defaultScopes, { url: pairingAdvertiseUrl(config), label: config.label })
+      if (!result.ok) {
+        warn('own pairing link refused: scope', { connection_id: conn.id, subject, caller_scopes: conn.scopes, requested: scopes ?? [] })
+        return { ok: false, refusal: { code: result.refusal, message: 'requested scopes exceed your granted scopes' } }
+      }
+      log('own pairing link minted', { connection_id: conn.id, subject, admin: conn.scopes.includes('admin'), expires_at: result.value.expiresAt })
       return { ok: true, value: result.value }
     },
   },
