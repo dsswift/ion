@@ -2,7 +2,7 @@
  * Worktree pipeline slice — the sync-all state machine's decision points.
  *
  * The mechanics under the pipeline (rebases, rerere, sync-all classification)
- * are pinned against real git in main/__tests__/worktree-sync-mechanics.test.ts.
+ * are pinned against real git in server/src/worktree/__tests__/worktree-sync-mechanics.test.ts.
  * These tests pin the ORCHESTRATION: the confirm gate stops the pipeline
  * before any agent launches (the cost-visibility contract), the zero-conflict
  * run skips the gate, escalation is sequential with a mechanical re-pass

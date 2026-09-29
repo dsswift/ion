@@ -29,7 +29,7 @@ branch's committed content also occupies, attempt the merge (git refuses with
 merge: ...`), abort, and observe the file is still present and still
 untracked.
 
-**Fix.** `resetBenchToTree` (`desktop/src/main/integration/bench-assemble-support.ts`)
+**Fix.** `resetBenchToTree` (`server/src/integration/bench-assemble-support.ts`)
 runs `git clean -fd` (never `-x`, so ignored build output survives)
 immediately after every reset-to-tree. Applied at all six bench call sites
 that reset or recreate a merge: `bench-assemble.ts`, `wipeBenchToEmpty`,
@@ -37,7 +37,7 @@ that reset or recreate a merge: `bench-assemble.ts`, `wipeBenchToEmpty`,
 `bench-verification-diagnostic.ts`, and the internal abort-and-recreate cycle
 in `bench-assembly-rerere.ts`.
 
-**Test.** `desktop/src/main/__tests__/bench-assemble-untracked.test.ts` →
+**Test.** `server/src/integration/__tests__/bench-assemble-untracked.test.ts` →
 `assembleBench — untracked leftovers self-heal on the next reset`.
 
 ## 2. A merge failure with zero unmerged paths is misclassified as a content conflict, and the real git error is discarded (bench)
@@ -58,7 +58,7 @@ new `'obstructed'` classification, with the real git error surfaced verbatim.
 across `types-bench.ts`, `protocol-worktree.ts` (desktop↔iOS wire, lockstep),
 and `bench-store.ts`'s persistence normalizer.
 
-**Test.** `desktop/src/main/integration/bench-assemble-support.test.ts` →
+**Test.** `server/src/integration/bench-assemble-support.test.ts` →
 `classifyMergeFailure` (direct unit tests of the classification decision,
 since self-healing means an obstruction can no longer reach the assembly
 loop's own merge attempt under normal operation — the classification is
@@ -82,15 +82,15 @@ only those, after re-verifying each is still untracked immediately before
 deletion.
 
 **Fix.** `parseUntrackedObstruction` + `retryAfterClearingBlockingUntracked`
-(`desktop/src/main/git/untracked-obstruction.ts`), wired into
+(`server/src/git/untracked-obstruction.ts`), wired into
 `completeRebaseIfReplayed`'s `--continue` and `--skip` calls
-(`desktop/src/main/worktree/sync.ts`).
+(`server/src/worktree/sync.ts`).
 
 **Tests.**
-`desktop/src/main/git/untracked-obstruction.test.ts` (parser + retry helper,
+`server/src/git/untracked-obstruction.test.ts` (parser + retry helper,
 including the precision guarantee that an unrelated untracked file is never
 touched) and
-`desktop/src/main/__tests__/worktree-sync-mechanics.test.ts` →
+`server/src/worktree/__tests__/worktree-sync-mechanics.test.ts` →
 `completeRebaseIfReplayed — untracked-obstruction self-heal`.
 
 ## 4. Rerere path capture and staged-content validation swept in every staged file, not just the genuinely conflicting one (bench)
@@ -122,14 +122,14 @@ ancestor there; a clean two-way add or edit is, by definition, a change on
 exactly one side.
 
 **Fix.** `bothSidesChangedPaths`
-(`desktop/src/main/integration/bench-resolution-validation.ts`), used to scope
+(`server/src/integration/bench-resolution-validation.ts`), used to scope
 both `currentRererePaths`'s staged-path fallback and
 `validateBenchResolution`'s `diff --cached --check`. Falls back to the
 unscoped behavior when there is no `MERGE_HEAD` to compute the intersection
 against, or when the computation itself fails — matching prior behavior
 exactly rather than silently capturing nothing.
 
-**Test.** `desktop/src/main/__tests__/bench-assemble-untracked.test.ts` →
+**Test.** `server/src/integration/__tests__/bench-assemble-untracked.test.ts` →
 `bench rerere path capture — scoped to paths both sides changed` (both the
 capture-scoping and the staged-content-check-scoping properties, each
 reproduced with a large-ish member commit containing one genuine conflict
@@ -137,7 +137,7 @@ alongside several clean files, matching the confirmed production shape).
 
 ## 5. Existing incidents already pinned (pre-dating this catalogue)
 
-Documented in `desktop/src/main/__tests__/worktree-sync-mechanics.test.ts`'s
+Documented in `server/src/worktree/__tests__/worktree-sync-mechanics.test.ts`'s
 own header comment and test descriptions — recorded here for completeness,
 not re-described:
 

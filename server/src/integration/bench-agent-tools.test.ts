@@ -11,11 +11,11 @@
  * confused for each other.
  *
  * The resolution-history half reuses the journal-format fixture
- * (src/__tests__/testdata/integration-resolutions.fixture.json, mirrored at
- * desktop/src/main/__tests__/testdata/ for desktop's own copy of this test):
- * the server writes the journal and reads it back here, and both suites
- * assert against the same artifact so a field rename on either side fails a
- * test instead of silently dropping the field.
+ * (src/__tests__/testdata/integration-resolutions.fixture.json, shared with
+ * integration/__tests__/bench-resolution-journal.test.ts): the server writes
+ * the journal and reads it back here, and both tests assert against the same
+ * artifact so a field rename on either side fails a test instead of silently
+ * dropping the field.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync, writeFileSync } from 'fs'
