@@ -1,0 +1,26 @@
+{
+  "note": "Generated once with the real sealRelayFrame/createAuthProof/deriveChannelId. Pins the TypeScript and Swift implementations to one set of bytes.",
+  "key": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
+  "channelId": "ae216c2ef5247a3782c135efa279a3e4",
+  "text": {
+    "plaintext": "{\"type\":\"studio_event\",\"channel\":\"studio:thin-event\",\"payload\":{\"type\":\"desktop_heartbeat\",\"note\":\"sealed by TypeScript — ünïcode\"}}",
+    "envelope": "{\"v\":1,\"nonce\":\"G/7z5BmAuBXlwGxX\",\"ciphertext\":\"dektsB7V6F+U95orecap6kuApqn/F3IWKYHY1Opg76vF+ZHUT625Gs4ER4KVdzSEfI2h3rt0dl71ipKHpwTKkexqlFeOdh/NfhsxLHXrtPoW3KqlmdguCFlZ7KdIVKeputDFL61VxzNpwGbcqQ3UjGKlIUjGTZVRKprVj3/u8IDJ4C2hdI0fb7gUBjl4bNfNGeRpGftpFNs=\"}"
+  },
+  "binary": {
+    "plaintext": "AQAMdGFiLTE6aW5zdC0xAAEC/f7/",
+    "envelope": "{\"v\":1,\"nonce\":\"T9df0xkq+gK4MKHd\",\"ciphertext\":\"x1ztpyUy2vb0HGc3ueKVtA/8zu1z0KVSkv+hO7kDKwT05PLhiA==\",\"bin\":true}"
+  },
+  "doorbell": {
+    "plaintext": "{\"type\":\"studio_event\",\"channel\":\"studio:thin-event\",\"payload\":{\"type\":\"desktop_heartbeat\",\"note\":\"sealed by TypeScript — ünïcode\"}}",
+    "envelope": "{\"v\":1,\"nonce\":\"wR8fPDWN8VO5T2qn\",\"ciphertext\":\"voUTLwcGhQu1l1u9os1MGDu/2bfC3rOUJpVFnvTNDEeC/k24DuOit/V50VDPPkpJKyZReAvOzd5nXO9jDF2+JCcjEMAxojkpUVyVn8tD4oS6dhMvNh/rsq4I7kxCyGINitlKLySHp3e0F5pJRaEs9rTFfQb40PU92VpM1UmiNZ2rkxspGPo/4Pi2RutQ+SFfotBaiMWWNn0=\",\"push\":true,\"pushTitle\":\"Approval needed\",\"pushBody\":\"Bash wants to run\",\"pushTabId\":\"tab-1\",\"notifyKind\":\"permission\",\"notifyResourceId\":\"res-7\"}"
+  },
+  "authProof": {
+    "nonce": "//79/Pv6+fj39vX08/Lx8O/u7ezr6uno5+bl5OPi4eA=",
+    "proof": "COEFcEZDU8sCbWLOMsbWS2g4DwxVSNqJkMS2oSUEWc0="
+  },
+  "relayProof": {
+    "tag": "relay",
+    "tagBytes": "rela",
+    "proof": "o+5CEgQ7oLaKsPSHtBMgGWfg9dv+plvVCjsUahtuk3I="
+  }
+}
