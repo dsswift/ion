@@ -10,8 +10,9 @@
 | Relay | `relay/` | Go |
 | iOS | `ios/IonRemote/` | Swift |
 | Shared packages | `packages/shared/`, `packages/studio-sdk/` | TypeScript (+ Go Studio SDK) |
+| Go SDK | `sdk/go/` | Go |
 
-Engine, server, desktop, and iOS each have their own `AGENTS.md`. **Before touching `engine/`, read [`docs/engine-grounding.md`](docs/engine-grounding.md).**
+Engine, server, desktop, and iOS each have their own `AGENTS.md`. The relay, the shared packages, and the Go SDK are governed by this file. **Before touching `engine/`, read [`docs/engine-grounding.md`](docs/engine-grounding.md).**
 
 SDK edits have a source-of-truth split: edit `engine/extensions/sdk/ion-sdk/`, never the installed copy at `~/.ion/extensions/sdk/` (overwritten at build). See [`engine/AGENTS.md`](engine/AGENTS.md) § "Extension SDK source location".
 
@@ -45,7 +46,8 @@ For any question about how code is structured or connected, the first call is a 
 - Logger, store, and type-barrel hubs crowd results. Filter with `--context call` (or `import`, `field`, `parameter_type`, `return_type`, `generic_arg`).
 - Package-level vars and consts are not nodes. "No matching nodes" means grep for it.
 - The graph locates; the source confirms. `INFERRED` call edges are places to check, not proof.
-- Never run `graphify install`; the skill is tracked at `.ion/skills/graphify/`. `graphify-out/` is gitignored and kept current by git hooks.
+- In a worktree, `graphify-out/graph.json` is a link to the primary checkout's graph. It describes the source branch, not this worktree's commits. When a path the graph returns does not exist here, find that symbol with `Grep`.
+- Never run `graphify install`; the skill is tracked at `.ion/skills/graphify/`. `graphify-out/` is gitignored. Git hooks keep the primary checkout's graph current; `make graph` is refused in a worktree.
 
 Worked examples: [`docs/contributing/graph-queries.md`](docs/contributing/graph-queries.md).
 
@@ -67,12 +69,19 @@ Only when a Windows CI failure needs Windows-real verification. Run `make sync-w
 |------|---------|
 | File-size cap | `make check-file-sizes` |
 | Contract sync | `make check-contracts` (when a shared type changes) |
-| Status writers | `make check-status-writers` (when touching `engine_status` / `engine_session_status` emitters) |
+| Status writers | `make check-status-writers` (when touching code that writes `tab.status` or `statusFields`) |
 | Logging standards | `make check-logging` |
+| Server parity | `make check-server-parity` (when touching `desktop/src/main`) |
+| Studio wire | `make check-studio-wire` (when a fixture under `packages/shared/src/studio-wire/__fixtures__` changes) |
+| Vocabulary | `make check-vocabulary` (when `docs/vocabulary/terms.json` changes) |
 | Engine lint | `cd engine && golangci-lint run ./internal/<pkg>/...` |
 | Engine tests | `cd engine && go test ./internal/<pkg>/...` (`-race` for concurrency). `internal/server` takes ~150s; scope with `-run <TestPrefix>` |
+| Server typecheck, lint | `npm -w server run typecheck`, `npm -w server run lint` |
+| Server tests | `npm -w server run test -- <pattern>`, then `cd desktop && npm test -- <pattern>`: many tests of server modules still live under `desktop/src/main/__tests__/` |
+| Shared package | `npm -w @ion/shared run typecheck`, `npm -w @ion/shared test -- <pattern>` |
 | Desktop typecheck | `cd desktop && npm run typecheck` |
 | Desktop tests | `cd desktop && npm test -- <pattern>` |
+| Renderer bundle | `cd desktop && npm run build` (when `server/src/store/` or anything it imports gains an import; see `server/AGENTS.md` § "`HostApi`") |
 
 ### Validation cadence — never after every file edit
 
@@ -80,7 +89,7 @@ Batch related edits, then run the narrowest test that could disprove the change.
 
 ### Heavy gates — never run during development
 
-`make test-linux` (and its `-engine`/`-desktop` halves), `go test -race ./...`, `go test -race -tags integration ./tests/integration/...`, `govulncheck ./...`, relay `go test -race ./...`, `npm audit`, full `npm test`, `make ios-check`. Run one only when `/create-pr` says to or the user asks. CI (`.github/workflows/quality.yml`) is authoritative. A new engine or desktop test job in `quality.yml` must be mirrored into `make test-linux`. Rationale: [`docs/contributing/quality-gates.md`](docs/contributing/quality-gates.md).
+`make test-linux` (and its `-engine`, `-desktop`, and `-server` parts), `go test -race ./...`, `go test -race -tags integration ./tests/integration/...`, `govulncheck ./...`, relay `go test -race ./...`, `npm audit`, full `npm test`, `npm -w server run test:integration`, `make ios-check`. Run one only when `/create-pr` says to or the user asks. CI (`.github/workflows/quality.yml`) is authoritative. A new engine, desktop, or server test job in `quality.yml` must be mirrored into `make test-linux`. Rationale: [`docs/contributing/quality-gates.md`](docs/contributing/quality-gates.md).
 
 ## Branch workflow
 
@@ -89,7 +98,7 @@ Batch related edits, then run the narrowest test that could disprove the change.
 ## Commits
 
 - `type(scope): subject`. Types: `feat`, `fix`, `chore`, `docs`, `feat!`. Subject lowercase, imperative, no period, ≤ 65 chars.
-- Scopes: `engine` (`engine/`, incl. the TS SDK), `sdk` (`sdk/`, Go SDK), `desktop`, `server`, `relay`, `ios`, `docs`, `repo` (root, cross-cutting, `.github/`), `ci`, `deps`. Use the scope of the primary change.
+- Scopes: `engine` (`engine/`, incl. the TS SDK), `sdk` (`sdk/`, Go SDK), `desktop`, `server`, `relay`, `ios`, `docs`, `repo` (root, cross-cutting, `packages/`, `scripts/`, `.github/`), `ci`, `deps`. Use the scope of the primary change.
 - Path→scope mapping: `.commit.json`. Legal scopes: `commitlint.config.js`. `ci`/`deps` are legal but never auto-resolved.
 - Work from a GitHub issue: subject ends ` (#N)` **and** a commit or PR body carries `Fixes #N` / `Closes #N`. `make check-issue-closure` fails the PR otherwise.
 - Never commit `.env*`, `appsettings.json`, `local.settings.json`, `engine/tests/e2e/testconfig.json`.
@@ -100,11 +109,13 @@ Batch related edits, then run the narrowest test that could disprove the change.
 | Layer | Where | Role |
 |-------|-------|------|
 | Engine | `engine/` | Hooks, events, tools, LLM streaming. Headless, no UI concepts. |
-| Server | `server/` | Studio wire, auth, per-Environment orchestration (worktrees, benches, transfer). One server + one engine = an Environment ([ADR-033](docs/architecture/adr/033-ion-studio-server-and-environments.md)). |
+| Server | `server/` | The session store, Studio wire, auth, per-Environment orchestration (worktrees, benches, git, terminals, transfer). One server + one engine = an Environment ([ADR-033](docs/architecture/adr/033-ion-studio-server-and-environments.md)). |
 | Harness | `~/.ion/extensions/` | Extensions via SDK. Decides behavior. |
-| Client | `desktop/`, `ios/` | Renders UI. |
+| Client | `desktop/`, `ios/` | Renders what the server publishes. Studio also builds for the browser (`npm run build:web`), served by the server. |
 
-Engine executes, harness decides. The engine never blocks the socket waiting for a user, never persists memory, never decides policy. Label work as `engine`, `harness-sdk`, `clients`, or `relay` (the vocabulary domains).
+Engine executes, harness decides, the server owns state, clients render. The engine never blocks the socket waiting for a user, never persists memory, never decides policy. The desktop and iOS never talk to the engine; they reach it through the server's engine bridge.
+
+The vocabulary registry has four domains (`engine`, `harness-sdk`, `clients`, `relay`) and a `server` platform for implementations under `server/`.
 
 ## Opinionless mechanics, extensible opinions
 
@@ -112,7 +123,7 @@ The engine owns the mechanism (discovery, parsing, scheduling, transport, persis
 
 ## Engine consumers
 
-The engine is the product; desktop, iOS, and relay are reference implementations. "No in-repo caller" is the expected state for new engine surface, never a reason to reject or delete it. Judge an engine change by whether it breaks a hypothetical external consumer: a new optional field or event is fine; a changed decode or signature is a break. Full framing: [`docs/architecture/engine-consumers.md`](docs/architecture/engine-consumers.md).
+The engine is the product; the server, desktop, iOS, and relay are reference implementations. "No in-repo caller" is the expected state for new engine surface, never a reason to reject or delete it. Judge an engine change by whether it breaks a hypothetical external consumer: a new optional field or event is fine; a changed decode or signature is a break. Full framing: [`docs/architecture/engine-consumers.md`](docs/architecture/engine-consumers.md).
 
 ### The typed-event corollary
 
@@ -139,20 +150,21 @@ Reference: [`docs/extensions/studio-sdk.md`](docs/extensions/studio-sdk.md).
 
 ## Server owns the store, Studio renders
 
-`server/src/store/` owns `useSessionStore`. Studio (`desktop/src/renderer/studio/`, the desktop's only window) boots the same store against the local environment: FORWARDED actions round-trip as `studio_action`, MIRROR_LOCAL actions stay window-local.
+`server/src/store/` owns `useSessionStore`. Studio (`desktop/src/renderer/studio/`) is the desktop's application window; the splash and the worktree-overlap visualizer are auxiliary windows with no store. Studio boots the same store in mirror mode as the union of every connected Environment: FORWARDED actions round-trip as `studio_action`, MIRROR_LOCAL actions stay window-local.
 
 - New store action → classify in `packages/shared/src/studio-wire/actions.ts` or the mirror-parity test fails.
 - New main-process event push → `broadcast()`. `make check-server-parity` fails a direct `webContents.send`.
+- `desktop/src/main` holds no session logic and never reaches the engine bridge or the store. `make check-server-parity` and `desktop/src/main/__tests__/no-engine-reach.test.ts` pin it.
 
 ## Two enterprise policies
 
 | | Device policy | Environment policy |
 |---|---|---|
-| Governs | The person's own desktop UI (theme lock, `activeUiPolicy`, environment catalog) | What a shared engine permits (`allowedModels`, `allowedProviders`, tools, limits) |
+| Governs | The person's own desktop (`themePolicy`, `disableAutoUpdate`, `hiddenSettingsGroups`, and `environmentPolicy` for the environment catalog) | What a shared engine permits (`allowedModels`, `allowedProviders`, tools, limits) |
 | Source | LOCAL environment only: `customFields['ion-desktop']` | The engine's own `EnterpriseConfig` |
 | Enforced by | The desktop client | The engine, republished on `studio_welcome.enterprisePolicy` |
 
-A remote server must never narrow a visiting desktop's own UI. Neither policy is a setting; settings have four scopes (`environment`, `account`, `personal`, `device`) in `packages/shared/src/settings-registry.ts`. Environment settings gate on the `admin` scope. `settingsHiddenGroups` is device policy only.
+A remote server must never narrow a visiting desktop's own UI. Neither policy is a setting; a persisted setting has one of four scopes (`environment`, `account`, `personal`, `device`) in `packages/shared/src/settings-registry.ts`. The registry's fifth value, `runtime`, marks a key that is held in memory and never persisted. Environment settings gate on the `admin` scope. `settingsHiddenGroups` is device policy only.
 
 ## Cross-platform parity
 
@@ -254,4 +266,4 @@ Land, Retire, transfer, and provisioning: [`docs/architecture/worktrees-and-benc
 
 ## Conversation storage
 
-Conversations persist as NDJSON pairs under `~/.ion/conversations/`. Reference: [`docs/architecture/conversation-storage.md`](docs/architecture/conversation-storage.md).
+Conversations persist as NDJSON pairs under `~/.ion/conversations/`. With principal partitioning on, each principal's conversations are under `~/.ion/principals/<dir>/conversations/` ([ADR-034](docs/architecture/adr/034-principal-isolation-and-tenancy.md)). Reference: [`docs/architecture/conversation-storage.md`](docs/architecture/conversation-storage.md).

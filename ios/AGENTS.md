@@ -61,7 +61,7 @@ Logs land in `<ION_DATA_DIR>/ios-diagnostic-logs.jsonl` on the paired server's h
 
 ## Pairing and transport
 
-`StudioTransport` carries `RemoteEvent`s in and `RemoteCommand`s out over the route `StudioRoute` picks (direct TCP on the LAN, or relay). `StudioTransportCommandMapping` turns each `RemoteCommand` into the `studio_action` or frame the server answers. Pairing is a one-time code against the server's `POST /auth/pair`; the credential lives in `StudioServerKeychainStore`.
+`StudioTransport` carries `RemoteEvent`s in and `RemoteCommand`s out over the route `StudioRoute` picks (sealed TCP on the LAN, or relay). `StudioTransportCommandMapping` turns each `RemoteCommand` into the `studio_action` or frame the server answers. Pairing is a one-time code against the server's `POST /auth/pair`; the credential lives in `StudioServerKeychainStore`.
 
 `RemoteCommand` is a plain `Sendable` value; it does not encode itself. `RemoteCommand.TypeKey` is the shared name of each command. `StudioCommandMapTests` checks `TypeKey.allCases` against `packages/shared/src/studio-wire/phone-command-map.json`.
 
@@ -70,7 +70,8 @@ Tests that guard this: `E2ECryptoTests.swift` (real pairing handshakes) and `Ion
 ## Wire parity and naming (ADR 008)
 
 - `NormalizedEvent`, `RemoteCommand`, and `RemoteTabState` mirror server and engine types. Sources of truth: `engine/internal/types/normalized_event.go` and `packages/shared/src/`.
-- When iOS needs an engine event it doesn't decode, add it to `NormalizedEvent.swift` and handle it in a ViewModel extension. Never relay a rendered artifact instead (e.g. a divider sent as `engine_harness_message`).
+- iOS builds no transcript rows. The server sends its own rows (`TranscriptRow`) and revisioned `desktop_transcript_patch`es; `TranscriptStream` applies them ([ADR-036](../docs/architecture/adr/036-thin-clients-render-the-server-transcript.md)). The engine events in `TRANSCRIPT_ONLY_ENGINE_EVENTS` (`server/src/engine/event-wiring-mobile-filter.ts`) never reach iOS. A transcript change is made in the server's projection, not in a Swift reducer.
+- When iOS needs a non-transcript engine event it doesn't decode, add it to `NormalizedEvent.swift` and handle it in a ViewModel extension. Never relay a rendered artifact instead (e.g. a divider sent as `engine_harness_message`).
 - `engine_` TypeKeys decode engine-originated events. `desktop_` TypeKeys name `RemoteCommand` / `RemoteEvent` cases; `phone-command-map.json` is keyed by them. Never mix or omit the prefix. A new `RemoteCommand` without its `desktop_*` TypeKey and map entry fails `StudioCommandMapTests`.
 - Studio wire renames are lockstep: `packages/shared/src/studio-wire/` and the Swift side change together (root `AGENTS.md` § "Contract stability").
 - Wire-type changes update their test fixtures.

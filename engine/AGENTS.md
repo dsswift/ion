@@ -1,10 +1,12 @@
 # Engine (Go)
 
-Single self-contained binary. Listens on `~/.ion/engine.sock` (NDJSON). Linux builds are fully static (`CGO_ENABLED=0`, FROM-scratch container); darwin builds use cgo for the Local Network warmup probe (`internal/network/lanwarmup_darwin.go`).
+Single self-contained binary. Listens on `<ION_DATA_DIR>/engine.sock` (default `~/.ion/engine.sock`; a loopback port on Windows; `ION_SOCKET_PATH` overrides), NDJSON. Its in-repo client is the server's engine bridge (`server/src/engine/`). Linux builds are fully static (`CGO_ENABLED=0`, FROM-scratch container); darwin builds use cgo for the Local Network warmup probe (`internal/network/lanwarmup_darwin.go`).
 
 Read [`../docs/engine-grounding.md`](../docs/engine-grounding.md) before touching engine code. It holds the principles; this file holds the mechanics.
 
 ## Commands
+
+Run from `engine/`.
 
 ```bash
 make build                                                # -> bin/ion

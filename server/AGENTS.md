@@ -19,13 +19,14 @@ npm -w server run lint               # ESLint
 | `store/` | `useSessionStore` and its slices; `host-api-*.ts` is the store's seam to the outside |
 | `protocol/` | Studio wire: `connection.ts` (hello, credential check, welcome/refused), `commands.ts`, `actions.ts`, `events.ts` |
 | `remote/`, `thin-view/` | The iOS projection: `protocol.ts` (`desktop_*` names), snapshot polling, `thin-sync.ts` |
+| `transcript/` | The one transcript: row projection and revisioned patches for thin clients and dispatched agents ([ADR-036](../docs/architecture/adr/036-thin-clients-render-the-server-transcript.md)) |
 | `auth/` | The three credential doors plus pairing links and channels |
 | `engine/` | The engine bridge. It connects to the engine's address (`engine-address.ts`); it never spawns the engine |
 | `terminal/` | `terminal-manager.ts` and the attach protocol |
 | `deeplink/` | `ion://` dispatcher, parser, actions |
 | `worktree/`, `git/`, `transfer/`, `conversation-backup/` | Worktree and bench orchestration, git, the Transfer verb and its archive |
 | `persistence/`, `utils/` | Settings store, setting keys, `atomicWrite.ts`, `secretStore.ts` |
-| `http/` | `/healthz`, `/readyz`, `/auth/config`, `/auth/pair`, `POST /log` |
+| `http/` | `/healthz`, `/readyz`, `/auth/config`, `/auth/pair`, `POST /log`, and the browser Studio bundle (`static.ts`, behind `server.json.web.enabled`) |
 
 ## `HostApi`: the store's one seam onto the outside world
 
@@ -38,7 +39,7 @@ A store action that reaches outside the store (engine RPC, git, filesystem, term
 - Store action classification and `broadcast()`: root `AGENTS.md` § "Server owns the store, Studio renders".
 - `remote/protocol.ts` members carry the `desktop_` prefix from their first commit. A rename is lockstep, not a contract break: update `packages/shared/src/studio-wire/`, iOS `RemoteCommand.swift` / `NormalizedEvent.swift` TypeKeys, `StudioTransportCommandMapping.swift`, and every handler on the string in one change ([ADR-008](../docs/architecture/adr/008-wire-event-naming-and-ownership.md)).
 - **User turns are echoed through one funnel.** A user turn does not ride engine events, so the Studio mirror must be told separately. Call `echoUserTurn` (`user-turn-echo.ts`); never send it directly. iOS needs no echo; it gets the owner store's row on its transcript stream. The funnel and the owner store apply the same injection classification (`@ion/shared/injection-policy`), so a hidden turn is hidden on every surface. To add a hidden class, classify the kind in `engine/internal/types/injection_kind.go`; add it to `OUTBOUND_MACHINE_KINDS` only if a client authors it. Never add a check at a call site. Hide only turns no human saw (agent callbacks, background results). A turn the operator produced, such as a Guided Questions submission, stays visible and is labelled via `Message.injectionKind`.
-- **Terminals** are server-owned. Renderers attach and detach (`TERMINAL_ATTACH`); only an explicit close destroys one. Every PTY carries `ION_DESKTOP_TAB_ID`, `ION_DESKTOP_TERMINAL_INSTANCE_ID`, and `ION_DESKTOP_DEEPLINK_TOKEN` so tools in a pane can target their own conversation ([ADR-031](../docs/architecture/adr/031-deep-link-surface.md)). Never resolve a deep link's target from the active tab.
+- **Terminals** are server-owned. Renderers attach and detach (the `terminal.attach` action, `protocol/terminal-actions.ts`); only an explicit close destroys one. Every PTY carries `ION_DESKTOP_TAB_ID`, `ION_DESKTOP_TERMINAL_INSTANCE_ID`, and `ION_DESKTOP_DEEPLINK_TOKEN` so tools in a pane can target their own conversation ([ADR-031](../docs/architecture/adr/031-deep-link-surface.md)). Never resolve a deep link's target from the active tab.
 - **Inbox** classification is computed once (`@ion/shared/inbox-classify`); clients render it.
 - **New setting** → `SETTINGS_DEFAULTS` (`persistence/settings-store.ts`), the key allowlist in `persistence/studio-settings-keys.ts`, and `StudioSettings` (`packages/shared/src/types-studio.ts`). Scope: `packages/shared/src/settings-registry.ts`.
 
@@ -58,7 +59,7 @@ A store action that reaches outside the store (engine RPC, git, filesystem, term
 
 ## Secrets and persistence
 
-- Paired-device secrets and the relay API key go through `utils/secretStore.ts` (OS keychain via `safeStorage` when in Electron).
+- Paired-device secrets and the relay API key go through `utils/secretStore.ts` (OS keychain via `safeStorage` when in Electron, an AES-GCM keyfile otherwise).
 - User state (tabs, labels, settings) is written through `utils/atomicWrite.ts` (temp + fsync + rename). Never `writeFileSync` directly.
 
 ## Auth doors
@@ -85,4 +86,8 @@ One refusal vocabulary (`studio_refused.reason`). A refusal is logged with its r
 
 ## Tests
 
-Co-located `__tests__/` per domain. `server/tests/integration/` (`vitest.integration.config.ts`) builds the real engine and boots it beside the server. Integration and the Docker Compose smoke test run at PR time.
+Co-located `__tests__/` per domain. A new test of a server module goes there.
+
+Many tests of server modules still live under `desktop/src/main/__tests__/`, importing `@ion/server/...`. After a server change, run `cd desktop && npm test -- <pattern>` as well as `npm -w server run test -- <pattern>`.
+
+`server/tests/integration/` (`vitest.integration.config.ts`) builds the real engine and boots it beside the server. Integration and the Docker Compose smoke test run at PR time.

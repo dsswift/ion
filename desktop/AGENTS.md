@@ -17,13 +17,16 @@ Never kill the user's running dev server. Renderer changes hot-reload; main-proc
 
 ## Ion Desktop is not a web application
 
-`npm run dev` starts Electron through `electron-vite`. There is no supported Ion page at `http://localhost:5173` or any browser URL. Never use `browser_navigate`, Playwright against a guessed localhost, or a web browser as proof the Desktop UI works. Visible verification uses the real Electron window; for a packaged build, the operator looks. Logs, snapshots, and tests are extra evidence, never a replacement. The Studio Browser is content inside Studio; its tools do not see the Desktop UI.
+`npm run dev` starts Electron through `electron-vite`. It serves no Ion page at `http://localhost:5173` or any browser URL. Never use `browser_navigate`, Playwright against a guessed localhost, or a web browser as proof the Desktop UI works. Visible verification uses the real Electron window; for a packaged build, the operator looks. Logs, snapshots, and tests are extra evidence, never a replacement. The Studio Browser is content inside Studio; its tools do not see the Desktop UI.
+
+The browser Studio client is a separate bundle (`npm run build:web`, entry `renderer/web-main.tsx`, output `server/web/`). A server serves it when `server.json.web.enabled` is true. It proves nothing about the Electron window.
 
 ## Layout
 
 ```
 desktop/src/
-  main/          Electron shell: windows, lifecycle, updater, ipc/ (dialogs, browser views, Studio bridge)
+  main/          Electron shell: windows, lifecycle, updater, ipc/ (dialogs, browser views, Studio bridge),
+                 connections/ (the Environment catalog's connections: local, paired, bearer, SSH, relay)
   preload/       contextBridge surface
   renderer/      React app; studio/ is the app, components/ and hooks/ are shared UI,
                  stores/ holds window-local stores only
@@ -75,10 +78,10 @@ Targets are macOS and Windows. Every `process.platform === 'darwin'` guard needs
 
 ## Studio shell rules
 
-Studio is the desktop's only window. It boots the server's store against the local environment through `renderer/studio/state/secondary-store.ts` (root `AGENTS.md` § "Server owns the store, Studio renders").
+Studio is the desktop's application window. It boots the server's store in mirror mode, as the union of every connected Environment, through `renderer/studio/state/secondary-store.ts` (root `AGENTS.md` § "Server owns the store, Studio renders"). Each action is routed to the server that owns the tab it names (`renderer/studio/connection/tab-environment.ts`).
 
-- **Multi-step flows are single store actions**, never component handlers. A handler runs in whichever window hosts it, mixes forwarded and local calls, and decides against stale mirror state.
-- **No session logic in `desktop/src/main`.** `grep -rn "sessionStore" desktop/src/main` stays at 0.
+- **Multi-step flows are single store actions**, never component handlers. A handler mixes forwarded and local calls, and decides against stale mirror state.
+- **No session logic in `desktop/src/main`.** Main never imports the server's state, engine bridge, session plane, store, or event wiring. `main/__tests__/no-engine-reach.test.ts` and `make check-server-parity` pin it.
 - **Surface tabs** (`renderer/studio/surface/`) live in a window-local store outside `useSessionStore`. Shape, ordering, and persistence contracts are shared modules; one parser serves the renderer restore and the persisted-state validator. File tabs are descriptors; buffers stay in `fileEditorStates`. Pin and scope rules: [docs/architecture/desktop.md](../docs/architecture/desktop.md) § "Studio Surface".
 - **File-open routing** goes through `renderer/lib/file-open-router.ts`. Shared components ask `surfaceRouter()` first.
 - **The Inbox is the one conversation surface.** A conversation verb goes on the row menu (`studio/inbox/InboxRowMenu.tsx`). Its visibility and enablement live in a gate hook (`useConvertToWorktreeGate`, `useTransferGate`); the menu calls the store action. Pin each verb with a test beside the menu (`InboxRowMenu-transfer.test.tsx`).
@@ -99,6 +102,6 @@ Studio is the desktop's only window. It boots the server's store against the loc
 ## Done criteria
 
 1. `npm run typecheck`, `npm run lint` (for renderer code), and `npm test -- <pattern>` for the touched area pass.
-2. `make check-file-sizes` passes.
+2. `make check-file-sizes` passes, and `make check-server-parity` when `desktop/src/main` changed.
 3. UI changes are checked in the real Electron window. Report what was checked.
 4. A feature that also exists on iOS is updated there in the same change, or the report says why it cannot apply (root `AGENTS.md` § "Cross-platform parity").
