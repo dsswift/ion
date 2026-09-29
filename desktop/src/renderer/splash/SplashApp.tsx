@@ -1,5 +1,5 @@
 import React from 'react'
-import type { StartupState } from '../../shared/startup-state'
+import type { StartupState } from '@ion/shared/startup-state'
 import heroImage from './assets/ion-engine-hero-web.jpg'
 import ionIcon from './assets/ion-icon.png'
 

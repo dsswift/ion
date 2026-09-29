@@ -17,7 +17,7 @@ vi.mock('../../rendererLogger', () => ({
 }))
 
 import { MessageBubble } from './MessageBubble'
-import type { Message } from '../../../shared/types'
+import type { Message } from '@ion/shared/types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 

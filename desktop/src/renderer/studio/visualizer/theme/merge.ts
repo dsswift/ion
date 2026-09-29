@@ -12,7 +12,7 @@ import type {
   StudioPetManifest,
   StudioThemeManifest,
   StudioWallManifest,
-} from '../../../../shared/types-studio'
+} from '@ion/shared/types-studio'
 
 /** One validated asset entry with its source pack (for asset byte reads). */
 export interface PackEntry<M> {

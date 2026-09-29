@@ -4,7 +4,7 @@
  * policy (regenerate only on tab switch or seed change); the engine owns
  * everything below that line.
  */
-import type { AgentStateUpdate, NormalizedEvent } from '../../../../shared/types'
+import type { AgentStateUpdate, NormalizedEvent } from '@ion/shared/types'
 import { generateOffice } from '../generation'
 import { deriveRoster } from '../generation/roster'
 import type { LoadedTheme } from '../theme/loader'

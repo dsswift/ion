@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import Graph from 'graphology'
 import { createLayoutEngine, forceSettings, type LayoutSupervisor, type SupervisorFactory } from './graph-layout'
-import { LAYOUT_FORCES_COMPACT, LAYOUT_FORCES_LOBES } from '../../../shared/graph-view-types'
+import { LAYOUT_FORCES_COMPACT, LAYOUT_FORCES_LOBES } from '@ion/shared/graph-view-types'
 
 function graphOf(n: number): Graph {
   const g = new Graph()

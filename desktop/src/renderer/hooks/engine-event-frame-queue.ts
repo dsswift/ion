@@ -22,7 +22,7 @@
 //      event, even for the same tab. Text that jumped over a tool result would
 //      render in the wrong place.
 
-import type { NormalizedEvent, EnrichedError } from '../../shared/types'
+import type { NormalizedEvent, EnrichedError } from '@ion/shared/types'
 
 export type QueuedItem =
   | { kind: 'event'; tabId: string; event: NormalizedEvent }

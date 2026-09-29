@@ -20,7 +20,7 @@ import React, { useLayoutEffect, useRef, useState } from 'react'
 import { useColors } from '../../theme'
 import { useGraphStore } from './graph-store'
 import type { ColorPalette } from '../../theme-tokens'
-import type { GraphEdgeOrigin } from '../../../shared/graph-model-types'
+import type { GraphEdgeOrigin } from '@ion/shared/graph-model-types'
 
 /** The human reading of an edge's origin: what kind of claim the line makes. */
 export function edgeKindLabel(origin: GraphEdgeOrigin): string {

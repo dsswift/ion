@@ -6,7 +6,7 @@
  * intents, and schedules movement through the pathfinder. Rendering reads it;
  * nothing here touches the canvas.
  */
-import type { StudioRole } from '../../../../shared/types-studio'
+import type { StudioRole } from '@ion/shared/types-studio'
 import { createRng, deriveSeed, type StudioRng } from '../generation/prng'
 import { buildWalkability } from '../generation/validate'
 import { managerSeat, seatOf } from '../generation/seating'
@@ -411,7 +411,7 @@ export class OfficeState {
    * idle while its specialists work), and the manager mirrors that whenever
    * anyone in the office is working while the orchestrator is not.
    */
-  updatePresence(agents: import('../../../../shared/types').AgentStateUpdate[]): void {
+  updatePresence(agents: import('@ion/shared/types').AgentStateUpdate[]): void {
     const byName = new Map(agents.map((a) => [a.name, a]))
     for (const entity of this.entities.values()) {
       if (entity.role === 'pet' || entity.name === MANAGER_ID) continue

@@ -1,5 +1,5 @@
 import React from 'react'
-import type { WorktreeOverlapPair } from '../../shared/types-worktree-overlap'
+import type { WorktreeOverlapPair } from '@ion/shared/types-worktree-overlap'
 import { useColors } from '../theme'
 
 export function OverlapInspector({ pair }: { pair?: WorktreeOverlapPair }): React.JSX.Element {

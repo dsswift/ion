@@ -9,7 +9,7 @@
  * identity, a group by its value, and an anchor by its value are durable.
  */
 
-import type { GraphModel } from '../../../../shared/graph-model-types'
+import type { GraphModel } from '@ion/shared/graph-model-types'
 
 /** A predicate over node ids for the current model. Unknown ids are not durable. */
 export function durableIdPredicate(model: GraphModel | null): (id: string) => boolean {

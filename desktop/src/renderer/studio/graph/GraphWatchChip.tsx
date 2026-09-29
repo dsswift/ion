@@ -13,7 +13,7 @@ import React from 'react'
 import { useColors } from '../../theme'
 import { Tooltip } from '../../components/git/Tooltip'
 import { useGraphStore } from './graph-store'
-import type { CorpusRootStatus } from '../../../shared/graph-corpus-types'
+import type { CorpusRootStatus } from '@ion/shared/graph-corpus-types'
 
 const EMPTY_ROOTS: CorpusRootStatus[] = []
 

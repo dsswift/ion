@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { hasPlanFileBeenWritten, isPlanImplementedInMessages, latestPlanPathFromMessages, parseAttachmentsFromMessages } from '../StatusBarAttachmentsParser'
-import { formatImplementDivider } from '../../../shared/clear-divider'
+import { formatImplementDivider } from '@ion/shared/clear-divider'
 
 /**
  * Pins the attachment-detection logic that powers the engine-tab

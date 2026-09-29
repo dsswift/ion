@@ -11,7 +11,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { FileRow, FileTreeRow } from '../GitFileRow'
 import { buildFileTree } from '../GitPanelTypes'
 import type { FileTreeNode } from '../GitPanelTypes'
-import type { GitChangedFile } from '../../../shared/types'
+import type { GitChangedFile } from '@ion/shared/types'
 
 const ROW_HEIGHT = 22
 const VIRT_THRESHOLD = 30

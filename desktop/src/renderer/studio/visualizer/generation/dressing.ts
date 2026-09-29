@@ -8,7 +8,7 @@
  * hardcoded id: the surface item is the desk, the seatTiles item is the
  * chair, the canPlaceOnSurfaces item goes on the desk.
  */
-import type { StudioDressingTemplate, StudioFurnitureManifest } from '../../../../shared/types-studio'
+import type { StudioDressingTemplate, StudioFurnitureManifest } from '@ion/shared/types-studio'
 import type { StudioRng } from './prng'
 import { CLUSTER, type RoomSpec } from './program'
 import { buildWalkability, corridorStart, validateLayout } from './validate'

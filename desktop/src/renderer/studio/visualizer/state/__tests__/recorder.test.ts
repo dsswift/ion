@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { StudioRecorder, FRAME_CAP, WINDOW_CAP_MS } from '../recorder'
-import type { AgentStateUpdate, NormalizedEvent } from '../../../../../shared/types'
+import type { AgentStateUpdate, NormalizedEvent } from '@ion/shared/types'
 
 function agents(status: string): AgentStateUpdate[] {
   return [{ name: 'dev', status, metadata: {} } as unknown as AgentStateUpdate]

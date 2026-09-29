@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { StudioStats } from '../stats'
-import type { NormalizedEvent } from '../../../../../shared/types'
+import type { NormalizedEvent } from '@ion/shared/types'
 
 function end(id: string, agent: string, patch: Record<string, unknown> = {}): NormalizedEvent {
   return {

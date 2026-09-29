@@ -1,4 +1,4 @@
-import type { WorktreeInfo, WorktreeInventoryEntry } from '../../shared/types'
+import type { WorktreeInfo, WorktreeInventoryEntry } from '@ion/shared/types'
 
 /** Existing worktrees that can still accept new work. Landed checkouts are sealed. */
 export function filterConversationWorktrees(entries: readonly WorktreeInventoryEntry[], query: string): WorktreeInventoryEntry[] {

@@ -24,7 +24,7 @@ vi.mock('../git/Tooltip', () => ({
 }))
 
 import { WorktreeRow } from '../WorktreeRow'
-import type { WorktreeInventoryEntry } from '../../../shared/types'
+import type { WorktreeInventoryEntry } from '@ion/shared/types'
 
 function entry(over: Partial<WorktreeInventoryEntry> = {}): WorktreeInventoryEntry {
   return {

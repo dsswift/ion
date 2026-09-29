@@ -11,7 +11,7 @@
  * store keeps the state fields and the wiring; the focus-restore decision
  * lives here where it can be read in one piece.
  */
-import { QUESTIONS_SURFACE_ID, type NotificationTab, type PinnableSingletonId, type ScratchProject, type SurfaceConversationPersisted, type SurfaceTab } from '../../../shared/studio-surface-types'
+import { QUESTIONS_SURFACE_ID, type NotificationTab, type PinnableSingletonId, type ScratchProject, type SurfaceConversationPersisted, type SurfaceTab } from '@ion/shared/studio-surface-types'
 import { rInfo } from '../../rendererLogger'
 
 /** The slice of surface state these actions read and write. */

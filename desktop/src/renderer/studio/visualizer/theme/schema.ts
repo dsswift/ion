@@ -13,7 +13,7 @@ import type {
   StudioPetManifest,
   StudioThemeManifest,
   StudioWallManifest,
-} from '../../../../shared/types-studio'
+} from '@ion/shared/types-studio'
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; errors: string[] }
 

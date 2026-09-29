@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { TabState } from "../../../shared/types";
+import type { TabState } from "@ion/shared/types";
 import { collapsedInboxRows } from "./inbox-collapse";
 
 function tab(

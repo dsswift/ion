@@ -14,7 +14,7 @@ import {
   validateWallManifest,
 } from '../schema'
 import { minimalCharacterManifest, pngBytes, TILE } from './test-helpers'
-import type { StudioFurnitureManifest } from '../../../../../shared/types-studio'
+import type { StudioFurnitureManifest } from '@ion/shared/types-studio'
 
 describe('theme manifest validation', () => {
   const valid = {

@@ -17,7 +17,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { resolveBenchContext, resolveBenchContextAcrossRepos } from '../benchContext'
-import type { IntegrationWorkspace } from '../../../../shared/types'
+import type { IntegrationWorkspace } from '@ion/shared/types'
 
 const REPO = '/Users/dev/source/ion'
 const BENCH = '/Users/dev/.ion/integration/ion-josh'

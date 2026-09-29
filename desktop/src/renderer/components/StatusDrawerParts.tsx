@@ -14,7 +14,7 @@ import React, { useState, useCallback } from 'react'
 import { Copy, Check } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import type { ColorPalette } from '../theme-tokens'
-import type { ContextBreakdownCategory, ModelBreakdown } from '../../shared/types-engine'
+import type { ContextBreakdownCategory, ModelBreakdown } from '@ion/shared/types-engine'
 import { rError } from '../rendererLogger'
 
 // ─── Tier badge ──────────────────────────────────────────────────────────────

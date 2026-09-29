@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { filterBranches, filterConversationWorktrees, inventoryEntryToWorktree } from '../new-conversation-workspaces'
-import type { WorktreeInventoryEntry } from '../../../shared/types'
+import type { WorktreeInventoryEntry } from '@ion/shared/types'
 
 const active: WorktreeInventoryEntry = { worktreePath: '/worktrees/feature', branchName: 'wt/feature', label: 'feature', title: 'Feature work', sourceBranch: 'main', head: 'abc', lastCommitSubject: '', isDirty: false, unlandedCommitCount: 0, needsSync: false, safeToDiscard: false }
 const landed: WorktreeInventoryEntry = { ...active, worktreePath: '/worktrees/done', branchName: 'wt/done', label: 'done', title: 'Done work', landedAt: 1 }

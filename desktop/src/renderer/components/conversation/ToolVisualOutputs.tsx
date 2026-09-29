@@ -5,7 +5,7 @@ import { ChartOutputCard } from './ChartOutputCard'
 import { ChartMovedMarker } from './ChartMovedMarker'
 import type { ChartRenderIndex } from './chart-revisions'
 import { rInfo } from '../../rendererLogger'
-import type { Message } from '../../../shared/types'
+import type { Message } from '@ion/shared/types'
 
 /**
  * ToolVisualOutputs — the always-visible deliverables a group of tool rows

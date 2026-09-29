@@ -6,7 +6,7 @@ import {
   SETTLED_HISTORY_CUTOFF_DAYS,
   SETTLED_HISTORY_PAGE_SIZE,
 } from './settled-history'
-import type { TabState, WorktreeInventoryEntry } from '../../../shared/types'
+import type { TabState, WorktreeInventoryEntry } from '@ion/shared/types'
 
 function tab(overrides: Partial<TabState>): TabState {
   return {

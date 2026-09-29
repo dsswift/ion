@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   humanAuthSource, providerAuthBadge, providerCliBackend,
 } from '../provider-auth-labels'
-import type { ProviderEntry } from '../../../../shared/types-models'
+import type { ProviderEntry } from '@ion/shared/types-models'
 
 describe('humanAuthSource', () => {
   it('maps the delegated-CLI auth sources', () => {

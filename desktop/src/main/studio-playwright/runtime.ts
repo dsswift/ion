@@ -15,13 +15,13 @@
  */
 import type { Page } from 'playwright-core'
 import { log as _log, warn as _warn } from '../logger'
-import { tabIdFromKey } from '../../shared/session-key'
-import type { BrowserEmulationState, StudioBrowserTabInfo } from '../../shared/studio-browser-types'
+import { tabIdFromKey } from '@ion/shared/session-key'
+import type { BrowserEmulationState, StudioBrowserTabInfo } from '@ion/shared/studio-browser-types'
 import { applyEmulation, emulationSession } from './emulation'
 import { pageForTarget } from './connection'
 import { studioPlaywrightHost } from './host'
 import { ensureBrowserView, isBrowserViewVisible } from '../studio-browser-views'
-import { browserPartitionFor } from '../../shared/studio-browser-partitions'
+import { browserPartitionFor } from '@ion/shared/studio-browser-partitions'
 import { OperationQueues } from './operation-queue'
 import { browserCommandSender } from './renderer-bridge'
 

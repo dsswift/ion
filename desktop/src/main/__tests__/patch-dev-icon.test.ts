@@ -54,6 +54,21 @@ afterEach(() => {
   fs.rmSync(workdir, { recursive: true, force: true })
 })
 
+/**
+ * Create the fake electron package, package.json included.
+ *
+ * The manifest is not decoration: resolution finds a package by its
+ * package.json, because that is what distinguishes an installed package from
+ * a leftover directory — and it is what lets the same lookup answer correctly
+ * whether npm put electron under desktop/ or hoisted it to the workspace root.
+ */
+function installFakeElectron(...below: string[]): string {
+  const pkg = join(workdir, 'node_modules', 'electron')
+  fs.mkdirSync(below.length > 0 ? join(pkg, ...below) : pkg, { recursive: true })
+  fs.writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: 'electron', version: '35.7.5' }))
+  return pkg
+}
+
 function writeIcon(): void {
   fs.mkdirSync(join(workdir, 'resources'), { recursive: true })
   fs.writeFileSync(join(workdir, 'resources', 'icon.icns'), 'fake-icon-bytes')
@@ -80,7 +95,7 @@ describe('patchDevIcon', () => {
     // package has no dist/ (extracted bundle) and no install.js to self-heal
     // with. This is the exact shape that previously aborted `npm install`.
     writeIcon()
-    fs.mkdirSync(join(workdir, 'node_modules', 'electron'), { recursive: true })
+    installFakeElectron()
     // Deliberately do NOT create dist/ or install.js.
 
     expect(() => patchDevIcon(workdir)).not.toThrow()
@@ -91,9 +106,9 @@ describe('patchDevIcon', () => {
     if (!isDarwin) return
 
     const bundleResources = join(
-      workdir, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'Resources',
+      installFakeElectron('dist', 'Electron.app', 'Contents', 'Resources'),
+      'dist', 'Electron.app', 'Contents', 'Resources',
     )
-    fs.mkdirSync(bundleResources, { recursive: true })
     writeIcon()
 
     patchDevIcon(workdir)

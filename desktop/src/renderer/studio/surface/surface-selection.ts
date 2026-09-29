@@ -7,7 +7,7 @@
  * conversation owes an answer — which is why it does not fit the ordinary
  * update-one-conversation shape the rest of the store uses.
  */
-import { QUESTIONS_SURFACE_ID, type NotificationTab, type PinnableSingletonId, type SurfaceConversationPersisted } from '../../../shared/studio-surface-types'
+import { QUESTIONS_SURFACE_ID, type NotificationTab, type PinnableSingletonId, type SurfaceConversationPersisted } from '@ion/shared/studio-surface-types'
 import { usePreferencesStore } from '../../preferences'
 import { rDebug } from '../../rendererLogger'
 

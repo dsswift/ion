@@ -10,7 +10,7 @@ import type {
   StudioFurnitureManifest,
   StudioRole,
   StudioZone,
-} from '../../../../shared/types-studio'
+} from '@ion/shared/types-studio'
 
 // ─── Roster (derived from live agent state) ───
 

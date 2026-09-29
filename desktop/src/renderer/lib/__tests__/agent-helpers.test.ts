@@ -62,8 +62,8 @@ const DOT_COLORS = {
   statusIdle: '#8a8a80',
 }
 
-function agentWith(status: string): import('../../../shared/types').AgentStateUpdate {
-  return { name: 'a', status, metadata: {} } as import('../../../shared/types').AgentStateUpdate
+function agentWith(status: string): import('@ion/shared/types').AgentStateUpdate {
+  return { name: 'a', status, metadata: {} } as import('@ion/shared/types').AgentStateUpdate
 }
 
 describe('getStatusDot', () => {

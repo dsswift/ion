@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { CheckCircle, Circle, CircleNotch } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
-import type { Message } from '../../shared/types'
+import type { Message } from '@ion/shared/types'
 
 interface TodoItem {
   id: string

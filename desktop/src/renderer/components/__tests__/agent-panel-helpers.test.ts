@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { childrenOfDispatch, rootDispatches, selectAgentDepths, isRootLevelAgent, childAgentsOf } from '../agent-panel-helpers'
-import type { DispatchTelemetryEntry } from '../../../shared/types-engine'
-import type { AgentStateUpdate } from '../../../shared/types-engine'
+import type { DispatchTelemetryEntry } from '@ion/shared/types-engine'
+import type { AgentStateUpdate } from '@ion/shared/types-engine'
 
 function entry(overrides: Partial<DispatchTelemetryEntry>): DispatchTelemetryEntry {
   return {

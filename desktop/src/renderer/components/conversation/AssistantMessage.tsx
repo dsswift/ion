@@ -7,7 +7,7 @@ import { useNavigableText, remarkNavigableLinks } from '../../hooks/useNavigable
 import { makeMarkdownComponents } from './markdownRenderers'
 import { CopyButton } from './CopyButton'
 import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
-import type { Message } from '../../../shared/types'
+import type { Message } from '@ion/shared/types'
 import { rWarn } from '../../rendererLogger'
 import type { FileClickModifiers } from '../../lib/open-file-intent'
 

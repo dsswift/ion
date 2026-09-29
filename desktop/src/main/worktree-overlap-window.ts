@@ -4,7 +4,7 @@ import { join } from "path";
 import { log as _log, error as _error } from "./logger";
 import { state } from "./state";
 import { applyStudioActivationPolicy } from "./studio-window-manager";
-import type { WorktreeOverlapContext } from "../shared/types-worktree-overlap";
+import type { WorktreeOverlapContext } from "@ion/shared/types-worktree-overlap";
 
 const TAG = "worktree.overlap.window";
 function log(msg: string, fields?: Record<string, unknown>): void {

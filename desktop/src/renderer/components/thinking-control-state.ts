@@ -1,5 +1,5 @@
-import type { ThinkingEffort } from '../../shared/types-session'
-import { thinkingOptionsForMode } from '../../shared/thinking-options'
+import type { ThinkingEffort } from '@ion/shared/types-session'
+import { thinkingOptionsForMode } from '@ion/shared/thinking-options'
 
 /* ─── Thinking Control State Resolver ─── */
 

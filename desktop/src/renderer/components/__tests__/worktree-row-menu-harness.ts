@@ -10,7 +10,7 @@
 // test file. Vitest module mocking is per-file and hoisted above imports, so a
 // shared version would not apply to the importing suite.
 import { act } from 'react'
-import type { WorktreeAppraisalWire, WorktreeInventoryEntry } from '../../../shared/types'
+import type { WorktreeAppraisalWire, WorktreeInventoryEntry } from '@ion/shared/types'
 
 export const WT = '/Users/dev/.ion/worktrees/ion-a3f1'
 export const REPO = '/Users/dev/src/ion'

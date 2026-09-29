@@ -9,7 +9,7 @@
  * a change is remembered. `maximized` is window-only.
  */
 import { rDebug } from "../../rendererLogger";
-import type { SurfaceConversationPersisted } from "../../../shared/studio-surface-types";
+import type { SurfaceConversationPersisted } from "@ion/shared/studio-surface-types";
 import type { SurfaceState } from "./surface-store";
 
 type Set = (partial: Partial<SurfaceState>) => void;

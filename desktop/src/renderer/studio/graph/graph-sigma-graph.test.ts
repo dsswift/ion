@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import Graph from 'graphology'
 import { placeNewNode, syncSigmaGraph, buildCoarsenedGraph } from './graph-sigma-graph'
-import type { GraphModel } from '../../../shared/graph-model-types'
+import type { GraphModel } from '@ion/shared/graph-model-types'
 
 function baseModel(overrides?: Partial<GraphModel>): GraphModel {
   return {

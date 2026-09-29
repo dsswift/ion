@@ -17,7 +17,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, it, expect } from 'vitest'
 import { FileExplorerTreeRow } from './FileExplorerTreeRow'
-import type { FsEntry } from '../../shared/types'
+import type { FsEntry } from '@ion/shared/types'
 
 type RowColors = React.ComponentProps<typeof FileExplorerTreeRow>['colors']
 

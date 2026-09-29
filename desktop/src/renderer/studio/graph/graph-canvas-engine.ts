@@ -17,7 +17,7 @@ import { harvestPositions } from './graph-sigma-graph'
 import { resolveNodeOverlaps } from './graph-overlap'
 import type { HullOverlayHandle } from './cluster/hull-overlay'
 import type { LayoutState } from './graph-store-types'
-import type { LayoutForces } from '../../../shared/graph-view-types'
+import type { LayoutForces } from '@ion/shared/graph-view-types'
 
 /**
  * Stale replies in one generation past which the log warns. One is the

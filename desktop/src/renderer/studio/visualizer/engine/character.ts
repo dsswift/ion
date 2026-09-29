@@ -6,7 +6,7 @@
  * States: idle → walking → typing/reading (at desk), wandering pauses,
  * resting (break room), stretching (done celebration), slumped (error).
  */
-import type { StudioDirection } from '../../../../shared/types-studio'
+import type { StudioDirection } from '@ion/shared/types-studio'
 import type { Point } from '../generation/types'
 
 export type CharState =

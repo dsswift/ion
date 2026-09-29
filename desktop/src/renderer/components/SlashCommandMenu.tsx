@@ -8,7 +8,7 @@ import { useInteractiveState } from '../hooks/useInteractiveState'
 import { useViewportClamp } from '../hooks/useViewportClamp'
 import { transitions } from '../theme-tokens'
 import { zoomRect, zoomViewport } from '../viewport-zoom'
-import { fuzzyFilterAndSort } from '../../shared/fuzzy-match'
+import { fuzzyFilterAndSort } from '@ion/shared/fuzzy-match'
 
 export interface SlashCommand {
   command: string

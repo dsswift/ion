@@ -5,7 +5,7 @@ import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
 import { useImageDataUrl } from './ImageViewer'
-import type { FileAttachment } from '../../shared/types'
+import type { FileAttachment } from '@ion/shared/types'
 
 const ATTACHMENT_CARD_WIDTH = 160
 const ATTACHMENT_PREVIEW_HEIGHT = 104

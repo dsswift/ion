@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('../rendererLogger', () => ({ rDebug: vi.fn(), rError: vi.fn(), rInfo: vi.fn(), rWarn: vi.fn() }))
 
 import { useGitGraphFocus } from './git/useGitGraphFocus'
-import type { GitCommit } from '../../shared/types'
+import type { GitCommit } from '@ion/shared/types'
 
 const commit = (hash: string): GitCommit => ({
   hash: hash.slice(0, 8),

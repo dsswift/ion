@@ -22,7 +22,7 @@ vi.mock('../../theme', () => ({
 vi.mock('../PopoverLayer', () => ({
   usePopoverLayer: () => null,
 }))
-vi.mock('../../../shared/fuzzy-match', () => ({
+vi.mock('@ion/shared/fuzzy-match', () => ({
   fuzzyFilterAndSort: (_: string, items: unknown[]) => items,
 }))
 // Same reason: the viewport clamp reads the operator's UI zoom from the

@@ -7,8 +7,8 @@
  * chord and no hint, or a hint for a chord nothing dispatches.
  */
 
-import type { SingletonId } from '../../../shared/studio-surface-types'
-import { NOTIFICATION_SURFACE_ID } from '../../../shared/studio-surface-types'
+import type { SingletonId } from '@ion/shared/studio-surface-types'
+import { NOTIFICATION_SURFACE_ID } from '@ion/shared/studio-surface-types'
 
 /** Every canvas tab id that owns a command, including the notification tab. */
 export type CanvasTabId = SingletonId | typeof NOTIFICATION_SURFACE_ID

@@ -4,7 +4,7 @@
  * or pool iteration order. Tint application happens at draw time; casting
  * only assigns the character id and accent color.
  */
-import type { StudioRole } from '../../../../shared/types-studio'
+import type { StudioRole } from '@ion/shared/types-studio'
 import { createRng, deriveSeed } from '../generation/prng'
 
 export interface CastableCharacter {

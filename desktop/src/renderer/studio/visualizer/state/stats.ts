@@ -7,7 +7,7 @@
  * events (conversation cost samples for the $/min sparkline). Timestamps
  * are stamped by the caller (presentation layer — never generation/sim).
  */
-import type { NormalizedEvent } from '../../../../shared/types'
+import type { NormalizedEvent } from '@ion/shared/types'
 
 export interface AgentTotals {
   costUsd: number

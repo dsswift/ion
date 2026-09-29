@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { generateOffice } from '../index'
 import { deriveRoster } from '../roster'
 import { department, rootAgent, testTheme } from './gen-helpers'
-import type { AgentStateUpdate } from '../../../../../shared/types'
+import type { AgentStateUpdate } from '@ion/shared/types'
 
 /**
  * Property-style invariant sweep: across many seeds and roster shapes, every

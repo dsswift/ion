@@ -11,8 +11,8 @@
  * verbatim from the engine fixture so the three layers prove the same
  * reality.
  */
-import type { AgentStateUpdate } from '../../../shared/types'
-import type { DispatchInfo } from '../../../shared/types-engine'
+import type { AgentStateUpdate } from '@ion/shared/types'
+import type { DispatchInfo } from '@ion/shared/types-engine'
 
 // ── Engine fixture IDs (verbatim from engine JSON) ──
 

@@ -10,7 +10,7 @@
  * by a newer Ion, or a record damaged on disk, must degrade to "not listed"
  * rather than breaking the attachments panel for every other item in it.
  */
-import type { ResourceItem } from '../../shared/types-engine'
+import type { ResourceItem } from '@ion/shared/types-engine'
 
 /** The resource kind charts publish under. Mirrors the main-process constant. */
 export const CHART_RESOURCE_KIND = 'chart'

@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { computeCoarsening, isCoarsened, COARSEN_RATIO_THRESHOLD, MIN_COARSEN_MEMBERS, syntheticClusterNodeId } from './coarsen'
-import type { GraphModel, GraphNode } from '../../../../shared/graph-model-types'
+import type { GraphModel, GraphNode } from '@ion/shared/graph-model-types'
 
 function docNode(id: string, community: number): GraphNode {
   return { id, kind: 'document', label: id, frontMatter: {}, sizeBytes: 0, modifiedMs: 0, degree: 0, community, centrality: 0, orphan: false }

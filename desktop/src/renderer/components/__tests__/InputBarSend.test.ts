@@ -16,7 +16,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { dispatchSend, type SendGateDeps, type SendSnapshot } from '../InputBarSend'
-import { PROMPT_ACCEPTED, promptRefused } from '../../../shared/prompt-submit-result'
+import { PROMPT_ACCEPTED, promptRefused } from '@ion/shared/prompt-submit-result'
 
 function deps(snap: SendSnapshot, submitResult: unknown = undefined) {
   const calls: string[] = []

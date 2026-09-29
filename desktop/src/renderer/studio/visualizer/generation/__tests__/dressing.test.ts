@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { generateOffice } from '../index'
 import { deriveRoster } from '../roster'
 import { department, rootAgent, testTheme } from './gen-helpers'
-import type { StudioFurnitureManifest } from '../../../../../shared/types-studio'
+import type { StudioFurnitureManifest } from '@ion/shared/types-studio'
 
 describe('department rooms with inner lead offices', () => {
   it('every lead department gets one room: inner office for the lead, desks for every specialist', () => {

@@ -3,7 +3,7 @@
  * is, derived from the roster. Sizes are in interior floor tiles; partition
  * adds the walls.
  */
-import type { StudioZone } from '../../../../shared/types-studio'
+import type { StudioZone } from '@ion/shared/types-studio'
 import type { Roster, RosterAgent } from './types'
 
 export interface RoomSpec {

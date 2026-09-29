@@ -10,7 +10,7 @@
  * Everything is sorted by agent name so the derived roster (and therefore the
  * generated office) is independent of agent-state arrival order.
  */
-import type { AgentStateUpdate } from '../../../../shared/types'
+import type { AgentStateUpdate } from '@ion/shared/types'
 import {
   childAgentsOf,
   getAgentColor,

@@ -50,7 +50,7 @@ vi.mock('framer-motion', () => ({
     React.createElement(React.Fragment, null, children),
 }))
 
-import type { Message } from '../../../../shared/types'
+import type { Message } from '@ion/shared/types'
 import { ToolGroup } from '../ToolGroup'
 
 function toolMsg(id: string, status: Message['toolStatus'], name = 'Read'): Message {

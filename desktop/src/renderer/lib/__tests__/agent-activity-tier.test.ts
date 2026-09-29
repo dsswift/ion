@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { resolveAgentDotModel, resolveDispatchDot } from '../agent-dot-model'
 import { activityTierForAgent, activityTierForDispatch, sortAgents, type StatusDotColors } from '../agent-helpers'
-import type { AgentStateUpdate } from '../../../shared/types'
-import type { DispatchInfo } from '../../../shared/types-engine'
+import type { AgentStateUpdate } from '@ion/shared/types'
+import type { DispatchInfo } from '@ion/shared/types-engine'
 
 const COLORS: StatusDotColors = {
   statusRunning: 'RUNNING',

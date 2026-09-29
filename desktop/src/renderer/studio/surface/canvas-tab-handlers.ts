@@ -9,7 +9,7 @@
 
 import { useSurfaceStore } from './surface-store'
 import { CANVAS_TAB_COMMANDS, type CanvasTabId } from './canvas-tab-commands'
-import { NOTIFICATION_SURFACE_ID, type SingletonId } from '../../../shared/studio-surface-types'
+import { NOTIFICATION_SURFACE_ID, type SingletonId } from '@ion/shared/studio-surface-types'
 import type { ShortcutHandlers } from '../../shortcuts/shortcut-types'
 import { rDebug } from '../../rendererLogger'
 

@@ -2,8 +2,8 @@ import React from 'react'
 import { ArrowsClockwise, CaretDown, CaretRight, CircleNotch, DotsThree, Hammer, Terminal } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { Tooltip } from '../../components/git/Tooltip'
-import type { DirConversation } from '../../../shared/worktree-conversations'
-import type { IntegrationWorkspace } from '../../../shared/types'
+import type { DirConversation } from '@ion/shared/worktree-conversations'
+import type { IntegrationWorkspace } from '@ion/shared/types'
 
 /** The compact Inbox header for one integration bench. */
 export function InboxBenchBar({

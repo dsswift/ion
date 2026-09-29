@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import { CaretRight, CaretDown, ArrowsInSimple } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
-import type { Message } from '../../../shared/types'
+import type { Message } from '@ion/shared/types'
 
 interface CompactionRowProps {
   message: Message

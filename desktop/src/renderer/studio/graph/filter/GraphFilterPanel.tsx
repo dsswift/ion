@@ -16,7 +16,7 @@ import React from 'react'
 import { useColors } from '../../../theme'
 import { buildDimensionCatalog } from '../channels/dimension-catalog'
 import { useGraphStore } from '../graph-store'
-import type { GraphFilterRule, GraphFilterMatch, TagTreatment } from '../../../../shared/graph-view-types'
+import type { GraphFilterRule, GraphFilterMatch, TagTreatment } from '@ion/shared/graph-view-types'
 
 const TAG_TREATMENTS: { value: TagTreatment; label: string; hint: string }[] = [
   { value: 'filter', label: 'Filter', hint: 'Topics are filterable and bindable but draw no node' },

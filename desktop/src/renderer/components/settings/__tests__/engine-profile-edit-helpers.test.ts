@@ -16,7 +16,7 @@ import {
   editToProfile,
   emptyProfileEdit,
 } from '../engine-profile-edit-helpers'
-import type { EngineProfile } from '../../../../shared/types'
+import type { EngineProfile } from '@ion/shared/types'
 
 describe('profileToEdit', () => {
   it('maps defaultMode:plan from profile to edit state', () => {

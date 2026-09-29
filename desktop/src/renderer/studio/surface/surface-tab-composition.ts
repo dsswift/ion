@@ -1,12 +1,12 @@
-import { composeTabs } from "../../../shared/studio-surface-ordering";
+import { composeTabs } from "@ion/shared/studio-surface-ordering";
 import type {
   NotificationTab,
   PinnableSingletonId,
   ScratchTab,
   SurfaceConversationPersisted,
   SurfaceTab,
-} from "../../../shared/studio-surface-types";
-import { QUESTIONS_SURFACE_ID } from "../../../shared/studio-surface-types";
+} from "@ion/shared/studio-surface-types";
+import { QUESTIONS_SURFACE_ID } from "@ion/shared/studio-surface-types";
 
 /** Compose the current conversation tabs with global and transient tabs. */
 export function visibleSurfaceTabs(

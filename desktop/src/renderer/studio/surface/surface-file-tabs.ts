@@ -5,8 +5,8 @@
  * preserve `agentBrowserInstanceId` through `normalizeTabs`: opening a file
  * must never disturb which browser tab the agent is linked to.
  */
-import { fileTabId, previewTabId, type SurfaceConversationPersisted } from '../../../shared/studio-surface-types'
-import { normalizeTabs } from '../../../shared/studio-surface-ordering'
+import { fileTabId, previewTabId, type SurfaceConversationPersisted } from '@ion/shared/studio-surface-types'
+import { normalizeTabs } from '@ion/shared/studio-surface-ordering'
 
 /** Open a file tab, or focus it when already present. */
 export function openFileTabIn(

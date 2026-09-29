@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react'
-import type { WorktreeOverlapAnalysis, WorktreeOverlapPair } from '../../shared/types-worktree-overlap'
+import type { WorktreeOverlapAnalysis, WorktreeOverlapPair } from '@ion/shared/types-worktree-overlap'
 import { useColors } from '../theme'
 
 export function OverlapIcicle({ analysis, pair, onSelectPath }: {

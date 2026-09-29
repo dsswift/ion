@@ -34,8 +34,8 @@
  *   dispatch_activity (tool_*)       → per-agent activity (tooltip text +
  *                                      typing/reading flavor)
  */
-import type { NormalizedEvent } from "../../../../shared/types";
-import type { AgentStateUpdate } from "../../../../shared/types";
+import type { NormalizedEvent } from "@ion/shared/types";
+import type { AgentStateUpdate } from "@ion/shared/types";
 import { getDispatches, meta } from "../../../lib/agent-helpers";
 
 export type Intent =

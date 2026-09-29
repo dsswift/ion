@@ -1,4 +1,4 @@
-import type { Message } from '../../../shared/types'
+import type { Message } from '@ion/shared/types'
 
 /**
  * Serialize conversation messages into compact text context, filtering out

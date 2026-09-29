@@ -20,7 +20,7 @@ import { useGraphStore } from './graph-store'
 import { buildChannelScales } from './channels/build-channel-scales'
 import { CATEGORICAL_SHAPE_CYCLE, type Scale } from './channels/scales'
 import { categoricalColorPalette } from './channels/categorical-palette'
-import type { ChannelBindings } from '../../../shared/graph-view-types'
+import type { ChannelBindings } from '@ion/shared/graph-view-types'
 import type { ColorPalette } from '../../theme-tokens'
 
 type ChannelName = keyof ChannelBindings

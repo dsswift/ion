@@ -13,7 +13,7 @@ import React, { useEffect, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { GraphRow, ROW_HEIGHT } from '../GitGraphRow'
 import { CommitDetailsPane } from './CommitDetailsPane'
-import type { GitCommit, GitCommitDetail, GitCommitFile } from '../../../shared/types'
+import type { GitCommit, GitCommitDetail, GitCommitFile } from '@ion/shared/types'
 import type { GitGraphNode } from '../../utils/gitGraphLayout'
 import type { GraphFocusRequest } from './useGitGraphFocus'
 

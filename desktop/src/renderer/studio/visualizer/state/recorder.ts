@@ -4,7 +4,7 @@
  * Consecutive identical snapshots (heartbeats) dedupe by status signature.
  * Presentation-layer timestamps (Date.now at ingestion) — never sim/gen.
  */
-import type { AgentStateUpdate, NormalizedEvent } from '../../../../shared/types'
+import type { AgentStateUpdate, NormalizedEvent } from '@ion/shared/types'
 
 export type ReplayFrame =
   | { atMs: number; kind: 'snapshot'; agents: AgentStateUpdate[] }

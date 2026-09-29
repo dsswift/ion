@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { dispatchChainOf } from '../chain'
-import type { AgentStateUpdate } from '../../../../../shared/types'
+import type { AgentStateUpdate } from '@ion/shared/types'
 
 function agent(name: string, metadata: Record<string, unknown> = {}): AgentStateUpdate {
   return { name, status: 'running', metadata } as unknown as AgentStateUpdate

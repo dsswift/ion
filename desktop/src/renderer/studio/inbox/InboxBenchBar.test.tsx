@@ -2,8 +2,8 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { IntegrationWorkspace } from '../../../shared/types'
-import type { DirConversation } from '../../../shared/worktree-conversations'
+import type { IntegrationWorkspace } from '@ion/shared/types'
+import type { DirConversation } from '@ion/shared/worktree-conversations'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 

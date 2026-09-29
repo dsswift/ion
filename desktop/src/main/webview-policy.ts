@@ -19,7 +19,7 @@
 import { app, session, shell, type Session, type WebContents } from 'electron'
 import { log as _log, warn as _warn } from './logger'
 import { requestStudioBrowserTab } from './studio-browser-tab-request'
-import { PREVIEW_PARTITION_PREFIX, previewPartitionFor } from '../shared/studio-browser-partitions'
+import { PREVIEW_PARTITION_PREFIX, previewPartitionFor } from '@ion/shared/studio-browser-partitions'
 import { consumeAltHeld, watchGuestModifiers } from './guest-modifiers'
 
 function log(msg: string, fields?: Record<string, unknown>): void {

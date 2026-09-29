@@ -10,7 +10,7 @@ import { existsSync, readdirSync, readFileSync } from 'fs'
 import { join, resolve } from 'path'
 import { loadTheme, type StudioAssetSource } from '../loader'
 import { nullDecode } from './test-helpers'
-import type { StudioRawPackBundle } from '../../../../../shared/types-studio'
+import type { StudioRawPackBundle } from '@ion/shared/types-studio'
 
 const THEMES_ROOT = resolve(__dirname, '../../../../../../resources/studio/themes')
 

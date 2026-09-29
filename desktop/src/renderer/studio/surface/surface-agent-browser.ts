@@ -17,8 +17,8 @@
  * different tab happened to close. The pointer goes null and the next agent
  * call creates a fresh tab.
  */
-import { browserTabId, isBrowserTab, type BrowserSessionMode, type SurfaceConversationPersisted, type SurfaceTab } from '../../../shared/studio-surface-types'
-import type { BrowserEmulationState, StudioBrowserTabInfo } from '../../../shared/studio-browser-types'
+import { browserTabId, isBrowserTab, type BrowserSessionMode, type SurfaceConversationPersisted, type SurfaceTab } from '@ion/shared/studio-surface-types'
+import type { BrowserEmulationState, StudioBrowserTabInfo } from '@ion/shared/studio-browser-types'
 
 /** Find one conversation's linked browser descriptor, when it still exists. */
 export function linkedBrowserTab(conversation: SurfaceConversationPersisted): Extract<SurfaceTab, { kind: 'browser' }> | null {

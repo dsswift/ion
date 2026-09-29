@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { AgentStateUpdate } from '../../shared/types'
+import type { AgentStateUpdate } from '@ion/shared/types'
 import { getDispatches, isRootLevelAgent, meta } from '../lib/agent-helpers'
 
 /**

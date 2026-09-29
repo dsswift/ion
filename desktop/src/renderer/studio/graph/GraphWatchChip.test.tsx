@@ -9,7 +9,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { GraphWatchChip, watchChipText } from './GraphWatchChip'
 import { useGraphStore } from './graph-store'
-import type { CorpusRootStatus, CorpusSnapshot, CorpusWatchState } from '../../../shared/graph-corpus-types'
+import type { CorpusRootStatus, CorpusSnapshot, CorpusWatchState } from '@ion/shared/graph-corpus-types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 

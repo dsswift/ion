@@ -4,7 +4,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useColors } from '../../theme'
 import { TableScrollWrapper } from './markdownRenderers'
-import type { Message } from '../../../shared/types'
+import type { Message } from '@ion/shared/types'
 import { openClickedLink } from '../../lib/open-link'
 
 // Harness messages are markdown-formatted by convention. Extensions like

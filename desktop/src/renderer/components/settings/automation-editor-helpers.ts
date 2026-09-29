@@ -2,7 +2,7 @@ import type {
   AutomationCondition,
   AutomationDefinition,
   AutomationStep,
-} from "../../../shared/types-automation";
+} from "@ion/shared/types-automation";
 
 type Template = {
   id: string;

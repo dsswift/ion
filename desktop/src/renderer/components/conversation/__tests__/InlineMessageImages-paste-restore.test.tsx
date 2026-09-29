@@ -36,7 +36,7 @@ beforeEach(() => {
 // ── Imports (after mocks) ─────────────────────────────────────────────────────
 
 import { deriveMessageImages, InlineMessageImages } from '../InlineMessageImages'
-import type { FileAttachment } from '../../../../shared/types'
+import type { FileAttachment } from '@ion/shared/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 import React from 'react'
 import { CheckCircle, PushPin, Sparkle, WarningCircle } from '@phosphor-icons/react'
-import type { WorktreeOverlapCohort, WorktreeOverlapSolverResult } from '../../shared/types-worktree-overlap'
+import type { WorktreeOverlapCohort, WorktreeOverlapSolverResult } from '@ion/shared/types-worktree-overlap'
 import { useColors } from '../theme'
 
 export function OverlapSolverPanel({ solver, onAdopt, onAutoOrder, onApply }: { solver: WorktreeOverlapSolverResult; onAdopt(paths: string[]): void; onAutoOrder(): void; onApply(): void }): React.JSX.Element {

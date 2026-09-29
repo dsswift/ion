@@ -15,8 +15,8 @@
 // only together do they pin that the two subjects stay distinct.
 import { describe, it, expect } from 'vitest'
 import { resolveAgentDotModel, resolveDispatchDot } from '../agent-dot-model'
-import type { DispatchInfo } from '../../../shared/types-engine'
-import type { AgentStateUpdate } from '../../../shared/types'
+import type { DispatchInfo } from '@ion/shared/types-engine'
+import type { AgentStateUpdate } from '@ion/shared/types'
 import type { StatusDotColors } from '../agent-helpers'
 
 // Distinct sentinel per token so an assertion names the exact theme token.

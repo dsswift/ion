@@ -10,8 +10,8 @@
 import type Graph from 'graphology'
 import { neighborhood, type NeighborhoodDirection } from '../scope/neighborhood'
 import { passesFilters } from './filter-rules'
-import type { GraphFilterRule } from '../../../../shared/graph-view-types'
-import type { GraphModel } from '../../../../shared/graph-model-types'
+import type { GraphFilterRule } from '@ion/shared/graph-view-types'
+import type { GraphModel } from '@ion/shared/graph-model-types'
 
 export type ScopeMode = 'corpus' | 'neighborhood'
 

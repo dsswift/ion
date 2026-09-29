@@ -12,8 +12,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { GraphFilterPanel } from './filter/GraphFilterPanel'
 import { GraphBindingPanel } from './GraphBindingPanel'
 import { useGraphStore } from './graph-store'
-import { GRAPH_VIEW_DEFAULTS, type GraphViewConfig, type TagTreatment } from '../../../shared/graph-view-types'
-import type { GraphModel } from '../../../shared/graph-model-types'
+import { GRAPH_VIEW_DEFAULTS, type GraphViewConfig, type TagTreatment } from '@ion/shared/graph-view-types'
+import type { GraphModel } from '@ion/shared/graph-model-types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 

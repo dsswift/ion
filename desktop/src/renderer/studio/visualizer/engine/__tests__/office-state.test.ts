@@ -10,7 +10,7 @@ import { deriveRoster } from '../../generation/roster'
 import { department, testTheme } from '../../generation/__tests__/gen-helpers'
 import { OfficeState, MANAGER_ID } from '../office-state'
 import { diffSnapshots, eventIntents } from '../mapping'
-import type { AgentStateUpdate, NormalizedEvent } from '../../../../../shared/types'
+import type { AgentStateUpdate, NormalizedEvent } from '@ion/shared/types'
 import type { CastableCharacter } from '../../theme/casting'
 
 const POOL: CastableCharacter[] = [{ id: 'hero', roles: ['manager', 'lead', 'specialist'], tintable: true }]

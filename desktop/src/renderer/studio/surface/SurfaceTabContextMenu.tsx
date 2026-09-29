@@ -10,7 +10,7 @@ import { useColors } from '../../theme'
 import { useAnchoredPopover } from '../../hooks/useAnchoredPopover'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
 import { transitions } from '../../theme-tokens'
-import { isPinnableSingleton, type SurfaceTab } from '../../../shared/studio-surface-types'
+import { isPinnableSingleton, type SurfaceTab } from '@ion/shared/studio-surface-types'
 import { useSurfaceStore } from './surface-store'
 import { scrollableMenuStyle } from '../../menu-viewport'
 

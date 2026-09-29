@@ -4,7 +4,7 @@ import {
   resolveClearingCommand,
   clearingCommandMessage,
 } from "../InputBarClearingCommand";
-import type { DiscoveredCommand } from "../../../shared/types";
+import type { DiscoveredCommand } from "@ion/shared/types";
 
 function cmd(
   name: string,

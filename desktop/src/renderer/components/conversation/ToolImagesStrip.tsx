@@ -2,7 +2,7 @@ import React, { useMemo } from 'react'
 import { deriveMessageImages } from './InlineMessageImages'
 import { ImageGallery, type GalleryImage } from './ImageGallery'
 import { rInfo } from '../../rendererLogger'
-import type { Message } from '../../../shared/types'
+import type { Message } from '@ion/shared/types'
 
 /**
  * ToolImagesStrip — always-visible strip of the images produced by a group of

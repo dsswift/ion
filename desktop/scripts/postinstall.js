@@ -8,6 +8,7 @@ const { execFileSync } = require('child_process')
 const { copyFileSync, existsSync, utimesSync } = require('fs')
 const path = require('path')
 
+const { packageDir, packagePath } = require('./resolve-package')
 const { patchZustand } = require('./patch-zustand')
 const { patchNsisArm64 } = require('./patch-nsis-arm64')
 
@@ -30,15 +31,23 @@ function patchDevIcon(desktopDir = DESKTOP_DIR) {
   // counterpart on Windows or Linux.
   if (process.platform !== 'darwin') return
 
-  const electronApp = path.join(desktopDir, 'node_modules', 'electron', 'dist', 'Electron.app')
-  const bundleResources = path.join(electronApp, 'Contents', 'Resources')
   const iconSrc = path.join(desktopDir, 'resources', 'icon.icns')
-  const electronInstall = path.join(desktopDir, 'node_modules', 'electron', 'install.js')
 
   if (!existsSync(iconSrc)) {
     console.log('patch-dev-icon: no resources/icon.icns; nothing to patch')
     return
   }
+
+  // Wherever npm put electron — desktop/node_modules under a plain install,
+  // the workspace root under a hoisted one.
+  const electronDir = packageDir('electron', desktopDir)
+  if (!electronDir) {
+    console.error('patch-dev-icon: electron is not installed; skipping icon patch (non-fatal)')
+    return
+  }
+  const electronApp = path.join(electronDir, 'dist', 'Electron.app')
+  const bundleResources = path.join(electronApp, 'Contents', 'Resources')
+  const electronInstall = path.join(electronDir, 'install.js')
 
   if (!existsSync(electronApp)) {
     if (existsSync(electronInstall)) {
@@ -74,10 +83,8 @@ function patchDevIcon(desktopDir = DESKTOP_DIR) {
 }
 
 function main() {
-  patchZustand(path.join(DESKTOP_DIR, 'node_modules', 'zustand', 'esm', 'react.mjs'))
-  patchNsisArm64(
-    path.join(DESKTOP_DIR, 'node_modules', 'app-builder-lib', 'templates', 'nsis', 'multiUser.nsh'),
-  )
+  patchZustand(packagePath('zustand', 'esm', 'react.mjs'))
+  patchNsisArm64(packagePath('app-builder-lib', 'templates', 'nsis', 'multiUser.nsh'))
   patchDevIcon()
 
   if (process.platform !== 'win32') {

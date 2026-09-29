@@ -4,7 +4,7 @@
  * still be findable, and choosing it brings it into scope).
  */
 
-import type { GraphModel } from '../../../../shared/graph-model-types'
+import type { GraphModel } from '@ion/shared/graph-model-types'
 
 export interface SearchEntry {
   id: string
