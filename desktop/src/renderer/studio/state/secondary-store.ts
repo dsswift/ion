@@ -7,9 +7,9 @@
  * shows everything at once and every action is routed back to the
  * server that owns the tab it names (`connection/tab-environment.ts`).
  *
- * Importing the sessionStore module in this window already skips
- * persistence (window-role detection). This module applies the second half
- * of the mirror discipline: every FORWARDED action is swapped for a
+ * Importing the sessionStore module never wires persistence; only the server
+ * boot does that. This module applies the rest of the mirror discipline: it
+ * declares this process a mirror, and every FORWARDED action is swapped for a
  * `studio_action` round trip over the local server's Studio wire (the same
  * seam a remote environment uses), so owner-durable mutations execute in the
  * server process that actually owns `useSessionStore` — Zustand actions are
@@ -36,6 +36,7 @@ import type { StudioUserMessageEcho, StudioHistoryReplace } from '@ion/shared/ty
 // every existing import path keeps resolving.
 export { hydrateWorktreeFromSync } from './secondary-store-worktree-sync'
 import { rDebug, rWarn } from '../../rendererLogger'
+import { declareMirrorWindow } from '@ion/server/lib/window-role'
 import { host, action } from '../../host/host-instance'
 import { reconcileAttachmentTabs, reconcileForwardedAttachments, reconcileForwardedRewind, reconcileForwardedCloseIntent, applyOptimisticDraft } from './secondary-store-reconcile'
 
@@ -442,6 +443,9 @@ export function initHistoryReplace(): () => void {
 export function applyMirrorOverrides(): string[] {
   if (applied) return []
   applied = true
+  // Before any reducer runs here: owner-only side effects in the shared
+  // reducers check this, and they must not repeat in a Studio client.
+  declareMirrorWindow()
   const state = useSessionStore.getState() as unknown as Record<string, unknown>
   const overrides: Record<string, unknown> = {}
   const missing: string[] = []

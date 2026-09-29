@@ -214,7 +214,12 @@ describe('applyMirrorOverrides', () => {
     const before = useSessionStore.getState() as unknown as Record<string, unknown>
     const localBefore = before.toggleGitPanel
 
+    const { isMirrorWindow } = await import('@ion/server/lib/window-role')
+    expect(isMirrorWindow()).toBe(false)
     const swapped = applyMirrorOverrides()
+    // Declared by the boot, not guessed from the entry file: the browser
+    // build loads Studio as index.html.
+    expect(isMirrorWindow()).toBe(true)
     const storeActions = new Set(Object.keys(before).filter((action) => typeof before[action] === 'function'))
     const expectedForwarded = Object.keys(FORWARDED_ACTIONS)
       .filter((action) => storeActions.has(action))
@@ -443,15 +448,13 @@ describe('validForwardedAction (main-side wire validation)', () => {
 })
 
 describe('mirror never persists', () => {
-  it('sessionStore skips setupPersistence when the window role is mirror', async () => {
-    // window-role detects by entry path; simulate the Studio window.
+  it('importing sessionStore in a Studio client wires no persistence', async () => {
+    // Only the server boot wires persistence. The import every Studio file
+    // makes must define the store without writing tabs.
     vi.resetModules()
-    window.history.replaceState({}, '', '/studio.html')
-    // Let debounced owner-store persistence from earlier module tests finish
-    // before installing this test's spy on the shared preload bridge.
+    // Let debounced persistence from earlier module tests finish before
+    // installing this test's spy on the shared preload bridge.
     await new Promise((resolve) => setTimeout(resolve, 150))
-    // The earlier owner-mode import in this jsdom window registered the
-    // flush global; clear it so the assertion sees only the mirror import.
     delete (window as unknown as { __ionForceFlushTabs?: unknown }).__ionForceFlushTabs
     const saveTabs = vi.fn()
     ;(window as unknown as { ion: Record<string, unknown> }).ion = {
@@ -464,16 +467,14 @@ describe('mirror never persists', () => {
       off: vi.fn(),
     }
     const { useSessionStore } = await import('@ion/server/store/sessionStore')
-    // Mutate state that WOULD trigger the persistence subscriber in the owner.
+    // Mutate state that the persistence subscriber would write.
     useSessionStore.setState({ isExpanded: true })
     await new Promise((r) => setTimeout(r, 250)) // past the 100ms debounce
     expect(saveTabs).not.toHaveBeenCalled()
-    // The all-windows flush global is owner-only.
     expect((window as unknown as { __ionForceFlushTabs?: unknown }).__ionForceFlushTabs).toBeUndefined()
-    // Keep the preload spy alive while any owner-mode debounce queued by prior
-    // module tests drains; test teardown otherwise turns that timer into an
+    // Keep the preload spy alive while any debounce queued by prior module
+    // tests drains; test teardown otherwise turns that timer into an
     // unhandled missing-bridge error.
     await new Promise((resolve) => setTimeout(resolve, 150))
-    window.history.replaceState({}, '', '/')
   })
 })

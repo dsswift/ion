@@ -104,7 +104,7 @@ describe('setTabStatus observability', () => {
 
   it('stamps the window role, so two stores disagreeing is attributable', () => {
     setTabStatus([makeTab('tab-1', 'idle')], 'tab-1', 'running', 'implement.plan')
-    expect(statusLine().fields).toMatchObject({ window_role: 'overlay' })
+    expect(statusLine().fields).toMatchObject({ window_role: 'server' })
   })
 
   it('reports came_to_rest on an active→terminal transition', () => {
