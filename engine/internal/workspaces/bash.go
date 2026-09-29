@@ -435,7 +435,8 @@ func BashSegmentDirs(command, cwd string) []string {
 }
 
 // LiteralAbsolutePathTokens returns every token in command that is a literal
-// absolute path -- i.e. starts with "/" and contains none of the dynamic
+// absolute path -- i.e. starts with "/" or is absolute on this platform (a
+// Windows drive or UNC path) -- and contains none of the dynamic
 // markers isDynamicToken already treats as unresolvable ($, `, *, ?, or a
 // leading ~). Quote wrappers are stripped first (tokenizeShell keeps them).
 //
@@ -454,7 +455,7 @@ func LiteralAbsolutePathTokens(command string) []string {
 		for _, tok := range tokenizeShell(rawSegment) {
 			tok = normalizeGroupingToken(tok)
 			unquoted := strings.Trim(tok, `'"`)
-			if !strings.HasPrefix(unquoted, "/") {
+			if !strings.HasPrefix(unquoted, "/") && !filepath.IsAbs(unquoted) {
 				continue
 			}
 			if isDynamicToken(unquoted) {
