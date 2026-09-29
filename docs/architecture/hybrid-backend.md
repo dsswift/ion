@@ -56,7 +56,8 @@ Two methods on `*ApiBackend` are not part of the public `RunBackend` interface: 
 `HybridBackend` exposes both as additive methods:
 
 - `StartRunWithConfig` routes by model: API-routed runs forward to the inner `*ApiBackend.StartRunWithConfig`; subscription-routed runs (claude-code/codex/grok/cursor) fall back to `StartRun` on the inner backend (each wires its own hooks via its subprocess protocol and ignores `RunConfig`).
-- `Steer` looks up the routing table. For API-routed runs it forwards to `inner.Steer` and returns the inner's verdict. For non-API-routed runs it returns `false`, signaling the caller to fall back to the stdin-pipe path (`WriteToStdin`). The session package reaches `Steer` through a local `steerable` interface in `agent.go` rather than putting `Steer` on `RunBackend` — that keeps the published interface contract additive.
+- `Steer` looks up the routing table. For API-routed runs it forwards to `inner.Steer` and returns the inner's verdict. For non-API-routed runs it returns `false`, signaling the caller to fall back to the stdin-pipe path.
+- `SteerViaStdin` is that stdin path for an inner backend that confirms its steers (the Claude CLI). Any other inner backend returns `ErrStdinSteerUnsupported`, and the caller falls back to a plain `WriteToStdin`. The session package reaches `Steer` through a local `steerable` interface in `agent.go` rather than putting `Steer` on `RunBackend` — that keeps the published interface contract additive.
 
 ## Session-side helper
 

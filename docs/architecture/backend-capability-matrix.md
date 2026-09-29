@@ -48,7 +48,7 @@ below: **CLOSEABLE** (engine-side wiring, no fighting the CLI) or **GATED**
 |---|---|---|---|---|---|---|
 | Context model | engine-owned | native-session | native-session | native-session | native-session | `capabilities.go`. Engine-owned = Ion feeds the full transcript; native-session = the CLI owns its context window. |
 | Native resume | n/a | ✅ | ✅ | ✅ | ✅ | `--resume <uuid>` / `ThreadResume` / ACP `session/load`. Per-provider cursor persisted in the `.tree.jsonl` header. |
-| Cross-provider handoff | ✅ | ✅ | ✅ | ✅ | ✅ | CLI turns are persisted into Ion's transcript at run exit, so a later turn on any provider bridges the full history. Fidelity is a text transcript, not structured turns — the declared ceiling. |
+| Cross-provider handoff | ✅ | ✅ | ✅ | ✅ | ✅ | A CLI run's user turn is persisted into Ion's transcript at dispatch and its output at run exit, so a later turn on any provider bridges the full history. Fidelity is a text transcript, not structured turns — the declared ceiling. |
 | Conversation ownership | Ion store | CLI + Ion mirror | CLI + Ion mirror | CLI + Ion mirror | CLI + Ion mirror | The CLI owns the authoritative session; Ion mirrors user + final-assistant text so the transcript is complete. |
 
 ## Tools & dispatch
@@ -94,7 +94,7 @@ below: **CLOSEABLE** (engine-side wiring, no fighting the CLI) or **GATED**
 
 | Capability | api | claude-code | codex | grok | cursor | Notes |
 |---|---|---|---|---|---|---|
-| Mid-turn steering | ✅ | ✅ | ✅ | ❌ | ❌ | claude-code via stdin stream-json; codex via `turn/steer`. **ACP has no steer channel** (`acp_backend.go WriteToStdin` is a no-op). |
+| Mid-turn steering | ✅ | ✅ | ✅ | ❌ | ❌ | claude-code via stdin stream-json, confirmed when the CLI echoes the message back (`--replay-user-messages`); codex via `turn/steer`. **ACP has no steer channel** (`acp_backend.go WriteToStdin` refuses, so the steer is reported undelivered). |
 | `OnToolCall/OnPerToolHook/OnTurnStart/OnTurnEnd/OnBeforeProviderRequest/OnSystemInject` hooks | ✅ | ❌ | ❌ | ❌ | ❌ | The CLI owns the loop; none of the per-turn hooks fire. |
 | `OnBeforePrompt` (extension prompt rewrite) | ✅ | ✅ | ❌ | ❌ | ❌ | Bridged for claude-code via `fireBeforePromptCli` (`prompt_dispatch.go`); not yet generalized to codex/grok/cursor (CLOSEABLE — see ledger C5). |
 | `OnInitialMessages` (plugin UserPromptSubmit inject) | ✅ | ❌ | ❌ | ❌ | ❌ | ApiBackend-only; the per-turn `<system-reminder>` prepend could be applied at CLI dispatch (CLOSEABLE — see ledger C6). |
