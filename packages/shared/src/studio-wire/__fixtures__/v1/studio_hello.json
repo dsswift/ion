@@ -1,0 +1,8 @@
+{
+  "type": "studio_hello",
+  "protocolVersion": 1,
+  "clientId": "desktop-a1b2c3",
+  "clientKind": "desktop",
+  "capabilities": ["graph", "browser"],
+  "credential": { "kind": "local" }
+}

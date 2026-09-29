@@ -1,0 +1,59 @@
+{
+  "comment": "Cross-platform transcript-grouping parity fixture. Consumed by desktop grouping-parity.test.ts (groupMessages, tool-helpers.ts) AND iOS GroupingParityTests.swift (groupConversationItems, ToolGrouping.swift) — both in CLASSIC (non-unified) mode. Each case lists persisted-role messages (the cross-client surface; renderer-local roles like harness never reach iOS) and the expected grouped shape in a neutral vocabulary: user, assistant, thinking, system, compaction, toolGroup(n). If either platform's grouping algorithm drifts, its consumer test fails — the same anchor pattern as the engine contract manifest.",
+  "cases": [
+    {
+      "name": "text split by a tool group",
+      "messages": [
+        { "id": "u1", "role": "user", "content": "do the thing" },
+        { "id": "e1", "role": "assistant", "content": "Let me check." },
+        { "id": "t1", "role": "tool", "content": "ok", "toolName": "Bash", "toolId": "toolu_1", "toolStatus": "completed" },
+        { "id": "t2", "role": "tool", "content": "ok", "toolName": "Read", "toolId": "toolu_2", "toolStatus": "completed" },
+        { "id": "e2", "role": "assistant", "content": "Found it." }
+      ],
+      "expected": ["user", "assistant", "toolGroup(2)", "assistant"]
+    },
+    {
+      "name": "assistant text between tool runs cuts the group",
+      "messages": [
+        { "id": "u1", "role": "user", "content": "go" },
+        { "id": "t1", "role": "tool", "content": "", "toolName": "Bash", "toolId": "toolu_1", "toolStatus": "completed" },
+        { "id": "e1", "role": "assistant", "content": "Halfway." },
+        { "id": "t2", "role": "tool", "content": "", "toolName": "Bash", "toolId": "toolu_2", "toolStatus": "completed" },
+        { "id": "t3", "role": "tool", "content": "", "toolName": "Bash", "toolId": "toolu_3", "toolStatus": "error" },
+        { "id": "e2", "role": "assistant", "content": "Done." }
+      ],
+      "expected": ["user", "toolGroup(1)", "assistant", "toolGroup(2)", "assistant"]
+    },
+    {
+      "name": "thinking row splits a tool group",
+      "messages": [
+        { "id": "u1", "role": "user", "content": "think then act" },
+        { "id": "th1", "role": "thinking", "content": "reasoning..." },
+        { "id": "t1", "role": "tool", "content": "", "toolName": "Grep", "toolId": "toolu_1", "toolStatus": "completed" },
+        { "id": "th2", "role": "thinking", "content": "more reasoning" },
+        { "id": "t2", "role": "tool", "content": "", "toolName": "Read", "toolId": "toolu_2", "toolStatus": "completed" },
+        { "id": "e1", "role": "assistant", "content": "Answer." }
+      ],
+      "expected": ["user", "thinking", "toolGroup(1)", "thinking", "toolGroup(1)", "assistant"]
+    },
+    {
+      "name": "system dividers and compaction markers stay standalone",
+      "messages": [
+        { "id": "u1", "role": "user", "content": "hello" },
+        { "id": "s1", "role": "system", "content": "── Plan created at 8:16 PM · slug ──" },
+        { "id": "c1", "role": "system", "content": "[Compaction] 40 → 12 messages" },
+        { "id": "e1", "role": "assistant", "content": "hi" }
+      ],
+      "expected": ["user", "system", "compaction", "assistant"]
+    },
+    {
+      "name": "trailing tool group flushes at the end",
+      "messages": [
+        { "id": "u1", "role": "user", "content": "run it" },
+        { "id": "e1", "role": "assistant", "content": "Running." },
+        { "id": "t1", "role": "tool", "content": "", "toolName": "Bash", "toolId": "toolu_1", "toolStatus": "running" }
+      ],
+      "expected": ["user", "assistant", "toolGroup(1)"]
+    }
+  ]
+}

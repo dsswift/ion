@@ -1,0 +1,6 @@
+{
+  "type": "studio_command_result",
+  "id": "cmd-1",
+  "ok": true,
+  "value": { "callId": "cmd-1", "ok": true }
+}

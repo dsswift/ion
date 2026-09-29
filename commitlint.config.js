@@ -8,6 +8,7 @@ module.exports = {
       'relay',
       'ios',
       'sdk',
+      'server',
       // Repository-level
       'repo',
       'docs',

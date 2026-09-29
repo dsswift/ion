@@ -174,7 +174,7 @@ Cite the exact plan section (heading or quoted line) for every finding. A findin
 >
 > The engine is the product. The desktop, iOS, and relay applications in this repo are reference implementations. External consumers are the canonical audience: TypeScript SDK extensions, Go SDK harnesses, third-party clients, automation pipelines, IDE plugins, server agents.
 >
-> The question *"does desktop use this?"* is **forbidden** as a justification for flagging a proposed engine change. Use *"would any plausible external consumer want this?"* instead. The absence of an in-repo caller for new engine surface is the **expected default**, not a smell. See root [`AGENTS.md`](../AGENTS.md) § "Engine consumers". **This rule is load-bearing; a finding that violates it must be removed before the report is emitted.**
+> The question *"does desktop use this?"* is **forbidden** as a justification for flagging a proposed engine change. Use *"would any plausible external consumer want this?"* instead. The absence of an in-repo caller for new engine surface is the **expected default**, not a smell. See root [`AGENTS.md`](../../AGENTS.md) § "Engine consumers". **This rule is load-bearing; a finding that violates it must be removed before the report is emitted.**
 
 ### Layer choice
 
@@ -616,7 +616,7 @@ Did the diff touch `engine/`? The burden of proof is on the diff: justify every 
 
 > **Run the engine-consumer test before flagging.**
 >
-> The question *"does desktop use this?"* is **forbidden** as a justification for flagging an engine change. Use *"would any plausible external consumer want this?"* instead. Engine surface ships ahead of reference implementations by design. The absence of an in-repo caller for new engine surface is the **expected default**, not a smell. See root [`AGENTS.md`](../AGENTS.md) § "Engine consumers". **This rule is load-bearing; a recommendation that violates it must be removed before the report is emitted.**
+> The question *"does desktop use this?"* is **forbidden** as a justification for flagging an engine change. Use *"would any plausible external consumer want this?"* instead. Engine surface ships ahead of reference implementations by design. The absence of an in-repo caller for new engine surface is the **expected default**, not a smell. See root [`AGENTS.md`](../../AGENTS.md) § "Engine consumers". **This rule is load-bearing; a recommendation that violates it must be removed before the report is emitted.**
 
 Specifically flag:
 

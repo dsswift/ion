@@ -5,6 +5,8 @@
     { "path": "relay/", "scope": "relay" },
     { "path": "ios/", "scope": "ios" },
     { "path": "sdk/", "scope": "sdk" },
+    { "path": "server/", "scope": "server" },
+    { "path": "packages/", "scope": "repo" },
     { "path": "docs/", "scope": "docs" },
     { "path": ".github/", "scope": "repo" }
   ],

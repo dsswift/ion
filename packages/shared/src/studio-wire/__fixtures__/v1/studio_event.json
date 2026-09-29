@@ -1,0 +1,5 @@
+{
+  "type": "studio_event",
+  "channel": "ion:tab-status-change",
+  "payload": { "tabId": "tab-123", "status": "working", "previousStatus": "idle" }
+}
