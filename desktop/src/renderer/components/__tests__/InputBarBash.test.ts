@@ -5,7 +5,7 @@
  * whether it will run.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { dispatchBashCommand, type BashDispatchDeps } from '../InputBarBash'
+import { dispatchBashCommand, createHostExecuteBash, type BashDispatchDeps } from '../InputBarBash'
 
 function deps(over: Partial<BashDispatchDeps> = {}) {
   const exec = vi.fn(async () => ({ stdout: 'ok', stderr: '', exitCode: 0 }))
@@ -66,5 +66,14 @@ describe('dispatchBashCommand', () => {
     const d = deps({ activeTabId: null })
     expect(dispatchBashCommand(d)).toBe(true)
     expect(d.clearDraft).not.toHaveBeenCalled()
+  })
+})
+
+describe('createHostExecuteBash', () => {
+  it('delegates to host.shell.executeBash', async () => {
+    const executeBash = vi.fn(async () => ({ stdout: 'ok', stderr: '', exitCode: 0 }))
+    const host = { shell: { executeBash } }
+    await createHostExecuteBash(host)('exec-1', 'ls', '/repo')
+    expect(executeBash).toHaveBeenCalledWith('exec-1', 'ls', '/repo')
   })
 })

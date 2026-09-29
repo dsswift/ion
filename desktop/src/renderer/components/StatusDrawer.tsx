@@ -17,20 +17,21 @@
  *   - Session ID (copyable), conversation-lifetime turns, durationMs, sessionVersion (C6).
  */
 
-import React, { useMemo, useCallback } from 'react'
+import React, { useMemo, useCallback, useEffect } from 'react'
 import { X, CircleNotch } from '@phosphor-icons/react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useShallow } from 'zustand/shallow'
-import { windowRole } from '../lib/window-role'
+import { windowRole } from '@ion/server/lib/window-role'
 import { useColors } from '../theme'
 import { STATUS_DRAWER_WIDTH } from './panelGeometry'
 import { meta, getDispatches, buildBreadcrumbStack } from './agent-panel-helpers'
 import { AgentDetailPanel } from './AgentDetailPanel'
-import type { AgentStateUpdate } from '../../shared/types'
-import type { ContextBreakdownCategory, DispatchInfo } from '../../shared/types-engine'
-import { getDynamicContextWindow } from '../stores/model-labels'
-import { usePreferencesStore } from '../preferences'
+import type { AgentStateUpdate } from '@ion/shared/types'
+import type { ContextBreakdownCategory, DispatchInfo } from '@ion/shared/types-engine'
+import { getDynamicContextWindow } from '@ion/server/store/model-labels'
+import { runningConversationModel } from '@ion/shared/conversation-model'
 import { resolveContextDisplay, resolveContextInputs } from './context-usage'
+import { host } from '../host/host-instance'
 
 // Presentational parts live in StatusDrawerParts.tsx — this file is under an
 // explicit size cap and the parts are pure (data + colors in, JSX out). The
@@ -48,7 +49,6 @@ import type { KindKey, GraphSegment } from './StatusDrawerParts'
 
 export function StatusDrawer({ embedded = false }: { embedded?: boolean }) {
   const colors = useColors()
-  const preferredModel = usePreferencesStore((s) => s.preferredModel)
   const closeStatusDrawer = useSessionStore((s) => s.closeStatusDrawer)
   const openDispatchPreview = useSessionStore((s) => s.openDispatchPreview)
   const statusDrawerDispatchId = useSessionStore((s) => s.statusDrawerDispatchId)
@@ -63,6 +63,21 @@ export function StatusDrawer({ embedded = false }: { embedded?: boolean }) {
     }),
   )
   const tabId = tab?.id
+
+  // Fire get_context_breakdown whenever the drawer mounts for a tab (Studio
+  // only mounts this component while the Status surface tab is active, so
+  // mount === open) so the breakdown panel always shows current data — even
+  // for idle or freshly-loaded historical conversations that have not sent a
+  // prompt yet. The engine emits engine_context_breakdown on its event bus;
+  // the existing context_breakdown handler in event-wiring.ts populates
+  // activeInstance.contextBreakdown and the drawer re-renders synchronously.
+  useEffect(() => {
+    if (!tabId) return
+    host.shell.engineGetContextBreakdown(tabId).catch(() => {
+      // Fire-and-forget. Failure is non-fatal: the drawer renders whatever
+      // cached breakdown it has (possibly none for brand-new sessions).
+    })
+  }, [tabId])
 
   const statusFields = activeInstance?.statusFields ?? null
   const agentStates: AgentStateUpdate[] = useMemo(
@@ -117,7 +132,7 @@ export function StatusDrawer({ embedded = false }: { embedded?: boolean }) {
   // The itemized sum still drives the per-category grid below, where the
   // `unaccounted` row makes its drift from the provider total explicit.
   const { tokens: contextTokens, engineWindow } = resolveContextInputs(activeInstance)
-  const effectiveModel = activeInstance?.modelOverride || activeInstance?.sessionModel || preferredModel
+  const effectiveModel = runningConversationModel(activeInstance)
   const selectedWindow = getDynamicContextWindow(effectiveModel, engineWindow)
   const contextDisplay = resolveContextDisplay(contextTokens, selectedWindow)
   const contextPercent = contextDisplay?.pct ?? 0

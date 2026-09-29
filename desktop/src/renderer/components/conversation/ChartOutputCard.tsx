@@ -9,6 +9,7 @@ import { rError, rInfo, rWarn } from '../../rendererLogger'
 import { Tooltip } from '../git/Tooltip'
 import { buildChartConfig, chartValueRows } from './chart-config'
 import { hasSeveralRevisions, revisionStatus, type ChartTimeline } from './chart-revisions'
+import { host } from '../../host/host-instance'
 
 /**
  * ChartOutputCard — one Chart Output in the transcript.
@@ -97,13 +98,24 @@ export const ChartOutputCard = React.memo(function ChartOutputCard({
       ctx.fillStyle = colors.containerBg
       ctx.fillRect(0, 0, out.width, out.height)
       ctx.drawImage(source, 0, 0)
+      // 'clipboardWriteImage' is StudioHost.ts's declared, previously-unused
+      // capability for exactly this: writing an image to the OS clipboard has
+      // no browser equivalent a Studio wire could carry. Unguarded, a browser
+      // Studio client's unsupportedShell() stub throws synchronously here
+      // inside the try, so this already degrades silently -- but it still
+      // pays for a call that can never succeed.
+      if (!host.capabilities().includes('clipboardWriteImage')) {
+        rWarn('conversation.chart', 'chart copy unavailable in this host', { chart_id: timeline.chartId })
+        setCopyState('failed')
+        return
+      }
       const blob = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, 'image/png'))
       if (!blob) {
         rWarn('conversation.chart', 'copy failed: canvas produced no blob', { chart_id: timeline.chartId })
         setCopyState('failed')
         return
       }
-      const ok = await window.ion.copyPngToClipboard(await blob.arrayBuffer())
+      const ok = await host.shell.copyPngToClipboard(await blob.arrayBuffer())
       setCopyState(ok ? 'copied' : 'failed')
       rInfo('conversation.chart', 'chart copied', {
         chart_id: timeline.chartId,

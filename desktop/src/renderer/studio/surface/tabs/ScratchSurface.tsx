@@ -1,16 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { EditorView } from '@codemirror/view'
 import { gotoLine } from '@codemirror/search'
-import type { ScratchDocument } from '../../../../shared/studio-surface-types'
-import type { FileEditorTab } from '../../../stores/sessionStore'
+import type { ScratchDocument } from '@ion/shared/studio-surface-types'
+import type { FileEditorTab } from '@ion/server/store/sessionStore'
 import { FileEditorCodeMirror, type CursorPosition } from '../../../components/FileEditorCodeMirror'
 import { FileEditorPreview } from '../../../components/FileEditorPreview'
 import { FileEditorStatusBar } from '../../../components/FileEditorStatusBar'
 import { FileSurfaceControls } from './FileSurfaceControls'
 import { useColors } from '../../../theme'
 import { useSurfaceStore } from '../surface-store'
-import { useSessionStore } from '../../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { rInfo, rWarn } from '../../../rendererLogger'
+import { host } from '../../../host/host-instance'
+import { useCodeMirrorFind } from '../surface-find'
 
 interface ScratchSaveDependencies {
   showSaveDialog(defaultPath: string): Promise<{ filePath: string | null; error?: string }>
@@ -102,8 +104,8 @@ export function ScratchSurface({ projectKey, documentId }: { projectKey: string;
   const handleSave = useCallback(async () => {
     if (!document) return
     await saveScratchDocument(document, workingDirectory, projectKey, {
-      showSaveDialog: (defaultPath) => window.ion.fsSaveDialog(defaultPath),
-      writeFile: (filePath, content) => window.ion.fsWriteFile(filePath, content),
+      showSaveDialog: (defaultPath) => host.pickSavePath(defaultPath),
+      writeFile: (filePath, content) => host.shell.fsWriteFile(filePath, content),
       setError: (error) => setScratchSaveError(projectKey, documentId, error),
       promote: (filePath) => {
         if (activeTabId) promoteScratch(projectKey, documentId, filePath, activeTabId)
@@ -114,6 +116,9 @@ export function ScratchSurface({ projectKey, documentId }: { projectKey: string;
   const handleGoToLine = useCallback(() => {
     if (editorViewRef.current) gotoLine(editorViewRef.current)
   }, [])
+
+  // Find drives the code editor while editing; a preview is searched as page text.
+  useCodeMirrorFind(editorViewRef, !!document && !document.isPreview)
 
   if (!document) {
     return (

@@ -6,7 +6,6 @@
  * ADR-021), then composes the IDE-style shell:
  *
  *   column: StudioTitleBar
- *           TabStrip
  *           row[ StudioLeftSidebar? | StudioCenter(flex:1) | StudioSurface? ]
  *           StatusBar
  *
@@ -19,34 +18,23 @@
  * legitimately want different surface widths — `studioLayout.surfaceWidth`
  * remains only as the default for a conversation that has never been resized.
  *
- * Overlay↔Studio parity mechanism 1: shared surfaces are the SAME component
+ * Shared surfaces are the SAME component
  * reading the same store — never a bespoke Studio widget.
  */
 import React, { useEffect, useRef, useState } from "react";
-import { useSessionStore } from "../stores/sessionStore";
+import { useSessionStore } from "@ion/server/store/sessionStore";
 import { useEngineEvents } from "../hooks/useEngineEvents";
+import { useHealthReconciliation } from "../hooks/useHealthReconciliation";
+import { useEnginePermissionDenialBackfill } from "../hooks/useEnginePermissionDenialBackfill";
+import { useWorktreeRendererListeners } from "../hooks/useWorktreeRendererListeners";
 import { PopoverLayerProvider } from "../components/PopoverLayer";
-import { TabStrip } from "../components/TabStrip";
+import { SavePathPromptHost } from "../host/save-path-prompt";
 import { useColors } from "../theme";
-import { usePreferencesStore } from "../preferences";
-import { rDebug, rInfo } from "../rendererLogger";
+import { rDebug } from "../rendererLogger";
 import { contentRouter } from "../lib/file-open-router";
-import { IPC } from "../../shared/types";
 import { openDispatchPreview } from "./open-dispatch-preview";
-import { toggleActivePermissionMode } from "../shortcuts/shared-command-handlers";
-import { handleNewConversationShortcut, isEditorZoomTarget, isPreviewZoomTarget } from "../hooks/useKeyboardShortcuts"
-import { SETTINGS_DEFAULTS } from "../preferences-types";
-import {
-  applyMirrorOverrides,
-  initTabsSync,
-  initConversationTerminalSync,
-  initWorktreeSync,
-  initPermissionResolutionSync,
-  initUserMessageEcho,
-  initHistoryReplace,
-  consumeStudioActiveTab,
-} from "./state/secondary-store";
-import { initDispatchSplitConversationGuard } from "./dispatch-split-state";
+import { toggleActivePermissionMode, handleNewConversationShortcut, adjustZoom, resetZoom } from "../shortcuts/shared-command-handlers";
+import { bootMirror } from "./state/boot-mirror";
 import { registerStudioFileRouter } from "./surface/studio-file-router";
 import { StudioLeftSidebar } from "./StudioLeftSidebar";
 import { StudioTitleBar } from "./StudioTitleBar";
@@ -56,7 +44,7 @@ import { StudioBrowserHost } from "./surface/SurfacePanel";
 import { ScratchCloseDialog } from "./surface/ScratchCloseDialog";
 import { useStudioLayout } from "./layout/useStudioLayout";
 import { revealDockView } from "./layout/dock-view-reveal";
-import type { StudioSidebarView } from "../../shared/types-studio";
+import type { StudioSidebarView } from "@ion/shared/types-studio";
 import { useStudioBootstrap } from "./useStudioBootstrap";
 import { addActiveConversationShell, toggleActiveConversationTerminal } from "./studio-conversation-terminal-commands";
 import { useCommandShortcuts } from "./keymap/useStudioKeymap";
@@ -65,6 +53,8 @@ import { useSurfacePersistOnUnload } from "./surface/surface-persist";
 import { useStudioBrowserCommands } from "./surface/studio-browser-commands";
 import { useStudioGraphCommands } from "./graph/studio-graph-commands";
 import { canvasTabHandlers } from "./surface/canvas-tab-handlers";
+import { dispatchPaneFind, paneFindTarget, type PaneFindAction } from "./find/pane-find";
+import { useWorkspaceSearchStore } from "./search/workspace-search-store";
 import { initSurfaceConversationSync } from "./surface/surface-conversation-sync";
 import { initQuestionsSurfaceSync } from "./surface/questions-surface-sync";
 import { hydrateQuestions } from "../stores/questions-store";
@@ -78,29 +68,16 @@ import { useResourceBootstrap } from "../hooks/useResourceBootstrap";
 import { CommandPalette } from "../components/CommandPalette";
 import { DeepLinkConfirmDialog } from "../components/DeepLinkConfirmDialog";
 import { CloseTabConfirmDialog } from "../components/CloseTabConfirmDialog";
+import { RemoteDirectoryPicker } from "../components/RemoteDirectoryPicker";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { NewConversationPickerHost } from "../components/NewConversationPickerHost";
+import { TransferDialogHost } from "./transfer/TransferDialogHost";
 import { useTrayMenuListeners } from "../hooks/useTrayMenuListeners";
 import { UpdateDialog } from "../components/UpdateDialog";
 import { useUpdateEvents } from "../hooks/useUpdateEvents";
 import type { PaletteEntry } from "../components/command-palette-rank";
-
-/** One-time mirror boot, before the first render reads the store. */
-let booted = false;
-function bootMirror(): void {
-  if (booted) return;
-  booted = true;
-  const swapped = applyMirrorOverrides();
-  initDispatchSplitConversationGuard();
-  initTabsSync();
-  initConversationTerminalSync();
-  initWorktreeSync();
-  initPermissionResolutionSync();
-  initUserMessageEcho();
-  initHistoryReplace();
-  // File-open routing is registered after layout refs exist in StudioShell.
-  rInfo("studio", "mirror booted", { forwarded_actions: swapped.length });
-}
+import { host } from '../host/host-instance'
+import { COMPOSER_ATTACH_EVENT, COMPOSER_QUICK_TOOLS_EVENT, COMPOSER_SCREENSHOT_EVENT } from '../components/composer/composer-events'
 
 /** Step the active conversation ±1 through the tabs array (wraps). */
 function stepConversation(delta: number): void {
@@ -121,6 +98,12 @@ export function StudioShell(): React.JSX.Element {
   useEngineEvents();
   useTrayMenuListeners();
   useResourceBootstrap();
+  // Orphaned when App.tsx (their only prior mount site) was deleted in the
+  // spec 17 Overlay removal and never re-added here. Every host.shell call
+  // they make is bridged on every host, so mounting is safe everywhere.
+  useHealthReconciliation();
+  useEnginePermissionDenialBackfill();
+  useWorktreeRendererListeners();
   useEffect(() => initSurfaceConversationSync(), []);
   // Guided Questions: hydrate the window-local cache, then keep the transient
   // questions Canvas tab aligned with open workflows.
@@ -145,9 +128,13 @@ export function StudioShell(): React.JSX.Element {
     void useGraphStore.getState().checkAvailability(resolved);
   }, [activeWorkingDirectory, homePath]);
 
-  const { layout, hydrated, patch } = useStudioLayout();
+  const { layout, hydrated, patch, onSelectLeftSidebarView } = useStudioLayout();
   useEffect(() => {
-    const openWebApplication = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
+    // A paired device's request to open a terminal's web application as a
+    // Studio Browser Surface tab. Only a client that can host that surface
+    // takes it (see StudioHost.ts's 'webApplicationOpen' doc).
+    if (!host.capabilities().includes('webApplicationOpen')) return
+    return host.shell.onStudioOpenWebApplication((payload) => {
       if (!payload || typeof payload !== 'object') return
       const { tabId, url } = payload as { tabId?: unknown; url?: unknown }
       if (typeof tabId !== 'string' || typeof url !== 'string') return
@@ -156,10 +143,9 @@ export function StudioShell(): React.JSX.Element {
         rDebug('studio', 'web application request ignored: router unavailable', { tab_id: tabId, url })
         return
       }
+      rDebug('studio', 'web application request opened', { tab_id: tabId, url })
       router.openWebApplication(tabId, url)
-    }
-    window.ion.on(IPC.STUDIO_OPEN_WEB_APPLICATION, openWebApplication)
-    return () => window.ion.off(IPC.STUDIO_OPEN_WEB_APPLICATION, openWebApplication)
+    })
   }, [])
   const surfaceVisible = useSurfaceStore((s) => s.visible);
   const surfaceMaximized = useSurfaceStore((s) => s.maximized && s.visible);
@@ -181,7 +167,6 @@ export function StudioShell(): React.JSX.Element {
   // Surface state is written on a debounce, which a quit can outrun.
   useSurfacePersistOnUnload();
 
-  const studioTabStripVisible = usePreferencesStore((s) => s.studioTabStripVisible);
   const windowWidth = useWindowWidth();
 
   // Live pane sizes during a drag (React state only; committed to the
@@ -193,7 +178,6 @@ export function StudioShell(): React.JSX.Element {
   const [lastFocusedColumn, setLastFocusedColumn] = useState<
     "conversation" | "surface"
   >("conversation");
-  const [narrowPane, setNarrowPane] = useState<"left" | "center" | "surface">("center");
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   const requestedLeftVisible = layout.leftSidebarVisible;
@@ -204,29 +188,28 @@ export function StudioShell(): React.JSX.Element {
     preferredLeftWidth: GIT_PANEL_WIDTH,
     preferredSurfaceWidth: liveSurfaceWidth ?? conversationSurfaceWidth ?? layout.surfaceWidth,
   });
-  const narrowPrimary = requestedLeftVisible && narrowPane === "left"
-    ? "left"
-    : surfaceVisible && narrowPane === "surface" ? "surface" : "center";
   // A maximised surface is the whole shell: the sidebar and the conversation
-  // step aside until it is restored, whatever the responsive mode says.
-  const showLeft = !surfaceMaximized && requestedLeftVisible && (responsive.mode !== "narrow" || narrowPrimary === "left");
-  const showCenter = !surfaceMaximized && (responsive.mode !== "narrow" || narrowPrimary === "center");
-  const showSurface = surfaceVisible && (surfaceMaximized || responsive.mode !== "narrow" || narrowPrimary === "surface");
+  // step aside until it is restored. That is the ONLY case that hides a pane.
+  // Shrinking the window never does — `resolveStudioResponsiveLayout` answers
+  // with a width for every requested pane at any viewport size (see its doc),
+  // matching the desktop, which resizes panes on resize and never drops one.
+  const showLeft = !surfaceMaximized && requestedLeftVisible;
+  const showCenter = !surfaceMaximized;
+  const showSurface = surfaceVisible;
 
   // The owner's active tab is authoritative; mirror-store highlight follows
   // the same push the canvas retargets on.
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    const off = window.ion.onStudioActiveTab((tabId) => {
-      consumeStudioActiveTab(tabId)
-    });
-    // Consider the shell ready once tabs hydrate (initTabsSync sets tabsReady).
+    // This window owns its own selection via the forwarded selectTab action;
+    // there is no other window's active-tab push to follow.
+    // Consider the shell ready once tabs hydrate (initTabsSyncFromWire sets
+    // tabsReady).
     const unsub = useSessionStore.subscribe((s) => {
       if (s.tabsReady) setReady(true);
     });
     if (useSessionStore.getState().tabsReady) setReady(true);
     return () => {
-      off();
       unsub();
     };
   }, []);
@@ -238,8 +221,7 @@ export function StudioShell(): React.JSX.Element {
     phase: "capture",
     handlers: {
       "studio.layout.sidebar": () => {
-        if (responsive.mode === "narrow" && requestedLeftVisible) setNarrowPane("left");
-        else patchRef.current({ leftSidebarVisible: !layoutRef.current.leftSidebarVisible });
+        patchRef.current({ leftSidebarVisible: !layoutRef.current.leftSidebarVisible });
       },
       "terminal.toggle": toggleActiveConversationTerminal,
       // Cmd+4 toggles the canvas/surface pane without choosing content. The
@@ -248,22 +230,25 @@ export function StudioShell(): React.JSX.Element {
         useSurfaceStore.getState().toggleVisible();
       },
       "studio.layout.surface": () => {
-        if (responsive.mode === "narrow" && surfaceVisible) setNarrowPane("surface");
-        else useSurfaceStore.getState().toggleVisible();
+        useSurfaceStore.getState().toggleVisible();
       },
       "studio.layout.surfaceMaximize": () => useSurfaceStore.getState().toggleMaximized(),
       // Every canvas tab's toggle, one rule, from the surface module that owns
       // the tab↔command map the tab pills also read.
       ...canvasTabHandlers(),
       "permission.togglePlanAuto": toggleActivePermissionMode,
+      // The composer owns these actions; the keymap only rings the bell.
+      "composer.attach": () => window.dispatchEvent(new CustomEvent(COMPOSER_ATTACH_EVENT)),
+      "composer.screenshot": () => window.dispatchEvent(new CustomEvent(COMPOSER_SCREENSHOT_EVENT)),
+      "composer.quickTools": () => window.dispatchEvent(new CustomEvent(COMPOSER_QUICK_TOOLS_EVENT)),
       "settings.open": () => {
         const state = useSessionStore.getState();
         if (state.settingsOpen) state.closeSettings();
         else state.openSettings();
       },
-      "conversation.find": () => window.dispatchEvent(new CustomEvent("ion:open-conversation-search")),
-      "conversation.findNext": () => window.dispatchEvent(new CustomEvent("ion:search-next")),
-      "conversation.findPrev": () => window.dispatchEvent(new CustomEvent("ion:search-prev")),
+      "conversation.find": () => routeFind("open"),
+      "conversation.findNext": () => routeFind("next"),
+      "conversation.findPrev": () => routeFind("prev"),
       "zoom.in": () => adjustZoom(1),
       "zoom.inShifted": () => adjustZoom(1),
       "zoom.out": () => adjustZoom(-1),
@@ -283,10 +268,18 @@ export function StudioShell(): React.JSX.Element {
       },
       "tab.scratch": () => {
         useSurfaceStore.getState().createScratch();
-        setNarrowPane("surface");
       },
       "tab.newPicker": () => {
         handleNewConversationShortcut("", "Cmd+Opt+T", undefined, true);
+      },
+      // Spec 16 row: the Overlay-only `tab.newHere` shortcut, landed in
+      // Studio. Opens in the active tab's directory (its environment is
+      // always local today — remote tabs have no store presence yet, see
+      // spec 13's supervisor note).
+      "tab.newHere": () => {
+        const state = useSessionStore.getState();
+        const tab = state.tabs.find((candidate) => candidate.id === state.activeTabId);
+        handleNewConversationShortcut(tab?.workingDirectory || "", "Cmd+Shift+T");
       },
       "terminal.addShell": addActiveConversationShell,
       "tab.close": () => {
@@ -304,6 +297,10 @@ export function StudioShell(): React.JSX.Element {
       // sidebar toggle does that.
       "panel.inbox": () => selectDockView("inbox"),
       "panel.explorer": () => selectDockView("explorer"),
+      "panel.search": () => {
+        selectDockView("search");
+        useWorkspaceSearchStore.getState().requestFocus();
+      },
       "panel.git": () => selectDockView("git"),
       "studio.tab.slot1": () => selectConversationSlot(0),
       "studio.tab.slot2": () => selectConversationSlot(1),
@@ -317,26 +314,11 @@ export function StudioShell(): React.JSX.Element {
     },
   });
 
-  function adjustZoom(delta: number): void {
-    const preferences = usePreferencesStore.getState()
-    if (isPreviewZoomTarget()) {
-      preferences.setDataViewFontSize(preferences.dataViewFontSize + delta)
-    } else if (isEditorZoomTarget()) {
-      preferences.setEditorFontSize(preferences.editorFontSize + delta)
-    } else {
-      preferences.setDataViewFontSize(preferences.dataViewFontSize + delta)
-    }
-  }
-
-  function resetZoom(): void {
-    const preferences = usePreferencesStore.getState()
-    if (isPreviewZoomTarget()) {
-      preferences.setDataViewFontSize(SETTINGS_DEFAULTS.dataViewFontSize)
-    } else if (isEditorZoomTarget()) {
-      preferences.setEditorFontSize(SETTINGS_DEFAULTS.editorFontSize)
-    } else {
-      preferences.setDataViewFontSize(SETTINGS_DEFAULTS.dataViewFontSize)
-    }
+  /** Find acts on the pane that holds focus. */
+  function routeFind(action: PaneFindAction): void {
+    const target = paneFindTarget(lastFocusedColumn, showSurface);
+    rDebug("studio.find", "find routed to focused pane", { action, target, last_focused: lastFocusedColumn });
+    dispatchPaneFind(target, action);
   }
 
   function selectConversationSlot(index: number): void {
@@ -358,45 +340,12 @@ export function StudioShell(): React.JSX.Element {
   function selectDockView(view: StudioSidebarView): void {
     const outcome = revealDockView(layoutRef.current, view);
     patchRef.current(outcome.patch);
-    setNarrowPane("left");
     rDebug("studio.layout", "dock view selected by shortcut", {
       view,
       revealed_sidebar: outcome.revealedSidebar,
       already_active: outcome.alreadyActive,
     });
   }
-
-  // Drag-drop attach: files dropped anywhere stage on active composer.
-  useEffect(() => {
-    function onDrop(e: DragEvent): void {
-      e.preventDefault();
-      const files = [...(e.dataTransfer?.files ?? [])];
-      if (files.length === 0 || !useSessionStore.getState().activeTabId) return;
-      const IMAGE = /\.(png|jpe?g|gif|webp|svg)$/i;
-      const attachments = files
-        .map((f) => ({ file: f, path: window.ion.getPathForFile?.(f) ?? "" }))
-        .filter((x) => x.path)
-        .map(({ file, path }) => ({
-          id: crypto.randomUUID(),
-          type: (IMAGE.test(file.name) ? "image" : "file") as "image" | "file",
-          name: file.name,
-          path,
-        }));
-      if (attachments.length === 0) return;
-      // Forwarded action: stages on the OWNER's active tab (same tab by the
-      // single-focus rule); chips appear via the mirror's tabs-sync.
-      useSessionStore.getState().addAttachments(attachments);
-    }
-    function onDragOver(e: DragEvent): void {
-      e.preventDefault();
-    }
-    window.addEventListener("drop", onDrop);
-    window.addEventListener("dragover", onDragOver);
-    return () => {
-      window.removeEventListener("drop", onDrop);
-      window.removeEventListener("dragover", onDragOver);
-    };
-  }, []);
 
   // Visualizer settings open from its own toolbar; controls bus owns state.
   useEffect(() => {
@@ -410,13 +359,6 @@ export function StudioShell(): React.JSX.Element {
   }, []);
 
   const paletteActions = useRef<PaletteEntry[]>([
-    {
-      id: "act:overlay",
-      label: "Open Overlay",
-      keywords: "glass main window",
-      section: "Actions",
-      run: () => window.ion.studioShowOverlay(),
-    },
     {
       id: "act:sidebar",
       label: "Toggle Left Sidebar",
@@ -434,6 +376,16 @@ export function StudioShell(): React.JSX.Element {
       section: "Actions",
       run: () =>
         useSurfaceStore.getState().toggleVisible(),
+    },
+    {
+      id: "act:search",
+      label: "Search in Files",
+      keywords: "find grep text workspace",
+      section: "Actions",
+      run: () => {
+        patchRef.current(revealDockView(layoutRef.current, "search").patch);
+        useWorkspaceSearchStore.getState().requestFocus();
+      },
     },
     {
       id: "act:terminal",
@@ -478,21 +430,14 @@ export function StudioShell(): React.JSX.Element {
             terminalVisible,
             surfaceVisible,
             onToggleSidebar: () => {
-              if (responsive.mode === "narrow" && requestedLeftVisible) setNarrowPane("left");
-              else patch({ leftSidebarVisible: !layout.leftSidebarVisible });
+              patch({ leftSidebarVisible: !layout.leftSidebarVisible });
             },
             onToggleTerminal: () => toggleActiveConversationTerminal(),
             onToggleSurface: () => {
-              if (responsive.mode === "narrow" && surfaceVisible) setNarrowPane("surface");
-              else useSurfaceStore.getState().toggleVisible();
+              useSurfaceStore.getState().toggleVisible();
             },
           }}
         />
-        {studioTabStripVisible && (
-          <div style={{ flexShrink: 0 }}>
-            <TabStrip presentation="studio" />
-          </div>
-        )}
         <div
           style={{
             flex: 1,
@@ -506,15 +451,15 @@ export function StudioShell(): React.JSX.Element {
             <StudioLeftSidebar
               layout={layout}
               width={responsive.leftWidth}
-              onSelectView={(view) => patch({ leftSidebarView: view })}
-              onFocusCapture={() => { setLastFocusedColumn("conversation"); setNarrowPane("left") }}
-              onMouseDownCapture={() => { setLastFocusedColumn("conversation"); setNarrowPane("left") }}
+              onSelectView={onSelectLeftSidebarView}
+              onFocusCapture={() => { setLastFocusedColumn("conversation") }}
+              onMouseDownCapture={() => { setLastFocusedColumn("conversation") }}
               onClose={() => patch({ leftSidebarVisible: false })}
             />
           )}
           {showCenter && <StudioCenter
-            onFocusCapture={() => { setLastFocusedColumn("conversation"); setNarrowPane("center") }}
-            onMouseDownCapture={() => { setLastFocusedColumn("conversation"); setNarrowPane("center") }}
+            onFocusCapture={() => { setLastFocusedColumn("conversation") }}
+            onMouseDownCapture={() => { setLastFocusedColumn("conversation") }}
             layout={layout}
             liveTerminalHeight={liveTerminalHeight ?? layout.terminalHeight}
             onLiveTerminalResize={setLiveTerminalHeight}
@@ -528,8 +473,8 @@ export function StudioShell(): React.JSX.Element {
           <StudioBrowserHost />
           {showSurface && (
             <StudioSurface
-              onFocusCapture={() => { setLastFocusedColumn("surface"); setNarrowPane("surface") }}
-              onMouseDownCapture={() => { setLastFocusedColumn("surface"); setNarrowPane("surface") }}
+              onFocusCapture={() => { setLastFocusedColumn("surface") }}
+              onMouseDownCapture={() => { setLastFocusedColumn("surface") }}
               liveWidth={surfaceMaximized ? windowWidth : responsive.surfaceWidth}
               maximized={surfaceMaximized}
               onToggleMaximized={() => useSurfaceStore.getState().toggleMaximized()}
@@ -558,6 +503,7 @@ export function StudioShell(): React.JSX.Element {
           )}
         </div>
         <NewConversationPickerHost />
+        <TransferDialogHost />
         {settingsOpen && (
           <SettingsDialog
             initialTab={settingsInitialTab}
@@ -581,6 +527,8 @@ export function StudioShell(): React.JSX.Element {
         />
         <ScratchCloseDialog />
         <DeepLinkConfirmDialog />
+        <RemoteDirectoryPicker />
+        <SavePathPromptHost />
         <UpdateDialog />
       </div>
     </PopoverLayerProvider>

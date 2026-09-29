@@ -21,12 +21,13 @@ import {
   findDispatchById,
   telemetryToDispatchInfo,
 } from "./agent-panel-helpers";
-import { mapConversationMessages } from "./agent-conversation-mapper";
+import { mapConversationMessages } from "@ion/shared/transcript/agent-conversation-mapper";
 import type { DispatchInfo, BreadcrumbFrame } from "./agent-panel-helpers";
-import type { AgentStateUpdate } from "../../shared/types";
-import type { Message } from "../../shared/types";
-import type { DispatchTelemetryEntry } from "../../shared/types-engine";
+import type { AgentStateUpdate } from "@ion/shared/types";
+import type { Message } from "@ion/shared/types";
+import type { DispatchTelemetryEntry } from "@ion/shared/types-engine";
 import { rError } from "../rendererLogger";
+import { host } from '../host/host-instance'
 
 export interface AgentDetailBodyProps {
   agent: AgentStateUpdate;
@@ -132,7 +133,7 @@ export function AgentDetailBody({
         return next;
       });
       try {
-        const data = await window.ion.getConversation(convId, 0, 200);
+        const data = await host.shell.getConversation(convId, 0, 200);
         const msgs: Message[] = mapConversationMessages(data.messages || []);
         setSubMessages((prev) => {
           const next = new Map(prev);

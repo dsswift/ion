@@ -31,7 +31,9 @@ import { QuestionsSurface } from './tabs/QuestionsSurface'
 import { RuntimePanelBody } from './runtime-panel-registry'
 import { FileExplorer } from '../../components/FileExplorer'
 import { GitPanel } from '../../components/GitPanel'
-import type { SurfaceTab } from '../../../shared/studio-surface-types'
+import type { SurfaceTab } from '@ion/shared/studio-surface-types'
+import { host } from '../../host/host-instance'
+import { SurfaceFindHost } from './surface-find'
 
 function PlaceholderBody({ label }: { label: string }): React.JSX.Element {
   const colors = useColors()
@@ -134,6 +136,36 @@ export function BrowserBodies({ currentConversationId, activeTabId }: {
       .map((tab) => ({ conversationId, tab })),
   )
 
+  // Capability gate (spec 18): a browser host (no Electron WebContentsView)
+  // omits `browser` from `host.capabilities()`. Rendering BrowserSurface's
+  // effects there would call `host.shell.studioBrowserViewEnsure` and every
+  // other Electron-only IPC verb it depends on, none of which exist on that
+  // bridge. Checked once here rather than inside BrowserSurface itself so a
+  // gated conversation still gets its placeholder tab strip entry — only the
+  // guest body is refused.
+  if (!host.capabilities().includes('browser')) {
+    return (
+      <>
+        {browserTabs.map(({ conversationId, tab }) => (
+          <div
+            key={tab.id}
+            style={{
+              display: conversationId === currentConversationId && tab.id === activeTabId ? 'flex' : 'none',
+              flex: 1,
+              minHeight: 0,
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 12,
+              fontFamily: 'system-ui, sans-serif',
+            }}
+          >
+            Not available in the browser
+          </div>
+        ))}
+      </>
+    )
+  }
+
   return (
     <>
       {browserTabs.map(({ conversationId, tab }) => (
@@ -198,6 +230,8 @@ export function SurfacePanel({ onAgentClick }: { onAgentClick?: (tabId: string, 
   const activeTabId = useSurfaceStore((s) => s.activeTabId)
   const currentConversationId = useSurfaceStore((s) => s.currentConversationId)
   const hydrated = useSurfaceStore((s) => s.hydrated)
+  // The searchable body. The find bar sits beside it, never inside it.
+  const bodyRef = React.useRef<HTMLDivElement>(null)
 
   if (!hydrated) {
     return <div style={{ flex: 1, background: colors.containerBg }} />
@@ -207,14 +241,18 @@ export function SurfacePanel({ onAgentClick }: { onAgentClick?: (tabId: string, 
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <SurfaceTabStrip />
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
-        {tabs.length === 0 ? (
-          <PlaceholderBody label="No surface tabs — add one with +" />
-        ) : (
-          tabs.map((t) => bodyFor(t, t.id === activeTabId, currentConversationId ?? '', onAgentClick))
-        )}
-        {/* Owns geometry for the visible browser tab while the column is open;
-            StudioBrowserHost keeps guests alive when it is closed. */}
-        <BrowserBodies currentConversationId={currentConversationId} activeTabId={activeTabId} />
+        <SurfaceFindHost bodyRef={bodyRef} activeTabId={activeTabId}>
+          <div ref={bodyRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+            {tabs.length === 0 ? (
+              <PlaceholderBody label="No surface tabs — add one with +" />
+            ) : (
+              tabs.map((t) => bodyFor(t, t.id === activeTabId, currentConversationId ?? '', onAgentClick))
+            )}
+            {/* Owns geometry for the visible browser tab while the column is open;
+                StudioBrowserHost keeps guests alive when it is closed. */}
+            <BrowserBodies currentConversationId={currentConversationId} activeTabId={activeTabId} />
+          </div>
+        </SurfaceFindHost>
       </div>
     </div>
   )

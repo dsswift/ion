@@ -1,12 +1,13 @@
-import type { SurfaceConversationPersisted } from '../../../shared/studio-surface-types'
-import { useSessionStore } from '../../stores/sessionStore'
-import { editorDirForTab } from '../../stores/session-store-helpers'
+import type { SurfaceConversationPersisted } from '@ion/shared/studio-surface-types'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { editorDirForTab } from '@ion/server/store/session-store-helpers'
 import { rDebug, rWarn } from '../../rendererLogger'
-import type { SurfaceTab } from '../../../shared/studio-surface-types'
+import type { SurfaceTab } from '@ion/shared/studio-surface-types'
 import { runtimePanel, unregisterRuntimePanel } from './runtime-panel-registry'
 import { useGraphStore } from '../graph/graph-store'
 import { useSurfaceStore } from './surface-store'
 import { forgetAnchorIfGone } from './editor-anchor'
+import { host } from '../../host/host-instance'
 
 export function materializeFileBuffer(filePath: string, dir: string, tabId: string | undefined): string | null {
   const sessionState = useSessionStore.getState()
@@ -71,12 +72,21 @@ export function teardownSurfaceTab(tab: SurfaceTab, conversationId: string | nul
     }
   }
   if (tab.kind === 'browser' && conversationId) {
-    void window.ion.studioBrowserViewClose(conversationId, tab.instanceId)
-      .catch((err) => rWarn('studio.surface', 'browser view close failed', { instance_id: tab.instanceId, error: String(err) }))
-    rDebug('studio.surface', 'browser tab closed, view destroyed', { instance_id: tab.instanceId })
+    // A browser-kind tab's record can arrive from another connected client on
+    // the same environment (Studio state syncs per environment, not per
+    // device) even when THIS client lacks `browser` (no
+    // Electron WebContentsView) -- closing it must not crash the client that
+    // merely received the tab-removal.
+    if (host.capabilities().includes('browser')) {
+      void host.shell.studioBrowserViewClose(conversationId, tab.instanceId)
+        .catch((err) => rWarn('studio.surface', 'browser view close failed', { instance_id: tab.instanceId, error: String(err) }))
+      rDebug('studio.surface', 'browser tab closed, view destroyed', { instance_id: tab.instanceId })
+    } else {
+      rDebug('studio.surface', 'browser tab closed, no browser capability to tear down a view', { instance_id: tab.instanceId })
+    }
   }
   if (tab.kind === 'terminal') {
-    void window.ion.terminalDestroy?.(`${conversationId ?? 'studio'}:surface:${tab.instanceId}`)
+    void host.shell.terminalDestroy?.(`${conversationId ?? 'studio'}:surface:${tab.instanceId}`)
     rDebug('studio.surface', 'terminal tab closed, pty destroyed', { instance_id: tab.instanceId })
   }
   if (tab.kind === 'runtime-panel') {

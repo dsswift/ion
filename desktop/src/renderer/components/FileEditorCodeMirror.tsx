@@ -11,11 +11,12 @@ import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
-import { useSessionStore, FileEditorTab } from '../stores/sessionStore'
+import { useSessionStore, FileEditorTab } from '@ion/server/store/sessionStore'
 import { getLanguageExtension, getLanguageExtensionById } from './FileEditorShared'
 import { blameExtension, dispatchBlame, clearBlame } from './git/blameGutter'
 import { FileEditorContextMenu } from './FileEditorContextMenu'
 import { rTrace, rError } from '../rendererLogger'
+import { host } from '../host/host-instance'
 
 export interface CursorPosition {
   line: number
@@ -71,7 +72,7 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onContentChange,
       clearBlame(viewRef.current)
       setBlameActive(false)
     } else {
-      const result = await window.ion.gitBlame(dir, activeFile.filePath || activeFile.fileName)
+      const result = await host.shell.gitBlame(dir, activeFile.filePath || activeFile.fileName)
       if (result.ok && result.lines.length > 0 && viewRef.current) {
         dispatchBlame(viewRef.current, result.lines)
         setBlameActive(true)

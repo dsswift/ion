@@ -5,9 +5,10 @@ import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
 import { usePreferencesStore } from '../preferences'
-import { useSessionStore, FileEditorTab } from '../stores/sessionStore'
+import { useSessionStore, FileEditorTab } from '@ion/server/store/sessionStore'
 import { isMarkdownFile } from './FileEditorShared'
 import { FileEditorTabContextMenu } from './FileEditorTabContextMenu'
+import { host } from '../host/host-instance'
 
 /**
  * Icon button in the tab bar (new scratch, preview/read-only/word-wrap
@@ -211,10 +212,12 @@ export function FileEditorTabBar({ dir, files, activeFile, activeFileId }: FileE
             }
           }}
           onRevealInFinder={() => {
-            if (tabCtxMenu.file.filePath) void window.ion.fsRevealInFinder(tabCtxMenu.file.filePath)
+            // Reveal needs a Finder/Explorer window, which only a host with
+            // 'nativeShell' has.
+            if (tabCtxMenu.file.filePath && host.capabilities().includes('nativeShell')) void host.shell.fsRevealInFinder(tabCtxMenu.file.filePath)
           }}
           onOpenInVSCode={() => {
-            if (tabCtxMenu.file.filePath) void window.ion.openExternal(`vscode://file${tabCtxMenu.file.filePath}`)
+            if (tabCtxMenu.file.filePath) void host.openExternal(`vscode://file${tabCtxMenu.file.filePath}`)
           }}
         />
       )}

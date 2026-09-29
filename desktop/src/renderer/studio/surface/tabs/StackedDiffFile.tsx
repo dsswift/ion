@@ -16,7 +16,8 @@ import { DiffTable } from '../../../components/git/DiffTable'
 import { parseDiffWithHunks } from '../../../components/git/diffParse'
 import { rError } from '../../../rendererLogger'
 import { UnsupportedDiffNotice } from '../../../components/git/UnsupportedDiffNotice'
-import type { GitChangedFile } from '../../../../shared/types'
+import type { GitChangedFile } from '@ion/shared/types'
+import { host } from '../../../host/host-instance'
 
 const AUTO_COLLAPSE_LINES = 2000
 
@@ -46,7 +47,7 @@ export function StackedDiffFile({
   const tooBig = lineCount > AUTO_COLLAPSE_LINES && !showAnyway
 
   const toggleStage = (): void => {
-    const op = file.staged ? window.ion.gitUnstage(repoDir, [file.path]) : window.ion.gitStage(repoDir, [file.path])
+    const op = file.staged ? host.shell.gitUnstage(repoDir, [file.path]) : host.shell.gitStage(repoDir, [file.path])
     void op
       .then((result) => {
         if (result.ok) onRefresh()

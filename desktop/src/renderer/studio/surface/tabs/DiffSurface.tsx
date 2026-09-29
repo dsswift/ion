@@ -7,15 +7,18 @@
  * leave the singleton rendering another conversation's changes.
  */
 import React, { useEffect, useMemo, useRef } from 'react'
-import { useSessionStore } from '../../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useGitRepo } from '../../../hooks/useGitRepo'
-import { useRepoState } from '../../../stores/git'
+import { useRepoState } from '@ion/server/store/git'
 import { useSurfaceStore } from '../surface-store'
 import { useStackedDiffs } from './useStackedDiffs'
 import { StackedDiffFile } from './StackedDiffFile'
 import { useColors } from '../../../theme'
 import { rDebug } from '../../../rendererLogger'
-import type { GitChangedFile } from '../../../../shared/types'
+import type { GitChangedFile } from '@ion/shared/types'
+import { host } from '../../../host/host-instance'
+import { useSurfaceFindActive } from '../surface-find'
+import { pathBasename } from '@ion/shared/paths'
 
 export function DiffSurface(): React.JSX.Element {
   const colors = useColors()
@@ -37,6 +40,15 @@ export function DiffSurface(): React.JSX.Element {
     if (!groups) return []
     return [...groups.index, ...groups.workingTree, ...groups.merge, ...groups.untracked]
   }, [repoState?.groups])
+
+  // Diffs load as they scroll into view. A find must see every file, so an
+  // open find bar loads the rest.
+  const findActive = useSurfaceFindActive()
+  useEffect(() => {
+    if (!findActive) return
+    for (const file of files) fetchDiff(file.path, file.staged)
+    rDebug('studio.diff', 'loaded every diff for find', { files: files.length })
+  }, [findActive, files, fetchDiff])
 
   const containerRef = useRef<HTMLDivElement | null>(null)
   const revealedNonceRef = useRef<number | null>(null)
@@ -83,7 +95,7 @@ export function DiffSurface(): React.JSX.Element {
 
   const refresh = (): void => {
     if (repoDir) {
-      window.ion.gitRefresh(repoDir).catch((err) => rDebug('git', 'gitRefresh failed', { directory: repoDir, error: String(err) }))
+      host.shell.gitRefresh(repoDir).catch((err) => rDebug('git', 'gitRefresh failed', { directory: repoDir, error: String(err) }))
     }
   }
 
@@ -111,7 +123,7 @@ export function DiffSurface(): React.JSX.Element {
         }}
       >
         <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {repoDir.split('/').pop()}
+          {pathBasename(repoDir)}
         </span>
         <span>{files.length} changed {files.length === 1 ? 'file' : 'files'}</span>
       </div>

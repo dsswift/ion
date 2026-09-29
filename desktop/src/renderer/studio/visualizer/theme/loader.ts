@@ -22,7 +22,7 @@ import type {
   StudioThemeListEntry,
   StudioThemeManifest,
   StudioWallManifest,
-} from '../../../../shared/types-studio'
+} from '@ion/shared/types-studio'
 import {
   checkDims,
   expectedAnimationDims,
@@ -38,6 +38,7 @@ import {
   validateWallManifest,
 } from './schema'
 import { checkPackMinimums, mergePacks, type PackEntry, type ValidatedPack } from './merge'
+import { host } from '../../../host/host-instance'
 
 /** Decoded bitmap. ImageBitmap in the renderer; null under node tests. */
 export type StudioBitmap = ImageBitmap | null
@@ -93,12 +94,12 @@ export interface LoadThemeOptions {
   logWarn?: (msg: string, fields?: Record<string, unknown>) => void
 }
 
-/** The production asset source, backed by the preload bridge. */
-export function ipcAssetSource(): StudioAssetSource {
+/** The production asset source: the host shell, which serves these three reads over the studio-wire on every host. */
+export function hostAssetSource(): StudioAssetSource {
   return {
-    listThemes: () => window.ion.studioListThemes(),
-    readBundle: (packId) => window.ion.studioReadThemeBundle(packId),
-    readAsset: (packId, relPath) => window.ion.studioReadThemeAsset(packId, relPath),
+    listThemes: () => host.shell.studioListThemes(),
+    readBundle: (packId) => host.shell.studioReadThemeBundle(packId),
+    readAsset: (packId, relPath) => host.shell.studioReadThemeAsset(packId, relPath),
   }
 }
 

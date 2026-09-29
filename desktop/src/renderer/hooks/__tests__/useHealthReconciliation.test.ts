@@ -22,11 +22,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { HealthReport } from '../../../shared/types'
+import type { HealthReport } from '@ion/shared/types'
 
 const logTabStatusPatch = vi.fn()
 const logTabStatusWrite = vi.fn()
-vi.mock('../../stores/slices/tab-status-transition', () => ({
+vi.mock('@ion/server/store/slices/tab-status-transition', () => ({
   logTabStatusPatch: (...a: unknown[]) => logTabStatusPatch(...a),
   logTabStatusWrite: (...a: unknown[]) => logTabStatusWrite(...a),
 }))
@@ -43,13 +43,13 @@ let state: FakeState
 const setState = vi.fn((fn: (s: FakeState) => Partial<FakeState>) => {
   state = { ...state, ...fn(state) }
 })
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: {
     getState: () => state,
     setState: (fn: (s: FakeState) => Partial<FakeState>) => setState(fn),
   },
 }))
-vi.mock('../../stores/conversation-instance', () => ({
+vi.mock('@ion/server/store/conversation-instance', () => ({
   commitInstance: (
     panes: Map<string, any>, tabId: string, fn: (inst: any) => any,
   ) => {
@@ -62,6 +62,7 @@ vi.mock('../../stores/conversation-instance', () => ({
 }))
 
 import { reconcileOnce } from '../useHealthReconciliation'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 function seed(tabStatus: string, permissionDenied: unknown = null): void {
   state = {
@@ -77,7 +78,7 @@ function seed(tabStatus: string, permissionDenied: unknown = null): void {
 
 function health(entry: Partial<HealthReport['tabs'][number]>): void {
   ;(globalThis as any).window = {
-    ion: {
+    ion: installFakeWire({
       tabHealth: vi.fn(async (): Promise<HealthReport> => ({
         tabs: [{
           tabId: 'tab1', status: 'idle', activeRequestId: null, conversationId: 'c1',
@@ -85,7 +86,7 @@ function health(entry: Partial<HealthReport['tabs'][number]>): void {
         } as HealthReport['tabs'][number]],
         queueDepth: 0,
       })),
-    },
+    }),
   }
 }
 
@@ -174,7 +175,7 @@ describe('health reconciliation — idle plane vs stuck tab', () => {
   it('logs a failed poll instead of swallowing it', async () => {
     seed('connecting')
     ;(globalThis as any).window = {
-      ion: { tabHealth: vi.fn(async () => { throw new Error('engine restarting') }) },
+      ion: installFakeWire({ tabHealth: vi.fn(async () => { throw new Error('engine restarting') }) }),
     }
 
     await reconcileOnce()

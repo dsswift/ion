@@ -7,7 +7,7 @@
  *   - /cost     — duplicated by the always-visible status-bar cost/token
  *                 indicator (see StatusBar's engine cost slot).
  *   - /model    — duplicated (and worse than) StatusBarModelPicker /
- *                 ModelPickerPopover and the AIModelsCategory settings page.
+ *                 ModelPickerPopover and the models settings page.
  *   - /mcp      — was the only MCP surface but mostly emitted "No MCP data
  *                 yet"; a proper status-bar indicator is the right fix if
  *                 we ever want this back.
@@ -24,7 +24,7 @@
  *     a divider system message so the user can scroll back to reference
  *     anything that happened before the checkpoint.
  *   - The LLM's view of history is wiped. The dispatcher forwards to the
- *     engine's `clear` command via window.ion.engineCommand, which nulls
+ *     engine's `clear` command via host.shell.engineCommand, which nulls
  *     conv.Messages on disk so the next prompt is sent with no prior
  *     turns.
  *   - The harness re-bootstraps. The engine re-fires session_start after
@@ -42,9 +42,10 @@
  * system-message bubble.
  */
 
-import type { TabState } from '../../shared/types'
-import { formatClearDivider } from '../../shared/clear-divider'
+import type { TabState } from '@ion/shared/types'
+import { formatClearDivider } from '@ion/shared/clear-divider'
 import { rError } from '../rendererLogger'
+import { host } from '../host/host-instance'
 
 export { formatClearDivider }
 
@@ -72,7 +73,7 @@ export function executeBuiltinCommand(commandName: string, deps: ExecuteCommandD
   switch (commandName) {
     case '/clear':
       if (tab) {
-        window.ion.engineCommand(tab.id, 'clear', '').catch((err) => rError('InputBarCommandHandlers', 'clear engineCommand failed', { tabId: tab.id, error: String(err) }))
+        host.shell.engineCommand(tab.id, 'clear', '').catch((err) => rError('InputBarCommandHandlers', 'clear engineCommand failed', { tabId: tab.id, error: String(err) }))
       }
       addSystemMessage(formatClearDivider(new Date()))
       return

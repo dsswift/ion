@@ -19,7 +19,7 @@ vi.mock('../../hooks/useInteractiveState', () => ({
   useInteractiveState: () => ({ hover: false, pressed: false, handlers: {} }),
   interactiveBg: () => 'transparent',
 }))
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: (selector: (s: unknown) => unknown) => selector({ tabs: [], activeTabId: null }),
 }))
 vi.mock('./surface-store', () => ({
@@ -29,6 +29,12 @@ vi.mock('./surface-store', () => ({
 const graphStoreState = { available: false }
 vi.mock('../graph/graph-store', () => ({
   useGraphStore: (selector: (s: typeof graphStoreState) => unknown) => selector(graphStoreState),
+}))
+
+// Hoisted: the host mock is read at import time (mod-key computes IS_MAC once).
+const caps = vi.hoisted(() => ({ list: [] as string[] }))
+vi.mock('../../host/host-instance', () => ({
+  host: { capabilities: () => caps.list },
 }))
 
 import { SurfaceAddMenu } from './SurfaceAddMenu'
@@ -42,6 +48,7 @@ describe('SurfaceAddMenu availability filtering', () => {
     document.body.appendChild(container)
     root = createRoot(container)
     graphStoreState.available = false
+    caps.list = ['browser']
   })
 
   afterEach(() => {
@@ -72,8 +79,34 @@ describe('SurfaceAddMenu availability filtering', () => {
     act(() => {
       root.render(<SurfaceAddMenu x={0} y={0} onClose={() => {}} />)
     })
-    for (const label of ['Diff', 'Plan Preview', 'Visualizer', 'Scratch Document', 'Explorer', 'Git', 'Browser', 'Terminal']) {
+    for (const label of ['Diff', 'Plan Preview', 'Scratch Document', 'Explorer', 'Git', 'Terminal']) {
       expect(labels().some((l) => l.includes(label))).toBe(true)
     }
+  })
+
+  it('the Visualizer entry is present on every host', () => {
+    caps.list = ['terminal', 'git', 'files', 'questions', 'graph']
+    act(() => {
+      root.render(<SurfaceAddMenu x={0} y={0} onClose={() => {}} />)
+    })
+    expect(labels().some((l) => l.includes('Visualizer'))).toBe(true)
+  })
+
+  it('the Browser entry is present when the host reports browser', () => {
+    act(() => {
+      root.render(<SurfaceAddMenu x={0} y={0} onClose={() => {}} />)
+    })
+    expect(labels().some((l) => l.includes('Browser'))).toBe(true)
+  })
+
+  it('the Browser entry is absent without the browser capability (browser Studio client)', () => {
+    // A browser surface tab is an Electron WebContentsView. `SurfacePanel`'s
+    // `BrowserBodies` already refuses the body on this capability; the menu
+    // must not invite a tab whose body cannot render.
+    caps.list = ['terminal', 'git', 'files', 'questions', 'graph']
+    act(() => {
+      root.render(<SurfaceAddMenu x={0} y={0} onClose={() => {}} />)
+    })
+    expect(labels().some((l) => l.includes('Browser'))).toBe(false)
   })
 })

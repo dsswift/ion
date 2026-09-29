@@ -2,7 +2,8 @@ import React from 'react'
 import { Paperclip, X } from '@phosphor-icons/react'
 import { rWarn } from '../../rendererLogger'
 import type { useColors } from '../../theme'
-import type { QuestionDraftAnswer, QuestionAnswerAttachment } from '../../../shared/questions-state'
+import type { QuestionDraftAnswer, QuestionAnswerAttachment } from '@ion/shared/questions-state'
+import { host } from '../../host/host-instance'
 
 /**
  * Per-question attachment row: an "Attach image" affordance plus removable
@@ -23,7 +24,11 @@ export function QuestionAttachmentRow({
   const attachments = draft.attachments ?? []
 
   const pick = () => {
-    void window.ion
+    // A native file picker returns host paths, which only an OS shell can
+    // produce. Withheld rather than offered-and-thrown; the button itself is
+    // hidden below on the same capability.
+    if (!host.capabilities().includes('nativeShell')) return
+    void host.shell
       .questionsPickAttachments()
       .then((picked: QuestionAnswerAttachment[]) => {
         if (picked.length === 0) return

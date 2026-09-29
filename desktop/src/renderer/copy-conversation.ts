@@ -1,6 +1,7 @@
-import type { TabState } from '../shared/types'
-import { orderedSessionIds } from '../shared/tab-predicates'
+import type { TabState } from '@ion/shared/types'
+import { orderedSessionIds } from '@ion/shared/tab-predicates'
 import { rError, rInfo, rWarn } from './rendererLogger'
+import { host } from './host/host-instance'
 
 interface CopyTargetInstance {
   conversationIds?: readonly string[]
@@ -9,7 +10,7 @@ interface CopyTargetInstance {
 
 export async function copyConversationTranscript(tabId: string): Promise<boolean> {
   try {
-    const transcript = await window.ion.loadConversationTranscript(tabId)
+    const transcript = await host.shell.loadConversationTranscript(tabId)
     if (!transcript) {
       rWarn('conversation-copy', 'transcript copy skipped because transcript is empty', { tab_id: tabId.slice(0, 8) })
       return false

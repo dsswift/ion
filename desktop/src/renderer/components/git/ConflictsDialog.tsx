@@ -29,8 +29,9 @@ import { useColors } from '../../theme'
 import { FloatingPanel } from '../FloatingPanel'
 import { ConfirmDialog } from './ConfirmDialog'
 import { MergeEditor } from './MergeEditor'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { rError, rInfo, rWarn } from '../../rendererLogger'
+import { host } from '../../host/host-instance'
 
 interface ConflictRow {
   path: string
@@ -70,7 +71,7 @@ export function ConflictsDialog({
   // in `runFooter` (which must NOT clear the error — the operation's own
   // failure message is the useful thing on screen, and the freshly re-probed
   // `op` is what stops it from being contradicted by a stale empty file list).
-  const applyOpStateResult = useCallback((result: Awaited<ReturnType<typeof window.ion.gitOpState>>): boolean => {
+  const applyOpStateResult = useCallback((result: Awaited<ReturnType<typeof host.shell.gitOpState>>): boolean => {
     if (result.ok) {
       setOp({
         state: result.state ?? null,
@@ -88,7 +89,7 @@ export function ConflictsDialog({
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const result = await window.ion.gitOpState(directory)
+      const result = await host.shell.gitOpState(directory)
       if (applyOpStateResult(result)) {
         setError(null)
       } else {
@@ -106,7 +107,7 @@ export function ConflictsDialog({
   const accept = useCallback(async (path: string, side: 'ours' | 'theirs') => {
     setBusyPath(path)
     try {
-      const result = await window.ion.gitConflictAccept(directory, path, side)
+      const result = await host.shell.gitConflictAccept(directory, path, side)
       if (!result.ok) {
         rWarn('git.conflicts', 'accept failed', { path, side, error: result.error ?? '' })
         setError(result.error ?? 'Accept failed.')
@@ -123,8 +124,8 @@ export function ConflictsDialog({
     setFooterBusy(verb)
     try {
       const result = verb === 'abort'
-        ? await window.ion.gitRebaseAbort(directory)
-        : await window.ion.gitRebaseContinue(directory)
+        ? await host.shell.gitRebaseAbort(directory)
+        : await host.shell.gitRebaseContinue(directory)
       if (!result.ok) {
         rWarn('git.conflicts', 'operation verb failed', { verb, error: result.error ?? '' })
         setError(result.error ?? `${verb} failed.`)
@@ -137,7 +138,7 @@ export function ConflictsDialog({
         // `error` here — the operation's own failure text is what belongs on
         // screen, not "state read OK".
         try {
-          const opResult = await window.ion.gitOpState(directory)
+          const opResult = await host.shell.gitOpState(directory)
           if (!applyOpStateResult(opResult)) {
             rWarn('git.conflicts', 'post-failure op state read failed', {
               verb, error: opResult.error ?? '',

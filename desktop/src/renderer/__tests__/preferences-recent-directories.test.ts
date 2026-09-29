@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { usePreferencesStore } from '../preferences'
+import { installFakeWire } from '../host/__tests__/fake-wire'
 
 const saveSettings = vi.fn()
 
 beforeEach(() => {
   vi.clearAllMocks()
-  ;(window as unknown as { ion: { saveSettings: typeof saveSettings } }).ion = { saveSettings }
+  ;(window as unknown as { ion: { saveSettings: typeof saveSettings } }).ion = installFakeWire({ saveSettings })
   usePreferencesStore.setState({
     recentBaseDirectories: [],
     directoryUsageCounts: {},

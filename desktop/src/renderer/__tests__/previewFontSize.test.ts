@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
+import { installFakeWire } from '../host/__tests__/fake-wire'
 
 // Mock window.ion before importing preferences.
 let _savedSettings: Record<string, unknown> | null = null
@@ -30,7 +31,7 @@ if (typeof globalThis.localStorage === 'undefined') {
   }
 }
 
-;(globalThis as any).window = { ...(globalThis as any).window, ion: mockIon }
+;(globalThis as any).window = { ...(globalThis as any).window, ion: installFakeWire(mockIon) }
 
 describe('dataViewFontSize — clamp', () => {
   it('setDataViewFontSize(30) clamps to 24', async () => {
@@ -58,7 +59,7 @@ describe('dataViewFontSize — clamp', () => {
 describe('dataViewFontSize — persist round-trip', () => {
   it('getAllSettings includes dataViewFontSize', async () => {
     const { getAllSettings } = await import('../preferences-persist')
-    const { SETTINGS_DEFAULTS } = await import('../preferences-types')
+    const { SETTINGS_DEFAULTS } = await import('@ion/server/preferences-types')
 
     // Build a synthetic state that includes dataViewFontSize.
     const state = { ...SETTINGS_DEFAULTS, isDark: true, _systemIsDark: false, dataViewFontSize: 16 } as any
@@ -78,7 +79,7 @@ describe('dataViewFontSize — persist round-trip', () => {
       ...mockIon,
       loadSettings: () => Promise.resolve(diskPayload),
     }
-    ;(globalThis as any).window = { ion: ionWithSettings }
+    ;(globalThis as any).window = { ion: installFakeWire(ionWithSettings) }
     ;(globalThis as any).document = { documentElement: { style: {} } }
 
     const setStateMock = vi.fn()
@@ -98,7 +99,7 @@ describe('dataViewFontSize — persist round-trip', () => {
 
     const diskPayload = { themeMode: 'dark', dataViewFontSize: 100 }
     const ionWithSettings = { ...mockIon, loadSettings: () => Promise.resolve(diskPayload) }
-    ;(globalThis as any).window = { ion: ionWithSettings }
+    ;(globalThis as any).window = { ion: installFakeWire(ionWithSettings) }
     ;(globalThis as any).document = { documentElement: { style: {} } }
 
     const setStateMock = vi.fn()

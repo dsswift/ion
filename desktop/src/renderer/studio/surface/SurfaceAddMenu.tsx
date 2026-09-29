@@ -13,12 +13,15 @@ import { useColors } from '../../theme'
 import { useAnchoredPopover } from '../../hooks/useAnchoredPopover'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
 import { transitions } from '../../theme-tokens'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useSurfaceStore, type SurfaceState } from './surface-store'
 import { scrollableMenuStyle } from '../../menu-viewport'
 import { useGraphStore } from '../graph/graph-store'
+import { host } from '../../host/host-instance'
 
 interface AddEntryContext {
+  /** False on a client with no `browser` capability (a browser tab). */
+  browserTabAvailable: boolean
   graphViewAvailable: boolean
 }
 
@@ -35,11 +38,27 @@ interface AddEntry {
 export const SURFACE_ADD_ENTRIES: readonly AddEntry[] = [
   { id: 'diff', label: 'Diff', icon: GitDiff, create: (s) => s.openSingleton('diff') },
   { id: 'plan', label: 'Plan Preview', icon: FileText, create: (s) => s.openSingleton('plan') },
-  { id: 'visualizer', label: 'Visualizer', icon: ChartBar, create: (s) => s.openSingleton('visualizer') },
+  {
+    id: 'visualizer',
+    label: 'Visualizer',
+    icon: ChartBar,
+    create: (s) => s.openSingleton('visualizer'),
+  },
   { id: 'scratch', label: 'Scratch Document', icon: NotePencil, create: (s) => s.createScratch() },
   { id: 'files', label: 'Explorer', icon: FolderOpen, create: (s) => s.openSingleton('files') },
   { id: 'gitpanel', label: 'Git', icon: GitBranch, create: (s) => s.openSingleton('gitpanel') },
-  { id: 'browser', label: 'Browser', icon: Globe, create: (s) => s.openBrowserTab('', 'browse') },
+  {
+    id: 'browser',
+    label: 'Browser',
+    icon: Globe,
+    create: (s) => s.openBrowserTab('', 'browse'),
+    // A browser surface tab is an Electron `WebContentsView` positioned over
+    // the window -- there is no such thing to create from inside a browser
+    // tab. `SurfacePanel`'s `BrowserBodies` already refuses the body on the
+    // same capability; this withholds the invitation, the same reasoning as
+    // the Visualizer entry above.
+    available: (ctx) => ctx.browserTabAvailable,
+  },
   { id: 'terminal', label: 'Terminal', icon: TerminalWindow, create: (s, cwd) => s.openTerminalTab(cwd) },
   {
     id: 'graph',
@@ -93,7 +112,10 @@ export function SurfaceAddMenu({ x, y, onClose }: { x: number; y: number; onClos
   const menuRef = useRef<HTMLDivElement>(null)
   const activeCwd = useSessionStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory ?? '~')
   const graphViewAvailable = useGraphStore((s) => s.available)
-  const ctx: AddEntryContext = { graphViewAvailable }
+  const ctx: AddEntryContext = {
+    graphViewAvailable,
+    browserTabAvailable: host.capabilities().includes('browser'),
+  }
   const visibleEntries = SURFACE_ADD_ENTRIES.filter((entry) => entry.available?.(ctx) !== false)
 
   useEffect(() => {

@@ -25,7 +25,10 @@ vi.mock('../../theme', () => ({
 vi.mock('../../preferences', () => ({
   usePreferencesStore: (sel: (s: Record<string, unknown>) => unknown) => sel({ preferredModel: 'm' }),
 }))
-vi.mock('../../lib/window-role', () => ({ windowRole: () => 'overlay' }))
+vi.mock('@ion/server/lib/window-role', () => ({ windowRole: () => 'overlay' }))
+vi.mock('../../host/host-instance', () => ({
+  host: { shell: { engineGetContextBreakdown: vi.fn(async () => {}) }, capabilities: () => ['terminal', 'git', 'files', 'questions', 'graph'] },
+}))
 vi.mock('zustand/shallow', () => ({ useShallow: (selector: unknown) => selector }))
 vi.mock('./StatusDrawerParts', () => ({
   UsageBar: () => null, SectionHeader: () => null, elapsedStr: () => '', ProportionGraph: () => null,
@@ -56,7 +59,7 @@ const state = {
   }]]),
 }
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (snapshot: typeof state) => unknown) => selector(state),
     { getState: () => state, setState: vi.fn() },

@@ -1,11 +1,13 @@
+import { isStudioTrafficKind } from '@ion/shared/studio-sdk-contract'
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useViewportClamp } from '../hooks/useViewportClamp'
+import { zoomAnchorEdges } from '../viewport-zoom'
 import { createPortal } from 'react-dom'
 import {
   Paperclip, FileText, Image, FileCode, File, ListChecks, BookOpen, CaretRight,
 } from '@phosphor-icons/react'
 import { useShallow } from 'zustand/shallow'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
@@ -16,22 +18,20 @@ import { ResourceViewer } from './ResourceViewer'
 import { parseAttachmentsFromMessages, type MsgLike } from './StatusBarAttachmentsParser'
 import { AttachmentRow } from './StatusBarAttachmentsRow'
 import { ChartsSection } from './StatusBarAttachmentsCharts'
-import { activeInstance } from '../stores/conversation-instance'
-import type { ResourceItem } from '../../shared/types-engine'
-import { resourceIdentity } from '../../shared/resource-identity'
+import { activeInstance } from '@ion/server/store/conversation-instance'
+import type { ResourceItem } from '@ion/shared/types-engine'
+import { resourceIdentity } from '@ion/shared/resource-identity'
 import { surfaceRouter, contentRouter } from '../lib/file-open-router'
-import { rInfo, rWarn, rError } from '../rendererLogger'
+import { rInfo, rError } from '../rendererLogger'
+import { openAttachment } from '../lib/open-attachment'
 import { CHART_RESOURCE_KIND, parseChartResourceItem } from './chart-attachment'
+import { host } from '../host/host-instance'
 
 /* ─── Extension sets for icon picking ─── */
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'])
 const CODE_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs'])
 const TEXT_EXTS = new Set(['.md', '.txt', '.json', '.yaml', '.yml', '.toml'])
-const EDITABLE_EXTS = new Set([
-  '.md', '.txt', '.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml',
-  '.toml', '.py', '.rs', '.go', '.css', '.html',
-])
 
 /* ─── Helpers ─── */
 
@@ -137,7 +137,7 @@ export function AttachmentsButton() {
     () =>
       tabConvId
         ? Object.values(resources).flat().filter(
-          (r) => r.conversationId === tabConvId && r.kind !== CHART_RESOURCE_KIND,
+          (r) => r.conversationId === tabConvId && r.kind !== CHART_RESOURCE_KIND && !isStudioTrafficKind(r.kind),
         )
         : EMPTY_RESOURCES,
     [resources, tabConvId],
@@ -190,10 +190,10 @@ export function AttachmentsButton() {
 
   const updatePos = useCallback(() => {
     if (!btnRef.current) return
-    const rect = btnRef.current.getBoundingClientRect()
+    const rect = zoomAnchorEdges(btnRef.current.getBoundingClientRect())
     setPos({
-      bottom: window.innerHeight - rect.top + 6,
-      left: rect.left + rect.width / 2,
+      bottom: rect.fromBottom + 6,
+      left: rect.centerX,
     })
   }, [])
 
@@ -244,32 +244,19 @@ export function AttachmentsButton() {
       else router.openTextFile(workingDir, activeTabId, path)
       return
     }
-    const result = await window.ion.readPlan(path)
+    const result = await host.shell.readPlan(path)
     if (result.content && result.fileName) {
       setPlanData({ content: result.content, fileName: result.fileName, filePath: path })
     }
   }, [activeTabId, workingDir])
 
+  // Images, text, and native documents each open where they belong; the
+  // same helper serves the file chips on a user message.
   const handleFileClick = useCallback(async (a: ParsedAttachment) => {
     setOpen(false)
-    const ext = extOf(a.name)
-    if (IMAGE_EXTS.has(ext)) {
-      // Studio: surface preview tab; overlay: floating ImageViewer.
-      const router = surfaceRouter()
-      if (router) router.openImage(a.path)
-      else setImagePreview({ path: a.path, name: a.name })
-      return
-    }
-    if (EDITABLE_EXTS.has(ext) && activeTabId) {
-      const { openFileInEditor } = useSessionStore.getState()
-      openFileInEditor(workingDir, activeTabId, a.path)
-    } else {
-      const result = await window.ion.fsOpenNative(a.path)
-      if (!result.ok) {
-        rWarn('attachments', 'failed to open file', { path: a.path, error: result.error })
-      }
-    }
-  }, [activeTabId, workingDir])
+    if (!activeTabId) return
+    await openAttachment(activeTabId, a, { showImage: (img) => setImagePreview({ path: img.path, name: img.name }) })
+  }, [activeTabId])
 
   /* ─── Render ─── */
 
@@ -281,37 +268,23 @@ export function AttachmentsButton() {
         ref={btnRef}
         onClick={toggle}
         {...triggerState.handlers}
-        className="flex items-center rounded-full px-1 py-0.5 flex-shrink-0 ion-focusable"
+        className="flex items-center gap-0.5 text-[10px] rounded-full px-1.5 py-0.5 flex-shrink-0 ion-focusable"
         style={{
           color: open ? colors.accent : triggerState.hover ? colors.textPrimary : colors.textTertiary,
           background: interactiveBg(colors, triggerState),
           cursor: 'pointer',
-          position: 'relative',
         }}
         title={count > 0 ? `${count} attachment${count > 1 ? 's' : ''}` : 'No attachments'}
       >
         <Paperclip size={11} />
-        {count > 0 && (
-          <span
-            style={{
-              position: 'absolute',
-              top: -2,
-              right: -4,
-              fontSize: 8,
-              lineHeight: '12px',
-              minWidth: 12,
-              height: 12,
-              borderRadius: 6,
-              background: colors.accent,
-              color: colors.textOnAccent,
-              textAlign: 'center',
-              padding: '0 2px',
-              fontWeight: 600,
-            }}
-          >
-            {count}
-          </span>
-        )}
+        {/* The count is a READING of the conversation, not a task waiting on
+            the operator. It used to render as an accent pill pinned to the
+            corner of the icon — the same shape the notifications tray uses for
+            unread items — so two attachments looked like two things to go and
+            deal with. Inline, in the chip's own muted colour, it matches the
+            model / thinking / mode chips beside it: an icon and its current
+            value. */}
+        {count > 0 && <span data-testid="composer-attachment-count">{count}</span>}
       </button>
 
       {/* Popover */}

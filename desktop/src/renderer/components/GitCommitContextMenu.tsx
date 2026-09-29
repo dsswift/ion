@@ -7,8 +7,9 @@ import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
 import { transitions } from '../theme-tokens'
 import { ConfirmDialog } from './git/ConfirmDialog'
 import { rError } from '../rendererLogger'
-import type { GitCommit } from '../../shared/types'
+import type { GitCommit } from '@ion/shared/types'
 import { scrollableMenuStyle } from '../menu-viewport'
+import { host } from '../host/host-instance'
 
 // ─── Commit context menu ───
 
@@ -68,12 +69,12 @@ export function CommitContextMenu({ anchor, commit, directory, onRefresh, onClos
     { label: 'Copy Commit Message', action: () => navigator.clipboard.writeText(commit.subject) },
     { type: 'separator' as const },
     { label: 'Cherry-pick', action: async () => {
-      const result = await window.ion.gitCherryPick(directory, commit.hash)
+      const result = await host.shell.gitCherryPick(directory, commit.hash)
       if (!result.ok) alert(result.error || 'Cherry-pick failed')
       onRefresh()
     }},
     { label: 'Revert', action: async () => {
-      const result = await window.ion.gitRevert(directory, commit.hash)
+      const result = await host.shell.gitRevert(directory, commit.hash)
       if (!result.ok) alert(result.error || 'Revert failed')
       onRefresh()
     }},
@@ -83,12 +84,12 @@ export function CommitContextMenu({ anchor, commit, directory, onRefresh, onClos
     ] : []),
     { type: 'separator' as const },
     { label: 'Reset → Soft', action: async () => {
-      const result = await window.ion.gitReset(directory, commit.hash, 'soft')
+      const result = await host.shell.gitReset(directory, commit.hash, 'soft')
       if (!result.ok) alert(result.error || 'Reset failed')
       onRefresh()
     }},
     { label: 'Reset → Mixed', action: async () => {
-      const result = await window.ion.gitReset(directory, commit.hash, 'mixed')
+      const result = await host.shell.gitReset(directory, commit.hash, 'mixed')
       if (!result.ok) alert(result.error || 'Reset failed')
       onRefresh()
     }},
@@ -148,7 +149,7 @@ export function CommitContextMenu({ anchor, commit, directory, onRefresh, onClos
           danger
           onConfirm={() => {
             void (async () => {
-              const result = await window.ion.gitReset(directory, commit.hash, 'hard')
+              const result = await host.shell.gitReset(directory, commit.hash, 'hard')
               if (!result.ok) alert(result.error || 'Reset failed')
               setConfirmReset(null)
               onRefresh()

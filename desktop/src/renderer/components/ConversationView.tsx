@@ -1,19 +1,20 @@
 import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useShallow } from 'zustand/shallow'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import { useColors } from '../theme'
 import { EngineDialog } from './EngineDialog'
 import { EngineNotificationToasts } from './EngineNotificationToasts'
 import { AgentPanel } from './AgentPanel'
 import { PermissionDeniedCard } from './PermissionDeniedCard'
-import { resolvePlanCardSuppression } from '../../shared/plan-card-gate'
+import { resolvePlanCardSuppression } from '@ion/shared/plan-card-gate'
 import { useClearPermissionDenied } from '../hooks/useClearPermissionDenied'
 import { ElicitationCardHost } from './ElicitationCardHost'
 import { TodoListPanel } from './TodoListPanel'
-import { ConversationSearch } from './ConversationSearch'
-import { useConversationSearch } from '../hooks/useConversationSearch'
+import { FindBar } from './FindBar'
+import { useDomFind } from '../hooks/useDomFind'
+import { usePaneFindEvents } from '../studio/find/pane-find'
 import { useScrollFollow } from './conversation/useScrollFollow'
 import { ScrollToBottomButton } from './conversation/ScrollToBottomButton'
 import { TranscriptRows } from './conversation/TranscriptRows'
@@ -26,6 +27,18 @@ import {
   MessageActions, InterruptButton,
   QueuedMessage, EmptyState, RunDurationFooter,
 } from './conversation'
+import { host } from '../host/host-instance'
+import { usePresenceStore, drivingSubjectFor } from '../stores/presence-store'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
+import { useEnvironmentAvailabilityMap } from '../studio/connection/environment-availability'
+import { useTabEnvironmentId } from '../studio/connection/tab-environment'
+import { EnvironmentOfflinePanel } from '../studio/connection/EnvironmentUnavailable'
+import { submitWithTrace } from '../lib/prompt-trace'
+
+/** The engine conversation a tab is bound to, for a prompt span's attributes. */
+function conversationIdOf(tabId: string): string | null | undefined {
+  return useSessionStore.getState().tabs.find((t) => t.id === tabId)?.conversationId
+}
 
 // Stable empty refs to avoid creating new array/object references on every render.
 // Without these, `|| []` in selectors creates a new array each time, which Zustand
@@ -34,7 +47,7 @@ const EMPTY_ARRAY: any[] = []
 const EMPTY_NOTIFICATIONS: any[] = []
 const EMPTY_MESSAGES: any[] = []
 const EMPTY_AGENTS: any[] = []
-const EMPTY_TELEMETRY: import('../../shared/types-engine').DispatchTelemetryEntry[] = []
+const EMPTY_TELEMETRY: import('@ion/shared/types-engine').DispatchTelemetryEntry[] = []
 const CONVERSATION_ACTIVITY_OVERLAY_HEIGHT = 56
 
 // ─── Main Component ───
@@ -96,6 +109,15 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   // compaction is in flight — without it the transcript goes dark for
   // the full duration and only shows the boundary marker on completion.
   const isCompacting = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.isCompacting ?? false)
+  // FR-02 shared-tenancy presence: the subject who started this tab's
+  // in-flight run, if it isn't this connection's own subject.
+  const presenceDriving = usePresenceStore(s => s.driving)
+  const presenceEntries = usePresenceStore(s => s.entries)
+  const ownSubject = usePresenceStore(s => s.ownSubject)
+  const drivenBySubject = drivingSubjectFor(presenceDriving, ownSubject, tabId)
+  const drivenByName = drivenBySubject
+    ? (presenceEntries.find(e => e.subject === drivenBySubject)?.displayName ?? drivenBySubject)
+    : null
   const permissionDenied = useSessionStore(s => {
     const p = s.conversationPanes.get(tabId)
     const inst = p?.activeInstanceId ? p.instances.find(i => i.id === p.activeInstanceId) : null
@@ -106,7 +128,6 @@ export function ConversationView({ tabId }: ConversationViewProps) {
     const inst = p?.activeInstanceId ? p.instances.find(i => i.id === p.activeInstanceId) : null
     return inst?.planFilePath ?? null
   })
-  const tabGroupPinned = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.groupPinned)
   const tabConversationId = useSessionStore(s => s.tabs.find(t => t.id === tabId)?.conversationId)
   const staticInfo = useSessionStore(s => s.staticInfo)
   const submit = useSessionStore(s => s.submit)
@@ -158,21 +179,26 @@ export function ConversationView({ tabId }: ConversationViewProps) {
    */
   const chartTimelinesRef = useRef<ChartTimeline[]>([])
 
-  // Conversation search, scoped to scrollRef.
-  const searchTrigger = `${messages.length}:${messages[messages.length - 1]?.content?.length ?? 0}`
-  const [searchState, searchActions] = useConversationSearch(scrollRef, searchTrigger)
+  // Find in the transcript, when the conversation pane holds focus.
+  const [searchState, searchActions] = useDomFind(scrollRef)
+  usePaneFindEvents('conversation', {
+    open: searchActions.open,
+    next: () => { if (searchState.active) searchActions.next() },
+    prev: () => { if (searchState.active) searchActions.prev() },
+  })
 
-  // Close search when switching tabs.
+  // A search belongs to the conversation it was typed in.
+  const closeSearch = searchActions.close
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent('ion:search-close'))
-  }, [tabId])
+    closeSearch()
+  }, [tabId, closeSearch])
 
   // Chart navigation. The attachments panel and a moved marker both ask main
   // to route a jump; the transcript that owns the target conversation performs
   // it. Following is paused first, or the scroll-follow effect would drag the
   // view straight back to the tail the user just navigated away from.
   useEffect(() => {
-    return window.ion.onChartJump(({ tabId: targetTab, chartId, messageId }) => {
+    return host.shell.onChartJump(({ tabId: targetTab, chartId, messageId }) => {
       if (targetTab !== tabId) return
       // Take the viewport for this navigation. `pauseFollowing` alone was not
       // enough: the virtualizer's scroll fires handleScroll, and a chart is
@@ -220,7 +246,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
 
   const handleRetry = useCallback(() => {
     const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
-    if (lastUserMsg) submit(tabId, lastUserMsg.content)
+    if (lastUserMsg) void submitWithTrace(submit, tabId, lastUserMsg.content, conversationIdOf(tabId))
   }, [messages, submit, tabId])
 
   // Full history renders — no pagination. Rows are memoized in
@@ -284,7 +310,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   const handleAnswerDenial = useCallback((answer: string) => {
     rInfo('conversation', 'handleAnswerDenial', { tab_id: tabId.slice(0, 8), answer_len: answer.length })
     clearPermissionDenied()
-    submit(tabId, answer)
+    void submitWithTrace(submit, tabId, answer, conversationIdOf(tabId))
   }, [tabId, clearPermissionDenied, submit])
 
   const handleDismissDenial = useCallback(() => {
@@ -294,23 +320,28 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   // One pipeline for every surface: implementPlan is a store action, so in
   // the overlay it executes here (the owner) and in the Studio mirror the same
   // click forwards to the owner — the component never runs the business
-  // logic itself (unpin ordering, mode flip, group move all happen in one
-  // window against one store).
+  // logic itself (mode flip and divider happen in one window against one
+  // store).
   const handleImplement = useCallback((clearContext: boolean = false) => {
     void useSessionStore.getState().implementPlan(tabId, { clearContext })
       .catch((err) => rError('conversation', 'implement failed', { tab_id: tabId.slice(0, 8), error: String(err) }))
   }, [tabId])
 
-  const handleImplementAndUnpin = useCallback((clearContext: boolean = false) => {
-    rInfo('conversation', 'implement-and-unpin', { tab_id: tabId.slice(0, 8), clear_context: clearContext })
-    void useSessionStore.getState().implementPlan(tabId, { clearContext, unpin: true })
-      .catch((err) => rError('conversation', 'implement-and-unpin failed', { tab_id: tabId.slice(0, 8), error: String(err) }))
-  }, [tabId])
+  const tabEnvironment = useTabEnvironmentId(tabId)
+  const environmentEntry = useEnvironmentAvailabilityMap().get(tabEnvironment)
 
   // Per-message actions renderer (rewind/fork menu on user bubbles).
-  const renderActions = useCallback((msg: import('../../shared/types-session').Message) => (
+  const renderActions = useCallback((msg: import('@ion/shared/types-session').Message) => (
     <MessageActions message={msg} variant="user" engineContext={{ tabId, instanceId: activeInstanceId }} />
   ), [tabId, activeInstanceId])
+
+  // An Environment that has been unreachable past the grace window has had
+  // its rows dropped, this conversation's transcript with them. Say so:
+  // falling through would render the empty-pane state below, which reads as
+  // "nothing here" rather than "this is on a machine you cannot reach".
+  if (tabEnvironment !== LOCAL_ENVIRONMENT_ID && environmentEntry?.availability === 'offline') {
+    return <EnvironmentOfflinePanel environmentId={tabEnvironment} label={environmentEntry.label} />
+  }
 
   if (!pane || pane.instances.length === 0) {
     return (
@@ -347,7 +378,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
       {/* Scrollable conversation area (with reserved minimap gutter on the left) */}
       <div style={{ flex: agentPanelFullscreen ? 0 : 1, maxHeight: agentPanelFullscreen ? 100 : undefined, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <div style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'row' }}>
-        <ConversationSearch
+        <FindBar
           state={searchState}
           actions={searchActions}
         />
@@ -463,6 +494,11 @@ export function ConversationView({ tabId }: ConversationViewProps) {
                       }}
                     />
                     <span data-testid="conversation-activity-indicator">{orchestratorActivityWithShells}</span>
+                    {drivenByName && (
+                      <span data-testid="conversation-driven-by" style={{ color: colors.textTertiary, opacity: 0.8 }}>
+                        · driven by {drivenByName}
+                      </span>
+                    )}
                   </div>
                 ) : <span />}
                 <div data-testid="conversation-interrupt-row" style={{ pointerEvents: 'auto' }}>
@@ -487,11 +523,9 @@ export function ConversationView({ tabId }: ConversationViewProps) {
             projectPath={staticInfo?.projectPath || ''}
             messages={messages}
             tabPlanFilePath={tabPlanFilePath}
-            tabGroupPinned={tabGroupPinned}
             onDismiss={handleDismissDenial}
             onAnswer={handleAnswerDenial}
             onImplement={handleImplement}
-            onImplementAndUnpin={handleImplementAndUnpin}
           />
         )}
       </AnimatePresence>

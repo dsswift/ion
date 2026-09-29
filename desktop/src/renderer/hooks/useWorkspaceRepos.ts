@@ -8,6 +8,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import { rDebug } from '../rendererLogger'
+import { host } from '../host/host-instance'
 
 /** dir → isRepo. Module-level: survives remounts, shared across hosts. */
 const repoCache = new Map<string, boolean>()
@@ -31,7 +32,7 @@ export function useWorkspaceRepos(dirs: readonly string[]): { repos: string[]; r
     void Promise.all(
       missing.map(async (dir) => {
         try {
-          const { isRepo } = await window.ion.gitIsRepo(dir)
+          const { isRepo } = await host.shell.gitIsRepo(dir)
           repoCache.set(dir, isRepo)
         } catch (err) {
           rDebug('git', 'gitIsRepo probe failed', { dir, error: String(err) })

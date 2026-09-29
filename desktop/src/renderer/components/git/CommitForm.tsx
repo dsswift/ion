@@ -15,6 +15,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Check, Robot, ArrowCounterClockwise, CaretDown } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { rError, rDebug } from '../../rendererLogger'
+import { host } from '../../host/host-instance'
 
 interface CommitFormProps {
   directory: string
@@ -53,7 +54,7 @@ export function CommitForm({ directory, branch, stagedCount, onCommit, onQuickCo
   useEffect(() => {
     if (prefixDirRef.current === directory) return
     prefixDirRef.current = directory
-    window.ion.fsReadFile(directory + '/.commit.json').then(({ content }) => {
+    host.shell.fsReadFile(directory + '/.commit.json').then(({ content }) => {
       if (!content) { setPrefixes(DEFAULT_PREFIXES); return }
       try {
         const cfg = JSON.parse(content)
@@ -128,9 +129,9 @@ export function CommitForm({ directory, branch, stagedCount, onCommit, onQuickCo
 
   const undoCommit = useCallback(async () => {
     try {
-      const head = (await window.ion.gitGraph(directory, 0, 2)).commits[1]?.fullHash
+      const head = (await host.shell.gitGraph(directory, 0, 2)).commits[1]?.fullHash
       if (head) {
-        await window.ion.gitReset(directory, head, 'soft')
+        await host.shell.gitReset(directory, head, 'soft')
         setBannerOpen(false)
       }
     } catch (err) { rDebug('git', 'undo commit failed', { error: String(err) }) }

@@ -16,8 +16,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   normalizeStudioLayout,
   type StudioLayout,
-} from "../../../shared/types-studio";
+  type StudioSidebarView,
+} from "@ion/shared/types-studio";
 import { rDebug, rWarn } from "../../rendererLogger";
+import { host } from '../../host/host-instance'
 
 const PERSIST_DEBOUNCE_MS = 300;
 
@@ -27,6 +29,13 @@ export interface UseStudioLayoutResult {
   hydrated: boolean;
   /** Merge a partial patch into the layout and schedule one debounced persist. */
   patch: (p: Partial<StudioLayout>) => void;
+  /**
+   * Stable identity across renders (memoized here alongside `patch`, which it
+   * wraps): StudioLeftSidebar's dock-fallback effect depends on this callback
+   * specifically, not the whole props object, so a fresh closure per render
+   * would defeat that fix and reopen the door to React error #185.
+   */
+  onSelectLeftSidebarView: (view: StudioSidebarView) => void;
 }
 
 export function useStudioLayout(): UseStudioLayoutResult {
@@ -40,7 +49,7 @@ export function useStudioLayout(): UseStudioLayoutResult {
 
   useEffect(() => {
     let alive = true;
-    void window.ion
+    void host.shell
       .studioGetSettings()
       .then((s) => {
         if (!alive) return;
@@ -72,7 +81,7 @@ export function useStudioLayout(): UseStudioLayoutResult {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       timer.current = null;
-      void window.ion
+      void host.shell
         .studioSetSetting("studioLayout", latest.current)
         .then((ok) => {
           if (!ok)
@@ -88,5 +97,10 @@ export function useStudioLayout(): UseStudioLayoutResult {
     }, PERSIST_DEBOUNCE_MS);
   }, []);
 
-  return { layout, hydrated, patch };
+  const onSelectLeftSidebarView = useCallback(
+    (view: StudioSidebarView) => patch({ leftSidebarView: view }),
+    [patch],
+  );
+
+  return { layout, hydrated, patch, onSelectLeftSidebarView };
 }

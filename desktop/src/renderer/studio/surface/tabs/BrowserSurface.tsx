@@ -29,10 +29,11 @@ import { Tooltip } from '../../../components/git/Tooltip'
 import { useColors } from '../../../theme'
 import { usePreferencesStore } from '../../../preferences'
 import { useSurfaceStore } from '../surface-store'
-import type { BrowserSessionMode } from '../../../../shared/studio-surface-types'
-import type { BrowserEmulationState } from '../../../../shared/studio-browser-types'
-import { browserPartitionFor } from '../../../../shared/studio-browser-partitions'
+import type { BrowserSessionMode } from '@ion/shared/studio-surface-types'
+import type { BrowserEmulationState } from '@ion/shared/studio-browser-types'
+import { browserPartitionFor } from '@ion/shared/studio-browser-partitions'
 import { rDebug, rInfo, rWarn } from '../../../rendererLogger'
+import { host } from '../../../host/host-instance'
 
 function normalizeUrl(input: string): string {
   const trimmed = input.trim()
@@ -81,7 +82,6 @@ export function BrowserSurface({
 
   const partition = browserPartition(conversationId, instanceId, mode, sessionMode)
 
-
   // Scale the device frame to fit the panel. Measured rather than guessed: a
   // computed ratio from a hardcoded assumption drifts the moment the dock or
   // the operator's zoom changes, and the drift is invisible until the frame
@@ -119,7 +119,7 @@ export function BrowserSurface({
   // the placeholder is what keeps the two in agreement.
   useEffect(() => {
     let cancelled = false
-    void window.ion
+    void host.shell
       .studioBrowserViewEnsure(conversationId, instanceId, url || 'about:blank', partition)
       .then((ok) => {
         if (!ok && !cancelled) {
@@ -141,8 +141,8 @@ export function BrowserSurface({
   }, [conversationId, instanceId, partition])
 
   useEffect(() => {
-    const host = bodyRef.current
-    if (!host) return
+    const bodyEl = bodyRef.current
+    if (!bodyEl) return
     const push = (): void => {
       // getBoundingClientRect already returns REAL on-screen pixels relative to
       // the content area, which is exactly the coordinate space a child of
@@ -153,11 +153,11 @@ export function BrowserSurface({
       // a DOM element and never sees the zoom, so dividing made the view
       // progressively larger and higher than its hole at any zoom above 1.0 —
       // which is why the body spilled over the conversation.
-      const rect = host.getBoundingClientRect()
+      const rect = bodyEl.getBoundingClientRect()
       // An off-screen or collapsed placeholder means this tab is not the one
       // being shown; the view is hidden rather than positioned at a stale rect.
-      const visible = rect.width > 1 && rect.height > 1 && host.offsetParent !== null
-      window.ion.studioBrowserViewBounds(
+      const visible = rect.width > 1 && rect.height > 1 && bodyEl.offsetParent !== null
+      host.shell.studioBrowserViewBounds(
         conversationId,
         instanceId,
         { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
@@ -166,7 +166,7 @@ export function BrowserSurface({
     }
     push()
     const observer = new ResizeObserver(push)
-    observer.observe(host)
+    observer.observe(bodyEl)
     // The placeholder can move without changing size (a sibling panel opening,
     // the window itself moving), which a ResizeObserver never reports.
     window.addEventListener('resize', push)
@@ -177,14 +177,14 @@ export function BrowserSurface({
       window.clearInterval(interval)
       // Hide on unmount so a backgrounded tab's view cannot paint over the
       // shell while its React body is gone.
-      window.ion.studioBrowserViewBounds(conversationId, instanceId, { x: 0, y: 0, width: 0, height: 0 }, false)
+      host.shell.studioBrowserViewBounds(conversationId, instanceId, { x: 0, y: 0, width: 0, height: 0 }, false)
     }
   }, [conversationId, instanceId, emulation, frameScale])
 
   // The chrome reads the guest's state from main now: the URL bar and the
   // back/forward buttons have no element to interrogate.
   useEffect(() => {
-    return window.ion.onStudioBrowserViewState((next) => {
+    return host.shell.onStudioBrowserViewState((next) => {
       if (next.conversationId !== conversationId || next.instanceId !== instanceId) return
       setUrlInput(next.url)
       setCanGoBack(next.canGoBack)
@@ -198,7 +198,7 @@ export function BrowserSurface({
     (raw: string) => {
       const target = normalizeUrl(raw)
       if (!target) return
-      void window.ion.studioBrowserViewNavigate(conversationId, instanceId, target)
+      void host.shell.studioBrowserViewNavigate(conversationId, instanceId, target)
         .catch((err) => rWarn('studio.browser', 'navigate failed', { error: String(err) }))
       updateBrowserTab(tabId, { url: target })
     },
@@ -206,13 +206,13 @@ export function BrowserSurface({
   )
 
   const viewAction = useCallback((action: 'back' | 'forward' | 'reload') => {
-    void window.ion.studioBrowserViewAction(conversationId, instanceId, action)
+    void host.shell.studioBrowserViewAction(conversationId, instanceId, action)
       .catch((err) => rWarn('studio.browser', 'browser view action failed', { action, error: String(err) }))
   }, [conversationId, instanceId])
   const reloadView = useCallback(() => viewAction('reload'), [viewAction])
 
   const unlockNetwork = useCallback(() => {
-    void window.ion
+    void host.shell
       .studioPreviewAllowNetwork(partition)
       .then((ok) => {
         if (ok) {
@@ -229,7 +229,7 @@ export function BrowserSurface({
   const changeSessionMode = useCallback((nextMode: BrowserSessionMode) => {
     if (nextMode === sessionMode || sessionChangePending) return
     setSessionChangePending(true)
-    void window.ion
+    void host.shell
       .studioBrowserSetSessionMode(instanceId, nextMode)
       .then((ok) => {
         if (ok) {
@@ -244,7 +244,7 @@ export function BrowserSurface({
   }, [instanceId, sessionChangePending, sessionMode, tabId, updateBrowserTab])
 
   const setNetworkShield = useCallback((enabled: boolean) => {
-    void window.ion
+    void host.shell
       .studioBrowserSetNetworkShield(instanceId, enabled)
       .then((ok) => {
         if (ok) {
@@ -261,7 +261,7 @@ export function BrowserSurface({
   useEffect(() => {
     if (mode !== 'preview') return
     setNetworkUnlocked(false)
-    void window.ion
+    void host.shell
       .studioBrowserSetNetworkShield(instanceId, previewNetworkShield)
       .then((ok) => {
         if (ok) setNetworkUnlocked(!previewNetworkShield)

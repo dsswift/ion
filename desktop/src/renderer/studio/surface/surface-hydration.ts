@@ -1,18 +1,19 @@
-import { useSessionStore } from "../../stores/sessionStore";
+import { useSessionStore } from "@ion/server/store/sessionStore";
 import type {
   LegacySurfacePersisted,
   PinnableSingletonId,
   SurfaceConversationPersisted,
   SurfaceTab,
-} from "../../../shared/studio-surface-types";
+} from "@ion/shared/studio-surface-types";
 import {
   emptySurfacePersisted,
   parseSurfacePersisted,
-} from "../../../shared/studio-surface-persistence";
+} from "@ion/shared/studio-surface-persistence";
 import { rDebug, rInfo, rWarn } from "../../rendererLogger";
 import { materializeConversation } from "./surface-tab-lifecycle";
 import { emptyConversation, project } from "./surface-store-project";
 import type { SurfaceState } from "./surface-store";
+import { host } from '../../host/host-instance'
 
 let hydrationPromise: Promise<void> | null = null;
 
@@ -31,7 +32,7 @@ export function createSurfaceHydrationActions(
     if (hydrationPromise) return hydrationPromise;
     hydrationPromise = (async () => {
       try {
-        const settings = await window.ion.studioGetSettings();
+        const settings = await host.shell.studioGetSettings();
         const parsed = parseSurfacePersisted(settings?.studioSurface);
         const currentConversationId = useSessionStore.getState().activeTabId;
         // The restore side was entirely unlogged, so a tab that came back
@@ -77,11 +78,12 @@ export function createSurfaceHydrationActions(
         }
         if (parsed.version === 1) {
           const legacy = parsed as LegacySurfacePersisted;
-          const legacyVisible =
+          const legacyVisible = Boolean(
             settings?.studioLayout &&
             typeof settings.studioLayout === "object" &&
             (settings.studioLayout as { surfaceVisible?: unknown })
-              .surfaceVisible === true;
+              .surfaceVisible === true,
+          );
           const conversations: Record<string, SurfaceConversationPersisted> =
             currentConversationId
               ? {

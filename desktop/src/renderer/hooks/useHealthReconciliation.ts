@@ -1,9 +1,10 @@
 import { useEffect } from 'react'
-import { useSessionStore } from '../stores/sessionStore'
-import { commitInstance } from '../stores/conversation-instance'
-import { logTabStatusWrite, logTabStatusPatch } from '../stores/slices/tab-status-transition'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { commitInstance } from '@ion/server/store/conversation-instance'
+import { logTabStatusWrite, logTabStatusPatch } from '@ion/server/store/slices/tab-status-transition'
 import { rDebug } from '../rendererLogger'
-import type { TabStatus } from '../../shared/types'
+import type { TabStatus } from '@ion/shared/types'
+import { host } from '../host/host-instance'
 
 const HEALTH_POLL_INTERVAL_MS = 1500
 
@@ -39,7 +40,7 @@ async function reconcile(): Promise<void> {
   if (runningTabs.length === 0) return
 
   try {
-    const health = await window.ion.tabHealth()
+    const health = await host.shell.tabHealth()
     if (!health?.tabs || !Array.isArray(health.tabs)) return
 
     const stateByTab = new Map(

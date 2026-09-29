@@ -2,12 +2,13 @@ import React, { useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { useColors } from '../../theme'
 import { CopyButton } from './CopyButton'
-import { isPlanCreatedDivider, isPlanUpdatedDivider, isImplementDivider } from '../../../shared/clear-divider'
+import { isPlanCreatedDivider, isPlanUpdatedDivider, isImplementDivider } from '@ion/shared/clear-divider'
 import { PlanViewer } from '../PlanViewer'
 import { surfaceRouter } from '../../lib/file-open-router'
-import { useSessionStore } from '../../stores/sessionStore'
-import type { Message } from '../../../shared/types'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import type { Message } from '@ion/shared/types'
 import { rWarn } from '../../rendererLogger'
+import { host } from '../../host/host-instance'
 
 interface SystemMessageProps {
   message: Message
@@ -48,7 +49,7 @@ export function SystemMessage({ message, skipMotion }: SystemMessageProps) {
       }
     }
     try {
-      const result = await window.ion.readPlan(message.planFilePath)
+      const result = await host.shell.readPlan(message.planFilePath)
       if (result.content && result.fileName) {
         setPlanData({ content: result.content, fileName: result.fileName, filePath: message.planFilePath! })
       }

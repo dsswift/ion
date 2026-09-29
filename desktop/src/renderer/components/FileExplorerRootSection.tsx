@@ -12,18 +12,20 @@
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { CaretDown, CaretRight, DotsThree } from '@phosphor-icons/react'
-import { useSessionStore, isTextFile } from '../stores/sessionStore'
+import { useSessionStore, isTextFile } from '@ion/server/store/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { FileExplorerContextMenu, type ContextMenuState } from './FileExplorerContextMenu'
 import { FileExplorerTreeRow, FileExplorerInlineInput } from './FileExplorerTreeRow'
 import { FileExplorerRootHeaderMenu } from './FileExplorerRootHeaderMenu'
-import type { FsEntry } from '../../shared/types'
+import type { FsEntry } from '@ion/shared/types'
 import { surfaceRouter } from '../lib/file-open-router'
 import { fileOpenIntent, type FileClickModifiers } from '../lib/open-file-intent'
 import { rDebug, rInfo, rWarn, rError } from '../rendererLogger'
-import { normalizeSlashes, pathSegments } from '../../shared/paths'
+import { normalizeSlashes, pathSegments } from '@ion/shared/paths'
 import { usePreferencesStore } from '../preferences'
+import { host } from '../host/host-instance'
+import { joinPath, pathDirname } from '@ion/shared/paths'
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff'])
 
@@ -68,7 +70,7 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
   const [headerMenu, setHeaderMenu] = useState<{ x: number; y: number } | null>(null)
 
   const fetchDir = useCallback(async (dirPath: string) => {
-    const result = await window.ion.fsReadDir(dirPath)
+    const result = await host.shell.fsReadDir(dirPath)
     if (result.entries) {
       // Every listing is also the evidence that decides which remembered
       // expansions are still real. Expansion outlives the window now, so a
@@ -98,7 +100,7 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
   }, [rootDir, explorerState.expandedPaths, fetchDir])
 
   const fetchIgnored = useCallback((dir: string) => {
-    window.ion.gitIgnoredFiles(dir).then((result) => {
+    host.shell.gitIgnoredFiles(dir).then((result) => {
       setIgnoredPaths(new Set(result.paths))
     }).catch((err) => rDebug('file-explorer', 'gitIgnoredFiles failed', { dir, error: String(err) }))
   }, [])
@@ -135,7 +137,10 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
     // The explorer gains the two gestures it never had, so all surfaces agree:
     // ⌥⌘ opens in the operating system, ⇧⌘ reads source even for HTML.
     if (intent === 'native') {
-      void window.ion.fsOpenNative(entry.path).catch((err) => rWarn('file-explorer', 'open native failed', { path: entry.path, error: String(err) }))
+      // Opening in the OS needs 'nativeShell' -- a browser client has the
+      // filesystem over the wire but no operating system.
+      if (!host.capabilities().includes('nativeShell')) return
+      void host.shell.fsOpenNative(entry.path).catch((err) => rWarn('file-explorer', 'open native failed', { path: entry.path, error: String(err) }))
       return
     }
     if (intent === 'source' && isTextFile(entry.name)) {
@@ -185,8 +190,8 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
     const input = props.inlineCreate
     if (!input) return
     const fullPath = `${input.parentDir}/${name}`
-    if (input.type === 'file') await window.ion.fsCreateFile(fullPath)
-    else await window.ion.fsCreateDir(fullPath)
+    if (input.type === 'file') await host.shell.fsCreateFile(fullPath)
+    else await host.shell.fsCreateDir(fullPath)
     props.onInlineCreateDone()
     fetchDir(input.parentDir).catch((err) => rWarn('file-explorer', 'inline submit refresh failed', { dir: input.parentDir, error: String(err) }))
   }, [props, fetchDir])
@@ -204,12 +209,11 @@ export function FileExplorerRootSection(props: FileExplorerRootSectionProps): Re
       setRenaming(null)
       return
     }
-    const lastSlash = renaming.path.lastIndexOf('/')
-    const parentDir = lastSlash >= 0 ? renaming.path.slice(0, lastSlash) : renaming.path
-    const newPath = `${parentDir}/${trimmed}`
+    const parentDir = pathDirname(renaming.path) || renaming.path
+    const newPath = joinPath(parentDir, trimmed)
     rInfo('file-explorer', 'handleRenameSubmit', { old_path: renaming.path, new_path: newPath })
     try {
-      const result = await window.ion.fsRename(renaming.path, newPath)
+      const result = await host.shell.fsRename(renaming.path, newPath)
       if (result.ok) rInfo('file-explorer', 'rename success', { old_path: renaming.path, new_path: newPath })
       else rDebug('file-explorer', 'rename failed', { old_path: renaming.path, new_path: newPath, error: result.error })
     } catch (err) {

@@ -17,6 +17,7 @@ import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
 import { scrollableMenuStyle } from '../menu-viewport'
+import { host } from '../host/host-instance'
 
 function MenuButton({ label, onSelect }: { label: string; onSelect: () => void }): React.JSX.Element {
   const colors = useColors()
@@ -88,7 +89,9 @@ export function FileExplorerRootHeaderMenu({
     { label: 'New File', action: () => onCreate('file') },
     { label: 'New Folder', action: () => onCreate('folder') },
     { separator: true },
-    { label: 'Reveal in Finder', action: () => void window.ion.fsRevealInFinder(rootDir) },
+    // Reveal needs a Finder/Explorer window, which only a host with
+    // 'nativeShell' has.
+    { label: 'Reveal in Finder', action: () => { if (host.capabilities().includes('nativeShell')) void host.shell.fsRevealInFinder(rootDir) } },
     { label: 'Collapse All in Folder', action: onCollapseAllInFolder },
     ...(onRemoveFromWorkspace ? [{ separator: true as const }, { label: 'Remove from Workspace', action: onRemoveFromWorkspace }] : []),
   ]

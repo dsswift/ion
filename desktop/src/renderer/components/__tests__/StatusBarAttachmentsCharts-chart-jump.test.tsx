@@ -1,0 +1,61 @@
+// @vitest-environment jsdom
+/**
+ * The chart row's click handler calls `host.shell.requestChartJump` on every
+ * host: the verb is wire-served (browser-shell-bridge.ts SHELL_INVOKE), so a
+ * browser Studio client reporting only the bridged capabilities must reach
+ * it, not skip it.
+ */
+import React, { act } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+vi.mock('../../theme', () => ({ useColors: () => new Proxy({}, { get: () => '#000' }) }))
+vi.mock('../../rendererLogger', () => ({ rInfo: vi.fn() }))
+vi.mock('../../hooks/useInteractiveState', () => ({ useInteractiveState: () => ({ hover: false, pressed: false, handlers: {} }) }))
+
+const requestChartJump = vi.hoisted(() => vi.fn())
+vi.mock('../../host/host-instance', () => ({
+  host: { shell: { requestChartJump }, capabilities: () => ['terminal', 'git', 'files', 'questions', 'graph'] },
+}))
+
+import { ChartsSection } from '../StatusBarAttachmentsCharts'
+
+let container: HTMLDivElement
+let root: Root
+
+beforeEach(() => {
+  container = document.createElement('div')
+  document.body.appendChild(container)
+  vi.clearAllMocks()
+})
+
+afterEach(() => {
+  act(() => root?.unmount())
+  container.remove()
+})
+
+function mount(): void {
+  act(() => {
+    root = createRoot(container)
+    root.render(React.createElement(ChartsSection, {
+      charts: [{ chartId: 'c1', title: 't', revision: 1, toolMessageId: 'm1' }],
+      colors: new Proxy({}, { get: () => '#000' }) as ReturnType<typeof import('../../theme').useColors>,
+      showDivider: false,
+      collapsed: false,
+      onToggle: () => {},
+      onDismiss: () => {},
+      activeTabId: 'tab-1',
+    }))
+  })
+}
+
+describe('ChartsSection chart jump', () => {
+  it('calls requestChartJump on a browser host', () => {
+    mount()
+    const row = container.querySelector('button:not(:first-child)') as HTMLButtonElement
+    act(() => row.click())
+    expect(requestChartJump).toHaveBeenCalledWith({ tabId: 'tab-1', chartId: 'c1', messageId: 'm1' })
+  })
+})

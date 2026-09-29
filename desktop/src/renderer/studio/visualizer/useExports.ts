@@ -11,6 +11,7 @@ import type { AgentCache, StudioActiveState } from './state/agent-cache'
 import { postcardFooter } from './export/postcard'
 import { clipReducer, CLIP_SECONDS, type ClipState } from './export/clip'
 import { DEFAULT_MONO_FONT } from '../../typography'
+import { host } from '../../host/host-instance'
 
 export interface ExportDeps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>
@@ -21,6 +22,16 @@ export interface ExportDeps {
   setClip: React.Dispatch<React.SetStateAction<ClipState>>
 }
 
+/**
+ * Both exports end in a native save dialog (`studioExportImage`/
+ * `studioExportVideo`), so they exist only on a host with `nativeShell`. The
+ * Toolbar hides the buttons on any other host; the guard here is what makes
+ * that a property of the verb rather than of one button.
+ */
+export function canExport(): boolean {
+  return host.capabilities().includes('nativeShell')
+}
+
 export function useExports({ canvasRef, activeRef, cacheRef, seed, clip, setClip }: ExportDeps): {
   recordClip: () => void
   exportPostcard: () => Promise<void>
@@ -29,6 +40,10 @@ export function useExports({ canvasRef, activeRef, cacheRef, seed, clip, setClip
 
   /** Record a 10s office clip (MediaRecorder over the canvas stream). */
   const recordClip = useCallback(() => {
+    if (!canExport()) {
+      rInfo('studio', 'clip export skipped: no native save dialog on this host')
+      return
+    }
     const canvas = canvasRef.current
     if (!canvas || clip.kind !== 'idle') return
     let recorder: MediaRecorder
@@ -46,7 +61,7 @@ export function useExports({ canvasRef, activeRef, cacheRef, seed, clip, setClip
     recorder.onstop = async () => {
       setClip((s) => clipReducer(s, { type: 'stop' }))
       const blob = new Blob(chunks, { type: 'video/webm' })
-      const ok = await window.ion.studioExportVideo(await blob.arrayBuffer())
+      const ok = await host.shell.studioExportVideo(await blob.arrayBuffer())
       rInfo('studio', 'clip export', { saved: ok, bytes: blob.size })
       setClip((s) => clipReducer(s, { type: ok ? 'saved' : 'failed' }))
     }
@@ -59,6 +74,10 @@ export function useExports({ canvasRef, activeRef, cacheRef, seed, clip, setClip
 
   /** Postcard export: compose the live canvas + stats footer into a PNG. */
   const exportPostcard = useCallback(async () => {
+    if (!canExport()) {
+      rInfo('studio', 'postcard export skipped: no native save dialog on this host')
+      return
+    }
     const canvas = canvasRef.current
     const active = activeRef.current
     if (!canvas) return
@@ -84,7 +103,7 @@ export function useExports({ canvasRef, activeRef, cacheRef, seed, clip, setClip
     ctx.fillText(footer, 10, canvas.height + 20)
     const blob = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, 'image/png'))
     if (!blob) return
-    const ok = await window.ion.studioExportImage(await blob.arrayBuffer())
+    const ok = await host.shell.studioExportImage(await blob.arrayBuffer())
     rInfo('studio', 'postcard export', { saved: ok, footer })
   }, [canvasRef, activeRef, cacheRef, seed, colors.containerBg, colors.textTertiary])
 

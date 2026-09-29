@@ -3,7 +3,7 @@ import {
   ArrowsClockwise, X, Info, Flask, TreeStructure,
 } from '@phosphor-icons/react'
 import { useShallow } from 'zustand/shallow'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { usePanelVerticalResize } from '../hooks/usePanelVerticalResize'
 import { useElementHeight } from '../hooks/useWindowGeometry'
 import { GIT_PANEL_WIDTH } from './panelGeometry'
@@ -12,7 +12,8 @@ import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState
 import { transitions } from '../theme-tokens'
 import { Chevron } from './Chevron'
 import { usePreferencesStore } from '../preferences'
-import { useRepoState } from '../stores/git'
+import { useWorkspaceFolders } from '../hooks/useWorkspaceFolders'
+import { useRepoState } from '@ion/server/store/git'
 import { GitGraphSection } from './GitGraphSection'
 import { GitPanelRepoSection } from './GitPanelRepoSection'
 import { GitConflictBanner } from './GitConflictBanner'
@@ -25,13 +26,14 @@ import {
 } from './git/paneLayout'
 import { usePaneSash } from '../hooks/usePaneSash'
 import { resolveBenchContextAcrossRepos } from './git/benchContext'
-import { orderedWorkspaceRoots } from '../../shared/workspace-roots'
+import { orderedWorkspaceRoots } from '@ion/shared/workspace-roots'
 import { useProjectDir } from '../hooks/useProjectDir'
 import { useWorkspaceRepos } from '../hooks/useWorkspaceRepos'
 import { surfaceRouter } from '../lib/file-open-router'
 import { Sash } from './git/Sash'
 import { rDebug, rTrace } from '../rendererLogger'
-import { pathSegments } from '../../shared/paths'
+import { pathSegments } from '@ion/shared/paths'
+import { host } from '../host/host-instance'
 
 /** Panel-header icon button (close, refresh, tree/list toggle). */
 function PanelIconButton({
@@ -130,7 +132,6 @@ export function GitPanel({
   onClose?: () => void
 }) {
   const colors = useColors()
-  const expandedUI = usePreferencesStore((s) => s.expandedUI)
   const tab = useSessionStore(
     useShallow((s) => {
       const t = s.tabs.find((t) => t.id === s.activeTabId)
@@ -155,7 +156,7 @@ export function GitPanel({
   // Workspace repos: the active repo plus every workspace root that is a
   // git repo (non-repos silently omitted). Same ordering helper the
   // explorer uses, so the two surfaces can never disagree.
-  const workspaceFolders = usePreferencesStore((s) => s.workspaceFolders)
+  const { folders: workspaceFolders } = useWorkspaceFolders()
   // Mounted folders are keyed by PROJECT, so a worktree or bench tab shows the
   // same roots as a tab in the base repo. The active directory stays primary.
   const projectDir = useProjectDir(directory, worktree)
@@ -171,7 +172,7 @@ export function GitPanel({
   }, [])
 
   const refresh = useCallback(() => {
-    if (directory && directory !== '~') window.ion.gitRefresh(directory).catch((err) => rDebug("git", "gitRefresh failed", { directory, error: String(err) }))
+    if (directory && directory !== '~') host.shell.gitRefresh(directory).catch((err) => rDebug("git", "gitRefresh failed", { directory, error: String(err) }))
   }, [directory])
 
   // Force a fresh snapshot whenever the panel opens. The git watcher is
@@ -180,7 +181,7 @@ export function GitPanel({
   // data the moment the panel becomes visible.
   useEffect(() => {
     if (directory && directory !== '~') {
-      window.ion.gitRefresh(directory).catch((err) => rDebug("git", "gitRefresh failed", { directory, error: String(err) }))
+      host.shell.gitRefresh(directory).catch((err) => rDebug("git", "gitRefresh failed", { directory, error: String(err) }))
     }
   }, [directory])
 
@@ -222,7 +223,6 @@ export function GitPanel({
   // it shrink and stranded the bottom of the screen.
   const { height: panelHeight, renderHandle } = usePanelVerticalResize({
     panelId: 'git-panel',
-    expandedUI,
     override: usePreferencesStore((st) => st.gitPanelHeight),
     onCommit: usePreferencesStore((st) => st.setGitPanelHeight),
   })

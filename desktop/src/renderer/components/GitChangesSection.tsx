@@ -5,12 +5,13 @@ import { Chevron } from './Chevron'
 import { FloatingPanel } from './FloatingPanel'
 import { DiffPane } from './git/DiffPane'
 import { Tooltip } from './git/Tooltip'
-import type { GitChangedFile, GitDiffResult } from '../../shared/types'
+import type { GitChangedFile, GitDiffResult } from '@ion/shared/types'
 import { buildFileTree, type FileTreeNode } from './GitPanelTypes'
-import { useRepoGroups } from '../stores/git'
+import { useRepoGroups } from '@ion/server/store/git'
 import { ConflictsDialog } from './git/ConflictsDialog'
 import { SectionBlock } from './git/SectionBlock'
 import { rError, rDebug } from '../rendererLogger'
+import { host } from '../host/host-instance'
 
 // ─── Changes Section ───
 
@@ -46,7 +47,7 @@ export function GitChangesSection({
   // Load stashes
   const loadStashes = useCallback(async () => {
     try {
-      const result = await window.ion.gitStashList(directory)
+      const result = await host.shell.gitStashList(directory)
       setStashes(result.stashes)
     } catch { setStashes([]) }
   }, [directory])
@@ -54,19 +55,19 @@ export function GitChangesSection({
   useEffect(() => { void loadStashes().catch((err) => rDebug('git-changes', 'load stashes failed', { error: String(err) })) }, [loadStashes])
 
   const handleStashSave = async () => {
-    const result = await window.ion.gitStashSave(directory)
+    const result = await host.shell.gitStashSave(directory)
     if (!result.ok) { setError(result.error || 'Stash failed'); return }
     onRefresh(); void loadStashes().catch((err) => rDebug('git-changes', 'load stashes failed', { error: String(err) }))
   }
 
   const handleStashPop = async (ref: string) => {
-    const result = await window.ion.gitStashPop(directory, ref)
+    const result = await host.shell.gitStashPop(directory, ref)
     if (!result.ok) { setError(result.error || 'Stash pop failed'); return }
     onRefresh(); void loadStashes().catch((err) => rDebug('git-changes', 'load stashes failed', { error: String(err) }))
   }
 
   const handleStashDrop = async (ref: string) => {
-    const result = await window.ion.gitStashDrop(directory, ref)
+    const result = await host.shell.gitStashDrop(directory, ref)
     if (!result.ok) { setError(result.error || 'Stash drop failed'); return }
     void loadStashes().catch((err) => rDebug('git-changes', 'load stashes failed', { error: String(err) }))
   }
@@ -136,13 +137,13 @@ export function GitChangesSection({
   }, [])
 
   const handleStage = useCallback(async (path: string) => {
-    const result = await window.ion.gitStage(directory, [path])
+    const result = await host.shell.gitStage(directory, [path])
     if (!result.ok) { setError(result.error || 'Failed to stage file'); return }
     onRefresh()
   }, [directory, onRefresh])
 
   const handleUnstage = useCallback(async (path: string) => {
-    const result = await window.ion.gitUnstage(directory, [path])
+    const result = await host.shell.gitUnstage(directory, [path])
     if (!result.ok) { setError(result.error || 'Failed to unstage file'); return }
     onRefresh()
   }, [directory, onRefresh])
@@ -153,7 +154,7 @@ export function GitChangesSection({
   }, [])
   const confirmDiscard = async () => {
     if (!discardConfirm) return
-    const result = await window.ion.gitDiscard(directory, [discardConfirm])
+    const result = await host.shell.gitDiscard(directory, [discardConfirm])
     setDiscardConfirm(null)
     if (!result.ok) { setError(result.error || 'Failed to discard changes'); return }
     onRefresh()
@@ -162,7 +163,7 @@ export function GitChangesSection({
   const handleStageAll = async () => {
     const paths = unstagedFiles.map((f) => f.path)
     if (paths.length > 0) {
-      const result = await window.ion.gitStage(directory, paths)
+      const result = await host.shell.gitStage(directory, paths)
       if (!result.ok) { setError(result.error || 'Failed to stage files'); return }
       onRefresh()
     }
@@ -171,7 +172,7 @@ export function GitChangesSection({
   const handleUnstageAll = async () => {
     const paths = stagedFiles.map((f) => f.path)
     if (paths.length > 0) {
-      const result = await window.ion.gitUnstage(directory, paths)
+      const result = await host.shell.gitUnstage(directory, paths)
       if (!result.ok) { setError(result.error || 'Failed to unstage files'); return }
       onRefresh()
     }
@@ -186,7 +187,7 @@ export function GitChangesSection({
       return
     }
     setDiffFile({ path: file.path, staged: file.staged })
-    const data = await window.ion.gitDiff(directory, file.path, file.staged)
+    const data = await host.shell.gitDiff(directory, file.path, file.staged)
     setDiffData(data)
   }, [diffFile, directory, onFileDiffClick])
 

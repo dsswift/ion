@@ -32,16 +32,16 @@
  * wait for idle).
  *
  * ── Why this is a hook and not inline ───────────────────────────────────────
- * TabStripTabContextMenu.tsx sits near the 600-line cap. The dirtiness probe is
- * a ~45-line effect with its own cancellation bookkeeping; keeping it plus the
- * busy fold in the component would push the file over. Extracting also means
- * the row's JSX reads as three plain values.
+ * The dirtiness probe is a ~45-line effect with its own cancellation
+ * bookkeeping. Keeping it out of the menu component means the row's JSX reads
+ * as three plain values.
  */
 import { useState, useEffect } from 'react'
-import { useSessionStore } from '../stores/sessionStore'
-import { evaluateSessionBusyGuard } from '../stores/slices/session-busy-guard'
-import type { TabState } from '../../shared/types'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { evaluateSessionBusyGuard } from '@ion/server/store/slices/session-busy-guard'
+import type { TabState } from '@ion/shared/types'
 import { rWarn } from '../rendererLogger'
+import { host } from '../host/host-instance'
 
 export interface ConvertToWorktreeGate {
   /** Whether the row should render at all (a git repo, not already a worktree). */
@@ -75,15 +75,16 @@ export function useConvertToWorktreeGate(tab: TabState): ConvertToWorktreeGate {
       return () => { cancelled = true }
     }
 
+
     setUncommitted('checking')
-    void window.ion.gitIsRepo(tab.workingDirectory).then(({ isRepo }) => {
+    void host.shell.gitIsRepo(tab.workingDirectory).then(({ isRepo }) => {
       if (cancelled) return
       setIsGitRepo(isRepo)
       if (!isRepo) {
         setUncommitted(false)
         return
       }
-      return window.ion.gitChanges(tab.workingDirectory).then((result) => {
+      return host.shell.gitChanges(tab.workingDirectory).then((result) => {
         if (!cancelled) setUncommitted(result.files.length > 0)
       }).catch((err) => {
         if (!cancelled) {
@@ -109,7 +110,7 @@ export function useConvertToWorktreeGate(tab: TabState): ConvertToWorktreeGate {
     return () => { cancelled = true }
   }, [tab.id, tab.workingDirectory, tab.worktree])
 
-  // `tab.status` covers the orchestrator as the tab strip sees it; the guard
+  // `tab.status` covers the orchestrator as the Inbox sees it; the guard
   // covers per-instance state, dispatched children, and background shells that
   // the tab-level status does not reflect. A tab can be idle at the tab level
   // and still have a sub-agent or a background build running.
