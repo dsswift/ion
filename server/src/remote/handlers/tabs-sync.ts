@@ -86,7 +86,7 @@ export async function sendSync(send: (event: any) => void, forSubject?: string, 
   // `snapshot` payload so iOS sees the desktop's user preferences from
   // the moment of pairing. Snapshot semantics — consumers replace their
   // cached view with the payload, never merge. See
-  // `desktop/src/main/projectable-settings.ts` for the canonical
+  // `projectable-settings.ts` for the canonical
   // allowlist and the rationale for which settings are projected. The
   // schema + groups ride alongside the values so iOS auto-renders the
   // Settings detail view without hardcoding the projection metadata.

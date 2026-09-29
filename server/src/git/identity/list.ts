@@ -1,8 +1,7 @@
 /**
  * The redacted, client-facing view of a subject's git credentials --
  * shared by the `gitIdentity.list` studio_action
- * (`protocol/git-identity-actions.ts`), the desktop's direct-call
- * equivalent (`desktop/src/main/ipc/git-identity.ts`), and the
+ * (`protocol/git-identity-actions.ts`) and the
  * `desktop_settings_snapshot` projection that gives iOS a read-only view
  * of the LOCAL principal's own identities (`settings-broadcast.ts`,
  * `remote/handlers/tabs-sync.ts`).

@@ -421,8 +421,8 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
   // never on the wire; hasClientSecret says whether one is stored.
   McpOAuthStatus: ["authUrl", "clientId", "hasClientSecret", "resource", "scope", "tokenUrl"],
   // Slash-command listing carried inside engine_command_registry snapshots.
-  // The desktop's prompt pipeline reads this off the wire to populate a
-  // routing-hint cache keyed by session — see desktop/src/main/prompt-pipeline.ts.
+  // The server's prompt pipeline reads this off the wire to populate a
+  // routing-hint cache keyed by session.
   EngineCommandListing: ["description", "name"],
   // Filesystem slash-command discovery feed (list_slash_commands). Mirrors
   // Go's SlashCommandListing; the TS shape is EngineDiscoveredCommand in

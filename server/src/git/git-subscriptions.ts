@@ -2,10 +2,9 @@
  * git-subscriptions — repo event subscriptions keyed on an abstract
  * subscriber rather than an Electron `WebContents`.
  *
- * `desktop/src/main/git/subscriptions.ts` keys on a window and pushes over
- * `webContents.send`. That shape is correct for Electron and useless to a
- * browser Studio client, whose subscriber is a wire connection. The identity
- * is the ONLY thing that differs — retain/release bookkeeping, the
+ * Keying on a window and pushing over `webContents.send` only serves
+ * Electron; a browser Studio client's subscriber is a wire connection. The
+ * identity is the ONLY thing that differs — retain/release bookkeeping, the
  * one-subscription-per-(subscriber, repo) rule, and the release-on-disappear
  * hook are identical — so the subscriber is a small interface and the
  * bookkeeping lives here once.

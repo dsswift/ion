@@ -242,8 +242,8 @@ export function InputBar() {
   // ─── Slash commands ───
   // The slash menu only sets the input text; the real dispatch happens
   // inside handleSend below, which hands the raw text (including any leading
-  // "/") to the main process via host.shell.prompt (the single unified prompt IPC).
-  // The unified prompt pipeline (desktop/src/main/prompt-pipeline.ts) owns
+  // "/") to the server via host.shell.prompt (the single unified prompt call).
+  // The server's unified prompt pipeline owns
   // all slash routing: extension-command dispatch, .md template expansion,
   // and the /clear short-circuit for sessions that haven't started yet.
   // Slash commands are never sent to the LLM as a literal prompt.

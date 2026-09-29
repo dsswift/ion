@@ -1,14 +1,9 @@
 /**
- * remote-projection-push (core) — debounced, change-gated projection push.
+ * remote-projection-push — debounced, change-gated projection push.
  *
- * Split from the desktop renderer's `stores/remote-projection-push.ts`: this
- * half is genuinely window-free (dependency-injected `getState`/`subscribe`/
- * `push`, no `window.ion`, no Overlay-vs-Studio-mirror distinction), so it
- * lives here and the desktop renderer's file becomes a thin wrapper that
- * supplies the real store, the preload bridge, and the mirror-window guard
- * around this core. See `desktop/src/renderer/stores/remote-projection-push.ts`
- * for that wiring and the full architectural rationale (why a push rather
- * than a poll, why the mirror window must never push).
+ * Window-free by construction: `getState`, `subscribe`, and `push` are
+ * injected, so the server's store owner drives it and no Studio client ever
+ * does.
  *
  * Debounce: trailing ~250 ms. Store changes arrive in bursts (streamed
  * deltas mutate messages on every chunk); one projection per burst is enough

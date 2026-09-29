@@ -355,8 +355,8 @@ export type RemoteCommand =
     }
   // ─── Desktop settings projection (Part 7) ───────────────────────────
   // Write-back path for the per-desktop settings the iOS Settings tab
-  // surfaces. The desktop validates `key` against the allowlist in
-  // `desktop/src/main/projectable-settings.ts` and validates `value`
+  // surfaces. The server validates `key` against the allowlist in
+  // `projectable-settings.ts` and validates `value`
   // matches the declared type before persisting via `writeSettings`.
   // Unknown keys and wrong-type values are silently rejected (logged
   // but not applied). After a successful write, the desktop broadcasts

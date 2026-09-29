@@ -89,7 +89,7 @@ export interface PreferencesState {
    * with a Claude-Code-style "Stopped at X% of token target… Keep working"
    * continuation prompt when the engine's tentative WouldContinue verdict
    * is true. Disable to never nudge the model regardless of the engine's
-   * verdict. Read by desktop/src/main/early-stop-policy.ts on every event,
+   * verdict. Read by engine/early-stop-policy.ts on every event,
    * so a flip takes effect on the next decision. Default true.
    */
   enableEarlyStopContinuation: boolean

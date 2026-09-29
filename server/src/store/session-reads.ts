@@ -55,7 +55,7 @@ export async function discoverCommands(projectPath: string) {
       // .claude/commands, skills, and project roots. Ask it via
       // discover_slash_commands instead of walking the filesystem in TS. The
       // enableClaudeCompat setting gates whether the engine honors the .claude /
-      // ~/.claude roots (commands AND skills); the desktop reads the setting and
+      // ~/.claude roots (commands AND skills); the server reads the setting and
       // hands it to the engine (which holds no opinion on it). Extension commands
       // (engine_command_registry) are unioned by the renderer's autocomplete UI,
       // not here.

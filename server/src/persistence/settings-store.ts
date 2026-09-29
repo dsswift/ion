@@ -90,7 +90,7 @@ export const SETTINGS_DEFAULTS = {
   // configured output-token target, ask it to keep working. Default OFF per
   // ADR-002 2026-05-25 amendment (the feature is opt-in; users who want the
   // nudge enable it in General settings or via the Remote settings row).
-  // See desktop/src/main/early-stop-policy.ts for the policy that consumes
+  // See engine/early-stop-policy.ts for the policy that consumes
   // this setting.
   enableEarlyStopContinuation: false,
   // Show the secondary "Implement, clear context" button on the plan-
