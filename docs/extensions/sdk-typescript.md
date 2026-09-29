@@ -1076,6 +1076,23 @@ ctx.resources.onQuery('notifications', async () => {
 })
 ```
 
+A conversation can move to another machine. To let its items move with it, register three more handlers per kind. The engine calls them during the move; a kind without an import handler cannot receive a moving conversation's items, so the move is refused.
+
+```typescript
+// Hand over every item held for these conversations, with full content.
+// Without it, the engine reads the items through onQuery instead.
+ion.resources.onExport('tasks', async (conversationIds) => db.tasksFor(conversationIds))
+
+// Persist items the same extension exported on another machine.
+ion.resources.onImport('tasks', async (items) => {
+  await db.insert(items)
+  return { accepted: items.map((i) => i.id), refused: [] }
+})
+
+// Drop the items once the conversations have moved away. Returns how many were removed.
+ion.resources.onForget('tasks', async (conversationIds) => db.deleteFor(conversationIds))
+```
+
 `declare()` returns a `ResourceHandle`:
 
 ```typescript
@@ -1118,8 +1135,10 @@ Extensions can send structured messages to other sessions running the same exten
 
 ```typescript
 const sessions = await ctx.sessions.list()
-// [{ key: 'abc-123', hasActiveRun: true, extensionName: 'my-ext', conversationId: 'conv-1' }]
+// [{ key: 'abc-123', hasActiveRun: true, extensionName: 'my-ext', conversationId: 'conv-1', principalSubject: 'oidc:alice' }]
 ```
+
+The engine filters this list to sessions sharing the *calling* session's own principal before returning it — never every session engine-wide. On a shared multi-tenant engine, this is what stops one tenant's extension from enumerating another tenant's session keys and conversation ids. On a single-tenant/local engine every session shares the same subject, so nothing is hidden there.
 
 **Send a message:**
 
@@ -1140,12 +1159,13 @@ ion.on('session_message', (ctx, info) => {
 
 **`SessionListEntry`:**
 
-| Field           | Type    | Description                          |
-|-----------------|---------|--------------------------------------|
-| `key`           | string  | Session key                          |
-| `hasActiveRun`  | boolean | Whether a prompt is being processed  |
-| `extensionName` | string  | Name of the extension loaded         |
-| `conversationId`| string  | Conversation ID for this session     |
+| Field              | Type    | Description                                          |
+|--------------------|---------|-------------------------------------------------------|
+| `key`              | string  | Session key                                          |
+| `hasActiveRun`     | boolean | Whether a prompt is being processed                  |
+| `extensionName`    | string  | Name of the extension loaded                         |
+| `conversationId`   | string  | Conversation ID for this session                     |
+| `principalSubject` | string  | Owning principal's subject — always the caller's own |
 
 ## Intercept
 

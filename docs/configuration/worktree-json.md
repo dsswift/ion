@@ -59,7 +59,7 @@ has to put them there.
 | `version` | int | Manifest format version. Must be `1`. An unrecognised version disables provisioning rather than risking a misread. |
 | `worktree.seed` | array | Directories to materialise. See below. |
 | `worktree.sharedPaths` | string[] | Gitignored base-repo directories a worktree conversation may write into. See "Shared paths" below. |
-| `worktree.setup` | string | Your project's own idempotent setup command, run once after all seeding. |
+| `worktree.setup` | string | Your project's own idempotent setup command, run once after all seeding. For a project Ion cloned, neither this nor any seed `build` runs until the project is trusted: with the clone (Transfer's **Clone and trust**), or later with Settings → Servers → the server → Projects → Trust project, which also provisions the worktrees it already has. |
 | `bench.verify` | string | Project-declared command that decides whether a bench merge resolution produces an acceptable tree. See "Bench verification" below. |
 | `bench.verifyTimeoutMs` | int | Timeout for `bench.verify` in milliseconds. Optional; a sane default applies when absent. |
 
@@ -222,7 +222,7 @@ problem this feature exists to avoid.
 any `..` segment are rejected when the manifest is read.
 
 **Malformed manifests fail open.** A syntax error, an unknown version, or a bad
-entry disables provisioning (with a warning in `~/.ion/desktop.jsonl`) rather
+entry disables provisioning (with a warning in the server's log) rather
 than blocking worktree creation.
 
 **Commands are project-authored and run as-is.** Ion executes what the manifest
@@ -373,11 +373,11 @@ no `build` at all; Ion clones it, or copies it when reflink is unavailable.
 
 ## Observability
 
-Every decision lands in `~/.ion/desktop.jsonl` under `tag=worktree.provision`:
+Every decision lands in the server's log under `tag=worktree.provision` (worktree provisioning is the server's work since ADR-033):
 the manifest that was loaded, the probed reflink capability per volume pair, the
 rung chosen for each entry with elapsed time, and the full reason for any
 refusal or failure.
 
 ```bash
-jq -c 'select(.tag=="worktree.provision")' ~/.ion/desktop.jsonl
+jq -c 'select(.tag=="worktree.provision")' "${ION_DATA_DIR:-$HOME/.ion}/server.jsonl"
 ```

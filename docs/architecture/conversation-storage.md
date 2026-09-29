@@ -18,6 +18,39 @@ A conversation with ID `<id>` produces up to three files:
 
 Legacy formats may also exist: `.jsonl` (v1) and `.json` (v0). The engine auto-migrates legacy files to the split format on the next save.
 
+## Files a conversation owns
+
+Everything that belongs to one conversation, and to no other, lives in a folder named after it, beside its file pair. Moving or deleting the conversation moves or deletes exactly these files. `engine/internal/conversation/owned_files.go` is the source of truth for the paths.
+
+| Path | Holds |
+|------|-------|
+| `<id>/plans/` | Plan files. Every backend that uses Ion's own plan mode writes its plans here. A claude-code plan stays at `<workingDir>/.ion/plans/`, because the CLI can only write inside the project. `~/.ion/plans/` is the fallback for a session that has no conversation yet, and where older plans still live. |
+| `<id>/attachments/` | Attached files copied in, by a fork or a transfer. A file attached in a prompt is stored once in the shared, content-named `user-attachments/` store; the conversation takes its own copy when it is forked or moved. |
+| `<id>/images/` | Images, named by the SHA-256 of their bytes. The history holds the bytes themselves, so this folder is rebuilt on load and never needs copying. |
+| `tool-results/<id>/` | Oversized tool results spilled to disk. The tool result text names the file by absolute path. |
+
+**A fork owns its own copies** (`conversation.CopyOwnedFilesForFork`). `plans/` and `attachments/` are copied into the fork's folder. A plan the history names outside the source's folder is copied too: a legacy `~/.ion/plans` plan into the fork's `plans/`, a claude-code plan beside the original under a fresh slug. `tool-results/<id>/` is hard-linked, because those files never change. Every path the fork's history names is then rewritten to the fork's copy, so editing the fork's plan never changes the source's.
+
+## Partition layout
+
+When `engine.json`'s `security.principalPartitioning.enabled` is `true` (ADR-034), a principal's conversations do not live in the flat `~/.ion/conversations/` root above. Instead:
+
+```
+~/.ion/conversations/                                              # flat root -- UNATTRIBUTED sessions only, never migrated
+~/.ion/principals/<PrincipalDir(subject)>/
+~/.ion/principals/<PrincipalDir(subject)>/principal.json           # {subject, provider} marker, best-effort
+~/.ion/principals/<PrincipalDir(subject)>/conversations/<id>.*      # this principal's conversation files, same three-file layout as above
+~/.ion/principals/<PrincipalDir(subject)>/git/<sanitized-host>/     # FR-04 materialized git credentials for this principal
+```
+
+`principals/` is a **sibling** of `conversations/`, not nested inside it. `PrincipalDir(subject)` sanitizes the subject (`[^a-zA-Z0-9_.-]+` → `-`, trimmed, capped at 40 characters, falling back to the literal `"principal"` if that leaves nothing) and appends `--` plus the first 16 hex characters of `sha256(subject)`, so two principals whose sanitized names collide never share a directory. Example: subject `josh@example.com` → `josh-example.com--<16 hex chars>`.
+
+There is no migration path from the flat layout to a partition, or back — this is a locked decision. A session with no principal (or with partitioning disabled) always resolves to the flat root, byte-identical to before this feature existed. `engine/internal/conversation/partition.go` is the source of truth: `PartitioningEnabled()`, `PartitionConversationsDir(subject)`, `PartitionRoot()`.
+
+A session's own resolved partition directory is exposed on the wire as `storageRoot` — on [`start_session`'s result](../protocol/client-commands.md#start_session) and on the `identity_changed` hook payload's `ContextIdentity.storageRoot` (see [Hooks reference](../hooks/reference.md#storageroot)) — so a client or harness never needs to re-derive `PrincipalDir` itself. The server mirrors the same directory-name derivation in TypeScript (`server/src/conversation/principal-dir.ts`) since there is no wire RPC carrying it; the two implementations are pinned byte-identical by fixture tests on both sides.
+
+Enforcement of what a session may do to a conversation it doesn't own — `strict` (no cross-principal access), `read-only` (cross-principal reads only), or `none` (layout only, no enforcement) — is documented in [engine.json's `security.principalPartitioning`](../configuration/engine-json.md#securityprincipalpartitioning).
+
 ## `.tree.jsonl` structure
 
 - **Line 1 (header):** JSON object with `"meta": true`, `"id"`, `"leafId"`, `"workingDirectory"`, `"version"`, optional `"backend"`, optional `"nativeSessions"` — a map of delegated-CLI backend kind (`claude-code` / `codex` / `grok` / `cursor`) to `{cursor, headEntryId}`, where `cursor` is that backend's native resume handle and `headEntryId` is the conversation's `leafId` at capture time. A cursor is a disposable per-provider cache over the transcript: it is valid for native resume only while `headEntryId` still equals the live `leafId`; otherwise the next run on that backend re-bridges from the transcript. Persisted here so delegated-CLI continuity survives an engine restart. An optional `"activeRun"` journal records accepted in-flight work for configured interrupted-run recovery. It carries recovery and session identity, original prompt and model, durable checkpoint, original dispatch options, canonical user-entry ID, and recovery attempt state. Explicit abort/stop, terminal completion, and terminal failure remove it; process-restart teardown preserves it. Recovery resumes durable checkpoint without adding original prompt again.
@@ -55,7 +88,7 @@ context.
 
 ## `.llm.jsonl` structure
 
-- **Line 1 (header):** JSON object with `"meta": true`, `"id"`, `"version"`, `"model"` (the model the conversation ran on most recently — see the `model_change` entry above), `"system"` (system prompt), `"totalInputTokens"`, `"totalOutputTokens"`, `"lastInputTokens"`, `"lastInputTokensMsgCount"`, `"totalCost"`, `"createdAt"`, and optional `"parentId"`.
+- **Line 1 (header):** JSON object with `"meta": true`, `"id"`, `"version"`, `"model"` (the model the conversation ran on most recently — see the `model_change` entry above), `"system"` (system prompt), `"totalInputTokens"`, `"totalOutputTokens"`, `"lastInputTokens"`, `"lastInputTokensMsgCount"`, `"totalCost"`, `"createdAt"`, optional `"parentId"`, and optional `"forkOf"`. `parentId` names the conversation this one descends from: a fork's source, a dispatch child's parent, or the conversation a checkpoint cut continued. `forkOf` is set only on a fork, so a consumer can tell an independent fork from a conversation that is part of its parent.
 - **Subsequent lines:** `LlmMessage` objects (`engine/internal/types/llm.go`), each with:
   - `role` — `user`, `assistant`, or `system`
   - `content` — string or array of `LlmContentBlock` (text, tool_use, tool_result, image, etc.)

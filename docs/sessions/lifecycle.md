@@ -103,12 +103,14 @@ When a backend run exits:
 
 When plan mode is enabled and a prompt is sent, the engine allocates a `planFilePath` for the session:
 
-- **CLI / hybrid backends:** `<project>/.ion/plans/<hash>.md`
-- **API backend:** `~/.ion/plans/<hash>.md`
+- **claude-code:** `<project>/.ion/plans/<slug>.md`, because the CLI can only write inside the project.
+- **Every other backend:** `<conversationsDir>/<id>/plans/<slug>.md`, in the conversation's own folder (see [Conversation storage](../architecture/conversation-storage.md#files-a-conversation-owns)). A session with no conversation yet falls back to `~/.ion/plans/<slug>.md`.
+
+A fork gets its own copy of the plan, so the fork's edits never change the source's.
 
 The plan ID is **preserved** across plan-mode toggles. Toggling plan mode off — via the dropdown, keyboard shortcut, or any client command — does not retire the ID. When plan mode is re-enabled on the same session, the engine reuses the same plan file.
 
-The plan ID is only retired when the engine **session itself is replaced**. On the desktop this happens when the user clicks Implement, which calls `resetTabSession()` and creates a fresh engine session. The next plan-mode enable then allocates a new hash.
+The plan ID is only retired when the engine **session itself is replaced**. On the desktop this happens when the user clicks Implement, which calls `resetTabSession()` and creates a fresh engine session. The next plan-mode enable then allocates a new slug.
 
 On re-entry (plan mode re-enabled after a prior exit within the same session), `SendPrompt` sets `PlanModeReentry=true` on the run options. The plan-mode system prompt is prepended with reentry guidance that instructs the LLM to read the existing plan before making changes.
 
