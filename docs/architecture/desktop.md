@@ -6,291 +6,177 @@ sidebar_position: 3
 
 # Desktop Architecture
 
-Ion Desktop is **one** Electron client application. It connects to the engine daemon over a Unix socket, parses NDJSON events, and renders conversations.
+Ion Desktop is an Electron client. Its only window is **Studio** (`desktop/src/renderer/studio.html`, entry `desktop/src/renderer/studio/main.tsx`), created by `desktop/src/main/studio-window-manager.ts`.
 
-It has **two presentations**, built from two renderer entry points:
-
-| Presentation | Entry | What it is |
-|---|---|---|
-| **Overlay** | `index.html` | A transparent, always-on-top glass window with OS-level click-through. Its renderer is the session-store **owner**. |
-| **Studio** | `studio.html` | A standalone workspace window with docks, surfaces, and the visualizer canvas. Its renderer runs the session store in **mirror** mode. |
-
-Exactly one presentation is active at a time (`activeUi`). The Overlay renderer stays the owner in both modes: when the Studio is active, the Overlay renderer keeps running hidden and still persists tabs, answers snapshot polls, and executes the prompt pipeline.
-
-These are presentations of one client, not two clients. The engine sees one Desktop consumer either way. Full architecture: [ADR-021](adr/021-studio-shell-mirror-store.md). Canonical names for the shared surfaces: [Ion Vocabulary](../vocabulary/index.md).
-
-## Studio Browser Surface
-
-The [Studio Browser Surface](../vocabulary/index.md#term-studio-browser-surface) is a Studio-only surface tab. It keeps a browser document mounted for each conversation so its history and session state survive conversation switches. Browser descriptors persist the URL, content mode, and session mode. Preview documents use the network shield by default. The main process owns partition policy and browser automation. See [ADR-030](adr/030-embedded-browser-surface.md).
+The desktop does not own the session store. The Ion Studio Server (`server/`, the `@ion/server` package) owns `useSessionStore` (`server/src/store/sessionStore.ts`). One server plus one engine is an Environment ([ADR-033](adr/033-ion-studio-server-and-environments.md)). Studio is a client of every Environment in its catalog, including the local one. Canonical names for shared surfaces: [Ion Vocabulary](../vocabulary/index.md).
 
 ## Process model
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                     Renderer Process                         │
-│  React 19 + Zustand 5 + Tailwind CSS 4 + Framer Motion      │
-│                                                              │
-│  ┌──────────┐ ┌──────────────┐ ┌──────────┐ ┌────────────┐  │
-│  │ TabStrip  │ │Conversation  │ │ InputBar │ │ Marketplace│  │
-│  │          │ │   View       │ │          │ │   Panel    │  │
-│  └──────────┘ └──────────────┘ └──────────┘ └────────────┘  │
-│                         │                                    │
-│                    sessionStore (Zustand)                     │
-│                         │                                    │
-│              window.ion (preload bridge)                     │
-├──────────────────────────────────────────────────────────────┤
-│                     Preload Script                            │
-│  Typed IPC bridge via contextBridge.exposeInMainWorld        │
-├──────────────────────────────────────────────────────────────┤
-│                     Main Process                             │
-│                                                              │
-│  ┌──────────────────────────────────────────────────────┐    │
-│  │                   ControlPlane                        │    │
-│  │  Tab registry, session lifecycle, queue management    │    │
-│  │                                                       │    │
-│  │  ┌─────────────┐  ┌──────────────────┐               │    │
-│  │  │ RunManager   │  │ EventNormalizer  │               │    │
-│  │  │ Manages      │  │ Raw events       │               │    │
-│  │  │ engine       │──│ -> canonical     │               │    │
-│  │  │ connections  │  │   events         │               │    │
-│  │  └─────────────┘  └──────────────────┘               │    │
-│  └──────────────────────────────────────────────────────┘    │
-│                                                              │
-│  ┌────────────────────┐  ┌────────────────────────────┐      │
-│  │ PermissionServer   │  │ Marketplace Catalog        │      │
-│  │ HTTP hooks on      │  │ GitHub raw fetch + cache   │      │
-│  │ 127.0.0.1:19836    │  │ TTL: 5 minutes             │      │
-│  └────────────────────┘  └────────────────────────────┘      │
-└──────────────────────────────────────────────────────────────┘
-         │
-    Engine daemon
-    (~/.ion/engine.sock)
+Studio renderer (React + Zustand)
+  useSessionStore, booted as a mirror (studio/state/secondary-store.ts)
+  StudioHost seam (renderer/host/) -> window.ion (preload bridge)
+        |
+Electron main process
+  connection broker (main/connections/broker.ts): one Studio wire
+  socket per Environment, frames relayed unchanged
+  LocalServerSupervisor (main/local-server.ts): spawns and respawns
+  the local server
+        |  Studio wire (studio_action / studio_event)
+Ion Studio Server (server/dist/main.js, child process)
+  useSessionStore (owner), EngineControlPlane, EngineBridge
+        |
+Engine daemon
 ```
 
 ## Main process
 
-### ControlPlane
+- **Local server.** `LocalServerSupervisor` (`desktop/src/main/local-server.ts`) spawns the bundled server (`server/dist/main.js`) as a child process and restarts it on a backoff ladder. The single instance lives in `local-server-instance.ts`; `app-lifecycle.ts` starts it.
+- **Connection broker.** `desktop/src/main/connections/broker.ts` holds one `EnvironmentConnection` per Environment (local, TCP, or relay transport), runs the `studio_hello`/`studio_welcome` handshake, and relays frames without reading `studio_action` payloads.
+- **In-process server modules.** Main imports some `@ion/server` modules directly (for example the settings store and engine bootstrap). Their log lines go to `desktop.jsonl` through `desktop/src/main/server-logger-adapter.ts`.
+- **Window-bound features.** Browser views, Playwright automation, native dialogs, and shortcuts stay in main (`studio-browser-views.ts`, `studio-playwright/`, `ipc/`).
+- **Broadcast.** Main-process event pushes go through `desktop/src/main/broadcast.ts`. `make check-server-parity` fails a direct `webContents.send`.
 
-Single authority for all tab and session lifecycle.
+## Server side of a conversation
 
-- **Tab registry** -- maps tabId to session metadata, status, and process PID
-- **State machine** -- each tab transitions through: `connecting -> idle -> running -> completed -> failed -> dead`
-- **Request routing** -- maps requestIds to active RunManager instances
-- **Queue and backpressure** -- max 32 pending requests; prompts queue behind running tasks
-- **Health reconciliation** -- responds to renderer polls with tab status and process liveness
-- **Session ID tracking** -- maps session IDs to tabs for permission routing
+These live in the server, not the desktop:
 
-### RunManager
-
-Manages connections to the engine for each prompt.
-
-- Reads NDJSON from the engine socket line by line via StreamParser
-- Passes raw events to EventNormalizer for canonicalization
-- Maintains stderr ring buffer (100 lines) for error diagnostics
-- Cleans up connections on cancel, tab close, or unexpected disconnect
-
-### EventNormalizer
-
-Maps raw engine events to canonical `NormalizedEvent` types:
-
-| Raw Event | Normalized Event |
-|-----------|-----------------|
-| `system` (subtype: init) | `session_init` |
-| `content_block_delta` (text) | `text_chunk` |
-| `content_block_start` (tool_use) | `tool_call` |
-| `content_block_delta` (input_json) | `tool_call_update` |
-| `content_block_stop` | `tool_call_complete` |
-| `assistant` | `task_update` |
-| `result` | `task_complete` |
-| `rate_limit_event` | `rate_limit` |
-
-### PermissionServer
-
-HTTP server that intercepts tool calls via PreToolUse hooks.
-
-1. ControlPlane starts PermissionServer on `127.0.0.1:19836`
-2. When the engine wants to use a tool, it calls the hook URL
-3. PermissionServer emits a `permission-request` event to ControlPlane
-4. ControlPlane routes it to the correct tab
-5. Renderer shows a PermissionCard with Allow/Deny buttons
-6. User decision flows back through IPC to the HTTP response
-7. Engine proceeds or skips the tool based on the response
-
-Security: per-launch app secret, per-run tokens, sensitive field masking, 5-minute auto-deny timeout.
+- **`EngineControlPlane`** (`server/src/engine/engine-control-plane.ts`): tab registry, session lifecycle, prompt send, cancel, permission and dialog responses. The instance is `sessionPlane` in `server/src/state.ts`.
+- **`EngineBridge`** (`server/src/engine/engine-bridge.ts`): the socket connection to the engine. It connects to the engine address and never spawns the engine.
+- **Prompt pipeline** (`server/src/engine/prompt-pipeline.ts`): one decision tree for slash commands and prompts from every client.
+- **Event wiring** (`server/src/engine/event-wiring-session-plane.ts`): applies each control-plane event to the owner store, then broadcasts it to Studio clients.
 
 ## Preload
 
-The preload script uses `contextBridge.exposeInMainWorld` to expose a typed `window.ion` API. This is the only communication surface between renderer and main process. All methods map to `ipcRenderer.invoke()` (request/response) or `ipcRenderer.send()` (fire-and-forget).
+`desktop/src/preload/index.ts` uses `contextBridge.exposeInMainWorld` to expose a typed `window.ion` API. It is the only channel between renderer and main. The renderer reaches it through the `StudioHost` seam (`desktop/src/renderer/host/StudioHost.ts`): `ElectronStudioHost` wraps `window.ion`, and `BrowserStudioHost` serves the browser build of Studio.
 
 ## Renderer
 
 ### State management
 
-Single Zustand store (`stores/sessionStore.ts`) composed from feature slices in `stores/slices/`:
+`useSessionStore` is composed from feature slices in `server/src/store/slices/`. Studio bundles the same store and boots it with `desktop/src/renderer/studio/state/secondary-store.ts`:
 
-- Tab list with full `TabState` objects (messages, status, attachments, permissions)
-- `conversationPanes: Map<tabId, ConversationPane>` — each entry holds `instances: Array<ConversationRef & ConversationInstance>`. All per-conversation state (messages, modelOverride, permissionMode, permissionDenied, conversationIds, draftInput, agentStates, statusFields) lives on the `ConversationInstance` fields, not in separate top-level Maps.
-- Active tab selection
-- Marketplace state (catalog, search, filter, install progress)
-- UI state (expanded, marketplace open)
+- The store is the union of every connected Environment. Each tab carries its `environmentId`.
+- FORWARDED actions are swapped for a `studio_action` round trip to the server that owns the tab (`connection/tab-environment.ts`).
+- MIRROR_LOCAL actions run in the window only.
+- The classification tables live in `packages/shared/src/studio-wire/actions.ts`. A new store action must be classified there.
+
+Per-conversation state lives on `conversationPanes`: each `ConversationPane` holds `instances`, and per-instance fields (messages, model override, permission mode, draft input, agent states) sit on those instances.
 
 ### Theme system
 
-Dual color palette (dark + light) defined as JS objects. `useColors()` hook returns the active palette. All tokens sync to CSS custom properties via `syncTokensToCss()` so CSS can reference `var(--ion-*)`.
+The theme registry and CSS sync are in `desktop/src/renderer/theme-tokens.ts`; palettes are in `desktop/src/renderer/theme/` and `server/src/renderer/theme/palette-dark.ts`. `useColors()` (`desktop/src/renderer/preferences.ts`) returns the active palette for the selected theme. `syncTokensToCss()` writes every token to a `--ion-*` CSS custom property.
 
 ### Key components
 
-| Component | Purpose |
-|-----------|---------|
-| TabStrip | Tab bar with new tab, history picker, settings popover |
-| ConversationView | Scrollable message timeline, markdown rendering, tool call cards |
-| InputBar | Prompt input with attachments, voice, slash commands, model picker |
-| MarketplacePanel | Plugin browser with search, semantic filters, install flow |
+| Component | Where | Purpose |
+|---|---|---|
+| `InboxSidebar` | `renderer/studio/inbox/` | Every conversation across Environments, by project and bench |
+| `ConversationView` | `renderer/components/` | Message timeline, markdown, tool call cards |
+| `InputBar` | `renderer/components/` | Prompt input with attachments, voice, slash commands, model picker |
+| `StudioSurface` | `renderer/studio/` | The right-hand Surface panel and its tabs |
 
 ### Performance patterns
 
-- Narrow Zustand selectors with custom equality functions to prevent re-renders during streaming
-- RAF-throttled mousemove handler for click-through detection
-- Debounced marketplace search (200ms)
-- Health reconciliation skips setState when no tabs changed
+- Narrow Zustand selectors with custom equality functions keep streaming from re-rendering unrelated components.
+- `useEngineEvents` (`renderer/hooks/useEngineEvents.ts`) batches `text_chunk` events per animation frame, with a short timer fallback.
 
-## Click-through window
+## Studio Surface
 
-The Overlay presentation uses `setIgnoreMouseEvents` with `{ forward: true }` for OS-level click-through on transparent regions. The renderer toggles this on `mousemove` by checking if the cursor is over a `[data-ion-ui]` element. All interactive UI must be descendants of a `data-ion-ui` container. The Studio presentation is a normal window and does not use click-through.
+Surface tabs (`desktop/src/renderer/studio/surface/`) live in a window-local Zustand store (`useSurfaceStore`) outside `useSessionStore`.
+
+- `studioSurface` persists one descriptor record per conversation, a source-project-scoped Scratch Document map, the global Diff/Plan/Visualizer pin set, and one workspace-scoped Notification tab.
+- Opening a notification replaces that global tab's resource. It stays open across conversations until the user closes it.
+- Normal file tabs stay conversation-scoped.
+- An unsaved Scratch Document follows every conversation whose canonical editor directory resolves to the same source project, including its worktrees. Saving removes the document from that project record and opens a normal file tab only in the active conversation.
+- Explorer, Git, browser, terminal, and file tabs never pin.
+- The surface store selects the mirrored active conversation synchronously (`surface-conversation-sync.ts`).
+- Panel width persists per conversation on `SurfaceConversationPersisted.width`, alongside `visible`. `studioLayout.surfaceWidth` remains only as the default for a conversation that has never been resized.
+- One desktop preference (`studioSurfaceSwitchMode`) controls whether visibility and width both stay live across a tab switch or restore each conversation's own saved state.
+- Shape, ordering, and persistence contracts are shared modules (`packages/shared/src/studio-surface-*.ts`). One parser is both the renderer restore and the server-side `studioSurface` validator (`server/src/persistence/studio-settings-keys.ts`).
+- File tabs are descriptors. Their buffers stay in `fileEditorStates`.
+
+## Workspace Search and Pane Find
+
+[Workspace Search](../vocabulary/index.md#term-workspace-search) is the sidebar's Search view (`Mod+Shift+F`). It sends `fs.searchText` to the conversation's server, which searches the same roots the Explorer lists (`useWorkspaceRoots`). Inside a git checkout the server runs `git grep` over tracked and untracked-but-not-ignored files; elsewhere it walks the directory. Both paths run each line through the shared matcher in `packages/shared/src/text-search.ts`, so the highlighted ranges come from the function that decided the match. A result opens its file tab through `revealFileLine`, and the file tab selects the match once its buffer loads.
+
+[Pane Find](../vocabulary/index.md#term-pane-find) (`Mod+F`, `Mod+G`, `Mod+Shift+G`) acts on the pane that holds focus (`studio/find/pane-find.ts`). A canvas code editor in edit mode claims find requests and uses CodeMirror's own search, because CodeMirror renders only the visible lines. Every other pane (conversation, markdown preview, plan, diff) is searched by `useDomFind`, which paints matches with the CSS Custom Highlight API and never rewrites the DOM React owns. An open find over the Diff tab loads every file's diff so nothing is missed.
+
+## Studio Browser Surface
+
+The [Studio Browser Surface](../vocabulary/index.md#term-studio-browser-surface) is a Studio-only surface tab. It keeps a browser document mounted for each conversation so its history and session state survive conversation switches. Browser descriptors persist the URL, content mode, and session mode. Preview documents use the network shield by default. The main process owns partition policy and browser automation. See [ADR-030](adr/030-embedded-browser-surface.md).
 
 ## Data flow: prompt to response
 
 ```
-User types prompt
-  -> InputBar calls window.ion.prompt(tabId, requestId, options)
-  -> ipcRenderer.invoke('ion:prompt', ...)
-  -> Main: ControlPlane.prompt()
-  -> RunManager connects to engine socket
-  -> Engine streams NDJSON events
-  -> StreamParser emits lines
-  -> EventNormalizer maps to NormalizedEvent
-  -> ControlPlane broadcasts via IPC
-  -> Renderer: useClaudeEvents hook receives events
-  -> sessionStore.handleNormalizedEvent() updates messages
+User submits in InputBar
+  -> store action (FORWARDED) -> studio_action over the Studio wire
+  -> server: useSessionStore action -> prompt pipeline
+  -> EngineControlPlane -> EngineBridge -> engine socket
+  -> engine streams events -> EngineControlPlane emits NormalizedEvent
+  -> event-wiring-session-plane.ts: owner store handleNormalizedEvent()
+     then broadcast('ion:normalized-event') -> studio_event
+  -> Studio: useEngineEvents -> mirror store handleNormalizedEvent()
   -> React re-renders ConversationView
 ```
 
 ## Settings projection to iOS
 
-The desktop owns user preferences (`~/.ion/settings.json`). A curated
-subset of those preferences is projectable to iOS so the user can flip
-behavior toggles from a phone without affecting other paired desktops.
-The allowlist + per-key metadata lives in
-`desktop/src/main/projectable-settings.ts` — the single source of truth
-for which settings reach iOS and what they look like.
+A curated subset of settings is projectable to iOS so the user can change them from a phone. The server owns this. The allowlist data is in `server/src/projectable-settings-data.ts`; the runtime API (validators, schema, value projection) is in `server/src/projectable-settings.ts`.
 
-**Wire shape.** Two additive wire types:
+**Wire shape.**
 
-- `desktop_settings_snapshot` (event) carries the current values map
-  *plus the projection schema* (type, group, label, description,
-  defaultValue per key) *plus ordered group descriptors*. Snapshot
-  semantics — consumers REPLACE their cached view; never merge. Emitted
-  on initial pairing and on every projectable-setting change.
-- `set_desktop_setting` (command) writes one setting. The handler
-  validates the key against the allowlist, validates the value type
-  against the declared schema, persists via `writeSettings`, then
-  broadcasts a fresh snapshot to every paired iOS instance (including
-  the writer — every device sees a consistent view).
+- `desktop_settings_snapshot` (event) carries the current values, the projection schema (type, group, label, description, default per key), and ordered group descriptors. Consumers replace their cached view; they never merge.
+- `set_desktop_setting` (command) writes one setting. `server/src/remote/handlers/desktop-settings.ts` validates the key against the allowlist and the value against the declared type, then routes the write by the key's scope in `packages/shared/src/settings-registry.ts`. An Environment-scoped key needs the `admin` scope.
 
-**Per-desktop scoping.** iOS shows projected settings for the
-currently-connected desktop only. Switching transports clears the iOS
-cache and the new desktop's initial snapshot repopulates it.
+**One write path.** Studio saves through `settings.*` actions (`server/src/protocol/settings-actions.ts`). Both edit surfaces persist through `persistAndBroadcastSettings` (`server/src/settings-broadcast.ts`). It diffs the projectable keys and broadcasts a fresh snapshot only when one changed.
 
-**Schema-on-the-wire.** iOS does not hardcode the projection. Adding a
-new setting on the desktop is a one-line entry in
-`PROJECTABLE_SETTINGS`; iOS auto-renders the new row on the next
-snapshot. The iOS UI tolerates unknown `group` identifiers by falling
-back to a generic "Other" section so older iOS builds remain
-forward-compatible.
+**Schema on the wire.** iOS does not hardcode the projection. A new projectable setting needs only an allowlist entry; iOS renders the row from the next snapshot. iOS puts unknown `group` values in a generic "Other" section (`ios/IonRemote/Models/ServerSettingsModel.swift`).
 
-**Local-change broadcast.** When the user flips a setting on the
-desktop UI (via `SAVE_SETTINGS` in `ipc/settings.ts`), the handler
-diffs pre/post against the allowlist and broadcasts a fresh snapshot
-when any projectable key changed. The diff keeps the wire quiet for
-non-projectable saves (paths, fonts, model picks).
+## Worktrees and integration benches
 
-**Reference:** [ADR-001](adr/001-engine-vs-harness.md) applied to a
-*client* boundary rather than the engine one — desktop owns the
-mechanism (file, allowlist, validator, broadcast); iOS owns the UI
-policy (which sections, what order, what affordance per type).
-
-## Worktrees and integration workspaces
-
-Parallel feature development: each conversation can run in its own git worktree,
-and an **integration bench** layers several worktrees onto the feature branch so
-combinations can be tested before anything lands. Design rationale and the
-rejected alternatives are in
-[ADR-024](adr/024-integration-workspace.md); the operator-facing guide is
-[docs/design/worktree-workflow.md](../design/worktree-workflow.md).
+Each conversation can run in its own git worktree. An **integration bench** layers several worktrees onto the source branch so combinations can be tested before anything lands. Design: [ADR-024](adr/024-integration-workspace.md). Operator guide: [docs/design/worktree-workflow.md](../design/worktree-workflow.md). Guards and lifecycle: [Worktrees and Benches](worktrees-and-benches.md).
 
 ### Module map
 
 | Concern | Location |
 |---|---|
-| Land / sync preflight and primitives | `main/worktree/integrate.ts`, `main/worktree/sync.ts` |
-| Retire / re-attach | `main/worktree/relocate.ts` |
-| Discard appraisal + work preservation | `main/worktree/safety.ts` |
-| Close decision (never destructive) | `shared/worktree-close-decision.ts` |
-| Base staleness | `main/worktree/base-staleness.ts` |
-| Worktree inventory + source-branch registry | `main/worktree/inventory.ts` |
-| Bench assembly (the pure function) | `main/integration/bench-assemble.ts` |
-| Bench workspace ops (pins advance here) | `main/integration/bench-ops.ts` |
-| Bench persistence | `main/integration/bench-store.ts` |
-| Bench write guard (history writes refused) | `main/integration/bench-guard.ts` |
-| Member contribution + tree hash | `main/integration/bench-snapshot.ts` |
-| IPC | `main/ipc/worktree-lifecycle.ts`, `main/ipc/bench.ts` |
-| iOS wire | `main/remote/protocol-worktree.ts`, `main/remote/handlers/worktree.ts` |
-| Renderer state | `renderer/stores/slices/worktree-inventory-slice.ts`, `bench-slice.ts` |
-| UI | `renderer/studio/inbox/`, `BenchBar.tsx`, `WorktreeRow.tsx`, `worktreeRowState.ts` |
-| Join | `shared/worktree-list.ts` (worktrees × memberships, one ordered list) |
+| Land and sync | `server/src/worktree/integrate.ts`, `server/src/worktree/sync.ts` |
+| Retire and re-attach | `server/src/worktree/relocate.ts` |
+| Discard appraisal and work preservation | `server/src/worktree/safety.ts` |
+| Close decision (never destructive) | `packages/shared/src/worktree-close-decision.ts` |
+| Base staleness | `server/src/worktree/base-staleness.ts` |
+| Worktree inventory | `server/src/worktree/inventory.ts` |
+| Worktree registry | `server/src/worktree/registry.ts` |
+| Bench assembly | `server/src/integration/bench-assemble.ts` |
+| Bench workspace ops (pins advance here) | `server/src/integration/bench-ops.ts` |
+| Bench persistence | `server/src/integration/bench-store.ts` |
+| Bench write guard (history writes refused) | `server/src/integration/bench-guard.ts` |
+| Member contribution and tree hash | `server/src/integration/bench-snapshot.ts` |
+| Studio wire | FORWARDED store actions over `studio_action` (`packages/shared/src/studio-wire/actions.ts`); worktree git verbs in `server/src/protocol/git-actions.ts` |
+| iOS wire | `server/src/remote/protocol-worktree.ts`, `server/src/remote/handlers/worktree.ts` (store-backed verbs in `worktree-store-commands.ts`) |
+| Store state | `server/src/store/slices/worktree-inventory-slice.ts`, `bench-slice.ts` |
+| UI | `desktop/src/renderer/studio/inbox/`, `desktop/src/renderer/components/BenchBar.tsx`, `WorktreeRow.tsx`, `worktreeRowState.ts` |
+| Join | `packages/shared/src/worktree-list.ts` (worktrees and memberships, one ordered list) |
 
 ### State flow
 
-The main process owns the workspace record
-(`~/.ion/integration-workspaces.json`, keyed by `(repoPath, sourceBranch)`) and
-computes every derived fact — staleness, base drift, discard safety, conflict
-attribution. One projection feeds both Desktop presentations and the iOS client:
+The server owns the workspace record (`integration-workspaces.json` in the server's data directory, keyed by `(repoPath, sourceBranch)`). It computes every derived fact: staleness, base drift, discard safety, conflict attribution. One projection feeds every client:
 
 ```
-main-process workspace record
-  ├─ broadcast()                     → Overlay renderer + Studio mirror
-  └─ desktop_worktree_state (wire)   → iOS
+server workspace record
+  ├─ broadcast() -> studio_event   -> Studio
+  └─ desktop_worktree_state (wire) -> iOS
 ```
 
-Clients never derive these values locally. That is what keeps the pin and
-staleness vocabulary identical across surfaces, and it is why the Studio dock
-mounts the Overlay's own components rather than bespoke widgets.
+Clients never derive these values locally. That keeps the pin and staleness vocabulary identical across surfaces.
 
 ### Invariants worth knowing before changing this code
 
-- **Land and retire is terminal.** A successful operation integrates the branch,
-  removes the member from every bench, then removes the checkout, branch, and
-  registry record. Remaining worktrees receive the landed content through normal
-  Sync, then explicit pin Update/assembly.
-- **Assembly merges pins, never tips**, and never advances a pin. Only
-  `updateMember` / `updateAllStale` in `bench-ops.ts` advance one. Breaking this
-  means an assembly for one member drags in another's half-finished work.
-- **Never add `git clean -x`** to the assembly. Preserving ignored build output
-  is what makes an assembly incremental instead of cold.
-- **Closing a conversation never removes a worktree.** A structural test
-  (`worktree-close-no-destroy.test.ts`) asserts no renderer slice calls
-  `gitWorktreeRemove` at all.
-- **A new history-writing git IPC handler must call `benchGuard`.** Committing,
-  pushing, or rewriting a branch inside a bench loses the work on the next
-  assembly. Index and working-tree channels (`stage`, `unstage`, `discard`,
-  `apply`) are deliberately NOT guarded — blocking them would break diff review
-  in the bench. `bench-guard.test.ts` drives the real handlers, so a handler that
-  forgets the guard fails there rather than passing a helper-only test.
-- **There is one definition of bench containment.** `bench-guard.resolveBenchFor`
-  is it, and `bench-ops.isBenchDirectory` delegates to it. It matches a bench
-  root or a separator-prefixed descendant, never a bare string prefix — a
-  sibling named `<bench>-other` is not a bench.
-- **Serialization**: land and assembly both run on the per-repo
-  `OperationQueue` (`git/repository.ts`), so concurrent operations in one repo
-  never interleave, while separate projects proceed in parallel.
-
+- **Land and retire is terminal.** A successful operation integrates the branch, then retires the worktree: it leaves every bench, and its checkout, branch, and registry record are removed. Other worktrees get the landed content through normal Sync, then an explicit pin Update or assembly.
+- **Assembly merges pins, never tips**, and never advances a pin. Only `updateMember` and `updateAllStale` in `bench-ops.ts` advance one. Breaking this drags one member's half-finished work into another's assembly.
+- **Never add `git clean -x`** to the assembly. Keeping ignored build output is what makes an assembly incremental.
+- **Closing a conversation never removes a worktree.** `desktop/src/main/__tests__/worktree-close-no-destroy.test.ts` asserts no store slice in `server/src/store/slices/` calls `gitWorktreeRemove`.
+- **A new history-writing git handler must call `benchGuard`.** Committing, pushing, or rewriting a branch inside a bench loses the work on the next assembly. Index and working-tree operations (stage, unstage, discard, apply) are not guarded, so diff review still works in a bench. `desktop/src/main/__tests__/bench-guard.test.ts` drives the real git handlers, so a handler that skips the guard fails there.
+- **The server has one definition of bench containment.** `resolveBenchFor` in `bench-guard.ts` is it; `bench-ops.isBenchDirectory` delegates to it. It matches a bench root or a separator-prefixed descendant, never a bare string prefix. A sibling named `<bench>-other` is not a bench.
+- **Serialization.** Land and assembly both run on the repository's mutation queue (`OperationQueue`, `server/src/git/operationQueue.ts`, owned by `server/src/git/repository.ts`). Operations in one repo never interleave; separate projects run in parallel.
