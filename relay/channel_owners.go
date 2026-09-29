@@ -26,8 +26,11 @@ const maxChannelIDLen = 128
 // characters. Go's ServeMux already blocks "/" and ".." in a single path
 // segment, but this guard is defense-in-depth: a future router change or a
 // non-mux caller must not be able to write outside RELAY_STATE_DIR. Allow only
-// a conservative token charset (alphanumerics, dash, underscore, dot) with no
-// leading dot (so "." / ".." are rejected).
+// a conservative token charset (alphanumerics, dash, underscore, dot, colon)
+// with no leading dot (so "." / ".." are rejected). Colon is included for the
+// server-announced-trust pairing channel format (manifest C7): "pairing:" +
+// 32 hex chars. The relay runs in a Linux container, where a colon in a
+// filename is unremarkable.
 func validChannelID(id string) bool {
 	if id == "" || len(id) > maxChannelIDLen || id[0] == '.' {
 		return false
@@ -35,7 +38,7 @@ func validChannelID(id string) bool {
 	for _, r := range id {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-		case r == '-' || r == '_' || r == '.':
+		case r == '-' || r == '_' || r == '.' || r == ':':
 		default:
 			return false
 		}
@@ -48,9 +51,9 @@ func validChannelID(id string) bool {
 //
 // Thread-safety: all public methods are protected by mu.
 type channelOwnerStore struct {
-	mu      sync.Mutex
-	dir     string                       // RELAY_STATE_DIR; empty = memory-only
-	owners  map[string]channelOwnerEntry // channelID → entry
+	mu     sync.Mutex
+	dir    string                       // RELAY_STATE_DIR; empty = memory-only
+	owners map[string]channelOwnerEntry // channelID → entry
 }
 
 // newChannelOwnerStore creates a store. dir may be empty (memory-only).
@@ -64,7 +67,23 @@ func newChannelOwnerStore(dir string) *channelOwnerStore {
 	return s
 }
 
-// Bind binds a channel to the given subject. Returns true if the bind was
+// Allows reports whether subject may join a channel WITHOUT claiming it: true
+// when the channel is unowned or already owned by this subject.
+//
+// Only the ion role claims (`Bind`). A joining client that claimed an unowned
+// channel took it from the server that owns the pairing: the server joined
+// later with its own account, was refused, and the channel stayed the
+// client's for good, because a binding is persisted and never expires. That
+// happened to a real pairing, and it is not recoverable without deleting the
+// binding on the relay host.
+func (s *channelOwnerStore) Allows(channelID, subject string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, ok := s.owners[channelID]
+	return !ok || existing.Subject == subject
+}
+
+// Bind claims a channel for the given subject. Returns true if the claim was
 // accepted (channel was unowned or already owned by the same subject), false if
 // the channel is owned by a different subject (caller must reject).
 //
