@@ -32,7 +32,15 @@ import picomatch from 'picomatch'
 
 export interface WatchEvent { path: string; type: string }
 export interface WatchSubscription { unsubscribe: () => Promise<void> }
-export interface WatchOptions { ignore?: string[] }
+export interface WatchOptions {
+  ignore?: string[]
+  /**
+   * `false` for a subscriber that only needs to know SOMETHING changed at a
+   * path. Telling a create from a delete costs a filesystem probe per event;
+   * without it a rename-class event is reported as `update`.
+   */
+  resolveType?: boolean
+}
 export interface WatchModule {
   subscribe(
     dir: string,

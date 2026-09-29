@@ -47,7 +47,7 @@ type Timer = ReturnType<typeof setTimeout>
 
 export interface WatchEvent { path: string; type: string }
 export interface WatchSubscription { unsubscribe: () => Promise<void> }
-export interface WatchOptions { ignore?: string[] }
+export interface WatchOptions { ignore?: string[]; resolveType?: boolean }
 export interface WatchModule {
   subscribe(
     dir: string,
@@ -165,7 +165,7 @@ function createSubscriptionWatcher(watchModule: WatchModule): GitWatcher {
           if (kind) pendingEvents.add(kind)
         }
         if (pendingEvents.size > 0) scheduleFlush()
-      }).then((sub) => {
+      }, { resolveType: false }).then((sub) => {
         if (gen !== startGeneration) {
           log('Git watcher: unsubscribing stale .git subscription')
           sub.unsubscribe().catch((err: Error) => debug("git_watcher: unsubscribe failed", { error: String(err) }))
@@ -184,7 +184,7 @@ function createSubscriptionWatcher(watchModule: WatchModule): GitWatcher {
           pendingEvents.add('status:dirty')
           scheduleFlush()
         }
-      }, { ignore: ['.git', 'node_modules', '.DS_Store'] })
+      }, { ignore: ['.git', 'node_modules', '.DS_Store'], resolveType: false })
         .then((sub) => {
           if (gen !== startGeneration) {
             log('Git watcher: unsubscribing stale tree subscription')

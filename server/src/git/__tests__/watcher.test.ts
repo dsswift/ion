@@ -17,15 +17,18 @@ function createFakeWatchModule(): {
   module: WatchModule
   emit: (dir: string, events: WatchEvent[]) => void
   subscribeCalls: string[]
+  subscribeOptions: Array<{ ignore?: string[]; resolveType?: boolean } | undefined>
   unsubscribeCalls: string[]
 } {
   const callbacks = new Map<string, (err: Error | null, events: WatchEvent[]) => void>()
   const subscribeCalls: string[] = []
+  const subscribeOptions: Array<{ ignore?: string[]; resolveType?: boolean } | undefined> = []
   const unsubscribeCalls: string[] = []
 
   const module: WatchModule = {
-    subscribe: async (dir, cb) => {
+    subscribe: async (dir, cb, opts) => {
       subscribeCalls.push(dir)
+      subscribeOptions.push(opts)
       callbacks.set(dir, cb)
       return {
         unsubscribe: async () => {
@@ -39,6 +42,7 @@ function createFakeWatchModule(): {
   return {
     module,
     subscribeCalls,
+    subscribeOptions,
     unsubscribeCalls,
     emit: (dir, events) => callbacks.get(dir)?.(null, events),
   }
@@ -68,6 +72,12 @@ describe('createGitWatcher', () => {
     const watcher = createGitWatcher(fake.module)
     watcher.start('/repo', vi.fn())
     expect(fake.subscribeCalls).toEqual([join('/repo', '.git'), '/repo'])
+  })
+
+  it('asks for no event typing: it reads only the path, and typing costs a filesystem probe per event', () => {
+    const fake = createFakeWatchModule()
+    createGitWatcher(fake.module).start('/repo', vi.fn())
+    expect(fake.subscribeOptions.map((o) => o?.resolveType)).toEqual([false, false])
   })
 
   it('classifies a .git/HEAD change and emits it after the debounce window', async () => {

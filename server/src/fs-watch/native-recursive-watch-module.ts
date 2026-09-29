@@ -22,6 +22,8 @@
  *
  * Event mapping matches the chokidar adapter: `rename` becomes `create` or
  * `delete` by whether the path exists afterwards, `change` is `update`.
+ * That probe is synchronous and runs per event, so a subscriber that does not
+ * read the type passes `resolveType: false` and every event is `update`.
  * Ignore fragments use the same picomatch translation.
  */
 import { watch, existsSync, type FSWatcher } from 'fs'
@@ -68,6 +70,7 @@ export function createNativeRecursiveWatchModule(deps: NativeWatchDeps = {}): Wa
         return fallback.subscribe(dir, cb, opts)
       }
       const ignored = toIgnorePredicate(opts?.ignore)
+      const resolveType = opts?.resolveType !== false
       let watcher: FSWatcher
       try {
         watcher = watchFn(dir, { recursive: true, persistent: true }, (eventType, filename) => {
@@ -75,7 +78,7 @@ export function createNativeRecursiveWatchModule(deps: NativeWatchDeps = {}): Wa
           const relative = String(filename)
           if (ignored?.(relative)) return
           const path = join(dir, relative)
-          const type = eventType === 'change' ? 'update' : (existsSync(path) ? 'create' : 'delete')
+          const type = eventType === 'change' || !resolveType ? 'update' : (existsSync(path) ? 'create' : 'delete')
           cb(null, [{ path, type }])
         })
       } catch (err) {
@@ -87,7 +90,7 @@ export function createNativeRecursiveWatchModule(deps: NativeWatchDeps = {}): Wa
         return Promise.reject(err instanceof Error ? err : new Error(String(err)))
       }
       watcher.on('error', (err: Error) => cb(err, []))
-      log('recursive watch started', { dir, ignore_count: opts?.ignore?.length ?? 0 })
+      log('recursive watch started', { dir, ignore_count: opts?.ignore?.length ?? 0, resolve_type: resolveType })
       return Promise.resolve({
         unsubscribe: () => {
           watcher.close()

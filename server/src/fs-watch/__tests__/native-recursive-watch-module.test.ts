@@ -75,6 +75,18 @@ describe('nativeRecursiveWatchModule', () => {
     await waitFor(() => forFile().some((e) => e.type === 'delete'))
   })
 
+  it('reports every event as an update when the subscriber asked for no typing', REAL_FS_WATCH_TEST_OPTS, async () => {
+    const dir = scratch()
+    const file = join(dir, 'gone.txt')
+    writeFileSync(file, 'x')
+    const events: WatchEvent[] = []
+    const sub = await defaultWatchModule.subscribe(dir, (err, evs) => { if (!err) events.push(...evs) }, { resolveType: false })
+    subscriptions.push(sub)
+    unlinkSync(file)
+    await waitFor(() => events.some((e) => e.path === file))
+    expect(events.every((e) => e.type === 'update')).toBe(true)
+  })
+
   it('applies ignore fragments anywhere in the tree', REAL_FS_WATCH_TEST_OPTS, async () => {
     const dir = scratch()
     mkdirSync(join(dir, 'node_modules', 'pkg'), { recursive: true })
