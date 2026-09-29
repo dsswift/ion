@@ -182,19 +182,43 @@ func (a *Artifacts) BuildServer(ctx context.Context, checkout, goos, goarch stri
 
 // BuildDesktop builds this checkout's desktop installer package and returns it.
 func (a *Artifacts) BuildDesktop(ctx context.Context, checkout string, log io.Writer) (string, error) {
-	started := time.Now()
+	pattern := filepath.Join(checkout, "desktop", "release", "Ion-*.pkg")
+	before := globModTimes(pattern)
 	if err := a.exec(ctx, ExecSpec{Dir: checkout, Name: "make", Args: []string{"desktop-pkg"}, Stdout: log, Stderr: log}); err != nil {
 		return "", fmt.Errorf("make desktop-pkg: %w", err)
 	}
-	pkgs, err := filepath.Glob(filepath.Join(checkout, "desktop", "release", "Ion-*.pkg"))
-	if err != nil {
-		return "", err
-	}
-	sort.Slice(pkgs, func(i, j int) bool { return modTime(pkgs[i]).After(modTime(pkgs[j])) })
-	if len(pkgs) == 0 || modTime(pkgs[0]).Before(started) {
+	pkg := newestWrittenSince(pattern, before)
+	if pkg == "" {
 		return "", errors.New("make desktop-pkg left no new installer package under desktop/release")
 	}
-	return pkgs[0], nil
+	return pkg, nil
+}
+
+// globModTimes records each file matching pattern and its modification time.
+func globModTimes(pattern string) map[string]time.Time {
+	files, _ := filepath.Glob(pattern) //nolint:errcheck // only ErrBadPattern, and the patterns are fixed
+	out := make(map[string]time.Time, len(files))
+	for _, f := range files {
+		out[f] = modTime(f)
+	}
+	return out
+}
+
+// newestWrittenSince is the newest file matching pattern that is not in
+// before, or whose modification time changed since. It compares recorded
+// times rather than a clock reading, since a file system may store times
+// more coarsely than the clock.
+func newestWrittenSince(pattern string, before map[string]time.Time) string {
+	newest, newestTime := "", time.Time{}
+	for f, t := range globModTimes(pattern) {
+		if prev, ok := before[f]; ok && prev.Equal(t) {
+			continue
+		}
+		if newest == "" || t.After(newestTime) {
+			newest, newestTime = f, t
+		}
+	}
+	return newest
 }
 
 func (a *Artifacts) artifactsDir() string {
@@ -232,19 +256,16 @@ func (a *Artifacts) existingBuild(checkout string, t Target, key string) artifac
 // Windows machine and returns it.
 func (a *Artifacts) BuildWindowsDesktop(ctx context.Context, checkout, goarch string, log io.Writer) (string, error) {
 	arch := map[string]string{"arm64": "arm64", "amd64": "x64"}[goarch]
-	started := time.Now()
+	pattern := filepath.Join(checkout, "desktop", "release", "Ion-Setup-*-"+arch+".exe")
+	before := globModTimes(pattern)
 	if err := a.exec(ctx, ExecSpec{Dir: checkout, Name: "powershell", Args: []string{"-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "make.ps1", "installer", "-Arch", arch}, Stdout: log, Stderr: log}); err != nil {
 		return "", fmt.Errorf("make.ps1 installer: %w", err)
 	}
-	exes, err := filepath.Glob(filepath.Join(checkout, "desktop", "release", "Ion-Setup-*-"+arch+".exe"))
-	if err != nil {
-		return "", err
-	}
-	sort.Slice(exes, func(i, j int) bool { return modTime(exes[i]).After(modTime(exes[j])) })
-	if len(exes) == 0 || modTime(exes[0]).Before(started) {
+	exe := newestWrittenSince(pattern, before)
+	if exe == "" {
 		return "", errors.New("make.ps1 installer left no new installer under desktop/release")
 	}
-	return exes[0], nil
+	return exe, nil
 }
 
 // NewestDesktopPkg is the newest installer package the checkout has built.
