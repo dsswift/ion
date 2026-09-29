@@ -197,6 +197,7 @@ func (s *Server) dispatchOidcIdentity(conn net.Conn, cmd *protocol.ClientCommand
 		"signedIn":                evt.OidcSignedIn != nil && *evt.OidcSignedIn,
 		"requireOperatorIdentity": s.operatorIdentityRequired(),
 		"subject":                 evt.OidcSubject,
+		"issuer":                  evt.OidcIssuer,
 		"username":                evt.OidcUsername,
 		"name":                    evt.OidcDisplayName,
 		"provider":                evt.OidcProvider,
@@ -277,6 +278,7 @@ func (s *Server) oidcIdentityEvent() types.EngineEvent {
 			signedIn = true
 			evt.OidcProvider = id.Provider
 			evt.OidcSubject = id.Subject
+			evt.OidcIssuer = id.Issuer()
 			evt.OidcUsername = id.Username
 			evt.OidcDisplayName = id.Name
 		}

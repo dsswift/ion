@@ -139,8 +139,8 @@ func TestDispatchOidc_RequiredIdentityBlocksSessionBeforeExtensions(t *testing.T
 			"profileId": "default", "workingDirectory": t.TempDir(), "extensions": []string{"/must/not/load.js"},
 		},
 	})
-	lines := readLines(t, conn, 1, 2*time.Second)
-	if len(lines) == 0 || !strings.Contains(lines[0], "operator OIDC identity is required") {
+	lines := readLinesUntil(t, conn, 2*time.Second, func(l string) bool { return strings.Contains(l, `"cmd":"result"`) })
+	if len(lines) == 0 || !strings.Contains(lines[len(lines)-1], "operator OIDC identity is required") {
 		t.Fatalf("expected required-identity refusal, got %v", lines)
 	}
 	if len(srv.SessionManager().ListSessions()) != 0 {
@@ -161,7 +161,7 @@ func TestDispatchOidc_IdentitySnapshotIncludesRequirement(t *testing.T) {
 	t.Cleanup(func() { conn.Close() })
 
 	sendJSON(t, conn, map[string]interface{}{"cmd": "oidc_identity", "requestId": "req-required"})
-	lines := readLines(t, conn, 2, 2*time.Second)
+	lines := readLinesUntil(t, conn, 2*time.Second, func(l string) bool { return strings.Contains(l, `"cmd":"result"`) })
 	evt := findOidcEvent(t, lines, types.EventOidcIdentity)
 	if evt == nil || evt.OidcRequired == nil || !*evt.OidcRequired {
 		t.Fatalf("required identity missing from snapshot: %v", lines)
@@ -281,6 +281,15 @@ func TestDispatchOidc_PKCELoginRoundTrip(t *testing.T) {
 	}
 	if identityEvt.OidcProvider != "entra" {
 		t.Errorf("oidcProvider = %q", identityEvt.OidcProvider)
+	}
+	// The issuer that signed the identity travels with it, so a consumer
+	// offered several accepted issuers can pick its own.
+	if identityEvt.OidcIssuer != provider.issuer {
+		t.Errorf("oidcIssuer = %q, want %q", identityEvt.OidcIssuer, provider.issuer)
+	}
+	raw, err := json.Marshal(identityEvt)
+	if err != nil || !strings.Contains(string(raw), `"oidcIssuer":"`+provider.issuer+`"`) {
+		t.Errorf("wire payload must carry oidcIssuer: %s (err %v)", raw, err)
 	}
 }
 
