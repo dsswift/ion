@@ -135,6 +135,18 @@ type EngineConfig struct {
 	// sets Enabled=false disables journaling for its runs regardless of
 	// the global setting.
 	RunRecovery *RunRecoveryConfig `json:"runRecovery,omitempty"`
+
+	// ToolEnv is additive, session-scoped environment for tool subprocesses
+	// (currently Bash; see internal/tools/bash_execution_env.go). Generic
+	// engine mechanism, not git-specific -- a caller may use it for any
+	// per-session subprocess environment it needs (e.g. an MCP tool's own
+	// auth). FR-04 uses the SAME injection point for git author/committer
+	// identity, but that identity is resolved internally from the
+	// session's principal (session/git_identity.go), never taken from
+	// this client-supplied map. A key here can be overridden by the
+	// engine's own internal identity variables if they collide -- the
+	// caller-supplied map is merged first, identity second.
+	ToolEnv map[string]string `json:"toolEnv,omitempty"`
 }
 
 // Per-prompt thinking-effort sentinels carried on
@@ -378,10 +390,14 @@ type StatusFields struct {
 	// the engine mints its run ID internally and a client mints its own
 	// request ID independently, so the two are never comparable.
 	//
-	// Omitted when zero, so a session that has never dispatched is
-	// indistinguishable on the wire from an emitter that predates the field.
-	// A consumer treats absent as zero.
-	RunEpoch int64 `json:"runEpoch,omitempty"`
+	// Always serialized, zero included. Zero is a real reading: it is what a
+	// recreated session reports until its first prompt, and a consumer must
+	// see it to rebase a baseline recorded against the previous session. With
+	// the zero omitted, a consumer holding that older baseline cannot tell "new
+	// session at zero" from "emitter that predates the field", keeps the stale
+	// value, and refuses the idle that ends the new session's first run. Absent
+	// therefore means only an engine that predates the field.
+	RunEpoch int64 `json:"runEpoch"`
 	// NumTurns is the number of LLM turns completed in the most recent run.
 	// Stamped from TaskCompleteEvent.NumTurns in translateToEngineEvent; zero
 	// on idle and heartbeat status events that have no associated run.
@@ -484,7 +500,8 @@ type SessionStatus struct {
 	// event needs the same ability to tell a snapshot built before its prompt
 	// from the one that ends the resulting run. Omitting it would reintroduce
 	// the false-completion defect the moment the legacy event retires.
-	RunEpoch int64 `json:"runEpoch,omitempty"`
+	// Always serialized, zero included, for the same reason as the source field.
+	RunEpoch int64 `json:"runEpoch"`
 	// PermissionDenialsPending mirrors StatusFields.PermissionDenials.
 	// Same retention contract — unresolved AskUserQuestion / ExitPlanMode
 	// entries surface here so a re-attaching consumer sees them.

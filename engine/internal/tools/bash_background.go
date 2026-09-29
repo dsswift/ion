@@ -103,11 +103,7 @@ func (t *tailBuffer) String() string {
 // backgroundOutputDir returns the directory for background task output files
 // (~/.ion/tasks), creating it if needed.
 func backgroundOutputDir() (string, error) {
-	home, err := utils.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve home dir: %w", err)
-	}
-	dir := filepath.Join(home, ".ion", "tasks")
+	dir := filepath.Join(utils.IonDir(), "tasks")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("create tasks dir: %w", err)
 	}

@@ -24,11 +24,11 @@ func LoadModelsConfig() map[string]interface{} {
 // enough information to refuse replacing a corrupt or unreadable config file.
 // A missing file is an intentional empty configuration and may be created.
 func loadModelsConfigErr() (map[string]interface{}, error) {
-	home, err := utils.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("resolve home directory: %w", err)
+	dir := utils.IonDir()
+	if dir == "" {
+		return nil, fmt.Errorf("resolve ion data directory")
 	}
-	path := filepath.Join(home, ".ion", "models.json")
+	path := filepath.Join(dir, "models.json")
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return map[string]interface{}{}, nil

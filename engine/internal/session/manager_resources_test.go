@@ -4,6 +4,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -76,5 +77,33 @@ func TestManagerWorkspaceResourceSnapshotsUsesFirstHealthyProducerSession(t *tes
 	}
 	if len(snapshots[0].Items) != 1 || snapshots[0].Items[0].ID != "ready" {
 		t.Fatalf("items = %+v, want healthy session item", snapshots[0].Items)
+	}
+}
+
+// At boot a client subscribes to workspace resources before any session has
+// loaded its extensions. A session whose producer comes online afterwards must
+// still deliver that producer's workspace items to the subscriber.
+func TestManagerAnnouncesProducerThatComesOnlineAfterSubscribe(t *testing.T) {
+	manager := &Manager{sessions: map[string]*engineSession{}, globalBroker: resource.NewBroker()}
+	got := make(chan resource.ResourceMessage, 4)
+	manager.globalBroker.SubscribeDirectWildcard(types.ResourceFilter{Kind: resource.WildcardKind}, func(msg resource.ResourceMessage) { got <- msg },
+		func(subID string) []resource.ResourceMessage { return nil })
+
+	session := resource.NewBroker()
+	manager.watchWorkspaceProducers("session-a", session)
+	if err := session.RegisterProducerFor("briefing", "cos2", &resource.FuncProducerHost{}, types.ResourceDeclaration{Kind: "briefing"}); err != nil {
+		t.Fatal(err)
+	}
+	session.SetQueryHandlerFor("briefing", "cos2", func(types.ResourceFilter) ([]types.ResourceItem, error) {
+		return []types.ResourceItem{{ID: "b1", Kind: "briefing"}, {ID: "own", Kind: "briefing", ConversationID: "c1"}}, nil
+	})
+
+	select {
+	case msg := <-got:
+		if msg.Type != "snapshot" || msg.Kind != "briefing" || len(msg.Items) != 1 || msg.Items[0].ID != "b1" {
+			t.Fatalf("snapshot = %+v, want the one workspace briefing", msg)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("workspace subscriber never received the late producer's items")
 	}
 }

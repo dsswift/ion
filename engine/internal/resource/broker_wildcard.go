@@ -64,7 +64,9 @@ func (b *Broker) SubscribeDirectWildcard(
 	b.subsByID[subID] = sub
 	b.mu.Unlock()
 	if buildSnapshot != nil {
-		sub.finishInitialSnapshot(buildSnapshot(subID))
+		messages := buildSnapshot(subID)
+		sub.markCovered(messages)
+		sub.finishInitialSnapshot(messages)
 	}
 	utils.LogWithFields(utils.LevelInfo, "resource", "subscribe direct wildcard", map[string]any{
 		"subscription_id": subID, "producer": filter.Producer, "snapshot": buildSnapshot != nil,

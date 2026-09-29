@@ -42,12 +42,11 @@ func cmdInstallAssets() {
 		os.Exit(1)
 	}
 
-	home, err := utils.UserHomeDir()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "install-assets: home dir: %v\n", err)
+	ionHome := utils.IonDir()
+	if ionHome == "" {
+		fmt.Fprintf(os.Stderr, "install-assets: home dir: could not resolve\n")
 		os.Exit(1)
 	}
-	ionHome := filepath.Join(home, ".ion")
 
 	// Install both SDKs with replace semantics. Each installed copy is a derived
 	// build asset, never a source tree; a merge could preserve stale API files.

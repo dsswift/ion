@@ -71,7 +71,7 @@ func runCommand(cmdStr, pluginRoot string, timeout time.Duration, extraEnv []str
 
 	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	claudeDir := filepath.Join(home, ".claude")
-	ionDir := filepath.Join(home, ".ion")
+	ionDir := utils.IonDir()
 
 	cmd.Env = append(os.Environ(),
 		"CLAUDE_PLUGIN_ROOT="+pluginRoot,

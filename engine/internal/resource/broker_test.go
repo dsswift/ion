@@ -41,10 +41,22 @@ func TestBroker_RegisterProducer(t *testing.T) {
 		t.Fatalf("first registration failed: %v", err)
 	}
 
-	// Duplicate registration must return an error.
-	err := b.RegisterProducer("note", mp, types.ResourceDeclaration{Kind: "note"})
-	if err == nil {
-		t.Fatal("expected error on duplicate kind registration, got nil")
+	// The same producer declaring the same kind again is a re-declaration:
+	// it succeeds and the newest host serves queries. An extension that
+	// declares lazily on each recurrence of an event used to get "already
+	// registered" the second time and lose that publish.
+	replacement := &mockProducer{items: []types.ResourceItem{{ID: "n1", Kind: "note"}}}
+	if err := b.RegisterProducer("note", replacement, types.ResourceDeclaration{Kind: "note"}); err != nil {
+		t.Fatalf("re-registration by the same producer must succeed, got %v", err)
+	}
+	b.mu.RLock()
+	entry := b.producers["note"]["legacy"]
+	b.mu.RUnlock()
+	if entry == nil || entry.host != replacement {
+		t.Fatal("re-registration must replace the producer's host")
+	}
+	if len(b.producers["note"]) != 1 {
+		t.Fatalf("re-registration must not add a second entry, got %d", len(b.producers["note"]))
 	}
 
 	// Empty kind must return an error.
@@ -547,8 +559,11 @@ func TestBroker_MultipleProducersSameKindMergeAndFilter(t *testing.T) {
 	if err := b.RegisterProducerFor("note", "beta", second, types.ResourceDeclaration{Kind: "note"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.RegisterProducerFor("note", "alpha", first, types.ResourceDeclaration{Kind: "note"}); err == nil {
-		t.Fatal("duplicate pair must fail")
+	// The same (kind, producer) pair declaring again is a re-declaration and
+	// succeeds; it must not add a third entry that would duplicate alpha's
+	// item in the merged snapshot below.
+	if err := b.RegisterProducerFor("note", "alpha", first, types.ResourceDeclaration{Kind: "note"}); err != nil {
+		t.Fatalf("re-declaration by the same producer must succeed: %v", err)
 	}
 
 	var messages []ResourceMessage

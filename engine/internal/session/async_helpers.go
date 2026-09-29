@@ -5,7 +5,6 @@
 package session
 
 import (
-	"os"
 	"path/filepath"
 	"time"
 
@@ -27,12 +26,9 @@ func millisToDuration(ms int64) time.Duration {
 // the home directory is unresolvable, returns "" — persistence becomes a no-op
 // and the scheduler degrades to in-process catch-up only.
 func defaultSchedulerPersistDir() string {
-	if v := os.Getenv("ION_DATA_DIR"); v != "" {
-		return filepath.Join(v, "scheduler")
-	}
-	home, err := utils.UserHomeDir()
-	if err != nil || home == "" {
+	dir := utils.IonDir()
+	if dir == "" {
 		return ""
 	}
-	return filepath.Join(home, ".ion", "scheduler")
+	return filepath.Join(dir, "scheduler")
 }

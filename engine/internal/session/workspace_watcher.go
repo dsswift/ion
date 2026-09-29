@@ -82,8 +82,8 @@ func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *ext
 	// (logs, conversations, sockets, state files) triggers watcher events —
 	// a feedback loop that generates hundreds of thousands of spurious log
 	// lines per log rotation and wastes CPU.
-	if home, err := utils.UserHomeDir(); err == nil {
-		ionHome := filepath.Clean(filepath.Join(home, ".ion"))
+	if ionHomeRaw := utils.IonDir(); ionHomeRaw != "" {
+		ionHome := filepath.Clean(ionHomeRaw)
 		cwdClean := filepath.Clean(s.config.WorkingDirectory)
 		if cwdClean == ionHome {
 			utils.LogWithFields(utils.LevelInfo, "session", "startworkspacewatcher: skip reason=working_directory_is_ion_home", map[string]any{"key": key, "cwd_clean": cwdClean})

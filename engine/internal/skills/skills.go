@@ -329,7 +329,7 @@ func LoadClaudeSkillsDirectory(dir string) ([]*Skill, error) {
 func IonSkillPaths() SkillPaths {
 	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	return SkillPaths{
-		User:       filepath.Join(home, ".ion", "skills"),
+		User:       filepath.Join(utils.IonDir(), "skills"),
 		Project:    filepath.Join(".", ".ion", "skills"),
 		ClaudeUser: filepath.Join(home, ".claude", "skills"),
 	}
@@ -346,7 +346,7 @@ func IonSkillPathsFor(workingDir string) SkillPaths {
 		project = filepath.Join(workingDir, ".ion", "skills")
 	}
 	return SkillPaths{
-		User:       filepath.Join(home, ".ion", "skills"),
+		User:       filepath.Join(utils.IonDir(), "skills"),
 		Project:    project,
 		ClaudeUser: filepath.Join(home, ".claude", "skills"),
 	}

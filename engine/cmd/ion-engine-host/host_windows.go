@@ -72,12 +72,11 @@ func confineToJob(pid int) (windows.Handle, error) {
 }
 
 func runHost(enginePath string, args []string) int {
-	home, err := utils.UserHomeDir()
-	if err != nil {
-		utils.LogWithFields(utils.LevelError, "engine-host", "could not resolve the user home directory", map[string]any{"error": utils.ErrStr(err)})
+	ionHome := utils.IonDir()
+	if ionHome == "" {
+		utils.LogWithFields(utils.LevelError, "engine-host", "could not resolve the ion data directory", nil)
 		return 1
 	}
-	ionHome := filepath.Join(home, ".ion")
 
 	// The engine's own record of what it did is engine.jsonl. These two files
 	// capture what it writes to the standard streams instead — a panic, a
@@ -124,7 +123,7 @@ func runHost(enginePath string, args []string) int {
 		utils.LogWithFields(utils.LevelInfo, "engine-host", "engine confined to a kill-on-close job object", map[string]any{"engine_pid": pid})
 	}
 
-	err = cmd.Wait()
+	err := cmd.Wait()
 	code := cmd.ProcessState.ExitCode()
 	if err != nil {
 		utils.LogWithFields(utils.LevelWarn, "engine-host", "engine exited non-zero", map[string]any{"engine_pid": pid, "exit_code": code, "error": utils.ErrStr(err)})

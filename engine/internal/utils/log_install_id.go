@@ -38,11 +38,11 @@ func InstallID() string {
 // loadOrMintInstallID reads ~/.ion/install_id, minting a fresh UUID v4 if
 // absent (or the file is empty/unreadable).
 func loadOrMintInstallID() string {
-	home, err := UserHomeDir()
-	if err != nil {
+	dir := IonDir()
+	if dir == "" {
 		return ""
 	}
-	idPath := filepath.Join(home, ".ion", "install_id")
+	idPath := filepath.Join(dir, "install_id")
 	if data, err := os.ReadFile(idPath); err == nil {
 		id := string(data)
 		// Trim trailing whitespace/newlines from a human-edited file.

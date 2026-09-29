@@ -155,3 +155,23 @@ func (m *Manager) GetWorkspaceResourceItem(kind, producer, id string) (*types.Re
 	}
 	return &matches[0], nil
 }
+
+// watchWorkspaceProducers tells the Manager's global broker when a producer on
+// this session's broker can first answer queries, so a workspace subscriber
+// that subscribed before this session loaded its extensions still receives
+// that producer's workspace items. The global broker delivers at most one such
+// snapshot per subscriber per producer, however many sessions offer it.
+func (m *Manager) watchWorkspaceProducers(key string, broker *resource.Broker) {
+	broker.OnQueryHandlerSet(func(kind, producer string) {
+		// The handler is set while the extension's load is still in progress;
+		// the query calls back into that extension, so it runs off the load path.
+		go func() {
+			delivered := m.globalBroker.AnnounceWorkspaceProducer(kind, producer, func(filter types.ResourceFilter) ([]types.ResourceItem, error) {
+				return broker.QueryProducer(kind, producer, filter)
+			})
+			utils.LogWithFields(utils.LevelDebug, "resource", "workspace producer online", map[string]any{
+				"session_id": key, "kind": kind, "producer": producer, "delivered": delivered,
+			})
+		}()
+	})
+}

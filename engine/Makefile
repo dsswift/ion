@@ -33,7 +33,7 @@ clean:
 	rm -rf bin/
 
 docker:
-	docker build --platform linux/amd64 -t ion-engine .
+	docker build --platform linux/amd64 --build-arg VERSION=$(VERSION) -t ion-engine .
 
 install: build
 	cp bin/$(BINARY) /usr/local/bin/$(BINARY)
