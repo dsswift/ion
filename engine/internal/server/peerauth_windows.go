@@ -73,7 +73,8 @@ func readTCPTable() ([]tcpRow, error) {
 		if len(buf) > 0 {
 			p = &buf[0]
 		}
-		r0, _, _ := procGetExtendedTcpTable.Call(
+		// The status is the return value; Call's last-error adds nothing.
+		r0, _, _ := procGetExtendedTcpTable.Call( //nolint:errcheck // status is r0
 			uintptr(unsafe.Pointer(p)),
 			uintptr(unsafe.Pointer(&size)),
 			0, // bOrder: no sorting needed, every row is scanned
@@ -129,7 +130,9 @@ func parseTCPTable(buf []byte) ([]tcpRow, error) {
 // that failure is the point: an engine running as one account cannot prove a
 // connection from a different account belongs to it, so it refuses. The
 // refusal is therefore correct on both the "different SID" path and the
-// "cannot look" path.
+// "cannot look" path. An elevated process of the engine's own user is also
+// unreadable by default; an elevated ion opens its DACLs to its own user at
+// startup (utils.ShareIdentityWithOwnUser) so it passes here.
 func processSID(pid uint32) (string, error) {
 	h, err := windows.OpenProcess(processQueryLimitedInformation, false, pid)
 	if err != nil {

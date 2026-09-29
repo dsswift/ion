@@ -28,8 +28,7 @@ func TestCurrentProcessSIDIsAWellFormedSID(t *testing.T) {
 }
 
 func TestReadTCPTableReturnsRows(t *testing.T) {
-	rows, err := readTCPTable()
-	if err != nil {
+	if _, err := readTCPTable(); err != nil {
 		t.Fatalf("readTCPTable: %v", err)
 	}
 	// A Windows host with zero IPv4 TCP rows is possible in principle but the
@@ -39,7 +38,7 @@ func TestReadTCPTableReturnsRows(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	defer func() { _ = ln.Close() }()
-	rows, err = readTCPTable()
+	rows, err := readTCPTable()
 	if err != nil {
 		t.Fatalf("readTCPTable after listen: %v", err)
 	}

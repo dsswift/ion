@@ -110,6 +110,13 @@ func renameWithRetry(src, dst string) error {
 
 // syncDir opens a directory and calls Sync to flush the rename to durable storage.
 func syncDir(dir string) {
+	// Windows has no directory fsync: a directory handle cannot be opened
+	// for writing, so Sync fails with "Access is denied" on every write and
+	// the log fills with a failure that is not one. NTFS journals the
+	// rename itself.
+	if runtime.GOOS == "windows" {
+		return
+	}
 	d, err := os.Open(dir)
 	if err != nil {
 		utils.LogWithFields(utils.LevelDebug, tag, "sync dir open failed", map[string]any{

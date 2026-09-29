@@ -108,8 +108,13 @@ func TestAuthorizeFailsClosed(t *testing.T) {
 				selfSID: engineSID,
 				resolve: func(_, _ *net.TCPAddr) (peerIdentity, error) { return tc.id, tc.err },
 			}
-			if _, err := a.authorize(loopbackConn(t)); err == nil {
+			id, err := a.authorize(loopbackConn(t))
+			if err == nil {
 				t.Fatal("connection was authorized despite an unresolvable peer identity")
+			}
+			// The refusal log names the PID whenever the lookup found one.
+			if id.PID != tc.id.PID {
+				t.Errorf("refused identity PID = %d, want %d", id.PID, tc.id.PID)
 			}
 		})
 	}
