@@ -1,0 +1,222 @@
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import { homedir } from 'os'
+import { openAuthUrl, type AuthUrlRequester } from './url-opener'
+import { generatePKCE, generateState } from '@ion/shared/oauth-pkce'
+import { startCallbackServer } from './callback-server'
+import { log as _log } from '../logger'
+
+function log(msg: string, fields?: Record<string, unknown>): void { _log('oauth', msg, fields) }
+
+/**
+ * Resolve a public OAuth credential from (in priority order):
+ *   1. Environment variable (e.g. ION_GOOGLE_CLIENT_ID)
+ *   2. ~/.ion/oauth.json  (e.g. { "google": { "clientId": "..." } })
+ *
+ * These are well-known public client credentials that must ship with the app
+ * but cannot be committed as string literals due to GitHub push protection.
+ */
+function resolveOAuthVar(envKey: string, provider: string, field: string): string {
+  const envVal = process.env[envKey]
+  if (envVal) return envVal
+
+  try {
+    const raw = readFileSync(join(homedir(), '.ion', 'oauth.json'), 'utf-8')
+    const parsed = JSON.parse(raw) as Record<string, Record<string, string>>
+    const val = parsed?.[provider]?.[field]
+    if (val) return val
+  } catch {
+    // File missing or malformed — fall through
+  }
+
+  log('oauth: credential not found', { key: envKey })
+  return ''
+}
+
+export interface OAuthTokens {
+  accessToken: string
+  refreshToken: string
+  expiresAt: number
+}
+
+// OpenAI sign-in is NOT an OAuth flow here. The former loginOpenAI ran the
+// ChatGPT Codex PKCE flow and stored the resulting ChatGPT token as an OpenAI
+// API key, which lacks platform-API scopes (api.openai.com 403s). OpenAI
+// sign-in is now engine-driven `codex login` (see main/ipc/providers.ts);
+// that flow lives in the engine, which owns the codex CLI delegation.
+
+// ─── Google Gemini CLI (Cloud Code Assist) ────────────────────────
+// These are well-known public OAuth credentials from the Gemini CLI project.
+// They are safe to ship in a desktop app (public client) but must not be
+// committed as string literals because GitHub push protection flags them.
+// Set ION_GOOGLE_CLIENT_ID / ION_GOOGLE_CLIENT_SECRET in the environment,
+// or they will be read from ~/.ion/oauth.json at runtime.
+
+const GOOGLE_CLIENT_ID = resolveOAuthVar('ION_GOOGLE_CLIENT_ID', 'google', 'clientId')
+const GOOGLE_CLIENT_SECRET = resolveOAuthVar('ION_GOOGLE_CLIENT_SECRET', 'google', 'clientSecret')
+const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
+const GOOGLE_REDIRECT_URI = 'http://localhost:8085/oauth2callback'
+const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email'
+
+function googleAuthorizeUrl(challenge: string, state: string): string {
+  const url = new URL(GOOGLE_AUTH_URL)
+  url.searchParams.set('response_type', 'code')
+  url.searchParams.set('client_id', GOOGLE_CLIENT_ID)
+  url.searchParams.set('redirect_uri', GOOGLE_REDIRECT_URI)
+  url.searchParams.set('scope', GOOGLE_SCOPES)
+  url.searchParams.set('code_challenge', challenge)
+  url.searchParams.set('code_challenge_method', 'S256')
+  url.searchParams.set('state', state)
+  url.searchParams.set('access_type', 'offline')
+  url.searchParams.set('prompt', 'consent')
+  return url.toString()
+}
+
+/** Google sign-in finished by this server's own loopback callback. */
+export async function loginGoogle(requester?: AuthUrlRequester): Promise<OAuthTokens & { authorizationUrl: string }> {
+  const { verifier, challenge } = generatePKCE()
+  const state = generateState()
+  const authorizationUrl = googleAuthorizeUrl(challenge, state)
+  const server = await startCallbackServer(8085, state)
+  try {
+    await openAuthUrl(authorizationUrl, requester)
+    const result = await server.waitForCode()
+    if (!result) throw new Error('Google OAuth flow cancelled or timed out')
+    return { ...(await exchangeGoogleCode(result.code, verifier)), authorizationUrl }
+  } finally {
+    server.close()
+  }
+}
+
+/**
+ * Google sign-in for a client that is not on this server's host. Google's
+ * public client only accepts its loopback redirect, so no listener here can
+ * be reached: the person opens `authorizationUrl`, lands on a page that does
+ * not load, and hands that final address to `completeGoogleRemoteLogin`.
+ */
+export function beginGoogleRemoteLogin(): { authorizationUrl: string; verifier: string; state: string } {
+  const { verifier, challenge } = generatePKCE()
+  const state = generateState()
+  log('google remote login begun')
+  return { authorizationUrl: googleAuthorizeUrl(challenge, state), verifier, state }
+}
+
+/** Exchange the code carried by the address Google redirected to, after checking it belongs to this flow. */
+export async function completeGoogleRemoteLogin(callbackUrl: string, verifier: string, expectedState: string): Promise<OAuthTokens> {
+  let url: URL
+  try {
+    url = new URL(callbackUrl)
+  } catch {
+    log('google remote login refused: callback is not a URL')
+    throw new Error('That is not the address Google redirected to. Copy the whole address from the browser and try again.')
+  }
+  const providerError = url.searchParams.get('error')
+  if (providerError) {
+    log('google remote login refused by provider', { error: providerError })
+    throw new Error(`Google refused the sign-in: ${providerError}`)
+  }
+  if (url.searchParams.get('state') !== expectedState) {
+    log('google remote login refused: state mismatch')
+    throw new Error('That address belongs to a different sign-in. Start the sign-in again.')
+  }
+  const code = url.searchParams.get('code')
+  if (!code) {
+    log('google remote login refused: no code in callback')
+    throw new Error('That address carries no authorization code. Copy the whole address from the browser and try again.')
+  }
+  const tokens = await exchangeGoogleCode(code, verifier)
+  log('google remote login exchanged')
+  return tokens
+}
+
+async function exchangeGoogleCode(code: string, verifier: string): Promise<OAuthTokens> {
+  const resp = await fetch(GOOGLE_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code', client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET, code,
+      code_verifier: verifier, redirect_uri: GOOGLE_REDIRECT_URI,
+    }),
+  })
+  if (!resp.ok) throw new Error(`Google token exchange failed: ${resp.status}`)
+  const json = (await resp.json()) as { access_token?: string; refresh_token?: string; expires_in?: number }
+  if (!json.access_token) throw new Error('Google token response missing access_token')
+  return { accessToken: json.access_token, refreshToken: json.refresh_token || '', expiresAt: Date.now() + (json.expires_in || 3600) * 1000 }
+}
+
+export async function refreshGoogle(refreshToken: string): Promise<OAuthTokens> {
+  const resp = await fetch(GOOGLE_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'refresh_token', client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, refresh_token: refreshToken }),
+  })
+  if (!resp.ok) throw new Error(`Google token refresh failed: ${resp.status}`)
+  const json = (await resp.json()) as { access_token?: string; expires_in?: number }
+  if (!json.access_token) throw new Error('Google refresh response missing access_token')
+  return { accessToken: json.access_token, refreshToken, expiresAt: Date.now() + (json.expires_in || 3600) * 1000 }
+}
+
+// ─── GitHub Copilot (Device Code Flow) ────────────────────────────
+
+const GITHUB_CLIENT_ID = 'Iv1.b507a08c87ecfe98'
+const COPILOT_HEADERS = {
+  'User-Agent': 'GitHubCopilotChat/0.35.0',
+  'Editor-Version': 'vscode/1.107.0',
+  'Editor-Plugin-Version': 'copilot-chat/0.35.0',
+  'Copilot-Integration-Id': 'vscode-chat',
+} as const
+
+export interface DeviceCodeInfo {
+  userCode: string
+  verificationUri: string
+  deviceCode: string
+  interval: number
+  expiresIn: number
+}
+
+export async function startGitHubDeviceFlow(): Promise<DeviceCodeInfo> {
+  const resp = await fetch('https://github.com/login/device/code', {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'GitHubCopilotChat/0.35.0' },
+    body: new URLSearchParams({ client_id: GITHUB_CLIENT_ID, scope: 'read:user' }),
+  })
+  if (!resp.ok) throw new Error(`GitHub device code request failed: ${resp.status}`)
+  const data = (await resp.json()) as { device_code: string; user_code: string; verification_uri: string; interval: number; expires_in: number }
+  return { deviceCode: data.device_code, userCode: data.user_code, verificationUri: data.verification_uri, interval: data.interval, expiresIn: data.expires_in }
+}
+
+export async function pollGitHubAccessToken(deviceCode: string, interval: number, expiresIn: number, signal?: AbortSignal): Promise<string> {
+  const deadline = Date.now() + expiresIn * 1000
+  let pollMs = Math.max(1000, interval * 1000)
+  while (Date.now() < deadline) {
+    if (signal?.aborted) throw new Error('Login cancelled')
+    await new Promise((resolve) => setTimeout(resolve, pollMs))
+    const resp = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'GitHubCopilotChat/0.35.0' },
+      body: new URLSearchParams({ client_id: GITHUB_CLIENT_ID, device_code: deviceCode, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }),
+    })
+    const data = (await resp.json()) as { access_token?: string; error?: string; interval?: number }
+    if (data.access_token) return data.access_token
+    if (data.error === 'authorization_pending') continue
+    if (data.error === 'slow_down') { pollMs = data.interval ? data.interval * 1000 : pollMs + 5000; continue }
+    if (data.error) throw new Error(`GitHub device flow error: ${data.error}`)
+  }
+  throw new Error('GitHub device flow timed out')
+}
+
+export async function exchangeGitHubForCopilotToken(githubAccessToken: string): Promise<OAuthTokens> {
+  const resp = await fetch('https://api.github.com/copilot_internal/v2/token', {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${githubAccessToken}`, ...COPILOT_HEADERS },
+  })
+  if (!resp.ok) throw new Error(`Copilot token exchange failed: ${resp.status}`)
+  const data = (await resp.json()) as { token?: string; expires_at?: number }
+  if (!data.token || !data.expires_at) throw new Error('Invalid Copilot token response')
+  return { accessToken: data.token, refreshToken: githubAccessToken, expiresAt: data.expires_at * 1000 - 5 * 60 * 1000 }
+}
+
+export async function refreshGitHubCopilot(refreshToken: string): Promise<OAuthTokens> {
+  return exchangeGitHubForCopilotToken(refreshToken)
+}
