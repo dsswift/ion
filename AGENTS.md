@@ -5,13 +5,16 @@
 | Component | Path | Language |
 |-----------|------|----------|
 | Engine | `engine/` | Go |
+| Server | `server/` (`@ion/server`) | TypeScript, headless |
 | Desktop | `desktop/` | TypeScript (Electron + React) |
 | Relay | `relay/` | Go |
 | iOS | `ios/IonRemote/` | Swift |
+| Shared packages | `packages/shared/`, `packages/studio-sdk/` | TypeScript (+ Go Studio SDK) |
 
-Engine, desktop, and iOS each have their own `AGENTS.md` with subsystem-specific rules.
+Engine, server, desktop, and iOS each have their own `AGENTS.md`. **Before touching `engine/`, read [`docs/engine-grounding.md`](docs/engine-grounding.md).**
 
-SDK edits have a source-of-truth split (repo source vs. build-overwritten installed copy) — moved to [`engine/AGENTS.md`](engine/AGENTS.md) § "Extension SDK source location". Read it before changing any file under `engine/extensions/sdk/ion-sdk/` or touching `~/.ion/extensions/sdk/`.
+SDK edits have a source-of-truth split: edit `engine/extensions/sdk/ion-sdk/`, never the installed copy at `~/.ion/extensions/sdk/` (overwritten at build). See [`engine/AGENTS.md`](engine/AGENTS.md) § "Extension SDK source location".
+
 ## File-size caps (CI hard-fails above)
 
 | Language | Cap |
@@ -21,1017 +24,234 @@ SDK edits have a source-of-truth split (repo source vs. build-overwritten instal
 | Go (`*_test.go`) | 1500 |
 | Swift | 600 |
 
-Override: `// @file-size-exception: <reason>` (`#` for shell/yaml/python) on line 1. Existing god files allowlisted in `.file-size-allowlist.yml` — do not extend them; extract new code to a new file.
-
-### When a file exceeds the cap
-
-Split the file — find the natural seams (logical groupings, hook boundaries, helper clusters) and extract to a new file. **Never** remove or collapse comments, collapse whitespace, or shorten code to hit the line limit. Comments are load-bearing documentation. If the choice is between a well-commented file that is 10 lines over cap and a stripped file that is under cap, the stripped version is worse. Split instead.
-
-Cohesion of change: a feature lives in one folder. Full reference: `docs/architecture/file-organization.md`.
+Override: `// @file-size-exception: <reason>` (`#` for shell/yaml/python) on line 1. Files in `.file-size-allowlist.yml` must not grow; put new code in a new file. Over the cap, split at a natural seam. Never strip comments or compress code to fit. Reference: `docs/architecture/file-organization.md`.
 
 ## Context files
 
-- `AGENTS.md` is canonical and committed.
-- `CLAUDE.md` is a local-only symlink to sibling `AGENTS.md`. Gitignored. Created by `make bootstrap` (or directly via `make claude-symlinks`).
-- Do not seed per-bounded-context `AGENTS.md`. Defer until traces show confusion.
-- **Before any work that touches `engine/`, read [`docs/engine-grounding.md`](docs/engine-grounding.md).** It is the non-negotiable framing for engine changes — contract stability, snapshot semantics, engine-vs-harness boundaries, and the "modifying the engine is restricted" default. Engine work without this grounding is a defect.
+`AGENTS.md` is canonical and committed. `CLAUDE.md` is a gitignored local symlink to its sibling (`make claude-symlinks`). Do not add new per-folder `AGENTS.md` files.
 
 ## Codebase questions — query the graph first, always
 
-**When the task is to understand how something in this codebase works, your FIRST tool call is a graph query.** Not a `Grep`. Not a `Read`. Not a check for whether the graph exists. Query it.
+For any question about how code is structured or connected, the first call is a graph query, not `Grep` or `Read`. Do not check whether the graph exists. If graphify is missing, the command fails instantly: fall back to `Grep`/`Glob`/`Read` without comment, and never suggest installing it.
 
-```bash
-graphify query "<identifier or question>"
-```
+| Command | Use |
+|---|---|
+| `graphify query "<identifier>"` | Opening move: where it lives, what is near it |
+| `graphify explain "<symbol>"` | Every edge with `file:line`. Run before a rename, delete, or signature change |
+| `graphify path "<A>" "<B>"` | How two symbols connect across layers |
 
-**Do not check whether the graph exists — just query it.** If graphify is not installed or this clone has no graph, the command fails in about 2 milliseconds with `command not found` or a missing-file error. That failure is your signal: fall back to `Grep`/`Glob`/`Read` and continue without comment. One failed call costs nothing measurable; the sweep it replaces costs a dozen calls and a large slice of the context window.
+- Seed on identifiers (`startBackgroundBashTask`), not prose. With only a symptom, grep one distinctive literal (log `msg`, error string, UI label) to get a symbol, then query that.
+- Never pass `--budget` below 400. Omit it for the 2000 default. A truncation notice is normal.
+- Logger, store, and type-barrel hubs crowd results. Filter with `--context call` (or `import`, `field`, `parameter_type`, `return_type`, `generic_arg`).
+- Package-level vars and consts are not nodes. "No matching nodes" means grep for it.
+- The graph locates; the source confirms. `INFERRED` call edges are places to check, not proof.
+- Never run `graphify install`; the skill is tracked at `.ion/skills/graphify/`. `graphify-out/` is gitignored and kept current by git hooks.
 
-This is deliberately unconditional. An earlier version of this section led with "graphify is optional" and told you to probe for `graphify-out/graph.json` first. The result was an agent that ran the probe, got `EXISTS`, and then swept with ~24 `Grep`/`Read` calls anyway — the check became a ritual that made skipping look like compliance. A conditional instruction is a decision point, and a decision point resolves toward the habitual path. So: no probe, no condition, query first and let failure route you.
-
-**Graphify remains optional for contributors.** Nothing in Ion requires it — no build, test, CI job, or quality gate reads the graph, and a clone without it is fully supported (`make bootstrap` prints a notice and moves on). "Optional to install" and "query it first when you are working" are different statements: the first is a project-dependency fact for humans, the second is an instruction to you. Never treat a missing graph as a setup error, never suggest installing graphify, and never make answering a question contingent on it — just fall through to file search.
-
-Fires on any question about structure, flow, or relationships: "how does X work", "what calls Y", "trace the path from A to B", "where is Z handled", "does subsystem X notify Y". It fires on the *shape of the question*, not on the user typing `/graphify` — a plain-English architecture question is exactly the trigger.
-
-### Three subcommands, not one
-
-`query` is the opening move, not the whole tool. Reaching for it when you want `explain` or `path` is why the graph gets used as a fuzzy file-finder.
-
-| Command | Answers | Use when |
-|---|---|---|
-| `graphify query "<identifier>"` | where does this live, what is near it | Opening move on any structure question |
-| `graphify explain "<symbol>"` | what exactly does this touch, with `file:line` | You have a symbol and need its real edges |
-| `graphify path "<A>" "<B>"` | how do these two things connect | A change spans layers and you need the wiring |
-
-```bash
-graphify query "<question>"                 # BFS traversal, broad context
-graphify query "<question>" --dfs           # trace one specific path
-graphify query "<question>" --context call  # filter by edge type (see below)
-graphify explain "clearSessionSkills"       # full typed edge list for one node
-graphify path "createWorktreeSlice" "registerWorktreeIpc"
-```
-
-`explain` returns the node's degree, community, and every edge with direction, type, confidence, and `file:line`. `path` returns the shortest hop chain between two nodes with the same per-edge tagging.
-
-### Never set a tiny budget
-
-**Do not pass `--budget` below 400.** Omit it entirely to take the 2000 default; raise it when a result is truncated and you need more.
-
-This is the single most expensive mistake available here. A real query on this codebase returns 50-200 nodes; `--budget 40` shows about four of them and appends a truncation notice. The output then reads like "the graph doesn't know," when in fact the answer was in the discarded remainder. That exact failure has happened: a `--budget 40` query returned 4 of 193 nodes, the three files the agent needed were in the result set, and it spent ~24 `Grep`/`Read` calls rediscovering what it had already been told.
-
-### How to read a result
-
-The graph is a **locator**. The first 3-5 nodes name the files worth opening; go open them. Results past roughly rank 15-20 drift into infrastructure and are usually noise.
-
-A truncation notice is **normal** on any real question. It means "narrow or raise the budget," not "nothing here."
-
-That drift is structural, not a symptom of a small codebase. The graph is a power-law network: median node degree is 3, while the top nodes run into the hundreds — `LogWithFields()`, `NewManager()`, `Context`, `newMockBackend()`, `useColors()`, `shared/types.ts`. These logger, store, and type-barrel nodes legitimately connect to everything, so a depth-2 traversal reaches one within a hop or two of almost any seed and its neighbours then crowd the result. **A larger codebase makes this worse, not better** — more code means more logger callers, and the hubs grow faster than any relevant neighbourhood.
-
-The correction is `--context <type>`, not a bigger budget. Valid values: `call`, `import`, `field`, `parameter_type`, `return_type`, `generic_arg` (`param` and `params` alias to `parameter_type`). Filtering to `call` on a function seed drops the preferences/theme/logger cluster and returns actual callers and callees. It is a heuristic rather than a cure — `LogWithFields()` is itself reached *by* call edges, so it survives a call filter — but it reliably improves the top of the result.
-
-### Query throughout the task, not once at the start
-
-The graph is available for the whole task. The default rhythm is a loop: **query → read the source → new symbol in hand → query again.**
-
-Concrete trigger points:
-
-- **Before editing an unfamiliar function** — `explain` it first to learn the blast radius before you change a signature.
-- **Before deleting or renaming anything** — `explain` gives the caller list. This is how you satisfy § "Dead code is not load-bearing until proven otherwise", which demands a *cited* live producer or consumer rather than a guess. `explain "clearSessionSkills"` returns `<-- .StopSession() [calls] engine/internal/session/manager.go:L402` — exactly that citation.
-- **After a grep hands you a symbol** — go back to the graph with it. Acquiring an identifier by grep is step one; re-querying on it is step two, and skipping step two is the most common way the graph gets underused.
-- **When a change crosses layers** — `path` before hand-tracing engine → desktop → iOS.
-- **Before writing a test** — `explain` the unit under test to see what it actually calls.
-
-**Edge confidence matters when you cite.** Edges are tagged `EXTRACTED` (read directly from source) or `INFERRED` (resolved by graphify). Call edges are frequently `INFERRED` — every call edge on `clearSessionSkills` is, with only the structural `contains` edge marked `EXTRACTED`. So treat a caller list as *the set of places to check in source*, not as proof on its own. The graph locates; the source file confirms.
-
-Worked examples, the hub table, and the full `--budget 40` post-mortem: [`docs/contributing/graph-queries.md`](docs/contributing/graph-queries.md).
-
-**Seed on identifiers, not prose.** The traversal seeds on the query's terms, so generic words (`agent`, `call`, `done`, `handler`) seed on generic nodes and return noise. Name the symbol, type, function, or file you are actually asking about — `startBackgroundBashTask`, `buildPlanModePrompt`, `bash_background.go` — and the traversal lands on the right neighborhood. If a query returns unrelated nodes, re-run it with a concrete identifier before falling back to grep.
-
-**When you have a symptom and no symbol, grep once to get one.** The rule above assumes you already know the identifier, which is the easy case. The hard case is a behavioural symptom — "the orchestrator doesn't re-activate", "the tab shows the wrong status" — where the natural query is a sentence and a sentence seeds on nothing useful. The move is: grep for one distinctive literal from the symptom (a log message, an error string, a UI label, a config key), take the symbol name that grep lands on, then query the graph on *that*. One grep to acquire an identifier, then the graph for the relationships around it.
-
-The failure this prevents is real and has happened here: a plan-mode session investigating a wake-up bug queried `"background agent completion re-activate orchestrator conversation idle"` — six prose words, no identifier — got nothing usable, and fell back to a manual `ls` / `grep -rn` / `Read` sweep for the rest of the investigation. Seeding the same question on `startBackgroundBashTask` returns the correct neighbourhood in one call.
-
-Nodes are functions, methods, types, and files. Package-level variables and constants are not extracted, so a query for one returns `No matching nodes found` — that means "not a node," not "not in the codebase." Query the function that reads it, or grep for it directly.
-
-The graph is a starting point, not the authority. It tells you *where* to look; the source file is what you read and cite. Treat a truncation notice as an instruction to raise `--budget` or narrow the query, not as the full answer.
-
-### The graph is a local build cache
-
-`graphify-out/` is **gitignored**. It never appears in `git status`, a diff, or a pull request, and there is nothing to commit, schedule, or clean up. It is derived entirely from tracked source and read by no build, test, or CI job — which is what makes graphify safe to leave uninstalled.
-
-`make bootstrap` builds it when graphify is available, and prints a skip notice when it is not. Bootstrap always succeeds either way: it is the entry point for **every** contributor, not just graphify users, because it is also what activates the git hooks (commitlint, the pre-push gates). Skipping bootstrap to avoid graphify would forfeit those gates and gain nothing.
-
-Once a graph exists the hooks keep it current — `post-commit` for your own commits, `post-checkout` for branch switches, and Ion's own `post-merge` / `post-rewrite` for pulls, rebases, and amends (`scripts/graphify-rebuild.sh`). They re-extract changed files incrementally, AST-only, in a detached process, and write files without ever staging or committing them. Every one of them exits cleanly when graphify is absent, so a contributor without it sees no failures. Set `GRAPHIFY_SKIP_HOOK=1` to skip one rebuild.
-
-Because the rebuild is detached, it finishes a few seconds *after* the commit that triggered it closes. The graph is therefore always a moment behind. That is by design and requires no action.
-
-**To rebuild from scratch, run `make graph`.** It moves the existing graph aside, re-extracts, and restores the old one if extraction fails — no manual `rm -rf` needed, and a failed rebuild never leaves the clone with no graph. (`make graph-refresh` re-extracts incrementally into the existing one; `make graph-ensure` is the bootstrap-only build-if-absent path.) All three are cheap and offline: extraction is pure local tree-sitter (`graphify . --code-only`, skipping the docs/PDFs/images that would need an LLM backend), then `graphify cluster-only . --no-viz --no-label` partitions communities and writes `GRAPH_REPORT.md`. No API key, nothing leaves the machine. Reach for a rebuild to purge nodes that repeated incremental updates have left stale.
-
-Community **partitioning** is offline; community **naming** is not. `--no-label` keeps the build key-free and leaves `Community N` placeholders, which is what a bootstrapped clone gets. Descriptive names ("Plan Mode Prompt Builder") come from `graphify label` with a backend configured — useful for readability, an opt-in cost, and never required to query the graph.
-
-`make bootstrap` is the one command a fresh clone needs:
-
-```bash
-make bootstrap    # npm install (husky hooks) + CLAUDE.md symlinks + engine DEBUG + graph build
-```
-
-Bootstrap also sets `logLevel: debug` in the global `~/.ion/engine.json`. Whoever runs it is developing Ion, so that engine is their dev build and DEBUG is the level it needs; a consumer install stays on `info`. The write preserves every other key, refuses rather than guesses when the file does not parse, and needs an engine restart to take effect.
-
-Until it runs, no hook fires — git looks in an empty `.git/hooks`, because `core.hooksPath` is per-clone state that git never clones. Bootstrap is idempotent, and it skips the graph build when one already exists.
-
-The graphify skill at `.ion/skills/graphify/` and the project `.ion/engine.json` that permits `graphify` in plan mode **are** tracked, so they arrive with the clone and need nothing. Only the graph is built locally.
-
-A missing graphify install is never fatal. Bootstrap prints an install notice and continues; the rebuild hooks resolve their interpreter through a probe chain (a `$HOME`-relative pin, then `graphify-out/.graphify_python`, the `graphify` launcher on `PATH`, its shebang, then `python3`/`python`) and exit cleanly with a remediation message if every probe misses. A commit never fails over graphify.
-
-Graphify is a general-purpose tool with no knowledge of Ion, so its `graphify install` targets (`.claude/`, `.codex/`, `.agents/`) do not match Ion's layout. Ion reads skills from `~/.ion/skills/` and `./.ion/skills/`. This repo's copy is tracked at `.ion/skills/graphify/` and arrives with the clone — **do not run `graphify install`**, which would write a tree Ion never loads. (This prohibition covers `graphify install` only; `graphify hook install` is a different subcommand that writes git hooks and is husky-aware. Bootstrap calls neither — the hooks are already tracked.)
-
-Project-scoped skills reach only sessions whose working directory contains them (`internal/skills/skills_session.go`), so the graphify skill is advertised in this repo's conversations and nowhere else.
-
-Full lifecycle context, including where the graph sits relative to `/align`, `/squash`, and `/create-pr`: [`docs/contributing/branch-lifecycle.md`](docs/contributing/branch-lifecycle.md).
+Worked examples: [`docs/contributing/graph-queries.md`](docs/contributing/graph-queries.md).
 
 ## Local hooks
 
-Hooks are managed by husky and install themselves: root `package.json` has `"prepare": "husky"`, so `npm install` — or `make bootstrap`, which wraps it — points `core.hooksPath` at `.husky/_` with no manual step. The pre-push hook runs the file-size cap plus change-scoped lint, build, typecheck, and test gates. Husky invokes hooks with `sh -e`, which ignores the shebang and is dash on Linux, so `.husky/pre-push` is a dash-safe one-line delegator and the bash gate body lives in `scripts/pre-push.sh` — edit the gates there. Bypass with `--no-verify` only when intentional. If `core.hooksPath` has been manually overridden in a clone, `make hooks` repairs it.
+Husky installs hooks on `npm install` / `make bootstrap`. Pre-push gates live in `scripts/pre-push.sh`; `.husky/pre-push` is a dash-safe delegator. `make hooks` repairs a broken `core.hooksPath`. Never `--no-verify`.
 
 ## Windows VM testing — sync before every build
 
-**This section applies only when a Windows VM is open for testing.** Ordinary
-development and testing happen on macOS and never involve the VM. Nothing here
-fires unless the conversation is actively exercising Windows behavior on a live
-machine.
-
-### When to reach for the VM
-
-A local (macOS) test run cannot prove a Windows-specific fix works. Two
-failure classes are invisible on macOS by construction:
-
-- **Windows-only code paths** (no `/bin/sh`, backslash vs. forward-slash
-  paths, short-form `RUNNER~1`-style paths, PowerShell instead of a POSIX
-  shell). The bug never triggers on macOS because the code path itself
-  doesn't exist there.
-- **Contention-driven timeouts.** Windows CI runs the full suite at once
-  under the race detector, so hundreds of tests spawn `git`/`node`/
-  `powershell` subprocesses concurrently on one machine. Running the single
-  failing test in isolation — on macOS or on the VM — never recreates that
-  pile-up, so a passing isolated run does not prove the timeout won't
-  recur under real CI load.
-
-**Use the local Windows VM (Parallels, reachable over SSH) specifically to
-diagnose a Windows CI/CD failure when a macOS run cannot verify the fix** —
-confirm the failing test/behavior reproduces there, apply the fix, confirm
-it now passes there. This is a diagnostic tool for a specific failure, not a
-routine step: **do not build or run the Windows test suite on the VM for
-every Windows-touching change.** Reach for it only when CI has already
-failed on Windows and the fix needs Windows-real verification before you
-call it done. For contention timeouts specifically, running the isolated
-test on the VM still won't recreate CI's full-suite pile-up — say so rather
-than implying an isolated VM pass proves the timeout is gone for good.
-
-When it does apply, the rule is absolute:
-
-> **Run `make sync-windows-vm` before every VM build. No exceptions, no
-> per-file copies.**
-
-The VM builds from `C:\dev\ion`, which is a *copy*, not a checkout. It has no
-git remote and pulls nothing. Every change made on the Mac reaches it only
-because someone pushed it there, and a build that runs against a stale copy
-produces a result that looks authoritative and is worthless.
-
-### Why a hand-picked file list is forbidden
-
-`scp`-ing the files you just edited is the obvious shortcut and it is the exact
-thing that fails. Twice in one session it produced a false negative:
-
-- A fix was committed, verified on macOS, and reported done. The VM was never
-  updated, the operator's agent retested, and it reported the defect unfixed —
-  correctly, because it was measuring the previous binary.
-- The second occurrence exposed a longer-running drift: the VM's tree was
-  missing a source file that **predated the branch entirely**. Per-file copying
-  had been leaving it inconsistent for an unknown number of iterations, so even
-  a correct diff-based sync would not have repaired it.
-
-`git diff` names only what the current branch touched. It cannot name what an
-earlier partial sync missed. That is why the sync ships every tracked file
-under `engine/`, `desktop/`, `packaging/`, and `scripts/` every time — a few
-seconds of transfer in exchange for eliminating the failure mode.
-
-### The loop
-
-```bash
-make sync-windows-vm                                    # always first
-ssh <vm> 'cd C:\dev\ion; .\make.ps1 installer'         # build there
-```
-
-Then verify the artifact carries the change before asking anyone to test it:
-
-```bash
-# Does the built engine actually contain the fix?
-ssh <vm> 'powershell -NoProfile -Command "Select-String -Path \"C:\dev\ion\desktop\release\win-arm64-unpacked\resources\engine\ion.exe\" -Pattern <a-string-your-change-added> -SimpleMatch -Quiet"'
-```
-
-**A source-level check is not verification.** Confirming the code is right in
-`git`, or that a macro is present in a script, says nothing about what the
-packaged binary contains. Grep the built artifact for a string your change
-introduced. This session shipped four consecutive "fixed" reports for the
-installer status text that displayed nothing, each verified at the source level
-only.
-
-### Reporting a result
-
-State which binary was tested and when it was built. "The fix is in" is not a
-result; "the engine built at 09:55 contains `<marker>` and the retest passes"
-is. When the operator's agent reports a defect as unfixed, **check whether the
-VM has the fix before re-diagnosing** — that check takes one command and would
-have saved two full diagnostic rounds here.
+Only when a Windows CI failure needs Windows-real verification. Run `make sync-windows-vm` before every VM build. The VM tree at `C:\dev\ion` is a copy, not a checkout, so never copy individual files. Verify by grepping the built artifact for a string your change added; a source check proves nothing. An isolated pass does not prove a CI contention timeout is gone. Full loop: [`docs/contributing/windows-vm.md`](docs/contributing/windows-vm.md).
 
 ## Forbidden commands
 
-**Never run `make desktop`.** It builds a local `.pkg`, asks the running desktop to drain active work, and opens macOS Installer. Installing and relaunching the new desktop can replace the bundled engine and restart the daemon, which ends the engine process hosting this conversation after its work drains. The user runs `make desktop` manually when ready. If a desktop rebuild is needed, tell the user to run it.
+**Never run `make desktop`.** It installs a new desktop that can restart the engine daemon hosting this conversation. If a packaged build is needed, tell the user to run it.
 
 ## Quality gates (run while developing)
-
-These are the gates to run **during normal development**. They are cheap, fast, and scoped to the work in front of you. Use the cadence below. Do **not** run the heavy gates listed in the next subsection while developing.
-
-### Validation cadence — never after every file edit
-
-Validation happens at meaningful checkpoints, not after each `Edit` or `Write` call.
-
-1. Make a logical batch of related edits first. Format the changed files once when that batch is complete.
-2. During implementation, run only the narrowest test that can disprove the behavior you just changed. Do not run typecheck, lint, file-size checks, or a broad package test after each file edit.
-3. If a gate fails, fix the cause and rerun that failed gate. Do not rerun gates that already passed unless the fix could affect them.
-4. When the implementation is stable, run each required development-time gate once. Run independent gates in parallel when possible.
-5. After the final gate set passes, rerun a gate only when a later code change could invalidate its result. Documentation-only edits do not invalidate code gates.
-6. Before commit, review the diff and working tree once. Do not use repeated omnibus gate commands as a progress check.
-
-A successful `npm run typecheck`, lint, package test, or file-size check is reusable evidence until a relevant code change invalidates it. Repeating the same successful command without such a change is not additional verification.
 
 | Gate | Command |
 |------|---------|
 | File-size cap | `make check-file-sizes` |
-| Contract sync | `make check-contracts` (only when you change a shared type — see "Cross-language contract sync") |
-| Status-writer check | `make check-status-writers` — run when touching code that emits `engine_status` or `engine_session_status` |
-| Logging standards | `make check-logging` — enforces ADR-019: no interpolated `msg`, no `console.*` in renderer, no non-canonical field keys. |
-| Engine lint | `cd engine && golangci-lint run` (scope to touched packages while iterating: `golangci-lint run ./internal/<pkg>/...`) |
-| Engine tests (scoped) | `cd engine && go test ./internal/<touched-pkg>/...` — run the packages you changed, with `-race` when concurrency is involved. Do **not** routinely run the full `go test ./...` sweep while iterating. **Package scoping is not always enough:** some packages are internally slow because their tests wait on real timers (`internal/server` runs ~150s wall-clock — socket lifecycle, reap/heartbeat waits). In a known-slow package, scope further with `-run <TestPrefix>` to the arms your change touches; the package's full run happens once at PR time, not in the dev loop. |
+| Contract sync | `make check-contracts` (when a shared type changes) |
+| Status writers | `make check-status-writers` (when touching `engine_status` / `engine_session_status` emitters) |
+| Logging standards | `make check-logging` |
+| Engine lint | `cd engine && golangci-lint run ./internal/<pkg>/...` |
+| Engine tests | `cd engine && go test ./internal/<pkg>/...` (`-race` for concurrency). `internal/server` takes ~150s; scope with `-run <TestPrefix>` |
 | Desktop typecheck | `cd desktop && npm run typecheck` |
-| Desktop tests (scoped) | `cd desktop && npm test -- <pattern>` for the area you touched. The full `npm test` run belongs to the pre-PR sweep. |
+| Desktop tests | `cd desktop && npm test -- <pattern>` |
 
-CI: `.github/workflows/build.yml` (release), `.github/workflows/quality.yml` (per-PR).
+### Validation cadence — never after every file edit
+
+Batch related edits, then run the narrowest test that could disprove the change. Run the scoped gate set once when the implementation is stable. A passing gate stays valid until a later code change could affect it. Docs-only edits never do.
 
 ### Heavy gates — never run during development
 
-The following gates are **slow** — Docker container spin-up, full-network vulnerability scan, full multi-package race runs, full iOS build. **Never run them during normal development.** Re-running them mid-session burns wall-clock and tokens for no added safety, because they run once, authoritatively, at PR time.
-
-| Heavy gate | Command |
-|------------|---------|
-| Linux parity | `make test-linux` (and `make test-linux-engine` / `make test-linux-desktop`) |
-| Full engine race suite | `cd engine && go test -race ./...` |
-| Engine integration | `cd engine && go test -race -tags integration ./tests/integration/...` |
-| Engine vuln | `cd engine && govulncheck ./...` |
-| Relay tests + race | `cd relay && go test -race ./...` |
-| Desktop audit | `cd desktop && npm audit --audit-level=high --omit=dev` |
-| Full desktop suite | `cd desktop && npm test` |
-| iOS build | `make ios-check` |
-
-**The heavy gates run at PR time, not during development.** CI (`quality.yml`) is the authoritative gate: it runs the full set above — race suites, integration, `govulncheck`, `npm audit`, iOS build — on **every PR**, on `ubuntu-latest`. Locally, `/create-pr` runs the **Linux parity** subset (`make test-linux`, which executes the engine unit + integration race suites and the desktop lint, typecheck, and test steps inside Linux containers) **once**, right before pushing, to catch Linux-only failures before they burn Actions minutes on a red build. The only times the agent runs a heavy gate are (a) when `/create-pr` explicitly instructs it to, or (b) when the user explicitly asks for it (e.g. to reproduce a known Linux-only failure). Outside those two cases, the heavy gates are off-limits during development — CI is what proves them green on the PR.
-
-> **Why `/create-pr` runs `make test-linux`.** Local validation runs on macOS; the blocking CI gates run on `ubuntu-latest`. `go test -race ./...` plus `go test -race -tags integration ./tests/integration/...` (the `engine-test` job), `npm run lint` (the `desktop-lint` job), and `npm test` (the `desktop-test` job) all run on Linux in CI, so a macOS-only pass is **not** sufficient — OS-sensitive failures (path semantics, file-watcher timing, locale, goroutine starvation under the Linux race detector, eager `require('electron')` under `npm ci --ignore-scripts`) slip through. `make test-linux` runs the same commands CI runs, in Linux containers, so those failures surface before the PR instead of after burning Actions minutes on a red build. `/create-pr` runs this gate automatically before pushing and pauses if Docker isn't running — the common path needs no manual step.
->
-> **When a CI job that runs engine or desktop tests is added to `quality.yml`, mirror it into `make test-linux`.** The gate's value is that it is a faithful subset; a gate that claims CI parity while skipping a job green-lights the exact failures it exists to catch. Two concrete traps: integration tests are behind the `integration` build tag, so `go test ./...` silently skips them rather than failing, and `npm run typecheck` does not catch unused imports or react-hooks violations — those are ESLint rules that CI runs as a separate blocking job.
-
-> **The gates are receipted, and the two halves run on different architectures.** A gate that already passed on the exact current HEAD with a clean worktree is skipped on the next invocation (`scripts/gate-cache.sh`; the receipt lives in git metadata, is per-worktree, and never touches the tree). Any new commit, dirty file, platform change, Dockerfile change, or edit to the gate command in the `Makefile` invalidates it. `ION_GATE_FORCE=1 make test-linux-desktop` reruns regardless. The engine gate stays pinned to `linux/amd64` to match CI, because Go race detection, memory ordering, and cgo/assembly paths are genuinely arch-sensitive. The desktop gate runs the host architecture: with `--ignore-scripts` it builds nothing native, so it is Node executing JavaScript, and the Linux-versus-macOS failures it exists to catch are properties of the kernel and libc rather than the instruction set.
+`make test-linux` (and its `-engine`/`-desktop` halves), `go test -race ./...`, `go test -race -tags integration ./tests/integration/...`, `govulncheck ./...`, relay `go test -race ./...`, `npm audit`, full `npm test`, `make ios-check`. Run one only when `/create-pr` says to or the user asks. CI (`.github/workflows/quality.yml`) is authoritative. A new engine or desktop test job in `quality.yml` must be mirrored into `make test-linux`. Rationale: [`docs/contributing/quality-gates.md`](docs/contributing/quality-gates.md).
 
 ## Branch workflow
 
-- `main` is protected. All changes merge via pull request — never push directly to `main`.
-- The current working branch can be any named feature branch (e.g. `josh`, `feat/foo`, `fix/bar`). Never hardcode a branch name; always use `git branch --show-current` to determine the active branch.
-- **Standard flow:**
-  1. Do work on the current feature branch, commit locally.
-  2. When an external PR lands on `main` that your branch depends on or should incorporate: merge it on GitHub (`gh pr merge <number> --merge`), then `git checkout main && git pull` to sync local `main`, then `git checkout <feature-branch> && git rebase main` to rebase the feature branch onto the updated `main`.
-  3. Open a PR from the feature branch into `main` (`gh pr create`). Never push directly to `main`.
-- CI must pass on the PR before merge. Follow the development-time validation cadence above; the heavy gates are run once by `/create-pr` before pushing — do not run them yourself during development.
+`main` is protected; everything lands by pull request. Read the active branch with `git branch --show-current`; never hardcode one. Never `git push`.
 
 ## Commits
 
-- Conventional Commits with **required scope**: `type(scope): subject`.
-- Allowed types: `feat`, `fix`, `chore`, `docs`, `feat!`.
-- Allowed scopes (enforced by `commitlint.config.js`):
-
-| Scope | Path trigger |
-|-------|-------------|
-| `engine` | `engine/` (includes the TypeScript SDK at `engine/extensions/sdk/`, which ships with the engine) |
-| `sdk` | `sdk/` — the standalone Go SDK, released on its own line as `sdk/go` |
-| `desktop` | `desktop/` |
-| `relay` | `relay/` |
-| `ios` | `ios/` |
-| `docs` | `docs/` |
-| `repo` | root files, cross-cutting changes, and `.github/` |
-| `ci` | CI config, when you want it distinguished from `repo` |
-| `deps` | dependency-only updates (Dependabot / manual bumps) |
-
-- `.commit.json` at the repo root is the source of truth for path→scope resolution; `commitlint.config.js` is the source of truth for which scopes are legal in a message. Tools and commands derive scope from `.commit.json` — never from a hardcoded copy.
-- A scope exists in `.commit.json` when the path is its own release unit (see `release-please-config.json`: `engine`, `desktop`, `relay`, `ios`, `sdk/go`) or needs to stay out of component commits (`docs`). Everything else falls through to `defaultScope` (`repo`).
-- `ci` and `deps` are in `commitlint.config.js` but not in `.commit.json` (the commit binary does not auto-scope them; `.github/` resolves to `repo`. Use `ci`/`deps` via `git commit -m` directly when appropriate).
-- Pick the scope matching the primary path touched. If files span multiple scopes, use the scope of the *primary* change.
-- Examples: `feat(engine): add streaming support`, `fix(desktop): correct tab order`, `chore(repo): update ci workflow`.
-- Subject ≤ 65 chars, lowercase, imperative, no period. (This 65-char target is a self-imposed stylistic guideline, not the enforced limit: commitlint's `header-max-length` from `@commitlint/config-conventional` is 100. The tighter target leaves ample headroom for the ` (#N)` issue suffix.)
-- **Issue association is mandatory when working from a GitHub issue.** If the work was initiated by an issue (e.g. user said "let's work on #126"), the commit must associate it both ways:
-  - **Subject line**: append ` (#N)` so GitHub auto-links and the issue number is visible in `git log --oneline`. Example: `fix(engine): wire agent_start / agent_end hooks (#126)`. Stay within the 65-char subject cap.
-  - **Body trailer**: include `Fixes #N` (or `Closes #N` for non-bug work) on its own line, in a commit body or the PR body. This is what GitHub uses to auto-close the issue when the PR merges — the `(#N)` subject suffix is only a link and closes nothing by itself.
-  - Both are required. Subject alone gives the auto-link but won't close the issue; body alone closes the issue but isn't visible in short logs.
-  - **This is CI-enforced, not just convention**: `make check-issue-closure` (`scripts/check-issue-closure.sh`, wired into `quality.yml` as the `issue-closure` job) fails the PR if any `(#N)` referenced in the title or a commit subject has no matching `Fixes #N`/`Closes #N` anywhere in the PR body or a commit body. This exists because it was gotten wrong in practice (PR #413 referenced #378/#379 in commit subjects with no real closing keyword, and both stayed open after merge) — do not rely on remembering the rule; the check is the backstop.
-- Never `--no-verify`.
+- `type(scope): subject`. Types: `feat`, `fix`, `chore`, `docs`, `feat!`. Subject lowercase, imperative, no period, ≤ 65 chars.
+- Scopes: `engine` (`engine/`, incl. the TS SDK), `sdk` (`sdk/`, Go SDK), `desktop`, `server`, `relay`, `ios`, `docs`, `repo` (root, cross-cutting, `.github/`), `ci`, `deps`. Use the scope of the primary change.
+- Path→scope mapping: `.commit.json`. Legal scopes: `commitlint.config.js`. `ci`/`deps` are legal but never auto-resolved.
+- Work from a GitHub issue: subject ends ` (#N)` **and** a commit or PR body carries `Fixes #N` / `Closes #N`. `make check-issue-closure` fails the PR otherwise.
 - Never commit `.env*`, `appsettings.json`, `local.settings.json`, `engine/tests/e2e/testconfig.json`.
-- **Always `git commit` completed work.** When all quality gates pass and the implementation is done, commit before reporting back to the user. Uncommitted changes in the working tree get lost — other sessions, rebuilds, and checkouts will overwrite them. The commit is the unit of durable work; an uncommitted edit is not "done."
-- Never `git push`. Tell the user the changes are ready to push.
+- Commit finished work before reporting. Never `--no-verify`. Never push.
 
 ## Layered architecture
 
 | Layer | Where | Role |
 |-------|-------|------|
-| Engine | `engine/` (Go) | Hooks, events, tools, LLM streaming. Headless, no UI concepts. |
-| Harness | `~/.ion/extensions/` (TS) | Extensions via SDK. Decides behavior. |
-| Client | `desktop/`, `ios/` | Renders UI from engine events. |
+| Engine | `engine/` | Hooks, events, tools, LLM streaming. Headless, no UI concepts. |
+| Server | `server/` | Studio wire, auth, per-Environment orchestration (worktrees, benches, transfer). One server + one engine = an Environment ([ADR-033](docs/architecture/adr/033-ion-studio-server-and-environments.md)). |
+| Harness | `~/.ion/extensions/` | Extensions via SDK. Decides behavior. |
+| Client | `desktop/`, `ios/` | Renders UI. |
 
-This mechanism table is not the vocabulary domain model. Classify work and vocabulary with `engine`, `harness-sdk`, `clients`, and `relay` (see the naming authority section). Relay is transport infrastructure.
-
-Engine executes, harness decides. Engine never blocks for user input, never persists memory, never decides policy.
-
-When labeling work: `engine`, `harness-sdk`, `clients`, or `relay`. If a harness-sdk gap is caused by missing engine capability, note both.
+Engine executes, harness decides. The engine never blocks the socket waiting for a user, never persists memory, never decides policy. Label work as `engine`, `harness-sdk`, `clients`, or `relay` (the vocabulary domains).
 
 ## Opinionless mechanics, extensible opinions
 
-The engine owns the **mechanism** — the dirty, load-bearing work that every consumer would otherwise have to reimplement — and ships the **most generic, least-opinionated standard behavior** for it. Consumers and extensions own and customize the **opinions**. This is the core engine-design principle: provide standards generically, and let opinions be modified and extended *off* the core mechanics. The engine is an opinionless core that anyone can build opinionated layers over.
-
-The principle stands on its own. It is **not** "match whatever a competitor does." When prior art informs a standard, adopt the generic shape of the mechanism; do not import another product's opinions as the engine's defaults, and never document engine behavior by reference to an external product's source (those references rot — see § "Aspirational comments" and § "Volatile counts").
-
-### The two obligations
-
-1. **Own the mechanism; carry the least-opinionated standard.** The engine does the work (discovery, parsing, scheduling, transport, persistence) and ships one generic, predictable default behavior. It does not bake in a consumer's workflow, UI shape, or policy.
-2. **Every opinion is configurable and extensible.** Any behavior that is an *opinion* — anything a reasonable consumer might want to do differently — must be exposed as a config field **and** reachable through a hook/SDK seam, so a consumer can observe, override, or augment it. **Forcing a consumer to do something exactly one way is the anti-pattern.** If you find the engine dictating a single fixed behavior where consumers would reasonably differ, that is a defect to fix, not a constraint to defend.
-
-### Canonical examples
-
-| Feature | Engine owns (mechanism) | Consumer owns (opinion) |
-|---------|-------------------------|--------------------------|
-| **Schedules** | The scheduler — timing, persistence, firing | What a schedule *does* when it fires |
-| **Webhooks** | The HTTP-server mechanics — listening, routing, lifecycle | The action taken on an inbound webhook; the consumer just registers it |
-| **Slash commands** | Discovery across the conventional roots, frontmatter parsing (full map preserved), precedence resolution, `$ARGUMENTS` expansion, the persisted-invocation-vs-expanded-content split | Whether non-standard activation modes are enabled (config), and specialized handling via a resolution hook that sees the full frontmatter + invocation metadata — so the same `/command` can behave differently in an extension-hosted conversation than in a plain one |
-| **Tool instructions** | Input-shape mechanics, channel correctness (e.g. "the user sees only visible assistant text — private reasoning never reaches them"), interception semantics | Style, depth, tone, workflow framing (tradeoff analysis, recommendations, domain phrasing) — via operator `AGENTS.md`, harness prose overrides, or `RegisterTool` replacement. See [ADR-017](docs/architecture/adr/017-opinionless-tool-instructions.md) |
-
-When you add a feature to the engine, decide explicitly: what is the mechanism (engine-owned, generic) and what is the opinion (consumer-owned, configurable + hookable)? Ship the mechanism with a least-opinionated default and a seam for every opinion. A feature that hardcodes an opinion with no override is incomplete.
+The engine owns the mechanism (discovery, parsing, scheduling, transport, persistence) and ships one generic default. Every opinion a consumer might want differently must be a config field **and** reachable through a hook/SDK seam. A hardcoded opinion with no override is a defect. Examples: the scheduler fires, the extension decides what firing does; the engine expands slash commands, a resolution hook decides special handling; tool instructions carry mechanics only, style comes from `AGENTS.md` or harness overrides ([ADR-017](docs/architecture/adr/017-opinionless-tool-instructions.md)).
 
 ## Engine consumers
 
-> **The Ion Engine is the product. The desktop, iOS, and relay applications in this repo are reference implementations — opinionated demonstrations of how to consume the engine. They are not the canonical consumer set. The canonical consumer is every external developer building against the wire protocol and SDK.**
-
-### Who the real consumers are
-
-- **TypeScript SDK consumers** — extensions installed at `~/.ion/extensions/` and third-party extension authors.
-- **Go SDK consumers** — third-party harnesses, custom backends, server-side integrations.
-- **Wire-protocol consumers** — anyone building a custom client (CLI, web app, mobile app, IDE plugin, automation pipeline, shell script) directly against the NDJSON socket.
-- **The desktop, iOS, and relay applications in this repo** — one reference implementation, not the only one. **Reference implementations consume the engine; they do not define its surface.**
-- **Future consumers we have not met yet** — every public release of the engine ships with the expectation that someone we have never spoken to will build something on top of it tomorrow.
-
-### Reframe 1 — "No in-repo caller" is the expected default for new engine surface, not evidence of accidental addition
-
-When the engine ships a new hook, protocol field, SDK type, normalized event variant, tool, or config option, the expected steady state is that the in-repo reference implementations do **not** consume it. They consume *some* engine features to be useful as references; they do not consume *every* engine feature, and they should not.
-
-When you find a piece of engine surface with no desktop/iOS caller, the questions to ask are:
-
-- Is this surface useful to a plausible external consumer? (If yes → ship it.)
-- Does it have tests pinning its behavior? (If yes → ship it.)
-- Does it have documentation explaining how external consumers should use it? (If no → that's the gap to fix, not the engine surface itself.)
-
-The question to **never** ask: *"Does desktop use this yet?"* That framing is forbidden. A reviewer who anchors a recommendation on it is reviewing the wrong codebase.
-
-### Reframe 2 — Reference implementations carry a reputational quality bar, not a coverage bar
-
-External developers learn how to consume the engine by looking at the desktop and iOS apps. So those apps must be exemplary — idiomatic, well-architected, well-tested, observable, free of anti-patterns. But "exemplary" is about *how* the references consume the engine, not *how much* they consume. A desktop that demonstrates 30% of engine features at the highest quality bar is a better reference than a desktop that demonstrates 100% of engine features sloppily. The desktop is not the SDK contract; it is one careful interpretation.
-
-### The forbidden review question
-
-**Do not ask "does desktop use this?" when reviewing engine changes.** That question presupposes the reference implementation is the canonical consumer. It is not. Ask instead: *would any plausible external consumer want this?* If yes, the engine should ship it. The absence of an in-repo caller is not a smell; it is the expected default for a healthy engine that ships ahead of its reference implementations.
-
-### The external-consumer simulation (use this instead of in-repo caller search)
-
-Before flagging an engine change as a contract violation, ask: *would this break a hypothetical external consumer who built against the previously-published surface?*
-
-- If the answer is "they would have to ignore a new optional return value" or "they would have to add a new optional field" — that's **not** a break. It's good evolution.
-- If the answer is "their existing struct decode would fail" or "their existing argument list would no longer match" — that **is** a break.
-
-Use the external-consumer simulation, not the in-repo caller search, to decide.
+The engine is the product; desktop, iOS, and relay are reference implementations. "No in-repo caller" is the expected state for new engine surface, never a reason to reject or delete it. Judge an engine change by whether it breaks a hypothetical external consumer: a new optional field or event is fine; a changed decode or signature is a break. Full framing: [`docs/architecture/engine-consumers.md`](docs/architecture/engine-consumers.md).
 
 ### The typed-event corollary
 
-When the engine has signal to communicate, it emits a typed `NormalizedEvent` variant. That emission is the engine's *complete* fulfillment of its signaling obligation for that signal. The engine does not also owe a parallel surface in stream content (no appending to `TaskCompleteEvent.Result`, no mutating `TextChunkEvent`, no synthetic system messages, no log-line-as-source-of-truth). Doing any of that would force every consumer through one specific UI-shaped interpretation and would corrupt headless pipelines that parse stream content as the LLM's verbatim output.
-
-Consequence: when a reviewer asks *"but a headless user who isn't subscribed to event X wouldn't notice Y"* — that is the engine working as designed. The headless user receives the JSON event stream; the typed event is in it. Their orchestration may abort, retry, notify, ignore, or do anything else. The engine has no opinion. Reference implementations in this repo (desktop, iOS) choose their own opinionated rendering; that is **one consumer's policy**, not the engine's recommendation.
-
-This applies equally to warnings (model fallback, deprecation notices), advisories (rate limits, retries, context compaction), and state transitions (agent lifecycle, plan-mode changes). Pick the right event shape, emit it once, and stop. Do not double-surface.
-
-### Consequences (the operational rules that flow from the framing above)
-
-- **Do not require an in-repo consumer before adding engine API surface.** If a hook, protocol field, or SDK method is useful to external consumers, it belongs in the engine — even if desktop and iOS don't use it yet. The absence of desktop/iOS usage is not evidence of premature code; it is evidence that the reference implementations haven't caught up.
-- **Engine API surface should be generous.** Every configurable behavior should be exposed: as an `engine.json` config field, as a per-prompt `ClientCommand` override, and (where applicable) as an SDK context method. External consumers want every hook we can imagine.
-- **Desktop and iOS are not gatekeepers.** They consume the engine; they do not define its surface. When reviewing engine changes, do not ask "does desktop use this?" — ask "would an external consumer want this?"
+When the engine has a signal, it emits one typed `NormalizedEvent` variant and stops. Never also surface it in stream content (`TaskCompleteEvent.Result`, `TextChunkEvent`), synthetic system messages, or log lines. How a consumer renders or ignores the event is the consumer's policy.
 
 ## Harnesses and extensions are in scope
 
-When a local extension or harness is referenced during investigation as the **source** of an issue, or is the **end-goal consumer** of an engine/SDK feature, the plan **must** include the actual upgrade to that extension/harness — not merely the engine/SDK mechanism. An engine feature with no consumer is an unfinished plan: it leaves the reported bug unfixed in practice and the new capability unexercised. These extensions are the reference and testable implementations; shipping the mechanism without wiring the consumer is half a fix.
+When a harness under `~/.ion/extensions/` (e.g. `ion-dev`) or an in-repo canary extension is the source of a bug or the consumer of a new engine/SDK feature, its upgrade is part of the plan, committed in its own tree. When an extension feature is blocked by a missing engine/SDK capability, add the generic engine/SDK primitive and consume it. Never fake it in the harness (a timer for a missing schedule kind, polling for a missing event). Name the gap; if the fix needs a contract break, ask first. A harness consuming a brand-new SDK field may need a structural-typing shim until the SDK is rebuilt.
 
-This holds regardless of where the harness lives or who owns it:
+## Studio vocabulary lives in the Studio SDK, never in the engine SDK
 
-- **In-repo** harnesses that ship with the engine (e.g. `ion-meta`, installed to end users when the engine is installed).
-- The primary **engine-development harness** I use most (`ion-dev`) — a private extension at `~/.ion/extensions/ion-dev/`, not part of the Ion repository, but the active extension I use to find bugs, exercise new engine/SDK surface, and test the engine inside the desktop.
-- Fully **private** harnesses with no relation to Ion development beyond consuming the engine (e.g. `chief-of-staff`).
-- **Any other harness installed under `~/.ion/extensions/`** that is what we are troubleshooting or enhancing.
+Studio extension points (menu rows, panels, buttons) go in `packages/studio-sdk/`, never `engine/extensions/sdk/` or `sdk/go/`.
 
-If the harness is on the machine and it is what we are troubleshooting or enhancing, its upgrade is in the plan and gets implemented and committed (at its own scope seam, in its own working tree) alongside the engine/SDK change.
+- Transport is a resource whose kind starts with `ion-studio.`. A Studio capability changes **zero files under `engine/`**.
+- Shapes live once in `packages/studio-sdk/contract.json`, pinned by tests in each flavor and in `packages/shared/src/studio-sdk-contract.ts`.
+- Any new surface that lists resources must filter with `isStudioControlKind`.
+- Composer Action resources stop at the server (`server/src/engine/composer-actions.ts`), which publishes each conversation's list on `studio:composer-actions`. Clients never see the raw resource.
 
-This generalizes the `## Scope` rule above (no deferral of ordered work) to the engine↔harness boundary. Note the SDK source-of-truth split: edit the SDK in the engine repo at `engine/extensions/sdk/ion-sdk/`; never edit the installed copy at `~/.ion/extensions/sdk/` (it is overwritten at build time). A harness that consumes a brand-new SDK field may need a structural-typing shim until the operator rebuilds the engine/SDK so the installed copy carries the field.
-
-## Missing engine/SDK capability is fixed at the root, not worked around in the harness
-
-I own the Ion engine and I am the extension developer. When a requested extension feature is **blocked by a missing engine or SDK capability**, the correct resolution is to add the proper engine/SDK primitive — a new hook, tool, event, config field, SDK method, or scheduler/async kind — and then consume it in the harness. It is **not** to build a load-bearing workaround in the extension that routes around the gap (a raw timer standing in for a missing schedule kind, a polling loop standing in for a missing event, a local reimplementation of mechanics the engine should own). Workarounds around an engine gap are the same anti-pattern as substituting a heuristic for a precise mechanism: they drift, they leak, and they leave the real capability unbuilt.
-
-The trigger is any moment where the honest description of a plan is "the SDK can't do X, so the extension fakes X." When you catch that, stop and make the distinction explicit to me:
-
-- **Name the gap** as a first-class finding: "the SDK has no one-shot schedule / no self-unregister / no such event."
-- **Propose the engine/SDK enhancement** as the primary fix (additive and generic — built for any external consumer, per the engine-consumer framing, not just this harness), and
-- **Name the consuming-harness upgrade** that exercises it — both land in the same plan (per `## Harnesses and extensions are in scope`), each committed at its own scope seam in its own working tree.
-
-This is not license to gold-plate every extension task into an engine change. Most harness work is genuinely harness work. The rule fires specifically when a feature is *blocked by* an engine/SDK limitation and I own the engine: in that case the engine enhancement is the plan, and the workaround is the defect to avoid. When I ask for cutting-edge extension features, assume engine/SDK enhancements are in scope and surface them rather than defaulting to a harness-local hack. If there is a genuine reason the engine change is out of scope (published-contract break needing my approval, or the capability truly belongs in the harness), say so and let me decide — never silently pick the workaround.
+Reference: [`docs/extensions/studio-sdk.md`](docs/extensions/studio-sdk.md).
 
 ## Naming authority — the vocabulary registry
 
-`docs/vocabulary/terms.json` is the naming authority for every shared Ion concept. The generated glossary is `docs/vocabulary/index.md` ([Ion Vocabulary](docs/vocabulary/index.md)).
+`docs/vocabulary/terms.json` names every shared concept. Use the canonical term in docs, comments, UI strings, and plans. A new shared concept gets an entry in the same change (definition, domain, kind, contract classification, one implementation citing a real symbol and file). After any registry edit run `make generate-vocabulary` then `make check-vocabulary`. The registry never renames a wire field or published contract.
 
-- **Use the canonical term.** When you write a doc, a comment, a UI string, or a plan about a shared concept, use that concept's canonical term exactly as the registry lists it. Aliases and legacy names are index entries only.
-- **Add the term when it is missing.** A new shared concept gets a registry entry in the same change that introduces it. An entry needs a definition, a domain, a kind, a contract classification, and at least one implementation citing a real symbol in a real file.
-- **Regenerate and check.** Run `make generate-vocabulary` after every registry edit, then `make check-vocabulary`. The check fails when the committed index does not match the registry.
-- **A rename is a registry edit first.** Move the old canonical term into `legacyNames`, then regenerate. Code and published contracts change only under an explicit request.
+## Server owns the store, Studio renders
 
-The registry uses four domains: `engine`, `harness-sdk`, `clients`, `relay`. Desktop and iOS are client implementations. Overlay and Studio are Desktop presentations, not clients. Relay is transport infrastructure, not a UI client.
+`server/src/store/` owns `useSessionStore`. Studio (`desktop/src/renderer/studio/`, the desktop's only window) boots the same store against the local environment: FORWARDED actions round-trip as `studio_action`, MIRROR_LOCAL actions stay window-local.
 
-## Cross-presentation parity (Overlay ↔ Studio)
+- New store action → classify in `packages/shared/src/studio-wire/actions.ts` or the mirror-parity test fails.
+- New main-process event push → `broadcast()`. `make check-server-parity` fails a direct `webContents.send`.
 
-The Desktop is ONE client with two presentations: the Overlay glass and the Ion Studio shell (`desktop/src/renderer/studio/`). Exactly one presentation is active at a time, and the Overlay renderer is the session-store owner in both modes. Same parity obligation as Desktop ↔ iOS: a feature that exists in both presentations must be the same in both. Full architecture: [ADR-021](docs/architecture/adr/021-studio-shell-mirror-store.md).
+## Two enterprise policies
 
-Important: Ion Studio is slated to supersede and replace the Overlay in its entirety one day. We should develop as if Ion Studio is the primary surface and the overlay is the system that is being phased out of existence. All features should be developed to work Ion Studio first and to update the Overlay as a consequence to ensuring that the Studio works.
+| | Device policy | Environment policy |
+|---|---|---|
+| Governs | The person's own desktop UI (theme lock, `activeUiPolicy`, environment catalog) | What a shared engine permits (`allowedModels`, `allowedProviders`, tools, limits) |
+| Source | LOCAL environment only: `customFields['ion-desktop']` | The engine's own `EnterpriseConfig` |
+| Enforced by | The desktop client | The engine, republished on `studio_welcome.enterprisePolicy` |
 
-- **Reuse is the parity system.** A shared surface is ONE component reading the same store, mounted in both presentations (the Studio shell runs the session store in mirror mode). Never build a bespoke Studio widget for something the Overlay already has a component for; bespoke is only for canvas-coupled surfaces (marquee, inspector, control bar).
-- **New store action** → classify it in `desktop/src/shared/studio-mirror-actions.ts` (forwarded vs mirror-local, with justification); the mirror-parity test fails otherwise.
-- **New main-process event push** → route through `broadcast()`; `make check-studio-parity` (CI) fails direct `webContents.send` outside the owner-only allowlist.
-- **Checklist for Overlay UI/state changes:** does the surface exist in the Studio shell? Shared component → done by construction. Not shared → mount it in Studio, or state why it is Overlay-only. The inverse holds for Studio changes.
-- **Name the shared surface with its registry term.** A surface that both presentations render uses its canonical term from `docs/vocabulary/terms.json` (Conversation View, Input Bar, Tab Strip, Status Drawer, and so on). A Studio-only region carries a Studio-qualified term.
+A remote server must never narrow a visiting desktop's own UI. Neither policy is a setting; settings have four scopes (`environment`, `account`, `personal`, `device`) in `packages/shared/src/settings-registry.ts`. Environment settings gate on the `admin` scope. `settingsHiddenGroups` is device policy only.
 
-## Cross-platform parity (desktop ↔ iOS)
+## Cross-platform parity
 
-> **Scope of this table.** The parity rules below apply when a feature *exists* on both desktop and iOS today and a change to one demands a change to the other. They do not require every new engine feature to ship simultaneously on desktop and iOS — engine surface ships ahead of reference implementations by design (see § "Engine consumers"). Use this section as a sync checklist for already-paired surfaces, not as a coverage mandate for new ones.
-
-Desktop and iOS are co-equal clients. When a desktop change touches a feature that also exists on iOS, **you must assess the iOS impact before considering the work complete.**
-
-### Checklist for every desktop UI/state change
-
-1. **Does this feature exist on iOS?** Check `ios/IonRemote/Views/` and `ios/IonRemote/ViewModels/` for the iOS counterpart.
-2. **If yes:** update the iOS side in the same PR, or document why it's deferred.
-3. **If the feature can't translate to iOS** (no physical space, no interaction model): document the trade-off. Consider an alternate iOS-appropriate rendering before deciding to skip.
-4. **If state flows through the snapshot** (`desktop/src/main/remote/snapshot.ts`): check whether the snapshot projection needs updating. The snapshot is the bridge — iOS can only see what the snapshot sends.
-
-### Common parity surfaces
-
-| Desktop | iOS counterpart | Sync path |
-|---------|----------------|-----------|
-| Tab status dot (TabStripTabPill, StatusDot) | Tab list dot (TabRowView.statusInfo) | `snapshot.ts` → `RemoteTabState.status` |
-| Engine instance bar (TabStripTabPill) | Engine instance bar (EngineInstanceBar) | `snapshot.ts` → `RemoteTabState.conversationInstances`. Note: `EngineTabStrip` was deleted in #256 (conversation unification); the model-fallback indicator is now derived via `resolveTabModelFallback` in `TabStripTabPill`. |
-| Permission denials / waiting state | Permission queue / waiting state | `snapshot.ts` promotes denials into `permissionQueue`; per-instance `waitingState` on `conversationInstances` |
-| Tab group pills | Tab group sections | `snapshot.ts` → group fields on `RemoteTabState` |
-| Thinking indicator / interrupt button | Activity indicator / interrupt button | Real-time events (`engineTextDelta`, `tabStatus`) |
-| Tab context menu (TabStripTabContextMenu) | Tab context menu (TabRowContextMenu) | Actions operate on `RemoteTabState` fields; session identity via `snapshot.ts` → `RemoteTabState.conversationId` for all conversations. For extension-loaded tabs, per-instance session IDs are available in `conversationInstances[i].conversationIds` (historical) and `StatusFields.sessionId` (live). |
-| Desktop Settings dialog (SettingsDialog categories) | Desktop Settings detail (DesktopSettingsView sections) | `projectable-settings.ts` → `desktop_settings_snapshot` event → `DesktopSettingsView` auto-renders sections. iOS group IDs **must** match `PROJECTABLE_GROUP_ORDER` (exported from `projectable-settings.ts`); renaming a group requires updating `PROJECTABLE_GROUP_LABELS` in that same file and the test in `src/main/__tests__/projectable-settings.test.ts`. Adding a new user-editable desktop preference requires a parallel entry in `PROJECTABLE_SETTINGS_DATA` in `projectable-settings-data.ts` unless the setting is local-machine-only (font, path, secret). |
-| Model fallback indicator (EngineStatusBar per-instance ⚠) | Model fallback indicator (EngineInstanceBar per-instance ⚠) | `snapshot.ts` → `RemoteTabState.conversationInstances[i].modelFallback`. Desktop populates `engineModelFallbacks` from the `engine_model_fallback` event; the snapshot poller projects each entry onto the corresponding `conversationInstances[i]` and iOS reads it from the snapshot. Cleared on the next idle transition (per-instance). |
-| Worktrees list (git panel WorktreesSection) | Worktrees & Bench screen (WorktreeListView) + new-tab sheet rows | `desktop_worktree_state` → `RemoteWorktreeState.worktrees`. The desktop computes dirty/unlanded/needsSync; clients render, never derive. |
-| Integration bench (git panel IntegrationSection) | Bench sections in WorktreeListView | `desktop_worktree_state` → `RemoteWorktreeState.benches`. Pins, staleness, and conflict attribution are all main-process values. |
-| Worktree lifecycle verbs (land / sync / retire) | Tab-row context menu + worktree row swipe actions | `desktop_worktree_*` / `desktop_bench_*` commands; results ride `desktop_worktree_op_result` so a refusal reads differently from a failure. |
-| Base-moved indicator (WorktreeRow) | Tab row indicator (TabRowView) | `RemoteWorktree.needsSync`. Only set when a sync would actually change the worktree — never for a no-op. |
-| Inbox view (Studio InboxSidebar / classifier) | Inbox view (TabListView Inbox mode, InboxRowView) | `snapshot.ts` → `RemoteTabState.inboxState`/`unread`/`snoozedUntil`/`settledAt`/`wokeAt`/`lastActivityAt`/`idleSince`. The desktop computes the classification (shared/inbox-classify.ts); clients render, never derive. Inbox actions ride `desktop_tab_settle`/`_unsettle`/`_snooze`/`_unsnooze`/`_mark_unread`. View mode (tabs vs inbox) is per-device on both platforms, never synced. |
-| Guided Questions wizard (QuestionsOverlayHost / Studio QuestionsSurface) | Questions card + full-screen wizard (QuestionsCardView, QuestionsWizardView) | Desktop main's QuestionsCoordinator is the ONE workflow owner. iOS first paint rides `snapshot.ts` → `RemoteTabState.questions`; live updates ride `desktop_questions_state`; mutations ride revisioned `desktop_questions_patch`/`_action` (compare-and-set by revision, stale rolls back) and `desktop_questions_refresh` re-sends targeted state. The display-hint resolver (pills vs radio/checkbox) is one deterministic rule pinned by unit tests on both platforms (`questions-schema.test.ts` / `QuestionsWireTests`). |
-| Theme registry + picker (AppearanceCategory) | Theme picker (SettingsAppearanceView) | Built-in themes are compiled into both clients and pinned identical by the parity fixture (`assets/theme-parity.json`, asserted by `theme-parity.test.ts` on desktop and `ThemeParityTests.swift` on iOS) — a shared-theme palette edit must update the fixture and the Swift theme in the same change. Custom theme packs sync their iOS components via `desktop_theme_manifest` (sendSync + on pack-set change) with lazy asset fetch (`desktop_request_theme_asset`); enterprise lock rides `desktop_settings_snapshot.themePolicy`. Theme selection is per-device (never synced). Authoring guide: `docs/design/theme-packs.md`. |
-| Telemetry delivery health notifications (`installTelemetryHealthConsumer`) | none | Desktop-only today: the engine's `engine_telemetry_health` event drives an Electron `Notification` alerting the operator that a telemetry target is backlogged or critical. iOS has no ViewModel/View consumer. Rationale: telemetry delivery health is an operator/audit-owner concern the desktop is positioned to alert on locally; extend to iOS if a mobile operator-alerting use case emerges. |
-
-### When to skip iOS
-
-Only when the interface physically cannot work on iOS (e.g. a keyboard-only interaction, a desktop window management feature, or a rendering surface that doesn't exist on mobile). In that case:
-- Note in the PR description why iOS was skipped.
-- Consider whether an alternate mobile-appropriate rendering exists.
-- At minimum, ensure the iOS app doesn't break or show stale data because of the desktop change.
+When a change touches a feature that exists on both desktop and iOS, update iOS in the same change or state why it cannot apply. iOS sees only what the snapshot sends (`server/src/remote/snapshot-polling.ts` → `server/src/thin-view/thin-sync.ts`); settled conversations ride `desktop_settled_tabs` instead. New engine features do not need to ship on both clients at once. Surface-by-surface sync paths: [`docs/architecture/cross-platform-parity.md`](docs/architecture/cross-platform-parity.md) § "Common parity surfaces".
 
 ## Resource subsystem
 
-The engine provides a generic resource subsystem for durable structured content. Extensions declare resource kinds, publish items, and handle queries. Clients subscribe and receive snapshots + incremental deltas.
-
-### Scoping
-
-- **Session-scoped** (`conversationId` set): resource belongs to a specific conversation. Appears in that tab's attachments panel. Persists for the lifetime of the conversation.
-- **Workspace-scoped** (`conversationId` empty): resource belongs to no conversation. Appears in the global notifications inbox. Persists until the producing extension cleans it up.
-
-### Cross-device synchronization
-
-The desktop is the primary client. The iOS app is a thin client connected via WebSocket (directly or through the relay). All state changes flow through the engine:
-
-- When a resource is published, the engine broadcasts the delta to all subscribers (desktop + iOS).
-- When a user reads a resource on either device, the client sends a `resource_publish` with `op: 'mark_read'`. The engine fans the delta to all subscribers. Both devices update their read state.
-- Desktop persists read identities and deletion tombstones as the client source of truth. Clients send `mark_read` and `delete` deltas through the engine; the engine fans each delta to all subscribers. Desktop snapshots carry the persisted result to reconnecting devices.
-
-### Producer-owned persistence
-
-The engine stores nothing. Extensions that declare resource kinds are responsible for persisting their data. When a client subscribes (or resubscribes after disconnect), the engine routes a query to the producing extension, which answers from its own store.
-
-### Notifications
-
-`ctx.notify()` sends a push notification through the engine's relay pipeline. Notifications are signals, not payloads. The push body is a doorbell string ("New briefing ready"), not content. The relay includes `ionResourceId` and `ionKind` in the APNs payload for future deep-linking. iOS does not yet read these fields; the current `AppDelegate` navigates by `tabId` only.
+Session-scoped resources (`conversationId` set) belong to one conversation's attachments. Workspace-scoped ones go to the global notifications inbox. The engine stores nothing: producing extensions persist their own data and answer queries. `mark_read` and `delete` travel as deltas through the engine to every client. Reference: [`docs/architecture/resource-subsystem.md`](docs/architecture/resource-subsystem.md).
 
 ## Contract stability
 
-Not all wire contracts carry the same stability obligation. The rules differ by owner.
+**Engine wire: scrutinized.** Never ship a breaking change without explicit operator approval. Contract surfaces: `engine/internal/protocol/protocol.go`, `engine/internal/types/normalized_event.go`, `engine/internal/extension/sdk_types.go` / `sdk_hook_types.go` / `sdk_hooks_*.go`, and any event field a client reads. Event semantics (snapshot vs. incremental, replace vs. merge, when it fires) are contract too. Additive fields, variants, hooks, and optional params are fine. Removing, renaming, retyping, reordering callback args, or changing framing is a break. A legacy-name correction may ship as `fix`; the operator decides.
 
-### Engine wire - scrutinized contract
+**Studio wire: lockstep, not scrutinized.** Every client is in this repo, so a rename is not a break; it only needs parity in one change: `packages/shared/src/studio-wire/`, `server/src/remote/protocol.ts`, iOS `RemoteCommand.swift` / `NormalizedEvent.swift` TypeKeys and `StudioTransportCommandMapping.swift`, and any handler switching on the string. A new phone command also needs a row in `packages/shared/src/studio-wire/phone-command-map.json`.
 
-The engine wire is a **scrutinized contract**. External integrators build custom clients, shell scripts, and automation pipelines directly against the engine NDJSON socket. Ion cannot reach those consumers to coordinate a migration. A breaking change to the engine wire must be a conscious, surfaced decision — never committed silently.
+**Prefix by owner (ADR 008):** engine `engine_`, server-derived Studio-wire payloads `desktop_`, Studio SDK `ion-studio.`. Internal `NormalizedEvent` names are bare; `translateToEngineEvent()` adds `engine_`.
 
-**Never ship a breaking change to the engine wire contract without explicit operator approval.**
-
-Event-shape contracts are not just about field names. Event **semantics** (snapshot vs. incremental, replace vs. merge, idempotency) are also part of the engine contract. See [docs/architecture/agent-state.md](docs/architecture/agent-state.md) for the canonical example: `engine_agent_state` is always a complete snapshot, and consumers replace local state with the payload.
-
-Correcting an improper legacy name on the engine wire **may** be committed as a breaking change in a future version using `fix` (not `feat!`) unless the rename is genuinely application-sweeping. The operator decides; the agent surfaces the decision, never makes it alone.
-
-#### What counts as an engine contract
-
-| Surface | Key files |
-|---------|-----------|
-| Wire protocol | `engine/internal/protocol/protocol.go` (`ClientCommand`, `ServerMessage`, NDJSON shape) |
-| NormalizedEvent variants & fields | `engine/internal/types/normalized_event.go`, mirrored in `desktop/src/shared/types.ts` and `ios/IonRemote/Models/NormalizedEvent.swift` |
-| SDK types & hook signatures | `engine/internal/extension/sdk_types.go`, `sdk_hook_types.go` (`HookHandler`, `Context`, payload types) |
-| Hook names & payload shapes | All hooks registered in `engine/internal/extension/sdk_hooks_*.go` |
-| Engine events consumed by clients | Any event type or field a client reads to render UI |
-
-#### Allowed (non-breaking engine changes)
-
-- **Add** new fields with zero-value defaults, new event variants, new hooks, new optional parameters.
-- **Fix** bugs in existing methods (behavior change that corrects a documented or obvious defect).
-- **Version** a new alternative when a design must evolve (e.g. `ToolCallV2`) — leave the original intact.
-
-#### Forbidden (breaking engine changes)
-
-- Remove or rename a field, type, constant, hook name, or event variant.
-- Change a field's type (e.g. `string` → `int`, `[]T` → `map`).
-- Alter a hook's payload shape in a non-additive way.
-- Remove or reorder positional arguments in an SDK callback signature.
-- Change wire-protocol message framing or envelope structure.
-
-If you believe a break is truly necessary, stop and discuss with the user — never commit it silently.
-
-### Desktop↔iOS wire and future client wires - lockstep, not scrutinized
-
-The desktop↔iOS wire (and any future client wire such as desktop↔Android or desktop↔web) operates under a **lockstep model**. All clients that share a wire are co-located in this repo. A wire rename ships to every side in one PR — there is no deployment window where one side has the new string and the other has the old one. These wire changes are not breaking changes in the external-integrator sense.
-
-**Do not push back on desktop↔iOS wire changes as though they were published-contract breaks.** They are not. The only obligation is **parity**: every side of the wire is updated in the same PR. If you are reviewing or implementing a desktop↔iOS wire rename and all clients are updated together, the change conforms to this policy.
-
-Parity check: confirm `desktop/src/main/remote/protocol.ts`, the iOS `RemoteCommand.swift` and `NormalizedEvent.swift` TypeKey raw values, and any ViewModel or handler that switches on the string are all updated in the same commit (or PR).
-
-### Wire event naming - prefix by owner (ADR 008)
-
-Wire events are prefixed by the **owner of the contract**. See [docs/architecture/adr/008-wire-event-naming-and-ownership.md](docs/architecture/adr/008-wire-event-naming-and-ownership.md) for the full rationale.
-
-| Owner | Prefix | Wire |
-|-------|--------|------|
-| Engine | `engine_` | Engine NDJSON socket |
-| Desktop | `desktop_` | Desktop↔iOS WebSocket |
-| Android (future) | `android_` | Desktop↔Android WebSocket |
-| Web (future) | `web_` | Desktop↔Web WebSocket |
-
-The engine's outbound event set is uniformly `engine_`-prefixed (see `engine/internal/types/engine_event.go`). All `RemoteEvent` and `RemoteCommand` members on the desktop↔iOS wire carry the `desktop_` prefix. Any new member introduced to either wire must carry the correct prefix from its first commit. PRs that introduce unprefixed or cross-prefixed members are non-conforming.
-
-**Internal vs. wire names.** `NormalizedEvent` uses bare names internally. These never reach a consumer: `translateToEngineEvent()` converts them to `engine_*` before anything is written to the socket. The bare internal names and the wire names are distinct layers.
+Full rules: [`docs/architecture/contract-stability.md`](docs/architecture/contract-stability.md).
 
 ### Cross-language contract sync
 
-Go is the source of truth. A reflection-based test (`engine/internal/types/contract_test.go`) extracts every shared struct's JSON field names into a golden manifest (`engine/internal/types/testdata/contracts.json`). TS and Swift tests validate against it.
+Go is the source of truth. When a shared type changes:
 
-**Workflow when you change a shared type (NormalizedEvent variant, StatusFields, EngineConfig, etc.):**
-
-1. Make the Go change in `engine/internal/types/`.
-2. Regenerate the manifest: `cd engine && go test ./internal/types/ -run TestContractManifest -update`
-3. Update the TS field map in `desktop/src/shared/__tests__/contract-sync.test.ts` to match.
-4. Update the TS type definition in the appropriate file under `desktop/src/shared/`: `types-engine.ts`, `types-events.ts`, or `types-engine-event.ts` (the `EngineEvent` discriminated union lives in `types-engine-event.ts`, split from `types-engine.ts` to stay under the 600-line cap).
-5. Update the Swift type in `ios/IonRemote/Models/` and the Swift contract test if field coverage changed.
-6. Run `make check-contracts`, `npm test`, and `make ios-check` to verify.
-
-If you skip a step, CI fails with a clear message identifying the drift (e.g. `"Go-only: [newField]"`).
+1. Change Go in `engine/internal/types/`.
+2. `cd engine && go test ./internal/types/ -run TestContractManifest -update`
+3. Update the field map in `packages/shared/src/__tests__/contract-sync.test.ts`.
+4. Update the TS type (`types-engine.ts`, `types-events.ts`, or `types-engine-event.ts` under `packages/shared/src/`).
+5. Update the Swift type in `ios/IonRemote/Models/` and its contract test.
+6. `make check-contracts`.
 
 ## Logging policy
 
-Logging is a **first-class citizen** of the architecture. Every code path must be observable through logs alone.
+Observability is the most important property of backend code: if it is not in the logs, it cannot be verified. Log every operation's outcome and every decision branch, with identifiers. Logging is permanent.
 
-**Observability is the single most important property of the backend/mechanical implementation.** User experience is paramount — but the backend has no UX; where the user cannot see, observability is what makes the work real. It is the only way the engineering team and the agents working in this codebase verify that a build actually does what it claims, and the only way anyone understands why the system does — or does not do — what it should. A feature that works but cannot be observed is indistinguishable from one that is silently broken. When there is a tension between a slightly cleaner mechanism and an observable one, choose observable. Instrumentation is not overhead on the feature; it *is* part of the feature.
+| Surface | File | Logger |
+|---|---|---|
+| Engine | `~/.ion/engine.jsonl` | `utils.Log`/`Debug`/`Error`. Never `log.Printf`/`fmt.Printf` (launchd daemon stderr is lost) |
+| Desktop main | `~/.ion/desktop.jsonl` | `main/logger`. `@ion/server` modules main loads directly log here too; the server child writes `server.jsonl` |
+| Desktop renderer | `~/.ion/desktop.jsonl` | `renderer/rendererLogger`. Never `console.*` (`make check-logging`) |
+| Server | `<ION_DATA_DIR>/server.jsonl` | `server/src/logger.ts`. `component=web` for forwarded browser lines. `ION_LOG_OUTPUT` = `file`\|`stdout`\|`both` |
+| iOS | `<ION_DATA_DIR>/ios-diagnostic-logs.jsonl` on the paired server's host | `DiagnosticLog.log()`. Never `os.Logger`/`print()` |
+| Relay | `RELAY_LOG_FILE` or stdout (`RELAY_LOG_OUTPUT`) | Go relay logger |
+| Extensions | `~/.ion/engine.jsonl`, `component=extension`, `tag=<name>` | SDK log |
+
+Reading logs:
+
+- Files rotate (`engine.jsonl.1`–`.3`). A miss in the current file proves nothing; search the rotations covering the timestamp.
+- Filter on the `msg` field (`grep '"msg":"<marker>"'`), not the raw line. Your own tool calls are echoed into the log.
+- A log line missing across every covering rotation means that code path did not run.
+- `logLevel` is read once at daemon start from the global `~/.ion/engine.json` only. A project config cannot raise it. Bootstrapped clones run `debug`, consumer installs `info`. If the level hides what you need, say so.
+
+`jq` and LogQL recipes: [`docs/observability/consuming-logs.md`](docs/observability/consuming-logs.md). Schema: [`docs/observability/log-schema.md`](docs/observability/log-schema.md).
 
 ### No silent failures
 
-**A failure that is invisible in the logs is a defect, regardless of whether it is otherwise handled.** Every failure branch on every surface must be observable. This rule is enforced structurally (see § "Quality gates" — `errcheck` check-blank/type-assertions, the desktop ESLint `no-floating-promises`/`no-misused-promises`/`no-empty` rules, the `check-logging` SILENT-CATCH category, and SwiftLint `empty_catch_block`), but the gates are a backstop for the discipline, not a substitute for it.
+Every failure is either handled and logged, or explicitly marked benign with a reason.
 
-The forbidden patterns, by surface:
+- Go: no bare `_ =` on an error. Log it, or `//nolint:errcheck // <reason>`.
+- TypeScript: no floating promise, no async function where `() => void` is expected, no empty `catch {}` or `.catch(() => {})`. Use `void` for fire-and-forget, log what matters, and tag benign swallows `// silent-ok: <reason>`.
+- Swift: no empty `catch {}` and no discarding `try?` where failure matters. Route through `DiagnosticLog.log(..., level: .warn/.error)`.
 
-- **Go:** a discarded error — `_ = fn()` or an `if err != nil { return }` branch with no log. Either handle-and-log the error, or, when the discard is genuinely unactionable (a deferred `Close()` on a read-only body, best-effort cleanup, a call whose error is already logged internally), mark it `//nolint:errcheck // <reason>` so the decision is explicit and reviewed. Never a bare `_ =` on an error.
-- **TypeScript:** a floating promise, an `async` function passed where a `() => void` is expected, a swallowed `.catch(() => {})`, or an empty `catch {}`. Fire-and-forget gets `void`; a failure that matters gets `.catch()` logging via `main/logger` or `renderer/rendererLogger`; a genuinely-benign swallow carries `// silent-ok: <reason>`.
-- **Swift:** an empty `catch {}`, or a `try?` that discards an error on a path where the failure matters. Route the error through `DiagnosticLog.log(..., level: .warn/.error)` — never `os.Logger`/`print()`, which never reach the operator's log file.
+## Engineering rules
 
-The distinction is always the same: a failure is either **acted on and logged**, or it is **explicitly and visibly declared benign with a stated reason**. Silence is never the third option.
+### Aspirational comments
 
-### Log files and format
+A comment describing behavior the code lacks means the implementation is incomplete; investigate and build it before deleting the comment. A plan never resolves a finding by documenting it (TODO, narrative comment, follow-up issue, warn-log, "later phase").
 
-Logs are structured JSONL (one JSON object per line). Every line has a canonical schema — see [`docs/observability/log-schema.md`](docs/observability/log-schema.md) for the full field reference.
+### Telemetry schema moves forward
 
-| Surface | File | Notes |
-|---|---|---|
-| Engine | `~/.ion/engine.jsonl` | Go `utils.Log` / `utils.LogCtx` via slog JSON handler |
-| Desktop | `~/.ion/desktop.jsonl` | Electron main process logger |
-| iOS | `~/.ion/ios-diagnostic-logs.jsonl` | Written via `DiagnosticLog.log()` |
-| Relay | `RELAY_LOG_FILE` (default `/var/log/ion/relay.jsonl`, inside the container) or stdout / `docker logs ion-relay` — `RELAY_LOG_OUTPUT` selects `stdout` \| `file` \| `both` (default `stdout`) | Go relay logger, canonical JSONL |
-| Extensions | `~/.ion/engine.jsonl` | `component=extension`, `tag=<extension-name>` |
+A change to the log, span, or metric schema Ion emits bumps the schema version and upgrades every consumer in this repository in the same change: the local stack (`docs/observability/` Alloy, Loki, Tempo, Grafana provisioning), and the dashboard generator and both of its outputs. The replaced fields are dropped, not kept as duplicates for old dashboards. Anyone who wants the old schema keeps the old version.
 
-### Check Logs First
+### Volatile counts
 
-Check the logs before investigating any issue. All files are JSONL — use `jq` to filter rather than reading them raw. This is the project-specific form of the global `## Read the logs first` rule: reading is the first step of an investigation, never an option inside one, and never something to ask permission for.
+Never write a count the code determines ("55 hooks", "12 providers") in docs or comments. Link the by-name reference instead. Only the top-level `README.md` badge line may carry such numbers.
 
-**These files rotate.** `engine.jsonl` is the current window only; `engine.jsonl.1`, `.2`, `.3` hold the preceding ones, and a busy engine fills a window in well under an hour. A grep of `engine.jsonl` alone that returns nothing means "not in the last window" — it does not mean "never happened". Search the rotations that cover the timestamp you care about:
+### Solution quality — no cheap substitutes
 
-```bash
-for f in ~/.ion/engine.jsonl ~/.ion/engine.jsonl.*; do grep '"msg":"<marker>"' "$f"; done
-```
+When the proper root-cause fix is known, ship it, however large. No stopgaps, no heuristics standing in for a precise mechanism, no avoiding a new event/field/protocol surface. The only reasons to stage: a published-contract break, the architecture cannot support it yet, or the domain genuinely does not need the precision.
 
-**Filter on the `msg` field, not the raw line.** Every tool call an agent makes is echoed into the log inside a `normalized event` payload, so a bare `grep keepplan engine.jsonl` matches your own commands and reads like a hit. `grep '"msg":"keepplan'` matches only what the engine actually emitted.
+### Dead code is not load-bearing until proven otherwise
 
-**A missing log line is evidence, not a dead end.** When a code path emits a log on every execution and that log is absent across every rotation covering the window, the path did not run. That is frequently the whole diagnosis — it converts "why did this behave wrong" into "which branch was skipped, and why".
+Before keeping a no-op, pass-through, or vestigial layer "for compat", cite the live producer or consumer that forces it (`graphify explain`, then source). Keep only that layer and delete the rest. Every surviving comment about callers or the wire must be verified.
 
-**Confirm the effective level before you trust a log or pick one to write at.** `logLevel` in `~/.ion/engine.json` is read once at daemon start, from the global config only — a project `.ion/engine.json` cannot raise it, and an edit needs an engine restart. A clone bootstrapped with `make bootstrap` runs `debug`; a consumer install runs `info`. When the level would discard what you are about to write, or hide what you are about to read, say so and offer to fix it — do not silently demote a diagnostic to a level nobody receives.
+### Tests
 
-**Filter one conversation** (all surfaces, all log lines for a conversation ID):
-```bash
-jq -c 'select(.conversation_id=="<id>")' ~/.ion/engine.jsonl
-```
+Every feature and fix ships a test that pins its behavior. A fix's test fails with the fix reverted. Cross-boundary fields need a serialization test. A feature on both clients needs its parity pinned.
 
-**Filter one session across all surfaces**:
-```bash
-jq -c 'select(.session_id=="<id>")' ~/.ion/*.jsonl
-```
+### Premises and stale artifacts
 
-**Filter one extension** (by name):
-```bash
-jq -c 'select(.component=="extension" and .tag=="ion-meta")' ~/.ion/engine.jsonl
-```
+If a user claim about the code is wrong, say so before building on it. A stale comment, doc, or test found in the path of the work is in scope; fix it in its own commit.
 
-**Filter by time range** (logs after a given timestamp):
-```bash
-jq -c 'select(.ts >= "2024-11-15T22:00:00Z")' ~/.ion/engine.jsonl
-```
+## Worktrees and benches
 
-**Filter by level** (errors only):
-```bash
-jq -c 'select(.level=="ERROR")' ~/.ion/*.jsonl
-```
+- **Worktree:** a conversation in a registered worktree cannot write into its base repo or a sibling worktree. The engine checks literal `cd`/`git -C`/`--work-tree` targets in Bash too. `/tmp`, `~/.ion`, and unrelated repos stay writable. Gitignored paths declared in `.ion/worktree.json` `sharedPaths` are exempt; git is still refused there.
+- **Integration bench** (`~/.ion/integration/`): refuses `Write`/`Edit` and all history writes (commit, push, merge, rebase, reset, stash, …). It is rebuilt from member pins. Fix the file in the member worktree the refusal names, then update that member.
+- **Landed worktree:** sealed and read-only; only Retire remains. Never infer or clear `landedAt`.
 
-**When the Loki stack is running** (`docker compose up` in `docs/observability/`), use LogQL instead:
-
-| Goal | LogQL |
-|---|---|
-| One conversation | `{component=~".+"} \| json \| conversation_id = "<id>"` |
-| One session across surfaces | `{component=~".+"} \| json \| session_id = "<id>"` |
-| Errors in time range | `{level="ERROR"}` (use Grafana time picker) |
-| One extension | `{component="extension", tag="ion-meta"}` |
-| Trace correlation | `{component=~".+"} \| json \| trace_id = "<32-hex-id>"` |
-
-### Rules
-
-1. **Every operation must log.** Before execution, after success, and inside every failure branch. A developer reading logs must be able to reconstruct the exact code path from start to finish without attaching a debugger.
-2. **No blind spots.** When entering existing code that lacks sufficient logging, **add comprehensive logging as the first step** before attempting any fix or feature work. This is not optional prep — it is part of the implementation.
-3. **Logging is permanent.** Never treat logs as "debug scaffolding" to be removed later. Log statements ship to production. Use appropriate levels:
-   - `utils.Log` / `INFO` — state transitions, resolved decisions, operation outcomes. Always present.
-   - `utils.Debug` / `DEBUG` — per-request details, intermediate values, loop iterations. Verbose but useful for replay.
-   - `utils.Error` / `ERROR` — unexpected failures, caught panics, invariant violations.
-4. **Include context in every log.** Always log the relevant identifiers (provider ID, model ID, session key, request ID, key lengths, URL, status codes). A log line without context is useless.
-5. **Log both sides of conditionals.** If an `if/else` branch makes a decision, log which branch was taken and why. Don't log only the happy path.
-6. **Desktop main process** uses the `log`/`debug`/`warn`/`error` helpers from `main/logger`. **Renderer code** uses `renderer/rendererLogger` (`rInfo`/`rDebug`/`rWarn`/`rError`/`rTrace`) — never `console.*`, which `make check-logging` (ADR-019) forbids with zero tolerance in shipped renderer code.
-7. **Engine Go code** uses `utils.Log(tag, msg)`, `utils.Debug(tag, msg)`, and `utils.Error(tag, msg)`. Never use `log.Printf` or `fmt.Printf` for operational logging — those go to stderr, which is not a reliable operational channel for the headless launchd engine daemon. All operational logs must go through `utils.Log` so they land in `~/.ion/engine.jsonl`.
-
-### Anti-patterns
-
-- Adding a single log line per investigation cycle and hoping it's enough. **Instrument the entire code path in one pass.**
-- Logging only the error case. **Log the success case too** — "operation X completed with result Y" is as valuable as "operation X failed with error Z".
-- Using opaque messages like "failed" or "error occurred". **Include the what, the why, and the relevant IDs.**
-
-## Aspirational comments
-
-When a comment describes behavior that the code does not implement (e.g. "This is exposed to extensions via the SDK" on a method with no SDK wiring), the default assumption is that the **implementation is incomplete**, not that the comment is wrong.
-
-1. **Investigate first.** Check whether the described behavior was partially implemented, planned in a related issue, or left behind by an incomplete PR.
-2. **Implement the feature** if the comment describes a legitimate capability gap. The comment is documentation of intent — honor it.
-3. **Remove the comment only** if investigation confirms the described behavior is explicitly unwanted or was superseded by a different design decision. Document why in the commit message.
-
-Never silently delete an aspirational comment. A comment that describes unimplemented functionality is a bug report, not a false statement.
-
-### The rule applies to plans, not just code
-
-The Aspirational-comments rule extends to **planning artifacts**: any fix-plan, design doc, ADR draft, or PR description that resolves a finding by *documenting* the defect instead of fixing it is itself an aspirational artifact and is subject to the same rule.
-
-Specifically forbidden as plan resolutions for *any* finding you can fix in the same branch:
-
-- "Add a `TODO` / `FIXME` / `HACK` / `XXX` comment" — the repository forbids these markers in code; planning them is the same anti-pattern with extra steps.
-- "Add a narrative comment establishing the intentional scope of a known fragility" — same anti-pattern as the TODO marker, with the marker stripped.
-- "Open a follow-up issue / file a tracking ticket" as the resolution — deferring the work without doing it.
-- "Add a `console.warn` / `log.Warn` when the bad case happens" without preventing the bad case.
-- "Mark this for the next decomposition phase" / "address in Phase N" without doing the phase work.
-- "Flag this in the PR description so reviewers know" as the only resolution.
-
-A valid plan resolution is one of: change code, change a contract, delete code, add a test that pins behavior, or explicitly decide to do nothing with a stated rationale. "Document the problem" is not a resolution.
-
-The `ion--review-changes.md` and `ion--align.md` commands enforce this rule at plan-generation time. Reviewers should reject any plan that violates it.
-
-## Volatile counts — keep them out of docs and code
-
-**Never hand-encode a count that the code already determines.** Hook count, hook-category count, provider count, command-type count, tool count, event-variant count — any "N of X" where X is enumerable in source — goes stale the moment it is written. Every commit that adds a hook, a provider, a tool, or a command silently invalidates every prose statement that pinned the old number, and nothing fails to catch it. The result is documentation that lies about the code.
-
-This is the same defect family as the "Aspirational comments" rule above: a number that no longer matches the code is a comment that lies. The next agent or contributor reads "55 hooks" as ground truth, builds on it, and is wrong.
-
-### The one exception
-
-The **top-level `README.md` header badge** (the single tagline + badge line at the very top of the file) may carry a curated set of these numbers as marketing/bragging-rights figures. That surface is deliberately refreshed when the product is showcased. Nowhere else — not the README body, not a leaf doc, not a component `README.md`, not a `docs/` page, and not a code comment — may restate them.
-
-### What to write instead
-
-- Use qualitative phrasing: "a comprehensive set of hooks across the agent lifecycle", "a broad set of LLM providers", "the built-in core tool set".
-- Link to the authoritative by-name reference: `docs/hooks/reference.md`, `docs/tools/reference.md`, or the source file (`engine/internal/extension/sdk.go`, `engine/internal/providers/provider.go`, etc.).
-- **By-name lists are fine** — listing the tools or providers by name is self-maintaining and is the source of truth. A bare count is not. If you list them by name, do not also assert how many there are.
-
-When you touch a doc or comment that pins such a count, remove the count as part of the change (good-citizen rule below). Do not "correct" it to the new number — the new number is stale on the next PR.
-
-## Good citizen — fix what you find
-
-If, during any feature or fix, you **stumble across something that is wrong** — a stale or incorrect comment, documentation that no longer matches the code, a failing or stale-assertion test, a lie-to-the-future of any kind — it is **always in scope**. Fix it.
-
-You are not breaking functionality by correcting a comment, a doc, or a test; you are **restoring** it. An incorrect comment is worse than no comment: whoever comes after you will not have the context that let you silently work around the discrepancy. They will read the stale statement as ground truth and build on a falsehood, breaking a future implementation. The only safe state is: the artifact tells the truth.
-
-### The boundary (so this never becomes a tangent)
-
-- **Fix what you encounter; do not audit what you do not.** This rule fires on defects in the path of the work, not on a codebase-wide hunt for them. Diagnosis is not auditing: instrumenting a whole pipeline to answer a reported symptom *is* the path of the work, and belongs in the first commit rather than the seventh.
-- **Roll it into the current plan.** When you find it, add it to the plan you are executing. Do not defer it to a "future PR", an issue, or a `TODO` — deferral is the forbidden anti-pattern (see "## Aspirational comments" and the "## Scope" rule in the user's global rules).
-- **Commit separately when unrelated.** The fix does not have to address the same issue you are working on. A stale comment found while implementing feature X is committed as its own `fix` / `chore` / `docs` commit at a clean scope seam, before or after the main work — it does not have to be entangled with feature X's commit.
-
-This generalizes "## Aspirational comments" (incomplete or lying comments are bugs), "## Volatile counts" (stale counts are lies), and the global "## Scope" rule (never defer ordered work).
-
-## Operator premises — verify before acting
-
-Operator requests routinely contain **factual premises about the codebase** — "we only support X", "the only place that happens is Y", "this field is unused", "feature Z doesn't exist yet". These premises are frequently wrong. The author of this repository is wrong about them sometimes; new contributors are wrong about them more often. **Treat every premise as a claim to be verified, not as ground truth.**
-
-The failure mode this rule prevents: the operator states a premise, the agent silently accepts it, and the agent then refactors, deletes, restricts, or "fixes" code based on a misunderstanding the operator would have corrected if asked. By the time the operator sees the change, the wrong work is done.
-
-### When this rule fires
-
-Any operator request that asserts a concrete fact about the codebase. Common signals:
-
-- "we only support …" / "the only … is …" / "X is the only place that …"
-- "we don't have …" / "there's no …" / "X doesn't exist yet"
-- "X always does Y" / "X never does Y"
-- "the file picker only accepts …" / "the engine only emits …" / "the SDK only exposes …"
-- Any naming, shape, count, or scope claim about events, fields, hooks, tools, file types, config keys, protocol messages, or supported inputs.
-
-The trigger is **the presence of a factual claim**, not the operator's tone or confidence. A confidently stated wrong premise is the most dangerous kind.
-
-### What verification looks like
-
-Before designing or implementing anything that depends on the premise:
-
-1. **Locate the ground-truth source.** Find the code, contract, or doc that proves or disproves the claim — the actual file filter, the actual event variant list, the actual SDK surface, the actual permission list.
-2. **Compare the premise to ground truth.** Be specific: "the operator said *only* `index.ts` and `extension.ts`; the manifest loader at `engine/internal/extension/manifest.go` accepts `<actual list>`."
-3. **Decide based on the comparison, not the premise.**
-
-This step is not "extra rigor." It is the first step of the work. Skipping it is a defect.
-
-### What to do when the premise is wrong
-
-**Stop and surface the discrepancy to the operator before doing any of the requested work.** Do not:
-
-- Silently implement what was asked, hoping the operator was right.
-- Silently implement the "corrected" version you think they meant.
-- Refactor, narrow, delete, or restrict existing functionality to match the (wrong) premise.
-
-Instead, respond with a short message that contains:
-
-1. **The premise as stated.** ("You said we only support `index.ts` and `extension.ts`.")
-2. **The ground truth.** ("The engine actually accepts `<list>`, loaded via `<path>`.")
-3. **A direct question.** ("Do you still want the picker restricted to the two filenames, or should it match the engine's full set?")
-
-Only proceed once the operator confirms which version of reality the change should target.
-
-### What this rule is not
-
-- It is **not** an excuse to pepper the operator with questions about every adjective in their request. The trigger is a verifiable factual claim about the codebase, not stylistic ambiguity ("make it pretty") or judgment calls ("pick a good default").
-- It is **not** a license to refuse work. The expected outcome is *clarification in seconds*, then the right work — not an extended debate.
-- It is **not** limited to the author. New contributors and external developers will hit this more often than the author does. The rule exists because *any* operator can be wrong about *any* codebase fact, and the agent is the last line of defense against acting on the wrong fact.
-
-### Anti-patterns
-
-- "The operator said X, so I'll implement X." — Without verifying X against the code, this is the exact failure mode the rule exists to prevent.
-- "I noticed the premise is wrong, but I implemented what they asked anyway and noted it in the response." — Too late. The wrong work is done. Surface the discrepancy *before* writing code, not after.
-- "I noticed the premise is wrong, so I implemented what I thought they really meant." — Also wrong. Confirm with the operator which version is correct; do not silently substitute your interpretation.
-- "The premise is *probably* right, I'll skip verification." — The premises that look most obviously right are the ones where verification is cheapest and the cost of being wrong is highest. Verify anyway.
-
-## Solution quality — no cheap substitutes
-
-Every solution must solve the problem at its root cause. **Never trade correctness for implementation convenience.**
-
-### Rules
-
-1. **Never substitute a heuristic for a precise mechanism.** If the problem requires tracking identity, track identity — don't approximate it with a distance metric. If the problem requires a boundary marker, store a boundary marker — don't estimate freshness from a turn counter. Heuristics drift, precise mechanisms don't.
-
-2. **"Simpler to implement" is not a valid justification for a weaker solution.** The only acceptable reasons to choose a less rigorous approach are:
-   - It would break a published contract or require a backward-incompatible change to consumers.
-   - The architecture physically cannot support the approach (missing data, wrong layer, no stable identity).
-   - The problem domain genuinely doesn't require the precision (not just "it's probably fine").
-   
-   "It's easier" and "it's fewer lines of code" are never acceptable. If the proper solution requires more work, do the work.
-
-3. **Solve the root cause, not the symptom.** If data is stale because there's no coverage tracking, add coverage tracking — don't add a staleness heuristic that guesses whether the data is still good. If a threshold can go negative because compaction reduces token counts, reset the baseline — don't raise the threshold and hope for the best.
-
-4. **When proposing a simpler alternative, justify it rigorously.** If you believe a simpler approach is genuinely sufficient, the explanation must include:
-   - What failure modes the simpler approach introduces
-   - Why those failure modes are acceptable (with specifics, not hand-waving)
-   - What would need to change if the simpler approach proves insufficient
-   
-   If you can't articulate the failure modes, you haven't analyzed the problem deeply enough to justify the shortcut.
-
-5. **Never avoid expanding a surface to dodge work.** If a feature requires a new event type on iOS, a new protocol field, a new enum case, or a new handler — add it. Workarounds that relay, proxy, or approximate the proper mechanism to "keep the surface small" are the same anti-pattern as substituting a heuristic for a precise mechanism. API surfaces, event surfaces, and wire protocols are meant to grow as the product grows. A comment like "iOS does not yet act on this" is a gap waiting for its first consumer, not a reason to route around the gap.
-
-6. **When the proper fix is known, ship the proper fix — never a stopgap, stepping stone, or intermittent workaround.** If analysis has identified the correct root-cause solution, implement *that*, not a cheaper interim version of it that will have to be replaced or collapsed later. Stopgaps become legacy: they add code that the next change must first unwind, they create a second mechanism that drifts from the proper one, and they leave the real fix undone while signaling that it's "handled." This holds **regardless of how much larger the proper fix is, how many files it touches, how many commits it takes, or how many PRs it spans.** PR size, commit count, and diff size are never reasons to choose a stepping stone over the known-correct fix. The only acceptable reasons to *stage* work are the same three in rule 2 (published-contract break, architecture physically can't support it yet, domain genuinely doesn't need the precision) — and "the proper fix is bigger" is **not** one of them. If you catch yourself proposing an interim fix because the real one is more work, stop and propose the real one. Do not ask the operator to choose between a stopgap and the proper fix; if the proper fix is known, that is the plan. (This is the forward-looking complement to the "## Aspirational comments → The rule applies to plans" rule: that rule forbids *documenting* a defect instead of fixing it; this rule forbids *half-fixing* it when the full fix is known.)
-
-## Dead code is not load-bearing until proven otherwise — verify the layer, then delete
-
-Leaving a **no-op / pass-through / vestigial layer** in place because removing it *looks* risky — and justifying the keep with an **unverified claim** about what some caller, wire event, or consumer "still needs" — is a recurring defect. "It compiles, the tests pass, and I added a comment explaining why it stays" is **not** verification; it is the exact rationalization the "## Solution quality" rule forbids, wearing a comment as a disguise. The keep is only legitimate after you have located the *actual* load-bearing layer and proven the dead code is not it.
-
-### The failure mode (what this rule prevents)
-
-You encounter a handler that logs and does nothing, a helper that returns its input unchanged, an enum case routed to `break`, a field nothing reads, or a parameter every caller ignores. Removing it would touch several call sites and *feels* unsafe, so you keep it and write a comment — "kept so older clients still decode", "retained for API compat", "the desktop may still send this". Then it turns out the premise in your own comment was **false** (the current in-repo emitter *does* send it, or *no longer* sends it), and you kept the **wrong layer** for a reason that actually applied to a **different layer** — or to no layer at all. The dead code now lies to the next reader about being meaningful, and the comment lies about the wire.
-
-### The discipline (do this every time)
-
-When you find a no-op / vestigial / pass-through construct in the path of your work:
-
-1. **Identify every layer involved.** A "dead" event handler is usually three separable layers: the wire **TypeKey / decoder** (what makes the bytes parse), the **typed case / struct field** (the in-memory representation), and the **handler body** (what acts on it). A "dead" helper is its **signature** vs its **callers** vs its **body**. Name them explicitly; do not treat the cluster as one indivisible thing.
-2. **Find the real load-bearing layer by checking the producer/consumer in source — not from memory.** Grep the actual emitter (`desktop/src/`, the engine, the SDK), the actual callers, the actual decoder's failure mode. *"Does the live, in-repo producer still emit this? Does any caller still invoke it? What happens on the unhandled path — silent drop, or thrown error?"* Answer with a citation, not an assumption. (This is the "## Operator premises" rule applied to your *own* premise.)
-3. **Delete every layer above the one that is genuinely required.** Keep only the minimum the producer/consumer actually forces you to keep, and say *why that exact layer* is required (with the source citation). If the wire decoder must stay because a live event would otherwise throw, keep the decoder and **delete the no-op handler** — do not keep both and call the handler "load-bearing."
-4. **If nothing is load-bearing, delete all of it.** A construct with no producer and no consumer is not "compat surface"; it is dead code. Remove it. The "## Good citizen" rule already puts this in scope when you encounter it.
-5. **Make every surviving comment true.** A comment asserting wire/caller behavior ("desktop no longer sends this", "kept for older clients") is a factual claim subject to "## Aspirational comments" and "## Volatile counts": if you did not grep it, do not write it, and if it is stale, fix it as part of the same change.
-
-### Forbidden justifications (each is the anti-pattern, not a reason)
-
-- "Removing it touches N call sites, so I kept it." — Effort is never a reason to keep dead code (mirrors "## Solution quality" rule 2).
-- "It's safer to leave it and add a comment." — Unverified safety. A no-op that misrepresents itself as meaningful is *less* safe for the next change, not more.
-- "Some older/hypothetical client might still need it." — If you cannot name and cite the live consumer, this is a guess. Verify or delete.
-- "I'll leave the handler as a no-op so the event still decodes." — The handler is not what makes it decode; the TypeKey/decoder is. Keep the right layer.
-
-### When a keep IS legitimate
-
-Keeping a layer is correct only when step 2 produced a **cited** reason the producer or consumer forces it — e.g. the wire decoder for an event a **current in-repo emitter still sends** (removing the TypeKey would throw on a live message), or a parser still reachable by a **real cached-key / migration path**. In that case: keep the **minimum** layer, delete the rest, and write the true reason with its source citation. "Verified the desktop still emits `X` at `path:line`, so the decoder stays; the no-op handler does not" is a resolution. "Kept to be safe" is not.
-
-## Testing is mandatory — every feature, every fix
-
-**No feature and no bug fix is complete without a test that pins its behavior.** A change that compiles, type-checks, and "looks correct on read" is *not* verified. "I read the code and it's right" is the exact reasoning that lets defects reach production — it is never an acceptable substitute for a test.
-
-### The non-negotiable rule
-
-Every PR that adds a feature or fixes a bug **must** include a test that:
-
-- **For a feature:** asserts the feature does what it is specified to do — the field arrives, the event fires, the branch is taken, the value propagates end to end.
-- **For a bug fix:** *fails on the unfixed code and passes on the fixed code.* This is the definition of a regression test. If the test passes with your fix reverted, it does not test your fix — it tests something else. Before claiming a bug fix is tested, mentally (or actually) revert the fix and confirm the test goes red.
-
-If you cannot write a test that distinguishes the fixed behavior from the broken behavior, you do not yet understand the bug well enough to claim it is fixed.
-
-### Why this is a critical-severity rule, not a style preference
-
-A bug found in production is *prima facie evidence that coverage was inadequate* — the feature shipped, nobody knew whether it worked, an external consumer found the failure, and only then was it corrected. **Fixing that bug without adding a test repeats the identical mistake:** the corrected behavior is once again unprotected, and the next innocuous refactor can silently re-break it with every quality gate still green. The test is what converts "we hope this works" into "we know this works, and we will know immediately if it stops."
-
-The canonical example is this repository's own #227: `before_agent_start` shipped with no test pinning the root-vs-sub-agent payload distinction, so the root firing's empty-`AgentInfo` sentinel went undetected until an external consumer's system prompt was poisoned in production. The fix added an `IsRoot` flag — and must add the test that asserts `IsRoot` is `true` on the root firing and `false` on sub-agent firings, *and* that the wire payload serializes the field. Without that test, a later edit reverting the call site to `AgentInfo{}` passes every gate.
-
-### What the test must actually pin (avoid false coverage)
-
-Test the *behavior the change introduces*, not the plumbing that was already there.
-
-- A test that asserts a handler *receives* a payload but never asserts the *new field's value* gives false confidence. If the change is "set `IsRoot: true` at the root call site," the test must assert `received.IsRoot == true` at that path — not merely that some payload arrived.
-- A cross-boundary field (Go → JSON → TS/Swift) needs a **serialization** test pinning the wire shape (`"isRoot":true` present; omitted when false if `omitempty`). A Go-only struct-equality test does not protect the consumer contract.
-- A "field propagates from A to B" claim needs a test that exercises A→B, not two separate unit tests that each assume the wire-up.
-
-### Don't trade correctness for un-brittle-ness — but don't write brittle tests either
-
-Well-architected tests survive innocuous refactors and fail only when real behavior changes. Aim for that. But "a good test is hard to write here" is **not** a license to skip the test. The bar is: pin the behavioral contract at the most stable seam available (the public hook payload, the serialized wire shape, the observable event), not the incidental internals. If the only way you can think to test it is brittle, that usually signals the behavior should be observable at a more stable boundary — fix the seam, then test it.
-
-### Parity is part of the contract (test it too)
-
-When a feature exists on one client and not another, or is implemented two different ways across clients, that divergence is itself a defect this rule is meant to catch. A field that flows through the snapshot to one client must have a test pinning that it reaches the other (or an explicit, documented decision that it does not apply). "One client has it, the other silently doesn't" is the class of bug that should never survive to production — pin the parity.
-
-
-## Worktrees and benches refuse the writes that cannot be reviewed
-
-Two directory kinds under `~/.ion/` refuse a class of writes based on what the
-directory *is*. Both are enforced for the agent by ion-meta's `tool_call` hook
-and (for benches) for the operator by the desktop's git IPC. Both fail open when
-their backing record is unreadable, because a false refusal where the operator is
-working is worse than a briefly missing guard.
-
-**An integration bench refuses history writes.** A directory under
-`~/.ion/integration/` is a rebuildable bench: its branch is recreated from the
-feature branch plus each member's pinned commit on every rebuild. A commit made
-there is destroyed by the next rebuild, and a push would publish a synthetic
-merge of other people's in-flight work. So `commit`, `push`, `pull`, `merge`,
-`rebase`, `cherry-pick`, `revert`, `reset`, `stash`, `tag`, and branch mutation
-are refused by the desktop (`desktop/src/main/integration/bench-guard.ts`), which
-owns the bench end to end — the engine deliberately carries no bench-specific
-rules. Reading, building, testing, and staging are unaffected. A fix diagnosed in
-the bench belongs in the member worktree that owns the file: commit it there,
-then update that member in the bench.
-
-**A bench refuses edits, and names where they belong.** The history rule above
-covers `commit`/`push`; a bench also refuses `Write` and `Edit`, because an edit
-made there is destroyed by the next rebuild. `Bash` stays open — building and
-testing are what a bench is for, as do staging and discarding. The refusal names
-the member worktree that owns the file, resolved by diffing each member's pinned
-commit against the bench base rather than asking who last touched it: when
-several members change one file, all of them are listed with their changed line
-ranges so the agent can pick by the region it is editing. The git panel matches:
-in a bench it hides Changes and Graph and titles the section
-`Integration (Bench)`.
-
-**A worktree refuses writes outside itself.** A conversation whose cwd is a
-registered worktree (`~/.ion/worktree-registry.json`) may not write into the base
-repo it was cut from, nor into a sibling worktree of the same repo. This one *is*
-engine-owned, in `engine/internal/workspaces/containment.go`, because it derives
-from one JSON record plus git state and must hold regardless of which extensions
-are loaded. It is **not** a cwd jail: `/tmp`, `~/.ion`, and unrelated repos all
-stay writable, and a conversation that is not in a worktree is unaffected. The
-rule exists because cross-worktree writes interleave several conversations in one
-dirty checkout, and review cannot attribute the hunks afterwards. A `Bash` call
-is judged by its command text, not only its cwd: every literal `cd` / `pushd` /
-`git -C` / `--work-tree` destination in the chain is checked
-(`engine/internal/workspaces/bash.go`), because a command that `cd`s into the
-base repo and commits there is the exact way two commits once landed on the
-wrong branch. A dynamic destination (`cd "$VAR"`, `cd $(...)`) cannot be
-resolved, so it passes and is logged at WARN rather than guessed at — a refusal
-requires a literal path, which is what makes a false refusal in your own
-worktree impossible.
-
-**A project may share specific gitignored paths with its worktrees.** The
-refusal above protects review, so it stops exactly where review does: a path git
-ignores cannot interleave reviewable work, because nothing can stage it. A
-project declares such paths in the committed `.ion/worktree.json` under
-`worktree.sharedPaths`, and the engine allows a write only when the path is
-**both** declared **and** confirmed ignored by `git check-ignore`
-(`engine/internal/workspaces/shared_paths.go`). This is what lets a durable
-artifact that must outlive its worktree — a retrospective, a generated report —
-live beside the code instead of dying at Retire. The authority is the base repo's
-committed manifest, never the worktree's own copy, so widening the allowance is a
-reviewed commit rather than an uncommitted edit inside a sandbox. Git stays
-refused inside a shared path: the exemption exists because git cannot see the
-path, and a git invocation is what would make it seen. Unlike the rest of the
-package, this fails closed — a malformed manifest grants nothing. Reference:
-[`docs/configuration/worktree-json.md`](docs/configuration/worktree-json.md)
-§ "Shared paths".
-
-Closing a conversation never removes a worktree. Removal is only the explicit
-Retire verb, which appraises what would be lost, refuses when the answer is work,
-and relocates any conversation still living there so it is not left pointed at a
-deleted directory.
-
-**A landed worktree is sealed.** A successful Land records `landedAt`, immediately
-removes the worktree from every bench, and does not rebuild the remaining bench
-or advance any remaining pin. The checkout stays as a read-only review record:
-existing conversations remain readable but input-locked, engine tool writes and
-Bash are refused, and only Retire remains. Remaining worktrees receive landed
-source content through their normal Sync, then an explicit pin Update and
-assembly. `landedAt` is terminal; never infer, clear, or reverse it from live
-Git state. A record that predates `landedAt` remains active because Git cannot
-distinguish it from a worktree that never started.
-
-**A new worktree arrives provisioned.** A bare checkout has no `node_modules`, no
-git hooks, and no build caches — everything gitignored is absent, so nothing
-builds. Ion materialises what the project declares in the committed
-`.ion/worktree.json`: each `seed` entry is cloned (copy-on-write), built with its
-own command, or copied, and the project's `setup` command runs afterward. A clone
-is a separate inode sharing blocks, so an install inside a worktree stays
-independent of the main clone — Ion never symlinks a shared dependency directory.
-No manifest means no provisioning. Ion refuses to seed any path git does not
-ignore, so provisioning can never dirty `git status`. Reference:
-[`docs/configuration/worktree-json.md`](docs/configuration/worktree-json.md).
-
-See [ADR-024](docs/architecture/adr/024-integration-workspace.md).
+Land, Retire, transfer, and provisioning: [`docs/architecture/worktrees-and-benches.md`](docs/architecture/worktrees-and-benches.md).
 
 ## Conversation storage
 
-Conversations persist as NDJSON file pairs under `~/.ion/conversations/`. Full reference: [`docs/architecture/conversation-storage.md`](docs/architecture/conversation-storage.md) — covers ID format, file layout (`.tree.jsonl`, `.llm.jsonl`, `.memory.md`), struct shapes, and the legacy migration path.
+Conversations persist as NDJSON pairs under `~/.ion/conversations/`. Reference: [`docs/architecture/conversation-storage.md`](docs/architecture/conversation-storage.md).
