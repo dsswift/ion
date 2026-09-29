@@ -113,6 +113,33 @@ func wellKnownCandidates(baseURL, suffix string) ([]string, error) {
 	return []string{rootForm + "/" + path, rootForm}, nil
 }
 
+// authServerCandidates lists the metadata URLs to probe for an issuer, in the
+// order the MCP authorization spec requires. For an issuer with a path:
+//
+//  1. RFC 8414 with path insertion: /.well-known/oauth-authorization-server/<path>
+//  2. OIDC with path insertion:     /.well-known/openid-configuration/<path>
+//  3. OIDC with path appending:     <path>/.well-known/openid-configuration
+//
+// The third is the only form Microsoft Entra serves
+// (https://login.microsoftonline.com/<tenant>/v2.0/.well-known/openid-configuration).
+// The host-root forms follow as a last resort for providers that publish one
+// document for every path. An issuer without a path probes the two root forms.
+func authServerCandidates(issuer string) ([]string, error) {
+	rfc8414, err := wellKnownCandidates(issuer, "oauth-authorization-server")
+	if err != nil {
+		return nil, err
+	}
+	oidc, err := wellKnownCandidates(issuer, "openid-configuration")
+	if err != nil {
+		return nil, err
+	}
+	if len(rfc8414) == 1 {
+		return []string{rfc8414[0], oidc[0]}, nil
+	}
+	appended := strings.TrimRight(issuer, "/") + "/.well-known/openid-configuration"
+	return []string{rfc8414[0], oidc[0], appended, rfc8414[1], oidc[1]}, nil
+}
+
 // fetchWellKnown GETs one well-known URL and decodes it into out. The bool
 // reports whether the document was retrieved; a 404 (or any non-200) returns
 // false with no error so the caller can fall through to the next candidate.
@@ -124,7 +151,7 @@ func fetchWellKnown(serverName, wellKnownURL string, out any) (bool, error) {
 	req.Header.Set("Accept", "application/json")
 	// MCP-Protocol-Version is advisory on metadata fetches; some gateways
 	// route on it. Harmless where it is ignored.
-	req.Header.Set("MCP-Protocol-Version", mcpProtocolVersion)
+	req.Header.Set("MCP-Protocol-Version", DiscoveryProtocolVersion)
 
 	client := *network.GetHTTPClient()
 	client.Timeout = discoveryTimeout
@@ -215,9 +242,9 @@ func fetchProtectedResource(serverName, resourceURL string) (*ProtectedResourceM
 }
 
 // DiscoverAuthServer fetches RFC 8414 authorization-server metadata for an
-// issuer, falling back to the OIDC discovery document. Both probe forms of
-// each spelling are tried (see wellKnownCandidates), so an issuer with a path
-// component (https://host/auth/v1) resolves either way its provider serves it.
+// issuer, falling back to the OIDC discovery document, in the order
+// authServerCandidates gives. An issuer with a path component
+// (https://host/tenant/v2.0) resolves however its provider serves it.
 //
 // Memoized per issuer for the process lifetime (discovery_cache.go).
 func DiscoverAuthServer(serverName, issuer string) (*ServerMetadata, error) {
@@ -228,43 +255,41 @@ func DiscoverAuthServer(serverName, issuer string) (*ServerMetadata, error) {
 
 // fetchAuthServer performs the actual probe sequence, uncached.
 func fetchAuthServer(serverName, issuer string) (*ServerMetadata, error) {
+	candidates, err := authServerCandidates(issuer)
+	if err != nil {
+		return nil, fmt.Errorf("mcp discovery %s: %w", serverName, err)
+	}
 	var probed []string
-	for _, suffix := range []string{"oauth-authorization-server", "openid-configuration"} {
-		candidates, err := wellKnownCandidates(issuer, suffix)
-		if err != nil {
-			return nil, fmt.Errorf("mcp discovery %s: %w", serverName, err)
+	for _, candidate := range candidates {
+		probed = append(probed, candidate)
+		var doc ServerMetadata
+		found, fetchErr := fetchWellKnown(serverName, candidate, &doc)
+		if fetchErr != nil {
+			return nil, fmt.Errorf("mcp discovery %s: %w", serverName, fetchErr)
 		}
-		for _, candidate := range candidates {
-			probed = append(probed, candidate)
-			var doc ServerMetadata
-			found, fetchErr := fetchWellKnown(serverName, candidate, &doc)
-			if fetchErr != nil {
-				return nil, fmt.Errorf("mcp discovery %s: %w", serverName, fetchErr)
-			}
-			if !found {
-				continue
-			}
-			if doc.AuthorizationEndpoint == "" || doc.TokenEndpoint == "" {
-				// A document missing either endpoint cannot drive an
-				// authorization-code grant. Keep probing; log so a
-				// half-populated provider document is diagnosable.
-				utils.LogWithFields(utils.LevelWarn, "mcp.discovery", "authorization-server metadata incomplete", map[string]any{
-					"serverName": serverName, "url": candidate,
-					"hasAuthorizationEndpoint": doc.AuthorizationEndpoint != "",
-					"hasTokenEndpoint":         doc.TokenEndpoint != "",
-				})
-				continue
-			}
-			utils.LogWithFields(utils.LevelInfo, "mcp.discovery", "authorization server resolved", map[string]any{
-				"serverName": serverName, "url": candidate, "issuer": doc.Issuer,
-				"authorizationEndpoint": doc.AuthorizationEndpoint,
-				"tokenEndpoint":         doc.TokenEndpoint,
-				"registrationEndpoint":  doc.RegistrationEndpoint,
-				"supportsDcr":           doc.RegistrationEndpoint != "",
-				"scopes":                doc.ScopesSupported,
+		if !found {
+			continue
+		}
+		if doc.AuthorizationEndpoint == "" || doc.TokenEndpoint == "" {
+			// A document missing either endpoint cannot drive an
+			// authorization-code grant. Keep probing; log so a
+			// half-populated provider document is diagnosable.
+			utils.LogWithFields(utils.LevelWarn, "mcp.discovery", "authorization-server metadata incomplete", map[string]any{
+				"serverName": serverName, "url": candidate,
+				"hasAuthorizationEndpoint": doc.AuthorizationEndpoint != "",
+				"hasTokenEndpoint":         doc.TokenEndpoint != "",
 			})
-			return &doc, nil
+			continue
 		}
+		utils.LogWithFields(utils.LevelInfo, "mcp.discovery", "authorization server resolved", map[string]any{
+			"serverName": serverName, "url": candidate, "issuer": doc.Issuer,
+			"authorizationEndpoint": doc.AuthorizationEndpoint,
+			"tokenEndpoint":         doc.TokenEndpoint,
+			"registrationEndpoint":  doc.RegistrationEndpoint,
+			"supportsDcr":           doc.RegistrationEndpoint != "",
+			"scopes":                doc.ScopesSupported,
+		})
+		return &doc, nil
 	}
 
 	return nil, fmt.Errorf("mcp discovery %s: no authorization-server metadata for issuer %s (probed %s)",

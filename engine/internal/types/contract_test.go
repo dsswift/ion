@@ -142,6 +142,7 @@ func buildManifest() contractManifest {
 		// field a consumer renders (connection vs. authorization state are
 		// independent — see the type comment).
 		"McpServerStatus": reflect.TypeOf(McpServerStatus{}),
+		"McpOAuthStatus":  reflect.TypeOf(McpOAuthStatus{}),
 		// Slash-command registry. Emitted inside engine_command_registry events
 		// so consumers can populate a routing-hint cache without parsing
 		// engine internals. Snapshot semantics — see types.go comment.
@@ -156,6 +157,12 @@ func buildManifest() contractManifest {
 		// and read ClearsConversation to warn before a command wipes history,
 		// so it is a cross-language mirror like every other listing type.
 		"SlashCommandListing": reflect.TypeOf(SlashCommandListing{}),
+		// System Metrics: the engine_system_metrics payload and its nested
+		// rows. A complete snapshot; clients render every field.
+		"SystemMetricsSample":  reflect.TypeOf(SystemMetricsSample{}),
+		"SystemMetricsHost":    reflect.TypeOf(SystemMetricsHost{}),
+		"SystemMetricsProcess": reflect.TypeOf(SystemMetricsProcess{}),
+		"SystemMetricsRuntime": reflect.TypeOf(SystemMetricsRuntime{}),
 		// ContextBreakdownPayload is the wire payload for
 		// engine_context_breakdown; ContextBreakdownCategory is a nested row.
 		// Tracked so cross-language mirrors carry the per-category context readout.
@@ -193,6 +200,14 @@ func buildManifest() contractManifest {
 		// Resource envelopes and query filters cross the public engine wire.
 		"ResourceItem":   reflect.TypeOf(ResourceItem{}),
 		"ResourceFilter": reflect.TypeOf(ResourceFilter{}),
+		// SessionPrincipal is the manifest C1/C2 per-session attribution
+		// carried on start_session and send_prompt (ClientCommand.Principal)
+		// and mirrored to auth.ContextIdentity for hooks. ConversationPrincipal
+		// is its durable projection, stamped on Conversation.Principal at
+		// mint. Tracked so the TS SDK, Go SDK, desktop, and iOS mirrors stay
+		// in sync with the engine's identity wire shape.
+		"SessionPrincipal":      reflect.TypeOf(SessionPrincipal{}),
+		"ConversationPrincipal": reflect.TypeOf(ConversationPrincipal{}),
 	}
 	for name, typ := range shared {
 		m.SharedTypes[name] = jsonFieldNames(typ)

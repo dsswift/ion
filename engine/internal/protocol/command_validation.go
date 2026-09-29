@@ -81,12 +81,30 @@ func hasObject(raw map[string]json.RawMessage, field string) bool {
 	return json.Unmarshal(v, &obj) == nil
 }
 
+// principalSubjectNonEmptyIfPresent reports whether raw["principal"], when
+// present, decodes to an object whose "subject" is a non-empty string. A
+// caller that omits "principal" entirely passes trivially -- Principal is
+// optional on both start_session and send_prompt. This mirrors the
+// SessionPrincipal validation the specification requires: a command that
+// declares a principal must name a real subject, never an empty one.
+func principalSubjectNonEmptyIfPresent(raw map[string]json.RawMessage) bool {
+	v, ok := raw["principal"]
+	if !ok {
+		return true
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(v, &obj); err != nil {
+		return false
+	}
+	return hasNonEmptyString(obj, "subject")
+}
+
 func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 	switch cmd {
 	case "start_session":
-		return hasNonEmptyString(raw, "key") && hasObject(raw, "config")
+		return hasNonEmptyString(raw, "key") && hasObject(raw, "config") && principalSubjectNonEmptyIfPresent(raw)
 	case "send_prompt":
-		return hasNonEmptyString(raw, "key") && hasString(raw, "text")
+		return hasNonEmptyString(raw, "key") && hasString(raw, "text") && principalSubjectNonEmptyIfPresent(raw)
 	case "abort", "stop_session", "settle_session", "resume_session", "get_tree":
 		return hasNonEmptyString(raw, "key")
 	case "abort_agent":
@@ -121,8 +139,10 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key") && hasString(raw, "targetId")
 	case "permission_response":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "questionId") && hasNonEmptyString(raw, "optionId")
-	case "list_sessions", "shutdown", "list_stored_sessions", "health":
+	case "list_sessions", "shutdown", "list_stored_sessions", "health", "get_system_metrics":
 		return true
+	case "system_metrics_watch":
+		return hasNumber(raw, "intervalMs")
 	case "get_conversation":
 		return hasNonEmptyString(raw, "key")
 	case "load_session_history":
@@ -133,6 +153,8 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasString(raw, "text")
 	case "elicitation_response":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "elicitRequestId")
+	case "credential_response":
+		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "credentialRequestId")
 	case "early_stop_decision_response":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "earlyStopRequestId")
 	case "tool_gate_response":
@@ -178,6 +200,10 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 			return true
 		}
 		return hasNonEmptyString(raw, "key")
+	case "resource_export", "resource_forget":
+		return hasNonEmptyString(raw, "key") && hasArray(raw, "resourceConversationIds")
+	case "resource_import":
+		return hasNonEmptyString(raw, "key") && hasArray(raw, "resourceItems")
 	case "resource_get":
 		if !hasNonEmptyString(raw, "resourceKind") || !hasNonEmptyString(raw, "resourceId") {
 			return false
@@ -196,8 +222,10 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "label")
 	case "mcp_add":
 		return hasNonEmptyString(raw, "mcpName")
-	case "mcp_remove", "mcp_login", "mcp_logout":
+	case "mcp_update", "mcp_remove", "mcp_login", "mcp_logout":
 		return hasNonEmptyString(raw, "mcpName")
+	case "mcp_login_complete":
+		return hasNonEmptyString(raw, "mcpName") && hasNonEmptyString(raw, "mcpCallbackUrl")
 	}
 	return false
 }

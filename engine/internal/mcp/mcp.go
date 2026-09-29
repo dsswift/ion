@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -17,6 +18,7 @@ import (
 
 	mcpgo "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/dsswift/ion/engine/internal/sysmetrics"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -158,6 +160,11 @@ func ConnectWithOptions(name string, config types.McpServerConfig, opts Connecti
 		return nil, annotateAuthFailure(name, config, fmt.Errorf("mcp connect %s: %w", name, err))
 	}
 
+	// A stdio server's process exists once Connect returns; label it for
+	// System Metrics. The transport cleanup unregisters it.
+	if ct, ok := transport.(*mcpgo.CommandTransport); ok && ct.Command != nil && ct.Command.Process != nil {
+		sysmetrics.RegisterProcess(ct.Command.Process.Pid, types.SystemMetricsRoleMcp, name)
+	}
 	conn := &Connection{name: name, session: session, close: cleanup}
 	if config.TimeoutSeconds > 0 {
 		conn.callTimeout = time.Duration(config.TimeoutSeconds) * time.Second
@@ -242,6 +249,19 @@ func (c *Connection) CallTool(ctx context.Context, toolName string, params map[s
 	}
 	result, err := c.session.CallTool(callCtx, &mcpgo.CallToolParams{Name: toolName, Arguments: params})
 	if err != nil {
+		// A deadline on callCtx with the caller's ctx still live means the
+		// per-call timeout ended the call, not the caller. Name it so the
+		// model and the operator can tell a slow server from a cancelled run.
+		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			timeout := c.effectiveCallTimeout()
+			utils.LogWithFields(utils.LevelWarn, "mcp", "tool call timed out", map[string]any{
+				"serverName": c.name, "toolName": toolName, "timeout": timeout.String(),
+			})
+			return nil, fmt.Errorf("call %s: timeout after %s: %w", toolName, timeout, err)
+		}
+		utils.LogWithFields(utils.LevelWarn, "mcp", "tool call failed", map[string]any{
+			"serverName": c.name, "toolName": toolName, "error": err.Error(),
+		})
 		return nil, fmt.Errorf("call %s: %w", toolName, err)
 	}
 	converted := convertToolResult(result)
@@ -252,12 +272,17 @@ func (c *Connection) CallTool(ctx context.Context, toolName string, params map[s
 	return converted, nil
 }
 
-func (c *Connection) callContext(parent context.Context) (context.Context, context.CancelFunc) {
-	timeout := c.callTimeout
-	if timeout == 0 {
-		timeout = DefaultCallTimeout
+// effectiveCallTimeout is the per-server timeout, or the package default when
+// the server config set none.
+func (c *Connection) effectiveCallTimeout() time.Duration {
+	if c.callTimeout == 0 {
+		return DefaultCallTimeout
 	}
-	return context.WithTimeout(parent, timeout)
+	return c.callTimeout
+}
+
+func (c *Connection) callContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(parent, c.effectiveCallTimeout())
 }
 
 func convertToolResult(result *mcpgo.CallToolResult) *types.ToolResult {
@@ -411,10 +436,6 @@ func (c *Connection) Capabilities() map[string]any {
 	}
 	return out
 }
-
-// Register is retained for callers that replace a session connection. MCP
-// resource lookup is context-bound, so this no longer mutates package state.
-func Register(_ *Connection) {}
 
 // Close closes the SDK session then its underlying Ion transport.
 func (c *Connection) Close() error {

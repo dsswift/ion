@@ -189,22 +189,32 @@ func TestDispatchMcpAdd_RejectsInvalidDefinitions(t *testing.T) {
 		{
 			label:   "neither url nor command",
 			payload: map[string]interface{}{"mcpName": "empty"},
-			wantMsg: "requires either mcpUrl",
+			wantMsg: "needs either a url",
 		},
 		{
 			label:   "http with no url",
 			payload: map[string]interface{}{"mcpName": "x", "mcpTransport": "http", "mcpCommand": "cat"},
-			wantMsg: "requires mcpUrl",
+			wantMsg: "requires a url",
 		},
 		{
 			label:   "stdio with a url",
 			payload: map[string]interface{}{"mcpName": "x", "mcpTransport": "stdio", "mcpUrl": "https://example.test/mcp"},
-			wantMsg: "requires mcpCommand",
+			wantMsg: "requires a command",
 		},
 		{
 			label:   "unknown transport",
 			payload: map[string]interface{}{"mcpName": "x", "mcpTransport": "carrier-pigeon", "mcpUrl": "https://example.test/mcp"},
 			wantMsg: "unsupported MCP transport",
+		},
+		{
+			label:   "oauth endpoint without a client id",
+			payload: map[string]interface{}{"mcpName": "x", "mcpUrl": "https://example.test/mcp", "mcpOAuth": map[string]any{"tokenUrl": "https://login.example.test/token"}},
+			wantMsg: "client_id is required",
+		},
+		{
+			label:   "oauth endpoint that is not a URL",
+			payload: map[string]interface{}{"mcpName": "x", "mcpUrl": "https://example.test/mcp", "mcpOAuth": map[string]any{"clientId": "c", "authUrl": "login.example.test"}},
+			wantMsg: "absolute http(s) URL",
 		},
 		{
 			label:   "name with the tool separator",

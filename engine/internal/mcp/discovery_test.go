@@ -373,3 +373,51 @@ func TestFetchWellKnown_NonJSONBodyDoesNotAbortProbing(t *testing.T) {
 		t.Errorf("authorization servers = %v; an HTML 200 must count as a miss", doc.AuthorizationServers)
 	}
 }
+
+// TestDiscoverAuthServer_PathAppendedOpenIDConfiguration pins the third form
+// the MCP spec requires for a path issuer: the OIDC document appended after the
+// path. Microsoft Entra serves only this form
+// (https://login.microsoftonline.com/<tenant>/v2.0/.well-known/openid-configuration).
+func TestDiscoverAuthServer_PathAppendedOpenIDConfiguration(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tenant-1/v2.0/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, ServerMetadata{
+			Issuer:                "https://login.example.test/tenant-1/v2.0",
+			AuthorizationEndpoint: "https://login.example.test/tenant-1/oauth2/v2.0/authorize",
+			TokenEndpoint:         "https://login.example.test/tenant-1/oauth2/v2.0/token",
+		})
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	meta, err := DiscoverAuthServer("t", server.URL+"/tenant-1/v2.0")
+	if err != nil {
+		t.Fatalf("DiscoverAuthServer: %v", err)
+	}
+	if meta.TokenEndpoint != "https://login.example.test/tenant-1/oauth2/v2.0/token" {
+		t.Errorf("token endpoint = %q", meta.TokenEndpoint)
+	}
+}
+
+// TestAuthServerCandidates_SpecOrder pins the probe order for a path issuer:
+// RFC 8414 insertion, OIDC insertion, OIDC appending, then the root forms.
+func TestAuthServerCandidates_SpecOrder(t *testing.T) {
+	got, err := authServerCandidates("https://login.example.test/tenant-1/v2.0/")
+	if err != nil {
+		t.Fatalf("authServerCandidates: %v", err)
+	}
+	want := []string{
+		"https://login.example.test/.well-known/oauth-authorization-server/tenant-1/v2.0",
+		"https://login.example.test/.well-known/openid-configuration/tenant-1/v2.0",
+		"https://login.example.test/tenant-1/v2.0/.well-known/openid-configuration",
+		"https://login.example.test/.well-known/oauth-authorization-server",
+		"https://login.example.test/.well-known/openid-configuration",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("candidates =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	root, err := authServerCandidates("https://login.example.test")
+	if err != nil || len(root) != 2 {
+		t.Errorf("a root issuer probes the two root forms, got %v (%v)", root, err)
+	}
+}

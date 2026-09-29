@@ -154,3 +154,29 @@ func TestYesNoAndAuthStateLabel(t *testing.T) {
 		t.Error("authStateLabel must render yes/no")
 	}
 }
+
+// TestMcpOAuthFromFlags_OverlaysGivenFlagsOnly pins the update merge: a flag
+// that was given replaces its setting (empty clears it), and every other stored
+// setting is carried through so the engine does not drop it.
+func TestMcpOAuthFromFlags_OverlaysGivenFlagsOnly(t *testing.T) {
+	base := map[string]interface{}{"clientId": "old", "scope": "s1", "tokenUrl": "https://login.example.test/token"}
+	got, touched := mcpOAuthFromFlags(map[string]string{"client-id": "new", "token-url": "", "transport": "http"}, base)
+	if !touched {
+		t.Fatal("OAuth flags were given; touched must be true")
+	}
+	if got["clientId"] != "new" || got["scope"] != "s1" || got["tokenUrl"] != "" {
+		t.Errorf("merged = %#v", got)
+	}
+	if _, present := got["clientSecret"]; present {
+		t.Error("an absent --client-secret must not be sent, so the stored secret is kept")
+	}
+	if base["clientId"] != "old" {
+		t.Error("the base map must not be mutated")
+	}
+}
+
+func TestMcpOAuthFromFlags_NoOAuthFlags(t *testing.T) {
+	if _, touched := mcpOAuthFromFlags(map[string]string{"transport": "http", "scope": "user"}, nil); touched {
+		t.Error("--scope names the config layer, not the OAuth scope; it must not count as an OAuth flag")
+	}
+}

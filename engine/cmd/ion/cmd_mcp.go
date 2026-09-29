@@ -34,6 +34,8 @@ func cmdMcp(args []string, flags map[string]string, listFlags map[string][]strin
 	switch args[0] {
 	case "add":
 		cmdMcpAdd(args[1:], flags, listFlags)
+	case "update":
+		cmdMcpUpdate(args[1:], flags, listFlags)
 	case "list":
 		cmdMcpList()
 	case "remove":
@@ -50,7 +52,7 @@ func cmdMcp(args []string, flags map[string]string, listFlags map[string][]strin
 }
 
 func printMcpUsage() {
-	fmt.Fprintln(os.Stderr, "Usage: ion mcp <add|list|remove|login|logout> [args]")
+	fmt.Fprintln(os.Stderr, "Usage: ion mcp <add|update|list|remove|login|logout> [args]")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "  add <name> <url>         Add a remote server (http by default)")
 	fmt.Fprintln(os.Stderr, "    --transport TYPE       http | sse | ws | stdio")
@@ -59,6 +61,16 @@ func printMcpUsage() {
 	fmt.Fprintln(os.Stderr, "    --header K=V           Static HTTP header (repeatable)")
 	fmt.Fprintln(os.Stderr, "    --env K=V              Environment variable for stdio (repeatable)")
 	fmt.Fprintln(os.Stderr, "    --scope user           Config layer to write (only \"user\" is supported)")
+	fmt.Fprintln(os.Stderr, "    OAuth client (optional; anything left out comes from discovery):")
+	fmt.Fprintln(os.Stderr, "    --client-id ID         OAuth client ID")
+	fmt.Fprintln(os.Stderr, "    --client-secret SECRET Client secret, for a confidential client only")
+	fmt.Fprintln(os.Stderr, "    --auth-url URL         Authorization endpoint")
+	fmt.Fprintln(os.Stderr, "    --token-url URL        Token endpoint")
+	fmt.Fprintln(os.Stderr, "    --oauth-scope SCOPE    Scope to request")
+	fmt.Fprintln(os.Stderr, "    --resource URI         RFC 8707 resource indicator")
+	fmt.Fprintln(os.Stderr, "  update <name> [url]      Change a server; unnamed settings are kept")
+	fmt.Fprintln(os.Stderr, "    Takes --url, --transport, --command, --arg, and the OAuth flags above.")
+	fmt.Fprintln(os.Stderr, "    An empty OAuth value (--client-secret \"\") removes that setting.")
 	fmt.Fprintln(os.Stderr, "  list                     List configured servers and their state")
 	fmt.Fprintln(os.Stderr, "  remove <name>            Remove a server and its stored credentials")
 	fmt.Fprintln(os.Stderr, "  login <name>             Authorize a server via OAuth in your browser")
@@ -69,6 +81,7 @@ func printMcpUsage() {
 	fmt.Fprintln(os.Stderr, "Example:")
 	fmt.Fprintln(os.Stderr, "  ion mcp add mobbin https://api.mobbin.com/mcp")
 	fmt.Fprintln(os.Stderr, "  ion mcp login mobbin")
+	fmt.Fprintln(os.Stderr, "  ion mcp update exchange --client-id 00000000-0000-0000-0000-000000000000")
 }
 
 // checkMcpScope validates the --scope flag.
@@ -141,6 +154,9 @@ func cmdMcpAdd(args []string, flags map[string]string, listFlags map[string][]st
 	}
 	if env := parseKeyValueFlags("env", listFlags["env"]); env != nil {
 		msg["mcpEnv"] = env
+	}
+	if oauth, touched := mcpOAuthFromFlags(flags, nil); touched {
+		msg["mcpOAuth"] = oauth
 	}
 
 	result := mcpSend(msg)
@@ -338,7 +354,7 @@ func cmdMcpLogout(args []string) {
 // be running would be an arbitrary obstacle.
 func mcpSend(msg map[string]interface{}) map[string]interface{} {
 	sock := socketPathOrExit()
-	ensureServer(sock)
+	releaseSpawnedServer(ensureServer(sock))
 
 	response, err := connectAndSend(sock, msg)
 	if err != nil {

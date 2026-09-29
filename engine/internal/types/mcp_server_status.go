@@ -22,6 +22,11 @@ type McpServerStatus struct {
 	// Command is the executable for a stdio server; empty for network
 	// transports.
 	Command string `json:"command,omitempty"`
+	// Args are the stdio server's arguments; empty for network transports.
+	Args []string `json:"args,omitempty"`
+	// OAuth is the operator-configured OAuth client, nil when the server relies
+	// on discovery and dynamic registration alone.
+	OAuth *McpOAuthStatus `json:"oauth,omitempty"`
 	// Connected reports whether at least one live session currently holds a
 	// connection to this server.
 	Connected bool `json:"connected"`
@@ -42,4 +47,16 @@ type McpServerStatus struct {
 	// that makes a failing server diagnosable from a client with no access to
 	// the engine host's log file.
 	LastError string `json:"lastError,omitempty"`
+}
+
+// McpOAuthStatus reports the operator-configured OAuth client for one server.
+// Empty fields are filled from discovery at login. The client secret is never
+// reported; HasClientSecret says whether one is stored.
+type McpOAuthStatus struct {
+	ClientID        string `json:"clientId,omitempty"`
+	AuthURL         string `json:"authUrl,omitempty"`
+	TokenURL        string `json:"tokenUrl,omitempty"`
+	Scope           string `json:"scope,omitempty"`
+	Resource        string `json:"resource,omitempty"`
+	HasClientSecret bool   `json:"hasClientSecret,omitempty"`
 }
