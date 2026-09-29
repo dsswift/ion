@@ -72,10 +72,7 @@ Key vocabulary:
 
 - **Conversation** -- the single unified type.
 - **Backend axis** -- `api` (the default) versus `cli` (the Claude Code subprocessor backend). This axis is independent of whether a conversation has extensions.
-- **Normalized stream** -- the control-plane event stream of typed `NormalizedEvent`s. Used for conversations without extensions.
-- **Raw extension stream** -- the raw `engine_*` event stream (delivered via `onEngineEvent`). Used when an extension is loaded. Both streams feed the same conversation model.
-
-The distinction between the two streams is about **how events arrive and are interpreted**, not about a conversation "type."
+- **Normalized stream** -- the control-plane event stream of typed `NormalizedEvent`s. Every conversation, with or without extensions, reaches the client through this one stream.
 
 ## Extensions
 
@@ -164,6 +161,17 @@ The engine ships a set of always-available core tools, plus optional task tools 
 Every tool invocation passes through the hook system. Per-tool hooks (`beforeBash`, `beforeWrite`, etc.) let extensions gate, modify, or deny individual tool calls.
 
 See the [tools reference](../tools/reference.md) for the complete, authoritative list.
+
+## Environments
+
+An Environment is one engine plus one Ion Studio Server: a place where
+conversations run. Every desktop install is an Environment (this Mac), and a
+headless host becomes one when the server is installed on it. A desktop can
+be connected to several at once, with all their conversations in one Inbox;
+a conversation runs on the Environment it was created on and can be
+transferred to another. An Environment belongs to one account on its host,
+and every device that person pairs acts as that same identity there. See
+[Ion Studio Server](../deployment/studio-server.md).
 
 ## Configuration
 
