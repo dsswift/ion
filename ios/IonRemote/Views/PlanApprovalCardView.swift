@@ -7,7 +7,6 @@ struct PlanApprovalCardView: View {
     let request: PermissionRequest
     @State private var showFullPlan = false
     @State private var implementOnDismiss = false
-    @State private var implementAndUnpinOnDismiss = false
     @State private var isExpanded = true
 
     // MARK: - Plan data (preview path, plan gentle-perching-lemon)
@@ -94,39 +93,8 @@ struct PlanApprovalCardView: View {
         viewModel.tabs.first(where: { $0.id == tabId })
     }
 
-    private var showUnpinOption: Bool {
-        let resolved = Self.resolveShowUnpinOption(
-            groupPinned: tab?.groupPinned,
-            hasEngineExtension: tab?.hasEngineExtension
-        )
-        DiagnosticLog.log(
-            "PLAN-CARD: showUnpinOption tabId=\(tabId.prefix(8)) "
-            + "groupPinned=\(String(describing: tab?.groupPinned)) "
-            + "hasEngineExtension=\(String(describing: tab?.hasEngineExtension)) "
-            + "showUnpinOption=\(resolved)"
-        )
-        return resolved
-    }
-
-    /// Pure resolver for the "Implement and Unpin" split-row gate, extracted so
-    /// the group-pinned → unpin-option mapping is unit-testable without
-    /// instantiating the SwiftUI view (which needs an @Environment
-    /// SessionViewModel). Mirrors the desktop gate exactly: the unpin option is
-    /// revealed whenever the tab is pinned to its group (`groupPinned == true`),
-    /// regardless of whether the conversation is extension-hosted.
-    ///
-    /// Pin: extension-hosted conversations (`hasEngineExtension == true`) are NOT
-    /// excluded. The prior `&& hasEngineExtension != true` predicate was an
-    /// orphaned pre-unification artifact — PR #256 (commit 2ade1824) unified
-    /// plain and extension-hosted conversations but left the predicate behind,
-    /// which hid the unpin button on iOS for extension-hosted, group-pinned tabs
-    /// while desktop (which checks only `groupPinned`) still showed it.
-    static func resolveShowUnpinOption(groupPinned: Bool?, hasEngineExtension: Bool?) -> Bool {
-        groupPinned == true
-    }
-
     private var showClearContextOption: Bool {
-        Self.resolveShowClearContext(settings: viewModel.desktopSettings)
+        Self.resolveShowClearContext(settings: viewModel.serverSettings)
     }
 
     /// Pure resolver for the "Implement, clear context" button gate, extracted
@@ -135,7 +103,7 @@ struct PlanApprovalCardView: View {
     /// SessionViewModel). Mirrors the desktop gate: the button is revealed only
     /// when the `showImplementClearContext` desktop setting is `true`. Returns
     /// `false` when settings are absent or the key is missing/non-boolean.
-    static func resolveShowClearContext(settings: DesktopSettingsState?) -> Bool {
+    static func resolveShowClearContext(settings: ServerSettingsState?) -> Bool {
         guard let settings,
               let val = settings.currentValue(for: "showImplementClearContext"),
               let on = val.value as? Bool else {
@@ -231,54 +199,18 @@ struct PlanApprovalCardView: View {
                     .padding(.vertical, IonSpace.compactGap)
                 }
 
-                // Action buttons — split row when pinned, single button otherwise
-                if showUnpinOption {
-                    // Native HStack (no GeometryReader): both buttons share the row
-                    // 50/50 via .frame(maxWidth: .infinity), so the row reports its
-                    // true height to the enclosing VStack and the clear-context
-                    // button below flows beneath it instead of overlapping. The
-                    // prior GeometryReader (38/62 pixel split) did not report a
-                    // stable intrinsic height, which caused the overlap.
-                    HStack(spacing: 8) {
-                        Button {
-                            Haptic.medium()
-                            implementAndUnpin()
-                        } label: {
-                            Label("Implement and Unpin", systemImage: "pin.slash")
-                                .font(.subheadline.weight(.semibold))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.green)
-
-                        Button {
-                            Haptic.medium()
-                            implement()
-                        } label: {
-                            Text("Implement")
-                                .font(.subheadline.weight(.semibold))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(theme.textTertiary)
-                    }
-                } else {
-                    Button {
-                        Haptic.medium()
-                        implement()
-                    } label: {
-                        Text("Implement")
-                            .font(.subheadline.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
+                // Action button
+                Button {
+                    Haptic.medium()
+                    implement()
+                } label: {
+                    Text("Implement")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
 
                 if showClearContextOption {
                     Button {
@@ -305,10 +237,7 @@ struct PlanApprovalCardView: View {
         .padding()
         .cardStyle()
         .fullScreenCover(isPresented: $showFullPlan, onDismiss: {
-            if implementAndUnpinOnDismiss {
-                implementAndUnpinOnDismiss = false
-                implementAndUnpin()
-            } else if implementOnDismiss {
+            if implementOnDismiss {
                 implementOnDismiss = false
                 implement()
             }
@@ -333,11 +262,6 @@ struct PlanApprovalCardView: View {
     private func implement(clearContext: Bool = false) {
         viewModel.dismissSpecialPermission(tabId: tabId, questionId: request.questionId)
         viewModel.sendImplementPlanIntent(tabId: tabId, questionId: request.questionId, clearContext: clearContext)
-    }
-
-    private func implementAndUnpin(clearContext: Bool = false) {
-        viewModel.dismissSpecialPermission(tabId: tabId, questionId: request.questionId)
-        viewModel.sendUnpinThenImplementPlanIntent(tabId: tabId, questionId: request.questionId, clearContext: clearContext)
     }
 
     /// Initiate the paged fetch of the full plan body if not already fetched.

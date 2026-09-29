@@ -131,7 +131,7 @@ final class SessionViewModelOidcSwitchTests: XCTestCase {
     func testAuthorizedSnapshotReportsMobileAuthOnce() throws {
         let vm = makeViewModel()
         vm.activeDeviceId = workId
-        vm.authorizeDesktop(deviceId: workId)
+        vm.authorizeServer(deviceId: workId)
 
         let reports = vm.pendingEssentialQueue.filter { $0.command.kindName == "reportMobileAuth" }
         XCTAssertEqual(reports.count, 1, "one authenticated snapshot must create one mobile auth report")
@@ -149,10 +149,10 @@ final class SessionViewModelOidcSwitchTests: XCTestCase {
         XCTAssertTrue(vm.relayIdentityMismatch.contains(workId))
         XCTAssertFalse(vm.relayIdentityMismatch.contains(personalId),
             "a refusal for one pairing must not flag the other")
-        XCTAssertEqual(vm.activeDesktopAccess.status, .rejected)
-        XCTAssertEqual(vm.activeDesktopAccess.reason, .wrongAccount,
+        XCTAssertEqual(vm.activeServerAccess.status, .rejected)
+        XCTAssertEqual(vm.activeServerAccess.reason, .wrongAccount,
             "the active pairing being refused must lock data without conflating transport state")
-        XCTAssertFalse(vm.mayViewActiveDesktopData)
+        XCTAssertFalse(vm.mayViewActiveServerData)
     }
 
     @MainActor
@@ -212,8 +212,8 @@ final class SessionViewModelOidcSwitchTests: XCTestCase {
 
         vm.lockDeferredRelayMismatchIfNeeded()
 
-        XCTAssertEqual(vm.activeDesktopAccess.reason, .wrongAccount)
-        XCTAssertFalse(vm.mayViewActiveDesktopData)
+        XCTAssertEqual(vm.activeServerAccess.reason, .wrongAccount)
+        XCTAssertFalse(vm.mayViewActiveServerData)
     }
 
     // MARK: - Verification state
@@ -222,12 +222,12 @@ final class SessionViewModelOidcSwitchTests: XCTestCase {
     func testLockSuppressedDuringVerification() {
         let vm = makeViewModel()
         vm.activeDeviceId = workId
-        vm.setDesktopAccess(DesktopAccessRecord(
+        vm.setServerAccess(ServerAccessRecord(
             status: .verifying, reason: .none, changedAt: Date(), lastAuthorizedAt: nil
         ), deviceId: workId, source: "test")
 
-        vm.lockDesktop(deviceId: workId, reason: .noCredential, source: "silent_oidc_exhausted")
-        XCTAssertEqual(vm.activeDesktopAccess.status, .verifying,
+        vm.lockServer(deviceId: workId, reason: .noCredential, source: "silent_oidc_exhausted")
+        XCTAssertEqual(vm.activeServerAccess.status, .verifying,
             "transport auth failures must not relock during verification")
     }
 
@@ -235,13 +235,13 @@ final class SessionViewModelOidcSwitchTests: XCTestCase {
     func testWrongAccountLocksFromVerifying() {
         let vm = makeViewModel()
         vm.activeDeviceId = workId
-        vm.setDesktopAccess(DesktopAccessRecord(
+        vm.setServerAccess(ServerAccessRecord(
             status: .verifying, reason: .none, changedAt: Date(), lastAuthorizedAt: nil
         ), deviceId: workId, source: "test")
 
-        vm.lockDesktop(deviceId: workId, status: .rejected, reason: .wrongAccount, source: "relay_subject_mismatch")
-        XCTAssertEqual(vm.activeDesktopAccess.status, .rejected)
-        XCTAssertEqual(vm.activeDesktopAccess.reason, .wrongAccount,
+        vm.lockServer(deviceId: workId, status: .rejected, reason: .wrongAccount, source: "relay_subject_mismatch")
+        XCTAssertEqual(vm.activeServerAccess.status, .rejected)
+        XCTAssertEqual(vm.activeServerAccess.reason, .wrongAccount,
             "fresh 403 wrongAccount must lock even during verification")
     }
 
@@ -249,12 +249,12 @@ final class SessionViewModelOidcSwitchTests: XCTestCase {
     func testSnapshotAuthorizesFromVerifying() {
         let vm = makeViewModel()
         vm.activeDeviceId = workId
-        vm.setDesktopAccess(DesktopAccessRecord(
+        vm.setServerAccess(ServerAccessRecord(
             status: .verifying, reason: .none, changedAt: Date(), lastAuthorizedAt: nil
         ), deviceId: workId, source: "test")
 
-        vm.authorizeDesktop(deviceId: workId)
-        XCTAssertEqual(vm.activeDesktopAccess.status, .authorized,
+        vm.authorizeServer(deviceId: workId)
+        XCTAssertEqual(vm.activeServerAccess.status, .authorized,
             "successful snapshot must promote verifying to authorized")
     }
 
@@ -262,12 +262,12 @@ final class SessionViewModelOidcSwitchTests: XCTestCase {
     func testTransientDisconnectDoesNotDemoteVerifying() {
         let vm = makeViewModel()
         vm.activeDeviceId = workId
-        vm.setDesktopAccess(DesktopAccessRecord(
+        vm.setServerAccess(ServerAccessRecord(
             status: .verifying, reason: .none, changedAt: Date(), lastAuthorizedAt: nil
         ), deviceId: workId, source: "test")
 
-        vm.markActiveDesktopTransientlyDisconnected(source: "transport_lost")
-        XCTAssertEqual(vm.activeDesktopAccess.status, .verifying,
+        vm.markActiveServerTransientlyDisconnected(source: "transport_lost")
+        XCTAssertEqual(vm.activeServerAccess.status, .verifying,
             "transport loss must not demote verifying to transientlyDisconnected")
     }
 
@@ -275,13 +275,13 @@ final class SessionViewModelOidcSwitchTests: XCTestCase {
     func testVerifyingPreservesDataVisibility() {
         let vm = makeViewModel()
         vm.activeDeviceId = workId
-        vm.setDesktopAccess(DesktopAccessRecord(
+        vm.setServerAccess(ServerAccessRecord(
             status: .verifying, reason: .none, changedAt: Date(), lastAuthorizedAt: nil
         ), deviceId: workId, source: "test")
 
-        XCTAssertTrue(vm.mayViewActiveDesktopData)
-        XCTAssertFalse(vm.activeDesktopIsLocked)
-        XCTAssertTrue(vm.activeDesktopIsVerifying)
+        XCTAssertTrue(vm.mayViewActiveServerData)
+        XCTAssertFalse(vm.activeServerIsLocked)
+        XCTAssertTrue(vm.activeServerIsVerifying)
     }
 
     // MARK: - Sign out

@@ -31,7 +31,7 @@ struct AgentDetailFullScreenView: View {
     ///   explicit override (agentsPanelExpanded) > agentPanelDefaultOpen setting > true.
     private var isAgentsPanelExpanded: Bool {
         if let explicit = agentsPanelExpanded { return explicit }
-        return AgentPanelDefaultResolver.resolveAgentPanelDefault(viewModel.desktopSettings)
+        return AgentPanelDefaultResolver.resolveAgentPanelDefault(viewModel.serverSettings)
     }
 
     /// Two-way binding for the agent panel expanded state. Reads through the
@@ -102,8 +102,6 @@ struct AgentDetailFullScreenView: View {
         latestDispatchRunning && !shownDispatchId.isEmpty
     }
 
-    private let reconcileInterval: TimeInterval = 12
-
     /// Root display title from the tab.
     private var rootTitle: String {
         let tabId = SessionViewModel.parseEngineSessionKey(compoundKey)
@@ -115,9 +113,10 @@ struct AgentDetailFullScreenView: View {
         guard let agent else { return [] }
         if let subjectDispatch,
            !subjectDispatch.conversationId.isEmpty {
-            return viewModel.agentConversationMessages[subjectDispatch.conversationId] ?? []
+            let key = SessionViewModel.dispatchKey(conversationId: subjectDispatch.conversationId, dispatchId: subjectDispatch.id)
+            return viewModel.agentConversationMessages[key] ?? []
         }
-        return viewModel.agentConversationMessages[dispatchId.isEmpty ? agent.name : dispatchId] ?? []
+        return viewModel.agentConversationMessages[agent.name] ?? []
     }
 
     /// Pinned prompt: first user-role message in the agent conversation.
@@ -200,13 +199,9 @@ struct AgentDetailFullScreenView: View {
                         allAgents: allAgents,
                         messages: viewModel.agentConversationMessages[agent.name],
                         convMessageCache: viewModel.agentConversationMessages,
-                        isLoadingMessages: viewModel.agentConversationLoading.contains(agent.name)
-                            || agent.dispatches.contains { viewModel.agentConversationLoading.contains($0.conversationId) },
-                        onLoadDispatch: { convId in
-                            viewModel.loadAgentDispatchConversation(agent: agent, conversationId: convId)
-                        },
-                        onPreloadDispatches: { excludingConvId in
-                            viewModel.preloadAgentDispatches(agent: agent, excluding: excludingConvId)
+                        isLoadingMessages: isLoading(agent),
+                        onLoadDispatch: { dispatch in
+                            viewModel.loadAgentDispatchConversation(tabId: tabId, dispatch: dispatch)
                         },
                         tabId: SessionViewModel.parseEngineSessionKey(compoundKey),
                         activeBackgroundTasks: viewModel.engineInstance(
@@ -265,46 +260,43 @@ struct AgentDetailFullScreenView: View {
                 .fontWeight(.semibold)
             }
         }
-        // Initial load on first presentation. onChange(of: dispatchSignature) fires only
-        // when the signature changes after view creation — so a dispatch already at its
-        // final state when the popup opens never triggers a load and the transcript stays
-        // empty ("Waiting for transcript…"). This task issues the same load on appear so
-        // the transcript fetches regardless of whether the signature subsequently changes.
+        // Open the shown dispatch's transcript stream on first presentation,
+        // and again whenever the agent's dispatch set changes (a new dispatch
+        // appears). The server pushes every change after that; the open is a
+        // no-op for a stream already held.
         .task {
             guard let agent else { return }
             DiagnosticLog.log("dispatch popup on appear initial load", tag: "view.dispatchpopup", fields: [
                 "agent": agent.name,
                 "conversation_id": latestDispatchConvId
             ])
-            if !latestDispatchConvId.isEmpty {
-                viewModel.loadAgentDispatchConversation(agent: agent, conversationId: latestDispatchConvId)
-            } else if !agent.conversationIds.isEmpty {
-                viewModel.loadAgentConversation(agent: agent)
-            }
+            openTranscripts(for: agent)
         }
         .onChange(of: dispatchSignature) {
             guard let agent else { return }
-            refreshConversation(for: agent)
-        }
-        .onReceive(Timer.publish(every: reconcileInterval, on: .main, in: .common).autoconnect()) { _ in
-            guard let agent, latestDispatchRunning, !latestDispatchConvId.isEmpty else { return }
-            viewModel.refreshAgentDispatchConversation(agent: agent, conversationId: latestDispatchConvId)
-        }
-        .onChange(of: latestDispatchRunning) { wasRunning, isRunning in
-            guard wasRunning, !isRunning, let agent, !latestDispatchConvId.isEmpty else { return }
-            viewModel.refreshAgentDispatchConversation(agent: agent, conversationId: latestDispatchConvId)
+            openTranscripts(for: agent)
         }
     }
 
-    private func refreshConversation(for agent: AgentStateUpdate) {
-        if let selectedDispatch = AgentDotResolver.detailSubject(agent.dispatches, dispatchId: dispatchId),
-           !selectedDispatch.conversationId.isEmpty {
-            viewModel.refreshAgentDispatchConversation(
-                agent: agent,
-                conversationId: selectedDispatch.conversationId
-            )
+    private var tabId: String {
+        SessionViewModel.parseEngineSessionKey(compoundKey)
+    }
+
+    private func isLoading(_ agent: AgentStateUpdate) -> Bool {
+        viewModel.agentConversationLoading.contains(agent.name)
+            || agent.dispatches.contains {
+                viewModel.agentConversationLoading.contains(SessionViewModel.dispatchKey(conversationId: $0.conversationId, dispatchId: $0.id))
+            }
+    }
+
+    /// Open the shown dispatch first, then the agent's others in the
+    /// background so switching between them is instant.
+    private func openTranscripts(for agent: AgentStateUpdate) {
+        if let subjectDispatch, !subjectDispatch.conversationId.isEmpty {
+            viewModel.loadAgentDispatchConversation(tabId: tabId, dispatch: subjectDispatch)
+            viewModel.preloadAgentDispatches(tabId: tabId, agent: agent, excluding: subjectDispatch.conversationId)
         } else if !agent.conversationIds.isEmpty {
-            viewModel.refreshAgentConversation(agent: agent)
+            viewModel.loadAgentConversation(tabId: tabId, agent: agent)
         }
     }
 }
@@ -342,7 +334,7 @@ private struct BreadcrumbDestinationView: View {
     ///   explicit override (agentsPanelExpanded) > agentPanelDefaultOpen setting > true.
     private var isAgentsPanelExpanded: Bool {
         if let explicit = agentsPanelExpanded { return explicit }
-        return AgentPanelDefaultResolver.resolveAgentPanelDefault(viewModel.desktopSettings)
+        return AgentPanelDefaultResolver.resolveAgentPanelDefault(viewModel.serverSettings)
     }
 
     /// Two-way binding for the agent panel expanded state in this breadcrumb level.
@@ -351,6 +343,11 @@ private struct BreadcrumbDestinationView: View {
             get: { isAgentsPanelExpanded },
             set: { agentsPanelExpanded = $0 }
         )
+    }
+
+    /// The key the child dispatch's rows are kept under.
+    private var entryKey: String {
+        SessionViewModel.dispatchKey(conversationId: entry.conversationId, dispatchId: entry.dispatchId)
     }
 
     private var childAgent: AgentStateUpdate? {
@@ -387,14 +384,11 @@ private struct BreadcrumbDestinationView: View {
                 AgentExpandedContent(
                     agent: agent,
                     allAgents: allAgents,
-                    messages: viewModel.agentConversationMessages[entry.conversationId],
+                    messages: viewModel.agentConversationMessages[entryKey],
                     convMessageCache: viewModel.agentConversationMessages,
-                    isLoadingMessages: viewModel.agentConversationLoading.contains(entry.conversationId),
-                    onLoadDispatch: { convId in
-                        viewModel.loadAgentDispatchConversation(agent: agent, conversationId: convId)
-                    },
-                    onPreloadDispatches: { excludingConvId in
-                        viewModel.preloadAgentDispatches(agent: agent, excluding: excludingConvId)
+                    isLoadingMessages: viewModel.agentConversationLoading.contains(entryKey),
+                    onLoadDispatch: { dispatch in
+                        viewModel.loadAgentDispatchConversation(tabId: SessionViewModel.parseEngineSessionKey(compoundKey), dispatch: dispatch)
                     },
                     tabId: SessionViewModel.parseEngineSessionKey(compoundKey),
                     activeBackgroundTasks: viewModel.engineInstance(
@@ -436,7 +430,11 @@ private struct BreadcrumbDestinationView: View {
                 "agent": agent.name,
                 "conversation_id": entry.conversationId
             ])
-            viewModel.loadAgentDispatchConversation(agent: agent, conversationId: entry.conversationId)
+            viewModel.openDispatchTranscript(
+                tabId: SessionViewModel.parseEngineSessionKey(compoundKey),
+                conversationId: entry.conversationId,
+                dispatchId: entry.dispatchId
+            )
         }
     }
 

@@ -10,8 +10,8 @@ import XCTest
 /// rather than as a live RemoteEvent variant — the engine's event is a
 /// workflow signal, and projecting through the snapshot gives iOS a
 /// sticky-across-reconnect indicator without a new wire variant. See
-/// CLAUDE.md § "Common parity surfaces" row for model fallback indicator
-/// and § "The typed-event corollary" for the broader rule that the
+/// docs/architecture/cross-platform-parity.md § "Common parity surfaces" row for model fallback indicator
+/// and root AGENTS.md § "The typed-event corollary" for the broader rule that the
 /// engine's typed event is the complete signaling surface; how each
 /// consumer renders it is the consumer's policy, not engine policy.
 ///
@@ -42,7 +42,7 @@ final class ModelFallbackSnapshotTests: XCTestCase {
         {"type":"desktop_snapshot","tabs":[\(sampleTabWithFallback(requestedModel: "standard", fallbackModel: "claude-sonnet-4-6"))]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
+        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _) = event else {
             XCTFail("Expected snapshot, got \(event)")
             return
         }
@@ -64,7 +64,7 @@ final class ModelFallbackSnapshotTests: XCTestCase {
         {"type":"desktop_snapshot","tabs":[{"id":"t1","title":"Tab","customTitle":null,"status":"idle","workingDirectory":"/tmp","permissionMode":"auto","permissionQueue":[],"lastMessage":null,"contextTokens":null,"conversationInstances":[{"id":"inst1","label":"Main"}],"activeConversationInstanceId":"inst1"}]}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
+        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _) = event else {
             XCTFail("Expected snapshot, got \(event)")
             return
         }

@@ -102,7 +102,7 @@ struct InboxWorktreeGroup<Row: View>: View {
             row(tab)
                 .padding(.leading, IonSpace.sectionGap)
         }
-        if isExpanded && tabs.isEmpty && !worktree.isLanded {
+        if isExpanded && tabs.isEmpty && !worktree.isSealed {
             Button("New conversation here") {
                 viewModel.newWorktreeConversation(worktreePath: worktree.worktreePath)
             }
@@ -122,7 +122,7 @@ struct InboxWorktreeGroup<Row: View>: View {
             parts.append("\(n) commit\(n == 1 ? "" : "s") not yet landed")
         }
         guard !parts.isEmpty else { return "Discard this worktree? Its checkout and branch are removed. Nothing merges into its source branch." }
-        return "This worktree holds \(parts.joined(separator: " and ")). Discarding removes its checkout and branch without merging; the desktop saves work under recovery refs first."
+        return "This worktree holds \(parts.joined(separator: " and ")). Discarding removes its checkout and branch without merging; the server saves work under recovery refs first."
     }
 
     private var benchAutoFixTabId: String? {

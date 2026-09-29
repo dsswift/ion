@@ -58,10 +58,10 @@ final class SnapshotBackgroundShellMergeTests: XCTestCase {
 
     private func apply(_ vm: SessionViewModel, shellCountJSON: String?, activeTasksJSON: String? = nil) throws {
         let event = try decoder.decode(RemoteEvent.self, from: snapshotJSON(shellCountJSON: shellCountJSON, activeTasksJSON: activeTasksJSON))
-        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _, _, _, _, _) = event else {
+        guard case .snapshot(let tabs, _, _, _, _, _, _, _, _, _) = event else {
             XCTFail("Expected snapshot"); return
         }
-        vm.handleSnapshot(snapshotTabs: tabs, recentDirs: [], groupMode: nil, groups: nil)
+        vm.handleSnapshot(snapshotTabs: tabs, recentDirs: [])
     }
 
     private func instance(_ vm: SessionViewModel) throws -> ConversationInstanceInfo {
@@ -120,9 +120,7 @@ final class SnapshotBackgroundShellMergeTests: XCTestCase {
     func testMergePreservesRuntimeMessages() throws {
         let vm = SessionViewModel()
         try apply(vm, shellCountJSON: nil)
-        vm.mutateConversationMessages(tabId: "tab-1") {
-            $0.append(Message(id: "m1", role: .user, content: "hi", timestamp: 1))
-        }
+        vm.conversationInstances["tab-1"]?[0].messages.append(Message(id: "m1", role: .user, content: "hi", timestamp: 1))
 
         try apply(vm, shellCountJSON: "1")
 

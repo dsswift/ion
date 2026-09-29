@@ -30,8 +30,8 @@ struct StaleConversationPlaceholderView: View {
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.secondary)
             Text(hasAppliedTabSnapshot
-                 ? "This conversation is no longer open on the desktop."
-                 : "Waiting for the desktop to send its tab list.")
+                 ? "This conversation is no longer open on the server."
+                 : "Waiting for the server to send its tab list.")
                 .font(.subheadline)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)

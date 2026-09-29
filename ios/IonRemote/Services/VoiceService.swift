@@ -19,7 +19,7 @@ final class VoiceService {
         var label: String {
             switch self {
             case .clientOnly: return "Client-Only"
-            case .desktopAssisted: return "Desktop-Assisted"
+            case .desktopAssisted: return "Server-Assisted"
             }
         }
     }
@@ -179,10 +179,14 @@ final class VoiceService {
             "model_id": Self.modelID,
             "voice_settings": ["stability": 0.5, "similarity_boost": 0.75],
         ]
-        guard let bodyData = try? JSONSerialization.data(withJSONObject: body) else {
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            DiagnosticLog.log("voice test request encode failed", tag: "voice", level: .error, fields: [
+                "error": error.localizedDescription
+            ])
             return .networkError("Failed to encode request")
         }
-        request.httpBody = bodyData
 
         let data: Data
         let response: URLResponse
@@ -206,7 +210,13 @@ final class VoiceService {
             try session.setCategory(.playback, mode: .default, options: .duckOthers)
             try session.setActive(true)
             defer {
-                try? session.setActive(false, options: .notifyOthersOnDeactivation)
+                do {
+                    try session.setActive(false, options: .notifyOthersOnDeactivation)
+                } catch {
+                    DiagnosticLog.log("audio session deactivate failed", tag: "voice", level: .warn, fields: [
+                        "error": error.localizedDescription
+                    ])
+                }
             }
             #endif
             let player = try AVAudioPlayer(data: data)
@@ -214,6 +224,8 @@ final class VoiceService {
             player.prepareToPlay()
             player.play()
             while player.isPlaying {
+                // Playback poll interval: cancellation only ends the wait sooner.
+                // swiftlint:disable:next silent_try_optional
                 try? await Task.sleep(nanoseconds: 100_000_000)
             }
             audioPlayer = nil
@@ -259,7 +271,13 @@ final class VoiceService {
             try session.setCategory(.playback, mode: .default, options: .duckOthers)
             try session.setActive(true)
             defer {
-                try? session.setActive(false, options: .notifyOthersOnDeactivation)
+                do {
+                    try session.setActive(false, options: .notifyOthersOnDeactivation)
+                } catch {
+                    DiagnosticLog.log("audio session deactivate failed", tag: "voice", level: .warn, fields: [
+                        "error": error.localizedDescription
+                    ])
+                }
             }
             #endif
             audioPlayer = try AVAudioPlayer(data: audioData)
@@ -270,6 +288,8 @@ final class VoiceService {
                     audioPlayer?.stop()
                     break
                 }
+                // Playback poll interval: the guard above handles cancellation.
+                // swiftlint:disable:next silent_try_optional
                 try? await Task.sleep(nanoseconds: 100_000_000)
             }
         } catch {
@@ -300,8 +320,14 @@ final class VoiceService {
             "model_id": Self.modelID,
             "voice_settings": ["stability": 0.5, "similarity_boost": 0.75],
         ]
-        guard let bodyData = try? JSONSerialization.data(withJSONObject: body) else { return nil }
-        request.httpBody = bodyData
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            DiagnosticLog.log("voice elevenlabs request encode failed", tag: "voice", level: .error, fields: [
+                "error": error.localizedDescription
+            ])
+            return nil
+        }
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)

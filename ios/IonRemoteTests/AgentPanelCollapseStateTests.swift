@@ -18,7 +18,7 @@ import XCTest
 // Because pure-SwiftUI render assertions are not viable in XCTest without
 // a running host app, the tests operate directly on the resolution logic
 // extracted into a standalone helper (mirroring ConversationView's
-// `isAgentsPanelExpanded` computed var) and on DesktopSettingsState
+// `isAgentsPanelExpanded` computed var) and on ServerSettingsState
 // lookups. The helper is verified against all relevant branches.
 
 final class AgentPanelCollapseStateTests: XCTestCase {
@@ -30,12 +30,12 @@ final class AgentPanelCollapseStateTests: XCTestCase {
     //
     // If this function's body drifts from ConversationView's computed var,
     // this test suite will still catch regressions in the setting lookup
-    // path — because the DesktopSettingsState fixture below matches the
+    // path — because the ServerSettingsState fixture below matches the
     // real production lookup.
 
     private func resolveExpanded(
         explicit: Bool?,
-        settings: DesktopSettingsState?
+        settings: ServerSettingsState?
     ) -> Bool {
         if let explicit { return explicit }
         if let settings = settings,
@@ -48,11 +48,11 @@ final class AgentPanelCollapseStateTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeSettings(agentPanelDefaultOpen: Bool) -> DesktopSettingsState {
-        DesktopSettingsState(
+    private func makeSettings(agentPanelDefaultOpen: Bool) -> ServerSettingsState {
+        ServerSettingsState(
             settings: ["agentPanelDefaultOpen": AnyCodable(agentPanelDefaultOpen)],
             schema: [
-                DesktopSettingSchemaEntry(
+                ServerSettingSchemaEntry(
                     key: "agentPanelDefaultOpen",
                     type: .boolean,
                     group: "conversation",
@@ -66,7 +66,7 @@ final class AgentPanelCollapseStateTests: XCTestCase {
                 )
             ],
             groups: [
-                DesktopSettingGroupDescriptor(groupId: "conversation", label: "Conversation")
+                ServerSettingGroupDescriptor(groupId: "conversation", label: "Conversation")
             ]
         )
     }
@@ -125,7 +125,7 @@ final class AgentPanelCollapseStateTests: XCTestCase {
     /// When there is no explicit override and the settings object exists but
     /// does not contain agentPanelDefaultOpen, the panel defaults to expanded.
     func test_noExplicit_settingAbsent_defaultsToExpanded() {
-        let emptySettings = DesktopSettingsState(settings: [:], schema: [], groups: [])
+        let emptySettings = ServerSettingsState(settings: [:], schema: [], groups: [])
         let result = resolveExpanded(explicit: nil, settings: emptySettings)
         XCTAssertTrue(result, "Panel must default to expanded when agentPanelDefaultOpen is absent from settings")
     }
