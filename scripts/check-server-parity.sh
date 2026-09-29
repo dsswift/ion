@@ -73,7 +73,10 @@ fi
 # these same four names), and each file's own test may still name them.
 LEGACY_KEY_ALLOWLIST='desktop/src/main/settings-migration-studio\.ts|desktop/src/main/__tests__/settings-migration-studio\.test\.ts|desktop/src/main/settings-split\.ts|desktop/src/main/__tests__/settings-split\.test\.ts|desktop/src/main/ipc/__tests__/studio\.test\.ts'
 
-legacy_key_hits=$(grep -rln "activeUi\|launchSurface\|surfacePolicy" desktop/src packages/shared/src 2>/dev/null \
+# Only files git would track are searched. A gitignored file under these
+# roots (a local tool's log) is not part of the source and can quote anything.
+legacy_key_hits=$(git ls-files -z --cached --others --exclude-standard -- desktop/src packages/shared/src \
+  | xargs -0 grep -ln "activeUi\|launchSurface\|surfacePolicy" 2>/dev/null \
   | grep -vE "^($LEGACY_KEY_ALLOWLIST)\$" || true)
 
 if [ -n "$legacy_key_hits" ]; then
