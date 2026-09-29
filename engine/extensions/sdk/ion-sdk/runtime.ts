@@ -22,6 +22,8 @@ import {
   buildResourcesAPI,
   drainPendingResourceInit,
   handleResourceQuery,
+  handleResourceTransfer,
+  RESOURCE_TRANSFER_METHODS,
   registerResourceRpcBridge,
 } from './runtime-resources'
 import { doRegisterAgentTools } from './runtime-agents'
@@ -236,6 +238,29 @@ function readBuildIdentity(): BuildIdentityRead {
       },
     }
   }
+}
+
+// readExtensionVersion reads the "version" field straight out of the
+// extension's own extension.json, keyed off the extensionDir the engine
+// already handed us in the init params. This mirrors what the engine's own
+// manifest fallback does (LoadManifest in host_lifecycle.go), so a TS
+// extension's handshake and manifest values are the same value read twice --
+// harmless, and it means the wire field is always populated when a version is
+// declared rather than depending on engine-side fallback timing. Absent file,
+// absent field, or a parse error all resolve to '' silently: a TS extension
+// without a declared version is a normal, unversioned extension, not a
+// diagnostic-worthy state the way a missing build identity is.
+function readExtensionVersion(extensionDir: string): string {
+  if (!extensionDir) return ''
+  try {
+    const data: unknown = JSON.parse(readFileSync(join(extensionDir, 'extension.json'), 'utf8'))
+    if (typeof data === 'object' && data !== null && typeof (data as { version?: unknown }).version === 'string') {
+      return (data as { version: string }).version
+    }
+  } catch {
+    // No manifest, or unreadable/malformed -- unversioned, same as absent.
+  }
+  return ''
 }
 
 function isContextIdentity(value: unknown): value is NonNullable<IonContext['identity']> {
@@ -777,6 +802,7 @@ async function handleRequest(
         resources: resourcePending.resources,
         hooks: Array.from(hooks.keys()).sort(),
         buildIdentity: buildIdentity.identity,
+        version: readExtensionVersion(initConfig?.extensionDir || ''),
       })
       return
     }
@@ -802,6 +828,14 @@ async function handleRequest(
     if (method === 'resource/query') {
       const items = await handleResourceQuery(params as any)
       respond(id, items)
+      return
+    }
+
+    // -- Resource transfer from the engine (a conversation is moving) -------
+    if ((RESOURCE_TRANSFER_METHODS as readonly string[]).includes(method)) {
+      const outcome = await handleResourceTransfer(method as (typeof RESOURCE_TRANSFER_METHODS)[number], params as any)
+      if (outcome.handled) respond(id, outcome.result)
+      else respondError(id, -32601, outcome.message)
       return
     }
 

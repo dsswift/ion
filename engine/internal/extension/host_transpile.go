@@ -214,6 +214,13 @@ func (h *Host) parseInitResult(raw json.RawMessage) error {
 		// Build identity reported by the SDK subprocess. Compared against
 		// the engine's own build identity to detect mixed-build runtimes.
 		BuildIdentity string `json:"buildIdentity,omitempty"`
+		// Version is the extension's own version, stamped by its SDK at
+		// build time (Go: -X ldflags; TS: read from extension.json). Takes
+		// priority over the manifest-parsed version set at load time in
+		// host_lifecycle.go, since a compiled extension has no
+		// extension.json to read from. Optional: older SDKs omit it, and
+		// parseVersion falls back to the manifest value already on h.version.
+		Version string `json:"version,omitempty"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
 		utils.LogWithFields(utils.LevelError, "extension", "init result parse error", map[string]any{"error": err})
@@ -225,6 +232,7 @@ func (h *Host) parseInitResult(raw json.RawMessage) error {
 	// use time through JSON-RPC -32601. Keep both identities in logs so operators
 	// can diagnose mixed installs without preventing otherwise-compatible code.
 	h.observeBuildIdentity(result.BuildIdentity)
+	h.applyHandshakeVersion(result.Version)
 
 	if result.Name != "" {
 		h.setName(result.Name)
@@ -306,4 +314,26 @@ func (h *Host) observeBuildIdentity(sdkIdentity string) {
 		return
 	}
 	utils.LogWithFields(utils.LevelDebug, "extension", "build identity verified", fields)
+}
+
+// applyHandshakeVersion prefers the version the SDK reports at init time over
+// the manifest value host_lifecycle.go stamped at load time. A compiled
+// extension (e.g. a Go SDK binary) ships no extension.json, so the handshake
+// is its only source; a TS extension usually carries both and the handshake
+// still wins since it reflects what actually loaded. Logs the source once per
+// load so an operator can tell a bare "v" in telemetry apart from a real gap.
+func (h *Host) applyHandshakeVersion(handshakeVersion string) {
+	fields := map[string]any{"extension": h.name_()}
+	switch {
+	case handshakeVersion != "":
+		fields["source"] = "handshake"
+		fields["version"] = handshakeVersion
+		h.version = handshakeVersion
+	case h.version != "":
+		fields["source"] = "manifest"
+		fields["version"] = h.version
+	default:
+		fields["source"] = "none"
+	}
+	utils.LogWithFields(utils.LevelDebug, "extension", "extension version resolved", fields)
 }
