@@ -29,6 +29,12 @@ export interface BridgedEngineShell {
   fsWatchFile(filePath: string): Promise<{ ok: boolean; error?: string }>;
   fsUnwatchFile(filePath: string): Promise<{ ok: boolean; error?: string }>;
   onFileChanged(callback: (filePath: string) => void): () => void;
+  /** Report which directories under `root` change, on `onFileTreeChanged`, until unwatched. */
+  fsWatchTree(root: string): Promise<{ ok: boolean; error?: string }>;
+  fsUnwatchTree(root: string): Promise<{ ok: boolean }>;
+  onFileTreeChanged(
+    callback: (change: import("@ion/shared/fs-tree-watch").FsTreeChange) => void,
+  ): () => void;
   /** The engine's complete MCP server list after any change. Replace, never merge. */
   onMcpServersChanged(
     callback: (servers: import("@ion/shared/types-engine-event").McpServerStatus[]) => void,

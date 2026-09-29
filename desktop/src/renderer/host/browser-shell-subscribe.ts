@@ -53,6 +53,7 @@ export const SHELL_SUBSCRIBE: Record<string, ShellSubscribeSpec> = {
   onModelsUpdated: { channel: 'ion:models-updated', scope: 'all' },
   onProviderLoginEvent: { channel: 'ion:provider-login-event', scope: 'all' },
   onFileChanged: { channel: 'ion:fs-file-changed', scope: 'active' },
+  onFileTreeChanged: { channel: 'ion:fs-tree-changed', scope: 'active' },
   onGitEvent: { channel: 'ion:git-event', scope: 'active' },
   // The payload names paths on the announcing server; the listener refreshes
   // that server, so it needs every Environment and the id.

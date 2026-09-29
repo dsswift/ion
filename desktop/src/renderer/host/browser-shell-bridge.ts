@@ -307,6 +307,8 @@ export const SHELL_INVOKE: Record<string, ShellInvokeSpec> = {
   fsExists: { action: 'fs.exists', pack: named('targetPath') },
   fsWatchFile: { action: 'fs.watchFile', pack: named('filePath') },
   fsUnwatchFile: { action: 'fs.unwatchFile', pack: named('filePath') },
+  fsWatchTree: { action: 'fs.watchTree', pack: named('root') },
+  fsUnwatchTree: { action: 'fs.unwatchTree', pack: named('root') },
   fsWriteFile: {
     action: 'fs.writeFile',
     pack: (args) => [{ filePath: args[0], content: args[1] }],
