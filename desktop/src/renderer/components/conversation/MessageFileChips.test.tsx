@@ -12,7 +12,7 @@ vi.mock('../../lib/open-attachment', () => ({
   attachmentOpenKind: () => 'native',
 }))
 vi.mock('@ion/server/store/sessionStore', () => ({ useSessionStore: { getState: () => ({ activeTabId: 'other-tab' }) } }))
-vi.mock('../../rendererLogger', () => ({ rError: vi.fn() }))
+vi.mock('../../rendererLogger', () => ({ rTrace: vi.fn(), rDebug: vi.fn(), rInfo: vi.fn(), rWarn: vi.fn(), rError: vi.fn() }))
 
 import { MessageFileChips } from './MessageFileChips'
 
