@@ -23,7 +23,17 @@ extension ConversationView {
         ))
 
         Task {
-            guard let data = try? await item.loadTransferable(type: Data.self) else {
+            let loaded: Data?
+            do {
+                loaded = try await item.loadTransferable(type: Data.self)
+            } catch {
+                DiagnosticLog.log("picked photo load failed", tag: "view.attachments", level: .warn, fields: [
+                    "correlation_id": correlationId,
+                    "error": error.localizedDescription
+                ])
+                loaded = nil
+            }
+            guard let data = loaded else {
                 await MainActor.run { pendingAttachments.removeAll { $0.id == placeholderId } }
                 return
             }
@@ -43,7 +53,16 @@ extension ConversationView {
             guard url.startAccessingSecurityScopedResource() else { continue }
             defer { url.stopAccessingSecurityScopedResource() }
             let name = url.lastPathComponent
-            guard let data = try? Data(contentsOf: url) else { continue }
+            let data: Data
+            do {
+                data = try Data(contentsOf: url)
+            } catch {
+                DiagnosticLog.log("picked document read failed", tag: "view.attachments", level: .warn, fields: [
+                    "name": name,
+                    "error": error.localizedDescription
+                ])
+                continue
+            }
 
             let placeholderId = UUID().uuidString
             let correlationId = UUID().uuidString

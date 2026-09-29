@@ -37,6 +37,16 @@ struct IonRemoteApp: App {
                     // connection recovery.
                     viewModel.resumeTransport()
                 }
+                .onOpenURL { url in
+                    guard StudioPairingLink.looksLikeLink(url.absoluteString) else {
+                        DiagnosticLog.log("opened url ignored, not a pairing link", tag: "app", level: .warn, fields: [
+                            "scheme": url.scheme ?? ""
+                        ])
+                        return
+                    }
+                    DiagnosticLog.log("opened a studio pairing link", tag: "app")
+                    viewModel.pairWithStudioLink(url.absoluteString)
+                }
                 .onChange(of: scenePhase) { _, newPhase in
                     switch newPhase {
                     case .active:
@@ -56,8 +66,12 @@ struct IonRemoteApp: App {
                         // through this helper — their toasts are
                         // legitimate feedback when a real disconnect is
                         // in progress.
-                        viewModel.runWhenConnected { [weak viewModel] in
-                            guard let viewModel else { return }
+                        // Weak through a local: the view model holds this
+                        // block until the snapshot lands, and naming the
+                        // property directly would capture it strongly first.
+                        let model = viewModel
+                        model.runWhenConnected { [weak model] in
+                            guard let viewModel = model else { return }
                             // Refresh git info for every visible tab dir — the
                             // desktop watcher may have dropped events while we
                             // were backgrounded, so we can't trust cached state.
@@ -71,6 +85,16 @@ struct IonRemoteApp: App {
                             viewModel.sendReportFocus(tabId: viewModel.focusedTabId)
                         }
                     case .background:
+                        // Push any debounced draft out before the transport
+                        // stops. A suspended app may never run the pending
+                        // timer, and the draft is the one piece of state whose
+                        // whole purpose is surviving what happens next; if the
+                        // send cannot go now it rides the essential queue to
+                        // the next connect.
+                        viewModel.flushAllDraftSends()
+                        // Stop the Environment load summary; the phone only
+                        // shows it while in the foreground.
+                        viewModel.stopSystemMetricsWatch()
                         // Stop transport but preserve all state (tabs, messages,
                         // navigation, typed input) so the user returns to the
                         // same view when the app foregrounds.
@@ -102,8 +126,8 @@ struct ContentView: View {
             // desktop-owned subtree instead of treating this as a network drop.
             if viewModel.pairedDevices.isEmpty {
                 PairingView()
-            } else if viewModel.activeDesktopIsLocked {
-                DesktopAccessRecoveryView()
+            } else if viewModel.activeServerIsLocked {
+                ServerAccessRecoveryView()
             } else if !viewModel.hasConnectedBefore && viewModel.tabs.isEmpty
                         && viewModel.connectionState != .connected {
                 // First launch with no cached data — show the connecting screen.
@@ -132,7 +156,7 @@ struct ContentView: View {
                 .controlSize(.large)
             Text(viewModel.connectionState.label)
                 .font(.headline)
-            Text("Waiting for Ion desktop...")
+            Text("Waiting for the Ion server...")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             if viewModel.connectionState == .connecting && connectingElapsed > 0 {
@@ -149,7 +173,7 @@ struct ContentView: View {
             if connectingElapsed > 10 {
                 DisclosureGroup("Troubleshooting", isExpanded: $showTroubleshooting) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Label("Make sure Ion desktop is running", systemImage: "desktopcomputer")
+                        Label("Make sure the Ion server is running", systemImage: "server.rack")
                         Label("Check you're on the same network", systemImage: "wifi")
                         Label("Try tapping Retry", systemImage: "arrow.clockwise")
                     }
@@ -187,6 +211,8 @@ struct ContentView: View {
             case .disconnected:
                 // Auto-retry every 5 seconds while on the disconnected screen.
                 while !Task.isCancelled {
+                    // Only CancellationError can surface; the guard below re-checks cancellation.
+                    // swiftlint:disable:next silent_try_optional
                     try? await Task.sleep(for: .seconds(5))
                     guard !Task.isCancelled,
                           viewModel.connectionState == .disconnected else { break }
@@ -195,6 +221,8 @@ struct ContentView: View {
             case .connecting:
                 connectingElapsed = 0
                 while !Task.isCancelled {
+                    // Only CancellationError can surface; the guard below re-checks cancellation.
+                    // swiftlint:disable:next silent_try_optional
                     try? await Task.sleep(for: .seconds(1))
                     guard !Task.isCancelled,
                           viewModel.connectionState == .connecting else { return }

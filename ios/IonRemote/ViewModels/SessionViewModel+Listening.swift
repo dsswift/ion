@@ -38,6 +38,8 @@ extension SessionViewModel {
         // Flusher: drain batched events every ~16ms and process on MainActor
         flushTask = Task { [weak self] in
             while !Task.isCancelled {
+                // Only CancellationError can surface; the guard below re-checks cancellation.
+                // swiftlint:disable:next silent_try_optional
                 try? await Task.sleep(for: .milliseconds(16))
                 guard !Task.isCancelled, let self else { break }
                 let batch = await self.eventBatcher.drain()

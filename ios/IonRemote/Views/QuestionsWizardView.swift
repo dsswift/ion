@@ -206,6 +206,8 @@ struct QuestionsWizardView: View {
         let answers = draft
         let pageComment = comment
         patchTask = Task { @MainActor in
+            // Only CancellationError can surface, from a newer edit superseding this patch.
+            // swiftlint:disable:next silent_try_optional
             try? await Task.sleep(for: .milliseconds(300))
             // Sleep is cancelled when a newer edit supersedes this patch —
             // benign coalescing, not an error.

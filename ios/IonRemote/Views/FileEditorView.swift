@@ -330,6 +330,8 @@ struct FileEditorView: View {
             originalContent = editedContent
             saveMessage = "Saved"
             Task { @MainActor in
+                // Only CancellationError can surface; the Saved message is cleared either way.
+                // swiftlint:disable:next silent_try_optional
                 try? await Task.sleep(for: .seconds(2))
                 if saveMessage == "Saved" { saveMessage = nil }
             }

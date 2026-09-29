@@ -83,7 +83,17 @@ struct QuestionAttachmentRow: View {
         awaiting.insert(correlationId)
 
         Task {
-            guard let data = try? await item.loadTransferable(type: Data.self) else {
+            let loaded: Data?
+            do {
+                loaded = try await item.loadTransferable(type: Data.self)
+            } catch {
+                DiagnosticLog.log("questions attachment: picked image load threw", tag: "questions", level: .warn, fields: [
+                    "correlation_id": correlationId,
+                    "error": error.localizedDescription
+                ])
+                loaded = nil
+            }
+            guard let data = loaded else {
                 await MainActor.run {
                     awaiting.remove(correlationId)
                     DiagnosticLog.log("questions attachment: could not load picked image", tag: "questions", level: .warn)

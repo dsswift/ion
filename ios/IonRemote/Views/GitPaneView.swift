@@ -222,6 +222,8 @@ struct GitPaneView: View {
         viewModel.requestGitChanges(directory: directory)
         viewModel.requestGitGraph(directory: directory)
         Haptic.light()
+        // Pull-to-refresh spinner delay: cancellation only ends the spinner early.
+        // swiftlint:disable:next silent_try_optional
         try? await Task.sleep(for: .milliseconds(500))
     }
 }

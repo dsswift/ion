@@ -197,7 +197,13 @@ final class LegacySpeechEngine: SpeechEngine {
         }
 
         if deactivateSession {
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            do {
+                try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            } catch {
+                DiagnosticLog.log("audio session deactivate failed", tag: "speech.legacy", level: .warn, fields: [
+                    "error": error.localizedDescription
+                ])
+            }
         }
 
         NotificationCenter.default.removeObserver(

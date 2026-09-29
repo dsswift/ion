@@ -4,13 +4,17 @@ import Foundation
 
 extension RemoteEvent {
     /// The wire type string for this event (e.g. "desktop_snapshot", "desktop_tab_status").
-    /// Used by the per-frame receive latency logger in TransportManager+Receive.swift
+    /// Used by the per-frame receive latency logger on the transport's receive path
     /// so log lines can be bucketed by event type in Grafana without encoding the event.
     ///
     /// Derivation: re-encode to JSON, extract the "type" field, fall back to
     /// "<unknown>" when decode fails (should never happen for well-formed events).
     var typeKey: String {
+        // Encode failure falls back to "<unknown>", as documented above.
+        // swiftlint:disable:next silent_try_optional
         guard let data = try? JSONEncoder().encode(self),
+              // Parse failure falls back to "<unknown>", as documented above.
+              // swiftlint:disable:next silent_try_optional
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type_ = json["type"] as? String else {
             return "<unknown>"

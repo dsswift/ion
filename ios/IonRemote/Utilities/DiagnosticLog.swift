@@ -4,19 +4,21 @@ import UIKit
 
 /// Thread-safe diagnostic logger with file-backed rolling storage.
 ///
-/// Keeps the last N app sessions on disk so logs survive crashes.
-/// Also maintains an in-memory ring buffer for the live DiagnosticLogView.
+/// Keeps logs on disk so they survive crashes until the paired server has
+/// pulled them. Also maintains an in-memory ring buffer for the live
+/// DiagnosticLogView.
 ///
 /// Each on-disk line is a single JSON object (JSONL / NDJSON) conforming to the
 /// canonical Ion log schema (`docs/observability/log-schema.md`) with
 /// `component == "ios"`. The desktop reads this content over the wire protocol
 /// and appends it to `~/.ion/ios-diagnostic-logs.jsonl`.
 ///
-/// Storage: `Library/Logs/diagnostics/current.log` + rotated `session-{ts}.log`
-/// files. The on-device filenames keep the `.log` extension for continuity;
-/// their *content* is JSONL regardless of extension.
-///
-/// Limits: 5 sessions max (4 rotated + current), 10 MB total cap.
+/// Storage: `Library/Logs/diagnostics/current.log` + rotated segment files
+/// named `session-{sessionTag}-{maxSeq}.log`. The on-device filenames keep the
+/// `.log` extension for continuity; their *content* is JSONL regardless of
+/// extension. Rotation and retention (a segment is deleted only once its
+/// server has the lines, or past a hard size cap) live in
+/// DiagnosticLog+Retention.swift.
 ///
 /// Usage: `DiagnosticLog.log("connected", tag: "transport", fields: ["device": name])`
 final class DiagnosticLog: @unchecked Sendable {
@@ -71,13 +73,6 @@ final class DiagnosticLog: @unchecked Sendable {
         return out + truncationMarker
     }
 
-    /// Maximum number of rotated session files to keep (plus current).
-    /// 4 rotated + 1 current = 5 sessions total.
-    private static let maxSessionFiles = 4
-
-    /// Maximum total size of all log files combined (10 MB).
-    private static let maxTotalBytes = 10_485_760
-
     private let lock = OSAllocatedUnfairLock(initialState: [Entry]())
     // Subsystem derives from the app bundle so forks/rebrands get a correct
     // unified-logging subsystem with zero edits. (os.Logger output is
@@ -87,8 +82,27 @@ final class DiagnosticLog: @unchecked Sendable {
     /// exercise the export-cursor rotation path.
     let logDirectory: URL
     let currentLogURL: URL
-    private var fileHandle: FileHandle?
+    var fileHandle: FileHandle?
+    /// Set once a failed open of current.log has been recorded, so a log file
+    /// that stays unopenable records one entry instead of one per line.
+    var openFailureRecorded = false
     let writeQueue = DispatchQueue(label: "com.ion.diag-writer")
+
+    // MARK: - Segment state (writeQueue-confined; see DiagnosticLog+Retention.swift)
+
+    /// Tag naming this app launch's segments: `session-{sessionTag}-{maxSeq}.log`.
+    var sessionTag: String = ""
+    /// Bytes in `current.log`, so a write can decide to rotate without a stat.
+    var currentSegmentBytes: UInt64 = 0
+    /// What `current.log` holds, kept up to date on every write.
+    var currentSegment = SegmentSummary(maxSeq: 0, pairingMaxSeq: [:])
+    /// Summaries of rotated segments, persisted beside them so a launch never
+    /// rescans a segment it has already summarized.
+    var segmentIndex: [String: SegmentSummary] = [:]
+    /// After a failed rotation, the size `current.log` must reach before the
+    /// next attempt, so a stuck rename is retried once per segment of growth
+    /// rather than on every line. 0 when the last rotation succeeded.
+    var nextRotationAttemptBytes: UInt64 = 0
 
     // MARK: - Export cursor (writeQueue-confined)
 
@@ -97,14 +111,14 @@ final class DiagnosticLog: @unchecked Sendable {
     /// were parsed on a previous pull; a pull re-reads only the tail past the
     /// offset. A file with no entry (e.g. a rotation the cursor has not seen)
     /// is read from 0. Access confined to `writeQueue`.
-    private var exportFileOffsets: [String: UInt64] = [:]
+    var exportFileOffsets: [String: UInt64] = [:]
 
     /// The maximum `fields.seq` observed across all bytes the cursor has
     /// skipped past. The cursor is only valid for a request whose `sinceSeq`
     /// is ≥ this value — otherwise a skipped line could qualify for the pull,
     /// so the export resets the cursor and rescans from 0. Access confined to
     /// `writeQueue`.
-    private var exportScannedMaxSeq: Int = 0
+    var exportScannedMaxSeq: Int = 0
 
     /// RFC3339Nano UTC formatter for the `ts` field.
     let tsFormatter: ISO8601DateFormatter = {
@@ -131,9 +145,14 @@ final class DiagnosticLog: @unchecked Sendable {
     /// Access synchronized via `writeQueue`.
     private(set) var currentConversationId: String?
 
+    /// UserDefaults key holding the selected pairing's device id. The logger
+    /// reads it at launch so lines written before any view model exists are
+    /// already attributed.
+    static let selectedPairingDefaultsKey = "activeDeviceId"
+
     /// The paired desktop's device id. Stamped on every log line so on-device
-    /// logs are attributable to a specific pairing. Nil when not connected.
-    /// Access synchronized via `writeQueue`.
+    /// logs are attributable to a specific pairing. Nil only while no pairing
+    /// is selected. Access synchronized via `writeQueue`.
     private(set) var currentPairingId: String?
 
     /// writeQueue-internal mutators used by the schema extension setters.
@@ -170,6 +189,18 @@ final class DiagnosticLog: @unchecked Sendable {
         nextSeq += 1
         UserDefaults.standard.set(nextSeq, forKey: Self.seqDefaultsKey)
         return seq
+    }
+
+    /// writeQueue-internal: the seq of the last line written, 0 before any.
+    func _highestWrittenSeqOnQueue() -> Int { nextSeq - 1 }
+
+    /// writeQueue-internal: never stamp a seq at or below `seq`. The persisted
+    /// counter can lag the file after a crash (UserDefaults had not flushed),
+    /// and a reused seq is deduplicated away by the server as already seen.
+    func _raiseNextSeqOnQueue(above seq: Int) {
+        guard seq >= nextSeq else { return }
+        nextSeq = seq + 1
+        UserDefaults.standard.set(nextSeq, forKey: Self.seqDefaultsKey)
     }
 
     /// Compute the immutable device-identity fields once. `utsname.machine` is
@@ -236,10 +267,31 @@ final class DiagnosticLog: @unchecked Sendable {
         // every subsequent launch.
         deviceFields = Self.computeDeviceFields()
         nextSeq = max(1, UserDefaults.standard.integer(forKey: Self.seqDefaultsKey))
+        // Same ordering requirement for the pairing stamp: a line with no
+        // pairing_id is never exported to any desktop.
+        currentPairingId = UserDefaults.standard.string(forKey: Self.selectedPairingDefaultsKey)
 
-        try? FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
-        rotateIfNeeded()
-        openCurrentLog()
+        do {
+            try FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
+        } catch {
+            // Instance `append`, not the static `log`: `shared` is still initializing.
+            append("log directory create failed", tag: "diagnostics", level: .error, fields: [
+                "error": error.localizedDescription
+            ])
+        }
+        // Storage setup runs on the writer so nothing it logs can interleave
+        // with it. The previous launch's current.log becomes a segment under
+        // that launch's tag before this launch takes a new one.
+        writeQueue.sync {
+            loadSegmentIndex()
+            sessionTag = UserDefaults.standard.string(forKey: Self.sessionTagDefaultsKey)
+                ?? Self.makeSessionTag(Date())
+            rotateCurrentSegment(reason: "launch")
+            _raiseNextSeqOnQueue(above: segmentIndex.values.map(\.maxSeq).max() ?? 0)
+            sessionTag = Self.makeSessionTag(Date())
+            UserDefaults.standard.set(sessionTag, forKey: Self.sessionTagDefaultsKey)
+            openCurrentLog()
+        }
         writeSessionMarker()
     }
 
@@ -288,147 +340,24 @@ final class DiagnosticLog: @unchecked Sendable {
         shared.readAllSessions()
     }
 
-    /// Return all retained log lines whose `fields.seq` is strictly greater
-    /// than `sinceSeq`. Used by the desktop's incremental log pull so repeated
-    /// pulls transfer only new lines and never re-ship history already
-    /// persisted.
-    ///
-    /// Returns `(logs: "<new JSONL lines>", nextSeq: <the resume cursor —
-    /// the highest seq shipped, or the input floor when nothing is newer>)`.
-    /// The desktop persists `nextSeq` and echoes it back as the next pull's
-    /// `sinceSeq`; its dedup also drops any line with `seq <= mark`. The
-    /// cursor must therefore be the highest seq ALREADY SHIPPED — reporting
-    /// `maxSeq + 1` (the previous behavior) made both the iOS strict-greater
-    /// filter and the desktop dedup skip the line later stamped exactly
-    /// `maxSeq + 1`, silently losing one line per non-empty pull cycle.
-    ///
-    /// Seq-based rather than line-count-based: a line count is invalidated the
-    /// moment an on-device session file rotates out (the Nth line no longer
-    /// addresses the same logical entry), whereas `seq` is a monotonic per-line
-    /// identity independent of file layout. Lines with no parseable `seq` (only
-    /// possible from a pre-upgrade retained session) are treated as already-seen
-    /// and skipped, so a mixed-schema history never re-ships.
-    ///
-    /// **Async + cursor-based.** The read/split/parse work runs on `writeQueue`
-    /// (never the main actor — the previous main-thread full-history rescan of
-    /// up to 10 MB every 5 s was watchdog-kill territory), and a per-file byte
-    /// cursor means each pull reads only the tail written since the last pull.
-    /// A rotated-in file with no cursor entry is read from 0. A request whose
-    /// `sinceSeq` precedes what the cursor already skipped (desktop reset /
-    /// seq regression) resets the cursor and rescans everything, so
-    /// correctness never depends on the cursor. Output format is byte-identical
-    /// to the pre-cursor implementation (the desktop parses it).
-    static func exportIncrementalSince(sinceSeq: Int, pairingId: String? = nil) async -> (logs: String, nextSeq: Int) {
-        await withCheckedContinuation { continuation in
-            shared.writeQueue.async {
-                continuation.resume(returning: shared._exportIncrementalOnQueue(sinceSeq: sinceSeq, pairingId: pairingId))
-            }
-        }
-    }
-
-    /// writeQueue-confined incremental export. See `exportIncrementalSince`.
-    /// When `pairingId` is non-nil, only lines stamped with that pairing are
-    /// returned. Lines with no pairing_id (pre-upgrade) are excluded from
-    /// filtered exports. The seq cursor advances over ALL lines (including
-    /// filtered-out ones) so it remains globally monotonic.
-    private func _exportIncrementalOnQueue(sinceSeq: Int, pairingId: String? = nil) -> (logs: String, nextSeq: Int) {
-        // Cursor validity: the cursor skips bytes whose lines were already
-        // scanned; every skipped line has seq ≤ exportScannedMaxSeq. A skipped
-        // line qualifies for this pull only when its seq > sinceSeq, so the
-        // cursor is sound iff sinceSeq ≥ exportScannedMaxSeq. When the desktop
-        // asks from an older position (fresh desktop, cursor file loss, seq
-        // regression), reset and rescan from 0 — correctness never depends on
-        // the cursor.
-        if sinceSeq < exportScannedMaxSeq {
-            exportFileOffsets.removeAll()
-            exportScannedMaxSeq = 0
-        }
-
-        let fm = FileManager.default
-        var liveNames = allLogFiles()
-        liveNames.append("current.log")
-
-        // Drop cursor entries for files pruned/rotated away so the map never
-        // grows unbounded across long-running sessions.
-        let liveSet = Set(liveNames)
-        exportFileOffsets = exportFileOffsets.filter { liveSet.contains($0.key) }
-
-        var newLines: [String] = []
-        var maxSeq = sinceSeq
-
-        for name in liveNames {
-            let url = logDirectory.appendingPathComponent(name)
-            guard fm.fileExists(atPath: url.path),
-                  let handle = try? FileHandle(forReadingFrom: url) else { continue }
-            defer { try? handle.close() }
-
-            let start = exportFileOffsets[name] ?? 0
-            let end = (try? handle.seekToEnd()) ?? 0
-            guard end > start else { continue } // nothing new in this file
-            try? handle.seek(toOffset: start)
-            guard let data = try? handle.read(upToCount: Int(end - start)), !data.isEmpty else {
-                continue
-            }
-            // Writes are whole-line and serialized on this same queue, so the
-            // tail always ends on a line boundary — no partial-line handling
-            // is needed and the cursor can advance to `end`.
-            let tail = String(decoding: data, as: UTF8.self)
-            for line in tail.components(separatedBy: "\n") where !line.isEmpty {
-                guard let seq = Self.parseSeq(line) else { continue }
-                if seq > exportScannedMaxSeq { exportScannedMaxSeq = seq }
-                if seq > sinceSeq {
-                    // Advance maxSeq over all qualifying lines regardless of
-                    // the pairing filter -- the cursor is global.
-                    if seq > maxSeq { maxSeq = seq }
-                    if let filterPairing = pairingId {
-                        guard Self.parsePairingId(line) == filterPairing else { continue }
-                    }
-                    newLines.append(line)
-                }
-            }
-            exportFileOffsets[name] = end
-        }
-
-        // Resume cursor = highest seq shipped (see doc comment). The old
-        // `maxSeq + 1` inflated the cursor past the next unwritten line,
-        // and the strict-greater filter above (plus the desktop's
-        // `seq <= mark` dedup) then dropped the line stamped exactly
-        // maxSeq+1 — one line silently lost per non-empty pull cycle
-        // (pre-existing off-by-one, fixed here).
-        let nextSeq = maxSeq
-        let newContent = newLines.isEmpty ? "" : newLines.joined(separator: "\n") + "\n"
-        return (newContent, nextSeq)
-    }
-
-    /// Extract `fields.seq` from a single JSONL line. Returns nil when the line
-    /// is unparseable or carries no numeric seq (pre-upgrade lines).
-    private static func parseSeq(_ line: String) -> Int? {
-        guard let data = line.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let fields = obj["fields"] as? [String: Any] else { return nil }
-        if let n = fields["seq"] as? Int { return n }
-        if let s = fields["seq"] as? String { return Int(s) }
-        return nil
-    }
-
-    /// Extract `pairing_id` from a single JSONL line. Returns nil when the line
-    /// is unparseable or carries no pairing_id (pre-upgrade lines or lines
-    /// emitted while no desktop was paired).
-    static func parsePairingId(_ line: String) -> String? {
-        guard let data = line.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-        return obj["pairing_id"] as? String
-    }
-
-    /// Format only the current session's log.
+    /// Format only the current app launch's log: its rotated segments, then
+    /// `current.log`.
     static func exportCurrentSession() -> String {
-        shared.writeQueue.sync {}
-        return (try? String(contentsOf: shared.currentLogURL, encoding: .utf8)) ?? ""
+        shared.writeQueue.sync {
+            let prefix = "session-\(shared.sessionTag)-"
+            var urls = shared.allLogFiles().filter { $0.hasPrefix(prefix) }
+                .map { shared.logDirectory.appendingPathComponent($0) }
+            urls.append(shared.currentLogURL)
+            return urls.compactMap { shared.readSessionFile($0) }.joined()
+        }
     }
 
-    /// Number of stored session files (including current).
+    /// Number of app launches with lines on disk (including this one).
     static func sessionCount() -> Int {
-        shared.allLogFiles().count + 1 // rotated + current
+        shared.writeQueue.sync {
+            let tags = Set(shared.allLogFiles().map(sessionTag(ofSegment:)))
+            return tags.subtracting([shared.sessionTag]).count + 1
+        }
     }
 
     /// Format current in-memory entries as a shareable string.
@@ -444,7 +373,7 @@ final class DiagnosticLog: @unchecked Sendable {
 
     // MARK: - Internal
 
-    private func append(_ msg: String, tag: String, level: Level, fields: [String: String]) {
+    func append(_ msg: String, tag: String, level: Level, fields: [String: String], span: SpanStamp? = nil) {
         // Bound the message BEFORE it is stored anywhere: the in-memory ring
         // buffer, the os_log echo, and the encoded JSONL line all see the
         // capped form, so no path can retain an unbounded payload.
@@ -459,85 +388,31 @@ final class DiagnosticLog: @unchecked Sendable {
         }
         writeQueue.async { [weak self] in
             guard let self else { return }
-            let line = self.encodeLine(entry: entry, fields: fields)
-            self.writeToFile(line)
+            let line = self.encodeLine(entry: entry, fields: fields, span: span)
+            self.writeLine(line)
         }
-    }
-
-    private func writeToFile(_ line: String) {
-        guard let data = line.data(using: .utf8) else { return }
-        if fileHandle == nil { openCurrentLog() }
-        fileHandle?.write(data)
-    }
-
-    // MARK: - Session Rotation
-
-    private func rotateIfNeeded() {
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: currentLogURL.path) else { return }
-
-        // Only rotate if the current log has content.
-        let attrs = try? fm.attributesOfItem(atPath: currentLogURL.path)
-        let size = attrs?[.size] as? Int ?? 0
-        guard size > 0 else { return }
-
-        // No plain-text SESSION END banner: JSONL has no banners. The file
-        // boundary itself is the session separator.
-        let ts = ISO8601DateFormatter().string(from: Date())
-            .replacingOccurrences(of: ":", with: "-")
-        let rotatedName = "session-\(ts).log"
-        let rotatedURL = logDirectory.appendingPathComponent(rotatedName)
-        try? fm.moveItem(at: currentLogURL, to: rotatedURL)
-
-        pruneOldSessions()
-    }
-
-    private func pruneOldSessions() {
-        let fm = FileManager.default
-        var files = allLogFiles()
-
-        // Sort oldest first (by filename, which embeds the timestamp).
-        files.sort()
-
-        // Prune by count: keep only the last N session files.
-        while files.count > Self.maxSessionFiles {
-            try? fm.removeItem(at: logDirectory.appendingPathComponent(files.removeFirst()))
-        }
-
-        // Prune by total size: include current.log in the budget.
-        var totalSize = files.reduce(0) { sum, name in
-            let path = logDirectory.appendingPathComponent(name).path
-            let s = (try? fm.attributesOfItem(atPath: path))?[.size] as? Int ?? 0
-            return sum + s
-        }
-        let currentSize = ((try? fm.attributesOfItem(atPath: currentLogURL.path))?[.size] as? Int) ?? 0
-        totalSize += currentSize
-
-        while totalSize > Self.maxTotalBytes, !files.isEmpty {
-            let oldest = files.removeFirst()
-            let path = logDirectory.appendingPathComponent(oldest).path
-            let s = (try? fm.attributesOfItem(atPath: path))?[.size] as? Int ?? 0
-            try? fm.removeItem(atPath: path)
-            totalSize -= s
-        }
-    }
-
-    /// Returns sorted names of rotated session files (not current.log).
-    func allLogFiles() -> [String] {
-        let fm = FileManager.default
-        let contents = (try? fm.contentsOfDirectory(atPath: logDirectory.path)) ?? []
-        return contents.filter { $0.hasPrefix("session-") && $0.hasSuffix(".log") }.sorted()
     }
 
     // MARK: - File I/O
 
-    private func openCurrentLog() {
-        let fm = FileManager.default
-        if !fm.fileExists(atPath: currentLogURL.path) {
-            fm.createFile(atPath: currentLogURL.path, contents: nil)
+    /// Record a failed open of current.log. It cannot go through `append`:
+    /// that schedules `writeToFile`, which retries this open and fails again,
+    /// forever. So it lands in the in-memory ring buffer only, once per outage.
+    func recordOpenFailure(_ error: Error) {
+        guard !openFailureRecorded else { return }
+        openFailureRecorded = true
+        let entry = Entry(
+            timestamp: Date(),
+            message: "log file open failed: \(error.localizedDescription)",
+            level: .error,
+            tag: "diagnostics"
+        )
+        lock.withLock { state in
+            state.append(entry)
+            if state.count > Self.maxEntries {
+                state.removeFirst(state.count - Self.maxEntries)
+            }
         }
-        fileHandle = try? FileHandle(forWritingTo: currentLogURL)
-        fileHandle?.seekToEndOfFile()
     }
 
     private func writeSessionMarker() {
@@ -566,23 +441,27 @@ final class DiagnosticLog: @unchecked Sendable {
         )
     }
 
+    /// Every retained segment, oldest first, then `current.log`. Runs on the
+    /// writer so a rotation cannot rename a file out from under the read.
     private func readAllSessions() -> String {
-        var parts: [String] = []
-
-        // Read rotated sessions (oldest first).
-        for name in allLogFiles() {
-            let url = logDirectory.appendingPathComponent(name)
-            if let content = try? String(contentsOf: url, encoding: .utf8), !content.isEmpty {
-                parts.append(content)
-            }
+        writeQueue.sync {
+            var urls = allLogFiles().map { logDirectory.appendingPathComponent($0) }
+            urls.append(currentLogURL)
+            return urls.compactMap { readSessionFile($0) }.joined()
         }
+    }
 
-        // Read current session (flush any pending writes first).
-        writeQueue.sync {}
-        if let current = try? String(contentsOf: currentLogURL, encoding: .utf8), !current.isEmpty {
-            parts.append(current)
+    /// Read one session file for export. A failed read drops that session
+    /// from the export, so it is logged.
+    func readSessionFile(_ url: URL) -> String? {
+        do {
+            return try String(contentsOf: url, encoding: .utf8)
+        } catch {
+            append("log session read failed", tag: "diagnostics", level: .warn, fields: [
+                "file": url.lastPathComponent,
+                "error": error.localizedDescription
+            ])
+            return nil
         }
-
-        return parts.joined()
     }
 }

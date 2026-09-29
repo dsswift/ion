@@ -46,8 +46,8 @@ struct OIDCTokenResult {
 /// Manages OIDC token lifecycle for autonomous relay authentication.
 ///
 /// Three-tier: in-memory cache -> silent refresh (Keychain refresh token) ->
-/// interactive PKCE (ASWebAuthenticationSession). Called by RelayClient when
-/// a bearer token is needed for the relay WebSocket connection.
+/// interactive PKCE (ASWebAuthenticationSession). Called when a bearer token
+/// is needed for a relay WebSocket connection.
 ///
 /// **One instance per pairing.** A phone paired with desktops in different
 /// identity tenants holds one manager per desktop, each with its own issuer,
@@ -100,7 +100,7 @@ actor OIDCTokenManager {
     private var discoveredToken: URL?
 
     /// Single-flight guard: the currently running token acquisition, if any.
-    /// RelayClient's reconnect/backoff loop calls accessToken() on every
+    /// A reconnect/backoff loop calls accessToken() on every
     /// attempt; without this, each retry that reaches tier 3 stacks another
     /// ASWebAuthenticationSession sheet on top of the user's in-progress
     /// sign-in (new prompts appearing mid-flow every backoff interval).
@@ -185,7 +185,7 @@ actor OIDCTokenManager {
             KeychainHelper.delete(keychainKey)
             throw OIDCTokenError.interactionRequired
         } catch {
-            // Discovery/network/5xx failures are transient. RelayClient keeps its
+            // Discovery/network/5xx failures are transient. The caller keeps its
             // backoff path and cached data stays visible rather than locking.
             throw error
         }
@@ -286,7 +286,7 @@ actor OIDCTokenManager {
         accountIdentity
     }
 
-    /// Invalidates the in-memory cached token. Called by RelayClient on 4401.
+    /// Invalidates the in-memory cached token. Called by a relay socket on 4401.
     /// The next accessToken() call will attempt silent refresh before falling
     /// back to interactive.
     func invalidateAccessToken() {
@@ -311,6 +311,8 @@ actor OIDCTokenManager {
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw OIDCTokenError.discoveryFailed("HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1)")
         }
+        // A malformed discovery document is thrown to the caller as OIDCTokenError.discoveryFailed.
+        // swiftlint:disable:next silent_try_optional
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let authStr = json["authorization_endpoint"] as? String,
               let tokenStr = json["token_endpoint"] as? String,
@@ -362,6 +364,8 @@ actor OIDCTokenManager {
     /// a successful token result; no detached task can lose the update during a
     /// manager replacement.
     func parseTokenResponse(data: Data) throws -> OIDCTokenResult {
+        // A malformed token response is thrown to the caller as OIDCTokenError.missingTokenInResponse.
+        // swiftlint:disable:next silent_try_optional
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let accessToken = json["access_token"] as? String,
               let refreshToken = json["refresh_token"] as? String else {

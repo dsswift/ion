@@ -12,7 +12,17 @@ final class AttachmentImageCache: @unchecked Sendable {
         memory.countLimit = 20
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         diskDir = caches.appendingPathComponent("ion-attachments", isDirectory: true)
-        try? FileManager.default.createDirectory(at: diskDir, withIntermediateDirectories: true)
+        createDiskDir()
+    }
+
+    private func createDiskDir() {
+        do {
+            try FileManager.default.createDirectory(at: diskDir, withIntermediateDirectories: true)
+        } catch {
+            DiagnosticLog.log("attachment cache directory create failed", tag: "cache.attachments", level: .error, fields: [
+                "error": error.localizedDescription
+            ])
+        }
     }
 
     private func diskURL(forKey key: String) -> URL {
@@ -21,7 +31,15 @@ final class AttachmentImageCache: @unchecked Sendable {
 
     func store(data: Data, forKey key: String) {
         memory.setObject(data as NSData, forKey: key as NSString)
-        try? data.write(to: diskURL(forKey: key), options: .atomic)
+        do {
+            try data.write(to: diskURL(forKey: key), options: .atomic)
+        } catch {
+            DiagnosticLog.log("attachment cache disk write failed", tag: "cache.attachments", level: .warn, fields: [
+                "key": key,
+                "bytes": String(data.count),
+                "error": error.localizedDescription
+            ])
+        }
     }
 
     func data(forKey key: String) -> Data? {
@@ -29,6 +47,8 @@ final class AttachmentImageCache: @unchecked Sendable {
             return cached as Data
         }
         let url = diskURL(forKey: key)
+        // A disk cache miss returns nil and the caller fetches from the desktop.
+        // swiftlint:disable:next silent_try_optional
         guard let diskData = try? Data(contentsOf: url) else { return nil }
         memory.setObject(diskData as NSData, forKey: key as NSString)
         return diskData
@@ -46,7 +66,15 @@ final class AttachmentImageCache: @unchecked Sendable {
 
     func clearAll() {
         memory.removeAllObjects()
-        try? FileManager.default.removeItem(at: diskDir)
-        try? FileManager.default.createDirectory(at: diskDir, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.removeItem(at: diskDir)
+        } catch CocoaError.fileNoSuchFile {
+            // The disk cache directory is already gone; recreate it below.
+        } catch {
+            DiagnosticLog.log("attachment cache clear failed", tag: "cache.attachments", level: .warn, fields: [
+                "error": error.localizedDescription
+            ])
+        }
+        createDiskDir()
     }
 }

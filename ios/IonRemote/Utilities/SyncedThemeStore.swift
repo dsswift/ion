@@ -168,6 +168,8 @@ final class SyncedThemeStore: @unchecked Sendable {
                 guard let theme = themes.first(where: { $0.id == themeId }),
                       let descriptor = theme.assets?.first(where: { $0.slot == slot }) else { continue }
                 let url = assetURL(desktopId: desktopId, themeId: themeId, descriptor: descriptor)
+                // An absent asset file means not yet fetched; the loop tries the next theme.
+                // swiftlint:disable:next silent_try_optional
                 if let data = try? Data(contentsOf: url) { return data }  // absent file = not yet fetched; expected
             }
             return nil
@@ -179,6 +181,8 @@ final class SyncedThemeStore: @unchecked Sendable {
     /// and stale-hash versions both prune here.
     private func pruneAssets(for desktopId: String, keeping themes: [SyncedThemePayload]) {
         let dir = assetsRoot.appendingPathComponent(desktopId, isDirectory: true)
+        // No asset directory yet means nothing to prune.
+        // swiftlint:disable:next silent_try_optional
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return }  // no dir yet = nothing to prune
         var live = Set<String>()
         for theme in themes {
