@@ -1,158 +1,94 @@
 # iOS (Swift, SwiftUI, MVVM)
 
-iPhone companion (Ion Remote) for Ion Desktop. LAN (Bonjour/mDNS) + relay (WebSocket).
-
-> **Plan resolution rule (applies to all fix plans for this area):** documenting a defect is not a resolution. See root [`AGENTS.md`](../AGENTS.md) § "Aspirational comments" → "The rule applies to plans, not just code".
-
-> **Role in the consumer landscape.** This application is **a reference implementation** for mobile companion clients of the Ion Engine. It is not the canonical mobile client — third-party developers may build their own. The engine's real consumers are external. When the engine ships a feature iOS does not consume, that is the expected default; we extend iOS coverage when there is a UX or parity reason, not to validate engine surface. See root [`AGENTS.md`](../AGENTS.md) § "Engine consumers".
-
-## View readiness principle
-
-iOS is a thin client. The desktop snapshot is the source of truth. Every view must render with correct, complete data the moment it appears. When a user enters a conversation, the attachment badge must show the correct count, the tab status must be accurate, and all metadata must be present. No deferred loading for data the snapshot already carries.
-
-If a badge shows "1" and then updates to "3" after a round-trip, that is a bug. The snapshot must carry all data needed to render every visible element. iOS never computes critical display values (counts, lists, status) from local partial data when the snapshot provides the authoritative answer.
-
-Content that is expensive to transfer (file bodies, image data, full briefing text) can be loaded lazily when the user taps to view it. But the metadata (names, types, counts, identifiers) must be present in the snapshot so lists render complete and counts are accurate from the first frame.
+iPhone companion (Ion Remote) for an Ion Studio Server. One wire: the Studio wire, reached over the local network (Bonjour) or through a relay.
 
 ## Commands
 
 ```bash
-make ios          # install via commands/install.command
-make ios-check    # build only (CI parity)
+make ios            # install via commands/install.command
+make ios-check      # device-target build (CI parity)
+make ios-pr-check   # device-target compile, required before pushing an iOS change
+make ios-test       # full local simulator suite (heavy; before push only)
 
-cd ios && xcodebuild -project IonRemote.xcodeproj -scheme IonRemote \
-  -destination 'generic/platform=iOS' build
-
-# Run unit tests on a simulator destination:
 cd ios && xcodebuild test -project IonRemote.xcodeproj -scheme IonRemote \
-  -destination 'platform=iOS Simulator,name=iPhone 17'
+  -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:IonRemoteTests/<Suite>
 ```
 
-Interactive: open `ios/IonRemote.xcodeproj` in Xcode. ⌘U runs tests.
+During development run the targeted `IonRemoteTests` suite for the changed area only.
+
+## View readiness principle
+
+iOS is a thin client. The server's snapshot is the source of truth. Every view renders complete on first frame: badge counts, tab status, metadata. A badge that shows "1" and then "3" is a bug. iOS never computes a count, list, or status from partial local data when the snapshot carries the answer. Heavy content (file bodies, images, full briefing text) may load on tap; its metadata may not.
 
 ## Layout
 
 ```
-ios/
-  IonRemote.xcodeproj    Xcode project (single source of truth for build config)
-  IonRemote/             App target source
-    App/                 Entry point, environment setup
-    Crypto/              Pairing crypto, ECDH, encryption
-    Models/              Plain data (NormalizedEvent, RemoteCommand)
-    Networking/          LAN + relay clients, transport mux, pairing
-    Utilities/           Cross-cutting helpers
-    ViewModels/          SessionViewModel, etc.
-    Views/               SwiftUI views
-  IonRemoteTests/        XCTest target. Mirrors source folder structure.
-  commands/              Local install scripts (install.command)
-  logs/                  Local-only logs from install commands. Gitignored.
-  README.md, CHANGELOG.md, VERSION
+ios/IonRemote/
+  App/          entry point, AppDelegate, environment
+  Crypto/       pairing crypto, ECDH, encryption (all crypto stays here)
+  Models/       plain Codable data (NormalizedEvent, RemoteCommand, RemoteTabState)
+  Networking/   StudioWire/ (transport, route, command mapping, pairing), OIDC, Bonjour, relay
+  Services/     speech and voice
+  Utilities/    cross-cutting helpers
+  ViewModels/   SessionViewModel and its extensions, ResourceStore
+  Views/        SwiftUI
+ios/IonRemoteTests/   XCTest; mirrors the source folders
 ```
 
-## Adding files to the project
-
-Source files added to `IonRemote/` or test files added to `IonRemoteTests/` must also be added to the Xcode project file (`IonRemote.xcodeproj/project.pbxproj`) — either via Xcode's "Add Files…" dialog or by manually editing the pbxproj. A file on disk that isn't referenced in the project is invisible to the build.
-
-When adding a test, ensure it's a member of the `IonRemoteTests` target, not `IonRemote`.
+A new source or test file must also be added to `IonRemote.xcodeproj/project.pbxproj`, or the build never sees it. Tests belong to the `IonRemoteTests` target.
 
 ## File-architecture rules
 
-- 600-line cap per `.swift`. CI hard-fails above. Override: `// @file-size-exception: <reason>` on line 1.
-- One type per file. Filename matches the type name.
-- Subfolder when a folder grows past ~5 files (Networking already splits this way).
-- Allowlisted (don't extend; extract): `IonRemote/ViewModels/SessionViewModel.swift`, `IonRemote/Networking/TransportManager.swift`, `IonRemote/Models/NormalizedEvent.swift`.
-
-## Tests (`IonRemoteTests/`)
-
-- XCTest. Mirror the source folder structure inside `IonRemoteTests/`.
-- Wire-format changes (`NormalizedEvent`, `RemoteCommand`, `RemoteTabState`) must update the corresponding test fixtures.
-- Crypto changes must keep `E2ECryptoTests.swift` passing — it round-trips real pairing handshakes.
-- Network changes must keep `RelayClientTests.swift` and `TransportManagerTests.swift` green.
+- Cap: 600 lines per `.swift` (root `AGENTS.md` § "File-size caps"). Split with `+Extension` files (`TabListView+Helpers.swift`).
+- One type per file; the filename matches the type.
+- `Models/NormalizedEvent.swift` carries a file-size exception. Don't extend it; extract.
 
 ## MVVM
 
-- Views own no business state. Observe a ViewModel via `@StateObject` / `@ObservedObject`.
-- ViewModels publish state. No view code in them.
-- Models are plain data. `Codable` for wire types. No business logic.
-- Networking: async/await throughout. Cancellation via `Task` cancellation, not custom flags.
-- Crypto isolated under `Crypto/`. Don't inline crypto operations elsewhere.
+- Views own no business state; they observe a ViewModel (`@StateObject` / `@ObservedObject`).
+- ViewModels publish state and hold no view code.
+- Models are plain `Codable` data with no business logic.
+- async/await throughout. Cancel with `Task` cancellation, not custom flags.
+- Views send through `SessionViewModel`, never a socket.
 
 ## Logging
 
-iOS logs write to `~/.ion/ios-diagnostic-logs.jsonl` on the paired desktop in the canonical Ion JSONL schema (`component=ios`). The file arrives via the `DiagnosticLog` transport — **always use `DiagnosticLog.log()`, never `print()`**. The iOS device runs without an attached Xcode console in normal use; `print()` output is invisible. `DiagnosticLog.log()` is the only path that reaches the desktop log file.
+Logs land in `<ION_DATA_DIR>/ios-diagnostic-logs.jsonl` on the paired server's host (`component=ios`), shipped by `DiagnosticLog`.
 
-`tag` = Swift subsystem label (e.g. `ipc`, `session`, `transport`). Structured context goes in the `fields` map; do not concatenate it into `msg`.
+- Always `DiagnosticLog.log()`. `print()` and `os.Logger` never reach the operator; a device in normal use has no attached console. `make check-logging` (OS-LOGGER) fails a new `Logger(subsystem:)` outside `DiagnosticLog.swift`.
+- `tag` is the subsystem (`ipc`, `session`, `transport`). Context goes in `fields`, never concatenated into `msg`.
+- SwiftLint (`ios/.swiftlint.yml`) errors on an empty `catch {}` and warns on a silent `try?`. A genuinely benign discard gets a comment saying why.
 
-**`os.Logger` (e.g. a `private let ionLog = Logger(subsystem:...)`) does NOT reach the operator.** It writes to Apple's unified logging (Console.app only), which is invisible on a device with no attached Xcode session. Every error/warn path that matters must go through `DiagnosticLog.log(..., level: .warn/.error)`. A `grep`-based CI check forbids new `os.Logger`/`Logger(subsystem:` usage outside a narrow allowlist; SwiftLint (`ios/.swiftlint.yml`) flags empty `catch {}` (`empty_catch_block`, error) and discourages silent `try?` (`silent_try_optional`, warning).
+## Pairing and transport
 
-**No silent failures** (see root [`AGENTS.md`](../AGENTS.md) § "Logging policy → No silent failures"): an empty `catch {}` or a `try?` that discards an error on a path where the failure matters is a defect. Route the error through `DiagnosticLog.log`, or — if the failure is genuinely benign (cancellation, an expected-absent optional) — say so in a comment inside the `catch`. Silence with no reason is never acceptable.
+`StudioTransport` carries `RemoteEvent`s in and `RemoteCommand`s out over the route `StudioRoute` picks (direct TCP on the LAN, or relay). `StudioTransportCommandMapping` turns each `RemoteCommand` into the `studio_action` or frame the server answers. Pairing is a one-time code against the server's `POST /auth/pair`; the credential lives in `StudioServerKeychainStore`.
 
-See root [`AGENTS.md`](../AGENTS.md) § "Logging policy" for file locations, `jq` recipes, and LogQL cheat-sheet.
+`RemoteCommand` is a plain `Sendable` value; it does not encode itself. `RemoteCommand.TypeKey` is the shared name of each command. `StudioCommandMapTests` checks `TypeKey.allCases` against `packages/shared/src/studio-wire/phone-command-map.json`.
 
-## Pairing/transport
+Tests that guard this: `E2ECryptoTests.swift` (real pairing handshakes) and `IonRemoteTests/StudioWire/` (`StudioTransportTests`, `StudioConnectionTests`, `StudioRouteTests`, `StudioCommandMapTests`).
 
-LAN and relay share `RemoteCommand` and `RemoteTabState`. Pairing is ECDH; shared secret derives an AES key. Transport switching (LAN ↔ relay) via the transport manager. Don't bypass it from views.
+## Wire parity and naming (ADR 008)
 
-## Wire-protocol parity and naming (ADR 008)
+- `NormalizedEvent`, `RemoteCommand`, and `RemoteTabState` mirror server and engine types. Sources of truth: `engine/internal/types/normalized_event.go` and `packages/shared/src/`.
+- When iOS needs an engine event it doesn't decode, add it to `NormalizedEvent.swift` and handle it in a ViewModel extension. Never relay a rendered artifact instead (e.g. a divider sent as `engine_harness_message`).
+- `engine_` TypeKeys decode engine-originated events. `desktop_` TypeKeys name `RemoteCommand` / `RemoteEvent` cases; `phone-command-map.json` is keyed by them. Never mix or omit the prefix. A new `RemoteCommand` without its `desktop_*` TypeKey and map entry fails `StudioCommandMapTests`.
+- Studio wire renames are lockstep: `packages/shared/src/studio-wire/` and the Swift side change together (root `AGENTS.md` § "Contract stability").
+- Wire-type changes update their test fixtures.
 
-iOS models (`NormalizedEvent`, `RemoteCommand`, `RemoteTabState`) mirror desktop/engine wire types. When the engine adds an event variant or field, the iOS Swift type must add it too — otherwise relay/LAN messages decode incorrectly. Source of truth: `engine/internal/types/normalized_event.go` and `desktop/src/shared/types.ts`.
+## Vocabulary
 
-**Do not defer event-surface expansion.** When a desktop feature requires iOS to react to an engine event that iOS doesn't yet decode, the proper fix is to add the event to `NormalizedEvent.swift` and handle it in the appropriate ViewModel extension. Do not create workarounds that relay rendered artifacts (e.g. sending a divider as an `engine_harness_message` instead of teaching iOS to decode the real event). Comments like "iOS does not yet act on this" describe known gaps — when a consumer arrives, close the gap.
+A concept on both clients uses the same canonical term from `docs/vocabulary/terms.json` in view names, comments, logs, and plans. A Swift suffix (`StatusDrawerView`) is idiom, not a new term. Add an iOS qualifier only when iOS genuinely differs, and record it in the registry. When the clients place a concept differently, mark the entry `review-needed` and say how (e.g. iOS `ConversationStatusBar` vs the Desktop Input Bar). Naming never renames a wire string, TypeKey, or `CodingKeys` key.
 
-### Wire naming rule
+## Contract sync
 
-Two distinct prefixes exist on the iOS side:
-
-- **`engine_`** — events from the engine NDJSON socket. TypeKey raw values in `NormalizedEvent.swift` that decode engine-originated events use this prefix.
-- **`desktop_`** — events on the desktop↔iOS wire (`RemoteCommand`, `RemoteEvent`). The desktop owns this wire; iOS mirrors it. TypeKey raw values for `RemoteCommand`/`RemoteEvent` decode use the `desktop_` prefix.
-
-Do not introduce TypeKey raw values that mix these prefixes or omit them entirely. When the desktop renames a `RemoteEvent` member from an old prefix to `desktop_*`, update the corresponding Swift TypeKey in the same PR (lockstep rule).
-
-### Lockstep model
-
-The desktop↔iOS wire operates under a **lockstep model**: every wire rename ships to all clients in one PR. There is no window where the desktop has the new string and iOS still expects the old one. When reviewing or implementing a desktop↔iOS rename, do not treat it as a published-contract break — it is a parity obligation. The required gate is: `protocol.ts` and the Swift TypeKey raw values are updated together.
-
-See root `AGENTS.md` § "Contract stability" and [docs/architecture/adr/008-wire-event-naming-and-ownership.md](../docs/architecture/adr/008-wire-event-naming-and-ownership.md).
-
-## Vocabulary — use the shared client term, qualify only when needed
-
-iOS is one client implementation, and the Desktop is the other. When a concept exists on both, both use the **same** canonical term from `docs/vocabulary/terms.json` (the generated glossary is [`docs/vocabulary/index.md`](../docs/vocabulary/index.md)). A shared concept never gets a second iOS-flavored name.
-
-- **Use the shared canonical term** in every view name, comment, doc, log message, and plan: Conversation View, Input Bar, Tab Strip, Status Drawer, New Conversation Picker, Inbox, Worktree, Integration bench. A Swift type name may carry the platform's own suffix convention (`ConversationStatusBar`, `StatusDrawerView`, `WorktreeRowView`) — that is a language idiom, not a different term.
-- **Add an iOS qualifier only when the two clients genuinely differ.** If the iOS rendering is a distinct thing with no Desktop counterpart, name it with an explicit iOS qualifier and record it in the registry with an iOS implementation. Never invent a synonym for a concept the Desktop already names.
-- **A new shared concept gets a registry entry in the same change**, with an implementation citing the real Swift symbol and file. Then run `make generate-vocabulary` and `make check-vocabulary`.
-- **Record an honest mismatch instead of hiding it.** When iOS has a named view and the Desktop places the same controls elsewhere, mark the entry `review-needed` and state the difference in its notes. Conversation Status Bar is the current example: iOS has `ConversationStatusBar`, while the Desktop places those controls in the Input Bar.
-
-Naming is prose only. It never renames a wire string, a TypeKey raw value, or a `CodingKeys` key — those follow the lockstep and contract-sync rules above.
-
-## Contract sync (cross-language types)
-
-Shared types (`StatusFields`, `MessageEndUsage`, etc.) are validated against the Go-generated manifest (`engine/internal/types/testdata/contracts.json`) by `IonRemoteTests/ContractSyncTests.swift`.
-
-**When you add/change a field in a shared Swift type (`StatusFields`, `EngineMessageEndUsage`, etc.):**
+`IonRemoteTests/ContractSyncTests.swift` checks shared Swift types against `engine/internal/types/testdata/contracts.json` and decodes sample JSON per engine event.
 
 1. Update the Swift struct in `Models/`.
-2. Update the field coverage set in `ContractSyncTests.swift` (the `swiftHandled` set for that type).
-3. Run the test target — it will fail if Go has fields you haven't accounted for.
+2. Update that type's `swiftHandled` set in `ContractSyncTests.swift`.
+3. Run the test; it fails if Go has a field Swift does not account for.
 
-The test also decodes representative JSON for each engine event type, catching mismatches between Go's JSON keys and Swift's `CodingKeys`. Note: `StatusFields.contextPercent` is `Double` in Swift vs `int` in Go — this is intentional (Swift `Double` decodes JSON integers).
+`StatusFields.contextPercent` is `Double` in Swift and `int` in Go on purpose.
 
-## Notifications and resources
+## Resources
 
-The iOS app is a thin client for the resource subsystem. It subscribes to resource kinds and renders them in NotificationsView (global) or the attachments panel (session-scoped).
-
-- ResourceStore accumulates snapshot/delta events from the engine WebSocket
-- NotificationsView shows workspace-level briefings with read/unread state
-- The relay includes `ionKind` and `ionResourceId` in the APNs payload. `AppDelegate.swift` currently deep-links to a tab via `tabId` only; resource-level deep-linking using `ionResourceId` is not yet implemented.
-- When the user reads a resource, iOS sends `mark_read` through the transport so the desktop reflects the change
-
-## Done criteria
-
-`make ios-check` is a device-target build. During development, run targeted `IonRemoteTests` suites for the changed area. Before a branch with iOS or iOS-gate changes is pushed, `/create-pr` runs `make ios-pr-check` and the full local `make ios-test` simulator suite. CI confirms the device build on every PR; hosted full-suite coverage runs nightly/manual because cold simulator startup is expensive. See root [`AGENTS.md`](../AGENTS.md) § "Heavy gates — never run during development".
-
-1. Wire-type or crypto or networking changes: run the relevant `IonRemoteTests/` test (scoped — fine during development).
-2. `make check-file-sizes` passes.
-3. UI changes: smoke-tested on device or simulator. Report what was tested.
-4. `make ios-pr-check` — required before pushing an iOS or iOS-gate change; device-target compilation.
-5. `make ios-test` — full local simulator suite, required before that push; hosted CI repeats it nightly/manual.
-6. Don't `git push`.
+`ResourceStore` applies snapshots and deltas (`applySnapshot`, `applyDelta`) for NotificationsView (workspace-scoped) and the attachments panel (session-scoped). Reading an item sends `mark_read` so every client converges. Subsystem rules: [`docs/architecture/resource-subsystem.md`](../docs/architecture/resource-subsystem.md).
