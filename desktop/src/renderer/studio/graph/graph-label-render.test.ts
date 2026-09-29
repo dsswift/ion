@@ -9,7 +9,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { createNodeLabelDrawer, createNodeHoverDrawer, truncateToWidth, labelPlacement, MAX_LABEL_WIDTH_PX, LABEL_GAP_PX } from './graph-label-render'
-import { darkColors } from '../../theme/palette-dark'
+import { darkColors } from '@ion/server/renderer/theme/palette-dark'
 import type { Settings } from 'sigma/settings'
 
 /** A canvas stub whose text metrics are a fixed width per character. */

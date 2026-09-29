@@ -2,11 +2,11 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Folder, FolderOpen, CaretUp, House, Eye, EyeSlash, X } from '@phosphor-icons/react'
-import { useRemoteFsStore } from '../stores/remote-fs-store'
+import { useRemoteFsStore } from '@ion/server/store/remote-fs-store'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
-import type { EngineDirListing } from '../../shared/types'
+import type { EngineDirListing } from '@ion/shared/types'
 import { DEFAULT_MONO_FONT } from '../typography'
 
 /**

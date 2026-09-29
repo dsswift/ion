@@ -24,8 +24,8 @@
  * disagreeing about when Git is available.
  */
 import { useShallow } from 'zustand/react/shallow'
-import { useSessionStore } from '../stores/sessionStore'
-import { useRepoState } from '../stores/git'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { useRepoState } from '@ion/server/store/git'
 import { useGitRepo } from './useGitRepo'
 
 export interface ActiveGitRepo {

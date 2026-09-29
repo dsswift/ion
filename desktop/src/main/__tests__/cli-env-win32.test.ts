@@ -26,14 +26,14 @@ vi.mock('child_process', () => ({
   execFileSync: (...args: unknown[]) => mocks.execFileSync(...args),
 }))
 
-vi.mock('../logger', () => ({
+vi.mock('@ion/server/logger', () => ({
   log: (_tag: string, msg: string, fields?: Record<string, unknown>) => { mocks.logLines.push({ msg, fields }) },
   warn: (_tag: string, msg: string, fields?: Record<string, unknown>) => { mocks.logLines.push({ msg, fields }) },
   debug: vi.fn(),
   error: vi.fn(),
 }))
 
-import { getCliPath, resetCliPathCacheForTests } from '../cli-env'
+import { getCliPath, resetCliPathCacheForTests } from '@ion/server/cli-env'
 
 const originalPlatform = process.platform
 

@@ -7,12 +7,22 @@
  * the Studio window; the main renderer simply never calls these.
  */
 import { ipcRenderer, webUtils } from 'electron'
-import { IPC } from '../shared/types'
-import type { BrowserSessionMode } from '../shared/studio-surface-types'
-import type { StudioBrowserCommandEnvelope, StudioBrowserCommandResult } from '../shared/studio-browser-types'
-import type { StudioGraphCommandEnvelope, StudioGraphCommandResult } from '../shared/studio-graph-types'
-import type { StudioConversationTerminalPublish, StudioConversationTerminalSnapshot } from '../shared/studio-conversation-terminal-sync'
-import type { StudioGetStateResult, StudioHistoryReplace, StudioRawPackBundle, StudioSettings, StudioTabListEntry, StudioTabState, StudioThemeListEntry, StudioUserMessageEcho, StudioWorktreeSnapshot } from '../shared/types-studio'
+import type { NearbyStudioServer } from '@ion/shared/types-nearby'
+import { IPC } from '@ion/shared/types'
+import type { StudioFrame } from '@ion/shared/studio-wire/types'
+import type { ConnectionPhaseSnapshot } from '../shared/types-connections'
+import type { BrowserSessionMode } from '@ion/shared/studio-surface-types'
+import type { StudioBrowserCommandEnvelope, StudioBrowserCommandResult } from '@ion/shared/studio-browser-types'
+import type { SshAddEnvironmentProgress, SshAddEnvironmentResult } from '@ion/shared/types-ssh-environment'
+import type { EnvironmentTarget } from '@ion/shared/types-environments'
+import type { ExportFileOptions, ExportFileResult, ImportFileResult, TransferLanding, TransferProgress } from '@ion/shared/types-transfer'
+
+/** Subscribers to host frames; see `onHostFrame` for why one IPC listener serves them all. */
+const hostFrameSubscribers = new Set<(environmentId: string, frame: StudioFrame) => void>()
+function hostFrameFanOut(_e: Electron.IpcRendererEvent, payload: { environmentId: string; frame: StudioFrame }): void {
+  // Copy first: a subscriber may unsubscribe (or subscribe) while we iterate.
+  for (const cb of [...hostFrameSubscribers]) cb(payload.environmentId, payload.frame)
+}
 
 export interface StudioApi {
   /** Current runtime platform, used to reserve native title-bar control space. */
@@ -21,17 +31,6 @@ export interface StudioApi {
   studioSetTitleBarOverlay(color: string, symbolColor: string): Promise<boolean>
   /** Native full-screen state controls renderer title-bar insets. */
   onStudioWindowChrome(callback: (state: { fullScreen: boolean }) => void): () => void
-  /** Open (or focus) the Studio window. Fire-and-forget. */
-  studioOpen(): void
-  /**
-   * Pull the active tab and its cached agent/dispatch state. Pass a tabId to
-   * target a specific tab; omit for the current active tab.
-   */
-  studioGetState(tabId?: string): Promise<StudioGetStateResult | null>
-  /** Read the Studio window-scoped settings (theme, pin, zoom, seeds). */
-  studioGetSettings(): Promise<StudioSettings>
-  /** Write one Studio-scoped setting. Key must be a Studio window key; returns false on rejection. */
-  studioSetSetting(key: string, value: unknown): Promise<boolean>
   /** D6: lift the offline block for one browser preview partition. */
   studioPreviewAllowNetwork(partition: string): Promise<boolean>
   /**
@@ -75,15 +74,6 @@ export interface StudioApi {
   /** Answer one browser command. */
   studioBrowserCommandResult(result: StudioBrowserCommandResult): void
   /**
-   * Receive correlated graph tool commands from main. Same contract as the
-   * browser commands: the handler MUST answer exactly once through
-   * `studioGraphCommandResult` with the same callId, or main resolves the
-   * command as a timeout refusal.
-   */
-  onStudioGraphCommand(callback: (envelope: StudioGraphCommandEnvelope) => void): () => void
-  /** Answer one graph tool command. */
-  studioGraphCommandResult(result: StudioGraphCommandResult): void
-  /**
    * A link the operator cmd-clicked inside a Surface browser guest. Chromium
    * reports it as a new-tab disposition, which the webview policy denies as a
    * popup, so main forwards it here to become a real Surface tab.
@@ -93,89 +83,52 @@ export interface StudioApi {
   studioBrowserSetSessionMode(instanceId: string, mode: BrowserSessionMode): Promise<boolean>
   /** Enable or restore the network shield for one isolated browser tab. */
   studioBrowserSetNetworkShield(instanceId: string, enabled: boolean): Promise<boolean>
-  /**
-   * Active-tab pushes from main: fires on every tab switch in the main
-   * renderer (and once on Studio open) with the tab's cached state snapshot and
-   * the tab's engineProfileId (extension seed scope; null = plain tab).
-   */
-  onStudioActiveTab(callback: (tabId: string, state: StudioTabState, profileId: string | null) => void): () => void
-  /** Conversation list for the Studio window toolbar picker. */
-  studioListTabs(): Promise<StudioTabListEntry[]>
-  /** Switch the desktop's active tab (and thereby the Studio window target). */
-  studioFocusTab(tabId: string): void
-  /** Open an agent's dispatch detail in the desktop (switches tab first). */
-  studioFocusAgent(tabId: string, agentName: string): void
-  /** Main-renderer side: agent selections arriving from the Studio window. */
-  onStudioFocusAgent(callback: (tabId: string, agentName: string) => void): () => void
-  /** Main-renderer side: Studio window opened/closed (launcher-button indicator). */
-  onStudioWindowState(callback: (open: boolean) => void): () => void
-  /**
-   * Mirror-store forwarding (Studio window): route an owner-durable store action
-   * to the overlay renderer for execution AND return what it produced. Action
-   * must be in FORWARDED_ACTIONS; args must be structured-cloneable.
-   *
-   * The envelope's `ok` describes the ROUND TRIP, not the action's own success:
-   * `ok: true` carries the owner's return value in `value` (which may itself be
-   * a `{ ok: false }` domain result), and `ok: false` means the call never
-   * concluded — rejected, no owner window, or no reply before the deadline.
-   * It never rejects.
-   */
-  studioCallAction(action: string, args: unknown[]): Promise<{ ok: boolean; value?: unknown; error?: string }>
-  /**
-   * Owner-renderer side: forwarded actions arriving from the Studio mirror.
-   *
-   * `callId` is present only for `studioCallAction` round trips; when set, the
-   * owner must reply exactly once via `studioActionResult(callId, value)`.
-   */
-  onStudioExecAction(callback: (action: string, args: unknown[], callId?: string) => void): () => void
-  /** Owner-renderer side: return a called action's value to the waiting mirror. */
-  studioActionResult(callId: string, value: unknown): void
-  /** Owner-renderer side: publish the persisted tabs snapshot for the mirror. */
-  studioPublishTabsSync(snapshot: unknown): void
-  /** Studio side: boot pull of the last published tabs snapshot (null = none yet). */
-  studioGetTabsSync(): Promise<unknown | null>
-  /** Studio side: live tab-metadata snapshots pushed after every owner persist. */
-  onStudioTabsSync(callback: (snapshot: unknown) => void): () => void
-  /** Owner-renderer side: publish the complete Conversation Terminal Panel snapshot. */
-  studioPublishConversationTerminals(snapshot: StudioConversationTerminalPublish): void
-  /** Studio side: boot pull of the latest Conversation Terminal Panel snapshot. */
-  studioGetConversationTerminals(): Promise<StudioConversationTerminalSnapshot | null>
-  /** Studio side: live complete Conversation Terminal Panel snapshots. */
-  onStudioConversationTerminals(callback: (snapshot: StudioConversationTerminalSnapshot) => void): () => void
-  /** Owner-renderer side: publish a complete worktree and bench snapshot. */
-  studioPublishWorktreeSync(snapshot: Omit<StudioWorktreeSnapshot, 'revision'>): void
-  /** Studio side: boot pull of the last owner-published worktree snapshot. */
-  studioGetWorktreeSync(): Promise<StudioWorktreeSnapshot | null>
-  /** Studio side: live worktree and bench snapshots from the owner renderer. */
-  onStudioWorktreeSync(callback: (snapshot: StudioWorktreeSnapshot) => void): () => void
-  /** Studio side: a permission was answered on some surface — clear it locally. */
-  onStudioPermissionResolved(callback: (tabId: string, questionId: string) => void): () => void
   /** Resolve a dropped File's filesystem path (sandboxed renderers can't read File.path). */
   getPathForFile(file: File): string
-  /** Surface the overlay glass from the Studio window (palette cross-link). */
-  studioShowOverlay(): void
   /** Save a composed office-snapshot PNG (save dialog). True on success. */
   studioExportImage(png: ArrayBuffer): Promise<boolean>
   /** Save a recorded office clip (webm, save dialog). True on success. */
   studioExportVideo(webm: ArrayBuffer): Promise<boolean>
-  /** Studio side: user prompt submitted on some surface — insert into the mirror transcript. */
-  onStudioUserMessageEcho(callback: (tabId: string, echo: StudioUserMessageEcho) => void): () => void
-  /** Studio side: a successful engine rewind committed a new message list for
-   *  one instance — replace the pane instance's messages wholesale. */
-  onStudioHistoryReplace(callback: (payload: StudioHistoryReplace) => void): () => void
-  /** Live per-tab summaries (campus view). */
-  studioGetAllStatus(): Promise<Array<{ tabId: string; state: string; working: number; error: number; total: number; pendingPermissions: number }>>
-  /**
-   * Main-renderer side: picker selections arriving from the Studio window
-   * (route to the tab slice's selectTab).
-   */
-  onStudioFocusTab(callback: (tabId: string) => void): () => void
-  /** List discovered theme packs (id, name, source root). */
-  studioListThemes(): Promise<StudioThemeListEntry[]>
-  /** Read every JSON manifest in a pack, raw (renderer validates). Null for unknown packs. */
-  studioReadThemeBundle(packId: string): Promise<StudioRawPackBundle | null>
-  /** Read raw asset bytes (PNG) inside a pack. Returns null on invalid path. */
-  studioReadThemeAsset(packId: string, relPath: string): Promise<ArrayBuffer | null>
+
+  // ─── StudioHost bridge (spec 12) ───────────────────────────────────────
+  /** Relays one Studio wire frame to an environment's connection, unchanged. */
+  hostSendFrame(environmentId: string, frame: StudioFrame): void
+  /** Every frame the broker relayed from any environment. */
+  onHostFrame(callback: (environmentId: string, frame: StudioFrame) => void): () => void
+  /** The current phase of every known environment connection. */
+  hostGetConnections(): Promise<ConnectionPhaseSnapshot[]>
+  /** Live connection phase snapshots (pushed on every transition). */
+  onHostConnections(callback: (snapshot: ConnectionPhaseSnapshot[]) => void): () => void
+  /** Reads `desktop.json` (device-local settings; never over the Studio wire). */
+  hostGetDeviceSettings(): Promise<Record<string, unknown>>
+  /** Writes one device-local setting. */
+  hostSetDeviceSetting(key: string, value: unknown): Promise<void>
+  /** Native "choose a file" dialog. Null when cancelled. */
+  hostPickFile(options?: { multiple?: boolean; filters?: Array<{ name: string; extensions: string[] }> }): Promise<string[] | null>
+  /** Asks main to connect one non-local environment (spec 13): main resolves the transport and stored credential. */
+  hostConnectEnvironment(environmentId: string, label: string, target: EnvironmentTarget): Promise<{ ok: boolean; error?: string }>
+  /** Completes a pasted pairing link against its server (spec 13): main runs the key exchange and stores the secret; the renderer receives only the catalog target. */
+  hostPairEnvironment(link: string, label?: string): Promise<{ ok: true; target: EnvironmentTarget } | { ok: false; error: string }>
+  /** The SSH door (spec 13): main installs the Studio server on `destination` over ssh, tunnels to it, pairs, and returns the `via: 'ssh'` target. */
+  hostSshAddEnvironment(destination: string, label?: string): Promise<SshAddEnvironmentResult>
+  /** One bounded look at the LAN for Studio Servers that made themselves discoverable. */
+  hostBrowseNearby(): Promise<NearbyStudioServer[]>
+  /** Stage transitions and installer lines while `hostSshAddEnvironment` runs. */
+  onHostSshProgress(callback: (progress: SshAddEnvironmentProgress) => void): () => void
+  /** Asks main to disconnect one environment's connection (closedByUser — no auto-retry). */
+  hostDisconnectEnvironment(environmentId: string): void
+  /** Asks main to re-arm the backoff ladder and reconnect immediately. */
+  hostRestartEnvironment(environmentId: string): void
+  /** Reads back one environment's cached last-welcome frame (spec 13 env-cache), or null when absent. */
+  hostGetEnvCache(environmentId: string): Promise<{ welcome: StudioFrame; cachedAt: number } | null>
+  /** Requests `transfer.export` on `environmentId` for `tabId` and receives the archive into a local temp file (spec 15). */
+  hostTransferExportToFile(environmentId: string, tabId: string, targetEnvironmentId: string, options?: ExportFileOptions): Promise<ExportFileResult>
+  /** Streams a local file to `environmentId`'s `transfer.import` and deletes it afterward, success or failure (spec 15). */
+  hostTransferImportFromFile(environmentId: string, tabId: string, filePath: string, landing?: TransferLanding | null): Promise<ImportFileResult>
+  /** Byte-level progress for every in-flight export/import, keyed by the source tab id (spec 15). */
+  onHostTransferProgress(callback: (progress: TransferProgress) => void): () => void
+  /** Abandons the in-flight export/import for `tabId`. Resolves to whether there was one. */
+  hostTransferCancel(tabId: string): Promise<boolean>
 }
 
 export const studioApi: StudioApi = {
@@ -188,10 +141,6 @@ export const studioApi: StudioApi = {
     ipcRenderer.on(IPC.STUDIO_WINDOW_CHROME, handler)
     return () => ipcRenderer.removeListener(IPC.STUDIO_WINDOW_CHROME, handler)
   },
-  studioOpen: () => ipcRenderer.send(IPC.STUDIO_OPEN),
-  studioGetState: (tabId) => ipcRenderer.invoke(IPC.STUDIO_GET_STATE, tabId),
-  studioGetSettings: () => ipcRenderer.invoke(IPC.STUDIO_GET_SETTINGS),
-  studioSetSetting: (key, value) => ipcRenderer.invoke(IPC.STUDIO_SET_SETTING, key, value),
   studioPreviewAllowNetwork: (partition) => ipcRenderer.invoke(IPC.STUDIO_PREVIEW_ALLOW_NETWORK, partition),
   studioBrowserViewEnsure: (conversationId, instanceId, url, partition) =>
     ipcRenderer.invoke(IPC.STUDIO_BROWSER_VIEW_ENSURE, conversationId, instanceId, url, partition),
@@ -215,12 +164,6 @@ export const studioApi: StudioApi = {
     return () => ipcRenderer.removeListener(IPC.STUDIO_BROWSER_COMMAND, handler)
   },
   studioBrowserCommandResult: (result) => ipcRenderer.send(IPC.STUDIO_BROWSER_COMMAND_RESULT, result),
-  onStudioGraphCommand: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, envelope: StudioGraphCommandEnvelope) => callback(envelope)
-    ipcRenderer.on(IPC.STUDIO_GRAPH_COMMAND, handler)
-    return () => ipcRenderer.removeListener(IPC.STUDIO_GRAPH_COMMAND, handler)
-  },
-  studioGraphCommandResult: (result) => ipcRenderer.send(IPC.STUDIO_GRAPH_COMMAND_RESULT, result),
   onStudioBrowserOpenUrl: (callback) => {
     const handler = (_e: Electron.IpcRendererEvent, url: string) => callback(url)
     ipcRenderer.on(IPC.STUDIO_BROWSER_OPEN_URL, handler)
@@ -228,67 +171,8 @@ export const studioApi: StudioApi = {
   },
   studioBrowserSetSessionMode: (instanceId, mode) => ipcRenderer.invoke(IPC.STUDIO_BROWSER_SET_SESSION_MODE, instanceId, mode),
   studioBrowserSetNetworkShield: (instanceId, enabled) => ipcRenderer.invoke(IPC.STUDIO_BROWSER_SET_NETWORK_SHIELD, instanceId, enabled),
-  onStudioActiveTab: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, tabId: string, state: StudioTabState, profileId: string | null) =>
-      callback(tabId, state, profileId ?? null)
-    ipcRenderer.on(IPC.STUDIO_ACTIVE_TAB, handler)
-    return () => ipcRenderer.removeListener(IPC.STUDIO_ACTIVE_TAB, handler)
-  },
-  studioListTabs: () => ipcRenderer.invoke(IPC.STUDIO_LIST_TABS),
-  studioFocusTab: (tabId) => ipcRenderer.send(IPC.STUDIO_FOCUS_TAB, tabId),
-  studioFocusAgent: (tabId, agentName) => ipcRenderer.send(IPC.STUDIO_FOCUS_AGENT, tabId, agentName),
-  onStudioFocusAgent: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, tabId: string, agentName: string) => callback(tabId, agentName)
-    ipcRenderer.on(IPC.STUDIO_FOCUS_AGENT, handler)
-    return () => ipcRenderer.removeListener(IPC.STUDIO_FOCUS_AGENT, handler)
-  },
-  onStudioFocusTab: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, tabId: string) => callback(tabId)
-    ipcRenderer.on(IPC.STUDIO_FOCUS_TAB, handler)
-    return () => ipcRenderer.removeListener(IPC.STUDIO_FOCUS_TAB, handler)
-  },
-  onStudioWindowState: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, open: boolean) => callback(open === true)
-    ipcRenderer.on(IPC.STUDIO_WINDOW_STATE, handler)
-    return () => ipcRenderer.removeListener(IPC.STUDIO_WINDOW_STATE, handler)
-  },
-  studioCallAction: (action, args) => ipcRenderer.invoke(IPC.STUDIO_CALL_ACTION, action, args),
-  studioShowOverlay: () => ipcRenderer.send(IPC.STUDIO_SHOW_OVERLAY),
   studioExportImage: (png) => ipcRenderer.invoke(IPC.STUDIO_EXPORT_IMAGE, png),
-  studioGetAllStatus: () => ipcRenderer.invoke(IPC.STUDIO_GET_ALL_STATUS),
   studioExportVideo: (webm) => ipcRenderer.invoke(IPC.STUDIO_EXPORT_VIDEO, webm),
-  onStudioUserMessageEcho: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, tabId: string, echo: StudioUserMessageEcho) => callback(tabId, echo)
-    ipcRenderer.on(IPC.STUDIO_USER_MESSAGE_ECHO, handler)
-    return () => ipcRenderer.removeListener(IPC.STUDIO_USER_MESSAGE_ECHO, handler)
-  },
-  onStudioHistoryReplace: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, payload: StudioHistoryReplace) => callback(payload)
-    ipcRenderer.on(IPC.STUDIO_HISTORY_REPLACE, handler)
-    return () => ipcRenderer.removeListener(IPC.STUDIO_HISTORY_REPLACE, handler)
-  },
-  studioPublishTabsSync: (snapshot) => ipcRenderer.send(IPC.STUDIO_PUBLISH_TABS_SYNC, snapshot),
-  studioGetTabsSync: () => ipcRenderer.invoke(IPC.STUDIO_GET_TABS_SYNC),
-  onStudioTabsSync: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, snapshot: unknown) => callback(snapshot)
-    ipcRenderer.on(IPC.STUDIO_TABS_SYNC, handler)
-    return () => ipcRenderer.removeListener(IPC.STUDIO_TABS_SYNC, handler)
-  },
-  studioPublishConversationTerminals: (snapshot) =>
-    ipcRenderer.send(IPC.STUDIO_PUBLISH_CONVERSATION_TERMINALS, snapshot),
-  studioGetConversationTerminals: () => ipcRenderer.invoke(IPC.STUDIO_GET_CONVERSATION_TERMINALS),
-  onStudioConversationTerminals: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, snapshot: StudioConversationTerminalSnapshot) => callback(snapshot)
-    ipcRenderer.on(IPC.STUDIO_CONVERSATION_TERMINALS, handler)
-    return () => ipcRenderer.removeListener(IPC.STUDIO_CONVERSATION_TERMINALS, handler)
-  },
-  studioPublishWorktreeSync: (snapshot) => ipcRenderer.send(IPC.STUDIO_PUBLISH_WORKTREE_SYNC, snapshot),
-  studioGetWorktreeSync: () => ipcRenderer.invoke(IPC.STUDIO_GET_WORKTREE_SYNC),
-  onStudioWorktreeSync: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, snapshot: StudioWorktreeSnapshot) => callback(snapshot)
-    ipcRenderer.on(IPC.STUDIO_WORKTREE_SYNC, handler)
-    return () => ipcRenderer.removeListener(IPC.STUDIO_WORKTREE_SYNC, handler)
-  },
   getPathForFile: (file) => {
     try {
       return webUtils.getPathForFile(file)
@@ -296,20 +180,50 @@ export const studioApi: StudioApi = {
       return ''
     }
   },
-  onStudioPermissionResolved: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, tabId: string, questionId: string) => callback(tabId, questionId)
-    ipcRenderer.on(IPC.STUDIO_PERMISSION_RESOLVED, handler)
-    return () => ipcRenderer.removeListener(IPC.STUDIO_PERMISSION_RESOLVED, handler)
+  hostSendFrame: (environmentId, frame) => ipcRenderer.send(IPC.STUDIO_SEND, { environmentId, frame }),
+  onHostFrame: (callback) => {
+    // One ipcRenderer listener fans out to every subscriber. Each bridged
+    // shell call subscribes for the life of its own request, so a dozen
+    // concurrent calls (the Studio boot burst) used to register a dozen
+    // ipcRenderer listeners and trip MaxListenersExceededWarning on every
+    // launch; the warning read like a leak and hid real ones.
+    hostFrameSubscribers.add(callback)
+    if (hostFrameSubscribers.size === 1) ipcRenderer.on(IPC.STUDIO_FRAME, hostFrameFanOut)
+    return () => {
+      hostFrameSubscribers.delete(callback)
+      if (hostFrameSubscribers.size === 0) ipcRenderer.removeListener(IPC.STUDIO_FRAME, hostFrameFanOut)
+    }
   },
-  onStudioExecAction: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, action: string, args: unknown[], callId?: string) =>
-      callback(action, Array.isArray(args) ? args : [], callId)
-    ipcRenderer.on(IPC.STUDIO_EXEC_ACTION, handler)
-    return () => ipcRenderer.removeListener(IPC.STUDIO_EXEC_ACTION, handler)
+  hostGetConnections: () => ipcRenderer.invoke(IPC.STUDIO_CONNECTIONS),
+  onHostConnections: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, snapshot: ConnectionPhaseSnapshot[]) => callback(snapshot)
+    ipcRenderer.on(IPC.STUDIO_CONNECTIONS, handler)
+    return () => ipcRenderer.removeListener(IPC.STUDIO_CONNECTIONS, handler)
   },
-  studioActionResult: (callId, value) => ipcRenderer.send(IPC.STUDIO_ACTION_RESULT, callId, value),
-  studioListThemes: () => ipcRenderer.invoke(IPC.STUDIO_LIST_THEMES),
-  studioReadThemeBundle: (packId) => ipcRenderer.invoke(IPC.STUDIO_READ_THEME_BUNDLE, packId),
-  studioReadThemeAsset: (packId, relPath) =>
-    ipcRenderer.invoke(IPC.STUDIO_READ_THEME_ASSET, packId, relPath),
+  hostGetDeviceSettings: () => ipcRenderer.invoke(IPC.STUDIO_DEVICE_SETTINGS_GET),
+  hostSetDeviceSetting: (key, value) => ipcRenderer.invoke(IPC.STUDIO_DEVICE_SETTINGS_SET, key, value),
+  hostPickFile: (options) => ipcRenderer.invoke(IPC.STUDIO_PICK_FILE, options),
+  hostConnectEnvironment: (environmentId, label, target) =>
+    ipcRenderer.invoke(IPC.HOST_CONNECT_ENVIRONMENT, environmentId, label, target),
+  hostPairEnvironment: (link, label) => ipcRenderer.invoke(IPC.HOST_PAIR_ENVIRONMENT, link, label),
+  hostSshAddEnvironment: (destination, label) => ipcRenderer.invoke(IPC.HOST_SSH_ADD_ENVIRONMENT, destination, label),
+  hostBrowseNearby: () => ipcRenderer.invoke(IPC.HOST_BROWSE_NEARBY),
+  onHostSshProgress: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, progress: SshAddEnvironmentProgress) => callback(progress)
+    ipcRenderer.on(IPC.HOST_SSH_PROGRESS, handler)
+    return () => ipcRenderer.removeListener(IPC.HOST_SSH_PROGRESS, handler)
+  },
+  hostDisconnectEnvironment: (environmentId) => ipcRenderer.send(IPC.HOST_DISCONNECT_ENVIRONMENT, environmentId),
+  hostRestartEnvironment: (environmentId) => ipcRenderer.send(IPC.HOST_RESTART_ENVIRONMENT, environmentId),
+  hostGetEnvCache: (environmentId) => ipcRenderer.invoke(IPC.HOST_GET_ENV_CACHE, environmentId),
+  hostTransferExportToFile: (environmentId, tabId, targetEnvironmentId, options) =>
+    ipcRenderer.invoke(IPC.HOST_TRANSFER_EXPORT_TO_FILE, environmentId, tabId, targetEnvironmentId, options ?? {}),
+  hostTransferImportFromFile: (environmentId, tabId, filePath, landing) =>
+    ipcRenderer.invoke(IPC.HOST_TRANSFER_IMPORT_FROM_FILE, environmentId, tabId, filePath, landing ?? null),
+  hostTransferCancel: (tabId) => ipcRenderer.invoke(IPC.HOST_TRANSFER_CANCEL, tabId),
+  onHostTransferProgress: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, progress: TransferProgress) => callback(progress)
+    ipcRenderer.on(IPC.HOST_TRANSFER_PROGRESS, handler)
+    return () => ipcRenderer.removeListener(IPC.HOST_TRANSFER_PROGRESS, handler)
+  },
 }

@@ -17,7 +17,7 @@
  *   - tab status is cleared after successful pure command (no run started)
  *
  * Strategy: mock engineBridge.sendCommand to fire engine_command_result
- * synchronously via the awaitCommandResult listener, mock state.remoteTransport
+ * synchronously via the awaitCommandResult listener, mock sendRemoteEvent
  * to capture echoes, mock broadcast to capture renderer broadcasts.
  */
 
@@ -35,7 +35,7 @@ const mocks = vi.hoisted(() => {
   const bridgeListeners = new Map<string, Array<(key: string, event: any) => void>>()
   const sendCommandMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const sendPromptMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.({ ok: true }) ?? function () { return Promise.resolve({ ok: true }) }
-  const submitPromptMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(undefined) ?? function () { return Promise.resolve() }
+  const submitPromptMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.({ ok: true }) ?? function () { return Promise.resolve({ ok: true }) }
   const setPermissionModeMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const remoteSendMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const executeJsMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(null) ?? function () { return Promise.resolve(null) }
@@ -65,7 +65,7 @@ const mocks = vi.hoisted(() => {
 // in some setups; rebuild as real vi.fn() values now that vi is in scope.
 mocks.sendCommandMock = vi.fn()
 mocks.sendPromptMock = vi.fn().mockResolvedValue({ ok: true })
-mocks.submitPromptMock = vi.fn().mockResolvedValue(undefined)
+mocks.submitPromptMock = vi.fn().mockResolvedValue({ ok: true })
 mocks.setPermissionModeMock = vi.fn()
 mocks.remoteSendMock = vi.fn()
 mocks.executeJsMock = vi.fn().mockResolvedValue(null)
@@ -79,7 +79,14 @@ function emitBridgeEvent(key: string, event: any): void {
   for (const fn of arr) fn(key, event)
 }
 
-vi.mock('../state', () => {
+vi.mock('@ion/server/thin-view/remote-out', () => ({
+  remoteClientsPresent: () => true,
+  sendRemoteEvent: (...args: any[]) => mocks.remoteSendMock(...args),
+}))
+
+vi.mock('@ion/server/state', async (importOriginal) => {
+  const __actual = (await importOriginal()) as Record<string, unknown>;
+
   // Inline engineBridge facade — vi.mock is hoisted, so we can't capture a
   // const declared at module scope. Closure over `mocks` (vi.hoisted) is fine.
   const mockEngineBridge = {
@@ -92,10 +99,9 @@ vi.mock('../state', () => {
       mocks.bridgeListeners.set(name, arr)
     },
   }
-  return {
+  return { ...__actual, 
     state: {
       mainWindow: { webContents: { executeJavaScript: (...args: any[]) => mocks.executeJsMock(...args) } },
-      remoteTransport: { send: (...args: any[]) => mocks.remoteSendMock(...args) },
     },
     sessionPlane: {
       submitPrompt: (...args: any[]) => mocks.submitPromptMock(...args),
@@ -115,43 +121,77 @@ vi.mock('../state', () => {
   }
 })
 
-vi.mock('../broadcast', () => ({
+// insertRendererSystemMessage/clearConnectingStatus/insertRendererRemoteUserMessage
+// (prompt-pipeline-store.ts) used to reach the renderer via
+// state.mainWindow.webContents.executeJavaScript; the server owns the store
+// directly now, so they call useSessionStore.getState()'s actions in-process.
+// Forwarding into mocks.executeJsMock keeps the existing "was it called"
+// assertions meaningful with a real, inspectable call signature.
+// A remote-source prompt is handed to the store's own submit in-process
+// (prompt-pipeline-store.ts). These record that hand-off.
+const storeSubmit = vi.hoisted(() => ({ submit: vi.fn(), submitRemotePrompt: vi.fn(), submitRemoteBash: vi.fn() }))
+const sessionStoreTabs = vi.hoisted(() => ({ tabs: [{ id: 'tab-1', status: 'connecting' }] as any[] }))
+vi.mock('@ion/server/store/sessionStore', () => ({
+  useSessionStore: Object.assign(
+    (selector: (s: any) => unknown) => selector({ tabs: sessionStoreTabs.tabs }),
+    {
+      getState: () => ({
+        tabs: sessionStoreTabs.tabs,
+        addEngineSystemMessage: (...args: any[]) => mocks.executeJsMock(...args),
+        insertRemoteUserMessage: (...args: any[]) => mocks.executeJsMock(...args),
+        submit: storeSubmit.submit,
+        submitRemotePrompt: storeSubmit.submitRemotePrompt,
+        submitRemoteBash: storeSubmit.submitRemoteBash,
+      }),
+      setState: (patch: any) => {
+        if (typeof patch === 'object' && patch && 'tabs' in patch) {
+          sessionStoreTabs.tabs = patch.tabs
+        }
+      },
+    },
+  ),
+}))
+
+vi.mock('@ion/server/broadcast', () => ({
   broadcast: (...args: any[]) => mocks.broadcastMock(...args),
 }))
 
-vi.mock('../logger', () => ({
+vi.mock('@ion/server/logger', () => ({
   log: vi.fn(),
   debug: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
 }))
 
-vi.mock('../settings-store', () => ({
+vi.mock('@ion/server/persistence/settings-store', async (importOriginal) => ({ ...(await importOriginal()), ...{
   readSettings: () => ({ enableClaudeCompat: true }),
   SETTINGS_DEFAULTS: { enableClaudeCompat: true },
-}))
+} }))
 
 // Attachment-encoding cases live in prompt-pipeline-attachments.test.ts; this
 // file uses a passthrough stub so non-attachment tests are unaffected.
-vi.mock('../remote/attachment-encoder', () => ({
+vi.mock('@ion/server/remote/attachment-encoder', async (importOriginal) => ({ ...(await importOriginal()), ...{
   encodeAttachments: (text: string, _atts: any[]) => ({ encoded: [], rewrittenText: text }),
-}))
+} }))
 
 // Pull in the SUT AFTER mocks are set up.
-import { processIncomingPrompt } from '../prompt-pipeline'
-import { _resetAwaitersForTests } from '../command-await'
+import { processIncomingPrompt } from '@ion/server/engine/prompt-pipeline'
+import { _resetAwaitersForTests } from '@ion/server/command-await'
 
 // ───────────────────────────────────────────────────────────────────────────
 // Test fixtures
 // ───────────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  storeSubmit.submit.mockReset()
+  storeSubmit.submitRemotePrompt.mockReset()
+  storeSubmit.submitRemoteBash.mockReset()
   // Reset all mock recordings but keep the implementations we installed at
   // module load. Re-setting the default sendCommand stub each beforeEach so
   // tests that mutate it don't leak into siblings.
   mocks.sendCommandMock.mockReset()
   mocks.sendPromptMock.mockReset().mockResolvedValue({ ok: true })
-  mocks.submitPromptMock.mockReset().mockResolvedValue(undefined)
+  mocks.submitPromptMock.mockReset().mockResolvedValue({ ok: true })
   mocks.setPermissionModeMock.mockReset()
   mocks.remoteSendMock.mockReset()
   mocks.executeJsMock.mockReset().mockResolvedValue(null)
@@ -190,7 +230,7 @@ describe('processIncomingPrompt — non-slash text', () => {
     expect(mocks.sendCommandMock).not.toHaveBeenCalled()
   })
 
-  it('remote CLI broadcasts REMOTE_USER_MESSAGE instead of calling sessionPlane', async () => {
+  it('remote plain prompt is handed to the store submitRemotePrompt, not sessionPlane', async () => {
     await processIncomingPrompt({
       tabId: 'tab-1',
       text: 'hello from ios',
@@ -199,11 +239,15 @@ describe('processIncomingPrompt — non-slash text', () => {
       hasExtensions: false,
     })
     expect(mocks.submitPromptMock).not.toHaveBeenCalled()
-    expect(mocks.broadcastMock).toHaveBeenCalledWith(expect.stringMatching(/remote-user-message/i), expect.objectContaining({
-      tabId: 'tab-1',
-      requestId: 'req-2',
-      prompt: 'hello from ios',
-    }))
+    expect(storeSubmit.submitRemotePrompt).toHaveBeenCalledTimes(1)
+    const call = storeSubmit.submitRemotePrompt.mock.calls[0]
+    expect(call[0]).toBe('tab-1')
+    expect(call[1]).toBe('hello from ios')
+    expect(call[5]).toBe('req-2')
+    expect(storeSubmit.submit).not.toHaveBeenCalled()
+    // Nothing on the Studio wire carries a remote prompt: a broadcast here
+    // reaches no store and the prompt is lost.
+    expect(mocks.broadcastMock).not.toHaveBeenCalled()
   })
 })
 
@@ -224,6 +268,7 @@ describe('processIncomingPrompt — slash, engine has command', () => {
   })
 
   it('clears the connecting status after successful pure command', async () => {
+    sessionStoreTabs.tabs = [{ id: 'tab-1', status: 'connecting' }]
     await processIncomingPrompt({
       tabId: 'tab-1',
       text: '/clear',
@@ -232,10 +277,7 @@ describe('processIncomingPrompt — slash, engine has command', () => {
       hasExtensions: false,
       runOptions: { prompt: '/clear' } as any,
     })
-    // executeJavaScript called at least once for clear-status mutation.
-    expect(mocks.executeJsMock).toHaveBeenCalled()
-    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
-    expect(calls.some((s: string) => s.includes("status: 'idle'"))).toBe(true)
+    expect(sessionStoreTabs.tabs.find((t) => t.id === 'tab-1')?.status).toBe('idle')
   })
 
   it('forwards args verbatim to the engine', async () => {
@@ -271,13 +313,14 @@ describe('processIncomingPrompt — engine owns final unknown-command resolution
     await processIncomingPrompt({ tabId: 'tab-1', text: '/typo-no-such-command', reqId: 'req-8', source: 'desktop', hasExtensions: false, runOptions: { prompt: '/typo-no-such-command' } as any })
     expect(mocks.sendCommandMock).toHaveBeenCalledTimes(1)
     expect(mocks.submitPromptMock).not.toHaveBeenCalled()
-    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
-    expect(calls.some((line: string) => line.includes('Unknown command: /typo-no-such-command'))).toBe(true)
+    // addEngineSystemMessage(tabId, content) forwards through executeJsMock.
+    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[1] as string)
+    expect(calls.some((line: string) => line?.includes('Unknown command: /typo-no-such-command'))).toBe(true)
   })
 })
 
 describe('processIncomingPrompt — bash shortcut', () => {
-  it('routes "! cmd" to REMOTE_BASH_COMMAND broadcast (CLI remote only)', async () => {
+  it('routes "! cmd" to the store submitRemoteBash (plain remote only)', async () => {
     await processIncomingPrompt({
       tabId: 'tab-1',
       text: '! ls -la',
@@ -285,10 +328,9 @@ describe('processIncomingPrompt — bash shortcut', () => {
       source: 'remote',
       hasExtensions: false,
     })
-    expect(mocks.broadcastMock).toHaveBeenCalledWith(expect.stringMatching(/remote-bash-command/i), expect.objectContaining({
-      tabId: 'tab-1',
-      command: 'ls -la',
-    }))
+    // reqId is the client's message id, stamped on the row.
+    expect(storeSubmit.submitRemoteBash).toHaveBeenCalledWith('tab-1', 'ls -la', 'req-10')
+    expect(mocks.broadcastMock).not.toHaveBeenCalled()
     expect(mocks.sendCommandMock).not.toHaveBeenCalled()
     expect(mocks.submitPromptMock).not.toHaveBeenCalled()
   })
@@ -302,9 +344,10 @@ describe('processIncomingPrompt — bash shortcut', () => {
       hasExtensions: true,
       instanceId: 'inst-1',
     })
-    // Extension-hosted tab — falls through to submitAsPrompt → broadcast REMOTE_ENGINE_PROMPT, NOT a bash command.
-    const bashCalls = (mocks.broadcastMock as any).mock.calls.filter((c: any[]) => /remote-bash-command/i.test(c[0]))
-    expect(bashCalls).toHaveLength(0)
+    // Extension-hosted tab — falls through to submitAsPrompt → the store's
+    // unified submit, NOT a bash command.
+    expect(storeSubmit.submitRemoteBash).not.toHaveBeenCalled()
+    expect(storeSubmit.submit).toHaveBeenCalledWith('tab-1', '! ls', expect.objectContaining({ source: 'remote' }))
   })
 })
 
@@ -321,7 +364,7 @@ describe('processIncomingPrompt — extension-hosted tab', () => {
     expect(mocks.sendCommandMock).toHaveBeenCalledWith(expect.objectContaining({ key: 'tab-1' }), 'clear', '')
   })
 
-  it('non-slash text broadcasts REMOTE_ENGINE_PROMPT for remote-source', async () => {
+  it('non-slash remote text is handed to the store unified submit', async () => {
     await processIncomingPrompt({
       tabId: 'tab-1',
       text: 'hello',
@@ -330,10 +373,12 @@ describe('processIncomingPrompt — extension-hosted tab', () => {
       hasExtensions: true,
       instanceId: 'inst-x',
     })
-    expect(mocks.broadcastMock).toHaveBeenCalledWith(expect.stringMatching(/remote-engine-prompt/i), expect.objectContaining({
-      tabId: 'tab-1',
-      text: 'hello',
+    expect(storeSubmit.submit).toHaveBeenCalledWith('tab-1', 'hello', expect.objectContaining({
+      source: 'remote',
+      requestId: 'req-13',
     }))
+    expect(storeSubmit.submitRemotePrompt).not.toHaveBeenCalled()
+    expect(mocks.broadcastMock).not.toHaveBeenCalled()
   })
 
 })
@@ -366,13 +411,16 @@ describe('processIncomingPrompt — /clear with no engine session (unknown_comma
     })
     expect(mocks.submitPromptMock).not.toHaveBeenCalled()
     // The divider uses the "── Cleared" sentinel (from formatClearDivider).
-    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
-    expect(calls.some((s: string) => s.includes('── Cleared'))).toBe(true)
+    // addEngineSystemMessage(tabId, content) forwards through executeJsMock.
+    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[1] as string)
+    expect(calls.some((s: string) => s?.includes('── Cleared'))).toBe(true)
     // The "Unknown command" string must NOT appear anywhere.
-    expect(calls.every((s: string) => !s.includes('Unknown command'))).toBe(true)
+    expect(calls.every((s: string) => !s?.includes('Unknown command'))).toBe(true)
   })
 
-  it('echoes the divider to iOS via remoteTransport when source=remote', async () => {
+  // A remote client receives the divider as a row on its transcript stream,
+  // published from the store; nothing is sent to it on the side.
+  it('puts a remote /clear divider in the store and sends a remote client nothing', async () => {
     await processIncomingPrompt({
       tabId: 'tab-fresh',
       text: '/clear',
@@ -380,30 +428,22 @@ describe('processIncomingPrompt — /clear with no engine session (unknown_comma
       source: 'remote',
       hasExtensions: false,
     })
-    // remoteTransport.send must have been called with a message_added or
-    // engine_harness_message carrying the divider content.
+    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[1] as string)
+    expect(calls.some((s: string) => s?.includes('── Cleared'))).toBe(true)
     const dividerSends = mocks.remoteSendMock.mock.calls
-      .map((c: any[]) => c[0])
-      .filter((e: any) => {
-        if (e.type === 'desktop_message_added' && e.message?.content?.includes('── Cleared')) return true
-        if (e.type === 'desktop_harness_message' && e.message?.includes('── Cleared')) return true
-        return false
-      })
-    expect(dividerSends.length).toBeGreaterThan(0)
-    // "Unknown command" must not appear in any remote send.
-    const badSends = mocks.remoteSendMock.mock.calls
-      .map((c: any[]) => c[0])
-      .filter((e: any) => JSON.stringify(e).includes('Unknown command'))
-    expect(badSends).toHaveLength(0)
+      .map((c: any[]) => JSON.stringify(c[0]))
+      .filter((e: string) => e.includes('── Cleared') || e.includes('Unknown command'))
+    expect(dividerSends).toHaveLength(0)
   })
 
   it('surfaces other unknown slash commands without a retry', async () => {
     await processIncomingPrompt({ tabId: 'tab-fresh', text: '/no-such-command', reqId: 'req-clear-3', source: 'desktop', hasExtensions: false, runOptions: { prompt: '/no-such-command' } as any })
     expect(mocks.sendCommandMock).toHaveBeenCalledTimes(1)
     expect(mocks.submitPromptMock).not.toHaveBeenCalled()
-    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
-    expect(calls.some((line: string) => line.includes('Unknown command: /no-such-command'))).toBe(true)
-    expect(calls.every((line: string) => !line.includes('── Cleared'))).toBe(true)
+    // addEngineSystemMessage(tabId, content) forwards through executeJsMock.
+    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[1] as string)
+    expect(calls.some((line: string) => line?.includes('Unknown command: /no-such-command'))).toBe(true)
+    expect(calls.every((line: string) => !line?.includes('── Cleared'))).toBe(true)
   })
 
   it('does NOT short-circuit when /clear succeeds normally (engine has a session)', async () => {

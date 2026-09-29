@@ -17,7 +17,7 @@
  *    ref, and the recovered content is byte-identical.
  * 4. Preservation does not disturb the worktree it is rescuing.
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'fs'
@@ -26,9 +26,9 @@ import { join } from 'path'
 
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
-import { appraiseWorktree, preserveWorktreeWork, listPreservedWork } from '../worktree/safety'
-import { discardWorktree } from '../worktree/relocate'
-import { landWorktree } from '../worktree/integrate'
+import { appraiseWorktree, preserveWorktreeWork, listPreservedWork } from '@ion/server/worktree/safety'
+import { discardWorktree } from '@ion/server/worktree/relocate'
+import { landWorktree } from '@ion/server/worktree/integrate'
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { evaluateStall, mark, Activity, ACTIVITY_NAMES } from '../watchdog'
+import { evaluateStall, mark, Activity, ACTIVITY_NAMES } from '@ion/server/watchdog'
 
 // The watchdog's detection brain is evaluateStall. It is the exact function the
 // worker runs (embedded via toString), so pinning it here pins the behavior that

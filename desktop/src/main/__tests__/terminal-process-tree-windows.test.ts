@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { parseCimProcessTree } from '../terminal-process-tree-windows'
-import { terminalProcessTree } from '../terminal-process-tree'
+import { parseCimProcessTree } from '@ion/server/terminal/terminal-process-tree-windows'
+import { terminalProcessTree } from '@ion/server/terminal/terminal-process-tree'
 
 describe('parseCimProcessTree', () => {
   it('parses a JSON array (the multi-process case)', () => {

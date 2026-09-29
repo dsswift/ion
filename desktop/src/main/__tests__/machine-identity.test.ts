@@ -56,7 +56,7 @@ describe('loadMachineIdentity', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     // Reset the cached identity between tests.
-    const mod = await import('../machine-identity')
+    const mod = await import('@ion/server/machine-identity')
     mod._resetMachineIdentityForTest()
   })
 
@@ -64,7 +64,7 @@ describe('loadMachineIdentity', () => {
     ;(execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
       makeExecFileMock(IOREG_STDOUT, MDM_PLIST_JSON),
     )
-    const { loadMachineIdentity } = await import('../machine-identity')
+    const { loadMachineIdentity } = await import('@ion/server/machine-identity')
     // Override platform to darwin for this test.
     const origPlatform = process.platform
     Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
@@ -80,7 +80,7 @@ describe('loadMachineIdentity', () => {
     ;(execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
       makeExecFileMock(IOREG_STDOUT, MDM_PLIST_JSON),
     )
-    const { loadMachineIdentity, _resetMachineIdentityForTest } = await import('../machine-identity')
+    const { loadMachineIdentity, _resetMachineIdentityForTest } = await import('@ion/server/machine-identity')
     _resetMachineIdentityForTest()
     const origPlatform = process.platform
     Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
@@ -97,7 +97,7 @@ describe('loadMachineIdentity', () => {
     ;(execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
       makeExecFileMock(IOREG_STDOUT, '', new Error('ENOENT')),
     )
-    const { loadMachineIdentity, _resetMachineIdentityForTest } = await import('../machine-identity')
+    const { loadMachineIdentity, _resetMachineIdentityForTest } = await import('@ion/server/machine-identity')
     _resetMachineIdentityForTest()
     const origPlatform = process.platform
     Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
@@ -116,7 +116,7 @@ describe('loadMachineIdentity', () => {
     ;(execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
       makeExecFileMock('', '{}'),
     )
-    const { loadMachineIdentity, _resetMachineIdentityForTest } = await import('../machine-identity')
+    const { loadMachineIdentity, _resetMachineIdentityForTest } = await import('@ion/server/machine-identity')
     _resetMachineIdentityForTest()
     const origPlatform = process.platform
     Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
@@ -130,7 +130,7 @@ describe('loadMachineIdentity', () => {
   })
 
   it('returns empty machineId and MDM on non-darwin platforms', async () => {
-    const { loadMachineIdentity, _resetMachineIdentityForTest } = await import('../machine-identity')
+    const { loadMachineIdentity, _resetMachineIdentityForTest } = await import('@ion/server/machine-identity')
     _resetMachineIdentityForTest()
     const origPlatform = process.platform
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
@@ -149,7 +149,7 @@ describe('loadMachineIdentity', () => {
 describe('loadMachineIdentity — win32', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
-    const mod = await import('../machine-identity')
+    const mod = await import('@ion/server/machine-identity')
     mod._resetMachineIdentityForTest()
   })
 
@@ -185,7 +185,7 @@ describe('loadMachineIdentity — win32', () => {
         MDMSerialNumber: 'SER123456',
       }),
     )
-    const { loadMachineIdentity } = await import('../machine-identity')
+    const { loadMachineIdentity } = await import('@ion/server/machine-identity')
     const origPlatform = process.platform
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
     try {
@@ -206,7 +206,7 @@ describe('loadMachineIdentity — win32', () => {
         // MDMDeviceID and MDMSerialNumber deliberately absent (not enrolled).
       }),
     )
-    const { loadMachineIdentity, _resetMachineIdentityForTest } = await import('../machine-identity')
+    const { loadMachineIdentity, _resetMachineIdentityForTest } = await import('@ion/server/machine-identity')
     _resetMachineIdentityForTest()
     const origPlatform = process.platform
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })

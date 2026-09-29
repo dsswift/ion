@@ -15,7 +15,7 @@
  * Real repos, not mocks: the behavior under test IS git's range selection and
  * rerere's recording/replay, which a mock would just restate.
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, readFileSync, realpathSync, unlinkSync } from 'fs'
@@ -35,13 +35,13 @@ import {
   registerWorktree,
   lookupWorktreeBase,
   worktreeRegistryFile,
-} from '../worktree/inventory'
+} from '@ion/server/worktree/inventory'
 import {
   syncWorktreeFromSource,
   completeRebaseIfReplayed,
-} from '../worktree/integrate'
-import { repairStaleBase } from '../worktree/base-repair'
-import { probeOperationState } from '../git/operation-state'
+} from '@ion/server/worktree/integrate'
+import { repairStaleBase } from '@ion/server/worktree/base-repair'
+import { probeOperationState } from '@ion/server/git/operation-state'
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })

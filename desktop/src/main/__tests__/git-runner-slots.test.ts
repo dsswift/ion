@@ -7,7 +7,7 @@ import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
-import { withGitSlot } from '../git-runner'
+import { withGitSlot } from '@ion/server/git/git-runner'
 
 describe('withGitSlot', () => {
   it('bounds concurrency to the cap while completing every task', async () => {

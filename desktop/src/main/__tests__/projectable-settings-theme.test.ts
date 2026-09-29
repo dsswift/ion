@@ -36,7 +36,7 @@ const themePolicyMock = vi.hoisted(() => ({
     (): { themeId: string; locked: boolean } | null => null,
   ),
 }))
-vi.mock('../theme-policy', () => ({
+vi.mock('@ion/server/theme-policy', () => ({
   getEnterpriseThemePolicy: () => themePolicyMock.getEnterpriseThemePolicy(),
   isThemeLocked: () =>
     themePolicyMock.getEnterpriseThemePolicy()?.locked === true,
@@ -46,10 +46,10 @@ import {
   validateSettingValue,
   projectableSchema,
   projectCurrentSettings,
-} from '../projectable-settings'
-import * as settingsStore from '../settings-store'
-import { resetThemePacksForTest } from '../theme-packs'
-import { IOS_THEME_TOKEN_KEYS } from '../../shared/theme-pack-types'
+} from '@ion/server/projectable-settings'
+import * as settingsStore from '@ion/server/persistence/settings-store'
+import { resetThemePacksForTest } from '@ion/server/theme-packs'
+import { IOS_THEME_TOKEN_KEYS } from '@ion/shared/theme-pack-types'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'

@@ -37,7 +37,7 @@ vi.mock('child_process', () => ({
   execFileSync: (...args: unknown[]) => mocks.execFileSync(...args),
 }))
 
-vi.mock('../logger', () => ({
+vi.mock('@ion/server/logger', () => ({
   log: (_tag: string, msg: string, fields?: Record<string, unknown>) => {
     mocks.logLines.push({ msg, fields })
   },
@@ -48,7 +48,7 @@ vi.mock('../logger', () => ({
   error: vi.fn(),
 }))
 
-import { getCliPath, getCliEnv, resetCliPathCacheForTests } from '../cli-env'
+import { getCliPath, getCliEnv, resetCliPathCacheForTests } from '@ion/server/cli-env'
 
 /** The PATH the Electron process starts with — stripped, as under launchd. */
 const STRIPPED = '/usr/bin:/bin:/usr/sbin:/sbin'

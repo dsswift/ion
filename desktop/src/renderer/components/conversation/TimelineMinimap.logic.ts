@@ -1,6 +1,6 @@
-import type { Message } from '../../../shared/types-session'
+import type { Message } from '@ion/shared/types-session'
 import { stripAttachmentMarkers } from './message-text'
-import { resolveSlashPill } from './slash-pill'
+import { resolveSlashPill } from '@ion/server/conversation/slash-pill'
 
 /**
  * Pure geometry + derivation helpers for the conversation timeline minimap.

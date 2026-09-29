@@ -4,10 +4,12 @@ import { motion } from 'framer-motion'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { rInfo } from '../rendererLogger'
-import { useSessionStore } from '../stores/sessionStore'
-import { isMirrorWindow } from '../lib/window-role'
-import type { DeepLinkConfirmRequest } from '../../shared/types'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { isMirrorWindow } from '@ion/server/lib/window-role'
+import type { DeepLinkConfirmRequest } from '@ion/shared/types'
 import { DEFAULT_MONO_FONT } from '../typography'
+import { host } from '../host/host-instance'
+import { tabListKey } from '../studio/connection/tab-environment'
 
 /**
  * Approval gate for an untrusted `ion://` deep link.
@@ -37,17 +39,21 @@ export function DeepLinkConfirmDialog(): React.JSX.Element | null {
   const [selectedTabs, setSelectedTabs] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    window.ion.setDeepLinkConfirmAvailability(owner, true)
-    const removeSettled = window.ion.onDeepLinkConfirmSettled((id) => {
+    // ion:// deep links are an OS URL-scheme registration -- Electron-only,
+    // no wire equivalent, and BrowserStudioHost already omits 'deeplink'
+    // from capabilities() for exactly this reason.
+    if (!host.capabilities().includes('deeplink')) return
+    host.shell.setDeepLinkConfirmAvailability(owner, true)
+    const removeSettled = host.shell.onDeepLinkConfirmSettled((id) => {
       setQueue((q) => q.filter((request) => request.id !== id))
     })
-    const receive = window.ion.onDeepLinkConfirmRequest((request) => {
+    const receive = host.shell.onDeepLinkConfirmRequest((request) => {
       if (request.owner !== owner) return
       rInfo('deeplink', 'confirmation requested', { id: request.id, action: request.action })
       setQueue((q) => [...q, request])
     })
     return () => {
-      window.ion.setDeepLinkConfirmAvailability(owner, false)
+      host.shell.setDeepLinkConfirmAvailability(owner, false)
       removeSettled()
       receive()
     }
@@ -73,7 +79,7 @@ export function DeepLinkConfirmDialog(): React.JSX.Element | null {
     const currentRequest = queue.find((request) => request.id === id)
     const tabId = currentRequest?.selectTab ? selectedTabs[id] : undefined
     rInfo('deeplink', 'confirmation answered', { id, approved, tab_id: tabId ?? '' })
-    window.ion.resolveDeepLinkConfirm({ id, owner, approved, tabId })
+    host.shell.resolveDeepLinkConfirm({ id, owner, approved, tabId })
     setQueue((q) => q.filter((r) => r.id !== id))
   }
 
@@ -145,7 +151,7 @@ export function DeepLinkConfirmDialog(): React.JSX.Element | null {
               style={{ color: colors.textPrimary, background: colors.surfaceSecondary, border: `1px solid ${colors.borderSubtle}`, borderRadius: 6, padding: '8px 10px' }}
             >
               <option value="">Choose a conversation</option>
-              {tabs.map((tab) => <option key={tab.id} value={tab.id}>{tab.title || tab.id}</option>)}
+              {tabs.map((tab) => <option key={tabListKey(tab)} value={tab.id}>{tab.title || tab.id}</option>)}
             </select>
           </label>
         ) : isTerminal && current.tabId ? (
@@ -158,6 +164,10 @@ export function DeepLinkConfirmDialog(): React.JSX.Element | null {
 
         {isTerminal && current.cmd ? (
           <Field label="Command" colors={colors} mono>{current.cmd}</Field>
+        ) : null}
+
+        {isTerminal && current.key ? (
+          <Field label="Launch key (a pane holding it is stopped and reused)" colors={colors} mono>{current.key}</Field>
         ) : null}
 
         {!isTerminal && current.text ? (

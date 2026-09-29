@@ -21,7 +21,7 @@
  * operator works on their feature branch in the main clone, so landing takes
  * the in-place merge path rather than the ref-advance path.
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'fs'
@@ -38,13 +38,13 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => process.env.ION_TEST_HOME_BENCH_SCENARIO || actual.homedir() }
 })
 
-import { assembleBench } from '../integration/bench-assemble'
-import { captureContribution } from '../integration/bench-snapshot'
-import { makeWorkspace, makeMember } from '../integration/bench-store'
-import { landWorktree } from '../worktree/integrate'
-import { retireWorktree } from '../worktree/relocate'
-import type { IntegrationWorkspace, IntegrationMember } from '../../shared/types'
-import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
+import { assembleBench } from '@ion/server/integration/bench-assemble'
+import { captureContribution } from '@ion/server/integration/bench-snapshot'
+import { makeWorkspace, makeMember } from '@ion/server/integration/bench-store'
+import { landWorktree } from '@ion/server/worktree/integrate'
+import { retireWorktree } from '@ion/server/worktree/relocate'
+import type { IntegrationWorkspace, IntegrationMember } from '@ion/shared/types'
+import { GIT_FIXTURE_TIMEOUT } from '@ion/server/test/git-fixture-timeout'
 
 const TRUNK = 'main'
 const FEATURE = 'josh'

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const calls = vi.hoisted(() => ({ quit: vi.fn() }))
 vi.mock('electron', () => ({ app: { quit: calls.quit } }))
 vi.mock('../logger', () => ({ log: vi.fn() }))
-vi.mock('../state', () => ({ state: { tray: null } }))
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{ state: { tray: null } } }))
 
 import { state } from '../state'
 import { handleWindowAllClosed } from '../window-all-closed'

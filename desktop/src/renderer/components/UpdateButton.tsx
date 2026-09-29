@@ -1,7 +1,7 @@
 import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowCircleUp } from '@phosphor-icons/react'
-import { useUpdateStore } from '../stores/update-store'
+import { useUpdateStore } from '@ion/server/store/update-store'
 import { useColors } from '../theme'
 
 /**

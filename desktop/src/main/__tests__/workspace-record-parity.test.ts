@@ -38,8 +38,8 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => process.env.ION_TEST_HOME_RECORD_PARITY || actual.homedir() }
 })
 
-import { registerWorktree, worktreeRegistryFile } from '../worktree/inventory'
-import { saveWorkspaces, loadWorkspaces, makeWorkspace, makeMember, workspacesFile } from '../integration/bench-store'
+import { registerWorktree, worktreeRegistryFile } from '@ion/server/worktree/inventory'
+import { saveWorkspaces, loadWorkspaces, makeWorkspace, makeMember, workspacesFile } from '@ion/server/integration/bench-store'
 
 const FIXTURE_DIR = join(__dirname, '../../../../engine/internal/workspaces/testdata')
 

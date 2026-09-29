@@ -2,8 +2,8 @@ import React from 'react'
 import { useColors } from '../../theme'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
 import { transitions } from '../../theme-tokens'
-import { GIT_STATUS_COLOR_KEYS } from '../../stores/git/types'
-import type { GitCommit, GitCommitFile, GitCommitDetail } from '../../../shared/types'
+import { GIT_STATUS_COLOR_KEYS } from '../GitPanelTypes'
+import type { GitCommit, GitCommitFile, GitCommitDetail } from '@ion/shared/types'
 
 const STATUS_LETTERS: Record<string, string> = {
   added: 'A',

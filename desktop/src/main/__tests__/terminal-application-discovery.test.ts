@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   configureTerminalWebApplicationDiscoveryForTests,
   discoverTerminalWebApplications,
-} from '../terminal-application-discovery'
-import { parseProcessTree, terminalProcessTree } from '../terminal-process-tree'
-import type { TerminalActivity } from '../../shared/terminal-activity'
+} from '@ion/server/terminal/terminal-application-discovery'
+import { parseProcessTree, terminalProcessTree } from '@ion/server/terminal/terminal-process-tree'
+import type { TerminalActivity } from '@ion/shared/terminal-activity'
 
 const activity: TerminalActivity = {
   key: 'tab-1:terminal-1',

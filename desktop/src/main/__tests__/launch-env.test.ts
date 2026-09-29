@@ -44,7 +44,7 @@ import {
   stripPrivilegeEscalation,
   PRIVILEGE_ESCALATION_VAR,
   type LaunchEnvironmentAccount,
-} from '../launch-env'
+} from '@ion/server/launch-env'
 
 /** The account the process actually runs as. */
 const ACCOUNT: LaunchEnvironmentAccount = {

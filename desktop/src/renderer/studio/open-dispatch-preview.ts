@@ -4,7 +4,7 @@
  * reopening it updates that tab's subject instead of creating another
  * runtime panel. Lives beside StudioShell, which routes agent clicks here.
  */
-import { useSessionStore } from "../stores/sessionStore";
+import { useSessionStore } from "@ion/server/store/sessionStore";
 import { rDebug } from "../rendererLogger";
 import { contentRouter } from "../lib/file-open-router";
 import { getDispatches, meta, mostRecentDispatch } from "../components/agent-panel-helpers";

@@ -41,7 +41,6 @@ const {
 } = vi.hoisted(() => {
   const mockSend = vi.fn()
   const mockState = {
-    remoteTransport: { send: mockSend } as any,
     mainWindow: null,
   }
   const mockPermDenialSet = new Set<string>()
@@ -58,7 +57,21 @@ const {
   }
 })
 
-vi.mock('../state', () => ({
+// The `desktop_*` device transport is gone; a RemoteEvent now leaves the
+// server through `sendRemoteEvent`, which fans it to thin Studio-wire
+// clients. Capture there, and drive the "is anyone listening" gate with
+// `remoteClientsPresent`.
+const { mockClientsPresent } = vi.hoisted(() => ({ mockClientsPresent: vi.fn(() => true) }))
+
+vi.mock('@ion/server/thin-view/remote-out', () => ({
+  sendRemoteEvent: mockSend,
+  remoteClientsPresent: mockClientsPresent,
+  syncRemoteAttention: vi.fn(),
+  thinConnections: vi.fn(() => []),
+  sendThinEventTo: vi.fn(() => true),
+}))
+
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{
   state: mockState,
   sessionPlane: { on: vi.fn(), emit: vi.fn(), notifyConversationCleared: vi.fn() },
   engineBridge: {
@@ -72,16 +85,17 @@ vi.mock('../state', () => ({
   extensionCommandRegistry: new Map(),
   forwardedEnginePermissionDenials: mockPermDenialSet,
   lastForwardedTabStatus: mockLastStatusMap,
-}))
+} }))
 
 vi.mock('../broadcast', () => ({ broadcast: vi.fn() }))
 vi.mock('../settings-store', () => ({
   shouldStreamThinkingToRemote: mockShouldStream,
 }))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), trace: vi.fn(), warn: vi.fn(), error: vi.fn() }))
-vi.mock('../../shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
+vi.mock('@ion/shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
 
-import { wireEngineBridgeEvents } from '../event-wiring'
+import { wireEngineBridgeEvents } from '@ion/server/engine/event-wiring'
+import { TRANSCRIPT_ONLY_ENGINE_EVENTS } from '@ion/server/engine/event-wiring-mobile-filter'
 
 function emit(key: string, event: any): void {
   capturedHandler.fn!(key, event)
@@ -105,7 +119,7 @@ describe('wireEngineBridgeEvents — generic engine-event wire type', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     capturedHandler.fn = null
-    mockState.remoteTransport = { send: mockSend } as any
+    mockClientsPresent.mockReturnValue(true)
     mockPermDenialSet.clear()
     mockLastStatusMap.clear()
     mockShouldStream.mockReturnValue(true)
@@ -190,17 +204,15 @@ describe('wireEngineBridgeEvents — generic engine-event wire type', () => {
       }],
     ])
   })
-  it('forwards engine_steer_degraded with its distinct desktop type and length field', () => {
-    emit(KEY, { type: 'engine_steer_degraded', steerDegradedMessageLength: 42 })
-
-    const sent = sentOfType('desktop_steer_degraded')
-    expect(sent).toHaveLength(1)
-    expect(sent[0][0]).toMatchObject({
-      tabId: 'tab1',
-      instanceId: 'inst1',
-      steerDegradedMessageLength: 42,
-    })
-    expect(sent[0][0].type).not.toBe('desktop_steer_injected')
+  // A thin client receives these events' rows on its transcript stream, so
+  // forwarding the raw event as well would let it build a second copy.
+  it('keeps every transcript-only engine event off the mobile wire', () => {
+    for (const type of TRANSCRIPT_ONLY_ENGINE_EVENTS) emit(KEY, { type })
+    expect(mockSend).not.toHaveBeenCalled()
+  })
+  it('still forwards an engine event that is not a transcript row', () => {
+    emit(KEY, { type: 'engine_steer_interrupted_stream', steerInterruptBlocksKept: 2 })
+    expect(sentOfType('desktop_steer_interrupted_stream')).toHaveLength(1)
   })
   it('never forwards any message with a raw engine_ wire type', () => {
     emit(KEY, { type: 'engine_message_end', usage: { inputTokens: 1, outputTokens: 1, contextPercent: 0, cost: 0 } })
@@ -214,8 +226,8 @@ describe('wireEngineBridgeEvents — generic engine-event wire type', () => {
     expect(rawEngineTypes).toEqual([])
   })
 
-  it('does not forward when remoteTransport is null', () => {
-    mockState.remoteTransport = null
+  it('does not forward when no remote client is listening', () => {
+    mockClientsPresent.mockReturnValue(false)
 
     emit(KEY, { type: 'engine_message_end', usage: { inputTokens: 1, outputTokens: 1, contextPercent: 0, cost: 0 } })
 

@@ -1,27 +1,22 @@
-export const FONT_SIZE_MIN = 8
-export const FONT_SIZE_MAX = 24
-export const UI_ZOOM_MIN = 0.5
-export const UI_ZOOM_MAX = 2
-export const UI_ZOOM_STEP = 0.1
-export const DEFAULT_MONO_FONT = 'ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Code", Consolas, monospace'
+/**
+ * Renderer half of typography: re-exports the pure constants/clamps from
+ * `@ion/server/typography` (see that file for why they live there) and keeps
+ * `applyTypography`, which mutates a live `HTMLElement`'s CSS custom
+ * properties — a DOM/renderer concern with no headless equivalent.
+ */
+export {
+  FONT_SIZE_MIN,
+  FONT_SIZE_MAX,
+  UI_ZOOM_MIN,
+  UI_ZOOM_MAX,
+  UI_ZOOM_STEP,
+  DEFAULT_MONO_FONT,
+  clampFontSize,
+  clampUiZoom,
+  type TypographyPreferences,
+} from '@ion/server/typography'
 
-function finite(value: number, fallback: number): number {
-  return Number.isFinite(value) ? value : fallback
-}
-
-export function clampFontSize(value: number, fallback = 13): number {
-  return Math.round(Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, finite(value, fallback))))
-}
-
-export function clampUiZoom(value: number, fallback = 1): number {
-  return Math.round(Math.min(UI_ZOOM_MAX, Math.max(UI_ZOOM_MIN, finite(value, fallback))) * 10) / 10
-}
-
-export interface TypographyPreferences {
-  uiZoom: number
-  dataViewFontSize: number
-  editorFontSize: number
-}
+import { DEFAULT_MONO_FONT, clampFontSize, clampUiZoom, type TypographyPreferences } from '@ion/server/typography'
 
 /** Apply interface zoom and compensate independent text scales for root zoom. */
 export function applyTypography(root: HTMLElement, preferences: TypographyPreferences): void {

@@ -3,17 +3,48 @@
  *
  * Verifies that all four prompt paths (Desktop CLI, iOS CLI, Desktop Engine,
  * iOS Engine) produce equivalent behavior for plan-mode-sensitive operations:
- *   - planFilePath is forwarded to the engine bridge / broadcast
- *   - implementationPhase is forwarded to the engine bridge / broadcast
+ *   - planFilePath is forwarded to the engine bridge
+ *   - implementationPhase is forwarded to the engine bridge / store submit
  *   - prose constants (ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER)
  *     are forwarded to the engine bridge on desktop engine prompts
  *
- * Uses the same vi.hoisted() + vi.mock('../state') pattern as
+ * Uses the same vi.hoisted() + vi.mock('@ion/server/state') pattern as
  * prompt-pipeline.test.ts. Split into a companion file to keep both
  * under the 600-line cap.
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+
+// insertRendererSystemMessage/clearConnectingStatus/insertRendererRemoteUserMessage
+// (prompt-pipeline-store.ts) used to reach the renderer via
+// state.mainWindow.webContents.executeJavaScript; the server owns the store
+// directly now, so they call useSessionStore.getState()'s actions in-process.
+// Forwarding into mocks.executeJsMock keeps the existing "was it called"
+// assertions meaningful with a real, inspectable call signature.
+// A remote-source prompt is handed to the store's own submit in-process
+// (prompt-pipeline-store.ts). These record that hand-off.
+const storeSubmit = vi.hoisted(() => ({ submit: vi.fn(), submitRemotePrompt: vi.fn(), submitRemoteBash: vi.fn() }))
+const sessionStoreTabs = vi.hoisted(() => ({ tabs: [{ id: 'tab-1', status: 'connecting' }] as any[] }))
+vi.mock('@ion/server/store/sessionStore', () => ({
+  useSessionStore: Object.assign(
+    (selector: (s: any) => unknown) => selector({ tabs: sessionStoreTabs.tabs }),
+    {
+      getState: () => ({
+        tabs: sessionStoreTabs.tabs,
+        addEngineSystemMessage: (...args: any[]) => mocks.executeJsMock(...args),
+        insertRemoteUserMessage: (...args: any[]) => mocks.executeJsMock(...args),
+        submit: storeSubmit.submit,
+        submitRemotePrompt: storeSubmit.submitRemotePrompt,
+        submitRemoteBash: storeSubmit.submitRemoteBash,
+      }),
+      setState: (patch: any) => {
+        if (typeof patch === 'object' && patch && 'tabs' in patch) {
+          sessionStoreTabs.tabs = patch.tabs
+        }
+      },
+    },
+  ),
+}))
 
 // ───────────────────────────────────────────────────────────────────────────
 // Mocks — same pattern as prompt-pipeline.test.ts.
@@ -23,7 +54,7 @@ const mocks = vi.hoisted(() => {
   const bridgeListeners = new Map<string, Array<(key: string, event: any) => void>>()
   const sendCommandMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const sendPromptMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.({ ok: true }) ?? function () { return Promise.resolve({ ok: true }) }
-  const submitPromptMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(undefined) ?? function () { return Promise.resolve() }
+  const submitPromptMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.({ ok: true }) ?? function () { return Promise.resolve({ ok: true }) }
   const setPermissionModeMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const remoteSendMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const executeJsMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(null) ?? function () { return Promise.resolve(null) }
@@ -47,7 +78,7 @@ const mocks = vi.hoisted(() => {
 // Rebuild as real vi.fn() values now that vi is in scope.
 mocks.sendCommandMock = vi.fn()
 mocks.sendPromptMock = vi.fn().mockResolvedValue({ ok: true })
-mocks.submitPromptMock = vi.fn().mockResolvedValue(undefined)
+mocks.submitPromptMock = vi.fn().mockResolvedValue({ ok: true })
 mocks.setPermissionModeMock = vi.fn()
 mocks.remoteSendMock = vi.fn()
 mocks.executeJsMock = vi.fn().mockResolvedValue(null)
@@ -60,7 +91,9 @@ function emitBridgeEvent(key: string, event: any): void {
   for (const fn of arr) fn(key, event)
 }
 
-vi.mock('../state', () => {
+vi.mock('@ion/server/state', async (importOriginal) => {
+  const __actual = (await importOriginal()) as Record<string, unknown>;
+
   const mockEngineBridge = {
     sendCommand: (...args: any[]) => mocks.sendCommandMock(...args),
     sendPrompt: (...args: any[]) => mocks.sendPromptMock(...args),
@@ -71,7 +104,7 @@ vi.mock('../state', () => {
       mocks.bridgeListeners.set(name, arr)
     },
   }
-  return {
+  return { ...__actual, 
     state: {
       mainWindow: { webContents: { executeJavaScript: (...args: any[]) => mocks.executeJsMock(...args) } },
       remoteTransport: { send: (...args: any[]) => mocks.remoteSendMock(...args) },
@@ -88,38 +121,41 @@ vi.mock('../state', () => {
   }
 })
 
-vi.mock('../broadcast', () => ({
+vi.mock('@ion/server/broadcast', () => ({
   broadcast: (...args: any[]) => mocks.broadcastMock(...args),
 }))
 
-vi.mock('../logger', () => ({
+vi.mock('@ion/server/logger', () => ({
   log: vi.fn(),
   debug: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
 }))
 
-vi.mock('../settings-store', () => ({
+vi.mock('@ion/server/persistence/settings-store', async (importOriginal) => ({ ...(await importOriginal()), ...{
   readSettings: () => ({ enableClaudeCompat: true }),
   SETTINGS_DEFAULTS: { enableClaudeCompat: true },
-}))
+} }))
 
-vi.mock('../remote/attachment-encoder', () => ({
+vi.mock('@ion/server/remote/attachment-encoder', async (importOriginal) => ({ ...(await importOriginal()), ...{
   encodeAttachments: (text: string, _atts: any[]) => ({ encoded: [], rewrittenText: text }),
-}))
+} }))
 
 // Pull in the SUT AFTER mocks are set up.
-import { processIncomingPrompt, ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER } from '../prompt-pipeline'
-import { _resetAwaitersForTests } from '../command-await'
+import { processIncomingPrompt, ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER } from '@ion/server/engine/prompt-pipeline'
+import { _resetAwaitersForTests } from '@ion/server/command-await'
 
 // ───────────────────────────────────────────────────────────────────────────
 // beforeEach
 // ───────────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  storeSubmit.submit.mockReset()
+  storeSubmit.submitRemotePrompt.mockReset()
+  storeSubmit.submitRemoteBash.mockReset()
   mocks.sendCommandMock.mockReset()
   mocks.sendPromptMock.mockReset().mockResolvedValue({ ok: true })
-  mocks.submitPromptMock.mockReset().mockResolvedValue(undefined)
+  mocks.submitPromptMock.mockReset().mockResolvedValue({ ok: true })
   mocks.setPermissionModeMock.mockReset()
   mocks.remoteSendMock.mockReset()
   mocks.executeJsMock.mockReset().mockResolvedValue(null)
@@ -154,47 +190,29 @@ describe('planFilePath convergence', () => {
     expect(callArgs[0]).toBe('tab-1')                  // tabId
     expect(callArgs[2].planFilePath).toBe('/plans/test.md')  // RunOptions.planFilePath
   })
-
-  it('remote engine prompt broadcasts planFilePath in REMOTE_ENGINE_PROMPT data', async () => {
-    await processIncomingPrompt({
-      tabId: 'tab-1',
-      text: 'implement the plan',
-      reqId: 'req-pf-2',
-      source: 'remote',
-      hasExtensions: true,
-      instanceId: 'inst1',
-      planFilePath: '/plans/test.md',
-    })
-    expect(mocks.broadcastMock).toHaveBeenCalledWith(
-      expect.stringMatching(/remote-engine-prompt/i),
-      expect.objectContaining({
-        tabId: 'tab-1',
-        planFilePath: '/plans/test.md',
-      }),
-    )
-  })
 })
 
 describe('structured display text convergence', () => {
-  it('remote prompt forwards displayText through the renderer bounce', async () => {
+  it('remote prompt forwards displayText to the store submit', async () => {
     await processIncomingPrompt({
       tabId: 'tab-1',
       text: 'provider prompt with control text',
       displayText: '**Question?**\n- Answer',
-      echoToIos: true,
+      publishUserTurn: true,
       reqId: 'req-display-1',
       source: 'remote',
       hasExtensions: true,
       instanceId: 'inst1',
       injectionKind: 'structured_answer',
     })
-    expect(mocks.broadcastMock).toHaveBeenCalledWith(
-      expect.stringMatching(/remote-engine-prompt/i),
+    expect(storeSubmit.submit).toHaveBeenCalledWith(
+      'tab-1',
+      'provider prompt with control text',
       expect.objectContaining({
-        text: 'provider prompt with control text',
         displayText: '**Question?**\n- Answer',
-        echoToIos: true,
+        publishUserTurn: true,
         injectionKind: 'structured_answer',
+        source: 'remote',
       }),
     )
   })
@@ -220,7 +238,7 @@ describe('implementationPhase convergence', () => {
     expect(opts.implementationPhase).toBe(true)
   })
 
-  it('remote engine prompt broadcasts implementationPhase in REMOTE_ENGINE_PROMPT data', async () => {
+  it('remote engine prompt hands implementationPhase to the store submit', async () => {
     await processIncomingPrompt({
       tabId: 'tab-1',
       text: 'do it',
@@ -230,16 +248,14 @@ describe('implementationPhase convergence', () => {
       instanceId: 'inst1',
       implementationPhase: true,
     })
-    expect(mocks.broadcastMock).toHaveBeenCalledWith(
-      expect.stringMatching(/remote-engine-prompt/i),
-      expect.objectContaining({
-        tabId: 'tab-1',
-        implementationPhase: true,
-      }),
+    expect(storeSubmit.submit).toHaveBeenCalledWith(
+      'tab-1',
+      'do it',
+      expect.objectContaining({ implementationPhase: true }),
     )
   })
 
-  it('remote CLI prompt broadcasts implementationPhase in REMOTE_USER_MESSAGE data', async () => {
+  it('remote plain prompt hands implementationPhase to the store submitRemotePrompt', async () => {
     await processIncomingPrompt({
       tabId: 'tab-1',
       text: 'do it',
@@ -248,13 +264,9 @@ describe('implementationPhase convergence', () => {
       hasExtensions: false,
       implementationPhase: true,
     })
-    expect(mocks.broadcastMock).toHaveBeenCalledWith(
-      expect.stringMatching(/remote-user-message/i),
-      expect.objectContaining({
-        tabId: 'tab-1',
-        implementationPhase: true,
-      }),
-    )
+    const call = storeSubmit.submitRemotePrompt.mock.calls[0]
+    expect(call[0]).toBe('tab-1')
+    expect(call[6]).toBe(true)
   })
 })
 

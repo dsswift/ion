@@ -7,8 +7,9 @@
 
 import { rInfo, rWarn } from '../../rendererLogger'
 import { captureView, applyView } from './views/saved-views'
-import { LAYOUT_FORCES_LOBES, type ScopedSavedView } from '../../../shared/graph-view-types'
+import { LAYOUT_FORCES_LOBES, type ScopedSavedView } from '@ion/shared/graph-view-types'
 import type { GraphState, StoreGet } from './graph-store-types'
+import { host } from '../../host/host-instance'
 
 export function createViewActions(get: StoreGet): Pick<GraphState, 'saveUserView' | 'loadView' | 'deleteUserView' | 'renameUserView'> {
   return {
@@ -23,7 +24,7 @@ export function createViewActions(get: StoreGet): Pick<GraphState, 'saveUserView
         : [...existingUserViews, view]
 
       try {
-        const result = await window.ion.graphViewSetUserConfig({ savedViews: nextUserViews })
+        const result = await host.shell.graphViewSetUserConfig({ savedViews: nextUserViews })
         if (!result.ok) {
           rWarn('graph_view', 'graph_view: view save failed', { name: view.name, error: result.error ?? 'unknown' })
           return result
@@ -97,7 +98,7 @@ export function createViewActions(get: StoreGet): Pick<GraphState, 'saveUserView
       const config = get().config
       const remaining = (config?.savedViews ?? []).filter((v) => !(v.source === 'user' && v.name === name)).filter((v) => v.source === 'user').map(({ source: _source, ...rest }) => rest)
       try {
-        const result = await window.ion.graphViewSetUserConfig({ savedViews: remaining })
+        const result = await host.shell.graphViewSetUserConfig({ savedViews: remaining })
         if (result.ok) rInfo('graph_view', 'graph_view: view deleted', { name })
         return result
       } catch (err) {
@@ -111,7 +112,7 @@ export function createViewActions(get: StoreGet): Pick<GraphState, 'saveUserView
       const userViews = (config?.savedViews ?? []).filter((v) => v.source === 'user').map(({ source: _source, ...rest }) => rest)
       const renamed = userViews.map((v) => (v.name === oldName ? { ...v, name: newName } : v))
       try {
-        const result = await window.ion.graphViewSetUserConfig({ savedViews: renamed })
+        const result = await host.shell.graphViewSetUserConfig({ savedViews: renamed })
         return result
       } catch (err) {
         rWarn('graph_view', 'graph_view: view rename failed', { oldName, newName, error: String(err) })

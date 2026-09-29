@@ -28,7 +28,7 @@ const state: { tabs: any[]; activeTabId: string | null; conversationPanes: Map<s
 // Both the component's `tab.status` selector and `useActiveEngineAgentRunningCount`
 // call `useSessionStore(selector)`, so the mock invokes the selector with the
 // fixed snapshot (the hook form) and also exposes getState().
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (s: typeof state) => unknown) => selector(state),
     { getState: () => state },

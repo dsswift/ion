@@ -18,7 +18,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { WorktreeInventoryEntry } from '../../shared/types'
+import type { WorktreeInventoryEntry } from '@ion/shared/types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -44,7 +44,7 @@ vi.mock('../preferences', () => ({
 const WT = '/Users/dev/.ion/worktrees/ion-work'
 const REPO = '/Users/dev/src/ion'
 
-vi.mock('../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (state: { benchWorkspaces: Map<string, never>; tabs: never[]; workspaceOperationLedger: Map<string, never> }) => unknown) =>
       selector({ benchWorkspaces: new Map<string, never>(), tabs: [], workspaceOperationLedger: new Map<string, never>() }),

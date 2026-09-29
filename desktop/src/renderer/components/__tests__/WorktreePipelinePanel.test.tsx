@@ -59,8 +59,8 @@ vi.mock('../../rendererLogger', () => ({
   rError: vi.fn(),
 }))
 
-import type { WorktreePipelineState } from '../../stores/session-store-types'
-import type { WorktreeInventoryEntry } from '../../../shared/types'
+import type { WorktreePipelineState } from '@ion/server/store/session-store-types'
+import type { WorktreeInventoryEntry } from '@ion/shared/types'
 
 const startPipeline = vi.fn().mockResolvedValue(undefined)
 const cancelPipeline = vi.fn()
@@ -69,7 +69,7 @@ const confirmAi = vi.fn().mockResolvedValue(undefined)
 
 let pipelineState: WorktreePipelineState | null = null
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (sel: (s: Record<string, unknown>) => unknown) => sel({ worktreePipeline: pipelineState }),
     {

@@ -1,4 +1,4 @@
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, realpathSync } from 'fs'
@@ -11,9 +11,9 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => process.env.ION_TEST_HOME_BENCH_SOURCE_CONFLICT || actual.homedir() }
 })
 
-import { assembleBench } from '../integration/bench-assemble'
-import { captureContribution } from '../integration/bench-snapshot'
-import { makeWorkspace, makeMember } from '../integration/bench-store'
+import { assembleBench } from '@ion/server/integration/bench-assemble'
+import { captureContribution } from '@ion/server/integration/bench-snapshot'
+import { makeWorkspace, makeMember } from '@ion/server/integration/bench-store'
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })

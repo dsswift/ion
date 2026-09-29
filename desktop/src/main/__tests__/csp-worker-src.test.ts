@@ -4,7 +4,15 @@
  * from a `blob:` URL, and the production CSP has no `worker-src` at all,
  * which falls back to `default-src 'self'` and refuses it.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+// window-manager.ts transitively imports local-server-instance.ts, which
+// constructs a real LocalServerSupervisor at module scope (needs a real
+// Electron `app.getAppPath()`, unavailable under plain vitest/node).
+vi.mock('../local-server-instance', () => ({
+  localServer: { restart: vi.fn(), on: vi.fn() },
+}))
+
 import { getContentSecurityPolicy } from '../window-manager'
 
 describe('Content-Security-Policy worker-src', () => {

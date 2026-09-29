@@ -30,7 +30,7 @@ vi.mock('fs', () => fsMock)
 
 const HOME = homedir()
 
-import { readGitWatcherIgnoredDirectories } from '../settings-store'
+import { readGitWatcherIgnoredDirectories } from '@ion/server/persistence/settings-store'
 
 describe('readGitWatcherIgnoredDirectories', () => {
   beforeEach(() => {

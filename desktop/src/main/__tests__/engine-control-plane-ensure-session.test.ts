@@ -44,11 +44,11 @@ const mockBridge = {
   removeAllListeners: vi.fn(),
 }
 
-vi.mock('../engine-bridge', () => ({
+vi.mock('@ion/server/engine/engine-bridge', () => ({
   EngineBridge: function () { return mockBridge },
 }))
 
-vi.mock('../engine-bridge-fs', () => ({
+vi.mock('@ion/server/engine/engine-bridge-fs', () => ({
   engineIsRemote: vi.fn(() => false),
   getEngineHostInfo: vi.fn(() => Promise.resolve({ ok: false, error: 'not used' })),
   listEngineDirectory: vi.fn(() => Promise.resolve({ ok: false, error: 'not used' })),
@@ -62,16 +62,16 @@ vi.mock('crypto', async () => {
   return { ...actual, randomUUID: vi.fn(() => `tab-${String(++uuidCounter).padStart(3, '0')}`) }
 })
 
-import { EngineControlPlane } from '../engine-control-plane'
-import { EngineBridge } from '../engine-bridge'
+import { EngineControlPlane } from '@ion/server/engine/engine-control-plane'
+import { EngineBridge } from '@ion/server/engine/engine-bridge'
 
-vi.mock('../integration/bench-prompt-context', () => ({
+vi.mock('@ion/server/integration/bench-prompt-context', () => ({
   benchClientWorkspaceContext: vi.fn(() => null),
   benchPromptContext: vi.fn(() => ''),
   BENCH_CONTEXT_MARKER: '## Workspace: integration bench',
 }))
 
-import { benchClientWorkspaceContext } from '../integration/bench-prompt-context'
+import { benchClientWorkspaceContext } from '@ion/server/integration/bench-prompt-context'
 const mockBenchCtx = vi.mocked(benchClientWorkspaceContext)
 
 function makeRunOptions(overrides: Record<string, any> = {}): any {

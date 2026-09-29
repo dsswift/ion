@@ -19,9 +19,11 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('../../rendererLogger', () => ({
   rDebug: vi.fn(), rInfo: vi.fn(), rWarn: vi.fn(), rError: vi.fn(), rTrace: vi.fn(),
 }))
-import { resolveRestoredWorkingDirectory } from '../useTabRestoration-helpers'
-import { resolveRegisteredWorktree } from '../../stores/worktree-registration'
-import type { PersistedTab } from '../../../shared/types'
+const { gitWorktreeRegistration } = vi.hoisted(() => ({ gitWorktreeRegistration: vi.fn() }))
+vi.mock('@ion/server/store/host-api-git', () => ({ gitWorktreeRegistration }))
+import { resolveRestoredWorkingDirectory } from '@ion/server/hooks/useTabRestoration-helpers'
+import { resolveRegisteredWorktree } from '@ion/server/store/worktree-registration'
+import type { PersistedTab } from '@ion/shared/types'
 
 const REPO = '/Users/test/project'
 const WORKTREE = '/Users/test/.ion/worktrees/project-a3f1'
@@ -64,13 +66,9 @@ describe('resolveRestoredWorkingDirectory', () => {
   })
 
   it('repairs a persisted worktree path whose metadata is missing', async () => {
-    ;(globalThis as { window?: unknown }).window = {
-      ion: {
-        gitWorktreeRegistration: vi.fn().mockResolvedValue({ registration: {
-          repoPath: REPO, branchName: 'wt/a', sourceBranch: 'josh', title: null,
-        } }),
-      },
-    }
+    gitWorktreeRegistration.mockResolvedValue({ registration: {
+      repoPath: REPO, branchName: 'wt/a', sourceBranch: 'josh', title: null,
+    } })
     const persisted = tab({ workingDirectory: WORKTREE, worktree: null })
 
     const repaired = await resolveRegisteredWorktree(persisted.workingDirectory, persisted.worktree)

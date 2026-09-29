@@ -14,13 +14,21 @@ import './launch-env-init'
 import './state'
 import { migrateStudioSettings } from './settings-migration-studio'
 import { migrateWorkspaceFolders } from './workspace-folder-migration'
-import { wireSessionPlaneEvents, wireEngineBridgeEvents, wireRemoteSessionPlaneForwarding, wireTabFocusHandler, wireMarkResourceReadHandler, wireDeleteResourceHandler, wireResourceGetHandler } from './event-wiring'
+import { returnStrandedServerKeys, runSettingsSplit, stripStaleDeviceKeys } from './settings-split'
 import { registerAllIpc } from './ipc/register'
 import { setupAppLifecycle } from './app-lifecycle'
-import { wireAutomationRuntime } from './automation/runtime'
-import { engineBridge, enterprisePolicyCache } from './state'
-import { installTelemetryHealthConsumer, telemetryHealthNotificationsEnabled } from './telemetry-health'
-import { wireToolGateResponder } from './tool-gate-responder'
+import { installBrowserToolCommandHandler } from './studio-playwright/command-handler'
+import { installStudioSdk } from './studio-sdk-install'
+
+// Settings split (spec 12): partitions device keys into desktop.json before
+// anything (including the local server, spawned below) reads settings.json.
+// A no-op after the first successful run. stripStaleDeviceKeys covers the
+// edge case of an older desktop build re-writing a device key post-split.
+runSettingsSplit()
+stripStaleDeviceKeys()
+// Before the local server reads settings.json: its own settings, stranded on
+// this device by an earlier device key list, go back to it.
+returnStrandedServerKeys()
 
 // Legacy atv* → studio* settings rename. MUST run before window creation and
 // IPC registration so every consumer only ever reads the new key names.
@@ -31,28 +39,19 @@ migrateStudioSettings()
 // reads the corrected map.
 migrateWorkspaceFolders()
 
-// Wire the desktop responder after state initialization. Browser tool handlers
-// import Studio view code, so doing this from state.ts would re-enter state
-// before its constants finish initialization.
-wireToolGateResponder(engineBridge)
+// The Studio server answers the engine's tool gate; the Playwright browser
+// tool bodies that need Electron stay here and are reached through
+// `browser.tool` studio_commands on the local connection.
+installBrowserToolCommandHandler()
 
-// Surface telemetry delivery health. Installed here rather than inside the
-// engine bridge so the notification policy (what interrupts the operator)
-// stays a desktop opinion, separate from the engine's reporting.
-installTelemetryHealthConsumer(engineBridge, {
-  enabled: () => telemetryHealthNotificationsEnabled(enterprisePolicyCache.policy),
-})
+// The Studio SDK is Studio's to ship, not the engine's: put it beside the
+// engine SDK so an extension can import it. Never blocks startup.
+installStudioSdk()
 
-wireSessionPlaneEvents()
-wireEngineBridgeEvents()
-wireRemoteSessionPlaneForwarding()
-wireTabFocusHandler()
-wireMarkResourceReadHandler()
-wireDeleteResourceHandler()
-wireResourceGetHandler()
-wireAutomationRuntime()
+// The engine bridge, the session plane, the event wiring and the automation
+// runtime all run in the Studio server process (ADR-033); this process is a
+// Studio client and never connects to the engine.
 registerAllIpc()
-// The auto-updater is initialized inside setupAppLifecycle after the engine
-// bridge connects: enterprise policy (disableAutoUpdate, D-012) comes from
-// the engine's get_enterprise_policy RPC, which needs a live connection.
+// The auto-updater is initialized inside setupAppLifecycle from the cached
+// `studio_welcome` enterprise policy (disableAutoUpdate, D-012).
 setupAppLifecycle()

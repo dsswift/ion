@@ -18,24 +18,38 @@ vi.mock('electron', () => ({ app: { getPath: vi.fn() }, ipcMain: { on: vi.fn(), 
 
 const { mockSend, mockState, sessionPlaneEmitter, lastMessagePreviewMap } = vi.hoisted(() => {
   const mockSend = vi.fn()
-  const mockState = { remoteTransport: { send: mockSend } as any, mainWindow: null }
+  const mockState = { mainWindow: null }
   const sessionPlaneEmitter = new (require('events').EventEmitter)()
   const lastMessagePreviewMap = new Map<string, string>()
   return { mockSend, mockState, sessionPlaneEmitter, lastMessagePreviewMap }
 })
 
-vi.mock('../state', () => ({
+// The `desktop_*` device transport is gone; a RemoteEvent now leaves the
+// server through `sendRemoteEvent`, which fans it to thin Studio-wire
+// clients. Capture there, and drive the "is anyone listening" gate with
+// `remoteClientsPresent`.
+const { mockClientsPresent } = vi.hoisted(() => ({ mockClientsPresent: vi.fn(() => true) }))
+
+vi.mock('@ion/server/thin-view/remote-out', () => ({
+  sendRemoteEvent: mockSend,
+  remoteClientsPresent: mockClientsPresent,
+  syncRemoteAttention: vi.fn(),
+  thinConnections: vi.fn(() => []),
+  sendThinEventTo: vi.fn(() => true),
+}))
+
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{
   state: mockState,
   sessionPlane: sessionPlaneEmitter,
   activeAssistantMessages: new Map(),
   lastMessagePreview: lastMessagePreviewMap,
-}))
+} }))
 
 vi.mock('../remote/protocol', () => ({ normalizedToRemote: vi.fn(() => null) }))
-vi.mock('../../shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
+vi.mock('@ion/shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
-import { wireRemoteSessionPlaneForwarding } from '../event-wiring-remote'
+import { wireRemoteSessionPlaneForwarding } from '@ion/server/engine/event-wiring-remote'
 
 // The send signature is send(payload, pushOnIdle?, pushMeta?). Find the
 // tab_status call and report whether it requested a push.
@@ -49,7 +63,7 @@ describe('wireRemoteSessionPlaneForwarding — push-on-idle is run→idle only',
   beforeEach(() => {
     vi.clearAllMocks()
     ;(sessionPlaneEmitter as EventEmitter).removeAllListeners()
-    mockState.remoteTransport = { send: mockSend } as any
+    mockClientsPresent.mockReturnValue(true)
     wireRemoteSessionPlaneForwarding()
   })
 

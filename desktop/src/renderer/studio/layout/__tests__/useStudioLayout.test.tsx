@@ -7,7 +7,8 @@ import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { useStudioLayout, type UseStudioLayoutResult } from '../useStudioLayout'
-import { STUDIO_LAYOUT_DEFAULTS } from '../../../../shared/types-studio'
+import { STUDIO_LAYOUT_DEFAULTS } from '@ion/shared/types-studio'
+import { installFakeWire } from '../../../host/__tests__/fake-wire'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -19,10 +20,10 @@ beforeEach(() => {
   getSettingsMock.mockReset()
   setSettingMock.mockReset()
   setSettingMock.mockResolvedValue(true)
-  ;(window as unknown as { ion: unknown }).ion = {
+  ;(window as unknown as { ion: unknown }).ion = installFakeWire({
     studioGetSettings: getSettingsMock,
     studioSetSetting: setSettingMock,
-  }
+  })
 })
 afterEach(() => {
   vi.useRealTimers()

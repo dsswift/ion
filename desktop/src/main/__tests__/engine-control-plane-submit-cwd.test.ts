@@ -69,11 +69,11 @@ const mockBridge = {
   removeAllListeners: vi.fn(),
 }
 
-vi.mock('../engine-bridge', () => ({
+vi.mock('@ion/server/engine/engine-bridge', () => ({
   EngineBridge: function () { return mockBridge },
 }))
 
-vi.mock('../engine-bridge-fs', () => ({
+vi.mock('@ion/server/engine/engine-bridge-fs', () => ({
   engineIsRemote: vi.fn(() => false),
   getEngineHostInfo: vi.fn(() => Promise.resolve({ ok: false, error: 'not used' })),
   listEngineDirectory: vi.fn(() => Promise.resolve({ ok: false, error: 'not used' })),
@@ -81,9 +81,9 @@ vi.mock('../engine-bridge-fs', () => ({
 
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
-import { EngineControlPlane } from '../engine-control-plane'
-import { EngineBridge } from '../engine-bridge'
-import type { RunOptions } from '../../shared/types'
+import { EngineControlPlane } from '@ion/server/engine/engine-control-plane'
+import { EngineBridge } from '@ion/server/engine/engine-bridge'
+import type { RunOptions } from '@ion/shared/types'
 
 const REPO = '/Users/test/project'
 const WORKTREE = '/Users/test/.ion/worktrees/project-a3f1'

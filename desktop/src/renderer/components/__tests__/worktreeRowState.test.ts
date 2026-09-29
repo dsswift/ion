@@ -3,7 +3,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { resolveRowState, resolveRowWords } from '../worktreeRowState'
-import type { IntegrationMember, WorktreeInventoryEntry } from '../../../shared/types'
+import type { IntegrationMember, WorktreeInventoryEntry } from '@ion/shared/types'
 
 function entry(over: Partial<WorktreeInventoryEntry> = {}): WorktreeInventoryEntry {
   return {
@@ -54,6 +54,32 @@ describe('resolveRowState — one rung at a time', () => {
       membership: member({ merge: 'conflicted', pin: 'behind', conflictPaths: ['x.ts'], conflictsWith: ['wt/b'] }),
     })
     expect(state).toEqual({ kind: 'bench-conflict', paths: ['x.ts'], conflictsWith: ['wt/b'] })
+  })
+
+  it('shows an obstruction as its own rung, below a conflict and above a verification suspect', () => {
+    const obstructed = resolveRowState({
+      entry: entry({ provisionState: 'failed', needsSync: true }),
+      membership: member({ merge: 'obstructed', pin: 'behind' }),
+      obstruction: { reason: 'wt/a could not be merged: npx: command not found' },
+      verificationSuspect: { command: 'npm run typecheck' },
+    })
+    expect(obstructed).toEqual({
+      kind: 'bench-obstructed',
+      reason: 'wt/a could not be merged: npx: command not found',
+    })
+
+    // Nothing collided, so the row must never claim a conflict — the defect
+    // that made an obstruction indistinguishable from one.
+    expect(obstructed.kind).not.toBe('bench-conflict')
+  })
+
+  it('carries "bench blocked" in the words when a higher-severity glyph is shown', () => {
+    const words = resolveRowWords({
+      entry: entry({ operationState: 'rebasing' }),
+      membership: member({ merge: 'obstructed' }),
+    })
+    expect(words).toContain('bench blocked')
+    expect(words).not.toContain('bench conflict')
   })
 
   it('shows a verification suspect above provisioning and freshness, but below an outright conflict', () => {

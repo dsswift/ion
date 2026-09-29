@@ -35,7 +35,7 @@ const mocks = vi.hoisted(() => {
 
 mocks.sendCommandMock = vi.fn()
 mocks.sendPromptMock = vi.fn().mockResolvedValue({ ok: true })
-mocks.submitPromptMock = vi.fn().mockResolvedValue(undefined)
+mocks.submitPromptMock = vi.fn().mockResolvedValue({ ok: true })
 mocks.setPermissionModeMock = vi.fn()
 mocks.remoteSendMock = vi.fn()
 mocks.executeJsMock = vi.fn().mockResolvedValue(null)
@@ -49,7 +49,32 @@ function emitBridgeEvent(key: string, event: any): void {
   for (const fn of arr) fn(key, event)
 }
 
-vi.mock('../state', () => ({
+// insertRendererSystemMessage/clearConnectingStatus/insertRendererRemoteUserMessage
+// (prompt-pipeline-store.ts) used to reach the renderer via
+// state.mainWindow.webContents.executeJavaScript; the server owns the store
+// directly now, so they call useSessionStore.getState()'s actions in-process.
+// Forwarding into mocks.executeJsMock keeps the existing "was it called"
+// assertions meaningful with a real, inspectable call signature.
+const sessionStoreTabs = vi.hoisted(() => ({ tabs: [{ id: 'tab-1', status: 'connecting' }] as any[] }))
+vi.mock('@ion/server/store/sessionStore', () => ({
+  useSessionStore: Object.assign(
+    (selector: (s: any) => unknown) => selector({ tabs: sessionStoreTabs.tabs }),
+    {
+      getState: () => ({
+        tabs: sessionStoreTabs.tabs,
+        addEngineSystemMessage: (...args: any[]) => mocks.executeJsMock(...args),
+        insertRemoteUserMessage: (...args: any[]) => mocks.executeJsMock(...args),
+      }),
+      setState: (patch: any) => {
+        if (typeof patch === 'object' && patch && 'tabs' in patch) {
+          sessionStoreTabs.tabs = patch.tabs
+        }
+      },
+    },
+  ),
+}))
+
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{
   state: {
     mainWindow: { webContents: { executeJavaScript: (...args: any[]) => mocks.executeJsMock(...args) } },
     remoteTransport: { send: (...args: any[]) => mocks.remoteSendMock(...args) },
@@ -72,35 +97,35 @@ vi.mock('../state', () => ({
     },
   },
   extensionCommandRegistry: new Map(),
-}))
+} }))
 
-vi.mock('../broadcast', () => ({
+vi.mock('@ion/server/broadcast', () => ({
   broadcast: (...args: any[]) => mocks.broadcastMock(...args),
 }))
 
-vi.mock('../logger', () => ({
+vi.mock('@ion/server/logger', () => ({
   log: vi.fn(),
   debug: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
 }))
 
-vi.mock('../settings-store', () => ({
+vi.mock('@ion/server/persistence/settings-store', async (importOriginal) => ({ ...(await importOriginal()), ...{
   readSettings: () => ({ enableClaudeCompat: true }),
   SETTINGS_DEFAULTS: { enableClaudeCompat: true },
-}))
+} }))
 
-vi.mock('../remote/attachment-encoder', () => ({
+vi.mock('@ion/server/remote/attachment-encoder', async (importOriginal) => ({ ...(await importOriginal()), ...{
   encodeAttachments: (text: string, _atts: any[]) => ({ encoded: [], rewrittenText: text }),
-}))
+} }))
 
-import { processIncomingPrompt } from '../prompt-pipeline'
-import { _resetAwaitersForTests } from '../command-await'
+import { processIncomingPrompt } from '@ion/server/engine/prompt-pipeline'
+import { _resetAwaitersForTests } from '@ion/server/command-await'
 
 beforeEach(() => {
   mocks.sendCommandMock.mockReset()
   mocks.sendPromptMock.mockReset().mockResolvedValue({ ok: true })
-  mocks.submitPromptMock.mockReset().mockResolvedValue(undefined)
+  mocks.submitPromptMock.mockReset().mockResolvedValue({ ok: true })
   mocks.setPermissionModeMock.mockReset()
   mocks.remoteSendMock.mockReset()
   mocks.executeJsMock.mockReset().mockResolvedValue(null)
@@ -130,12 +155,12 @@ describe('iOS slash command: extension command success path', () => {
       instanceId: 'inst-1',
     })
 
-    // The pipeline should have called executeJavaScript to insert the user
-    // message via insertRemoteUserMessage.
-    const jsCalls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
-    const insertCall = jsCalls.find((s: string) => s.includes('insertRemoteUserMessage'))
+    // insertRemoteUserMessage(tabId, content, slashCommand, slashArgs,
+    // implementationPhase) forwards through executeJsMock with >2 args --
+    // addEngineSystemMessage(tabId, content) only ever forwards 2.
+    const insertCall = mocks.executeJsMock.mock.calls.find((c: any[]) => c.length > 2)
     expect(insertCall).toBeDefined()
-    expect(insertCall).toContain('/align')
+    expect(insertCall![1]).toContain('/align')
   })
 
   it('does NOT insert renderer user message for desktop-source slash (no double insert)', async () => {
@@ -151,8 +176,7 @@ describe('iOS slash command: extension command success path', () => {
 
     // Desktop-source slash should NOT call insertRemoteUserMessage — the
     // renderer's submit() already created the optimistic user message.
-    const jsCalls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
-    const insertCall = jsCalls.find((s: string) => s.includes('insertRemoteUserMessage'))
+    const insertCall = mocks.executeJsMock.mock.calls.find((c: any[]) => c.length > 2)
     expect(insertCall).toBeUndefined()
   })
 
@@ -167,8 +191,7 @@ describe('iOS slash command: extension command success path', () => {
     })
 
     // /clear should not insert a user message (it is not a task)
-    const jsCalls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
-    const insertCall = jsCalls.find((s: string) => s.includes('insertRemoteUserMessage'))
+    const insertCall = mocks.executeJsMock.mock.calls.find((c: any[]) => c.length > 2)
     expect(insertCall).toBeUndefined()
   })
 
@@ -182,11 +205,11 @@ describe('iOS slash command: extension command success path', () => {
       instanceId: 'inst-1',
     })
 
-    const jsCalls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
-    const insertCall = jsCalls.find((s: string) => s.includes('insertRemoteUserMessage'))
+    const insertCall = mocks.executeJsMock.mock.calls.find((c: any[]) => c.length > 2)
     expect(insertCall).toBeDefined()
-    expect(insertCall).toContain('/review')
-    expect(insertCall).toContain('changes 138 139')
+    expect(insertCall![1]).toContain('/review')
+    expect(insertCall![2]).toBe('/review')
+    expect(insertCall![3]).toBe('changes 138 139')
   })
 
   it('inserts user message for remote slash on NON-extension tab too', async () => {
@@ -198,8 +221,7 @@ describe('iOS slash command: extension command success path', () => {
       hasExtensions: false,
     })
 
-    const jsCalls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
-    const insertCall = jsCalls.find((s: string) => s.includes('insertRemoteUserMessage'))
+    const insertCall = mocks.executeJsMock.mock.calls.find((c: any[]) => c.length > 2)
     expect(insertCall).toBeDefined()
   })
 })

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { agentStateFingerprint, rosterNeedsFullRecovery } from '../engine-bridge-agent-state'
-import type { EngineEvent } from '../../shared/types'
+import { agentStateFingerprint, rosterNeedsFullRecovery } from '@ion/server/engine/engine-bridge-agent-state'
+import type { EngineEvent } from '@ion/shared/types'
 
 function roster(keys: string[] = []): Extract<EngineEvent, { type: 'engine_agent_state' }> {
   return {

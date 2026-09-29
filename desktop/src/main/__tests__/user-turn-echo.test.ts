@@ -1,5 +1,5 @@
 /**
- * Behavior tests for the user-turn echo funnel (`main/user-turn-echo.ts`).
+ * Behavior tests for the user-turn echo funnel (`server/src/user-turn-echo.ts`).
  *
  * The structural sibling (`user-turn-echo-funnel.test.ts`) proves every call
  * site routes through the funnel. These prove the funnel makes the right
@@ -9,29 +9,25 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const studioEcho = vi.fn()
-vi.mock('../studio-window-manager', () => ({
+vi.mock('@ion/server/engine/studio-window-manager', () => ({
   notifyStudioUserMessageEcho: (tabId: string, echo: unknown) => studioEcho(tabId, echo),
 }))
 
 const sent: Array<Record<string, unknown>> = []
-vi.mock('../state', () => ({
-  state: {
-    get remoteTransport() {
-      return { send: (payload: Record<string, unknown>) => sent.push(payload) }
-    },
-  },
+vi.mock('@ion/server/thin-view/remote-out', () => ({
+  remoteClientsPresent: () => true,
+  sendRemoteEvent: (payload: Record<string, unknown>) => sent.push(payload),
 }))
 
-vi.mock('../logger', () => ({
+vi.mock('@ion/server/logger', () => ({
   log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(),
 }))
 
-import { echoUserTurn } from '../user-turn-echo'
+import { echoUserTurn } from '@ion/server/user-turn-echo'
 
-/** The iOS payload of the single send, if any. */
-function iosMessage(): Record<string, unknown> | undefined {
-  const frame = sent.find((p) => p.type === 'desktop_message_added')
-  return frame?.message as Record<string, unknown> | undefined
+/** The payload the Studio mirror received on the single echo. */
+function studioPayload(): Record<string, unknown> {
+  return studioEcho.mock.calls[0][1] as Record<string, unknown>
 }
 
 beforeEach(() => {
@@ -40,30 +36,37 @@ beforeEach(() => {
 })
 
 describe('echoUserTurn — an ordinary typed turn', () => {
-  it('publishes to BOTH the Studio mirror and iOS', () => {
+  it('publishes to the Studio mirror and sends a thin client nothing', () => {
+    // A thin client receives the owner store's row on its transcript stream.
     const published = echoUserTurn({ tabId: 'tab-1', id: 'req-1', content: 'a turn I typed' })
 
     expect(published).toBe(true)
     expect(studioEcho).toHaveBeenCalledTimes(1)
-    expect(iosMessage()).toMatchObject({ id: 'req-1', role: 'user', content: 'a turn I typed' })
+    expect(studioPayload()).toMatchObject({ id: 'req-1', content: 'a turn I typed' })
+    expect(sent).toEqual([])
+  })
+})
+
+describe('echoUserTurn — attachments', () => {
+  const image = { id: 'att-1', type: 'image' as const, name: 'shot.png', path: '/u/.ion/user-images/abc.png', dataUrl: 'data:image/png;base64,AAAA' }
+
+  it('forwards the full attachments to the Studio mirror', () => {
+    echoUserTurn({
+      tabId: 'tab-1',
+      id: 'req-1',
+      content: 'Analyze the attached files.',
+      studioAttachments: [image],
+    })
+
+    // The mirror builds its own Message from this payload, so a missing
+    // attachments array is a bubble with words and no image.
+    expect(studioEcho).toHaveBeenCalledWith('tab-1', expect.objectContaining({ attachments: [image] }))
   })
 
-  it("still echoes to iOS when source is 'remote' (that frame is the canonical row)", () => {
-    // `source` is a provenance LABEL, not a routing instruction. The canonical
-    // echo for an iOS-originated prompt is stamped 'remote' and carries the
-    // server-assigned id the phone reconciles its optimistic bubble against —
-    // inferring a skip from the label silently dropped it.
-    echoUserTurn({ tabId: 'tab-1', id: 'req-1', content: 'from the phone', source: 'remote' })
+  it('omits the field when there is nothing attached', () => {
+    echoUserTurn({ tabId: 'tab-1', id: 'req-2', content: 'no images', studioAttachments: [] })
 
-    expect(studioEcho).toHaveBeenCalledTimes(1)
-    expect(iosMessage()).toMatchObject({ id: 'req-1', source: 'remote' })
-  })
-
-  it('skips iOS only when the caller says so (a duplicate-frame guard)', () => {
-    echoUserTurn({ tabId: 'tab-1', id: 'req-1', content: 'x', source: 'remote' }, { ios: false })
-
-    expect(studioEcho).toHaveBeenCalledTimes(1)
-    expect(iosMessage()).toBeUndefined()
+    expect(studioPayload()).not.toHaveProperty('attachments')
   })
 })
 
@@ -113,55 +116,8 @@ describe('echoUserTurn — a machine-authored turn', () => {
   })
 })
 
-describe('echoUserTurn — target selection', () => {
-  it('honours studio:false (the caller owns that surface)', () => {
-    echoUserTurn({ tabId: 'tab-1', id: 'r', content: 'x' }, { studio: false })
-
-    expect(studioEcho).not.toHaveBeenCalled()
-    expect(iosMessage()).toBeDefined()
-  })
-
-  it('honours ios:false', () => {
-    echoUserTurn({ tabId: 'tab-1', id: 'r', content: 'x' }, { ios: false })
-
-    expect(studioEcho).toHaveBeenCalledTimes(1)
-    expect(iosMessage()).toBeUndefined()
-  })
-
-  it('suppression outranks explicit targets', () => {
-    // A caller asking for both surfaces still gets neither for a
-    // machine-authored turn — the classification is not overridable per site,
-    // which is what makes the funnel a rule rather than a default.
-    const published = echoUserTurn(
-      { tabId: 'tab-1', id: 'r', content: '[dev-lead] done', injectionKind: 'agent_completion' },
-      { studio: true, ios: true },
-    )
-
-    expect(published).toBe(false)
-    expect(studioEcho).not.toHaveBeenCalled()
-    expect(sent).toEqual([])
-  })
-})
-
 describe('echoUserTurn — payload fidelity', () => {
-  it('forwards attachments and slash provenance to iOS', () => {
-    echoUserTurn({
-      tabId: 'tab-1',
-      id: 'req-1',
-      content: '/spec args',
-      attachments: [{ id: '/tmp/a.png', type: 'image', name: 'a.png', path: '/tmp/a.png' }],
-      slashCommand: '/spec',
-      slashArgs: 'args',
-    })
-
-    expect(iosMessage()).toMatchObject({
-      slashCommand: '/spec',
-      slashArgs: 'args',
-      attachments: [{ name: 'a.png', path: '/tmp/a.png' }],
-    })
-  })
-
-  it('forwards structured-answer provenance to iOS', () => {
+  it('forwards structured-answer provenance to the Studio mirror', () => {
     echoUserTurn({
       tabId: 'tab-1',
       id: 'req-questions',
@@ -169,16 +125,12 @@ describe('echoUserTurn — payload fidelity', () => {
       injectionKind: 'structured_answer',
     })
 
-    expect(iosMessage()).toMatchObject({
-      content: '**Question?**\n- Answer',
-      injectionKind: 'structured_answer',
-    })
+    expect(studioPayload()).toMatchObject({ content: '**Question?**\n- Answer', injectionKind: 'structured_answer' })
   })
 
-  it('uses the caller timestamp when supplied so both surfaces agree', () => {
+  it('uses the caller timestamp when supplied', () => {
     echoUserTurn({ tabId: 'tab-1', id: 'req-1', content: 'x', timestamp: 1234 })
 
-    expect(iosMessage()).toMatchObject({ timestamp: 1234 })
     expect(studioEcho).toHaveBeenCalledWith('tab-1', expect.objectContaining({ timestamp: 1234 }))
   })
 })

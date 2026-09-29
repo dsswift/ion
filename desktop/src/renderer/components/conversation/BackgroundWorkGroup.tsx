@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from "react";
 import { CaretDown, CaretRight, SpinnerGap, Square } from "@phosphor-icons/react";
 import { useColors } from "../../theme";
-import { useSessionStore } from "../../stores/sessionStore";
-import type { BackgroundTaskState } from "../../../shared/types-engine";
-import type { Message } from "../../../shared/types-session";
-import { getToolDescription } from "./tool-helpers";
+import { useSessionStore } from "@ion/server/store/sessionStore";
+import type { BackgroundTaskState } from "@ion/shared/types-engine";
+import type { Message } from "@ion/shared/types-session";
+import { getToolDescription } from "@ion/server/conversation/tool-helpers";
 
 interface BackgroundWorkGroupProps {
   tabId?: string;

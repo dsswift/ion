@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { partitionStatus } from '../git/diffs'
+import { partitionStatus } from '@ion/server/git/diffs'
 
 describe('partitionStatus', () => {
   it('groups index / workingTree / untracked / merge correctly', () => {

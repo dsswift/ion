@@ -12,7 +12,7 @@ const sessionTabs: Array<{
   worktree?: { repoPath: string };
 }> = [];
 let activeSessionTabId: string | null = "tab-1";
-vi.mock("../../../stores/sessionStore", () => ({
+vi.mock("@ion/server/store/sessionStore", () => ({
   useSessionStore: {
     getState: () => ({
       openFileInEditor: openFileInEditorMock,
@@ -22,7 +22,7 @@ vi.mock("../../../stores/sessionStore", () => ({
     }),
   },
 }));
-vi.mock("../../../stores/session-store-helpers", () => ({
+vi.mock("@ion/server/store/session-store-helpers", () => ({
   editorDirForTab: (tab: {
     worktree?: { repoPath: string };
     workingDirectory: string;
@@ -47,6 +47,7 @@ import {
   resetSurfaceHydrationForTests,
   useSurfaceStore,
 } from "../surface-store";
+import { installFakeWire } from '../../../host/__tests__/fake-wire'
 
 const terminalDestroyMock = vi.fn().mockResolvedValue(undefined);
 const setSettingMock = vi.fn().mockResolvedValue(true);
@@ -85,11 +86,11 @@ beforeEach(() => {
     { id: "tab-1", workingDirectory: "/repo" },
     { id: "tab-2", workingDirectory: "/other" },
   );
-  (window as unknown as { ion: unknown }).ion = {
+  (window as unknown as { ion: unknown }).ion = installFakeWire({
     terminalDestroy: terminalDestroyMock,
     studioSetSetting: setSettingMock,
     studioGetSettings: getSettingsMock,
-  };
+  });
   resetStore();
 });
 afterEach(() => {

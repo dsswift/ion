@@ -33,7 +33,7 @@ vi.mock('electron', () => ({
 
 vi.mock('fs', () => ({ default: fsMock, ...fsMock }))
 
-import { readClaudeCompat, SETTINGS_DEFAULTS } from '../settings-store'
+import { readClaudeCompat, SETTINGS_DEFAULTS } from '@ion/server/persistence/settings-store'
 
 describe('readClaudeCompat default', () => {
   beforeEach(() => {

@@ -2,7 +2,7 @@
  * Pin-advance automation tests. These use a dedicated fixture so automation
  * behavior stays separate from core bench lifecycle coverage.
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, realpathSync } from 'fs'
@@ -22,10 +22,10 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => process.env.ION_TEST_HOME_BENCH_AUTOMATION || actual.homedir() }
 })
 
-import { addMember, updateMember, updateAllStale, ensureWorkspace } from '../integration/bench-ops'
-import { loadWorkspaces, saveWorkspaces } from '../integration/bench-store'
-import { setWorktreeStage, lookupWorktreeStage } from '../worktree/inventory'
-import { setWorktreePinAdvanceAutomationTrigger } from '../worktree/pin-advance-trigger'
+import { addMember, updateMember, updateAllStale, ensureWorkspace } from '@ion/server/integration/bench-ops'
+import { loadWorkspaces, saveWorkspaces } from '@ion/server/integration/bench-store'
+import { setWorktreeStage, lookupWorktreeStage } from '@ion/server/worktree/inventory'
+import { setWorktreePinAdvanceAutomationTrigger } from '@ion/server/worktree/pin-advance-trigger'
 
 const FEATURE = 'josh'
 let root: string

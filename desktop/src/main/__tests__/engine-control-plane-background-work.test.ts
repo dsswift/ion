@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { handleStreamSignalEvent } from '../engine-control-plane-stream'
+import { handleStreamSignalEvent } from '@ion/server/engine/engine-control-plane-stream'
 
 const work = {
   kind: 'background_task_completion',

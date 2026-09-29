@@ -16,8 +16,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, rmSync, existsSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { loadEngineConversationMessages } from '../session-meta'
-import { saveHomeEnv, setHomeEnv, restoreHomeEnv, type SavedHomeEnv } from '../../test/home-env'
+import { loadEngineConversationMessages } from '@ion/server/session-meta'
+import { saveHomeEnv, setHomeEnv, restoreHomeEnv, type SavedHomeEnv } from '@ion/server/test/home-env'
 
 const PNG_B64 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString('base64')
 

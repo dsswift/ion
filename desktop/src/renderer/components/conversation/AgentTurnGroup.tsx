@@ -16,9 +16,9 @@ import type { ChartRenderIndex } from "./chart-revisions";
 import { AssistantMessage } from "./AssistantMessage";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { CopyButton } from "./CopyButton";
-import { activeToolProgress, toolFailureSummary } from "./tool-helpers";
-import type { BackgroundTaskState } from "../../../shared/types-engine";
-import type { Message } from "../../../shared/types";
+import { activeToolProgress, toolFailureSummary } from "@ion/server/conversation/tool-helpers";
+import type { BackgroundTaskState } from "@ion/shared/types-engine";
+import type { Message } from "@ion/shared/types";
 import { BackgroundWorkGroup } from "./BackgroundWorkGroup";
 
 const TASK_NOTIFICATION_RE =

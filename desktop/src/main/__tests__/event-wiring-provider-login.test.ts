@@ -18,7 +18,7 @@ const { mockBroadcast, mockState, capturedHandler, refreshMock } = vi.hoisted(()
   refreshMock: vi.fn(async () => {}),
 }))
 
-vi.mock('../state', () => ({
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{
   state: mockState,
   sessionPlane: { on: vi.fn(), emit: vi.fn(), notifyConversationCleared: vi.fn() },
   engineBridge: {
@@ -32,15 +32,15 @@ vi.mock('../state', () => ({
   extensionCommandRegistry: new Map(),
   forwardedEnginePermissionDenials: new Set<string>(),
   lastForwardedTabStatus: new Map<string, string>(),
-}))
-vi.mock('../broadcast', () => ({ broadcast: mockBroadcast }))
-vi.mock('../settings-store', () => ({ shouldStreamThinkingToRemote: vi.fn(() => true) }))
-vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
-vi.mock('../../shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
-vi.mock('../ipc/models', () => ({ refreshModelCache: refreshMock }))
+} }))
+vi.mock('@ion/server/broadcast', () => ({ broadcast: mockBroadcast }))
+vi.mock('@ion/server/persistence/settings-store', async (importOriginal) => ({ ...(await importOriginal()), ...{ shouldStreamThinkingToRemote: vi.fn(() => true) } }))
+vi.mock('@ion/server/logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
+vi.mock('@ion/shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
+vi.mock('@ion/server/engine/ipc/models', () => ({ refreshModelCache: refreshMock }))
 
-import { wireEngineBridgeEvents } from '../event-wiring'
-import { IPC } from '../../shared/types'
+import { wireEngineBridgeEvents } from '@ion/server/engine/event-wiring'
+import { IPC } from '@ion/shared/types'
 
 function emit(key: string, event: any): void {
   capturedHandler.fn!(key, event)

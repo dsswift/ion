@@ -14,7 +14,7 @@ import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs'
 import { createHash } from 'crypto'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { saveImageToConversation, imageAttachmentFromBlock } from '../conversation-image-store'
+import { saveImageToConversation, imageAttachmentFromBlock } from '@ion/server/conversation-image-store'
 
 // A tiny valid PNG (1x1). Bytes are arbitrary for the store — it hashes them.
 const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01, 0x02, 0x03])

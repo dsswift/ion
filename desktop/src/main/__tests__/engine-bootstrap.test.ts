@@ -111,22 +111,31 @@ vi.mock('fs', () => ({
   chmodSync: vi.fn(),
 }))
 
-vi.mock('os', () => ({
+// Partial: only homedir is under test control. A total replacement broke
+// once secretStore (reached transitively through server config) began
+// reading os.hostname at module load.
+vi.mock('os', async (importOriginal) => ({ ...(await importOriginal<typeof import('os')>()), ...{
   homedir: () => '/Users/testuser',
-}))
+} }))
 
-vi.mock('../utils/atomicWrite', () => ({
+vi.mock('@ion/server/utils/atomicWrite', async (importOriginal) => ({ ...(await importOriginal()), ...{
   atomicWriteFileSync: vi.fn((p: string, content: string) => {
     writtenFiles[p] = content
     fakeFs[p] = content
   }),
-}))
+} }))
 
 vi.mock('../logger', () => ({
   log: vi.fn(),
   error: vi.fn(),
   warn: vi.fn(),
 }))
+// The modules under test moved to `server/src/`, so their `'../logger'` resolves
+// to `server/src/logger` -- a different module from the desktop logger mocked
+// above, which therefore no longer intercepts them. Without this the real server
+// logger runs inside the test worker: it writes to the log file and, where `fs`
+// is mocked, fails on an export the mock does not provide.
+vi.mock('@ion/server/logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
 const originalPlatform = process.platform
 let platformOverride: string | null = null
@@ -214,7 +223,7 @@ const HOME = '/Users/testuser'
 const destBinaryPath = () => path.join(HOME, '.ion', 'bin', 'ion')
 const plistDestPath = () => path.join(HOME, 'Library', 'LaunchAgents', 'com.ion.engine.plist')
 
-import { ensureEngineDaemon, restartEngineDaemon, PLIST_LABEL } from '../engine-bootstrap'
+import { ensureEngineDaemon, restartEngineDaemon, PLIST_LABEL } from '@ion/server/engine/engine-bootstrap'
 describe('engine-bootstrap', () => {
   it('substitutes $HOME in the plist template', async () => {
     // Seed the template at the path findPlistTemplate will check.
@@ -570,7 +579,7 @@ describe('ensureEngineDaemon — daemon readiness', () => {
     // Both readiness waits actually probed.
     expect(socketProbeCount).toBeGreaterThanOrEqual(2)
     // The terminal failure is surfaced at error level, not swallowed.
-    const { error } = await import('../logger')
+    const { error } = await import('@ion/server/logger')
     expect(vi.mocked(error)).toHaveBeenCalledWith(
       'bootstrap',
       expect.stringContaining('failed to come up'),

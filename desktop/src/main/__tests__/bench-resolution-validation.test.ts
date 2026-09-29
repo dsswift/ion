@@ -1,14 +1,14 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 
 vi.mock('../logger', () => ({ log: vi.fn(), warn: vi.fn() }))
-vi.mock('../git-runner', () => ({ runGit: vi.fn() }))
+vi.mock('@ion/server/git/git-runner', () => ({ runGit: vi.fn() }))
 
-import { runGit } from '../git-runner'
+import { runGit } from '@ion/server/git/git-runner'
 import {
   currentRererePaths,
   forgetRererePaths,
   validateBenchResolution,
-} from '../integration/bench-resolution-validation'
+} from '@ion/server/integration/bench-resolution-validation'
 
 const mockedRunGit = vi.mocked(runGit)
 

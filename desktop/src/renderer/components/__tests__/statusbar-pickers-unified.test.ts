@@ -14,7 +14,8 @@ import { readFileSync } from 'fs'
 import { resolve } from 'path'
 
 const COMPONENTS = resolve(__dirname, '..')
-const SLICES = resolve(__dirname, '../../stores/slices')
+const SERVER_STORE = resolve(__dirname, '../../../../../server/src/store')
+const SLICES = resolve(SERVER_STORE, 'slices')
 
 function read(p: string): string {
   return readFileSync(p, 'utf8')
@@ -54,7 +55,7 @@ describe('status-bar pickers are data-driven, not tab-type forks', () => {
   it('setEngineModel action is removed from the engine slice and types', () => {
     const engineSlice = read(resolve(SLICES, 'engine-slice.ts'))
     expect(engineSlice).not.toMatch(/setEngineModel:/)
-    const types = read(resolve(__dirname, '../../stores/session-store-types.ts'))
+    const types = read(resolve(SERVER_STORE, 'session-store-types.ts'))
     expect(types).not.toMatch(/setEngineModel:/)
   })
 })

@@ -1,11 +1,8 @@
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { homedir } from 'os'
 import { join } from 'path'
-import { IPC } from '../../shared/types'
-import { state } from '../state'
-import { showWindow } from '../window-manager'
-import { validateExternalUrl, isValidProjectPath } from '../ipc-validation'
-import { engineIsRemote, getEngineHostInfo, listEngineDirectory, getEnterprisePolicyNewConversationDefaults, getEnterprisePolicy, resolveNewConversationDefaults } from '../engine-bridge-fs'
+import { IPC } from '@ion/shared/types'
+import { validateExternalUrl, isValidProjectPath } from '@ion/server/ipc-validation'
 import { log as _log, warn as _warn } from '../logger'
 
 function warn(msg: string, fields?: Record<string, unknown>): void {
@@ -18,27 +15,19 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 
 export function registerFileDialogIpc(): void {
   ipcMain.handle(IPC.SELECT_DIRECTORY, async (event) => {
-    // Resolve the window that ASKED — invoking from the Studio window used
-    // to hide the overlay (state.mainWindow) instead: wrong window vanished
-    // and the dialog parented to nothing.
+    // Resolve the window that asked and parent the native dialog to it. The
+    // Studio window is a normal window (unlike the deleted overlay glass, it
+    // never needs hiding for a native dialog to render on top of it).
     const sender = BrowserWindow.fromWebContents(event.sender)
-    const isOverlay = sender != null && sender === state.mainWindow
-    // Only the overlay glass needs hiding (it floats above everything and
-    // would cover the native dialog). A normal window (Studio) stays put.
-    if (isOverlay) state.mainWindow!.hide()
     const options = { properties: ['openDirectory' as const] }
     const result = process.platform === 'darwin' || !sender
       ? await dialog.showOpenDialog(options)
       : await dialog.showOpenDialog(sender, options)
-    if (isOverlay) showWindow('dialog-return')
     return result.canceled ? null : result.filePaths[0]
   })
 
   ipcMain.handle(IPC.SELECT_EXTENSION_FILES, async (event) => {
-    // Same wrong-window pattern as SELECT_DIRECTORY above — fixed together.
     const sender = BrowserWindow.fromWebContents(event.sender)
-    const isOverlay = sender != null && sender === state.mainWindow
-    if (isOverlay) state.mainWindow!.hide()
     const extensionsDir = join(homedir(), '.ion', 'extensions')
     const options = {
       defaultPath: extensionsDir,
@@ -62,7 +51,6 @@ export function registerFileDialogIpc(): void {
     const result = process.platform === 'darwin' || !sender
       ? await dialog.showOpenDialog(options)
       : await dialog.showOpenDialog(sender, options)
-    if (isOverlay) state.mainWindow?.show()
     if (result.canceled) {
       log('extension file picker cancelled')
       return null
@@ -70,32 +58,6 @@ export function registerFileDialogIpc(): void {
     log('extension_file_picker: selected', { count: result.filePaths.length, paths: result.filePaths.join(', ') })
     return result.filePaths
   })
-
-  // Engine-host filesystem RPCs. Used by the remote-aware directory picker
-  // so the user browses the engine's filesystem (which is the cwd the engine
-  // chdir's into when spawning the Claude CLI) rather than the desktop's
-  // local filesystem. Local-engine setups also use these for symmetry.
-
-  ipcMain.handle(IPC.GET_ENGINE_HOST_INFO, async () => getEngineHostInfo())
-
-  ipcMain.handle(
-    IPC.LIST_ENGINE_DIRECTORY,
-    async (_event, path: string, showHidden: boolean) => listEngineDirectory(path ?? '', !!showHidden),
-  )
-
-  ipcMain.handle(IPC.ENGINE_IS_REMOTE, async () => engineIsRemote())
-
-  // Enterprise policy: fetch the NewConversationDefaults section from the engine's
-  // merged config (includes MDM/system-level settings). Returns null when no
-  // enterprise config is active.
-  ipcMain.handle(IPC.GET_ENTERPRISE_POLICY, async () => getEnterprisePolicyNewConversationDefaults())
-
-  // Full enterprise policy blob (D-004): the complete EnterpriseConfig
-  // passthrough, consumed by the renderer for model-picker filtering (D-011)
-  // and any other client-side enterprise constraint. Null when no
-  // enterprise config is active.
-  ipcMain.handle(IPC.GET_ENTERPRISE_POLICY_FULL, async () => getEnterprisePolicy())
-  ipcMain.handle(IPC.RESOLVE_NEW_CONVERSATION_DEFAULTS, async (_event, path: string) => resolveNewConversationDefaults(path ?? ''))
 
   // Reveal a path in the OS file manager. OPEN_EXTERNAL cannot serve this: it
   // validates for http(s) and rejects file:// by design. The path is checked

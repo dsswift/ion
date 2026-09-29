@@ -27,11 +27,11 @@ vi.mock('electron', () => ({
   shell: { openExternal: vi.fn(), showItemInFolder: vi.fn() },
 }))
 vi.mock('../../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
-vi.mock('../../state', () => ({
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{
   state: { mainWindow: { hide: vi.fn(), show: vi.fn() } },
-}))
+} }))
 vi.mock('../../window-manager', () => ({ showWindow: vi.fn() }))
-vi.mock('../../ipc-validation', () => ({
+vi.mock('@ion/server/ipc-validation', () => ({
   validateExternalUrl: vi.fn(() => true),
   isValidProjectPath: vi.fn(() => true),
 }))
@@ -44,7 +44,7 @@ vi.mock('../../engine-bridge-fs', () => ({
 }))
 
 import { registerFileDialogIpc } from '../file-dialog'
-import { IPC } from '../../../shared/types'
+import { IPC } from '@ion/shared/types'
 
 registerFileDialogIpc()
 

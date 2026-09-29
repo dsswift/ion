@@ -10,10 +10,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('../../../rendererLogger', () => ({
   rTrace: vi.fn(), rDebug: vi.fn(), rInfo: vi.fn(), rWarn: vi.fn(), rError: vi.fn(),
 }))
-vi.mock('../../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: { getState: () => ({ openFileInEditor: vi.fn(), tabs: [], activeTabId: 'conv-1' }) },
 }))
-vi.mock('../../../stores/session-store-helpers', () => ({
+vi.mock('@ion/server/store/session-store-helpers', () => ({
   editorDirForTab: (tab: { workingDirectory: string }) => tab.workingDirectory,
 }))
 vi.mock('../../../preferences', () => ({
@@ -21,8 +21,8 @@ vi.mock('../../../preferences', () => ({
 }))
 
 import { resetSurfaceHydrationForTests, useSurfaceStore } from '../surface-store'
-import { QUESTIONS_SURFACE_ID } from '../../../../shared/studio-surface-types'
-import { serializeSurface } from '../../../../shared/studio-surface-persistence'
+import { QUESTIONS_SURFACE_ID } from '@ion/shared/studio-surface-types'
+import { serializeSurface } from '@ion/shared/studio-surface-persistence'
 
 const studioSetSetting = vi.fn().mockResolvedValue(true)
 beforeEach(() => {

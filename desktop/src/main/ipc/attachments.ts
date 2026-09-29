@@ -2,14 +2,14 @@ import { dialog, ipcMain } from 'electron'
 import { createHash } from 'crypto'
 import { execSync } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, statSync } from 'fs'
-import { homedir } from 'os'
+import { tmpdir } from 'os'
 import { basename, extname, join } from 'path'
-import { atomicWriteFileSync } from '../utils/atomicWrite'
-import { cleanupFile } from '../utils/temp-dir'
-import { IPC } from '../../shared/types'
+import { atomicWriteFileSync } from '@ion/server/utils/atomicWrite'
+import { dataDir } from '@ion/server/paths'
+import { cleanupFile } from '@ion/server/utils/temp-dir'
+import { IPC } from '@ion/shared/types'
 import { state, SPACES_DEBUG } from '../state'
-import { broadcast } from '../broadcast'
-import { showWindow, snapshotWindowState } from '../window-manager'
+import { snapshotWindowState } from '../window-manager'
 import { log as _log, warn as _warn, debug as _debug } from '../logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -39,31 +39,32 @@ const MIME_MAP: Record<string, string> = {
   '.yaml': 'text/yaml',
   '.toml': 'text/toml',
 }
-const PASTE_IMAGE_EXTENSIONS: Record<string, string> = {
-  'image/png': 'png',
-  'image/jpeg': 'jpeg',
-  'image/gif': 'gif',
-  'image/webp': 'webp',
-  'image/svg+xml': 'svg',
-}
-
 /**
- * Permanent, content-addressed store for user-supplied images (pastes and
- * screenshots). Mirrors the mechanic in `conversation-image-store.ts` (which
+ * Permanent, content-addressed store for user-supplied images (screenshots). Mirrors the mechanic in `conversation-image-store.ts` (which
  * handles engine-generated tool-result images) but targets a separate
- * `~/.ion/user-images/` directory so user input images live alongside all
- * other Ion data and survive OS temp-directory purges across reboots.
+ * `<dataDir>/user-images/` directory (`userImagesDir`) so user input images
+ * live alongside all other Ion data and survive OS temp-directory purges
+ * across reboots.
  *
  * Content-addressing (filename = SHA-256 of raw bytes + extension) is
- * idempotent: pasting the same image twice produces exactly one file.
+ * idempotent: the same bytes captured twice produce exactly one file.
  *
  * Returns the absolute path of the saved file, or null on failure (the caller
  * falls through to returning null for the whole attachment, which is logged
  * at the call site).
  */
+/**
+ * Where screenshots are stored: the data folder's `user-images/`, so a
+ * machine that runs Ion under `ION_DATA_DIR` keeps them with the rest of its
+ * data instead of in the home folder.
+ */
+export function userImagesDir(): string {
+  return join(dataDir(), 'user-images')
+}
+
 function saveUserImage(buf: Buffer, ext: string): string | null {
   try {
-    const dir = join(homedir(), '.ion', 'user-images')
+    const dir = userImagesDir()
     mkdirSync(dir, { recursive: true })
     const hash = createHash('sha256').update(buf).digest('hex')
     const filePath = join(dir, `${hash}.${ext}`)
@@ -121,8 +122,9 @@ function describeFile(fp: string): { id: string; type: 'image' | 'file'; name: s
 
 export function registerAttachmentsIpc(): void {
   ipcMain.handle(IPC.ATTACH_FILES, async () => {
-    if (!state.mainWindow) return null
-    state.mainWindow.hide()
+    // A normal window (Studio) never needs hiding for a native file dialog
+    // to render on top of it — that dance was only for the deleted overlay
+    // glass, which floated above everything.
     const options: Electron.OpenDialogOptions = {
       properties: ['openFile' as const, 'multiSelections' as const],
       ...(process.platform !== 'darwin' && {
@@ -133,10 +135,9 @@ export function registerAttachmentsIpc(): void {
         ],
       }),
     }
-    const result = process.platform === 'darwin'
+    const result = process.platform === 'darwin' || !state.studioWindow
       ? await dialog.showOpenDialog(options)
-      : await dialog.showOpenDialog(state.mainWindow, options)
-    showWindow('dialog-return')
+      : await dialog.showOpenDialog(state.studioWindow, options)
     if (result.canceled || result.filePaths.length === 0) return null
 
     return result.filePaths.map((fp: string) => describeFile(fp)).filter(Boolean)
@@ -145,13 +146,13 @@ export function registerAttachmentsIpc(): void {
   ipcMain.handle(IPC.ATTACH_FILE_BY_PATH, async (_event, fp: string) => describeFile(fp))
 
   ipcMain.handle(IPC.TAKE_SCREENSHOT, async () => {
-    if (!state.mainWindow) return null
+    if (!state.studioWindow) return null
 
     if (SPACES_DEBUG) snapshotWindowState('screenshot pre-hide')
-    state.mainWindow.hide()
+    state.studioWindow.hide()
     await new Promise((r) => setTimeout(r, 300))
 
-    const tmpPath = join(require('os').tmpdir(), `ion-screenshot-${crypto.randomUUID()}.png`)
+    const tmpPath = join(tmpdir(), `ion-screenshot-${crypto.randomUUID()}.png`)
     try {
       execSync(`/usr/sbin/screencapture -i "${tmpPath}"`, {
         timeout: 30000,
@@ -183,59 +184,15 @@ export function registerAttachmentsIpc(): void {
       return null
     } finally {
       cleanupFile(tmpPath)
-      if (state.mainWindow) {
-        state.mainWindow.show()
-        state.mainWindow.webContents.focus()
+      if (state.studioWindow) {
+        state.studioWindow.show()
+        state.studioWindow.webContents.focus()
       }
-      broadcast(IPC.WINDOW_SHOWN)
       if (SPACES_DEBUG) {
         log('[spaces] screenshot restore show+focus')
         snapshotWindowState('screenshot restore immediate')
         setTimeout(() => snapshotWindowState('screenshot restore +200ms'), 200)
       }
-    }
-  })
-
-  ipcMain.handle(IPC.PASTE_IMAGE, async (_event, dataUrl: string) => {
-    if (typeof dataUrl !== 'string') {
-      warn('attachments: paste image rejected invalid data URL', { length: 0, mime: 'invalid' })
-      return null
-    }
-
-    try {
-      const match = dataUrl.match(/^data:([^;,]+);base64,([A-Za-z0-9+/]+={0,2})$/)
-      const mimeType = match?.[1].toLowerCase()
-      const ext = mimeType ? PASTE_IMAGE_EXTENSIONS[mimeType] : undefined
-      if (!match || !mimeType || !ext) {
-        warn('attachments: paste image rejected invalid data URL', {
-          length: typeof dataUrl === 'string' ? dataUrl.length : 0,
-          mime: mimeType ?? 'invalid',
-        })
-        return null
-      }
-
-      const base64Data = match[2]
-      const buf = Buffer.from(base64Data, 'base64')
-
-      // Save to permanent content-addressed storage instead of tmpdir so the
-      // file survives OS temp-purges across reboots.
-      const filePath = saveUserImage(buf, ext)
-      if (!filePath) return null
-
-      log('attachments: paste image saved', { path: filePath, bytes: buf.length, mime: mimeType })
-      return {
-        id: crypto.randomUUID(),
-        type: 'image',
-        name: `pasted image ${++state.pasteCounter}.${ext}`,
-        path: filePath,
-        mimeType,
-        contentHash: createHash('sha256').update(buf).digest('hex'),
-        dataUrl,
-        size: buf.length,
-      }
-    } catch (err) {
-      warn('attachments: paste image failed', { error: String(err) })
-      return null
     }
   })
 }

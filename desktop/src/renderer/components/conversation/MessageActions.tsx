@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowCounterClockwise, GitFork } from '@phosphor-icons/react'
-import { useSessionStore } from '../../stores/sessionStore'
-import { activeInstance } from '../../stores/conversation-instance'
-import { MAIN_INSTANCE_ID } from '../../../shared/session-key'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { activeInstance } from '@ion/server/store/conversation-instance'
+import { MAIN_INSTANCE_ID } from '@ion/shared/session-key'
 import { useColors } from '../../theme'
 import { CopyButton } from './CopyButton'
-import type { Message } from '../../../shared/types'
+import type { Message } from '@ion/shared/types'
 import { rError } from '../../rendererLogger'
 
 interface Props {

@@ -5,10 +5,15 @@
  * snapshot to learn the page, evaluate to measure it, screenshot to prove it,
  * scroll to reach the part that is off screen. They are read-heavy, so each one
  * is capped and every cap says how to get the rest.
+ *
+ * Bodies only: each entry is `{ name, execute }`. The matching declarations
+ * (description, input schema, plan-mode safety) live in the server package at
+ * `server/src/studio-playwright/tool-declarations.ts` and are joined by name in
+ * `./tools.ts`.
  */
 import { log as _log } from '../logger'
-import type { BrowserToolContext, BrowserToolResult, StudioBrowserTool } from './tool-contracts'
-import { BOOL, ENUM, INT, NUM, STRING, TARGET_PROPS, fail, filenameArg, intArg, numArg, ok, schema, stringArg, targetOf } from './tool-contracts'
+import type { BrowserToolContext, BrowserToolResult, StudioBrowserToolBody } from '@ion/server/studio-playwright/tool-contracts'
+import { fail, filenameArg, intArg, numArg, ok, stringArg, targetOf } from '@ion/server/studio-playwright/tool-contracts'
 import { fileLink, formatError, formatResponse } from './responses'
 import { resolveBrowser, runExclusive } from './runtime'
 import { resolveUnique } from './targets'
@@ -22,17 +27,9 @@ const SNAPSHOT_TIMEOUT_MS = 20_000
 /** Roughly the largest image worth sending inline to a model. */
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024
 
-export const inspectionTools: StudioBrowserTool[] = [
+export const inspectionBodies: StudioBrowserToolBody[] = [
   {
     name: 'browser_snapshot',
-    description: 'Capture an accessibility snapshot of the page, including element refs such as e12 that other browser tools accept as a target.',
-    inputSchema: schema({
-      target: STRING('Optional selector to scope the snapshot, for example body or main', 1024),
-      filename: STRING('Write the snapshot to this conversation-relative file instead of returning it inline', 1024),
-      depth: INT('Limit the snapshot depth', 1, 100),
-      boxes: BOOL('Append each element bounding box as [box=x,y,width,height]'),
-    }),
-    planModeSafe: true,
     execute: async (input, ctx) => {
       const resolved = await resolveBrowser(ctx.sessionKey, { create: true })
       if ('error' in resolved) return fail(resolved.error)
@@ -63,12 +60,6 @@ export const inspectionTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_find',
-    description: 'Search the accessibility snapshot for text or a regular expression and return the matching nodes with their refs.',
-    inputSchema: schema({
-      text: STRING('Case-insensitive substring to find', 512),
-      regex: STRING('Regular expression to find. Wrap in slashes to add flags, for example /error/i', 512),
-    }),
-    planModeSafe: true,
     execute: async (input, ctx) => {
       const text = stringArg(input, 'text', 512)
       const regexRaw = stringArg(input, 'regex', 512)
@@ -112,21 +103,6 @@ export const inspectionTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_take_screenshot',
-    description: 'Screenshot the viewport, the full page, one element, or an explicit clip region.',
-    inputSchema: schema({
-      ...TARGET_PROPS,
-      type: ENUM('Image format', ['png', 'jpeg']),
-      filename: STRING('Write the image to this conversation-relative file instead of returning it inline', 1024),
-      fullPage: BOOL('Capture the entire scrollable page instead of the viewport'),
-      scale: ENUM('css keeps CSS pixel dimensions; device uses the device pixel ratio', ['css', 'device']),
-      clip: schema({
-        x: NUM('Left edge in CSS pixels'),
-        y: NUM('Top edge in CSS pixels'),
-        width: NUM('Width in CSS pixels'),
-        height: NUM('Height in CSS pixels'),
-      }, ['x', 'y', 'width', 'height']),
-    }),
-    planModeSafe: true,
     execute: async (input, ctx) => {
       const target = targetOf(input)
       const fullPage = input.fullPage === true
@@ -192,36 +168,14 @@ export const inspectionTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_scroll',
-    description: 'Scroll by a delta, to an absolute position, or until an element is in view. Choose exactly one mode per call.',
-    inputSchema: schema({
-      ...TARGET_PROPS,
-      deltaX: NUM('Relative horizontal scroll in CSS pixels'),
-      deltaY: NUM('Relative vertical scroll in CSS pixels'),
-      x: NUM('Absolute horizontal scroll position'),
-      y: NUM('Absolute vertical scroll position'),
-      block: ENUM('Vertical alignment when scrolling to an element', ['start', 'center', 'end', 'nearest']),
-      inline: ENUM('Horizontal alignment when scrolling to an element', ['start', 'center', 'end', 'nearest']),
-      behavior: ENUM('Scrolling behavior', ['instant', 'smooth']),
-    }),
     execute: (input, ctx) => scroll(input, ctx),
   },
   {
     name: 'browser_mouse_wheel',
-    description: 'Scroll the page by a wheel delta.',
-    inputSchema: schema({
-      deltaX: NUM('Horizontal wheel delta in CSS pixels'),
-      deltaY: NUM('Vertical wheel delta in CSS pixels'),
-    }, ['deltaX', 'deltaY']),
     execute: (input, ctx) => scroll({ deltaX: input.deltaX, deltaY: input.deltaY }, ctx),
   },
   {
     name: 'browser_evaluate',
-    description: 'Run JavaScript in the page and return its JSON-compatible result. Use this for layout measurements such as scrollWidth or getBoundingClientRect.',
-    inputSchema: schema({
-      ...TARGET_PROPS,
-      function: STRING('Function or expression to evaluate, for example () => document.body.scrollWidth', 8192),
-      filename: STRING('Write the result to this conversation-relative file instead of returning it inline', 1024),
-    }, ['function']),
     execute: async (input, ctx) => {
       const source = stringArg(input, 'function', 8192)
       if (!source) return fail('function is required')

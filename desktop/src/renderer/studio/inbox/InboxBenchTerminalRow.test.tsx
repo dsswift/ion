@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { TabState } from '../../../shared/types'
+import type { TabState } from '@ion/shared/types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -20,7 +20,7 @@ const state = {
   closeTab,
 }
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (value: typeof state) => unknown) => selector(state),
     { getState: () => state },

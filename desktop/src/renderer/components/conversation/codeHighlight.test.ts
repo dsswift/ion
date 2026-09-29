@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { darkColors } from '../../theme/palette-dark'
+import { darkColors } from '@ion/server/renderer/theme/palette-dark'
 
 // Mock shiki so the highlighter is deterministic and spy-able. The mock
 // tokenizes each line into one colored token so cache behavior is visible.

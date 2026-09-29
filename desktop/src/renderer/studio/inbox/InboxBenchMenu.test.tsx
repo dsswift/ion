@@ -2,14 +2,14 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { IntegrationWorkspace } from '../../../shared/types'
+import type { IntegrationWorkspace } from '@ion/shared/types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const benchRerereCount = vi.fn(async () => 0)
 const benchResolveConflict = vi.fn(async () => '/integration/repo-main')
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: {
     getState: () => ({ benchRerereCount, benchResolveConflict }),
   },

@@ -7,7 +7,7 @@
  * touched, and the in-pass rerere cascade (a resolution recorded before the
  * pass clears a later identical conflict by replay, attributed as such).
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, readFileSync, realpathSync } from 'fs'
@@ -18,14 +18,10 @@ vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error
 
 // Redirect HOME so registry reads/writes land in the fixture. Per-file env var:
 // vitest runs test FILES concurrently in one process.
-vi.mock('os', async () => {
-  const actual = await vi.importActual<typeof import('os')>('os')
-  return { ...actual, homedir: () => process.env.ION_TEST_HOME_WT_SYNCALL || actual.homedir() }
-})
 
-import { registerWorktree } from '../worktree/inventory'
-import { syncWorktreeFromSource } from '../worktree/integrate'
-import { syncAllWorktreesUnqueued } from '../worktree/sync-all'
+import { registerWorktree } from '@ion/server/worktree/inventory'
+import { syncWorktreeFromSource } from '@ion/server/worktree/integrate'
+import { syncAllWorktreesUnqueued } from '@ion/server/worktree/sync-all'
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })
@@ -72,17 +68,21 @@ function commitOnFeature(file: string, content: string, message: string): void {
   git(repo, 'worktree', 'remove', '--force', holder)
 }
 
+let savedIonDataDir: string | undefined
+
 beforeEach(() => {
+  savedIonDataDir = process.env.ION_DATA_DIR
   // realpath.native: macOS resolves /var's symlink and Windows expands a
   // short (8.3) TEMP path to the long form git itself reports; plain
   // realpathSync does not perform the Windows expansion.
   root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ion-wtsyncall-')))
-  process.env.ION_TEST_HOME_WT_SYNCALL = join(root, 'home')
+  process.env.ION_DATA_DIR = join(join(root, 'home'), '.ion')
   repo = makeRepo()
 })
 
 afterEach(() => {
-  delete process.env.ION_TEST_HOME_WT_SYNCALL
+  if (savedIonDataDir === undefined) delete process.env.ION_DATA_DIR
+  else process.env.ION_DATA_DIR = savedIonDataDir
   removeGitFixture(root)
 })
 

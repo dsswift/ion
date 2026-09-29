@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../logger', () => ({ log: vi.fn(), warn: vi.fn() }))
-vi.mock('../worktree/provision-manifest', () => ({ readBenchVerify: vi.fn() }))
-vi.mock('../worktree/provision-run', () => ({ runProvisionCommand: vi.fn() }))
+vi.mock('@ion/server/worktree/provision-manifest', () => ({ readBenchVerify: vi.fn() }))
+vi.mock('@ion/server/worktree/provision-run', () => ({ runProvisionCommand: vi.fn() }))
 
-import { readBenchVerify } from '../worktree/provision-manifest'
-import { runProvisionCommand } from '../worktree/provision-run'
-import { runBenchVerify } from '../integration/bench-verify'
+import { readBenchVerify } from '@ion/server/worktree/provision-manifest'
+import { runProvisionCommand } from '@ion/server/worktree/provision-run'
+import { runBenchVerify } from '@ion/server/integration/bench-verify'
 
 const mockedRead = vi.mocked(readBenchVerify)
 const mockedRun = vi.mocked(runProvisionCommand)

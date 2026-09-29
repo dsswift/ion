@@ -27,7 +27,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { TURN_GROUPING_GUIDANCE } from '../turn-grouping-guidance'
+import { TURN_GROUPING_GUIDANCE } from '@ion/server/engine/turn-grouping-guidance'
 
 describe('TURN_GROUPING_GUIDANCE', () => {
   it('is a non-empty plain string (cacheable, not a function or template)', () => {

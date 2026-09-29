@@ -62,10 +62,11 @@ const readImageDataUrl = vi.fn(async (path: string) => ({ dataUrl: `data:image/p
 beforeEach(() => {
   readImageDataUrl.mockClear()
   ;(globalThis as unknown as { window: { ion: unknown } }).window = globalThis as unknown as { ion: unknown }
-  ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = { readImageDataUrl }
+  ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = installFakeWire({ readImageDataUrl })
 })
 
 import { ImageGallery, galleryLayout, GALLERY_RAIL_CAP, type GalleryImage } from '../ImageGallery'
+import { installFakeWire } from '../../../host/__tests__/fake-wire'
 
 // Cross-platform parity: GALLERY_RAIL_CAP must match the fixture iOS's
 // MessageAttachmentGalleryTests.swift asserts against, or the same

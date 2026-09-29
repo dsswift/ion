@@ -1,30 +1,78 @@
 // ──────────────────────────────────────────────────────
 //  afterPack.js -- electron-builder afterPack hook
 //
-//  Signs the Ion Engine binary embedded as an extraResource.
-//  electron-builder signs the main Electron app and its
-//  frameworks, but does not automatically sign extraResources.
-//  Without this, macOS Gatekeeper quarantines the unsigned
-//  engine binary on first launch.
+//  1. Makes node-pty's prebuilt spawn-helper executable in
+//     app.asar.unpacked (macOS and Linux). npm extracts it
+//     0644, electron-builder copies that mode, and pkgbuild
+//     preserves it -- so without this step every terminal in
+//     the installed app fails with "posix_spawnp failed."
+//  2. Signs the Ion Engine binary embedded as an extraResource
+//     (macOS). electron-builder signs the main Electron app and
+//     its frameworks, but does not automatically sign
+//     extraResources. Without this, macOS Gatekeeper
+//     quarantines the unsigned engine binary on first launch.
 // ──────────────────────────────────────────────────────
 
 const { execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
+const { ensureSpawnHelpersExecutable, ensureHelperPathUnpackSafe, spawnHelperPaths } = require("../../scripts/node-pty-spawn-helper");
 
 const IDENTITY = process.env.APPLE_SIGNING_IDENTITY || "Ion Local Dev";
 const ENTITLEMENTS = path.join(__dirname, "..", "resources", "entitlements.mac.plist");
 
+/**
+ * The unpacked node-pty package inside a packed app, per platform. Windows
+ * ships node-pty too but uses ConPTY and carries no spawn-helper.
+ */
+function unpackedNodePtyDir(context, appPath) {
+  const resources = context.electronPlatformName === "darwin"
+    ? path.join(appPath, "Contents", "Resources")
+    : path.join(context.appOutDir, "resources");
+  return path.join(resources, "app.asar.unpacked", "node_modules", "node-pty");
+}
+
+/**
+ * Fail the build rather than ship a terminal that cannot start. The helper
+ * is a hard requirement of the terminal feature on these platforms, so its
+ * absence is a packaging defect, not a condition to skip past.
+ */
+function fixSpawnHelper(context, appPath) {
+  if (context.electronPlatformName === "win32") {
+    console.log("  afterPack: win32 target, no node-pty spawn-helper to fix");
+    return;
+  }
+  const nodePtyDir = unpackedNodePtyDir(context, appPath);
+  if (!fs.existsSync(nodePtyDir)) {
+    throw new Error(`afterPack: node-pty is not unpacked at ${nodePtyDir}; check asarUnpack in package.json`);
+  }
+  if (spawnHelperPaths(nodePtyDir).length === 0) {
+    throw new Error(`afterPack: no prebuilt spawn-helper under ${nodePtyDir}/prebuilds; node-pty's prebuilds did not ship`);
+  }
+  const { fixed, already } = ensureSpawnHelpersExecutable(nodePtyDir);
+  for (const p of fixed) console.log(`  afterPack: set execute bit on ${path.relative(context.appOutDir, p)}`);
+  for (const p of already) console.log(`  afterPack: already executable ${path.relative(context.appOutDir, p)}`);
+  // The server loads node-pty from this unpacked tree; its shipped resolver
+  // would double the `.unpacked` suffix. check-packaged-requires refuses the
+  // artifact if this did not take.
+  console.log(`  afterPack: node-pty helper path resolver ${ensureHelperPathUnpackSafe(nodePtyDir)}`);
+}
+
+exports.fixSpawnHelper = fixSpawnHelper;
+
 exports.default = async function afterPack(context) {
+  const appPath = path.join(
+    context.appOutDir,
+    `${context.packager.appInfo.productFilename}.app`
+  );
+
+  fixSpawnHelper(context, appPath);
+
   if (context.electronPlatformName !== "darwin") {
     console.log("  afterPack: non-darwin target, codesign skipped");
     return;
   }
 
-  const appPath = path.join(
-    context.appOutDir,
-    `${context.packager.appInfo.productFilename}.app`
-  );
   const engineBin = path.join(appPath, "Contents", "Resources", "engine", "ion");
 
   if (!fs.existsSync(engineBin)) {

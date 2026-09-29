@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
-import type { NormalizedEvent } from '../../shared/types'
+import type { NormalizedEvent } from '@ion/shared/types'
 
 vi.mock('electron', () => ({ app: { dock: { bounce: vi.fn() } } }))
-vi.mock('../state', () => ({ state: { studioWindow: null } }))
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{ state: { studioWindow: null } } }))
 vi.mock('../settings-store', () => ({ readSettings: () => ({}) }))
 vi.mock('../logger', () => ({ log: vi.fn() }))
 

@@ -22,7 +22,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import type Sigma from 'sigma'
 import { useColors } from '../../theme'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { GraphCanvas } from './GraphCanvas'
 import { GraphBindingPanel } from './GraphBindingPanel'
 import { GraphLegend } from './GraphLegend'

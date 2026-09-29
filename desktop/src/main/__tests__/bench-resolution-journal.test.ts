@@ -15,22 +15,16 @@ import { join } from 'path'
 
 vi.mock('../logger', () => ({ log: vi.fn(), warn: vi.fn() }))
 
-// Redirect HOME so the journal lands in a fixture, never the developer's ~/.ion.
-// Per-file env var: vitest runs test FILES concurrently in one process.
-vi.mock('os', async () => {
-  const actual = await vi.importActual<typeof import('os')>('os')
-  return { ...actual, homedir: () => process.env.ION_TEST_HOME_JOURNAL || actual.homedir() }
-})
-
 import {
   recordResolution,
   resolutionsFor,
   loadResolutions,
   resolutionsFile,
   type BenchResolutionEntry,
-} from '../integration/bench-resolution-journal'
+} from '@ion/server/integration/bench-resolution-journal'
 
 let root: string
+let savedIonDataDir: string | undefined
 
 function entry(over: Partial<BenchResolutionEntry> = {}): BenchResolutionEntry {
   return {
@@ -51,13 +45,23 @@ function entry(over: Partial<BenchResolutionEntry> = {}): BenchResolutionEntry {
 }
 
 beforeEach(() => {
+  // Redirect via ION_DATA_DIR directly (dataDir() checks it before falling
+  // back to homedir()) rather than mocking 'os': `paths.ts` is imported
+  // through @ion/server's own resolved path, and per-file `vi.mock('os', …)`
+  // does not reach that already-established binding, so the mocked homedir()
+  // never took effect and every test silently shared the real
+  // vitest-home fixture's journal instead of a fresh one per test.
   root = mkdtempSync(join(tmpdir(), 'ion-journal-'))
-  process.env.ION_TEST_HOME_JOURNAL = root
-  // Deliberately NOT creating ~/.ion here — see the fresh-machine test below.
+  savedIonDataDir = process.env.ION_DATA_DIR
+  // ION_DATA_DIR IS the resolved "Ion home" directly (no '.ion' appended),
+  // matching dataDir()'s env-set branch. See the fresh-machine test below,
+  // which checks that this directory does not exist until the first write.
+  process.env.ION_DATA_DIR = join(root, '.ion')
 })
 
 afterEach(() => {
-  delete process.env.ION_TEST_HOME_JOURNAL
+  if (savedIonDataDir === undefined) delete process.env.ION_DATA_DIR
+  else process.env.ION_DATA_DIR = savedIonDataDir
   rmSync(root, { recursive: true, force: true })
 })
 

@@ -33,13 +33,13 @@ import {
   Bug, Check, CircleDashed, Compass, Flask, GitMerge, Hammer, RocketLaunch,
 } from '@phosphor-icons/react'
 import { useColors } from '../theme'
-import type { ColorPalette } from '../theme/palette-dark'
+import type { ColorPalette } from '@ion/server/renderer/theme/palette-dark'
 import { Tooltip } from './git/Tooltip'
 import { usePopoverLayer } from './PopoverLayer'
 import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
 import { zoomRect } from '../viewport-zoom'
-import { WORK_STAGES, workStageDescriptor, type WorkStage } from '../../shared/types-git'
+import { WORK_STAGES, workStageDescriptor, type WorkStage } from '@ion/shared/types-git'
 
 export interface WorktreeStageSlotProps {
   stage?: WorkStage

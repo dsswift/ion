@@ -25,7 +25,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 const mocks = vi.hoisted(() => {
   const bridgeListeners = new Map<string, Array<(key: string, event: any) => void>>()
   const sendCommandMock = (globalThis as any).vi?.fn?.() ?? function () {}
-  const submitPromptMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(undefined) ?? function () { return Promise.resolve() }
+  const submitPromptMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.({ ok: true }) ?? function () { return Promise.resolve({ ok: true }) }
   const setPermissionModeMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const remoteSendMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const executeJsMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(null) ?? function () { return Promise.resolve(null) }
@@ -53,7 +53,7 @@ const mocks = vi.hoisted(() => {
 
 // Rebuild as real vi.fn() values now that vi is in scope.
 mocks.sendCommandMock = vi.fn()
-mocks.submitPromptMock = vi.fn().mockResolvedValue(undefined)
+mocks.submitPromptMock = vi.fn().mockResolvedValue({ ok: true })
 mocks.setPermissionModeMock = vi.fn()
 mocks.remoteSendMock = vi.fn()
 mocks.executeJsMock = vi.fn().mockResolvedValue(null)
@@ -67,7 +67,34 @@ function emitBridgeEvent(key: string, event: any): void {
   for (const fn of arr) fn(key, event)
 }
 
-vi.mock('../state', () => {
+// insertRendererSystemMessage/clearConnectingStatus/insertRendererRemoteUserMessage
+// (prompt-pipeline-store.ts) used to reach the renderer via
+// state.mainWindow.webContents.executeJavaScript; the server owns the store
+// directly now, so they call useSessionStore.getState()'s actions in-process.
+// Forwarding into mocks.executeJsMock keeps the existing "was it called"
+// assertions meaningful with a real, inspectable call signature.
+const sessionStoreTabs = vi.hoisted(() => ({ tabs: [{ id: 'tab-1', status: 'connecting' }] as any[] }))
+vi.mock('@ion/server/store/sessionStore', () => ({
+  useSessionStore: Object.assign(
+    (selector: (s: any) => unknown) => selector({ tabs: sessionStoreTabs.tabs }),
+    {
+      getState: () => ({
+        tabs: sessionStoreTabs.tabs,
+        addEngineSystemMessage: (...args: any[]) => mocks.executeJsMock(...args),
+        insertRemoteUserMessage: (...args: any[]) => mocks.executeJsMock(...args),
+      }),
+      setState: (patch: any) => {
+        if (typeof patch === 'object' && patch && 'tabs' in patch) {
+          sessionStoreTabs.tabs = patch.tabs
+        }
+      },
+    },
+  ),
+}))
+
+vi.mock('@ion/server/state', async (importOriginal) => {
+  const __actual = (await importOriginal()) as Record<string, unknown>;
+
   const mockEngineBridge = {
     sendCommand: (...args: any[]) => mocks.sendCommandMock(...args),
     sendPrompt: vi.fn().mockResolvedValue({ ok: true }),
@@ -78,7 +105,7 @@ vi.mock('../state', () => {
       mocks.bridgeListeners.set(name, arr)
     },
   }
-  return {
+  return { ...__actual, 
     state: {
       mainWindow: { webContents: { executeJavaScript: (...args: any[]) => mocks.executeJsMock(...args) } },
       remoteTransport: { send: (...args: any[]) => mocks.remoteSendMock(...args) },
@@ -95,28 +122,28 @@ vi.mock('../state', () => {
   }
 })
 
-vi.mock('../broadcast', () => ({
+vi.mock('@ion/server/broadcast', () => ({
   broadcast: (...args: any[]) => mocks.broadcastMock(...args),
 }))
 
-vi.mock('../logger', () => ({
+vi.mock('@ion/server/logger', () => ({
   log: vi.fn(),
   debug: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
 }))
 
-vi.mock('../settings-store', () => ({
+vi.mock('@ion/server/persistence/settings-store', async (importOriginal) => ({ ...(await importOriginal()), ...{
   readSettings: () => ({ enableClaudeCompat: true }),
   SETTINGS_DEFAULTS: { enableClaudeCompat: true },
-}))
+} }))
 
-vi.mock('../remote/attachment-encoder', () => ({
+vi.mock('@ion/server/remote/attachment-encoder', async (importOriginal) => ({ ...(await importOriginal()), ...{
   encodeAttachments: (text: string, _atts: any[]) => ({ encoded: [], rewrittenText: text }),
-}))
+} }))
 
-import { processIncomingPrompt } from '../prompt-pipeline'
-import { _resetAwaitersForTests } from '../command-await'
+import { processIncomingPrompt } from '@ion/server/engine/prompt-pipeline'
+import { _resetAwaitersForTests } from '@ion/server/command-await'
 
 // ───────────────────────────────────────────────────────────────────────────
 // Fixtures
@@ -124,7 +151,7 @@ import { _resetAwaitersForTests } from '../command-await'
 
 beforeEach(() => {
   mocks.sendCommandMock.mockReset()
-  mocks.submitPromptMock.mockReset().mockResolvedValue(undefined)
+  mocks.submitPromptMock.mockReset().mockResolvedValue({ ok: true })
   mocks.setPermissionModeMock.mockReset()
   mocks.remoteSendMock.mockReset()
   mocks.executeJsMock.mockReset().mockResolvedValue(null)
@@ -180,8 +207,9 @@ describe('processIncomingPrompt — /clear file wipe on loaded-but-not-started t
     expect(mocks.clearConversationFileMock).toHaveBeenCalledWith('loaded-conv-42', false)
 
     // Divider must still appear.
-    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
-    expect(calls.some((s: string) => s.includes('── Cleared'))).toBe(true)
+    // addEngineSystemMessage(tabId, content) forwards through executeJsMock.
+    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[1] as string)
+    expect(calls.some((s: string) => s?.includes('── Cleared'))).toBe(true)
 
     // No "Unknown command" error.
     expect(calls.every((s: string) => !s.includes('Unknown command'))).toBe(true)
@@ -204,8 +232,8 @@ describe('processIncomingPrompt — /clear file wipe on loaded-but-not-started t
     })
 
     expect(mocks.clearConversationFileMock).toHaveBeenCalledWith('loaded-conv-42', true)
-    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
-    expect(calls.some((s: string) => s.includes('plan kept: happy-jumping-rabbit'))).toBe(true)
+    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[1] as string)
+    expect(calls.some((s: string) => s?.includes('plan kept: happy-jumping-rabbit'))).toBe(true)
   })
 
   // ── Priority 1: runOptions.sessionId ────────────────────────────────────
@@ -231,8 +259,9 @@ describe('processIncomingPrompt — /clear file wipe on loaded-but-not-started t
     expect(mocks.clearConversationFileMock).toHaveBeenCalledWith('1779509603510-e1dbeb9b1544', false)
 
     // Divider must still appear.
-    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
-    expect(calls.some((s: string) => s.includes('── Cleared'))).toBe(true)
+    // addEngineSystemMessage(tabId, content) forwards through executeJsMock.
+    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[1] as string)
+    expect(calls.some((s: string) => s?.includes('── Cleared'))).toBe(true)
 
     // No "Unknown command" error.
     expect(calls.every((s: string) => !s.includes('Unknown command'))).toBe(true)
@@ -245,15 +274,9 @@ describe('processIncomingPrompt — /clear file wipe on loaded-but-not-started t
   it('calls clearConversationFile via renderer-store when runOptions and sessionPlane are both empty (priority-3 path)', async () => {
     // Neither priority-1 nor priority-2 has a conversationId.
     mocks.getTabStatusMock.mockReturnValue({ conversationId: null })
-    // Renderer store returns the id for this tab.
-    mocks.executeJsMock.mockImplementation((script: string) => {
-      // Only intercept the resolveConversationId renderer-store query, not
-      // the insertRendererSystemMessage executeJavaScript call.
-      if (script.includes('tab.conversationId')) {
-        return Promise.resolve('remote-conv-ios-99')
-      }
-      return Promise.resolve(null)
-    })
+    // Priority 3 is now a plain in-process store read (useSessionStore
+    // .getState().tabs.find(...).conversationId) -- no executeJavaScript hop.
+    sessionStoreTabs.tabs = [{ id: 'tab-ios-loaded', conversationId: 'remote-conv-ios-99' }]
 
     await processIncomingPrompt({
       tabId: 'tab-ios-loaded',
@@ -268,9 +291,9 @@ describe('processIncomingPrompt — /clear file wipe on loaded-but-not-started t
     expect(mocks.clearConversationFileMock).toHaveBeenCalledTimes(1)
     expect(mocks.clearConversationFileMock).toHaveBeenCalledWith('remote-conv-ios-99', false)
 
-    // Divider must still appear.
-    const allScripts = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
-    expect(allScripts.some((s: string) => s.includes('── Cleared'))).toBe(true)
+    // Divider must still appear. addEngineSystemMessage(tabId, content) forwards through executeJsMock.
+    const allScripts = mocks.executeJsMock.mock.calls.map((c: any[]) => c[1] as string)
+    expect(allScripts.some((s: string) => s?.includes('── Cleared'))).toBe(true)
 
     // No "Unknown command" error.
     expect(allScripts.every((s: string) => !s.includes('Unknown command'))).toBe(true)
@@ -299,9 +322,9 @@ describe('processIncomingPrompt — /clear file wipe on loaded-but-not-started t
     // No wipe needed — no conversation file exists.
     expect(mocks.clearConversationFileMock).not.toHaveBeenCalled()
 
-    // Divider still appears.
-    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
-    expect(calls.some((s: string) => s.includes('── Cleared'))).toBe(true)
+    // Divider still appears. addEngineSystemMessage(tabId, content) forwards through executeJsMock.
+    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[1] as string)
+    expect(calls.some((s: string) => s?.includes('── Cleared'))).toBe(true)
   })
 
   it('still inserts divider even when clearConversationFile throws (non-fatal error path)', async () => {
@@ -319,9 +342,10 @@ describe('processIncomingPrompt — /clear file wipe on loaded-but-not-started t
     })
 
     // The divider must appear even when the wipe fails (non-fatal).
-    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[0] as string)
-    expect(calls.some((s: string) => s.includes('── Cleared'))).toBe(true)
+    // addEngineSystemMessage(tabId, content) forwards through executeJsMock.
+    const calls = mocks.executeJsMock.mock.calls.map((c: any[]) => c[1] as string)
+    expect(calls.some((s: string) => s?.includes('── Cleared'))).toBe(true)
     // "Unknown command" must not appear.
-    expect(calls.every((s: string) => !s.includes('Unknown command'))).toBe(true)
+    expect(calls.every((s: string) => !s?.includes('Unknown command'))).toBe(true)
   })
 })

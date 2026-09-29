@@ -36,7 +36,7 @@ import { createRoot } from 'react-dom/client'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Message, SessionLoadMessage } from '../../../shared/types'
+import type { Message, SessionLoadMessage } from '@ion/shared/types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -86,7 +86,7 @@ vi.mock('../../preferences', () => ({
     }),
 }))
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: (sel: (s: Record<string, unknown>) => unknown) =>
     sel({ dispatchActivity: {}, tabs: [], activeTabId: null }),
 }))
@@ -104,17 +104,18 @@ const readImageDataUrl = vi.fn(async (path: string) => ({
 
 beforeEach(() => {
   ;(globalThis as unknown as { window: Window }).window = globalThis as unknown as Window
-  ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = {
+  ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = installFakeWire({
     readImageDataUrl,
     openExternal: vi.fn(),
     revealInFinder: vi.fn(),
-  }
+  })
 })
 
-import { mergeHistoryAttachments } from '../useTabRestoration-images'
+import { mergeHistoryAttachments } from '@ion/server/hooks/useTabRestoration-images'
 import { Transcript } from '../../components/conversation/Transcript'
 import { deriveMessageImages } from '../../components/conversation/InlineMessageImages'
-import { groupMessages as _groupMessages } from '../../components/conversation/tool-helpers'
+import { groupMessages as _groupMessages } from '@ion/server/conversation/tool-helpers'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 async function renderTranscript(messages: Message[]) {
   const container = document.createElement('div')

@@ -1,16 +1,13 @@
 /**
- * event-wiring — engine_dispatch_activity forwarding & routing
+ * event-wiring — engine_dispatch_activity routing
  *
- * Pins the desktop main routing for the live dispatched-agent transcript:
+ * Pins the routing for a dispatched agent's live activity:
  *
- *  1. iOS forward: engine_dispatch_activity reaches iOS as desktop_dispatch_activity
- *     (via the generic engineToWireType branch) with its dispatch* fields intact.
- *  2. Renderer bridge: it is broadcast to the renderer as a normalized
- *     `dispatch_activity` event (so the agent popup folds it).
- *  3. Routing disambiguation (load-bearing): it is NEVER forwarded as a
- *     main-conversation delta (desktop_text_delta / desktop_tool_start) — those
- *     surfaces are for the parent conversation, and dispatch activity must land
- *     only in the per-dispatch popup cache.
+ *  1. Renderer bridge: it is broadcast to Studio as a normalized
+ *     `dispatch_activity` event (so the agent panel folds it).
+ *  2. It is never sent to a mobile client: a thin client receives the
+ *     dispatch's rows on the dispatch transcript stream instead.
+ *  3. It never reaches the parent conversation's surfaces.
  *
  * Harness mirrors event-wiring-generic-wire-type.test.ts.
  */
@@ -31,7 +28,6 @@ const {
   const mockSend = vi.fn()
   const mockBroadcast = vi.fn()
   const mockState = {
-    remoteTransport: { send: mockSend } as any,
     mainWindow: null,
   }
   const mockPermDenialSet = new Set<string>()
@@ -41,7 +37,21 @@ const {
   return { mockSend, mockBroadcast, mockState, mockPermDenialSet, mockLastStatusMap, capturedHandler, mockShouldStream }
 })
 
-vi.mock('../state', () => ({
+// The `desktop_*` device transport is gone; a RemoteEvent now leaves the
+// server through `sendRemoteEvent`, which fans it to thin Studio-wire
+// clients. Capture there, and drive the "is anyone listening" gate with
+// `remoteClientsPresent`.
+const { mockClientsPresent } = vi.hoisted(() => ({ mockClientsPresent: vi.fn(() => true) }))
+
+vi.mock('@ion/server/thin-view/remote-out', () => ({
+  sendRemoteEvent: mockSend,
+  remoteClientsPresent: mockClientsPresent,
+  syncRemoteAttention: vi.fn(),
+  thinConnections: vi.fn(() => []),
+  sendThinEventTo: vi.fn(() => true),
+}))
+
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{
   state: mockState,
   sessionPlane: { on: vi.fn(), emit: vi.fn(), notifyConversationCleared: vi.fn() },
   engineBridge: {
@@ -55,23 +65,19 @@ vi.mock('../state', () => ({
   extensionCommandRegistry: new Map(),
   forwardedEnginePermissionDenials: mockPermDenialSet,
   lastForwardedTabStatus: mockLastStatusMap,
-}))
+} }))
 
-vi.mock('../broadcast', () => ({ broadcast: mockBroadcast }))
-vi.mock('../settings-store', () => ({
+vi.mock('@ion/server/broadcast', () => ({ broadcast: mockBroadcast }))
+vi.mock('@ion/server/persistence/settings-store', async (importOriginal) => ({ ...(await importOriginal()), ...{
   shouldStreamThinkingToRemote: mockShouldStream,
-}))
-vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
-vi.mock('../../shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
+} }))
+vi.mock('@ion/server/logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), trace: vi.fn() }))
+vi.mock('@ion/shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
 
-import { wireEngineBridgeEvents } from '../event-wiring'
+import { wireEngineBridgeEvents } from '@ion/server/engine/event-wiring'
 
 function emit(key: string, event: any): void {
   capturedHandler.fn!(key, event)
-}
-
-function sentOfType(wireType: string) {
-  return mockSend.mock.calls.filter((c) => c[0]?.type === wireType)
 }
 
 /** Normalized events broadcast to the renderer (channel ion:normalized-event). */
@@ -102,19 +108,9 @@ describe('wireEngineBridgeEvents — engine_dispatch_activity routing', () => {
     expect(capturedHandler.fn).toBeTruthy()
   })
 
-  it('forwards to iOS as desktop_dispatch_activity with dispatch fields intact', () => {
+  it('sends a mobile client nothing: the dispatch transcript stream carries its rows', () => {
     emit(KEY, ACTIVITY_EVENT)
-    const forwarded = sentOfType('desktop_dispatch_activity')
-    expect(forwarded).toHaveLength(1)
-    const payload = forwarded[0][0]
-    expect(payload.dispatchAgentId).toBe('dispatch-dev-lead-123')
-    expect(payload.dispatchConversationId).toBe('child-conv-1')
-    expect(payload.dispatchActivityKind).toBe('tool_start')
-    expect(payload.dispatchResetAfterSeq).toBeUndefined()
-    expect(payload.toolId).toBe('tool-1')
-    // tabId/instanceId ride-along from the wire key split.
-    expect(payload.tabId).toBe('tab1')
-    expect(payload.instanceId).toBe('inst1')
+    expect(mockSend).not.toHaveBeenCalled()
   })
 
   it('bridges to the renderer as a normalized dispatch_activity event', () => {
@@ -126,7 +122,7 @@ describe('wireEngineBridgeEvents — engine_dispatch_activity routing', () => {
     expect(bridged[0][2].dispatchSeq).toBe(1)
   })
 
-  it('forwards a stream reset boundary to both clients', () => {
+  it('bridges a stream reset boundary to the renderer', () => {
     emit(KEY, {
       ...ACTIVITY_EVENT,
       dispatchActivityKind: 'stream_reset',
@@ -135,18 +131,13 @@ describe('wireEngineBridgeEvents — engine_dispatch_activity routing', () => {
       toolName: undefined,
       toolId: undefined,
     })
-    const remote = sentOfType('desktop_dispatch_activity')[0][0]
     const renderer = broadcastNormalizedOfType('dispatch_activity')[0][2]
-    expect(remote.dispatchResetAfterSeq).toBe(2)
     expect(renderer.dispatchResetAfterSeq).toBe(2)
   })
 
   it('does NOT route dispatch activity to the main-conversation delta surfaces', () => {
     emit(KEY, ACTIVITY_EVENT)
     // The popup transcript must never leak into the parent conversation stream.
-    expect(sentOfType('desktop_text_delta')).toHaveLength(0)
-    expect(sentOfType('desktop_tool_start')).toHaveLength(0)
-    expect(sentOfType('desktop_tool_call')).toHaveLength(0)
     expect(broadcastNormalizedOfType('text_chunk')).toHaveLength(0)
     expect(broadcastNormalizedOfType('tool_call')).toHaveLength(0)
   })

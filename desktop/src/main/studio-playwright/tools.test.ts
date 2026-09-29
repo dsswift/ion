@@ -95,7 +95,7 @@ vi.mock('./renderer-bridge', () => ({ browserCommandSender: () => commandSender,
 
 import { STUDIO_PLAYWRIGHT_TOOLS, studioBrowserTool } from './tools'
 import { resetRuntimeForTests } from './runtime'
-import type { BrowserToolContext } from './tool-contracts'
+import type { BrowserToolContext } from '@ion/server/studio-playwright/tool-contracts'
 
 const MODEL: BrowserToolContext = { sessionKey: 'tab-1', cwd: '/tmp', origin: 'model' }
 

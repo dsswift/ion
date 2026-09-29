@@ -13,7 +13,7 @@ import {
   connectToEngine,
   probeEngine,
   _resetPortCacheForTest,
-} from '../engine-address'
+} from '@ion/server/engine/engine-address'
 
 /** whoami.exe /user /fo csv /nh output shape. */
 const whoamiCsv = (sid: string) => `"joshuasprag1c6e\\josh","${sid}"\r\n`

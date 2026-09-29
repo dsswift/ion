@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest'
 import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { createOperationDir, cleanupDir, cleanupFile, pruneOperationDirs } from '../utils/temp-dir'
+import { createOperationDir, cleanupDir, cleanupFile, pruneOperationDirs } from '@ion/server/utils/temp-dir'
 
 describe('createOperationDir', () => {
   it('creates a directory that exists on disk', () => {

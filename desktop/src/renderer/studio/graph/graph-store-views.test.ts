@@ -10,9 +10,11 @@ import { describe, expect, it, vi, afterEach } from 'vitest'
 import { useGraphStore } from './graph-store'
 import { clearAllSessions } from './session-park'
 import { computeCoarsening } from './coarsen/coarsen'
-import { GRAPH_VIEW_DEFAULTS } from '../../../shared/graph-view-types'
-import type { GraphViewConfig, ScopedSavedView } from '../../../shared/graph-view-types'
-import type { CorpusSnapshot } from '../../../shared/graph-corpus-types'
+import { GRAPH_VIEW_DEFAULTS } from '@ion/shared/graph-view-types'
+import type { GraphViewConfig, ScopedSavedView } from '@ion/shared/graph-view-types'
+import type { CorpusSnapshot } from '@ion/shared/graph-corpus-types'
+import { host } from '../../host/host-instance'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 function baseConfig(savedViews: ScopedSavedView[] = []): GraphViewConfig {
   return {
@@ -39,14 +41,14 @@ function emptyBindings() {
 }
 
 function installIonStub(config: GraphViewConfig, snapshot: CorpusSnapshot): void {
-  window.ion = {
+  window.ion = installFakeWire({
     graphViewGetConfig: vi.fn(async () => config),
     graphViewSetUserConfig: vi.fn(async () => ({ ok: true })),
     onGraphViewConfigChanged: vi.fn(() => () => undefined),
     graphCorpusSubscribe: vi.fn(async () => snapshot),
     graphCorpusUnsubscribe: vi.fn(async () => ({ ok: true })),
     onGraphCorpusDelta: vi.fn(() => () => undefined),
-  } as unknown as typeof window.ion
+  }) as unknown as typeof window.ion
 }
 
 afterEach(() => {
@@ -81,7 +83,7 @@ describe('saved views scoping', () => {
   it('a save failure leaves in-memory state unchanged', async () => {
     const config = baseConfig([])
     installIonStub(config, { revision: 1, roots: [], documents: [] })
-    window.ion.graphViewSetUserConfig = vi.fn(async () => ({ ok: false, error: 'disk full' })) as typeof window.ion.graphViewSetUserConfig
+    host.shell.graphViewSetUserConfig = vi.fn(async () => ({ ok: false, error: 'disk full' })) as typeof host.shell.graphViewSetUserConfig
     await useGraphStore.getState().init('/root')
 
     const before = useGraphStore.getState().config

@@ -6,9 +6,9 @@
  */
 import { app } from 'electron'
 import { state } from './state'
-import { readSettings } from './settings-store'
+import { readSettings } from '@ion/server/persistence/settings-store'
 import { log as _log } from './logger'
-import type { NormalizedEvent } from '../shared/types'
+import type { NormalizedEvent } from '@ion/shared/types'
 
 const TITLE = 'Ion'
 const ATTENTION_TITLE = '● Ion — needs you'

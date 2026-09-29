@@ -19,7 +19,7 @@
  * helpers are duplicated deliberately rather than shared, so each file's HOME
  * redirect stays independent (vitest runs files concurrently in one process).
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, existsSync, realpathSync } from 'fs'
@@ -36,13 +36,13 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => process.env.ION_TEST_HOME_BENCH_PENDING || actual.homedir() }
 })
 
-import { assembleBench } from '../integration/bench-assemble'
-import { captureContribution } from '../integration/bench-snapshot'
-import { makeWorkspace, makeMember } from '../integration/bench-store'
-import { landWorktree } from '../worktree/integrate'
-import { retireWorktree } from '../worktree/relocate'
-import type { IntegrationWorkspace, IntegrationMember } from '../../shared/types'
-import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
+import { assembleBench } from '@ion/server/integration/bench-assemble'
+import { captureContribution } from '@ion/server/integration/bench-snapshot'
+import { makeWorkspace, makeMember } from '@ion/server/integration/bench-store'
+import { landWorktree } from '@ion/server/worktree/integrate'
+import { retireWorktree } from '@ion/server/worktree/relocate'
+import type { IntegrationWorkspace, IntegrationMember } from '@ion/shared/types'
+import { GIT_FIXTURE_TIMEOUT } from '@ion/server/test/git-fixture-timeout'
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })

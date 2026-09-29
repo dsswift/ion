@@ -1,10 +1,9 @@
 /**
  * Secret Store Tests
  *
- * Tests for the two-tier encryption system in secretStore.ts.
- * Tier 1 (safeStorage) is mocked since it requires Electron's main process.
- * Tier 2 (keyfile AES-GCM, enc:v3:) and the legacy machine-derived decrypt
- * fallback (enc:v2:) are tested directly.
+ * Every write goes to the keyfile AES-GCM tier (enc:v3:). Two decrypt-only
+ * legacy tiers remain: safeStorage (enc:v1:), mocked here since it requires
+ * Electron's main process, and the machine-derived fallback (enc:v2:).
  */
 
 import { mkdtempSync, readFileSync, rmSync, statSync, existsSync } from 'fs'
@@ -33,7 +32,7 @@ import {
   _setElectronForTest,
   _setKeyfilePathForTest,
   _setHostnameForTest,
-} from '../utils/secretStore'
+} from '@ion/server/utils/secretStore'
 
 _setElectronForTest({
   app: {
@@ -250,26 +249,38 @@ describe('legacy machine-derived values (enc:v2:)', () => {
 // Tier 1: safeStorage (production builds)
 // ---------------------------------------------------------------------------
 
-describe('safeStorage encryption (tier 1)', () => {
+describe('safeStorage (enc:v1) — read-only legacy tier', () => {
   beforeEach(() => {
     mockIsPackaged = true
     mockSafeStorageAvailable = true
   })
 
-  it('encrypts with enc:v1: prefix when safeStorage is ready', () => {
+  // The writer never produces enc:v1 any more — the Studio server owns the
+  // store and cannot reach Electron's Keychain, so one keyfile tier serves
+  // every writer. A v1 ciphertext is therefore built by hand here, exactly
+  // as a pre-migration packaged desktop left it on disk.
+  function legacyV1(plaintext: string): string {
+    return 'enc:v1:' + Buffer.from(`safe:${plaintext}`).toString('base64')
+  }
+
+  it('writes the keyfile tier (enc:v3) even when safeStorage is ready', () => {
     const encrypted = encryptForDisk('prod-secret')
-    expect(encrypted.startsWith('enc:v1:')).toBe(true)
+    expect(encrypted.startsWith('enc:v3:')).toBe(true)
+    expect(encrypted.startsWith('enc:v1:')).toBe(false)
   })
 
-  it('round-trips through safeStorage encrypt → decrypt', () => {
+  it('round-trips a write made while safeStorage is ready', () => {
     const encrypted = encryptForDisk('prod-relay-key')
     const decrypted = decryptFromDisk(encrypted)
     expect(decrypted).toBe('prod-relay-key')
   })
 
+  it('reads a legacy v1 value while safeStorage is ready', () => {
+    expect(decryptFromDisk(legacyV1('ephemeral-secret'))).toBe('ephemeral-secret')
+  })
+
   it('preserves v1 values when safeStorage becomes unavailable', () => {
-    const encrypted = encryptForDisk('ephemeral-secret')
-    expect(encrypted.startsWith('enc:v1:')).toBe(true)
+    const encrypted = legacyV1('ephemeral-secret')
 
     // Simulate switching to dev build
     mockIsPackaged = false
@@ -459,36 +470,37 @@ describe('cross-tier scenarios', () => {
     expect(decrypted.relayApiKey).toBe('dev-key')
   })
 
-  it('v1 values written in prod are readable in prod', () => {
+  it('a packaged build writes the same keyfile tier a dev build does', () => {
     mockIsPackaged = true
     mockSafeStorageAvailable = true
 
     const settings = { relayApiKey: 'prod-key' }
     const encrypted = encryptSensitiveSettings(settings)
-    expect(encrypted.relayApiKey.startsWith('enc:v1:')).toBe(true)
+    expect(encrypted.relayApiKey.startsWith('enc:v3:')).toBe(true)
 
     const decrypted = decryptSensitiveSettings(encrypted)
     expect(decrypted.relayApiKey).toBe('prod-key')
   })
 
-  it('v1 values from prod are preserved when read in dev', () => {
-    mockIsPackaged = true
-    mockSafeStorageAvailable = true
-    const encrypted = encryptSensitiveSettings({ relayApiKey: 'prod-only-key' })
+  it('v1 values left by an older packaged build are preserved when read in dev', () => {
+    const encrypted = {
+      relayApiKey: 'enc:v1:' + Buffer.from('safe:prod-only-key').toString('base64'),
+    }
 
-    // Switch to dev build
+    // Dev build: no Keychain grant, so the ciphertext must survive verbatim
+    // rather than being replaced or blanked.
     mockIsPackaged = false
     mockSafeStorageAvailable = false
     const decrypted = decryptSensitiveSettings(encrypted)
     expect(decrypted.relayApiKey).toBe(encrypted.relayApiKey)
   })
 
-  it('v2 written in prod-downgrade scenario upgrades to v1 when packaged', () => {
+  it('v2 written in prod-downgrade scenario upgrades to the keyfile tier when packaged', () => {
     const v2 = legacyV2Encrypt('promote-to-keychain')
     mockIsPackaged = true
     mockSafeStorageAvailable = true
     const out = encryptSensitiveSettings({ relayApiKey: v2 })
-    expect(out.relayApiKey.startsWith('enc:v1:')).toBe(true)
+    expect(out.relayApiKey.startsWith('enc:v3:')).toBe(true)
     expect(decryptFromDisk(out.relayApiKey)).toBe('promote-to-keychain')
   })
 })

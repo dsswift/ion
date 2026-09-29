@@ -35,19 +35,19 @@ vi.mock('os', async (importOriginal) => {
 
 // A real PATH probe shells out to zsh; the identity overlay is what is under
 // test, so the base env is stubbed to a fixed value.
-vi.mock('../cli-env', () => ({
+vi.mock('@ion/server/cli-env', () => ({
   getCliEnv: (extra?: Record<string, string>) => ({ PATH: '/usr/bin', ...extra }),
 }))
 
-vi.mock('../deeplink/token', () => ({
+vi.mock('@ion/server/deeplink/token', () => ({
   getDeepLinkToken: () => 'test-token-value',
 }))
 
-vi.mock('../state', () => ({ terminalScrollback: new Map<string, string>() }))
+vi.mock('@ion/server/state', () => ({ terminalScrollback: new Map<string, string>() }))
 
 const logLines = vi.hoisted(() => [] as Array<{ level: string; msg: string; fields?: Record<string, unknown> }>)
 
-vi.mock('../logger', () => ({
+vi.mock('@ion/server/logger', () => ({
   log: (_t: string, msg: string, fields?: Record<string, unknown>) => logLines.push({ level: 'INFO', msg, fields }),
   warn: (_t: string, msg: string, fields?: Record<string, unknown>) => logLines.push({ level: 'WARN', msg, fields }),
   debug: (_t: string, msg: string, fields?: Record<string, unknown>) => logLines.push({ level: 'DEBUG', msg, fields }),
@@ -60,7 +60,7 @@ vi.mock('fs', async (importOriginal) => {
   return { ...actual, existsSync: () => true }
 })
 
-import { TerminalManager } from '../terminal-manager'
+import { TerminalManager } from '@ion/server/terminal/terminal-manager'
 
 /** A spawner that records its arguments instead of starting a shell. */
 function recordingSpawner() {
@@ -243,7 +243,7 @@ describe('TerminalManager PTY identity', () => {
 
 describe('terminal process tree', () => {
   it('detects a nested terminal process without a process-title heuristic', async () => {
-    const { parseProcessTree, terminalProcessTree } = await import('../terminal-process-tree')
+    const { parseProcessTree, terminalProcessTree } = await import('@ion/server/terminal/terminal-process-tree')
     const tree = terminalProcessTree(parseProcessTree('100 1 zsh\n101 100 npm\n102 101 node\n'), 100)
     expect(tree).toEqual({ active: true, processLabel: 'npm', processIds: [100, 101, 102] })
   })

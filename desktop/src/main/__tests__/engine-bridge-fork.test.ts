@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { forkSession } from '../engine-bridge-conversations'
-import type { EngineBridge } from '../engine-bridge'
+import { forkSession } from '@ion/server/engine/engine-bridge-conversations'
+import type { EngineBridge } from '@ion/server/engine/engine-bridge'
 
 function bridgeWithResult(result: unknown): EngineBridge {
   return {

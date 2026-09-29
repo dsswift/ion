@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { mkdtempSync, writeFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, delimiter } from 'path'
-import { resolveShell } from '../terminal-shell'
+import { resolveShell } from '@ion/server/terminal/terminal-shell'
 
 function withTempExe(name: string, fn: (dir: string) => void): void {
   const dir = mkdtempSync(join(tmpdir(), 'terminal-shell-test-'))

@@ -1,12 +1,12 @@
 import React, { useCallback } from "react";
-import { useSessionStore } from "../stores/sessionStore";
+import { useSessionStore } from "@ion/server/store/sessionStore";
 import { FloatingPanel } from "./FloatingPanel";
 import { AgentDetailBody } from "./AgentDetailBody";
 import { meta } from "./agent-panel-helpers";
 import type { DispatchInfo, BreadcrumbFrame } from "./agent-panel-helpers";
-import type { AgentStateUpdate } from "../../shared/types";
-import type { Message } from "../../shared/types";
-import type { DispatchTelemetryEntry } from "../../shared/types-engine";
+import type { AgentStateUpdate } from "@ion/shared/types";
+import type { Message } from "@ion/shared/types";
+import type { DispatchTelemetryEntry } from "@ion/shared/types-engine";
 
 // BreadcrumbFrame now lives with the pure helpers in renderer/lib/agent-helpers
 // (buildBreadcrumbStack constructs it). Re-exported here so existing imports

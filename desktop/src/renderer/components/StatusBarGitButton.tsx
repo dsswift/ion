@@ -1,9 +1,9 @@
 import React from 'react'
 import { GitBranch } from '@phosphor-icons/react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
-import { useRepoState } from '../stores/git'
+import { useRepoState } from '@ion/server/store/git'
 import { contentRouter } from '../lib/file-open-router'
 
 /* ─── Git Branch Button (right side of StatusBar) ─── */

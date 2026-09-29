@@ -36,7 +36,7 @@ vi.mock('../logger', () => ({
   error: vi.fn(),
 }))
 
-import { EngineBridge } from '../engine-bridge'
+import { EngineBridge } from '@ion/server/engine/engine-bridge'
 
 function makeBridge() {
   const bridge = new EngineBridge()

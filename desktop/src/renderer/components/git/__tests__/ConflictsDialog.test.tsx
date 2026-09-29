@@ -37,11 +37,12 @@ vi.mock('../ConfirmDialog', () => ({
 
 const openConflictAssist = vi.fn().mockResolvedValue('tab-1')
 const clearConflictAlert = vi.fn()
-vi.mock('../../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: { getState: () => ({ openConflictAssist, clearConflictAlert }) },
 }))
 
 import { ConflictsDialog } from '../ConflictsDialog'
+import { installFakeWire } from '../../../host/__tests__/fake-wire'
 
 const DIR = '/wt/proj-a1'
 
@@ -72,9 +73,9 @@ async function render(onClose = (): void => {}): Promise<void> {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  ;(window as unknown as { ion: Record<string, unknown> }).ion = {
+  ;(window as unknown as { ion: Record<string, unknown> }).ion = installFakeWire({
     gitOpState, gitConflictAccept, gitRebaseAbort, gitRebaseContinue,
-  }
+  })
   host = document.createElement('div')
   document.body.appendChild(host)
   root = createRoot(host)
@@ -123,12 +124,12 @@ describe('ConflictsDialog', () => {
     await act(async () => {
       (host.querySelector('[data-testid="conflict-accept-ours-shared.txt"]') as HTMLButtonElement).click()
     })
-    expect(gitConflictAccept).toHaveBeenCalledWith(DIR, 'shared.txt', 'ours')
+    expect(gitConflictAccept).toHaveBeenCalledWith({ directory: DIR, path: 'shared.txt', side: 'ours' })
 
     await act(async () => {
       (host.querySelector('[data-testid="conflict-accept-theirs-shared.txt"]') as HTMLButtonElement).click()
     })
-    expect(gitConflictAccept).toHaveBeenCalledWith(DIR, 'shared.txt', 'theirs')
+    expect(gitConflictAccept).toHaveBeenCalledWith({ directory: DIR, path: 'shared.txt', side: 'theirs' })
   })
 
   it('Merge… opens the 3-way editor for that file', async () => {
@@ -172,7 +173,7 @@ describe('ConflictsDialog', () => {
       (host.querySelector('[data-testid="conflict-continue"]') as HTMLButtonElement).click()
     })
 
-    expect(gitRebaseContinue).toHaveBeenCalledWith(DIR)
+    expect(gitRebaseContinue).toHaveBeenCalledWith({ directory: DIR })
     // The failure message stays up...
     expect(host.textContent).toContain('could not apply 7c1940505')
     // ...and the dialog shows the REAL current conflict, not the stale empty
@@ -207,7 +208,7 @@ describe('ConflictsDialog', () => {
       (host.querySelector('[data-testid="confirm-abort"]') as HTMLButtonElement).click()
     })
 
-    expect(gitRebaseAbort).toHaveBeenCalledWith(DIR)
+    expect(gitRebaseAbort).toHaveBeenCalledWith({ directory: DIR })
     expect(clearConflictAlert).toHaveBeenCalledWith(DIR)
     expect(onClose).toHaveBeenCalled()
   })

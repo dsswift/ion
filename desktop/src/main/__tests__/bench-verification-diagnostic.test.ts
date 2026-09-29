@@ -4,7 +4,7 @@
  *
  * Real repos, not mocks: the merge/replay behaviour under test is git rerere's.
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, mkdirSync, existsSync, realpathSync } from 'fs'
@@ -18,12 +18,12 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => process.env.ION_TEST_HOME_BENCH_DIAGNOSTIC || actual.homedir() }
 })
 
-import { assembleBench } from '../integration/bench-assemble'
-import { prepareVerificationDiagnostic } from '../integration/bench-verification-diagnostic'
-import { captureContribution } from '../integration/bench-snapshot'
-import { makeWorkspace, makeMember } from '../integration/bench-store'
-import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
-import type { IntegrationWorkspace, IntegrationMember } from '../../shared/types'
+import { assembleBench } from '@ion/server/integration/bench-assemble'
+import { prepareVerificationDiagnostic } from '@ion/server/integration/bench-verification-diagnostic'
+import { captureContribution } from '@ion/server/integration/bench-snapshot'
+import { makeWorkspace, makeMember } from '@ion/server/integration/bench-store'
+import { GIT_FIXTURE_TIMEOUT } from '@ion/server/test/git-fixture-timeout'
+import type { IntegrationWorkspace, IntegrationMember } from '@ion/shared/types'
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })

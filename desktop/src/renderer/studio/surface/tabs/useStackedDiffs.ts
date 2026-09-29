@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { rDebug } from '../../../rendererLogger'
+import { host } from '../../../host/host-instance'
 
 interface DiffEntry {
   state: 'loading' | 'ready' | 'error'
@@ -63,7 +64,7 @@ export function useStackedDiffs(repoDir: string, revision: number): {
         repo_directory: job.repoDir,
         staged: job.staged,
       })
-      window.ion
+      host.shell
         .gitDiff(job.repoDir, job.filePath, job.staged)
         .then((data) => {
           const current = bindingRef.current

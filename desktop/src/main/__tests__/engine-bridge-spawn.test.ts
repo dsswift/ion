@@ -33,27 +33,33 @@ vi.mock('fs', () => ({
 vi.mock('child_process', () => ({
   execSync: vi.fn(),
 }))
-vi.mock('../logger', () => ({
+vi.mock('@ion/server/logger', () => ({
   log: vi.fn(),
   debug: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
 }))
-vi.mock('../engine-bridge-start-session', () => ({
+// The modules under test moved to `server/src/`, so their `'../logger'` resolves
+// to `server/src/logger` -- a different module from the desktop logger mocked
+// above, which therefore no longer intercepts them. Without this the real server
+// logger runs inside the test worker: it writes to the log file and, where `fs`
+// is mocked, fails on an export the mock does not provide.
+vi.mock('@ion/server/logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
+vi.mock('@ion/server/engine/engine-bridge-start-session', () => ({
   startSession: vi.fn(),
   reRegisterSessions: vi.fn(),
 }))
-vi.mock('../engine-bridge-state-sync', () => ({
+vi.mock('@ion/server/engine/engine-bridge-state-sync', async (importOriginal) => ({ ...(await importOriginal()), ...{
   sendReconcileState: vi.fn(),
   sendQuerySessionStatus: vi.fn(),
-}))
-vi.mock('../engine-bridge-prompts', () => ({
+} }))
+vi.mock('@ion/server/engine/engine-bridge-prompts', () => ({
   buildSendPromptMessage: vi.fn(() => ({})),
   buildSendPromptLogLine: vi.fn(() => ''),
 }))
-vi.mock('../engine-bridge-conversations', () => ({}))
+vi.mock('@ion/server/engine/engine-bridge-conversations', () => ({}))
 
-import { EngineBridge } from '../engine-bridge'
+import { EngineBridge } from '@ion/server/engine/engine-bridge'
 
 describe('EngineBridge connect-only contract', () => {
   it('does not have a _startServer method', () => {
@@ -70,8 +76,8 @@ describe('EngineBridge connect-only contract', () => {
     const fs = require('fs')
     const path = require('path')
     const src =
-      fs.readFileSync(path.join(__dirname, '..', 'engine-bridge.ts'), 'utf-8') +
-      fs.readFileSync(path.join(__dirname, '..', 'engine-bridge-connection.ts'), 'utf-8')
+      fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'server', 'src', 'engine', 'engine-bridge.ts'), 'utf-8') +
+      fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'server', 'src', 'engine', 'engine-bridge-connection.ts'), 'utf-8')
     expect(src).not.toContain('spawnEngineServer')
     expect(src).not.toContain('engine-bridge-spawn')
   })
@@ -83,9 +89,9 @@ describe('EngineBridge connect-only contract', () => {
     // C1); engine-bridge.ts and engine-bridge-connection.ts must not
     // reference the legacy desktop.sock, nor hardcode the socket name
     // themselves — they resolve through the shared module instead.
-    const bridgeSrc = fs.readFileSync(path.join(__dirname, '..', 'engine-bridge.ts'), 'utf-8')
-    const connSrc = fs.readFileSync(path.join(__dirname, '..', 'engine-bridge-connection.ts'), 'utf-8')
-    const addressSrc = fs.readFileSync(path.join(__dirname, '..', 'engine-address.ts'), 'utf-8')
+    const bridgeSrc = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'server', 'src', 'engine', 'engine-bridge.ts'), 'utf-8')
+    const connSrc = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'server', 'src', 'engine', 'engine-bridge-connection.ts'), 'utf-8')
+    const addressSrc = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'server', 'src', 'engine', 'engine-address.ts'), 'utf-8')
     expect(addressSrc).toContain("'engine.sock'")
     expect(bridgeSrc).not.toContain("'desktop.sock'")
     expect(connSrc).not.toContain("'desktop.sock'")
@@ -95,7 +101,7 @@ describe('EngineBridge connect-only contract', () => {
     const fs = require('fs')
     const path = require('path')
     const src = fs.readFileSync(
-      path.join(__dirname, '..', 'engine-bridge-lifecycle.ts'),
+      path.join(__dirname, '..', '..', '..', '..', 'server', 'src', 'engine', 'engine-bridge-lifecycle.ts'),
       'utf-8',
     )
     expect(src).toContain('launchctl bootout')

@@ -38,8 +38,8 @@ vi.mock('../logger', () => ({
   error: vi.fn(),
 }))
 
-import { EngineBridge } from '../engine-bridge'
-import type { EngineConfig } from '../../shared/types'
+import { EngineBridge } from '@ion/server/engine/engine-bridge'
+import type { EngineConfig } from '@ion/shared/types'
 
 function makeConfig(): EngineConfig {
   return {

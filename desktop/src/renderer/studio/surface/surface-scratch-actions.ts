@@ -1,6 +1,6 @@
-import type { SurfaceConversationPersisted } from "../../../shared/studio-surface-types";
+import type { SurfaceConversationPersisted } from "@ion/shared/studio-surface-types";
 import { rDebug, rInfo, rWarn } from "../../rendererLogger";
-import { useSessionStore } from "../../stores/sessionStore";
+import { useSessionStore } from "@ion/server/store/sessionStore";
 import { usePreferencesStore } from "../../preferences";
 import type { SurfaceState } from "./surface-store";
 import { openFileTabIn } from "./surface-file-tabs";

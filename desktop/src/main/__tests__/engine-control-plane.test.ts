@@ -30,7 +30,7 @@ vi.mock('electron', () => ({
 // lifecycle tests assert the resume path, so the tracked id is a real
 // conversation — stub conversationExists to true. Phantom behavior is covered
 // in engine-control-plane-events.test.ts.
-vi.mock('../session-meta', () => ({
+vi.mock('@ion/server/session-meta', () => ({
   conversationExists: vi.fn(() => true),
 }))
 
@@ -65,7 +65,7 @@ const mockBridge = {
   removeAllListeners: vi.fn(),
 }
 
-vi.mock('../engine-bridge', () => {
+vi.mock('@ion/server/engine/engine-bridge', () => {
   return {
     EngineBridge: function () {
       return mockBridge
@@ -78,7 +78,7 @@ vi.mock('../engine-bridge', () => {
 // engine-bridge-fs reads through to state.engineBridge lazily; for these
 // tests we never exercise the remote path, so a no-op mock keeps it out of
 // the way.
-vi.mock('../engine-bridge-fs', () => ({
+vi.mock('@ion/server/engine/engine-bridge-fs', () => ({
   engineIsRemote: vi.fn(() => false),
   getEngineHostInfo: vi.fn(() => Promise.resolve({ ok: false, error: 'not used in tests' })),
   listEngineDirectory: vi.fn(() => Promise.resolve({ ok: false, error: 'not used in tests' })),
@@ -100,9 +100,9 @@ vi.mock('crypto', async () => {
   }
 })
 
-import { EngineControlPlane } from '../engine-control-plane'
-import { EngineBridge } from '../engine-bridge'
-import { engineIsRemote, listEngineDirectory } from '../engine-bridge-fs'
+import { EngineControlPlane } from '@ion/server/engine/engine-control-plane'
+import { EngineBridge } from '@ion/server/engine/engine-bridge'
+import { engineIsRemote, listEngineDirectory } from '@ion/server/engine/engine-bridge-fs'
 
 // ─── Helpers ───
 

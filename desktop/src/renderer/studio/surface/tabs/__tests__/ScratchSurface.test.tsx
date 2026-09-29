@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
-import type { ScratchDocument } from '../../../../../shared/studio-surface-types'
+import type { ScratchDocument } from '@ion/shared/studio-surface-types'
 
 const { rInfo, rWarn } = vi.hoisted(() => ({ rInfo: vi.fn(), rWarn: vi.fn() }))
 vi.mock('../../../../rendererLogger', () => ({ rInfo, rWarn, rTrace: vi.fn(), rDebug: vi.fn(), rError: vi.fn() }))
 vi.mock('../../../../theme', () => ({ useColors: () => ({}) }))
-vi.mock('../../../../stores/sessionStore', () => ({ useSessionStore: Object.assign(vi.fn(), { getState: vi.fn() }) }))
+vi.mock('@ion/server/store/sessionStore', () => ({ useSessionStore: Object.assign(vi.fn(), { getState: vi.fn() }) }))
 vi.mock('../../../../preferences', () => ({ usePreferencesStore: vi.fn() }))
 vi.mock('../../../../components/FileEditorCodeMirror', () => ({ FileEditorCodeMirror: () => null }))
 vi.mock('../../../../components/FileEditorPreview', () => ({ FileEditorPreview: () => null }))

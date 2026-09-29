@@ -2,7 +2,7 @@ import React from 'react'
 import { motion } from 'framer-motion'
 import { PencilSimple } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
-import { parseSlashCommand } from './slash-pill'
+import { parseSlashCommand } from '@ion/server/conversation/slash-pill'
 import { UserMarkdown } from './UserMarkdown'
 
 /** Queued user message (waiting for previous turn to finish). */

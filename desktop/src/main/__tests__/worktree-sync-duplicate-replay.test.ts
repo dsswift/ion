@@ -24,13 +24,13 @@
  * Real repos, not mocks: the behavior under test IS git's range selection and
  * patch-id equivalence, which a mock would merely restate.
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
+import { GIT_FIXTURE_TIMEOUT } from '@ion/server/test/git-fixture-timeout'
 
 // vi.mock factories are hoisted above every top-level statement, including
 // this file's own `const` declarations -- referencing an outer const from
@@ -38,7 +38,7 @@ import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 // "Cannot access before initialization"). vi.hoisted() lifts the declaration
 // itself alongside the mock call so the factory sees an initialized value.
 const { warnMock, logMock } = vi.hoisted(() => ({ warnMock: vi.fn(), logMock: vi.fn() }))
-vi.mock('../logger', () => ({
+vi.mock('@ion/server/logger', () => ({
   log: (...args: unknown[]) => logMock(...args),
   debug: vi.fn(),
   warn: (...args: unknown[]) => warnMock(...args),
@@ -47,14 +47,10 @@ vi.mock('../logger', () => ({
 
 // Redirect HOME so registry reads/writes land in the fixture. Per-file env var:
 // vitest runs test FILES concurrently in one process.
-vi.mock('os', async () => {
-  const actual = await vi.importActual<typeof import('os')>('os')
-  return { ...actual, homedir: () => process.env.ION_TEST_HOME_WT_DUP || actual.homedir() }
-})
 
-import { registerWorktree } from '../worktree/inventory'
-import { syncWorktreeFromSource } from '../worktree/integrate'
-import { computeReplayPlan, patchIdsIn } from '../worktree/patch-identity'
+import { registerWorktree } from '@ion/server/worktree/inventory'
+import { syncWorktreeFromSource } from '@ion/server/worktree/integrate'
+import { computeReplayPlan, patchIdsIn } from '@ion/server/worktree/patch-identity'
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })
@@ -188,19 +184,23 @@ function duplicatePatchIds(cwd: string, range: string): string[] {
   return [...seen.entries()].filter(([, n]) => n > 1).map(([id]) => id)
 }
 
+let savedIonDataDir: string | undefined
+
 beforeEach(() => {
+  savedIonDataDir = process.env.ION_DATA_DIR
   // realpath.native: macOS resolves /var's symlink and Windows expands a
   // short (8.3) TEMP path to the long form git itself reports; plain
   // realpathSync does not perform the Windows expansion.
   root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ion-wtdup-')))
-  process.env.ION_TEST_HOME_WT_DUP = join(root, 'home')
+  process.env.ION_DATA_DIR = join(join(root, 'home'), '.ion')
   repo = makeRepo()
   warnMock.mockClear()
   logMock.mockClear()
 })
 
 afterEach(() => {
-  delete process.env.ION_TEST_HOME_WT_DUP
+  if (savedIonDataDir === undefined) delete process.env.ION_DATA_DIR
+  else process.env.ION_DATA_DIR = savedIonDataDir
   removeGitFixture(root)
 })
 

@@ -15,8 +15,11 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-import { planPathForRestore, reassertRestoredPlanMode } from '../useTabRestoration-helpers'
-import type { PersistedConversationInstance } from '../../../shared/types-persistence'
+const { setPermissionMode } = vi.hoisted(() => ({ setPermissionMode: vi.fn() }))
+vi.mock('@ion/server/store/host-api-engine', () => ({ setPermissionMode }))
+
+import { planPathForRestore, reassertRestoredPlanMode } from '@ion/server/hooks/useTabRestoration-helpers'
+import type { PersistedConversationInstance } from '@ion/shared/types-persistence'
 
 function makeInst(overrides: Partial<PersistedConversationInstance> = {}): PersistedConversationInstance {
   return {
@@ -57,11 +60,8 @@ describe('planPathForRestore', () => {
 })
 
 describe('reassertRestoredPlanMode', () => {
-  const setPermissionMode = vi.fn()
-
   beforeEach(() => {
     setPermissionMode.mockReset()
-    ;(globalThis as any).window = { ion: { setPermissionMode } }
   })
 
   it('re-asserts plan mode AND forwards the persisted plan path', () => {

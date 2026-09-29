@@ -11,7 +11,7 @@
  * The hook is RETIRE, not tab close: closing a conversation deliberately leaves
  * the worktree (and its membership) intact so the operator can come back to it.
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, existsSync, mkdirSync, realpathSync } from 'fs'
@@ -31,12 +31,12 @@ vi.mock('os', async () => {
 import {
   ensureWorkspace, addMember, disenrollWorktree, listWorkspaces, assembleWorkspace,
   predictPrunedBenches,
-} from '../integration/bench-ops'
-import { loadWorkspaces, saveWorkspaces } from '../integration/bench-store'
-import { retireWorktree } from '../worktree/relocate'
-import { landWorktree } from '../worktree/integrate'
-import { registerWorktree } from '../worktree/registry'
-import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
+} from '@ion/server/integration/bench-ops'
+import { loadWorkspaces, saveWorkspaces } from '@ion/server/integration/bench-store'
+import { retireWorktree } from '@ion/server/worktree/relocate'
+import { landWorktree } from '@ion/server/worktree/integrate'
+import { registerWorktree } from '@ion/server/worktree/registry'
+import { GIT_FIXTURE_TIMEOUT } from '@ion/server/test/git-fixture-timeout'
 
 const FEATURE = 'josh'
 

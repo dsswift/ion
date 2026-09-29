@@ -26,7 +26,7 @@ import {
   setWorktreeBase,
   setRegistryWriter,
   resetRegistryWriter,
-} from '../worktree/registry'
+} from '@ion/server/worktree/registry'
 
 let home: string
 

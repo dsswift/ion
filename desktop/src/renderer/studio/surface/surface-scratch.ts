@@ -1,11 +1,11 @@
-import type { TabState } from '../../../shared/types'
+import type { TabState } from '@ion/shared/types'
 import {
   scratchTabId,
   type ScratchDocument,
   type ScratchProject,
   type ScratchTab,
-} from '../../../shared/studio-surface-types'
-import { editorDirForTab, nextUntitledNameFromNames } from '../../stores/session-store-helpers'
+} from '@ion/shared/studio-surface-types'
+import { editorDirForTab, nextUntitledNameFromNames } from '@ion/server/store/session-store-helpers'
 
 export function scratchProjectKey(tab: Pick<TabState, 'workingDirectory' | 'worktree'> | undefined): string | null {
   return tab ? editorDirForTab(tab) : null

@@ -19,10 +19,10 @@ import { describe, it, expect, vi } from 'vitest'
 // reconcile orchestrator, which imports the store (→ theme-tokens, which needs
 // `document`). Mock the store deps so the pure-function tests don't drag in
 // the DOM-bound module graph.
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: { getState: () => ({}), setState: vi.fn() },
 }))
-vi.mock('../../stores/conversation-instance', () => ({
+vi.mock('@ion/server/store/conversation-instance', () => ({
   activeInstance: vi.fn(),
   commitInstance: vi.fn(),
 }))
@@ -31,8 +31,8 @@ vi.mock('../../rendererLogger', () => ({
   rWarn: vi.fn(),
 }))
 
-import { mergeHistoryAttachments } from '../useTabRestoration-images'
-import type { Message, SessionLoadMessage } from '../../../shared/types'
+import { mergeHistoryAttachments } from '@ion/server/hooks/useTabRestoration-images'
+import type { Message, SessionLoadMessage } from '@ion/shared/types'
 
 function toolMsg(toolId: string, attachments?: Message['attachments']): Message {
   return {

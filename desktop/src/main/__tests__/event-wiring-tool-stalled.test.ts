@@ -35,7 +35,6 @@ const {
 } = vi.hoisted(() => {
   const mockSend = vi.fn()
   const mockState = {
-    remoteTransport: { send: mockSend } as any,
     mainWindow: null,
   }
   const mockPermDenialSet = new Set<string>()
@@ -54,7 +53,21 @@ const {
   }
 })
 
-vi.mock('../state', () => ({
+// The `desktop_*` device transport is gone; a RemoteEvent now leaves the
+// server through `sendRemoteEvent`, which fans it to thin Studio-wire
+// clients. Capture there, and drive the "is anyone listening" gate with
+// `remoteClientsPresent`.
+const { mockClientsPresent } = vi.hoisted(() => ({ mockClientsPresent: vi.fn(() => true) }))
+
+vi.mock('@ion/server/thin-view/remote-out', () => ({
+  sendRemoteEvent: mockSend,
+  remoteClientsPresent: mockClientsPresent,
+  syncRemoteAttention: vi.fn(),
+  thinConnections: vi.fn(() => []),
+  sendThinEventTo: vi.fn(() => true),
+}))
+
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{
   state: mockState,
   sessionPlane: { on: vi.fn(), emit: vi.fn(), notifyConversationCleared: vi.fn() },
   engineBridge: {
@@ -69,16 +82,16 @@ vi.mock('../state', () => ({
   forwardedEnginePermissionDenials: mockPermDenialSet,
   lastForwardedTabStatus: mockLastStatusMap,
   lastForwardedTabMeta: mockLastMetaMap,
-}))
+} }))
 
 vi.mock('../broadcast', () => ({ broadcast: vi.fn() }))
 vi.mock('../settings-store', () => ({
   shouldStreamThinkingToRemote: mockShouldStream,
 }))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), trace: vi.fn(), warn: vi.fn(), error: vi.fn() }))
-vi.mock('../../shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
+vi.mock('@ion/shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
 
-import { wireEngineBridgeEvents } from '../event-wiring'
+import { wireEngineBridgeEvents } from '@ion/server/engine/event-wiring'
 
 function emit(key: string, event: any): void {
   capturedHandler.fn!(key, event)
@@ -97,7 +110,7 @@ describe('wireEngineBridgeEvents — engine_tool_stalled projection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     capturedHandler.fn = null
-    mockState.remoteTransport = { send: mockSend } as any
+    mockClientsPresent.mockReturnValue(true)
     mockPermDenialSet.clear()
     mockLastStatusMap.clear()
     mockLastMetaMap.clear()

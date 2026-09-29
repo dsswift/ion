@@ -6,8 +6,8 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import type { NormalizedEvent } from '../../shared/types'
-import { handleCommandEvent } from '../event-wiring-command'
+import type { NormalizedEvent } from '@ion/shared/types'
+import { handleCommandEvent } from '@ion/server/engine/event-wiring-command'
 
 function captureNormalized(): { sent: Array<{ tabId: string; event: NormalizedEvent }>; fn: (tabId: string, event: NormalizedEvent) => void } {
   const sent: Array<{ tabId: string; event: NormalizedEvent }> = []

@@ -16,7 +16,7 @@
  * Real repos, not mocks: the behavior under test IS git's mid-rebase state
  * layout (.git/worktrees/<id>/rebase-merge/), which a mock would just restate.
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, realpathSync } from 'fs'
@@ -32,12 +32,12 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => process.env.ION_TEST_HOME_WT_OPSTATE || actual.homedir() }
 })
 
-import { inventoryWorktrees, registerWorktree } from '../worktree/inventory'
-import { probeOperationState, unmergedPaths } from '../git/operation-state'
-import { captureContribution, contributedTreeHash } from '../integration/bench-snapshot'
-import { syncWorktreeFromSource } from '../worktree/integrate'
-import { refreshStaleness, updateMember, ensureWorkspace, addMember } from '../integration/bench-ops'
-import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
+import { inventoryWorktrees, registerWorktree } from '@ion/server/worktree/inventory'
+import { probeOperationState, unmergedPaths } from '@ion/server/git/operation-state'
+import { captureContribution, contributedTreeHash } from '@ion/server/integration/bench-snapshot'
+import { syncWorktreeFromSource } from '@ion/server/worktree/integrate'
+import { refreshStaleness, updateMember, ensureWorkspace, addMember } from '@ion/server/integration/bench-ops'
+import { GIT_FIXTURE_TIMEOUT } from '@ion/server/test/git-fixture-timeout'
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })

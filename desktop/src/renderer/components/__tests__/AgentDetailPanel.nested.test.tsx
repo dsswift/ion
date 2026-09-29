@@ -9,8 +9,8 @@ import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { AgentStateUpdate } from "../../../shared/types";
-import type { DispatchTelemetryEntry } from "../../../shared/types-engine";
+import type { AgentStateUpdate } from "@ion/shared/types";
+import type { DispatchTelemetryEntry } from "@ion/shared/types-engine";
 
 (
   globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -29,9 +29,9 @@ vi.mock("../../preferences", () => ({
 
 const mockGetConversation = vi.fn();
 (globalThis as any).window = globalThis.window ?? {};
-(globalThis as any).window.ion = { getConversation: mockGetConversation };
+(globalThis as any).window.ion = installFakeWire({ getConversation: mockGetConversation });
 
-vi.mock("../../stores/sessionStore", () => ({
+vi.mock("@ion/server/store/sessionStore", () => ({
   useSessionStore: (sel: (s: Record<string, unknown>) => unknown) =>
     sel({
       agentDetailGeometry: { x: 60, y: 80, w: 600, h: 500 },
@@ -123,7 +123,7 @@ function DispatchStopControlMock(props: {
   );
 }
 
-vi.mock("../agent-conversation-mapper", () => ({
+vi.mock("@ion/shared/transcript/agent-conversation-mapper", () => ({
   mapConversationMessages: (msgs: any[]) =>
     msgs.map((m: any, i: number) => ({
       id: `mapped-${i}`,
@@ -135,6 +135,7 @@ vi.mock("../agent-conversation-mapper", () => ({
 
 import { AgentDetailPanel } from "../AgentDetailPanel";
 import type { BreadcrumbFrame } from "../agent-panel-helpers";
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 function makeAgent(name: string): AgentStateUpdate {
   return { name, status: "done", metadata: { displayName: name } };

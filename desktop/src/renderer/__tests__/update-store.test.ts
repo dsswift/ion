@@ -1,6 +1,6 @@
 /** Update Store — State Machine Tests */
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useUpdateStore } from '../stores/update-store'
+import { useUpdateStore } from '@ion/server/store/update-store'
 
 beforeEach(() => {
   useUpdateStore.setState({ version: null, dialogOpen: false, progress: null, staged: false, error: null })

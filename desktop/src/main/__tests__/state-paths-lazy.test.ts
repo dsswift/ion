@@ -25,9 +25,12 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { saveHomeEnv, setHomeEnv, restoreHomeEnv } from '../../test/home-env'
+import { saveHomeEnv, setHomeEnv, restoreHomeEnv } from '@ion/server/test/home-env'
 
-const MAIN = join(__dirname, '..')
+// bench-store.ts and worktree/registry.ts moved to @ion/server when the
+// session store and its supporting modules moved server-side (Ion Studio
+// Server program); the source-scan guards below read them from there.
+const MAIN = join(__dirname, '../../../../server/src')
 
 function source(rel: string): string {
   return readFileSync(join(MAIN, rel), 'utf-8')
@@ -51,28 +54,33 @@ const STATE_MODULES = [
 ]
 
 describe('state paths resolve lazily', () => {
-  it.each(STATE_MODULES)('%s does not capture homedir() in a module-level const', (rel) => {
+  it.each(STATE_MODULES)('%s does not capture a resolved path in a module-level const', (rel) => {
     const src = code(rel)
-    // A top-level `const X = join(homedir(), ...)` is the exact defect: it is
-    // evaluated once at import and can never reflect a later HOME.
+    // A top-level `const X = join(homedir(), ...)` or `const X = dataDir()` is
+    // the exact defect: it is evaluated once at import and can never reflect
+    // a later HOME/ION_DATA_DIR. Both modules now delegate to `../paths`'s
+    // `dataDir()` (itself lazy — see paths.ts) rather than calling homedir()
+    // directly, so the offending shape is a module-level const built from
+    // either resolver.
     const offenders = src
       .split('\n')
-      .filter((line) => /^\s*(export\s+)?const\s+\w+\s*=.*homedir\(\)/.test(line))
+      .filter((line) => /^\s*(export\s+)?const\s+\w+\s*=.*(homedir\(\)|dataDir\(\))/.test(line))
 
     expect(offenders).toEqual([])
   })
 
   it.each(STATE_MODULES)('%s resolves its paths through functions', (rel) => {
-    // homedir() must be called from inside a function body, so every call site
-    // re-resolves. Presence of `function` + homedir() together is the shape.
+    // dataDir() (or homedir() directly) must be called from inside a function
+    // body, so every call site re-resolves. Presence of `function` + the
+    // resolver call together is the shape.
     const src = code(rel)
-    expect(src).toMatch(/function \w+\(\)(: string)? \{[^}]*homedir\(\)/)
+    expect(src).toMatch(/function \w+\(\)(: string)? \{[^}]*(homedir\(\)|dataDir\(\))/)
   })
 })
 
 describe('bench-store exposes resolvers, not frozen constants', () => {
   it('exports path functions rather than path constants', async () => {
-    const mod = await import('../integration/bench-store')
+    const mod = await import('@ion/server/integration/bench-store')
 
     expect(typeof mod.workspacesFile).toBe('function')
     expect(typeof mod.integrationRoot).toBe('function')
@@ -85,7 +93,7 @@ describe('bench-store exposes resolvers, not frozen constants', () => {
   })
 
   it('re-resolves when HOME changes', async () => {
-    const mod = await import('../integration/bench-store')
+    const mod = await import('@ion/server/integration/bench-store')
     const before = mod.workspacesFile()
 
     // os.homedir() reads USERPROFILE on win32 and HOME elsewhere, so both
@@ -112,7 +120,7 @@ describe('bench-store exposes resolvers, not frozen constants', () => {
 
 describe('inventory exposes a resolver', () => {
   it('exports worktreeRegistryFile as a function', async () => {
-    const mod = await import('../worktree/inventory')
+    const mod = await import('@ion/server/worktree/inventory')
 
     expect(typeof mod.worktreeRegistryFile).toBe('function')
     expect('WORKTREE_REGISTRY_FILE' in mod).toBe(false)

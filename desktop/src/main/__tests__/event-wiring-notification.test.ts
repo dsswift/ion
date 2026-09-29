@@ -10,7 +10,7 @@
  * "title=undefined level=undefined" since the notifications-panel feature
  * shipped.
  *
- * Bug 2: engine_notification with push:true was forwarded to remoteTransport
+ * Bug 2: engine_notification with push:true was forwarded to the remote wire
  * with push=false (the default), silently dropping APNs intent for every
  * ctx.notify() call. The relay only checks the outer frame push flag; the
  * engine's push:true field rides inside the encrypted payload the relay
@@ -30,14 +30,27 @@ const {
   const mockSend = vi.fn()
   const mockBroadcast = vi.fn()
   const mockState = {
-    remoteTransport: { send: mockSend } as any,
     mainWindow: null,
   }
   const capturedHandler = { fn: null as ((key: string, event: any) => void) | null }
   return { mockSend, mockBroadcast, mockState, capturedHandler }
 })
 
-vi.mock('../state', () => ({
+// The `desktop_*` device transport is gone; a RemoteEvent now leaves the
+// server through `sendRemoteEvent`, which fans it to thin Studio-wire
+// clients. Capture there, and drive the "is anyone listening" gate with
+// `remoteClientsPresent`.
+const { mockClientsPresent } = vi.hoisted(() => ({ mockClientsPresent: vi.fn(() => true) }))
+
+vi.mock('@ion/server/thin-view/remote-out', () => ({
+  sendRemoteEvent: mockSend,
+  remoteClientsPresent: mockClientsPresent,
+  syncRemoteAttention: vi.fn(),
+  thinConnections: vi.fn(() => []),
+  sendThinEventTo: vi.fn(() => true),
+}))
+
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{
   state: mockState,
   sessionPlane: { on: vi.fn(), emit: vi.fn(), notifyConversationCleared: vi.fn() },
   engineBridge: {
@@ -51,13 +64,13 @@ vi.mock('../state', () => ({
   extensionCommandRegistry: new Map(),
   forwardedEnginePermissionDenials: new Set(),
   lastForwardedTabStatus: new Map(),
-}))
+} }))
 
-vi.mock('../broadcast', () => ({ broadcast: mockBroadcast }))
-vi.mock('../settings-store', () => ({ shouldStreamThinkingToRemote: vi.fn(() => false) }))
-vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), trace: vi.fn() }))
-vi.mock('../../shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
-vi.mock('../event-wiring-resources', () => ({
+vi.mock('@ion/server/broadcast', () => ({ broadcast: mockBroadcast }))
+vi.mock('@ion/server/persistence/settings-store', async (importOriginal) => ({ ...(await importOriginal()), ...{ shouldStreamThinkingToRemote: vi.fn(() => false) } }))
+vi.mock('@ion/server/logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), trace: vi.fn() }))
+vi.mock('@ion/shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
+vi.mock('@ion/server/engine/event-wiring-resources', () => ({
   handleResourceEngineEvent: vi.fn(),
   subscribeToResourceKinds: vi.fn(() => Promise.resolve()),
   subscribeToGlobalResourceKinds: vi.fn(() => Promise.resolve()),
@@ -68,19 +81,19 @@ vi.mock('../event-wiring-resources', () => ({
   projectPersistedResourceState: vi.fn((items: unknown[]) => items),
   resubscribeSessionResourceKinds: vi.fn(() => Promise.resolve()),
 }))
-vi.mock('../event-wiring-intercept', () => ({ handleInterceptEvent: vi.fn() }))
-vi.mock('../event-wiring-text-delta-batcher', () => ({
+vi.mock('@ion/server/engine/event-wiring-intercept', async (importOriginal) => ({ ...(await importOriginal()), ...{ handleInterceptEvent: vi.fn() } }))
+vi.mock('@ion/server/engine/event-wiring-text-delta-batcher', () => ({
   accumulateTextDelta: vi.fn(),
   flushKeyDeltas: vi.fn(),
   dropKeyDeltas: vi.fn(),
 }))
-vi.mock('../event-wiring-provider-login', () => ({
+vi.mock('@ion/server/engine/event-wiring-provider-login', () => ({
   handleProviderLoginEvent: vi.fn(),
   handleProvidersUpdatedEvent: vi.fn(),
 }))
-vi.mock('../studio-window-manager', () => ({ notifyStudioPermissionResolved: vi.fn() }))
+vi.mock('@ion/server/engine/studio-window-manager', () => ({ notifyStudioPermissionResolved: vi.fn() }))
 
-import { wireEngineBridgeEvents } from '../event-wiring'
+import { wireEngineBridgeEvents } from '@ion/server/engine/event-wiring'
 
 describe('event-wiring: engine_notification', () => {
   beforeEach(() => {
@@ -121,7 +134,7 @@ describe('event-wiring: engine_notification', () => {
     expect(normalizedEvent.notificationLevel).not.toBe('undefined')
   })
 
-  it('sends to remoteTransport without push when event.push is false (iOS stays in sync while connected)', () => {
+  it('sends the remote event without push when event.push is false (iOS stays in sync while connected)', () => {
     emit('tab1', {
       type: 'engine_notification',
       push: false,
@@ -139,7 +152,7 @@ describe('event-wiring: engine_notification', () => {
     expect(pushFlag).toBeFalsy()
   })
 
-  it('sends to remoteTransport with push=true when event.push is true', () => {
+  it('sends the remote event with push=true when event.push is true', () => {
     emit('tab1', {
       type: 'engine_notification',
       push: true,
@@ -190,8 +203,8 @@ describe('event-wiring: engine_notification', () => {
     expect(pushMeta?.tabId).toBe('tab1')
   })
 
-  it('does not send to remoteTransport when there is no remote transport', () => {
-    mockState.remoteTransport = null as any
+  it('does not send a remote event when no remote client is listening', () => {
+    mockClientsPresent.mockReturnValue(false)
 
     emit('tab1', {
       type: 'engine_notification',
@@ -206,7 +219,7 @@ describe('event-wiring: engine_notification', () => {
     expect(mockSend).not.toHaveBeenCalled()
 
     // Restore for other tests
-    mockState.remoteTransport = { send: mockSend } as any
+    mockClientsPresent.mockReturnValue(true)
   })
 })
 

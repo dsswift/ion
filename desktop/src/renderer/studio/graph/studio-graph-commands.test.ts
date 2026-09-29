@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sessionState = vi.hoisted(() => ({ tabs: [{ id: 'tab-1', workingDirectory: '/root' }, { id: 'tab-2', workingDirectory: '/other' }], activeTabId: 'tab-1' }))
-vi.mock('../../stores/sessionStore', () => ({ useSessionStore: { getState: () => sessionState } }))
+vi.mock('@ion/server/store/sessionStore', () => ({ useSessionStore: { getState: () => sessionState } }))
 
 const surface = vi.hoisted(() => ({ currentConversationId: 'tab-1' as string | null, openSingleton: vi.fn(), setVisible: vi.fn() }))
 vi.mock('../surface/surface-store', () => ({ useSurfaceStore: { getState: () => surface } }))
@@ -17,9 +17,11 @@ vi.mock('../surface/surface-store', () => ({ useSurfaceStore: { getState: () => 
 import { useGraphStore } from './graph-store'
 import { clearAllSessions } from './session-park'
 import { applyGraphCommand, registerStudioGraphCommands } from './studio-graph-commands'
-import { GRAPH_VIEW_DEFAULTS, type GraphViewConfig } from '../../../shared/graph-view-types'
-import type { CorpusSnapshot } from '../../../shared/graph-corpus-types'
-import type { StudioGraphCommandEnvelope, StudioGraphCommandResult } from '../../../shared/studio-graph-types'
+import { GRAPH_VIEW_DEFAULTS, type GraphViewConfig } from '@ion/shared/graph-view-types'
+import type { CorpusSnapshot } from '@ion/shared/graph-corpus-types'
+import type { StudioGraphCommandResult } from '@ion/shared/studio-graph-types'
+import type { StudioFrame } from '@ion/shared/studio-wire/types'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 function config(overrides?: Partial<GraphViewConfig>): GraphViewConfig {
   return {
@@ -50,20 +52,27 @@ function chainSnapshot(): CorpusSnapshot {
   return { revision: 1, roots: [{ path: '/root', exists: true, documentCount: 4 }], documents: [doc('a', ['b']), doc('b', ['c']), doc('c', []), doc('d', [])] }
 }
 
-let commandHandler: ((envelope: StudioGraphCommandEnvelope) => void) | null = null
-const results: StudioGraphCommandResult[] = []
+const frameListeners = new Set<(environmentId: string, frame: StudioFrame) => void>()
+const sentFrames: Array<{ environmentId: string; frame: StudioFrame }> = []
 
 function installIonStub(snapshot: CorpusSnapshot, cfg = config()): void {
-  window.ion = {
+  // The graph verbs answer over the loopback wire; this test's own taps
+  // sit in front of it so it can inject `studio_command` frames and read
+  // the `studio_command_result` replies the receiver sends.
+  const wire = installFakeWire({
     graphViewGetConfig: vi.fn(async () => cfg),
     graphViewSetUserConfig: vi.fn(async () => ({ ok: true })),
     onGraphViewConfigChanged: vi.fn(() => () => undefined),
     graphCorpusSubscribe: vi.fn(async () => snapshot),
     graphCorpusUnsubscribe: vi.fn(async () => ({ ok: true })),
     onGraphCorpusDelta: vi.fn(() => () => undefined),
-    onStudioGraphCommand: vi.fn((cb: (envelope: StudioGraphCommandEnvelope) => void) => { commandHandler = cb; return () => { commandHandler = null } }),
-    studioGraphCommandResult: vi.fn((result: StudioGraphCommandResult) => { results.push(result) }),
-  } as unknown as typeof window.ion
+  }) as unknown as { onHostFrame: (cb: (environmentId: string, frame: StudioFrame) => void) => () => void; hostSendFrame: (environmentId: string, frame: StudioFrame) => void }
+  const loopbackOnHostFrame = wire.onHostFrame
+  const loopbackSend = wire.hostSendFrame
+  wire.onHostFrame = (cb) => { frameListeners.add(cb); const off = loopbackOnHostFrame(cb); return () => { frameListeners.delete(cb); off() } }
+  // `studio_action` frames are the loopback's (the store's graph verbs); the receiver's replies are what this test reads.
+  wire.hostSendFrame = (environmentId, frame) => { if (frame.type !== 'studio_action') sentFrames.push({ environmentId, frame }); loopbackSend(environmentId, frame) }
+  window.ion = wire as unknown as typeof window.ion
 }
 
 /** The render layer's part of the contract: each request is consumed once, by seq, on the next tick. */
@@ -97,7 +106,8 @@ beforeEach(() => {
   sessionState.activeTabId = 'tab-1'
   surface.openSingleton.mockReset()
   surface.setVisible.mockReset()
-  results.length = 0
+  sentFrames.length = 0
+  frameListeners.clear()
 })
 
 afterEach(() => {
@@ -274,14 +284,19 @@ describe('view changes', () => {
   })
 })
 
-describe('envelope loop', () => {
-  it('answers every envelope exactly once with its callId', async () => {
+describe('wire loop', () => {
+  it('answers a studio_command from an Environment with one studio_command_result to that Environment', async () => {
     await openGraph()
     const stop = registerStudioGraphCommands()
-    commandHandler!({ callId: 'c1', command: { kind: 'state', ...base } })
-    commandHandler!({ callId: 'c2', command: { kind: 'node', ...base, nodeId: 'ghost' } })
-    await vi.waitFor(() => expect(results).toHaveLength(2))
-    expect(results.map((r) => [r.callId, r.ok])).toEqual([['c1', true], ['c2', false]])
+    const deliver = (environmentId: string, frame: StudioFrame): void => { for (const l of [...frameListeners]) l(environmentId, frame) }
+    deliver('grover', { type: 'studio_command', id: 'w1', command: 'graph.state', args: { kind: 'state', ...base }, timeoutMs: 5000 })
+    deliver('grover', { type: 'studio_command', id: 'w2', command: 'graph.node', args: { kind: 'node', ...base, nodeId: 'ghost' }, timeoutMs: 5000 })
+    await vi.waitFor(() => expect(sentFrames).toHaveLength(2))
+    expect(sentFrames.map((s) => s.environmentId)).toEqual(['grover', 'grover'])
+    const replies = sentFrames.map((s) => s.frame).filter((f): f is Extract<StudioFrame, { type: 'studio_command_result' }> => f.type === 'studio_command_result')
+    expect(replies.map((r) => [r.id, r.ok])).toEqual([['w1', true], ['w2', true]])
+    expect(replies.map((r) => (r.value as StudioGraphCommandResult).ok)).toEqual([true, false])
+    expect(replies.map((r) => (r.value as StudioGraphCommandResult).callId)).toEqual(['w1', 'w2'])
     stop()
   })
 })

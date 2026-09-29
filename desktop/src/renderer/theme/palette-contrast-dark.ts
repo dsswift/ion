@@ -18,7 +18,7 @@
  * palette-parity's identical-key-set contract.
  */
 
-import { darkColors, type ColorPalette } from './palette-dark'
+import { darkColors, type ColorPalette } from '@ion/server/renderer/theme/palette-dark'
 
 export const contrastDarkColors: ColorPalette = {
   ...darkColors,

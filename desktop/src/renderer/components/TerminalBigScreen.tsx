@@ -1,7 +1,7 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
 import { useColors } from '../theme'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { TerminalInstanceView } from './TerminalInstance'
 import { TerminalTabStrip } from './TerminalTabStrip'
 import { usePopoverLayer } from './PopoverLayer'

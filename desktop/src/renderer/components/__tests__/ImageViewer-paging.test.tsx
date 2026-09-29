@@ -33,7 +33,7 @@ vi.mock('../FloatingPanel', () => ({
   FloatingPanel: ({ children }: { children: React.ReactNode }) =>
     React.createElement('div', { 'data-testid': 'panel' }, children),
 }))
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: (selector: (s: unknown) => unknown) =>
     selector({
       planGeometry: { x: 0, y: 0, w: 600, h: 500 },
@@ -47,10 +47,11 @@ const readImageDataUrl = vi.fn(async (path: string) => ({ dataUrl: `data:image/p
 
 beforeEach(() => {
   ;(globalThis as unknown as { window: { ion: unknown } }).window = globalThis as unknown as { ion: unknown }
-  ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = { readImageDataUrl, fsRevealInFinder: vi.fn() }
+  ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = installFakeWire({ readImageDataUrl, fsRevealInFinder: vi.fn() })
 })
 
 import { ImageViewer } from '../ImageViewer'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 const SIBLINGS = [
   { path: '/c/a.png', name: 'a.png' },

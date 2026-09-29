@@ -12,10 +12,10 @@
  *
  * Real repos rather than mocks: the behavior under test is git's.
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync, mkdirSync, statSync, realpathSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync, mkdirSync, chmodSync, statSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -29,11 +29,11 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => process.env.ION_TEST_HOME_BENCH_ASSEMBLE || actual.homedir() }
 })
 
-import { assembleBench } from '../integration/bench-assemble'
-import { captureContribution, contributedTreeHash } from '../integration/bench-snapshot'
-import { makeWorkspace, makeMember } from '../integration/bench-store'
-import type { IntegrationWorkspace, IntegrationMember } from '../../shared/types'
-import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
+import { assembleBench } from '@ion/server/integration/bench-assemble'
+import { captureContribution, contributedTreeHash } from '@ion/server/integration/bench-snapshot'
+import { makeWorkspace, makeMember } from '@ion/server/integration/bench-store'
+import type { IntegrationWorkspace, IntegrationMember } from '@ion/shared/types'
+import { GIT_FIXTURE_TIMEOUT } from '@ion/server/test/git-fixture-timeout'
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })
@@ -385,6 +385,36 @@ describe('assembleBench — rerere resolve once, replay forever', () => {
     expect(member.merge).toBe('conflicted')
     expect(member.mergeResolution).toBeUndefined()
   })
+})
+
+describe('assembleBench — the repository\'s hooks never run against the bench', () => {
+  // The live defect: the repository's commit-msg hook shelled out to tooling
+  // that a GUI-launched process does not have on its PATH, exited non-zero,
+  // and git refused the MERGE COMMIT. The merge itself had succeeded and the
+  // index was clean, so the assembly failed with a hook error and reported the
+  // member as conflicted — a collision that never happened, on a bench holding
+  // a single member with nothing to collide with.
+  it('assembles even when the repository has a commit hook that always fails', async () => {
+    const a = makeWorktree('a')
+    const ws = workspaceFor([await enroll(a)])
+
+    // Armed only once the member's own commits exist: the hook belongs to the
+    // operator's real work, and the bench is what must be immune to it.
+    const hooks = join(root, 'hooks')
+    mkdirSync(hooks, { recursive: true })
+    const hook = join(hooks, 'commit-msg')
+    writeFileSync(hook, '#!/bin/sh\necho "commit-msg hook: tooling missing" >&2\nexit 1\n')
+    chmodSync(hook, 0o755)
+    git(repo, 'config', 'core.hooksPath', hooks)
+
+    const result = await assembleBench(ws)
+
+    expect(result.ok).toBe(true)
+    expect(result.workspace!.lastAssembly).toBe('assembled')
+    expect(result.workspace!.members[0].merge).toBe('merged')
+    expect(benchMergeCount(ws.benchPath)).toBe(1)
+    expect(existsSync(join(ws.benchPath, 'a.txt'))).toBe(true)
+  }, GIT_FIXTURE_TIMEOUT)
 })
 
 describe('assembleBench — build output survives (no clean -x)', () => {

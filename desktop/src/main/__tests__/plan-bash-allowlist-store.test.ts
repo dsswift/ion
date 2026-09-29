@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // reads/writes it so the test never touches the real ~/.ion/engine.json.
 const store = vi.hoisted(() => ({ engineConfig: {} as Record<string, unknown> }))
 
-vi.mock('../settings-store', () => {
+vi.mock('@ion/server/persistence/settings-store', () => {
   const readEngineConfig = () => JSON.parse(JSON.stringify(store.engineConfig))
   const writeEngineConfig = (cfg: Record<string, unknown>) => { store.engineConfig = cfg }
   return {
@@ -30,14 +30,14 @@ vi.mock('../settings-store', () => {
   }
 })
 
-vi.mock('../logger', () => ({
+vi.mock('@ion/server/logger', () => ({
   log: vi.fn(),
   debug: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
 }))
 
-import { readPlanBashAllowlist, writePlanBashAllowlist } from '../plan-bash-allowlist-store'
+import { readPlanBashAllowlist, writePlanBashAllowlist } from '@ion/server/plan-bash-allowlist-store'
 
 describe('plan-bash-allowlist-store', () => {
   beforeEach(() => {

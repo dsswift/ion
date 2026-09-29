@@ -58,7 +58,7 @@ const mockBridge = vi.hoisted(() => ({
   removeAllListeners: vi.fn(),
 }))
 
-vi.mock('../engine-bridge', () => {
+vi.mock('@ion/server/engine/engine-bridge', () => {
   return {
     EngineBridge: function () {
       return mockBridge
@@ -68,7 +68,7 @@ vi.mock('../engine-bridge', () => {
   }
 })
 
-vi.mock('../engine-bridge-fs', () => ({
+vi.mock('@ion/server/engine/engine-bridge-fs', () => ({
   engineIsRemote: vi.fn(() => false),
   getEngineHostInfo: vi.fn(() => Promise.resolve({ ok: false, error: 'not used in tests' })),
   listEngineDirectory: vi.fn(() => Promise.resolve({ ok: false, error: 'not used in tests' })),
@@ -91,8 +91,8 @@ vi.mock('crypto', async () => {
   }
 })
 
-import { EngineControlPlane } from '../engine-control-plane'
-import { EngineBridge } from '../engine-bridge'
+import { EngineControlPlane } from '@ion/server/engine/engine-control-plane'
+import { EngineBridge } from '@ion/server/engine/engine-bridge'
 
 describe('EngineControlPlane — setPermissionMode never pushes a bash allowlist', () => {
   let cp: EngineControlPlane

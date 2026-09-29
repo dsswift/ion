@@ -28,8 +28,6 @@ const mocks = vi.hoisted(() => ({
   getRemoteTabStatesMock: vi.fn().mockResolvedValue({ tabs: [], resourceManifest: {} }),
   readSettingsMock: vi.fn().mockReturnValue({
     recentBaseDirectories: [],
-    tabGroupMode: 'off',
-    tabGroups: [],
     preferredModel: undefined,
     engineDefaultModel: undefined,
   }),
@@ -39,9 +37,9 @@ const mocks = vi.hoisted(() => ({
 
 // The cache object is shared by both modules under test: models.ts writes it
 // and snapshot-polling.ts reads it, so the mock must hand out one instance.
-import { modelCache } from '../state'
+import { modelCache } from '@ion/server/state'
 
-vi.mock('../state', () => ({
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{
   state: {
     get mainWindow() {
       return { webContents: { executeJavaScript: vi.fn().mockResolvedValue({}) } }
@@ -60,7 +58,7 @@ vi.mock('../state', () => ({
   terminalScrollback: new Map(),
   modelCache: { models: [] as any[], lastFetched: 0 },
   enterprisePolicyCache: { policy: null, newConversationDefaults: null },
-}))
+} }))
 
 vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn(), on: vi.fn() },
@@ -74,12 +72,12 @@ vi.mock('../logger', () => ({
   error: vi.fn(),
 }))
 
-vi.mock('../remote/snapshot', () => ({
+vi.mock('@ion/server/remote/snapshot', () => ({
   getRemoteTabStates: (...args: any[]) => mocks.getRemoteTabStatesMock(...args),
 }))
 
 vi.mock('../settings-store', () => ({
-  SETTINGS_DIR: '/tmp/ion-snapshot-provider-label-test',
+  settingsDir: () => '/tmp/ion-snapshot-provider-label-test',
   readSettings: (...args: any[]) => mocks.readSettingsMock(...args),
 }))
 
@@ -89,8 +87,8 @@ vi.mock('../remote/git-watcher-bridge', () => ({
 
 // ─── SUT ─────────────────────────────────────────────────────────────────────
 
-import { refreshModelCache } from '../ipc/models'
-import { buildSnapshotEvent } from '../remote/snapshot-polling'
+import { refreshModelCache } from '@ion/server/engine/ipc/models'
+import { buildSnapshotEvent } from '@ion/server/remote/snapshot-polling'
 
 /** Project the engine's list_models result and return the snapshot entries. */
 async function projectModels(result: { models: any[]; providers: any[] }): Promise<any[]> {

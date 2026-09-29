@@ -7,18 +7,15 @@
  * The identities differ, so the removal silently no-opped and every `on`
  * registration stayed attached forever.
  *
- * The consequence in the app: `useEngineEvents` registers a dozen channels in
- * an effect and removes them in its cleanup. Any effect re-run (a remount, a
- * dependency change, a StrictMode double-invoke in dev) left the previous
- * listeners live, so one main-process broadcast invoked the handler N times.
- * On IPC.REMOTE_USER_MESSAGE that is N optimistic user bubbles for a single
- * iOS prompt.
+ * The consequence in the app: a hook that registers a channel in an effect and
+ * removes it in its cleanup. Any effect re-run (a remount, a dependency
+ * change, a StrictMode double-invoke in dev) left the previous listener live,
+ * so one main-process broadcast invoked the handler N times.
  *
  * These tests drive the REAL preload module (not a reimplementation) by
  * mocking 'electron' and capturing the object handed to
  * contextBridge.exposeInMainWorld, so they cannot drift from shipped code.
  */
-import { IPC } from "../../shared/types";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 type Handler = (event: unknown, ...args: unknown[]) => void;
@@ -82,14 +79,16 @@ beforeEach(async () => {
 
 describe("preload module ownership", () => {
   it("does not let later modules replace an API owned by another module", async () => {
-    const [{ requestApi }, { automationApi }, { engineApi }, { systemApi }] =
+    const [{ requestApi }, { automationApi }, { engineApi }, { systemApi }, { studioApi }, { worktreeApi }] =
       await Promise.all([
         import("../api-request"),
         import("../api-automation"),
         import("../engine-api"),
         import("../api-system"),
+        import("../studio-api"),
+        import("../api-worktree"),
       ]);
-    const modules = [requestApi, automationApi, engineApi, systemApi];
+    const modules = [requestApi, automationApi, engineApi, systemApi, studioApi, worktreeApi];
 
     for (let left = 0; left < modules.length; left++) {
       for (let right = left + 1; right < modules.length; right++) {
@@ -102,57 +101,11 @@ describe("preload module ownership", () => {
   });
 });
 
-describe("preload automation bridge", () => {
-  it("each automation listener removes the exact wrapper it registered", () => {
-    const onEvent = exposed.onAutomationEvent(vi.fn());
-    const onCommand = exposed.onAutomationCommand(vi.fn());
-    expect(count(IPC.AUTOMATION_EVENT)).toBe(1);
-    expect(count(IPC.AUTOMATION_COMMAND)).toBe(1);
-
-    onEvent();
-    onCommand();
-    expect(count(IPC.AUTOMATION_EVENT)).toBe(0);
-    expect(count(IPC.AUTOMATION_COMMAND)).toBe(0);
-  });
-
-  it("routes the source-aware listing and per-item CRUD through their channels", () => {
-    exposed.automationListing("/repo");
-    exposed.automationDelete("id-1");
-    exposed.automationDuplicate("id-2", "/repo");
-    expect(fakeIpc.invoke).toHaveBeenCalledWith(IPC.AUTOMATION_LISTING, "/repo");
-    expect(fakeIpc.invoke).toHaveBeenCalledWith(IPC.AUTOMATION_DELETE, "id-1");
-    expect(fakeIpc.invoke).toHaveBeenCalledWith(IPC.AUTOMATION_DUPLICATE, {
-      id: "id-2",
-      projectPath: "/repo",
-    });
-  });
-});
-
-describe("preload resource bridge", () => {
-  it("preserves producer identity for read, delete, and get operations", () => {
-    exposed.markResourceRead("briefing", "shared", "producer-a");
-    exposed.publishResourceDelete("briefing", "shared", "producer-a");
-    exposed.resourceGet("briefing", "shared", {
-      global: true,
-      producer: "producer-a",
-    });
-
-    expect(fakeIpc.send).toHaveBeenCalledWith(IPC.MARK_RESOURCE_READ, {
-      kind: "briefing",
-      resourceId: "shared",
-      producer: "producer-a",
-    });
-    expect(fakeIpc.send).toHaveBeenCalledWith(IPC.DELETE_RESOURCE, {
-      kind: "briefing",
-      resourceId: "shared",
-      producer: "producer-a",
-    });
-    expect(fakeIpc.invoke).toHaveBeenCalledWith(IPC.RESOURCE_GET, {
-      kind: "briefing",
-      id: "shared",
-      global: true,
-      producer: "producer-a",
-    });
+describe("preload surface", () => {
+  it("is the natives and the host relay: nothing the Studio server serves over the wire", async () => {
+    const { SHELL_INVOKE, SHELL_SUBSCRIBE } = await import("../../renderer/host/browser-shell-bridge");
+    const bridged = Object.keys(exposed).filter((verb) => verb in SHELL_INVOKE || verb in SHELL_SUBSCRIBE);
+    expect(bridged).toEqual([]);
   });
 });
 

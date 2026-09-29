@@ -19,8 +19,6 @@ const mocks = vi.hoisted(() => ({
   readSettingsMock: vi.fn().mockReturnValue({
     defaultBaseDirectory: '/home/test',
     recentBaseDirectories: ['/home/test'],
-    tabGroupMode: 'off',
-    tabGroups: [],
     preferredModel: undefined,
     engineDefaultModel: undefined,
     engineProfiles: [],
@@ -34,7 +32,7 @@ const mocks = vi.hoisted(() => ({
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 
-vi.mock('../state', () => ({
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{
   state: {
     get mainWindow() {
       return {
@@ -57,10 +55,10 @@ vi.mock('../state', () => ({
   terminalScrollback: new Map(),
   modelCache: { models: [] },
   enterprisePolicyCache: { policy: null, newConversationDefaults: null },
-}))
+} }))
 
 // Theme packs ride sendSync; mock the loader so this test never scans disk.
-vi.mock('../theme-packs', () => ({
+vi.mock('@ion/server/theme-packs', () => ({
   buildThemeManifest: vi.fn(() => ({ themes: [], hash: 'empty' })),
   rescanThemePacks: vi.fn(() => false),
 }))
@@ -72,33 +70,34 @@ vi.mock('../logger', () => ({
   error: vi.fn(),
 }))
 
-vi.mock('../remote/snapshot', () => ({
+vi.mock('@ion/server/remote/snapshot', async (importOriginal) => ({ ...(await importOriginal()), ...{
   getRemoteTabStates: (...args: any[]) => mocks.getRemoteTabStatesMock(...args),
-}))
+} }))
 
-vi.mock('../settings-store', () => ({
-  SETTINGS_DIR: '/tmp/ion-enterprise-policy-test',
+vi.mock('@ion/server/persistence/settings-store', async (importOriginal) => ({ ...(await importOriginal()), ...{
+  settingsDir: () => '/tmp/ion-enterprise-policy-test',
   readSettings: (...args: any[]) => mocks.readSettingsMock(...args),
-}))
+} }))
 
-vi.mock('../projectable-settings', () => ({
+vi.mock('@ion/server/projectable-settings', () => ({
   projectCurrentSettings: () => mocks.projectCurrentSettingsMock(),
   projectableSchema: () => mocks.projectableSchemamock(),
   projectableGroups: () => mocks.projectableGroupsMock(),
+  projectablePages: () => [],
 }))
 
-vi.mock('../engine-bridge-fs', () => ({
+vi.mock('@ion/server/engine/engine-bridge-fs', async (importOriginal) => ({ ...(await importOriginal()), ...{
   getEnterprisePolicyNewConversationDefaults: () => mocks.getEnterprisePolicyMock(),
-}))
+} }))
 
-vi.mock('../remote/handlers/display', () => ({
+vi.mock('@ion/server/remote/handlers/display', async (importOriginal) => ({ ...(await importOriginal()), ...{
   readRemoteDisplay: () => mocks.readRemoteDisplayMock(),
-}))
+} }))
 
 // ─── SUT ─────────────────────────────────────────────────────────────────────
 
-import { sendSync } from '../remote/handlers/tabs-sync'
-import { enterprisePolicyCache } from '../state'
+import { sendSync } from '@ion/server/remote/handlers/tabs-sync'
+import { enterprisePolicyCache } from '@ion/server/state'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

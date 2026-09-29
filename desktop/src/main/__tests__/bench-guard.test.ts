@@ -61,7 +61,7 @@ function mutatingGitCalls(): Array<{ cwd: string; args: string[] }> {
   })
 }
 
-vi.mock('../git-runner', () => ({
+vi.mock('@ion/server/git/git-runner', () => ({
   runGit: async (cwd: string, args: string[]) => {
     gitCalls.push({ cwd, args })
     return ''
@@ -69,7 +69,7 @@ vi.mock('../git-runner', () => ({
   gitExec: async () => ({ stdout: '', stderr: '' }),
 }))
 
-let IPC: typeof import('../../shared/types').IPC
+let IPC: typeof import('@ion/shared/types').IPC
 
 beforeEach(async () => {
   handlers.clear()
@@ -95,14 +95,14 @@ beforeEach(async () => {
     }),
   )
 
-  const types = await import('../../shared/types')
+  const types = await import('@ion/shared/types')
   IPC = types.IPC
-  const { registerGitIpc } = await import('../ipc/git')
-  const { registerGitExtrasIpc } = await import('../ipc/git-extras')
-  const { registerGitRebaseIpc } = await import('../ipc/git-rebase')
-  registerGitIpc()
-  registerGitExtrasIpc()
-  registerGitRebaseIpc()
+  // The verbs live in the shared table both the Studio wire and the former
+  // Electron adapter read from; drive that table directly.
+  const { GIT_HANDLERS } = await import('@ion/server/git/git-api')
+  for (const [channel, handler] of Object.entries(GIT_HANDLERS)) {
+    handlers.set(channel, (_event: unknown, payload: unknown) => handler(payload))
+  }
 })
 
 afterEach(() => {

@@ -18,7 +18,12 @@ vi.mock('../plan-bash-allowlist-store', () => ({
   writePlanBashAllowlist: vi.fn(),
 }))
 
-vi.mock('../theme-policy', () => ({
+vi.mock('@ion/server/thin-view/remote-out', () => ({
+  thinConnections: vi.fn(() => []),
+  sendThinEventTo: vi.fn(() => true),
+}))
+
+vi.mock('@ion/server/theme-policy', () => ({
   getEnterpriseThemePolicy: () => null,
   isThemeLocked: () => false,
 }))
@@ -28,11 +33,11 @@ import {
   PROJECTABLE_GROUP_ORDER,
   projectCurrentSettings,
   projectableGroups,
-} from '../projectable-settings'
-import { CONNECTION_CRITICAL_KEYS } from '../projectable-settings-data'
-import { broadcastDesktopSettingsSnapshot } from '../settings-broadcast'
-import * as settingsStore from '../settings-store'
-import { state } from '../state'
+} from '@ion/server/projectable-settings'
+import { CONNECTION_CRITICAL_KEYS } from '@ion/server/projectable-settings-data'
+import { broadcastDesktopSettingsSnapshot } from '@ion/server/settings-broadcast'
+import * as settingsStore from '@ion/server/persistence/settings-store'
+import { sendThinEventTo, thinConnections } from '@ion/server/thin-view/remote-out'
 
 describe('projectable settings iOS surface', () => {
   let readSettingsSpy: ReturnType<typeof vi.spyOn>
@@ -100,16 +105,13 @@ describe('projectable settings iOS surface', () => {
   })
 
   it('emits no desktop-only setting in desktop_settings_snapshot', () => {
+    // The snapshot goes out through the thin view's fan-out now, and only
+    // when a client is attached -- `broadcastDesktopSettingsSnapshot` returns
+    // early otherwise.
     const sent: unknown[] = []
-    const priorTransport = state.remoteTransport
-    state.remoteTransport = {
-      send: (message: unknown) => sent.push(message),
-    } as unknown as typeof state.remoteTransport
-    try {
-      broadcastDesktopSettingsSnapshot('ios surface test')
-    } finally {
-      state.remoteTransport = priorTransport
-    }
+    vi.mocked(thinConnections).mockReturnValue([{ id: 'phone', principal: { subject: 'local:operator' }, scopes: ['admin'] }] as never)
+    vi.mocked(sendThinEventTo).mockImplementation((_conn: unknown, event: unknown) => { sent.push(event); return true })
+    broadcastDesktopSettingsSnapshot('ios surface test')
     const snapshot = sent.find(
       (message: any) => message?.type === 'desktop_settings_snapshot',
     ) as any

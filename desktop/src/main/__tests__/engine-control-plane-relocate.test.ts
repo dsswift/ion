@@ -39,11 +39,11 @@ const mockBridge = {
   removeAllListeners: vi.fn(),
 }
 
-vi.mock('../engine-bridge', () => ({
+vi.mock('@ion/server/engine/engine-bridge', () => ({
   EngineBridge: function () { return mockBridge },
 }))
 
-vi.mock('../engine-bridge-fs', () => ({
+vi.mock('@ion/server/engine/engine-bridge-fs', () => ({
   engineIsRemote: vi.fn(() => false),
   getEngineHostInfo: vi.fn(() => Promise.resolve({ ok: false, error: 'not used' })),
   listEngineDirectory: vi.fn(() => Promise.resolve({ ok: false, error: 'not used' })),
@@ -57,8 +57,8 @@ vi.mock('crypto', async () => {
   return { ...actual, randomUUID: vi.fn(() => `tab-${String(++uuidCounter).padStart(3, '0')}`) }
 })
 
-import { EngineControlPlane } from '../engine-control-plane'
-import { EngineBridge } from '../engine-bridge'
+import { EngineControlPlane } from '@ion/server/engine/engine-control-plane'
+import { EngineBridge } from '@ion/server/engine/engine-bridge'
 
 const WORKTREE = '/Users/test/.ion/worktrees/project-a3f1'
 const REPO_ROOT = '/Users/test/project'

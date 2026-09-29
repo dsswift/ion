@@ -7,7 +7,7 @@
  * in member B's half-finished change — the exact failure the pinned model
  * exists to prevent.
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, existsSync, readFileSync, realpathSync, statSync } from 'fs'
@@ -18,23 +18,16 @@ vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error
 
 // Redirect the workspace registry to a temp dir so tests never touch ~/.ion.
 let storeDir: string
-vi.mock('os', async () => {
-  const actual = await vi.importActual<typeof import('os')>('os')
-  // Per-file env var: vitest runs test FILES concurrently in one process, so a
-  // shared name would let files clobber each other's fake home -- passing in
-  // isolation and failing in the suite.
-  return { ...actual, homedir: () => process.env.ION_TEST_HOME_BENCH_OPS || actual.homedir() }
-})
 
 import {
   ensureWorkspace, addMember, removeMember,
   updateMember, updateAllStale, assembleWorkspace, refreshStaleness, listWorkspaces,
   setMemberOrder, discardMemberRecordingsAndReassemble,
-} from '../integration/bench-ops'
-import { loadWorkspaces, saveWorkspaces } from '../integration/bench-store'
-import { setWorktreeStage, lookupWorktreeStage } from '../worktree/inventory'
-import { markWorktreeLanded, registerWorktree } from '../worktree/registry'
-import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
+} from '@ion/server/integration/bench-ops'
+import { loadWorkspaces, saveWorkspaces } from '@ion/server/integration/bench-store'
+import { setWorktreeStage, lookupWorktreeStage } from '@ion/server/worktree/inventory'
+import { markWorktreeLanded, registerWorktree } from '@ion/server/worktree/registry'
+import { GIT_FIXTURE_TIMEOUT } from '@ion/server/test/git-fixture-timeout'
 
 const FEATURE = 'josh'
 
@@ -45,14 +38,17 @@ function git(cwd: string, ...args: string[]): string {
 let root: string
 let repo: string
 
+let savedIonDataDir: string | undefined
+
 beforeEach(() => {
+  savedIonDataDir = process.env.ION_DATA_DIR
   // realpath.native: macOS resolves /var's symlink and Windows expands a
   // short (8.3) TEMP path to the long form git itself reports; plain
   // realpathSync does not perform the Windows expansion.
   root = realpathSync.native(mkdtempSync(join(tmpdir(), 'ion-benchops-')))
   storeDir = join(root, 'home')
   execFileSync('mkdir', ['-p', join(storeDir, '.ion')])
-  process.env.ION_TEST_HOME_BENCH_OPS = storeDir
+  process.env.ION_DATA_DIR = join(storeDir, '.ion')
 
   repo = join(root, 'repo')
   execFileSync('git', ['init', '-b', 'main', repo], { encoding: 'utf-8' })
@@ -67,7 +63,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  delete process.env.ION_TEST_HOME_BENCH_OPS
+  if (savedIonDataDir === undefined) delete process.env.ION_DATA_DIR
+  else process.env.ION_DATA_DIR = savedIonDataDir
   removeGitFixture(root)
 })
 

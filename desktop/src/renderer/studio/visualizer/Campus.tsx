@@ -9,6 +9,7 @@ import { useColors } from '../../theme'
 import { layoutCampus, campusSize, buildingGlow, buildingAt, type Building, type CampusEntry } from './engine/campus'
 import { rInfo } from '../../rendererLogger'
 import { canvasPointFromClient } from './canvas-coordinates'
+import { host } from '../../host/host-instance'
 
 const TILE = 16
 const REFRESH_MS = 2000
@@ -27,7 +28,7 @@ export function Campus(props: CampusProps): React.JSX.Element {
   const cameraRef = useRef({ zoom: 1, ox: 0, oy: 0 })
 
   const refresh = useCallback(async () => {
-    const [tabs, summaries] = await Promise.all([window.ion.studioListTabs(), window.ion.studioGetAllStatus()])
+    const [tabs, summaries] = await Promise.all([host.shell.studioListTabs(), host.shell.studioGetAllStatus()])
     const byId = new Map(summaries.map((s) => [s.tabId, s]))
     setEntries(
       tabs.map((t) => {

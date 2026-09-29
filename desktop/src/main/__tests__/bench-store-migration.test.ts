@@ -23,13 +23,9 @@ import { join } from 'path'
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
 let storeDir: string
-vi.mock('os', async () => {
-  const actual = await vi.importActual<typeof import('os')>('os')
-  return { ...actual, homedir: () => process.env.ION_TEST_HOME_BENCH_STORE || actual.homedir() }
-})
 
-import { loadWorkspaces, saveWorkspaces, workspacesFile } from '../integration/bench-store'
-import { setWorktreeStage, lookupWorktreeStage } from '../worktree/inventory'
+import { loadWorkspaces, saveWorkspaces, workspacesFile } from '@ion/server/integration/bench-store'
+import { setWorktreeStage, lookupWorktreeStage } from '@ion/server/worktree/inventory'
 
 let root: string
 
@@ -65,15 +61,19 @@ function legacyMember(over: Record<string, unknown> = {}): Record<string, unknow
   }
 }
 
+let savedIonDataDir: string | undefined
+
 beforeEach(() => {
+  savedIonDataDir = process.env.ION_DATA_DIR
   root = mkdtempSync(join(tmpdir(), 'ion-benchstore-'))
   storeDir = join(root, 'home')
   mkdirSync(join(storeDir, '.ion'), { recursive: true })
-  process.env.ION_TEST_HOME_BENCH_STORE = storeDir
+  process.env.ION_DATA_DIR = join(storeDir, '.ion')
 })
 
 afterEach(() => {
-  delete process.env.ION_TEST_HOME_BENCH_STORE
+  if (savedIonDataDir === undefined) delete process.env.ION_DATA_DIR
+  else process.env.ION_DATA_DIR = savedIonDataDir
   rmSync(root, { recursive: true, force: true })
 })
 

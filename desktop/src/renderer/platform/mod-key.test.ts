@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * mod-key.ts is a module-scope singleton (IS_MAC computed once at import
- * time from window.ion.platform / navigator.platform), so each scenario
+ * time from host.shell.platform / navigator.platform), so each scenario
  * runs in its own vi.resetModules() + dynamic re-import rather than
  * mutating global state and re-reading a cached export.
  */
@@ -20,7 +20,7 @@ afterEach(() => {
 })
 
 describe('isModKey / IS_MAC / MOD_KEY_LABEL', () => {
-  it('darwin (via window.ion.platform): metaKey is the mod key', async () => {
+  it('darwin (via host.shell.platform): metaKey is the mod key', async () => {
     ;(window as unknown as { ion: { platform: string } }).ion = { platform: 'darwin' }
     const { isModKey, IS_MAC, MOD_KEY_LABEL } = await import('./mod-key')
     expect(IS_MAC).toBe(true)
@@ -29,7 +29,7 @@ describe('isModKey / IS_MAC / MOD_KEY_LABEL', () => {
     expect(isModKey({ metaKey: false, ctrlKey: true })).toBe(false)
   })
 
-  it('win32 (via window.ion.platform): ctrlKey is the mod key', async () => {
+  it('win32 (via host.shell.platform): ctrlKey is the mod key', async () => {
     ;(window as unknown as { ion: { platform: string } }).ion = { platform: 'win32' }
     const { isModKey, IS_MAC, MOD_KEY_LABEL } = await import('./mod-key')
     expect(IS_MAC).toBe(false)

@@ -28,7 +28,7 @@ vi.mock('../../preferences', () => ({
 const incMock = vi.fn(() => { openFloatingPanelCount++ })
 const decMock = vi.fn(() => { openFloatingPanelCount = Math.max(0, openFloatingPanelCount - 1) })
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: (sel: any) => sel({
     openFloatingPanelCount,
     incOpenFloatingPanelCount: incMock,

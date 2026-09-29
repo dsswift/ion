@@ -33,10 +33,11 @@ const readImageDataUrl = vi.fn(async (path: string) => ({ dataUrl: `data:image/p
 beforeEach(() => {
   readImageDataUrl.mockClear()
   ;(globalThis as unknown as { window: { ion: unknown } }).window = globalThis as unknown as { ion: unknown }
-  ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = { readImageDataUrl }
+  ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = installFakeWire({ readImageDataUrl })
 })
 
 import { useImageDataUrl } from '../ImageViewer'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 /** Exposes the hook's return value on the DOM so assertions can read it. */
 function Probe({ path, initialDataUrl, enabled }: { path: string; initialDataUrl?: string; enabled?: boolean }) {

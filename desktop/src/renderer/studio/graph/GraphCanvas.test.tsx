@@ -138,8 +138,8 @@ import { _setSupervisorFactoryForTest, MAX_RUN_MS, type LayoutSupervisor } from 
 import { MAX_CAMERA_RATIO, MIN_CAMERA_RATIO, FOCUS_RATIO } from './graph-camera'
 import { parseColor } from './color-alpha'
 import { MIN_EDGE_OPACITY } from './channels/scales'
-import { darkColors } from '../../theme/palette-dark'
-import type { GraphModel } from '../../../shared/graph-model-types'
+import { darkColors } from '@ion/server/renderer/theme/palette-dark'
+import type { GraphModel } from '@ion/shared/graph-model-types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 

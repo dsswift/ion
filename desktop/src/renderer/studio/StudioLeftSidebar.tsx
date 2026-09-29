@@ -1,19 +1,20 @@
 /**
  * StudioLeftSidebar — the Studio shell's docked left sidebar.
  *
- * Hosts one of the dock views (explorer | git; inbox joins in the inbox
- * workstream) behind a compact view switcher. The components are the SAME
+ * Hosts one of the dock views (inbox | explorer | search | git) behind a
+ * compact view switcher. The components are the SAME
  * ones the overlay mounts (parity mechanism 1) — FileExplorer and GitPanel
  * read the mirror store and per-window git subscriptions directly.
  *
- * Fixed width at GIT_PANEL_WIDTH (440px) — all three views (Inbox,
- * Explorer, Git) share the same width with no horizontal resize.
+ * Fixed width at GIT_PANEL_WIDTH (440px) — every view shares the same
+ * width with no horizontal resize.
  */
 import React from "react";
-import { useSessionStore } from "../stores/sessionStore";
+import { useSessionStore } from "@ion/server/store/sessionStore";
 import { FileExplorer } from "../components/FileExplorer";
 import { GitPanel } from "../components/GitPanel";
 import { InboxSidebar } from "./inbox/InboxSidebar";
+import { WorkspaceSearchPanel } from "./search/WorkspaceSearchPanel";
 import { useColors } from "../theme";
 import { GIT_PANEL_WIDTH } from "../components/panelGeometry";
 import { WorkspaceStatusIndicator } from "../components/WorkspaceStatusIndicator";
@@ -23,7 +24,7 @@ import { useShortcutHint } from "../shortcuts/useShortcutHints";
 import type {
   StudioLayout,
   StudioSidebarView,
-} from "../../shared/types-studio";
+} from "@ion/shared/types-studio";
 import { useActiveGitRepo } from "../hooks/useActiveGitRepo";
 
 export interface StudioLeftSidebarProps {
@@ -43,6 +44,7 @@ const VIEWS: ReadonlyArray<{
 }> = [
   { id: "inbox", label: "Inbox", command: "panel.inbox" },
   { id: "explorer", label: "Explorer", command: "panel.explorer" },
+  { id: "search", label: "Search", command: "panel.search" },
   { id: "git", label: "Git", command: "panel.git" },
 ];
 
@@ -64,9 +66,16 @@ export function StudioLeftSidebar(
   // A conversation switched from a repo to a plain directory leaves the dock
   // pointed at a view that is no longer offered. Falling back to Explorer
   // keeps the dock on something real instead of rendering an empty Git panel.
+  //
+  // Depends on `props.onSelectView` specifically, not the whole `props`
+  // object: StudioShell passes onFocusCapture/onMouseDownCapture/onClose as
+  // fresh inline closures every render, so `props` never has a stable
+  // identity and this effect would re-fire (and call onSelectView again) on
+  // every unrelated parent render, which is what produced React error #185.
+  const { onSelectView } = props;
   React.useEffect(() => {
-    if (!isRepo && view === "git") props.onSelectView("explorer");
-  }, [isRepo, view, props]);
+    if (!isRepo && view === "git") onSelectView("explorer");
+  }, [isRepo, view, onSelectView]);
 
   return (
     <div
@@ -128,6 +137,8 @@ export function StudioLeftSidebar(
           >
             No active conversation.
           </div>
+        ) : view === "search" ? (
+          <WorkspaceSearchPanel />
         ) : view === "explorer" || !isRepo ? (
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
             <FileExplorer docked onClose={props.onClose} />
@@ -144,7 +155,7 @@ export function StudioLeftSidebar(
 
 /**
  * One dock view tab. The chord suffix is always visible here (no modifier
- * gate): these three tabs are the primary navigation and their bindings are
+ * gate): these tabs are the primary navigation and their bindings are
  * worth teaching on sight. An unbound command simply renders no suffix.
  */
 function DockViewTab({

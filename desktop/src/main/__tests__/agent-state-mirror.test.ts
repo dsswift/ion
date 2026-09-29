@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-vi.mock('../logger', () => ({
+vi.mock('@ion/server/logger', () => ({
   log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn(), trace: vi.fn(),
 }))
 
@@ -11,8 +11,8 @@ import {
   clearAgentStateForTab,
   clearAllAgentState,
   agentStateMirrorSize,
-} from '../agent-state-mirror'
-import type { AgentStateUpdate } from '../../shared/types-engine'
+} from '@ion/server/engine/agent-state-mirror'
+import type { AgentStateUpdate } from '@ion/shared/types-engine'
 
 function agents(...names: string[]): AgentStateUpdate[] {
   return names.map((n) => ({ name: n, status: 'running', metadata: { displayName: n } })) as AgentStateUpdate[]

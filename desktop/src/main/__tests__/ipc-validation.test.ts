@@ -16,8 +16,8 @@ import {
   escapeAppleScript,
   resolveDiscoveryWorkingDir,
   isValidRemoteTabStatesPayload,
-} from '../ipc-validation'
-import { workStageDescriptor, WORK_STAGES } from '../../shared/types-git'
+} from '@ion/server/ipc-validation'
+import { workStageDescriptor, WORK_STAGES } from '@ion/shared/types-git'
 
 // ─── Fixtures ───
 

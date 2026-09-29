@@ -14,11 +14,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { useSessionStore } from '../../stores/sessionStore'
-import { makeLocalTab } from '../../stores/session-store-helpers'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { makeLocalTab } from '@ion/server/store/session-store-helpers'
 import { usePreferencesStore } from '../../preferences'
 import { FileExplorer } from '../FileExplorer'
 import { PopoverLayerProvider } from '../PopoverLayer'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -29,14 +30,14 @@ const ENTRIES = [
 ]
 
 beforeEach(() => {
-  ;(window as unknown as { ion: unknown }).ion = {
+  ;(window as unknown as { ion: unknown }).ion = installFakeWire({
     fsReadDir: vi.fn().mockResolvedValue({ entries: ENTRIES }),
     gitIgnoredFiles: vi.fn().mockResolvedValue({ paths: [] }),
     selectDirectory: vi.fn().mockResolvedValue(null),
     fsRevealInFinder: vi.fn().mockResolvedValue(undefined),
     fsCreateFile: vi.fn().mockResolvedValue({ ok: true }),
     fsCreateDir: vi.fn().mockResolvedValue({ ok: true }),
-  }
+  })
   useSessionStore.setState({
     activeTabId: 'tab-1',
     tabs: [{ ...makeLocalTab(), id: 'tab-1', workingDirectory: ROOT }] as never,
@@ -136,7 +137,7 @@ describe('file and folder creation', () => {
 
     typeName(input!, 'new.ts')
     const ion = (window as unknown as { ion: { fsCreateFile: ReturnType<typeof vi.fn> } }).ion
-    expect(ion.fsCreateFile).toHaveBeenCalledWith(`${ROOT}/src/new.ts`)
+    expect(ion.fsCreateFile).toHaveBeenCalledWith({ filePath: `${ROOT}/src/new.ts` })
     unmount()
   })
 
@@ -149,7 +150,7 @@ describe('file and folder creation', () => {
     expect(input).not.toBeNull()
     typeName(input!, 'docs')
     const ion = (window as unknown as { ion: { fsCreateDir: ReturnType<typeof vi.fn> } }).ion
-    expect(ion.fsCreateDir).toHaveBeenCalledWith(`${ROOT}/docs`)
+    expect(ion.fsCreateDir).toHaveBeenCalledWith({ dirPath: `${ROOT}/docs` })
     unmount()
   })
 
@@ -164,7 +165,7 @@ describe('file and folder creation', () => {
     expect(input).not.toBeNull()
     typeName(input!, 'top.txt')
     const ion = (window as unknown as { ion: { fsCreateFile: ReturnType<typeof vi.fn> } }).ion
-    expect(ion.fsCreateFile).toHaveBeenCalledWith(`${ROOT}/top.txt`)
+    expect(ion.fsCreateFile).toHaveBeenCalledWith({ filePath: `${ROOT}/top.txt` })
     unmount()
   })
 })

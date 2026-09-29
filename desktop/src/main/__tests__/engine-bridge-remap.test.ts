@@ -18,15 +18,21 @@ vi.mock('child_process', () => ({
   spawn: vi.fn(),
   execSync: vi.fn(() => ''),
 }))
-vi.mock('../logger', () => ({
+vi.mock('@ion/server/logger', () => ({
   log: vi.fn(),
   debug: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
 }))
+// The modules under test moved to `server/src/`, so their `'../logger'` resolves
+// to `server/src/logger` -- a different module from the desktop logger mocked
+// above, which therefore no longer intercepts them. Without this the real server
+// logger runs inside the test worker: it writes to the log file and, where `fs`
+// is mocked, fails on an export the mock does not provide.
+vi.mock('@ion/server/logger', () => ({ log: vi.fn(), trace: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
-import { EngineBridge } from '../engine-bridge'
-import { correlate } from '../log-correlation'
+import { EngineBridge } from '@ion/server/engine/engine-bridge'
+import { correlate } from '@ion/shared/log-correlation'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 

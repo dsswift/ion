@@ -31,7 +31,7 @@ vi.mock('child_process', () => ({
 
 vi.mock('../logger', () => ({ log: vi.fn() }))
 
-import { runGit } from '../git-runner'
+import { runGit } from '@ion/server/git/git-runner'
 
 function argvFor(call: number): string[] {
   return execFileMock.mock.calls[call][1] as string[]

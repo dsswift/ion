@@ -14,7 +14,7 @@ import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { AgentStateUpdate } from '../../../shared/types'
+import type { AgentStateUpdate } from '@ion/shared/types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -34,13 +34,13 @@ vi.mock('../../preferences', () => ({
 // resolves the real sessionStore module in this test environment, which pulls
 // in the real preferences store and fails outside a full app boot. Mocking it
 // keeps this file testing AgentDetailBody's own prop computation in isolation.
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: (sel: (s: Record<string, unknown>) => unknown) => sel({}),
 }))
 
 const mockGetConversation = vi.fn()
 ;(globalThis as any).window = globalThis.window ?? {}
-;(globalThis as any).window.ion = { getConversation: mockGetConversation }
+;(globalThis as any).window.ion = installFakeWire({ getConversation: mockGetConversation })
 
 const transcriptProps: Array<Record<string, unknown>> = []
 vi.mock('../conversation/Transcript', () => ({
@@ -71,12 +71,13 @@ vi.mock('../conversation/Transcript', () => ({
   },
 }))
 
-vi.mock('../agent-conversation-mapper', () => ({
+vi.mock('@ion/shared/transcript/agent-conversation-mapper', () => ({
   mapConversationMessages: (msgs: any[]) =>
     msgs.map((m: any, i: number) => ({ id: `mapped-${i}`, role: m.role || 'assistant', content: m.content || '', timestamp: 0 })),
 }))
 
 import { AgentDetailBody } from '../AgentDetailBody'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 function makeAgent(name: string, status: AgentStateUpdate['status'] = 'running', lastWork = ''): AgentStateUpdate {
   return { name, status, metadata: { displayName: name, lastWork } }

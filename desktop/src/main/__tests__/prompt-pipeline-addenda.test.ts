@@ -45,7 +45,7 @@ const mocks = vi.hoisted(() => {
   const bridgeListeners = new Map<string, Array<(_key: string, _event: any) => void>>()
   const sendCommandMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const sendPromptMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.({ ok: true }) ?? function () { return Promise.resolve({ ok: true }) }
-  const submitPromptMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(undefined) ?? function () { return Promise.resolve() }
+  const submitPromptMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.({ ok: true }) ?? function () { return Promise.resolve({ ok: true }) }
   const setPermissionModeMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const remoteSendMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const executeJsMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(null) ?? function () { return Promise.resolve(null) }
@@ -70,7 +70,7 @@ const mocks = vi.hoisted(() => {
 
 mocks.sendCommandMock = vi.fn()
 mocks.sendPromptMock = vi.fn().mockResolvedValue({ ok: true })
-mocks.submitPromptMock = vi.fn().mockResolvedValue(undefined)
+mocks.submitPromptMock = vi.fn().mockResolvedValue({ ok: true })
 mocks.setPermissionModeMock = vi.fn()
 mocks.remoteSendMock = vi.fn()
 mocks.executeJsMock = vi.fn().mockResolvedValue(null)
@@ -79,7 +79,9 @@ mocks.clearConversationFileMock = vi.fn().mockResolvedValue(undefined)
 mocks.getTabStatusMock = vi.fn().mockReturnValue({ conversationId: null })
 mocks.benchClientWorkspaceContextMock = vi.fn().mockReturnValue(null)
 
-vi.mock('../state', () => {
+vi.mock('@ion/server/state', async (importOriginal) => {
+  const __actual = (await importOriginal()) as Record<string, unknown>;
+
   const mockEngineBridge = {
     sendCommand: (...args: any[]) => mocks.sendCommandMock(...args),
     sendPrompt: (...args: any[]) => mocks.sendPromptMock(...args),
@@ -90,7 +92,7 @@ vi.mock('../state', () => {
       mocks.bridgeListeners.set(name, arr)
     },
   }
-  return {
+  return { ...__actual, 
     state: {
       mainWindow: { webContents: { executeJavaScript: (...args: any[]) => mocks.executeJsMock(...args) } },
       remoteTransport: { send: (...args: any[]) => mocks.remoteSendMock(...args) },
@@ -127,17 +129,17 @@ vi.mock('../remote/attachment-encoder', () => ({
   encodeAttachments: (text: string, _atts: any[]) => ({ encoded: [], rewrittenText: text }),
 }))
 
-vi.mock('../integration/bench-prompt-context', () => ({
+vi.mock('@ion/server/integration/bench-prompt-context', () => ({
   benchClientWorkspaceContext: (...args: any[]) => mocks.benchClientWorkspaceContextMock(...args),
   benchPromptContext: () => '',
   BENCH_CONTEXT_MARKER: '<!-- bench-context -->',
 }))
 
-import { processIncomingPrompt } from '../prompt-pipeline'
-import { _resetAwaitersForTests } from '../command-await'
-import { TURN_GROUPING_GUIDANCE } from '../turn-grouping-guidance'
-import { ASK_USER_QUESTIONS_GUIDANCE } from '../questions/questions-tool-decl'
-import { TOOL_BATCHING_GUIDANCE } from '../tool-batching-guidance'
+import { processIncomingPrompt } from '@ion/server/engine/prompt-pipeline'
+import { _resetAwaitersForTests } from '@ion/server/command-await'
+import { TURN_GROUPING_GUIDANCE } from '@ion/server/engine/turn-grouping-guidance'
+import { ASK_USER_QUESTIONS_GUIDANCE } from '@ion/server/questions/questions-tool-decl'
+import { TOOL_BATCHING_GUIDANCE } from '@ion/server/engine/tool-batching-guidance'
 
 // The full ordered addendum block the pipeline appends (see
 // SYSTEM_PROMPT_ADDENDA in prompt-pipeline.ts).
@@ -150,7 +152,7 @@ const ALL_ADDENDA = [
 beforeEach(() => {
   mocks.sendCommandMock.mockReset()
   mocks.sendPromptMock.mockReset().mockResolvedValue({ ok: true })
-  mocks.submitPromptMock.mockReset().mockResolvedValue(undefined)
+  mocks.submitPromptMock.mockReset().mockResolvedValue({ ok: true })
   mocks.setPermissionModeMock.mockReset()
   mocks.remoteSendMock.mockReset()
   mocks.executeJsMock.mockReset().mockResolvedValue(null)
@@ -388,7 +390,7 @@ describe('processIncomingPrompt — clientWorkspaceContext injection', () => {
     // The guard is: if clientWorkspaceContext is already set, do not call
     // benchClientWorkspaceContext again. Simulate the second pass by passing
     // RunOptions that already carry the context (as the bounce would).
-    mocks.submitPromptMock.mockReset().mockResolvedValue(undefined)
+    mocks.submitPromptMock.mockReset().mockResolvedValue({ ok: true })
     mocks.benchClientWorkspaceContextMock.mockReset().mockReturnValue(BENCH_CTX)
     await processIncomingPrompt({
       tabId: 'tab-1',

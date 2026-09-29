@@ -6,11 +6,16 @@
  * waiting (visible, stable, enabled, scrolled into view) is left in place: it is
  * more reliable than any pre-check here, and it produces the call log that makes
  * a failure diagnosable.
+ *
+ * Bodies only: each entry is `{ name, execute }`. The matching declarations
+ * (description, input schema) live in the server package at
+ * `server/src/studio-playwright/tool-declarations.ts` and are joined by name in
+ * `./tools.ts`.
  */
 import type { Page } from 'playwright-core'
 import { log as _log, warn as _warn } from '../logger'
-import type { BrowserToolContext, BrowserToolResult, StudioBrowserTool } from './tool-contracts'
-import { BOOL, ENUM, STRING, TARGET_PROPS, fail, ok, schema, stringArg, targetOf } from './tool-contracts'
+import type { BrowserToolContext, BrowserToolResult, StudioBrowserToolBody } from '@ion/server/studio-playwright/tool-contracts'
+import { fail, ok, stringArg, targetOf } from '@ion/server/studio-playwright/tool-contracts'
 import { formatError, formatResponse } from './responses'
 import { resolveBrowser, runExclusive } from './runtime'
 import { resolveUnique } from './targets'
@@ -55,16 +60,9 @@ async function withTarget(
   })
 }
 
-export const interactionTools: StudioBrowserTool[] = [
+export const interactionBodies: StudioBrowserToolBody[] = [
   {
     name: 'browser_click',
-    description: 'Click an element in the conversation browser tab.',
-    inputSchema: schema({
-      ...TARGET_PROPS,
-      doubleClick: BOOL('Perform a double click'),
-      button: ENUM('Mouse button', ['left', 'right', 'middle']),
-      modifiers: { type: 'array', description: 'Modifier keys held during the click', items: { type: 'string', enum: [...MODIFIERS] }, maxItems: 4 },
-    }, ['target']),
     execute: (input, ctx) => withTarget(ctx, input, 'browser_click', async (located) => {
       const button = input.button === 'right' || input.button === 'middle' ? input.button : 'left'
       const modifiers = Array.isArray(input.modifiers)
@@ -78,8 +76,6 @@ export const interactionTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_hover',
-    description: 'Hover an element in the conversation browser tab.',
-    inputSchema: schema({ ...TARGET_PROPS }, ['target']),
     execute: (input, ctx) => withTarget(ctx, input, 'browser_hover', async (located) => {
       await located.locator.hover({ timeout: ACTION_TIMEOUT_MS })
       return `await ${located.expression}.hover();`
@@ -87,13 +83,6 @@ export const interactionTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_type',
-    description: 'Type text into an editable element.',
-    inputSchema: schema({
-      ...TARGET_PROPS,
-      text: STRING('Text to type', 8192),
-      submit: BOOL('Press Enter after typing'),
-      slowly: BOOL('Type one character at a time to trigger key handlers'),
-    }, ['target', 'text']),
     execute: (input, ctx) => {
       const text = typeof input.text === 'string' ? input.text : null
       if (text === null) return Promise.resolve(fail('text is required'))
@@ -112,11 +101,6 @@ export const interactionTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_select_option',
-    description: 'Select one or more options in a dropdown.',
-    inputSchema: schema({
-      ...TARGET_PROPS,
-      values: { type: 'array', description: 'Option values or labels to select', items: { type: 'string' }, maxItems: 64 },
-    }, ['target', 'values']),
     execute: (input, ctx) => {
       const raw = Array.isArray(input.values) ? input.values : (input.value !== undefined ? [input.value] : null)
       const values = raw?.filter((value): value is string => typeof value === 'string') ?? null
@@ -129,8 +113,6 @@ export const interactionTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_check',
-    description: 'Check a checkbox or radio input.',
-    inputSchema: schema({ ...TARGET_PROPS }, ['target']),
     execute: (input, ctx) => withTarget(ctx, input, 'browser_check', async (located) => {
       await located.locator.check({ timeout: ACTION_TIMEOUT_MS })
       return `await ${located.expression}.check();`
@@ -138,8 +120,6 @@ export const interactionTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_uncheck',
-    description: 'Uncheck a checkbox input.',
-    inputSchema: schema({ ...TARGET_PROPS }, ['target']),
     execute: (input, ctx) => withTarget(ctx, input, 'browser_uncheck', async (located) => {
       await located.locator.uncheck({ timeout: ACTION_TIMEOUT_MS })
       return `await ${located.expression}.uncheck();`
@@ -147,13 +127,6 @@ export const interactionTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_drag',
-    description: 'Drag one element onto another.',
-    inputSchema: schema({
-      startElement: STRING('Human-readable description of the drag source', 512),
-      startTarget: STRING('Snapshot ref or selector for the drag source', 1024),
-      endElement: STRING('Human-readable description of the drop target', 512),
-      endTarget: STRING('Snapshot ref or selector for the drop target', 1024),
-    }, ['startTarget', 'endTarget']),
     execute: async (input, ctx) => {
       const start = stringArg(input, 'startTarget', 1024)
       const end = stringArg(input, 'endTarget', 1024)
@@ -180,8 +153,6 @@ export const interactionTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_press_key',
-    description: 'Press a key, for example Enter, Escape, or Control+A.',
-    inputSchema: schema({ key: STRING('Key or chord to press', 128) }, ['key']),
     execute: async (input, ctx) => {
       const key = stringArg(input, 'key', 128)
       if (!key) return fail('key is required')
@@ -203,20 +174,6 @@ export const interactionTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_fill_form',
-    description: 'Fill several form fields in one call.',
-    inputSchema: schema({
-      fields: {
-        type: 'array',
-        description: 'Fields to fill',
-        maxItems: 64,
-        items: schema({
-          name: STRING('Human-readable field name', 256),
-          type: ENUM('Field kind', ['textbox', 'checkbox', 'radio', 'combobox', 'slider']),
-          target: STRING('Snapshot ref or selector for the field', 1024),
-          value: STRING('Value to set. Use "true"/"false" for a checkbox', 4096),
-        }, ['name', 'type', 'target', 'value']),
-      },
-    }, ['fields']),
     execute: async (input, ctx) => {
       const raw = Array.isArray(input.fields) ? input.fields : null
       if (!raw || raw.length === 0) return fail('fields must be a non-empty array')
@@ -262,10 +219,6 @@ export const interactionTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_file_upload',
-    description: 'Provide files to the page file chooser. Omit paths to cancel the chooser.',
-    inputSchema: schema({
-      paths: { type: 'array', description: 'Conversation-relative file paths to upload', items: { type: 'string' }, maxItems: 32 },
-    }),
     execute: async (input, ctx) => {
       const resolved = await resolveBrowser(ctx.sessionKey, { create: false })
       if ('error' in resolved) return fail(resolved.error)
@@ -296,11 +249,6 @@ export const interactionTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_handle_dialog',
-    description: 'Decide how the next JavaScript dialog is answered, then trigger it. A dialog blocks the page, so this is armed before the click that opens it, never after.',
-    inputSchema: schema({
-      accept: BOOL('Accept the dialog'),
-      promptText: STRING('Text to enter when the dialog is a prompt', 1024),
-    }, ['accept']),
     execute: async (input, ctx) => {
       if (typeof input.accept !== 'boolean') return fail('accept is required')
       const resolved = await resolveBrowser(ctx.sessionKey, { create: false })
@@ -318,12 +266,6 @@ export const interactionTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_wait_for',
-    description: 'Wait for a duration, for text to appear, or for text to disappear.',
-    inputSchema: schema({
-      time: { type: 'number', description: 'Seconds to wait', minimum: 0, maximum: 60 },
-      text: STRING('Wait until this text is visible', 1024),
-      textGone: STRING('Wait until this text is no longer visible', 1024),
-    }),
     execute: async (input, ctx) => {
       const time = typeof input.time === 'number' && Number.isFinite(input.time) ? Math.min(Math.max(input.time, 0), 60) : null
       const text = stringArg(input, 'text', 1024)

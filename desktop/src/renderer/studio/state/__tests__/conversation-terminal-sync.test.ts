@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { StudioConversationTerminalSnapshot } from '../../../../shared/studio-conversation-terminal-sync'
+import type { StudioConversationTerminalSnapshot } from '@ion/shared/studio-conversation-terminal-sync'
 
 const { destroyed } = vi.hoisted(() => ({ destroyed: vi.fn() }))
 vi.mock('../../../components/TerminalInstance', () => ({
@@ -16,7 +16,7 @@ const ion = {
   ion: ion as unknown,
 }
 
-import { useSessionStore } from '../../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { hydrateConversationTerminals } from '../secondary-store'
 
 function snapshot(revision: number, overrides: Partial<StudioConversationTerminalSnapshot> = {}): StudioConversationTerminalSnapshot {

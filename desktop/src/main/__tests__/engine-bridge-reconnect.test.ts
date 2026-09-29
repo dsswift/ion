@@ -12,6 +12,9 @@
  *  - scheduleReconnect timer respecting reconnectDisabled at fire time
  *  - a persistently failing reconnect re-asserting the supervisor instead of
  *    retrying a socket nobody is going to bind
+ *  - supervisor re-assert being a capability a process must claim (by
+ *    bootstrapping the daemon) rather than one it gets from the import, so a
+ *    test worker holding a bridge cannot restart the operator's engine
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
@@ -72,22 +75,37 @@ vi.mock('child_process', () => ({
   execFileSync: vi.fn(() => '"host\\user","S-1-5-21-111111111-222222222-333333333-1001"'),
 }))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
+// The modules under test moved to `server/src/engine/`, so their `'../logger'`
+// resolves to `server/src/logger` -- a different module from the desktop logger
+// mocked above. Without this the real server logger runs and calls
+// `fs.appendFile`, which the `fs` mock above does not provide, surfacing as an
+// unhandled "No appendFile export is defined on the fs mock" error rather than
+// as a failing assertion.
+vi.mock('@ion/server/logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
 // vi.mock factories are hoisted above module scope, so the spy has to be
 // created with vi.hoisted to exist by the time the factory runs.
 const { mockRestartEngineDaemon } = vi.hoisted(() => ({ mockRestartEngineDaemon: vi.fn(async () => true) }))
-vi.mock('../engine-bootstrap', () => ({ restartEngineDaemon: mockRestartEngineDaemon }))
+vi.mock('@ion/server/engine/engine-bootstrap', () => ({ restartEngineDaemon: mockRestartEngineDaemon }))
 
 import { createConnection } from 'net'
-import { EngineBridge } from '../engine-bridge'
-import { scheduleReconnect } from '../engine-bridge-connection'
-import { disconnect } from '../engine-bridge-lifecycle'
-import { reRegisterSessions } from '../engine-bridge-start-session'
+import { EngineBridge } from '@ion/server/engine/engine-bridge'
+import {
+  scheduleReconnect,
+  enableSupervisorReassert,
+  supervisorReassertAllowed,
+  resetSupervisorReassertForTest,
+} from '@ion/server/engine/engine-bridge-connection'
+import { disconnect } from '@ion/server/engine/engine-bridge-lifecycle'
+import { reRegisterSessions } from '@ion/server/engine/engine-bridge-start-session'
 
 let bridge: EngineBridge
 
 beforeEach(() => {
   vi.useFakeTimers()
+  // Module-level capability: reset per case so the default-off arm is real and
+  // an enabling case cannot leak the capability into the next one.
+  resetSupervisorReassertForTest()
   mockRestartEngineDaemon.mockClear()
   connectResults = []
   defaultReachable = false
@@ -221,7 +239,54 @@ describe('scheduleReconnect timer respects reconnectDisabled', () => {
 
 // ── Reconnect alone cannot recover a daemon that is gone ──
 
+// ── Supervisor re-assert is a claimed capability, not an import-time one ──
+
+describe('supervisor re-assert capability gate', () => {
+  // The regression: re-asserting the supervisor shells out to `launchctl
+  // kickstart -k` (or schtasks), which restarts the operator's live engine.
+  // That capability used to arrive with the import, so any process holding an
+  // engine bridge could fire it -- and one did. broker.test.ts drives the
+  // Broker's five-failed-attempts case, which pulls in the `state.ts` bridge
+  // singleton through `@ion/server/protocol`, pushed the ladder past
+  // SUPERVISOR_REASSERT_AFTER_ATTEMPTS, and restarted the developer's engine
+  // once per test run. HOME isolation cannot catch it: a launchd domain
+  // reference does not resolve through HOME.
+  //
+  // This arm fails on the unfixed code -- there, an un-owning process with a
+  // stale ladder calls restartEngineDaemon.
+  it('does not shell out to the supervisor in a process that never claimed the daemon', async () => {
+    expect(supervisorReassertAllowed()).toBe(false)
+    bridge.reconnectAttempts = 3
+    connectResults = [false]
+
+    scheduleReconnect(bridge)
+    await vi.advanceTimersByTimeAsync(10000)
+
+    expect(mockRestartEngineDaemon).not.toHaveBeenCalled()
+  })
+
+  // ensureEngineDaemon is what registers the supervisor definition and starts
+  // the daemon, so calling it is what makes a process the daemon's owner.
+  it('shells out once the process has claimed the daemon', async () => {
+    enableSupervisorReassert()
+    expect(supervisorReassertAllowed()).toBe(true)
+    bridge.reconnectAttempts = 3
+    connectResults = [false]
+
+    scheduleReconnect(bridge)
+    await vi.advanceTimersByTimeAsync(10000)
+
+    expect(mockRestartEngineDaemon).toHaveBeenCalled()
+  })
+})
+
 describe('supervisor re-assert during a long outage', () => {
+  // Every case below exercises the escalation itself, so each one runs as the
+  // daemon's owner. The gate is pinned separately above.
+  beforeEach(() => {
+    enableSupervisorReassert()
+  })
+
   // Reconnecting assumes the daemon is up and only its address is not bound
   // yet. When the daemon is actually gone nothing else brings it back:
   // startup asks the supervisor once, and on Windows a `schtasks /Run` while

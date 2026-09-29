@@ -15,23 +15,17 @@ import { describe, it, expect, vi } from 'vitest'
 
 // Mock transitive dependencies that buildPopulatedInstance does not use but
 // that get pulled in through the module graph of useTabRestoration-engine.ts.
-vi.mock('../../../renderer/stores/sessionStore', () => ({
-  useSessionStore: { getState: () => ({}), setState: vi.fn() },
-}))
-vi.mock('../../stores/sessionStore', () => ({
-  useSessionStore: { getState: () => ({}), setState: vi.fn() },
-}))
-vi.mock('../../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: { getState: () => ({}), setState: vi.fn() },
 }))
 vi.mock('../../preferences', () => ({
   usePreferencesStore: { getState: () => ({}) },
 }))
-vi.mock('../../stores/session-store-persistence', () => ({
+vi.mock('@ion/server/store/session-store-persistence', () => ({
   isExtensionErrorMessage: () => false,
 }))
 
-import { buildPopulatedInstance } from '../useTabRestoration-engine'
+import { buildPopulatedInstance } from '@ion/server/hooks/useTabRestoration-engine'
 
 function makePersistedInst(messages: any[]): any {
   return {

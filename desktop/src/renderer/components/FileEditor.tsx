@@ -8,7 +8,7 @@ import { gotoLine } from '@codemirror/search'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useFileEditorPanel } from '../hooks/useFileEditorPanel'
 import { useFileEditorContent } from '../hooks/useFileEditorContent'
 import { isMarkdownFile } from './FileEditorShared'
@@ -17,7 +17,7 @@ import { FileEditorPreview } from './FileEditorPreview'
 import { FileEditorCodeMirror, CursorPosition } from './FileEditorCodeMirror'
 import { FileEditorStatusBar } from './FileEditorStatusBar'
 import { rTrace, rError } from '../rendererLogger'
-import { pathSegments } from '../../shared/paths'
+import { pathSegments } from '@ion/shared/paths'
 
 interface FileEditorProps {
   dir: string

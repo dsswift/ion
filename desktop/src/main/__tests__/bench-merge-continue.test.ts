@@ -4,30 +4,30 @@ vi.mock('../logger', () => ({ log: vi.fn(), warn: vi.fn() }))
 vi.mock('fs/promises', () => ({
   readFile: vi.fn((path: string) => Promise.resolve(path.endsWith('MERGE_HEAD') ? 'target\n' : 'merge message\n')),
 }))
-vi.mock('../git-runner', () => ({ runGit: vi.fn() }))
-vi.mock('../git/operation-state', () => ({ probeOperationState: vi.fn() }))
-vi.mock('../integration/bench-verify', () => ({ runBenchVerify: vi.fn() }))
-vi.mock('../integration/bench-resolution-validation', () => ({
+vi.mock('@ion/server/git/git-runner', () => ({ runGit: vi.fn() }))
+vi.mock('@ion/server/git/operation-state', () => ({ probeOperationState: vi.fn() }))
+vi.mock('@ion/server/integration/bench-verify', () => ({ runBenchVerify: vi.fn() }))
+vi.mock('@ion/server/integration/bench-resolution-validation', () => ({
   currentRererePaths: vi.fn(),
   forgetRererePaths: vi.fn(),
   validateBenchResolution: vi.fn(),
 }))
-vi.mock('../integration/bench-resolution-journal', () => ({ recordResolution: vi.fn() }))
-vi.mock('../integration/bench-store', () => ({ loadWorkspaces: vi.fn(() => []) }))
-vi.mock('../integration/bench-resolution-completion', () => ({ clearResolvedBenchConflict: vi.fn(() => true) }))
+vi.mock('@ion/server/integration/bench-resolution-journal', () => ({ recordResolution: vi.fn() }))
+vi.mock('@ion/server/integration/bench-store', () => ({ loadWorkspaces: vi.fn(() => []) }))
+vi.mock('@ion/server/integration/bench-resolution-completion', () => ({ clearResolvedBenchConflict: vi.fn(() => true) }))
 
-import { runGit } from '../git-runner'
-import { probeOperationState } from '../git/operation-state'
+import { runGit } from '@ion/server/git/git-runner'
+import { probeOperationState } from '@ion/server/git/operation-state'
 import {
   currentRererePaths,
   forgetRererePaths,
   validateBenchResolution,
-} from '../integration/bench-resolution-validation'
-import { runBenchVerify } from '../integration/bench-verify'
-import { recordResolution } from '../integration/bench-resolution-journal'
-import { loadWorkspaces } from '../integration/bench-store'
-import { clearResolvedBenchConflict } from '../integration/bench-resolution-completion'
-import { continueBenchMerge } from '../integration/bench-merge-continue'
+} from '@ion/server/integration/bench-resolution-validation'
+import { runBenchVerify } from '@ion/server/integration/bench-verify'
+import { recordResolution } from '@ion/server/integration/bench-resolution-journal'
+import { loadWorkspaces } from '@ion/server/integration/bench-store'
+import { clearResolvedBenchConflict } from '@ion/server/integration/bench-resolution-completion'
+import { continueBenchMerge } from '@ion/server/integration/bench-merge-continue'
 
 const mockedRunGit = vi.mocked(runGit)
 const mockedProbe = vi.mocked(probeOperationState)
@@ -49,7 +49,10 @@ function arrangeRecovery(postHeadFails: boolean): void {
     }
     if (args[0] === 'rev-parse' && args[1] === '--git-path') return Promise.resolve(args[2])
     if (args.includes('merge') && args.includes('--continue')) return Promise.resolve('')
-    if (args[0] === 'merge' && args.includes('--no-ff')) return Promise.reject(new Error('conflict'))
+    // Bench git runs with the repository's hooks off, so every mutating
+      // invocation is prefixed with `-c core.hooksPath=...`: match on the
+      // subcommand anywhere in the argv, never on argv[0].
+      if (args.includes('merge') && args.includes('--no-ff')) return Promise.reject(new Error('conflict'))
     return Promise.resolve('')
   })
   mockedPaths.mockResolvedValue({ ok: true, paths: ['shared.txt'] })
@@ -75,7 +78,10 @@ describe('continueBenchMerge postcondition recovery injection', () => {
         return Promise.resolve(headReads === 1 ? 'old-head\n' : headReads === 2 ? 'new-head\n' : 'old-head\n')
       }
       if (args[0] === 'rev-parse' && args[1] === '--git-path') return Promise.resolve(args[2])
-      if (args[0] === 'merge' && args.includes('--no-ff')) return Promise.reject(new Error('conflict'))
+      // Bench git runs with the repository's hooks off, so every mutating
+      // invocation is prefixed with `-c core.hooksPath=...`: match on the
+      // subcommand anywhere in the argv, never on argv[0].
+      if (args.includes('merge') && args.includes('--no-ff')) return Promise.reject(new Error('conflict'))
       return Promise.resolve('')
     })
     mockedPaths.mockResolvedValue({ ok: true, paths: ['shared.txt'] })
@@ -111,8 +117,12 @@ describe('continueBenchMerge postcondition recovery injection', () => {
     const operations = mockedRunGit.mock.calls.map(([, args]) => args.join(' '))
     expect(operations.filter((op) => op.startsWith('reset --hard old-head'))).toHaveLength(2)
     expect(mockedForget).toHaveBeenCalledWith('/bench', ['shared.txt'])
-    expect(operations.lastIndexOf('reset --hard old-head'))
-      .toBeLessThan(operations.lastIndexOf('merge --no-ff -m merge message target'))
+    // The recreate carries the hooks-off prefix, so match the tail of the
+    // argv rather than the whole joined string.
+    const lastIndexWhere = (match: (op: string) => boolean): number =>
+      operations.reduce((last, op, index) => (match(op) ? index : last), -1)
+    expect(lastIndexWhere((op) => op === 'reset --hard old-head'))
+      .toBeLessThan(lastIndexWhere((op) => op.endsWith('merge --no-ff -m merge message target')))
   })
 
   it('recovers exact unmerged path when postcommit HEAD read fails', async () => {
@@ -219,7 +229,10 @@ describe('continueBenchMerge — resolution journal', () => {
         return Promise.resolve(headReads === 1 ? 'old-head\n' : headReads === 2 ? 'new-head\n' : 'old-head\n')
       }
       if (args[0] === 'rev-parse' && args[1] === '--git-path') return Promise.resolve(args[2])
-      if (args[0] === 'merge' && args.includes('--no-ff')) return Promise.reject(new Error('conflict'))
+      // Bench git runs with the repository's hooks off, so every mutating
+      // invocation is prefixed with `-c core.hooksPath=...`: match on the
+      // subcommand anywhere in the argv, never on argv[0].
+      if (args.includes('merge') && args.includes('--no-ff')) return Promise.reject(new Error('conflict'))
       return Promise.resolve('')
     })
     mockedPaths.mockResolvedValue({ ok: true, paths: ['shared.txt'] })
@@ -267,7 +280,10 @@ describe('continueBenchMerge — resolution journal', () => {
         return Promise.resolve(headReads === 1 ? 'old-head\n' : headReads === 2 ? 'new-head\n' : 'old-head\n')
       }
       if (args[0] === 'rev-parse' && args[1] === '--git-path') return Promise.resolve(args[2])
-      if (args[0] === 'merge' && args.includes('--no-ff')) return Promise.reject(new Error('conflict'))
+      // Bench git runs with the repository's hooks off, so every mutating
+      // invocation is prefixed with `-c core.hooksPath=...`: match on the
+      // subcommand anywhere in the argv, never on argv[0].
+      if (args.includes('merge') && args.includes('--no-ff')) return Promise.reject(new Error('conflict'))
       return Promise.resolve('')
     })
     mockedPaths.mockResolvedValue({ ok: true, paths: ['shared.txt'] })

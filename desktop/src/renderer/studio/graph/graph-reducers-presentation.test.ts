@@ -11,9 +11,9 @@ import { createEdgeReducer, createNodeReducer, DIMMED_NODE_ALPHA, ORPHAN_ALPHA, 
 import { buildChannelScales } from './channels/build-channel-scales'
 import { parseColor } from './color-alpha'
 import { defaultChannelBindings } from './graph-store'
-import { darkColors } from '../../theme/palette-dark'
-import type { ChannelBindings } from '../../../shared/graph-view-types'
-import type { GraphModel } from '../../../shared/graph-model-types'
+import { darkColors } from '@ion/server/renderer/theme/palette-dark'
+import type { ChannelBindings } from '@ion/shared/graph-view-types'
+import type { GraphModel } from '@ion/shared/graph-model-types'
 
 function model(overrides?: Partial<GraphModel>): GraphModel {
   return {

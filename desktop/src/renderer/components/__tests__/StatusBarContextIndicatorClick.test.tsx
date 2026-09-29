@@ -39,7 +39,7 @@ const storeState = {
   toggleStatusDrawer,
 }
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (s: typeof storeState) => unknown) => selector(storeState),
     { getState: () => storeState },
@@ -68,12 +68,12 @@ vi.mock('../../preferences', () => ({
     sel({ preferredModel: 'claude-sonnet-4-6' }),
 }))
 
-vi.mock('../../stores/model-labels', () => ({
+vi.mock('@ion/server/store/model-labels', () => ({
   getDynamicContextWindow: () => 200_000,
 }))
 
 // Stub activeInstance so the selector can resolve the pane instance.
-vi.mock('../../stores/conversation-instance', () => ({
+vi.mock('@ion/server/store/conversation-instance', () => ({
   activeInstance: (panes: Map<string, { instances: unknown[]; activeInstanceId: string }>, tabId: string) => {
     const pane = panes.get(tabId)
     if (!pane) return null

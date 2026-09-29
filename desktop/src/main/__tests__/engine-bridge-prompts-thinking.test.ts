@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildSendCommandMessage, buildSendPromptMessage } from '../engine-bridge-prompts'
+import { buildSendCommandMessage, buildSendPromptMessage } from '@ion/server/engine/engine-bridge-prompts'
 
 /**
  * Wire-serialization tests for the per-prompt thinking effort.

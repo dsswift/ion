@@ -29,7 +29,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { idleOrdering, type IdleOrderingTab } from '../engine-control-plane-idle-ordering'
+import { idleOrdering, type IdleOrderingTab } from '@ion/server/engine/engine-control-plane-idle-ordering'
 
 function tab(overrides: Partial<IdleOrderingTab> = {}): IdleOrderingTab {
   return {

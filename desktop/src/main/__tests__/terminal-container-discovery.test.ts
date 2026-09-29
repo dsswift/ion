@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseDockerPorts } from '../terminal-container-discovery'
+import { parseDockerPorts } from '@ion/server/terminal/terminal-container-discovery'
 
 describe('parseDockerPorts', () => {
   it('returns every unique valid published host port', () => {

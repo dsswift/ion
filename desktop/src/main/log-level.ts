@@ -17,7 +17,7 @@
  * are loud enough to rotate away the very window that holds the evidence.
  */
 import { log as _log, setLogLevel, type LogLevel } from './logger'
-import { readSettings, SETTINGS_DEFAULTS } from './settings-store'
+import { readSettings, SETTINGS_DEFAULTS } from '@ion/server/persistence/settings-store'
 
 const LOG_LEVELS: readonly LogLevel[] = ['TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR']
 

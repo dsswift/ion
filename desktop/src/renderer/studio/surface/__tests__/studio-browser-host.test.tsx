@@ -17,7 +17,7 @@ vi.mock('../../../preferences', () => ({
   ),
 }))
 const sessionState = { fileEditorStates: new Map(), activeTabId: 'tab-1', tabs: [] as unknown[] }
-vi.mock('../../../stores/sessionStore', () => {
+vi.mock('@ion/server/store/sessionStore', () => {
   const useSessionStore = (selector?: (s: typeof sessionState) => unknown): unknown =>
     (selector ? selector(sessionState) : sessionState)
   return { useSessionStore: Object.assign(useSessionStore, { getState: () => sessionState }) }

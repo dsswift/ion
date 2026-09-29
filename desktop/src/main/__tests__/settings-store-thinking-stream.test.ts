@@ -44,7 +44,7 @@ import {
   shouldStreamThinkingToRemote,
   invalidateStreamThinkingToRemoteCache,
   writeSettings,
-} from '../settings-store'
+} from '@ion/server/persistence/settings-store'
 
 function onDisk(obj: Record<string, unknown>): void {
   fsMock.readFileSync.mockReturnValue(JSON.stringify(obj))

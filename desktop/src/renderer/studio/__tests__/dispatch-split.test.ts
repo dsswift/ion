@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 /** Studio dispatch split stays scoped to one active conversation. */
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { resolveSubjectAgent } from '../../hooks/useDispatchTranscript'
 import {
   activeDispatchSplit,
   initDispatchSplitConversationGuard,
 } from '../dispatch-split-state'
-import type { AgentStateUpdate } from '../../../shared/types'
+import type { AgentStateUpdate } from '@ion/shared/types'
 
 function agent(name: string, dispatchIds: string[], status = 'running'): AgentStateUpdate {
   return {

@@ -9,7 +9,7 @@
  * classic era. Freeze-tested in palette-parity.test.ts.
  */
 
-import type { ColorPalette } from "./palette-dark";
+import type { ColorPalette } from "@ion/server/renderer/theme/palette-dark";
 
 export const classicColors: ColorPalette = {
   // Container (glass surfaces)

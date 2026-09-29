@@ -5,7 +5,7 @@
  * (the store passes `set`/`get` to the action helpers that call these). The
  * `SurfaceState` import is type-only, so there is no runtime import cycle.
  */
-import { useSessionStore } from "../../stores/sessionStore";
+import { useSessionStore } from "@ion/server/store/sessionStore";
 import {
   isBrowserTab,
   QUESTIONS_SURFACE_ID,
@@ -14,11 +14,11 @@ import {
   type ScratchTab,
   type SurfaceConversationPersisted,
   type SurfaceTab,
-} from "../../../shared/studio-surface-types";
+} from "@ion/shared/studio-surface-types";
 import {
   composeTabs,
   normalizeTabs,
-} from "../../../shared/studio-surface-ordering";
+} from "@ion/shared/studio-surface-ordering";
 import { scratchProjectKey, scratchTabsForProject } from "./surface-scratch";
 import type { SurfaceState } from "./surface-store";
 

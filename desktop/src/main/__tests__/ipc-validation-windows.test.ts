@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isValidProjectPath } from '../ipc-validation'
+import { isValidProjectPath } from '@ion/server/ipc-validation'
 
 // isValidProjectPath gates twelve IPC surfaces -- the file explorer, file
 // read/write, git, worktrees, sessions. It tested `path.startsWith('/')`

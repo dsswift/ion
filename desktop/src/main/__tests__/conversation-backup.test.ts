@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { previewExport, runExport } from '../conversation-backup/export'
-import { previewRestore, runRestore } from '../conversation-backup/restore'
-import { validateManifest, buildManifest } from '../conversation-backup/manifest'
+import { previewExport, runExport } from '@ion/server/conversation-backup/export'
+import { previewRestore, runRestore } from '@ion/server/conversation-backup/restore'
+import { validateManifest, buildManifest } from '@ion/server/conversation-backup/manifest'
 
 let root: string
 let conversationsDir: string

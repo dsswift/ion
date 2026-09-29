@@ -7,7 +7,7 @@
  * own bookkeeping needs to be scoped precisely" (here). Real repos, not
  * mocks: the behaviour under test is git's own abort/clean/rerere mechanics.
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, existsSync, readFileSync, mkdirSync, realpathSync } from 'fs'
@@ -24,11 +24,11 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => process.env.ION_TEST_HOME_BENCH_UNTRACKED || actual.homedir() }
 })
 
-import { assembleBench } from '../integration/bench-assemble'
-import { captureContribution } from '../integration/bench-snapshot'
-import { makeWorkspace, makeMember } from '../integration/bench-store'
-import { currentRererePaths, validateBenchResolution } from '../integration/bench-resolution-validation'
-import type { IntegrationWorkspace, IntegrationMember } from '../../shared/types'
+import { assembleBench } from '@ion/server/integration/bench-assemble'
+import { captureContribution } from '@ion/server/integration/bench-snapshot'
+import { makeWorkspace, makeMember } from '@ion/server/integration/bench-store'
+import { currentRererePaths, validateBenchResolution } from '@ion/server/integration/bench-resolution-validation'
+import type { IntegrationWorkspace, IntegrationMember } from '@ion/shared/types'
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })

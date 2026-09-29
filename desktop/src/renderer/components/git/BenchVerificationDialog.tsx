@@ -35,9 +35,9 @@ import {
 import { useColors } from "../../theme";
 import { FloatingPanel } from "../FloatingPanel";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { useSessionStore } from "../../stores/sessionStore";
+import { useSessionStore } from "@ion/server/store/sessionStore";
 import { rError, rInfo } from "../../rendererLogger";
-import type { IntegrationWorkspace } from "../../../shared/types";
+import type { IntegrationWorkspace } from "@ion/shared/types";
 
 export function BenchVerificationDialog({
   repoPath,

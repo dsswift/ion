@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const alerts = new Map([['/repo', { operationState: 'merging', label: 'repo' }]])
-vi.mock('../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: <T,>(selector: (state: {
     worktreeInventory: Map<string, never[]>
     gitConflictAlerts: typeof alerts

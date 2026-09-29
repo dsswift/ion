@@ -41,7 +41,7 @@ function emitBridgeEvent(key: string, event: any): void {
   for (const fn of arr) fn(key, event)
 }
 
-vi.mock('../state', () => {
+vi.mock('@ion/server/state', () => {
   const mockEngineBridge = {
     on: (name: string, fn: (key: string, event: any) => void) => {
       const arr = mocks.bridgeListeners.get(name) ?? []
@@ -52,15 +52,15 @@ vi.mock('../state', () => {
   return { engineBridge: mockEngineBridge }
 })
 
-vi.mock('../logger', () => ({
+vi.mock('@ion/server/logger', () => ({
   log: vi.fn(),
   debug: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
 }))
 
-import { awaitCommandResult, _resetAwaitersForTests } from '../command-await'
-import { awaitTimeoutForCommand } from '../slash-classify'
+import { awaitCommandResult, _resetAwaitersForTests } from '@ion/server/command-await'
+import { awaitTimeoutForCommand } from '@ion/server/slash-classify'
 
 beforeEach(() => {
   vi.useFakeTimers()

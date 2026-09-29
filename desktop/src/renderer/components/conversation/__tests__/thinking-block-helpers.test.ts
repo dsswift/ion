@@ -22,8 +22,8 @@ import {
   resolveRenderState,
   isExpandable,
   mergeThinkingMessages,
-} from '../thinking-block-helpers'
-import type { Message } from '../../../../shared/types'
+} from '@ion/server/conversation/thinking-block-helpers'
+import type { Message } from '@ion/shared/types'
 
 function thinking(partial: Partial<Message>): Message {
   return {

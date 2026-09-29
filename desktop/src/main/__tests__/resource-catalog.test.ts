@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { ResourceItem } from '../../shared/types-engine'
-import { ResourceCatalog } from '../resource-catalog'
+import type { ResourceItem } from '@ion/shared/types-engine'
+import { ResourceCatalog } from '@ion/server/engine/resource-catalog'
 
 function item(id: string, producer: string, content = id): ResourceItem {
   return { id, kind: 'briefing', producer, content, createdAt: '2026-01-01T00:00:00Z' }

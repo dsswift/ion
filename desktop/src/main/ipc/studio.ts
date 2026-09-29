@@ -8,86 +8,22 @@
 import { app, dialog, ipcMain } from "electron";
 import { writeFile } from "fs/promises";
 import { join } from "path";
-import { IPC } from "../../shared/types";
-import { resolveSurfacePlan } from "../surface-launch";
+import { IPC } from "@ion/shared/types";
 import { allowPreviewNetwork } from "../webview-policy";
 import { log as _log } from "../logger";
-import { state, enterprisePolicyCache } from "../state";
-import { isValidSessionId } from "../ipc-validation";
 import {
-  openStudioWindow,
   setStudioTitleBarOverlay,
 } from "../studio-window-manager";
-import { showWindow } from "../window-manager";
-import { getStudioState, allStudioSummaries } from "../studio-state-cache";
-import {
-  listThemePacks,
-  readPackBundle,
-  readThemeAsset,
-} from "../studio-theme-packs";
-import { getRemoteTabStates } from "../remote/snapshot";
-import {
-  readSettings,
-} from "../settings-store";
-import { validForwardedAction } from "../../shared/studio-mirror-actions";
-import { registerStudioWorktreeSyncIpc } from './studio-worktree-sync'
-import { registerStudioSettingsIpc } from './studio-settings'
 import { registerStudioBrowserIpc } from './studio-browser'
-import { registerStudioGraphIpc } from './studio-graph'
-import { registerStudioTabsSyncIpc } from './studio-tabs-sync'
-import { registerStudioConversationTerminalSyncIpc } from './studio-terminal-sync'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log("studio", msg, fields);
 }
 
-/**
- * How long a mirror-initiated action call waits for the owner renderer's reply.
- *
- * Generous on purpose: a forwarded action can open a confirm dialog or run git,
- * so this is a "the owner is gone or wedged" backstop rather than a latency
- * budget. The mirror caller gets a resolved refusal at the deadline instead of a
- * promise that never settles.
- */
-const STUDIO_CALL_TIMEOUT_MS = 30_000;
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
-/**
- * How long the reply listener lingers past the deadline so a late reply can be
- * logged before the listener is released.
- *
- * The value is not delivered — the caller was already resolved — but the fact
- * that a reply arrived just too late is the signal that STUDIO_CALL_TIMEOUT_MS is
- * too tight for that action, which in the log is otherwise indistinguishable
- * from an owner that never answered at all.
- */
-const STUDIO_LATE_REPLY_GRACE_MS = 10_000;
-
-/**
- * Reply envelope for STUDIO_CALL_ACTION.
- *
- * `ok` describes the ROUND TRIP, not the action's own success: `ok: true` means
- * the owner ran the action and `value` is whatever it returned (which may itself
- * be a `{ ok: false }` domain result). `ok: false` means the call never reached
- * a conclusion — rejected, no owner window, or no reply before the deadline.
- * Collapsing the two would make "the worktree refused to retire" and "the owner
- * window is gone" indistinguishable at the call site.
- */
-interface StudioActionReply {
-  ok: boolean;
-  value?: unknown;
-  error?: string;
-}
-
-/** Monotonic correlation id source for STUDIO_CALL_ACTION round trips. */
-let studioCallSeq = 0;
-
 export function registerStudioIpc(): void {
-  registerStudioWorktreeSyncIpc();
   registerStudioBrowserIpc();
-  registerStudioGraphIpc();
-  registerStudioTabsSyncIpc();
-  registerStudioConversationTerminalSyncIpc();
   ipcMain.handle(
     IPC.STUDIO_SET_TITLE_BAR_OVERLAY,
     (_event, color: unknown, symbolColor: unknown) => {
@@ -116,25 +52,6 @@ export function registerStudioIpc(): void {
       return allowPreviewNetwork(partition);
     },
   );
-
-  ipcMain.on(IPC.STUDIO_OPEN, () => {
-    log("studio_ipc: open requested");
-    openStudioWindow("ipc");
-  });
-
-  // Palette cross-link: the Studio window can summon the overlay glass.
-  // Under single-UI exclusivity a studio-mode deployment has no glass to
-  // summon — the palette entry is a no-op there (logged, never silent).
-  ipcMain.on(IPC.STUDIO_SHOW_OVERLAY, () => {
-    if (
-      resolveSurfacePlan(readSettings(), enterprisePolicyCache.policy)
-        .activeUi !== "overlay"
-    ) {
-      log("studio_ipc: show-overlay refused — overlay is not the active UI");
-      return;
-    }
-    showWindow("studio palette");
-  });
 
   // Postcard export: renderer composes the PNG (canvas + stats footer);
   // main validates (PNG signature, size cap) and saves via the dialog.
@@ -207,267 +124,9 @@ export function registerStudioIpc(): void {
     return true;
   });
 
-  // Campus view: live per-tab summaries derived from the all-tabs cache.
-  ipcMain.handle(IPC.STUDIO_GET_ALL_STATUS, () => allStudioSummaries());
-
-  // Mirror-store action forwarding: the Studio window routes owner-durable store
-  // mutations here; validation is derived from FORWARDED_ACTIONS (the single
-  // classification source of truth), then the call is relayed to the overlay
-  // renderer, which executes it on the owner store and replies with whatever
-  // the action returned.
-  //
-  // Request/response rather than fire-and-forget because a mirror caller does
-  // `const result = await store.retireWorktree(…)` and must get the owner's
-  // real answer. The call is correlated by a main-minted callId and resolves on
-  // the owner's STUDIO_ACTION_RESULT.
-  //
-  // Why main owns the correlation rather than the renderers doing it directly:
-  // main is already the validation choke point for forwarded actions, and it is
-  // the only party that knows whether an owner window exists. It also means a
-  // dead or slow owner produces a resolved refusal instead of a mirror caller
-  // hanging on a promise that can never settle.
-  ipcMain.handle(
-    IPC.STUDIO_CALL_ACTION,
-    async (_event, action: unknown, args: unknown) => {
-      if (!validForwardedAction(action, args)) {
-        log("studio_ipc: call-action rejected", {
-          action: String(action).slice(0, 64),
-        });
-        return { ok: false, error: "action not permitted" };
-      }
-      const main = state.mainWindow;
-      if (!main || main.isDestroyed()) {
-        log("studio_ipc: call-action dropped, no owner window", { action });
-        return { ok: false, error: "no owner window" };
-      }
-      const callId = `studio-call-${++studioCallSeq}`;
-      // Pin the owner's webContents id at dispatch time. The reply is accepted
-      // only from THIS sender: STUDIO_ACTION_RESULT is an ipcMain.on listener, so
-      // any renderer holding the preload bridge can send on it, and the callId is
-      // a predictable counter. Without the check a non-owner window could settle
-      // a pending call with a forged value — and the mirror would treat it as the
-      // owner's real return, so a fabricated `{ ok: true }` would read as a
-      // succeeded retire. Every other input on this channel is validated
-      // (validForwardedAction gates action + args); sender identity is the last
-      // one, and it is the only input that decides WHOSE answer this is.
-      const ownerSenderId = main.webContents.id;
-      log("studio_ipc: calling action on owner", {
-        action,
-        call_id: callId,
-        arg_count: (args as unknown[]).length,
-      });
-
-      return await new Promise<StudioActionReply>((resolve) => {
-        // Set once the call concludes (reply or timeout) so a late reply is
-        // logged rather than silently dropped — see the post-settle branch below.
-        let settled = false;
-        // A single-shot listener keyed by callId AND sender. Removed on reply and
-        // on timeout, so no path leaves a listener behind.
-        const onReply = (
-          event: Electron.IpcMainEvent,
-          replyId: unknown,
-          payload: unknown,
-        ): void => {
-          if (replyId !== callId) return;
-          if (event.sender.id !== ownerSenderId) {
-            // A reply for a live callId from something other than the owner
-            // window. Refuse it and keep waiting for the real one.
-            log(
-              "studio_ipc: call-action reply rejected, sender is not the owner window",
-              {
-                action,
-                call_id: callId,
-                sender_id: event.sender.id,
-                owner_id: ownerSenderId,
-              },
-            );
-            return;
-          }
-          if (settled) {
-            // Arrived after the deadline already resolved the caller. The value
-            // cannot be delivered, but the near-miss must be visible: it means
-            // STUDIO_CALL_TIMEOUT_MS is too tight for this action, which is
-            // otherwise indistinguishable from a wedged owner in the log.
-            log(
-              "studio_ipc: call-action reply arrived after timeout, dropped",
-              {
-                action,
-                call_id: callId,
-                timeout_ms: STUDIO_CALL_TIMEOUT_MS,
-              },
-            );
-            return;
-          }
-          settled = true;
-          cleanup();
-          log("studio_ipc: call-action replied", { action, call_id: callId });
-          resolve({ ok: true, value: payload });
-        };
-        const timer = setTimeout(() => {
-          settled = true;
-          // The listener stays registered briefly so a late reply can be logged
-          // by the branch above; removeListener happens there or on teardown.
-          clearTimeout(timer);
-          // Not a silent drop: the owner may be mid-dialog or wedged, and the
-          // mirror caller must be told rather than left pending forever.
-          log("studio_ipc: call-action timed out waiting for owner", {
-            action,
-            call_id: callId,
-            timeout_ms: STUDIO_CALL_TIMEOUT_MS,
-          });
-          resolve({ ok: false, error: "owner did not reply" });
-          // Bounded grace window for the late-reply log, then release the
-          // listener. Without this the handler would leak one listener per
-          // timed-out call for the life of the process.
-          setTimeout(
-            () => ipcMain.removeListener(IPC.STUDIO_ACTION_RESULT, onReply),
-            STUDIO_LATE_REPLY_GRACE_MS,
-          );
-        }, STUDIO_CALL_TIMEOUT_MS);
-        function cleanup(): void {
-          clearTimeout(timer);
-          ipcMain.removeListener(IPC.STUDIO_ACTION_RESULT, onReply);
-        }
-        ipcMain.on(IPC.STUDIO_ACTION_RESULT, onReply);
-        main!.webContents.send(IPC.STUDIO_EXEC_ACTION, action, args, callId);
-      });
-    },
-  );
-
-  // State backfill for the Studio window renderer: called on window open and consumed
-  // together with studio:active-tab pushes on tab switches. `tabId` optional —
-  // absent means "the current active tab".
-  ipcMain.handle(IPC.STUDIO_GET_STATE, (_event, tabId?: string) => {
-    if (
-      tabId != null &&
-      (typeof tabId !== "string" || !isValidSessionId(tabId))
-    ) {
-      log("studio_ipc: get-state rejected invalid tabId", {
-        tab_id: String(tabId).slice(0, 64),
-      });
-      return null;
-    }
-    const target = tabId ?? state.studioActiveTabId;
-    if (!target) {
-      log("studio_ipc: get-state with no active tab");
-      return { activeTabId: null, activeProfileId: null, state: null };
-    }
-    return {
-      activeTabId: target,
-      activeProfileId: state.studioActiveProfileId,
-      state: getStudioState(target),
-    };
-  });
-
-  registerStudioSettingsIpc();
-
-  // ── Conversation picker ──
-
-  // Tab list for the Studio window toolbar picker (a pinned Studio can switch
-  // conversations without opening the desktop overlay).
-  ipcMain.handle(IPC.STUDIO_LIST_TABS, async () => {
-    try {
-      const snapshot = await getRemoteTabStates();
-      // Desktop tab groups (custom/manual). Auto-grouped or ungrouped tabs
-      // fall back to their directory basename as the category, mirroring the
-      // desktop's automatic grouping.
-      const settings = readSettings();
-      const groups: Array<{ id: string; label: string; order: number }> =
-        Array.isArray(settings.tabGroups)
-          ? settings.tabGroups.map((g: any) => ({
-              id: String(g.id),
-              label: String(g.label),
-              order: Number(g.order) || 0,
-            }))
-          : [];
-      const groupById = new Map(groups.map((g) => [g.id, g]));
-      const tabs = snapshot.tabs
-        .filter((t) => !t.isTerminalOnly)
-        .map((t) => {
-          const dir =
-            (t.workingDirectory || "").split("/").filter(Boolean).pop() ?? "";
-          const group = t.groupId ? groupById.get(t.groupId) : undefined;
-          return {
-            tabId: t.id,
-            title: t.customTitle || t.title,
-            status: t.status,
-            directory: dir,
-            extension: t.engineProfileId ?? "",
-            group: group?.label ?? dir,
-            groupOrder: group?.order ?? 1000,
-          };
-        });
-      log("studio_ipc: listed tabs", {
-        count: tabs.length,
-        groups: groups.length,
-      });
-      return tabs;
-    } catch (err) {
-      log("studio_ipc: list-tabs failed", { error: String(err) });
-      return [];
-    }
-  });
-
-  // Picker selection: forward to the main renderer's tab slice so the
-  // desktop and the Studio window stay on the same conversation (the resulting
-  // active-tab notification re-targets the Studio window).
-  ipcMain.on(IPC.STUDIO_FOCUS_TAB, (_event, tabId: unknown) => {
-    if (typeof tabId !== "string" || !isValidSessionId(tabId)) {
-      log("studio_ipc: focus-tab rejected", {
-        tab_id: String(tabId).slice(0, 64),
-      });
-      return;
-    }
-    log("studio_ipc: focus-tab", { tab_id: tabId });
-    if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-      state.mainWindow.webContents.send(IPC.STUDIO_FOCUS_TAB, tabId);
-    }
-  });
-
-  // Click-to-inspect: forward an agent selection to the main renderer,
-  // which switches to the tab and opens that agent's dispatch detail. The
-  // overlay auto-shows first — a click from a pinned Studio while the desktop
-  // is hidden must surface the panel it opens, not populate a hidden window.
-  ipcMain.on(
-    IPC.STUDIO_FOCUS_AGENT,
-    (_event, tabId: unknown, agentName: unknown) => {
-      if (typeof tabId !== "string" || !isValidSessionId(tabId)) return;
-      if (
-        typeof agentName !== "string" ||
-        agentName.length === 0 ||
-        agentName.length > 128
-      )
-        return;
-      log("studio_ipc: focus-agent", { tab_id: tabId, agent: agentName });
-      showWindow("studio agent click");
-      if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-        state.mainWindow.webContents.send(
-          IPC.STUDIO_FOCUS_AGENT,
-          tabId,
-          agentName,
-        );
-      }
-    },
-  );
-
-  // ── Theme packs ──
-
-  ipcMain.handle(IPC.STUDIO_LIST_THEMES, () => listThemePacks());
-
-  ipcMain.handle(IPC.STUDIO_READ_THEME_BUNDLE, (_event, packId: unknown) => {
-    if (typeof packId !== "string") return null;
-    return readPackBundle(packId);
-  });
-
-  ipcMain.handle(
-    IPC.STUDIO_READ_THEME_ASSET,
-    (_event, packId: unknown, relPath: unknown) => {
-      if (typeof packId !== "string" || typeof relPath !== "string")
-        return null;
-      const buf = readThemeAsset(packId, relPath);
-      if (!buf) return null;
-      // Hand the renderer a standalone ArrayBuffer (structured-clone friendly).
-      return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-    },
-  );
+  // The conversation picker (`studioListTabs`), the campus status summaries
+  // (`studioGetAllStatus`), the theme-pack reads and the per-conversation
+  // state backfill (`studioGetState`) are `studio.*` studio_actions now
+  // (server/src/protocol/studio-actions.ts, misc-actions.ts); the renderer
+  // reaches them through the bridged shell on every host.
 }

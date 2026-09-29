@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { requiresUserResponse } from '../engine-control-plane-user-response'
+import { requiresUserResponse } from '@ion/server/engine/engine-control-plane-user-response'
 
 describe('requiresUserResponse', () => {
   it('keeps completion when a plan or user question awaits a reply', () => {

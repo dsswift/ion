@@ -9,10 +9,17 @@
  * an explicit parity decision. See shared/studio-mirror-actions.ts.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { FORWARDED_ACTIONS, MIRROR_LOCAL_ACTIONS, validForwardedAction } from '../../../../shared/studio-mirror-actions'
+import { FORWARDED_ACTIONS, MIRROR_LOCAL_ACTIONS, validForwardedAction } from '@ion/shared/studio-mirror-actions'
+import { StudioActionFailure } from '@ion/shared/studio-wire/action-failure'
+
+const actionMock = vi.fn()
+vi.mock('../../../host/host-instance', () => ({
+  host: {},
+  action: (...args: unknown[]) => actionMock(...args),
+}))
 
 describe('mirror-parity classification', async () => {
-  const { useSessionStore } = await import('../../../stores/sessionStore')
+  const { useSessionStore } = await import('@ion/server/store/sessionStore')
   const state = useSessionStore.getState() as unknown as Record<string, unknown>
   const storeActions = Object.keys(state)
     .filter((k) => typeof state[k] === 'function')
@@ -80,7 +87,7 @@ describe('Studio attachment mirror', () => {
 
 describe('Studio rewind composer mirror', () => {
   it('restores the owner rewind result into the exact Studio composer', async () => {
-    const { useSessionStore } = await import('../../../stores/sessionStore')
+    const { useSessionStore } = await import('@ion/server/store/sessionStore')
     const { reconcileForwardedRewind } = await import('../secondary-store')
     const image = {
       id: 'rewound-image', type: 'image' as const, name: 'diagram.png',
@@ -121,7 +128,7 @@ describe('Studio rewind composer mirror', () => {
   })
 
   it('leaves the Studio composer untouched when the owner rejects the rewind', async () => {
-    const { useSessionStore } = await import('../../../stores/sessionStore')
+    const { useSessionStore } = await import('@ion/server/store/sessionStore')
     const { reconcileForwardedRewind } = await import('../secondary-store')
     useSessionStore.setState({
       tabs: [{ id: 'tab-a', pendingInput: 'existing text', attachments: [] }] as never,
@@ -144,20 +151,58 @@ describe('Studio rewind composer mirror', () => {
   })
 })
 
+describe('Studio close-intent mirror', () => {
+  it('applies the owner-raised close intent to this window only', async () => {
+    const { useSessionStore } = await import('@ion/server/store/sessionStore')
+    const { reconcileForwardedCloseIntent } = await import('../secondary-store')
+    useSessionStore.setState({ closeIntent: null })
+
+    const applied = reconcileForwardedCloseIntent('requestCloseTab', {
+      tabId: 'tab-a', title: 'Untitled', directory: '/repo', warning: '2 uncommitted files',
+    })
+
+    expect(applied).toBe(true)
+    expect(useSessionStore.getState().closeIntent).toEqual({
+      tabId: 'tab-a', title: 'Untitled', directory: '/repo', warning: '2 uncommitted files',
+    })
+    useSessionStore.setState({ closeIntent: null })
+  })
+
+  it('clears the local close intent when the owner refuses the request', async () => {
+    const { useSessionStore } = await import('@ion/server/store/sessionStore')
+    const { reconcileForwardedCloseIntent } = await import('../secondary-store')
+    useSessionStore.setState({ closeIntent: { tabId: 'stale', title: 't', directory: '/x', warning: null } })
+
+    const applied = reconcileForwardedCloseIntent('requestCloseTab', null)
+
+    expect(applied).toBe(true)
+    expect(useSessionStore.getState().closeIntent).toBeNull()
+  })
+
+  it('ignores actions other than requestCloseTab', async () => {
+    const { useSessionStore } = await import('@ion/server/store/sessionStore')
+    const { reconcileForwardedCloseIntent } = await import('../secondary-store')
+    useSessionStore.setState({ closeIntent: null })
+
+    const applied = reconcileForwardedCloseIntent('selectTab', { tabId: 'tab-a' })
+
+    expect(applied).toBe(false)
+    expect(useSessionStore.getState().closeIntent).toBeNull()
+  })
+})
+
 describe('applyMirrorOverrides', () => {
-  it('swaps every forwarded action for an IPC forwarder and leaves locals intact', async () => {
-    const forwarded: Array<{ action: string; args: unknown[] }> = []
-    ;(window as unknown as { ion: unknown }).ion = {
-      ...(window as unknown as { ion?: object }).ion,
-      studioCallAction: (action: string, args: unknown[]) => {
-        forwarded.push({ action, args })
-        const value = action === 'rewindEngineInstance'
-          ? { ok: true, prefill: { text: 'restored by forwarder', attachments: [] } }
-          : undefined
-        return Promise.resolve({ ok: true, value })
-      },
-    }
-    const { useSessionStore } = await import('../../../stores/sessionStore')
+  it('swaps every forwarded action for a wire round trip and leaves locals intact', async () => {
+    const forwarded: Array<{ environmentId: string; action: string; args: unknown[] }> = []
+    actionMock.mockReset()
+    actionMock.mockImplementation((environmentId: string, action: string, args: unknown[]) => {
+      forwarded.push({ environmentId, action, args })
+      const value = action === 'rewindEngineInstance'
+        ? { ok: true, prefill: { text: 'restored by forwarder', attachments: [] } }
+        : undefined
+      return Promise.resolve(value)
+    })
+    const { useSessionStore } = await import('@ion/server/store/sessionStore')
     const { applyMirrorOverrides } = await import('../secondary-store')
     useSessionStore.setState({
       activeTabId: 'tab-123',
@@ -177,16 +222,16 @@ describe('applyMirrorOverrides', () => {
     expect(swapped.sort()).toEqual(expectedForwarded)
 
     const after = useSessionStore.getState() as unknown as Record<string, unknown>
-    // A forwarded action now routes over IPC instead of mutating locally.
+    // A forwarded action now routes over the local Studio wire instead of mutating locally.
     await (after.selectTab as (id: string) => Promise<unknown>)('tab-123')
-    expect(forwarded).toEqual([{ action: 'selectTab', args: ['tab-123'] }])
+    expect(forwarded).toEqual([{ environmentId: 'local', action: 'selectTab', args: ['tab-123'] }])
     // Mirror-local actions are untouched.
     expect(after.toggleGitPanel).toBe(localBefore)
     // A rewind forwarder applies the returned composer state in this window.
     await (after.rewindEngineInstance as (...args: unknown[]) => Promise<unknown>)('tab-123', 'main', 'message-1')
     expect(forwarded).toEqual([
-      { action: 'selectTab', args: ['tab-123'] },
-      { action: 'rewindEngineInstance', args: ['tab-123', 'main', 'message-1'] },
+      { environmentId: 'local', action: 'selectTab', args: ['tab-123'] },
+      { environmentId: 'local', action: 'rewindEngineInstance', args: ['tab-123', 'main', 'message-1'] },
     ])
     expect(useSessionStore.getState().tabs[0].pendingInput).toBe('restored by forwarder')
     expect(useSessionStore.getState().conversationPanes.get('tab-123')?.instances[0].draftInput).toBe('restored by forwarder')
@@ -195,13 +240,11 @@ describe('applyMirrorOverrides', () => {
     useSessionStore.setState({ tabs: [], conversationPanes: new Map(), activeTabId: undefined })
   })
 
-  it('reflects forwarded tab selection before the owner round trip resolves', async () => {
-    let resolveOwner: ((value: { ok: true; value: undefined }) => void) | undefined
-    ;(window as unknown as { ion: unknown }).ion = {
-      ...(window as unknown as { ion?: object }).ion,
-      studioCallAction: () => new Promise((resolve) => { resolveOwner = resolve }),
-    }
-    const { useSessionStore } = await import('../../../stores/sessionStore')
+  it('reflects forwarded tab selection before the wire round trip resolves', async () => {
+    let resolveAction: ((value: undefined) => void) | undefined
+    actionMock.mockReset()
+    actionMock.mockImplementation(() => new Promise((resolve) => { resolveAction = resolve }))
+    const { useSessionStore } = await import('@ion/server/store/sessionStore')
     const { applyMirrorOverrides } = await import('../secondary-store')
     useSessionStore.setState({
       activeTabId: 'tab-a',
@@ -215,7 +258,7 @@ describe('applyMirrorOverrides', () => {
 
     const selection = (useSessionStore.getState().selectTab as unknown as (id: string) => Promise<unknown>)('tab-b')
     expect(useSessionStore.getState().activeTabId).toBe('tab-b')
-    resolveOwner?.({ ok: true, value: undefined })
+    resolveAction?.(undefined)
     await selection
     useSessionStore.setState({ tabs: [], conversationPanes: new Map(), activeTabId: undefined })
   })
@@ -239,15 +282,13 @@ describe('applyMirrorOverrides', () => {
    * Iterating FORWARDED_ACTIONS rather than a hardcoded list is deliberate: a
    * newly-forwarded async action is covered the moment it joins the table.
    *
-   * Red on revert: drop `return Promise.resolve(undefined)` from the forwarder
-   * in secondary-store.ts and every action here fails.
+   * Red on revert: drop the `async` return from the forwarder in
+   * secondary-store.ts and every action here fails.
    */
   it('returns a thenable from every forwarded override', async () => {
-    ;(window as unknown as { ion: unknown }).ion = {
-      ...(window as unknown as { ion?: object }).ion,
-      studioCallAction: () => Promise.resolve({ ok: true, value: undefined }),
-    }
-    const { useSessionStore } = await import('../../../stores/sessionStore')
+    actionMock.mockReset()
+    actionMock.mockResolvedValue(undefined)
+    const { useSessionStore } = await import('@ion/server/store/sessionStore')
     const { applyMirrorOverrides } = await import('../secondary-store')
     applyMirrorOverrides()
     const after = useSessionStore.getState() as unknown as Record<string, unknown>
@@ -272,23 +313,21 @@ describe('applyMirrorOverrides', () => {
   })
 
   /**
-   * The forwarder resolves the OWNER'S actual return value.
+   * The forwarder resolves the server's actual return value.
    *
    * This is what makes `const result = await store.retireWorktree(…)` work in
    * the mirror. A resolved-but-empty promise fixed the TypeError above but left
    * every await-and-inspect call site reading fields off `undefined`, so the
    * round trip has to carry the value back.
    *
-   * Red on revert: return `undefined` (or a bare resolve) from the forwarder
-   * instead of `reply.value` and this fails.
+   * Red on revert: resolve `undefined` from the forwarder instead of the
+   * action's real value and this fails.
    */
-  it("resolves the owner's return value", async () => {
-    const ownerResult = { ok: false, error: 'worktree has uncommitted changes' }
-    ;(window as unknown as { ion: unknown }).ion = {
-      ...(window as unknown as { ion?: object }).ion,
-      studioCallAction: () => Promise.resolve({ ok: true, value: ownerResult }),
-    }
-    const { useSessionStore } = await import('../../../stores/sessionStore')
+  it("resolves the server's return value", async () => {
+    const serverResult = { ok: false, error: 'worktree has uncommitted changes' }
+    actionMock.mockReset()
+    actionMock.mockResolvedValue(serverResult)
+    const { useSessionStore } = await import('@ion/server/store/sessionStore')
     const { applyMirrorOverrides } = await import('../secondary-store')
     applyMirrorOverrides()
     const after = useSessionStore.getState() as unknown as Record<string, unknown>
@@ -298,23 +337,21 @@ describe('applyMirrorOverrides', () => {
     )
     // The domain result arrives intact — a refusal reads as a refusal, not as
     // an absent answer.
-    expect(result).toEqual(ownerResult)
+    expect(result).toEqual(serverResult)
   })
 
   /**
    * A transport fault resolves `undefined` rather than rejecting.
    *
-   * "No owner window" and "the owner never replied" are not failures a click
-   * handler can recover from beyond reporting "no result", and throwing would
-   * hijack a `.catch` written for the action's own domain errors. The mirror
-   * logs the fault; the caller sees the same shape a valueless action produces.
+   * "The local server is unreachable" is not a failure a click handler can
+   * recover from beyond reporting "no result", and throwing would hijack a
+   * `.catch` written for the action's own domain errors. The mirror logs the
+   * fault; the caller sees the same shape a valueless action produces.
    */
   it('resolves undefined when the round trip fails, without rejecting', async () => {
-    ;(window as unknown as { ion: unknown }).ion = {
-      ...(window as unknown as { ion?: object }).ion,
-      studioCallAction: () => Promise.resolve({ ok: false, error: 'no owner window' }),
-    }
-    const { useSessionStore } = await import('../../../stores/sessionStore')
+    actionMock.mockReset()
+    actionMock.mockRejectedValue(new StudioActionFailure('no owner window'))
+    const { useSessionStore } = await import('@ion/server/store/sessionStore')
     const { applyMirrorOverrides } = await import('../secondary-store')
     applyMirrorOverrides()
     const after = useSessionStore.getState() as unknown as Record<string, unknown>
@@ -351,8 +388,6 @@ describe('validForwardedAction (main-side wire validation)', () => {
   it('accepts the real-arity call for every action whose spec was previously mismatched', () => {
     // clearTab: real signature is () => void — no arguments, no tabId.
     expect(validForwardedAction('clearTab', [])).toBe(true)
-    // reorderTabs: real signature is (tabs: TabState[]) => void — one array arg.
-    expect(validForwardedAction('reorderTabs', [[{ id: 'tab-1' }]])).toBe(true)
     // addDirectory/removeDirectory: real signature is (dir: string) => void,
     // acting on the owner's active tab — no tabId argument at all, and a long
     // filesystem path must not be rejected as an oversized "tabId".
@@ -392,8 +427,6 @@ describe('validForwardedAction (main-side wire validation)', () => {
     // silently accepted (the real action ignores its arguments entirely, so
     // encoding one on the wire would misrepresent what is being validated).
     expect(validForwardedAction('clearTab', ['tab-1'])).toBe(false)
-    // reorderTabs is exactly one argument — two must be rejected.
-    expect(validForwardedAction('reorderTabs', [[], 'extra'])).toBe(false)
     // setupWorktree requires all three arguments — two must be rejected.
     expect(validForwardedAction('setupWorktree', ['tab-1', 'main'])).toBe(false)
     // forceRecoverTab requires both arguments — one must be rejected.
@@ -430,7 +463,7 @@ describe('mirror never persists', () => {
       on: vi.fn(),
       off: vi.fn(),
     }
-    const { useSessionStore } = await import('../../../stores/sessionStore')
+    const { useSessionStore } = await import('@ion/server/store/sessionStore')
     // Mutate state that WOULD trigger the persistence subscriber in the owner.
     useSessionStore.setState({ isExpanded: true })
     await new Promise((r) => setTimeout(r, 250)) // past the 100ms debounce

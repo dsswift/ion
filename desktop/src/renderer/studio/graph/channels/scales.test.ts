@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildScale, unboundAppearance, type ChannelKind } from './scales'
 import { categoricalColorPalette } from './categorical-palette'
-import { darkColors } from '../../../theme/palette-dark'
+import { darkColors } from '@ion/server/renderer/theme/palette-dark'
 
 const CHANNEL_KINDS: ChannelKind[] = ['color', 'shape', 'size', 'thickness', 'opacity']
 

@@ -1,13 +1,13 @@
 import React from 'react'
 import { useSurfaceStore } from '../surface-store'
-import { useSessionStore } from '../../../stores/sessionStore'
-import { activeInstance } from '../../../stores/conversation-instance'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { activeInstance } from '@ion/server/store/conversation-instance'
 import { AgentDetailBody } from '../../../components/AgentDetailBody'
 import { meta } from '../../../components/agent-panel-helpers'
 import { resolveSubjectAgent, useDispatchTranscript } from '../../../hooks/useDispatchTranscript'
 import { useColors } from '../../../theme'
-import type { AgentStateUpdate } from '../../../../shared/types'
-import type { DispatchTab } from '../../../../shared/studio-surface-types'
+import type { AgentStateUpdate } from '@ion/shared/types'
+import type { DispatchTab } from '@ion/shared/studio-surface-types'
 
 const EMPTY_AGENTS: AgentStateUpdate[] = []
 

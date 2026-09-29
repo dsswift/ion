@@ -1,31 +1,31 @@
 /**
  * GitRepository lifecycle + watcher wiring tests.
  *
- * Uses a fake ParcelModule injected through createGitWatcher so the test runs
+ * Uses a fake WatchModule injected through createGitWatcher so the test runs
  * without the native binding.
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
-vi.mock('../git-runner', () => ({ runGit: vi.fn(async () => '') }))
+vi.mock('@ion/server/git/git-runner', () => ({ runGit: vi.fn(async () => '') }))
 vi.mock('../logger', () => ({ log: vi.fn(), error: vi.fn() }))
 // Default: no ignored directories. Individual tests override via mockReturnValue.
-vi.mock('../settings-store', () => ({
+vi.mock('@ion/server/persistence/settings-store', async (importOriginal) => ({ ...(await importOriginal()), ...{
   readGitWatcherIgnoredDirectories: vi.fn().mockReturnValue([]),
-}))
+} }))
 
-import { GitRepository } from '../git/repository'
-import { createGitWatcher } from '../git/watcher'
-import type { ParcelModule } from '../git/watcher'
-import { focusState } from '../git/focus-state'
-import { readGitWatcherIgnoredDirectories } from '../settings-store'
+import { GitRepository } from '@ion/server/git/repository'
+import { createGitWatcher } from '@ion/server/git/watcher'
+import type { WatchModule } from '@ion/server/git/watcher'
+import { focusState } from '@ion/server/git/focus-state'
+import { readGitWatcherIgnoredDirectories } from '@ion/server/persistence/settings-store'
 
 type WatchCb = (err: Error | null, events: Array<{ path: string; type: string }>) => void
 interface FakeSub { dir: string; cb: WatchCb; unsubscribe: ReturnType<typeof vi.fn> }
 
-function makeFakeParcel(): { mod: ParcelModule; subs: FakeSub[] } {
+function makeFakeWatchModule(): { mod: WatchModule; subs: FakeSub[] } {
   const subs: FakeSub[] = []
-  const mod: ParcelModule = {
+  const mod: WatchModule = {
     subscribe: (dir, cb) => {
       const unsubscribe = vi.fn<() => Promise<void>>(async () => {})
       const sub: FakeSub = { dir, cb, unsubscribe }
@@ -49,7 +49,7 @@ describe('GitRepository watcher lifecycle', () => {
   beforeEach(() => { focusState.setFocused(true) })
 
   it('starts watcher on first retain, stops on last release', async () => {
-    const { mod, subs } = makeFakeParcel()
+    const { mod, subs } = makeFakeWatchModule()
     const repo = new GitRepository('/tmp/r', createGitWatcher(mod))
     expect(repo.watcherActive).toBe(false)
 
@@ -70,7 +70,7 @@ describe('GitRepository watcher lifecycle', () => {
   })
 
   it('emits watch events for HEAD changes after debounce', async () => {
-    const { mod, subs } = makeFakeParcel()
+    const { mod, subs } = makeFakeWatchModule()
     const repo = new GitRepository('/tmp/r', createGitWatcher(mod))
     repo.retain()
     await microtask(); await microtask()
@@ -87,7 +87,7 @@ describe('GitRepository watcher lifecycle', () => {
   })
 
   it('bumps revision on head:changed and clears branch cache on refs:dirty', async () => {
-    const { mod, subs } = makeFakeParcel()
+    const { mod, subs } = makeFakeWatchModule()
     const repo = new GitRepository('/tmp/r', createGitWatcher(mod))
     repo.retain()
     await microtask(); await microtask()
@@ -106,7 +106,7 @@ describe('GitRepository watcher lifecycle', () => {
   })
 
   it('drops events while suspended (window blurred)', async () => {
-    const { mod, subs } = makeFakeParcel()
+    const { mod, subs } = makeFakeWatchModule()
     const repo = new GitRepository('/tmp/r', createGitWatcher(mod))
     repo.retain()
     await microtask(); await microtask()
@@ -135,7 +135,7 @@ describe('GitRepository watcher lifecycle', () => {
   // snapshot. This test pins that contract.
 
   it('refreshSnapshot on a never-retained repo still emits events', async () => {
-    const { mod } = makeFakeParcel()
+    const { mod } = makeFakeWatchModule()
     const repo = new GitRepository('/tmp/r', createGitWatcher(mod))
     // No retain() — watcher is not started. This is exactly what
     // GIT_REFRESH does for a directory that hasn't been subscribed.
@@ -154,7 +154,7 @@ describe('GitRepository watcher lifecycle', () => {
   })
 
   it('bumpRevision + refreshSnapshot re-emits after first snapshot', async () => {
-    const { mod } = makeFakeParcel()
+    const { mod } = makeFakeWatchModule()
     const repo = new GitRepository('/tmp/r', createGitWatcher(mod))
     await repo.refreshSnapshot()
 

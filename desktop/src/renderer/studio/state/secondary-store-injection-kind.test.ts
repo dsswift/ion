@@ -23,9 +23,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('../../rendererLogger', () => ({
   rTrace: vi.fn(), rDebug: vi.fn(), rInfo: vi.fn(), rWarn: vi.fn(), rError: vi.fn(),
 }))
-vi.mock('../../lib/window-role', () => ({ isMirrorWindow: () => true, windowRole: () => 'studio' }))
+vi.mock('@ion/server/lib/window-role', () => ({ isMirrorWindow: () => true, windowRole: () => 'studio' }))
 
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { applyUserMessageEcho, applyHistoryReplace } from './secondary-store'
 
 /** Seed one mirrored tab with a single 'main' instance. */

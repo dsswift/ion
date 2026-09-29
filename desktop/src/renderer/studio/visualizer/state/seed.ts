@@ -1,3 +1,4 @@
+import { host } from '../../../host/host-instance'
 /**
  * Office seed: ONE seed for the whole desktop.
  *
@@ -19,6 +20,6 @@ export function resolveSeed(storedSeed: string | undefined | null): string {
 
 /** Persist the desktop-wide seed (empty string restores the default). */
 export async function persistSeed(seed: string): Promise<string> {
-  await window.ion.studioSetSetting('studioSeed', seed.trim())
+  await host.shell.studioSetSetting('studioSeed', seed.trim())
   return resolveSeed(seed)
 }

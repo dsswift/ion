@@ -8,9 +8,9 @@ import {
   evictStudioTab,
   clearStudioCache,
   resolveStudioPermission,
-} from "../studio-state-cache";
-import type { NormalizedEvent } from "../../shared/types";
-import type { AgentStateUpdate } from "../../shared/types-engine";
+} from "@ion/server/engine/studio-state-cache";
+import type { NormalizedEvent } from "@ion/shared/types";
+import type { AgentStateUpdate } from "@ion/shared/types-engine";
 
 function agent(name: string): AgentStateUpdate {
   return { name, status: "running", metadata: {} } as AgentStateUpdate;

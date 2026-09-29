@@ -1,6 +1,6 @@
 import React from 'react'
 import { ArrowsOutSimple, ArrowsInSimple } from '@phosphor-icons/react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 

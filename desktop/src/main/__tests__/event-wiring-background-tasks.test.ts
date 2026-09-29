@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { projectEngineEventToWire } from '../event-wiring-wire-projection'
+import { projectEngineEventToWire } from '@ion/server/engine/event-wiring-wire-projection'
 
 describe('background task remote projection', () => {
   it('projects starts with the desktop-owned task payload', () => {

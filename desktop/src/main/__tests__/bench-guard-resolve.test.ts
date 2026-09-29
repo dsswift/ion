@@ -16,7 +16,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { chmodSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -39,7 +39,7 @@ function git(cwd: string, ...args: string[]): string {
 
 let home: string
 let bench: string
-let IPC: typeof import('../../shared/types').IPC
+let IPC: typeof import('@ion/shared/types').IPC
 
 /** A repo at the target path with a CONFLICTED merge available on `feature`. */
 function makeConflictableRepo(target = bench): void {
@@ -85,12 +85,14 @@ beforeEach(async () => {
   )
   makeConflictableRepo()
 
-  const types = await import('../../shared/types')
+  const types = await import('@ion/shared/types')
   IPC = types.IPC
-  const { registerGitRebaseIpc } = await import('../ipc/git-rebase')
-  const { registerGitConflictsIpc } = await import('../ipc/git-conflicts')
-  registerGitRebaseIpc()
-  registerGitConflictsIpc()
+  // The verbs live in the shared table both the Studio wire and the former
+  // Electron adapter read from; drive that table directly.
+  const { GIT_HANDLERS } = await import('@ion/server/git/git-api')
+  for (const [channel, handler] of Object.entries(GIT_HANDLERS)) {
+    handlers.set(channel, (_event: unknown, payload: unknown) => handler(payload))
+  }
 })
 
 afterEach(() => {
@@ -117,7 +119,7 @@ async function blockRepositoryMutationQueue(): Promise<{
   release: () => void
   blocker: Promise<void>
 }> {
-  const { repositoryManager } = await import('../git/repositoryManager')
+  const { repositoryManager } = await import('@ion/server/git/repositoryManager')
   let release!: () => void
   const blocker = repositoryManager.get(join(home, 'repo')).queue.enqueueMutation(
     () => new Promise<void>((resolve) => { release = resolve }),
@@ -203,21 +205,24 @@ describe('resolution verbs pass while a merge IS in progress', () => {
   })
 
   it('rolls back invalid committed delta and restores recoverable conflict', async () => {
+    // The invalid content rides in on the INCOMING side, in a file only that
+    // side touched. Preflight scopes `--check` to the paths both sides
+    // changed (the actual collision surface), so it passes; the postcheck
+    // runs unscoped over the whole committed delta, so it catches this and
+    // rolls the merge back. A pre-commit hook used to inject the bad content
+    // instead, which stopped working once bench git commands started running
+    // with the repository's hooks off (`HOOKS_OFF`).
+    git(bench, 'switch', 'feature')
+    writeFileSync(join(bench, 'injected.txt'), 'invalid trailing whitespace   \n')
+    git(bench, 'add', 'injected.txt')
+    git(bench, 'commit', '-m', 'feature-only file with a whitespace error')
+    git(bench, 'switch', 'main')
+
     startConflictedMerge()
     git(bench, 'config', 'rerere.enabled', 'true')
     writeFileSync(join(bench, 'shared.txt'), 'resolved\n')
     git(bench, 'add', 'shared.txt')
     const before = git(bench, 'rev-parse', 'HEAD').trim()
-    const hooks = join(bench, '.git', 'hooks')
-    const hook = join(hooks, 'pre-commit')
-    writeFileSync(hook, [
-      '#!/bin/sh',
-      'rm "$0"',
-      "printf 'invalid trailing whitespace   \\n' > injected.txt",
-      'git add injected.txt',
-      '',
-    ].join('\n'))
-    chmodSync(hook, 0o755)
 
     const cont = await invoke(IPC.GIT_REBASE_CONTINUE, { directory: bench })
 

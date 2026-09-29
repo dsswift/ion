@@ -1,12 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-vi.mock('../studio-browser-views', () => ({
-  ensureBrowserView: vi.fn(),
-  isBrowserViewVisible: vi.fn(() => false),
-}))
-
-import { STUDIO_PLAYWRIGHT_TOOLS } from './tools'
+import { STUDIO_BROWSER_TOOL_DECLARATIONS } from '@ion/server/studio-playwright/tool-contracts'
 
 /**
  * Compatibility with the Playwright MCP server agents were trained against.
@@ -19,6 +14,11 @@ import { STUDIO_PLAYWRIGHT_TOOLS } from './tools'
  * The fixture is a checked-in transcription, not a runtime dependency: nothing
  * here imports the MCP package, so removing it from the operator's config
  * cannot break this test.
+ *
+ * The subject is the server's declaration list — the names and schemas the
+ * engine is actually told about — rather than the desktop's joined tool array.
+ * `declarations-bodies-parity.test.ts` pins that the joined array carries the
+ * same names, so checking the declarations covers both.
  */
 interface Fixture {
   source: { package: string; version: string }
@@ -30,7 +30,7 @@ const fixture = JSON.parse(
 ) as Fixture
 
 function ionTool(name: string) {
-  return STUDIO_PLAYWRIGHT_TOOLS.find((tool) => tool.name === name)
+  return STUDIO_BROWSER_TOOL_DECLARATIONS.find((tool) => tool.name === name)
 }
 
 function properties(name: string): Record<string, { type?: string }> {
@@ -107,7 +107,7 @@ describe('playwright-mcp compatibility', () => {
     // Upstream addresses tabs by index because it owns a whole browser. Ion
     // resolves the conversation's single linked tab from the session key, so
     // these must not appear even though upstream has an equivalent.
-    for (const tool of STUDIO_PLAYWRIGHT_TOOLS) {
+    for (const tool of STUDIO_BROWSER_TOOL_DECLARATIONS) {
       const props = Object.keys(properties(tool.name))
       expect(props).not.toContain('conversationId')
       expect(props).not.toContain('instanceId')

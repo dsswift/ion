@@ -1,8 +1,8 @@
 import React from 'react'
 import { AnimatePresence } from 'framer-motion'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { ElicitationCard } from './ElicitationCard'
-import type { ElicitationRequest } from '../../shared/types'
+import type { ElicitationRequest } from '@ion/shared/types'
 
 // Stable empty reference so the selector doesn't churn renders when there is
 // no pending elicitation (a fresh `[]` each call would break referential

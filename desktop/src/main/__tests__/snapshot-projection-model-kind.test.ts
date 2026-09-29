@@ -21,8 +21,6 @@ const mocks = vi.hoisted(() => ({
   getRemoteTabStatesMock: vi.fn().mockResolvedValue({ tabs: [], resourceManifest: {} }),
   readSettingsMock: vi.fn().mockReturnValue({
     recentBaseDirectories: [],
-    tabGroupMode: 'off',
-    tabGroups: [],
     preferredModel: undefined,
     engineDefaultModel: undefined,
   }),
@@ -31,9 +29,9 @@ const mocks = vi.hoisted(() => ({
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 
 // modelCache is mutated per-test below to inject modelKind entries.
-import { modelCache } from '../state'
+import { modelCache } from '@ion/server/state'
 
-vi.mock('../state', () => ({
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{
   state: {
     get mainWindow() {
       return { webContents: { executeJavaScript: vi.fn().mockResolvedValue({}) } }
@@ -49,7 +47,7 @@ vi.mock('../state', () => ({
   terminalScrollback: new Map(),
   modelCache: { models: [] as any[] },
   enterprisePolicyCache: { policy: null },
-}))
+} }))
 
 vi.mock('../logger', () => ({
   log: vi.fn(),
@@ -58,12 +56,12 @@ vi.mock('../logger', () => ({
   error: vi.fn(),
 }))
 
-vi.mock('../remote/snapshot', () => ({
+vi.mock('@ion/server/remote/snapshot', () => ({
   getRemoteTabStates: (...args: any[]) => mocks.getRemoteTabStatesMock(...args),
 }))
 
 vi.mock('../settings-store', () => ({
-  SETTINGS_DIR: '/tmp/ion-snapshot-model-kind-test',
+  settingsDir: () => '/tmp/ion-snapshot-model-kind-test',
   readSettings: (...args: any[]) => mocks.readSettingsMock(...args),
 }))
 
@@ -73,7 +71,7 @@ vi.mock('../remote/git-watcher-bridge', () => ({
 
 // ─── SUT ─────────────────────────────────────────────────────────────────────
 
-import { buildSnapshotEvent } from '../remote/snapshot-polling'
+import { buildSnapshotEvent } from '@ion/server/remote/snapshot-polling'
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 

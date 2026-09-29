@@ -11,7 +11,7 @@
  * as a slug UNDER another path, embedding a drive letter mid-path.
  */
 import { describe, it, expect } from 'vitest'
-import { benchSlug } from '../integration/bench-store'
+import { benchSlug } from '@ion/server/integration/bench-store'
 
 describe('benchSlug', () => {
   it('takes the last path segment on a POSIX-style path', () => {

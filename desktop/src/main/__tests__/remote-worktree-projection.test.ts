@@ -21,7 +21,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
-vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
+vi.mock('@ion/server/logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
 const WT_A = '/Users/dev/.ion/worktrees/ion-a3f1'
 const WT_B = '/Users/dev/.ion/worktrees/ion-7b0c'
@@ -54,7 +54,7 @@ function inventoryEntry(over: Record<string, unknown> = {}) {
 }
 
 const remoteWorktreeStates = new Map()
-const remoteTransport = { send: vi.fn() }
+const sendRemoteEvent = vi.fn()
 
 const mocks = {
   worktrees: [] as ReturnType<typeof inventoryEntry>[],
@@ -68,20 +68,24 @@ const mocks = {
 
 async function loadBuilder() {
   vi.resetModules()
-  vi.doMock('../state', () => ({ state: { remoteTransport, remoteWorktreeStates } }))
-  vi.doMock('../broadcast', () => ({ broadcast: vi.fn() }))
+  vi.doMock('@ion/server/state', () => ({ state: { remoteWorktreeStates } }))
+  vi.doMock('@ion/server/thin-view/remote-out', () => ({
+    sendRemoteEvent,
+    remoteClientsPresent: () => true,
+  }))
+  vi.doMock('@ion/server/broadcast', () => ({ broadcast: vi.fn() }))
   // The handler reads through the caching service, not the raw crawl; mocking
   // the service keeps each test in control of exactly what the handler sees.
-  vi.doMock('../worktree/inventory-service', () => ({
+  vi.doMock('@ion/server/worktree/inventory-service', () => ({
     getWorktreeInventory: vi.fn(async () => mocks.worktrees),
   }))
-  vi.doMock('../worktree/inventory-cache', () => ({
+  vi.doMock('@ion/server/worktree/inventory-cache', () => ({
     resolveInventoryAlias: vi.fn((path: string) => path === REPO_ALIAS ? REPO : path),
   }))
-  vi.doMock('../worktree/integrate', () => ({
+  vi.doMock('@ion/server/worktree/integrate', () => ({
     syncWorktreeFromSource: vi.fn(), landWorktree: vi.fn(),
   }))
-  vi.doMock('../integration/bench-ops', () => ({
+  vi.doMock('@ion/server/integration/bench-ops', () => ({
     listWorkspaces: vi.fn((repoPath: string) => {
       mocks.workspaceRepoPaths.push(repoPath)
       return mocks.workspaces
@@ -97,13 +101,13 @@ async function loadBuilder() {
     assembleWorkspace: vi.fn(), updateMember: vi.fn(), updateAllStale: vi.fn(),
     addMember: vi.fn(), removeMember: vi.fn(),
   }))
-  vi.doMock('../remote/snapshot', () => ({
+  vi.doMock('@ion/server/remote/snapshot', () => ({
     getRemoteTabStates: vi.fn(async () => ({ tabs: mocks.tabs })),
   }))
-  vi.doMock('../settings-store', () => ({
+  vi.doMock('@ion/server/persistence/settings-store', () => ({
     readWorktreeBranchDefault: vi.fn((repoPath: string) => mocks.branchDefaults[repoPath]),
   }))
-  const mod = await import('../remote/handlers/worktree')
+  const mod = await import('@ion/server/remote/handlers/worktree')
   return mod
 }
 
@@ -116,7 +120,7 @@ beforeEach(() => {
   mocks.sourceTipRepoPaths = []
   mocks.branchDefaults = {}
   remoteWorktreeStates.clear()
-  remoteTransport.send.mockClear()
+  sendRemoteEvent.mockClear()
 })
 
 afterEach(() => { vi.resetModules() })
@@ -235,7 +239,7 @@ describe('buildWorktreeState — worktrees', () => {
     expect(remoteWorktreeStates.has(REPO_ALIAS)).toBe(false)
     expect(remoteWorktreeStates.has('/stale-worktree-alias')).toBe(false)
     expect(remoteWorktreeStates.get(REPO)?.repoPath).toBe(REPO)
-    expect(remoteTransport.send).toHaveBeenCalledWith({
+    expect(sendRemoteEvent).toHaveBeenCalledWith({
       type: 'desktop_worktree_state',
       states: [{ repoPath: REPO, worktrees: [], benches: [] }],
     })
@@ -295,22 +299,26 @@ describe('buildWorktreeState — worktrees', () => {
   it('still returns worktrees when the tab snapshot is unavailable', async () => {
     mocks.worktrees = [inventoryEntry({ title: 'Named anyway' })]
     vi.resetModules()
-    vi.doMock('../state', () => ({ state: { remoteTransport: null } }))
-    vi.doMock('../broadcast', () => ({ broadcast: vi.fn() }))
-    vi.doMock('../worktree/inventory-service', () => ({ getWorktreeInventory: vi.fn(async () => mocks.worktrees) }))
-    vi.doMock('../worktree/inventory-cache', () => ({
+    vi.doMock('@ion/server/state', () => ({ state: {} }))
+    vi.doMock('@ion/server/thin-view/remote-out', () => ({
+      sendRemoteEvent,
+      remoteClientsPresent: () => true,
+    }))
+    vi.doMock('@ion/server/broadcast', () => ({ broadcast: vi.fn() }))
+    vi.doMock('@ion/server/worktree/inventory-service', () => ({ getWorktreeInventory: vi.fn(async () => mocks.worktrees) }))
+    vi.doMock('@ion/server/worktree/inventory-cache', () => ({
       resolveInventoryAlias: vi.fn((path: string) => path === REPO_ALIAS ? REPO : path),
     }))
-    vi.doMock('../worktree/integrate', () => ({ syncWorktreeFromSource: vi.fn(), landWorktree: vi.fn() }))
-    vi.doMock('../integration/bench-ops', () => ({
+    vi.doMock('@ion/server/worktree/integrate', () => ({ syncWorktreeFromSource: vi.fn(), landWorktree: vi.fn() }))
+    vi.doMock('@ion/server/integration/bench-ops', () => ({
       listWorkspaces: vi.fn(() => []), refreshStaleness: vi.fn(), sourceBranchTip: vi.fn(),
       assembleWorkspace: vi.fn(), updateMember: vi.fn(), updateAllStale: vi.fn(),
       addMember: vi.fn(), removeMember: vi.fn(),
     }))
-    vi.doMock('../remote/snapshot', () => ({
+    vi.doMock('@ion/server/remote/snapshot', () => ({
       getRemoteTabStates: vi.fn(async () => { throw new Error('renderer gone') }),
     }))
-    const { buildWorktreeState } = await import('../remote/handlers/worktree')
+    const { buildWorktreeState } = await import('@ion/server/remote/handlers/worktree')
 
     const state = await buildWorktreeState(REPO)
 

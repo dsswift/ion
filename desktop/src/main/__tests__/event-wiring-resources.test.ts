@@ -32,14 +32,14 @@ const { mockRequest, mockAtomicWrite } = vi.hoisted(() => {
 });
 
 // Mock the engineBridge.request to avoid real RPC calls
-vi.mock("../state", () => ({
+vi.mock("@ion/server/state", async (importOriginal) => ({ ...(await importOriginal()), ...{
   enterprisePolicyCache: { policy: null },
   state: { mainWindow: null },
   engineBridge: {
     request: mockRequest,
     on: vi.fn(),
   },
-}));
+} }));
 
 vi.mock("../logger", () => ({
   log: vi.fn(),
@@ -47,9 +47,9 @@ vi.mock("../logger", () => ({
   warn: vi.fn(),
   error: vi.fn(),
 }));
-vi.mock("../utils/atomicWrite", () => ({
+vi.mock("@ion/server/utils/atomicWrite", async (importOriginal) => ({ ...(await importOriginal()), ...{
   atomicWriteFileSync: mockAtomicWrite,
-}));
+} }));
 
 vi.mock("fs", () => ({
   existsSync: vi.fn().mockReturnValue(false),
@@ -85,7 +85,7 @@ import {
   projectPersistedResourceState,
   publishResourceMarkRead,
   publishResourceDelete,
-} from "../event-wiring-resources";
+} from "@ion/server/engine/event-wiring-resources";
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 

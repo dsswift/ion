@@ -12,9 +12,10 @@ import { useGraphStore } from './graph-store'
 import { clearAllSessions } from './session-park'
 import { useSurfaceStore } from '../surface/surface-store'
 import { recordTabActivation, clearAllAnchors } from '../surface/editor-anchor'
-import { GRAPH_VIEW_DEFAULTS } from '../../../shared/graph-view-types'
-import type { GraphViewConfig, ScopedSavedView } from '../../../shared/graph-view-types'
-import type { CorpusSnapshot } from '../../../shared/graph-corpus-types'
+import { GRAPH_VIEW_DEFAULTS } from '@ion/shared/graph-view-types'
+import type { GraphViewConfig, ScopedSavedView } from '@ion/shared/graph-view-types'
+import type { CorpusSnapshot } from '@ion/shared/graph-corpus-types'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 function config(overrides?: Partial<GraphViewConfig>): GraphViewConfig {
   return {
@@ -67,14 +68,14 @@ const snapshot: CorpusSnapshot = {
 }
 
 function installIonStub(cfg: GraphViewConfig): void {
-  window.ion = {
+  window.ion = installFakeWire({
     graphViewGetConfig: vi.fn(async () => cfg),
     graphViewSetUserConfig: vi.fn(async () => ({ ok: true })),
     onGraphViewConfigChanged: vi.fn(() => () => undefined),
     graphCorpusSubscribe: vi.fn(async () => snapshot),
     graphCorpusUnsubscribe: vi.fn(async () => ({ ok: true })),
     onGraphCorpusDelta: vi.fn(() => () => undefined),
-  } as unknown as typeof window.ion
+  }) as unknown as typeof window.ion
 }
 
 afterEach(() => {

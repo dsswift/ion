@@ -29,7 +29,7 @@ vi.mock("electron", () => ({
   app: { getPath: vi.fn() },
   ipcMain: { on: vi.fn(), handle: vi.fn() },
 }));
-vi.mock("../state", () => ({
+vi.mock("@ion/server/state", async (importOriginal) => ({ ...(await importOriginal()), ...{
   state: { remoteTransport: null, mainWindow: null },
   sessionPlane: { on: vi.fn() },
   engineBridge: {
@@ -45,17 +45,17 @@ vi.mock("../state", () => ({
   extensionCommandRegistry: new Map(),
   forwardedEnginePermissionDenials: new Set(),
   lastForwardedTabMeta: new Map(),
-}));
-vi.mock("../broadcast", () => ({ broadcast }));
-vi.mock("../resource-catalog", () => ({
+} }));
+vi.mock("@ion/server/broadcast", () => ({ broadcast }));
+vi.mock("@ion/server/engine/resource-catalog", async (importOriginal) => ({ ...(await importOriginal()), ...{
   resourceCatalog: {
     clear: vi.fn(),
     applySnapshot: vi.fn(),
     applyDelta,
     applyFullItem,
   },
-}));
-vi.mock("../event-wiring-resources", () => ({
+} }));
+vi.mock("@ion/server/engine/event-wiring-resources", () => ({
   handleResourceEngineEvent: (
     key: string,
     event: Record<string, unknown>,
@@ -120,34 +120,34 @@ vi.mock("../event-wiring-resources", () => ({
   handleResourceItemEvent,
   projectPersistedResourceState: vi.fn((items: unknown[]) => items),
 }));
-vi.mock("../event-wiring-intercept", () => ({ handleInterceptEvent: vi.fn() }));
-vi.mock("../event-wiring-text-delta-batcher", () => ({
+vi.mock("@ion/server/engine/event-wiring-intercept", async (importOriginal) => ({ ...(await importOriginal()), ...{ handleInterceptEvent: vi.fn() } }));
+vi.mock("@ion/server/engine/event-wiring-text-delta-batcher", () => ({
   accumulateTextDelta: vi.fn(),
   flushKeyDeltas: vi.fn(),
   dropKeyDeltas: vi.fn(),
 }));
-vi.mock("../event-wiring-provider-login", () => ({
+vi.mock("@ion/server/engine/event-wiring-provider-login", async (importOriginal) => ({ ...(await importOriginal()), ...{
   handleProviderLoginEvent: vi.fn(),
   handleProvidersUpdatedEvent: vi.fn(),
-}));
-vi.mock("../studio-window-manager", () => ({
+} }));
+vi.mock("@ion/server/engine/studio-window-manager", () => ({
   notifyStudioPermissionResolved: vi.fn(),
 }));
-vi.mock("../settings-store", () => ({
+vi.mock("@ion/server/persistence/settings-store", async (importOriginal) => ({ ...(await importOriginal()), ...{
   shouldStreamThinkingToRemote: vi.fn(() => false),
-}));
-vi.mock("../logger", () => ({
+} }));
+vi.mock("@ion/server/logger", () => ({
   log: vi.fn(),
   debug: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
   trace: vi.fn(),
 }));
-vi.mock("../../shared/clear-divider", () => ({
+vi.mock("@ion/shared/clear-divider", () => ({
   formatClearDivider: vi.fn(() => "[clear]"),
 }));
 
-import { wireEngineBridgeEvents } from "../event-wiring";
+import { wireEngineBridgeEvents } from "@ion/server/engine/event-wiring";
 
 describe("event-wiring resource catalog", () => {
   beforeEach(() => {

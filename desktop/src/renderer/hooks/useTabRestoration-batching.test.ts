@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { SESSION_ATTACH_BATCH_SIZE } from '../../shared/session-attach-policy'
+import { SESSION_ATTACH_BATCH_SIZE } from '@ion/shared/session-attach-policy'
 import {
   orderSessionCandidates,
   startSessionsInBatches,
-} from './useTabRestoration-helpers'
+} from '@ion/server/hooks/useTabRestoration-helpers'
 
 describe('restored session attach batching', () => {
   it('starts the active session first and caps each batch at five', async () => {

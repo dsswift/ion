@@ -18,7 +18,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { buildBreadcrumbStack, getDispatches } from '../../renderer/components/agent-panel-helpers'
-import type { AgentStateUpdate } from '../../shared/types'
+import type { AgentStateUpdate } from '@ion/shared/types'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -201,7 +201,7 @@ describe('openDispatchPreview store action', () => {
     const { readFileSync } = await import('fs')
     const { join } = await import('path')
     const src = readFileSync(
-      join(__dirname, '../../renderer/stores/session-store-types.ts'),
+      join(__dirname, '../../../../server/src/store/session-store-types.ts'),
       'utf-8',
     )
     expect(src).toContain('openDispatchPreview')
@@ -213,7 +213,7 @@ describe('openDispatchPreview store action', () => {
     const { readFileSync } = await import('fs')
     const { join } = await import('path')
     const src = readFileSync(
-      join(__dirname, '../../renderer/stores/slices/expand-slice.ts'),
+      join(__dirname, '../../../../server/src/store/slices/expand-slice.ts'),
       'utf-8',
     )
     expect(src).toContain('openDispatchPreview')
@@ -225,7 +225,7 @@ describe('openDispatchPreview store action', () => {
     const { readFileSync } = await import('fs')
     const { join } = await import('path')
     const src = readFileSync(
-      join(__dirname, '../../renderer/stores/slices/expand-slice.ts'),
+      join(__dirname, '../../../../server/src/store/slices/expand-slice.ts'),
       'utf-8',
     )
     expect(src).toContain('statusDrawerDispatchId: null')

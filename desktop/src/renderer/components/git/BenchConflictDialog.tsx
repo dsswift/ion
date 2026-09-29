@@ -25,9 +25,9 @@ import React, { useState } from 'react'
 import { ArrowsClockwise, ChatCircle, Warning } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { FloatingPanel } from '../FloatingPanel'
-import { useSessionStore } from '../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { rError, rInfo } from '../../rendererLogger'
-import type { IntegrationMember } from '../../../shared/types'
+import type { IntegrationMember } from '@ion/shared/types'
 
 export function BenchConflictDialog({
   repoPath,

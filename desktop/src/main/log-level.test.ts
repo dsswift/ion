@@ -19,7 +19,7 @@ const logger = vi.hoisted(() => ({ log: vi.fn(), setLogLevel: vi.fn() }))
 vi.mock('./logger', () => ({ log: logger.log, setLogLevel: logger.setLogLevel }))
 
 const settings = vi.hoisted(() => ({ read: vi.fn() }))
-vi.mock('./settings-store', () => ({
+vi.mock('@ion/server/persistence/settings-store', () => ({
   readSettings: settings.read,
   // The real default; the point of these tests is that it is actually applied.
   SETTINGS_DEFAULTS: { logLevel: 'DEBUG' },

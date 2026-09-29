@@ -1,9 +1,9 @@
 import React from 'react'
 import { motion } from 'framer-motion'
 import { Question, CheckCircle, XCircle } from '@phosphor-icons/react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../theme'
-import type { ElicitationRequest } from '../../shared/types'
+import type { ElicitationRequest } from '@ion/shared/types'
 
 interface Props {
   tabId: string

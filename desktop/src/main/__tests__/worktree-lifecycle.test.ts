@@ -10,7 +10,7 @@
  * regression tests for the original implementation, which did:
  *     git checkout <sourceBranch> && git merge --ff-only <wtBranch>
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync, readdirSync, realpathSync } from 'fs'
@@ -28,12 +28,12 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => process.env.ION_TEST_HOME_WT_LIFECYCLE || actual.homedir() }
 })
 
-import { landWorktree, landAndRetireWorktree, syncWorktreeFromSource, findWorktreeForBranch, parseWorktreeList } from '../worktree/integrate'
-import * as gitRunner from '../git-runner'
-import { retireWorktree, reattachWorktree } from '../worktree/relocate'
-import { registerWorktree } from '../worktree/inventory'
-import * as recovery from '../worktree/recovery'
-import { writeRecoveryRef } from '../worktree/recovery'
+import { landWorktree, landAndRetireWorktree, syncWorktreeFromSource, findWorktreeForBranch, parseWorktreeList } from '@ion/server/worktree/integrate'
+import * as gitRunner from '@ion/server/git/git-runner'
+import { retireWorktree, reattachWorktree } from '@ion/server/worktree/relocate'
+import { registerWorktree } from '@ion/server/worktree/inventory'
+import * as recovery from '@ion/server/worktree/recovery'
+import { writeRecoveryRef } from '@ion/server/worktree/recovery'
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })

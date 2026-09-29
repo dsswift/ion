@@ -1,23 +1,12 @@
 /**
- * event-wiring-remote — engine-stream duplicate-envelope suppression
+ * event-wiring-remote — the session-plane forwarder sends no transcript rows
  *
- * Regression for the iOS Remote incoming-duplication bug. Post-#256 every
- * conversation is engine-backed with a BARE session key, so the EngineControlPlane
- * matches the key and re-emits engine events onto the sessionPlane as normalized
- * `text_chunk` / `tool_call` / `tool_call_update` / `tool_result` events. The
- * generic engine forwarder (wireEngineBridgeEvents in event-wiring.ts) ALSO
- * forwards those same engine events to iOS as the structured `desktop_text_delta`
- * / `desktop_tool_start` / `desktop_tool_end` wire events. iOS appends a row from
- * the structured path, so the sessionPlane forwarder must NOT also mirror them as
- * `desktop_message_added` / `desktop_message_updated` — doing so appended a SECOND
- * assistant row / tool row on iOS (the live-only duplication that healed on a
- * history reload).
- *
- * These tests pin that the streaming branches emit NO message envelopes, while
- * the non-duplicated branches (task_complete permission-denial forwarding,
- * compaction system message — neither of which the generic forwarder produces in
- * an iOS-decodable shape) still fire. They go RED if the duplicate
- * desktop_message_added / desktop_message_updated sends are reintroduced.
+ * A thin client receives every conversation row on its transcript stream,
+ * published from the store. The session-plane forwarder must never send a
+ * row of its own (`desktop_message_added` / `desktop_message_updated`): that
+ * second copy is what used to duplicate rows on the phone until a reload.
+ * It still sends the two notices that are not rows: task completion and
+ * permission requests.
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest'
@@ -27,39 +16,53 @@ vi.mock('electron', () => ({ app: { getPath: vi.fn() }, ipcMain: { on: vi.fn(), 
 
 const { mockSend, mockState, sessionPlaneEmitter } = vi.hoisted(() => {
   const mockSend = vi.fn()
-  const mockState = { remoteTransport: { send: mockSend } as any, mainWindow: null }
+  const mockState = { mainWindow: null }
   const sessionPlaneEmitter = new (require('events').EventEmitter)()
   return { mockSend, mockState, sessionPlaneEmitter }
 })
 
-vi.mock('../state', () => ({
+// The `desktop_*` device transport is gone; a RemoteEvent now leaves the
+// server through `sendRemoteEvent`, which fans it to thin Studio-wire
+// clients. Capture there, and drive the "is anyone listening" gate with
+// `remoteClientsPresent`.
+const { mockClientsPresent } = vi.hoisted(() => ({ mockClientsPresent: vi.fn(() => true) }))
+
+vi.mock('@ion/server/thin-view/remote-out', () => ({
+  sendRemoteEvent: mockSend,
+  remoteClientsPresent: mockClientsPresent,
+  syncRemoteAttention: vi.fn(),
+  thinConnections: vi.fn(() => []),
+  sendThinEventTo: vi.fn(() => true),
+}))
+
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{
   state: mockState,
   sessionPlane: sessionPlaneEmitter,
   activeAssistantMessages: new Map(),
   lastMessagePreview: new Map<string, string>(),
-}))
+} }))
 
 // normalizedToRemote returns null so the top-of-listener send is suppressed in
 // this test — we are exercising ONLY the switch branches' message envelopes.
 vi.mock('../remote/protocol', () => ({ normalizedToRemote: vi.fn(() => null) }))
-vi.mock('../../shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
+vi.mock('@ion/shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
-import { wireRemoteSessionPlaneForwarding } from '../event-wiring-remote'
+import { wireRemoteSessionPlaneForwarding } from '@ion/server/engine/event-wiring-remote'
 
 function sentOfType(type: string) {
   return mockSend.mock.calls.filter((c) => (c[0] as any)?.type === type)
 }
 
-describe('wireRemoteSessionPlaneForwarding — no duplicate message envelopes for engine stream', () => {
+describe('wireRemoteSessionPlaneForwarding — no transcript rows', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     ;(sessionPlaneEmitter as EventEmitter).removeAllListeners()
-    mockState.remoteTransport = { send: mockSend } as any
+    mockClientsPresent.mockReturnValue(true)
     wireRemoteSessionPlaneForwarding()
   })
 
-  it('does NOT send desktop_message_added for a text_chunk (structured path owns it)', () => {
+  it('does NOT send desktop_message_added for a text_chunk', () => {
     sessionPlaneEmitter.emit('event', 'tab1', { type: 'text_chunk', text: 'hello' })
     expect(sentOfType('desktop_message_added')).toHaveLength(0)
     expect(sentOfType('desktop_message_updated')).toHaveLength(0)
@@ -72,7 +75,7 @@ describe('wireRemoteSessionPlaneForwarding — no duplicate message envelopes fo
     expect(sentOfType('desktop_message_updated')).toHaveLength(0)
   })
 
-  it('does NOT send desktop_message_added(tool) for a tool_call (desktop_tool_start owns it)', () => {
+  it('does NOT send desktop_message_added(tool) for a tool_call', () => {
     sessionPlaneEmitter.emit('event', 'tab1', { type: 'tool_call', toolName: 'Bash', toolId: 'toolu_1', index: 0 })
     expect(sentOfType('desktop_message_added')).toHaveLength(0)
   })
@@ -82,12 +85,12 @@ describe('wireRemoteSessionPlaneForwarding — no duplicate message envelopes fo
     expect(sentOfType('desktop_message_updated')).toHaveLength(0)
   })
 
-  it('does NOT send desktop_message_updated for a tool_result (desktop_tool_end owns it)', () => {
+  it('does NOT send desktop_message_updated for a tool_result', () => {
     sessionPlaneEmitter.emit('event', 'tab1', { type: 'tool_result', toolId: 'toolu_1', content: 'ok', isError: false })
     expect(sentOfType('desktop_message_updated')).toHaveLength(0)
   })
 
-  it('STILL sends the compaction system message (generic forwarder does not produce an iOS-decodable one)', () => {
+  it('sends nothing for a compaction: its row is on the transcript stream', () => {
     sessionPlaneEmitter.emit('event', 'tab1', {
       type: 'compacting',
       active: false,
@@ -96,9 +99,6 @@ describe('wireRemoteSessionPlaneForwarding — no duplicate message envelopes fo
       summary: 'did stuff',
       strategy: 'summarize',
     })
-    const added = sentOfType('desktop_message_added')
-    expect(added).toHaveLength(1)
-    expect(added[0][0].message.role).toBe('system')
-    expect(added[0][0].message.content).toContain('Compaction')
+    expect(mockSend).not.toHaveBeenCalled()
   })
 })

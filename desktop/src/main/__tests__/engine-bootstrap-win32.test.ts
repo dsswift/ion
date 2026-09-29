@@ -11,6 +11,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import path from 'path'
 
 const execOrder: Array<{ kind: 'execFile' | 'execFileSync'; cmd: string }> = []
+/** What Task Scheduler reports as this user's registered task definition. */
+let registeredTaskXml = ''
 const copiedFiles: Array<{ src: string; dst: string }> = []
 const renamedFiles: Array<{ src: string; dst: string }> = []
 let writtenFiles: Record<string, string> = {}
@@ -36,7 +38,11 @@ vi.mock('child_process', () => ({
     const cmd = [file, ...args].join(' ')
     execOrder.push({ kind: 'execFile', cmd })
     const done = typeof _opts === 'function' ? (_opts as typeof cb) : cb
-    done?.(null, file === 'whoami.exe' ? '"testbox\\\\testuser","S-1-5-21-99-1001"\\r\\n' : '', '')
+    // `/Query /TN <task> /XML ONE` reads the registered definition: the
+    // per-user task answers with registeredTaskXml, the legacy shared task
+    // and every other command with nothing.
+    const registered = args[0] === '/Query' && args.includes('/XML') && args[2] !== 'Ion Engine' ? registeredTaskXml : ''
+    done?.(null, file === 'whoami.exe' ? '"testbox\\\\testuser","S-1-5-21-99-1001"\\r\\n' : registered, '')
   }),
   execFileSync: vi.fn((file: string, args: string[]) => {
     execOrder.push({ kind: 'execFileSync', cmd: [file, ...args].join(' ') })
@@ -66,21 +72,35 @@ vi.mock('fs', () => ({
 }))
 
 // whoami.exe supplies the task principal SID used by every registration.
-vi.mock('os', () => ({ homedir: () => '/Users/testuser', userInfo: () => ({ username: 'testuser' }) }))
+// Partial: only homedir and userInfo are under test control. A total
+// replacement broke once secretStore (reached transitively through server
+// config) began reading os.hostname at module load.
+vi.mock('os', async (importOriginal) => ({ ...(await importOriginal<typeof import('os')>()), ...{
+  homedir: () => '/Users/testuser',
+  userInfo: () => ({ username: 'testuser' }),
+} }))
 
-vi.mock('../utils/atomicWrite', () => ({
+vi.mock('@ion/server/utils/atomicWrite', async (importOriginal) => ({ ...(await importOriginal()), ...{
   atomicWriteFileSync: vi.fn((p: string, content: string) => {
     writtenFiles[p] = content
     fakeFs[p] = content
   }),
-}))
+} }))
 
 vi.mock('../logger', () => ({ log: vi.fn(), error: vi.fn(), warn: vi.fn() }))
+// The modules under test moved to `server/src/`, so their `'../logger'` resolves
+// to `server/src/logger` -- a different module from the desktop logger mocked
+// above, which therefore no longer intercepts them. Without this the real server
+// logger runs inside the test worker: it writes to the log file and, where `fs`
+// is mocked, fails on an export the mock does not provide.
+vi.mock('@ion/server/logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
 const originalPlatform = process.platform
+let savedIonDataDir: string | undefined
 
 beforeEach(() => {
   execOrder.length = 0
+  registeredTaskXml = ''
   copiedFiles.length = 0
   renamedFiles.length = 0
   writtenFiles = {}
@@ -89,13 +109,24 @@ beforeEach(() => {
   socketDefaultReachable = true
   vi.clearAllMocks()
   Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+  // dataDir() (@ion/server/paths) checks ION_DATA_DIR before falling back to
+  // homedir(), and the mocked os.homedir() below does not reach @ion/server's
+  // already-resolved binding — so without this, dataDir() resolves to the
+  // real vitest-home fixture instead of HOME/.ion, the rendered task XML's
+  // $ION_HOME substitution mismatches the fixture built from ionHomePath(),
+  // and the definition looks "changed" on every run, forcing an unwanted
+  // /End even on a genuine hash match.
+  savedIonDataDir = process.env.ION_DATA_DIR
+  process.env.ION_DATA_DIR = path.join('/Users/testuser', '.ion')
 })
 
 afterEach(() => {
   Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+  if (savedIonDataDir === undefined) delete process.env.ION_DATA_DIR
+  else process.env.ION_DATA_DIR = savedIonDataDir
 })
 
-import { ensureEngineDaemon } from '../engine-bootstrap'
+import { ensureEngineDaemon } from '@ion/server/engine/engine-bootstrap'
 
 const bootstrapDir = path.join(__dirname, '..')
 const taskTemplatePath = path.resolve(bootstrapDir, '..', '..', 'packaging-windows', 'ion-engine-task.xml')
@@ -180,9 +211,11 @@ describe('ensureEngineDaemon — win32 dispatch', () => {
     fakeFs[bundledBinaryWin32Path] = 'identical-bytes'
     const destBinary = destBinaryWin32Path()
     fakeFs[destBinary] = 'identical-bytes'
-    // Task already registered with the exact rendered content.
+    // Task already registered with the exact rendered content: Task
+    // Scheduler's own copy is what the supervisor compares against.
     const rendered = fakeFs[taskTemplatePath].replaceAll('$ION_BIN', destBinary).replaceAll('$ION_HOME', ionHomePath())
     fakeFs[taskXmlDestPath()] = rendered
+    registeredTaskXml = rendered
 
     await ensureEngineDaemon(FAST)
 

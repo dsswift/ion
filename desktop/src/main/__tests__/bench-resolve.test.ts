@@ -1,10 +1,10 @@
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, readFileSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
+import { GIT_FIXTURE_TIMEOUT } from '@ion/server/test/git-fixture-timeout'
 
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 vi.mock('os', async () => {
@@ -12,11 +12,11 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => process.env.ION_TEST_HOME_BENCH_RESOLVE || actual.homedir() }
 })
 
-import { assembleBench } from '../integration/bench-assemble'
-import { prepareConflictResolution } from '../integration/bench-resolve'
-import { captureContribution } from '../integration/bench-snapshot'
-import { makeMember, makeWorkspace, saveWorkspaces } from '../integration/bench-store'
-import type { IntegrationMember, IntegrationWorkspace } from '../../shared/types'
+import { assembleBench } from '@ion/server/integration/bench-assemble'
+import { prepareConflictResolution } from '@ion/server/integration/bench-resolve'
+import { captureContribution } from '@ion/server/integration/bench-snapshot'
+import { makeMember, makeWorkspace, saveWorkspaces } from '@ion/server/integration/bench-store'
+import type { IntegrationMember, IntegrationWorkspace } from '@ion/shared/types'
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })

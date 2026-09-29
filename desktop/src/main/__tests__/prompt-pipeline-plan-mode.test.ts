@@ -10,7 +10,7 @@
  *   - successful /clear (notifyConversationCleared) — leaves conversationId
  *     set but clears the checkpoint counter and sets clearedSinceLastPrompt.
  *
- * Uses the same vi.hoisted() + vi.mock('../state') pattern as
+ * Uses the same vi.hoisted() + vi.mock('@ion/server/state') pattern as
  * prompt-pipeline.test.ts. Split into a companion file to keep both files
  * under the 600-line cap.
  */
@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => {
   const bridgeListeners = new Map<string, Array<(key: string, event: any) => void>>()
   const sendCommandMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const sendPromptMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.({ ok: true }) ?? function () { return Promise.resolve({ ok: true }) }
-  const submitPromptMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(undefined) ?? function () { return Promise.resolve() }
+  const submitPromptMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.({ ok: true }) ?? function () { return Promise.resolve({ ok: true }) }
   const setPermissionModeMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const remoteSendMock = (globalThis as any).vi?.fn?.() ?? function () {}
   const executeJsMock = (globalThis as any).vi?.fn?.()?.mockResolvedValue?.(null) ?? function () { return Promise.resolve(null) }
@@ -48,7 +48,7 @@ const mocks = vi.hoisted(() => {
 
 mocks.sendCommandMock = vi.fn()
 mocks.sendPromptMock = vi.fn().mockResolvedValue({ ok: true })
-mocks.submitPromptMock = vi.fn().mockResolvedValue(undefined)
+mocks.submitPromptMock = vi.fn().mockResolvedValue({ ok: true })
 mocks.setPermissionModeMock = vi.fn()
 mocks.remoteSendMock = vi.fn()
 mocks.executeJsMock = vi.fn().mockResolvedValue(null)
@@ -61,7 +61,9 @@ function emitBridgeEvent(key: string, event: any): void {
   for (const fn of arr) fn(key, event)
 }
 
-vi.mock('../state', () => {
+vi.mock('@ion/server/state', async (importOriginal) => {
+  const __actual = (await importOriginal()) as Record<string, unknown>;
+
   const mockEngineBridge = {
     sendCommand: (...args: any[]) => mocks.sendCommandMock(...args),
     sendPrompt: (...args: any[]) => mocks.sendPromptMock(...args),
@@ -72,7 +74,7 @@ vi.mock('../state', () => {
       mocks.bridgeListeners.set(name, arr)
     },
   }
-  return {
+  return { ...__actual, 
     state: {
       mainWindow: { webContents: { executeJavaScript: (...args: any[]) => mocks.executeJsMock(...args) } },
       remoteTransport: { send: (...args: any[]) => mocks.remoteSendMock(...args) },
@@ -109,8 +111,8 @@ vi.mock('../remote/attachment-encoder', () => ({
   encodeAttachments: (text: string, _atts: any[]) => ({ encoded: [], rewrittenText: text }),
 }))
 
-import { processIncomingPrompt } from '../prompt-pipeline'
-import { _resetAwaitersForTests } from '../command-await'
+import { processIncomingPrompt } from '@ion/server/engine/prompt-pipeline'
+import { _resetAwaitersForTests } from '@ion/server/command-await'
 
 // ───────────────────────────────────────────────────────────────────────────
 // Shared setup.
@@ -119,7 +121,7 @@ import { _resetAwaitersForTests } from '../command-await'
 beforeEach(() => {
   mocks.sendCommandMock.mockReset()
   mocks.sendPromptMock.mockReset().mockResolvedValue({ ok: true })
-  mocks.submitPromptMock.mockReset().mockResolvedValue(undefined)
+  mocks.submitPromptMock.mockReset().mockResolvedValue({ ok: true })
   mocks.setPermissionModeMock.mockReset()
   mocks.remoteSendMock.mockReset()
   mocks.executeJsMock.mockReset().mockResolvedValue(null)

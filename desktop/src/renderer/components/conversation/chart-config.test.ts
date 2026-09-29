@@ -7,7 +7,7 @@
  * but binds a series to the wrong axis is the failure this catches.
  */
 import { describe, expect, it } from 'vitest'
-import { darkColors } from '../../theme/palette-dark'
+import { darkColors } from '@ion/server/renderer/theme/palette-dark'
 import {
   buildAnnotations,
   buildChartConfig,
@@ -17,7 +17,7 @@ import {
   seriesColor,
   sliceColors,
 } from './chart-config'
-import { cloneSpec } from '../../../shared/__tests__/chart-scenario-fixtures'
+import { cloneSpec } from '@ion/shared/__tests__/chart-scenario-fixtures'
 import {
   CHART_SCENARIOS,
   comparisonOverlayScenario,
@@ -32,8 +32,8 @@ import {
   pieScenario,
   stackedBarScenario,
   themeColorScenario,
-} from '../../../shared/__tests__/chart-scenario-fixtures'
-import type { ChartSpec } from '../../../shared/chart-schema'
+} from '@ion/shared/__tests__/chart-scenario-fixtures'
+import type { ChartSpec } from '@ion/shared/chart-schema'
 
 const colors = darkColors
 

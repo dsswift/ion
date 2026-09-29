@@ -20,12 +20,12 @@ import { Tooltip } from './git/Tooltip'
 import { HoverCard } from './git/HoverCard'
 import { WorktreeConversationsCard } from './WorktreeConversationsCard'
 import { WorktreeRowGoToTabSubmenu } from './WorktreeRowGoToTabSubmenu'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { zoomRect } from '../viewport-zoom'
-import { describeBenchOpenConversations, type DirConversation } from '../../shared/worktree-conversations'
-import { benchAssembledRelativeTime } from '../../shared/worktree-list'
-import type { IntegrationWorkspace, IntegrationMember } from '../../shared/types'
-import type { OrphanMembership } from '../../shared/worktree-list'
+import { describeBenchOpenConversations, type DirConversation } from '@ion/shared/worktree-conversations'
+import { benchAssembledRelativeTime } from '@ion/shared/worktree-list'
+import type { IntegrationWorkspace, IntegrationMember } from '@ion/shared/types'
+import type { OrphanMembership } from '@ion/shared/worktree-list'
 
 export interface BenchBarProps {
   workspaces: readonly IntegrationWorkspace[]

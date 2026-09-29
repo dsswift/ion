@@ -29,7 +29,7 @@ vi.mock('../../preferences', () => ({
     sel({ agentPanelDefaultOpen: true, unifiedTurnView: false }),
 }))
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: (sel: (s: Record<string, unknown>) => unknown) =>
     sel({
       agentDetailGeometry: { x: 0, y: 0, w: 600, h: 500 },
@@ -53,7 +53,7 @@ vi.mock('../conversation', () => ({
 }))
 
 import { AgentPanel } from '../AgentPanel'
-import type { AgentStateUpdate } from '../../../shared/types'
+import type { AgentStateUpdate } from '@ion/shared/types'
 import type { DispatchInfo } from '../agent-panel-helpers'
 
 /** A sticky+invited running agent (passes the top-level visibility filter). */

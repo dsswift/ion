@@ -6,9 +6,14 @@
  * inspection at all: it produced a different request, with different headers
  * and timing, and could re-trigger a side effect the page had already caused.
  * Reading the ledger is the only honest answer to "what did that request do".
+ *
+ * Bodies only: each entry is `{ name, execute }`. The matching declarations
+ * (description, input schema, plan-mode safety) live in the server package at
+ * `server/src/studio-playwright/tool-declarations.ts` and are joined by name in
+ * `./tools.ts`.
  */
-import type { BrowserToolContext, BrowserToolResult, StudioBrowserTool } from './tool-contracts'
-import { BOOL, ENUM, INT, STRING, fail, filenameArg, intArg, ok, schema } from './tool-contracts'
+import type { BrowserToolContext, BrowserToolResult, StudioBrowserToolBody } from '@ion/server/studio-playwright/tool-contracts'
+import { fail, filenameArg, intArg, ok } from '@ion/server/studio-playwright/tool-contracts'
 import { fileLink, formatResponse } from './responses'
 import { resolveBrowser, runExclusive } from './runtime'
 import { emulationSession } from './emulation'
@@ -29,16 +34,9 @@ import { isArtifactError, resolveArtifactPath } from './artifacts'
 const LEVELS: ConsoleLevel[] = ['error', 'warning', 'info', 'debug']
 const PARTS: NetworkPart[] = ['request-headers', 'request-body', 'response-headers', 'response-body']
 
-export const diagnosticTools: StudioBrowserTool[] = [
+export const diagnosticBodies: StudioBrowserToolBody[] = [
   {
     name: 'browser_console_messages',
-    description: 'Return console messages and uncaught page errors from the conversation browser tab.',
-    inputSchema: schema({
-      level: ENUM('Minimum severity to return. Each level includes the more severe ones.', LEVELS),
-      all: BOOL('Return the whole session history instead of only the current navigation'),
-      filename: STRING('Write the output to this conversation-relative file', 1024),
-    }),
-    planModeSafe: true,
     execute: async (input, ctx) => {
       const level: ConsoleLevel = LEVELS.includes(input.level as ConsoleLevel) ? (input.level as ConsoleLevel) : 'info'
       const all = input.all === true
@@ -53,14 +51,6 @@ export const diagnosticTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_network_requests',
-    description: 'List network requests recorded for the conversation browser tab.',
-    inputSchema: schema({
-      static: BOOL('Include successful static resources such as images, fonts, and scripts. Defaults to false.'),
-      filter: STRING('Only include requests whose URL matches this regular expression', 512),
-      all: BOOL('Return the whole session history instead of only the current navigation'),
-      filename: STRING('Write the output to this conversation-relative file', 1024),
-    }),
-    planModeSafe: true,
     execute: async (input, ctx) => {
       const compiled = compileFilter(input.filter)
       if (compiled.error) return fail(compiled.error)
@@ -84,13 +74,6 @@ export const diagnosticTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_network_request',
-    description: 'Show one recorded network request in full, or just one part of it. Never issues a new request.',
-    inputSchema: schema({
-      index: INT('1-based index from browser_network_requests', 1),
-      part: ENUM('Return only this part', PARTS),
-      filename: STRING('Write the output to this conversation-relative file', 1024),
-    }, ['index']),
-    planModeSafe: true,
     execute: async (input, ctx) => {
       const index = intArg(input, 'index')
       if (index === null || index < 1) return fail('index is required and must be a 1-based integer from browser_network_requests')
@@ -116,8 +99,6 @@ export const diagnosticTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_network_state_set',
-    description: 'Take the conversation browser tab offline or back online.',
-    inputSchema: schema({ state: ENUM('Network state', ['online', 'offline']) }, ['state']),
     execute: async (input, ctx) => {
       const state = input.state === 'offline' ? 'offline' : input.state === 'online' ? 'online' : null
       if (!state) return fail('state must be "online" or "offline"')
@@ -144,12 +125,6 @@ export const diagnosticTools: StudioBrowserTool[] = [
   },
   {
     name: 'browser_tabs',
-    description: 'Inspect or act on the one browser tab linked to this conversation.',
-    inputSchema: schema({
-      action: ENUM('Operation to perform', ['list', 'new', 'select', 'close', 'set_session_mode']),
-      url: STRING('URL to open when action is new', 8192),
-      sessionMode: ENUM('Browser session for set_session_mode', ['shared', 'isolated']),
-    }, ['action']),
     execute: async (input, ctx) => tabsAction(input, ctx),
   },
 ]
@@ -177,7 +152,7 @@ async function tabsAction(input: Record<string, unknown>, ctx: BrowserToolContex
     // walk onto any page the operator had prepared for themselves, which is
     // exactly what the single-link rule exists to prevent.
     if (ctx.origin === 'model') {
-      return fail('browser_tabs select is not available: this conversation has one agent-linked browser tab, and only the operator can move that link in the Studio tab strip.')
+      return fail('browser_tabs select is not available: this conversation has one agent-linked browser tab, and only the operator can move that link from the Studio surface tab strip.')
     }
     return fail('browser_tabs select is not supported; the linked tab is already the active target.')
   }
@@ -205,7 +180,7 @@ async function tabsAction(input: Record<string, unknown>, ctx: BrowserToolContex
     const resolved = await resolveBrowser(ctx.sessionKey, { create: true, ...(url ? { url } : {}) })
     if ('error' in resolved) return fail(resolved.error)
     return ok(formatResponse({
-      result: `This conversation has one agent-linked browser tab; it is now focused${url ? ` on ${url}` : ''}. Open more tabs from the Studio tab strip if you need side-by-side pages.`,
+      result: `This conversation has one agent-linked browser tab; it is now focused${url ? ` on ${url}` : ''}. Open more tabs from the Studio surface tab strip if you need side-by-side pages.`,
       page: { url: resolved.tab.url, title: resolved.tab.title },
     }))
   }

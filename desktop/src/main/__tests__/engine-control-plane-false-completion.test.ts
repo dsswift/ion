@@ -35,7 +35,7 @@ vi.mock('../logger', () => ({
   error: vi.fn(),
 }))
 
-vi.mock('../session-meta', () => ({
+vi.mock('@ion/server/session-meta', () => ({
   conversationExists: vi.fn(() => true),
 }))
 
@@ -43,9 +43,10 @@ vi.mock('../tool-gate-responder', () => ({
   toolGateSessionConfig: vi.fn(() => undefined),
 }))
 
-import { handleEngineEvent } from '../engine-control-plane-events'
-import type { TabEntry, EventEmitterContext } from '../engine-control-plane-events'
-import type { EngineEvent } from '../../shared/types'
+import { handleEngineEvent } from '@ion/server/engine/engine-control-plane-events'
+import { dispatchOrderingBaseline } from '@ion/server/engine/engine-control-plane-idle-ordering'
+import type { TabEntry, EventEmitterContext } from '@ion/server/engine/engine-control-plane-events'
+import type { EngineEvent } from '@ion/shared/types'
 
 function makeTab(overrides: Partial<TabEntry> = {}): TabEntry {
   return {
@@ -60,7 +61,6 @@ function makeTab(overrides: Partial<TabEntry> = {}): TabEntry {
     clearedSinceLastPrompt: false,
     resumedSavedConversation: false,
     permissionMode: 'auto',
-    approvedTools: [],
     startedAt: Date.now() - 10,
     toolCallCount: 0,
     sawPermissionRequest: false,
@@ -204,9 +204,32 @@ describe('handleStatusEvent — idle ordering against an in-flight prompt', () =
     expect(tab.lastObservedRunEpoch).toBe(5)
   })
 
+  it('completes the first run of a restarted session once its zero epoch arrives', () => {
+    // Replays conversation 1790213597513-3fa410d883b9: a run left the baseline
+    // at 1, the engine session was stopped and recreated (counter back to 0),
+    // then one prompt ran and ended at epoch 1. While the engine omitted a zero
+    // epoch, the baseline stayed 1, the run-ending idle at 1 read as "not
+    // advanced", and the conversation sat in Working until the user stopped it.
+    const tab = makeTab({ status: 'idle', lastObservedRunEpoch: 1 })
+
+    handleEngineEvent(ctx, 'tab-001', tab, idleStatus(0))
+    expect(tab.lastObservedRunEpoch).toBe(0)
+
+    Object.assign(tab, dispatchOrderingBaseline(tab.lastObservedRunEpoch), {
+      activeRequestId: 'req-1',
+      status: 'running',
+    })
+
+    handleEngineEvent(ctx, 'tab-001', tab, idleStatus(0))
+    expect(taskCompletes()).toHaveLength(0)
+
+    handleEngineEvent(ctx, 'tab-001', tab, idleStatus(1))
+    expect(taskCompletes()).toHaveLength(1)
+  })
+
   it('keeps the last known epoch when a status omits the field', () => {
-    // A single fieldless emission must not erase a baseline a live dispatch is
-    // relying on.
+    // Only an engine that predates the field omits it. A single fieldless
+    // emission must not erase a baseline a live dispatch is relying on.
     const tab = makeTab({ status: 'running', lastObservedRunEpoch: 9 })
 
     handleEngineEvent(ctx, 'tab-001', tab, runningStatus())

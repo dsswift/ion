@@ -4,9 +4,8 @@ const { handlers, warn, state, readFileSync } = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
   warn: vi.fn(),
   state: {
-    mainWindow: { hide: vi.fn(), show: vi.fn(), webContents: { focus: vi.fn() } },
+    studioWindow: { hide: vi.fn(), show: vi.fn(), isDestroyed: vi.fn(() => false), webContents: { focus: vi.fn() } },
     screenshotCounter: 0,
-    pasteCounter: 0,
   },
   readFileSync: vi.fn(),
 }))
@@ -31,8 +30,8 @@ vi.mock('../../broadcast', () => ({ broadcast: vi.fn() }))
 vi.mock('../../window-manager', () => ({ showWindow: vi.fn(), snapshotWindowState: vi.fn() }))
 vi.mock('../../logger', () => ({ log: vi.fn(), warn, debug: vi.fn() }))
 
-import { registerAttachmentsIpc } from '../attachments'
-import { IPC } from '../../../shared/types'
+import { registerAttachmentsIpc, userImagesDir } from '../attachments'
+import { IPC } from '@ion/shared/types'
 
 registerAttachmentsIpc()
 
@@ -45,36 +44,24 @@ function handler(channel: string): (...args: unknown[]) => Promise<unknown> {
 beforeEach(() => {
   vi.clearAllMocks()
   state.screenshotCounter = 0
-  state.pasteCounter = 0
 })
 
 describe('attachment IPC failures', () => {
-  it('logs malformed pasted image input before rejecting it', async () => {
-    await expect(handler(IPC.PASTE_IMAGE)({}, 'not-a-data-url')).resolves.toBeNull()
-    expect(warn).toHaveBeenCalledWith('main', 'attachments: paste image rejected invalid data URL', {
-      length: 14,
-      mime: 'invalid',
-    })
-  })
-
-  it('accepts SVG pasted image data URLs', async () => {
-    const result = await handler(IPC.PASTE_IMAGE)({}, 'data:image/svg+xml;base64,PHN2Zy8+') as { mimeType: string; name: string }
-    expect(result.mimeType).toBe('image/svg+xml')
-    expect(result.name).toBe('pasted image 1.svg')
-  })
-
   it('logs screenshot capture failure before returning null and restores window', async () => {
     await expect(handler(IPC.TAKE_SCREENSHOT)({})).resolves.toBeNull()
     expect(warn).toHaveBeenCalledWith('main', 'attachments: screenshot capture failed', { error: 'Error: capture unavailable' })
-    expect(state.mainWindow.show).toHaveBeenCalled()
-    expect(state.mainWindow.webContents.focus).toHaveBeenCalled()
+    expect(state.studioWindow.show).toHaveBeenCalled()
+    expect(state.studioWindow.webContents.focus).toHaveBeenCalled()
   })
 
-  it('rejects non-image or malformed pasted values before they can throw', async () => {
-    await expect(handler(IPC.PASTE_IMAGE)({}, null)).resolves.toBeNull()
-    expect(warn).toHaveBeenCalledWith('main', 'attachments: paste image rejected invalid data URL', {
-      length: 0,
-      mime: 'invalid',
-    })
+  it('stores screenshots under the data folder, not a hardcoded home path', () => {
+    const previous = process.env.ION_DATA_DIR
+    process.env.ION_DATA_DIR = '/srv/ion-data'
+    try {
+      expect(userImagesDir()).toBe('/srv/ion-data/user-images')
+    } finally {
+      if (previous === undefined) delete process.env.ION_DATA_DIR
+      else process.env.ION_DATA_DIR = previous
+    }
   })
 })

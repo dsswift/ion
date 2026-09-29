@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
+import { host } from '../host/host-instance'
 
 /**
  * Popover layer — sits outside the glass pill (no overflow:hidden clipping)
@@ -38,8 +39,17 @@ export function PopoverLayerProvider({ children }: { children: React.ReactNode }
   // open, because popovers animate in (Framer Motion) and are positioned by a
   // layout effect after their first paint — one measurement at insert time
   // would be the pre-animation rect.
+  //
+  // A host without the `browser` capability (spec 18: a browser Studio
+  // client) has no WebContentsView anywhere in the page — nothing this loop
+  // reports could ever occlude, since the DOM popover already stacks
+  // correctly over ordinary page content via `zIndex`. Skipping the whole
+  // loop is DOM-only positioning, not a special case: it is what "measure to
+  // shrink a native view" degrades to when no native view exists.
+  const hasBrowserSurface = host.capabilities().includes('browser')
+
   useEffect(() => {
-    if (!layerEl) return
+    if (!layerEl || !hasBrowserSurface) return
     let frame = 0
     let last = ''
     const measure = (): void => {
@@ -54,7 +64,9 @@ export function PopoverLayerProvider({ children }: { children: React.ReactNode }
       const encoded = JSON.stringify(rects)
       if (encoded !== last) {
         last = encoded
-        window.ion?.studioBrowserPopoverRects?.(rects)
+        // Optional call: a host whose shell has no browser view to carve
+        // (a partial double, or a client without one) has nothing to tell.
+        host.shell.studioBrowserPopoverRects?.(rects)
       }
       if (rects.length > 0 || layerEl.childElementCount > 0) frame = requestAnimationFrame(measure)
       else frame = 0
@@ -67,9 +79,9 @@ export function PopoverLayerProvider({ children }: { children: React.ReactNode }
       observer.disconnect()
       if (frame) cancelAnimationFrame(frame)
       // Leaving a rect behind would carve a permanent hole in every browser.
-      window.ion?.studioBrowserPopoverRects?.([])
+      host.shell.studioBrowserPopoverRects?.([])
     }
-  }, [layerEl])
+  }, [layerEl, hasBrowserSurface])
 
   return (
     <PopoverLayerContext.Provider value={layerEl}>

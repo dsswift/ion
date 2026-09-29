@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { homedir } from 'os'
-import { expandHome, isPathIgnoredByGitWatcher } from '../git/ignore-paths'
+import { expandHome, isPathIgnoredByGitWatcher } from '@ion/server/git/ignore-paths'
 
 const HOME = homedir()
 const HOME_ION = HOME + '/.ion'

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { groupMessages } from "../tool-helpers";
-import type { Message } from "../../../../shared/types";
+import { groupMessages } from "@ion/server/conversation/tool-helpers";
+import type { Message } from "@ion/shared/types";
 
 function msg(
   overrides: Partial<Message> & { id: string; role: Message["role"] },

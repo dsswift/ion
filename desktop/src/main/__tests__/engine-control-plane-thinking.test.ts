@@ -9,12 +9,12 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 // delta to `log`, this test goes red.
 const { mockLog, mockTrace } = vi.hoisted(() => ({ mockLog: vi.fn(), mockTrace: vi.fn() }))
 
-vi.mock('../logger', () => ({
+vi.mock('@ion/server/logger', () => ({
   log: mockLog,
   trace: mockTrace,
 }))
 
-import { handleThinkingEvent } from '../engine-control-plane-thinking'
+import { handleThinkingEvent } from '@ion/server/engine/engine-control-plane-thinking'
 
 function makeCtx() {
   return { emit: vi.fn() } as any

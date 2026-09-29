@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { host } from '../host/host-instance'
 
 /**
  * Subscribe to IPC events fired from the system tray menu. Today this is
@@ -8,7 +9,11 @@ import { useSessionStore } from '../stores/sessionStore'
  */
 export function useTrayMenuListeners() {
   useEffect(() => {
-    const unsub = window.ion.onShowSettings(() => {
+    // No OS tray in a browser tab -- BrowserStudioHost already omits
+    // 'tray' from capabilities() for exactly this reason; this call site
+    // just never checked it.
+    if (!host.capabilities().includes('tray')) return
+    const unsub = host.shell.onShowSettings(() => {
       useSessionStore.getState().openSettings()
     })
     return unsub

@@ -29,7 +29,7 @@ vi.mock('../logger', () => ({
   error: vi.fn(),
 }))
 
-import { EngineBridge } from '../engine-bridge'
+import { EngineBridge } from '@ion/server/engine/engine-bridge'
 
 function harness() {
   const bridge = new EngineBridge()

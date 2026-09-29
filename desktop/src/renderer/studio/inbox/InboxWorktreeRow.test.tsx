@@ -2,7 +2,7 @@
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { IntegrationMember, IntegrationWorkspace, TabState, WorktreeInventoryEntry } from '../../../shared/types'
+import type { IntegrationMember, IntegrationWorkspace, TabState, WorktreeInventoryEntry } from '@ion/shared/types'
 import type { InboxNavigatorGroup } from './inbox-navigator'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -43,7 +43,7 @@ const state = {
   refreshWorkspaceViews: vi.fn(),
 }
 
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (value: typeof state) => unknown) => selector(state),
     { getState: () => state },

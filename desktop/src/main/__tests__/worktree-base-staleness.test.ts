@@ -14,7 +14,7 @@
  * another worktree advances the feature branch — and also when a teammate
  * pushes or the operator commits to the feature branch directly.
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, realpathSync } from 'fs'
@@ -31,13 +31,13 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => process.env.ION_TEST_HOME_BASE_STALENESS || actual.homedir() }
 })
 
-import { appraiseBase } from '../worktree/base-staleness'
-import { syncWorktreeFromSource, landWorktree } from '../worktree/integrate'
-import { captureContribution } from '../integration/bench-snapshot'
-import { assembleBench } from '../integration/bench-assemble'
-import { makeWorkspace, makeMember } from '../integration/bench-store'
-import type { IntegrationMember, IntegrationWorkspace } from '../../shared/types'
-import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
+import { appraiseBase } from '@ion/server/worktree/base-staleness'
+import { syncWorktreeFromSource, landWorktree } from '@ion/server/worktree/integrate'
+import { captureContribution } from '@ion/server/integration/bench-snapshot'
+import { assembleBench } from '@ion/server/integration/bench-assemble'
+import { makeWorkspace, makeMember } from '@ion/server/integration/bench-store'
+import type { IntegrationMember, IntegrationWorkspace } from '@ion/shared/types'
+import { GIT_FIXTURE_TIMEOUT } from '@ion/server/test/git-fixture-timeout'
 
 const FEATURE = 'josh'
 

@@ -30,11 +30,14 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { normalizeSlashes } from '../../shared/paths'
+import { normalizeSlashes } from '@ion/shared/paths'
 
-const MAIN_DIR = join(__dirname, '..')
+// user-turn-echo.ts and its dependents moved to @ion/server when the
+// session store and its supporting modules moved server-side (Ion Studio
+// Server program) -- the funnel is no longer under desktop/src/main at all.
+const MAIN_DIR = join(__dirname, '..', '..', '..', '..', 'server', 'src')
 /** The funnel itself, and the low-level pusher it is built on. */
-const ALLOWED_FILES = new Set(['user-turn-echo.ts', 'studio-window-manager.ts'])
+const ALLOWED_FILES = new Set(['user-turn-echo.ts', 'engine/studio-window-manager.ts'])
 
 function collectTs(dir: string): string[] {
   const out: string[] = []
@@ -110,11 +113,16 @@ describe('user-turn echo funnel', () => {
     // renderer store and history mapper legitimately read the policy for
     // their own inserts; main's ECHO path reads it exactly once.
     //
-    // questions-rehydrate.ts is an allowed non-echo reader: it SCANS a
-    // persisted transcript to decide whether a machine-authored turn counts
-    // as the operator having answered. That is a question about history, not
-    // a decision about publishing a turn to a surface, so it cannot drift
-    // with the echo path.
+    // questions-rehydrate.ts and hooks/useTabRestoration-activity.ts are
+    // allowed non-echo readers: they SCAN a persisted transcript to decide
+    // whether a turn counts toward history (an already-answered question, the
+    // newest activity timestamp), which is a question about history, not a
+    // decision about publishing a turn to a surface, so it cannot drift with
+    // the echo path. store/slices/send-slice.ts and store/slices/event-slice.ts
+    // are the owner store's own inserts, classifying a turn as it is written
+    // into the store the funnel reads from — the same category the funnel
+    // module doc calls out ("the renderer store... read the policy for their
+    // own inserts").
     const users: string[] = []
     for (const file of collectTs(MAIN_DIR)) {
       // Forward-slash always: see the first loop's comment above.
@@ -126,6 +134,12 @@ describe('user-turn echo funnel', () => {
       const called = codeLines(src).some(({ text }) => /suppressesInjection\s*\(/.test(text))
       if (called) users.push(name)
     }
-    expect(users.sort()).toEqual(['questions/questions-rehydrate.ts', 'user-turn-echo.ts'])
+    expect(users.sort()).toEqual([
+      'hooks/useTabRestoration-activity.ts',
+      'questions/questions-rehydrate.ts',
+      'store/slices/event-slice.ts',
+      'store/slices/send-slice.ts',
+      'user-turn-echo.ts',
+    ])
   })
 })

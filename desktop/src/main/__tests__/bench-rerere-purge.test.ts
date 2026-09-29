@@ -4,11 +4,11 @@ import { join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../logger', () => ({ log: vi.fn(), warn: vi.fn() }))
-vi.mock('../git-runner', () => ({ runGit: vi.fn() }))
-vi.mock('../integration/bench-resolution-validation', () => ({ forgetRererePaths: vi.fn() }))
+vi.mock('@ion/server/git/git-runner', () => ({ runGit: vi.fn() }))
+vi.mock('@ion/server/integration/bench-resolution-validation', () => ({ forgetRererePaths: vi.fn() }))
 
-import { runGit } from '../git-runner'
-import { countRerereRecordings, discardAllRerereRecordings } from '../integration/bench-rerere-purge'
+import { runGit } from '@ion/server/git/git-runner'
+import { countRerereRecordings, discardAllRerereRecordings } from '@ion/server/integration/bench-rerere-purge'
 
 const git = vi.mocked(runGit)
 

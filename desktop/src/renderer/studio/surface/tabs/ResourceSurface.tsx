@@ -1,9 +1,9 @@
 import React from 'react'
-import { useSessionStore } from '../../../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../../../theme'
 import { ResourceContent } from '../../../components/ResourceContent'
 
-import { resourceMatchesIdentity } from '../../../../shared/resource-identity'
+import { resourceMatchesIdentity } from '@ion/shared/resource-identity'
 
 export function ResourceSurface({ resourceKind, resourceId, resourceProducer }: { resourceKind: string; resourceId: string; resourceProducer?: string }): React.JSX.Element {
   const colors = useColors()

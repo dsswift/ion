@@ -13,12 +13,12 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 // caught it.
 const { mockLog, mockDebug } = vi.hoisted(() => ({ mockLog: vi.fn(), mockDebug: vi.fn() }))
 
-vi.mock('../logger', () => ({
+vi.mock('@ion/server/logger', () => ({
   log: mockLog,
   debug: mockDebug,
 }))
 
-import { handleStreamSignalEvent } from '../engine-control-plane-stream'
+import { handleStreamSignalEvent } from '@ion/server/engine/engine-control-plane-stream'
 
 function makeCtx() {
   return { emit: vi.fn() } as any

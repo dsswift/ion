@@ -13,16 +13,21 @@ import { join } from 'path'
 
 const sentResults: Array<{ type: string; operation?: string; ok: boolean; error?: string }> = []
 
-vi.mock('../state', () => ({
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{
   state: {
     remoteWorktreeStates: new Map(),
-    remoteTransport: {
-      send: (msg: Record<string, unknown>) => { sentResults.push(msg as typeof sentResults[0]) },
-    },
   },
+} }))
+
+vi.mock('@ion/server/thin-view/remote-out', () => ({
+  remoteClientsPresent: () => true,
+  sendRemoteEvent: (msg: Record<string, unknown>) => { sentResults.push(msg as typeof sentResults[0]) },
 }))
 
-vi.mock('../broadcast', () => ({
+vi.mock('@ion/server/remote/handlers/worktree-store-commands', () => ({
+  handleWorktreeStoreCommand: vi.fn(async () => true),
+}))
+vi.mock('@ion/server/broadcast', () => ({
   broadcast: vi.fn(),
 }))
 
@@ -33,25 +38,21 @@ vi.mock('../logger', () => ({
   error: vi.fn(),
 }))
 
-vi.mock('os', async () => {
-  const actual = await vi.importActual<typeof import('os')>('os')
-  return { ...actual, homedir: () => process.env.ION_TEST_HOME_SET_STAGE || actual.homedir() }
-})
 
-vi.mock('../worktree/inventory-service', () => ({
+vi.mock('@ion/server/worktree/inventory-service', () => ({
   getWorktreeInventory: vi.fn().mockResolvedValue([]),
 }))
 
-vi.mock('../worktree/integrate', () => ({
+vi.mock('@ion/server/worktree/integrate', () => ({
   syncWorktreeFromSource: vi.fn(),
   landAndRetireWorktree: vi.fn(),
 }))
 
-vi.mock('../worktree/sync-all', () => ({
+vi.mock('@ion/server/worktree/sync-all', () => ({
   syncAllWorktrees: vi.fn(),
 }))
 
-vi.mock('../integration/bench-ops', () => ({
+vi.mock('@ion/server/integration/bench-ops', () => ({
   listWorkspaces: vi.fn().mockReturnValue([]),
   assembleWorkspace: vi.fn(),
   updateMember: vi.fn(),
@@ -63,7 +64,7 @@ vi.mock('../integration/bench-ops', () => ({
   sourceBranchTip: vi.fn(),
 }))
 
-vi.mock('../worktree/worktree-open', () => ({
+vi.mock('@ion/server/worktree/worktree-open', () => ({
   collectDirConversations: vi.fn().mockReturnValue([]),
   pickBenchConversation: vi.fn(),
   pickDirTerminal: vi.fn(),
@@ -73,18 +74,22 @@ import {
   registerWorktree,
   setRegistryWriter,
   resetRegistryWriter,
-} from '../worktree/registry'
+} from '@ion/server/worktree/registry'
 
-import { handleWorktreeCommand } from '../remote/handlers/worktree'
-import { landAndRetireWorktree } from '../worktree/integrate'
-import { broadcast } from '../broadcast'
+import { handleWorktreeCommand } from '@ion/server/remote/handlers/worktree'
+import { handleWorktreeStoreCommand } from '@ion/server/remote/handlers/worktree-store-commands'
+import { landAndRetireWorktree } from '@ion/server/worktree/integrate'
+import { broadcast } from '@ion/server/broadcast'
 
 let home: string
 
+let savedIonDataDir: string | undefined
+
 beforeEach(() => {
+  savedIonDataDir = process.env.ION_DATA_DIR
   home = mkdtempSync(join(tmpdir(), 'ion-setstage-'))
   mkdirSync(join(home, '.ion'), { recursive: true })
-  process.env.ION_TEST_HOME_SET_STAGE = home
+  process.env.ION_DATA_DIR = join(home, '.ion')
   sentResults.length = 0
   vi.clearAllMocks()
   resetRegistryWriter()
@@ -93,7 +98,8 @@ beforeEach(() => {
 afterEach(() => {
   resetRegistryWriter()
   rmSync(home, { recursive: true, force: true })
-  delete process.env.ION_TEST_HOME_SET_STAGE
+  if (savedIonDataDir === undefined) delete process.env.ION_DATA_DIR
+  else process.env.ION_DATA_DIR = savedIonDataDir
 })
 
 async function handleSetStage(overrides: Partial<{
@@ -181,37 +187,27 @@ describe('desktop_worktree_set_stage handler', () => {
 })
 
 describe('desktop_worktree remote lifecycle', () => {
-  it('routes owner-rendered worktree and bench actions through broadcast', async () => {
+  it('delegates every store-backed verb to the store-command module, which answers the phone itself', async () => {
+    // Validation and the op results for these are pinned in
+    // server/src/remote/handlers/__tests__/worktree-store-commands.test.ts.
     const commands = [
-      [{ type: 'desktop_worktree_create', repoPath: '/repo', sourceBranch: 'main' }, 'ion:remote-create-worktree'],
-      [{ type: 'desktop_worktree_convert_conversation', tabId: 'tab-1' }, 'ion:remote-convert-worktree-conversation'],
-      [{ type: 'desktop_worktree_rename', repoPath: '/repo', worktreePath: '/wt/a', title: 'Work' }, 'ion:remote-rename-worktree'],
-      [{ type: 'desktop_worktree_reprovision', repoPath: '/repo', worktreePath: '/wt/a' }, 'ion:remote-reprovision-worktree'],
-      [{ type: 'desktop_bench_recover_conflict', repoPath: '/repo', sourceBranch: 'main' }, 'ion:remote-recover-bench-conflict'],
-      [{ type: 'desktop_bench_analyse_verification', repoPath: '/repo', sourceBranch: 'main' }, 'ion:remote-analyse-bench-verification'],
-      [{ type: 'desktop_bench_discard_member_recordings', repoPath: '/repo', sourceBranch: 'main', branchNames: ['wt/a'] }, 'ion:remote-discard-bench-member-recordings'],
-      [{ type: 'desktop_bench_discard_all_recordings', repoPath: '/repo', sourceBranch: 'main' }, 'ion:remote-discard-all-bench-recordings'],
+      { type: 'desktop_worktree_create', repoPath: '/repo', sourceBranch: 'main' },
+      { type: 'desktop_worktree_convert_conversation', tabId: 'tab-1' },
+      { type: 'desktop_worktree_rename', repoPath: '/repo', worktreePath: '/wt/a', title: 'Work' },
+      { type: 'desktop_worktree_reprovision', repoPath: '/repo', worktreePath: '/wt/a' },
+      { type: 'desktop_bench_recover_conflict', repoPath: '/repo', sourceBranch: 'main' },
+      { type: 'desktop_bench_analyse_verification', repoPath: '/repo', sourceBranch: 'main' },
+      { type: 'desktop_bench_discard_member_recordings', repoPath: '/repo', sourceBranch: 'main', branchNames: ['wt/a'] },
+      { type: 'desktop_bench_discard_all_recordings', repoPath: '/repo', sourceBranch: 'main' },
     ] as const
 
-    for (const [command, channel] of commands) {
-      await handleWorktreeCommand(command as Parameters<typeof handleWorktreeCommand>[0])
-      if (channel === 'ion:remote-create-worktree') {
-        expect(broadcast).toHaveBeenCalledWith(channel, { repoPath: '/repo', sourceBranch: 'main' })
-      } else if (channel === 'ion:remote-convert-worktree-conversation') {
-        expect(broadcast).toHaveBeenCalledWith(channel, { tabId: 'tab-1' })
-      } else {
-        expect(broadcast).toHaveBeenCalledWith(channel, command)
-      }
+    for (const command of commands) {
+      expect(await handleWorktreeCommand(command as Parameters<typeof handleWorktreeCommand>[0])).toBe(true)
+      expect(handleWorktreeStoreCommand).toHaveBeenLastCalledWith(command)
     }
-  })
-
-  it('refuses invalid paths before owner-rendered actions are broadcast', async () => {
-    await handleWorktreeCommand({
-      type: 'desktop_worktree_reprovision', repoPath: 'relative', worktreePath: '/wt/a',
-    } as Parameters<typeof handleWorktreeCommand>[0])
-
-    expect(broadcast).not.toHaveBeenCalledWith('ion:remote-reprovision-worktree', expect.anything())
-    expect(sentResults).toContainEqual(expect.objectContaining({ operation: 'reprovision', ok: false, error: 'Invalid path.' }))
+    // Nothing rides a broadcast any more: the channels those used to take
+    // had no listener once the store moved into the server.
+    expect(broadcast).not.toHaveBeenCalledWith(expect.stringMatching(/^ion:remote-/), expect.anything())
   })
 
   it('broadcasts sealed worktree after remote land succeeds', async () => {
@@ -232,7 +228,7 @@ describe('desktop_worktree remote lifecycle', () => {
       repoPath: '/repo', worktreePath: '/wt/landed', branchName: 'wt/landed', sourceBranch: 'main',
     })
     // Preserve terminal landed fact, as real land operation does.
-    const registry = await import('../worktree/registry')
+    const registry = await import('@ion/server/worktree/registry')
     const mark = registry.markWorktreeLanded('/wt/landed')
     expect(mark).toBe(true)
 

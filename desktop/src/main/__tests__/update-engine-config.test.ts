@@ -18,29 +18,29 @@ vi.mock('fs', () => ({
   mkdirSync: vi.fn(),
 }))
 
-vi.mock('../utils/atomicWrite', () => ({
+vi.mock('@ion/server/utils/atomicWrite', async (importOriginal) => ({ ...(await importOriginal()), ...{
   atomicWriteFileSync: vi.fn((_path: string, data: string) => {
     const parsed = JSON.parse(data)
     writes.push(parsed)
     diskConfig = parsed
   }),
-}))
+} }))
 
 vi.mock('../logger', () => ({
   log: vi.fn(),
   warn: vi.fn(),
 }))
 
-vi.mock('../utils/secretStore', () => ({
+vi.mock('@ion/server/utils/secretStore', async (importOriginal) => ({ ...(await importOriginal()), ...{
   encryptSensitiveSettings: (d: any) => d,
   decryptSensitiveSettings: (d: any) => d,
-}))
+} }))
 
 import {
   updateEngineConfig,
   readEngineConfig,
   ensureHybridBackendConfig,
-} from '../settings-store'
+} from '@ion/server/persistence/settings-store'
 
 beforeEach(() => {
   diskConfig = {}

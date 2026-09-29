@@ -3,7 +3,7 @@ import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, it, expect, vi } from 'vitest'
-import type { Message } from '../../../../shared/types-session'
+import type { Message } from '@ion/shared/types-session'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -18,14 +18,14 @@ vi.mock('../../preferences', () => ({
     sel({ agentPanelDefaultOpen: false, unifiedTurnView: false }),
 }))
 
-vi.mock('../../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: (sel: (s: Record<string, unknown>) => unknown) =>
     sel({ dispatchActivity: {} }),
 }))
 
 // Mock sub-components to render data-testid markers without their full trees.
 vi.mock('../index', async () => {
-  const actual = await vi.importActual('../tool-helpers') as any
+  const actual = await vi.importActual('@ion/server/conversation/tool-helpers') as any
   return {
     groupMessages: actual.groupMessages,
     MessageBubble: ({ message }: any) => React.createElement('div', { 'data-testid': `user-${message.id}` }, message.content),

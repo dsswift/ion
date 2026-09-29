@@ -54,7 +54,7 @@ const mockBridge = {
   removeAllListeners: vi.fn(),
 }
 
-vi.mock('../engine-bridge', () => {
+vi.mock('@ion/server/engine/engine-bridge', () => {
   return {
     EngineBridge: function () {
       return mockBridge
@@ -67,7 +67,7 @@ vi.mock('../engine-bridge', () => {
 // engine-bridge-fs reads through to state.engineBridge lazily; for these
 // tests we never exercise the remote path, so a no-op mock keeps it out of
 // the way.
-vi.mock('../engine-bridge-fs', () => ({
+vi.mock('@ion/server/engine/engine-bridge-fs', () => ({
   engineIsRemote: vi.fn(() => false),
   getEngineHostInfo: vi.fn(() => Promise.resolve({ ok: false, error: 'not used in tests' })),
   listEngineDirectory: vi.fn(() => Promise.resolve({ ok: false, error: 'not used in tests' })),
@@ -90,8 +90,8 @@ vi.mock('crypto', async () => {
   }
 })
 
-import { EngineControlPlane } from '../engine-control-plane'
-import { EngineBridge } from '../engine-bridge'
+import { EngineControlPlane } from '@ion/server/engine/engine-control-plane'
+import { EngineBridge } from '@ion/server/engine/engine-bridge'
 
 // ─── Helpers ───
 

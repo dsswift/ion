@@ -27,25 +27,39 @@ vi.mock('electron', () => ({ app: { getPath: vi.fn() }, ipcMain: { on: vi.fn(), 
 
 const { mockSend, mockState, sessionPlaneEmitter } = vi.hoisted(() => {
   const mockSend = vi.fn()
-  const mockState = { remoteTransport: { send: mockSend } as any, mainWindow: null }
+  const mockState = { mainWindow: null }
   const sessionPlaneEmitter = new (require('events').EventEmitter)()
   return { mockSend, mockState, sessionPlaneEmitter }
 })
 
-vi.mock('../state', () => ({
+// The `desktop_*` device transport is gone; a RemoteEvent now leaves the
+// server through `sendRemoteEvent`, which fans it to thin Studio-wire
+// clients. Capture there, and drive the "is anyone listening" gate with
+// `remoteClientsPresent`.
+const { mockClientsPresent } = vi.hoisted(() => ({ mockClientsPresent: vi.fn(() => true) }))
+
+vi.mock('@ion/server/thin-view/remote-out', () => ({
+  sendRemoteEvent: mockSend,
+  remoteClientsPresent: mockClientsPresent,
+  syncRemoteAttention: vi.fn(),
+  thinConnections: vi.fn(() => []),
+  sendThinEventTo: vi.fn(() => true),
+}))
+
+vi.mock('@ion/server/state', async (importOriginal) => ({ ...(await importOriginal()), ...{
   state: mockState,
   sessionPlane: sessionPlaneEmitter,
   activeAssistantMessages: new Map(),
   lastMessagePreview: new Map<string, string>(),
-}))
+} }))
 
 // Use the real normalizedToRemote so desktop_text_chunk / desktop_task_complete
 // are actually produced when we emit the corresponding events. The test verifies
 // that desktop_text_chunk is suppressed and desktop_task_complete is forwarded.
-vi.mock('../../shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
+vi.mock('@ion/shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
-import { wireRemoteSessionPlaneForwarding } from '../event-wiring-remote'
+import { wireRemoteSessionPlaneForwarding } from '@ion/server/engine/event-wiring-remote'
 
 function sentOfType(type: string) {
   return mockSend.mock.calls.filter((c) => (c[0] as any)?.type === type)
@@ -55,7 +69,7 @@ describe('wireRemoteSessionPlaneForwarding — suppress engine-bridge-covered ev
   beforeEach(() => {
     vi.clearAllMocks()
     ;(sessionPlaneEmitter as EventEmitter).removeAllListeners()
-    mockState.remoteTransport = { send: mockSend } as any
+    mockClientsPresent.mockReturnValue(true)
     wireRemoteSessionPlaneForwarding()
   })
 

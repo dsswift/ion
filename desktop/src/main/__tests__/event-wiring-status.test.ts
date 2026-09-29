@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { remoteTabStatusFromEngineFields } from '../event-wiring-status'
+import { remoteTabStatusFromEngineFields } from '@ion/server/engine/event-wiring-status'
 
 describe('remoteTabStatusFromEngineFields', () => {
   it('maps idle with exact pending work to waiting', () => {

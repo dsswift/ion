@@ -17,16 +17,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const stopEngineDaemon = vi.hoisted(() => vi.fn(async () => true))
 
-vi.mock('../engine-bootstrap', () => ({ stopEngineDaemon }))
+vi.mock('@ion/server/engine/engine-bootstrap', () => ({ stopEngineDaemon }))
 
-vi.mock('../engine-address', () => ({
+vi.mock('@ion/server/engine/engine-address', () => ({
   resolveEngineAddress: () => ({ kind: 'tcp', host: '127.0.0.1', port: 21017 }),
   // Engine refuses connections immediately so the wait loop exits fast.
   probeEngine: vi.fn(async () => false),
+  waitForEngineStopped: vi.fn(async () => true),
 }))
 
-import { shutdownAndWait } from '../engine-bridge-lifecycle'
-import type { EngineBridge } from '../engine-bridge'
+import { shutdownAndWait } from '@ion/server/engine/engine-bridge-lifecycle'
+import type { EngineBridge } from '@ion/server/engine/engine-bridge'
 
 const originalPlatform = process.platform
 

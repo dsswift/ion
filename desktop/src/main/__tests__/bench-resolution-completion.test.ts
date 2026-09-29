@@ -1,23 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../logger', () => ({ log: vi.fn(), warn: vi.fn() }))
-vi.mock('../integration/bench-store', () => ({
+vi.mock('@ion/server/integration/bench-store', () => ({
   loadWorkspaces: vi.fn(),
   saveWorkspaces: vi.fn(),
 }))
-vi.mock('../git/operation-state', () => ({ probeOperationState: vi.fn() }))
-vi.mock('../git-runner', () => ({ runGit: vi.fn() }))
-vi.mock('../git/repositoryManager', () => ({
+vi.mock('@ion/server/git/operation-state', () => ({ probeOperationState: vi.fn() }))
+vi.mock('@ion/server/git/git-runner', () => ({ runGit: vi.fn() }))
+vi.mock('@ion/server/git/repositoryManager', () => ({
   repositoryManager: { get: vi.fn(() => ({ queue: { enqueueMutation: (fn: () => Promise<boolean>) => fn() } })) },
 }))
 
-import { loadWorkspaces, saveWorkspaces } from '../integration/bench-store'
-import { probeOperationState } from '../git/operation-state'
-import { runGit } from '../git-runner'
+import { loadWorkspaces, saveWorkspaces } from '@ion/server/integration/bench-store'
+import { probeOperationState } from '@ion/server/git/operation-state'
+import { runGit } from '@ion/server/git/git-runner'
 import {
   clearResolvedBenchConflict,
   reconcileCompletedBenchResolution,
-} from '../integration/bench-resolution-completion'
+} from '@ion/server/integration/bench-resolution-completion'
 
 const workspaces = vi.mocked(loadWorkspaces)
 const save = vi.mocked(saveWorkspaces)

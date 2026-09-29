@@ -12,9 +12,11 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 import { useGraphStore } from './graph-store'
 import { clearAllSessions, hasParkedSession, parkedPaths } from './session-park'
-import { GRAPH_VIEW_DEFAULTS } from '../../../shared/graph-view-types'
-import type { GraphViewConfig } from '../../../shared/graph-view-types'
-import type { CorpusSnapshot } from '../../../shared/graph-corpus-types'
+import { GRAPH_VIEW_DEFAULTS } from '@ion/shared/graph-view-types'
+import type { GraphViewConfig } from '@ion/shared/graph-view-types'
+import type { CorpusSnapshot } from '@ion/shared/graph-corpus-types'
+import { host } from '../../host/host-instance'
+import { installFakeWire } from '../../host/__tests__/fake-wire'
 
 function config(overrides?: Partial<GraphViewConfig>): GraphViewConfig {
   return {
@@ -53,7 +55,7 @@ let unsubscribeCalls: string[] = []
 function installIonStub(): void {
   subscribeCalls = []
   unsubscribeCalls = []
-  window.ion = {
+  window.ion = installFakeWire({
     graphViewGetConfig: vi.fn(async (p: string) => config({ corpusRoots: [{ path: p }] })),
     graphViewSetUserConfig: vi.fn(async () => ({ ok: true })),
     onGraphViewConfigChanged: vi.fn(() => () => undefined),
@@ -66,7 +68,7 @@ function installIonStub(): void {
       return { ok: true }
     }),
     onGraphCorpusDelta: vi.fn(() => () => undefined),
-  } as unknown as typeof window.ion
+  }) as unknown as typeof window.ion
 }
 
 beforeEach(() => {
@@ -98,9 +100,9 @@ describe('parking on switch-away', () => {
   })
 
   it('a failed init parks nothing and releases its reference immediately', async () => {
-    window.ion.graphCorpusSubscribe = vi.fn(async () => {
+    host.shell.graphCorpusSubscribe = vi.fn(async () => {
       throw new Error('scan failed')
-    }) as typeof window.ion.graphCorpusSubscribe
+    }) as typeof host.shell.graphCorpusSubscribe
 
     await useGraphStore.getState().init('/repo')
     useGraphStore.getState().dispose()

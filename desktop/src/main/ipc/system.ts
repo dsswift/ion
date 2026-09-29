@@ -1,10 +1,8 @@
-import { app, clipboard, ipcMain, nativeImage } from 'electron'
-import { existsSync, readFileSync } from 'fs'
-import { IPC } from '../../shared/types'
-import { LOG_FILE, log as _log, warn as _warn, debug as _debug } from '../logger'
-import { state, sessionPlane } from '../state'
-import { broadcast } from '../broadcast'
-import { gitExec } from '../git-runner'
+import { clipboard, ipcMain, nativeImage } from 'electron'
+import { IPC } from '@ion/shared/types'
+import { log as _log, warn as _warn, debug as _debug } from '../logger'
+import { state } from '../state'
+import { gitExec } from '@ion/server/git/git-runner'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -27,9 +25,6 @@ const MAX_CLIPBOARD_PNG_BYTES = 20 * 1024 * 1024
 
 /** PNG magic number. A payload that does not start with it is not a PNG. */
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-
-const CHART_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/
-const MESSAGE_ID_PATTERN = /^[a-zA-Z0-9_:.-]{1,128}$/
 
 export function registerSystemIpc(): void {
   ipcMain.handle(IPC.LIST_FONTS, async () => {
@@ -78,35 +73,6 @@ return output`
     }
   })
 
-  ipcMain.handle(IPC.GET_DIAGNOSTICS, () => {
-    const health = sessionPlane.getHealth()
-
-    let recentLogs = ''
-    if (existsSync(LOG_FILE)) {
-      try {
-        const content = readFileSync(LOG_FILE, 'utf-8')
-        const lines = content.split('\n')
-        recentLogs = lines.slice(-100).join('\n')
-      } catch (err) {
-        // The diagnostics endpoint silently omitting logs when it can't read
-        // them is especially bad; log the read failure.
-        warn('system: diagnostics recent-log read failed', { error: String(err) })
-      }
-    }
-
-    return {
-      health,
-      logPath: LOG_FILE,
-      recentLogs,
-      platform: process.platform,
-      arch: process.arch,
-      electronVersion: process.versions.electron,
-      nodeVersion: process.versions.node,
-      appVersion: app.getVersion(),
-      transport: 'engine',
-    }
-  })
-
   /**
    * Copy PNG bytes to the OS clipboard.
    *
@@ -142,30 +108,6 @@ return output`
     log('system: png copied to clipboard', { bytes: bytes.length, width: size.width, height: size.height })
     return true
   })
-
-  /**
-   * Route a chart-jump request to the conversation renderers.
-   *
-   * Broadcast rather than returned: the requester (attachments panel, moved
-   * marker) and the target (the transcript's virtualizer) are separate
-   * components that can live in different windows under the Studio mirror, so
-   * the transcript listens for the request wherever it is mounted.
-   */
-  ipcMain.on(IPC.CHART_JUMP, (_event, payload: unknown) => {
-    const request = payload as { tabId?: unknown; chartId?: unknown; messageId?: unknown } | null
-    const tabId = typeof request?.tabId === 'string' ? request.tabId : ''
-    const chartId = typeof request?.chartId === 'string' ? request.chartId : ''
-    const messageId = typeof request?.messageId === 'string' ? request.messageId : ''
-    if (!tabId || !CHART_ID_PATTERN.test(chartId) || !MESSAGE_ID_PATTERN.test(messageId)) {
-      warn('system: chart jump refused — malformed request', {
-        tab_id: tabId, chart_id: chartId, message_id: messageId,
-      })
-      return
-    }
-    broadcast(IPC.CHART_JUMP, { tabId, chartId, messageId })
-    log('system: chart jump routed', { tab_id: tabId, chart_id: chartId, message_id: messageId })
-  })
-
 }
 
 /**

@@ -13,6 +13,7 @@ import { resolve } from 'path'
 
 const COMPONENTS = resolve(__dirname, '..')
 const RENDERER = resolve(__dirname, '../..')
+const SERVER_STORE = resolve(__dirname, '../../../../../server/src/store')
 
 describe('conversation view is unified — structural guards', () => {
   it('there is no EngineView.tsx file', () => {
@@ -29,24 +30,24 @@ describe('conversation view is unified — structural guards', () => {
     expect(src).not.toContain('export function EngineView')
   })
 
-  it('App.tsx mounts one ConversationView for non-terminal tabs with no isEngine view fork', () => {
-    const app = readFileSync(resolve(RENDERER, 'App.tsx'), 'utf8')
+  it('StudioCenter.tsx mounts one ConversationView for non-terminal tabs with no isEngine view fork', () => {
+    const studioCenter = readFileSync(resolve(RENDERER, 'studio/StudioCenter.tsx'), 'utf8')
     // No engine-view mount and no engine-specific view/layout flags.
-    expect(app).not.toContain('<EngineView')
-    expect(app).not.toMatch(/\bisEngine\b/)
-    expect(app).not.toMatch(/\bisEngineTall\b/)
+    expect(studioCenter).not.toContain('<EngineView')
+    expect(studioCenter).not.toMatch(/\bisEngine\b/)
+    expect(studioCenter).not.toMatch(/\bisEngineTall\b/)
     // The single conversation mount is data-agnostic (keyed on activeTabId so
     // React remounts on tab switch, resetting local state like scroll and
     // search).
-    expect(app).toContain('<ConversationView key={activeTabId} tabId={activeTabId} />')
+    expect(studioCenter).toContain('<ConversationView key={activeTabId} tabId={activeTabId} />')
   })
 
   it('submitEnginePrompt is gone from the renderer source tree', () => {
     // Walk the store slices + components for the deleted action symbol.
     const files = [
-      resolve(RENDERER, 'stores/session-store-types.ts'),
-      resolve(RENDERER, 'stores/slices/engine-slice-submit.ts'),
-      resolve(RENDERER, 'stores/slices/send-slice.ts'),
+      resolve(SERVER_STORE, 'session-store-types.ts'),
+      resolve(SERVER_STORE, 'slices/engine-slice-submit.ts'),
+      resolve(SERVER_STORE, 'slices/send-slice.ts'),
       resolve(RENDERER, 'components/InputBar.tsx'),
       resolve(RENDERER, 'components/ConversationView.tsx'),
     ]

@@ -16,18 +16,18 @@ vi.mock("fs", () => ({
   readFileSync: mocks.readFileSync,
   mkdirSync: mocks.mkdirSync,
 }));
-vi.mock("../utils/atomicWrite", () => ({
+vi.mock("@ion/server/utils/atomicWrite", () => ({
   atomicWriteFileSync: mocks.atomicWriteFileSync,
 }));
-vi.mock("../logger", () => ({ log: vi.fn(), warn: vi.fn() }));
+vi.mock("@ion/server/logger", () => ({ log: vi.fn(), warn: vi.fn() }));
 
 import {
   loadExplorerState,
   saveExplorerState,
   forgetExplorerState,
   resetExplorerStateCache,
-} from "../explorer-state-store";
-import type { ExplorerStateSnapshot } from "../../shared/explorer-state";
+} from "@ion/server/explorer-state-store";
+import type { ExplorerStateSnapshot } from "@ion/shared/explorer-state";
 
 const snapshot: ExplorerStateSnapshot = {
   version: 1,

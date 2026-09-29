@@ -13,7 +13,7 @@ vi.mock('fs', async (importOriginal) => {
   return { ...actual, existsSync: (p: string) => existingDirs.has(p) }
 })
 
-import { planLaunchEnvironmentSanitization, type LaunchEnvironmentAccount } from '../launch-env'
+import { planLaunchEnvironmentSanitization, type LaunchEnvironmentAccount } from '@ion/server/launch-env'
 import { join } from 'path'
 
 const ACCOUNT: LaunchEnvironmentAccount = { username: 'operator', homedir: 'C:\\Users\\operator', shell: '' }

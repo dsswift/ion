@@ -9,23 +9,13 @@
  * prompt the renderer had just titled the tab with, so one piece of work got two
  * independently-worded names that drifted from the moment they were written.
  *
- * The DECISION about whether a seed applies lives in the main process, against
- * the registry, because a renderer-side check would read whichever inventory
- * snapshot that window happens to hold (stale in the Studio mirror, absent in a
- * window that never opened the git panel) and both windows would race.
- *
- * So these tests pin the decision table:
- *   - registered worktree, no title  → persist, announce
- *   - registered worktree, has title → REFUSED, stored title untouched
- *   - unregistered directory         → REFUSED
- *   - empty/whitespace seed          → REFUSED
- *   - NO `generateTitle` call on any path
- *   - hand-created worktree titled by the operator → recorded with an UNKNOWN
- *     source branch, never a guessed one
- *
- * Regression direction: reintroducing a `generateTitle` call on this path turns
- * the "never generates" assertions red; dropping the `registration.title`
- * short-circuit turns first-prompt-wins red.
+ * The DECISION about whether a seed applies lives in the server, against the
+ * registry (`store/host-api-git.ts` `gitWorktreeSeedTitle`, pinned by
+ * `server/src/store/__tests__/host-api-git-seed-title.test.ts`), because a
+ * renderer-side check would read whichever inventory snapshot that window
+ * happens to hold and every client would race. This file pins the STORAGE
+ * half: a hand-created worktree titled by the operator is recorded with an
+ * UNKNOWN source branch, never a guessed one.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, existsSync, readFileSync } from 'fs'
@@ -36,10 +26,6 @@ vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error
 
 // Per-file HOME redirect: vitest runs test FILES concurrently in one process,
 // so a shared env var name would let files clobber each other's registry.
-vi.mock('os', async () => {
-  const actual = await vi.importActual<typeof import('os')>('os')
-  return { ...actual, homedir: () => process.env.ION_TEST_HOME_WT_SEED_TITLE || actual.homedir() }
-})
 
 import {
   registerWorktree,
@@ -48,21 +34,25 @@ import {
   lookupWorktreeRegistration,
   lookupSourceBranch,
   worktreeRegistryFile,
-} from '../worktree/inventory'
+} from '@ion/server/worktree/inventory'
 
 const REPO = '/Users/dev/src/ion'
 const WT = '/Users/dev/.ion/worktrees/ion-a3f1'
 
 let home: string
 
+let savedIonDataDir: string | undefined
+
 beforeEach(() => {
+  savedIonDataDir = process.env.ION_DATA_DIR
   home = mkdtempSync(join(tmpdir(), 'ion-seed-title-'))
-  process.env.ION_TEST_HOME_WT_SEED_TITLE = home
+  process.env.ION_DATA_DIR = join(home, '.ion')
 })
 
 afterEach(() => {
   rmSync(home, { recursive: true, force: true })
-  delete process.env.ION_TEST_HOME_WT_SEED_TITLE
+  if (savedIonDataDir === undefined) delete process.env.ION_DATA_DIR
+  else process.env.ION_DATA_DIR = savedIonDataDir
 })
 
 function readRegistry(): { version: number; entries: any[] } {
@@ -179,161 +169,5 @@ describe('worktree title storage', () => {
     })
 
     expect(lookupWorktreeTitle(WT)).toBe('What the work is actually about')
-  })
-})
-
-describe('seed-title decision', () => {
-  /**
-   * The handler under test is registered on ipcMain, so the decision logic is
-   * exercised through a captured handler rather than a live Electron process.
-   *
-   * `engineBridge.generateTitle` is still mocked — not because this path uses
-   * it, but so the tests can assert it is NEVER called. That assertion is the
-   * regression guard against reintroducing the second generator this change
-   * removed.
-   */
-  async function loadHandlers() {
-    const handlers = new Map<string, (...args: any[]) => any>()
-    const generateTitle = vi.fn(async () => 'A generated name')
-    const pushWorktreeState = vi.fn(async () => {})
-    const broadcast = vi.fn()
-
-    vi.resetModules()
-    vi.doMock('electron', () => ({
-      ipcMain: { handle: (channel: string, fn: any) => handlers.set(channel, fn) },
-    }))
-    vi.doMock('../state', () => ({ engineBridge: { generateTitle } }))
-    vi.doMock('../broadcast', () => ({ broadcast }))
-    vi.doMock('../remote/handlers/worktree', () => ({ pushWorktreeState }))
-
-    const { registerWorktreeIpc } = await import('../ipc/worktree')
-    registerWorktreeIpc()
-    return { handlers, generateTitle, pushWorktreeState, broadcast }
-  }
-
-  afterEach(() => {
-    vi.doUnmock('electron')
-    vi.resetModules()
-  })
-
-  it('records the seed on an untitled registered worktree and announces it', async () => {
-    registerWorktree({ worktreePath: WT, repoPath: REPO, branchName: 'wt/ion-a3f1', sourceBranch: 'josh' })
-    const { handlers, generateTitle, broadcast, pushWorktreeState } = await loadHandlers()
-
-    const result = await handlers.get('ion:git-worktree-seed-title')!(
-      {}, { worktreePath: WT, title: 'Fix the token expiry check' },
-    )
-
-    expect(result).toEqual({ ok: true, title: 'Fix the token expiry check' })
-    expect(lookupWorktreeTitle(WT)).toBe('Fix the token expiry check')
-    // Nothing on this path may talk to a model.
-    expect(generateTitle).not.toHaveBeenCalled()
-    // Both renderer windows repaint, and the phone is pushed.
-    expect(broadcast).toHaveBeenCalledWith('ion:worktree-titled', {
-      repoPath: REPO, worktreePath: WT, title: 'Fix the token expiry check',
-    })
-    expect(pushWorktreeState).toHaveBeenCalledWith(REPO)
-  })
-
-  it('trims the seed before storing it', async () => {
-    registerWorktree({ worktreePath: WT, repoPath: REPO, branchName: 'wt/ion-a3f1', sourceBranch: 'josh' })
-    const { handlers } = await loadHandlers()
-
-    const result = await handlers.get('ion:git-worktree-seed-title')!(
-      {}, { worktreePath: WT, title: '  Fix the token expiry check  ' },
-    )
-
-    expect(result).toEqual({ ok: true, title: 'Fix the token expiry check' })
-    expect(lookupWorktreeTitle(WT)).toBe('Fix the token expiry check')
-  })
-
-  /**
-   * FIRST PROMPT WINS — the topic-stability rule.
-   *
-   * Several conversations routinely share one worktree, and each of their first
-   * sends reaches this handler. A worktree is cut for a topic, and that topic
-   * does not change because a second tab was opened in it to chase a bug found
-   * along the way. Whichever conversation prompts first names it; every later
-   * seed is refused and the stored name is untouched.
-   *
-   * Regression direction: dropping the `registration.title` guard makes the
-   * second seed overwrite the first and turns this red.
-   */
-  it('refuses a second seed, so the first conversation to prompt names the worktree', async () => {
-    registerWorktree({ worktreePath: WT, repoPath: REPO, branchName: 'wt/ion-a3f1', sourceBranch: 'josh' })
-    const { handlers, generateTitle } = await loadHandlers()
-
-    const first = await handlers.get('ion:git-worktree-seed-title')!(
-      {}, { worktreePath: WT, title: 'What the worktree is for' },
-    )
-    const second = await handlers.get('ion:git-worktree-seed-title')!(
-      {}, { worktreePath: WT, title: 'A later conversation about something else' },
-    )
-
-    expect(first).toEqual({ ok: true, title: 'What the worktree is for' })
-    expect(second).toEqual({
-      ok: false, reason: 'already-titled', title: 'What the worktree is for',
-    })
-    expect(lookupWorktreeTitle(WT)).toBe('What the worktree is for')
-    expect(generateTitle).not.toHaveBeenCalled()
-  })
-
-  it('refuses a seed for an ordinary project directory', async () => {
-    const { handlers, generateTitle } = await loadHandlers()
-
-    const result = await handlers.get('ion:git-worktree-seed-title')!(
-      {}, { worktreePath: REPO, title: 'A title from a normal project tab' },
-    )
-
-    expect(result).toEqual({ ok: false, reason: 'not-a-worktree' })
-    expect(generateTitle).not.toHaveBeenCalled()
-  })
-
-  it('refuses a whitespace-only seed rather than blanking the row', async () => {
-    registerWorktree({ worktreePath: WT, repoPath: REPO, branchName: 'wt/ion-a3f1', sourceBranch: 'josh' })
-    const { handlers, generateTitle } = await loadHandlers()
-
-    const result = await handlers.get('ion:git-worktree-seed-title')!(
-      {}, { worktreePath: WT, title: '   ' },
-    )
-
-    expect(result.reason).toBe('empty-input')
-    expect(lookupWorktreeTitle(WT)).toBeNull()
-    expect(generateTitle).not.toHaveBeenCalled()
-  })
-
-  it('applies an operator rename and refuses an empty one', async () => {
-    registerWorktree({ worktreePath: WT, repoPath: REPO, branchName: 'wt/ion-a3f1', sourceBranch: 'josh' })
-    setWorktreeTitle(WT, 'Seeded name')
-    const { handlers } = await loadHandlers()
-
-    const ok = await handlers.get('ion:git-worktree-set-title')!(
-      {}, { worktreePath: WT, repoPath: REPO, title: '  Operator knows better  ' },
-    )
-    expect(ok).toEqual({ ok: true, title: 'Operator knows better' })
-    expect(lookupWorktreeTitle(WT)).toBe('Operator knows better')
-
-    const refused = await handlers.get('ion:git-worktree-set-title')!(
-      {}, { worktreePath: WT, repoPath: REPO, title: '   ' },
-    )
-    expect(refused.ok).toBe(false)
-    // The refusal must not have blanked the row.
-    expect(lookupWorktreeTitle(WT)).toBe('Operator knows better')
-  })
-
-  // The operator rename is the ONE path that may replace an existing name. The
-  // seed's already-titled guard must not have leaked into it.
-  it('lets the operator rename a worktree that a seed already named', async () => {
-    registerWorktree({ worktreePath: WT, repoPath: REPO, branchName: 'wt/ion-a3f1', sourceBranch: 'josh' })
-    const { handlers } = await loadHandlers()
-
-    await handlers.get('ion:git-worktree-seed-title')!(
-      {}, { worktreePath: WT, title: 'Seeded from the conversation' },
-    )
-    await handlers.get('ion:git-worktree-set-title')!(
-      {}, { worktreePath: WT, repoPath: REPO, title: 'Renamed by hand' },
-    )
-
-    expect(lookupWorktreeTitle(WT)).toBe('Renamed by hand')
   })
 })

@@ -2,16 +2,16 @@ import React, { useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import { useColors } from "../../theme";
-import { groupMessages } from "./tool-helpers";
+import { groupMessages } from "@ion/server/conversation/tool-helpers";
 import { TranscriptRows } from "./TranscriptRows";
 import { useScrollFollow } from "./useScrollFollow";
 import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { AgentPanel } from "../AgentPanel";
 import { DispatchStopControl } from "../DispatchStopControl";
-import { useSessionStore } from "../../stores/sessionStore";
-import type { Message } from "../../../shared/types-session";
-import type { AgentStateUpdate } from "../../../shared/types-engine";
-import type { DispatchTelemetryEntry } from "../../../shared/types-engine";
+import { useSessionStore } from "@ion/server/store/sessionStore";
+import type { Message } from "@ion/shared/types-session";
+import type { AgentStateUpdate } from "@ion/shared/types-engine";
+import type { DispatchTelemetryEntry } from "@ion/shared/types-engine";
 
 // Stable empty refs to avoid new references each render (same pattern
 // as ConversationView.tsx).
@@ -36,7 +36,7 @@ export interface TranscriptProps {
   dispatchTelemetry?: DispatchTelemetryEntry[];
   /** Called when the user opens a dispatch detail popup from the agent panel. */
   onOpenDispatch?: (
-    dispatch: import("../../../shared/types-engine").DispatchInfo,
+    dispatch: import("@ion/shared/types-engine").DispatchInfo,
     agent: AgentStateUpdate,
   ) => void;
   /**

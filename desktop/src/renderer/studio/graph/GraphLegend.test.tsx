@@ -11,8 +11,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { GraphLegend, MAX_LEGEND_VALUES } from './GraphLegend'
 import { useGraphStore } from './graph-store'
 import { buildChannelScales } from './channels/build-channel-scales'
-import { darkColors } from '../../theme/palette-dark'
-import type { GraphModel, GraphNode } from '../../../shared/graph-model-types'
+import { darkColors } from '@ion/server/renderer/theme/palette-dark'
+import type { GraphModel, GraphNode } from '@ion/shared/graph-model-types'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 

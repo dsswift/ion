@@ -12,7 +12,7 @@
  *  - GIT_CONFLICT_ACCEPT ours/theirs stages the file and empties the unmerged
  *    list, including the delete-conflict path where acceptance is `git rm`.
  */
-import { removeGitFixture } from '../../test/git-fixture-cleanup'
+import { removeGitFixture } from '@ion/server/test/git-fixture-cleanup'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
 import { mkdtempSync, writeFileSync, existsSync, realpathSync } from 'fs'
@@ -36,10 +36,12 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => process.env.ION_TEST_HOME_GIT_CONFLICTS || actual.homedir() }
 })
 
-import { registerGitConflictsIpc } from '../ipc/git-conflicts'
-import { IPC } from '../../shared/types'
+// The conflict verbs live in @ion/server/git/git-api-ops, in the shared
+// table the Studio wire reads from; drive that table directly.
+import { GIT_HANDLERS } from '@ion/server/git/git-api'
+import { IPC } from '@ion/shared/types'
 
-registerGitConflictsIpc()
+for (const [channel, handler] of Object.entries(GIT_HANDLERS)) handlers.set(channel, (_event: unknown, payload: unknown) => handler(payload))
 
 async function invoke<T>(channel: string, payload: Record<string, unknown>): Promise<T> {
   const handler = handlers.get(channel)
