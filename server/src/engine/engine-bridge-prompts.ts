@@ -1,0 +1,189 @@
+import type { ImageAttachmentPayload } from '@ion/shared/types'
+import type { ClientWorkspaceContext } from '@ion/shared/types-engine'
+import { currentPrincipal, currentClaims } from '../identity/request-principal'
+import { principalSubjectForTab } from '../protocol/tabs-index'
+import { toSessionPrincipal } from '../identity/session-principal'
+
+/**
+ * Sibling helper for EngineBridge.sendPrompt — the prompt-message
+ * construction was peeled out so engine-bridge.ts stays under the 600-
+ * line TypeScript cap after Fix 7 added the per-prompt bash-allowlist
+ * additions field. Pure data shaping with no I/O; the bridge owns the
+ * connection and the _send dispatch.
+ *
+ * Every optional field follows the same wire-protocol pattern: only
+ * attach when explicitly present so the engine's omitempty fields
+ * round-trip cleanly and the line wire stays minimal for the common
+ * case where most overrides are not set.
+ */
+
+export interface SendPromptArgs {
+  key: string
+  text: string
+  model?: string
+  appendSystemPrompt?: string
+  imageAttachments?: ImageAttachmentPayload[]
+  implementationPhase?: boolean
+  /**
+   * Per-prompt extended-thinking effort (live per-conversation control).
+   * Three meaningful states: a level ('low'/'medium'/'high') sets thinking
+   * for the run, the literal 'off' CLEARS it (overriding any engine.json or
+   * session default), and `undefined` means "no opinion — inherit the
+   * configured default". Mapped onto the wire `thinkingEffort` field, which
+   * the engine turns into RunOptions.Thinking.
+   */
+  thinkingEffort?: string
+  enterPlanModeDescription?: string
+  planModeSparseReminder?: string
+  planFilePath?: string
+  bashAllowlistAdditionsForThisPrompt?: string[]
+  /**
+   * When true, instruct the engine to treat `text` as a slash invocation
+   * (`/name args`) and own the resolution + expansion: resolve the template
+   * across the engine's command roots, expand it, feed the expanded body to
+   * the model, and persist the RAW invocation as the displayed user turn.
+   * Sent on the wire only when truthy (mirrors the engine's omitempty
+   * `resolveSlash` field).
+   */
+  resolveSlash?: boolean
+  /** Per-invocation override for command-owned model-tier application. */
+  slashModelTierApplyMidConversation?: boolean
+  /** Use auto-mode tools for one command without leaving the active plan workflow. */
+  temporaryAutoFromPlan?: boolean
+  clientWorkspaceContext?: ClientWorkspaceContext
+  /** Stable caller delivery identity for idempotent engine acceptance. */
+  deliveryId?: string
+  /** Optional transcript text; `text` remains the provider-visible prompt. */
+  displayText?: string
+  /**
+   * How this turn was authored, as an engine InjectionKind wire value.
+   * 'structured_answer' marks a Guided Questions submission: the operator
+   * chose the values in the wizard. The kind preserves that provenance while
+   * displayText keeps model-facing control text out of the transcript card.
+   * Absent for an ordinary typed turn.
+   */
+  injectionKind?: string
+  /**
+   * W3C traceparent of the server span that sent this prompt. The engine
+   * makes the run's run.execute span a child of it; an invalid value makes
+   * the engine start its own trace. Sent only when present.
+   */
+  traceparent?: string
+}
+
+export function buildSendCommandMessage(
+  args: SendPromptArgs,
+  command: string,
+  commandArgs: string,
+): Record<string, unknown> {
+  const msg = buildSendPromptMessage(args)
+  msg.cmd = 'command'
+  msg.command = command
+  msg.args = commandArgs
+  delete msg.text
+  return msg
+}
+
+/**
+ * Builds the `send_prompt` wire message from the bridge's positional
+ * parameters. Each conditional below mirrors the engine's omitempty
+ * shape on `ClientCommand` — fields are attached only when explicitly
+ * set, so the engine treats absent values as "no override" rather
+ * than "explicit zero / empty / false".
+ */
+export function buildSendPromptMessage(args: SendPromptArgs): Record<string, unknown> {
+  const msg: Record<string, unknown> = { cmd: 'send_prompt', key: args.key, text: args.text }
+  // Turn attribution (P0): only sent when the caller driving THIS turn
+  // differs from the tab's own owner -- the common case (a principal
+  // prompting their own tab) needs no override, since start_session already
+  // attributed the session. Differs in shared tenancy (FR-02), where a
+  // second principal can drive someone else's tab; the engine then knows
+  // who actually authored this specific turn.
+  const caller = currentPrincipal()
+  if (caller && caller.subject !== principalSubjectForTab(args.key)) {
+    msg.principal = toSessionPrincipal(caller, currentClaims())
+  }
+  if (args.model) msg.model = args.model
+  if (args.appendSystemPrompt) msg.appendSystemPrompt = args.appendSystemPrompt
+  if (args.imageAttachments && args.imageAttachments.length > 0) {
+    msg.attachments = args.imageAttachments.map((a) => ({
+      contentHash: a.contentHash,
+      media_type: a.mediaType,
+      data: a.data,
+      path: a.path,
+    }))
+  }
+  // Tells the engine to suppress EnterPlanMode injection for this run.
+  // Only sent when truthy so the wire format stays minimal for the
+  // common case. The engine's ClientCommand.ImplementationPhase field
+  // is omitempty, so this round-trips cleanly. See ADR-003 framing in
+  // the plan-mode docs for why structured flags beat prompt prose.
+  if (args.implementationPhase) msg.implementationPhase = true
+  // Per-prompt thinking effort. Three distinct wire states, all meaningful:
+  //   - "low"/"medium"/"high" → set thinking for this run
+  //   - "off"                 → CLEAR thinking, overriding any engine.json or
+  //                             session default (the engine's `eff == "off"`
+  //                             arm sets RunOptions.Thinking = nil)
+  //   - absent                → no opinion; inherit the configured default
+  // The sentinel is forwarded rather than dropped: collapsing "off" into
+  // absence would make a conversation with thinking switched off inherit a
+  // configured default. ClientCommand.ThinkingEffort is omitempty on the Go
+  // side, so an absent field still round-trips as "no opinion".
+  if (args.thinkingEffort) msg.thinkingEffort = args.thinkingEffort
+  // Harness-supplied EnterPlanMode tool description (ADR-004). The
+  // engine's RunOptions.EnterPlanModeDescription field is omitempty —
+  // only send when non-empty so the wire format stays minimal. The
+  // engine forwards the string verbatim to the model as the tool
+  // description; empty / missing falls back to the engine's one-line
+  // neutral default (which the desktop deliberately avoids by always
+  // sending its full prose on auto-mode prompts).
+  if (args.enterPlanModeDescription) msg.enterPlanModeDescription = args.enterPlanModeDescription
+  // Harness-supplied sparse plan-mode reminder text. Only sent when
+  // non-empty so the wire format stays minimal for the common case.
+  // Mirrors enterPlanModeDescription: the engine uses this verbatim
+  // instead of buildPlanModeSparseReminder when present.
+  if (args.planModeSparseReminder) msg.planModeSparseReminder = args.planModeSparseReminder
+  if (args.planFilePath) msg.planFilePath = args.planFilePath
+  // Per-prompt bash-allowlist additions. The engine unions these with
+  // the session-scoped allowlist for this run only (no session-state
+  // mutation), so a slash command with frontmatter-declared bash
+  // permissions can grant them transiently without leaking into the
+  // next prompt. See docs/protocol/client-commands.md § set_plan_mode
+  // for the three-layer configuration model. Only sent when the array
+  // is present and non-empty to keep the wire format minimal.
+  if (args.bashAllowlistAdditionsForThisPrompt && args.bashAllowlistAdditionsForThisPrompt.length > 0) {
+    msg.bashAllowlistAdditionsForThisPrompt = args.bashAllowlistAdditionsForThisPrompt
+  }
+  // Tells the engine to resolve + expand `text` as a slash invocation
+  // rather than sending it as a plain message. Only attached when truthy so
+  // the engine's omitempty `resolveSlash` field round-trips cleanly and an
+  // absent value means "plain message" (unchanged behavior).
+  if (args.resolveSlash) msg.resolveSlash = true
+  if (args.slashModelTierApplyMidConversation !== undefined) {
+    msg.slashModelTierApplyMidConversation = args.slashModelTierApplyMidConversation
+  }
+  if (args.temporaryAutoFromPlan) msg.temporaryAutoFromPlan = true
+  if (args.clientWorkspaceContext) msg.clientWorkspaceContext = args.clientWorkspaceContext
+  if (args.deliveryId) msg.deliveryId = args.deliveryId
+  if (args.displayText) msg.displayText = args.displayText
+  if (args.injectionKind) msg.injectionKind = args.injectionKind
+  if (args.traceparent) msg.traceparent = args.traceparent
+  return msg
+}
+
+/**
+ * Builds the log line for a send_prompt invocation, capturing every
+ * carrier field's presence/length so an operator reading
+ * `~/.ion/desktop.log` can confirm what the wire payload actually
+ * carried without snooping the socket. JSON.stringify is used for the
+ * bash-additions array so the empty-vs-undefined distinction stays
+ * visible — length collapses both to 0 and hides the user-intent case
+ * behind the no-additions case.
+ */
+export function buildSendPromptLogLine(args: SendPromptArgs): string {
+  const attCount = args.imageAttachments?.length ?? 0
+  const descLen = args.enterPlanModeDescription?.length ?? 0
+  const reminderLen = args.planModeSparseReminder?.length ?? 0
+  const bashAddCount = args.bashAllowlistAdditionsForThisPrompt?.length ?? 0
+  return `sendPrompt: key=${args.key} len=${args.text.length} displayLen=${args.displayText?.length ?? 0} model=${args.model ?? 'default'} hasSysPrompt=${!!args.appendSystemPrompt} images=${attCount} implementationPhase=${args.implementationPhase ?? false} enterPlanModeDescLen=${descLen} planModeSparseReminderLen=${reminderLen} planFilePath=${args.planFilePath ?? 'none'} bashAdditions=${bashAddCount} resolveSlash=${args.resolveSlash ?? false} temporaryAutoFromPlan=${args.temporaryAutoFromPlan ?? false} clientWsCtx=${args.clientWorkspaceContext?.kind ?? 'none'}`
+}
