@@ -36,6 +36,17 @@ extension SessionViewModel {
         conversationInstances[tabId]?.first
     }
 
+    /// The model a conversation falls back to when it has no pick of its own,
+    /// as its SERVER resolved it (owner's defaults, harness default folded in).
+    /// Empty when the server resolved nothing. Never the phone's own idea of a
+    /// default: that says nothing about a conversation on another server.
+    @MainActor
+    func resolvedModel(tabId: String, instanceId: String?) -> String {
+        engineInstance(tabId: tabId, instanceId: instanceId)?.resolvedModel
+            ?? tab(for: tabId)?.resolvedModel
+            ?? ""
+    }
+
     /// Mutate the tab's single `ConversationInstanceInfo` in place. Ensures the
     /// `main` instance exists first (creating it for a plain tab or a
     /// not-yet-snapshotted engine tab) rather than silently no-opping, then

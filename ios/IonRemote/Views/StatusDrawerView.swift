@@ -85,7 +85,7 @@ struct StatusDrawerView: View {
             contextPercent: fields?.contextPercent ?? inst?.statusFields?.contextPercent,
             contextTokens: contextTokens,
             selectedModelWindow: ConversationStatusBar.windowForModel(
-                inst?.modelOverride ?? viewModel.preferredModel,
+                inst?.modelOverride ?? viewModel.resolvedModel(tabId: tabId, instanceId: nil),
                 availableModels: viewModel.availableModels,
                 engineContextWindow: contextWindow,
             ),
