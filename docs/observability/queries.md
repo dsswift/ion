@@ -83,7 +83,7 @@ count(sum by (service_version) (count_over_time({event_name=~".+"} | json [$__ra
 Number of distinct `user` values seen in telemetry over the window. The inner sum collapses each value to one series; the outer count counts the series. Powers the fleet "Hosts reporting" / "Installs" / "Engine versions" and the users "Active users" headline stats.
 
 ```logql
-count(sum by (user) (count_over_time({event_name=~".+"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` [$__range])))
+count(sum by (user) (count_over_time({event_name=~".+"} | json | user!="" [$__range])))
 ```
 
 ### Distinct iOS device_id count
@@ -173,7 +173,7 @@ Minutes since the most recent log line per component. The tailer-wedge detector:
 Number of distinct `user` values seen in telemetry over the window. The inner sum collapses each value to one series; the outer count counts the series. Powers the fleet "Hosts reporting" / "Installs" / "Engine versions" and the users "Active users" headline stats.
 
 ```logql
-count(sum by (user) (count_over_time({event_name=~".+"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~"$user" | service_instance_id=~"$install" [$__range])))
+count(sum by (user) (count_over_time({event_name=~".+"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~"$user" | service_instance_id=~"$install" | user!="unassigned" [$__range])))
 ```
 
 ### Distinct host_name count

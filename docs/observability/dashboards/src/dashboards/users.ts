@@ -15,6 +15,7 @@ import { row, text, stat, timeseries, bargauge, table, logsTable } from '../pane
 import { accumulation, stream, telemetry } from '../queries.ts';
 import {
   USER_PIPE,
+  SIGNED_IN_USERS_PIPE,
   distinctLabelCount,
   totalSpend,
   spendBy,
@@ -52,14 +53,14 @@ export function usersDashboard(): Dashboard {
     stat({
       id: 2,
       title: 'Active users',
-      description: 'Distinct user values seen in telemetry over the dashboard time range. Default installs without identity all count as the single "unassigned" bucket.',
+      description: 'Distinct signed-in users seen in telemetry over the dashboard time range. Lines with no user (installs with no identity, machine-level metrics) are not counted here; they appear as "unassigned" in the panels below.',
       gridPos: { h: 4, w: 4, x: 0, y: 5 },
       fieldConfig: {
         defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [], noValue: 'telemetry off' },
         overrides: [],
       },
       options: statOptions('value'),
-      targets: [{ e: distinctLabelCount('user', USER_PIPE, '$__range') }],
+      targets: [{ e: distinctLabelCount('user', SIGNED_IN_USERS_PIPE, '$__range') }],
     }),
     stat({
       id: 3,

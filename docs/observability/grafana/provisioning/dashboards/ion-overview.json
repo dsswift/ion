@@ -556,7 +556,7 @@
         "x": 12,
         "y": 8
       },
-      "description": "Distinct user values seen in telemetry. Installs with no configured identity all count as one \"unassigned\" bucket.",
+      "description": "Distinct signed-in users seen in telemetry. Lines with no user (installs with no identity, machine-level metrics) are not counted; the Users dashboard shows them as \"unassigned\".",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -603,7 +603,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "count(sum by (user) (count_over_time({event_name=~\".+\", host_name=~\"$host\", user=~\"$user\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` [$__range])))",
+          "expr": "count(sum by (user) (count_over_time({event_name=~\".+\", host_name=~\"$host\", user=~\"$user\"} | json | user!=\"\" [$__range])))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation"

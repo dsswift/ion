@@ -21,7 +21,7 @@ import { text, stat, timeseries, logsTable, escapeHatch } from '../panels.ts';
 import { stream } from '../queries.ts';
 import { runCount } from '../queries-cost.ts';
 import { levelCount, logRateByComponent, ingestFreshnessMinutes } from '../queries-logs.ts';
-import { distinctLabelCount, HOST_PIPE, USER_COUNT_PIPE } from '../queries-fleet.ts';
+import { distinctLabelCount, HOST_PIPE, SIGNED_IN_USERS_COUNT_PIPE } from '../queries-fleet.ts';
 import { activeExtensionCount } from '../queries-logs.ts';
 import { distinctDeviceField } from '../queries-mobile.ts';
 import { accumulation, telemetry } from '../queries.ts';
@@ -218,14 +218,14 @@ export function overviewDashboard(): Dashboard {
     stat({
       id: 14,
       title: 'Active users (Users)',
-      description: 'Distinct user values seen in telemetry. Installs with no configured identity all count as one "unassigned" bucket.',
+      description: 'Distinct signed-in users seen in telemetry. Lines with no user (installs with no identity, machine-level metrics) are not counted; the Users dashboard shows them as "unassigned".',
       gridPos: { h: 4, w: 4, x: 12, y: 8 },
       fieldConfig: {
         defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [], links: packLink('Ion Users', '/d/ion-users'), noValue: 'telemetry off' },
         overrides: [],
       },
       options: statOptions('value'),
-      targets: [{ e: distinctLabelCount('user', USER_COUNT_PIPE, '$__range') }],
+      targets: [{ e: distinctLabelCount('user', SIGNED_IN_USERS_COUNT_PIPE, '$__range') }],
     }),
     stat({
       id: 15,

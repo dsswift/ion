@@ -337,3 +337,14 @@ test('the control room names no extension or tool: its lamps come from the data'
     }
   }
 });
+
+test('Active users counts signed-in users only, never the unassigned bucket', () => {
+  for (const [uid, title] of [['ion-overview', 'Active users (Users)'], ['ion-users', 'Active users']]) {
+    const recipe = RECIPES.find((r) => r().uid === uid)
+    assert.ok(recipe, uid)
+    const built = buildDashboard(recipe()) as { panels: { title: string; targets?: { expr: string }[] }[] }
+    const panel = built.panels.find((p) => p.title === title)
+    assert.ok(panel, `${uid}: ${title}`)
+    assert.match(panel.targets![0].expr, /user!="(unassigned)?"/, `${uid}: ${panel.targets![0].expr}`)
+  }
+})

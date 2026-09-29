@@ -29,10 +29,16 @@ export const HOST_PIPE = ' | json';
 // scope by the $user and $install variables.
 export const USER_PIPE = ` | json ${coalesceStage('user', 'unassigned')} | user=~"$user" | service_instance_id=~"$install"`;
 
-// The same parse and coalesce with no pack-local scope, for a dashboard that
-// carries only the global $host / $user matchers (the overview). The global
-// $user matcher is applied by the selector, so it is not repeated here.
-export const USER_COUNT_PIPE = ` | json ${coalesceStage('user', 'unassigned')}`;
+// "Active users" counts people, so it counts signed-in users only: a line
+// with no user (a default install, or an isolated engine's machine-level
+// metrics) is activity, not a person. The unassigned bucket stays selectable
+// and visible everywhere else on the users pack.
+export const SIGNED_IN_USERS_PIPE = `${USER_PIPE} | user!="unassigned"`;
+
+// The same count with no pack-local scope, for a dashboard that carries only
+// the global $host / $user matchers (the overview). The global $user matcher
+// is applied by the selector, so it is not repeated here.
+export const SIGNED_IN_USERS_COUNT_PIPE = ` | json | user!=""`;
 
 // ---------------------------------------------------------------------------
 // Distinct counts (headline stats)
