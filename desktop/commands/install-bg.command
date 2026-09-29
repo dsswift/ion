@@ -25,23 +25,9 @@ if ! command -v whisperkit-cli >/dev/null 2>&1 \
 fi
 
 print_section "Building Ion Engine into desktop resources"
-ENGINE_OUT="resources/engine/ion"
-mkdir -p "$(dirname "$ENGINE_OUT")"
-ENGINE_VERSION="$(git -C ../engine describe --tags --always --dirty 2>/dev/null || echo dev)"
-(
-  cd ../engine
-  go build -ldflags "-X main.version=${ENGINE_VERSION}" -o "../desktop/${ENGINE_OUT}" ./cmd/ion
-)
-chmod +x "$ENGINE_OUT"
-codesign --force --sign - --identifier house.sprague.ion.engine --options runtime \
-  --entitlements resources/entitlements.mac.plist "$ENGINE_OUT" 2>/dev/null || true
-xattr -cr "$ENGINE_OUT" 2>/dev/null || true
-
-mkdir -p resources/engine/extensions
-rm -rf resources/engine/extensions/sdk resources/engine/extensions/sdk-go
-cp -R ../engine/extensions/sdk resources/engine/extensions/sdk
-cp -R ../sdk/go resources/engine/extensions/sdk-go
-cp ../packaging/launchd/com.ion.engine.plist resources/engine/com.ion.engine.plist
+# Shared with `make desktop-pkg`, so an installer built either way carries the
+# engine from this checkout rather than whatever was staged last.
+bash ../scripts/stage-engine-resources.sh
 
 print_section "Building Ion package"
 npm run dist
