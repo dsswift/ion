@@ -6,6 +6,10 @@
  * code (type it after finding the server nearby). Both end in the same
  * exchange and the same kind of pairing a desktop gets.
  *
+ * Without admin on the server (`pairing-access.ts`), it pairs one of the
+ * person's own devices: the link comes from the non-admin action and there
+ * is no code to type, because only an admin may open discovery.
+ *
  * The panel lives as long as the pairing link does. It closes itself when a
  * new device appears in the server's pairings, or when the link expires. If
  * it had to make the server discoverable to show a code, it turns that off
@@ -17,6 +21,7 @@ import { environmentClient, onEnvironmentEvent } from '../../environment/environ
 import { qrSvgDataUrl } from '../../environment/pairing-qr'
 import { Button, ErrorText, Muted, SidePanel, Stack } from '../../kit'
 import { CodeText, remaining } from './access-parts'
+import type { PairingAccess } from './pairing-access'
 import { rInfo, rWarn } from '../../../../rendererLogger'
 
 /** How long the server stays discoverable when the panel has to open that window itself. */
@@ -52,7 +57,7 @@ async function obtainCode(environmentId: string, openedWindow: { current: boolea
   return opened.code
 }
 
-export function PairPhonePanel({ environmentId, environmentLabel, onClose }: { environmentId: string; environmentLabel: string; onClose: (outcome: PairPhoneOutcome) => void }): React.JSX.Element {
+export function PairPhonePanel({ environmentId, environmentLabel, access, onClose }: { environmentId: string; environmentLabel: string; access: PairingAccess; onClose: (outcome: PairPhoneOutcome) => void }): React.JSX.Element {
   const [offer, setOffer] = useState<Offer | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
@@ -76,30 +81,32 @@ export function PairPhonePanel({ environmentId, environmentLabel, onClose }: { e
     let known: Set<string> | null = null
 
     const relist = (): void => {
-      environmentClient.listClients(environmentId).then((clients) => {
+      access.pairedIds(environmentId).then((ids) => {
         if (cancelled || !known) return
-        const arrived = clients.find((c) => !c.revokedAt && !known!.has(c.clientId))
+        const arrived = ids.find((id) => !known!.has(id))
         if (!arrived) return
-        rInfo('pair-phone', 'a new pairing appeared', { environment_id: environmentId, kind: arrived.kind })
+        rInfo('pair-phone', 'a new pairing appeared', { environment_id: environmentId, access: access.kind })
         finish('paired')
       }).catch((err: unknown) => rWarn('pair-phone', 're-listing pairings failed', { environment_id: environmentId, error: String(err) }))
     }
 
     const start = async (): Promise<void> => {
       // The pairings that exist before anything is offered: anything beyond them is the phone.
-      known = new Set((await environmentClient.listClients(environmentId)).map((c) => c.clientId))
-      // No scopes: the phone gets the server's own pairing defaults, the same
-      // as any other device it pairs, so an admin phone can run the server.
-      const link = await environmentClient.mintPairingLink(environmentId, 'Phone')
+      known = new Set(await access.pairedIds(environmentId))
+      const link = await access.mint(environmentId, 'Phone')
       let code: string | null = null
-      try {
-        code = await obtainCode(environmentId, openedWindow)
-      } catch (err) {
-        // The QR code pairs on its own, so a refused code is not a reason to offer nothing.
-        rWarn('pair-phone', 'no code available; offering the QR code alone', { environment_id: environmentId, error: String(err) })
+      if (access.offersCode) {
+        try {
+          code = await obtainCode(environmentId, openedWindow)
+        } catch (err) {
+          // The QR code pairs on its own, so a refused code is not a reason to offer nothing.
+          rWarn('pair-phone', 'no code available; offering the QR code alone', { environment_id: environmentId, error: String(err) })
+        }
+      } else {
+        rInfo('pair-phone', 'pairing own device without admin; offering the QR code alone', { environment_id: environmentId })
       }
       if (cancelled) return
-      rInfo('pair-phone', 'pairing offered', { environment_id: environmentId, has_code: code !== null, expires_at: link.expiresAt })
+      rInfo('pair-phone', 'pairing offered', { environment_id: environmentId, access: access.kind, has_code: code !== null, expires_at: link.expiresAt })
       setOffer({ url: link.url, expiresAt: link.expiresAt, code })
     }
 
@@ -131,7 +138,7 @@ export function PairPhonePanel({ environmentId, environmentLabel, onClose }: { e
         environmentClient.discoveryClose(environmentId).catch((err: unknown) => rWarn('pair-phone', 'closing the discovery window failed', { environment_id: environmentId, error: String(err) }))
       }
     }
-  }, [environmentId, finish])
+  }, [environmentId, access, finish])
 
   const expiresAt = offer?.expiresAt ?? null
   useEffect(() => {
@@ -164,7 +171,7 @@ export function PairPhonePanel({ environmentId, environmentLabel, onClose }: { e
                   <Muted>Or find {environmentLabel} on the phone and type this code:</Muted>
                   <CodeText large testId="pair-phone-code">{offer.code}</CodeText>
                 </Stack>
-              : <Muted>This server has no code to type right now, so scan the QR code.</Muted>}
+              : <Muted>{access.offersCode ? 'This server has no code to type right now, so scan the QR code.' : 'The phone will act as you on this server. Scan the QR code to pair it.'}</Muted>}
             <span data-testid="pair-phone-expiry"><Muted>Expires in {remaining(offer.expiresAt, now)}. This closes when the phone is paired.</Muted></span>
           </Stack>
         )}

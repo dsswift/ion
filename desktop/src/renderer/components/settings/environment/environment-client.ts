@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type {
   EnvironmentProject, EnvironmentFsBrowse, EnvironmentToolchains, EnvironmentServerInfo, EnvironmentLogFile,
-  EnvironmentJob, EnvironmentGitTest, EnvironmentGitAuthor, EnvironmentPurgeAppraisal, EnvironmentPurgeLevels, EnvironmentPurgeResult, EnvironmentDiscoveryStatus,
+  EnvironmentJob, EnvironmentGitTest, EnvironmentGitAuthor, EnvironmentPurgeAppraisal, EnvironmentPurgeLevels, EnvironmentPurgeResult, EnvironmentDiscoveryStatus, PairedDevice,
 } from '@ion/shared/types-environment-admin'
 import { PROJECT_JOB_CHANNEL, PROJECTS_CHANGED_CHANNEL } from '@ion/shared/types-environment-admin'
 import type { GitIdentitySummary } from '@ion/shared/types-git-identity'
@@ -29,6 +29,13 @@ export interface PairedClient {
   label?: string
   /** Whether a connection from this device is open now. Absent from a server that predates it. */
   connected?: boolean
+}
+
+/** A one-time pairing link as a server minted it. The link is a bearer secret. */
+export interface MintedPairingLink {
+  url: string
+  code: string
+  expiresAt: number
 }
 
 export interface RemovalAppraisal {
@@ -75,7 +82,11 @@ export const environmentClient = {
   purgeRun: (env: string, levels: Omit<EnvironmentPurgeLevels, 'studio'>) => call<EnvironmentPurgeResult>(env, 'environment.purge.run', [levels]),
   listClients: (env: string) => call<PairedClient[]>(env, 'auth.listClients'),
   revokeClient: (env: string, clientId: string) => call<{ revoked: boolean }>(env, 'auth.revokeClient', [{ clientId }]),
-  mintPairingLink: (env: string, label: string, scopes?: Scope[]) => call<{ url: string; code: string; expiresAt: number }>(env, 'auth.createPairingLink', [{ label, ...(scopes ? { scopes } : {}) }]),
+  mintPairingLink: (env: string, label: string, scopes?: Scope[]) => call<MintedPairingLink>(env, 'auth.createPairingLink', [{ label, ...(scopes ? { scopes } : {}) }]),
+  /** A link for one of the caller's own devices; needs no admin. The device acts as the caller, with the caller's scopes. */
+  mintOwnPairingLink: (env: string, label: string) => call<MintedPairingLink>(env, 'auth.createOwnPairingLink', [{ label }]),
+  /** The caller's own paired devices; needs no admin. */
+  listOwnDevices: (env: string) => call<PairedDevice[]>(env, 'environment.devices'),
   discoveryStatus: (env: string) => call<EnvironmentDiscoveryStatus>(env, 'environment.discovery.status'),
   discoveryOpen: (env: string, minutes: number) => call<EnvironmentDiscoveryStatus>(env, 'environment.discovery.open', [{ minutes }]),
   discoveryClose: (env: string) => call<EnvironmentDiscoveryStatus>(env, 'environment.discovery.close'),

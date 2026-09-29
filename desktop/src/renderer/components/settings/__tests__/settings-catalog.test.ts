@@ -128,7 +128,9 @@ describe('visibleSections', () => {
   it('keeps only bridged sections on a host without the local capability', () => {
     const filter = { hiddenGroups: [], capabilities: [] }
     expect(visibleSections(page('models'), filter).map((s) => s.id)).toEqual(['ai'])
-    expect(visiblePages(SETTINGS_PAGES, 'server', filter).map((p) => p.id)).toEqual(['models', 'agent', 'integrations', 'workflow'])
+    expect(visiblePages(SETTINGS_PAGES, 'server', filter).map((p) => p.id)).toEqual(['models', 'agent', 'integrations', 'workflow', 'access'])
+    // Devices pairs the person's own devices without admin, so it needs no local host.
+    expect(visibleSections(page('access'), filter).map((s) => s.id)).toEqual(['devices'])
   })
   it('shows phone and relay beside devices and discovery for every server', () => {
     expect(visibleSections(page('access'), { hiddenGroups: [], capabilities: ['local'] }).map((s) => s.id)).toEqual(['devices', 'discovery', 'remote'])

@@ -193,7 +193,9 @@ const SECTION_UI: Record<SettingsSectionId, SectionUi> = {
   quicktools: { component: P.QuickToolsSection, items: [
     item('quick-tools', 'Quick tools', 'quick tools custom button shortcut action icon command', ['quickTools']),
   ] },
-  devices: { component: P.DevicesSection, requires: 'local', items: [
+  // No host requirement: a person without admin (a web Studio sign-in)
+  // pairs their own devices here; the section picks the view by scope.
+  devices: { component: P.DevicesSection, items: [
     item('devices', 'Paired devices', 'devices paired desktop phone iphone ios pair qr code revoke pairing link mint'),
   ] },
   discovery: { component: P.DiscoverySection, requires: 'local', items: [

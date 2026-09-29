@@ -32,6 +32,7 @@ vi.mock('../access/PairPhonePanel', () => ({
 }))
 
 const { DevicesSection } = await import('../access/DevicesSection')
+const { useEnvironmentSettingsStore } = await import('../../../../studio/state/environment-settings-store')
 
 const CLIENTS = [
   { clientId: 'desk-1', kind: 'desktop', label: 'Office Mac', scopes: ['conversations:read', 'admin'], subject: 'local', createdAt: 1, lastSeen: 2, revokedAt: null },
@@ -46,9 +47,10 @@ describe('DevicesSection', () => {
     events.channels.length = 0
     client.listClients.mockResolvedValue(CLIENTS)
     client.revokeClient.mockResolvedValue({ revoked: true })
+    useEnvironmentSettingsStore.getState().hydrate('env-1', {}, ['admin'])
     h = createHarness()
   })
-  afterEach(() => { h.unmount(); document.body.innerHTML = '' })
+  afterEach(() => { h.unmount(); document.body.innerHTML = ''; useEnvironmentSettingsStore.getState().clear('env-1') })
   const mount = async (): Promise<void> => { await h.render(<DevicesSection />); await act(async () => { await flush() }) }
   const rowOf = (label: string): HTMLElement => [...h.container.querySelectorAll<HTMLElement>('[role="listitem"]')].find((r) => r.textContent?.includes(label))!
   const openMenu = async (label: string): Promise<void> => {

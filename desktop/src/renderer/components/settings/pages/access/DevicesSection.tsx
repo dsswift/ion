@@ -4,15 +4,24 @@
  * "Pair a phone" offers a code and a QR code; "Pairing link" mints the link
  * a second desktop pastes into Add Environment. Rides the `auth.*` actions,
  * so it reads the same credentials.json the server admits from.
+ *
+ * That is the admin view. A connection without admin on the server (a
+ * person signed in to a web Studio) sees `OwnDevices` instead: only their
+ * own devices, and pairing links that pair a device as them.
  */
 import React, { useEffect, useState } from 'react'
 import { Copy, Trash, Desktop, DeviceMobile, Plus, Link } from '@phosphor-icons/react'
+import { scopeSatisfies } from '@ion/shared/studio-wire/action-scopes'
 import { CLIENTS_CHANGED_CHANNEL, DISCOVERY_CHANNEL } from '@ion/shared/types-environment-admin'
 import { environmentClient, useEnvironmentResource, onEnvironmentEvent, formatAgo, type PairedClient } from '../../environment/environment-client'
 import { useSettingsEnvironment } from '../../settings-servers'
-import { Button, CellText, Chip, DataList, EmptyState, ErrorText, Field, Inline, MonoLine, Muted, Notice, SidePanel, Stack, TextArea } from '../../kit'
+import { Button, CellText, Chip, DataList, EmptyState, ErrorText, Field, Inline, MonoLine, Muted, Notice, SidePanel, Stack } from '../../kit'
 import { PairPhonePanel } from './PairPhonePanel'
-import { copyText, formatFromNow } from './access-parts'
+import { PairingLinkPanel } from './PairingLinkPanel'
+import { OwnDevices } from './OwnDevices'
+import { ADMIN_PAIRING } from './pairing-access'
+import { copyText } from './access-parts'
+import { useEnvironmentSettingsStore } from '../../../../studio/state/environment-settings-store'
 import { host } from '../../../../host/host-instance'
 import { rInfo, rWarn } from '../../../../rendererLogger'
 
@@ -29,6 +38,18 @@ function kindLabel(kind: PairedClient['kind']): string {
 const OWN_PAIRING_REASON = 'This is the pairing you are connected through. Remove the environment instead.'
 
 export function DevicesSection(): React.JSX.Element {
+  const env = useSettingsEnvironment()
+  // The scopes this connection holds on the server, from its welcome; null until it arrives.
+  const scopes = useEnvironmentSettingsStore((s) => s.byEnvironment[env.id]?.scopes ?? null)
+  const admin = scopes !== null && scopeSatisfies(scopes, 'admin')
+  useEffect(() => {
+    if (scopes !== null) rInfo('devices-section', 'devices view chosen', { environment_id: env.id, view: admin ? 'admin' : 'own' })
+  }, [env.id, scopes, admin])
+  if (scopes === null) return <Muted>Loading…</Muted>
+  return admin ? <AdminDevices /> : <OwnDevices />
+}
+
+function AdminDevices(): React.JSX.Element {
   const env = useSettingsEnvironment()
   const clients = useEnvironmentResource(env.id, environmentClient.listClients)
   const [error, setError] = useState<string | null>(null)
@@ -102,12 +123,12 @@ export function DevicesSection(): React.JSX.Element {
         </>}
         empty={<EmptyState icon={DeviceMobile} title="No paired devices." detail="Pair a phone, or mint a pairing link for another desktop." />}
       />
-      {panel === 'phone' && <PairPhonePanel environmentId={env.id} environmentLabel={env.label} onClose={(outcome) => {
+      {panel === 'phone' && <PairPhonePanel environmentId={env.id} environmentLabel={env.label} access={ADMIN_PAIRING} onClose={(outcome) => {
         rInfo('devices-section', 'pair a phone closed', { environment_id: env.id, outcome })
         setPanel(null)
         clients.refresh()
       }} />}
-      {panel === 'link' && <PairingLinkPanel onClose={() => setPanel(null)} />}
+      {panel === 'link' && <PairingLinkPanel access={ADMIN_PAIRING} onClose={() => setPanel(null)} />}
       <DeviceDetailPanel client={detail} own={detail !== null && detail.clientId === ownClientId} onRevoke={revoke} onClose={() => setDetailId(null)} error={error} />
     </Stack>
   )
@@ -136,45 +157,6 @@ function DeviceDetailPanel({ client, own, onRevoke, onClose, error }: { client: 
           </Inline>
         </Field>
         <ErrorText>{error}</ErrorText>
-      </Stack>
-    </SidePanel>
-  )
-}
-
-/** Mints a pairing link as it opens; the link is a bearer secret, shown once. */
-function PairingLinkPanel({ onClose }: { onClose(): void }): React.JSX.Element {
-  const env = useSettingsEnvironment()
-  const [minted, setMinted] = useState<{ url: string; expiresAt: number } | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const mint = (): void => {
-    setBusy(true); setError(null)
-    environmentClient.mintPairingLink(env.id, 'another device').then((link) => { setMinted({ url: link.url, expiresAt: link.expiresAt }); rInfo('devices-section', 'pairing link minted', { environment_id: env.id }) }).catch((err: unknown) => {
-      rWarn('devices-section', 'mint failed', { environment_id: env.id, error: String(err) })
-      setError(err instanceof Error ? err.message : String(err))
-    }).finally(() => setBusy(false))
-  }
-  // Mint once per opening; the panel mounts when it opens.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(mint, [])
-  return (
-    <SidePanel
-      open
-      title="Pairing link"
-      subtitle={`Lets another desktop pair with ${env.label}.`}
-      onClose={onClose}
-      footer={<>
-        <Button disabled={busy} onClick={mint}>Mint another</Button>
-        <Button variant="primary" icon={Copy} disabled={!minted} onClick={() => { if (minted) copyText('devices-section', minted.url) }}>Copy</Button>
-      </>}
-    >
-      <Stack>
-        {busy && !minted && <Muted>Minting…</Muted>}
-        <ErrorText>{error}</ErrorText>
-        {minted && <>
-          <Muted>Paste this into Add Environment → Pairing link on the other device. Treat it as a password; it expires {formatFromNow(minted.expiresAt)}.</Muted>
-          <TextArea mono readOnly rows={4} value={minted.url} aria-label="Pairing link" />
-        </>}
       </Stack>
     </SidePanel>
   )

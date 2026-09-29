@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-const client = vi.hoisted(() => ({ listClients: vi.fn(), mintPairingLink: vi.fn(), discoveryStatus: vi.fn(), discoveryOpen: vi.fn(), discoveryClose: vi.fn(), discoveryMintCode: vi.fn() }))
+const client = vi.hoisted(() => ({ listClients: vi.fn(), mintPairingLink: vi.fn(), listOwnDevices: vi.fn(), mintOwnPairingLink: vi.fn(), discoveryStatus: vi.fn(), discoveryOpen: vi.fn(), discoveryClose: vi.fn(), discoveryMintCode: vi.fn() }))
 const listeners = vi.hoisted(() => [] as Array<{ channel: string; cb: () => void }>)
 const fire = (channel: string): void => { for (const entry of [...listeners]) if (entry.channel === channel) entry.cb() }
 vi.mock('../../environment/environment-client', () => ({
@@ -26,6 +26,7 @@ const qr = vi.hoisted(() => ({ qrSvgDataUrl: vi.fn((text: string) => `data:qr,${
 vi.mock('../../environment/pairing-qr', () => qr)
 
 const { PairPhonePanel } = await import('../access/PairPhonePanel')
+const { ADMIN_PAIRING, OWN_PAIRING } = await import('../access/pairing-access')
 
 const LINK = 'ion-studio://pair?code=abc&url=http%3A%2F%2Fstudio.local%3A7421&env=Studio'
 const DESKTOP = { clientId: 'desk-1', kind: 'desktop', scopes: ['admin'], revokedAt: null }
@@ -50,7 +51,7 @@ describe('PairPhonePanel', () => {
     container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container)
   })
   afterEach(() => { act(() => root.unmount()); container.remove(); vi.useRealTimers() })
-  const mount = async (): Promise<void> => { await act(async () => { root.render(<PairPhonePanel environmentId="env-1" environmentLabel="Studio" onClose={onClose} />); await vi.advanceTimersByTimeAsync(0) }) }
+  const mount = async (access = ADMIN_PAIRING): Promise<void> => { await act(async () => { root.render(<PairPhonePanel environmentId="env-1" environmentLabel="Studio" access={access} onClose={onClose} />); await vi.advanceTimersByTimeAsync(0) }) }
   const text = (id: string): string | null | undefined => container.querySelector(`[data-testid="${id}"]`)?.textContent
   const button = (label: string): HTMLButtonElement => [...container.querySelectorAll('button')].find((b) => b.textContent === label || b.getAttribute('aria-label') === label) as HTMLButtonElement
 
@@ -144,5 +145,30 @@ describe('PairPhonePanel', () => {
     await mount()
     expect(container.textContent).toContain('requested scopes exceed your granted scopes')
     expect(container.querySelector('[data-testid="pair-phone-qr"]')).toBeNull()
+  })
+
+  describe('without admin, pairing the person\'s own phone', () => {
+    const OWN_PHONE = { clientId: 'phone-9', label: 'Phone', kind: 'mobile', pairedAt: 1, lastSeen: 1, connected: true, connectedAt: 1, admin: false, self: false }
+    beforeEach(() => {
+      client.listOwnDevices.mockResolvedValue([])
+      client.mintOwnPairingLink.mockResolvedValue({ url: LINK, code: 'abc', expiresAt: 1_000_000 + 300_000 })
+    })
+
+    it('mints through the non-admin action and offers the QR code alone, touching no admin action', async () => {
+      await mount(OWN_PAIRING)
+      expect(client.mintOwnPairingLink).toHaveBeenCalledWith('env-1', 'Phone')
+      expect(qr.qrSvgDataUrl).toHaveBeenCalledWith(LINK)
+      expect(container.querySelector('[data-testid="pair-phone-code"]')).toBeNull()
+      expect(container.textContent).toContain('The phone will act as you on this server.')
+      for (const adminOnly of [client.mintPairingLink, client.listClients, client.discoveryStatus, client.discoveryOpen]) expect(adminOnly).not.toHaveBeenCalled()
+    })
+
+    it('closes itself as paired when a new device of the person\'s own appears', async () => {
+      await mount(OWN_PAIRING)
+      client.listOwnDevices.mockResolvedValue([OWN_PHONE])
+      await act(async () => { fire('ion:clients-changed'); await vi.advanceTimersByTimeAsync(0) })
+      expect(onClose).toHaveBeenCalledExactlyOnceWith('paired')
+      expect(client.discoveryClose).not.toHaveBeenCalled()
+    })
   })
 })
