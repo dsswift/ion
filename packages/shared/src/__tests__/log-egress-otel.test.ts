@@ -266,7 +266,7 @@ describe('OTLP missing-field resilience (spool-drain regression)', () => {
       ts: '2026-07-08T01:00:04.615215Z',
       schema: 3,
       component: 'engine',
-      install_id: '5a435113-060b-4b0c-a5c9-1184ccd709a5',
+      install_id: '00000000-0000-4000-8000-000000000001',
       event_id: '9bcfdf62c9f04d08',
       payload: { agent: 'dev-lead', cost_usd: 2.0167875 },
     } as unknown as EgressRecord
@@ -317,18 +317,22 @@ describe('OTLP missing-field resilience (spool-drain regression)', () => {
     const telemetry = telemetryEventRecord()
 
     const payload = buildOtlpPayload([good, telemetry, good], 'ion-desktop')
-    const logRecords = payload.resourceLogs[0].scopeLogs[0].logRecords
+    // The telemetry record names its own install, so it may group under a
+    // different resource than the host's canonical records.
+    const logRecords = payload.resourceLogs.flatMap((r) => r.scopeLogs[0].logRecords)
+    const bodies = logRecords.map((lr) => JSON.parse(lr.body.stringValue))
 
     // All three records built — the flush completes shipping the whole batch,
     // not zero rows. This is the anti-wedge guarantee.
     expect(logRecords).toHaveLength(3)
     // The two canonical records keep their real severity. Body is full JSONL.
-    expect(logRecords[0].severityText).toBe('INFO')
-    expect(JSON.parse(logRecords[0].body.stringValue).msg).toBe('session started')
-    expect(logRecords[2].severityText).toBe('INFO')
-    // The telemetry record in the middle drained with the default severity.
-    expect(logRecords[1].severityText).toBe('INFO')
-    expect(logRecords[1].severityNumber).toBe(9)
+    const canonical = logRecords.filter((_, i) => bodies[i].msg === 'session started')
+    expect(canonical).toHaveLength(2)
+    for (const lr of canonical) expect(lr.severityText).toBe('INFO')
+    // The telemetry record drained with the default severity.
+    const drained = logRecords.find((_, i) => bodies[i].name === 'dispatch.agent')
+    expect(drained?.severityText).toBe('INFO')
+    expect(drained?.severityNumber).toBe(9)
   })
 })
 
@@ -368,7 +372,7 @@ describe('telemetry event OTLP fidelity (dashboard strip fix)', () => {
       ts: '2026-07-09T12:06:59.845721Z',
       schema: 3,
       component: 'engine',
-      install_id: '5a435113-060b-4b0c-a5c9-1184ccd709a5',
+      install_id: '00000000-0000-4000-8000-000000000001',
       host: 'jolteon',
       version: 'dev',
       event_id: '86693acc4aa9560e',
@@ -466,7 +470,7 @@ describe('telemetry event OTLP fidelity (dashboard strip fix)', () => {
     // The event's own install, build, and host are its resource.
     const res = attrMap(payload.resourceLogs[0].resource.attributes)
     expect(res['service.name']).toEqual({ stringValue: 'ion-engine' })
-    expect(res['service.instance.id']).toEqual({ stringValue: '5a435113-060b-4b0c-a5c9-1184ccd709a5' })
+    expect(res['service.instance.id']).toEqual({ stringValue: '00000000-0000-4000-8000-000000000001' })
     expect(res['service.version']).toEqual({ stringValue: 'dev' })
     expect(res['host.name']).toEqual({ stringValue: 'jolteon' })
   })

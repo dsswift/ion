@@ -325,7 +325,7 @@ func runCompleteRecord() egressRecord {
 		Ts:        "2026-07-09T12:06:59.845721Z",
 		Schema:    float64(3),
 		Component: "engine",
-		InstallID: "5a435113-060b-4b0c-a5c9-1184ccd709a5",
+		InstallID: "00000000-0000-4000-8000-000000000001",
 		Version:   "dev",
 		Host:      "jolteon",
 		EventID:   "86693acc4aa9560e",
