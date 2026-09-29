@@ -350,11 +350,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="server-v${{ steps.version.outputs.version }}"
-          gh release download "$TAG" -R "${{ github.repository }}" -D assets/
+          # Outside the checkout: the repo has its own assets/ folder.
+          gh release download "$TAG" -R "${{ github.repository }}" -D "$RUNNER_TEMP/server-release"
 
       - name: Generate checksums
         run: |
-          cd assets
+          cd "$RUNNER_TEMP/server-release"
           rm -f checksums.txt
           sha256sum ./* > checksums.txt
           cat checksums.txt
@@ -364,7 +365,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="server-v${{ steps.version.outputs.version }}"
-          gh release upload "$TAG" assets/checksums.txt --clobber -R "${{ github.repository }}"
+          gh release upload "$TAG" "$RUNNER_TEMP/server-release/checksums.txt" --clobber -R "${{ github.repository }}"
 
   build-relay:
     if: contains(fromJSON(inputs.release_report).components, 'relay')
