@@ -4,27 +4,21 @@ description: Push the current branch and open a pull request into main with a st
 model: fast
 ---
 
-You are running the `/create-pr` command. Your job is to push the current feature branch and open a pull request into `main` with a well-structured description. The PR title and body are derived from the branch's commits and the issues they reference.
+# /create-pr
 
-**Hard rules.**
+Push the current feature branch and open a pull request into `main`. The title and body come from the branch's commits and the issues they resolve.
 
-- Never run on `main`. Abort if the current branch is `main`.
-- Only run `git push` as part of this command. No other `git push` outside this flow.
-- Never merge to `main`. The PR is opened — the user merges.
-- Do not create a PR with failing CI. If CI is already known to be failing, stop and report. **Run the Linux parity gate (Step 3) before pushing** so a Linux-only failure is caught locally — not after burning paid Actions minutes on a red PR.
-- **Never open a PR without resolving issue closure (Step 7).** Search the open
-  issues and match them against the branch — do not merely copy the references the
-  commits happen to carry. A branch that implements an open issue's work and ships
-  without a `Fixes #N` / `Closes #N` line in the body leaves that issue open
-  forever, and CI does not catch it.
-- Open a real PR, never a draft. Drafts do not get review coverage.
-- **Zero tolerance for identifiable failures — pre-existing included.** Every test failure, lint error, or build break that the parity gate (or any other check run during this command) surfaces MUST be fixed before the PR is opened. "Pre-existing on main", "not caused by this branch", and "unrelated to these changes" are **forbidden dispositions** — if the failure is visible before the PR exists, it blocks the PR. The full CI suite (`quality.yml`: engine race + integration, desktop typecheck + tests, relay, iOS, lints) must be expected green, and any locally reproducible failure in that set is in scope to fix now, regardless of age or origin.
+## Rules
+
+- This command is the one place `git push` runs. It pushes the feature branch and nothing else.
+- The operator merges. This command opens the PR and stops.
+- The PR is a real PR, not a draft, so it gets review coverage.
+- Every failure a check in this command surfaces is fixed before the PR opens. CI (`.github/workflows/quality.yml`) is expected to be green.
+- Issue closure is resolved in Step 7 on every run, by matching open issues against the branch.
 
 ---
 
 ## Step 1: Validate the branch
-
-Run:
 
 ```bash
 git branch --show-current
@@ -34,11 +28,7 @@ If the result is `main`, stop:
 
 > You're on `main`. Switch to a feature branch before creating a PR.
 
----
-
 ## Step 2: Check for uncommitted work
-
-Run:
 
 ```bash
 git status --porcelain
@@ -48,8 +38,6 @@ If there are uncommitted changes, stop:
 
 > There are uncommitted changes on this branch. Commit them before opening a PR.
 
----
-
 ## Step 2b: Rebase onto the latest `main` and read the diff
 
 ```bash
@@ -57,93 +45,77 @@ git fetch origin main
 git rebase origin/main
 ```
 
-The parity gate then tests what `main` will actually receive. On a conflict,
-resolve it when both sides make the intent plain, then continue the rebase. When
-the right resolution needs a decision, run `git rebase --abort` and stop with the
-conflicting files named.
+The parity gate then tests what `main` will receive. On a conflict, resolve it when both sides make the intent plain, then continue the rebase. When the resolution needs a decision, run `git rebase --abort` and stop with the conflicting files named.
 
-Then read what the PR will carry:
+Read what the PR will carry:
 
 ```bash
 git diff origin/main...HEAD --stat
 git diff origin/main...HEAD
 ```
 
-Check the whole diff against what the commits say they do. Debug output, stray
-files, edits unrelated to the goal, and secret values do not ship. Fix them in a
-commit first, then start again from Step 2.
+Check the whole diff against what the commits say they do. Debug output, stray files, edits unrelated to the goal, and secret values are removed in a commit, and the command starts again from Step 2.
 
 ---
 
-## Step 3: Linux parity gate (catch Linux-only CI failures before pushing)
+## Step 3: Linux parity gate
 
-CI runs `engine-test` (`go test -race ./...`) and `desktop-test` (`npm test`) on **`ubuntu-latest`**. Local development is on macOS, so OS-sensitive failures — path semantics, file-watcher timing, locale, goroutine starvation under the Linux race detector, eager `require('electron')` under `npm ci --ignore-scripts` — pass locally and only fail in CI. This step runs the **same commands CI runs, in Linux containers**, so those failures surface here instead of on the PR.
+CI runs the engine, desktop, and server suites on `ubuntu-latest`. Development is on macOS, so path semantics, file-watcher timing, locale, and race-detector scheduling can pass locally and fail in CI. This step runs the same commands in Linux containers.
 
-### 3a. Determine touched components
+### 3a. Determine the gates
 
 ```bash
 git diff origin/main...HEAD --name-only
 ```
 
-- If any path starts with `engine/`, the **engine** gate applies.
-- If any path starts with `desktop/`, the **desktop** gate applies.
-- If neither `engine/` nor `desktop/` is touched, skip Linux parity and continue to Step 3e. (Pure `ios/`, `relay/`, `docs/`, or `repo` changes have no Linux-divergent gate.)
+| A changed path under | Gates |
+|---|---|
+| `engine/` | `make test-linux-engine` |
+| `desktop/` | `make test-linux-desktop` |
+| `server/` | `make test-linux-server`, `make test-linux-desktop` |
+| `packages/` | `make test-linux-server`, `make test-linux-desktop` |
+
+The server gate runs the shared-package and server suites. The desktop gate builds both renderer bundles, which bundle server and shared code.
+
+With no path in the table, skip to Step 3e.
 
 ### 3b. Docker preflight
-
-The gate runs in Docker. Check the daemon is reachable:
 
 ```bash
 docker info
 ```
 
-If `docker` is not installed **or** `docker info` fails (daemon not running), call `AskUserQuestion` with: "Docker isn't running, so I can't run the Linux parity check locally before pushing. How would you like to proceed?" and options: `Start Docker and continue`, `Proceed without Docker`. The PR's own CI gates (`engine-test`, `desktop-test`) are the authoritative merge guard and will still block a bad merge. Do not treat "Docker down" as a reason to abort the whole command.
+If `docker` is missing or the daemon is not running, call `AskUserQuestion` with "Docker isn't running, so I can't run the Linux parity check locally before pushing. How would you like to proceed?" and the options `Start Docker and continue` and `Proceed without Docker`.
 
-When the user selects `Start Docker and continue`, wait for them to confirm Docker is running, then re-run from step 3c. When they select `Proceed without Docker`, skip to Step 4 and note the Linux gate was skipped in the final report.
+- `Start Docker and continue`: wait for the operator to confirm, then continue at 3c.
+- `Proceed without Docker`: go to Step 3e and record in the report that the Linux gate was skipped. The PR's own CI jobs still guard the merge.
 
-### 3c. Dispatch the gate for touched components — background, with notify
+### 3c. Dispatch the gates in the background
 
-`make test-linux-engine` and `make test-linux-desktop` run Docker containers that routinely take several minutes — well past the default 120s tool timeout. Running either as a plain foreground `Bash` call risks the tool call timing out while the container keeps running unattended: nothing wakes the conversation when it finishes, and the only way to un-stick it is for the user to intervene manually. **Never run these gates as a plain foreground `Bash` call.**
+Each gate runs a container for several minutes, longer than a foreground tool call allows. Dispatch each one as its own call with `Bash({ run_in_background: true, notify_on_complete: true })`, all in the same turn, so they run at the same time.
 
-Instead, dispatch each applicable gate with `Bash({ run_in_background: true, notify_on_complete: true })`:
+Then end the turn. The engine resumes the conversation with each result when its container exits (`docs/tools/task-tools.md` § "Background bash completion").
 
-```bash
-# engine touched:
-make test-linux-engine
-# desktop touched:
-make test-linux-desktop
-```
-
-When **both** engine and desktop are touched, dispatch **both** in the same turn — two separate `run_in_background + notify_on_complete` calls — rather than the combined `make test-linux` target, so the two gates run concurrently in independent containers instead of serializing inside one long-running call.
-
-After dispatching, end the turn. Do not poll `TaskGet` in a loop and do not run a blocking `sleep`/wait. Use `Poll` when verification needs repeated inferential checks; it parks the parent and returns one terminal verdict with evidence. For a real background command started with `notify_on_complete`, the engine parks the run at the turn boundary (`engine_task_suspended`) while the command is outstanding and automatically wakes it with the result when the container exits — see `docs/tools/task-tools.md` § "Background bash completion" and ADR-023. This mechanism requires no cooperation from the command being run.
-
-**Fallback — background execution not supported:** if a `Bash` call reports that background execution isn't available (non-local backend), fall back to the original synchronous invocation (plain `Bash` with no `run_in_background`) and note this in the Step 10 report so the user knows which path ran.
+If a call reports that background execution is unavailable, run that gate in the foreground and record that in the report.
 
 ### 3d. Act on the result
 
-The woken run receives the completion result (exit code, command, and a bounded output tail) injected into the conversation. Evaluate it per gate:
+| Result | Action |
+|---|---|
+| Every dispatched gate passed | Continue to Step 3e |
+| A gate failed | Fix every failure it surfaced, dispatch the same gate again, and wait for the result |
+| A failure needs a product decision | Stop and put the decision to the operator |
 
-- **Gate passes** → once every dispatched gate has reported a pass, proceed to Step 4.
-- **Gate fails** → **do not push. Do not open the PR.** Fix every failure the gate surfaced — including failures that reproduce on `main` (pre-existing) — then re-dispatch the same gate the same way (background + notify) and wait for the next wake. A failure that is visible now blocks the PR now; its age and origin are irrelevant. Only abort back to the user when a failure genuinely cannot be fixed without a product decision the user must make.
-- **User opted to skip** (Docker down, proceed anyway) → proceed to Step 4; note in the final report that the Linux gate was skipped.
-- **Synchronous fallback used** (background unsupported) → act on the plain `Bash` return code the same way as above; note the fallback path in the final report.
+### 3e. iOS gate
 
-### 3e. iOS PR parity gate
-
-The required `ios-build` CI job compiles the device-target app. If any path
-starts with `ios/`, or the change touches `scripts/run-ios-tests.sh`, `Makefile`,
-or `quality.yml`, run the matching local gates before pushing:
+Run this when a changed path is under `ios/`, or is `scripts/run-ios-tests.sh`, `Makefile`, or `.github/workflows/quality.yml`.
 
 ```bash
 make ios-pr-check
 make ios-test
 ```
 
-`make ios-test` runs the complete `IonRemoteTests` simulator suite locally,
-where it completes quickly after simulator availability. Do not push or open
-the PR on failure: fix it and rerun both gates. CI confirms the device build;
-the same full simulator suite also runs nightly and by manual dispatch.
+On a failure, fix it and run both again.
 
 ---
 
@@ -153,13 +125,9 @@ the same full simulator suite also runs nightly and by manual dispatch.
 git push --force-with-lease -u origin {branch}
 ```
 
-The rebase in Step 2b rewrites a branch that was pushed before, so a plain push
-would be rejected. `--force-with-lease` refuses when the remote holds commits this
-machine has not seen.
+The rebase in Step 2b rewrites a branch that was pushed before, so a plain push would be rejected. `--force-with-lease` refuses when the remote holds commits this machine has not seen.
 
 If the push fails, report the error and stop.
-
----
 
 ## Step 5: Check for an existing PR
 
@@ -167,56 +135,41 @@ If the push fails, report the error and stop.
 gh pr view {branch} --json number,url,state 2>/dev/null
 ```
 
-`gh pr view` returns the most recent PR for the branch regardless of state. Only treat it as an existing PR if `state` is `"OPEN"`. If the state is `"MERGED"` or `"CLOSED"`, ignore it and proceed to create a new PR.
+`gh pr view` returns the most recent PR for the branch in any state. Only `"OPEN"` counts as existing.
 
-If an open PR already exists:
-- Show its number and URL
-- Ask: "A PR already exists for this branch. Want to update its title/body instead?"
-- If yes, use `gh pr edit {number} --title "..." --body "..."` instead of `gh pr create`
-
----
+If an open PR exists, show its number and URL and ask: "A PR already exists for this branch. Want to update its title/body instead?" On yes, Step 10 uses `gh pr edit {number} --title "..." --body "..."`.
 
 ## Step 6: Collect commits
-
-Gather the commits on this branch:
 
 ```bash
 git log origin/main..HEAD --oneline --no-merges
 git log origin/main..HEAD --no-merges --format="### %s%n%n%b"
 ```
 
-If there are zero commits ahead of `main`, abort: "Nothing to open a PR for — branch is even with `main`."
+With zero commits ahead of `main`, stop: "Nothing to open a PR for — branch is even with `main`."
 
 ---
 
 ## Step 7: Resolve issue closure
 
-**Mandatory. Never skipped, never inferred from silence.** A PR that ships an open
-issue's work without a closing keyword leaves that issue open after it merges, and
-nothing downstream catches it: `scripts/check-issue-closure.sh` only validates
-`(#N)` references that already exist, so a branch carrying zero references passes
-the gate while closing nothing. This has shipped twice.
+A PR closes an issue only through a closing keyword in its body. `scripts/check-issue-closure.sh` validates the `(#N)` references that exist, so a branch with no references passes that gate and closes nothing. This step finds the issues the branch resolves, whether or not a commit names them.
 
-First, collect what the commits already carry:
+Collect what the commits carry:
 
 ```bash
 git log origin/main..HEAD --no-merges --format="%s%n%b" \
   | grep -oiE '\(#[0-9]+\)|\b(fix(e[sd])?|close[sd]?|resolve[sd]?)[[:space:]]+#[0-9]+'
 ```
 
-Then — **regardless of whether that returned anything** — list the open issues and
-match them against the branch:
+List the open issues:
 
 ```bash
 gh issue list --state open --limit 100 --json number,title --jq '.[] | "#\(.number) \(.title)"'
 ```
 
-Read the branch's commit subjects and bodies against those titles. An issue is a
-match when the branch implements the behavior the issue asks for, **whether or not
-any commit mentions its number**. A branch that adds a graph view closes the open
-issue asking for a graph view even when no commit said `(#397)`.
+Read the commit subjects and bodies against the issue titles. An issue matches when the branch implements the behavior the issue asks for.
 
-Present the result before writing the body:
+Present the result:
 
 ```
 Issues this PR closes:
@@ -226,33 +179,27 @@ Issues this PR closes:
 Add any I missed, or reply "none" to confirm.
 ```
 
-Wait for the answer. Every confirmed number becomes a closing keyword in the body
-(Step 9).
+With no match and no references, say `No open issue matches this branch.`
 
-If the search finds no match and the commits carry no references, do not continue
-silently — say `No open issue matches this branch.` and get confirmation first.
+Wait for the operator's answer in both cases. Every confirmed number becomes a closing keyword in Step 9.
 
 ---
 
 ## Step 8: Generate the PR title
 
-A title lands in `main`'s history: in the merge commit, or as the commit subject
-on a squash merge. Follow the convention recent merged PRs and the log show:
+The title lands in `main`'s history. Follow the convention recent merged PRs and the log show:
 
 ```bash
 gh pr list --state merged --limit 20 --json title --jq '.[].title'
 git log origin/main --no-merges --format=%s -20
 ```
 
-Use conventional-commit format with a scope, as commits in this repo do.
-
-Say what changes for the person using Ion, and why it matters. Never list the
-areas the diff touched.
+Use conventional-commit format with a scope. Say what changes for the person using Ion and why it matters.
 
 - One commit: start from its subject. Rewrite it when it only names areas.
 - Several commits for one change across components: name that change.
 - Several distinct changes: name what the PR achieves as a whole.
-- If the commits reference a GitHub issue (`#N`), include it in the title.
+- When the commits reference an issue (`#N`), include it.
 
 BAD
 > ❌ fix: Windows release manifest, tab persistence, and injection classification
@@ -260,25 +207,20 @@ BAD
 GOOD
 > ✅ fix(engine): stop recalled dispatch callbacks from restarting stopped sessions
 
----
-
 ## Step 9: Generate the PR body
 
-Read each issue confirmed in Step 7. Its description of the problem feeds the
-body:
+Read each issue confirmed in Step 7:
 
 ```bash
 gh issue view {N} --json title,body
 ```
 
-Open with the problem in plain words, as a user saw it. Take it from those issues
-and the commit bodies. Then say briefly how this PR fixes it. Never lead with an
-inventory of files, functions, or internal names.
+Open with the problem in plain words, as a user saw it, taken from the issues and the commit bodies. Then say briefly how this PR fixes it.
 
 ```markdown
 {The problem, as a user saw it. One to three sentences.}
 
-{How this fixes it. A few sentences. Name the components when several are touched: engine, desktop, ios, relay.}
+{How this fixes it. A few sentences. Name the components when several are touched: engine, server, desktop, ios, relay.}
 
 Fixes #N
 ```
@@ -293,24 +235,15 @@ GOOD, the same PR written for a reader:
 > after the stop could start the conversation again. Now a stopped session stays
 > stopped.
 
-Rules:
-- Write for the repo maintainer, collaborators, and public. No selling — just inform.
-- **Every issue confirmed in Step 7 gets a closing keyword at the very end of the
-  body, one per line.** This is what actually closes the issue on merge — a `(#N)`
-  in the title or a commit subject is only a link and closes nothing. Use `Fixes`
-  for bug work and `Closes` for feature work:
+- Write for the maintainer, collaborators, and the public. Inform; do not sell.
+- The body leads with the problem, not with files, functions, or internal names.
+- Each issue confirmed in Step 7 gets a closing keyword at the end of the body, one per line: `Fixes` for bug work, `Closes` for feature work. A `(#N)` in a title or subject is a link and closes nothing.
+- The body carries no raw commit hashes.
 
 ```
 Fixes #142
 Closes #138
 ```
-
-- Do not open the PR without this trailer unless Step 7 confirmed there is no
-  matching issue.
-
-- Do not include raw commit hashes in the body.
-
----
 
 ## Step 10: Create the PR
 
@@ -318,26 +251,15 @@ Closes #138
 gh pr create --base main --title "{title}" --body "{body}"
 ```
 
-Never pass `--draft`.
-
----
-
 ## Step 11: Report
 
 ```
 ✅ PR #{number} created: {URL}
    {title}
    {N} commits, scopes: {list}
-   Linux parity gate: passed (background dispatch) | passed (synchronous fallback) | skipped (Docker down, user opted to proceed) | n/a (no engine/desktop changes)
+   Linux parity gate: passed (background) | passed (foreground) | skipped (Docker down, operator chose to proceed) | n/a (no engine, server, desktop, or packages changes)
 
 Next step: Wait for CI. When it passes, the PR is ready to merge.
 ```
 
-If an existing PR was updated instead:
-
-```
-✅ PR #{number} updated: {URL}
-   {title}
-   {N} commits, scopes: {list}
-   Linux parity gate: passed (background dispatch) | passed (synchronous fallback) | skipped | n/a
-```
+When an existing PR was updated, the first line reads `✅ PR #{number} updated: {URL}` and the "Next step" line is omitted.

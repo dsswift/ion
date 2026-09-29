@@ -17,7 +17,7 @@ without waiting. Every decision has a deterministic rule below; when a rule
 fires, apply it, log it as a plan revision, and continue.
 
 The only stop conditions are the Phase A guards (§2), a pre-reset target
-mismatch (§6), and verified content loss (§8). Once the rebuild starts it always
+mismatch (§6), and verified content loss (§8b). Once the rebuild starts it always
 runs to completion (§7b) — a plan that proves unimplementable is revised, never
 abandoned. Any stop is automatic and reported; it never asks.
 
@@ -31,9 +31,10 @@ Two, both mandatory. Neither is ever traded for the other.
 > **I2 — Scope.** Every result commit must resolve to exactly one scope under
 > `.commit.json`, and its `type(scope):` tag must be that scope.
 
-I2 is not cosmetic. Release-please versions each component by the **paths** a
-commit touches (`release-please-config.json`), and takes the commit's type and
-subject as that component's changelog entry. So a commit spanning two release
+I2 is not cosmetic. The release tool (release-damnit, configured by
+`release-please-config.json`) versions each component by the **paths** a commit
+touches, and takes the commit's type and subject as that component's changelog
+entry. So a commit spanning two release
 units bumps **both** and files the same subject under both changelogs — one of
 them a lie. A commit whose tag disagrees with its paths ships a correct version
 under a misleading entry. Both are defects equal in severity to losing content.
@@ -450,7 +451,9 @@ This is a rewind, not an amendment or a rebase — the forbidden-operations list
 still holds. `git reset --soft` is explicitly allowed, and content is never at
 risk because the working tree is untouched throughout.
 
-Only a **Restore** row above reaches this step — content loss, nothing else.
+### 8b. Restore on content loss
+
+Only a **Restore** row in §8 reaches this step — content loss, nothing else.
 Restore the branch pointer to backup immediately and stop, without asking.
 
 ```bash

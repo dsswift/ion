@@ -1,133 +1,120 @@
 ---
-description: Open a GitHub issue on the Ion engine repo for a bug or feature request derived from the current conversation, with consumer project details scrubbed.
+description: Open a GitHub issue on the Ion repo for a bug or feature request derived from the current conversation, with consumer project details scrubbed.
 allowed_bash_commands:
   - gh issue create
   - gh issue list
   - gh issue view
 ---
 
-Open a GitHub issue on the `dsswift/ion` repository based on the current conversation. The issue must contain enough context for Ion engine developers to understand what to implement and how it should behave — without leaking any details about the consumer project that surfaced the need.
+# /create-issue
 
-**Hard rules. These are load-bearing.**
+Open a GitHub issue on `dsswift/ion` from the current conversation. The issue gives Ion developers enough to know what to build and how it should behave, and it carries nothing about the consumer project that surfaced the need.
 
-- The issue is created on `dsswift/ion`. Never create on any other repo.
-- The issue must contain **zero** references to the consumer project. No project names, product names, company names, internal paths, domain-specific terminology, proprietary APIs, team names, or person names from the consumer side. This is a confidentiality boundary, not a style preference.
-- The issue must be written entirely in **Ion engine vocabulary**: hooks, events, tools, SDK types, config fields, providers, protocol commands, normalized events, engine sessions, extensions, harnesses, consumers. If a concept from the consumer project doesn't map to Ion vocabulary, describe the *capability gap* in generic terms ("a consumer needs to…", "an extension wants to…", "a harness using the SDK expects to…").
-- You must present the draft to the user for review before creating the issue. The user is the final confidentiality gate.
-- **Use the GitHub CLI (`gh`) for all GitHub operations.** Do not use `WebFetch`, `curl`, or any direct HTTP calls to the GitHub API. The `gh` CLI is already authenticated; raw API calls are not.
-- After the issue is created, stop. Do not start implementing.
+## Rules
+
+- The issue is created on `dsswift/ion`.
+- The issue names no consumer project. That covers project, product, company, team, and person names, internal paths, domain terminology, and proprietary APIs. This is a confidentiality boundary.
+- The issue is written in Ion vocabulary (`docs/vocabulary/terms.json`): hooks, events, tools, SDK types, config fields, providers, protocol commands, sessions, extensions, harnesses, Environments, the Studio wire, Studio SDK resources. A consumer concept with no Ion term is described as a capability gap: "a consumer needs to…", "an extension wants to…".
+- The operator reviews the draft before the issue is created. The operator is the final confidentiality gate.
+- Every GitHub operation goes through `gh`, which is already authenticated.
+- The command ends when the issue is created and the report is printed.
 
 ## Arguments
 
-`$ARGUMENTS` — optional. When present, provides additional context, focus, or classification hints. Examples:
+`$ARGUMENTS` is optional. It adds context, focus, or a classification hint.
 
-- `/ion--open-issue` — derive everything from the conversation
-- `/ion--open-issue bug: error events are not emitted when tool execution fails` — explicit classification + focus
-- `/ion--open-issue we need a hook that fires before compaction` — feature focus
+- `/create-issue` derives everything from the conversation.
+- `/create-issue bug: error events are not emitted when tool execution fails` gives a classification and a focus.
+- `/create-issue we need a hook that fires before compaction` gives a feature focus.
 
-If `$ARGUMENTS` contains an explicit classification keyword (`bug`, `feature`, `enhancement`), use it as a strong signal in Step 2. Otherwise, auto-detect.
+A classification keyword (`bug`, `feature`, `enhancement`) in `$ARGUMENTS` decides Step 2.
 
-## Step 1: Extract the engine-level need
+## Step 1: Extract the need
 
-Analyze the current conversation to identify the Ion engine gap. Extract:
+From the conversation, extract:
 
-- **What is missing or broken** — the specific engine behavior, hook, event, config field, protocol command, SDK method, or tool capability that is absent or incorrect.
-- **Why it matters** — what a consumer or extension cannot do today because of this gap. Frame in generic terms: what class of consumer would benefit, not the specific one who surfaced it.
-- **What the capability looks like** — the expected engine-side contract (hook fires at X point, event carries Y fields, config field controls Z behavior). Focus on the engine's public API surface, not how the consumer uses it internally.
-- **What was tried** — describe any workarounds in pure engine/SDK terms. Do not describe what the consumer was trying to accomplish; describe what engine primitives were reached for and why they fell short.
+- **What is missing or broken.** The specific behavior, hook, event, config field, protocol command, SDK method, wire action, or tool capability.
+- **Why it matters.** What a consumer or extension cannot do today. Name the class of consumer that benefits.
+- **What the capability looks like.** The contract on Ion's public surface: the hook fires at X, the event carries Y, the config field controls Z.
+- **What was tried.** The Ion primitives that were reached for and why they fell short.
 
-**Do not carry consumer framing forward from this step.** The extraction captures the engine gap. The consumer's specific use case, workflow, or internal architecture is not part of the engine issue and must not appear in the draft.
+The extraction captures Ion's gap. The consumer's use case, workflow, and architecture stay out of it.
 
-If `$ARGUMENTS` provides additional context, incorporate it. If the conversation does not contain enough information to identify a specific engine-level need, stop and tell the user: "I cannot identify a specific Ion engine issue from this conversation. Describe the engine gap you want to file and I will draft the issue."
+If the conversation does not identify a specific gap, stop: "I cannot identify a specific Ion issue from this conversation. Describe the gap you want to file and I will draft the issue."
 
-## Step 2: Classify the issue
+## Step 2: Classify
 
-Determine whether this is a **bug** or an **enhancement** (feature request).
+| Class | Means | Examples |
+|---|---|---|
+| **Bug** | Ion does something wrong | An event carries the wrong fields. A hook does not fire when it should. A config field is parsed and not applied. Behavior contradicts the documented contract. |
+| **Enhancement** | Ion lacks a capability | A hook, event variant, config field, protocol command, SDK method, or Studio extension point that does not exist. |
 
-**Bug** — the engine does something wrong:
-- An event is emitted with incorrect fields or at the wrong time
-- A hook fires with the wrong payload or doesn't fire when it should
-- A config field is parsed but not applied
-- A protocol command returns an error it shouldn't, or silently drops data
-- Behavior contradicts the documented contract
-- "It should do X but does Y"
+When the class is unclear, use **enhancement**.
 
-**Enhancement** — the engine is missing a capability:
-- A hook that doesn't exist yet
-- An event variant or field that isn't emitted
-- A config field that isn't supported
-- A protocol command that isn't implemented
-- An SDK method or context callback that isn't available
-- "There is no way to…"
-
-If the classification is ambiguous, default to **enhancement**. Bugs are reserved for things that are clearly broken, not things that are merely absent.
-
-## Step 3: Identify the affected engine subsystem
-
-Map the need to one or more Ion engine subsystems. This helps implementers know where to look.
+## Step 3: Identify the subsystem
 
 | Subsystem | Scope |
-|-----------|-------|
-| `hooks` | Extension hook definitions, firing points, payload shapes (`engine/internal/extension/sdk_hooks_*.go`) |
-| `events` | NormalizedEvent variants, StatusFields, engine events (`engine/internal/types/normalized_event.go`, `types.go`) |
-| `protocol` | Wire protocol commands and responses (`engine/internal/protocol/protocol.go`) |
-| `sdk` | SDK types, context methods, hook handler signatures (`engine/internal/extension/sdk_types.go`, `sdk.go`) |
-| `config` | EngineConfig, EngineRuntimeConfig, settings (`engine/internal/types/config.go`, `engine/internal/config/`) |
-| `tools` | Built-in tool definitions and execution (`engine/internal/tools/`) |
-| `session` | Session lifecycle, manager, prompt dispatch (`engine/internal/session/`) |
-| `backend` | API/CLI backend, run loop, tool execution pipeline (`engine/internal/backend/`) |
-| `providers` | LLM provider implementations (`engine/internal/providers/`) |
-| `permissions` | Permission evaluation, patterns, sandbox (`engine/internal/permissions/`, `engine/internal/sandbox/`) |
+|---|---|
+| `hooks` | Hook definitions, firing points, payloads (`engine/internal/extension/sdk_hooks_*.go`) |
+| `events` | `NormalizedEvent` variants, `StatusFields`, engine events (`engine/internal/types/`) |
+| `protocol` | Engine wire commands and responses (`engine/internal/protocol/protocol.go`) |
+| `sdk` | SDK types, context methods, handler signatures (`engine/internal/extension/sdk_types.go`, `sdk.go`; `sdk/go/`) |
+| `config` | `EngineConfig`, runtime config (`engine/internal/types/config.go`, `engine/internal/config/`) |
+| `tools` | Built-in tools (`engine/internal/tools/`) |
+| `session` | Session lifecycle, prompt dispatch (`engine/internal/session/`) |
+| `backend` | Backends, run loop, tool execution (`engine/internal/backend/`) |
+| `providers` | LLM providers (`engine/internal/providers/`) |
+| `permissions` | Permission evaluation, sandbox (`engine/internal/permissions/`, `engine/internal/sandbox/`) |
 | `conversation` | Persistence, branching, compaction (`engine/internal/conversation/`) |
-| `mcp` | MCP client, tool/resource bridge (`engine/internal/mcp/`) |
-| `transport` | Unix socket, relay client (`engine/internal/transport/`) |
+| `mcp` | MCP client and bridge (`engine/internal/mcp/`) |
+| `transport` | Engine socket and relay transport (`engine/internal/transport/`) |
+| `server` | Ion Studio Server: store, auth doors, orchestration, HTTP (`server/src/`) |
+| `studio-wire` | The Studio wire: actions, channels, scopes (`packages/shared/src/studio-wire/`, `server/src/protocol/`) |
+| `studio-sdk` | Studio extension points (`packages/studio-sdk/`) |
 
-Use the subsystem label(s) in the issue title prefix and body.
+Use the subsystem in the title prefix and the body.
 
 ## Step 4: Build the issue
 
-**Voice rule:** Write entirely in impersonal third person. Every sentence must read as if filed by an external Ion SDK consumer who has no relationship to any specific organization. Forbidden voice: "we", "our", "I", "us", "my". Required voice: "a consumer", "an extension", "a harness", "extension authors", "this capability". If you catch yourself writing from the inside perspective of the person who discovered the bug, stop and rewrite from the outside perspective of someone who independently ran into the same engine limitation.
+Write in impersonal third person, as an outside developer building on Ion who met the same limitation. Use "a consumer", "an extension", "a harness", "extension authors". Do not use "we", "our", "I", "us", or "my".
 
 ### Title
 
-Write a clear, action-oriented title:
+- Bug: `[subsystem] What is broken`, for example `[hooks] before_tool_execution hook does not fire for MCP tools`.
+- Enhancement: `[subsystem] What should exist`, for example `[hooks] Add before_compaction hook with token count and strategy in payload`.
 
-- **Bugs:** `[subsystem] Describe what is broken` — e.g. `[hooks] before_tool_execution hook does not fire for MCP tools`
-- **Enhancements:** `[subsystem] Describe what should exist` — e.g. `[hooks] Add before_compaction hook with token count and strategy in payload`
-
-Title should be specific enough that someone scanning the issue list knows exactly what it's about without opening it.
+Someone scanning the issue list knows what it is about from the title alone.
 
 ### Body
 
-Use the appropriate template below. Every section is required unless marked optional.
+Every section is required unless marked optional.
 
 #### Enhancement template
 
 ```markdown
 ## Summary
 
-<1-2 sentences: what capability the engine should have>
+<1-2 sentences: the capability Ion should have>
 
 ## Motivation
 
-<Why this capability is needed. Write from the perspective of a generic SDK consumer or extension author who has independently arrived at this need. The motivation must read as if any developer building on Ion could have written it — not as if it describes one specific project or workflow.>
+<Why it is needed, from the view of any developer building on Ion.>
 
-<Good patterns:>
+<Patterns that work:>
 <- "Extensions that need to observe X currently have no way to…">
-<- "A harness that manages Y has no engine primitive for…">
-<- "Consumers who want to customize Z behavior must approximate it with…">
+<- "A harness that manages Y has no primitive for…">
+<- "Consumers who want to customize Z must approximate it with…">
 
-<Forbidden: anything that implies a specific organization, product, industry, or workflow. If the only consumers who would care about this are in one domain, reframe around the capability, not the domain.>
+<Frame the need around the capability, so it implies no organization, product, industry, or workflow.>
 
 ## Proposed behavior
 
-<Describe the expected engine behavior in detail:>
-<- When does it fire / what triggers it?>
-<- What data does it carry / what fields are included?>
+<- When does it fire, and what triggers it?>
+<- What data does it carry?>
 <- What can a consumer do with it?>
-<- How does it interact with existing hooks/events/config?>
+<- How does it interact with existing hooks, events, and config?>
 
-<If proposing a hook, include the expected payload shape:>
+<For a hook, the payload shape:>
 ```go
 // Example payload shape (proposed)
 type BeforeCompactionPayload struct {
@@ -137,38 +124,36 @@ type BeforeCompactionPayload struct {
 }
 ```
 
-<If proposing an event, include the expected wire format:>
+<For an event, the wire format:>
 ```json
 {"type": "example_event", "data": {"field": "value"}}
 ```
 
-<If proposing a config field, show where it fits in EngineConfig:>
+<For a config field, where it fits:>
 ```json
 {"newField": "defaultValue"}
 ```
 
 ## Use case examples
 
-<2-3 concrete examples of how a consumer or extension would use this capability.>
-<Frame each as: "A consumer could…", "An extension would…", "A harness might…">
-<Show example SDK code, hook handlers, or config snippets where helpful.>
+<2-3 examples, each framed as "A consumer could…", "An extension would…", "A harness might…", with SDK code or config where it helps.>
 
-**Diversity requirement:** The examples must span different, plausible applications of the capability — not variations of a single scenario. If all examples describe the same kind of workflow from different angles, that implies the capability has only one real use case. Write examples that independently justify the capability on their own merits. A stranger should be unable to identify which example (if any) resembles the actual use case that motivated the issue.
+<The examples cover different applications of the capability, so each one justifies it on its own and none points at the use case that motivated the issue.>
 
 ## Acceptance criteria
 
 - [ ] <Specific, testable criterion>
 - [ ] <Specific, testable criterion>
-- [ ] <Criterion about contract: e.g. "New field has zero-value default, additive-only">
-- [ ] <Criterion about cross-language sync if types are affected: e.g. "TypeScript and Swift mirrors updated">
+- [ ] <Contract criterion, e.g. "New field has a zero-value default and is additive">
+- [ ] <Cross-language criterion when types change, e.g. "TypeScript and Swift mirrors updated">
 
 ## Affected subsystems
 
-<Comma-separated list from the subsystem table above>
+<Comma-separated, from the subsystem table>
 
 ## Alternatives considered (optional)
 
-<If the conversation discussed workarounds or alternative approaches that were rejected, describe them generically and explain why they fell short.>
+<Workarounds or approaches that were rejected, described generically, and why they fell short.>
 ```
 
 #### Bug template
@@ -176,72 +161,69 @@ type BeforeCompactionPayload struct {
 ```markdown
 ## Summary
 
-<1-2 sentences: what is broken and what the correct behavior should be>
+<1-2 sentences: what is broken and what the correct behavior is>
 
 ## Current behavior
 
-<What the engine currently does. Be specific: which event, hook, config field, or protocol command misbehaves, and how.>
+<What Ion does now: which event, hook, config field, or command misbehaves, and how.>
 
 ## Expected behavior
 
-<What the engine should do instead. Reference the contract, documentation, or logical expectation.>
+<What Ion should do, with the contract or documentation it follows from.>
 
 ## Steps to reproduce
 
-1. <Step using Ion engine vocabulary: "Start a session with config X">
-2. <Step: "Send a prompt that triggers tool Y">
-3. <Step: "Observe event Z">
+1. <In Ion vocabulary: "Start a session with config X">
+2. <"Send a prompt that triggers tool Y">
+3. <"Observe event Z">
 
-<If the bug is observable through the wire protocol, show the actual vs. expected NDJSON.>
-<If the bug is in a hook payload, show the actual vs. expected payload.>
+<Actual versus expected NDJSON, or actual versus expected hook payload, when the bug shows there.>
 
-## Context
+## Context (optional)
 
-<One or two sentences stating that this was discovered while building on Ion. Do NOT describe what was being built, why, or for whom. Never include: what the consumer was trying to accomplish, the workflow that triggered the discovery, or any organizational or product context. The context section exists only to acknowledge this is a practical finding, not a theoretical one. If there is nothing useful to say without leaking consumer context, omit this section entirely.>
+<One or two sentences saying this was found while building on Ion. Omit the section when there is nothing to say without consumer context.>
 
 ## Acceptance criteria
 
-- [ ] <The specific behavior that should be fixed>
-- [ ] <Regression test that pins the fix>
-- [ ] <Contract compliance if applicable>
+- [ ] <The behavior that is fixed>
+- [ ] <A regression test that pins the fix>
+- [ ] <Contract compliance, if applicable>
 
 ## Affected subsystems
 
-<Comma-separated list from the subsystem table above>
+<Comma-separated, from the subsystem table>
 ```
 
 ## Step 5: Confidentiality scrub
 
-**This step is mandatory. Do not skip it.**
+Search the whole title and body for each row. Replace what you find.
 
-Before presenting the draft, walk this checklist against the **entire issue body and title**. For each item, actively search the text. If found, replace with the generic equivalent shown.
+| Check | Look for | Replace with |
+|---|---|---|
+| Project names | Any project, product, or repo name other than `ion`, `dsswift/ion` | "a consumer project" |
+| Company names | Any organization other than `dsswift` | "an organization", "a team" |
+| Person names | Any person's name | Remove |
+| Internal paths | File paths outside the Ion repo | "a consumer's codebase", or remove |
+| Domain terms | Industry or product terminology that reveals what the consumer does | "a workflow", "a data pipeline", "a user-facing feature" |
+| Organizational vocabulary | Jargon with no common meaning outside one organization | "a scheduled operation", "a queued task", "a processing step" |
+| Workflow patterns | A multi-step process specific enough to imply one industry or product | Capability terms: "before the operation completes", "after a hook fires" |
+| Insider voice | "we need", "our extension", "for us" | "a consumer", "an extension author", "this was observed" |
+| Proprietary APIs | Non-public APIs, databases, internal services | "an external service", "a backend API" |
+| Internal URLs | URLs to internal tools, dashboards, or repos | Remove |
+| Logs and output | Console output or stack traces with consumer data | Redact the consumer parts; keep the Ion frames |
+| Conversation quotes | Quotes that carry consumer context | Rephrase in Ion terms |
 
-| Check | What to look for | Replace with |
-|-------|-----------------|--------------|
-| Project names | Any project, product, or repo name other than `ion`, `dsswift/ion` | "a consumer project", "a downstream project" |
-| Company names | Any company or organization name other than `dsswift` | "an organization", "a team" |
-| Person names | Any person's name other than public Ion contributors | Remove entirely |
-| Internal paths | File paths outside `engine/`, `desktop/`, `ios/`, `relay/`, `docs/` | "a consumer's codebase", or remove |
-| Domain terms | Industry-specific or product-specific terminology that reveals what the consumer does | Generic equivalent: "a workflow", "a data pipeline", "a user-facing feature" |
-| Organizational vocabulary | Non-proper-noun jargon specific to one org ("briefings", "intake queue", "dispatch cycle", "compliance run") — words with no common meaning outside that organization | Replace with generic workflow language: "a scheduled operation", "a queued task", "a processing step" |
-| Workflow patterns | Descriptions of multi-step processes specific enough to imply one industry or product ("after approval, before send, once review is complete") | Strip to capability terms: "before the operation completes", "after a hook fires" |
-| Insider voice | First-person plural ("we need", "our extension", "we discovered", "for us") | Rewrite as impersonal third person: "a consumer", "an extension author", "this was observed" |
-| Proprietary APIs | References to non-public APIs, databases, internal services | "an external service", "a backend API" |
-| Internal URLs | URLs pointing to internal tools, dashboards, repos (not `dsswift/ion`) | Remove entirely |
-| Logs/output | Console output, error messages, or stack traces containing consumer-specific data | Redact consumer-specific portions, keep only Ion engine frames |
-| Conversation quotes | Direct quotes from the conversation that contain consumer context | Rephrase in Ion engine terms |
+Then read the full draft against two questions:
 
-After the scrub, re-read the full draft with **two** questions:
+1. Could a stranger tell what project filed this, what it does, or who works on it? The answer must be no.
+2. Could a developer who never met the filer have found this gap and written this issue? The answer must be yes.
 
-1. *"If a stranger read this issue, could they determine what project filed it, what that project does, or who works on it?"* If anything other than a firm no, scrub again.
-2. *"Could a developer who has never met the filer have independently discovered this same engine gap and written this exact issue?"* If no — if the issue only makes sense knowing the consumer's use case — it still leaks intent. Generalize further until yes.
+Scrub again until both hold.
 
-## Step 6: Present draft for review
-
-Show the user the complete draft in this format:
+## Step 6: Present the draft
 
 ```
-📋 Ion Engine Issue Draft
+📋 Ion Issue Draft
 
 Classification: <Bug | Enhancement>
 Subsystems: <list>
@@ -271,54 +253,46 @@ Title: <title>
   - Independent-filer test: ✅ reads as externally filed
 ```
 
-Then call `AskUserQuestion` with the question "Ready to create this issue on dsswift/ion?" and options: `Create it`, `Make changes`.
+Call `AskUserQuestion` with "Ready to create this issue on dsswift/ion?" and the options `Create it` and `Make changes`.
 
-Do **not** create the issue until the user selects `Create it`. If the user selects `Make changes` or describes edits, apply them, re-run the confidentiality scrub (Step 5), and present the updated draft with another `AskUserQuestion`.
+On `Make changes`, or when the operator describes edits: apply them, run Step 5 again, and present the updated draft with the same question.
 
 ## Step 7: Create the issue
 
-Once the user confirms:
+After the operator selects `Create it`:
 
 ```bash
 gh issue create --repo dsswift/ion --title "<title>" --label "<bug|enhancement>" --body "<body>"
 ```
 
-If the `gh` command fails, report the error and stop. Do not retry with different parameters unless the user asks.
+If `gh` fails, report the error and stop.
 
-## Step 8: Plan-mode integration
+## Step 8: Update the active plan
 
-If this command was invoked while an active plan exists, restructure the plan so that the engine work tied to this issue is isolated, worked first, and committed independently — before any other plan items are touched. This prevents scope creep from bundling unrelated consumer-side changes into commits that close an engine issue.
+When this conversation has an active plan, partition it so the work that resolves the issue is done first and committed on its own. The issue's closing commits then contain only the work that resolves it.
 
-**The core principle:** An engine issue's closing commit(s) must contain only the work that resolves that issue. Consumer-side work that happens to be in the same plan is separate work with separate commits that do not reference the issue.
+### Find the plan
 
-### Detect the active plan
+The plan is the one pinned in this conversation's context, in one of these forms:
 
-Resolve the most recently modified plan file:
+- `**Your plan file for this session: <absolute-path>**`
+- `[Attached plan: <path>]`
+- `Implement the following plan:` followed by the plan
 
-```bash
-ls -1t ~/.ion/plans/*.md 2>/dev/null | head -1
-```
+With no plan pinned, skip this step.
 
-If no plan file exists, skip this step entirely — there is no plan to update.
+Read the plan. If its content does not overlap the gap that was filed, skip this step and report: "⚠️ Active plan found but appears unrelated — skipped plan update."
 
-If a plan file is found, read it and check whether it is plausibly related to the conversation (the plan's title or content should overlap with the engine gap that was just filed). If the plan is clearly unrelated (e.g. it's about a completely different feature), skip this step and note in the report: "⚠️ Active plan found but appears unrelated — skipped plan update."
+### Partition the work
 
-### Analyze the plan and partition the work
+Classify every item in the plan:
 
-Read the full plan. Identify every item in the plan (steps, file modifications, verification tasks) and classify each as one of:
+- **Issue work** resolves the filed issue: Ion code changes, tests, contract manifest regeneration, cross-language type sync, Ion documentation.
+- **Remaining work** is everything else: consumer code, consumer tests, consumer config, harness changes outside the issue.
 
-- **Issue work** — directly resolves the engine issue that was just filed. This includes: engine code changes, engine test additions, contract manifest regeneration, cross-language type sync (TS/Swift mirrors of engine types), engine documentation updates. These are the items whose commits carry the `(#N)` suffix and `Closes #N` trailer.
-- **Remaining work** — everything else in the plan. Consumer-side code changes, consumer tests, consumer config, harness/extension changes, UI changes, anything that is not part of the engine issue resolution. These items are committed separately with no issue reference.
+### Write the section
 
-If the entire plan is engine issue work (e.g. the plan was created specifically to address this gap), then there is no partition — the whole plan is issue work. Note this in the section.
-
-If the plan contains no engine issue work (e.g. the issue was filed as a future need, not something this plan implements), note that the issue is filed for future work and the current plan proceeds without issue association.
-
-### Update the plan
-
-Add an `## Issue Association` section to the plan. Insert it immediately after the plan's first heading (the `# Title` line) and before any existing content.
-
-The section has three parts: the issue reference, the execution order, and the commit rules.
+Add `## Issue Association` immediately after the plan's first heading. Replace the section if it already exists. Leave the rest of the plan as it is.
 
 ```markdown
 ## Issue Association
@@ -328,34 +302,27 @@ The section has three parts: the issue reference, the execution order, and the c
 
 ### Execution order
 
-The engine work that resolves this issue must be implemented and committed **before** the remaining plan items. This is not optional — it prevents scope creep from bundling unrelated changes into the issue's closing commit.
+The work that resolves this issue is implemented and committed before the remaining plan items.
 
-**Phase 1 — Engine issue resolution (commits reference #<number>):**
-<bulleted list of the specific plan items that are issue work — file paths, steps, tests>
+**Phase 1 — Issue resolution (commits reference #<number>):**
+<the plan items that are issue work, with file paths and step references>
 
-**Phase 2 — Remaining plan work (commits do NOT reference #<number>):**
-<bulleted list of the remaining plan items, or "None — the entire plan is issue work">
+**Phase 2 — Remaining plan work (commits do not reference #<number>):**
+<the remaining plan items, or "None — the entire plan is issue work">
 
 ### Commit rules for Phase 1
 
-All Phase 1 commits must associate with the issue per AGENTS.md rules:
-- **Subject line:** append ` (#<number>)` — e.g. `feat(engine): add before_compaction hook (#<number>)`
-- **Body trailer:** include `Closes #<number>` (or `Fixes #<number>` for bug fixes) on its own line at the end of the commit body. Only the **final** Phase 1 commit carries `Closes`/`Fixes`; earlier Phase 1 commits (if multiple) use the `(#<number>)` subject suffix but omit the closing trailer so the issue isn't closed prematurely.
-- Both subject suffix and body trailer are required on the final commit. Subject alone gives the auto-link but won't close the issue; body alone closes but isn't visible in short logs.
+- **Subject:** ends with ` (#<number>)`, e.g. `feat(engine): add before_compaction hook (#<number>)`.
+- **Body:** the final Phase 1 commit carries `Closes #<number>` (or `Fixes #<number>` for a bug) on its own line. Earlier Phase 1 commits carry the subject suffix only, so the issue closes when the work is complete.
 
-Phase 2 commits use normal conventional commit format with no issue reference.
+Phase 2 commits carry no issue reference.
 ```
 
-**Rules for the plan update:**
+List actual file paths and plan steps in each phase, and use the real issue number.
 
-- Do not rewrite any other part of the plan. Only add the `## Issue Association` section.
-- The partition must be specific — list actual file paths and plan step references, not vague categories. The implementer should be able to look at this section and know exactly which items belong to Phase 1 vs. Phase 2 without re-reading the full plan.
-- If the plan already has an `## Issue Association` section (e.g. from a prior run of this command), replace it with the updated one. Do not duplicate.
-- The section must use the actual issue number from Step 7, not a placeholder.
+When the plan contains no issue work, write the section with the issue reference and the line "Filed for future work. This plan proceeds without issue association."
 
 ## Step 9: Report
-
-Print:
 
 ```
 ✅ Issue #<number> created: <URL>
@@ -364,32 +331,24 @@ Print:
    Subsystems: <list>
 ```
 
-If Step 8 updated a plan:
+Then one of:
 
 ```
 📋 Plan updated: <plan file path>
-   Phase 1 (issue #<number>): <N> items — engine work, committed first
-   Phase 2 (no issue ref): <N> items — remaining plan work
+   Phase 1 (issue #<number>): <N> items, committed first
+   Phase 2 (no issue ref): <N> items
 ```
-
-If the entire plan is issue work:
 
 ```
 📋 Plan updated: <plan file path>
-   All plan items are issue #<number> work — no phase split needed
+   All plan items are issue #<number> work
 ```
-
-If the issue is filed for future work (not implemented by this plan):
 
 ```
 📋 Plan updated: <plan file path>
-   Issue #<number> filed for future work — current plan proceeds without issue association
+   Issue #<number> filed for future work
 ```
-
-If Step 8 was skipped (no plan or unrelated plan):
 
 ```
 ℹ️ No active plan updated (no plan found / plan appears unrelated)
 ```
-
-After this line, the response ends. Do not offer to start implementing. Do not open a PR. The issue is now in the Ion engine backlog for prioritization.
