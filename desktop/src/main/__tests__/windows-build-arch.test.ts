@@ -34,6 +34,13 @@ describe('windows install scope', () => {
   it('keeps the assisted installer', () => {
     expect(nsis.oneClick).toBe(false)
   })
+
+  // electron-builder's NSIS template writes the package description into
+  // every Start Menu and desktop shortcut it creates, and Windows shows it as
+  // the shortcut's hover text.
+  it('labels shortcuts with the product name', () => {
+    expect(pkg.description).toBe('Ion Studio')
+  })
 })
 
 describe('windows build target architecture', () => {
