@@ -1,0 +1,16 @@
+{
+  "keyDerivationInfo": "ion-remote-v1",
+  "relayEnvelopeVersion": 1,
+  "studioProtocolVersion": 1,
+  "clientPrivateKey": "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a",
+  "clientPublicKey": "hSDwCYkwp1R0i33ctD73Wg2/Og0mOBr066SpjqqbTmo=",
+  "serverPrivateKey": "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb",
+  "serverPublicKey": "3p7bfXt9wbTTW2HC7OQ1Nz+DQ8hbeGdNrfx+FG+IK08=",
+  "sharedSecret": "1d3bd755c4ae3024a6ed778d3f4a45e3cedfdacc95a7d8b21e7d2c2bac1406ad",
+  "channelId": "fb231d0f5aee754e1138a58b2b8a4b1e",
+  "httpNonce": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+  "httpProof": "XfX36/lHRL94KZI2BDuZLxxMZ9TLox04emlTsIKdC14=",
+  "relayProof": "LUA/MNv+IHKN2Wvo+TIWQkB9gTBWjluZnTn+pdZ8yII=",
+  "envelopePlaintext": "{\"type\":\"studio_action\",\"id\":\"fleet-1\",\"action\":\"environment.server.info\",\"args\":[]}",
+  "envelope": "{\"v\":1,\"nonce\":\"Dw4NDAsKCQgHBgUE\",\"ciphertext\":\"1wiWUa/e1SCcqyh2A+A1k8h9pmBDw6XvBHJPyfR3b7X6DZ+vs1gNPIQj9NlSQtrkuwabacsTX5f4Zc9aBLfTWlBKInsSCDoGyqxOoKqcPAE1uStNOsh72Wk5Y5bsmKV8W+UyAw==\"}"
+}
