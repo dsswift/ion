@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { buildWorktreeMenuEntries } from './WorktreeRowMenu.items'
-import type { IntegrationMember, WorktreeInventoryEntry } from '../../shared/types'
+import type { IntegrationMember, WorktreeInventoryEntry } from '@ion/shared/types'
 
 const entry = { worktreePath: '/worktrees/one', branchName: 'wt/one', label: 'one', sourceBranch: 'main', head: '', lastCommitSubject: '', isDirty: false, unlandedCommitCount: 0, needsSync: false, safeToDiscard: false } as WorktreeInventoryEntry
 const membership = { worktreePath: entry.worktreePath, branchName: entry.branchName, pin: 'current', merge: 'unbuilt', pinnedSha: '', pinnedTreeHash: '', pinnedBaseSha: '', currentTreeHash: '' } as IntegrationMember
-const actions = { onNewConversation() {}, onBeginRename() {}, onAddToBench() {}, onRemoveFromBench() {}, onMoveInBench() {}, onSync() {}, onLandAndRetire() {}, onRequestDiscardWorktree() {}, onReveal() {}, onReprovision() {}, onRequestDiscardRecordings() {},  }
+const actions = { onNewConversation() {}, onBeginRename() {}, onAddToBench() {}, onRemoveFromBench() {}, onMoveInBench() {}, onSync() {}, onLandAndRetire() {}, onTransferWorktree() {}, onRequestDiscardWorktree() {}, onReveal() {}, onReprovision() {}, onRequestDiscardRecordings() {},  }
 const colors = new Proxy({}, { get: () => '#000' }) as never
 
 describe('WorktreeRowMenu bench membership', () => {

@@ -1,8 +1,13 @@
 /**
  * InboxRowMenu — context menu for an inbox row: Snooze ▸ presets, Mark
- * unread, Settle/Un-settle, Rename, and confirmed permanent deletion.
+ * unread, Settle/Un-settle, Rename (with or without the worktree), Transfer, and confirmed permanent
+ * deletion. The inbox is the primary conversation surface, so a conversation
+ * verb lands here.
  */
+import { tabEnvironmentId } from '../connection/tab-environment'
+import { isNonNegativeNumber, useServerSetting } from '../state/use-server-setting'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { isTabWorktreeSealed } from '@ion/shared/worktree-seal'
 import { Trash } from '@phosphor-icons/react'
 import { createPortal } from 'react-dom'
 import { ConfirmDialog } from '../../components/git/ConfirmDialog'
@@ -12,14 +17,15 @@ import { rInfo, rWarn, rError } from '../../rendererLogger'
 import { useAnchoredPopover } from '../../hooks/useAnchoredPopover'
 import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
 import { transitions } from '../../theme-tokens'
-import { useSessionStore } from '../../stores/sessionStore'
-import { usePreferencesStore } from '../../preferences'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { availableSnoozePresets } from './inbox-snooze-presets'
-import { isBenchDirectory, settlingIsPermanent } from '../../../shared/worktree-conversations'
-import { classifyInbox, type InboxTabView } from '../../../shared/inbox-classify'
-import type { TabState } from '../../../shared/types'
+import { isBenchDirectory, settlingIsPermanent } from '@ion/shared/worktree-conversations'
+import { classifyInbox, type InboxTabView } from '@ion/shared/inbox-classify'
+import type { TabState } from '@ion/shared/types'
 import { scrollableMenuStyle } from '../../menu-viewport'
 import { useConvertToWorktreeGate } from '../../components/useConvertToWorktreeGate'
+import { useTransferGate } from '../transfer/useTransferGate'
+import { openTransferDialog } from '../transfer/TransferDialogHost'
 import { copyConversationSessionIds, copyConversationTranscript } from '../../copy-conversation'
 
 function MenuButton({ label, onSelect, disabled = false, icon, danger = false }: { label: string; onSelect: () => void; disabled?: boolean; icon?: React.ReactNode; danger?: boolean }): React.JSX.Element {
@@ -53,13 +59,14 @@ function MenuButton({ label, onSelect, disabled = false, icon, danger = false }:
   )
 }
 
-export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onClose }: { x: number; y: number; tab: TabState; canRestore?: boolean; onRename: () => void; onClose: () => void }): React.JSX.Element {
+export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onRenameWithWorktree, onPickColor, onClose }: { x: number; y: number; tab: TabState; canRestore?: boolean; onRename: () => void; /** Renames the conversation AND its worktree. Offered only for a worktree conversation. */ onRenameWithWorktree?: () => void; /** Opens the color picker for this conversation. */ onPickColor?: () => void; onClose: () => void }): React.JSX.Element {
   const colors = useColors()
   const layer = usePopoverLayer()
   const menuRef = useRef<HTMLDivElement>(null)
   const [snoozeOpen, setSnoozeOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const autoSettleDays = usePreferencesStore((s) => s.inboxAutoSettleDays)
+  // The auto-settle window of the server this conversation is on.
+  const autoSettleDays = useServerSetting(tabEnvironmentId(tab), 'inboxAutoSettleDays', isNonNegativeNumber, 0)
 
   useEffect(() => {
     const handleClick = (e: MouseEvent): void => {
@@ -92,14 +99,17 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onClose }
     tab.workingDirectory,
     [...benchPaths.values()].flatMap((list) => list.map((workspace) => workspace.benchPath)),
   )
-  // Same gate the tab-strip context menu uses: visible only for a plain
-  // conversation over a git repo (not already a worktree), disabled while the
-  // tab is busy or the checkout is dirty. One mechanism, two menus.
+  // Visible only for a plain conversation over a git repo (not already a
+  // worktree), disabled while the tab is busy or the checkout is dirty.
   const convert = useConvertToWorktreeGate(tab)
-  // Same gate the tab-strip context menu uses for "Fork conversation": needs a
-  // minted conversation to copy from, and a landed worktree is a sealed
-  // read-only record that no longer accepts new forks.
-  const canFork = !!tab.conversationId && !tab.worktree?.landedAt
+  // "Fork conversation" needs a
+  // minted conversation to copy from, and a landed or moved worktree is a
+  // sealed read-only record that no longer accepts new forks.
+  const canFork = !!tab.conversationId && !isTabWorktreeSealed(tab)
+  // "Transfer…" is disabled
+  // unless the conversation is idle, not already mid-transfer, and some
+  // other environment is connected to receive it.
+  const transfer = useTransferGate(tab)
 
   // Settled state (override-aware) decides which settle verb shows.
   const view: InboxTabView = {
@@ -133,6 +143,8 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onClose }
     + (snoozeOpen ? presets.length : 0)
     + (convert.show ? 1 : 0)
     + (canFork ? 1 : 0)
+    + (onPickColor ? 1 : 0)
+    + 1
   const pos = useAnchoredPopover({ x, y }, { deps: [itemCount, convert.label] })
 
   const menu = (
@@ -192,6 +204,11 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onClose }
       )}
       <div style={{ height: 1, background: colors.containerBorder, margin: '4px 0' }} />
       <MenuButton label="Rename" onSelect={() => exec(onRename)} />
+      {/* Worktree conversations only: the deliberate "change both names" verb.
+          Plain Rename leaves the worktree alone, because a worktree's topic
+          does not follow every conversation relabelling. */}
+      {onRenameWithWorktree && tab.worktree && <MenuButton label="Rename conversation and worktree…" onSelect={() => exec(onRenameWithWorktree)} />}
+      {onPickColor && <MenuButton label="Color…" onSelect={() => exec(onPickColor)} />}
       <MenuButton label="Regenerate title" onSelect={() => exec(() => { void store.getState().regenerateTabTitle(tab.id) })} />
       {canFork && (
         <MenuButton
@@ -210,6 +227,14 @@ export function InboxRowMenu({ x, y, tab, canRestore = true, onRename, onClose }
           })}
         />
       )}
+      <MenuButton
+        label="Transfer…"
+        disabled={transfer.disabled}
+        onSelect={() => exec(() => {
+          rInfo('inbox', 'transfer dialog opened', { tab_id: tab.id.slice(0, 8) })
+          openTransferDialog({ tabId: tab.id, initialMode: 'conversation' })
+        })}
+      />
       <MenuButton label="Copy path" onSelect={() => exec(() => { void navigator.clipboard.writeText(tab.workingDirectory).catch((error) => rWarn('inbox', 'copy path failed', { error: String(error) })) })} />
       {tab.worktree?.branchName && <MenuButton label="Copy branch" onSelect={() => exec(() => { void navigator.clipboard.writeText(tab.worktree!.branchName).catch((error) => rWarn('inbox', 'copy branch failed', { error: String(error) })) })} />}
       {!tab.isTerminalOnly && <MenuButton label="Copy transcript" onSelect={() => exec(() => { void copyConversationTranscript(tab.id) })} />}

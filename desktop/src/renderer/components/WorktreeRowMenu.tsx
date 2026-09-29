@@ -12,7 +12,7 @@ import { motion } from "framer-motion";
 import { CaretDown, ArrowSquareOut, CircleDashed } from "@phosphor-icons/react";
 import { usePopoverLayer } from "./PopoverLayer";
 import { useColors } from "../theme";
-import { useSessionStore } from "../stores/sessionStore";
+import { useSessionStore } from "@ion/server/store/sessionStore";
 import { useOutsideDismiss } from "../hooks/useOutsideDismiss";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover";
 import { zoomRect } from "../viewport-zoom";
@@ -20,16 +20,20 @@ import { buildWorktreeMenuEntries } from "./WorktreeRowMenu.items";
 import { WorktreeRowStageSubmenu } from "./WorktreeRowStageSubmenu";
 import { ContextMenuItem } from "./ContextMenuItem";
 import { workStageColor, workStageIcon } from "./WorktreeStageSlot";
-import { workStageDescriptor, type WorkStage } from "../../shared/types-git";
+import { workStageDescriptor, type WorkStage } from "@ion/shared/types-git";
 import { useWorktreeRowMenuVerbs } from "./useWorktreeRowMenuVerbs";
 import { WorktreeRowMenuDialogs } from "./WorktreeRowMenuDialogs";
 import { WorktreeRowMenuRename } from "./WorktreeRowMenuRename";
 import { WorktreeRowGoToTabSubmenu } from "./WorktreeRowGoToTabSubmenu";
-import { collectAllDirConversations } from "../../shared/worktree-conversations";
-import { rError, rWarn } from "../rendererLogger";
-import type { WorktreeInventoryEntry } from "../../shared/types";
+import { collectAllDirConversations } from "@ion/shared/worktree-conversations";
+import { rError, rInfo, rWarn } from "../rendererLogger";
+import { LOCAL_ENVIRONMENT_ID } from "@ion/shared/types-environments";
+import { environmentOfWorktreeRepo } from "../studio/state/secondary-store-worktree-sync";
+import type { WorktreeInventoryEntry } from "@ion/shared/types";
 import { scrollableMenuStyle } from '../menu-viewport'
 import type { NewConversationPickerTarget } from './new-conversation-picker-target'
+import { host } from '../host/host-instance'
+import { openTransferDialog } from '../studio/transfer/TransferDialogHost'
 
 export function WorktreeRowMenu({
   entry,
@@ -157,7 +161,6 @@ export function WorktreeRowMenu({
     tabs,
     entry.worktreePath,
   );
-
   const setStage = useCallback((stage: WorkStage | null) => {
     void useSessionStore
       .getState()
@@ -182,8 +185,14 @@ export function WorktreeRowMenu({
       onNewConversation: () => {
         // This row already identifies the target workspace. Open only the final
         // conversation-type step and preserve the worktree metadata selected here.
+        // A worktree lives on exactly one machine: the one whose inventory
+        // this row was read from. The conversation opens there, whatever
+        // conversation the window happens to be showing.
+        const environmentId = environmentOfWorktreeRepo(repoPath) ?? LOCAL_ENVIRONMENT_ID;
+        rInfo("worktree.menu", "new conversation requested", { worktree_path: entry.worktreePath, environment_id: environmentId });
         const target: NewConversationPickerTarget = {
           initialDirectory: entry.worktreePath,
+          initialEnvironmentId: environmentId,
           initialWorktree: {
             repoPath,
             worktreePath: entry.worktreePath,
@@ -233,8 +242,20 @@ export function WorktreeRowMenu({
           rError("worktree.menu", "discard preflight threw", { error: String(err) }),
         );
       },
+      // Opens the Transfer dialog on one of the worktree's conversations, in
+      // whole-worktree mode: that conversation's export carries the checkout,
+      // and every other conversation in it moves with it.
+      onTransferWorktree: () => {
+        const first = goToTabConversations[0];
+        if (!first) return;
+        rInfo("worktree.menu", "transfer worktree requested", { worktree_path: entry.worktreePath, conversation_count: goToTabConversations.length, tab_id: first.tabId });
+        openTransferDialog({ tabId: first.tabId, initialMode: "worktree" });
+        onClose();
+      },
       onReveal: () => {
-        void window.ion
+        // Reveal needs a Finder/Explorer; a browser client has neither.
+        if (!host.capabilities().includes("nativeShell")) return;
+        void host.shell
           .revealPath(entry.worktreePath)
           .catch((err: unknown) =>
             rError("worktree.menu", "reveal failed", { error: String(err) }),
