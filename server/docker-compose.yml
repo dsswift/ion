@@ -1,0 +1,76 @@
+# Local/CI compose stack: the engine and the Studio server sharing one
+# `/data` volume, exactly as a Kubernetes pod would share an `emptyDir` (or a
+# PVC) between two containers. Used by `make test-linux-server`-adjacent local
+# verification and by `quality.yml`'s `server-compose-smoke` job.
+#
+# The engine listens on `<ION_DATA_DIR>/engine.sock`
+# (engine/internal/utils/iondir.go's `IonDir()`) and the server resolves the
+# SAME engine address the same way (`src/engine/engine-address.ts`'s
+# `resolveEngineAddress`, non-win32 branch: `<ION_DATA_DIR>/engine.sock`) --
+# both containers set `ION_DATA_DIR=/data` and mount the same named volume, so
+# the socket file the engine creates is immediately visible to the server.
+services:
+  engine:
+    build:
+      context: ../engine
+      dockerfile: Dockerfile
+    # engine/Dockerfile is `FROM scratch` (no /etc/passwd, so it cannot
+    # declare `USER node` the way server/Dockerfile does) and runs as root
+    # by default. Pinned here to the SAME uid:gid as server/Dockerfile's
+    # `node` user (1000:1000, the standard uid on the official node images)
+    # so the `engine.sock` this container creates in the shared `/data`
+    # volume is one BOTH containers can connect to -- a unix-socket connect
+    # from a different uid needs write permission on the socket file, which
+    # a root-owned, group/other-unwritable socket (Go's net.Listen default
+    # mode) never grants. Verified locally: without this, the server logs
+    # `connect_err {"code":"EACCES"}` in a permanent reconnect loop and
+    # `/readyz` never leaves `engine_unreachable`.
+    user: '1000:1000'
+    volumes:
+      - data:/data
+      - ./compose/enterprise.json:/etc/ion/config.json:ro
+    environment:
+      ION_DATA_DIR: /data
+      ION_ENTERPRISE_CONFIG: /etc/ion/config.json
+    restart: unless-stopped
+
+  server:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    depends_on:
+      - engine
+    volumes:
+      - data:/data
+      # `server.json` (manifest C5) lives at `<ION_DATA_DIR>/server.json`
+      # (`config/server-config.ts`'s `loadServerConfig`), i.e. inside the SAME
+      # shared `/data` volume above -- this bind mount layers one file on top
+      # of that volume for the server container only, which is why it is
+      # listed after `data:/data`: Compose (like `docker run -v`) applies
+      # mounts in order, so the more specific single-file bind wins over the
+      # broader volume mount at the same path.
+      - ./compose/server.json:/data/server.json:ro
+    environment:
+      ION_DATA_DIR: /data
+      # Resolves `server.json.relays[].psk: "secretstore:relay-psk"` per
+      # `config/secret-ref.ts`'s `ION_SERVER_<KEY>` env convention -- present
+      # here so an operator's own `server.json` (with a `relays[]` entry) can
+      # supply the PSK without writing it to disk. The compose fixture's own
+      # `server.json` ships no `relays[]` entry, so this is unused by the
+      # smoke stack itself; `${VAR:-}` keeps `docker compose up` from failing
+      # when the operator's shell has not set it.
+      ION_SERVER_RELAY_PSK: ${ION_SERVER_RELAY_PSK:-}
+    ports:
+      - '7331:7331'
+    # `compose/server.json`'s `oidc.issuer` points at `host.docker.internal`
+    # so `server/scripts/smoke.mjs`'s local JWKS fixture (run on the CI/dev
+    # host, not in a container) is reachable for bearer verification.
+    # `host-gateway` is Docker Desktop's existing default on macOS/Windows and
+    # an explicit `extra_hosts` entry on Linux (the GitHub Actions runner)
+    # where nothing provides that resolution by default.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    restart: unless-stopped
+
+volumes:
+  data:

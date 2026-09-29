@@ -1,0 +1,23 @@
+{
+  "label": "Ion Studio Server (compose)",
+  "listen": {
+    "local": true,
+    "lan": true,
+    "tcp": { "host": "0.0.0.0", "port": 7331 }
+  },
+  "oidc": {
+    "issuer": "http://host.docker.internal:8089",
+    "audience": "ion-studio-server-compose",
+    "scope": "ion.studio",
+    "rolesToScopes": {},
+    "defaultScopes": ["conversations:read"],
+    "allowedSubjects": []
+  },
+  "relays": [],
+  "pairing": {
+    "defaultScopes": ["conversations:read", "conversations:operate", "terminal:operate", "git:write"]
+  },
+  "engine": { "minVersion": "0.0.0" },
+  "web": { "enabled": false },
+  "logLevel": "DEBUG"
+}

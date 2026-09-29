@@ -1,0 +1,45 @@
+# Applies to `server/Dockerfile`'s build context, which is the REPO ROOT (the
+# image needs `packages/` and `server/` as npm workspace members plus the
+# root package.json/lockfile) -- Docker resolves a Dockerfile-specific
+# ignorefile named `<dockerfile-path>.dockerignore` relative to the context
+# root in preference to a plain `.dockerignore`, which is what lets this file
+# live at `server/Dockerfile.dockerignore` and still govern a repo-root
+# context without a root-level `.dockerignore` affecting unrelated builds
+# (e.g. `engine/Dockerfile`'s own `context: engine`).
+#
+# Allowlist form (exclude everything, then re-include only what the build
+# stage actually COPYs) rather than enumerating every large directory to
+# exclude -- the repo root also holds ios/, engine/, relay/, .git/, none of
+# which this image needs, and a missed one would silently balloon the build
+# context and leak dev-only files (`.env*`, `server-secrets.json`) into a
+# build layer.
+#
+# `desktop/` IS needed (re-included below): `npm -w desktop run build:web`
+# (spec 18) builds the browser Studio client that this image serves at
+# `server/web/` behind `server.json.web.enabled` (spec 11). Only the source
+# tree is needed, not desktop's own node_modules/dist -- the re-excludes
+# below already strip those from every re-included workspace.
+*
+!package.json
+!package-lock.json
+!packages
+!packages/**
+!server
+!server/**
+!desktop
+!desktop/**
+
+# Re-exclude dev/build artifacts and secrets that would otherwise be pulled
+# back in by the `!server/**` / `!packages/**` re-includes above.
+**/node_modules
+**/dist
+**/.git
+**/*.log
+**/logs
+**/.DS_Store
+**/.env
+**/.env.*
+**/server-secrets.json
+**/__tests__
+**/*.test.ts
+**/*.test.tsx
