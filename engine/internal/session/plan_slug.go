@@ -45,6 +45,7 @@ import (
 	"path/filepath"
 
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -185,43 +186,57 @@ func generatePlanSlugUnique(plansDir string) string {
 }
 
 // allocateNewPlanFilePath picks the right plans directory for the given
-// backend capabilities + working directory, ensures the directory exists on
-// disk, and returns a fresh non-colliding plan file path inside it.
+// backend capabilities, working directory, and conversation, ensures the
+// directory exists on disk, and returns a fresh non-colliding plan file path
+// inside it.
 //
-// Directory choice is determined by caps.PlanFileProjectScoped:
+// Directory choice:
 //
-//   - When true (claude-code): the plan file lives inside the project working
-//     directory (".ion/plans/" beneath workingDir). The Claude CLI's native
-//     --permission-mode plan sandboxes writes to the project root, so the
-//     engine must place the file where the CLI can observe it.
-//   - When false (api, codex, grok, cursor — all backends using Ion's own
-//     plan-mode system): the plan file lives under "~/.ion/plans/" because the
-//     engine writes it itself and is free to choose any location.
-//   - When workingDir is empty, always falls back to "~/.ion/plans/" regardless
-//     of PlanFileProjectScoped.
+//   - caps.PlanFileProjectScoped (claude-code) with a workingDir: the plan
+//     file lives inside the project (".ion/plans/" beneath workingDir). The
+//     Claude CLI's native --permission-mode plan sandboxes writes to the
+//     project root, so the engine must place the file where the CLI can
+//     observe it.
+//   - Every other backend (api, codex, grok, cursor — all using Ion's own
+//     plan-mode system) with a conversation ID: the plan lives in the
+//     conversation's own folder, `<conversationsDir>/<id>/plans/`. The
+//     conversation owns it, so a fork copies it and a transfer moves it
+//     without touching any other conversation's plan.
+//   - No conversation ID yet: the shared "~/.ion/plans/" fallback.
 //
 // Callers resolve the serving backend for the run's model first (via
 // m.resolvedBackend(model).Capabilities()), then pass the descriptor here.
 // This ensures HybridBackend runs that are served by the api inner backend
-// correctly use ~/.ion/plans/ rather than the project directory.
+// correctly use the conversation folder rather than the project directory.
 //
 // MkdirAll failures do NOT block path generation — the caller can still record
 // the chosen path on the session; subsequent file writes will surface the
 // directory error in their own context with better surrounding state.
-func allocateNewPlanFilePath(caps backend.BackendCapabilities, workingDir string) string {
+func allocateNewPlanFilePath(caps backend.BackendCapabilities, workingDir, conversationID string) string {
 	var plansDir string
-	if caps.PlanFileProjectScoped && workingDir != "" {
+	switch {
+	case caps.PlanFileProjectScoped && workingDir != "":
 		plansDir = filepath.Join(workingDir, ".ion", "plans")
-	} else {
-		home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
-		plansDir = filepath.Join(home, ".ion", "plans")
+	case conversationID != "":
+		plansDir = conversation.PlansDir(conversationID)
+	default:
+		plansDir = filepath.Join(utils.IonDir(), "plans")
 	}
 	// MkdirAll is idempotent; ignore the error here. If it failed
 	// (permission, read-only fs, …) the subsequent file write will
 	// surface a clear error and the user will see it then.
 	os.MkdirAll(plansDir, 0755) //nolint:errcheck // dir create; failure surfaces on use
 	slug := generatePlanSlugUnique(plansDir)
+	utils.LogWithFields(utils.LevelDebug, "session.plan_mode", "plan file path allocated", map[string]any{
+		"conversation_id": conversationID, "path": plansDir, "project_scoped": caps.PlanFileProjectScoped,
+	})
 	return filepath.Join(plansDir, slug+".md")
+}
+
+// newProjectPlanPath mints a fresh plan path in an existing project plans
+// folder, for a fork that needs its own copy of a claude-code plan.
+func newProjectPlanPath(dir string) string {
+	return filepath.Join(dir, generatePlanSlugUnique(dir)+".md")
 }
 
 // planSlugFromPath is a session-package wrapper around

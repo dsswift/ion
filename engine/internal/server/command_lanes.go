@@ -84,10 +84,20 @@ func newCommandLanes(dispatchFn func(net.Conn, *protocol.ClientCommand), rejectF
 
 func classifyCommand(cmd *protocol.ClientCommand) commandClass {
 	switch cmd.Cmd {
-	case "health":
+	case "health", "get_system_metrics", "system_metrics_watch":
+		// Cheap reads of engine-wide state: never queue behind a busy lane.
 		return classHealth
 
-	case "resource_subscribe", "resource_unsubscribe", "resource_publish", "resource_get":
+	case "credential_response":
+		// FR-05 child 09: a credential answer must never queue behind a
+		// busy session's prompt lane -- the engine is blocked on this
+		// answer mid-run, so it goes on the health lane like health itself,
+		// not classSession (which would serialize it behind whatever else
+		// that session's lane is currently processing).
+		return classHealth
+
+	case "resource_subscribe", "resource_unsubscribe", "resource_publish", "resource_get",
+		"resource_export", "resource_import", "resource_forget":
 		// Global resources share the manager-level broker, not a session. Even
 		// when a client includes a key for correlation, do not serialize them
 		// behind that session's command lane.

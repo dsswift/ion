@@ -50,6 +50,7 @@ func loadFromJSONL(data []byte) (*Conversation, error) {
 		CreatedAt:         int64(jsonFloat(header, "createdAt", float64(nowMillis()))),
 		Version:           int(jsonFloat(header, "version", 2)),
 		ParentID:          jsonString(header, "parentId"),
+		ForkOf:            jsonString(header, "forkOf"),
 		Entries:           entries,
 	}
 	if leafID, ok := header["leafId"].(string); ok {

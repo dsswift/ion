@@ -155,7 +155,7 @@ func (m *Manager) RequestPlanModeEnter(key string) (allowed bool, reason string,
 	// default inner — api — a safe home-dir default.
 	if s.planFilePath == "" {
 		caps := m.resolvedBackend(lastModel).Capabilities()
-		s.planFilePath = allocateNewPlanFilePath(caps, workDir)
+		s.planFilePath = allocateNewPlanFilePath(caps, workDir, s.conversationID)
 		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "requestplanmodeenter: allocated new", map[string]any{"key": key, "plan_file_path": s.planFilePath})
 	} else {
 		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "requestplanmodeenter: reusing", map[string]any{"key": key, "plan_file_path": s.planFilePath})

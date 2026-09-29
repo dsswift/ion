@@ -313,9 +313,25 @@ type Conversation struct {
 	CreatedAt         int64              `json:"createdAt"`
 	Version           int                `json:"version,omitempty"`
 	ParentID          string             `json:"parentId,omitempty"`
-	Entries           []SessionEntry     `json:"entries,omitempty"`
-	LeafID            *string            `json:"leafId"`
-	WorkingDirectory  string             `json:"workingDirectory,omitempty"`
+	// ForkOf names the conversation this one was forked from, and is set only
+	// by a fork. ParentID is also set for dispatch children and checkpoint
+	// cuts, so it cannot tell a fork (an independent conversation that may
+	// live in its own tab) from a conversation that is part of its parent.
+	ForkOf           string         `json:"forkOf,omitempty"`
+	Entries          []SessionEntry `json:"entries,omitempty"`
+	LeafID           *string        `json:"leafId"`
+	WorkingDirectory string         `json:"workingDirectory,omitempty"`
+
+	// Principal is the durable owner attribution stamped at mint (manifest
+	// C1/C2): the session's principal, projected down to the on-disk shape,
+	// the first time this conversation is created. Nil for a conversation
+	// nobody attributed -- either it predates this field, or no principal
+	// was ever supplied on its session. A dispatch child copies its parent's
+	// header principal verbatim; a fork copies its source's. Never changed
+	// after mint by anything in this package -- see the server's mobile
+	// bridge (child 09) and command dispatch for the one deliberate
+	// exception (first-touch backfill of a pre-existing headerless file).
+	Principal *types.ConversationPrincipal `json:"principal,omitempty"`
 
 	// Backend records which run backend produced this conversation ("api"
 	// today; CLI kinds if delegated backends ever write the Ion store).
@@ -402,4 +418,24 @@ func UpdateCost(conv *Conversation, costUsd float64) {
 	conv.lock()
 	defer conv.unlock()
 	conv.TotalCost += costUsd
+}
+
+// AddRunUsageTotals adds a completed run's cumulative token usage to the
+// conversation's header totals, attaching nothing to any message.
+//
+// This is the run-scoped counterpart to the per-message header arithmetic in
+// AddAssistantMessageWithEntryID. It is a separate entry point because the two
+// figures have different shapes. A delegated CLI reports usage once per run, as
+// a sum over that run's internal turns. The header totals are cumulative by
+// definition, so the sum is exactly right there. A message's Usage is not
+// cumulative: GetContextUsage scans backward for the last message carrying
+// Usage and reads it as the live context size, so storing a multi-turn sum on
+// a message would report an occupancy several times the real one. Keeping the
+// two apart is what lets a delegated-CLI run account for its tokens without
+// corrupting the occupancy signal that drives compaction.
+func AddRunUsageTotals(conv *Conversation, usage types.LlmUsage) {
+	conv.lock()
+	defer conv.unlock()
+	conv.TotalInputTokens += usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
+	conv.TotalOutputTokens += usage.OutputTokens
 }

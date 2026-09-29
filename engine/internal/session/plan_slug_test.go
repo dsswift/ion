@@ -316,7 +316,7 @@ func TestAllocateNewPlanFilePath_HomeDir(t *testing.T) {
 		Kind:                  "api",
 		PlanFileProjectScoped: false,
 	}
-	path := allocateNewPlanFilePath(caps, workDir)
+	path := allocateNewPlanFilePath(caps, workDir, "")
 	home, _ := utils.UserHomeDir()
 	wantPrefix := filepath.Join(home, ".ion", "plans")
 	if !strings.HasPrefix(path, wantPrefix) {
@@ -333,7 +333,7 @@ func TestAllocateNewPlanFilePath_ProjectDir(t *testing.T) {
 		Kind:                  "claude-code",
 		PlanFileProjectScoped: true,
 	}
-	path := allocateNewPlanFilePath(caps, workDir)
+	path := allocateNewPlanFilePath(caps, workDir, "")
 	wantPrefix := filepath.Join(workDir, ".ion", "plans")
 	if !strings.HasPrefix(path, wantPrefix) {
 		t.Errorf("allocateNewPlanFilePath(claude-code, workDir) = %q, want prefix %q", path, wantPrefix)
@@ -348,7 +348,7 @@ func TestAllocateNewPlanFilePath_ProjectScopedEmptyWorkDir(t *testing.T) {
 		Kind:                  "claude-code",
 		PlanFileProjectScoped: true,
 	}
-	path := allocateNewPlanFilePath(caps, "")
+	path := allocateNewPlanFilePath(caps, "", "")
 	home, _ := utils.UserHomeDir()
 	wantPrefix := filepath.Join(home, ".ion", "plans")
 	if !strings.HasPrefix(path, wantPrefix) {

@@ -154,7 +154,7 @@ func rehydrateEntries(conv *Conversation) error {
 // still handled gracefully.
 func Save(conv *Conversation, dir string) error {
 	if dir == "" {
-		dir = DefaultConversationsDir()
+		dir = resolveSaveDir(conv)
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -223,11 +223,21 @@ func saveSplit(conv *Conversation, dir string) error {
 	if conv.ParentID != "" {
 		llmHeader["parentId"] = conv.ParentID
 	}
+	if conv.ForkOf != "" {
+		llmHeader["forkOf"] = conv.ForkOf
+	}
 	if conv.Backend != "" {
 		llmHeader["backend"] = conv.Backend
 	}
 	if conv.DispatchTranscriptMirror {
 		llmHeader["dispatchTranscriptMirror"] = true
+	}
+	// FR-01/FR-04: the durable owner attribution stamped at mint
+	// (stampPrincipalAtMint). Without this the split (current-format) save
+	// path silently dropped Principal on every round-trip -- the bare-JSON
+	// legacy format serializes the whole struct and never had this gap.
+	if conv.Principal != nil {
+		llmHeader["principal"] = conv.Principal
 	}
 
 	// Determine which messages to write:
@@ -396,7 +406,7 @@ func writeFileSynced(path string, data []byte) error {
 // conversations).
 func LoadLlmHeaderModel(id, dir string) (string, error) {
 	if dir == "" {
-		dir = DefaultConversationsDir()
+		dir = resolveDir(id)
 	}
 
 	llmPath := filepath.Join(dir, id+".llm.jsonl")
@@ -457,7 +467,7 @@ func Load(id, dir string) (*Conversation, error) {
 // deadlock. The enclosing transaction saves the marked conversation instead.
 func load(id, dir string, persistRepair bool) (*Conversation, error) {
 	if dir == "" {
-		dir = DefaultConversationsDir()
+		dir = resolveDir(id)
 	}
 
 	llmPath := filepath.Join(dir, id+".llm.jsonl")
@@ -539,7 +549,7 @@ func Exists(id, dir string) bool {
 		return false
 	}
 	if dir == "" {
-		dir = DefaultConversationsDir()
+		dir = resolveDir(id)
 	}
 
 	// Probe 1: new split format — both files must exist (matches Load's
@@ -649,10 +659,12 @@ func loadSplit(id, llmPath, treePath string) (*Conversation, error) {
 		CreatedAt:         int64(jsonFloat(llmHeader, "createdAt", float64(nowMillis()))),
 		Version:           int(jsonFloat(llmHeader, "version", 2)),
 		ParentID:          jsonString(llmHeader, "parentId"),
+		ForkOf:            jsonString(llmHeader, "forkOf"),
 		// Backend discriminator (additive). Legacy headers without the field
 		// decode "" — treated as api by consumers.
 		Backend:                  jsonString(llmHeader, "backend"),
 		DispatchTranscriptMirror: jsonBool(llmHeader, "dispatchTranscriptMirror"),
+		Principal:                jsonPrincipal(llmHeader),
 		// LLM context from .llm.jsonl body — verbatim, NOT rebuilt from Entries
 		Messages: messages,
 		// Tree fields from .tree.jsonl

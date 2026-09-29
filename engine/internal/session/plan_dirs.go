@@ -15,7 +15,12 @@ import (
 // both candidate directories:
 //   - <workingDir>/.ion/plans/ (used by CLI and Hybrid backends when
 //     workingDir is non-empty)
-//   - ~/.ion/plans/ (used by API backend and as the fallback)
+//   - ~/.ion/plans/ (the fallback for a session with no conversation yet, and
+//     where plans lived before each conversation owned its own)
+//
+// A conversation's own plans folder (<conversationsDir>/<id>/plans/, where
+// every other backend writes its plans) is not a fixed directory, so callers
+// accept it separately with conversation.IsOwnedPlanPath.
 //
 // A plan file path is valid if it is contained within ANY of the returned
 // directories. Callers should use filepath.Rel to test containment, testing
@@ -34,8 +39,7 @@ import (
 // The function never returns a nil slice; at minimum it returns the home
 // plans directory. An empty workingDir produces only the home entry.
 func PlanDirsForWorkingDir(workingDir string) []string {
-	home, _ := utils.UserHomeDir() //nolint:errcheck // empty home handled by caller
-	homePlans := filepath.Join(home, ".ion", "plans")
+	homePlans := filepath.Join(utils.IonDir(), "plans")
 
 	if workingDir != "" {
 		return []string{
@@ -44,4 +48,17 @@ func PlanDirsForWorkingDir(workingDir string) []string {
 		}
 	}
 	return []string{homePlans}
+}
+
+// SessionPlanFilePath returns the plan file the session identified by key has
+// open, or "" when it has none or no such session exists. A fork reports its
+// own copy here, so the client can show the fork's plan, not the source's.
+func (m *Manager) SessionPlanFilePath(key string) string {
+	m.mu.RLock()
+	s, ok := m.sessions[key]
+	m.mu.RUnlock()
+	if !ok {
+		return ""
+	}
+	return s.planFilePath
 }

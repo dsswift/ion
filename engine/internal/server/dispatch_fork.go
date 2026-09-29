@@ -46,7 +46,9 @@ func (s *Server) sendForkResult(conn net.Conn, cmd *protocol.ClientCommand, err 
 	} else {
 		result.NewKey = newKey
 		result.ConversationID = conversationID
-		result.Data = map[string]string{"newKey": newKey, "conversationId": conversationID}
+		// planFilePath is the fork's own copy of the plan the source had open
+		// (additive; "" when there is none).
+		result.Data = map[string]string{"newKey": newKey, "conversationId": conversationID, "planFilePath": s.manager.SessionPlanFilePath(newKey)}
 	}
 	line := protocol.SerializeServerResult(result)
 	s.writeToClient(conn, line)

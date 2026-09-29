@@ -47,6 +47,41 @@ ion.resources.onQuery('briefing', (filter: ResourceFilter): ResourceItem[] => {
   return items
 })
 
+// Transfer handlers. Called by the engine (resource/export, /import,
+// /forget) when a conversation moves to another machine: hand over this
+// conversation's items, persist items exported elsewhere, and drop the
+// items once they have moved.
+ion.resources.onExport('briefing', (conversationIds: string[]): ResourceItem[] => {
+  const items = store.filter((item) => item.conversationId && conversationIds.includes(item.conversationId))
+  log.info('resource-canary: export', { conversations: conversationIds.length, items: items.length })
+  return items
+})
+
+ion.resources.onImport('briefing', (items: ResourceItem[]) => {
+  const accepted: string[] = []
+  const refused: Array<{ id: string; reason: string }> = []
+  for (const item of items) {
+    if (store.some((existing) => existing.id === item.id)) {
+      refused.push({ id: item.id, reason: 'an item with this id already exists' })
+      continue
+    }
+    store.push(item)
+    accepted.push(item.id)
+  }
+  log.info('resource-canary: import', { accepted: accepted.length, refused: refused.length })
+  return { accepted, refused }
+})
+
+ion.resources.onForget('briefing', (conversationIds: string[]): number => {
+  const before = store.length
+  for (let i = store.length - 1; i >= 0; i--) {
+    const conversationId = store[i].conversationId
+    if (conversationId && conversationIds.includes(conversationId)) store.splice(i, 1)
+  }
+  log.info('resource-canary: forget', { removed: before - store.length })
+  return before - store.length
+})
+
 // Tool: publish a new briefing item.
 ion.registerTool({
   name: 'canary_publish_briefing',
@@ -57,6 +92,7 @@ ion.registerTool({
       id: { type: 'string' },
       title: { type: 'string' },
       content: { type: 'string' },
+      conversationId: { type: 'string' },
     },
     required: ['id', 'title', 'content'],
   },
@@ -68,6 +104,7 @@ ion.registerTool({
       title: params.title as string,
       content: params.content as string,
       createdAt: new Date().toISOString(),
+      ...(params.conversationId ? { conversationId: params.conversationId as string } : {}),
     }
     store.push(item)
     if (resourceHandle) {

@@ -81,7 +81,7 @@ func TestClassifyCommand(t *testing.T) {
 }
 
 func TestResourceCommandsUseSessionLaneWhenKeyed(t *testing.T) {
-	for _, cmd := range []string{"resource_subscribe", "resource_unsubscribe", "resource_publish", "resource_get"} {
+	for _, cmd := range []string{"resource_subscribe", "resource_unsubscribe", "resource_publish", "resource_get", "resource_export", "resource_import", "resource_forget"} {
 		t.Run(cmd, func(t *testing.T) {
 			if got := classifyCommand(&protocol.ClientCommand{Cmd: cmd, Key: "session-1"}); got != classSession {
 				t.Fatalf("classifyCommand(%q, keyed) = %d, want session lane", cmd, got)

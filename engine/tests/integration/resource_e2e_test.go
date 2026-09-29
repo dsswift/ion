@@ -401,3 +401,44 @@ func TestResource_E2E_Notify(t *testing.T) {
 	// Time box: notify tool should not hang
 	_ = strings.Contains("", "") // dummy use of strings import
 }
+
+// TestResource_E2E_TransferBetweenProducers moves a conversation's items from
+// one resource-canary instance to another through the real resource/export,
+// resource/import, and resource/forget RPCs, as a conversation transfer does
+// between two machines.
+func TestResource_E2E_TransferBetweenProducers(t *testing.T) {
+	sourceHost := loadResourceCanary(t)
+	destHost := loadResourceCanary(t)
+	source := resource.NewBroker()
+	if errs := sourceHost.CommitPendingResourceDecls(source); len(errs) != 0 {
+		t.Fatalf("commit source decls: %v", errs)
+	}
+	dest := resource.NewBroker()
+	if errs := destHost.CommitPendingResourceDecls(dest); len(errs) != 0 {
+		t.Fatalf("commit dest decls: %v", errs)
+	}
+
+	seed := types.ResourceItem{ID: "moving-1", Kind: "briefing", Producer: sourceHost.Name(), ConversationID: "conv-moving", Content: "report body", CreatedAt: "2026-09-23T00:00:00Z"}
+	if got := source.ImportItems([]types.ResourceItem{seed}); len(got) != 1 || got[0].Outcome != "accepted" {
+		t.Fatalf("seed import = %+v", got)
+	}
+
+	exports := source.ExportConversations([]string{"conv-moving"})
+	if len(exports) != 1 || !exports[0].ExportSupported || len(exports[0].Items) != 1 || exports[0].Items[0].Content != "report body" {
+		t.Fatalf("export = %+v", exports)
+	}
+	if got := dest.ImportItems(exports[0].Items); len(got) != 1 || got[0].Outcome != "accepted" {
+		t.Fatalf("dest import = %+v", got)
+	}
+	if again := dest.ExportConversations([]string{"conv-moving"}); len(again) != 1 || len(again[0].Items) != 1 {
+		t.Fatalf("destination does not hold the item: %+v", again)
+	}
+
+	forgets := source.ForgetConversations([]string{"conv-moving"})
+	if len(forgets) != 1 || forgets[0].Outcome != "forgotten" || forgets[0].Removed != 1 {
+		t.Fatalf("forget = %+v", forgets)
+	}
+	if left := source.ExportConversations([]string{"conv-moving"}); len(left) != 0 {
+		t.Fatalf("source still holds items: %+v", left)
+	}
+}
