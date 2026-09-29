@@ -82,6 +82,8 @@ jobs:
         run: bash scripts/check-go-toolchains.test.sh
       - name: Test Linux parity gate receipt semantics
         run: bash scripts/gate-cache.test.sh
+      - name: Test Linux parity gate node_modules isolation
+        run: bash scripts/test-linux-gate-mounts.test.sh
       - name: Studio server installer test
         run: bash scripts/install-studio-server.test.sh
 

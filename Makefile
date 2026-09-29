@@ -223,6 +223,13 @@ endif
 ENGINE_PLATFORM := linux/amd64
 DESKTOP_PLATFORM := linux/$(DESKTOP_ARCH)
 
+# Every npm workspace installs into the root lockfile's tree, so an `npm ci`
+# run from any member rewrites all of these. Each gets its own anonymous
+# volume so the container never replaces the host's macOS install.
+NPM_WORKSPACE_MODULES := /src/node_modules /src/desktop/node_modules /src/server/node_modules \
+	/src/packages/shared/node_modules /src/packages/studio-sdk/node_modules
+NPM_WORKSPACE_VOLUMES := $(foreach d,$(NPM_WORKSPACE_MODULES),-v $(d))
+
 # The desktop tag carries its arch so a native image can never be confused
 # with an emulated one left behind by an earlier run.
 ENGINE_IMAGE := ion-test-linux-engine:$(GO_VERSION)
@@ -314,11 +321,11 @@ test-linux-desktop-run:
 	@echo "▶ desktop: building prebaked Linux parity image ($(DESKTOP_IMAGE))"
 	@docker build --platform $(DESKTOP_PLATFORM) -t $(DESKTOP_IMAGE) -f scripts/docker/test-linux-desktop.Dockerfile scripts/docker
 	@echo "▶ desktop: npm ci --ignore-scripts && npm run lint && npm run typecheck && npm test && npm run build && npm run build:web on linux ($(DESKTOP_IMAGE))"
-	@docker run --rm --platform $(DESKTOP_PLATFORM) -v "$(PWD)":/src -v /src/desktop/node_modules $(GIT_WORKTREE_MOUNT) \
+	@docker run --rm --platform $(DESKTOP_PLATFORM) -v "$(PWD)":/src $(NPM_WORKSPACE_VOLUMES) $(GIT_WORKTREE_MOUNT) \
 		-v ion-npm-cache:/home/ionci/.npm \
 		-w /src/desktop $(DESKTOP_IMAGE) \
 		bash -c "chmod -R a+rX /src 2>/dev/null || true && \
-		         chown ionci:ionci /src/desktop/node_modules && \
+		         chown ionci:ionci $(NPM_WORKSPACE_MODULES) && \
 		         git config --global --add safe.directory /src && \
 		         git config --global --add safe.directory \"$(GIT_COMMON_DIR)\" && \
 		         su ionci -c 'cd /src/desktop && npm ci --ignore-scripts && npm run lint && npm run typecheck && npm test && npm run build && npm run build:web'"
@@ -334,11 +341,11 @@ test-linux-server-run:
 	@echo "▶ server: building prebaked Linux parity image ($(SERVER_IMAGE))"
 	@docker build --platform $(DESKTOP_PLATFORM) -t $(SERVER_IMAGE) -f scripts/docker/test-linux-server.Dockerfile scripts/docker
 	@echo "▶ server: npm ci --ignore-scripts (root) && server/shared lint+typecheck+test on linux ($(SERVER_IMAGE))"
-	@docker run --rm --platform $(DESKTOP_PLATFORM) -v "$(PWD)":/src -v /src/node_modules $(GIT_WORKTREE_MOUNT) \
+	@docker run --rm --platform $(DESKTOP_PLATFORM) -v "$(PWD)":/src $(NPM_WORKSPACE_VOLUMES) $(GIT_WORKTREE_MOUNT) \
 		-v ion-npm-cache:/home/ionci/.npm \
 		-w /src $(SERVER_IMAGE) \
 		bash -c "chmod -R a+rX /src 2>/dev/null || true && \
-		         chown ionci:ionci /src/node_modules && \
+		         chown ionci:ionci $(NPM_WORKSPACE_MODULES) && \
 		         git config --global --add safe.directory /src && \
 		         git config --global --add safe.directory \"$(GIT_COMMON_DIR)\" && \
 		         su ionci -c 'cd /src && npm ci --ignore-scripts && \
