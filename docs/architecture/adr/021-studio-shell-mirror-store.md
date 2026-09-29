@@ -4,7 +4,10 @@
 
 ## Status
 
-Accepted.
+Superseded by ADR-033. Spec 17 deleted the Overlay presentation this ADR's
+mirror-store architecture existed to keep in parity with; Studio is now the
+desktop's only window and the server package (not a renderer) owns the
+store. Retained for history.
 
 ## Context
 
