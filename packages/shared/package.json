@@ -1,0 +1,24 @@
+{
+  "name": "@ion/shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./e2e": "./src/e2e/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "graphology": "0.26.0",
+    "graphology-communities-louvain": "2.0.2",
+    "graphology-metrics": "2.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.15",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  }
+}
