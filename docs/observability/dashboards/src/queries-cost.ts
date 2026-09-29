@@ -15,6 +15,8 @@ import {
   registerQuery,
   telemetry,
   coalesceUnattributed,
+  coalesceNoExtension,
+  coalesceUnversioned,
   versionSuffix,
 } from './queries.ts';
 
@@ -96,11 +98,19 @@ export const spendByVersion = (): Expr =>
   registerQuery(
     'Cost per version',
     'Total run.complete cost grouped by extension and version over the dashboard time ' +
-      'range, instant. Compare spend before and after a version bump.',
+      'range, instant. Compare spend before and after a version bump. Empty extension/' +
+      'version coalesce to "no extension"/"unversioned" so a compiled extension with no ' +
+      'reported version is a legible bucket rather than a bare "v".',
     accumulation(
-      `sum by (context_extension, context_extension_version) (sum_over_time(${RUN} | json` +
-        ` | context_extension =~ "$extension" | context_extension_version =~ "$version"` +
-        ` | unwrap run_cost_usd [$__range]))`,
+      coalesceUnversioned(
+        coalesceNoExtension(
+          `sum by (context_extension, context_extension_version) (sum_over_time(${RUN} | json` +
+            ` | context_extension =~ "$extension" | context_extension_version =~ "$version"` +
+            ` | unwrap run_cost_usd [$__range]))`,
+          'context_extension',
+        ),
+        'context_extension_version',
+      ),
       '$__range',
     ),
   );
@@ -108,8 +118,14 @@ export const spendByVersion = (): Expr =>
 // Runs per version, instant over the dashboard range (stat).
 export const runsByVersion = (): Expr =>
   accumulation(
-    `sum by (context_extension, context_extension_version) (count_over_time(${RUN} | json` +
-      ` | context_extension =~ "$extension" | context_extension_version =~ "$version" [$__range]))`,
+    coalesceUnversioned(
+      coalesceNoExtension(
+        `sum by (context_extension, context_extension_version) (count_over_time(${RUN} | json` +
+          ` | context_extension =~ "$extension" | context_extension_version =~ "$version" [$__range]))`,
+        'context_extension',
+      ),
+      'context_extension_version',
+    ),
     '$__range',
   );
 
@@ -122,8 +138,14 @@ export const runsByVersion = (): Expr =>
 // `payload_agent`.
 export const dispatchesByExtension = (): Expr =>
   accumulation(
-    `sum by (payload_extension, payload_extension_version, payload_agent) (count_over_time(` +
-      `${telemetry('dispatch.agent')} | json | payload_extension =~ "$extension" [$__range]))`,
+    coalesceUnversioned(
+      coalesceNoExtension(
+        `sum by (payload_extension, payload_extension_version, payload_agent) (count_over_time(` +
+          `${telemetry('dispatch.agent')} | json | payload_extension =~ "$extension" [$__range]))`,
+        'payload_extension',
+      ),
+      'payload_extension_version',
+    ),
     '$__range',
   );
 

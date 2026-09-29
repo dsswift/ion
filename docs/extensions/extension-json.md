@@ -64,9 +64,11 @@ Version string for this extension release. Conventional semver (e.g. `"1.2.0"`) 
 { "name": "jarvis", "version": "1.2.0" }
 ```
 
-**How the version reaches telemetry:** the engine reads `extension.json` at host load time and stamps `Host.Version()` from `Manifest.Version`. The version is then threaded through `RunOptions.ExtensionVersion` → `buildTelemCtx` → every cost-bearing event context. It is a build-time constant: changing the manifest version requires a reload (engine restart), not a running state update.
+**How the version reaches telemetry:** the engine has two sources, and the init handshake is primary. At host load time it first stamps `Host.Version()` from `Manifest.Version` (reading `extension.json`, if present) as a fallback; when the extension subprocess completes its init handshake, a non-empty `version` field in that response overwrites the fallback (`Host.applyHandshakeVersion`, `engine/internal/extension/host_transpile.go`). This is what lets a **compiled extension with no `extension.json`** — a Go SDK binary, for instance — still report a version: it has nothing for the engine to read at load time, so its only source is the handshake, stamped in at build time via `-X github.com/dsswift/ion/sdk/go.Version=<version>` (see `sdk/go/build_identity.go`). A TS extension carrying `extension.json` reports the same value through both paths; the handshake still wins, since it reflects what actually loaded. Either way the version is then threaded through `RunOptions.ExtensionVersion` → `buildTelemCtx` → every cost-bearing event context. It is fixed for the life of the loaded process: changing either source requires a reload (engine restart or extension respawn), not a running state update.
 
 **Old engines:** engines that pre-date this field use `DisallowUnknownFields` in the JSON decoder and will reject manifests that carry `version`. Only add `version` to your manifest once your minimum supported engine version includes this field (introduced alongside ADR-019's first extension attribution release).
+
+**Old SDKs:** an SDK built before the handshake carried a `version` field simply omits it from the init response (an additive, optional field); the engine falls back to the manifest value with no error. A compiled extension built with an old SDK and no `extension.json` reports no version at all — it shows up in the Ion Extensions dashboard as "unversioned" rather than a dangling `v` (see the dashboard's version-comparison panels).
 
 #### `external` (optional, string array)
 

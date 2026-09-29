@@ -117,7 +117,7 @@ export function extensionsDashboard(): Dashboard {
         },
       ],
       targets: [
-        { e: dispatchesByExtension(), legend: '{{payload_extension}} | v{{payload_extension_version}} | {{payload_agent}}' },
+        { e: dispatchesByExtension(), legend: '{{payload_extension}} | {{payload_extension_version}} | {{payload_agent}}' },
       ],
     }),
     row(9, 'Version Comparison', 29),
@@ -129,7 +129,7 @@ export function extensionsDashboard(): Dashboard {
       gridPos: { x: 0, y: 30, w: 12, h: 8 },
       options: { orientation: 'horizontal', reduceOptions: { calcs: ['sum'] }, displayMode: 'gradient' },
       fieldConfig: currency(4),
-      targets: [{ e: spendByVersion(), legend: '{{context_extension}} v{{context_extension_version}}' }],
+      targets: [{ e: spendByVersion(), legend: '{{context_extension}} {{context_extension_version}}' }],
     }),
     stat({
       id: 11,
@@ -139,7 +139,7 @@ export function extensionsDashboard(): Dashboard {
       gridPos: { x: 12, y: 30, w: 12, h: 8 },
       options: { reduceOptions: { calcs: ['sum'] }, orientation: 'horizontal' },
       fieldConfig: { defaults: { unit: 'short' } },
-      targets: [{ e: runsByVersion(), legend: '{{context_extension}} v{{context_extension_version}}' }],
+      targets: [{ e: runsByVersion(), legend: '{{context_extension}} {{context_extension_version}}' }],
     }),
     row(12, 'Runs and Tokens', 38),
     timeseries({
@@ -177,8 +177,8 @@ export function extensionsDashboard(): Dashboard {
       // `context_extension` / `context_extension_version` are PARSED JSON
       // fields (extracted by `| json` at query time), NOT indexed stream
       // labels. Grafana's `label_values()` query variable resolves against
-      // Loki's label API, which only knows stream labels (service, kind,
-      // component, ...) — so `label_values(..., context_extension)` returns an
+      // Loki's label API, which only knows stream labels (service_name, event_name,
+      // tag, ...) — so `label_values(..., context_extension)` returns an
       // empty set and the dropdown never populates, leaving `$extension`
       // unresolved. Every panel filters `context_extension =~ "$extension"`, so
       // an unresolved variable breaks the whole dashboard. A textbox defaulting
