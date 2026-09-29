@@ -12,6 +12,10 @@ import { rDebug } from './rendererLogger'
  * rate forever, which showed up as sustained GPU cost from a window with no
  * pixels on screen. CSS in index.css pauses every animation under
  * `.ion-window-hidden`.
+ *
+ * Mounted only by the Studio renderer entry (`studio/main.tsx`) now that the
+ * Overlay window is gone — the mechanism is window-agnostic (native
+ * `visibilitychange`), so it stays here rather than moving under `studio/`.
  */
 export function WindowVisibilityGate(): null {
   useEffect(() => {

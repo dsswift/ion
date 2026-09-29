@@ -25,7 +25,6 @@ vi.mock('../../theme', () => ({
 }))
 vi.mock('../../preferences', () => ({
   usePreferencesStore: (selector: (state: Record<string, unknown>) => unknown) => selector({
-    expandedUI: false,
     gitPanelChangesOpen: true,
     setGitPanelChangesOpen: vi.fn(),
     gitPanelGraphOpen: true,
@@ -40,7 +39,7 @@ vi.mock('../../preferences', () => ({
   }),
   getState: () => ({ setGitChangesTreeView: vi.fn(), gitChangesTreeView: false }),
 }))
-vi.mock('../../stores/sessionStore', () => ({
+vi.mock('@ion/server/store/sessionStore', () => ({
   useSessionStore: Object.assign(
     (selector: (state: Record<string, unknown>) => unknown) => selector({
       activeTabId: activeTab.id,

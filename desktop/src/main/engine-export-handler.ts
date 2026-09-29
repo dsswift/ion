@@ -24,6 +24,7 @@ import { join } from 'path'
 import { writeFile } from 'fs/promises'
 import { dialog, app } from 'electron'
 import { log as _log } from './logger'
+import { setExportEventHandler } from '@ion/server/engine/engine-export-handler'
 
 const TAG = 'ExportHandler'
 
@@ -76,7 +77,7 @@ function defaultExportFilename(extension: string): string {
  * retry by re-running /export.
  *
  * Returns silently when:
- *   - The main window is not yet available (engine emitted during
+ *   - The Studio window is not yet available (engine emitted during
  *     window-init, which shouldn't happen but we guard anyway).
  *   - The user cancels the dialog.
  *   - The payload is empty (zero-byte export — probably a fresh
@@ -90,8 +91,8 @@ export async function handleExportEvent(payload: string, format?: string): Promi
   // would arise from `import { state } from './state'` at the top.
   const { state } = await import('./state')
 
-  if (!state.mainWindow) {
-    log('export: no main window; dropping payload')
+  if (!state.studioWindow) {
+    log('export: no studio window; dropping payload')
     return
   }
   if (!payload) {
@@ -104,7 +105,7 @@ export async function handleExportEvent(payload: string, format?: string): Promi
   log('engine_export: prompting save dialog', { format: format ?? 'absent', extension, payload_bytes: payload.length })
 
   try {
-    const result = await dialog.showSaveDialog(state.mainWindow, {
+    const result = await dialog.showSaveDialog(state.studioWindow, {
       title: 'Export Ion conversation',
       defaultPath: join(app.getPath('downloads'), defaultName),
       filters: [
@@ -124,3 +125,10 @@ export async function handleExportEvent(payload: string, format?: string): Promi
     log('engine_export: save failed', { error: err instanceof Error ? err.message : String(err) })
   }
 }
+
+// Register the real, Electron-bound handler with the server's export-event
+// seam (server/src/engine/engine-export-handler.ts). The server calls
+// `handleExportEvent` unconditionally from `engine-control-plane-events.ts`;
+// this registration is what makes that call actually show a save dialog on
+// the desktop instead of the server's headless no-op drop.
+setExportEventHandler(handleExportEvent)

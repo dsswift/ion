@@ -16,91 +16,80 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  PANEL_CHROME, PANEL_BODY_DEFAULT, PANEL_BODY_EXPANDED,
-  PANEL_BOTTOM_OFFSET, PANEL_TOP_RESERVE, GIT_PANEL_WIDTH, FILE_EXPLORER_WIDTH,
-  INBOX_PANEL_WIDTH, STATUS_DRAWER_WIDTH,
+  PANEL_CHROME, PANEL_BODY_DEFAULT,
+  PANEL_BOTTOM_OFFSET, PANEL_TOP_RESERVE, GIT_PANEL_WIDTH, STATUS_DRAWER_WIDTH,
   defaultPanelHeight, maxPanelHeight, resolvePanelHeight,
 } from '../panelGeometry'
 
 const TALL_WINDOW = 1400
 
 describe('defaultPanelHeight', () => {
-  it('is the body plus the chrome, in both UI densities', () => {
-    expect(defaultPanelHeight(false)).toBe(PANEL_BODY_DEFAULT + PANEL_CHROME)
-    expect(defaultPanelHeight(true)).toBe(PANEL_BODY_EXPANDED + PANEL_CHROME)
+  it('is the body plus the chrome', () => {
+    expect(defaultPanelHeight()).toBe(PANEL_BODY_DEFAULT + PANEL_CHROME)
   })
 })
 
 describe('resolvePanelHeight — the clamp is the whole mechanism', () => {
   it('uses the default when there is no override', () => {
-    expect(resolvePanelHeight(null, defaultPanelHeight(false), TALL_WINDOW))
-      .toBe(defaultPanelHeight(false))
+    expect(resolvePanelHeight(null, defaultPanelHeight(), TALL_WINDOW))
+      .toBe(defaultPanelHeight())
   })
 
   it('honours an override between the floor and the ceiling', () => {
-    const d = defaultPanelHeight(false)
+    const d = defaultPanelHeight()
     expect(resolvePanelHeight(d + 120, d, TALL_WINDOW)).toBe(d + 120)
   })
 
   it('treats the default as a FLOOR: a shorter override clamps back up', () => {
     // The operator asked that a drag can never make a panel shorter than it is
     // today, which is a floor rather than a minimum the drag negotiates.
-    const d = defaultPanelHeight(false)
+    const d = defaultPanelHeight()
     expect(resolvePanelHeight(d - 200, d, TALL_WINDOW)).toBe(d)
   })
 
   it('treats the viewport as a ceiling', () => {
-    const d = defaultPanelHeight(false)
+    const d = defaultPanelHeight()
     const winHeight = 900
     expect(resolvePanelHeight(99_999, d, winHeight))
       .toBe(winHeight - PANEL_BOTTOM_OFFSET - PANEL_TOP_RESERVE)
   })
 
-  it('lifts a stale override when expandedUI raises the default underneath it', () => {
-    // 482 was a legitimate height in the normal density and is BELOW the floor
-    // once the UI expands. Deriving on every render is what makes that automatic
-    // instead of needing a migration when the density flips.
-    const expanded = defaultPanelHeight(true)
-    expect(resolvePanelHeight(482, expanded, TALL_WINDOW)).toBe(expanded)
-    expect(expanded).toBe(PANEL_BODY_EXPANDED + PANEL_CHROME)
+  it('lifts a stale override when the default is raised underneath it', () => {
+    // A persisted override that is BELOW a later, taller default clamps back
+    // up to that default. Deriving on every render is what makes that
+    // automatic instead of needing a migration when the constant changes.
+    const raised = defaultPanelHeight() + 120
+    expect(resolvePanelHeight(defaultPanelHeight(), raised, TALL_WINDOW)).toBe(raised)
   })
 
   it('never returns less than the default in a very short window', () => {
     // The max() inside maxPanelHeight: without it the ceiling would fall below
     // the floor, the clamp would indivert, and every panel would pin to a few
     // pixels.
-    const d = defaultPanelHeight(true)
+    const d = defaultPanelHeight()
     expect(resolvePanelHeight(null, d, 200)).toBe(d)
     expect(maxPanelHeight(200, d)).toBe(d)
   })
 })
 
+// FILE_EXPLORER_WIDTH and INBOX_PANEL_WIDTH were retired (good-citizen
+// cleanup while fixing this test's stale App.tsx reads): once Studio became
+// the only window, FileExplorer took over its own sizing (`width: '100%'`,
+// pinned below) and StudioLeftSidebar sizes Inbox directly off
+// GIT_PANEL_WIDTH, so neither constant had a real reader left.
 describe('panel widths — one declaration each', () => {
-  const appSrc = readFileSync(join(__dirname, '../../App.tsx'), 'utf-8')
   const explorerSrc = readFileSync(join(__dirname, '../FileExplorer.tsx'), 'utf-8')
+  const sidebarSrc = readFileSync(join(__dirname, '../../studio/StudioLeftSidebar.tsx'), 'utf-8')
 
-  it('Explorer matches Status Drawer width', () => {
+  it('Status Drawer width is unchanged at 300', () => {
     expect(STATUS_DRAWER_WIDTH).toBe(300)
-    expect(FILE_EXPLORER_WIDTH).toBe(STATUS_DRAWER_WIDTH)
   })
 
-  it('Inbox matches Git width', () => {
-    expect(GIT_PANEL_WIDTH).toBe(440)
-    expect(INBOX_PANEL_WIDTH).toBe(GIT_PANEL_WIDTH)
-  })
-
-  it('App.tsx positions both panels from the constants, never a literal', () => {
-    expect(appSrc).toContain('FILE_EXPLORER_WIDTH')
-    expect(appSrc).toContain('INBOX_PANEL_WIDTH')
-    expect(appSrc).toContain('GIT_PANEL_WIDTH')
-    // The explorer wrapper's old literal. Re-typing it is how a width restated
-    // at a second site drifts from the constant.
-    expect(appSrc).not.toContain('width: 240')
+  it('StudioLeftSidebar (Inbox + Git dock) sizes from GIT_PANEL_WIDTH, never a literal', () => {
+    expect(sidebarSrc).toContain('GIT_PANEL_WIDTH')
   })
 
   it('FileExplorer fills its wrapper rather than restating a width', () => {
-    // This is why FILE_EXPLORER_WIDTH has exactly one reader, and why the Studio window
-    // dock can mount the same component at a different width.
     expect(explorerSrc).toContain("width: '100%'")
   })
 
@@ -116,10 +105,15 @@ describe('statusDrawerOffset is retired, not merely unused', () => {
     expect('statusDrawerOffset' in mod).toBe(false)
   })
 
-  it('the drawer wrapper uses the responsive placement result', () => {
-    const appSrc = readFileSync(join(__dirname, '../../App.tsx'), 'utf-8')
-    expect(appSrc).not.toContain('statusDrawerOffset')
-    expect(appSrc).toContain('marginLeft: statusPlacement.external ? PANEL_GAP : 0')
-    expect(appSrc).toContain('width: statusPlacement.width')
+  it('StatusDrawer sizes itself from an embedded prop, not a computed placement', () => {
+    // Studio always renders the drawer `embedded` (StatusSurface.tsx), filling
+    // its own Surface tab pane; there is no more "external placement" for a
+    // second window to clear (Overlay is gone), so the width/offset logic
+    // this test used to check on App.tsx now lives entirely in the
+    // component's own style, gated on the `embedded` prop.
+    const drawerSrc = readFileSync(join(__dirname, '../StatusDrawer.tsx'), 'utf-8')
+    expect(drawerSrc).not.toContain('statusDrawerOffset')
+    expect(drawerSrc).not.toContain('statusPlacement')
+    expect(drawerSrc).toContain("width: embedded ? '100%' : STATUS_DRAWER_WIDTH")
   })
 })

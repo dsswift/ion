@@ -17,13 +17,9 @@ export interface ShortcutEntry {
   id: string
   group: ShortcutGroup
   description: string
-  /** Default chord unless a view-specific default is necessary. */
   defaultBinding: string
-  views: readonly ShortcutView[]
   /** Limits a binding to a focused surface. Omitted means every context. */
   when?: ShortcutContext
-  /** A deliberate per-view divergence, not a user override. */
-  viewDefaults?: Partial<Record<ShortcutView, string>>
 }
 
 export interface ResolvedShortcut {
