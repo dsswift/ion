@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * Rewind prefill is a one-shot tab field. The shared composer must consume it
- * into its local textarea, focus that textarea, and leave the instance draft
+ * into its local editor, focus that editor, and leave the instance draft
  * intact so an operator can edit and resend a rewound prompt.
  */
 import React, { act } from "react";
@@ -71,20 +71,20 @@ const colors = {
   textOnAccent: "white",
 } as never;
 
-vi.mock("../../stores/sessionStore", () => ({
+vi.mock("@ion/server/store/sessionStore", () => ({
   useSessionStore: h.useSessionStore,
 }));
 // The mock must expose every selector InputBar reads, not just the ones this
 // test asserts on: a selector that resolves to undefined is called as a
 // function by the component and throws before the rewind behavior under test
 // ever renders.
-vi.mock("../../stores/model-store", () => ({
+vi.mock("@ion/server/store/model-store", () => ({
   useModelStore: (
     selector: (state: {
-      findModel: () => undefined;
-      isModelCliServed: () => boolean;
+      findModelIn: () => undefined;
+      isModelCliServedIn: () => boolean;
     }) => unknown,
-  ) => selector({ findModel: () => undefined, isModelCliServed: () => false }),
+  ) => selector({ findModelIn: () => undefined, isModelCliServedIn: () => false }),
 }));
 vi.mock("../../preferences", () => ({
   usePreferencesStore: (
@@ -107,7 +107,7 @@ vi.mock("../../rendererLogger", () => ({
   rError: vi.fn(),
   rWarn: vi.fn(),
 }));
-vi.mock("../../stores/slices/engine-event-slice", () => ({
+vi.mock("@ion/server/store/slices/engine-event-slice", () => ({
   getRendererExtensionCommands: () => [],
 }));
 vi.mock("../InputBarVoiceButton", () => ({
@@ -126,6 +126,11 @@ vi.mock("../InputBarSend", () => ({
   dispatchSend: vi.fn(() => ({ accepted: false })),
 }));
 vi.mock("../InputBarBash", () => ({ dispatchBashCommand: vi.fn() }));
+// The stash reads Environment settings over the host wire, which this test
+// does not stand up; its own behavior is pinned in useComposerStash.test.tsx.
+vi.mock("../composer/useComposerStash", () => ({
+  useComposerStash: () => ({ entries: [], handleKeyDown: () => false, restore: () => undefined, remove: () => undefined }),
+}));
 vi.mock("../ComposerControls", () => ({ ComposerControls: () => null }));
 vi.mock("../AttachmentChips", () => ({ AttachmentChips: () => null }));
 vi.mock("../SlashCommandMenu", () => ({
@@ -165,11 +170,12 @@ describe("InputBar rewind prefill", () => {
       root.render(<InputBar />);
     });
 
-    const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
-    expect(textarea.value).toBe(
-      "Please keep this complex prompt\nwith its second line.",
-    );
-    expect(document.activeElement).toBe(textarea);
+    const content = container.querySelector(".cm-content") as HTMLElement;
+    expect([...content.querySelectorAll(".cm-line")].map((line) => line.textContent)).toEqual([
+      "Please keep this complex prompt",
+      "with its second line.",
+    ]);
+    expect(document.activeElement).toBe(content);
     expect(h.clearPendingInput).toHaveBeenCalledWith("tab-rewind");
     expect(
       h.storeState.conversationPanes.get("tab-rewind")!.instances[0].draftInput,

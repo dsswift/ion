@@ -30,7 +30,8 @@ import { describe, it, expect, afterEach, beforeAll } from 'vitest'
 import React, { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { MessageBubble } from '../MessageBubble'
-import type { Message } from '../../../../shared/types'
+import { useModelStore } from '@ion/server/store/model-store'
+import type { Message } from '@ion/shared/types'
 
 // React requires this flag set before any act() call so it knows the test
 // environment is an act-aware one. Without it React logs a warning on every
@@ -133,6 +134,17 @@ describe('MessageBubble — attachment marker stripping', () => {
 })
 
 describe('MessageBubble — slash model provenance', () => {
+  beforeAll(() => {
+    // The pill names the command's model from the conversation's Environment
+    // model list, exactly as the model picker does.
+    useModelStore.setState({
+      models: [
+        { id: 'dci-marketing/gpt-5.6-terra', providerId: 'dci-marketing', displayName: 'GPT-5.6 Terra', contextWindow: 0, costPer1kInput: 0, costPer1kOutput: 0 },
+        { id: 'gpt-5.6-terra', providerId: 'dci-marketing', displayName: 'GPT-5.6 Terra', contextWindow: 0, costPer1kInput: 0, costPer1kOutput: 0 },
+      ],
+    })
+  })
+
   it('renders configured slash model as a separate attachment-style pill', () => {
     const el = renderBubble(userMessage('/align review changes', {
       slashCommand: '/align',
@@ -143,7 +155,7 @@ describe('MessageBubble — slash model provenance', () => {
 
     const modelPill = el.querySelector('[data-slash-model-pill]')
     expect(modelPill).not.toBeNull()
-    expect(modelPill?.textContent).toBe('Standard · GPT 5.6 Terra')
+    expect(modelPill?.textContent).toBe('Standard · GPT-5.6 Terra')
     expect(modelPill?.querySelector('svg')).not.toBeNull()
     expect((modelPill as HTMLElement).style.borderRadius).toBe('10px')
     expect(modelPill?.parentElement?.firstElementChild).not.toBe(modelPill)
@@ -157,7 +169,7 @@ describe('MessageBubble — slash model provenance', () => {
 
     const modelPill = el.querySelector('[data-slash-model-pill]')
     expect(modelPill).not.toBeNull()
-    expect(modelPill?.textContent).toBe('Standard · GPT 5.6 Terra')
+    expect(modelPill?.textContent).toBe('Standard · GPT-5.6 Terra')
   })
 
   it('omits model pill when slash command has no model provenance', () => {
@@ -363,5 +375,31 @@ describe('MessageBubble — markdown survives the whitespace fix', () => {
   it('renders a heading', () => {
     const el = renderBubble(userMessage('# Title\n\nbody'))
     expect(el.querySelector('h1')?.textContent).toBe('Title')
+  })
+})
+
+// ─── Document attachments ───
+
+describe('MessageBubble — a message sent with a document shows it', () => {
+  it('draws one chip per document, named as the operator knows it, and never the raw marker', () => {
+    const el = renderBubble(userMessage('[Attached file: /data/ab12.txt]\n\nPlease verify the attached tf output', {
+      attachments: [{ id: 'a1', type: 'file', name: 'pasted-text-1.txt', path: '/data/ab12.txt' }],
+    }))
+    const chips = el.querySelectorAll('[data-message-file-chip]')
+    expect(chips).toHaveLength(1)
+    expect(chips[0].textContent).toBe('pasted-text-1.txt')
+    expect(el.textContent).not.toContain('[Attached file:')
+  })
+
+  it('keeps the chip after a reload that dropped the attachments array', () => {
+    const el = renderBubble(userMessage('[Attached file: /data/ab12.docx]\n\nsee attached'))
+    expect(el.querySelector('[data-message-file-chip]')?.textContent).toBe('ab12.docx')
+  })
+
+  it('draws no chip for an image, which the gallery already shows', () => {
+    const el = renderBubble(userMessage('look', {
+      attachments: [{ id: 'i1', type: 'image', name: 'shot.png', path: '/data/shot.png' }],
+    }))
+    expect(el.querySelector('[data-message-file-chip]')).toBeNull()
   })
 })

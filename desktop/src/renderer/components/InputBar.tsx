@@ -1,31 +1,49 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { create } from 'zustand'
-import { useSessionStore } from '../stores/sessionStore'
-import { activeInstance } from '../stores/conversation-instance'
+import { useSessionStore } from '@ion/server/store/sessionStore'
+import { activeInstance } from '@ion/server/store/conversation-instance'
 import { resolveClearingCommand, clearingCommandMessage, type ClearingCommandPrompt } from './InputBarClearingCommand'
 import { resolveContextInputs } from './context-usage'
-import { useInputAutoResize } from '../hooks/useInputAutoResize'
 import { ConfirmDialog } from './git/ConfirmDialog'
 import { AttachmentChips } from './AttachmentChips'
 import { SlashCommandMenu, getFilteredCommandsWithExtras, slashMenuEnterAction, ExtensionCommandIcon, type SlashCommand } from './SlashCommandMenu'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
-import type { DiscoveredCommand } from '../../shared/types'
-import { getRendererExtensionCommands } from '../stores/slices/engine-event-slice'
+import { selectedConversationModel } from '@ion/shared/conversation-model'
+import type { DiscoveredCommand } from '@ion/shared/types'
+import { getRendererExtensionCommands } from '@ion/server/store/slices/engine-event-slice'
 import { useVoiceRecording, VoiceButtons } from './InputBarVoiceButton'
 import { SendButton } from './InputBarSendButton'
 import { UpdateButton } from './UpdateButton'
-import { rDebug, rError, rInfo, rWarn } from '../rendererLogger'
+import { rDebug, rInfo, rWarn } from '../rendererLogger'
 import { dispatchSend } from './InputBarSend'
-import { dispatchBashCommand } from './InputBarBash'
-import { useModelStore } from '../stores/model-store'
+import { submitWithTrace } from '../lib/prompt-trace'
+import { dispatchBashCommand, createHostExecuteBash } from './InputBarBash'
+import { useModelStore } from '@ion/server/store/model-store'
+import { useActiveTabEnvironmentId } from '../studio/connection/tab-environment'
+import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
+import { useEnvironmentAvailabilityMap } from '../studio/connection/environment-availability'
+import { EnvironmentReconnectingNotice } from '../studio/connection/EnvironmentUnavailable'
 import { useActiveContextCapacity } from '../hooks/useActiveContextCapacity'
 import { ComposerControls } from './ComposerControls'
+import { ComposerStopButton } from './composer/ComposerStopButton'
 import { InputLockNotice } from './InputLockNotice'
 import { ContextCapacityNotice } from './ContextCapacityNotice'
 import { ImageModelNotice } from './ImageModelNotice'
-import { INLINE_CONTROLS_RESERVED_WIDTH, INPUT_MAX_HEIGHT, INPUT_MIN_HEIGHT, MULTILINE_ENTER_HEIGHT, MULTILINE_EXIT_HEIGHT } from './input-bar-layout'
+import { usePresenceStore, drivingSubjectFor } from '../stores/presence-store'
+import { INPUT_MAX_HEIGHT, INPUT_MIN_HEIGHT } from './input-bar-layout'
+import { ComposerEditor, type ComposerEditorHandle } from './composer/ComposerEditor'
+import { useComposerIntake } from './composer/useComposerIntake'
+import { useComposerMentions } from './composer/useComposerMentions'
+import { useComposerHistory } from './composer/useComposerHistory'
+import { useComposerStash } from './composer/useComposerStash'
+import { useComposerDraft } from './composer/useComposerDraft'
+import { ComposerStashButton } from './composer/ComposerStashButton'
+import { useComposerContextSync } from './composer/useComposerContextSync'
+import { ComposerMentionMenu } from './composer/ComposerMentionMenu'
+import { mentionedPaths, resolveMentionAttachments } from './composer/composer-mentions'
+import { host } from '../host/host-instance'
 /** Shared transient state for bash command mode (consumed by App.tsx for pill styling) */
 export const useBashModeStore = create<{ active: boolean; set: (v: boolean) => void }>((set) => ({
   active: false,
@@ -33,8 +51,9 @@ export const useBashModeStore = create<{ active: boolean; set: (v: boolean) => v
 }))
 
 /**
- * InputBar renders inside a glass-surface rounded-full pill provided by App.tsx.
- * It provides: textarea + mic/send buttons. Attachment chips render above when present.
+ * InputBar renders inside the rounded composer shell StudioCenter provides.
+ * Top to bottom: notices, attachment previews, the prompt text, then one
+ * control row (ComposerControls) that also carries the mic/stop/send buttons.
  */
 export function InputBar() {
   const [input, setInput] = useState('')
@@ -42,8 +61,9 @@ export function InputBar() {
   const [slashIndex, setSlashIndex] = useState(0)
   const bashMode = useBashModeStore((s) => s.active)
   const setBashMode = useBashModeStore((s) => s.set)
-  const [isMultiLine, setIsMultiLine] = useState(false)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const editorRef = useRef<ComposerEditorHandle>(null)
+  // Drops, pasted files, and oversized pastes all become attachments.
+  const { handlePaste, noteKeyDown } = useComposerIntake()
   const wrapperRef = useRef<HTMLDivElement>(null)
 
   const submit = useSessionStore((s) => s.submit)
@@ -53,7 +73,6 @@ export function InputBar() {
   // engine-event-slice.ts.)
   const startBashCommand = useSessionStore((s) => s.startBashCommand)
   const completeBashCommand = useSessionStore((s) => s.completeBashCommand)
-  const addAttachments = useSessionStore((s) => s.addAttachments)
   const removeAttachment = useSessionStore((s) => s.removeAttachment)
   const setDraftInput = useSessionStore((s) => s.setDraftInput)
   const clearPendingInput = useSessionStore((s) => s.clearPendingInput)
@@ -69,17 +88,31 @@ export function InputBar() {
   // Determine whether the active conversation instance has an image-generation
   // model selected. Image models (modelKind === "image") use a single-prompt
   // API with no conversation history — the InputBar shows a disclosure banner.
-  const modelOverride = useSessionStore((s) => {
-    const tabId = s.activeTabId ?? ''
-    return activeInstance(s.conversationPanes, tabId)?.modelOverride ?? null
-  })
-  const preferredModel = usePreferencesStore((s) => s.preferredModel)
-  const findModel = useModelStore((s) => s.findModel)
-  const isModelCliServed = useModelStore((s) => s.isModelCliServed)
-  const effectiveModelId = modelOverride ?? preferredModel ?? ''
+  // The conversation's server decides the model; this client's own default
+  // model says nothing about a conversation on another server.
+  const effectiveModelId = useSessionStore((s) => selectedConversationModel(activeInstance(s.conversationPanes, s.activeTabId ?? '')))
+  // The model is looked up in the active conversation's Environment (ADR-033).
+  const inputEnvironmentId = useActiveTabEnvironmentId()
+  const environmentEntry = useEnvironmentAvailabilityMap().get(inputEnvironmentId)
+  const environmentAvailability = environmentEntry?.availability ?? 'connected'
+  const environmentLabel = environmentEntry?.label ?? inputEnvironmentId
+  const findModelIn = useModelStore((s) => s.findModelIn)
+  const isModelCliServedIn = useModelStore((s) => s.isModelCliServedIn)
+  const findModel = useCallback((id: string) => findModelIn(inputEnvironmentId, id), [findModelIn, inputEnvironmentId])
+  const isModelCliServed = useCallback((id: string) => isModelCliServedIn(inputEnvironmentId, id), [isModelCliServedIn, inputEnvironmentId])
   const { state: contextCapacityStatus } = useActiveContextCapacity(effectiveModelId)
   const isImageModel = effectiveModelId !== '' && findModel(effectiveModelId)?.modelKind === 'image'
   const isBusy = tab?.status === 'running' || tab?.status === 'connecting'
+  // FR-02 shared-tenancy presence: another connection started this tab's
+  // in-flight run. Feeds the placeholder ladder below, same mechanism as
+  // every other busy-state notice this bar already shows.
+  const presenceDriving = usePresenceStore((s) => s.driving)
+  const presenceEntries = usePresenceStore((s) => s.entries)
+  const ownSubject = usePresenceStore((s) => s.ownSubject)
+  const drivenBySubject = activeTabId ? drivingSubjectFor(presenceDriving, ownSubject, activeTabId) : null
+  const drivenByName = drivenBySubject
+    ? (presenceEntries.find((e) => e.subject === drivenBySubject)?.displayName ?? drivenBySubject)
+    : null
   const isConnecting = tab?.status === 'connecting' || !tabsReady
   // There is no way to steer a compaction in progress — a queued prompt
   // cannot interrupt or redirect it — so sending is refused outright rather
@@ -88,13 +121,25 @@ export function InputBar() {
   const isCompacting = tab?.isCompacting ?? false
   const hasContent = input.trim().length > 0 || (tab?.attachments?.length ?? 0) > 0
   const canSend = !!tab && !isConnecting && !isCompacting && hasContent
-  const attachments = tab?.attachments || []
+  // Memoised because a bare `tab?.attachments || []` mints a new array on
+  // every render, which changes the identity of every hook that depends on
+  // it — including the keydown handler below, which would then be rebuilt
+  // and re-bound on each keystroke.
+  const attachments = useMemo(() => tab?.attachments || [], [tab?.attachments])
   const showSlashMenu = slashFilter !== null && !isConnecting
   const [discoveredCommands, setDiscoveredCommands] = useState<DiscoveredCommand[]>([])
   // A clearing command the operator submitted but has not confirmed yet. Held
   // here so the send is not performed until they accept losing the history.
   const [pendingClear, setPendingClear] = useState<ClearingCommandPrompt | null>(null)
   const workingDir = tab?.workingDirectory || '~'
+  // `@file` mentions are prompt text; a bash command line has none.
+  const mentions = useComposerMentions(editorRef, workingDir, !bashMode)
+  const stagingMentionsRef = useRef(false)
+  const historyKeyDown = useComposerHistory(editorRef, activeTabId, input, setInput)
+  const stash = useComposerStash(tab, input, attachments, setInput)
+  // Terminal and diff context: each chip stays paired with its attachment.
+  useComposerContextSync(editorRef, activeTabId, input, attachments, setInput)
+  const addAttachments = useSessionStore((s) => s.addAttachments)
 
   const appendTranscript = useCallback((transcript: string) => {
     setInput((prev) => (prev ? `${prev} ${transcript}` : transcript))
@@ -115,7 +160,7 @@ export function InputBar() {
   const slashMenuOpen = slashFilter !== null
   useEffect(() => {
     let cancelled = false
-    window.ion.discoverCommands(workingDir).then((cmds) => {
+    host.shell.discoverCommands(workingDir).then((cmds) => {
       if (!cancelled) setDiscoveredCommands(cmds)
     }).catch((err) => rDebug("commands", "discoverCommands failed", { workingDir, error: String(err) }))
     return () => { cancelled = true }
@@ -146,26 +191,18 @@ export function InputBar() {
   }, [activeTabId, discoveredExtra])
 
   // ─── Per-tab draft input sync ───
-  // Save current input to departing tab, restore arriving tab's draft.
-  // inputRef tracks the latest input value so the effect only depends on
-  // activeTabId (not input itself, which would re-run on every keystroke).
-  const prevTabIdRef = useRef(activeTabId)
-  const inputRef = useRef(input)
-  inputRef.current = input
+  // The draft is durable conversation state, not window state: useComposerDraft
+  // commits it to the owning server as it is typed (debounced, flushed on
+  // switch and teardown) and adopts the stored one when a conversation opens.
+  // That is what lets a half-written prompt survive a quit.
+  const onAdoptDraft = useCallback(() => setSlashFilter(null), [])
+  useComposerDraft(activeTabId, tabsReady, input, setInput, onAdoptDraft)
+
+  // Focus and bash-mode reset belong to the switch itself, not to the draft.
   useEffect(() => {
-    const prevId = prevTabIdRef.current
-    if (prevId && prevId !== activeTabId) {
-      // Save what was typed to the tab we're leaving
-      setDraftInput(prevId, inputRef.current)
-      // Load the arriving tab's draft (now stored on its `main` instance)
-      const arrivingDraft = activeInstance(useSessionStore.getState().conversationPanes, activeTabId)?.draftInput ?? ''
-      setInput(arrivingDraft)
-      setSlashFilter(null)
-    }
-    prevTabIdRef.current = activeTabId
-    textareaRef.current?.focus()
+    editorRef.current?.focus()
     setBashMode(false)
-  }, [activeTabId, setDraftInput, setBashMode])
+  }, [activeTabId, setBashMode])
 
   // ─── Rewind: restore user message to input bar ───
   const pendingInput = tab?.pendingInput
@@ -173,37 +210,23 @@ export function InputBar() {
     if (pendingInput && activeTabId) {
       setInput(pendingInput)
       clearPendingInput(activeTabId)
-      textareaRef.current?.focus()
+      editorRef.current?.focus()
     }
   }, [pendingInput, activeTabId, clearPendingInput])
 
   // Focus textarea when window is shown (shortcut toggle, screenshot return)
   // Skip if focus is inside the terminal panel (xterm manages its own focus)
   useEffect(() => {
-    const unsub = window.ion.onWindowShown(() => {
+    // No concept of "window shown" for a browser tab (see StudioHost.ts's
+    // 'windowShown' doc).
+    if (!host.capabilities().includes('windowShown')) return
+    const unsub = host.shell.onWindowShown(() => {
       const active = document.activeElement
       if (active && active.closest('.xterm')) return
-      textareaRef.current?.focus()
+      editorRef.current?.focus()
     })
     return unsub
   }, [])
-
-  // Textarea sizing + multiline detection live in their own hook: a
-  // self-contained DOM concern with its own hidden measurement node.
-  useInputAutoResize({
-    value: input,
-    isMultiLine,
-    setIsMultiLine,
-    textareaRef,
-    wrapperRef,
-    metrics: {
-      minHeight: INPUT_MIN_HEIGHT,
-      maxHeight: INPUT_MAX_HEIGHT,
-      multilineEnterHeight: MULTILINE_ENTER_HEIGHT,
-      multilineExitHeight: MULTILINE_EXIT_HEIGHT,
-      inlineControlsReservedWidth: INLINE_CONTROLS_RESERVED_WIDTH,
-    },
-  })
 
   // ─── Slash command detection ───
   const updateSlashFilter = useCallback((value: string) => {
@@ -219,7 +242,7 @@ export function InputBar() {
   // ─── Slash commands ───
   // The slash menu only sets the input text; the real dispatch happens
   // inside handleSend below, which hands the raw text (including any leading
-  // "/") to the main process via window.ion.prompt (the single unified prompt IPC).
+  // "/") to the main process via host.shell.prompt (the single unified prompt IPC).
   // The unified prompt pipeline (desktop/src/main/prompt-pipeline.ts) owns
   // all slash routing: extension-command dispatch, .md template expansion,
   // and the /clear short-circuit for sessions that haven't started yet.
@@ -228,7 +251,7 @@ export function InputBar() {
   const handleSlashSelect = useCallback((cmd: SlashCommand) => {
     setInput(`${cmd.command} `)
     setSlashFilter(null)
-    requestAnimationFrame(() => textareaRef.current?.focus())
+    requestAnimationFrame(() => editorRef.current?.focus())
   }, [])
 
   // ─── Send ───
@@ -254,18 +277,13 @@ export function InputBar() {
         isConnecting,
         cwd: tab?.workingDirectory || '~',
         activeTabId,
-        clearInput: () => {
-          setInput('')
-          if (textareaRef.current) {
-            textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`
-          }
-        },
+        clearInput: () => setInput(''),
         clearDraft: (tabId) => setDraftInput(tabId, ''),
         exitBashMode: () => setBashMode(false),
         startBashCommand,
         completeBashCommand,
-        executeBash: (execId, cmd, cwd) => window.ion.executeBash(execId, cmd, cwd),
-        onSettled: () => requestAnimationFrame(() => textareaRef.current?.focus()),
+        executeBash: createHostExecuteBash(host),
+        onSettled: () => requestAnimationFrame(() => editorRef.current?.focus()),
       })
       return
     }
@@ -303,53 +321,75 @@ export function InputBar() {
     // submit() is unified for EVERY tab — plain or extension-backed. No
     // tab-type fork: it reads tab.attachments internally and resolves the
     // tab's extensions from its profile (data).
-    const outcome = dispatchSend(prompt, attachments.length, {
-      getSnapshot: () => {
-        const s = useSessionStore.getState()
-        return {
-          tabs: s.tabs,
-          activeTabId: s.activeTabId,
-          tabsReady: s.tabsReady,
-        }
-      },
-      clearInput: () => {
-        setInput('')
-        setSlashFilter(null)
-        if (textareaRef.current) {
-          textareaRef.current.style.height = `${INPUT_MIN_HEIGHT}px`
-        }
-      },
-      clearDraft: (tabId) => setDraftInput(tabId, ''),
-      submit,
-      // Put the text back when the authoritative guard refused it. The
-      // pre-check above reads THIS window's store; in the Studio presentation
-      // the owner decides, and only its answer is final.
-      restoreInput: (text) => {
-        setInput((prev) => (prev ? prev : text))
-        const target = useSessionStore.getState().activeTabId
-        if (target) setDraftInput(target, text)
-      },
-      warn: (msg, fields) => rWarn('input-bar', msg, fields),
-    })
-    if (!outcome.accepted) return
-    // Refocus after React re-renders from the state update
-    requestAnimationFrame(() => textareaRef.current?.focus())
-  }, [input, submit, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand, extraCommands, isConnecting, activeTabId, setDraftInput, setBashMode, discoveredCommands])
+    const dispatch = (attachmentCount: number): void => {
+      const outcome = dispatchSend(prompt, attachmentCount, {
+        getSnapshot: () => {
+          const s = useSessionStore.getState()
+          return {
+            tabs: s.tabs,
+            activeTabId: s.activeTabId,
+            tabsReady: s.tabsReady,
+          }
+        },
+        clearInput: () => {
+          setInput('')
+          setSlashFilter(null)
+        },
+        clearDraft: (tabId) => setDraftInput(tabId, ''),
+        // The prompt's trace starts here: submitWithTrace opens its client span.
+        submit: (tabId, text) => submitWithTrace(submit, tabId, text, useSessionStore.getState().tabs.find((t) => t.id === tabId)?.conversationId),
+        // Put the text back when the authoritative guard refused it. The
+        // pre-check above reads THIS window's store; in the Studio presentation
+        // the owner decides, and only its answer is final.
+        restoreInput: (text) => {
+          setInput((prev) => (prev ? prev : text))
+          const target = useSessionStore.getState().activeTabId
+          if (target) setDraftInput(target, text)
+        },
+        warn: (msg, fields) => rWarn('input-bar', msg, fields),
+      })
+      if (!outcome.accepted) return
+      // Refocus after React re-renders from the state update
+      requestAnimationFrame(() => editorRef.current?.focus())
+    }
+
+    // A mentioned file rides along as an attachment so the model receives its
+    // content, not only its name. Staging finishes before the send so the
+    // owner's submit() reads a tray that already holds the files.
+    if (mentionedPaths(prompt).length === 0) { dispatch(attachments.length); return }
+    // Staging is async; a second Enter during it must not send twice.
+    if (stagingMentionsRef.current) return
+    stagingMentionsRef.current = true
+    void resolveMentionAttachments(prompt, workingDir, attachments, (path) => host.shell.attachFileByPath(activeTabId, path))
+      .then(({ attachments: mentioned, unresolved }) => {
+        if (unresolved.length > 0) rDebug('input-bar', 'mentions left as text: no such file', { count: unresolved.length })
+        if (mentioned.length > 0) addAttachments(mentioned)
+        dispatch(attachments.length + mentioned.length)
+      })
+      .finally(() => { stagingMentionsRef.current = false })
+  }, [input, submit, attachments, workingDir, addAttachments, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand, extraCommands, isConnecting, activeTabId, setDraftInput, setBashMode, discoveredCommands])
 
   // ─── Keyboard ───
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  // Returns true when the key was handled here, which stops the editor's own
+  // keymap from also acting on it.
+  const handleKeyDown = (e: KeyboardEvent): boolean => {
+    // An IME composition owns Enter until it commits.
+    if (e.isComposing) return false
+    noteKeyDown(e)
+    if (mentions.handleKeyDown(e)) return true
+    if (stash.handleKeyDown(e)) return true
     // Exit bash mode on backspace when input is empty
     if (bashMode && e.key === 'Backspace' && input === '') {
       e.preventDefault()
       setBashMode(false)
-      return
+      return true
     }
     if (showSlashMenu) {
       const filtered = getFilteredCommandsWithExtras(slashFilter!, extraCommands)
-      if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIndex((i) => (i + 1) % filtered.length); return }
-      if (e.key === 'ArrowUp') { e.preventDefault(); setSlashIndex((i) => (i - 1 + filtered.length) % filtered.length); return }
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIndex((i) => (i + 1) % filtered.length); return true }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setSlashIndex((i) => (i - 1 + filtered.length) % filtered.length); return true }
       // Tab always completes from the menu (no-op when there are no matches).
-      if (e.key === 'Tab') { e.preventDefault(); if (filtered.length > 0) handleSlashSelect(filtered[slashIndex]); return }
+      if (e.key === 'Tab') { e.preventDefault(); if (filtered.length > 0) handleSlashSelect(filtered[slashIndex]); return true }
       // Enter: if the menu has a match, complete it. If the typed text matches
       // NO known command (filtered empty), do NOT swallow Enter — close the
       // menu and submit the raw text. The prompt pipeline forwards it to the
@@ -364,15 +404,17 @@ export function InputBar() {
           setSlashFilter(null)
           handleSend()
         }
-        return
+        return true
       }
-      if (e.key === 'Escape') { e.preventDefault(); setSlashFilter(null); return }
+      if (e.key === 'Escape') { e.preventDefault(); setSlashFilter(null); return true }
     }
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+    if (!bashMode && historyKeyDown(e)) return true
+    // Enter sends; Shift+Enter falls through to the editor and inserts a line.
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); return true }
+    return false
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value
+  const handleInputChange = (value: string) => {
     // Enter bash mode when ! is typed as first character on empty input
     if (!bashMode && bashCommandEntry && value === '!') {
       setBashMode(true)
@@ -382,27 +424,6 @@ export function InputBar() {
     setInput(value)
     if (!bashMode) updateSlashFilter(value)
   }
-
-  // ─── Paste image ───
-  const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
-    const items = e.clipboardData?.items
-    if (!items) return
-    for (const item of Array.from(items)) {
-      if (item.type.startsWith('image/')) {
-        e.preventDefault()
-        const blob = item.getAsFile()
-        if (!blob) return
-        const reader = new FileReader()
-        reader.onload = async () => {
-          const dataUrl = reader.result as string
-          const attachment = await window.ion.pasteImage(dataUrl)
-          if (attachment) addAttachments([attachment])
-        }
-        reader.readAsDataURL(blob)
-        return
-      }
-    }
-  }, [addAttachments])
 
   const hasAttachments = attachments.length > 0
   const bashPlaceholder = 'Enter bash command...'
@@ -421,7 +442,7 @@ export function InputBar() {
               : isCompacting
                 ? 'Compacting… try again in a moment'
                 : isBusy
-                  ? 'Type to queue a message...'
+                  ? (drivenByName ? `${drivenByName} is running a turn — type to queue a message...` : 'Type to queue a message...')
                   : 'Ask Ion anything...'
 
   const sendVisible = canSend && voiceState !== 'recording'
@@ -431,6 +452,19 @@ export function InputBar() {
   // the whole input surface with a static notice — rendering a disabled
   // textarea would look like a transient state the operator can wait out.
   // The store's submit() guard is the enforcement; this is the honest UI.
+  // A conversation on a machine this desktop cannot reach takes no input.
+  // The composer is replaced rather than disabled for the same reason the
+  // lock below replaces it: a greyed-out textarea reads as a moment to wait
+  // out, and anything typed into it would be a prompt aimed at state that
+  // may already have moved.
+  if (inputEnvironmentId !== LOCAL_ENVIRONMENT_ID && environmentAvailability !== 'connected') {
+    return (
+      <div ref={wrapperRef} data-ion-ui className="flex items-center w-full" style={{ minHeight: 50 }}>
+        <EnvironmentReconnectingNotice label={environmentLabel} availability={environmentAvailability} />
+      </div>
+    )
+  }
+
   if (tab?.inputLocked) {
     return (
       <div ref={wrapperRef} data-ion-ui data-testid="input-locked-notice" className="flex items-center w-full" style={{ minHeight: 50 }}>
@@ -456,6 +490,15 @@ export function InputBar() {
         )}
       </AnimatePresence>
 
+      {mentions.active && (
+        <ComposerMentionMenu
+          results={mentions.results}
+          selectedIndex={mentions.index}
+          anchorRect={wrapperRef.current?.getBoundingClientRect() ?? null}
+          onPick={mentions.pick}
+        />
+      )}
+
       <ImageModelNotice visible={isImageModel} border={colors.containerBorder} text={colors.textTertiary} hasAttachments={hasAttachments} />
 
       <ContextCapacityNotice
@@ -477,83 +520,37 @@ export function InputBar() {
         </div>
       )}
 
-      {/* Conversation-scoped controls stay with composer in both clients. */}
-      <ComposerControls />
+      {/* Prompt text on top; the one control row sits underneath it. */}
+      <ComposerEditor
+        ref={editorRef}
+        value={input}
+        onChange={handleInputChange}
+        onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
+        onCursorActivity={(offset) => mentions.track(editorRef.current?.getValue() ?? '', offset)}
+        placeholder={placeholder}
+        minHeight={INPUT_MIN_HEIGHT}
+        maxHeight={INPUT_MAX_HEIGHT}
+      />
 
-      {/* Single-line: inline controls. Multi-line: controls in bottom row */}
-      <div className="w-full" style={{ minHeight: 50 }}>
-        {isMultiLine ? (
-          <div className="w-full">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              onPaste={(e) => { void handlePaste(e).catch((err) => rError('InputBar', 'paste handler failed', { error: String(err) })) }}
-              placeholder={placeholder}
-              rows={1}
-              className="w-full bg-transparent resize-none"
-              style={{
-                fontSize: 14,
-                lineHeight: '20px',
-                color: colors.textPrimary,
-                minHeight: 20,
-                maxHeight: INPUT_MAX_HEIGHT,
-                paddingTop: 11,
-                paddingBottom: 2,
-              }}
+      <ComposerControls
+        actions={(
+          <>
+            <ComposerStashButton entries={stash.entries} onRestore={stash.restore} onRemove={stash.remove} />
+            <UpdateButton />
+            <VoiceButtons
+              voiceState={voiceState}
+              isConnecting={isConnecting}
+              colors={colors}
+              onToggle={toggleRecording}
+              onCancel={cancelRecording}
+              onStop={stopRecording}
             />
-
-            <div className="flex items-center justify-end gap-1" style={{ marginTop: 0, paddingBottom: 4 }}>
-              <UpdateButton />
-              <VoiceButtons
-                voiceState={voiceState}
-                isConnecting={isConnecting}
-                colors={colors}
-                onToggle={toggleRecording}
-                onCancel={cancelRecording}
-                onStop={stopRecording}
-              />
-              <SendButton visible={sendVisible} isBusy={isBusy} colors={colors} onClick={handleSend} />
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center w-full" style={{ minHeight: 50 }}>
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              onPaste={(e) => { void handlePaste(e).catch((err) => rError('InputBar', 'paste handler failed', { error: String(err) })) }}
-              placeholder={placeholder}
-              rows={1}
-              className="flex-1 bg-transparent resize-none"
-              style={{
-                fontSize: 14,
-                lineHeight: '20px',
-                color: colors.textPrimary,
-                minHeight: 20,
-                maxHeight: INPUT_MAX_HEIGHT,
-                paddingTop: 15,
-                paddingBottom: 15,
-              }}
-            />
-
-            <div className="flex items-center gap-1 shrink-0 ml-2">
-              <UpdateButton />
-              <VoiceButtons
-                voiceState={voiceState}
-                isConnecting={isConnecting}
-                colors={colors}
-                onToggle={toggleRecording}
-                onCancel={cancelRecording}
-                onStop={stopRecording}
-              />
-              <SendButton visible={sendVisible} isBusy={isBusy} colors={colors} onClick={handleSend} />
-            </div>
-          </div>
+            <ComposerStopButton />
+            <SendButton visible={sendVisible} isBusy={isBusy} colors={colors} onClick={handleSend} />
+          </>
         )}
-      </div>
+      />
 
       {/* Voice error */}
       {voiceError && (

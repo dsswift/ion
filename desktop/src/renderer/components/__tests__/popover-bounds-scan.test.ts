@@ -112,4 +112,30 @@ describe('popover viewport-bounds scan (components + studio)', () => {
         violations.join('\n'),
     ).toEqual([])
   })
+
+  it('no popover offset is computed from raw window dimensions', () => {
+    // `window.innerHeight - rect.top` is in viewport pixels. Spent as a CSS
+    // `bottom` it is scaled by the root UI zoom a second time, so the popover
+    // floats away from its trigger at any zoom other than 100%. The reported
+    // defect was every composer pop-up doing exactly this. `zoomAnchorEdges`
+    // (`viewport-zoom.ts`) is the conversion.
+    const RAW = /window\.inner(?:Height|Width)\s*-\s/
+    const violations: string[] = []
+    for (const root of SCAN_ROOTS) {
+      for (const file of collectSources(root)) {
+        readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+          if (!RAW.test(line)) return
+          if (line.includes(ESCAPE_TAG)) return
+          violations.push(`${relative(RENDERER_ROOT, file)}:${i + 1}  ${line.trim().slice(0, 100)}`)
+        })
+      }
+    }
+    expect(
+      violations,
+      `A raw window dimension minus a DOM measurement is in viewport pixels, ` +
+        `not CSS lengths, and misplaces the element under UI zoom. Use ` +
+        `zoomAnchorEdges / zoomViewport from viewport-zoom.ts:\n` +
+        violations.join('\n'),
+    ).toEqual([])
+  })
 })

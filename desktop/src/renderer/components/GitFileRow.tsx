@@ -1,7 +1,7 @@
 import React from 'react'
 import {
   Plus, Minus, ArrowCounterClockwise,
-  Folder, FolderOpen, Warning, ArrowRight,
+  Folder, FolderOpen, Warning, ArrowRight, ChatCircleDots,
 } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
@@ -11,7 +11,8 @@ import { useCmdHeld, useNavigableText } from '../hooks/useNavigableLinks'
 import { isModKey } from '../platform/mod-key'
 import { Tooltip } from './git/Tooltip'
 import { rError } from '../rendererLogger'
-import type { GitChangedFile } from '../../shared/types'
+import { addDiffContext } from './composer/composer-context-sources'
+import type { GitChangedFile } from '@ion/shared/types'
 import { GIT_STATUS_COLOR_KEYS, STATUS_LETTERS, type FileTreeNode } from './GitPanelTypes'
 
 // ─── File Row ───
@@ -118,6 +119,16 @@ export function FileRow({
             </button>
           </Tooltip>
         )}
+        <Tooltip text="Add diff to prompt">
+          <button
+            aria-label={`Add diff of ${file.path} to prompt`}
+            onClick={(e) => { e.stopPropagation(); void addDiffContext(directory, file.path, file.staged) }}
+            className="px-1 py-1 rounded transition-colors ion-focusable"
+            style={{ color: colors.textTertiary }}
+          >
+            <ChatCircleDots size={12} />
+          </button>
+        </Tooltip>
         <Tooltip text="Discard changes">
           <button
             onClick={(e) => { e.stopPropagation(); onDiscard(file.path) }}
