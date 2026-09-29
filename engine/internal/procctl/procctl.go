@@ -1,7 +1,7 @@
 // Package procctl provides one process-tree control primitive used by every
 // subprocess spawner in the engine (the Bash tool, the claude-code backend,
 // the codex/ACP RPC spawner, and extension hosts) plus the process-liveness
-// probes in durablefile and filelock.
+// probe in durablefile.
 //
 // The platform table:
 //
