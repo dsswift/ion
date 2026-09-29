@@ -71,6 +71,8 @@ func (s *SDK) dispatch(id *int64, method string, params json.RawMessage) {
 		s.async.handleResolvePredicate(c, id, params)
 	case method == methodResourceQuery:
 		s.resources.handleQuery(c, id, params)
+	case method == methodResourceExport || method == methodResourceImport || method == methodResourceForget:
+		s.resources.handleTransfer(c, id, method, params)
 	default:
 		// Not one of the engine's request methods. A notification with no id
 		// may still be a dispatch lifecycle callback, which the router
@@ -96,6 +98,7 @@ type initResult struct {
 	Resources     []ResourceDeclaration  `json:"resources,omitempty"`
 	Hooks         []string               `json:"hooks,omitempty"`
 	BuildIdentity string                 `json:"buildIdentity,omitempty"`
+	Version       string                 `json:"version,omitempty"`
 }
 
 // wireToolDecl is a tool as the engine reads it at init. Execute stays local.
@@ -169,6 +172,7 @@ func (s *SDK) handleInit(id *int64, params json.RawMessage) {
 		Resources:     resources,
 		Hooks:         hooks,
 		BuildIdentity: BuildIdentity,
+		Version:       Version,
 	}
 
 	if id != nil {
