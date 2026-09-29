@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.86.1](https://github.com/dsswift/ion/compare/engine-v1.86.0...engine-v1.86.1) (2026-09-29)
+
+### Bug Fixes
+
+* **ci:** build the linux arm64 engine and upload the installer once ([ec635e6](https://github.com/dsswift/ion/commit/ec635e6746ac80449420009ff32b1eea149622a8))
+
 ## [1.86.0](https://github.com/dsswift/ion/compare/engine-v1.85.3...engine-v1.86.0) (2026-09-29)
 
 ### Features
