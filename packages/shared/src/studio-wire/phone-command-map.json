@@ -1,0 +1,669 @@
+{
+  "$comment": "One entry per desktop_* RemoteCommand: the studio_action (or frame) a client on the Studio wire uses instead. Read by server/src/protocol/__tests__/phone-command-parity.test.ts and by the iOS mapper's tests. 'value' is studio_action_result.value; 'events' means the outcome arrives on the event stream (studio:thin-* channels or ion:normalized-event), not as a value.",
+  "commands": {
+    "desktop_sync": {
+      "action": null,
+      "transport": "studio_welcome + studio_snapshot_request",
+      "args": "none",
+      "result": "studio_welcome.snapshot.thin is the first snapshot; a later resync is a studio_snapshot_request frame answered by studio_snapshot"
+    },
+    "desktop_request_resend": {
+      "action": null,
+      "transport": "studio_snapshot_request (full resync)",
+      "args": "none",
+      "result": "never synthesized: the Studio wire has no sequence numbers to resend; a gap is healed by a full resync"
+    },
+    "desktop_unpair": {
+      "action": "auth.forgetSelf",
+      "args": "[]",
+      "result": "none; the server then closes the connection with studio_close{revoked}, and the client forgets the server"
+    },
+    "desktop_report_mobile_auth": {
+      "action": null,
+      "transport": "the credential's relayIdentity, set when the phone joins the relay",
+      "args": "none",
+      "result": "none"
+    },
+    "desktop_auth": {
+      "action": null,
+      "transport": "studio_hello (bearer) + studio_reauth",
+      "args": "token -> studio_hello bearer credential; a refresh is a studio_reauth frame",
+      "result": "studio_welcome or studio_refused"
+    },
+    "desktop_load_conversation": {
+      "action": null,
+      "transport": "studio_body_request frame",
+      "args": "{tabId, before, pageSize} -> studio_body_request{tabId, before?, limit: pageSize}",
+      "result": "a transcript page: studio_body{rows, hasMore, cursor, before, streamId, epoch, rev, total, startIndex}; a newest page subscribes the connection to the stream's desktop_transcript_patch events"
+    },
+    "desktop_engine_add_instance": {
+      "action": null,
+      "transport": "dropped: the server ignores this command (one instance per conversation), so the client stops sending it",
+      "args": "none",
+      "result": "none"
+    },
+    "desktop_engine_remove_instance": {
+      "action": null,
+      "transport": "dropped: the server ignores this command (one instance per conversation), so the client stops sending it",
+      "args": "none",
+      "result": "none"
+    },
+    "desktop_engine_select_instance": {
+      "action": null,
+      "transport": "dropped: the server ignores this command (one instance per conversation), so the client stops sending it",
+      "args": "none",
+      "result": "none"
+    },
+    "desktop_engine_move_instance": {
+      "action": null,
+      "transport": "dropped: the server ignores this command (one instance per conversation), so the client stops sending it",
+      "args": "none",
+      "result": "none"
+    },
+    "desktop_create_tab": {
+      "action": "tabs.create",
+      "args": "[{workingDirectory, profileId, useWorktree, sourceBranch, clientCmdId}] (extensions is not sent; the profile names them)",
+      "result": "value is {tabId}, null when the create failed; the server sends desktop_tab_created{tab, clientCmdId} as an event, so no client synthesizes it"
+    },
+    "desktop_create_terminal_tab": {
+      "action": "tabs.createTerminal",
+      "args": "[{workingDirectory, clientCmdId}]",
+      "result": "value is {tabId}; desktop_tab_created and desktop_terminal_instance_added both arrive as events"
+    },
+    "desktop_close_tab": {
+      "action": "tabs.close",
+      "args": "[{tabId}]",
+      "result": "value.closed true -> desktop_tab_closed{tabId}; false -> nothing (the row stays; value says what is running)"
+    },
+    "desktop_prompt": {
+      "action": "session.prompt",
+      "args": "[{tabId, text, attachments, clientMsgId, instanceId, implementationPhase, traceparent}] (origin is not sent; traceparent also rides the frame's outer envelope)",
+      "result": "desktop_prompt_result{tabId, clientMsgId: value.clientMsgId, status: value.accepted ? 'accepted' : 'rejected', error: value.reason}; the user-turn echo arrives on studio:user-message-echo"
+    },
+    "desktop_cancel": {
+      "action": "interrupt",
+      "args": "[tabId, scope]",
+      "result": "events"
+    },
+    "desktop_abort_dispatch": {
+      "action": "abortDispatch",
+      "args": "[tabId, dispatchId]",
+      "result": "events"
+    },
+    "desktop_stop_background_task": {
+      "action": "stopBackgroundTask",
+      "args": "[tabId, taskId]",
+      "result": "desktop_background_task_stop_result{requestId (the client's own), taskId, status: value.status ?? (value.ok ? 'stopped' : 'failed'), error: value.error}"
+    },
+    "desktop_respond_permission": {
+      "action": "respondPermission",
+      "args": "[tabId, questionId, optionId]",
+      "result": "events"
+    },
+    "desktop_respond_elicitation": {
+      "action": "respondElicitation",
+      "args": "[tabId, requestId, response, cancelled]",
+      "result": "events"
+    },
+    "desktop_set_permission_mode": {
+      "action": "session.setPermissionMode",
+      "args": "[{tabId, mode}]",
+      "result": "events (thin-tab-delta permissionMode)"
+    },
+    "desktop_set_thinking_effort": {
+      "action": "session.setThinkingEffort",
+      "args": "[{tabId, effort}]",
+      "result": "events (thin-tab-delta thinkingEffort)"
+    },
+    "desktop_system_metrics_watch": {
+      "action": "environment.systemMetrics.watch",
+      "args": "{on} -> [{on}]",
+      "result": "value: {latest, watching}; samples then arrive as desktop_system_metrics on studio:thin-event"
+    },
+    "desktop_set_draft": {
+      "action": "setDraftInput",
+      "args": "[tabId, text]",
+      "result": "none"
+    },
+    "desktop_reset_tab_session": {
+      "action": "session.resetTab",
+      "args": "[{tabId}]",
+      "result": "events"
+    },
+    "desktop_reset_engine_session": {
+      "action": "engine.resetInstance",
+      "args": "[{tabId, instanceId}]",
+      "result": "events"
+    },
+    "desktop_request_transcript": {
+      "action": "session.loadTranscript",
+      "args": "[{tabId, offset, length}] paged until value.hasMore is false (requestId stays client-side)",
+      "result": "desktop_transcript{tabId, requestId, transcript: concatenated value.content}"
+    },
+    "desktop_fork_from_message": {
+      "action": "session.forkFromMessage",
+      "args": "[{tabId, messageId}]",
+      "result": "desktop_input_prefill{tabId: value.tabId, text: value.pendingInput, switchTo: true}; value null = fork refused"
+    },
+    "desktop_engine_rewind": {
+      "action": "engine.rewind",
+      "args": "[{tabId, instanceId, messageId, userTurnIndex}]",
+      "result": "value.ok false -> desktop_engine_rewind_result{tabId, instanceId, status: 'rejected', error: value.error}; true with pendingInput -> desktop_input_prefill{tabId, instanceId, text: value.pendingInput}"
+    },
+    "desktop_engine_abort": {
+      "action": "engine.abort",
+      "args": "[{tabId}]",
+      "result": "events"
+    },
+    "desktop_engine_dialog_response": {
+      "action": "respondEngineDialog",
+      "args": "[tabId, dialogId, value]",
+      "result": "events"
+    },
+    "desktop_engine_set_model": {
+      "action": "setTabModel",
+      "args": "[tabId, model, providerId]",
+      "result": "events"
+    },
+    "desktop_set_tab_model": {
+      "action": "setTabModel",
+      "args": "[tabId, model, providerId]",
+      "result": "events"
+    },
+    "desktop_declare_preferences": {
+      "action": "preferences.declare",
+      "args": "[preferences]",
+      "result": "none"
+    },
+    "desktop_register_push": {
+      "action": "device.registerPush",
+      "args": "[{token, env}]",
+      "result": "none"
+    },
+    "desktop_load_dispatch_transcript": {
+      "action": null,
+      "transport": "studio_body_request frame",
+      "args": "{tabId, conversationId, dispatchId, before, pageSize} -> studio_body_request{tabId, conversationId, dispatchId, before?, limit: pageSize}",
+      "result": "a dispatched agent's transcript page: studio_body{conversationId, dispatchId, rows, streamId, epoch, rev, total, startIndex, ...}; a newest page subscribes the connection to that dispatch stream's desktop_transcript_patch events"
+    },
+    "desktop_request_agent_state": {
+      "action": "engine.agentState",
+      "args": "[{tabId, instanceId}]",
+      "result": "desktop_agent_state{tabId, instanceId, agents} from the same fields of value"
+    },
+    "desktop_request_context_breakdown": {
+      "action": "engine.contextBreakdown",
+      "args": "[{key: tabId}]",
+      "result": "events"
+    },
+    "desktop_load_attachments": {
+      "action": "session.tabAttachments",
+      "args": "[{tabId}]",
+      "result": "desktop_tab_attachments{tabId, attachments} from the same fields of value"
+    },
+    "desktop_implement_plan": {
+      "action": "session.implementPlan",
+      "args": "[{tabId, questionId, instanceId, clearContext}]",
+      "result": "events"
+    },
+    "desktop_request_plan_content": {
+      "action": "session.readPlan",
+      "args": "[{planFilePath, questionId, offset, length}] (tabId stays client-side)",
+      "result": "desktop_plan_content{tabId, questionId, planFilePath, offset, content, totalBytes, hasMore} from the same fields of value"
+    },
+    "desktop_discover_commands": {
+      "action": "session.discoverCommands",
+      "args": "[directory]",
+      "result": "desktop_discover_commands_response{directory, commands: value}"
+    },
+    "desktop_report_focus": {
+      "action": "presence.focus",
+      "alsoActions": [
+        "markTabRead"
+      ],
+      "args": "[tabId, null, {interceptEnabled}], then markTabRead [tabId] when tabId is not null",
+      "result": "none"
+    },
+    "desktop_voice_config": {
+      "action": "voice.setConfig",
+      "args": "[{enabled, mode, systemPrompt}]",
+      "result": "none"
+    },
+    "desktop_diagnostic_logs_response": {
+      "action": "clientLog.append",
+      "args": "[{lines: logs, nextSeq, pairingId, withheldUnstamped, withheldOtherPairing}], sent on the client's own cadence; sinceSeq for the next batch is value.nextSeq",
+      "result": "none"
+    },
+    "desktop_rename_tab": {
+      "action": "renameTab",
+      "args": "[tabId, customTitle]",
+      "result": "events"
+    },
+    "desktop_rename_terminal_instance": {
+      "action": "renameTerminalInstance",
+      "args": "[tabId, instanceId, label]",
+      "result": "events"
+    },
+    "desktop_set_pill_color": {
+      "action": "setTabPillColor",
+      "args": "[tabId, pillColor]",
+      "result": "events"
+    },
+    "desktop_tab_settle": {
+      "action": "settleTab",
+      "args": "[tabId]",
+      "result": "events"
+    },
+    "desktop_tab_delete": {
+      "action": "deleteConversationTab",
+      "args": "[tabId]",
+      "result": "events"
+    },
+    "desktop_review_settled_tab": {
+      "action": "restoreSettledHistoryTab",
+      "args": "[tabId]",
+      "result": "events"
+    },
+    "desktop_tab_unsnooze": {
+      "action": "unsnoozeTab",
+      "args": "[tabId]",
+      "result": "events"
+    },
+    "desktop_tab_mark_unread": {
+      "action": "markTabUnread",
+      "args": "[tabId]",
+      "result": "events"
+    },
+    "desktop_tab_pin": {
+      "action": "pinTab",
+      "args": "[tabId]",
+      "result": "events"
+    },
+    "desktop_tab_unpin": {
+      "action": "unpinTab",
+      "args": "[tabId]",
+      "result": "events"
+    },
+    "desktop_tab_regenerate_title": {
+      "action": "regenerateTabTitle",
+      "args": "[tabId]",
+      "result": "events"
+    },
+    "desktop_tab_unsettle": {
+      "action": "unsettleTab",
+      "args": "[tabId, 'user']",
+      "result": "events"
+    },
+    "desktop_tab_snooze": {
+      "action": "snoozeTab",
+      "args": "[tabId, untilMs]",
+      "result": "events"
+    },
+    "desktop_tab_reorder_pin": {
+      "action": "reorderPinnedTabs",
+      "args": "[assignments.map(a => ({id: a.tabId, orderKey: a.orderKey}))]",
+      "result": "events"
+    },
+    "desktop_terminal_input": {
+      "action": "terminal.write",
+      "args": "[{key: tabId + ':' + instanceId, data}]",
+      "result": "none"
+    },
+    "desktop_terminal_resize": {
+      "action": "terminal.resize",
+      "args": "[{key: tabId + ':' + instanceId, cols, rows}]",
+      "result": "none"
+    },
+    "desktop_terminal_add_instance": {
+      "action": "addTerminalInstance",
+      "alsoActions": [
+        "terminal.paneSnapshot"
+      ],
+      "args": "[tabId, 'user']",
+      "result": "value is the new instance id; the client then reads terminal.paneSnapshot [{tabId}] and synthesizes desktop_terminal_snapshot from it, which names every instance and the active one"
+    },
+    "desktop_terminal_remove_instance": {
+      "action": "removeTerminalInstance",
+      "args": "[tabId, instanceId]",
+      "result": "desktop_terminal_instance_removed{tabId, instanceId} once the action returns"
+    },
+    "desktop_terminal_select_instance": {
+      "action": "selectTerminalInstance",
+      "args": "[tabId, instanceId]",
+      "result": "none"
+    },
+    "desktop_request_terminal_snapshot": {
+      "action": "terminal.paneSnapshot",
+      "args": "[{tabId}]",
+      "result": "desktop_terminal_snapshot{tabId, instances, activeInstanceId, buffers} from the same fields of value; null = no such tab"
+    },
+    "desktop_open_terminal_application": {
+      "action": "terminal.openApplication",
+      "args": "[{tabId, url}]",
+      "result": "none"
+    },
+    "desktop_git_changes": {
+      "action": "git.changes",
+      "args": "[{directory}]",
+      "result": "desktop_git_changes_response{directory, ...value}"
+    },
+    "desktop_git_branches": {
+      "action": "git.branches",
+      "args": "[{directory, localOnly: true}]",
+      "result": "desktop_git_branches_response{directory, branches, current, error} from the same fields of value"
+    },
+    "desktop_git_graph": {
+      "action": "git.graph",
+      "args": "[{directory, skip, limit, withLayout: true}]",
+      "result": "desktop_git_graph_response{directory, ...value}"
+    },
+    "desktop_git_diff": {
+      "action": "git.diff",
+      "args": "[{directory, path, staged}]",
+      "result": "desktop_git_diff_response{...value}"
+    },
+    "desktop_git_stage": {
+      "action": "git.stage",
+      "alsoActions": [
+        "git.changes"
+      ],
+      "args": "[{directory, paths}]",
+      "result": "desktop_git_stage_result{directory, ok, error} from value. Then the client re-reads git.changes [{directory}] to synthesize the refresh the old wire pushed."
+    },
+    "desktop_git_unstage": {
+      "action": "git.unstage",
+      "alsoActions": [
+        "git.changes"
+      ],
+      "args": "[{directory, paths}]",
+      "result": "desktop_git_unstage_result{directory, ok, error} from value. Then the client re-reads git.changes [{directory}] to synthesize the refresh the old wire pushed."
+    },
+    "desktop_git_commit": {
+      "action": "git.commit",
+      "alsoActions": [
+        "git.changes",
+        "git.graph"
+      ],
+      "args": "[{directory, message}]",
+      "result": "desktop_git_commit_result{directory, ok, error} from value; a bench refusal arrives as ok false with its reason. Then the client re-reads git.changes [{directory}] and git.graph to synthesize the refresh the old wire pushed."
+    },
+    "desktop_git_discard": {
+      "action": "git.discard",
+      "alsoActions": [
+        "git.changes"
+      ],
+      "args": "[{directory, paths}]",
+      "result": "no result event on the old wire. Then the client re-reads git.changes [{directory}] to synthesize the refresh the old wire pushed."
+    },
+    "desktop_git_fetch": {
+      "action": "git.fetch",
+      "alsoActions": [
+        "git.changes",
+        "git.graph"
+      ],
+      "args": "[{directory}]",
+      "result": "no result event on the old wire; value is {ok, error}. Then the client re-reads git.changes [{directory}] and git.graph to synthesize the refresh the old wire pushed."
+    },
+    "desktop_git_pull": {
+      "action": "git.pull",
+      "alsoActions": [
+        "git.changes",
+        "git.graph"
+      ],
+      "args": "[{directory}]",
+      "result": "no result event on the old wire; value is {ok, error}, and a bench refusal arrives as ok false with its reason. Then the client re-reads git.changes [{directory}] and git.graph to synthesize the refresh the old wire pushed."
+    },
+    "desktop_git_push": {
+      "action": "git.push",
+      "alsoActions": [
+        "git.graph"
+      ],
+      "args": "[{directory}]",
+      "result": "no result event on the old wire; value is {ok, error}, and a bench refusal arrives as ok false with its reason. Then the client re-reads git.graph [{directory, withLayout: true}]."
+    },
+    "desktop_git_commit_files": {
+      "action": "git.commitFiles",
+      "args": "[{directory, hash}]",
+      "result": "desktop_git_commit_files_response{directory, hash, files, stats} from value"
+    },
+    "desktop_git_commit_file_diff": {
+      "action": "git.commitFileDiff",
+      "args": "[{directory, hash, path}]",
+      "result": "desktop_git_commit_file_diff_response{hash, path, ...value}"
+    },
+    "desktop_fs_list_dir": {
+      "action": "fs.readDir",
+      "args": "[{directory, includeHidden: includeHidden === true}]",
+      "result": "desktop_fs_dir_listing{directory, entries, error} from value"
+    },
+    "desktop_fs_read_file": {
+      "action": "fs.readFile",
+      "args": "[{filePath}]",
+      "result": "desktop_fs_file_content{filePath, content, error} from value"
+    },
+    "desktop_fs_read_image": {
+      "action": "session.readImageDataUrl",
+      "args": "[filePath, {maxBytes: 10485760}]",
+      "result": "desktop_fs_image_content{filePath, dataUrl, error} from value"
+    },
+    "desktop_fs_write_file": {
+      "action": "fs.writeFile",
+      "args": "[{filePath, content}]",
+      "result": "desktop_fs_write_result{filePath, ok, error} from value"
+    },
+    "desktop_fs_rename": {
+      "action": "fs.rename",
+      "args": "[{oldPath, newPath}]",
+      "result": "desktop_fs_rename_result{oldPath, newPath, ok, error} from value"
+    },
+    "desktop_upload_attachment": {
+      "action": "fs.saveAttachmentData",
+      "args": "[{name, dataUrl}] (correlationId stays client-side)",
+      "result": "desktop_upload_attachment_result{id, name, path, contentHash, correlationId} from value; value null -> error 'Failed to save uploaded file'"
+    },
+    "desktop_request_theme_asset": {
+      "action": "studio.readThemeAsset",
+      "args": "[{themeId, slot}]",
+      "result": "desktop_theme_asset_content{themeId, slot, ok: value !== null, sha256, dataUrl}"
+    },
+    "desktop_set_desktop_setting": {
+      "action": "settings.setProjectable",
+      "args": "[{key, value}]",
+      "result": "studio:thin-settings carries the applied value; value.ok false (code, message) means the client keeps what it had"
+    },
+    "desktop_set_remote_display": {
+      "action": "remote.setDisplay",
+      "args": "[customName, customIcon, updatedAt]",
+      "result": "desktop_remote_display{customName, customIcon, updatedAt} from value (the stored value when the edit lost to a newer one)"
+    },
+    "desktop_request_resource_content": {
+      "action": "resource.get",
+      "args": "[{kind, id: resourceId, producer, fromCatalog: true}]",
+      "result": "desktop_resource_content{resourceId: value.id, kind, producer, content}"
+    },
+    "desktop_mark_resource_read": {
+      "action": "resource.markRead",
+      "args": "[{kind, resourceId, producer}]",
+      "result": "events"
+    },
+    "desktop_delete_resource": {
+      "action": "resource.delete",
+      "args": "[{kind, resourceId, producer}]",
+      "result": "events"
+    },
+    "desktop_questions_patch": {
+      "action": "questions.patch",
+      "args": "[patch] (tabId is inside the patch)",
+      "result": "ion:questions-state; value {actionId, accepted, error} rolls back a stale revision"
+    },
+    "desktop_questions_action": {
+      "action": "questions.action",
+      "args": "[action] (tabId is inside the action)",
+      "result": "ion:questions-state; value {actionId, accepted, error} rolls back a stale revision"
+    },
+    "desktop_questions_refresh": {
+      "action": "questions.getState",
+      "args": "[]",
+      "result": "desktop_questions_state from value, filtered to tabId client-side"
+    },
+    "desktop_worktree_refresh": {
+      "action": "worktree.state",
+      "args": "[{repoPath}]",
+      "result": "desktop_worktree_state{states: [value]}"
+    },
+    "desktop_worktree_open_conversation": {
+      "action": "openWorktreeConversation",
+      "alsoActions": [
+        "newWorktreeConversation"
+      ],
+      "args": "[worktreePath]; newConversation true -> newWorktreeConversation [worktreePath]",
+      "result": "desktop_worktree_op_result{operation: 'open', ok: true, tabId: value; an action error -> ok false, error}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_worktree_sync": {
+      "action": "syncWorktree",
+      "args": "[worktreePath, sourceBranch, repoPath]",
+      "result": "desktop_worktree_op_result{operation: 'sync', ok, error, hasConflicts, refusedDirty from value}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_worktree_sync_all": {
+      "action": "worktree.syncAll",
+      "args": "[{repoPath}]",
+      "result": "events (desktop_worktree_op_result{operation: 'sync_all'} and the refreshed state are published by the verb)"
+    },
+    "desktop_worktree_land_and_retire": {
+      "action": "landAndRetireWorktree",
+      "args": "[repoPath, {worktreePath, branchName: worktreeBranch, sourceBranch, label: worktreeBranch}]",
+      "result": "desktop_worktree_op_result{operation: 'land_and_retire', ok, error, hasConflicts, refusedDirty, warning, prunedBenchPaths from value}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_bench_open_conversation": {
+      "action": "openBenchConversation",
+      "args": "[repoPath, sourceBranch]",
+      "result": "desktop_worktree_op_result{operation: 'open', ok: value !== null, tabId: value}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_bench_open_terminal": {
+      "action": "openBenchTerminal",
+      "args": "[repoPath, sourceBranch]",
+      "result": "desktop_worktree_op_result{operation: 'open', ok: value !== null, tabId: value}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_bench_assemble": {
+      "action": "benchAssemble",
+      "args": "[repoPath, sourceBranch]",
+      "result": "desktop_worktree_op_result{operation: 'assemble', ok, error from value}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_bench_update_member": {
+      "action": "benchUpdateMember",
+      "args": "[repoPath, sourceBranch, worktreePath]",
+      "result": "desktop_worktree_op_result{operation: 'update', ok, error from value}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_bench_update_all": {
+      "action": "benchUpdateAll",
+      "args": "[repoPath, sourceBranch]",
+      "result": "desktop_worktree_op_result{operation: 'update_all', ok, error from value}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_worktree_set_stage": {
+      "action": "setWorktreeStage",
+      "args": "[repoPath, worktreePath, stage]",
+      "result": "studio:thin-worktrees; an action error -> desktop_worktree_op_result{operation: 'update', ok: false, error}"
+    },
+    "desktop_bench_reorder_member": {
+      "action": "benchSetOrder",
+      "args": "[repoPath, sourceBranch, worktreePath, toIndex]",
+      "result": "studio:thin-worktrees"
+    },
+    "desktop_bench_add_member": {
+      "action": "benchAddMember",
+      "args": "[repoPath, sourceBranch, worktreePath, branchName]",
+      "result": "studio:thin-worktrees; value {ok, error}"
+    },
+    "desktop_bench_remove_member": {
+      "action": "benchRemoveMember",
+      "args": "[repoPath, sourceBranch, worktreePath]",
+      "result": "studio:thin-worktrees"
+    },
+    "desktop_worktree_retire_landed": {
+      "action": "retireLandedWorktrees",
+      "args": "[repoPath]",
+      "result": "desktop_worktree_op_result{operation: 'retire', ok, error from value}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_worktree_create": {
+      "action": "createWorktree",
+      "args": "[repoPath, sourceBranch]",
+      "result": "desktop_worktree_op_result{operation: 'create', ok, error from value}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_worktree_convert_conversation": {
+      "action": "convertToWorktree",
+      "args": "[tabId]",
+      "result": "desktop_worktree_op_result{operation: 'convert', ok, error from value}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_worktree_rename": {
+      "action": "renameWorktree",
+      "args": "[repoPath, worktreePath, title]",
+      "result": "desktop_worktree_op_result{operation: 'rename', ok, error from value}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_worktree_reprovision": {
+      "action": "reprovisionWorktree",
+      "args": "[repoPath, worktreePath]",
+      "result": "desktop_worktree_op_result{operation: 'reprovision', ok, error from value}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_worktree_retire": {
+      "action": "retireWorktree",
+      "args": "[repoPath, worktreePath, branchName]",
+      "result": "desktop_worktree_op_result{operation: 'retire', ok, error, recoveryRef, prunedBenchPaths from value}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_worktree_conflict_assist": {
+      "action": "openConflictAssist",
+      "args": "[worktreePath]",
+      "result": "desktop_worktree_op_result{operation: 'conflict_assist', ok: true, tabId: value; an action error -> ok false, error}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_bench_conflict_assist": {
+      "action": "benchResolveConflict",
+      "alsoActions": [
+        "openConflictAssist"
+      ],
+      "args": "[repoPath, sourceBranch], then openConflictAssist [value] when value (the bench path) is not null",
+      "result": "desktop_worktree_op_result{operation: 'conflict_assist', ok: true, tabId: the second value; a null bench path -> ok false}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_bench_recover_conflict": {
+      "action": "benchResolveConflict",
+      "args": "[repoPath, sourceBranch]",
+      "result": "desktop_worktree_op_result{operation: 'recover_conflict', ok: value !== null}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_bench_analyse_verification": {
+      "action": "openBenchVerificationAnalysis",
+      "args": "[repoPath, sourceBranch]",
+      "result": "desktop_worktree_op_result{operation: 'analyse_verification', ok: true, tabId: value}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_bench_discard_member_recordings": {
+      "action": "benchDiscardMemberRecordings",
+      "args": "[repoPath, sourceBranch, branchNames]",
+      "result": "desktop_worktree_op_result{operation: 'discard_recordings', ok, error from value}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_bench_discard_all_recordings": {
+      "action": "benchRerereDiscardAll",
+      "alsoActions": [
+        "refreshBench"
+      ],
+      "args": "[benchPath] where benchPath is the RemoteBench.benchPath for sourceBranch, then refreshBench [repoPath]",
+      "result": "desktop_worktree_op_result{operation: 'discard_recordings', ok: true; an action error -> ok false, error}; refreshed state arrives on studio:thin-worktrees"
+    },
+    "desktop_worktree_pipeline_start": {
+      "action": "startWorktreePipeline",
+      "args": "[repoPath, sourceBranch]",
+      "result": "studio:thin-worktrees pipeline; an action error -> desktop_worktree_op_result{operation: 'pipeline_start', ok: false, error}"
+    },
+    "desktop_worktree_pipeline_confirm_ai": {
+      "action": "confirmWorktreePipelineAi",
+      "args": "[] (the server holds one pipeline; repoPath is not sent)",
+      "result": "studio:thin-worktrees pipeline"
+    },
+    "desktop_worktree_pipeline_cancel": {
+      "action": "cancelWorktreePipeline",
+      "args": "[]",
+      "result": "studio:thin-worktrees pipeline"
+    },
+    "desktop_worktree_pipeline_dismiss": {
+      "action": "dismissWorktreePipeline",
+      "args": "[]",
+      "result": "studio:thin-worktrees pipeline"
+    }
+  }
+}

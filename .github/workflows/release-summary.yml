@@ -56,7 +56,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/ion-data/.ion
-          printf '%s' "$ION_ENGINE_CONFIG_B64" | base64 -d > /tmp/ion-data/.ion/engine.json
+          printf '%s' "$ION_ENGINE_CONFIG_B64" | base64 -d > /tmp/ion-engine-base.json
+          # Ship this run's engine logs, telemetry, and spans to
+          # ion-telemetry, signed in as the "Ion Headless Telemetry" app. The
+          # committed block wins over the secret config on every key it sets.
+          jq -s '.[0] * .[1]' /tmp/ion-engine-base.json .github/ion/ci-logging.json > /tmp/ion-data/.ion/engine.json
+          rm -f /tmp/ion-engine-base.json
           chmod 600 /tmp/ion-data/.ion/engine.json
 
       - name: Build release context document
@@ -81,10 +86,18 @@ jobs:
           echo "Prompt size: $(wc -c < /tmp/ion-prompt.txt) bytes"
 
       - name: Generate summary with ion
+        env:
+          ION_TELEMETRY_SHIP_CLIENT_SECRET: ${{ secrets.ION_TELEMETRY_SHIP_CLIENT_SECRET }}
         run: |
           set -euo pipefail
           # Keep the prompt on stdin and bound the full container lifetime.
+          # ION_DATA_DIR pins the engine's data directory to where the config
+          # step wrote engine.json: the image's own default moved from
+          # $HOME/.ion to /data.
           timeout 4m docker run --rm -i \
+            --hostname github-actions-release-summary \
+            -e ION_DATA_DIR=/data/.ion \
+            -e ION_TELEMETRY_SHIP_CLIENT_SECRET \
             -v /tmp/ion-data:/data \
             ghcr.io/${{ github.repository }}/engine:${{ steps.engine-image.outputs.tag }} \
             prompt - \

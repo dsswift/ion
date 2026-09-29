@@ -1,0 +1,29 @@
+{
+  "telemetry": {
+    "enabled": true
+  },
+  "auth": {
+    "oauth": {
+      "telemetry-ship": {
+        "clientId": "bb81d231-050e-4e17-9db4-61fe8d104754",
+        "tokenUrl": "https://login.microsoftonline.com/5698dde5-3af7-4060-8ecb-e8da8747fb4a/oauth2/v2.0/token",
+        "scopes": ["api://2539daa2-51e3-47e0-975c-7297283f82cf/.default"],
+        "machineIdentity": {
+          "source": "client_secret",
+          "clientSecretEnv": "ION_TELEMETRY_SHIP_CLIENT_SECRET"
+        }
+      }
+    }
+  },
+  "logging": {
+    "egressTargets": ["otel"],
+    "egressOtel": {
+      "enabled": true,
+      "endpoint": "https://ion-telemetry.sprague.house"
+    },
+    "egressShipSources": ["engine", "telemetry"],
+    "egressClientShipSources": [],
+    "egressTokenScope": "api://2539daa2-51e3-47e0-975c-7297283f82cf/.default",
+    "egressTokenProvider": "telemetry-ship"
+  }
+}
