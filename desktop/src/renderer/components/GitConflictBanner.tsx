@@ -9,10 +9,11 @@
  */
 import React, { useState } from 'react'
 import { Warning } from '@phosphor-icons/react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { useColors } from '../theme'
 import { ConflictsDialog } from './git/ConflictsDialog'
-import { isWithinRepo } from '../../shared/repo-containment'
+import { isWithinRepo } from '@ion/shared/repo-containment'
+import { pathBasename } from '@ion/shared/paths'
 
 export function GitConflictBanner({ repoPath }: { repoPath: string }): React.JSX.Element | null {
   const colors = useColors()
@@ -28,7 +29,7 @@ export function GitConflictBanner({ repoPath }: { repoPath: string }): React.JSX
   }
   for (const [dir, alert] of alerts) {
     if (!conflicted.has(dir) && (isWithinRepo(dir, repoPath) || alert.operationState)) {
-      conflicted.set(dir, alert.label ?? dir.split('/').filter(Boolean).pop() ?? dir)
+      conflicted.set(dir, alert.label ?? pathBasename(dir))
     }
   }
 

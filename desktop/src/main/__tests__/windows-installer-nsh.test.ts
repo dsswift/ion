@@ -75,6 +75,21 @@ describe('uninstall removes the supervisor tasks', () => {
     expect(uninstall).toContain('-ExecutionPolicy Bypass')
   })
 
+  // The regression. The uninstaller is x86, so a bare powershell.exe is the
+  // SysWOW64 copy, which on ARM64 runs emulated and was seen to spin forever
+  // after the script finished -- a silent upgrade that never completed.
+  it('runs the native PowerShell, not the 32-bit one', () => {
+    expect(uninstall).toContain('$WINDIR\\Sysnative\\WindowsPowerShell\\v1.0\\powershell.exe')
+    expect(uninstall).toContain('$WINDIR\\System32\\WindowsPowerShell\\v1.0\\powershell.exe')
+    expect(uninstall).not.toMatch(/ExecToLog[^\n]*'powershell\.exe/)
+  })
+
+  // A cleanup script that hangs while it runs must not hold the upgrade.
+  it('bounds the cleanup script and reports a timeout', () => {
+    expect(uninstall).toMatch(/nsExec::ExecToLog \/TIMEOUT=\d+ '"\$2"/)
+    expect(uninstall).toMatch(/\$0 == "timeout"/)
+  })
+
   it('logs both outcomes and the remediation command', () => {
     expect(uninstall).toMatch(/exit code \$0/)
     expect(uninstall).toMatch(/\$0 != 0/)
