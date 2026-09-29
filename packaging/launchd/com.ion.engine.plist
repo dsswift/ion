@@ -84,5 +84,31 @@
     -->
     <key>ThrottleInterval</key>
     <integer>5</integer>
+
+    <!--
+      ExitTimeOut=30: how long launchd waits after SIGTERM before escalating to
+      SIGKILL.
+
+      Declared explicitly because the inherited value was too small for a daemon
+      that hosts every session. With this key absent, `launchctl print
+      gui/<uid>/com.ion.engine` reported `exit timeout = 5` — matching
+      ThrottleInterval above, not launchd's documented 20 s default. A daemon
+      with ~35 live sessions needed longer than that to fire session_end into
+      every extension host, so launchd SIGKILLed it partway through teardown.
+      That made the exit non-zero, KeepAlive.SuccessfulExit=false read it as a
+      crash, and the engine respawned — every 60 seconds, indefinitely.
+
+      This is the BACKSTOP, not the mechanism. The engine bounds its own
+      shutdown (timeouts.shutdownMs, 15 s by default — see
+      TimeoutsConfig.Shutdown) and exits 0 on a graceful signal whether or not
+      teardown finished. 30 s leaves that in-process deadline room to fire first
+      and still be the thing that ends the process; launchd's kill should only
+      ever be reached by a daemon wedged before its own deadline can run.
+
+      Keep this comfortably above timeouts.shutdownMs. Raising shutdownMs past
+      this value re-creates the original defect.
+    -->
+    <key>ExitTimeOut</key>
+    <integer>30</integer>
 </dict>
 </plist>
