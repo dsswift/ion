@@ -1,4 +1,4 @@
-# ADR-025: The `ion://` deep-link surface
+# ADR-031: The `ion://` deep-link surface
 
 **Status:** Accepted
 **Date:** 2026-07-26
