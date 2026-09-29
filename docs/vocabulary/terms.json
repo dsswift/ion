@@ -938,7 +938,7 @@
     {
       "id": "conversation-terminal-panel",
       "term": "Conversation Terminal Panel",
-      "definition": "The per-conversation terminal panel shared by the Overlay and Studio presentations. Both presentations show the same terminal tabs and attach to the same main-owned PTYs.",
+      "definition": "The per-conversation terminal panel in Studio. Every Studio client attached to the conversation shows the same terminal tabs and attaches to the same server-owned PTYs.",
       "domain": "clients",
       "kind": "ui-component",
       "status": "canonical",
@@ -1022,7 +1022,7 @@
           "path": "ios/IonRemote/Views/ConversationView.swift"
         }
       ],
-      "notes": "One Desktop component, mounted in both the Overlay and the Studio presentation."
+      "notes": "One component, mounted by Studio for every conversation it shows."
     },
     {
       "id": "corpus-index",
@@ -1127,7 +1127,7 @@
     {
       "id": "desktop-client",
       "term": "Desktop",
-      "definition": "One client application built on Electron. It owns the session store, persists conversations, answers snapshot polls, and hosts both client presentations.",
+      "definition": "The Electron application that hosts Studio. It runs the local Environment's server and connects Studio to every Environment; the server owns the session store, persists conversations, and answers snapshot polls.",
       "domain": "clients",
       "kind": "product-concept",
       "status": "canonical",
@@ -1152,7 +1152,7 @@
           "path": "packages/shared/src/types-session.ts"
         }
       ],
-      "notes": "Desktop is ONE client with two presentations: the Overlay and the Studio. Never call the presentations separate clients."
+      "notes": "Studio is the Desktop's application window. The splash and the worktree-overlap visualizer are auxiliary windows with no store."
     },
     {
       "id": "device-metrics",
@@ -1326,7 +1326,7 @@
           "path": "desktop/src/renderer/studio/DispatchSplitPane.tsx"
         }
       ],
-      "notes": "Studio-only region. Canvas-coupled and not shared with the Overlay."
+      "notes": "Studio-only region, canvas-coupled."
     },
     {
       "id": "drawer",
@@ -1720,7 +1720,7 @@
     {
       "id": "explorer-tree-state",
       "term": "Explorer Tree State",
-      "definition": "Which folders are expanded, which root sections are folded shut, and which row is selected in the file explorer. Keyed by absolute root directory, owned by the desktop main process, shared by the Overlay and the Studio, and persisted apart from settings. Expansion and folded roots survive a relaunch; the selected row is shared live only.",
+      "definition": "Which folders are expanded, which root sections are folded shut, and which row is selected in the file explorer. Keyed by absolute root directory, owned by the server, shared by every Studio client, and persisted apart from settings. Expansion and folded roots survive a relaunch; the selected row is shared live only.",
       "domain": "clients",
       "kind": "runtime-mechanic",
       "status": "canonical",
@@ -2548,7 +2548,7 @@
     {
       "id": "mirror-store",
       "term": "Mirror store",
-      "definition": "The Studio presentation's copy of the session store. It reads the same event stream, forwards owner-only mutations, and never persists.",
+      "definition": "A Studio client's copy of the session store: the union of every connected Environment's published state. It runs the same reducers on the same event streams, forwards owner-durable mutations to the server that owns them, and never persists.",
       "domain": "clients",
       "kind": "runtime-mechanic",
       "status": "canonical",
@@ -2579,7 +2579,7 @@
           "path": "desktop/src/renderer/studio/state/secondary-store.ts"
         }
       ],
-      "notes": "See ADR-021. The Overlay renderer is the single owner; the Studio presentation is the mirror."
+      "notes": "Each Environment's server holds the owner store. Studio declares itself a mirror at boot (declareMirrorWindow), so owner-only reducer side effects never run in a client. See ADR-033."
     },
     {
       "id": "model-boundary",
@@ -3360,7 +3360,7 @@
     {
       "id": "questions-wizard",
       "term": "Questions Wizard",
-      "definition": "The shared client surface that renders a Guided Questions page: the answer form, review screen, and waiting states. One component serves both desktop presentations; the Overlay mounts it in a modal and the Studio shell mounts it in the transient Questions canvas tab.",
+      "definition": "The client surface that renders a Guided Questions page: the answer form, review screen, and waiting states. Studio mounts it in the transient Questions canvas tab.",
       "domain": "clients",
       "kind": "ui-component",
       "status": "canonical",
@@ -4127,7 +4127,7 @@
     {
       "id": "studio-shell",
       "term": "Studio",
-      "definition": "The desktop client's only window: a conversation-centric workspace with the visualizer canvas as one surface. Spec 17 deleted the Overlay presentation this term used to be defined against; Studio is no longer one of two presentations.",
+      "definition": "The Desktop's application window, and the same client built for the browser: a conversation-centric workspace with the visualizer canvas as one surface.",
       "domain": "clients",
       "kind": "ui-component",
       "status": "canonical",
@@ -4149,7 +4149,7 @@
           "path": "desktop/src/renderer/studio/StudioShell.tsx"
         }
       ],
-      "notes": "The desktop's only conversation UI as of spec 17 (program: Ion Studio Server and Environments). See ADR-033."
+      "notes": "The only conversation UI on the desktop. See ADR-033."
     },
     {
       "id": "studio-surface",

@@ -1184,7 +1184,7 @@ One configured directory Graph View scans for Markdown documents. The effective 
 
 #### Desktop {#term-desktop-client}
 
-One client application built on Electron. It owns the session store, persists conversations, answers snapshot polls, and hosts both client presentations.
+The Electron application that hosts Studio. It runs the local Environment's server and connects Studio to every Environment; the server owns the session store, persists conversations, and answers snapshot polls.
 
 - **ID:** `desktop-client`
 - **Status:** `canonical`
@@ -1195,7 +1195,7 @@ One client application built on Electron. It owns the session store, persists co
 - **Implementations:**
   - `desktop` / `code` / `typescript`: `export type WindowRole` in `server/src/lib/window-role.ts`
   - `desktop` / `code` / `typescript`: `export interface TabState` in `packages/shared/src/types-session.ts`
-- **Notes:** Desktop is ONE client with two presentations: the Overlay and the Studio. Never call the presentations separate clients.
+- **Notes:** Studio is the Desktop's application window. The splash and the worktree-overlap visualizer are auxiliary windows with no store.
 
 #### Device Setting {#term-device-setting}
 
@@ -1765,7 +1765,7 @@ The strip that shows conversation status and its inline controls: the model pick
 
 #### Conversation Terminal Panel {#term-conversation-terminal-panel}
 
-The per-conversation terminal panel shared by the Overlay and Studio presentations. Both presentations show the same terminal tabs and attach to the same main-owned PTYs.
+The per-conversation terminal panel in Studio. Every Studio client attached to the conversation shows the same terminal tabs and attaches to the same server-owned PTYs.
 
 - **ID:** `conversation-terminal-panel`
 - **Status:** `canonical`
@@ -1806,7 +1806,7 @@ The scrolling region that renders one conversation: its messages, tool groups, a
   - `desktop` / `ui` / `typescript`: `export function ConversationView` in `desktop/src/renderer/components/ConversationView.tsx`
   - `studio` / `ui` / `typescript`: `ConversationView` in `desktop/src/renderer/studio/StudioCenter.tsx`
   - `ios` / `ui` / `swift`: `struct ConversationView` in `ios/IonRemote/Views/ConversationView.swift`
-- **Notes:** One Desktop component, mounted in both the Overlay and the Studio presentation.
+- **Notes:** One component, mounted by Studio for every conversation it shows.
 
 #### Dialog {#term-dialog}
 
@@ -1834,7 +1834,7 @@ The Studio region that splits the center pane so a dispatched agent's own transc
 - **Contract:** `none`
 - **Implementations:**
   - `studio` / `ui` / `typescript`: `DispatchSplitPane` in `desktop/src/renderer/studio/DispatchSplitPane.tsx`
-- **Notes:** Studio-only region. Canvas-coupled and not shared with the Overlay.
+- **Notes:** Studio-only region, canvas-coupled.
 
 #### Drawer {#term-drawer}
 
@@ -1951,7 +1951,7 @@ A small chooser that opens from a control and returns one value, such as a model
 
 #### Questions Wizard {#term-questions-wizard}
 
-The shared client surface that renders a Guided Questions page: the answer form, review screen, and waiting states. One component serves both desktop presentations; the Overlay mounts it in a modal and the Studio shell mounts it in the transient Questions canvas tab.
+The client surface that renders a Guided Questions page: the answer form, review screen, and waiting states. Studio mounts it in the transient Questions canvas tab.
 
 - **ID:** `questions-wizard`
 - **Status:** `canonical`
@@ -2032,7 +2032,7 @@ The Studio region that holds the inbox, the file explorer, and the git views.
 
 #### Studio {#term-studio-shell}
 
-The desktop client's only window: a conversation-centric workspace with the visualizer canvas as one surface. Spec 17 deleted the Overlay presentation this term used to be defined against; Studio is no longer one of two presentations.
+The Desktop's application window, and the same client built for the browser: a conversation-centric workspace with the visualizer canvas as one surface.
 
 - **ID:** `studio-shell`
 - **Status:** `canonical`
@@ -2042,7 +2042,7 @@ The desktop client's only window: a conversation-centric workspace with the visu
 - **Contract:** `none`
 - **Implementations:**
   - `studio` / `ui` / `typescript`: `StudioShell` in `desktop/src/renderer/studio/StudioShell.tsx`
-- **Notes:** The desktop's only conversation UI as of spec 17 (program: Ion Studio Server and Environments). See ADR-033.
+- **Notes:** The only conversation UI on the desktop. See ADR-033.
 
 #### Studio Surface {#term-studio-surface}
 
@@ -2395,7 +2395,7 @@ Whether a client is talking to an Environment right now, and therefore whether t
 
 #### Explorer Tree State {#term-explorer-tree-state}
 
-Which folders are expanded, which root sections are folded shut, and which row is selected in the file explorer. Keyed by absolute root directory, owned by the desktop main process, shared by the Overlay and the Studio, and persisted apart from settings. Expansion and folded roots survive a relaunch; the selected row is shared live only.
+Which folders are expanded, which root sections are folded shut, and which row is selected in the file explorer. Keyed by absolute root directory, owned by the server, shared by every Studio client, and persisted apart from settings. Expansion and folded roots survive a relaunch; the selected row is shared live only.
 
 - **ID:** `explorer-tree-state`
 - **Status:** `canonical`
@@ -2410,7 +2410,7 @@ Which folders are expanded, which root sections are folded shut, and which row i
 
 #### Mirror store {#term-mirror-store}
 
-The Studio presentation's copy of the session store. It reads the same event stream, forwards owner-only mutations, and never persists.
+A Studio client's copy of the session store: the union of every connected Environment's published state. It runs the same reducers on the same event streams, forwards owner-durable mutations to the server that owns them, and never persists.
 
 - **ID:** `mirror-store`
 - **Status:** `canonical`
@@ -2422,7 +2422,7 @@ The Studio presentation's copy of the session store. It reads the same event str
   - `desktop` / `code` / `typescript`: `isMirrorWindow` in `server/src/lib/window-role.ts`
   - `desktop` / `code` / `typescript`: `MIRROR_LOCAL_ACTIONS` in `packages/shared/src/studio-mirror-actions.ts`
   - `studio` / `code` / `typescript`: `hydrateTabsFromSync` in `desktop/src/renderer/studio/state/secondary-store.ts`
-- **Notes:** See ADR-021. The Overlay renderer is the single owner; the Studio presentation is the mirror.
+- **Notes:** Each Environment's server holds the owner store. Studio declares itself a mirror at boot (declareMirrorWindow), so owner-only reducer side effects never run in a client. See ADR-033.
 
 #### Notification {#term-notification}
 
