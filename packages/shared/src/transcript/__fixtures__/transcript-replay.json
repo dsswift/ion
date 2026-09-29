@@ -347,7 +347,7 @@
           {
             "id": "msg-5",
             "role": "system",
-            "content": "── Steer applied at 7:00 AM · 21 chars ──",
+            "content": "── Steer applied at 12:00 PM · 21 chars ──",
             "timestamp": 1790078404495
           }
         ]
@@ -400,7 +400,7 @@
           {
             "id": "msg-5",
             "role": "system",
-            "content": "── Steer applied at 7:00 AM · 21 chars ──",
+            "content": "── Steer applied at 12:00 PM · 21 chars ──",
             "timestamp": 1790078404495
           },
           {
