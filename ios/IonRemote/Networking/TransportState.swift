@@ -11,9 +11,8 @@ import Foundation
 /// - `lanPreferred` -> `relayOnly`: LAN lost, relay still connected
 /// - any -> `disconnected`: all transports lost
 ///
-/// Extracted from TransportManager.swift, which is at its size cap: this is a
-/// standalone value type with no dependency on the manager, and one type per
-/// file is the house rule.
+/// A standalone value type with no dependency on any transport, so it lives in
+/// its own file per the house rule.
 enum TransportState: String {
     case disconnected
     case relayOnly

@@ -138,7 +138,13 @@ final class ChatCollectionVC<Payload, RowContent: View>:
     /// Internal rather than private: scroll positioning lives in
     /// ChatCollectionScrolling (extracted for the file-size cap) and operates
     /// directly on this view's geometry.
-    var collectionView: UICollectionView!
+    var collectionView: ChatTailingCollectionView!
+    /// Corrections the tail pin has applied since it last took the viewport,
+    /// and their total magnitude. Logged when the tail is released so the drift
+    /// a conversation actually produced while settling is visible after the
+    /// fact rather than inferred.
+    var tailCorrectionCount = 0
+    var tailDriftTotal: CGFloat = 0
     /// Bumped whenever a deliberate navigation claims the viewport. A queued
     /// tail-pin carries the generation it started under and exits when this no
     /// longer matches, so a scroll-to-bottom scheduled by an apply cannot undo
@@ -200,7 +206,12 @@ final class ChatCollectionVC<Payload, RowContent: View>:
         super.viewDidLoad()
 
         let layout = makeLayout()
-        collectionView = UICollectionView(frame: view.bounds, collectionViewLayout: layout)
+        collectionView = ChatTailingCollectionView(frame: view.bounds, collectionViewLayout: layout)
+        collectionView.onTailCorrection = { [weak self] drift in
+            guard let self else { return }
+            self.tailCorrectionCount += 1
+            self.tailDriftTotal += abs(drift)
+        }
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         collectionView.backgroundColor = .clear
         collectionView.delegate = self
@@ -288,14 +299,6 @@ final class ChatCollectionVC<Payload, RowContent: View>:
             return tail == previousIds
         }()
 
-        // A LARGE insert is what needs post-apply settling: enough new rows
-        // that self-sizing resolves them across many frames rather than one.
-        // The threshold is deliberately low — the settle loop is a no-op when
-        // the size is already stable, so over-triggering is cheap and
-        // under-triggering is the visible bug.
-        let insertedCount = uniqueItems.count - previousIds.count
-        let isLargeInsert = insertedCount >= 50
-
         // Decide tailing from LIVE geometry, before the apply changes it. The
         // previous implementation read the round-tripped `isNearBottom` binding,
         // which lags one async hop behind the user's scroll: any apply landing
@@ -349,24 +352,10 @@ final class ChatCollectionVC<Payload, RowContent: View>:
         dataSource.apply(snapshot, animatingDifferences: false) { [weak self] in
             guard let self else { return }
             if tailing {
+                // Places the viewport at the bottom and hands it to the tail,
+                // which re-pins on every later layout pass. Nothing here has to
+                // guess how long the rows take to measure.
                 self.scrollToBottom(animated: false)
-                // A LARGE insert measures over many frames, so the two-pass
-                // convergence in scrollToBottom is not enough on its own: each
-                // self-sizing resolution grows contentSize beneath the viewport
-                // and drags it off the bottom after the apply has "finished".
-                //
-                // This fires on the initial load (which now carries the whole
-                // conversation) and on any bulk prepend. A small streaming
-                // apply skips it — the guard below exits on the first frame
-                // when the size is already stable, so the cost is one frame.
-                if isLargeInsert {
-                    DiagnosticLog.log("chat scroll holding bottom", tag: "view.chatscroll", fields: [
-                        "inserted": String(insertedCount),
-                        "total": String(uniqueItems.count),
-                        "initial": String(isInitial)
-                    ])
-                    self.holdBottomWhileSettling()
-                }
             } else if let anchor {
                 self.restoreAnchor(anchor)
             } else {
@@ -429,10 +418,7 @@ final class ChatCollectionVC<Payload, RowContent: View>:
             return
         }
         let minOffset = -cv.adjustedContentInset.top
-        let maxOffset = max(
-            cv.contentSize.height - cv.bounds.height + cv.adjustedContentInset.bottom,
-            minOffset
-        )
+        let maxOffset = bottomOffset
         let target = anchoredOffset(
             previousAnchorTop: anchor.topInViewport,
             newAnchorTop: frame.minY,
@@ -470,9 +456,29 @@ final class ChatCollectionVC<Payload, RowContent: View>:
     /// `true` before the view exists so the very first populate still tails.
     private func computeNearBottom() -> Bool {
         guard let cv = collectionView else { return true }
-        let distance = cv.contentSize.height - cv.contentOffset.y
-            - cv.bounds.height + cv.adjustedContentInset.bottom
-        return distance < 100
+        return bottomOffset - cv.contentOffset.y < 100
+    }
+
+    /// The operator has taken the viewport. The tail never fights a gesture.
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        setTailIntent(false, reason: "drag")
+    }
+
+    /// A gesture that comes to rest at the bottom hands the viewport back to
+    /// the tail, which is what makes "scroll down to resume following" work
+    /// without a separate button press.
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        guard !decelerate else { return }
+        resumeTailIfAtBottom(reason: "drag_ended_at_bottom")
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        resumeTailIfAtBottom(reason: "glide_ended_at_bottom")
+    }
+
+    private func resumeTailIfAtBottom(reason: String) {
+        guard computeNearBottom() else { return }
+        setTailIntent(true, reason: reason)
     }
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {

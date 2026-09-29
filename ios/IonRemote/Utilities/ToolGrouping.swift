@@ -38,19 +38,18 @@ enum ConversationItem: Identifiable {
 
 // MARK: - Steer relocation
 
-/// A mid-turn steer is inserted optimistically where the user typed it, but the
-/// engine applies it later and emits a "── Steer applied" divider at the point
-/// it took effect. Rendering the bubble at its send position strands the text
-/// rows above the divider that announces it.
+/// A mid-turn steer sits where the user typed it, but the engine applies it
+/// later and a "── Steer applied" divider marks the point it took effect.
+/// Rendering the bubble at its send position strands the text rows above the
+/// divider that announces it.
 ///
-/// `handleEngineSteerInjected` stamps the resolved bubble and its divider with a
-/// shared `steerAppliedDividerId`. The grouping pass uses that key to HOLD the
-/// bubble back and re-emit it immediately after its divider.
+/// The server stamps the steer's bubble and its divider with a shared
+/// `steerAppliedDividerId`. The grouping pass uses that key to HOLD the bubble
+/// back and re-emit it immediately after its divider.
 ///
-/// Pure render-time relocation: the stored conversation is untouched and the
-/// pairing fields are client-only. On a history reload the engine's file already
-/// carries the turn at its applied position, the ids are absent, and grouping
-/// emits everything in natural order. Desktop parity: `isRelocatableSteer` in
+/// Pure render-time relocation: the stored conversation is untouched. A turn
+/// that already sits at its applied position carries no pairing id, and
+/// grouping emits it in natural order. Desktop parity: `isRelocatableSteer` in
 /// `tool-helpers.ts` — the two implementations are lockstep.
 private func isRelocatableSteer(_ msg: Message) -> Bool {
     msg.role == .user && msg.steerAppliedDividerId != nil
@@ -188,6 +187,8 @@ func isDisplayReadyTool(_ message: Message) -> Bool {
     guard ["Write", "Edit", "NotebookEdit"].contains(message.toolName ?? "") else { return true }
     guard let raw = message.toolInput,
           let data = raw.data(using: .utf8),
+          // Partially streamed tool input is not JSON yet; false (not display-ready) is the answer.
+          // swiftlint:disable:next silent_try_optional
           let input = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
         return false
     }

@@ -48,9 +48,6 @@ extension SessionViewModel {
         mutateEngineInstance(tabId: tabId, instanceId: instanceId) { instance in
             instance.activeBackgroundTasks?.removeAll { $0.taskId == taskId }
             instance.statusFields?.activeBackgroundTasks?.removeAll { $0.taskId == taskId }
-            for index in instance.messages.indices where instance.messages[index].backgroundTaskId == taskId {
-                instance.messages[index].toolStatus = status == "completed" ? .completed : .error
-            }
         }
         DiagnosticLog.log("background task terminal", tag: "session.background", fields: [
             "tab_id": tabId,

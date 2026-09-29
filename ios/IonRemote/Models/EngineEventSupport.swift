@@ -377,7 +377,8 @@ struct StatusFields: Codable, Sendable {
     /// snapshot honestly reports `idle` and is otherwise indistinguishable
     /// from the idle that ENDS the run. A consumer records the epoch, sends,
     /// and treats any snapshot whose epoch has not advanced as describing the
-    /// state before the prompt. nil/absent means zero.
+    /// state before the prompt. The engine always sends it, zero included;
+    /// nil/absent means only an engine that predates the field.
     ///
     /// Scope is one live session: a restarted session begins again at zero, so
     /// a DECREASE means "new session, rebase" — never "stale snapshot".
@@ -460,8 +461,10 @@ struct SessionStatus: Codable, Sendable {
     /// Absolute context-window occupancy in tokens. Mirrors
     /// StatusFields.contextTokens.
     let contextTokens: Int?
-    /// Mirrors StatusFields.contextEffectiveLimit.
-    let contextEffectiveLimit: Int? = nil
+    /// Mirrors StatusFields.contextEffectiveLimit. A `var` so `Codable`
+    /// decodes it: a `let` with an initial value is never decoded, which left
+    /// this nil on every session-status event.
+    var contextEffectiveLimit: Int? = nil
     /// Cost of the most recent run in USD. Renamed from totalCostUsd per Commit 2.
     let runCostUsd: Double?
     /// Cumulative conversation cost (this session + all descendant dispatches).
@@ -542,12 +545,15 @@ struct AnyCodable: Codable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
+        // Type probe: a failed decode means try the next JSON kind; the final else throws.
+        // swiftlint:disable silent_try_optional
         if let str = try? container.decode(String.self) { value = str }
         else if let int = try? container.decode(Int.self) { value = int }
         else if let double = try? container.decode(Double.self) { value = double }
         else if let bool = try? container.decode(Bool.self) { value = bool }
         else if let dict = try? container.decode([String: AnyCodable].self) { value = dict }
         else if let arr = try? container.decode([AnyCodable].self) { value = arr }
+        // swiftlint:enable silent_try_optional
         else if container.decodeNil() { value = NSNull() }
         else {
             throw DecodingError.dataCorrupted(

@@ -107,8 +107,8 @@ final class ContractSyncTests: XCTestCase {
   /// either decoded, or listed below as a deliberate non-consumer with a
   /// reason.
   ///
-  /// ios/AGENTS.md § "Contract sync" promises "the test target will fail if
-  /// Go has fields you haven't accounted for". That was true of the handful
+  /// ios/AGENTS.md § "Contract sync" promises the test fails if Go has a
+  /// field Swift does not account for. That was true of the handful
   /// of types with a field-coverage set, and false for VARIANTS — a brand-new
   /// Go variant landed with nothing on this side that would notice. The TS
   /// side has had `every Go variant exists in TS map` from the start, which
@@ -507,58 +507,6 @@ final class ContractSyncTests: XCTestCase {
 
   // MARK: - EngineEvent variants decode
 
-  func testEngineTextDeltaDecode() throws {
-    let json = """
-      {"type":"desktop_text_delta","tabId":"t1","text":"hello"}
-      """.data(using: .utf8)!
-    let event = try decoder.decode(RemoteEvent.self, from: json)
-    if case .engineTextDelta(_, _, let text) = event {
-      XCTAssertEqual(text, "hello")
-    } else {
-      XCTFail("Expected engineTextDelta")
-    }
-  }
-
-  func testEngineStreamResetDecode() throws {
-    let json = """
-      {"type":"desktop_stream_reset","tabId":"t1"}
-      """.data(using: .utf8)!
-    let event = try decoder.decode(RemoteEvent.self, from: json)
-    if case .engineStreamReset(let tabId, let instanceId) = event {
-      XCTAssertEqual(tabId, "t1")
-      XCTAssertNil(instanceId)
-    } else {
-      XCTFail("Expected engineStreamReset")
-    }
-  }
-
-  func testEngineToolStartDecode() throws {
-    let json = """
-      {"type":"desktop_tool_start","tabId":"t1","toolName":"bash","toolId":"tid-1"}
-      """.data(using: .utf8)!
-    let event = try decoder.decode(RemoteEvent.self, from: json)
-    if case .engineToolStart(_, _, let name, let id) = event {
-      XCTAssertEqual(name, "bash")
-      XCTAssertEqual(id, "tid-1")
-    } else {
-      XCTFail("Expected engineToolStart")
-    }
-  }
-
-  func testEngineToolEndDecode() throws {
-    let json = """
-      {"type":"desktop_tool_end","tabId":"t1","toolId":"tid-1","result":"ok","isError":false}
-      """.data(using: .utf8)!
-    let event = try decoder.decode(RemoteEvent.self, from: json)
-    if case .engineToolEnd(_, _, let id, let result, let isError, _) = event {
-      XCTAssertEqual(id, "tid-1")
-      XCTAssertEqual(result, "ok")
-      XCTAssertFalse(isError)
-    } else {
-      XCTFail("Expected engineToolEnd")
-    }
-  }
-
   func testEngineDeadDecode() throws {
     let json = """
       {"type":"desktop_dead","tabId":"t1","exitCode":1,"signal":null,"stderrTail":["error"]}
@@ -571,57 +519,6 @@ final class ContractSyncTests: XCTestCase {
     } else {
       XCTFail("Expected engineDead")
     }
-  }
-  func testEngineImageContentDecode_tool() throws {
-    // source "tool" carries a toolId; iOS attaches to the matching tool row.
-    let json = """
-      {"type":"desktop_image_content","tabId":"t1","instanceId":"i1","path":"/Users/x/.ion/conversations/c1/images/abc.png","mediaType":"image/png","source":"tool","toolId":"tid-9"}
-      """.data(using: .utf8)!
-    let event = try decoder.decode(RemoteEvent.self, from: json)
-    guard
-      case .engineImageContent(
-        let tabId, let instanceId, let path, let mediaType, _, let source, let toolId) = event
-    else {
-      return XCTFail("Expected engineImageContent (tool)")
-    }
-    XCTAssertEqual(tabId, "t1")
-    XCTAssertEqual(instanceId, "i1")
-    XCTAssertEqual(path, "/Users/x/.ion/conversations/c1/images/abc.png")
-    XCTAssertEqual(mediaType, "image/png")
-    XCTAssertEqual(source, "tool")
-    XCTAssertEqual(toolId, "tid-9")
-  }
-
-  func testEngineImageContentDecode_provider() throws {
-    // source "provider" omits toolId; iOS attaches to the last assistant row.
-    let json = """
-      {"type":"desktop_image_content","tabId":"t1","path":"/img/gen.png","mediaType":"image/png","source":"provider"}
-      """.data(using: .utf8)!
-    let event = try decoder.decode(RemoteEvent.self, from: json)
-    guard case .engineImageContent(_, _, let path, _, _, let source, let toolId) = event else {
-      return XCTFail("Expected engineImageContent (provider)")
-    }
-    XCTAssertEqual(path, "/img/gen.png")
-    XCTAssertEqual(source, "provider")
-    XCTAssertNil(toolId)
-  }
-
-  /// Round-trip encode → decode to pin the wire shape stays symmetric.
-  func testEngineImageContentRoundTrip() throws {
-    let original = RemoteEvent.engineImageContent(
-      tabId: "t1", instanceId: "i1", path: "/img/a.png",
-      mediaType: "image/png", contentHash: nil, source: "tool", toolId: "tid-1"
-    )
-    let data = try JSONEncoder().encode(original)
-    let decoded = try decoder.decode(RemoteEvent.self, from: data)
-    guard case .engineImageContent(_, _, let path, let mediaType, _, let source, let toolId) = decoded
-    else {
-      return XCTFail("Expected engineImageContent round-trip")
-    }
-    XCTAssertEqual(path, "/img/a.png")
-    XCTAssertEqual(mediaType, "image/png")
-    XCTAssertEqual(source, "tool")
-    XCTAssertEqual(toolId, "tid-1")
   }
 
   /// Pin that every Go-side image_content field is tracked by the Swift
@@ -641,68 +538,6 @@ final class ContractSyncTests: XCTestCase {
       unhandled.isEmpty,
       "Go image_content has fields not tracked in Swift test: \(unhandled.sorted())"
     )
-  }
-
-  func testEngineDispatchActivityDecode() throws {
-    // tool_start (with dispatchActivityTs — the full wire shape)
-    let startJSON = """
-      {"type":"desktop_dispatch_activity","tabId":"t1","instanceId":"i1","dispatchAgentId":"dispatch-dev-1","dispatchConversationId":"child-conv","dispatchActivityKind":"tool_start","dispatchSeq":1,"toolName":"Read","toolId":"tool-1","dispatchActivityTs":1782088921498}
-      """.data(using: .utf8)!
-    let startEvent = try decoder.decode(RemoteEvent.self, from: startJSON)
-    guard
-      case .engineDispatchActivity(
-        _, _, let agentId, let convId, let kind, let seq, _, let toolName, let toolId, _, _, let ts) =
-        startEvent
-    else {
-      return XCTFail("Expected engineDispatchActivity (tool_start)")
-    }
-    XCTAssertEqual(agentId, "dispatch-dev-1")
-    XCTAssertEqual(convId, "child-conv")
-    XCTAssertEqual(kind, "tool_start")
-    XCTAssertEqual(seq, 1)
-    XCTAssertEqual(toolName, "Read")
-    XCTAssertEqual(toolId, "tool-1")
-    XCTAssertEqual(ts, 1_782_088_921_498)
-
-    // text delta
-    let textJSON = """
-      {"type":"desktop_dispatch_activity","tabId":"t1","dispatchAgentId":"a","dispatchConversationId":"c","dispatchActivityKind":"text","dispatchSeq":2,"dispatchTextDelta":"hello"}
-      """.data(using: .utf8)!
-    let textEvent = try decoder.decode(RemoteEvent.self, from: textJSON)
-    guard
-      case .engineDispatchActivity(_, _, _, _, let tkind, _, _, _, _, let textDelta, _, let textTs) =
-        textEvent
-    else {
-      return XCTFail("Expected engineDispatchActivity (text)")
-    }
-    XCTAssertEqual(tkind, "text")
-    XCTAssertEqual(textDelta, "hello")
-    // Absent dispatchActivityTs decodes as nil (tolerant mirror).
-    XCTAssertNil(textTs)
-
-    // tool_end with error
-    let endJSON = """
-      {"type":"desktop_dispatch_activity","tabId":"t1","dispatchAgentId":"a","dispatchConversationId":"c","dispatchActivityKind":"tool_end","dispatchSeq":3,"toolId":"tool-1","dispatchToolIsError":true}
-      """.data(using: .utf8)!
-    let endEvent = try decoder.decode(RemoteEvent.self, from: endJSON)
-    guard case .engineDispatchActivity(_, _, _, _, let ekind, _, _, _, _, _, let isError, _) = endEvent
-    else {
-      return XCTFail("Expected engineDispatchActivity (tool_end)")
-    }
-    XCTAssertEqual(ekind, "tool_end")
-    XCTAssertTrue(isError)
-
-    // stream reset carries the exact last committed activity sequence.
-    let resetJSON = """
-      {"type":"desktop_dispatch_activity","tabId":"t1","dispatchAgentId":"a","dispatchConversationId":"c","dispatchActivityKind":"stream_reset","dispatchSeq":5,"dispatchResetAfterSeq":2}
-      """.data(using: .utf8)!
-    let resetEvent = try decoder.decode(RemoteEvent.self, from: resetJSON)
-    guard case .engineDispatchActivity(_, _, _, _, let resetKind, _, let resetAfterSeq, _, _, _, _, _) = resetEvent
-    else {
-      return XCTFail("Expected engineDispatchActivity (stream_reset)")
-    }
-    XCTAssertEqual(resetKind, "stream_reset")
-    XCTAssertEqual(resetAfterSeq, 2)
   }
 
   func testEngineMessageEndDecode() throws {
@@ -739,30 +574,6 @@ final class ContractSyncTests: XCTestCase {
       XCTAssertEqual(userEntryId, "entry-8")
     } else {
       XCTFail("Expected engineMessageEnd with entry ids")
-    }
-  }
-
-  /// desktop_user_turn_persisted — the run-opening user turn's canonical
-  /// persisted tree-entry id, announced before streaming so the optimistic
-  /// user row is re-keyed even when the run never reaches a message_end
-  /// (cancel, mid-stream failure). Mirrors Go EngineEvent.UserTurnEntryID
-  /// forwarded via the desktop's generic engine→wire mapper.
-  func testEngineUserTurnPersistedDecode() throws {
-    let json = """
-      {"type":"desktop_user_turn_persisted","tabId":"t1","userTurnEntryId":"entry-77","userTurnSlashModelAlias":"Premium","userTurnSlashModelEffective":"claude-opus-4","userTurnSlashFrontmatter":{"extension-key":"durable"}}
-      """.data(using: .utf8)!
-    let event = try decoder.decode(RemoteEvent.self, from: json)
-    if case .engineUserTurnPersisted(
-      let tabId, let instanceId, let entryId, let alias, let effective, let frontmatter) = event
-    {
-      XCTAssertEqual(tabId, "t1")
-      XCTAssertNil(instanceId)
-      XCTAssertEqual(entryId, "entry-77")
-      XCTAssertEqual(alias, "Premium")
-      XCTAssertEqual(effective, "claude-opus-4")
-      XCTAssertEqual(frontmatter?["extension-key"]?.value as? String, "durable")
-    } else {
-      XCTFail("Expected engineUserTurnPersisted")
     }
   }
 
@@ -1076,6 +887,12 @@ final class ContractSyncTests: XCTestCase {
       // the section header in the provider-grouped model picker
       // (ModelPickerGrouping.providerLabel / ModelPickerSheet).
       "displayName",
+      // Which sign-in dance this provider's CLI performs, and so whether it
+      // can be finished from a machine other than the engine's host
+      // (engine/internal/types/llm.go, LoginFlow*). iOS neither runs a CLI
+      // nor offers provider sign-in, so it takes no action on this; the
+      // contract test tracks awareness of every Go field.
+      "loginFlow",
     ]
     let goSet = Set(goFields)
     let unhandled = goSet.subtracting(swiftHandled)
@@ -1146,7 +963,7 @@ final class ContractSyncTests: XCTestCase {
       return
     }
     let swiftHandled: Set<String> = [
-      "name", "transport", "url", "command",
+      "name", "transport", "url", "command", "args", "oauth",
       "connected", "authenticated", "toolCount", "lastError",
       "protocolVersion", "capabilities",
     ]
@@ -1154,6 +971,16 @@ final class ContractSyncTests: XCTestCase {
     XCTAssert(
       unhandled.isEmpty,
       "Go McpServerStatus has fields not tracked in Swift test: \(unhandled.sorted())")
+  }
+
+  func testMcpOAuthStatus() throws {
+    let manifest = try loadManifest()
+    guard let goFields = manifest.sharedTypes["McpOAuthStatus"] else {
+      XCTFail("McpOAuthStatus not found in Go manifest")
+      return
+    }
+    let swiftHandled: Set<String> = ["clientId", "authUrl", "tokenUrl", "scope", "resource", "hasClientSecret"]
+    XCTAssertEqual(Set(goFields), swiftHandled, "Go McpOAuthStatus and Swift McpOAuthStatus differ")
   }
 
   /// Drift-detection gate for ResourceLimits (D-007). iOS does not decode

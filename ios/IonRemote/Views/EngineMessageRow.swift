@@ -128,9 +128,11 @@ struct EngineMessageRow: View {
     }
 
     /// Label for the mid-turn steer affordance, or nil for an ordinary turn.
-    /// "Steer queued" while the engine has not drained it yet; "Steer" once
-    /// applied (the bubble is then rendered under its divider).
+    /// "Steer not delivered" when the engine died before draining it; "Steer
+    /// queued" while it has not drained yet; "Steer" once applied (the bubble
+    /// is then rendered under its divider). Desktop parity: MessageBubble.tsx.
     private var steerLabel: String? {
+        if message.steerFailed { return "Steer not delivered" }
         if message.steerPending { return "Steer queued" }
         if message.steerApplied { return "Steer" }
         return nil
@@ -150,7 +152,7 @@ struct EngineMessageRow: View {
                 if let steerLabel {
                     Text(steerLabel)
                         .font(.caption2)
-                        .foregroundStyle(message.steerPending ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
+                        .foregroundStyle(message.steerFailed ? AnyShapeStyle(.red) : message.steerPending ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
                 }
 
                 if let source = message.source, source == .remote {
@@ -164,7 +166,7 @@ struct EngineMessageRow: View {
                 }
 
                 if let attachments = message.attachments, !attachments.isEmpty {
-                    MessageAttachmentImages(attachments: attachments, alignment: .trailing, onPreview: previewAttachment)
+                    MessageAttachmentImages(attachments: attachments, alignment: .trailing, onPreview: previewAttachment, onOpenFile: onOpenFile)
                 }
 
                 let rawDisplayText = message.injectionKind == "structured_answer"
@@ -179,6 +181,10 @@ struct EngineMessageRow: View {
                         previewImage = img
                     }
                 }
+                // A document marker whose structured attachment was lost on
+                // reload still gets its chip, named by the stored file.
+                let attachedPaths = Set((message.attachments ?? []).map { $0.path })
+                markerDocumentChips(segments.files.filter { !attachedPaths.contains($0) })
 
                 if !segments.text.isEmpty {
                     let cap = UIScreen.main.bounds.width * 0.8
@@ -269,6 +275,7 @@ struct EngineMessageRow: View {
                         previewImage = img
                     }
                 }
+                markerDocumentChips(segments.files)
 
                 if !segments.text.isEmpty {
                     let cap = UIScreen.main.bounds.width * 0.8

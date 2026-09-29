@@ -9,7 +9,20 @@ extension SessionViewModel {
         let isActive = device.id == activeDevice?.id
         // Only send unpair to the desktop if this device is the active connection.
         if isActive {
-            Task { try? await transport?.send(.unpair) }
+            let deviceId = device.id
+            Task {
+                do {
+                    try await transport?.send(.unpair)
+                } catch {
+                    DiagnosticLog.log("unpair send failed", tag: "pairing", level: .warn, fields: [
+                        "device": String(deviceId.prefix(8)),
+                        "error": error.localizedDescription
+                    ])
+                }
+            }
+        }
+        if let serverId = studioRecord(for: device)?.clientId {
+            Task { @MainActor [weak self] in self?.dropAdminSession(serverId: serverId) }
         }
         pairedDevices.removeAll { $0.id == device.id }
         savePairedDevices()
@@ -46,6 +59,24 @@ extension SessionViewModel {
     /// Both paths optimistically write the new values into `pairedDevices`
     /// before sending so the UI updates immediately; LWW reconciliation
     /// happens automatically when the server ack arrives.
+    /// The sidecar write, over the Studio wire. A pairing with no stored
+    /// Studio credential has no sidecar to open, so the call throws and the
+    /// customization sheet reverts its optimistic write.
+    @MainActor
+    private func oneShotDisplay(
+        device: PairedDevice, customName: String?, customIcon: String?, updatedAt: Date
+    ) async throws -> RemoteDisplayAck {
+        guard let record = studioRecord(for: device) else {
+            DiagnosticLog.log("oneshot display: no studio credential for this pairing", tag: "session.display", level: .error, fields: [
+                "device": String(device.id.prefix(8))
+            ])
+            throw OneShotDisplayError.unreachable
+        }
+        return try await OneShotDisplayCommand.send(
+            studio: record, deviceId: device.id, customName: customName, customIcon: customIcon,
+            updatedAt: updatedAt, oidcToken: oidcCredentialClosures(for: device)?.get)
+    }
+
     @MainActor
     func updateRemoteDisplay(device: PairedDevice, customName: String?, customIcon: String?) async throws {
         let updatedAt = Date()
@@ -94,17 +125,8 @@ extension SessionViewModel {
             }
 
             DiagnosticLog.log("DISPLAY-SEND: using one-shot transport (inactive device)")
-            let ack = try await OneShotDisplayCommand.send(
-                device: device,
-                customName: customName,
-                customIcon: customIcon,
-                updatedAt: updatedAt,
-                // An inactive OIDC pairing still needs ITS OWN token for the
-                // sidecar relay connection. Without this the sidecar sent the
-                // stored bootstrap key, which in OIDC mode is a stale
-                // desktop-minted token (or empty) and is refused.
-                getCredential: oidcCredentialClosures(for: device)?.get,
-            )
+            let ack = try await oneShotDisplay(
+                device: device, customName: customName, customIcon: customIcon, updatedAt: updatedAt)
             // Reconcile by applying the server's authoritative value.
             await MainActor.run {
                 self.handleRemoteDisplay(
@@ -145,7 +167,7 @@ extension SessionViewModel {
             "was_active": String(device.id == activeDevice?.id)
         ])
         oidcRegistry.remove(deviceId: device.id)
-        lockDesktop(deviceId: device.id, reason: .signedOut, source: "sign_out")
+        lockServer(deviceId: device.id, reason: .signedOut, source: "sign_out")
         relayIdentityMismatch.remove(device.id)
         if let idx = pairedDevices.firstIndex(where: { $0.id == device.id }) {
             pairedDevices[idx].relayOidcAccountUsername = nil
@@ -184,11 +206,11 @@ extension SessionViewModel {
             _ = try await manager.forceInteractiveReauth()
         } catch OIDCTokenError.interactiveCancelled {
             clearAccountAfterCancelledSwitch(device: device, previousAccount: previousAccount)
-            lockDesktop(deviceId: device.id, reason: .userCancelled, source: "switch_account_cancelled")
+            lockServer(deviceId: device.id, reason: .userCancelled, source: "switch_account_cancelled")
             throw OIDCTokenError.interactiveCancelled
         } catch {
             clearAccountAfterCancelledSwitch(device: device, previousAccount: previousAccount)
-            lockDesktop(deviceId: device.id, reason: .refreshRejected, source: "switch_account_failed")
+            lockServer(deviceId: device.id, reason: .refreshRejected, source: "switch_account_failed")
             DiagnosticLog.log("oidc account switch failed", tag: "session.relay", level: .error, fields: [
                 "device": String(device.id.prefix(8)),
                 "error": error.localizedDescription
@@ -199,7 +221,7 @@ extension SessionViewModel {
         DiagnosticLog.log("oidc account switch succeeded, entering verification", tag: "session.relay", fields: [
             "device": String(device.id.prefix(8))
         ])
-        setDesktopAccess(DesktopAccessRecord(
+        setServerAccess(ServerAccessRecord(
             status: .verifying, reason: .none,
             changedAt: Date(),
             lastAuthorizedAt: pairedDevices.first(where: { $0.id == device.id })?.desktopAccess?.lastAuthorizedAt
@@ -224,7 +246,13 @@ extension SessionViewModel {
 
     func resetAll() {
         Task {
-            try? await transport?.send(.unpair)
+            do {
+                try await transport?.send(.unpair)
+            } catch {
+                DiagnosticLog.log("reset-all unpair send failed", tag: "pairing", level: .warn, fields: [
+                    "error": error.localizedDescription
+                ])
+            }
             await MainActor.run {
                 // Purge every pairing's OIDC manager and Keychain refresh token
                 // BEFORE the device list is cleared — the IDs are the only way
@@ -239,10 +267,17 @@ extension SessionViewModel {
                 UserDefaults.standard.set(false, forKey: "hasConnectedBefore")
                 self.conversationInstances = [:]
                 self.activeEngineInstance = [:]
+                self.transcriptStreams = [:]
+                self.transcriptResyncing = []
+                self.transcriptOlderInFlight = []
+                self.pendingPrompts = [:]
+                self.agentConversationMessages = [:]
+                self.agentConversationLoading = []
+                self.dispatchStreams = [:]
+                self.dispatchResyncing = []
+                self.dispatchTabs = [:]
+                self.agentConversationGroups = [:]
                 self.loadingConversation = []
-                self.conversationLoaded = []
-                self.conversationHasMore = [:]
-                self.conversationCursor = [:]
                 self.tabs = []
                 self.relayURL = ""
                 self.relayAPIKey = ""
@@ -271,6 +306,9 @@ extension SessionViewModel {
     func loadPairedDevices() {
         do {
             pairedDevices = try KeychainStore.loadPairedDevices()
+            // Only a successful load names the pairings. An empty list from a
+            // failed load would release every server's unshipped log lines.
+            DiagnosticLog.setKnownPairings(pairedDevices.map(\.id))
         } catch {
             // A load failure leaves the app with no known pairings; surface it
             // so the empty device list is explained rather than silently blamed
@@ -281,39 +319,32 @@ extension SessionViewModel {
             ])
         }
         Task { @MainActor [weak self] in
-            self?.normalizeDesktopAccessRecords()
+            self?.normalizeServerAccessRecords()
         }
+        StudioServerMigration.run(devices: pairedDevices, store: StudioServerKeychainStore())
         hydrateRelayConfig()
     }
 
     /// Populate the in-memory `relayURL` / `relayAPIKey` from the active
     /// device's persisted record.
     ///
-    /// These two properties start empty on every launch and were previously
-    /// only ever written by `completePairing` or an inbound `relay_config`.
-    /// That made them a *destructive* fallback: `handleRelayConfig` treats them
-    /// as the "keep what we have" source when an incoming config carries no
-    /// token, so on a fresh launch it fell back onto `""` and wrote empty
-    /// values over a perfectly good stored relay config — after which
-    /// `softReconnect` had no URL to connect to and the app could not recover.
+    /// These two properties start empty on every launch, so without this the
+    /// app holds `""` while a perfectly good relay config sits in the stored
+    /// record — after which `softReconnect` has no URL to dial and cannot
+    /// recover.
     ///
-    /// Called after `loadPairedDevices()` and on every desktop switch (the
-    /// values are per-device, so they must follow the active device).
+    /// Called after `loadPairedDevices()` and on every server switch (the
+    /// values are per-pairing, so they must follow the active one).
     func hydrateRelayConfig() {
         guard let device = activeDevice else {
             DiagnosticLog.log("relay config hydrate skipped, no active device", tag: "session.relay")
             return
         }
-        // Non-empty guard, matching handleRelayConfig's rule for the same two
-        // properties. On the loadPairedDevices path the in-memory values are
-        // empty and the stored record is the only truth, so this is a plain
-        // write. On the switchDesktop path it is not: if the new device's
-        // stored record is empty but a relay_config push has already landed for
-        // it in this session, an unconditional write would clobber a good live
-        // value with "" — reintroducing the exact empty-value defect
-        // handleRelayConfig was hardened against. Ordering makes that narrow
-        // today (switchDesktop disconnects first), which is precisely why the
-        // asymmetry should not be left to luck.
+        // Non-empty guard. On the loadPairedDevices path the in-memory values
+        // are empty and the stored record is the only truth, so this is a
+        // plain write. On the switch path it is not: an unconditional write
+        // would clobber a good live value with "" whenever the incoming
+        // record happens to be empty.
         if let storedURL = device.relayURL, !storedURL.isEmpty {
             relayURL = storedURL
         }
@@ -331,6 +362,7 @@ extension SessionViewModel {
     }
 
     func savePairedDevices() {
+        DiagnosticLog.setKnownPairings(pairedDevices.map(\.id))
         do {
             try KeychainStore.savePairedDevices(pairedDevices)
         } catch {

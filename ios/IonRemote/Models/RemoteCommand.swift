@@ -6,15 +6,8 @@ struct PinOrderAssignment: Codable, Sendable {
 }
 
 /// Commands sent from iOS to Ion. Mirrors `RemoteCommand` in `src/main/remote/protocol.ts`.
-enum RemoteCommand: Codable, Sendable {
+enum RemoteCommand: Sendable {
   case sync
-  /// Additive optional `pinToGroupId` extension. When non-nil and the
-  /// desktop is in manual tab-group mode, the new tab lands inside that
-  /// group with `groupPinned=true` so the very first prompt's auto-group
-  /// movement skips it. Older Ion desktops that don't know the field
-  /// simply ignore it; behavior degrades to the legacy default-group
-  /// placement.
-  ///
   /// `profileId` and `extensions` are present when the caller wants an
   /// engine-hosted conversation. When absent the desktop creates a plain
   /// CLI tab. This merges the former `desktop_create_engine_tab` wire
@@ -28,7 +21,7 @@ enum RemoteCommand: Codable, Sendable {
   /// desktop dedupes by it so a resend re-emits the existing tab, never a
   /// duplicate. Absent (nil) for any non-tracked caller.
   case createTab(
-    workingDirectory: String?, pinToGroupId: String? = nil, profileId: String? = nil,
+    workingDirectory: String?, profileId: String? = nil,
     extensions: [String]? = nil, clientCmdId: String? = nil,
     useWorktree: Bool? = nil, sourceBranch: String? = nil)
   case createTerminalTab(workingDirectory: String?, clientCmdId: String? = nil)
@@ -61,10 +54,13 @@ enum RemoteCommand: Codable, Sendable {
   /// present the desktop routes through the engine pipeline (isEngineTab=true).
   /// When absent the desktop uses the CLI pipeline. This merges the former
   /// `desktop_engine_prompt` wire command into the unified prompt shape (#256).
+  /// `traceparent` names the phone's `prompt.send` span: the server's
+  /// `prompt.handle` span joins that trace, and the frame carrying the prompt
+  /// sets it on its outer envelope for the relay's `relay.forward` span.
   case prompt(
     tabId: String, text: String, origin: String? = "remote", clientMsgId: String? = nil,
     attachments: [CommandAttachment]? = nil, implementationPhase: Bool? = nil,
-    instanceId: String? = nil)
+    instanceId: String? = nil, traceparent: String? = nil)
   case cancel(tabId: String, scope: String? = nil)
   case abortDispatch(tabId: String, dispatchId: String)
   /// Stop one exact background Bash task through the paired desktop.
@@ -78,6 +74,18 @@ enum RemoteCommand: Codable, Sendable {
     tabId: String, requestId: String, response: [String: AnyCodable]?, cancelled: Bool,
     declined: Bool = false)
   case setPermissionMode(tabId: String, mode: PermissionMode)
+  /// This device's unsent composer text for a conversation.
+  ///
+  /// The draft is durable conversation state the host persists, not a local
+  /// scratchpad: sending it is what lets the same half-written prompt appear
+  /// in Ion Studio, and what makes it survive a host restart. Debounced at the
+  /// call site (see SessionViewModel+Drafts.swift) so normal typing does not
+  /// put a frame on the wire per character.
+  case setDraft(tabId: String, text: String)
+  /// Start (`on: true`) or stop the connected Environment's System Metrics
+  /// summary (`desktop_system_metrics`, every 10 s). The phone watches while
+  /// it is in the foreground and connected.
+  case systemMetricsWatch(on: Bool)
   /// Per-conversation extended-thinking effort change. effort is one of
   /// "off"|"low"|"medium"|"high". The desktop applies it to the same
   /// per-conversation state its own prompts read, so the next prompt from
@@ -100,9 +108,9 @@ enum RemoteCommand: Codable, Sendable {
   /// Materialize a cold settled-history record as a temporary review tab.
   case requestTranscript(tabId: String, requestId: String)
   case reviewSettledTab(tabId: String)
-  /// One page of history. Omitting `pageSize` takes the small default (fast
-  /// first paint); a bulk size pulls the rest in one frame. See
-  /// ConversationBackfill.
+  /// One page of a conversation's transcript (`studio_body_request`). `before`
+  /// nil asks for the newest page, which subscribes this connection to the
+  /// transcript's patches. See SessionViewModel+Transcript.swift.
   case loadConversation(tabId: String, before: String?, pageSize: Int? = nil)
   /// Ask the desktop to replay wire frames [fromSeq, toSeq] after iOS detected
   /// a forward seq gap (frames lost in transit, e.g. a LAN↔relay transport
@@ -151,6 +159,17 @@ enum RemoteCommand: Codable, Sendable {
   /// that can guarantee a desktop-minted id.
   case engineRewind(tabId: String, instanceId: String, messageId: String, userTurnIndex: Int?)
   case unpair
+  /// First message sent on a freshly opened channel when the connected server
+  /// advertises OIDC via `GET /auth/config`. The server validates `token`
+  /// against `(issuer, audience, scope)` before treating the channel as
+  /// authenticated. Sent once per connection, not per-command; resent with a
+  /// fresh token whenever the transport reconnects after a token expiry. See
+  /// `OIDCTokenManagerRegistry` for how the token is acquired.
+  ///
+  /// The Studio wire carries a bearer on its hello rather than as a command,
+  /// so its mapping drops this one; it stays for a consumer whose wire needs
+  /// an in-band auth message.
+  case desktopAuth(token: String)
   case engineAbort(tabId: String, instanceId: String? = nil)
   case engineDialogResponse(
     tabId: String, dialogId: String, value: String, instanceId: String? = nil)
@@ -158,17 +177,25 @@ enum RemoteCommand: Codable, Sendable {
   // engineAddInstance, engineRemoveInstance, engineRenameInstance, engineSelectInstance,
   // engineMoveInstance are no longer sent. The desktop dispatch already
   // silently dropped them; removing the iOS send path completes the cleanup.
-  // loadEngineConversation is retired (WI-004 / #259). iOS now sends
-  // loadConversation for every tab via loadConversationHistory().
-  case loadAgentConversation(conversationIds: [String])
-  case setTabGroupMode(mode: String)
-  case moveTabToGroup(tabId: String, groupId: String)
-  case toggleTabGroupPin(tabId: String)
-  case reorderTabGroups(orderedIds: [String])
+  /// One page of a dispatched agent's transcript (`studio_body_request`
+  /// naming the dispatch). `before` nil asks for the newest page, which
+  /// subscribes this connection to the dispatch's transcript patches.
+  case loadDispatchTranscript(tabId: String, conversationId: String, dispatchId: String, before: String?, pageSize: Int)
   case engineSetModel(tabId: String, model: String, instanceId: String? = nil)
-  case setTabModel(tabId: String, model: String)
-  case setPreferredModel(model: String)
-  case setEngineDefaultModel(model: String)
+  // providerId, when known, is the provider group the operator explicitly
+  // picked -- carried so the server can qualify the wire model id and this
+  // explicit choice can never be silently rerouted by defaultProvider bias.
+  case setTabModel(tabId: String, model: String, providerId: String? = nil)
+  /// This phone's Personal preferences, declared to the server once per
+  /// connection and on change. The server holds them for the life of the
+  /// connection and stamps them onto conversations this phone creates or
+  /// prompts; it keeps no settings copy. See `PersonalPreferencesStore`.
+  case declarePreferences(preferences: [String: JSONValue])
+  /// Where this phone receives pushes: its APNs token and the environment
+  /// that issued it (`APNsEnvironment`). Sent to the connected server once
+  /// per connection and whenever the token changes. The server keeps it on
+  /// this phone's pairing and sends it with every push it rings.
+  case registerPush(token: String, env: String)
   case gitChanges(directory: String)
   case gitBranches(directory: String)
   case gitGraph(directory: String, skip: Int? = nil, limit: Int? = nil)
@@ -267,7 +294,14 @@ enum RemoteCommand: Codable, Sendable {
   /// ECDH channel ID (`activeDeviceId`) that identifies which desktop pairing
   /// collected these logs — it is NOT the per-device hardware identity
   /// (`device_id`), which is stamped on every log line by iOS directly.
-  case diagnosticLogsResponse(logs: String, pairingId: String, nextSeq: Int)
+  ///
+  /// `withheldUnstamped` / `withheldOtherPairing` count lines newer than the
+  /// request's cursor that the pairing filter kept back. The cursor still
+  /// advances past them, so the desktop needs the counts to tell "nothing
+  /// new" apart from "lines were written and none were sent".
+  case diagnosticLogsResponse(
+    logs: String, pairingId: String, nextSeq: Int,
+    withheldUnstamped: Int = 0, withheldOtherPairing: Int = 0)
   /// Set the per-desktop display override. `updatedAt` is ms since epoch
   /// (`Date().timeIntervalSince1970 * 1000`). The desktop applies LWW and
   /// broadcasts the canonical value back via `.remoteDisplay`.
@@ -292,9 +326,6 @@ enum RemoteCommand: Codable, Sendable {
   /// Set the custom pill background color for a tab.
   /// `pillColor` is a hex string (e.g. "#f08c4a") or nil to reset to the theme default.
   case setPillColor(tabId: String, pillColor: String?)
-  /// Set the custom pill icon for a tab.
-  /// `pillIcon` is an icon key (e.g. "diamond", "star") or nil to reset to the default dot.
-  case setPillIcon(tabId: String, pillIcon: String?)
   /// Report iOS device focus to the desktop for intercept routing.
   /// Sent when the user switches tabs, the app foregrounds, or the
   /// intercept preference changes. `tabId: nil` means the app is
@@ -364,7 +395,9 @@ enum RemoteCommand: Codable, Sendable {
 
   // MARK: - Codable
 
-  enum TypeKey: String, Codable {
+  /// `CaseIterable` so a test can enumerate the wire names this client can
+  /// send and compare them against the shared command map.
+  enum TypeKey: String, Codable, CaseIterable {
     case sync = "desktop_sync"
     case createTab = "desktop_create_tab"
     case createTerminalTab = "desktop_create_terminal_tab"
@@ -378,6 +411,8 @@ enum RemoteCommand: Codable, Sendable {
     case respondPermission = "desktop_respond_permission"
     case respondElicitation = "desktop_respond_elicitation"
     case setPermissionMode = "desktop_set_permission_mode"
+    case setDraft = "desktop_set_draft"
+    case systemMetricsWatch = "desktop_system_metrics_watch"
     case setThinkingEffort = "desktop_set_thinking_effort"
     case tabSettle = "desktop_tab_settle"
     case tabDelete = "desktop_tab_delete"
@@ -407,21 +442,18 @@ enum RemoteCommand: Codable, Sendable {
     case forkFromMessage = "desktop_fork_from_message"
     case engineRewind = "desktop_engine_rewind"
     case unpair = "desktop_unpair"
+    case desktopAuth = "desktop_auth"
     case engineAbort = "desktop_engine_abort"
     case engineDialogResponse = "desktop_engine_dialog_response"
     // Multi-instance TypeKeys removed in #256. The desktop dispatch
     // already silently ignored these; no wire traffic expected.
     // loadEngineConversation TypeKey retired in WI-004 / #259. iOS now
     // sends loadConversation for every tab.
-    case loadAgentConversation = "desktop_load_agent_conversation"
-    case setTabGroupMode = "desktop_set_tab_group_mode"
-    case moveTabToGroup = "desktop_move_tab_to_group"
-    case toggleTabGroupPin = "desktop_toggle_tab_group_pin"
-    case reorderTabGroups = "desktop_reorder_tab_groups"
+    case loadDispatchTranscript = "desktop_load_dispatch_transcript"
     case engineSetModel = "desktop_engine_set_model"
     case setTabModel = "desktop_set_tab_model"
-    case setPreferredModel = "desktop_set_preferred_model"
-    case setEngineDefaultModel = "desktop_set_engine_default_model"
+    case declarePreferences = "desktop_declare_preferences"
+    case registerPush = "desktop_register_push"
     case gitChanges = "desktop_git_changes"
     case gitBranches = "desktop_git_branches"
     case gitGraph = "desktop_git_graph"
@@ -479,7 +511,6 @@ enum RemoteCommand: Codable, Sendable {
     case setRemoteDisplay = "desktop_set_remote_display"
     case setDesktopSetting = "desktop_set_desktop_setting"
     case setPillColor = "desktop_set_pill_color"
-    case setPillIcon = "desktop_set_pill_icon"
     case reportFocus = "desktop_report_focus"
     case reportMobileAuth = "desktop_report_mobile_auth"
     case requestResourceContent = "desktop_request_resource_content"

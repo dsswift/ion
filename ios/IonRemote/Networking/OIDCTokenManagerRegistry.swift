@@ -21,7 +21,7 @@ import os
 /// 403 for a subject mismatch), the client invalidated and silently refreshed,
 /// the refresh returned the same wrong-tenant token, and the backoff ladder
 /// retried forever. It self-healed only when LAN/Bonjour connected first and the
-/// desktop pushed a fresh `relay_config`; a relay-only roam to the second
+/// pairing's OIDC metadata changed; a relay-only roam to the second
 /// desktop never recovered at all.
 ///
 /// ## Why instances are kept alive rather than rebuilt
@@ -40,7 +40,7 @@ import os
 /// State lives behind an `OSAllocatedUnfairLock` rather than in an actor because
 /// `SessionViewModel.connect()` and `softReconnect()` are synchronous and
 /// non-isolated: resolving a manager must not require an `await`. This mirrors
-/// the lock already used for `TransportManager`'s outbound sequence counter.
+/// the same lock primitive used elsewhere for small shared counters.
 /// Logging is always performed OUTSIDE the lock — `DiagnosticLog.log` can block
 /// on its transport, and holding an unfair lock across that would serialize
 /// connect paths behind a log write.

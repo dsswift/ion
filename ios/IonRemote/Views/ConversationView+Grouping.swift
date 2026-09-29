@@ -126,9 +126,9 @@ extension Message {
     /// against `EngineMessageRow` (+`ToolBubble`/`SlashBubble` extensions),
     /// `ThinkingRowView`, `CompactionRowView`, `EngineToolGroupRow`, and
     /// `AgentTurnRow` — not from the full `Message` surface. Fields that exist
-    /// but never reach a pixel (`isLive`, `sealed`, `isInternal`, `injectionKind`,
-    /// `clientMsgId`, `dedupKey`/`dedupMode`, `slashSource`) are deliberately
-    /// omitted: they change on paths that must NOT trigger a re-measure.
+    /// but never reach a pixel (`isInternal`, `injectionKind`, `clientMsgId`,
+    /// `slashSource`) are deliberately omitted: they change on paths that must
+    /// NOT trigger a re-measure.
     func renderHash(into hasher: inout Hasher) {
         hasher.combine(id)
         hasher.combine(role.rawValue)
@@ -140,6 +140,9 @@ extension Message {
         hasher.combine(toolName)
         hasher.combine(toolInput)
         hasher.combine(toolStatus?.rawValue)
+        // The "output shortened" note under a cut tool result.
+        hasher.combine(contentTruncated)
+        hasher.combine(contentBytes)
 
         // Inline images. Identity + count is the render-relevant part; the
         // bytes are fetched separately by MessageAttachmentImages.
@@ -162,12 +165,12 @@ extension Message {
         hasher.combine(planFilePath)
         hasher.combine(markerKind)
 
-        // Steer state. steerPending/steerApplied change the bubble's treatment;
-        // steerAppliedDividerId drives the grouping pass's relocation of the
-        // bubble to its application point, so a row can move without any text
-        // changing. All three were added by the steer-render fix and are read
-        // by EngineMessageRow / ToolGrouping.
+        // Steer state. steerPending/steerApplied/steerFailed change the
+        // bubble's treatment; steerAppliedDividerId drives the grouping pass's
+        // relocation of the bubble to its application point, so a row can move
+        // without any text changing. Read by EngineMessageRow / ToolGrouping.
         hasher.combine(steerPending)
+        hasher.combine(steerFailed)
         hasher.combine(steerApplied)
         hasher.combine(steerAppliedDividerId)
 

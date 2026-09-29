@@ -44,22 +44,6 @@ extension RemoteEvent {
             let metadata = try container.decodeIfPresent([String: AnyCodable].self, forKey: .metadata)
             return .engineWorkingMessage(tabId: tabId, instanceId: instanceId, message: message, metadata: metadata)
 
-        case .engineToolStart:
-            let tabId = try container.decode(String.self, forKey: .tabId)
-            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let toolName = try container.decode(String.self, forKey: .toolName)
-            let toolId = try container.decode(String.self, forKey: .toolId)
-            return .engineToolStart(tabId: tabId, instanceId: instanceId, toolName: toolName, toolId: toolId)
-
-        case .engineToolEnd:
-            let tabId = try container.decode(String.self, forKey: .tabId)
-            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let toolId = try container.decode(String.self, forKey: .toolId)
-            let result = try container.decodeIfPresent(String.self, forKey: .result)
-            let isError = try container.decodeIfPresent(Bool.self, forKey: .isError) ?? false
-            let bgTaskId = try container.decodeIfPresent(String.self, forKey: .backgroundTaskId)
-            return .engineToolEnd(tabId: tabId, instanceId: instanceId, toolId: toolId, result: result, isError: isError, backgroundTaskId: bgTaskId)
-
         case .engineToolStalled:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
@@ -111,47 +95,6 @@ extension RemoteEvent {
             let lastActivity = try container.decodeIfPresent(String.self, forKey: .runStalledLastActivity)
             return .engineRunStalled(tabId: tabId, instanceId: instanceId, stalledDuration: stalledDuration, lastActivity: lastActivity)
 
-        case .engineRunRecovery:
-            let tabId = try container.decode(String.self, forKey: .tabId)
-            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let recoveryId = try container.decode(String.self, forKey: .runRecoveryId)
-            let phase = try container.decode(String.self, forKey: .runRecoveryPhase)
-            let attempt = try container.decodeIfPresent(Int.self, forKey: .runRecoveryAttempt)
-            let maxAttempts = try container.decodeIfPresent(Int.self, forKey: .runRecoveryMaxAttempts)
-            let reason = try container.decodeIfPresent(String.self, forKey: .runRecoveryReason)
-            return .engineRunRecovery(tabId: tabId, instanceId: instanceId, recoveryId: recoveryId, phase: phase, attempt: attempt, maxAttempts: maxAttempts, reason: reason)
-
-        case .engineSteerInjected:
-            let tabId = try container.decode(String.self, forKey: .tabId)
-            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let messageLength = try container.decode(Int.self, forKey: .steerMessageLength)
-            // steerClientMessageId/steerEntryId are the RAW engine field
-            // names, forwarded verbatim by the desktop's generic engine-event
-            // spread projector (event-wiring-wire-projection.ts) rather than
-            // a renamed desktop-internal shape — decoding under any other key
-            // silently drops these bytes even though they are present on the
-            // wire.
-            let clientMessageId = try container.decodeIfPresent(String.self, forKey: .steerClientMessageId)
-            let entryId = try container.decodeIfPresent(String.self, forKey: .steerEntryId)
-            let kind = try container.decodeIfPresent(String.self, forKey: .steerKind)
-            let machineAuthored = try container.decodeIfPresent(Bool.self, forKey: .steerMachineAuthored)
-            return .engineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength, clientMessageId: clientMessageId, entryId: entryId, kind: kind, machineAuthored: machineAuthored)
-
-        case .engineDispatchLost:
-            return .engineDispatchLost(
-                tabId: try container.decode(String.self, forKey: .tabId),
-                instanceId: try container.decodeIfPresent(String.self, forKey: .instanceId),
-                lost: try container.decode(DispatchLostPayload.self, forKey: .dispatchLost)
-            )
-
-        case .engineSteerDegraded:
-            let tabId = try container.decode(String.self, forKey: .tabId)
-            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let messageLength = try container.decode(Int.self, forKey: .steerDegradedMessageLength)
-            let kind = try container.decodeIfPresent(String.self, forKey: .steerKind)
-            let machineAuthored = try container.decodeIfPresent(Bool.self, forKey: .steerMachineAuthored)
-            return .engineSteerDegraded(tabId: tabId, instanceId: instanceId, messageLength: messageLength, kind: kind, machineAuthored: machineAuthored)
-
         case .engineSteerInterruptedStream:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
@@ -173,23 +116,10 @@ extension RemoteEvent {
             let error = try container.decodeIfPresent(String.self, forKey: .error)
             return .engineRewindResult(tabId: tabId, instanceId: instanceId, error: error)
 
-        case .enginePromptInjected:
-            let tabId = try container.decode(String.self, forKey: .tabId)
-            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let prompt = try container.decodeIfPresent(String.self, forKey: .injectedPrompt) ?? ""
-            let origin = try container.decodeIfPresent(String.self, forKey: .injectedPromptOrigin)
-            let kind = try container.decodeIfPresent(String.self, forKey: .injectedPromptKind)
-            let machineAuthored = try container.decodeIfPresent(Bool.self, forKey: .injectedPromptMachineAuthored)
-            return .enginePromptInjected(tabId: tabId, instanceId: instanceId, prompt: prompt, origin: origin, kind: kind, machineAuthored: machineAuthored)
-
-        case .engineToolUpdate, .engineToolComplete, .engineScheduleFired, .engineLlmCall:
+        case .engineToolComplete, .engineScheduleFired, .engineLlmCall:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             switch type {
-            case .engineToolUpdate:
-                let toolId = try container.decodeIfPresent(String.self, forKey: .toolId) ?? ""
-                let partialInput = try container.decodeIfPresent(String.self, forKey: .partialInput) ?? ""
-                return .engineToolUpdate(tabId: tabId, instanceId: instanceId, toolId: toolId, partialInput: partialInput)
             case .engineToolComplete: return .engineToolComplete(tabId: tabId, instanceId: instanceId)
             case .engineScheduleFired: return .engineScheduleFired(tabId: tabId, instanceId: instanceId)
             case .engineLlmCall: return .engineLlmCall(tabId: tabId, instanceId: instanceId)
@@ -220,38 +150,12 @@ extension RemoteEvent {
             let conversationId = try container.decodeIfPresent(String.self, forKey: .dispatchConversationId)
             return .engineDispatchEnd(tabId: tabId, instanceId: instanceId, dispatchAgent: agent, dispatchDepth: depth, dispatchParentId: parentId, exitCode: exitCode, elapsed: elapsed, dispatchId: dispatchId, conversationId: conversationId)
 
-        case .engineDispatchActivity:
-            let tabId = try container.decode(String.self, forKey: .tabId)
-            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let agentId = try container.decodeIfPresent(String.self, forKey: .dispatchAgentId) ?? ""
-            let conversationId = try container.decodeIfPresent(String.self, forKey: .dispatchConversationId) ?? ""
-            let kind = try container.decodeIfPresent(String.self, forKey: .dispatchActivityKind) ?? ""
-            let seq = try container.decodeIfPresent(Int.self, forKey: .dispatchSeq) ?? 0
-            let resetAfterSeq = try container.decodeIfPresent(Int.self, forKey: .dispatchResetAfterSeq)
-            let toolName = try container.decodeIfPresent(String.self, forKey: .toolName)
-            let toolId = try container.decodeIfPresent(String.self, forKey: .toolId)
-            let textDelta = try container.decodeIfPresent(String.self, forKey: .dispatchTextDelta)
-            let isError = try container.decodeIfPresent(Bool.self, forKey: .dispatchToolIsError) ?? false
-            // Emit timestamp (unix millis). Decoded so the iOS mirror carries
-            // the full wire shape (Go engine_event.go + desktop both send it);
-            // tolerant-absent so legacy payloads without it still decode.
-            let ts = try container.decodeIfPresent(Int64.self, forKey: .dispatchActivityTs)
-            return .engineDispatchActivity(tabId: tabId, instanceId: instanceId, agentId: agentId, conversationId: conversationId, kind: kind, seq: seq, resetAfterSeq: resetAfterSeq, toolName: toolName, toolId: toolId, textDelta: textDelta, isError: isError, ts: ts)
-
         case .engineError:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             let message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
             let stderrTail = try container.decodeIfPresent([String].self, forKey: .stderrTail) ?? []
             return .engineError(tabId: tabId, instanceId: instanceId, message: message, stderrTail: stderrTail)
-
-        case .engineNotify:
-            let tabId = try container.decode(String.self, forKey: .tabId)
-            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
-            let level = try container.decodeIfPresent(String.self, forKey: .level) ?? "info"
-            let metadata = try container.decodeIfPresent([String: AnyCodable].self, forKey: .metadata)
-            return .engineNotify(tabId: tabId, instanceId: instanceId, message: message, level: level, metadata: metadata)
 
         case .engineDialog:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -269,17 +173,6 @@ extension RemoteEvent {
             let dialogId = try container.decode(String.self, forKey: .dialogId)
             return .engineDialogResolved(tabId: tabId, instanceId: instanceId, dialogId: dialogId)
 
-        case .engineTextDelta:
-            let tabId = try container.decode(String.self, forKey: .tabId)
-            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
-            return .engineTextDelta(tabId: tabId, instanceId: instanceId, text: text)
-
-        case .engineStreamReset:
-            let tabId = try container.decode(String.self, forKey: .tabId)
-            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            return .engineStreamReset(tabId: tabId, instanceId: instanceId)
-
         case .engineMessageEnd:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
@@ -289,15 +182,6 @@ extension RemoteEvent {
             // they surface as top-level associated values on the Swift case.
             let usage = try container.decodeIfPresent(EngineMessageEndUsage.self, forKey: .usage)
             return .engineMessageEnd(tabId: tabId, instanceId: instanceId, inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0, contextPercent: usage?.contextPercent ?? 0, cost: usage?.cost ?? 0, entryId: usage?.entryId, userEntryId: usage?.userEntryId)
-
-        case .engineUserTurnPersisted:
-            let tabId = try container.decode(String.self, forKey: .tabId)
-            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let entryId = try container.decodeIfPresent(String.self, forKey: .userTurnEntryId) ?? ""
-            let slashModelAlias = try container.decodeIfPresent(String.self, forKey: .userTurnSlashModelAlias)
-            let slashModelEffective = try container.decodeIfPresent(String.self, forKey: .userTurnSlashModelEffective)
-            let slashFrontmatter = try container.decodeIfPresent([String: AnyCodable].self, forKey: .userTurnSlashFrontmatter)
-            return .engineUserTurnPersisted(tabId: tabId, instanceId: instanceId, entryId: entryId, slashModelAlias: slashModelAlias, slashModelEffective: slashModelEffective, slashFrontmatter: slashFrontmatter)
 
         case .engineDead:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -323,32 +207,6 @@ extension RemoteEvent {
             let targetTabId = try container.decode(String.self, forKey: .targetTabId)
             return .engineInstanceMoved(sourceTabId: sourceTabId, instanceId: instanceId, targetTabId: targetTabId)
 
-        case .engineHarnessMessage:
-            let tabId = try container.decode(String.self, forKey: .tabId)
-            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
-            let source = try container.decodeIfPresent(String.self, forKey: .source)
-            // `metadata` is an opaque hint map the harness sets via ctx.emit and
-            // the engine forwards verbatim. Decoded as [String: AnyCodable] for
-            // completeness so future iOS-side handlers can read typed values.
-            let metadata = try container.decodeIfPresent([String: AnyCodable].self, forKey: .metadata)
-            // `dedupKey` / `dedupMode` are promoted to top-level wire fields by the
-            // desktop relay (engine_harness_message event spread) and on history
-            // replay. Mirrors Go's HarnessMessageEvent json tags.
-            let dedupKey = try container.decodeIfPresent(String.self, forKey: .dedupKey)
-            let dedupMode = try container.decodeIfPresent(String.self, forKey: .dedupMode)
-            return .engineHarnessMessage(tabId: tabId, instanceId: instanceId, message: message, source: source, metadata: metadata, dedupKey: dedupKey, dedupMode: dedupMode)
-
-        // engineConversationHistory decode arm removed (WI-004 / #259).
-        // History for every tab arrives via desktop_conversation_history
-        // (TypeKey.conversationHistory), decoded in NormalizedEvent+Stream.swift.
-
-        case .agentConversationHistory:
-            let agentName = try container.decode(String.self, forKey: .agentName)
-            let convId = try container.decodeIfPresent(String.self, forKey: .conversationId)
-            let messages = try Message.decodeEngineArray(from: container, forKey: .messages)
-            return .agentConversationHistory(agentName: agentName, conversationId: convId, messages: messages)
-
         case .engineModelOverride:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
@@ -372,19 +230,6 @@ extension RemoteEvent {
             let planFilePath = try container.decodeIfPresent(String.self, forKey: .planFilePath)
             let planSlug = try container.decodeIfPresent(String.self, forKey: .planSlug)
             return .enginePlanModeChanged(tabId: tabId, instanceId: instanceId, planModeEnabled: planModeEnabled, planFilePath: planFilePath, planSlug: planSlug)
-
-        case .enginePlanFileWritten:
-            // State event: a Write/Edit landed on the canonical plan file. iOS
-            // inserts the plan-lifecycle divider from THIS event (the actual
-            // write), not from plan-mode entry — so the marker is correctly
-            // positioned and its link resolves. operation discriminates
-            // "created" vs "updated"; planFilePath/planSlug mirror the Go event.
-            let tabId = try container.decode(String.self, forKey: .tabId)
-            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            let operation = try container.decodeIfPresent(String.self, forKey: .planWriteOperation) ?? "created"
-            let planFilePath = try container.decodeIfPresent(String.self, forKey: .planFilePath)
-            let planSlug = try container.decodeIfPresent(String.self, forKey: .planSlug)
-            return .enginePlanFileWritten(tabId: tabId, instanceId: instanceId, operation: operation, planFilePath: planFilePath, planSlug: planSlug)
 
         case .enginePlanProposal:
             // Workflow event: the model has proposed a plan-mode transition.

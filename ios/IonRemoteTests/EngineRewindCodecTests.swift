@@ -11,102 +11,9 @@ final class EngineRewindCodecTests: XCTestCase {
 
     // MARK: - engine_rewind command encode
 
-    func testEncodeEngineRewind() throws {
-        let cmd = RemoteCommand.engineRewind(
-            tabId: "tab-a",
-            instanceId: "inst-1",
-            messageId: "msg-7",
-            userTurnIndex: 2
-        )
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-
-        XCTAssertEqual(json["type"] as? String, "desktop_engine_rewind")
-        XCTAssertEqual(json["tabId"] as? String, "tab-a")
-        XCTAssertEqual(json["instanceId"] as? String, "inst-1")
-        XCTAssertEqual(json["messageId"] as? String, "msg-7")
-        XCTAssertEqual(json["userTurnIndex"] as? Int, 2)
-    }
-
-    func testEncodeEngineRewindWithoutUserTurnIndex() throws {
-        // Nil userTurnIndex omits the wire key (encodeIfPresent).
-        let cmd = RemoteCommand.engineRewind(
-            tabId: "tab-a",
-            instanceId: "inst-1",
-            messageId: "msg-7",
-            userTurnIndex: nil
-        )
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertNil(json["userTurnIndex"])
-    }
-
     // MARK: - engine_rewind command decode
 
-    func testDecodeEngineRewind() throws {
-        let json = """
-        {
-            "type": "desktop_engine_rewind",
-            "tabId": "tab-a",
-            "instanceId": "inst-1",
-            "messageId": "msg-7",
-            "userTurnIndex": 3
-        }
-        """.data(using: .utf8)!
-
-        let cmd = try decoder.decode(RemoteCommand.self, from: json)
-
-        if case .engineRewind(let tabId, let instanceId, let messageId, let userTurnIndex) = cmd {
-            XCTAssertEqual(tabId, "tab-a")
-            XCTAssertEqual(instanceId, "inst-1")
-            XCTAssertEqual(messageId, "msg-7")
-            XCTAssertEqual(userTurnIndex, 3)
-        } else {
-            XCTFail("Expected engineRewind, got \(cmd)")
-        }
-    }
-
-    func testDecodeEngineRewindWithoutUserTurnIndex() throws {
-        let json = """
-        {
-            "type": "desktop_engine_rewind",
-            "tabId": "tab-a",
-            "instanceId": "inst-1",
-            "messageId": "msg-7"
-        }
-        """.data(using: .utf8)!
-
-        let cmd = try decoder.decode(RemoteCommand.self, from: json)
-
-        if case .engineRewind(_, _, _, let userTurnIndex) = cmd {
-            // Absent wire key decodes to nil (decodeIfPresent).
-            XCTAssertNil(userTurnIndex)
-        } else {
-            XCTFail("Expected engineRewind, got \(cmd)")
-        }
-    }
-
     // MARK: - engine_rewind command round-trip
-
-    func testRoundTripEngineRewind() throws {
-        let original = RemoteCommand.engineRewind(
-            tabId: "round-tab",
-            instanceId: "round-inst",
-            messageId: "round-msg",
-            userTurnIndex: 5
-        )
-        let data = try encoder.encode(original)
-        let decoded = try decoder.decode(RemoteCommand.self, from: data)
-
-        if case .engineRewind(let tabId, let instanceId, let messageId, let userTurnIndex) = decoded {
-            XCTAssertEqual(tabId, "round-tab")
-            XCTAssertEqual(instanceId, "round-inst")
-            XCTAssertEqual(messageId, "round-msg")
-            XCTAssertEqual(userTurnIndex, 5)
-        } else {
-            XCTFail("Round-trip engineRewind failed, got \(decoded)")
-        }
-    }
 
     // MARK: - input_prefill event with instanceId (engine_rewind reply)
 
@@ -157,26 +64,6 @@ final class EngineRewindCodecTests: XCTestCase {
     }
 
     // MARK: - Fork command (one shared conversation pipeline)
-
-    /// Fork is one client-local conversation operation on the desktop. It does
-    /// not branch on a tab profile, so iOS sends the same desktop_fork_from_message
-    /// command for Plain and extension-hosted tabs alike.
-    func testRoundTripForkFromMessage() throws {
-        let original = RemoteCommand.forkFromMessage(tabId: "fork-tab", messageId: "entry-7")
-        let data = try encoder.encode(original)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_fork_from_message")
-        XCTAssertEqual(json["tabId"] as? String, "fork-tab")
-        XCTAssertEqual(json["messageId"] as? String, "entry-7")
-
-        let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .forkFromMessage(let tabId, let messageId) = decoded {
-            XCTAssertEqual(tabId, "fork-tab")
-            XCTAssertEqual(messageId, "entry-7")
-        } else {
-            XCTFail("Round-trip forkFromMessage failed, got \(decoded)")
-        }
-    }
 
     // MARK: - Fork prefill reaches the visible draft store
 

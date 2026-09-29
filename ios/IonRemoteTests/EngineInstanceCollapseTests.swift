@@ -12,15 +12,8 @@ import XCTest
 ///      no enum case, loadConversation sends desktop_load_conversation
 final class EngineInstanceCollapseTests: XCTestCase {
 
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
 
     // MARK: - Helpers
-
-    private func jsonObject(from command: RemoteCommand) throws -> [String: Any] {
-        let data = try encoder.encode(command)
-        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-    }
 
     private func makeInstance(id: String, label: String, isRunning: Bool = false) -> ConversationInstanceInfo {
         ConversationInstanceInfo(id: id, label: label, isRunning: isRunning)
@@ -181,15 +174,6 @@ final class EngineInstanceCollapseTests: XCTestCase {
             RemoteCommand.TypeKey(rawValue: "desktop_load_engine_conversation"),
             "loadEngineConversation TypeKey must be absent after WI-004 retirement"
         )
-    }
-
-    func testLoadConversationEncodesUnifiedCommand() throws {
-        // The unified command replaces loadEngineConversation for all tabs.
-        let cmd = RemoteCommand.loadConversation(tabId: "tab-x", before: nil)
-        let json = try jsonObject(from: cmd)
-        XCTAssertEqual(json["type"] as? String, "desktop_load_conversation",
-            "loadConversation must encode as desktop_load_conversation (unified command)")
-        XCTAssertEqual(json["tabId"] as? String, "tab-x")
     }
 
     // MARK: - 6. EngineInstanceBar shows single instance without crash

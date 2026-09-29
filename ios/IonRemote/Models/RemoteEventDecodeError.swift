@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Separates "wire type string has no TypeKey case" (expected, forward-compat)
 /// from a genuine DecodingError (known type, bad payload — always a bug).
-/// TransportManager+Receive.swift catches this error before the general catch
+/// The receive path catches this error before the general catch
 /// so the two categories get different handling: unknown types are dropped at
 /// trace level with no resync; bad payloads log at error level and trigger a
 /// full resync.

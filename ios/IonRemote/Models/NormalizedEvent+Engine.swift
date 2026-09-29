@@ -43,24 +43,6 @@ extension RemoteEvent {
             try container.encodeIfPresent(metadata, forKey: .metadata)
             return true
 
-        case .engineToolStart(let tabId, let instanceId, let toolName, let toolId):
-            try container.encode(TypeKey.engineToolStart, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(toolName, forKey: .toolName)
-            try container.encode(toolId, forKey: .toolId)
-            return true
-
-        case .engineToolEnd(let tabId, let instanceId, let toolId, let result, let isError, let backgroundTaskId):
-            try container.encode(TypeKey.engineToolEnd, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(toolId, forKey: .toolId)
-            try container.encodeIfPresent(result, forKey: .result)
-            try container.encode(isError, forKey: .isError)
-            try container.encodeIfPresent(backgroundTaskId, forKey: .backgroundTaskId)
-            return true
-
         case .engineToolStalled(let tabId, let instanceId, let toolId, let toolName, let elapsed):
             try container.encode(TypeKey.engineToolStalled, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
@@ -112,44 +94,6 @@ extension RemoteEvent {
             try container.encodeIfPresent(lastActivity, forKey: .runStalledLastActivity)
             return true
 
-        case .engineRunRecovery(let tabId, let instanceId, let recoveryId, let phase, let attempt, let maxAttempts, let reason):
-            try container.encode(TypeKey.engineRunRecovery, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(recoveryId, forKey: .runRecoveryId)
-            try container.encode(phase, forKey: .runRecoveryPhase)
-            try container.encodeIfPresent(attempt, forKey: .runRecoveryAttempt)
-            try container.encodeIfPresent(maxAttempts, forKey: .runRecoveryMaxAttempts)
-            try container.encodeIfPresent(reason, forKey: .runRecoveryReason)
-            return true
-
-        case .engineSteerInjected(let tabId, let instanceId, let messageLength, let clientMessageId, let entryId, let kind, let machineAuthored):
-            try container.encode(TypeKey.engineSteerInjected, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(messageLength, forKey: .steerMessageLength)
-            try container.encodeIfPresent(clientMessageId, forKey: .steerClientMessageId)
-            try container.encodeIfPresent(entryId, forKey: .steerEntryId)
-            try container.encodeIfPresent(kind, forKey: .steerKind)
-            try container.encodeIfPresent(machineAuthored, forKey: .steerMachineAuthored)
-            return true
-
-        case .engineDispatchLost(let tabId, let instanceId, let lost):
-            try container.encode(TypeKey.engineDispatchLost, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(lost, forKey: .dispatchLost)
-            return true
-
-        case .engineSteerDegraded(let tabId, let instanceId, let messageLength, let kind, let machineAuthored):
-            try container.encode(TypeKey.engineSteerDegraded, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(messageLength, forKey: .steerDegradedMessageLength)
-            try container.encodeIfPresent(kind, forKey: .steerKind)
-            try container.encodeIfPresent(machineAuthored, forKey: .steerMachineAuthored)
-            return true
-
         case .engineSteerInterruptedStream(let tabId, let instanceId, let blocksKept, let queuedSteers):
             try container.encode(TypeKey.engineSteerInterruptedStream, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
@@ -170,23 +114,6 @@ extension RemoteEvent {
             try container.encodeIfPresent(error, forKey: .error)
             return true
 
-        case .enginePromptInjected(let tabId, let instanceId, let prompt, let origin, let kind, let machineAuthored):
-            try container.encode(TypeKey.enginePromptInjected, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(prompt, forKey: .injectedPrompt)
-            try container.encodeIfPresent(origin, forKey: .injectedPromptOrigin)
-            try container.encodeIfPresent(kind, forKey: .injectedPromptKind)
-            try container.encodeIfPresent(machineAuthored, forKey: .injectedPromptMachineAuthored)
-            return true
-
-        case .engineToolUpdate(let tabId, let instanceId, let toolId, let partialInput):
-            try container.encode(TypeKey.engineToolUpdate, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(toolId, forKey: .toolId)
-            try container.encode(partialInput, forKey: .partialInput)
-            return true
         case .engineToolComplete(let tabId, let instanceId):
             try container.encode(TypeKey.engineToolComplete, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
@@ -226,21 +153,6 @@ extension RemoteEvent {
             try container.encode(dispatchId, forKey: .dispatchId)
             try container.encodeIfPresent(conversationId, forKey: .dispatchConversationId)
             return true
-        case .engineDispatchActivity(let tabId, let instanceId, let agentId, let conversationId, let kind, let seq, let resetAfterSeq, let toolName, let toolId, let textDelta, let isError, let ts):
-            try container.encode(TypeKey.engineDispatchActivity, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(agentId, forKey: .dispatchAgentId)
-            try container.encode(conversationId, forKey: .dispatchConversationId)
-            try container.encode(kind, forKey: .dispatchActivityKind)
-            try container.encode(seq, forKey: .dispatchSeq)
-            try container.encodeIfPresent(resetAfterSeq, forKey: .dispatchResetAfterSeq)
-            try container.encodeIfPresent(toolName, forKey: .toolName)
-            try container.encodeIfPresent(toolId, forKey: .toolId)
-            try container.encodeIfPresent(textDelta, forKey: .dispatchTextDelta)
-            try container.encode(isError, forKey: .dispatchToolIsError)
-            try container.encodeIfPresent(ts, forKey: .dispatchActivityTs)
-            return true
 
         case .engineError(let tabId, let instanceId, let message, let stderrTail):
             try container.encode(TypeKey.engineError, forKey: .type)
@@ -250,15 +162,6 @@ extension RemoteEvent {
             if !stderrTail.isEmpty {
                 try container.encode(stderrTail, forKey: .stderrTail)
             }
-            return true
-
-        case .engineNotify(let tabId, let instanceId, let message, let level, let metadata):
-            try container.encode(TypeKey.engineNotify, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(message, forKey: .message)
-            try container.encode(level, forKey: .level)
-            try container.encodeIfPresent(metadata, forKey: .metadata)
             return true
 
         case .engineDialog(let tabId, let instanceId, let dialogId, let method, let title, let options, let defaultValue):
@@ -279,34 +182,11 @@ extension RemoteEvent {
             try container.encode(dialogId, forKey: .dialogId)
             return true
 
-        case .engineTextDelta(let tabId, let instanceId, let text):
-            try container.encode(TypeKey.engineTextDelta, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(text, forKey: .text)
-            return true
-
-        case .engineStreamReset(let tabId, let instanceId):
-            try container.encode(TypeKey.engineStreamReset, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            return true
-
         case .engineMessageEnd(let tabId, let instanceId, let inputTokens, let outputTokens, let contextPercent, let cost, let entryId, let userEntryId):
             try container.encode(TypeKey.engineMessageEnd, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(EngineMessageEndUsage(inputTokens: inputTokens, outputTokens: outputTokens, contextPercent: contextPercent, cost: cost, entryId: entryId, userEntryId: userEntryId), forKey: .usage)
-            return true
-
-        case .engineUserTurnPersisted(let tabId, let instanceId, let entryId, let slashModelAlias, let slashModelEffective, let slashFrontmatter):
-            try container.encode(TypeKey.engineUserTurnPersisted, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(entryId, forKey: .userTurnEntryId)
-            try container.encodeIfPresent(slashModelAlias, forKey: .userTurnSlashModelAlias)
-            try container.encodeIfPresent(slashModelEffective, forKey: .userTurnSlashModelEffective)
-            try container.encodeIfPresent(slashFrontmatter, forKey: .userTurnSlashFrontmatter)
             return true
 
         case .engineDead(let tabId, let instanceId, let exitCode, let signal, let stderrTail):
@@ -337,27 +217,9 @@ extension RemoteEvent {
             try container.encode(targetTabId, forKey: .targetTabId)
             return true
 
-        case .engineHarnessMessage(let tabId, let instanceId, let message, let source, let metadata, let dedupKey, let dedupMode):
-            try container.encode(TypeKey.engineHarnessMessage, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(message, forKey: .message)
-            try container.encodeIfPresent(source, forKey: .source)
-            try container.encodeIfPresent(metadata, forKey: .metadata)
-            try container.encodeIfPresent(dedupKey, forKey: .dedupKey)
-            try container.encodeIfPresent(dedupMode, forKey: .dedupMode)
-            return true
-
         // engineConversationHistory encode arm removed (WI-004 / #259).
         // History is delivered via desktop_conversation_history; there is
         // no engine-side NormalizedEvent case to encode for it.
-
-        case .agentConversationHistory(let agentName, let conversationId, let messages):
-            try container.encode(TypeKey.agentConversationHistory, forKey: .type)
-            try container.encode(agentName, forKey: .agentName)
-            try container.encodeIfPresent(conversationId, forKey: .conversationId)
-            try container.encode(messages, forKey: .messages)
-            return true
 
         case .engineModelOverride(let tabId, let instanceId, let model):
             try container.encode(TypeKey.engineModelOverride, forKey: .type)
@@ -376,15 +238,6 @@ extension RemoteEvent {
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(planModeEnabled, forKey: .planModeEnabled)
-            try container.encodeIfPresent(planFilePath, forKey: .planFilePath)
-            try container.encodeIfPresent(planSlug, forKey: .planSlug)
-            return true
-
-        case .enginePlanFileWritten(let tabId, let instanceId, let operation, let planFilePath, let planSlug):
-            try container.encode(TypeKey.enginePlanFileWritten, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(operation, forKey: .planWriteOperation)
             try container.encodeIfPresent(planFilePath, forKey: .planFilePath)
             try container.encodeIfPresent(planSlug, forKey: .planSlug)
             return true
@@ -497,13 +350,15 @@ extension RemoteEvent {
             _ = tabId; _ = instanceId; _ = resourceKind; _ = resourceItem
             return false
 
-        case .desktopSettingsSnapshot(let settings, let schema, let groups, let newConversationPolicy, let themePolicy):
+        case .desktopSettingsSnapshot(let settings, let schema, let groups, let newConversationPolicy, let themePolicy, let canManageEnvironment, let pages):
             try container.encode(TypeKey.desktopSettingsSnapshot, forKey: .type)
             try container.encode(settings, forKey: .settings)
             try container.encode(schema, forKey: .schema)
             try container.encode(groups, forKey: .groups)
             try container.encodeIfPresent(newConversationPolicy, forKey: .newConversationPolicy)
             try container.encodeIfPresent(themePolicy, forKey: .themePolicy)
+            try container.encodeIfPresent(canManageEnvironment, forKey: .canManageEnvironment)
+            try container.encodeIfPresent(pages, forKey: .pages)
             return true
 
         case .desktopThemeManifest(let themes, let hash):
@@ -521,20 +376,6 @@ extension RemoteEvent {
             try container.encodeIfPresent(dataUrl, forKey: .dataUrl)
             return true
 
-        case .engineIntercept(let tabId, let instanceId, let level, let title, let message, let source, let metadata):
-            // Encoder mirror of the decoder above. iOS never originates
-            // this event (the engine+desktop emit it), but the encoder
-            // must round-trip cleanly for tests and diagnostic dumps.
-            try container.encode(TypeKey.engineIntercept, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(level, forKey: .level)
-            try container.encode(title, forKey: .title)
-            try container.encode(message, forKey: .message)
-            try container.encodeIfPresent(source, forKey: .source)
-            try container.encodeIfPresent(metadata, forKey: .metadata)
-            return true
-
         case .desktopContextBreakdown(let tabId, let instanceId, let breakdown):
             // Encoder mirror for desktop_context_breakdown. iOS never originates
             // this event; the encoder enables round-trip tests.
@@ -542,19 +383,6 @@ extension RemoteEvent {
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(breakdown, forKey: .contextBreakdown)
-            return true
-
-        case .engineImageContent(let tabId, let instanceId, let path, let mediaType, let contentHash, let source, let toolId):
-            // Encoder mirror for engine_image_content. iOS never originates
-            // this event; the encoder enables round-trip tests.
-            try container.encode(TypeKey.engineImageContent, forKey: .type)
-            try container.encode(tabId, forKey: .tabId)
-            try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(path, forKey: .path)
-            try container.encode(mediaType, forKey: .mediaType)
-            try container.encodeIfPresent(contentHash, forKey: .contentHash)
-            try container.encode(source, forKey: .source)
-            try container.encodeIfPresent(toolId, forKey: .toolId)
             return true
 
         default:

@@ -29,10 +29,11 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Ion Remote uses the camera to scan a relay pairing code shown in Ion Studio.</string>
 	<key>NSBonjourServices</key>
 	<array>
-		<string>_ion-relay._tcp</string>
-		<string>_ion._tcp</string>
+		<string>_ion-studio._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Ion Remote discovers your Mac running Ion on the local network for direct, low-latency communication.</string>
@@ -64,6 +65,17 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.ion.remote.pairing-link</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>ion-studio</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>

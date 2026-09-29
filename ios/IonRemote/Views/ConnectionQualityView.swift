@@ -34,7 +34,7 @@ struct ConnectionQualityView: View {
             showPopover = true
         } label: {
             if compact {
-                signalBars(quality: quality)
+                compactIndicator(quality: quality)
             } else {
                 HStack(spacing: 4) {
                     signalBars(quality: quality)
@@ -47,6 +47,37 @@ struct ConnectionQualityView: View {
         .buttonStyle(.plain)
         .popover(isPresented: $showPopover) {
             popoverContent(quality: quality)
+        }
+    }
+
+    // MARK: - Compact Indicator
+
+    /// What the bar shows at a glance: the transport, not just its quality.
+    ///
+    /// Bars answer "how good is the link", which is the question that matters
+    /// on a relay, where latency and buffering vary. On the LAN they answer
+    /// nothing — the level is always excellent — while the question actually
+    /// worth answering there is "am I on the LAN at all", and that took a tap
+    /// to find out. So the LAN gets the Wi-Fi glyph and the relay keeps its
+    /// bars, which is the same pair of shapes the system status bar uses for
+    /// the same distinction.
+    /// The glyph the compact bar draws, or nil when it draws signal bars.
+    /// A pure decision so it can be pinned without standing up a view.
+    static func compactGlyph(for transportState: TransportState) -> String? {
+        transportState == .lanPreferred ? "wifi" : nil
+    }
+
+    @ViewBuilder
+    private func compactIndicator(quality: ConnectionQuality) -> some View {
+        if let glyph = Self.compactGlyph(for: quality.transportState) {
+            Image(systemName: glyph)
+                .font(.system(size: 13, weight: .semibold)) // design-type: SF Symbol transport glyph sized as icon geometry, not text
+                .foregroundStyle(quality.signalLevel.color)
+                .frame(height: 14)
+                .accessibilityLabel(quality.transportLabel)
+        } else {
+            signalBars(quality: quality)
+                .accessibilityLabel(quality.transportLabel)
         }
     }
 
@@ -90,7 +121,7 @@ struct ConnectionQualityView: View {
             }
 
             if quality.lastBuffered > 0 {
-                Label("Desktop queue: \(quality.lastBuffered)", systemImage: "tray.full")
+                Label("Server queue: \(quality.lastBuffered)", systemImage: "tray.full")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }

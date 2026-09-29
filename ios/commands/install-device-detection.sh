@@ -16,7 +16,9 @@ with open(path, encoding="utf-8") as f:
 
 for d in data.get("result", {}).get("devices", []):
     hw = d.get("hardwareProperties", {})
-    if hw.get("reality") != "physical":
+    # Simulators report reality "simulated". Current devicectl omits the
+    # field for physical devices, so only an explicit "simulated" is skipped.
+    if hw.get("reality") == "simulated":
         continue
     dtype = hw.get("deviceType", "")
     if dtype not in ("iPhone", "iPad"):

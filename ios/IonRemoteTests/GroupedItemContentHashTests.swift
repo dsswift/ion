@@ -51,14 +51,11 @@ final class GroupedItemContentHashTests: XCTestCase {
             "a divider state change must reconfigure the stable message row")
     }
 
-    /// Fields that never reach a pixel must not perturb the hash. `isLive` is
-    /// flipped by the history-merge boundary bookkeeping on rows whose rendering
-    /// is unaffected; hashing it would reconfigure rows for free.
+    /// Fields that never reach a pixel must not perturb the hash: hashing them
+    /// would reconfigure rows for free.
     func testNonRenderedFieldsDoNotAffectHash() {
         let base = msg(id: "m1", role: .assistant, content: "hello")
         var mutated = base
-        mutated.isLive = !base.isLive
-        mutated.sealed = !base.sealed
         mutated.clientMsgId = "client-abc"
         mutated.injectionKind = "agent_completion"
 

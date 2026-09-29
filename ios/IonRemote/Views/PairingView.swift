@@ -3,32 +3,23 @@ import SwiftUI
 struct PairingView: View {
     @Environment(\.appTheme) private var theme
     @Environment(SessionViewModel.self) private var viewModel
-    @Environment(\.horizontalSizeClass) private var sizeClass
 
     @State private var browser = BonjourBrowser()
 
     // Selected service from discovery
     @State private var selectedService: DiscoveredService?
 
-    // Credentials input (shared by sheet)
-    @State private var pairingCodeInput = ""
-    // Whether a codeless recovery attempt is in progress or has been tried
-    @State private var attemptingRecovery = false
-    @State private var recoveryAttempted = false
-
     // Discovery pulse animation
     @State private var pulseScale: CGFloat = 1.0
 
-    // Code field focus
-    @FocusState private var codeFieldFocused: Bool
-
-    // Clipboard paste detection
-    @State private var clipboardHasCode = false
+    // "Pair over relay" (Ion Studio Server, child 19)
+    @State private var showRelayPairing = false
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 discoverySection
+                relayPairingEntry
             }
             .navigationTitle("Pair Device")
             .navigationBarTitleDisplayMode(.inline)
@@ -39,16 +30,48 @@ struct PairingView: View {
                 browser.stopBrowsing()
             }
             .sheet(item: $selectedService) { service in
-                switch service.kind {
-                case .relay:
-                    // Relay servers require pairing through an Ion desktop first.
-                    // Show info about needing LAN pairing.
-                    relayInfoSheet(for: service)
-                case .ionDirect:
-                    ionPairingSheet(for: service)
-                }
+                StudioServerPairingSheet(service: service) { selectedService = nil }
+                    .environment(viewModel)
+            }
+            .sheet(isPresented: $showRelayPairing) {
+                RelayPairingSheet()
+                    .environment(viewModel)
             }
         }
+    }
+
+    /// Entry point for the relay-pairing flow: enter or scan a
+    /// `RelayPairingPayload` from Ion Studio. Distinct from
+    /// `serviceRow`/Bonjour discovery above — a relay pairing code reaches a
+    /// server Bonjour can't see (personal server behind NAT, or an enterprise
+    /// server Bonjour access is scoped away from).
+    private var relayPairingEntry: some View {
+        Button {
+            DiagnosticLog.log("pairing view: pair over relay tapped", tag: "view.pairing")
+            showRelayPairing = true
+        } label: {
+            HStack {
+                Image(systemName: "qrcode")
+                    .font(.body)
+                    .foregroundStyle(theme.accent)
+                    .frame(width: 28, height: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Pair over relay")
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                    Text("Enter or scan a code from Ion Studio")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, IonSpace.screenInset)
+            .padding(.vertical, IonSpace.rowInset)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Discovery
@@ -79,7 +102,7 @@ struct PairingView: View {
                     Text("Searching your network...")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    Text("Looking for Ion instances and relay servers.")
+                    Text("Looking for Ion Studio Servers.")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
@@ -88,22 +111,9 @@ struct PairingView: View {
                 .frame(maxHeight: .infinity)
             } else {
                 List {
-                    let ionInstances = browser.discoveredHosts.filter { $0.kind == .ionDirect }
-                    let relays = browser.discoveredHosts.filter { $0.kind == .relay }
-
-                    if !ionInstances.isEmpty {
-                        Section("Ion Instances") {
-                            ForEach(ionInstances) { service in
-                                serviceRow(service, icon: "desktopcomputer", subtitle: "Direct LAN connection")
-                            }
-                        }
-                    }
-
-                    if !relays.isEmpty {
-                        Section("Relay Servers") {
-                            ForEach(relays) { service in
-                                serviceRow(service, icon: "server.rack", subtitle: "\(service.host):\(service.port)")
-                            }
+                    Section("Ion Studio Servers") {
+                        ForEach(browser.discoveredHosts) { service in
+                            serviceRow(service, icon: "server.rack", subtitle: "Pair with the server's own code")
                         }
                     }
                 }
@@ -113,9 +123,6 @@ struct PairingView: View {
 
     private func serviceRow(_ service: DiscoveredService, icon: String, subtitle: String) -> some View {
         Button {
-            pairingCodeInput = ""
-            recoveryAttempted = false
-            attemptingRecovery = false
             selectedService = service
         } label: {
             HStack {
@@ -125,7 +132,7 @@ struct PairingView: View {
                     .frame(width: 28, height: 28)
                     .background(theme.accent.opacity(0.12), in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(service.name)
+                    Text(service.displayName)
                         .font(.headline)
                     Text(subtitle)
                         .font(.caption)
@@ -142,207 +149,6 @@ struct PairingView: View {
                 }
                 Image(systemName: "chevron.right")
                     .foregroundStyle(.tertiary)
-            }
-        }
-    }
-
-    // MARK: - Relay Info Sheet
-
-    private func relayInfoSheet(for service: DiscoveredService) -> some View {
-        NavigationStack {
-            VStack(spacing: 24) {
-                VStack(spacing: 8) {
-                    Image(systemName: "server.rack")
-                        .font(.system(size: 40)) // design-type: SF Symbol hero glyph sized as icon geometry, not text
-                        .foregroundStyle(theme.accent)
-                    Text(service.name)
-                        .font(.title2.bold())
-                    Text("\(service.host):\(service.port)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.top, IonSpace.rowInset)
-
-                VStack(spacing: 12) {
-                    Text("Relay servers require pairing through an Ion desktop app first.")
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
-                    Text("1. Open Ion on your desktop\n2. Enable Remote Control in Settings\n3. Click \"Pair New Device\"\n4. Select the Ion instance from the Discover list")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .multilineTextAlignment(.leading)
-                }
-                .padding(.horizontal, IonSpace.sectionGap)
-
-                Spacer()
-            }
-            .navigationTitle("Relay Server")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { selectedService = nil }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-    }
-
-    // MARK: - Ion Direct Pairing Sheet
-
-    private func ionPairingSheet(for service: DiscoveredService) -> some View {
-        NavigationStack {
-            VStack(spacing: 24) {
-                VStack(spacing: 8) {
-                    Image(systemName: "desktopcomputer")
-                        .font(.system(size: 40)) // design-type: SF Symbol hero glyph sized as icon geometry, not text
-                        .foregroundStyle(theme.accent)
-                    Text(service.name)
-                        .font(.title2.bold())
-                    Text("\(service.host):\(service.port)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Text("Direct LAN Connection")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.top, IonSpace.rowInset)
-
-                if attemptingRecovery {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                            .scaleEffect(1.2)
-                        Text("Reconnecting...")
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    VStack(spacing: 8) {
-                        Text("Enter the 6-digit code shown in Ion")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-
-                        let isRegular = sizeClass == .regular
-                        let boxWidth: CGFloat = isRegular ? 52 : 40
-                        let boxHeight: CGFloat = isRegular ? 64 : 52
-                        let boxFont: Font = isRegular
-                            ? .system(.largeTitle, design: .monospaced)
-                            : .system(.title, design: .monospaced)
-
-                        ZStack {
-                            HStack(spacing: 8) {
-                                ForEach(0..<6, id: \.self) { index in
-                                    let char = index < pairingCodeInput.count
-                                        ? String(pairingCodeInput[pairingCodeInput.index(pairingCodeInput.startIndex, offsetBy: index)])
-                                        : ""
-                                    Text(char)
-                                        .font(boxFont)
-                                        .frame(width: boxWidth, height: boxHeight)
-                                        .background(Color(.tertiarySystemFill))
-                                        .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.small))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: IonTheme.Radius.small)
-                                                .stroke(index == pairingCodeInput.count ? theme.accent : theme.borderSubtle, lineWidth: index == pairingCodeInput.count ? 2 : 1)
-                                        )
-                                }
-                            }
-                            .allowsHitTesting(false)
-
-                            // Full-sized transparent TextField for reliable keyboard activation on iPad
-                            TextField("", text: $pairingCodeInput)
-                                .keyboardType(.numberPad)
-                                .focused($codeFieldFocused)
-                                .foregroundColor(.clear)
-                                .tint(.clear)
-                                .frame(width: boxWidth * 6 + 8 * 5, height: boxHeight)
-                                .onChange(of: pairingCodeInput) { _, newValue in
-                                    // Limit to 6 digits
-                                    let filtered = String(newValue.prefix(6).filter(\.isNumber))
-                                    if filtered != newValue { pairingCodeInput = filtered }
-                                }
-                        }
-
-                        if clipboardHasCode, let clip = UIPasteboard.general.string {
-                            Button {
-                                pairingCodeInput = String(clip.prefix(6))
-                                clipboardHasCode = false
-                            } label: {
-                                Label("Paste \(clip.prefix(6))", systemImage: "doc.on.clipboard")
-                                    .font(.caption)
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(theme.accent)
-                        }
-                    }
-                    .onTapGesture { codeFieldFocused = true }
-                    .padding(.horizontal)
-
-                    Button {
-                        viewModel.pairWithCode(
-                            host: service.host,
-                            port: service.port,
-                            name: service.name,
-                            code: pairingCodeInput
-                        )
-                    } label: {
-                        Text("Pair")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14) // design-geometry: 14pt gap between contentGap and rowInset; off the 4pt ratio scale
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(theme.accent)
-                    .disabled(pairingCodeInput.count != 6 || viewModel.pairingState.isConnecting)
-                    .padding(.horizontal, 40) // design-geometry: 40pt inset beyond screenInset; off the 4pt ratio scale
-
-                    statusIndicator
-                }
-
-                Spacer()
-            }
-            .navigationTitle("Pair")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        attemptingRecovery = false
-                        recoveryAttempted = false
-                        selectedService = nil
-                    }
-                }
-            }
-            .onChange(of: viewModel.pairedDevices.count) { oldCount, newCount in
-                if newCount > oldCount {
-                    Haptic.success()
-                    selectedService = nil
-                }
-            }
-            .task {
-                // Auto-attempt codeless recovery before showing code entry.
-                // If the desktop recognizes this device name, pairing completes
-                // without a code. Otherwise fall back to manual code entry.
-                guard !recoveryAttempted else { return }
-                recoveryAttempted = true
-                attemptingRecovery = true
-                let ok = await viewModel.recoveryPair(
-                    host: service.host,
-                    port: service.port,
-                    name: service.name
-                )
-                if !ok {
-                    await MainActor.run {
-                        attemptingRecovery = false
-                        viewModel.pairingState = .idle
-                    }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-        .onAppear {
-            if let clip = UIPasteboard.general.string,
-               clip.count == 6, clip.allSatisfy(\.isNumber) {
-                clipboardHasCode = true
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                if !attemptingRecovery { codeFieldFocused = true }
             }
         }
     }

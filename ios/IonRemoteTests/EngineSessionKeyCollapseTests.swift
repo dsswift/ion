@@ -12,7 +12,6 @@ import XCTest
 ///   6. Engine and plain drafts share one store
 ///   7. setEngineDraft writes bare tabId key
 ///   8. clearEngineDrafts removes the unified bare-tabId entry
-///   9. Null inbound instanceId handled: conversation load-state key is bare tabId
 ///   10. loadEngineConversation retired (WI-004 / #259): TypeKey absent, loadConversation used instead
 ///   11. Terminal compound keys are NOT affected by parseEngineSessionKey (it only strips, terminals keep their own compound keys when addressed directly)
 ///   12. AgentDetailFullScreenView.compoundKey parse round-trip via parseEngineSessionKey
@@ -143,39 +142,6 @@ final class EngineSessionKeyCollapseTests: XCTestCase {
         XCTAssertNil(vm.draftInputByTab["tab-g"])
     }
 
-    // MARK: - 9. Null inbound instanceId: conversation load-state uses bare tabId
-
-    @MainActor
-    func testEngineConversationLoadedInsertsBareTabId() async {
-        // Post-#256 engine and plain tabs share one load-state set
-        // (conversationLoaded) keyed bare tabId. Drive the live handler
-        // (desktop_conversation_history → handleConversationHistory) and
-        // assert it marks the bare tabId, not a compound key.
-        // Re-pointed from engineConversationHistory (WI-004 / #259).
-        let vm = SessionViewModel()
-        let tabId = "tab-conv-1"
-        vm.handleConversationHistory(tabId: tabId, newMessages: [], hasMore: false, cursor: nil)
-        XCTAssertTrue(vm.conversationLoaded.contains(tabId))
-        // Must NOT contain a compound key
-        XCTAssertFalse(vm.conversationLoaded.contains("\(tabId):main"))
-        XCTAssertFalse(vm.conversationLoaded.contains("\(tabId):inst-abc"))
-    }
-
-    @MainActor
-    func testEngineConversationLoaded_doesNotContainCompoundKeyForBareTab() async {
-        // The submitEnginePrompt optimistic insert guards on
-        // conversationLoaded.contains(tabId) where the key is bare tabId.
-        // Verify a legacy compound key does not satisfy the bare-tabId check.
-        let vm = SessionViewModel()
-        let tabId = "tab-opt"
-        // Simulate a legacy state where only a compound key was inserted
-        let compoundKey = "\(tabId):main"
-        vm.conversationLoaded.insert(compoundKey)
-        // The optimistic guard checks bare tabId — should NOT be true with only compound key stored
-        XCTAssertFalse(vm.conversationLoaded.contains(tabId),
-            "Bare tabId must not match a legacy compound key in the set")
-    }
-
     // MARK: - 10. loadEngineConversation retired (WI-004)
 
     @MainActor
@@ -185,17 +151,6 @@ final class EngineSessionKeyCollapseTests: XCTestCase {
             RemoteCommand.TypeKey(rawValue: "desktop_load_engine_conversation"),
             "loadEngineConversation TypeKey must be absent after WI-004 retirement"
         )
-    }
-
-    @MainActor
-    func testLoadConversation_encodesUnifiedCommand() throws {
-        // loadConversation now handles every tab — plain and extension-hosted.
-        let cmd = RemoteCommand.loadConversation(tabId: "tab-load", before: nil)
-        let data = try JSONEncoder().encode(cmd)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertEqual(json["type"] as? String, "desktop_load_conversation",
-            "loadConversation must encode desktop_load_conversation for all tabs (WI-004)")
-        XCTAssertEqual(json["tabId"] as? String, "tab-load")
     }
 
     // MARK: - 11. Terminal keys are not collapsed by parseEngineSessionKey

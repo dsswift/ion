@@ -89,8 +89,18 @@ enum PendingCard {
         var toolInput: [String: AnyCodable]?
         if let inputStr = lastTool.toolInput,
            let data = inputStr.data(using: .utf8),
+           // toolInput need not be a JSON object; a nil toolInput is the intended fallback.
+           // swiftlint:disable:next silent_try_optional
            let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             toolInput = dict.mapValues { AnyCodable($0) }
+        }
+        // An ExitPlanMode call whose own input names no plan still has one:
+        // the server's transcript row carries the plan written before it, and
+        // the card fetches the plan's body by that path.
+        if let planFilePath = lastTool.planFilePath, toolInput?["planFilePath"] == nil {
+            var input = toolInput ?? [:]
+            input["planFilePath"] = AnyCodable(planFilePath)
+            toolInput = input
         }
 
         return PermissionRequest(

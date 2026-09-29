@@ -49,9 +49,7 @@ final class UnifiedConversationDivergenceGuardTests: XCTestCase {
             .deletingLastPathComponent()
             .appendingPathComponent("IonRemote/ViewModels/SessionViewModel+Conversation.swift")
         let src = try String(contentsOf: url, encoding: .utf8)
-        for accessor in ["func conversationMessages", "func mutateConversationMessages",
-                         "func liveText", "func setLiveText", "func ensureMainInstance",
-                         "func thinkingMessageId"] {
+        for accessor in ["func conversationMessages", "func ensureMainInstance"] {
             XCTAssertTrue(src.contains(accessor),
                 "Unified accessor missing: \(accessor)")
         }
@@ -76,6 +74,33 @@ final class UnifiedConversationDivergenceGuardTests: XCTestCase {
                 let src = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
                 XCTAssertFalse(src.contains(fn),
                     "Vestigial compound-key helper reintroduced (`\(fn)`) in \(file.lastPathComponent). Engine session state is keyed by bare tabId with a single instance — use the unified accessors instead.")
+            }
+        }
+    }
+
+    /// A conversation's rows are the server's transcript, and exactly one
+    /// file writes them. A handler that appends or edits a row from an
+    /// engine event would bring back the second transcript builder the
+    /// phone used to have, and with it every way the two drifted apart.
+    func testOnlyTheTranscriptFileWritesConversationRows() throws {
+        let dir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("IonRemote")
+        let files = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil)?
+            .compactMap { $0 as? URL }
+            .filter { $0.pathExtension == "swift" && $0.lastPathComponent != "SessionViewModel+Transcript.swift" } ?? []
+        XCTAssertFalse(files.isEmpty)
+        var writes: [String] = []
+        for owner in ["inst.", "$0.", "instance.", "prior.", "[0]."] {
+            for op in ["messages.append(", "messages = ", "messages += ", "messages.insert(", "messages.remove", "messages.replaceSubrange("] {
+                writes.append(owner + op)
+            }
+        }
+        for file in files {
+            let src = try String(contentsOf: file, encoding: .utf8)
+            for write in writes where src.contains(write) {
+                XCTFail("\(file.lastPathComponent) writes conversation rows (`\(write)`). Rows come only from the server's transcript: SessionViewModel+Transcript.swift.")
             }
         }
     }

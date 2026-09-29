@@ -100,6 +100,13 @@ extension EngineMessageRow {
                                 .textSelection(.enabled)
                                 .lineLimit(20)
                                 .foregroundStyle(message.toolStatus == .error ? .red : .primary)
+                            // The server sends the head of long tool output
+                            // and says how large the whole was.
+                            if message.contentTruncated {
+                                Text(Self.truncationNote(shownCharacters: message.content.count, totalBytes: message.contentBytes))
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
                     }
                     .padding(.horizontal, IonSpace.contentGap)
@@ -187,5 +194,12 @@ extension EngineMessageRow {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// The note under a tool result the server cut to its wire cap.
+    static func truncationNote(shownCharacters: Int, totalBytes: Int?) -> String {
+        guard let totalBytes else { return "Output shortened; the first \(shownCharacters) characters are shown." }
+        let size = ByteCountFormatter.string(fromByteCount: Int64(totalBytes), countStyle: .file)
+        return "Output shortened: the first \(shownCharacters) characters of \(size) are shown."
     }
 }

@@ -171,9 +171,13 @@ final class BenchNavigationTests: XCTestCase {
         XCTAssertTrue(result.hasPrefix("assembled "), "expected an 'assembled ...' prefix, got \(result)")
     }
 
+    /// Measured against a fixed, whole-second `now`. A fractional clock
+    /// reading converted to milliseconds and back can come out a hair under
+    /// five minutes, which the formatter reports as "4m".
     func testRelativeAssemblyTimeMinutesAgo() {
-        let fiveMinutesAgoMs = (Date().timeIntervalSince1970 - 5 * 60) * 1000
-        let result = BenchAssemblyTime.relative(fiveMinutesAgoMs)
+        let now = Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down))
+        let fiveMinutesAgoMs = (now.timeIntervalSince1970 - 5 * 60) * 1000
+        let result = BenchAssemblyTime.relative(fiveMinutesAgoMs, now: now)
         XCTAssertTrue(result.hasPrefix("assembled "), "expected an 'assembled ...' prefix, got \(result)")
         XCTAssertTrue(result.contains("5"), "expected the 5-minute figure to appear, got \(result)")
     }

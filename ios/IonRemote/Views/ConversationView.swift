@@ -18,6 +18,8 @@ struct ConversationView: View {
     /// Presented by presentationLayersA as a FileEditorView cover, mirroring
     /// selectedPlanPath.
     @State var selectedFilePath: IdentifiablePath?
+    /// A Quick Look preview or Save to Files sheet for a file link (ConversationView+FileLinks).
+    @State var fileLinkSheet: FileLinkSheet?
     @State var isNearBottom = true
     @State var forceScrollCounter = 0
     /// The transcript row a chart-attachment tap asked to scroll to, with a
@@ -100,7 +102,7 @@ struct ConversationView: View {
     /// agentPanelDefaultOpen setting > true.
     var isAgentsPanelExpanded: Bool {
         if let explicit = agentsPanelExpanded { return explicit }
-        return AgentPanelDefaultResolver.resolveAgentPanelDefault(viewModel.desktopSettings)
+        return AgentPanelDefaultResolver.resolveAgentPanelDefault(viewModel.serverSettings)
     }
 
     /// Two-way binding for the agent panel expanded state. Reads through the
@@ -121,8 +123,10 @@ struct ConversationView: View {
         return Array(tools.values).sorted { $0.startTime < $1.startTime }
     }
 
+    /// The server's transcript, then this phone's prompts it has not made
+    /// rows for yet.
     var engineMsgs: [Message] {
-        viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)?.messages ?? []
+        viewModel.renderedMessages(tabId: tabId)
     }
 
     var engineAttachmentCount: Int {
@@ -130,7 +134,7 @@ struct ConversationView: View {
     }
 
     var unifiedTurnView: Bool {
-        if let settings = viewModel.desktopSettings,
+        if let settings = viewModel.serverSettings,
            let val = settings.currentValue(for: "unifiedTurnView"),
            let flag = val.value as? Bool {
             return flag
@@ -260,9 +264,8 @@ struct ConversationView: View {
             // appear, and the desktop coalesced the second away unanswered.
             //
             // No isEmpty guard: `loadConversationIfNeeded` asks the precise
-            // question (has this tab ever loaded?), where `engineMsgs.isEmpty`
-            // stayed true forever on a conversation with no messages and
-            // re-requested history on every single appear.
+            // question (does the phone hold this transcript?), where
+            // `engineMsgs.isEmpty` stays true forever on an empty conversation.
             loadConversationHistory()
             viewModel.requestLoadAttachments(tabId: tabId)
         }
@@ -280,6 +283,6 @@ private struct ConversationPresentationLayers: ViewModifier {
     let host: ConversationView
 
     func body(content: Content) -> some View {
-        host.presentationLayersB(host.presentationLayersA(content))
+        host.fileLinkLayers(host.presentationLayersB(host.presentationLayersA(content)))
     }
 }

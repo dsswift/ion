@@ -33,10 +33,6 @@ extension SessionViewModel {
         ])
         mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.agentStates = agents }
 
-        // Clear push/snapshot input caches for terminal dispatches so stale
-        // push entries don't produce ghost duplicates on popup reopen.
-        clearTerminalDispatchCaches(for: agents)
-
         // A degraded roster carries agent identity but not detail: the desktop
         // shed metadata to fit a transport size cap. Ask for a full one rather
         // than rendering blank task/lastWork fields as though the agents

@@ -8,6 +8,17 @@ import SwiftUI
 /// EngineMessageRow.swift at the 600-line size cap, mirroring the
 /// SlashBubble/Support extractions.
 extension EngineMessageRow {
+    /// Chips for `[Attached file: PATH]` markers, each opening its file.
+    @ViewBuilder
+    func markerDocumentChips(_ paths: [String]) -> some View {
+        ForEach(paths, id: \.self) { path in
+            MessageDocumentChip(
+                name: (path as NSString).lastPathComponent,
+                onTap: onOpenFile.map { open in { open(path) } }
+            )
+        }
+    }
+
     @ViewBuilder
     func userBubbleContent(text: String, isBash: Bool) -> some View {
         // Long messages collapse by default (t3code-parity thresholds shared
@@ -72,12 +83,12 @@ extension EngineMessageRow {
     private func promptDeliveryLabel(_ state: PromptDeliveryState) -> some View {
         switch state {
         case .queued:
-            Label("Waiting for desktop", systemImage: "clock.arrow.circlepath")
+            Label("Waiting for server", systemImage: "clock.arrow.circlepath")
                 .foregroundStyle(theme.textSecondary)
         case .accepted:
             EmptyView()
         case .rejected(let error):
-            Label(error ?? "Desktop rejected message", systemImage: "exclamationmark.triangle.fill")
+            Label(error ?? "Server rejected message", systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(theme.statusError)
         }
     }

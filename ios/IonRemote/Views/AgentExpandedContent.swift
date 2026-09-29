@@ -24,8 +24,7 @@ struct AgentExpandedContent: View {
   let messages: [Message]?
   let convMessageCache: [String: [Message]]
   let isLoadingMessages: Bool
-  let onLoadDispatch: ((String) -> Void)?
-  let onPreloadDispatches: ((String) -> Void)?
+  let onLoadDispatch: ((DispatchInfo) -> Void)?
   /// Owning tab, forwarded into nested transcript controls for exact stops.
   var tabId: String? = nil
   /// Active task inventory for this session. Nested transcripts filter by task ID.
@@ -95,11 +94,11 @@ struct AgentExpandedContent: View {
       // no conversation yet), return nil so the UI shows "Working…"
       // instead of leaking another dispatch's conversation.
       guard !dispatch.conversationId.isEmpty else { return nil }
-      return convMessageCache[dispatch.conversationId]
+      return convMessageCache[SessionViewModel.dispatchKey(conversationId: dispatch.conversationId, dispatchId: dispatch.id)]
     }
     // Single dispatch (no pager) — use the first dispatch's conversation.
-    if let convId = agent.dispatches.first?.conversationId, !convId.isEmpty {
-      return convMessageCache[convId]
+    if let dispatch = agent.dispatches.first, !dispatch.conversationId.isEmpty {
+      return convMessageCache[SessionViewModel.dispatchKey(conversationId: dispatch.conversationId, dispatchId: dispatch.id)]
     }
     return messages
   }
@@ -155,7 +154,7 @@ struct AgentExpandedContent: View {
       }
       .padding(.vertical, IonSpace.compactInset)
       .onAppear { logDispatchState(event: "onAppear") }
-      .onChange(of: selectedDispatchIndex) { _ in logDispatchState(event: "selectionChange") }
+      .onChange(of: selectedDispatchIndex) { logDispatchState(event: "selectionChange") }
     }
   }
 
@@ -279,7 +278,7 @@ struct AgentExpandedContent: View {
       if !pinHeader { return }
       logDispatchState(event: "onAppear")
     }
-    .onChange(of: selectedDispatchIndex) { _ in
+    .onChange(of: selectedDispatchIndex) {
       if !pinHeader { return }
       logDispatchState(event: "selectionChange")
     }
@@ -419,7 +418,7 @@ struct AgentExpandedContent: View {
           Button {
             selectedDispatchIndex = idx
             if !d.conversationId.isEmpty {
-              onLoadDispatch?(d.conversationId)
+              onLoadDispatch?(d)
             }
           } label: {
             Text("#\(displayNum)")

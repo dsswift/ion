@@ -17,26 +17,6 @@ final class ThinkingEffortCodecTests: XCTestCase {
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
 
-    func testEncodeSetThinkingEffort() throws {
-        let cmd = RemoteCommand.setThinkingEffort(tabId: "t1", effort: "high")
-        let data = try encoder.encode(cmd)
-        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-        XCTAssertEqual(json["type"] as? String, "desktop_set_thinking_effort")
-        XCTAssertEqual(json["tabId"] as? String, "t1")
-        XCTAssertEqual(json["effort"] as? String, "high")
-    }
-
-    func testSetThinkingEffortRoundTrip() throws {
-        let cmd = RemoteCommand.setThinkingEffort(tabId: "t2", effort: "low")
-        let data = try encoder.encode(cmd)
-        let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        guard case let .setThinkingEffort(tabId, effort) = decoded else {
-            return XCTFail("decoded to wrong case: \(decoded)")
-        }
-        XCTAssertEqual(tabId, "t2")
-        XCTAssertEqual(effort, "low")
-    }
-
     func testTabStateThinkingEffortDecodes() throws {
         let json = """
         { "id": "t1", "title": "T", "status": "idle", "workingDirectory": "/x",

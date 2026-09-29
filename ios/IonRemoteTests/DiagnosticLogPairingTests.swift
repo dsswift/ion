@@ -1,4 +1,5 @@
 import XCTest
+import CryptoKit
 @testable import IonRemote
 
 /// Pins the diagnostic-log pairing isolation contract:
@@ -6,7 +7,9 @@ import XCTest
 ///   - parsePairingId extracts pairing_id from JSONL lines
 ///   - filtered incremental export returns only lines matching the
 ///     requested pairingId while advancing the seq cursor globally
-///   - pre-upgrade lines (no pairing_id) excluded from filtered exports
+///   - lines with no pairing_id excluded from filtered exports
+///   - every line the filter keeps back is counted, by reason
+///   - the counts survive the wire encoding
 final class DiagnosticLogPairingTests: XCTestCase {
 
     override func setUp() {
@@ -57,6 +60,54 @@ final class DiagnosticLogPairingTests: XCTestCase {
         XCTAssertFalse(matched.isEmpty, "expected log line with msg 'no pairing test'")
         XCTAssertNil(matched.last?["pairing_id"],
                      "pairing_id key must be absent when nil (not empty string)")
+    }
+
+    // MARK: - The stamp follows the pairing, not one connect path
+
+    private func stampedPairing(ofLineContaining marker: String) -> String? {
+        DiagnosticLog.flush()
+        let line = DiagnosticLog.exportCurrentSession()
+            .components(separatedBy: "\n")
+            .last { $0.contains(marker) }
+        return line.flatMap(DiagnosticLog.parsePairingId)
+    }
+
+    /// Field failure: the app resumed through a path that built a transport
+    /// without stamping the log, so every line was written with no pairing_id
+    /// and the desktop's pull received nothing. Assigning the transport is the
+    /// one step every connect path shares.
+    @MainActor
+    func testAssigningATransportStampsItsPairing() {
+        DiagnosticLog.setPairingId(nil)
+        let vm = SessionViewModel()
+        vm.transport = FakeRemoteTransport(deviceId: "desk-transport")
+
+        let marker = "transport-stamp-\(UUID().uuidString)"
+        DiagnosticLog.log(marker, tag: "pairing", level: .info)
+        XCTAssertEqual(stampedPairing(ofLineContaining: marker), "desk-transport")
+
+        // Tearing the transport down (app suspend) must not unstamp the log.
+        vm.transport = nil
+        let after = "transport-gone-\(UUID().uuidString)"
+        DiagnosticLog.log(after, tag: "pairing", level: .info)
+        XCTAssertEqual(stampedPairing(ofLineContaining: after), "desk-transport")
+    }
+
+    @MainActor
+    func testSelectingAPairingStampsIt() {
+        let saved = UserDefaults.standard.string(forKey: DiagnosticLog.selectedPairingDefaultsKey)
+        defer { UserDefaults.standard.set(saved, forKey: DiagnosticLog.selectedPairingDefaultsKey) }
+
+        let vm = SessionViewModel()
+        vm.activeDeviceId = "desk-selected"
+        let marker = "select-stamp-\(UUID().uuidString)"
+        DiagnosticLog.log(marker, tag: "pairing", level: .info)
+        XCTAssertEqual(stampedPairing(ofLineContaining: marker), "desk-selected")
+
+        vm.activeDeviceId = nil
+        let cleared = "select-clear-\(UUID().uuidString)"
+        DiagnosticLog.log(cleared, tag: "pairing", level: .info)
+        XCTAssertNil(stampedPairing(ofLineContaining: cleared))
     }
 
     // MARK: - parsePairingId
@@ -140,10 +191,10 @@ final class DiagnosticLogPairingTests: XCTestCase {
                        "seq cursor must advance globally, not just over filtered lines")
     }
 
-    func testPreUpgradeLinesExcludedFromFilteredExport() async throws {
-        let marker = "pre-upgrade-\(UUID().uuidString)"
+    func testUnstampedLinesExcludedFromFilteredExport() async throws {
+        let marker = "unstamped-\(UUID().uuidString)"
 
-        // Write a line with no pairing_id (simulates pre-upgrade log)
+        // Write a line with no pairing_id (no pairing selected)
         DiagnosticLog.setPairingId(nil)
         DiagnosticLog.log("no-pairing \(marker)", tag: "pairing", level: .info)
         DiagnosticLog.flush()
@@ -166,6 +217,39 @@ final class DiagnosticLogPairingTests: XCTestCase {
                       "line matching pairing must be included")
         XCTAssertFalse(filtered.logs.contains("also-no-pairing \(marker)"),
                        "lines with no pairing_id must be excluded from filtered export")
+    }
+
+    func testFilteredExportCountsWithheldLinesByReason() async throws {
+        let marker = "withheld-\(UUID().uuidString)"
+        let baseline = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0)
+
+        DiagnosticLog.setPairingId("desk-mine")
+        DiagnosticLog.log("mine \(marker)", tag: "pairing", level: .info)
+        DiagnosticLog.setPairingId("desk-other")
+        DiagnosticLog.log("other \(marker)", tag: "pairing", level: .info)
+        DiagnosticLog.setPairingId(nil)
+        DiagnosticLog.log("unstamped 1 \(marker)", tag: "pairing", level: .info)
+        DiagnosticLog.log("unstamped 2 \(marker)", tag: "pairing", level: .info)
+        DiagnosticLog.flush()
+
+        let filtered = await DiagnosticLog.exportIncrementalSince(
+            sinceSeq: baseline.nextSeq, pairingId: "desk-mine")
+        XCTAssertTrue(filtered.logs.contains("mine \(marker)"))
+        XCTAssertFalse(filtered.logs.contains("other \(marker)"))
+        XCTAssertFalse(filtered.logs.contains("unstamped 1 \(marker)"))
+        XCTAssertFalse(filtered.logs.contains("unstamped 2 \(marker)"))
+        // The counts are global over the pull's window, not scoped to this
+        // test's marker, so anything else logging concurrently raises them.
+        // What is pinned is that no line the filter kept back went uncounted:
+        // the three this test wrote are in there, each under its own reason.
+        XCTAssertGreaterThanOrEqual(filtered.withheldOtherPairing, 1,
+                                    "a line belonging to another pairing must be counted, not dropped unseen")
+        XCTAssertGreaterThanOrEqual(filtered.withheldUnstamped, 2,
+                                    "a pull that passes over unstamped lines must say how many")
+
+        let unfiltered = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0)
+        XCTAssertEqual(unfiltered.withheldUnstamped, 0)
+        XCTAssertEqual(unfiltered.withheldOtherPairing, 0)
     }
 
     func testUnfilteredExportReturnsAllPairings() async throws {
