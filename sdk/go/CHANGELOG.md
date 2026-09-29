@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.13](https://github.com/dsswift/ion/compare/sdk/go-v0.1.12...sdk/go-v0.1.13) (2026-09-29)
+
+### Features
+
+* **sdk:** scope data, credentials, and tools per principal ([6b2a351](https://github.com/dsswift/ion/commit/6b2a3511f471a86c6570e7040761ce0caa32ee1b))
+* **sdk:** move conversations and worktrees across machines ([c170d0f](https://github.com/dsswift/ion/commit/c170d0ff4c371ec19f48b48ba2b70b3eca7d6425))
+* **sdk:** report extension versions from the handshake ([a01dbb7](https://github.com/dsswift/ion/commit/a01dbb759a40d03d5de98fd79f240f0d191b2272))
+
 ## [0.1.12](https://github.com/dsswift/ion/compare/sdk/go-v0.1.11...sdk/go-v0.1.12) (2026-09-07)
 
 ### Bug Fixes

@@ -10,6 +10,14 @@ clients to Ion Engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.9.0](https://github.com/dsswift/ion/compare/relay-v1.8.1...relay-v1.9.0) (2026-09-29)
+
+### Features
+
+* **relay:** reach studio servers through a relay ([e2d0312](https://github.com/dsswift/ion/commit/e2d03129bca3e0d97f61e1abcf3b0f05af8d85c1))
+* **relay:** extend observability to server and clients ([3c67d10](https://github.com/dsswift/ion/commit/3c67d1093bb3e9763aae655726dac2e5d6927d15))
+* **relay:** send push notifications through the relay ([6925720](https://github.com/dsswift/ion/commit/6925720be1fdd4113428bda156c0ce79f4c623ba))
+
 ## [1.8.1](https://github.com/dsswift/ion/compare/relay-v1.8.0...relay-v1.8.1) (2026-09-07)
 
 ## [1.8.0](https://github.com/dsswift/ion/compare/relay-v1.7.3...relay-v1.8.0) (2026-08-27)

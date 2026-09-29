@@ -10,6 +10,33 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.0.0](https://github.com/dsswift/ion/compare/ios-v1.77.1...ios-v2.0.0) (2026-09-29)
+
+### ⚠ BREAKING CHANGES
+
+* **ios:** make ios a direct studio wire client ([444d25f](https://github.com/dsswift/ion/commit/444d25f6dc698ecff918c28a5fddfba167c580ed))
+
+### Features
+
+* **ios:** scope data, credentials, and tools per principal ([2114036](https://github.com/dsswift/ion/commit/21140364bddbbec669f937e29e8d0f0994c6c0de))
+* **ios:** reach studio servers through a relay ([e5ca036](https://github.com/dsswift/ion/commit/e5ca0360b76e7d9e3f8869e8e60e9240f398b9c2))
+* **ios:** pair clients with a studio server ([dfd268b](https://github.com/dsswift/ion/commit/dfd268bf3530b20df109dffc83e368863cfb72cd))
+* **ios:** move conversations and worktrees across machines ([faa6023](https://github.com/dsswift/ion/commit/faa60230c4c299d9e105665a9098da8b5f8e69f8))
+* **ios:** make ios a direct studio wire client ([444d25f](https://github.com/dsswift/ion/commit/444d25f6dc698ecff918c28a5fddfba167c580ed))
+* **ios:** extend observability to server and clients ([b4be3d5](https://github.com/dsswift/ion/commit/b4be3d5049f6d275dd0c139e0e5159704ff10aaa))
+* **ios:** reuse terminal panes by launch key ([f5cd3ce](https://github.com/dsswift/ion/commit/f5cd3ce7317295f9a0a866de816be472c44d452c))
+* **ios:** rebuild settings around scopes and servers ([ffdeafa](https://github.com/dsswift/ion/commit/ffdeafab36f5d4576239700a64d9ae8df7c66cb3))
+* **ios:** upgrade the composer editor and attachments ([8c02a71](https://github.com/dsswift/ion/commit/8c02a71479184d5eb5e06965c05abe963484d8a5))
+* **ios:** send push notifications through the relay ([067f273](https://github.com/dsswift/ion/commit/067f273b5a0b49dd70e8535596a1273c504f0e1b))
+* **ios:** retire the tab strip, tab groups, and icon ([fe6e61e](https://github.com/dsswift/ion/commit/fe6e61ecc761380009ac6f823a44da153b05b4f0))
+* **ios:** set mcp oauth clients from every client ([0d5c7d6](https://github.com/dsswift/ion/commit/0d5c7d68957d446df02058326da22c9a8609f9bc))
+* **ios:** administer a server from the phone ([13834b6](https://github.com/dsswift/ion/commit/13834b633460f859ce73bdc280ff99cc9d9c6b68))
+
+### Bug Fixes
+
+* **ios:** resolve models on the server, never invent one ([5c72d11](https://github.com/dsswift/ion/commit/5c72d112d21b8db6f4df4d0cc9bcc112e9aa9326))
+* **ios:** use design roles in the server settings screens ([1b47dab](https://github.com/dsswift/ion/commit/1b47dab586b0b24d1baba35b5da35d6651a26089))
+
 ## [1.77.1](https://github.com/dsswift/ion/compare/ios-v1.77.0...ios-v1.77.1) (2026-09-24)
 
 ### Bug Fixes

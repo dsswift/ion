@@ -18,6 +18,43 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.86.0](https://github.com/dsswift/ion/compare/engine-v1.85.3...engine-v1.86.0) (2026-09-29)
+
+### Features
+
+* **engine:** move studio business logic into the studio server ([3902095](https://github.com/dsswift/ion/commit/390209552c351f0d6740649b37377f9b58283ba9))
+* **engine:** scope data, credentials, and tools per principal ([5c850ce](https://github.com/dsswift/ion/commit/5c850cee37e7ab214fa218c5ab46574a6263e074))
+* **engine:** reach studio servers through a relay ([94204d3](https://github.com/dsswift/ion/commit/94204d3a5b972f430ffb8c7520cda6469031579e))
+* **engine:** pair clients with a studio server ([3dad92f](https://github.com/dsswift/ion/commit/3dad92f77cdc3539ab72cd4295c65a0fe6a3268f))
+* **engine:** move conversations and worktrees across machines ([44a0fd1](https://github.com/dsswift/ion/commit/44a0fd17d36b2b5d0b6a1f0d5cbb6724424dae9e))
+* **engine:** install studio servers on remote hosts ([b0db342](https://github.com/dsswift/ion/commit/b0db342a7dba0c0f791b60fc8fae0c5ef66d8c9e))
+* **engine:** extend observability to server and clients ([3639a62](https://github.com/dsswift/ion/commit/3639a6268ec7d6c725b5558a415d16b9fb3bab80))
+* **engine:** retire the tab strip, tab groups, and icon ([fb38d36](https://github.com/dsswift/ion/commit/fb38d36bf782b2db19b095d879df0220e068cf7b))
+* **engine:** add ion fleet to deploy and watch hosts ([a9411f2](https://github.com/dsswift/ion/commit/a9411f2b7f671b110f3148be6b4279ad18d528b1))
+* **engine:** set mcp oauth clients from every client ([e63dfc2](https://github.com/dsswift/ion/commit/e63dfc2ced397c3385ac72e5b4abde57b571d160))
+* **engine:** report extension versions from the handshake ([119d9a5](https://github.com/dsswift/ion/commit/119d9a5ca6cca65f00236ca08c33b6a4517be1ca))
+
+### Bug Fixes
+
+* **engine:** persist delegated cli turns, costs, and steers ([01f3ed9](https://github.com/dsswift/ion/commit/01f3ed9e32d19c149a2ee11e57eedded048ac1d2))
+* **engine:** bound engine shutdown and hold its lock ([9dd4f52](https://github.com/dsswift/ion/commit/9dd4f523a29481d8e1e77670c13080b665e8a057))
+* **engine:** resolve models on the server, never invent one ([c2f86c4](https://github.com/dsswift/ion/commit/c2f86c40e91178575ba5aace1a47e223bb7da102))
+* **engine:** run studio servers and desktops on windows ([e5bd8c5](https://github.com/dsswift/ion/commit/e5bd8c52c629264565cc83512883b1be93d8d701))
+* **engine:** record working directory on every conversation write ([8cddddc](https://github.com/dsswift/ion/commit/8cddddc5ca8a96b5d4e0798423de4b4f16d3e8ca))
+* **engine:** keep engine tests out of the real conversation store ([a9ec46f](https://github.com/dsswift/ion/commit/a9ec46f8f0a75c215e73073c45b2657de5a6308e))
+* **engine:** use t.Fatalf in principal source e2e test ([25e22cc](https://github.com/dsswift/ion/commit/25e22cc57a9accccd74350d3a0971002197a46f3))
+* **engine:** label session telemetry with the sign-in name ([255bcfb](https://github.com/dsswift/ion/commit/255bcfb6102a0c4adec62740809475198bc11c2b))
+* **repo:** keep log fields from overwriting the user label ([3cefa8e](https://github.com/dsswift/ion/commit/3cefa8e06dc4b4e5926a2a5c693db53275a97fa6))
+* **engine:** stop fleet tests depending on the host's npm ([9f7abf3](https://github.com/dsswift/ion/commit/9f7abf3c9ff36012e07a37e66d9592d130c2576a))
+* **repo:** stop the otlp batch test reading this machine's id ([a0021b0](https://github.com/dsswift/ion/commit/a0021b00d62f860f9c720f9c30c0571412f3db08))
+* **engine:** ship tokenizer tables inside the engine ([677b725](https://github.com/dsswift/ion/commit/677b72535802b4c308e4fc6f7171d55b6b11ffbc))
+* **engine:** publish the nesting log map only when complete ([514a0ad](https://github.com/dsswift/ion/commit/514a0ad8b1557a9fa92ceec5035d2b4e0a5058b6))
+* **engine:** find a built installer by change, not by clock ([8f13b3b](https://github.com/dsswift/ion/commit/8f13b3bdcebb7df049883c96f023ae583422b0bb))
+* **engine:** check windows paths named in a bash command ([2ce6be3](https://github.com/dsswift/ion/commit/2ce6be38dc015be901b36f1a891db98e8881bbf4))
+* **engine:** leave room for the data dir in mcp socket paths ([c20f213](https://github.com/dsswift/ion/commit/c20f2132e2c3ad779a5f4a5181ab376ae3839da1))
+* **engine:** run the relay key command in this os's shell ([4c60655](https://github.com/dsswift/ion/commit/4c606556ab70ab8dfee31a814e18c8bd8242e439))
+* **engine:** make studio, backend, and storage tests pass on windows ([d55126a](https://github.com/dsswift/ion/commit/d55126a6f1609545f47586099cc47d07c2e8b806))
+
 ## [1.85.3](https://github.com/dsswift/ion/compare/engine-v1.85.2...engine-v1.85.3) (2026-09-15)
 
 ### Bug Fixes

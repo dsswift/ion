@@ -10,6 +10,53 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.0.0](https://github.com/dsswift/ion/compare/desktop-v1.100.2...desktop-v2.0.0) (2026-09-29)
+
+### ⚠ BREAKING CHANGES
+
+* **desktop:** retire the overlay presentation ([4c9d354](https://github.com/dsswift/ion/commit/4c9d3548537d7b2bd8520093176408af0a30e08a))
+
+### Features
+
+* **desktop:** split the repo into npm workspaces ([4241b19](https://github.com/dsswift/ion/commit/4241b19805c5f6b75e8191070260d64377562d98))
+* **desktop:** move studio business logic into the studio server ([e8d2e75](https://github.com/dsswift/ion/commit/e8d2e7500b854235b2d32d536f90f6f544066634))
+* **desktop:** scope data, credentials, and tools per principal ([e584b90](https://github.com/dsswift/ion/commit/e584b90ad0dbed822e4d7e540573e67081114171))
+* **desktop:** reach studio servers through a relay ([5f854e0](https://github.com/dsswift/ion/commit/5f854e0a428deaf2693225606a58961d9560b721))
+* **desktop:** pair clients with a studio server ([723ac48](https://github.com/dsswift/ion/commit/723ac488e4709aa127beb5e18b7280ca5ae0269d))
+* **desktop:** move conversations and worktrees across machines ([1670cd2](https://github.com/dsswift/ion/commit/1670cd21f525d358a451468e9ec4572df6146227))
+* **desktop:** install studio servers on remote hosts ([69a94ed](https://github.com/dsswift/ion/commit/69a94ede9d6f1197a8e83a85ee26eed9789fba72))
+* **desktop:** work across environments from one studio ([a152fd9](https://github.com/dsswift/ion/commit/a152fd97f49555eb58e593a790aca8a521e33673))
+* **desktop:** make ios a direct studio wire client ([fbfb097](https://github.com/dsswift/ion/commit/fbfb097d016672288de0d5bb9c44cdc282e933d7))
+* **desktop:** retire the overlay presentation ([4c9d354](https://github.com/dsswift/ion/commit/4c9d3548537d7b2bd8520093176408af0a30e08a))
+* **desktop:** add the browser studio client ([386f076](https://github.com/dsswift/ion/commit/386f0768afe53ec76707cb3c503e20801cf6be56))
+* **desktop:** extend observability to server and clients ([6020320](https://github.com/dsswift/ion/commit/6020320ed6790119db19580101722b15c3a299e3))
+* **desktop:** reuse terminal panes by launch key ([b4217e7](https://github.com/dsswift/ion/commit/b4217e70ceb63cbf875887aeecbc907d871aaf83))
+* **desktop:** rebuild settings around scopes and servers ([33d1b7c](https://github.com/dsswift/ion/commit/33d1b7c009e1ea35a2f27f6ebe64552ac6117847))
+* **desktop:** ship the studio server inside the desktop ([4edfc92](https://github.com/dsswift/ion/commit/4edfc929ebc9f7b4f9e3a2c2b24d45701c18d928))
+* **desktop:** upgrade the composer editor and attachments ([2d5f24b](https://github.com/dsswift/ion/commit/2d5f24bc6a809c1c8bf499eaf402b273cece3cde))
+* **desktop:** discover studio servers on the lan ([1ea6cdb](https://github.com/dsswift/ion/commit/1ea6cdbf738372c296b7cf5ead781a92ce135e8b))
+* **desktop:** add studio sdk composer actions ([cd7322c](https://github.com/dsswift/ion/commit/cd7322c000e0b91b9f0c22786566e584890bc3e9))
+* **desktop:** retire the tab strip, tab groups, and icon ([160aa98](https://github.com/dsswift/ion/commit/160aa985258eabd31b45e9aad7c44ae88c0f1daf))
+* **desktop:** set mcp oauth clients from every client ([86563b9](https://github.com/dsswift/ion/commit/86563b95ba57043cdf1fd35404b43d3b74999e14))
+* **desktop:** administer a server from the phone ([becd897](https://github.com/dsswift/ion/commit/becd897bf42522a51fd6a428c733af32c9cdff4d))
+* **desktop:** add workspace search and focus-aware find ([e0c815b](https://github.com/dsswift/ion/commit/e0c815bff9de2f885af7be82a6dda289acd9cdc5))
+* **desktop:** show pairing links in web studio ([2a805ab](https://github.com/dsswift/ion/commit/2a805ab70d7496468a1302192a89e6c8fdfaa0c7))
+
+### Bug Fixes
+
+* **desktop:** resolve models on the server, never invent one ([0d77137](https://github.com/dsswift/ion/commit/0d7713792dcc1875abcb1ec0c9a0c96213ff639e))
+* **desktop:** run studio servers and desktops on windows ([73c41dc](https://github.com/dsswift/ion/commit/73c41dc147efdddb688735161f5a70fa4d589833))
+* **repo:** keep log fields from overwriting the user label ([3cefa8e](https://github.com/dsswift/ion/commit/3cefa8e06dc4b4e5926a2a5c693db53275a97fa6))
+* **desktop:** label windows shortcuts as ion studio ([ca4def8](https://github.com/dsswift/ion/commit/ca4def81632d02a36134f5ba72b093be60c34955))
+* **desktop:** refresh the explorer on change, not on a timer ([fa3cfd4](https://github.com/dsswift/ion/commit/fa3cfd4d561ffb773baa673e9dfd5a55a1e1477d))
+* **desktop:** mock every logger level in the file chips test ([8d90465](https://github.com/dsswift/ion/commit/8d90465221fbcfb3be85cc64ef87c13dc5d4be7d))
+* **server:** declare the studio mirror role at boot ([e9b91de](https://github.com/dsswift/ion/commit/e9b91de28756c2969dc442cc71ca4ca8e6e3e63b))
+* **repo:** pin every lockfile package by url and hash ([4531d7f](https://github.com/dsswift/ion/commit/4531d7f3ddaa79a22e19fd36c4542a535318f94a))
+* **desktop:** drop unused imports from the egress settings test ([7a3d6af](https://github.com/dsswift/ion/commit/7a3d6affaf2438913911f48ccb9706e92e91ef16))
+* **desktop:** keep a drive-like prefix in open-copy names ([6dadb88](https://github.com/dsswift/ion/commit/6dadb887dffb43a5a37e3a4d96ec394f9759ec9f))
+* **server:** serve the wire test harness on a pipe on windows ([9e8278f](https://github.com/dsswift/ion/commit/9e8278f0bf423106c46f105b7139884aafc6779e))
+* **desktop:** make path and process tests pass on windows ([88f07f0](https://github.com/dsswift/ion/commit/88f07f0ea231f51befb01f75112af9a63503b936))
+
 ## [1.100.2](https://github.com/dsswift/ion/compare/desktop-v1.100.1...desktop-v1.100.2) (2026-09-24)
 
 ### Bug Fixes
