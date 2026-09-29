@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -371,18 +374,22 @@ func TestTerminalExecHandsInteractiveCommandsToTheProgram(t *testing.T) {
 			tm.done <- errors.New("sudo refused")
 		}
 	}
-	err := TerminalExec(send)(context.Background(), fleet.ExecSpec{Name: "true", Interactive: true})
+	ok := helperSpec("ok")
+	ok.Interactive = true
+	err := TerminalExec(send)(context.Background(), ok)
 	if err == nil || err.Error() != "sudo refused" || len(got) != 1 {
 		t.Fatalf("err=%v sent=%v", err, got)
 	}
-	if err := TerminalExec(send)(context.Background(), fleet.ExecSpec{Name: "true"}); err != nil || len(got) != 1 {
+	if err := TerminalExec(send)(context.Background(), helperSpec("ok")); err != nil || len(got) != 1 {
 		t.Fatalf("a non-interactive command runs directly: err=%v sent=%d", err, len(got))
 	}
 }
 
 func TestSpecCommandShowsItsBannerBeforeTheCommand(t *testing.T) {
 	var term, log bytes.Buffer
-	c := &specCommand{spec: fleet.ExecSpec{Name: "echo", Args: []string{"Password:"}, Banner: "ion fleet is installing on mac.", Stdout: &log}}
+	spec := helperSpec("echo", "Password:")
+	spec.Banner, spec.Stdout = "ion fleet is installing on mac.", &log
+	c := &specCommand{spec: spec}
 	c.SetStdout(&term)
 	if err := c.Run(); err != nil {
 		t.Fatal(err)
@@ -600,4 +607,21 @@ func TestActionReadsOnlyItsHost(t *testing.T) {
 	if reads, _ := readsStarted(t, r, cmd); len(reads) != 1 || reads[0] != "grover" {
 		t.Fatalf("reads after a restart of grover: %v", reads)
 	}
+}
+
+// helperSpec runs this test binary as a portable child process (no `true` or
+// `echo` on Windows): "ok" exits 0, "echo" prints its arguments.
+func helperSpec(mode string, args ...string) fleet.ExecSpec {
+	return fleet.ExecSpec{Name: os.Args[0], Args: append([]string{"-test.run=^TestHelperProcess$", "--", mode}, args...)}
+}
+
+func TestHelperProcess(t *testing.T) {
+	i := slices.Index(os.Args, "--")
+	if i < 0 || i+1 >= len(os.Args) {
+		return
+	}
+	if os.Args[i+1] == "echo" {
+		fmt.Println(strings.Join(os.Args[i+2:], " "))
+	}
+	os.Exit(0)
 }

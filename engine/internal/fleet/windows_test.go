@@ -152,7 +152,7 @@ func TestSetRelay_WindowsDesktopRestartsARunningIon(t *testing.T) {
 		}
 		return nil, nil, nil
 	})
-	p := Profile{Relay: "wss://r", RelayKeyCommand: "printf 'the-key\\n'"}
+	p := Profile{Relay: "wss://r", RelayKeyCommand: "echo the-key"}
 	if err := SetRelay(context.Background(), r, Host{Name: "w", SSH: "w", Kind: KindDesktop}, p); err != nil {
 		t.Fatal(err)
 	}

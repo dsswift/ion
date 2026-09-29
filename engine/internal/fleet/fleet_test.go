@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -38,7 +39,8 @@ func TestConfig_ValidateLoadSave(t *testing.T) {
 	if err != nil || len(back.Hosts) != 2 || back.Hosts[0].Name != "grover" || back.ProfileOf(back.Hosts[0]).Relay != "wss://relay.example.org" {
 		t.Fatalf("round trip = %+v %v", back, err)
 	}
-	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
+	// Windows file modes carry only read-only; the profile's ACL keeps it private.
+	if info, err := os.Stat(path); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
 		t.Errorf("the fleet file must be owner-only: %v %v", info.Mode(), err)
 	}
 	bad := []Config{
@@ -163,7 +165,11 @@ func (f *fakeRunner) Run(_ context.Context, h Host, script string, stdin io.Read
 
 // sshExit255 is the error ssh returns when it cannot reach a host.
 func sshExit255(t *testing.T) error {
-	err := exec.Command("/bin/sh", "-c", "exit 255").Run()
+	cmd := exec.Command("/bin/sh", "-c", "exit 255")
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "exit 255")
+	}
+	err := cmd.Run()
 	if err == nil {
 		t.Fatal("expected an exit error")
 	}
@@ -241,6 +247,9 @@ func TestDecodeReport_OlderHosts(t *testing.T) {
 
 // TestFindIon_PrefersTheBundle runs the probe preamble against a fake home.
 func TestFindIon_PrefersTheBundle(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("findIon is a POSIX preamble for macOS and Linux hosts; it needs /bin/sh")
+	}
 	home := t.TempDir()
 	write := func(rel, word string) {
 		path := filepath.Join(home, rel)
@@ -377,7 +386,8 @@ func TestSetRelay_KeyTravelsOnStdinOnly(t *testing.T) {
 		}
 		return []byte("==> relay wss://r saved (pre-shared key)\n"), nil, nil
 	}}
-	p := Profile{Relay: "wss://r", RelayKeyCommand: "printf 'the-key\\nignored\\n'"}
+	// Valid in sh and PowerShell alike: the key command runs in this OS's shell.
+	p := Profile{Relay: "wss://r", RelayKeyCommand: "echo the-key; echo ignored"}
 	if err := SetRelay(context.Background(), runner, Host{Name: "g", SSH: "g", Kind: KindDesktop}, p); err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +397,11 @@ func TestSetRelay_KeyTravelsOnStdinOnly(t *testing.T) {
 	if runner.stdins[0] != "the-key\n" {
 		t.Errorf("stdin = %q", runner.stdins[0])
 	}
-	if _, err := RelayKey(context.Background(), Profile{RelayKeyCommand: "echo nope >&2; exit 3"}); err == nil || !strings.Contains(err.Error(), "nope") {
+	failing := "echo nope >&2; exit 3"
+	if runtime.GOOS == "windows" {
+		failing = "[Console]::Error.WriteLine('nope'); exit 3"
+	}
+	if _, err := RelayKey(context.Background(), Profile{RelayKeyCommand: failing}); err == nil || !strings.Contains(err.Error(), "nope") {
 		t.Errorf("a failing key command must say why: %v", err)
 	}
 	if err := SetRelay(context.Background(), runner, Host{Name: "g", SSH: "g", Kind: KindServer}, Profile{}); err == nil {

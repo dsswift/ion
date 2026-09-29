@@ -115,13 +115,13 @@ func setRelay(ctx context.Context, r Runner, h Host, p Profile) error {
 	return restart(ctx, r, h)
 }
 
-// RelayKey runs the profile's key command on this Mac and returns its first
-// line. The key is never logged or stored.
+// RelayKey runs the profile's key command on this machine and returns its
+// first line. The key is never logged or stored.
 func RelayKey(ctx context.Context, p Profile) (string, error) {
 	if p.RelayKeyCommand == "" {
 		return "", errors.New("the profile has no relayKeyCommand and is not relayOidc")
 	}
-	out, err := localCommand(ctx, p.RelayKeyCommand).Output()
+	out, err := operatorCommand(ctx, p.RelayKeyCommand).Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {

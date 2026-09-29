@@ -22,10 +22,20 @@ var localToolFound = func(name string) bool {
 	return err == nil
 }
 
-// localCommand runs a command line in this machine's shell: sh, or
-// PowerShell on Windows.
+// localCommand runs a command line fleet wrote for this machine as a host
+// (localHostPlatform), in that platform's shell: sh, or PowerShell on Windows.
 func localCommand(ctx context.Context, command string) *exec.Cmd {
-	if localPlatform().Windows() {
+	return shellCommand(ctx, localPlatform().Windows(), command)
+}
+
+// operatorCommand runs a command line the operator wrote in the fleet file,
+// in the shell of the OS this process actually runs on.
+func operatorCommand(ctx context.Context, command string) *exec.Cmd {
+	return shellCommand(ctx, runtime.GOOS == "windows", command)
+}
+
+func shellCommand(ctx context.Context, windows bool, command string) *exec.Cmd {
+	if windows {
 		return exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", command)
 	}
 	return exec.CommandContext(ctx, "/bin/sh", "-c", command)

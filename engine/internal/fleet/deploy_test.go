@@ -369,7 +369,7 @@ func TestDeploy_BuildsAndShipsFromTheRequestedCheckout(t *testing.T) {
 	if _, err := d.Run(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(strings.Join(f.scriptsFor("a"), "\n"), copyToScript+bench+"/build/deploy/") || !strings.Contains(strings.Join(p.PlanLines(), "\n"), "dev build of "+bench) {
+	if !strings.Contains(strings.Join(f.scriptsFor("a"), "\n"), copyToScript+filepath.Join(bench, "build", "deploy")+string(filepath.Separator)) || !strings.Contains(strings.Join(p.PlanLines(), "\n"), "dev build of "+bench) {
 		t.Errorf("scripts = %v, plan = %v", f.scriptsFor("a"), p.PlanLines())
 	}
 }
