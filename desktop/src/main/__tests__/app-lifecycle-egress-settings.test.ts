@@ -141,9 +141,7 @@ vi.mock('@ion/server/utils/atomicWrite', async (importOriginal) => ({ ...(await 
 // ---------------------------------------------------------------------------
 
 import { readSettings } from '@ion/server/persistence/settings-store'
-import { configureEgress, setEgressUser } from '@ion/shared/log-egress'
-import { startEgressTailers } from '@ion/shared/log-egress-tailer'
-import { getAccessToken, getSignedInIdentity } from '@ion/server/oauth/entra-flow'
+import { getSignedInIdentity } from '@ion/server/oauth/entra-flow'
 import { initEgressFromSettingsConfig } from '../app-lifecycle-egress'
 
 /** Run the real function and let its fire-and-forget identity read settle. */
