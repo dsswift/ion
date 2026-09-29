@@ -341,6 +341,24 @@ whatever `tenancy.unownedTabs` decides — the exact same fallback tab
 visibility uses, not a universal "every connection"). An `'environment'`-scoped
 channel always reaches every connection, in either tenancy mode.
 
+#### Watching a directory tree
+
+`fs.watchTree {root}` (`conversations:read`) subscribes the calling connection
+to changes under `root`, and `fs.unwatchTree {root}` ends it. A connection that
+closes loses its subscriptions. Changes arrive on `ion:fs-tree-changed`, on the
+subscribing connection only, as `{root, directories, overflow, ignoreRulesChanged}`:
+
+- `directories` names each directory that had something created, removed,
+  renamed, or modified inside it. Each is relative to `root` with forward
+  slashes, and `""` is the root itself.
+- `overflow: true` means the list was too long to send, or the watch reported
+  a fault. `directories` is empty and the client reads again everything it shows.
+- `ignoreRulesChanged: true` means a `.gitignore` or `.git/info/exclude`
+  changed, so `git.ignoredFiles` may answer differently.
+
+A burst of changes is reported once it settles, and a directory that never
+stops changing is still reported about once a second.
+
 ### Views
 
 `studio_hello.view` is `'mirror'` or `'thin'`. Absent means `'mirror'`, so a

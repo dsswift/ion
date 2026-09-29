@@ -230,6 +230,10 @@ export const EVENT_CHANNELS: readonly EventChannelSpec[] = [
   // An external edit to a watched file. Environment-scoped: a path is not
   // owned by a tab, and every client with the file open needs the reload.
   { name: 'ion:fs-file-changed', scope: 'environment' },
+  // Directories under a watched root changed (`FsTreeChange`). Delivered
+  // only to the connection that subscribed, for the reason `ion:git-event`
+  // is: another client may be watching a different root.
+  { name: 'ion:fs-tree-changed', scope: 'environment' },
   // Repo events for a watched repository. Environment-scoped in the spec
   // sense (no owning tab), but delivered only to the connection that
   // subscribed -- `git-actions.ts` sends it on that one connection rather

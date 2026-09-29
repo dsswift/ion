@@ -176,6 +176,8 @@ export const IPC = {
   // URL so the renderer CSP (img-src 'self' data: blob:) stays untouched.
   FAVICON_GET: "ion:favicon-get",
   FS_FILE_CHANGED: "ion:fs-file-changed",
+  // Directories under a watched root changed (`FsTreeChange`).
+  FS_TREE_CHANGED: "ion:fs-tree-changed",
 
   // Graph View
   GRAPH_VIEW_CONFIG_CHANGED: "ion:graph-view-config-changed",

@@ -8,8 +8,9 @@
  * repository may not change its files either.
  *
  * The watch verbs are reads in the permission sense — they observe, they do
- * not mutate — and their change notification rides the
- * `ion:file-changed` studio_event channel.
+ * not mutate. A watched file's change is broadcast on `ion:fs-file-changed`.
+ * A watched tree's change goes on `ion:fs-tree-changed` to the subscribing
+ * connection alone, because the subscription is that connection's own.
  */
 import type { Scope } from '@ion/shared/studio-wire/types'
 import { IPC } from '@ion/shared/types'
@@ -20,6 +21,7 @@ import { readFileData } from '../files/read-file-data'
 import { resolveFileLink } from '../files/resolve-file-link'
 import { searchFiles } from '../files/file-search'
 import { searchText } from '../files/text-search'
+import { treeWatch } from '../files/tree-watch'
 import { loadProjectStudioConfig, trustProjectQuickTools } from '../project-studio-config'
 import { broadcast } from '../broadcast'
 import { warn as _warn } from '../logger'
@@ -52,7 +54,26 @@ function wrap(name: string, requiredScope: Scope, run: (args: unknown[]) => unkn
   }
 }
 
+/** The tree-watch verbs key on the CALLER, so they take the connection `wrap` does not pass on. */
+const TREE_WATCH_ACTIONS: Record<string, FileActionSpec> = {
+  'fs.watchTree': {
+    requiredScope: 'conversations:read',
+    handler: async (conn, args) => ({
+      ok: true,
+      value: treeWatch.watch(
+        { id: conn.id, send: (change) => conn.send({ type: 'studio_event', channel: IPC.FS_TREE_CHANGED, payload: change }) },
+        args[0],
+      ),
+    }),
+  },
+  'fs.unwatchTree': {
+    requiredScope: 'conversations:read',
+    handler: async (conn, args) => ({ ok: true, value: treeWatch.unwatch(conn.id, args[0]) }),
+  },
+}
+
 export const FILE_ACTIONS: Record<string, FileActionSpec> = {
+  ...TREE_WATCH_ACTIONS,
   'fs.readDir': wrap('fs.readDir', 'conversations:read', (args) => fileApi.fsReadDir(args[0])),
   'fs.readFile': wrap('fs.readFile', 'conversations:read', (args) => fileApi.fsReadFile(args[0])),
   'fs.exists': wrap('fs.exists', 'conversations:read', (args) => fileApi.fsExists(args[0])),

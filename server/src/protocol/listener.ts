@@ -14,6 +14,7 @@ import { WebSocketServer } from 'ws'
 import type { ConnectionSocket } from './connection-socket'
 import { credentialsStore } from '../auth/credentials-store'
 import { unsubscribeGitAll } from '../git/git-subscriptions'
+import { treeWatch } from '../files/tree-watch'
 import { decodeFrame } from '@ion/shared/studio-wire/codec'
 import type { StudioFrame } from '@ion/shared/studio-wire/types'
 import { getEngineHostInfo, getEnterprisePolicy } from '../engine/engine-bridge-fs'
@@ -253,6 +254,8 @@ export function attachConnection(socket: ConnectionSocket, transport: Connection
     // Without this every dropped client leaks a retained GitRepository and
     // its file watcher for the lifetime of the process.
     unsubscribeGitAll(conn.id)
+    // Same leak, a third store: a watched Explorer root.
+    treeWatch.unwatchAll(conn.id)
     // Same leak, other store: a Graph View subscription keeps a directory
     // scan warm and a watcher running until every reference is released.
     unsubscribeCorpusAll(conn.id)
