@@ -1,0 +1,8 @@
+{
+  "name": "@ion/studio-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ion Studio SDK for extensions: Studio vocabulary that the engine SDK deliberately does not carry.",
+  "type": "module",
+  "main": "index.ts"
+}
