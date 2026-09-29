@@ -138,31 +138,31 @@ $split = Get-IonTaskCandidate -Paths @('\Ion Engine')
 Assert-Equal 0 $split.Verified.Count 'a name-matching task with a foreign action is not verified'
 Assert-Equal 1 $split.Skipped.Count 'a name-matching task with a foreign action is reported as skipped'
 
-# -- Agreement with the desktop -----------------------------------------------
-# The desktop chooses the names and the action; this script has to recognise
+# -- Agreement with the server -----------------------------------------------
+# The server chooses the names and the action; this script has to recognise
 # both. They are in different languages in different directories, so nothing
 # but a test keeps them in step -- and a divergence orphans a task on every
 # host in the fleet, silently, pointing at a binary that no longer exists.
 
-$supervisor = Join-Path $PSScriptRoot '..\..\desktop\src\main\engine-supervisor-schtasks.ts'
+$supervisor = Join-Path $PSScriptRoot '..\..\server\src\engine\engine-supervisor-schtasks.ts'
 if (-not (Test-Path -LiteralPath $supervisor)) {
-  Write-Host "FAIL  cannot find the desktop supervisor at $supervisor" -ForegroundColor Red
+  Write-Host "FAIL  cannot find the server supervisor at $supervisor" -ForegroundColor Red
   $script:failures++
 } else {
   $ts = Get-Content -LiteralPath $supervisor -Raw
 
   $legacy = [regex]::Match($ts, "export const LEGACY_TASK_NAME = '(?<v>[^']+)'")
-  Assert-Equal $true $legacy.Success 'the desktop still exports LEGACY_TASK_NAME'
+  Assert-Equal $true $legacy.Success 'the server still exports LEGACY_TASK_NAME'
   Assert-Equal $LegacyTaskName $legacy.Groups['v'].Value `
-    'the legacy task name matches the desktop'
+    'the legacy task name matches the server'
 
   # taskNameForSid composes `${LEGACY_TASK_NAME} (${sid})`, so the name this
   # script matches is the legacy name plus a parenthesised SID. Pinning the
   # template rather than a literal means a change to either half fails here.
   $template = [regex]::Match($ts, 'return `(?<v>[^`]+)`')
-  Assert-Equal $true $template.Success 'the desktop still composes the task name from a template'
+  Assert-Equal $true $template.Success 'the server still composes the task name from a template'
   Assert-Equal '${LEGACY_TASK_NAME} (${sid})' $template.Groups['v'].Value `
-    'the desktop composes the name this script matches'
+    'the server composes the name this script matches'
   Assert-Equal "$LegacyTaskName (" $PerUserPrefix `
     'the documented per-user prefix is the legacy name plus the opening parenthesis'
 
@@ -171,19 +171,19 @@ if (-not (Test-Path -LiteralPath $supervisor)) {
   # becomes unverifiable and uninstall silently stops removing anything -- so
   # the two are pinned together.
   Assert-Equal $true ($ts -match 'serve --supervised') `
-    'the desktop still registers the action verb this script verifies'
+    'the server still registers the action verb this script verifies'
 }
 
-$binaryInstall = Join-Path $PSScriptRoot '..\..\desktop\src\main\engine-binary-install.ts'
+$binaryInstall = Join-Path $PSScriptRoot '..\..\server\src\engine\engine-binary-install.ts'
 if (-not (Test-Path -LiteralPath $binaryInstall)) {
   Write-Host "FAIL  cannot find engine-binary-install.ts at $binaryInstall" -ForegroundColor Red
   $script:failures++
 } else {
   $install = Get-Content -LiteralPath $binaryInstall -Raw
   $hostName = [regex]::Match($install, "export const ENGINE_HOST_NAME = '(?<v>[^']+)'")
-  Assert-Equal $true $hostName.Success 'the desktop still exports ENGINE_HOST_NAME'
+  Assert-Equal $true $hostName.Success 'the server still exports ENGINE_HOST_NAME'
   Assert-Equal $EngineHostLeaf $hostName.Groups['v'].Value `
-    'the host launcher this script accepts is the one the desktop registers'
+    'the host launcher this script accepts is the one the server registers'
 }
 
 # -- Agreement with the uninstaller -------------------------------------------

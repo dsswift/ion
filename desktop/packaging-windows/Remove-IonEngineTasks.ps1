@@ -89,7 +89,7 @@ $ErrorActionPreference = 'Stop'
 
 # The shared name every Ion registered before the task became per-user, and
 # the prefix of the per-user names that replaced it. Both are pinned in
-# desktop/src/main/engine-supervisor-schtasks.ts (LEGACY_TASK_NAME,
+# server/src/engine/engine-supervisor-schtasks.ts (LEGACY_TASK_NAME,
 # taskNameForSid) and asserted against these values by
 # Remove-IonEngineTasks.test.ps1 -- a rename on either side fails that test
 # rather than silently orphaning every task on every host.
@@ -103,9 +103,9 @@ $PerUserPrefix = 'Ion Engine ('
 $PerUserNamePattern = '^Ion Engine \(S-1-[0-9]+(-[0-9]+)*\)$'
 
 # The two executables an Ion task is allowed to launch. ion-engine-host.exe is
-# the GUI-subsystem launcher the current desktop registers; ion.exe is the
+# the GUI-subsystem launcher the current server registers; ion.exe is the
 # direct-exec fallback resolveTaskAction() falls back to when the launcher is
-# missing (desktop/src/main/engine-supervisor-schtasks.ts).
+# missing (server/src/engine/engine-supervisor-schtasks.ts).
 $EngineHostLeaf = 'ion-engine-host.exe'
 $EngineLeaf = 'ion.exe'
 
