@@ -278,6 +278,15 @@ account on the host, and a device is only ever a device.
   devices share one partition while two people do not. A link minted
   with no person keeps the device as its own principal (`paired:<deviceId>`).
   `--as` is refused on a `shared` host, which has exactly one person.
+- A person without `admin` pairs their own devices themselves. Signed in
+  to a web Studio, they open Settings → the server → Access & pairing →
+  Devices and use **Pair a phone** (a QR code) or **Pairing link**. Both
+  mint through `auth.createOwnPairingLink`: the link names that person's
+  own subject, so the device acts as them even when it does not sign in,
+  and it grants only scopes they hold, never `admin`. They see only their
+  own devices there; Revoke, discovery codes, and `--as` stay with an
+  admin. This works on an `isolated` host only: on a `shared` host every
+  device acts as the host identity, so only an admin may pair one.
 - A different account on the same host is a different install: log in over
   SSH as that account and Add server installs a second server under it,
   on its own port, with its own pairings.
@@ -351,7 +360,9 @@ per item; adding, editing, and testing open in a side panel. The pages:
 - **Access & pairing.** Every desktop and phone paired to it with its
   scopes, Revoke, **Pairing link**, and **Pair a phone**, which shows the
   eight-character code and a QR of the pairing link together and closes
-  itself the moment the pairing lands. The row this desktop is connected
+  itself the moment the pairing lands. Without `admin` on the server,
+  Devices lists only your own devices and pairs another as you, with the QR
+  code alone ([Who a paired device is](#who-a-paired-device-is)). The row this desktop is connected
   through is marked and cannot be revoked here (its welcome names the
   pairing as `pairedClientId`); Remove the server instead. **Discovery**:
   whether the server announces itself on its local network, the control that

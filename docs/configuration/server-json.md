@@ -227,6 +227,15 @@ one-time link valid for 5 minutes: `{url, code, expiresAt}`. Requested
 caller may delegate any scope, including `admin`); omitted `scopes` default
 to `pairing.defaultScopes`.
 
+`auth.createOwnPairingLink{scopes?, label}` (requires `conversations:read`)
+mints the same link for one of the caller's own devices. The link names the
+caller's own subject, so the device acts as the caller even when it pairs
+without a bearer. Omitted `scopes` default to `pairing.defaultScopes`
+narrowed to the scopes the caller holds, and never include `admin` for a
+caller without it. It refuses `as` and `relay` (`admin_required`), and a
+caller without `admin` on a `shared` install (`shared_tenancy`), where every
+paired device acts as the host identity.
+
 The link is `ion-studio://pair?code=<32 hex>&url=<advertised http base>&env=<server label>`
 (`auth/pairing-links.ts#formatPairingLink`; parsed on the client by
 `@ion/shared/pairing-link`). `url` is [`pairing.advertiseUrl`](#shape) or its
