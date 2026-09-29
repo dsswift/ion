@@ -123,10 +123,13 @@ engine stores the resulting grant. Nothing goes in `engine.json` — no
 2. **Authorization-server discovery (RFC 8414).** It fetches that server's
    `/.well-known/oauth-authorization-server`, falling back to
    `/.well-known/openid-configuration`, for the authorization, token, and
-   registration endpoints.
-3. **Client registration.** The engine prefers a configured Client ID Metadata
-   Document, then an explicit pre-registered client, then a stored registration,
-   and finally deprecated dynamic registration when the server supports it.
+   registration endpoints. For an issuer with a path it also tries the OIDC
+   document appended after the path
+   (`https://login.microsoftonline.com/<tenant>/v2.0/.well-known/openid-configuration`),
+   the only form Microsoft Entra serves.
+3. **Client registration.** The engine prefers an explicit pre-registered
+   `client_id`, then a configured Client ID Metadata Document, then a stored
+   registration, and finally dynamic registration when the server supports it.
 4. **Authorization code + PKCE.** The engine runs the flow, receives the
    redirect on a loopback callback it owns, and exchanges the code itself. The
    token lands in `~/.ion/mcp-tokens.json` and is refreshed silently.
@@ -151,8 +154,7 @@ over discovery:
         "client_id": "ion-engine",
         "auth_url": "https://auth.example.com/authorize",
         "token_url": "https://auth.example.com/token",
-        "scope": "read write",
-        "use_pkce": true
+        "scope": "read write"
       }
     }
   }
@@ -161,9 +163,25 @@ over discovery:
 
 Then run `ion mcp login internal-api` as usual.
 
-`auth_url` and `token_url` may be omitted when the server publishes metadata:
-the engine fills them in from discovery and uses the selected client
-registration.
+`auth_url`, `token_url`, and `scope` may be omitted when the server publishes
+metadata: the engine fills them in from discovery. This is the usual setup for
+an authorization server that cannot register clients dynamically, such as
+Microsoft Entra: set only `client_id`, the app registration Ion signs in as.
+The endpoints login discovers are stored with the grant, so a later token
+refresh needs no discovery.
+
+You do not have to edit `engine.json` by hand. The desktop's add and edit
+forms (Settings → Servers → the server → Integrations) and the iPhone app set
+the same client, and so does the CLI:
+
+```bash
+ion mcp add internal-api https://mcp.example.com/mcp --client-id ion-engine
+ion mcp update internal-api --oauth-scope "read write"
+```
+
+Changing a server's URL or OAuth client drops its stored token and client
+registration, because they were issued for the old client. Sign in again
+afterwards.
 
 ### Scope step-up and binding
 
@@ -180,13 +198,15 @@ substitute for user consent to new scope.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `client_id` | `string` | No | OAuth client ID. Required only when neither a Client ID Metadata Document nor dynamic registration supplies one. |
-| `client_id_metadata_document_url` | `string` | No | Client ID Metadata Document URL. Preferred over pre-registered and dynamically-registered client data. |
+| `client_metadata_uri` | `string` | No | Client ID Metadata Document URL. Used when no `client_id` is set, ahead of a stored or dynamic registration. |
 | `client_secret` | `string` | No | Client secret. Omit for a public client using PKCE. Sent on the token exchange when present, because some providers issue a secret and then reject an exchange that omits it. |
 | `auth_url` | `string` | No | Authorization endpoint. Discovered when omitted. |
 | `token_url` | `string` | No | Token endpoint. Discovered when omitted. |
 | `scope` | `string` | No | Space-separated scopes. Defaults to what the server's metadata advertises. |
 | `redirect_uri` | `string` | No | Redirect URI registered with the provider. The engine uses a loopback URI by default. |
-| `use_pkce` | `bool` | No | Enable PKCE. Recommended, and used for every dynamically-registered client. |
+| `resource` | `string` | No | RFC 8707 resource indicator. Defaults to the resource the server's protected-resource metadata names. |
+
+Every login uses authorization code with PKCE; there is no setting to turn it off.
 
 ### Pre-shared tokens
 
