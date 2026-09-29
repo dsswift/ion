@@ -316,3 +316,25 @@ func TestAgentSnapshotEmittedLevel(t *testing.T) {
 		t.Fatalf("a stopped session starts over at INFO, got %v", got)
 	}
 }
+
+// Concurrent snapshots for one session each read the published description
+// map as prev; a map still being filled must never be published.
+func TestLogAgentSnapshotNesting_ConcurrentSameSession(t *testing.T) {
+	logs := captureNestingLogs(t)
+	defer logs()
+	snapshot := []types.AgentStateUpdate{{
+		ID: "child", Name: "m", Status: "running",
+		Metadata: map[string]interface{}{"dispatchParentId": "parent", "dispatchDepth": 2},
+	}}
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 50 {
+				logAgentSnapshotNesting("sess-race", "tick", snapshot)
+			}
+		}()
+	}
+	wg.Wait()
+}

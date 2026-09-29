@@ -85,11 +85,12 @@ func logAgentSnapshotNesting(key, reason string, snapshot []types.AgentStateUpda
 		forgetAgentSnapshotNesting(key, false)
 		return
 	}
+	// next is filled privately and published whole at the end: a concurrent
+	// snapshot for the same key reads the published map as its prev.
 	nestingLoggedMu.Lock()
 	prev := nestingLogged[key]
-	next := make(map[string]string, len(snapshot)+1)
-	nestingLogged[key] = next
 	nestingLoggedMu.Unlock()
+	next := make(map[string]string, len(snapshot)+1)
 
 	rootCount := 0
 	nestedCount := 0
@@ -138,11 +139,15 @@ func logAgentSnapshotNesting(key, reason string, snapshot []types.AgentStateUpda
 		"missing_attribution": missingAttribution,
 	}
 	summary := fmt.Sprintf("%d|%d|%d|%d", len(snapshot), rootCount, nestedCount, missingAttribution)
+	high, msg := utils.LevelInfo, "agent snapshot nesting summary"
 	if missingAttribution > 0 {
-		utils.LogWithFields(nestingLevel(prev, next, summaryKey, summary, utils.LevelWarn), "session.agentstate", "agent snapshot has nested agents with no parent attribution; consumers will render them at root", fields)
-		return
+		high, msg = utils.LevelWarn, "agent snapshot has nested agents with no parent attribution; consumers will render them at root"
 	}
-	utils.LogWithFields(nestingLevel(prev, next, summaryKey, summary, utils.LevelInfo), "session.agentstate", "agent snapshot nesting summary", fields)
+	level := nestingLevel(prev, next, summaryKey, summary, high)
+	nestingLoggedMu.Lock()
+	nestingLogged[key] = next
+	nestingLoggedMu.Unlock()
+	utils.LogWithFields(level, "session.agentstate", msg, fields)
 }
 
 // agentMetaString reads a string metadata value, returning "" when absent or of
