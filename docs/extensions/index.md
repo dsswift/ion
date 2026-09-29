@@ -75,4 +75,5 @@ See [JSON-RPC Protocol](json-rpc-protocol.md) for the full wire format specifica
 - [TypeScript SDK](sdk-typescript.md) -- API reference for the TypeScript SDK (includes agent discovery)
 - [Go SDK](sdk-go.md) -- build a compiled single-binary extension in Go
 - [Raw Protocol](sdk-raw.md) -- build extensions in any language
+- [Ion Studio SDK](studio-sdk.md) -- extend Ion Studio from an extension, through a separate SDK the engine never sees
 - [Engine-Internal Extension SDK](sdk-engine-internal.md) -- the in-process registry inside the engine
