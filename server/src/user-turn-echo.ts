@@ -34,7 +34,7 @@
  * `shared/injection-policy.ts` if a CLIENT authors it, and this funnel
  * suppresses it on every surface at once.
  *
- * `desktop/src/main/__tests__/user-turn-echo-funnel.test.ts` fails the build if a new
+ * `__tests__/user-turn-echo-funnel.test.ts` fails the build if a new
  * direct echo appears outside this module.
  */
 import { notifyStudioUserMessageEcho } from './engine/studio-window-manager'

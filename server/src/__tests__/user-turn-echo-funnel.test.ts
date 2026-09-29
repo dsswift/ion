@@ -32,10 +32,8 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { normalizeSlashes } from '@ion/shared/paths'
 
-// user-turn-echo.ts and its dependents moved to @ion/server when the
-// session store and its supporting modules moved server-side (Ion Studio
-// Server program) -- the funnel is no longer under desktop/src/main at all.
-const MAIN_DIR = join(__dirname, '..', '..', '..', '..', 'server', 'src')
+/** The server source tree this test guards. */
+const MAIN_DIR = join(__dirname, '..')
 /** The funnel itself, and the low-level pusher it is built on. */
 const ALLOWED_FILES = new Set(['user-turn-echo.ts', 'engine/studio-window-manager.ts'])
 

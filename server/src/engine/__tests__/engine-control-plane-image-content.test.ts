@@ -25,7 +25,7 @@ vi.mock('electron', () => ({
   },
 }))
 
-vi.mock('../logger', () => ({
+vi.mock('../../logger', () => ({
   log: vi.fn(),
   trace: vi.fn(),
   debug: vi.fn(),
@@ -33,12 +33,12 @@ vi.mock('../logger', () => ({
   error: vi.fn(),
 }))
 
-vi.mock('@ion/server/session-meta', () => ({
+vi.mock('../../session-meta', () => ({
   conversationExists: vi.fn(() => true),
 }))
 
-import { handleEngineEvent } from '@ion/server/engine/engine-control-plane-events'
-import type { TabEntry, EventEmitterContext } from '@ion/server/engine/engine-control-plane-events'
+import { handleEngineEvent } from '../engine-control-plane-events'
+import type { TabEntry, EventEmitterContext } from '../engine-control-plane-events'
 import type { EngineEvent, NormalizedEvent } from '@ion/shared/types'
 
 function makeTab(overrides: Partial<TabEntry> = {}): TabEntry {

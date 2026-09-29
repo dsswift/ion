@@ -28,12 +28,12 @@ vi.mock('electron', () => ({
   shell: { openExternal: vi.fn() },
 }))
 
-vi.mock('@ion/server/session-meta', () => ({
+vi.mock('../../session-meta', () => ({
   conversationExists: vi.fn().mockReturnValue(true),
 }))
 
-import { handleEngineEvent } from '@ion/server/engine/engine-control-plane-events'
-import type { TabEntry, EventEmitterContext } from '@ion/server/engine/engine-control-plane-events'
+import { handleEngineEvent } from '../engine-control-plane-events'
+import type { TabEntry, EventEmitterContext } from '../engine-control-plane-events'
 import type { EngineEvent } from '@ion/shared/types'
 
 function makeTab(overrides: Partial<TabEntry> = {}): TabEntry {
