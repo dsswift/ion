@@ -42,7 +42,7 @@ func newTestPusher(t *testing.T, baseURL string, queueSize int) *APNsPusher {
 // without APNS_TOPIC set must fail loudly rather than pushing with a baked-in
 // or empty topic (Apple rejects an empty apns-topic with TopicDisallowed).
 func TestNewAPNsPusherRequiresTopic(t *testing.T) {
-	_, err := NewAPNsPusher("/nonexistent-key.p8", "KID", "TEAM", "")
+	_, err := NewAPNsPusher(nil, "KID", "TEAM", "")
 	if err == nil {
 		t.Fatal("expected error when APNs topic is empty, got nil")
 	}
@@ -58,13 +58,13 @@ func TestSendReturnsErrQueueFull(t *testing.T) {
 	p := newTestPusher(t, "http://localhost:9", 1)
 
 	// Fill the queue.
-	if err := p.Send("token", "title", "body", "kind", "res1", "chan1", "tab1"); err != nil {
+	if err := p.Send(apnsDevice{Token: "token"}, "title", "body", "kind", "res1", "chan1", "tab1"); err != nil {
 		t.Fatalf("first Send unexpectedly failed: %v", err)
 	}
 
 	// Next Send should fail with ErrQueueFull.
 	var callbackReason string
-	err := p.SendWithNotify("token", "title", "body", "kind", "res2", "chan1", "tab1", func(reason string) {
+	err := p.SendWithNotify(apnsDevice{Token: "token"}, "title", "body", "kind", "res2", "chan1", "tab1", func(reason string) {
 		callbackReason = reason
 	})
 	if err == nil {
@@ -304,12 +304,10 @@ func TestPushFailedFrameEmittedToIon(t *testing.T) {
 	}
 	t.Cleanup(func() { ionConn.CloseNow() })
 
-	// Wait for the relay to register the apns_token from the query param.
-	// The token is captured from mobile role, but for integration purposes
-	// we need the channel to have a token. Connect a mobile client briefly
-	// to register the token, then disconnect.
+	// Connect a mobile client briefly, then disconnect, so the push below
+	// meets a channel whose phone is away.
 	mobileURL := "ws" + strings.TrimPrefix(server.URL, "http") +
-		"/v1/channel/chan-pushfail?role=mobile&apns_token=deadbeef"
+		"/v1/channel/chan-pushfail?role=mobile"
 	mobileCtx, mobileCancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer mobileCancel()
 	mobileConn, _, err := websocket.Dial(mobileCtx, mobileURL, &websocket.DialOptions{
@@ -343,6 +341,7 @@ func TestPushFailedFrameEmittedToIon(t *testing.T) {
 		"pushBody":         "Body",
 		"notifyKind":       "briefing",
 		"notifyResourceId": "res-abc-123",
+		"pushToken":        "deadbeef",
 	})
 	writeCtx, writeCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer writeCancel()
@@ -365,4 +364,158 @@ func TestPushFailedFrameEmittedToIon(t *testing.T) {
 	if got := frame["resourceId"]; got != "res-abc-123" {
 		t.Errorf("expected resourceId 'res-abc-123', got %v", got)
 	}
+}
+
+// TestSealedStudioEnvelopePushesWhenMobileAbsent pins the contract the Studio
+// wire's push doorbell depends on: an end-to-end sealed envelope
+// ({v, nonce, ciphertext}) that carries the push fields beside it in plaintext
+// is pushed exactly like any other frame when the channel has no mobile peer.
+// The relay holds no key, so the sealed part must never reach APNs.
+func TestSealedStudioEnvelopePushesWhenMobileAbsent(t *testing.T) {
+	apnsBodies := make(chan []byte, 1)
+	apnsPaths := make(chan string, 1)
+	apnsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		apnsPaths <- r.URL.Path
+		apnsBodies <- body
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(apnsSrv.Close)
+
+	pusher := newTestPusher(t, apnsSrv.URL, 16)
+	pusher.Start()
+
+	apiKey := "test-sealed-push"
+	server, _ := startTestRelayWithPusher(t, apiKey, pusher)
+	base := "ws" + strings.TrimPrefix(server.URL, "http") + "/v1/channel/chan-sealed"
+	header := http.Header{"Authorization": []string{"Bearer " + apiKey}}
+
+	ionCtx, ionCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer ionCancel()
+	ionConn, _, err := websocket.Dial(ionCtx, base+"?role=ion", &websocket.DialOptions{HTTPHeader: header})
+	if err != nil {
+		t.Fatalf("dial ion failed: %v", err)
+	}
+	t.Cleanup(func() { ionConn.CloseNow() })
+
+	// The phone never joined this relay: the server supplies its push
+	// address with the push, which is the only way the relay learns it.
+	envelope, _ := json.Marshal(map[string]any{
+		"v":                1,
+		"nonce":            "bm9uY2U=",
+		"ciphertext":       "c2VhbGVkLXN0dWRpby1mcmFtZQ==",
+		"push":             true,
+		"pushTitle":        "Approval needed",
+		"pushBody":         "Bash wants to run",
+		"pushTabId":        "tab-42",
+		"notifyKind":       "permission",
+		"notifyResourceId": "res-7",
+		"pushToken":        "cafef00d",
+		"pushEnv":          "sandbox",
+	})
+	writeCtx, writeCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer writeCancel()
+	if err := ionConn.Write(writeCtx, websocket.MessageText, envelope); err != nil {
+		t.Fatalf("ion write sealed envelope failed: %v", err)
+	}
+
+	select {
+	case path := <-apnsPaths:
+		if path != "/3/device/cafef00d" {
+			t.Errorf("APNs request path = %q, want the server-supplied token", path)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no APNs request for a sealed envelope with push=true")
+	}
+	select {
+	case body := <-apnsBodies:
+		text := string(body)
+		for _, want := range []string{"Approval needed", "Bash wants to run", "tab-42"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("APNs payload missing %q: %s", want, text)
+			}
+		}
+		for _, sealed := range []string{"bm9uY2U=", "c2VhbGVkLXN0dWRpby1mcmFtZQ=="} {
+			if strings.Contains(text, sealed) {
+				t.Errorf("APNs payload carries sealed envelope content %q: %s", sealed, text)
+			}
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no APNs request for a sealed envelope with push=true")
+	}
+}
+
+// TestSendAsyncRoutesByTokenEnvironment pins that each push goes to the APNs
+// environment that issued its token: a development build's token to the
+// sandbox, a TestFlight build's to production, and an unreported one to the
+// relay's default. Apple refuses a token sent to the other environment.
+func TestSendAsyncRoutesByTokenEnvironment(t *testing.T) {
+	hits := map[string]int{}
+	server := func(name string) *httptest.Server {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits[name]++
+			w.WriteHeader(http.StatusOK)
+		}))
+		t.Cleanup(srv.Close)
+		return srv
+	}
+	sandbox, production, fallback := server("sandbox"), server("production"), server("default")
+
+	p := newTestPusher(t, fallback.URL, 8)
+	p.envURLs = map[string]string{apnsEnvSandbox: sandbox.URL, apnsEnvProduction: production.URL}
+
+	for _, env := range []string{apnsEnvSandbox, apnsEnvProduction, ""} {
+		if err := p.sendAsync(pushRequest{deviceToken: "tok", env: env, title: "t", body: "b"}); err != nil {
+			t.Fatalf("send env=%q: %v", env, err)
+		}
+	}
+	if hits["sandbox"] != 1 || hits["production"] != 1 || hits["default"] != 1 {
+		t.Fatalf("pushes routed %v, want one to each of sandbox, production, and the default", hits)
+	}
+}
+
+// TestParseAPNsEnv accepts the two environments and "not reported", nothing else.
+func TestParseAPNsEnv(t *testing.T) {
+	for _, v := range []string{"", apnsEnvSandbox, apnsEnvProduction} {
+		if got, ok := parseAPNsEnv(v); !ok || got != v {
+			t.Errorf("parseAPNsEnv(%q) = %q, %v; want accepted", v, got, ok)
+		}
+	}
+	if _, ok := parseAPNsEnv("development"); ok {
+		t.Error(`parseAPNsEnv("development") accepted; the wire value is "sandbox"`)
+	}
+}
+
+// TestPushWithoutTokenReportsNoToken pins that a push that arrives with no
+// push address is reported back to the sender, so the server's log shows it
+// instead of only the relay's.
+func TestPushWithoutTokenReportsNoToken(t *testing.T) {
+	pusher := newTestPusher(t, "http://127.0.0.1:9", 4)
+	apiKey := "test-no-token"
+	server, _ := startTestRelayWithPusher(t, apiKey, pusher)
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http") + "/v1/channel/chan-notoken?role=ion"
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ionConn, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{
+		HTTPHeader: http.Header{"Authorization": []string{"Bearer " + apiKey}},
+	})
+	if err != nil {
+		t.Fatalf("dial ion: %v", err)
+	}
+	t.Cleanup(func() { ionConn.CloseNow() })
+
+	if err := ionConn.Write(ctx, websocket.MessageText, []byte(`{"push":true,"pushTitle":"t","notifyResourceId":"res-9"}`)); err != nil {
+		t.Fatalf("write push frame: %v", err)
+	}
+	for i := 0; i < 5; i++ {
+		frame := readExpected(t, ionConn, "push-failed")
+		if strings.Contains(string(frame), "relay:push-failed") {
+			if !strings.Contains(string(frame), `"reason":"no_token"`) || !strings.Contains(string(frame), `"resourceId":"res-9"`) {
+				t.Fatalf("push-failed frame = %s, want reason no_token for res-9", frame)
+			}
+			return
+		}
+	}
+	t.Fatal("no relay:push-failed frame reached the ion peer")
 }

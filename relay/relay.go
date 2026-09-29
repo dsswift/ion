@@ -17,9 +17,11 @@ type Channel struct {
 	mu     sync.Mutex
 	ion    *websocket.Conn
 	mobile *websocket.Conn
-
-	// APNs device token for push notifications (set by mobile on connect).
-	apnsToken string
+	// mobileOwnerKey is the identity the mobile peer joined with, for an
+	// OIDC join validated against the relay's own issuers. Empty for a PSK
+	// join and for a server-announced-trust join, which the channel's own
+	// server already vouched for. See Hub.EvictForeignMobile.
+	mobileOwnerKey string
 }
 
 // Hub manages all active channels.
@@ -27,21 +29,34 @@ type Hub struct {
 	mu       sync.RWMutex
 	channels map[string]*Channel
 
-	// tokenStore persists APNs tokens per channel so they survive both
-	// channel deletion (desktop restart while phone is away) and relay restarts.
-	tokens *tokenStore
+	// trust holds server-announced trust per channel (manifest C7). Nil
+	// disables the announce feature entirely -- every channel behaves as
+	// before (org-wide OIDC/PSK only). Set by main() when constructing the
+	// production Hub.
+	trust *TrustStore
+
+	// oidcRegistry lazily builds and caches per-issuer OIDC validators for
+	// server-announced trust (manifest C7). Nil when RELAY_TRUSTED_ISSUERS
+	// is unset -- announced trust then always refuses with
+	// issuer_not_trusted, since no issuer can be validated.
+	oidcRegistry *OIDCRegistry
 
 	// Configurable timeouts and limits (set at construction, read-only after).
 	WriteTimeout   time.Duration // forward write deadline (default 10s)
 	PingInterval   time.Duration // keepalive ping interval (default 30s)
 	PingTimeout    time.Duration // pong wait deadline (default 10s)
 	MaxMessageSize int64         // read limit in bytes (default 12MB)
+
+	// otlp records relay.forward spans for frames carrying a traceparent.
+	// Nil when OTLP shipping is off.
+	otlp *otlpShipper
 }
 
 func NewHub() *Hub {
 	return &Hub{
 		channels:       make(map[string]*Channel),
-		tokens:         newTokenStore(os.Getenv("RELAY_STATE_DIR")),
+		trust:          NewTrustStore(),
+		oidcRegistry:   NewOIDCRegistry(os.Getenv("RELAY_TRUSTED_ISSUERS")),
 		WriteTimeout:   10 * time.Second,
 		PingInterval:   30 * time.Second,
 		PingTimeout:    10 * time.Second,
@@ -54,12 +69,7 @@ func (h *Hub) getOrCreateChannel(id string) *Channel {
 	defer h.mu.Unlock()
 	ch, ok := h.channels[id]
 	if !ok {
-		// Restore the persisted APNs token so push works immediately even when
-		// the channel struct is fresh (desktop restarted while phone was away).
-		ch = &Channel{apnsToken: h.tokens.Get(id)}
-		if ch.apnsToken != "" {
-			logger.Debug("apns token restored from store", "tag", "relay.apns.token", "channel_id", id)
-		}
+		ch = &Channel{}
 		h.channels[id] = ch
 	}
 	return ch
@@ -103,6 +113,34 @@ func (h *Hub) ChannelCount() int {
 	return len(h.channels)
 }
 
+// EvictForeignMobile closes a mobile peer that is on channelID under an
+// identity other than owner, and reports whether it closed one.
+//
+// A client may sit on a channel nobody owns yet. The moment the channel's own
+// server claims it, a client from another account has no business there: it
+// could not join now, so it does not stay.
+func (h *Hub) EvictForeignMobile(channelID, owner string) bool {
+	h.mu.RLock()
+	ch, ok := h.channels[channelID]
+	h.mu.RUnlock()
+	if !ok {
+		return false
+	}
+	ch.mu.Lock()
+	defer ch.mu.Unlock()
+	if ch.mobile == nil || ch.mobileOwnerKey == "" || ch.mobileOwnerKey == owner {
+		return false
+	}
+	logger.Warn("oidc: closing a peer that is not the channel's owner",
+		"tag", "relay.channel.evicted", "channel_id", channelID, "owner", owner)
+	// CloseNow, not Close: a graceful close waits for the peer's close frame,
+	// and this runs inside the claiming server's own upgrade request.
+	ch.mobile.CloseNow() //nolint:errcheck // closing an evicted connection
+	ch.mobile = nil
+	ch.mobileOwnerKey = ""
+	return true
+}
+
 // ChannelStatus returns whether the ion and mobile roles are connected for a channel.
 func (h *Hub) ChannelStatus(channelID string) (ionConnected, mobileConnected bool) {
 	h.mu.RLock()
@@ -125,7 +163,7 @@ type controlMessage struct {
 // It is emitted back to the ion peer when an APNs push fails at any stage.
 type pushFailedControl struct {
 	Type       string `json:"type"`                 // "relay:push-failed"
-	Reason     string `json:"reason"`               // queue_full | invalid_token | transient | token | marshal | request | transport
+	Reason     string `json:"reason"`               // no_token | push_unavailable | queue_full | invalid_token | transient | token | marshal | request | transport
 	ResourceId string `json:"resourceId,omitempty"` // resource ID from the originating push message
 }
 
@@ -140,10 +178,12 @@ type forwardAck struct {
 	Reason string `json:"reason,omitempty"` // present on peer-unavailable: "no_peer" | "write_failed"
 }
 
-// wireEnvelopeSeq extracts only the seq field from a WireMessage envelope.
-// Returns (seq, true) on success. The relay never reads deeper than this.
-type wireEnvelopeSeq struct {
-	Seq int64 `json:"seq"`
+// wireEnvelope extracts only the outer WireMessage envelope fields the relay
+// uses: seq for forward ACKs and the optional W3C traceparent for
+// relay.forward spans. The relay never reads deeper than this.
+type wireEnvelope struct {
+	Seq         int64  `json:"seq"`
+	Traceparent string `json:"traceparent,omitempty"`
 }
 
 func sendControl(conn *websocket.Conn, msgType string, timeout time.Duration, log *slog.Logger) {
@@ -177,6 +217,10 @@ type relayMessage struct {
 	NotifyKind       string `json:"notifyKind,omitempty"`
 	NotifyResourceId string `json:"notifyResourceId,omitempty"`
 	PushTabId        string `json:"pushTabId,omitempty"`
+	// The phone's push address. The server owns it (the phone registered it
+	// there) and sends it with every push; the relay keeps no address book.
+	PushToken string `json:"pushToken,omitempty"`
+	PushEnv   string `json:"pushEnv,omitempty"`
 }
 
 // HandleWebSocket upgrades the HTTP connection to WebSocket and runs the relay
@@ -240,18 +284,9 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 			ch.mobile.Close(websocket.StatusGoingAway, "replaced") //nolint:errcheck // closing a replaced connection
 		}
 		ch.mobile = conn
-	}
-
-	// Capture the APNs token from mobile query param and persist it so it
-	// survives both channel deletion (desktop restart while phone is away) and
-	// relay restarts. Without persistence the token only lives as long as the
-	// in-memory Channel struct, which removeIfEmpty destroys when both peers
-	// disconnect — defeating the primary purpose of APNs push (phone is away).
-	if role == "mobile" {
-		if token := r.URL.Query().Get("apns_token"); token != "" {
-			ch.apnsToken = token
-			h.tokens.Set(channelID, token)
-			connLog.Debug("apns token captured", "tag", "relay.apns.token", "channel_id", channelID)
+		ch.mobileOwnerKey = ""
+		if identity != nil {
+			ch.mobileOwnerKey = identity.OwnerKey
 		}
 	}
 
@@ -287,8 +322,10 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	}
 
 	// Read loop: forward messages to the peer.
+	sawFirstIonFrame := false
 	for {
 		msgType, data, err := conn.Read(context.Background())
+		recvAt := time.Now()
 		if err != nil {
 			// Log the exit reason so a clean close is distinguishable from a
 			// timeout or protocol error. websocket normal-closure is expected;
@@ -297,10 +334,55 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 			break
 		}
 
+		// Server-announced trust (manifest C7): the ion peer's FIRST frame
+		// after upgrade may be a relay_announce, naming the issuer/audience/
+		// scope (or pairing:true) that a later mobile/client join on this
+		// channel is validated against, instead of the relay's own org-wide
+		// OIDC/PSK. Checked only on the loop's first iteration and only for
+		// the ion role -- a relay_announce is ion-internal signaling, never
+		// forwarded to the mobile peer, and never expected again after the
+		// first frame. Any first frame that is NOT a well-formed
+		// relay_announce (every ion peer running code that predates this
+		// feature) falls through to the ordinary forwarding path below
+		// unchanged, so a legacy ion peer's first real message is never lost.
+		if role == "ion" && h.trust != nil {
+			isFirstFrame := !sawFirstIonFrame
+			sawFirstIonFrame = true
+			if isFirstFrame {
+				if trust, ok := parseRelayAnnounce(data); ok {
+					h.trust.Set(channelID, trust)
+					connLog.Info("relay announce received",
+						"tag", "relay.announce",
+						"channel_id", channelID,
+						"issuer", trust.Issuer,
+						"audience", trust.Audience,
+						"pairing", trust.Pairing)
+					continue
+				}
+			}
+		} else if role == "mobile" && h.trust != nil {
+			// A relay_announce arriving from the mobile role is not part of
+			// the protocol -- only an ion peer announces trust. Log and drop
+			// it rather than forwarding ion-internal-shaped signaling data to
+			// the ion peer as if it were an application frame.
+			if _, ok := parseRelayAnnounce(data); ok {
+				connLog.Warn("relay announce received from mobile role; ignored",
+					"tag", "relay.announce", "channel_id", channelID)
+				continue
+			}
+		}
+
 		ch.mu.Lock()
 		peer := ch.getPeerLocked(role)
-		apnsToken := ch.apnsToken
 		ch.mu.Unlock()
+
+		// One read of the outer envelope serves both the mobile ACK and the
+		// forward span. An ion frame is only parsed when spans are on.
+		var env wireEnvelope
+		envOK := false
+		if role == "mobile" || h.otlp.tracing() {
+			envOK = json.Unmarshal(data, &env) == nil
+		}
 
 		if peer != nil {
 			writeCtx, writeCancel := context.WithTimeout(context.Background(), h.WriteTimeout)
@@ -310,9 +392,26 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 				connLog.Warn("forward error", "tag", "relay.forward_error", "err", writeErr)
 			}
 
+			if envOK && env.Traceparent != "" && h.otlp.tracing() {
+				if tc, ok := parseTraceparent(env.Traceparent); ok {
+					h.otlp.recordForward(forwardSpan{
+						Parent:    tc,
+						Start:     recvAt,
+						End:       time.Now(),
+						Direction: forwardDirection(role),
+						ChannelID: channelID,
+						Seq:       env.Seq,
+						Bytes:     len(data),
+						WriteErr:  writeErr,
+					})
+				} else {
+					connLog.Debug("invalid traceparent; no span recorded",
+						"tag", "relay.trace", "seq", env.Seq)
+				}
+			}
+
 			if role == "mobile" {
-				var env wireEnvelopeSeq
-				if jsonErr := json.Unmarshal(data, &env); jsonErr == nil && env.Seq > 0 {
+				if envOK && env.Seq > 0 {
 					if writeErr == nil {
 						connLog.Debug("forward ack sent",
 							"tag", "relay.forward_ack",
@@ -339,8 +438,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 				}
 			}
 		} else if role == "mobile" {
-			var env wireEnvelopeSeq
-			if jsonErr := json.Unmarshal(data, &env); jsonErr == nil && env.Seq > 0 {
+			if envOK && env.Seq > 0 {
 				connLog.Debug("forward ack: no peer connected",
 					"tag", "relay.forward_ack",
 					"seq", env.Seq,
@@ -364,16 +462,26 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 					"channel_id", channelID,
 					"err", err)
 			} else if msg.Push {
-				if apnsToken == "" {
-					// No token — log at ERROR so the skip is visible in log scanners
-					// and operators can diagnose why notifications are not delivered
-					// (e.g. desktop restarted before the fix was applied, or phone
-					// never connected to this relay instance).
-					connLog.Error("push skipped: no APNs token for channel",
+				env, envOK := parseAPNsEnv(msg.PushEnv)
+				if !envOK {
+					// Keep the push: the pusher's default environment may still
+					// be the right one for this token.
+					connLog.Warn("unknown pushEnv from server; using the relay default",
+						"tag", "relay.apns.error", "channel_id", channelID, "apns_env", msg.PushEnv)
+				}
+				apnsDevice := apnsDevice{Token: msg.PushToken, Env: env}
+				if apnsDevice.Token == "" {
+					// The server sent no push address: the phone has not
+					// registered one with it (an older app build), or the server
+					// predates owning push addresses.
+					connLog.Error("push skipped: the server sent no push address",
 						"tag", "relay.apns.skipped_no_token",
 						"channel_id", channelID,
 						"kind", msg.NotifyKind,
 						"resource_id", msg.NotifyResourceId)
+					// The sender is the ion peer; tell it, so the push that did
+					// not happen shows up in the server's log too.
+					sendControlPayload(conn, pushFailedControl{Type: "relay:push-failed", Reason: "no_token", ResourceId: msg.NotifyResourceId}, h.WriteTimeout, connLog)
 				} else {
 					title := msg.PushTitle
 					body := msg.PushBody
@@ -408,7 +516,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 						sendControlPayload(ionConn, frame, h.WriteTimeout, connLog)
 					}
 
-					if err := pusher.SendWithNotify(apnsToken, title, body, msg.NotifyKind, resourceId, channelID, msg.PushTabId, onFailure); err != nil {
+					if err := pusher.SendWithNotify(apnsDevice, title, body, msg.NotifyKind, resourceId, channelID, msg.PushTabId, onFailure); err != nil {
 						// Queue was full — report back to the ion peer immediately.
 						onFailure("queue_full")
 					}
@@ -425,6 +533,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 					"channel_id", channelID,
 					"kind", msg.NotifyKind,
 					"resource_id", msg.NotifyResourceId)
+				sendControlPayload(conn, pushFailedControl{Type: "relay:push-failed", Reason: "push_unavailable", ResourceId: msg.NotifyResourceId}, h.WriteTimeout, connLog)
 			}
 		}
 	}
@@ -443,6 +552,15 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	}
 	peer = ch.getPeerLocked(role)
 	ch.mu.Unlock()
+
+	// Server-announced trust (manifest C7) is scoped to the ion peer that
+	// announced it: when that peer leaves, its announcement leaves with it,
+	// so a stale trust grant never outlives the connection that made it. A
+	// reconnecting ion peer re-announces (or doesn't) on its own next
+	// connection, per the normal first-frame path above.
+	if role == "ion" && h.trust != nil {
+		h.trust.Clear(channelID)
+	}
 
 	if peer != nil {
 		sendControl(peer, "relay:peer-disconnected", h.WriteTimeout, connLog)

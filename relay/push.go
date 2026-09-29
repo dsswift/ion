@@ -58,6 +58,7 @@ func classifyAPNsStatus(statusCode int) string {
 // pushRequest holds the parameters for a single push notification.
 type pushRequest struct {
 	deviceToken string
+	env         string // APNs environment that issued deviceToken; "" = pusher default
 	title       string
 	body        string
 	kind        string // resource kind for deep-link routing on the client
@@ -73,7 +74,10 @@ type pushRequest struct {
 // APNsPusher sends push notifications via Apple's HTTP/2 APNs API.
 type APNsPusher struct {
 	client  *http.Client
-	baseURL string
+	baseURL string // default endpoint, for a token whose environment is unknown
+	// envURLs maps an environment to its endpoint. A missing entry falls back
+	// to baseURL, which is how tests aim every push at one fake server.
+	envURLs map[string]string
 	keyID   string
 	teamID  string
 	topic   string // apns-topic header: the client app's bundle ID (APNS_TOPIC env)
@@ -86,13 +90,10 @@ type APNsPusher struct {
 	queue chan pushRequest
 }
 
-func NewAPNsPusher(keyPath, keyID, teamID, topic string) (*APNsPusher, error) {
+// NewAPNsPusher builds a pusher from the .p8 key's PEM bytes.
+func NewAPNsPusher(keyData []byte, keyID, teamID, topic string) (*APNsPusher, error) {
 	if topic == "" {
 		return nil, fmt.Errorf("APNs topic is required (set APNS_TOPIC to the iOS app bundle ID)")
-	}
-	keyData, err := os.ReadFile(keyPath)
-	if err != nil {
-		return nil, fmt.Errorf("read APNs key: %w", err)
 	}
 
 	block, _ := pem.Decode(keyData)
@@ -113,7 +114,8 @@ func NewAPNsPusher(keyPath, keyID, teamID, topic string) (*APNsPusher, error) {
 	transport := &http2.Transport{}
 	client := &http.Client{Transport: transport, Timeout: 30 * time.Second}
 
-	// Use sandbox for development; production in release builds.
+	// The default endpoint serves a phone that did not report its token's
+	// environment. A phone that did is routed by endpoint() instead.
 	baseURL := apnsSandboxURL
 	if os.Getenv("APNS_PRODUCTION") == "1" {
 		baseURL = apnsProductionURL
@@ -122,6 +124,7 @@ func NewAPNsPusher(keyPath, keyID, teamID, topic string) (*APNsPusher, error) {
 	return &APNsPusher{
 		client:  client,
 		baseURL: baseURL,
+		envURLs: map[string]string{apnsEnvSandbox: apnsSandboxURL, apnsEnvProduction: apnsProductionURL},
 		keyID:   keyID,
 		teamID:  teamID,
 		topic:   topic,
@@ -179,17 +182,18 @@ type apsAlert struct {
 // capacity. The onFailure callback from SendWithNotify is not invoked on a
 // queue-full drop — callers using SendWithNotify must check the return error
 // and invoke the callback themselves when it is non-nil.
-func (p *APNsPusher) Send(deviceToken, title, body, kind, resourceId, channelId, tabId string) error {
-	return p.SendWithNotify(deviceToken, title, body, kind, resourceId, channelId, tabId, nil)
+func (p *APNsPusher) Send(device apnsDevice, title, body, kind, resourceId, channelId, tabId string) error {
+	return p.SendWithNotify(device, title, body, kind, resourceId, channelId, tabId, nil)
 }
 
 // SendWithNotify enqueues a push notification and registers an optional
 // callback that is invoked with a stable reason string if the push fails at
 // any stage (queue full, token error, transport error, or a non-200 APNs
 // response). Callers that do not need failure notification may use Send instead.
-func (p *APNsPusher) SendWithNotify(deviceToken, title, body, kind, resourceId, channelId, tabId string, onFailure func(reason string)) error {
+func (p *APNsPusher) SendWithNotify(device apnsDevice, title, body, kind, resourceId, channelId, tabId string, onFailure func(reason string)) error {
 	req := pushRequest{
-		deviceToken: deviceToken,
+		deviceToken: device.Token,
+		env:         device.Env,
 		title:       title,
 		body:        body,
 		kind:        kind,
@@ -259,7 +263,7 @@ func (p *APNsPusher) sendAsync(req pushRequest) error {
 		return newAPNsError("marshal", fmt.Errorf("apns marshal: %w", err))
 	}
 
-	url := fmt.Sprintf("%s/3/device/%s", p.baseURL, req.deviceToken)
+	url := fmt.Sprintf("%s/3/device/%s", p.endpoint(req.env), req.deviceToken)
 	httpReq, err := http.NewRequest("POST", url, bytes.NewReader(data))
 	if err != nil {
 		logger.Error("APNs request error", "tag", "relay.apns.error", "err", err,
@@ -285,12 +289,21 @@ func (p *APNsPusher) sendAsync(req pushRequest) error {
 		reason := classifyAPNsStatus(resp.StatusCode)
 		logger.Error("APNs response error", "tag", "relay.apns.error",
 			"status", resp.StatusCode, "body", string(respBody),
-			"reason", reason, "kind", req.kind, "resource_id", req.resourceId)
+			"reason", reason, "kind", req.kind, "resource_id", req.resourceId, "apns_env", req.env)
 		return newAPNsError(reason, fmt.Errorf("apns response: status %d reason %s", resp.StatusCode, reason))
 	}
 
 	logger.Info("APNs push delivered", "tag", "relay.apns.delivered",
 		"status", resp.StatusCode, "kind", req.kind, "resource_id", req.resourceId,
-		"channel_id", req.channelId, "tab_id", req.tabId)
+		"channel_id", req.channelId, "tab_id", req.tabId, "apns_env", req.env)
 	return nil
+}
+
+// endpoint returns the APNs host for a token from env, or the default when
+// the phone did not report its environment.
+func (p *APNsPusher) endpoint(env string) string {
+	if url, ok := p.envURLs[env]; ok {
+		return url
+	}
+	return p.baseURL
 }
