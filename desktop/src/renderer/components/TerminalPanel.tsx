@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react'
-import { useSessionStore } from '../stores/sessionStore'
+import { useSessionStore } from '@ion/server/store/sessionStore'
 import { TerminalInstanceView } from './TerminalInstance'
 import { TerminalTabStrip } from './TerminalTabStrip'
 import { rWarn } from '../rendererLogger'
@@ -18,20 +18,19 @@ export function TerminalPanel({ tabId, cwd, autoCreate = true, onEmpty }: Props)
   const pane = useSessionStore((s) => s.terminalPanes.get(tabId))
   const hadInstances = useRef(false)
 
-  // Auto-create a default shell on first mount when no owner metadata exists.
-  // In Studio this action is forwarded, so the owner creates and republishes it.
+  // Ask the owner for a default shell on first mount. The OWNER decides
+  // whether one is needed: this window's copy of the terminal state has not
+  // arrived yet when the panel first mounts, so "no shells here" would be a
+  // guess, and acting on it added one more shell on every launch.
   useEffect(() => {
     if (!autoCreate) return
-    const currentPane = useSessionStore.getState().terminalPanes.get(tabId)
-    if (!currentPane || currentPane.instances.length === 0) {
-      void useSessionStore.getState().addTerminalInstance(tabId, 'user', cwd).catch((error) => {
-        rWarn('terminal', 'automatic conversation terminal creation failed', {
-          tab_id: tabId,
-          cwd,
-          error: String(error),
-        })
+    void useSessionStore.getState().ensureTerminalInstance(tabId, cwd).catch((error) => {
+      rWarn('terminal', 'automatic conversation terminal creation failed', {
+        tab_id: tabId,
+        cwd,
+        error: String(error),
       })
-    }
+    })
   }, [tabId, cwd, autoCreate])
 
   useEffect(() => {

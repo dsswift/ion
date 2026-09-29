@@ -16,20 +16,25 @@ const mocks = vi.hoisted(() => ({
   scrollback: new Map<string, string>(),
 }))
 
-vi.mock('../cli-env', () => ({
+vi.mock('@ion/server/cli-env', () => ({
   getCliEnv: (extra?: Record<string, string>) => ({ PATH: '/usr/bin', ...extra }),
 }))
-vi.mock('../deeplink/token', () => ({
+vi.mock('@ion/server/deeplink/token', () => ({
   getDeepLinkToken: () => 'test-token-value',
 }))
-vi.mock('../state', () => ({ terminalScrollback: mocks.scrollback }))
+vi.mock('@ion/server/state', () => ({ terminalScrollback: mocks.scrollback }))
+vi.mock('@ion/server/terminal/terminal-spawn-helper', () => ({
+  describeSpawnHelper: () => ({ path: '/pkg/prebuilds/darwin-arm64/spawn-helper', exists: true, executable: false }),
+  ensureSpawnHelperExecutable: () => ({ status: { path: '/pkg/prebuilds/darwin-arm64/spawn-helper', exists: true, executable: false }, repaired: false, error: 'EPERM' }),
+  spawnHelperHint: () => 'node-pty spawn-helper at /pkg/prebuilds/darwin-arm64/spawn-helper is not executable; run: chmod +x /pkg/prebuilds/darwin-arm64/spawn-helper',
+}))
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>()
   // '/dead' does not exist; everything else does.
   return { ...actual, existsSync: (p: string) => !String(p).includes('/dead') }
 })
 
-import { TerminalManager } from '../terminal-manager'
+import { TerminalManager } from '@ion/server/terminal/terminal-manager'
 
 interface FakePty {
   fireData: (d: string) => void
@@ -39,9 +44,12 @@ interface FakePty {
 
 const ptys = new Map<string, FakePty>()
 
+let spawnFailure: Error | null = null
+
 function fakeSpawner() {
   return (_file: string, _args: string[], options: { cwd: string }) => {
     mocks.spawn(options.cwd)
+    if (spawnFailure) throw spawnFailure
     let onData: ((d: string) => void) | null = null
     let onExit: ((e: { exitCode: number }) => void) | null = null
     const fake: FakePty & Record<string, unknown> = {
@@ -86,6 +94,7 @@ beforeEach(() => {
   mocks.scrollback.clear()
   ptys.clear()
   lastPty = null
+  spawnFailure = null
 })
 
 describe('terminal attach model', () => {
@@ -99,6 +108,7 @@ describe('terminal attach model', () => {
     expect(info.running).toBe(true)
     expect(info.exitCode).toBeNull()
     expect(info.cwdFellBack).toBe(false)
+    expect(info.startError).toBeNull()
   })
 
   it('exit retains scrollback + exit code; only destroy forgets', () => {
@@ -149,6 +159,32 @@ describe('terminal attach model', () => {
     const info = manager.attach('studio:t1')
     expect(info.cwdFellBack).toBe(true)
     expect(info.running).toBe(true)
+  })
+
+  it('a spawn failure is answered on attach as startError, not a rejection', () => {
+    // The packaged desktop shipped node-pty's spawn-helper without its
+    // execute bit: every spawn threw "posix_spawnp failed." and the renderer,
+    // whose attach promise rejected, drew a blinking cursor over nothing.
+    spawnFailure = new Error('posix_spawnp failed.')
+    const { manager } = makeManager()
+    const info = manager.attach('studio:t1', { restartIfNotRunning: true, cwd: '/repo' })
+    expect(info.running).toBe(false)
+    expect(info.exitCode).toBeNull()
+    expect(info.startError).toBe(
+      'Error: posix_spawnp failed. -- node-pty spawn-helper at /pkg/prebuilds/darwin-arm64/spawn-helper is not executable; run: chmod +x /pkg/prebuilds/darwin-arm64/spawn-helper',
+    )
+    expect(manager.getLifecycle('studio:t1')).toMatchObject({ running: false, cwd: '/repo', startError: expect.stringContaining('posix_spawnp') })
+
+    // A direct create() still throws: its callers own that contract.
+    expect(() => manager.create('studio:t2', '/repo')).toThrow('posix_spawnp failed.')
+
+    // Once the helper is fixed, the next attach starts the shell and clears
+    // the recorded failure.
+    spawnFailure = null
+    const retry = manager.attach('studio:t1', { restartIfNotRunning: true })
+    expect(retry.running).toBe(true)
+    expect(retry.startError).toBeNull()
+    expect(mocks.spawn.mock.calls.map((c) => c[0])).toEqual(['/repo', '/repo', '/repo'])
   })
 
   it('attach without restart never spawns', () => {

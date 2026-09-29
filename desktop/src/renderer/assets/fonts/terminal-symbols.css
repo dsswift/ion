@@ -1,0 +1,18 @@
+/*
+ * Nerd Font symbols for every terminal view, whatever font the operator picked.
+ *
+ * Prompts such as Starship draw icons from the Nerd Fonts private-use ranges.
+ * An installed font that lacks one (a Nerd Fonts 2.x build has none of the
+ * 3.x Material Design codepoints) renders a box. This face is appended to the
+ * end of every terminal font stack, so a glyph the chosen font has still comes
+ * from that font and only a missing one falls through to here.
+ *
+ * Symbols Nerd Font Mono 3.5.1 (ryanoasis/nerd-fonts, MIT; see
+ * SymbolsNerdFont-LICENSE.txt), converted to WOFF2 unchanged. The family name
+ * is Ion's own so it can never resolve to a different installed copy.
+ */
+@font-face {
+  font-family: 'Ion Nerd Font Symbols';
+  src: url('./SymbolsNerdFontMono-Regular.woff2') format('woff2');
+  font-display: block;
+}

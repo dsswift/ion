@@ -22,6 +22,9 @@ import { usePreferencesStore } from '../../../preferences'
 import { useColors } from '../../../theme'
 import { rDebug, rWarn } from '../../../rendererLogger'
 import '@xterm/xterm/css/xterm.css'
+import { host } from '../../../host/host-instance'
+import { writeTerminalHistory } from '../../../lib/terminal-history'
+import { terminalFontStack } from '../../../lib/terminal-font'
 
 export function TerminalSurface({ tabId, instanceId, cwd }: { tabId: string; instanceId: string; cwd: string }): React.JSX.Element {
   const colors = useColors()
@@ -32,6 +35,9 @@ export function TerminalSurface({ tabId, instanceId, cwd }: { tabId: string; ins
   const terminalFontSize = usePreferencesStore((s) => s.terminalFontSize)
   const uiZoom = usePreferencesStore((s) => s.uiZoom)
   const [exited, setExited] = useState<number | null>(null)
+  // The shell never started (as opposed to exited): the attach answered with
+  // the reason, which is written into the terminal and shown as a banner.
+  const [startError, setStartError] = useState<string | null>(null)
   const [cwdNotice, setCwdNotice] = useState(false)
   const key = `${tabId}:surface:${instanceId}`
 
@@ -41,7 +47,7 @@ export function TerminalSurface({ tabId, instanceId, cwd }: { tabId: string; ins
 
     const terminal = new Terminal({
       fontSize: terminalFontSize,
-      fontFamily: terminalFontFamily,
+      fontFamily: terminalFontStack(terminalFontFamily),
       allowTransparency: true,
       scrollback: 5000,
     })
@@ -55,30 +61,48 @@ export function TerminalSurface({ tabId, instanceId, cwd }: { tabId: string; ins
     const pendingChunks: string[] = []
     let disposed = false
 
+    const showStartFailure = (message: string): void => {
+      setExited(null)
+      setStartError(message)
+      terminal.writeln(`\x1b[31mterminal failed to start:\x1b[0m ${message}`)
+    }
+
     const attach = (restart: boolean): void => {
       historyPending = true
-      void window.ion
+      void host.shell
         .terminalAttach(key, { restartIfNotRunning: restart, cwd })
         .then((info) => {
           if (disposed) return
-          if (info.history) terminal.write(info.history)
+          writeTerminalHistory(terminal, info.history, { key })
           setExited(info.running ? null : info.exitCode)
           setCwdNotice(info.cwdFellBack)
+          if (!info.running && info.startError) {
+            showStartFailure(info.startError)
+            rWarn('studio.terminal', 'attached to a terminal that failed to start', { key, error: info.startError })
+            return
+          }
+          setStartError(null)
           rDebug('studio.terminal', 'attached', { key, running: info.running, history_bytes: info.history.length })
         })
-        .catch((err) => rWarn('studio.terminal', 'attach failed', { key, error: String(err) }))
+        .catch((err) => {
+          if (disposed) return
+          // The attach itself failed (transport, refusal). Shown the same way
+          // as a spawn failure: a cursor over nothing explains nothing.
+          showStartFailure(String(err))
+          rWarn('studio.terminal', 'attach failed', { key, error: String(err) })
+        })
         .finally(() => {
           historyPending = false
           for (const chunk of pendingChunks) terminal.write(chunk)
           pendingChunks.length = 0
         })
     }
-    const offData = window.ion.onTerminalData((k, data) => {
+    const offData = host.shell.onTerminalData((k, data) => {
       if (k !== key) return
       if (historyPending) pendingChunks.push(data)
       else terminal.write(data)
     })
-    const offExit = window.ion.onTerminalExit((k, exitCode) => {
+    const offExit = host.shell.onTerminalExit((k, exitCode) => {
       if (k !== key) return
       setExited(exitCode)
     })
@@ -86,21 +110,22 @@ export function TerminalSurface({ tabId, instanceId, cwd }: { tabId: string; ins
     attach(true)
 
     const onInput = terminal.onData((data) => {
-      // Typing into an exited terminal respawns it on demand.
-      if (exitedRef.current !== null) {
+      // Typing into an exited (or never-started) terminal respawns it on demand.
+      if (exitedRef.current !== null || startErrorRef.current !== null) {
         terminal.reset()
         setExited(null)
+        setStartError(null)
         attach(true)
         return
       }
-      window.ion.terminalWrite(key, data)
+      host.shell.terminalWrite(key, data)
     })
 
     const resize = (): void => {
       try {
         fitAddon.fit()
         const dims = fitAddon.proposeDimensions()
-        if (dims) window.ion.terminalResize(key, dims.cols, dims.rows)
+        if (dims) host.shell.terminalResize(key, dims.cols, dims.rows)
       } catch {
         // silent-ok: fit on a zero-size container during layout transitions
       }
@@ -128,12 +153,12 @@ export function TerminalSurface({ tabId, instanceId, cwd }: { tabId: string; ins
     const terminal = terminalRef.current
     const fitAddon = fitAddonRef.current
     if (!terminal || !fitAddon) return
-    terminal.options.fontFamily = terminalFontFamily
+    terminal.options.fontFamily = terminalFontStack(terminalFontFamily)
     terminal.options.fontSize = terminalFontSize
     try {
       fitAddon.fit()
       const dimensions = fitAddon.proposeDimensions()
-      if (dimensions) window.ion.terminalResize(key, dimensions.cols, dimensions.rows)
+      if (dimensions) host.shell.terminalResize(key, dimensions.cols, dimensions.rows)
     } catch (err) {
       rDebug('studio.terminal', 'fit skipped during typography update', { key, error: String(err) })
     }
@@ -142,6 +167,8 @@ export function TerminalSurface({ tabId, instanceId, cwd }: { tabId: string; ins
   // Live exited flag for the input handler without re-running the effect.
   const exitedRef = useRef<number | null>(null)
   exitedRef.current = exited
+  const startErrorRef = useRef<string | null>(null)
+  startErrorRef.current = startError
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
@@ -167,6 +194,25 @@ export function TerminalSurface({ tabId, instanceId, cwd }: { tabId: string; ins
           }}
         >
           exited ({exited}) — type to restart
+        </div>
+      )}
+      {exited === null && startError !== null && (
+        <div
+          data-testid="terminal-start-error"
+          style={{
+            position: 'absolute',
+            bottom: 8,
+            left: 10,
+            fontSize: 10,
+            fontFamily: 'system-ui, sans-serif',
+            color: colors.dangerFg,
+            background: colors.surfacePrimary,
+            border: `1px solid ${colors.containerBorder}`,
+            borderRadius: 4,
+            padding: '2px 8px',
+          }}
+        >
+          failed to start — type to retry
         </div>
       )}
     </div>
