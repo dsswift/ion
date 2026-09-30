@@ -5,7 +5,7 @@
 // semantically-identical.
 
 import type { Dashboard } from '../dashboard.ts';
-import { text, row, logs, stat } from '../panels.ts';
+import { row, logs, stat } from '../panels.ts';
 import { stream } from '../queries.ts';
 import { ingestFreshnessMinutes } from '../queries-logs.ts';
 
@@ -19,18 +19,14 @@ const cookbookLogs = (id: number, title: string, description: string, y: number,
     target: { e: stream(expr) },
   });
 
-const INTRO =
-  '## Ion Explore Cookbook\n\nThis dashboard contains ready-to-run LogQL recipes for ad-hoc investigation. **Use it as a launching pad into Explore**, not as a live monitoring dashboard.\n\n### How to use a recipe\n1. Set the dashboard variables above (Conversation ID, Session ID, Extension Name) to scope the queries.\n2. Click the **three-dot menu** (⋮) on any panel and select **Explore** to open that query in Grafana Explore.\n3. In Explore you can adjust the time range, modify the query, and use **split-view** to correlate logs with traces.\n\n### Key fields (structured metadata promoted by Alloy)\n| Field | Description |\n|---|---|\n| `context_conversation_id` | Durable conversation-file ID — join key across all event types |\n| `context_session_id` | Engine session key (tab UUID for desktop clients) |\n| `context_extension` | Hosting extension name (omit-when-absent for non-extension runs) |\n| `context_extension_version` | Extension manifest version (omit-when-absent) |\n| `trace_id` | 32-hex trace ID (the OTLP traceId) — click the Tempo correlation link to jump to the trace |\n| `span_id` | The span the event is about (the OTLP spanId) |\n| `service_instance_id` | The engine install that recorded the event |\n| `service_version` | The engine build that recorded the event |\n| `model` | LLM model name (on llm.call, run.complete) |\n| `run_cost_usd` | Per-run cost in USD (on run.complete) |\n\n### Provisioned correlations\nThe Loki datasource has three provisioned correlations: **conversation_id → all logs**, **session_id → telemetry**, **trace_id → Tempo trace**. In any Explore result, click the link button on a log line\'s field value to follow the correlation.\n';
-
 export function cookbookDashboard(): Dashboard {
   const panels = [
-    text(1, { x: 0, y: 0, w: 24, h: 4 }, INTRO, 'How to Use This Cookbook'),
-    row(2, 'Per-Conversation Recipes', 4),
+    row(2, 'Per-Conversation Recipes', 0),
     cookbookLogs(
       3,
       'All logs for a conversation',
       "Every log line across all components (engine, extensions, desktop, iOS) that carries this conversation_id. Set the 'Conversation ID' variable above. This is the primary first-look query for any reported bug.",
-      5,
+      1,
       '{service_name=~".+", event_name=""} | json | conversation_id = "$conversation_id"',
       true,
     ),
@@ -38,56 +34,56 @@ export function cookbookDashboard(): Dashboard {
       4,
       'Telemetry events for a conversation',
       'Only telemetry events (run.complete, llm.call, dispatch.agent, cache.savings) for the given conversation_id. Use this to audit cost and timing for a single conversation without log noise.',
-      13,
+      9,
       '{event_name=~".+"} | json | context_conversation_id = "$conversation_id"',
     ),
-    row(5, 'Per-Session Recipes', 21),
+    row(5, 'Per-Session Recipes', 17),
     cookbookLogs(
       6,
       'All telemetry for a session',
       'All telemetry events (run.complete, llm.call, dispatch.agent, cache.savings) for the given session_id (the engine session key / tab UUID). Useful for session-level cost forensics when you know the tab/session but not the conversation ID.',
-      22,
+      18,
       '{event_name=~".+"} | json | context_session_id = "$session_id"',
     ),
-    row(7, 'Extension Attribution Recipes', 30),
+    row(7, 'Extension Attribution Recipes', 26),
     cookbookLogs(
       8,
       'All runs attributed to an extension',
       "All run.complete events where context_extension matches the Extension Name variable. Useful for reviewing all runs (cost, model, turns) driven by a specific extension. Old runs without context_extension are excluded — they appear as 'unattributed' in the Extensions dashboard.",
-      31,
+      27,
       '{event_name="run.complete"} | json | context_extension =~ "$extension"',
     ),
     cookbookLogs(
       9,
       'Agent dispatches attributed to an extension',
       'All dispatch.agent spans where context_extension matches. Shows which sub-agents the extension dispatched, at what depth, and with what model. Useful for understanding sub-agent cost within an extension.',
-      39,
+      35,
       '{event_name="dispatch.agent"} | json | payload_extension =~ "$extension"',
     ),
-    row(10, 'Trace Correlation Recipes', 47),
+    row(10, 'Trace Correlation Recipes', 43),
     cookbookLogs(
       11,
       'LLM calls with trace IDs',
       "All llm.call telemetry events that carry a trace_id. Click the 'View trace' correlation link on any result row (via the provisioned Loki→Tempo correlation) to jump directly to the Tempo trace for that call.",
-      48,
+      44,
       '{event_name="llm.call"} | json | trace_id != ""',
     ),
-    row(12, 'Error and Quality Recipes', 56),
+    row(12, 'Error and Quality Recipes', 52),
     cookbookLogs(
       13,
       'Engine errors',
       'All ERROR-level log lines from the engine. Start here for bug triage — every engine error path logs at ERROR level with structured fields. Filter further by conversation_id or session_id after identifying the relevant event.',
-      57,
+      53,
       '{service_name="ion-engine", event_name=""} | json | level = "ERROR"',
     ),
     cookbookLogs(
       14,
       'Extension errors',
       'All ERROR-level log lines from extensions (service_name=ion-extension). Cross-reference with the extension name via the \'tag\' field (e.g. tag=ion-dev). Useful for debugging extension panics and unhandled hook rejections.',
-      65,
+      61,
       '{service_name="ion-extension", event_name=""} | json | level = "ERROR"',
     ),
-    row(15, 'Ingest Diagnostics Recipes', 73),
+    row(15, 'Ingest Diagnostics Recipes', 69),
     stat({
       id: 16,
       title: 'Ingest freshness by component (min since last line)',
@@ -98,7 +94,7 @@ export function cookbookDashboard(): Dashboard {
         'Diagnosis: compare the positions offset in the container against the host file size; fix ' +
         'with `docker compose -p ion-obs restart alloy`. The [24h] lookback keeps a long-wedged ' +
         'component visible as a growing red value instead of dropping it from a narrow window.',
-      gridPos: { x: 0, y: 74, w: 24, h: 6 },
+      gridPos: { x: 0, y: 70, w: 24, h: 6 },
       fieldConfig: {
         defaults: {
           unit: 'm',

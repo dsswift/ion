@@ -9,7 +9,7 @@
 // Studio's own Device Metrics, which never leave the machine.
 
 import type { Dashboard } from '../dashboard.ts';
-import { text, stat, timeseries } from '../panels.ts';
+import { stat, timeseries } from '../panels.ts';
 import { engineSample, engineRoleSample, serverSample, deviceSample, idleRepaintCount, devicesReporting } from '../queries-system-metrics.ts';
 
 const line = (unit: string, max?: number) => ({
@@ -21,17 +21,13 @@ const legend = () => ({
   legend: { displayMode: 'list', placement: 'bottom', showLegend: true },
 });
 
-const INTRO =
-  '## Ion System Metrics\n\nEvery device and every Ion process on it, from the sample line each one logs every 30 s. Charts draw **one line per device**; use the **Device** and **User** dropdowns to narrow the fleet. **Engine** lines carry the host (CPU, memory, disk) and each engine process role; the **server** line carries the Studio server\'s own process; the **desktop** line carries Studio\'s own Electron processes, including GPU time on macOS.\n\nA GPU figure is missing, not zero, where it was not measured. For a fleet, alerting, or Application Insights, use the OTLP metrics export instead (see the observability README, "Signals and where they go").';
-
 export function systemMetricsDashboard(): Dashboard {
   const panels = [
-    { ...text(1, { h: 4, w: 24, x: 0, y: 0 }, INTRO), datasource: undefined },
     stat({
       id: 9,
       title: 'Devices reporting',
       description: 'Devices that logged a System Metrics sample in the time range, within the Device and User filters.',
-      gridPos: { h: 4, w: 24, x: 0, y: 4 },
+      gridPos: { h: 4, w: 24, x: 0, y: 0 },
       fieldConfig: { defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, noValue: 'none' }, overrides: [] },
       options: { reduceOptions: { calcs: ['lastNotNull'], fields: '', values: false }, orientation: 'auto', textMode: 'auto', colorMode: 'value', graphMode: 'none' },
       targets: [{ e: devicesReporting('$__range') }],
@@ -40,7 +36,7 @@ export function systemMetricsDashboard(): Dashboard {
       id: 2,
       title: 'Host CPU in use',
       description: 'Share of all host CPUs in use since the previous sample, 0..1; steal time counts as busy. Source: engine.jsonl tag=sysmetrics fields.host_cpu_utilization.',
-      gridPos: { h: 8, w: 12, x: 0, y: 8 },
+      gridPos: { h: 8, w: 12, x: 0, y: 4 },
       fieldConfig: line('percentunit', 1),
       options: legend(),
       targets: [{ e: engineSample('fields_host_cpu_utilization'), legend: '{{host_name}}' }],
@@ -49,7 +45,7 @@ export function systemMetricsDashboard(): Dashboard {
       id: 3,
       title: 'Host memory available and disk free',
       description: 'Memory available to new work (inside a limited container, the limit less its use), and free space on the volume holding the engine\'s data (systemMetrics.diskPath, default ~/.ion). Source: engine.jsonl fields.host_memory_available_bytes, host_disk_free_bytes.',
-      gridPos: { h: 8, w: 12, x: 12, y: 8 },
+      gridPos: { h: 8, w: 12, x: 12, y: 4 },
       fieldConfig: line('bytes'),
       options: legend(),
       targets: [
@@ -61,7 +57,7 @@ export function systemMetricsDashboard(): Dashboard {
       id: 4,
       title: 'CPU by engine process role, selected devices',
       description: 'Summed CPU of each role in the engine\'s own process tree, added up across the selected devices; 100 = one full core. Pick one device to see one machine. Source: engine.jsonl fields.<role>_cpu_percent.',
-      gridPos: { h: 8, w: 12, x: 0, y: 16 },
+      gridPos: { h: 8, w: 12, x: 0, y: 12 },
       fieldConfig: line('percent'),
       options: legend(),
       targets: ['engine', 'extension', 'mcp', 'backend', 'tool'].map((role, i) => ({
@@ -74,7 +70,7 @@ export function systemMetricsDashboard(): Dashboard {
       id: 5,
       title: 'Memory by engine process role, selected devices',
       description: 'Summed resident memory of each role in the engine\'s process tree, added up across the selected devices. Source: engine.jsonl fields.<role>_rss_bytes.',
-      gridPos: { h: 8, w: 12, x: 12, y: 16 },
+      gridPos: { h: 8, w: 12, x: 12, y: 12 },
       fieldConfig: line('bytes'),
       options: legend(),
       targets: ['engine', 'extension', 'mcp', 'backend', 'tool'].map((role, i) => ({
@@ -87,7 +83,7 @@ export function systemMetricsDashboard(): Dashboard {
       id: 6,
       title: 'Studio server process CPU',
       description: 'The Ion Studio Server\'s own CPU (100 = one core). Its resident memory is fields.server_rss_bytes on the same line. Source: server.jsonl tag=system-metrics fields.server_cpu_percent.',
-      gridPos: { h: 8, w: 12, x: 0, y: 24 },
+      gridPos: { h: 8, w: 12, x: 0, y: 20 },
       fieldConfig: line('percent'),
       options: legend(),
       targets: [
@@ -98,7 +94,7 @@ export function systemMetricsDashboard(): Dashboard {
       id: 7,
       title: 'Studio processes: CPU and GPU',
       description: 'Ion Studio\'s own Electron processes on this device: all of them, the GPU helper, and the renderer. GPU time is measured on macOS only. Source: desktop.jsonl tag=device-metrics.',
-      gridPos: { h: 8, w: 12, x: 12, y: 24 },
+      gridPos: { h: 8, w: 12, x: 12, y: 20 },
       fieldConfig: line('percent'),
       options: legend(),
       targets: [
@@ -111,7 +107,7 @@ export function systemMetricsDashboard(): Dashboard {
       id: 8,
       title: 'Idle-repaint warnings',
       description: 'Times Studio\'s GPU helper or a renderer stayed busy while no Studio window had focus or the machine was idle: the sign of an animation that never stops repainting. Limits are Device settings (idleRepaint* in desktop.json). Source: desktop.jsonl msg="idle repaint detected".',
-      gridPos: { h: 8, w: 24, x: 0, y: 32 },
+      gridPos: { h: 8, w: 24, x: 0, y: 28 },
       fieldConfig: line('short'),
       options: legend(),
       targets: [{ e: idleRepaintCount(), legend: '{{host_name}}' }],

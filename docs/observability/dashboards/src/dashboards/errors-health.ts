@@ -12,7 +12,7 @@
 //     rolling window undersamples once the query step exceeds it at wide ranges.
 
 import type { Dashboard } from '../dashboard.ts';
-import { row, text, stat, timeseries, logsTable, bargauge, table } from '../panels.ts';
+import { row, stat, timeseries, logsTable, bargauge, table } from '../panels.ts';
 import { stream } from '../queries.ts';
 import { levelCount, allLinesCount, errorRate, levelSeriesInterval, errorsByComponentInterval, topErrorSources, kindCount, groupedKindSeries } from '../queries-logs.ts';
 import { quantile, latestMax } from '../queries-latency.ts';
@@ -40,16 +40,12 @@ const legendBottom = (sort = true) => ({
 });
 const link = (title: string, url: string) => [{ title, url }];
 
-const INTRO =
-  '## Is Ion healthy?\n\nVerdict: error and warning counts over the dashboard time range. Evidence: error rate over time and by component. Drill-down: recent error log lines with full JSON detail.\n\nRead the verdict row first. If errors are 0 and warnings are low, Ion is healthy. Use the error-by-component timeseries to spot which surface is noisy. Use the live error stream at the bottom to read the raw log lines.\n\n---\n\n**Below the error line.** Errors in the log are the loud failures. The rows below track the quiet ones: providers that stall mid-stream and get retried, models that silently fall back to cheaper ones, extensions that die and respawn on a strike budget, and clients too slow to keep up with the event stream. These degrade the experience without writing a single ERROR line.\n\n> **Tier-4 panels empty?** Provider market and platform health panels require the Phase-B engine rebuild. Queries are valid; data appears once the instrumented engine ships.';
-
 export function errorsHealthDashboard(): Dashboard {
   const panels = [
-    text(1, { h: 4, w: 24, x: 0, y: 0 }, INTRO),
     stat({
       id: 2,
       title: 'Errors',
-      gridPos: { h: 4, w: 6, x: 0, y: 4 },
+      gridPos: { h: 4, w: 6, x: 0, y: 0 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -69,7 +65,7 @@ export function errorsHealthDashboard(): Dashboard {
     stat({
       id: 3,
       title: 'Warnings',
-      gridPos: { h: 4, w: 6, x: 6, y: 4 },
+      gridPos: { h: 4, w: 6, x: 6, y: 0 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -89,7 +85,7 @@ export function errorsHealthDashboard(): Dashboard {
     stat({
       id: 4,
       title: 'Error Rate',
-      gridPos: { h: 4, w: 6, x: 12, y: 4 },
+      gridPos: { h: 4, w: 6, x: 12, y: 0 },
       fieldConfig: {
         defaults: {
           unit: 'percentunit',
@@ -110,7 +106,7 @@ export function errorsHealthDashboard(): Dashboard {
     stat({
       id: 5,
       title: 'Log lines',
-      gridPos: { h: 4, w: 6, x: 18, y: 4 },
+      gridPos: { h: 4, w: 6, x: 18, y: 0 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -126,7 +122,7 @@ export function errorsHealthDashboard(): Dashboard {
     timeseries({
       id: 6,
       title: 'Errors vs Warnings over time',
-      gridPos: { h: 8, w: 24, x: 0, y: 8 },
+      gridPos: { h: 8, w: 24, x: 0, y: 4 },
       fieldConfig: {
         defaults: { unit: 'short', custom: { drawStyle: 'line', fillOpacity: 15, lineWidth: 2, stacking: { mode: 'none' } } },
         overrides: [
@@ -143,7 +139,7 @@ export function errorsHealthDashboard(): Dashboard {
     timeseries({
       id: 7,
       title: 'Error volume by component',
-      gridPos: { h: 8, w: 24, x: 0, y: 16 },
+      gridPos: { h: 8, w: 24, x: 0, y: 12 },
       fieldConfig: bars(80),
       options: legendBottom(true),
       targets: [{ e: errorsByComponentInterval(), legend: '{{service_name}}' }],
@@ -151,7 +147,7 @@ export function errorsHealthDashboard(): Dashboard {
     bargauge({
       id: 8,
       title: 'Top error sources — by component and tag',
-      gridPos: { h: 8, w: 12, x: 0, y: 24 },
+      gridPos: { h: 8, w: 12, x: 0, y: 20 },
       fieldConfig: { defaults: { unit: 'short' }, overrides: [] },
       options: { orientation: 'horizontal', reduceOptions: { calcs: ['sum'] }, displayMode: 'gradient', showUnfilled: true },
       targets: [{ e: topErrorSources('$__range'), legend: '{{service_name}} / {{tag}}' }],
@@ -159,21 +155,21 @@ export function errorsHealthDashboard(): Dashboard {
     logsTable({
       id: 9,
       title: 'Recent errors',
-      gridPos: { h: 8, w: 12, x: 12, y: 24 },
+      gridPos: { h: 8, w: 12, x: 12, y: 20 },
       target: { e: stream('{level="ERROR"} | json') },
     }),
     logsTable({
       id: 10,
       title: 'Live error and warning stream',
-      gridPos: { h: 10, w: 24, x: 0, y: 32 },
+      gridPos: { h: 10, w: 24, x: 0, y: 28 },
       target: { e: stream('{level=~"ERROR|WARN"} | json') },
     }),
-    row(20, 'Provider market (Tier-4)', 42),
+    row(20, 'Provider market (Tier-4)', 38),
     stat({
       id: 21,
       title: 'Retries',
       description: 'Count of provider.retry events. Data empty until Phase-B engine rebuild ships.',
-      gridPos: { h: 4, w: 4, x: 0, y: 43 },
+      gridPos: { h: 4, w: 4, x: 0, y: 39 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -195,7 +191,7 @@ export function errorsHealthDashboard(): Dashboard {
       id: 22,
       title: 'Stalls',
       description: 'Count of provider.stall events (intra-stream gap threshold exceeded). Data empty until Phase-B.',
-      gridPos: { h: 4, w: 4, x: 4, y: 43 },
+      gridPos: { h: 4, w: 4, x: 4, y: 39 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -217,7 +213,7 @@ export function errorsHealthDashboard(): Dashboard {
       id: 23,
       title: 'Fallbacks',
       description: 'Count of provider.fallback events. Click to see fallback cost routes in the cost pack.',
-      gridPos: { h: 4, w: 4, x: 8, y: 43 },
+      gridPos: { h: 4, w: 4, x: 8, y: 39 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -239,7 +235,7 @@ export function errorsHealthDashboard(): Dashboard {
       id: 24,
       title: 'Retry causes',
       description: 'Retry events grouped by payload_error_code (ProviderError constants). Data empty until Phase-B.',
-      gridPos: { h: 8, w: 12, x: 12, y: 43 },
+      gridPos: { h: 8, w: 12, x: 12, y: 39 },
       fieldConfig: bars(70),
       options: legendBottom(true),
       targets: [{ e: groupedKindSeries('provider.retry', ['payload_error_code']), legend: '{{payload_error_code}}' }],
@@ -248,7 +244,7 @@ export function errorsHealthDashboard(): Dashboard {
       id: 25,
       title: 'TTFT p95 by model',
       description: 'Time-to-first-token p95, grouped by model. Data empty until Phase-B.',
-      gridPos: { h: 8, w: 12, x: 0, y: 51 },
+      gridPos: { h: 8, w: 12, x: 0, y: 47 },
       fieldConfig: line('ms'),
       options: legendBottom(true),
       targets: [{ e: quantile({ q: 0.95, kind: 'provider.ttft', field: 'payload_ttft_ms', window: '$__interval', by: ['payload_model'] }), legend: '{{payload_model}} p95' }],
@@ -257,17 +253,17 @@ export function errorsHealthDashboard(): Dashboard {
       id: 26,
       title: 'Worst intra-stream gap p99',
       description: 'Tail stall signal: max gap between consecutive token events during a stream. Data empty until Phase-B.',
-      gridPos: { h: 8, w: 12, x: 12, y: 51 },
+      gridPos: { h: 8, w: 12, x: 12, y: 47 },
       fieldConfig: line('ms'),
       options: legendBottom(true),
       targets: [{ e: quantile({ q: 0.99, kind: 'provider.stream_summary', field: 'payload_max_gap_ms', window: '$__interval', by: ['payload_model'] }), legend: '{{payload_model}} p99 max gap' }],
     }),
-    row(30, 'Platform health (Tier-4)', 59),
+    row(30, 'Platform health (Tier-4)', 55),
     timeseries({
       id: 31,
       title: 'Extension respawns by extension',
       description: 'Count of extension.respawn events per extension. Rising count signals instability. Data empty until Phase-B.',
-      gridPos: { h: 8, w: 12, x: 0, y: 60 },
+      gridPos: { h: 8, w: 12, x: 0, y: 56 },
       fieldConfig: bars(70),
       options: legendBottom(true),
       targets: [{ e: groupedKindSeries('extension.respawn', ['payload_extension']), legend: '{{payload_extension}}' }],
@@ -277,7 +273,7 @@ export function errorsHealthDashboard(): Dashboard {
       title: 'Budget-exceeded deaths',
       description:
         'Extensions that exhausted their respawn strike budget and did not recover. Any nonzero value warrants investigation. Data empty until Phase-B.',
-      gridPos: { h: 4, w: 6, x: 12, y: 60 },
+      gridPos: { h: 4, w: 6, x: 12, y: 56 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -306,7 +302,7 @@ export function errorsHealthDashboard(): Dashboard {
       title: 'Cold-start p95 by extension',
       description:
         'Time from extension process launch to ready state, p95. Persistent high values suggest startup bottlenecks. Data empty until Phase-B.',
-      gridPos: { h: 8, w: 18, x: 6, y: 64 },
+      gridPos: { h: 8, w: 18, x: 6, y: 60 },
       fieldConfig: line('ms'),
       options: legendBottom(true),
       targets: [{ e: quantile({ q: 0.95, kind: 'extension.coldstart', field: 'payload_ready_ms', window: '$__interval', by: ['payload_extension'] }), legend: '{{payload_extension}} p95' }],
@@ -316,7 +312,7 @@ export function errorsHealthDashboard(): Dashboard {
       title: 'Client backpressure (dropped events)',
       description:
         'Cumulative dropped event count per queue. Zero is the only good number. Note: ack RTT is not measurable today (D3 §4e.5); this is a drop/saturation gauge only. Data empty until Phase-B.',
-      gridPos: { h: 8, w: 12, x: 0, y: 72 },
+      gridPos: { h: 8, w: 12, x: 0, y: 68 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -337,7 +333,7 @@ export function errorsHealthDashboard(): Dashboard {
       title: 'Respawn detail (range)',
       description:
         'Full respawn event table with preceding_operation, exit_signal, and outcome. Rows with outcome=budget_exceeded are terminal failures. Data empty until Phase-B.',
-      gridPos: { h: 8, w: 12, x: 12, y: 72 },
+      gridPos: { h: 8, w: 12, x: 12, y: 68 },
       mode: 'range',
       fieldConfig: {
         defaults: { unit: 'short', custom: { align: 'auto', displayMode: 'auto' } },

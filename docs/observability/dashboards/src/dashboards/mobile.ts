@@ -20,7 +20,7 @@
 // iPhone15,3) rather than a user-assigned name that can change.
 
 import type { Dashboard } from '../dashboard.ts';
-import { row, text, stat, timeseries, bargauge, table, logsTable } from '../panels.ts';
+import { row, stat, timeseries, bargauge, table, logsTable } from '../panels.ts';
 import { stream } from '../queries.ts';
 import {
   distinctDeviceField,
@@ -50,16 +50,12 @@ const bars = (fillOpacity: number) => ({
   overrides: [],
 });
 
-const INTRO =
-  '## Which iOS devices are running Ion, on what version, paired to which server?\n\nThe per-device mobile view over the **iOS log stream** (`{service_name="ion-ios", event_name=""}`). iOS emits no telemetry, so this pack does not appear on [Ion Fleet](/d/ion-fleet) — it reads the operational logs the paired server collects.\n\nEvery line carries **device identity** stamped by iOS: `device_id` (stable per-device UUID from `identifierForVendor` — survives re-pairings), `device_model` (hardware model e.g. `iPhone15,3`), OS version, and app version+build. On MDM-enrolled devices, `mdm_device_id` and `mdm_serial` enable cross-reference to Intune. The server stamps `pairing_id` (the ECDH channel ID for the specific pairing session) and `desktop_host`.\n\nThe **device→server pairing** table below is the "which device connected where" matrix. `desktop_host` matches the telemetry `host`, so a pairing row cross-references the Fleet board for the same machine.\n\nAll panels honor the dashboard time picker except **Device last-seen**, a liveness detector with a fixed 24h lookback so a quiet device stays visible.\n\n| Related | Dashboard |\n|---|---|\n| Landing | [Ion Overview](/d/ion-overview) |\n| Server/host view | [Ion Fleet](/d/ion-fleet) |\n| Live logs | [Ion Live Logs](/d/ion-logs) |';
-
 export function mobileDashboard(): Dashboard {
   const panels = [
-    text(1, { h: 4, w: 24, x: 0, y: 0 }, INTRO),
     stat({
       id: 2,
       title: 'Devices reporting',
-      gridPos: { h: 4, w: 5, x: 0, y: 4 },
+      gridPos: { h: 4, w: 5, x: 0, y: 0 },
       fieldConfig: {
         defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [], noValue: 'no iOS logs' },
         overrides: [],
@@ -71,7 +67,7 @@ export function mobileDashboard(): Dashboard {
       id: 3,
       title: 'App versions in use',
       description: 'Distinct app_version strings across the iOS fleet in the window. More than one is version drift — see the drift table below for which device is behind.',
-      gridPos: { h: 4, w: 5, x: 5, y: 4 },
+      gridPos: { h: 4, w: 5, x: 5, y: 0 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -91,7 +87,7 @@ export function mobileDashboard(): Dashboard {
     stat({
       id: 4,
       title: 'iOS log lines',
-      gridPos: { h: 4, w: 5, x: 10, y: 4 },
+      gridPos: { h: 4, w: 5, x: 10, y: 0 },
       fieldConfig: {
         defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [], noValue: 'no iOS logs' },
         overrides: [],
@@ -102,7 +98,7 @@ export function mobileDashboard(): Dashboard {
     stat({
       id: 5,
       title: 'iOS errors',
-      gridPos: { h: 4, w: 5, x: 15, y: 4 },
+      gridPos: { h: 4, w: 5, x: 15, y: 0 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -123,7 +119,7 @@ export function mobileDashboard(): Dashboard {
       id: 6,
       title: 'Device last-seen (min)',
       description: 'Minutes since the most recent iOS log line per device. Fixed 24h lookback (liveness detector): a device whose logs stopped arriving climbs while the others stay near zero.',
-      gridPos: { h: 4, w: 4, x: 20, y: 4 },
+      gridPos: { h: 4, w: 4, x: 20, y: 0 },
       fieldConfig: {
         defaults: {
           unit: 'm',
@@ -147,12 +143,12 @@ export function mobileDashboard(): Dashboard {
       },
       targets: [{ e: deviceLastSeenMinutes('24h'), legend: '{{device_model}} {{device_id}}' }],
     }),
-    row(10, 'Devices, versions, and pairing', 8),
+    row(10, 'Devices, versions, and pairing', 4),
     table({
       id: 11,
       title: 'App version by device',
       description: 'Every device / app-version / OS-version combination reporting in the window, with its line count. Two rows for one device means it upgraded mid-window. MDM columns appear for enrolled devices.',
-      gridPos: { h: 8, w: 12, x: 0, y: 9 },
+      gridPos: { h: 8, w: 12, x: 0, y: 5 },
       mode: 'instant',
       fieldConfig: { defaults: { unit: 'short', custom: { align: 'auto', displayMode: 'auto' } }, overrides: [] },
       options: { footer: { show: false }, sortBy: [{ displayName: 'Lines', desc: true }] },
@@ -185,7 +181,7 @@ export function mobileDashboard(): Dashboard {
       id: 12,
       title: 'Device → server pairing',
       description: 'Every device × desktop_host pair that produced iOS logs in the window. device_id is the stable hardware identity (survives re-pairings); pairing_id is the ECDH channel for the specific session. A device paired to two servers yields two rows; several devices on one server yield several rows for that host. desktop_host matches the telemetry host on the Ion Fleet board.',
-      gridPos: { h: 8, w: 12, x: 12, y: 9 },
+      gridPos: { h: 8, w: 12, x: 12, y: 5 },
       mode: 'instant',
       fieldConfig: { defaults: { unit: 'short', custom: { align: 'auto', displayMode: 'auto' } }, overrides: [] },
       options: { footer: { show: false }, sortBy: [{ displayName: 'Lines', desc: true }] },
@@ -212,7 +208,7 @@ export function mobileDashboard(): Dashboard {
     bargauge({
       id: 13,
       title: 'Log volume by device',
-      gridPos: { h: 8, w: 12, x: 0, y: 17 },
+      gridPos: { h: 8, w: 12, x: 0, y: 13 },
       fieldConfig: { defaults: { unit: 'short' }, overrides: [] },
       options: { orientation: 'horizontal', reduceOptions: { calcs: ['sum'] }, displayMode: 'gradient', showUnfilled: true },
       targets: [{ e: volumeByDevice(['device_id', 'device_model'], '$__range'), legend: '{{device_model}} {{device_id}}' }],
@@ -220,7 +216,7 @@ export function mobileDashboard(): Dashboard {
     bargauge({
       id: 14,
       title: 'Errors by device',
-      gridPos: { h: 8, w: 12, x: 12, y: 17 },
+      gridPos: { h: 8, w: 12, x: 12, y: 13 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -235,11 +231,11 @@ export function mobileDashboard(): Dashboard {
       options: { orientation: 'horizontal', reduceOptions: { calcs: ['sum'] }, displayMode: 'gradient', showUnfilled: true },
       targets: [{ e: errorsByDevice(['device_id', 'device_model'], '$__range'), legend: '{{device_model}} {{device_id}}' }],
     }),
-    row(20, 'Activity over time', 25),
+    row(20, 'Activity over time', 21),
     timeseries({
       id: 15,
       title: 'Log volume by device over time',
-      gridPos: { h: 8, w: 12, x: 0, y: 26 },
+      gridPos: { h: 8, w: 12, x: 0, y: 22 },
       fieldConfig: bars(60),
       options: legendBottom(),
       targets: [{ e: volumeByDevice(['device_id', 'device_model'], '$__interval'), legend: '{{device_model}} {{device_id}}' }],
@@ -247,7 +243,7 @@ export function mobileDashboard(): Dashboard {
     timeseries({
       id: 16,
       title: 'Errors by device over time',
-      gridPos: { h: 8, w: 12, x: 12, y: 26 },
+      gridPos: { h: 8, w: 12, x: 12, y: 22 },
       fieldConfig: bars(70),
       options: legendBottom(),
       targets: [{ e: errorsByDevice(['device_id', 'device_model'], '$__interval'), legend: '{{device_model}} {{device_id}}' }],
@@ -255,7 +251,7 @@ export function mobileDashboard(): Dashboard {
     logsTable({
       id: 17,
       title: 'iOS log tail',
-      gridPos: { h: 12, w: 24, x: 0, y: 34 },
+      gridPos: { h: 12, w: 24, x: 0, y: 30 },
       target: { e: stream('{service_name="ion-ios", event_name=""} | json device_model="fields.device_model" | __error__="" | device_model=~"$device"') },
     }),
   ];

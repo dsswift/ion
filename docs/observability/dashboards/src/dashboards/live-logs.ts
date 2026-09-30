@@ -15,7 +15,7 @@
 //     query step exceeds it at wide ranges).
 
 import type { Dashboard } from '../dashboard.ts';
-import { row, text, stat, timeseries, gauge, logsTable } from '../panels.ts';
+import { row, stat, timeseries, gauge, logsTable } from '../panels.ts';
 import { stream } from '../queries.ts';
 import { levelCount, allLinesCount, activeExtensionCount, logVolumeByComponentInterval, extensionVolumeInterval, kindCount } from '../queries-logs.ts';
 import { quantile, latestMax } from '../queries-latency.ts';
@@ -37,16 +37,12 @@ const bars = (fillOpacity: number, draw = 'bars') => ({
   overrides: [],
 });
 
-const INTRO =
-  '## What is Ion doing right now?\n\nThis dashboard shows live activity across all Ion surfaces. **Verdict row**: log volume and active extension count at a glance. **Evidence row**: volume by component over time. **Right now row**: context pressure per session, dispatches in flight, TTFT, and backpressure. **Drill-down**: live log tail and per-extension activity.\n\nUse this dashboard when Ion is running a long task and you want to watch it. The live log tail at the bottom auto-refreshes every 30s. Filter by component (engine, extension, desktop, ios) using LogQL in Explore for deeper drill-down.\n\n> **Right now panels empty?** The context-pressure, dispatch, TTFT, and backpressure gauges require the Phase-B engine rebuild. Queries are valid; data appears once that ships.';
-
 export function liveLogsDashboard(): Dashboard {
   const panels = [
-    text(1, { h: 3, w: 24, x: 0, y: 0 }, INTRO),
     stat({
       id: 2,
       title: 'Log lines',
-      gridPos: { h: 4, w: 8, x: 0, y: 3 },
+      gridPos: { h: 4, w: 8, x: 0, y: 0 },
       fieldConfig: { defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [] }, overrides: [] },
       options: statOptions('value'),
       targets: [{ e: allLinesCount('$__range') }],
@@ -54,7 +50,7 @@ export function liveLogsDashboard(): Dashboard {
     stat({
       id: 3,
       title: 'Errors',
-      gridPos: { h: 4, w: 8, x: 8, y: 3 },
+      gridPos: { h: 4, w: 8, x: 8, y: 0 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -74,18 +70,18 @@ export function liveLogsDashboard(): Dashboard {
     stat({
       id: 4,
       title: 'Active extensions',
-      gridPos: { h: 4, w: 8, x: 16, y: 3 },
+      gridPos: { h: 4, w: 8, x: 16, y: 0 },
       fieldConfig: { defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [] }, overrides: [] },
       options: statOptions('value'),
       targets: [{ e: activeExtensionCount('$__range') }],
     }),
-    row(10, 'Right now', 7),
+    row(10, 'Right now', 4),
     gauge({
       id: 11,
       title: 'Context pressure (latest, per session)',
       description:
         'Percent of context window used, latest value in the last 10 minutes per session. Green < 60%, amber 60-80%, red > 80% (compact trigger zone). Samples where payload_estimated=true are heuristic (no real token count available). Click a session value to open forensics. Data empty until Phase-B.',
-      gridPos: { h: 8, w: 8, x: 0, y: 8 },
+      gridPos: { h: 8, w: 8, x: 0, y: 5 },
       fieldConfig: {
         defaults: {
           unit: 'percent',
@@ -110,7 +106,7 @@ export function liveLogsDashboard(): Dashboard {
       title: 'Dispatches in flight (5m)',
       description:
         'Count of dispatch.agent span-end events in the last 5 minutes. These are recently completed dispatches, not true in-flight spans (span-end events are what land in Loki). For true in-flight view, use the Tempo panel in the forensics pack. Data empty until Phase-B.',
-      gridPos: { h: 4, w: 8, x: 8, y: 8 },
+      gridPos: { h: 4, w: 8, x: 8, y: 5 },
       fieldConfig: { defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [] }, overrides: [] },
       options: statOptions('value', 'area'),
       targets: [{ e: kindCount('dispatch.agent', '5m', true) }],
@@ -120,7 +116,7 @@ export function liveLogsDashboard(): Dashboard {
       title: 'Client backpressure now',
       description:
         'Maximum dropped event count across all client queues in the last 10 minutes. Zero is the only good number. Data empty until Phase-B.',
-      gridPos: { h: 4, w: 8, x: 8, y: 12 },
+      gridPos: { h: 4, w: 8, x: 8, y: 9 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -141,7 +137,7 @@ export function liveLogsDashboard(): Dashboard {
       title: 'TTFT last hour (p50 sparkline)',
       description:
         'Streaming time-to-first-token, p50 over the selected interval. A rising trend mid-session means providers are responding slower. Data empty until Phase-B.',
-      gridPos: { h: 8, w: 8, x: 16, y: 8 },
+      gridPos: { h: 8, w: 8, x: 16, y: 5 },
       fieldConfig: { defaults: { unit: 'ms', custom: { drawStyle: 'line', fillOpacity: 20, lineWidth: 2, stacking: { mode: 'none' } } }, overrides: [] },
       options: legendBottom(false, false),
       targets: [{ e: quantile({ q: 0.5, kind: 'provider.ttft', field: 'payload_ttft_ms', window: '$__interval' }), legend: 'TTFT p50' }],
@@ -149,7 +145,7 @@ export function liveLogsDashboard(): Dashboard {
     timeseries({
       id: 5,
       title: 'Log volume by component',
-      gridPos: { h: 8, w: 24, x: 0, y: 16 },
+      gridPos: { h: 8, w: 24, x: 0, y: 13 },
       fieldConfig: bars(70),
       options: legendBottom(true),
       targets: [{ e: logVolumeByComponentInterval(), legend: '{{service_name}}' }],
@@ -157,7 +153,7 @@ export function liveLogsDashboard(): Dashboard {
     timeseries({
       id: 6,
       title: 'Per-extension activity',
-      gridPos: { h: 8, w: 12, x: 0, y: 24 },
+      gridPos: { h: 8, w: 12, x: 0, y: 21 },
       fieldConfig: bars(10, 'lines'),
       options: legendBottom(true),
       targets: [{ e: extensionVolumeInterval(), legend: '{{tag}}' }],
@@ -165,7 +161,7 @@ export function liveLogsDashboard(): Dashboard {
     timeseries({
       id: 7,
       title: 'Extension log volume (stacked)',
-      gridPos: { h: 8, w: 12, x: 12, y: 24 },
+      gridPos: { h: 8, w: 12, x: 12, y: 21 },
       fieldConfig: bars(60),
       options: legendBottom(true),
       targets: [{ e: extensionVolumeInterval(), legend: '{{tag}}' }],
@@ -173,13 +169,13 @@ export function liveLogsDashboard(): Dashboard {
     logsTable({
       id: 8,
       title: 'Live log tail',
-      gridPos: { h: 12, w: 24, x: 0, y: 32 },
+      gridPos: { h: 12, w: 24, x: 0, y: 29 },
       target: { e: stream('{service_name=~".+", event_name=""} | json') },
     }),
     logsTable({
       id: 9,
       title: 'Extension activity log',
-      gridPos: { h: 10, w: 24, x: 0, y: 44 },
+      gridPos: { h: 10, w: 24, x: 0, y: 41 },
       target: { e: stream('{service_name="ion-extension", event_name=""} | json') },
     }),
   ];

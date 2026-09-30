@@ -10,22 +10,6 @@
   "links": [],
   "panels": [
     {
-      "id": 1,
-      "type": "text",
-      "title": "",
-      "gridPos": {
-        "h": 2,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "Control room: lamps show activity in the last 5 minutes. Green = active, red = errors, dim grey = idle. Layout hand-maintained; 5s refresh."
-      },
-      "datasource": null
-    },
-    {
       "id": 2,
       "type": "stat",
       "title": "desktop",
@@ -33,7 +17,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 2
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -130,7 +114,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 2
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -227,7 +211,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 2
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -293,7 +277,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 2
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -359,7 +343,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 2
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -425,7 +409,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 2
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -522,7 +506,7 @@
         "h": 4,
         "w": 24,
         "x": 0,
-        "y": 6
+        "y": 4
       },
       "datasource": {
         "type": "loki",
@@ -588,7 +572,7 @@
         "h": 4,
         "w": 19,
         "x": 0,
-        "y": 10
+        "y": 8
       },
       "datasource": {
         "type": "loki",
@@ -654,7 +638,7 @@
         "h": 4,
         "w": 5,
         "x": 19,
-        "y": 10
+        "y": 8
       },
       "datasource": {
         "type": "loki",
@@ -720,7 +704,7 @@
         "h": 8,
         "w": 18,
         "x": 0,
-        "y": 14
+        "y": 12
       },
       "datasource": {
         "type": "loki",
@@ -949,7 +933,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 14
+        "y": 12
       },
       "datasource": {
         "type": "loki",

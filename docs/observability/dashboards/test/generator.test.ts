@@ -224,14 +224,24 @@ test('freshness panel renders per-series labeled cells (values:true, non-collaps
   assert.equal(p.targets[0].legendFormat, '{{service_name}}', 'legend must key each series by service');
 });
 
+test('no dashboard carries a text panel', () => {
+  // Text panels push the data down the screen. Every dashboard opens on data.
+  for (const recipe of RECIPES) {
+    const d = buildDashboard(recipe());
+    const flat = (d.panels as Record<string, any>[]).flatMap((p) => [p, ...(p.panels ?? [])]);
+    const texts = flat.filter((p) => p.type === 'text').map((p) => p.title || `id ${p.id}`);
+    assert.deepEqual(texts, [], `${d.uid} has text panels: ${texts.join(', ')}`);
+    const top = Math.min(...flat.map((p) => p.gridPos.y));
+    assert.equal(top, 0, `${d.uid} must start its first panel at y=0`);
+  }
+});
+
 test('freshness panel sits in the top verdict row (y=0 band) and is not full-width', () => {
   // Placement/weight: the panel moved out of its own full-width row into the
   // verdict row alongside Errors/Warnings/Spend/Runs. Visibility is by color,
-  // not size. The verdict row is the first content row below the intro text.
+  // not size. The verdict row is the dashboard's first row.
   const panels = overviewDashboard().panels as Record<string, any>[];
-  const intro = panels.find((x) => x.type === 'text');
-  assert.ok(intro, 'the overview opens with an intro text panel');
-  const verdictY = intro.gridPos.y + intro.gridPos.h; // first row after the intro
+  const verdictY = 0;
   const p = freshnessPanel();
   assert.equal(p.gridPos.y, verdictY, `freshness must share the verdict row band (y=${verdictY})`);
   assert.ok(p.gridPos.w < 24, 'freshness must not span the full 24-column width');

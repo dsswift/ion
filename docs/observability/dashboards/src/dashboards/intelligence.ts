@@ -14,7 +14,7 @@
 //     failures and executions terms.
 
 import type { Dashboard } from '../dashboard.ts';
-import { row, text, piechart, timeseries, table, barchart } from '../panels.ts';
+import { row, piechart, timeseries, table, barchart } from '../panels.ts';
 import { accumulation, instant, telemetry } from '../queries.ts';
 import { quantile, costPerRunByModelInterval } from '../queries-latency.ts';
 import { groupedKindCount, groupedKindSeries, groupedUnwrapSeries } from '../queries-logs.ts';
@@ -32,9 +32,6 @@ const legendBottom = (multi = true) => ({
   tooltip: { mode: multi ? 'multi' : 'single' },
 });
 
-const INTRO =
-  "## What the usage says about the product\n\nThirty days of runs, aggregated. Which models earn their cost, whether the provider market is treating the engine well, which tools the agent actually reaches for, how autonomy trends as trust rules mature, and whether caching and compaction are pulling their economic weight. This is the dashboard you read before deciding what to build next, not the one you stare at during an incident.\n\n> **Default time range is 30 days.** Panels use the dashboard time range. Adjust the picker for shorter trend windows.\n> **No data on Tier-4 panels?** Panels marked with a Phase-B note bind to events not yet emitted. The model-market and tool-usage panels bind to shipped Tier-1 events and populate now.";
-
 // The daily autonomy ratio, per-interval (overcount fix). Both terms bind
 // $__interval so each step is a self-contained bucket ratio.
 const autonomyRatioInterval = () =>
@@ -45,13 +42,12 @@ const autonomyRatioInterval = () =>
 
 export function intelligenceDashboard(): Dashboard {
   const panels = [
-    text(1, { h: 4, w: 24, x: 0, y: 0 }, INTRO),
-    row(10, 'Model market', 4),
+    row(10, 'Model market', 0),
     piechart({
       id: 2,
       title: 'Run share by model',
       description: 'Which models are handling the most runs. Shipped structured metadata label; no parser required.',
-      gridPos: { h: 8, w: 8, x: 0, y: 5 },
+      gridPos: { h: 8, w: 8, x: 0, y: 1 },
       fieldConfig: { defaults: { unit: 'short' }, overrides: [] },
       options: {
         pieType: 'pie',
@@ -65,7 +61,7 @@ export function intelligenceDashboard(): Dashboard {
       title: 'Cost per run by model (weekly)',
       description:
         'Average cost per run, broken down by model, in weekly buckets. Rising cost-per-run for a model means sessions are getting longer or the model is being used for more expensive tasks.',
-      gridPos: { h: 8, w: 16, x: 8, y: 5 },
+      gridPos: { h: 8, w: 16, x: 8, y: 1 },
       fieldConfig: lineDefaults('currencyUSD', { decimals: 4 }),
       options: legendBottom(true),
       targets: [{ e: costPerRunByModelInterval(), legend: '{{payload_model}}' }],
@@ -75,7 +71,7 @@ export function intelligenceDashboard(): Dashboard {
       title: 'Provider league table',
       description:
         "One row per model: TTFT p50, stall count, retry count, fallback-out count. The 'should we reroute traffic' view. Phase-B events required for all columns except run count.",
-      gridPos: { h: 10, w: 12, x: 0, y: 13 },
+      gridPos: { h: 10, w: 12, x: 0, y: 9 },
       mode: 'instant',
       fieldConfig: {
         defaults: { unit: 'short' },
@@ -118,18 +114,18 @@ export function intelligenceDashboard(): Dashboard {
       title: 'Fallback pressure (weekly)',
       description:
         'Fallback events grouped by reason. A rising fallback rate means provider reliability is degrading or capacity is saturated.',
-      gridPos: { h: 10, w: 12, x: 12, y: 13 },
+      gridPos: { h: 10, w: 12, x: 12, y: 9 },
       fieldConfig: lineDefaults('short', {}, 'normal'),
       options: legendBottom(true),
       targets: [{ e: groupedKindSeries('provider.fallback', ['payload_reason']), legend: '{{payload_reason}}' }],
     }),
-    row(20, 'Behavior mix', 23),
+    row(20, 'Behavior mix', 19),
     barchart({
       id: 6,
       title: 'Tool usage mix',
       description:
         'Top 15 most-called tools over the dashboard time range. What the agent actually reaches for. Shipped Tier-1 structured metadata; no parser required.',
-      gridPos: { h: 10, w: 12, x: 0, y: 24 },
+      gridPos: { h: 10, w: 12, x: 0, y: 20 },
       fieldConfig: { defaults: { unit: 'short', custom: { fillOpacity: 80 } }, overrides: [] },
       options: {
         orientation: 'auto',
@@ -149,7 +145,7 @@ export function intelligenceDashboard(): Dashboard {
       title: 'Autonomy ratio trend (daily)',
       description:
         'The fraction of permission checks that resolve to allow, sampled per interval. Rising means the rule set is absorbing what used to need asking. A healthy trend is flat or rising. Phase-B event required.',
-      gridPos: { h: 10, w: 12, x: 12, y: 24 },
+      gridPos: { h: 10, w: 12, x: 12, y: 20 },
       fieldConfig: {
         defaults: {
           unit: 'percentunit',
@@ -175,7 +171,7 @@ export function intelligenceDashboard(): Dashboard {
       title: 'Sub-agent adoption (weekly)',
       description:
         'Which sub-agents are being dispatched and how often. Rising dispatch counts signal that users are leaning into multi-agent workflows. Phase-B event required.',
-      gridPos: { h: 10, w: 12, x: 0, y: 34 },
+      gridPos: { h: 10, w: 12, x: 0, y: 30 },
       fieldConfig: lineDefaults('short', {}, 'normal'),
       options: legendBottom(true),
       targets: [{ e: groupedKindSeries('dispatch.agent', ['payload_agent']), legend: '{{payload_agent}}' }],
@@ -185,18 +181,18 @@ export function intelligenceDashboard(): Dashboard {
       title: 'Dispatch depth distribution (weekly)',
       description:
         'How deep the sub-agent dispatch trees go. Depth 1 is a direct dispatch; higher values are nested. A growing tail at depth 3+ may signal runaway recursion or unexpected orchestration patterns.',
-      gridPos: { h: 10, w: 12, x: 12, y: 34 },
+      gridPos: { h: 10, w: 12, x: 12, y: 30 },
       fieldConfig: lineDefaults('short', {}, 'normal'),
       options: legendBottom(true),
       targets: [{ e: groupedKindSeries('dispatch.agent', ['payload_dispatch_depth']), legend: 'depth {{payload_dispatch_depth}}' }],
     }),
-    row(30, 'Economics', 44),
+    row(30, 'Economics', 40),
     timeseries({
       id: 11,
       title: 'Cache savings trend (weekly)',
       description:
         'Total dollars saved by prompt caching per week. A flat or declining line means caching is not being leveraged — look at session length and repeat-prefix patterns. Phase-B event required.',
-      gridPos: { h: 8, w: 8, x: 0, y: 45 },
+      gridPos: { h: 8, w: 8, x: 0, y: 41 },
       fieldConfig: lineDefaults('currencyUSD', { decimals: 4, fillOpacity: 20 }),
       options: legendBottom(false),
       targets: [
@@ -211,7 +207,7 @@ export function intelligenceDashboard(): Dashboard {
       title: 'Tokens reclaimed by compaction (weekly)',
       description:
         'Tokens freed by context compaction per week, split by trigger type (automatic vs manual). This is the efficiency dividend of the compaction subsystem. Phase-B event required.',
-      gridPos: { h: 8, w: 8, x: 8, y: 45 },
+      gridPos: { h: 8, w: 8, x: 8, y: 41 },
       fieldConfig: lineDefaults('short', {}, 'normal'),
       options: legendBottom(true),
       targets: [{ e: groupedUnwrapSeries('compaction', 'payload_tokens_reclaimed', ['payload_trigger']), legend: '{{payload_trigger}}' }],
@@ -221,7 +217,7 @@ export function intelligenceDashboard(): Dashboard {
       title: 'Thrash trend (daily)',
       description:
         'Tool failure rate: failures divided by total tool executions, per interval. The long-run quality health line. A rising trend means tooling reliability is degrading relative to usage.',
-      gridPos: { h: 8, w: 8, x: 16, y: 45 },
+      gridPos: { h: 8, w: 8, x: 16, y: 41 },
       fieldConfig: {
         defaults: {
           unit: 'percentunit',

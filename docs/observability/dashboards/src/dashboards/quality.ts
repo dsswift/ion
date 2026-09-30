@@ -3,7 +3,7 @@
 // "Is the agent actually doing good work?" Migrated semantically-identical.
 
 import type { Dashboard } from '../dashboard.ts';
-import { row, text, stat, timeseries, heatmap, table } from '../panels.ts';
+import { row, stat, timeseries, heatmap, table } from '../panels.ts';
 import { instant, stream, telemetry } from '../queries.ts';
 import { quantileInstant, quantile } from '../queries-latency.ts';
 import { groupedKindSeries } from '../queries-logs.ts';
@@ -40,18 +40,14 @@ const sessionLinkNamed = (col: string) => ({
   properties: [{ id: 'links', value: [{ title: 'Open in forensics', url: '/d/ion-forensics/ion-conversation-forensics?var-session=${__value.raw}&${__url_time_range}' }] }],
 });
 
-const INTRO =
-  '## Is the agent actually doing good work?\n\nCost tells you what a run spent. This pack tells you whether the spending was productive: how often tools fail and why, whether the same tool keeps failing in a loop (thrash), how turns end, and whether extension hooks are dragging on the hot path. A rising thrash index is the earliest signal a session has gone sideways. Every row links to the conversation it came from.\n\n> **No data on tool.failure / extension.hook_latency panels?** Those bind to Phase-B Tier-4 telemetry events. The `tool.execute` and `llm.call` panels bind to shipped Tier-1 events and will populate normally. All query syntax is valid.';
-
 export function qualityDashboard(): Dashboard {
   const panels = [
-    text(1, { h: 4, w: 24, x: 0, y: 0 }, INTRO),
-    row(10, 'Verdict', 4),
+    row(10, 'Verdict', 0),
     stat({
       id: 2,
       title: 'Tool failures',
       description: 'Total tool execution failures in the dashboard time range across all sessions.',
-      gridPos: { h: 4, w: 6, x: 0, y: 5 },
+      gridPos: { h: 4, w: 6, x: 0, y: 1 },
       fieldConfig: {
         defaults: { unit: 'short', color: { mode: 'thresholds' }, thresholds: fixed([{ color: 'green', value: null }, { color: 'yellow', value: 5 }, { color: 'red', value: 20 }]), mappings: [], links: link('See failure taxonomy', '/d/ion-quality/ion-quality?viewPanel=6') },
         overrides: [],
@@ -63,7 +59,7 @@ export function qualityDashboard(): Dashboard {
       id: 3,
       title: 'Tool failure rate',
       description: 'Failures as a fraction of total tool executions. Numerator: tool.failure (Tier-4). Denominator: tool.execute (shipped Tier-1).',
-      gridPos: { h: 4, w: 6, x: 6, y: 5 },
+      gridPos: { h: 4, w: 6, x: 6, y: 1 },
       fieldConfig: {
         defaults: { unit: 'percentunit', decimals: 2, color: { mode: 'thresholds' }, thresholds: fixed([{ color: 'green', value: null }, { color: 'yellow', value: 0.05 }, { color: 'red', value: 0.15 }]), mappings: [] },
         overrides: [],
@@ -75,7 +71,7 @@ export function qualityDashboard(): Dashboard {
       id: 4,
       title: 'Sessions thrashing now (5m)',
       description: 'Sessions where the same tool has failed 3 or more times in the last 5 minutes. The thrash definition from the instrumentation spec: same tool, same session, 3+ failures in a 5-minute window.',
-      gridPos: { h: 4, w: 6, x: 12, y: 5 },
+      gridPos: { h: 4, w: 6, x: 12, y: 1 },
       fieldConfig: {
         defaults: { unit: 'short', color: { mode: 'thresholds' }, thresholds: fixed([{ color: 'green', value: null }, { color: 'red', value: 1 }]), mappings: [], links: link('See thrash leaderboard', '/d/ion-quality/ion-quality?viewPanel=11') },
         overrides: [],
@@ -87,7 +83,7 @@ export function qualityDashboard(): Dashboard {
       id: 5,
       title: 'Hook latency p99',
       description: '99th-percentile extension hook latency across all hooks and extensions in the dashboard time range. High values mean extensions are slowing the agent\'s hot path.',
-      gridPos: { h: 4, w: 6, x: 18, y: 5 },
+      gridPos: { h: 4, w: 6, x: 18, y: 1 },
       fieldConfig: {
         defaults: { unit: 'ms', color: { mode: 'thresholds' }, thresholds: fixed([{ color: 'green', value: null }, { color: 'yellow', value: 100 }, { color: 'red', value: 500 }]), mappings: [], links: link('See hook latency by extension', '/d/ion-quality/ion-quality?viewPanel=10') },
         overrides: [],
@@ -95,12 +91,12 @@ export function qualityDashboard(): Dashboard {
       options: statOptions(),
       targets: [{ e: quantileInstant({ q: 0.99, kind: 'extension.hook_latency', field: 'payload_latency_ms', window: '$__range' }) }],
     }),
-    row(20, 'Evidence', 9),
+    row(20, 'Evidence', 5),
     timeseries({
       id: 6,
       title: 'Failure taxonomy over time',
       description: 'Tool failures broken down by category. Categories are the error branches in the tool execution path: permission_denied, not_found, timeout, parse_error, runtime_error, network_error, unknown.',
-      gridPos: { h: 8, w: 12, x: 0, y: 10 },
+      gridPos: { h: 8, w: 12, x: 0, y: 6 },
       fieldConfig: line('short'),
       options: legendBottom(true),
       targets: [{ e: groupedKindSeries('tool.failure', ['payload_failure_category']), legend: '{{payload_failure_category}}' }],
@@ -109,7 +105,7 @@ export function qualityDashboard(): Dashboard {
       id: 7,
       title: 'Stop-reason mix per turn',
       description: 'How LLM turns end: end_turn, tool_use, max_tokens, stop_sequence. A spike in max_tokens means the model is hitting its output limit. Shipped structured metadata, no parser required.',
-      gridPos: { h: 8, w: 12, x: 12, y: 10 },
+      gridPos: { h: 8, w: 12, x: 12, y: 6 },
       fieldConfig: line('short', 'normal'),
       options: legendBottom(true),
       targets: [{ e: groupedKindSeries('llm.call', ['payload_stop_reason']), legend: '{{payload_stop_reason}}' }],
@@ -118,7 +114,7 @@ export function qualityDashboard(): Dashboard {
       id: 8,
       title: 'Tool duration p95 by tool',
       description: '95th-percentile execution time per tool. Shipped Tier-1 structured metadata; no JSON parser required. Outliers here identify the tools slowing individual turns.',
-      gridPos: { h: 8, w: 12, x: 0, y: 18 },
+      gridPos: { h: 8, w: 12, x: 0, y: 14 },
       fieldConfig: line('ms'),
       options: legendBottom(true),
       targets: [{ e: quantile({ q: 0.95, kind: 'tool.execute', field: 'payload_duration_ms', window: '$__interval', by: ['tool'] }), legend: '{{tool}}' }],
@@ -127,7 +123,7 @@ export function qualityDashboard(): Dashboard {
       id: 9,
       title: 'Per-tool failure heat',
       description: 'Which tools are failing and with which category. Each cell is count of failures for that tool/category combination in the time bucket.',
-      gridPos: { h: 8, w: 12, x: 12, y: 18 },
+      gridPos: { h: 8, w: 12, x: 12, y: 14 },
       fieldConfig: { defaults: { unit: 'short' }, overrides: [] },
       options: {
         calculate: false,
@@ -142,17 +138,17 @@ export function qualityDashboard(): Dashboard {
       id: 10,
       title: 'Hook latency p99 by extension and hook',
       description: 'Which extension and which hook are the slowest. Hooks on the synchronous path block the turn; watch for any hook consistently above 100ms.',
-      gridPos: { h: 8, w: 24, x: 0, y: 26 },
+      gridPos: { h: 8, w: 24, x: 0, y: 22 },
       fieldConfig: line('ms'),
       options: legendBottom(true),
       targets: [{ e: quantile({ q: 0.99, kind: 'extension.hook_latency', field: 'payload_latency_ms', window: '$__interval', by: ['payload_extension', 'payload_hook'] }), legend: '{{payload_extension}} / {{payload_hook}}' }],
     }),
-    row(30, 'Drill-down', 34),
+    row(30, 'Drill-down', 30),
     table({
       id: 11,
       title: 'Thrash leaderboard (range)',
       description: 'Sessions ranked by same-tool repeat failures. The session with the highest count for a given tool is the one most likely to be stuck. Click a session to open forensics.',
-      gridPos: { h: 10, w: 12, x: 0, y: 35 },
+      gridPos: { h: 10, w: 12, x: 0, y: 31 },
       mode: 'instant',
       fieldConfig: { defaults: { unit: 'short' }, overrides: [sessionLinkNamed('Session')] },
       // Human headers: an instant table renders one column per label plus a bare
@@ -167,7 +163,7 @@ export function qualityDashboard(): Dashboard {
       id: 12,
       title: 'Recent failures with error preview',
       description: 'The most recent tool failures with a preview of the error message. Use this to identify the root cause before opening the full session trace.',
-      gridPos: { h: 10, w: 12, x: 12, y: 35 },
+      gridPos: { h: 10, w: 12, x: 12, y: 31 },
       mode: 'range',
       fieldConfig: { defaults: { unit: 'short' }, overrides: [sessionLink()] },
       options: { showHeader: true, footer: { show: false } },

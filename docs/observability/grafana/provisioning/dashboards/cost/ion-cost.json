@@ -37,22 +37,6 @@
   "links": [],
   "panels": [
     {
-      "id": 1,
-      "type": "text",
-      "title": "",
-      "gridPos": {
-        "h": 4,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "## Where the money goes.\n\nEvery completed run reports its cost, tokens, and cache usage. The verdict row answers \"what did the selected time range cost.\" The rows below answer the sharper questions: how many dollars caching saved (real rates when models.json carries them, an assumed 0.1x rate when it does not, and the panel legend tells you which), how much of the spend was sub-agent work dispatched under the hood, and what model fallbacks did to the bill. Click any session to open the full forensics view for that conversation.\n\n> **No data on cost panels?** Telemetry is not enabled. Add `\"telemetry\": {\"enabled\": true, \"targets\": [\"file\"], \"filePath\": \"~/.ion/telemetry.jsonl\"}` to `~/.ion/engine.json`, restart the engine, then run `docker compose restart alloy`. Tier-4 panels (cache savings, sub-agent tax, fallback routes) require the Phase-B engine rebuild; queries are valid and will populate once that ships."
-      },
-      "datasource": null
-    },
-    {
       "id": 2,
       "type": "stat",
       "title": "Spend",
@@ -60,7 +44,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 4
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -117,7 +101,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 4
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -172,7 +156,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 4
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -228,7 +212,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 4
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -296,7 +280,7 @@
         "h": 8,
         "w": 16,
         "x": 0,
-        "y": 8
+        "y": 4
       },
       "datasource": {
         "type": "loki",
@@ -349,7 +333,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 8
+        "y": 4
       },
       "datasource": {
         "type": "loki",
@@ -398,7 +382,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 12
       },
       "datasource": {
         "type": "loki",
@@ -474,7 +458,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 16
+        "y": 12
       },
       "datasource": {
         "type": "loki",
@@ -526,7 +510,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 20
       },
       "datasource": {
         "type": "loki",
@@ -755,7 +739,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 34
+        "y": 30
       },
       "collapsed": false,
       "panels": []
@@ -768,7 +752,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 35
+        "y": 31
       },
       "description": "Total dollars saved by cache hits. Pricing source shown in D2 legend: models_json = billed rate from models.json; assumed_0.1x = estimated at 10% of input price.",
       "datasource": {
@@ -831,7 +815,7 @@
         "h": 8,
         "w": 18,
         "x": 6,
-        "y": 35
+        "y": 31
       },
       "description": "Legend: models_json = real billed rate from models.json. assumed_0.1x = 10% of input price assumed (models.json does not carry cache pricing for this model). Do not compare the two series as equivalent dollar values.",
       "datasource": {
@@ -912,7 +896,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 43
+        "y": 39
       },
       "description": "Sub-agent cost from dispatch.agent span-end events (context_session_id join key — both series now group by context_session_id for an apples-to-apples comparison). Total cost from run.complete. The gap is root-agent-only cost.",
       "datasource": {
@@ -995,7 +979,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 43
+        "y": 39
       },
       "description": "Sub-agent tax by session. dispatch.agent (a span) keys session under payload_session_id; run.complete keys it under context_session_id. The dispatch series is aliased to context_session_id so the join aligns. Ratio = sub-agent cost / total session cost.",
       "datasource": {
@@ -1104,7 +1088,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 51
+        "y": 47
       },
       "description": "Count of fallback hops by requested model, fallback model, and reason. Dollar delta (counterfactual cost of the fallback path vs the requested model) is a Phase-C addition joining run.complete on run_id; the route count is the binding minimum today.",
       "datasource": {

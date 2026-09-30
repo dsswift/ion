@@ -12,7 +12,7 @@
 // the Device filter is where those are broken down.
 
 import type { Dashboard } from '../dashboard.ts';
-import { row, text, stat, timeseries, bargauge, table } from '../panels.ts';
+import { row, stat, timeseries, bargauge, table } from '../panels.ts';
 import {
   HOST_PIPE,
   distinctLabelCount,
@@ -44,16 +44,12 @@ const bars = (fillOpacity: number) => ({
 });
 const link = (title: string, url: string) => [{ title, url }];
 
-const INTRO =
-  '## Who is running Ion, where, and on what version?\n\nThe installation and host view: how many machines are reporting, how many engine installs each carries (several headless instances can share one host), which engine and extension versions are deployed where, and what each host spends. All panels honor the dashboard time picker except **Host last-seen**, a liveness detector with a fixed 24h lookback so a quiet host stays visible.\n\n| Related | Dashboard |\n|---|---|\n| Landing | [Ion Overview](/d/ion-overview) |\n| Per-user view | [Ion Users](/d/ion-users) |\n| Cost detail | [Ion Cost](/d/ion-cost) |';
-
 export function fleetDashboard(): Dashboard {
   const panels = [
-    text(1, { h: 4, w: 24, x: 0, y: 0 }, INTRO),
     stat({
       id: 2,
       title: 'Hosts reporting',
-      gridPos: { h: 4, w: 4, x: 0, y: 4 },
+      gridPos: { h: 4, w: 4, x: 0, y: 0 },
       fieldConfig: {
         defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [], noValue: 'telemetry off' },
         overrides: [],
@@ -65,7 +61,7 @@ export function fleetDashboard(): Dashboard {
       id: 3,
       title: 'Installs',
       description: 'Distinct service_instance_id values — engine installations, which can outnumber hosts when headless instances share a machine.',
-      gridPos: { h: 4, w: 4, x: 4, y: 4 },
+      gridPos: { h: 4, w: 4, x: 4, y: 0 },
       fieldConfig: {
         defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [], noValue: 'telemetry off' },
         overrides: [],
@@ -77,7 +73,7 @@ export function fleetDashboard(): Dashboard {
       id: 4,
       title: 'Engine versions in fleet',
       description: 'Distinct engine version strings reporting in the window. More than one is version drift — see the drift table below for who is behind.',
-      gridPos: { h: 4, w: 4, x: 8, y: 4 },
+      gridPos: { h: 4, w: 4, x: 8, y: 0 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -97,7 +93,7 @@ export function fleetDashboard(): Dashboard {
     stat({
       id: 5,
       title: 'Fleet spend',
-      gridPos: { h: 4, w: 4, x: 12, y: 4 },
+      gridPos: { h: 4, w: 4, x: 12, y: 0 },
       fieldConfig: {
         defaults: { unit: 'currencyUSD', decimals: 4, color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [], links: link('Ion Cost', '/d/ion-cost'), noValue: 'telemetry off' },
         overrides: [],
@@ -109,7 +105,7 @@ export function fleetDashboard(): Dashboard {
       id: 6,
       title: 'Fleet errors',
       description: 'Telemetry events carrying a non-empty payload_error. Operational ERROR lines per device are on Errors & Health, scoped with the Device filter.',
-      gridPos: { h: 4, w: 4, x: 16, y: 4 },
+      gridPos: { h: 4, w: 4, x: 16, y: 0 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -130,7 +126,7 @@ export function fleetDashboard(): Dashboard {
       id: 7,
       title: 'Host last-seen (min)',
       description: 'Minutes since the most recent telemetry event per host. Fixed 24h lookback (liveness detector): a host whose engine stopped reporting climbs while the others stay near zero.',
-      gridPos: { h: 4, w: 4, x: 20, y: 4 },
+      gridPos: { h: 4, w: 4, x: 20, y: 0 },
       fieldConfig: {
         defaults: {
           unit: 'm',
@@ -154,12 +150,12 @@ export function fleetDashboard(): Dashboard {
       },
       targets: [{ e: hostLastSeenMinutes('24h'), legend: '{{host_name}}' }],
     }),
-    row(20, 'Installations and versions', 8),
+    row(20, 'Installations and versions', 4),
     bargauge({
       id: 8,
       title: 'Installs per host',
       description: 'Distinct service_instance_id count per host. More than one means several engine instances (e.g. headless daemons) share the machine.',
-      gridPos: { h: 8, w: 8, x: 0, y: 9 },
+      gridPos: { h: 8, w: 8, x: 0, y: 5 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -178,7 +174,7 @@ export function fleetDashboard(): Dashboard {
       id: 9,
       title: 'Version drift',
       description: 'Every host / install / engine-version combination reporting in the window, with its event count. Two rows for one install means it upgraded mid-window.',
-      gridPos: { h: 8, w: 16, x: 8, y: 9 },
+      gridPos: { h: 8, w: 16, x: 8, y: 5 },
       mode: 'instant',
       fieldConfig: { defaults: { unit: 'short', custom: { align: 'auto', displayMode: 'auto' } }, overrides: [] },
       options: { footer: { show: false }, sortBy: [{ displayName: 'Events', desc: true }] },
@@ -193,7 +189,7 @@ export function fleetDashboard(): Dashboard {
       id: 10,
       title: 'Extension versions by host',
       description: 'Which extension versions are deployed where, from run.complete attribution. Runs without an extension are excluded.',
-      gridPos: { h: 8, w: 12, x: 0, y: 17 },
+      gridPos: { h: 8, w: 12, x: 0, y: 13 },
       mode: 'instant',
       fieldConfig: { defaults: { unit: 'short', custom: { align: 'auto', displayMode: 'auto' } }, overrides: [] },
       options: { footer: { show: false }, sortBy: [{ displayName: 'Runs', desc: true }] },
@@ -210,16 +206,16 @@ export function fleetDashboard(): Dashboard {
     bargauge({
       id: 11,
       title: 'Spend by host',
-      gridPos: { h: 8, w: 12, x: 12, y: 17 },
+      gridPos: { h: 8, w: 12, x: 12, y: 13 },
       fieldConfig: { defaults: { unit: 'currencyUSD', decimals: 4 }, overrides: [] },
       options: { orientation: 'horizontal', reduceOptions: { calcs: ['sum'] }, displayMode: 'gradient', showUnfilled: true },
       targets: [{ e: spendBy(['host_name'], HOST_PIPE, '$__range'), legend: '{{host_name}}' }],
     }),
-    row(30, 'Usage over time', 25),
+    row(30, 'Usage over time', 21),
     timeseries({
       id: 12,
       title: 'Runs by host over time',
-      gridPos: { h: 8, w: 12, x: 0, y: 26 },
+      gridPos: { h: 8, w: 12, x: 0, y: 22 },
       fieldConfig: bars(60),
       options: legendBottom(),
       targets: [{ e: runsBy(['host_name'], HOST_PIPE, '$__interval'), legend: '{{host_name}}' }],
@@ -227,7 +223,7 @@ export function fleetDashboard(): Dashboard {
     timeseries({
       id: 13,
       title: 'Spend by host over time',
-      gridPos: { h: 8, w: 12, x: 12, y: 26 },
+      gridPos: { h: 8, w: 12, x: 12, y: 22 },
       fieldConfig: {
         defaults: { unit: 'currencyUSD', custom: { drawStyle: 'bars', fillOpacity: 60, stacking: { mode: 'normal', group: 'A' } } },
         overrides: [],
@@ -239,7 +235,7 @@ export function fleetDashboard(): Dashboard {
       id: 14,
       title: 'Activity by host',
       description: 'All telemetry events per interval, grouped by host — the fleet utilization pulse.',
-      gridPos: { h: 8, w: 12, x: 0, y: 34 },
+      gridPos: { h: 8, w: 12, x: 0, y: 30 },
       fieldConfig: bars(60),
       options: legendBottom(),
       targets: [{ e: activityBy(['host_name'], HOST_PIPE, '$__interval'), legend: '{{host_name}}' }],
@@ -248,7 +244,7 @@ export function fleetDashboard(): Dashboard {
       id: 15,
       title: 'Errors by host over time',
       description: 'Telemetry events with a non-empty payload_error, per interval and host.',
-      gridPos: { h: 8, w: 12, x: 12, y: 34 },
+      gridPos: { h: 8, w: 12, x: 12, y: 30 },
       fieldConfig: bars(70),
       options: legendBottom(),
       targets: [{ e: errorEventsBy(['host_name'], HOST_PIPE, '$__interval'), legend: '{{host_name}}' }],

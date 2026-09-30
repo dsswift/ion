@@ -10,22 +10,6 @@
   "links": [],
   "panels": [
     {
-      "id": 1,
-      "type": "text",
-      "title": "",
-      "gridPos": {
-        "h": 5,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "## Who is using Ion and what is their footprint?\n\nPer-user utilization over the telemetry stream: spend, runs, tool failures, permission denials, sandbox blocks, and secret containment — the product-intelligence and risk view of a single user. All panels honor the dashboard time picker.\n\n**Identity caveat.** The `user` field is populated when the engine has an identity to report (enterprise OIDC installs, or a configured operator identity). Telemetry without it groups under **unassigned** — type `unassigned` into the User variable to select exactly that population, and use the Install variable to split individual installs within it.\n\n| Related | Dashboard |\n|---|---|\n| Landing | [Ion Overview](/d/ion-overview) |\n| Hosts & installs | [Ion Fleet](/d/ion-fleet) |\n| Cost detail | [Ion Cost](/d/ion-cost) |\n| Trust detail | [Ion Trust](/d/ion-trust) |\n| Quality detail | [Ion Quality](/d/ion-quality) |"
-      },
-      "datasource": null
-    },
-    {
       "id": 2,
       "type": "stat",
       "title": "Active users",
@@ -33,7 +17,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 5
+        "y": 0
       },
       "description": "Distinct signed-in users seen in telemetry over the dashboard time range. Lines with no user (installs with no identity, machine-level metrics) are not counted here; they appear as \"unassigned\" in the panels below.",
       "datasource": {
@@ -90,7 +74,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 5
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -153,7 +137,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 5
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -215,7 +199,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 5
+        "y": 0
       },
       "description": "tool.failure events for the selected user(s).",
       "datasource": {
@@ -289,7 +273,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 5
+        "y": 0
       },
       "description": "Denied permission checks for the selected user(s). Denials are the safety mechanism working; watch the trend, not the count.",
       "datasource": {
@@ -351,7 +335,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 5
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -424,7 +408,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 9
+        "y": 4
       },
       "collapsed": false,
       "panels": []
@@ -437,7 +421,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 10
+        "y": 5
       },
       "datasource": {
         "type": "loki",
@@ -482,7 +466,7 @@
         "h": 8,
         "w": 8,
         "x": 12,
-        "y": 10
+        "y": 5
       },
       "description": "Fraction of permission checks resolving to allow, per user. A user with a falling ratio is asking for more than the rule set absorbs.",
       "datasource": {
@@ -548,7 +532,7 @@
         "h": 8,
         "w": 4,
         "x": 20,
-        "y": 10
+        "y": 5
       },
       "description": "Secret matches redacted before leaving the engine, for the selected user(s). Each is one near-miss.",
       "datasource": {
@@ -622,7 +606,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 13
       },
       "collapsed": false,
       "panels": []
@@ -635,7 +619,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 19
+        "y": 14
       },
       "datasource": {
         "type": "loki",
@@ -696,7 +680,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 19
+        "y": 14
       },
       "description": "run.complete counts grouped by user and hosting extension. Runs without an extension group as 'unattributed'.",
       "datasource": {
@@ -758,7 +742,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 19
+        "y": 14
       },
       "description": "tool.failure events grouped by user and tool. The user/tool pair with the highest count is the one most likely stuck in a loop.",
       "datasource": {
@@ -820,7 +804,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 27
+        "y": 22
       },
       "collapsed": false,
       "panels": []
@@ -833,7 +817,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 28
+        "y": 23
       },
       "description": "All telemetry events per interval, grouped by user — the utilization pulse.",
       "datasource": {
@@ -888,7 +872,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 28
+        "y": 23
       },
       "datasource": {
         "type": "loki",
@@ -942,7 +926,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 36
+        "y": 31
       },
       "description": "The engine's verbatim record of denied tool calls for the selected user(s).",
       "datasource": {

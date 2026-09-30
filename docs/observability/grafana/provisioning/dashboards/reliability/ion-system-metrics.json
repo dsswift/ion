@@ -24,21 +24,6 @@
   "links": [],
   "panels": [
     {
-      "id": 1,
-      "type": "text",
-      "title": "",
-      "gridPos": {
-        "h": 4,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "## Ion System Metrics\n\nEvery device and every Ion process on it, from the sample line each one logs every 30 s. Charts draw **one line per device**; use the **Device** and **User** dropdowns to narrow the fleet. **Engine** lines carry the host (CPU, memory, disk) and each engine process role; the **server** line carries the Studio server's own process; the **desktop** line carries Studio's own Electron processes, including GPU time on macOS.\n\nA GPU figure is missing, not zero, where it was not measured. For a fleet, alerting, or Application Insights, use the OTLP metrics export instead (see the observability README, \"Signals and where they go\")."
-      }
-    },
-    {
       "id": 9,
       "type": "stat",
       "title": "Devices reporting",
@@ -46,7 +31,7 @@
         "h": 4,
         "w": 24,
         "x": 0,
-        "y": 4
+        "y": 0
       },
       "description": "Devices that logged a System Metrics sample in the time range, within the Device and User filters.",
       "datasource": {
@@ -98,7 +83,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 8
+        "y": 4
       },
       "description": "Share of all host CPUs in use since the previous sample, 0..1; steal time counts as busy. Source: engine.jsonl tag=sysmetrics fields.host_cpu_utilization.",
       "datasource": {
@@ -151,7 +136,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 8
+        "y": 4
       },
       "description": "Memory available to new work (inside a limited container, the limit less its use), and free space on the volume holding the engine's data (systemMetrics.diskPath, default ~/.ion). Source: engine.jsonl fields.host_memory_available_bytes, host_disk_free_bytes.",
       "datasource": {
@@ -213,7 +198,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 12
       },
       "description": "Summed CPU of each role in the engine's own process tree, added up across the selected devices; 100 = one full core. Pick one device to see one machine. Source: engine.jsonl fields.<role>_cpu_percent.",
       "datasource": {
@@ -308,7 +293,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 16
+        "y": 12
       },
       "description": "Summed resident memory of each role in the engine's process tree, added up across the selected devices. Source: engine.jsonl fields.<role>_rss_bytes.",
       "datasource": {
@@ -403,7 +388,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 24
+        "y": 20
       },
       "description": "The Ion Studio Server's own CPU (100 = one core). Its resident memory is fields.server_rss_bytes on the same line. Source: server.jsonl tag=system-metrics fields.server_cpu_percent.",
       "datasource": {
@@ -454,7 +439,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 24
+        "y": 20
       },
       "description": "Ion Studio's own Electron processes on this device: all of them, the GPU helper, and the renderer. GPU time is measured on macOS only. Source: desktop.jsonl tag=device-metrics.",
       "datasource": {
@@ -527,7 +512,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 32
+        "y": 28
       },
       "description": "Times Studio's GPU helper or a renderer stayed busy while no Studio window had focus or the machine was idle: the sign of an animation that never stops repainting. Limits are Device settings (idleRepaint* in desktop.json). Source: desktop.jsonl msg=\"idle repaint detected\".",
       "datasource": {
