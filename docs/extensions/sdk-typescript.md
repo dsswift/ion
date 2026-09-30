@@ -345,7 +345,7 @@ interface IonHttpResponse {
 }
 ```
 
-**`protectedOperation(name, payload?)`** -- run an operation the operator declared under [`protectedOperations`](../configuration/engine-json.md#protectedoperations) in the global `engine.json`. `ctx.http` covers calls made as the signed-in identity. This covers calls that need a service credential, such as an API key. The declaration fixes the method, destination, secret, and injection slot; your code supplies only the name and a payload, so it never holds the key and cannot send it anywhere else.
+**`protectedOperation(name, payload?)`** -- run an operation the operator declared under [`protectedOperations`](../configuration/engine-json.md#protectedoperations) in the global `engine.json` or enterprise config. `ctx.http` covers calls made as the signed-in identity. This covers calls that need a service credential, such as an API key. The declaration fixes the method, destination, secret, and injection slot; your code supplies only the name and a payload, so it never holds the key and cannot send it anywhere else.
 
 ```typescript
 const res = await ctx.protectedOperation('publish-metric', { value: 42 })
@@ -354,7 +354,7 @@ if (res.status !== 202) {
 }
 ```
 
-The engine validates `payload` against the declared schema before it sends anything. The promise resolves with `{ status, headers, body }`, where any reflected copy of the secret reads `[redacted]`. It rejects on an unknown name, a rejected payload, a missing secret, or an engine with no declared operations.
+The engine validates `payload` against the declared schema before it sends anything. Top-level fields also fill any `{name}` placeholders in the declared path. The promise resolves with `{ status, headers, body }`, where any reflected copy of the secret reads `[redacted]`. It rejects on an unknown name, a rejected payload, a missing secret, or an engine with no declared operations.
 
 ### Tracing and correlation
 
