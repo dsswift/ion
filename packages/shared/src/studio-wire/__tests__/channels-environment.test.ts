@@ -17,7 +17,7 @@ describe('environment admin channels', () => {
 
 describe('channels a phone administering its server needs', () => {
   it.each([
-    'ion:mcp-servers-changed', CLIENTS_CHANGED_CHANNEL, DISCOVERY_CHANNEL, IPC.PROVIDER_LOGIN_EVENT,
+    'ion:mcp-servers-changed', 'ion:provider-subscription-changed', CLIENTS_CHANGED_CHANNEL, DISCOVERY_CHANNEL, IPC.PROVIDER_LOGIN_EVENT,
     PROJECTS_CHANGED_CHANNEL, PROJECT_JOB_CHANNEL, IPC.REMOTE_RELAYS_CHANGED,
   ])('%s reaches thin and mirror connections', (channel) => {
     expect(channelDeliveredToView(channel, 'thin')).toBe(true)

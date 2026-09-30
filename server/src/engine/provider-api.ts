@@ -22,6 +22,7 @@ import { loginFlowIsHostOnly, HOST_ONLY_LOGIN_REFUSAL, type ProviderEntry } from
 import { engineBridge } from '../state'
 import { getDefaultProvider as bridgeGetDefaultProvider, setDefaultProvider as bridgeSetDefaultProvider } from './engine-bridge-providers'
 import { updateCache, refreshModelCache } from './ipc/models'
+import { wireProviderSubscriptionEvents } from './provider-subscription-api'
 import { log as _log, debug as _debug } from '../logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -240,6 +241,8 @@ export function wireProviderEvents(emit: (channel: string, payload: unknown) => 
       emit('ion:default-provider-updated', { defaultProvider: event.defaultProvider ?? '' })
     }
   })
+
+  wireProviderSubscriptionEvents(engineBridge, emit)
 
   engineBridge.on('reconnected', () => {
     log('engine reconnected; refreshing the model cache')

@@ -20,6 +20,7 @@
  */
 import type { Scope } from '@ion/shared/studio-wire/types'
 import * as providerApi from '../engine/provider-api'
+import { getProviderSubscription, refreshProviderSubscription, selectProviderSubscription } from '../engine/provider-subscription-api'
 import { readPlanBashAllowlist, writePlanBashAllowlist } from '../plan-bash-allowlist-store'
 import { log as _log, warn as _warn } from '../logger'
 import type { Connection } from './connection'
@@ -65,6 +66,13 @@ export const PROVIDER_ACTIONS: Record<string, ProviderActionSpec> = {
   'model.listTiers': wrap('model.listTiers', 'conversations:read', () => providerApi.listModelTiers()),
   'model.resolveTier': wrap('model.resolveTier', 'conversations:read', (args) => providerApi.resolveModelTier(args[0])),
   'provider.getDefault': wrap('provider.getDefault', 'conversations:read', () => providerApi.getDefaultProvider()),
+  // The Provider Subscription: the provider key the engine looked up for the
+  // signed-in identity. Reading it is `conversations:read`; choosing a
+  // subscription or looking up again changes the key a SHARED engine sends,
+  // so both are `admin`, like `provider.storeCredential`.
+  'provider.subscription': wrap('provider.subscription', 'conversations:read', () => getProviderSubscription()),
+  'provider.selectSubscription': wrap('provider.selectSubscription', 'admin', (args) => selectProviderSubscription(args[0])),
+  'provider.refreshSubscription': wrap('provider.refreshSubscription', 'admin', () => refreshProviderSubscription()),
 
   'model.setTier': wrap('model.setTier', 'admin', (args) => providerApi.setModelTier(args[0])),
   'model.removeTier': wrap('model.removeTier', 'admin', (args) => providerApi.removeModelTier(args[0])),

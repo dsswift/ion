@@ -40,6 +40,7 @@ describe('PROVIDER_ACTIONS scopes', () => {
     expect(PROVIDER_ACTIONS['model.list'].requiredScope).toBe('conversations:read')
     expect(PROVIDER_ACTIONS['model.listTiers'].requiredScope).toBe('conversations:read')
     expect(PROVIDER_ACTIONS['provider.getDefault'].requiredScope).toBe('conversations:read')
+    expect(PROVIDER_ACTIONS['provider.subscription'].requiredScope).toBe('conversations:read')
   })
 
   it('writes require admin, because they reconfigure a SHARED engine', () => {
@@ -47,6 +48,7 @@ describe('PROVIDER_ACTIONS scopes', () => {
       'model.setTier', 'model.removeTier', 'model.refresh',
       'provider.setDefault', 'provider.storeCredential',
       'provider.login', 'provider.loginCancel', 'provider.loginCode', 'provider.logout',
+      'provider.selectSubscription', 'provider.refreshSubscription',
     ]) {
       expect(PROVIDER_ACTIONS[name].requiredScope, name).toBe('admin')
     }

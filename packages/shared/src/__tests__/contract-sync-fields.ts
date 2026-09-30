@@ -420,6 +420,10 @@ export const TS_SHARED_TYPES: Record<string, string[]> = {
   // The operator-configured OAuth client inside McpServerStatus. The secret is
   // never on the wire; hasClientSecret says whether one is stored.
   McpOAuthStatus: ["authUrl", "clientId", "hasClientSecret", "resource", "scope", "tokenUrl"],
+  // Provider Subscription snapshot carried by engine_provider_subscription.
+  // It names subscriptions by id and label; the key never reaches a client.
+  ProviderSubscriptionStatus: ["error", "options", "provider", "resolvedAt", "selected", "source", "state"],
+  SubscriptionOption: ["id", "label"],
   // Slash-command listing carried inside engine_command_registry snapshots.
   // The server's prompt pipeline reads this off the wire to populate a
   // routing-hint cache keyed by session.
