@@ -50,22 +50,6 @@
   "links": [],
   "panels": [
     {
-      "id": 1,
-      "type": "text",
-      "title": "",
-      "gridPos": {
-        "h": 4,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "## Is Ion healthy?\n\nVerdict: error and warning counts over the dashboard time range. Evidence: error rate over time and by component. Drill-down: recent error log lines with full JSON detail.\n\nRead the verdict row first. If errors are 0 and warnings are low, Ion is healthy. Use the error-by-component timeseries to spot which surface is noisy. Use the live error stream at the bottom to read the raw log lines.\n\n---\n\n**Below the error line.** Errors in the log are the loud failures. The rows below track the quiet ones: providers that stall mid-stream and get retried, models that silently fall back to cheaper ones, extensions that die and respawn on a strike budget, and clients too slow to keep up with the event stream. These degrade the experience without writing a single ERROR line.\n\n> **Tier-4 panels empty?** Provider market and platform health panels require the Phase-B engine rebuild. Queries are valid; data appears once the instrumented engine ships."
-      },
-      "datasource": null
-    },
-    {
       "id": 2,
       "type": "stat",
       "title": "Errors",
@@ -73,7 +57,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 4
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -140,7 +124,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 4
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -207,7 +191,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 4
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -275,7 +259,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 4
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -330,7 +314,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 8
+        "y": 4
       },
       "datasource": {
         "type": "loki",
@@ -426,7 +410,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 12
       },
       "datasource": {
         "type": "loki",
@@ -480,7 +464,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 24
+        "y": 20
       },
       "datasource": {
         "type": "loki",
@@ -524,7 +508,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 24
+        "y": 20
       },
       "datasource": {
         "type": "loki",
@@ -753,7 +737,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 32
+        "y": 28
       },
       "datasource": {
         "type": "loki",
@@ -982,7 +966,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 42
+        "y": 38
       },
       "collapsed": false,
       "panels": []
@@ -995,7 +979,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 43
+        "y": 39
       },
       "description": "Count of provider.retry events. Data empty until Phase-B engine rebuild ships.",
       "datasource": {
@@ -1069,7 +1053,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 43
+        "y": 39
       },
       "description": "Count of provider.stall events (intra-stream gap threshold exceeded). Data empty until Phase-B.",
       "datasource": {
@@ -1143,7 +1127,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 43
+        "y": 39
       },
       "description": "Count of provider.fallback events. Click to see fallback cost routes in the cost pack.",
       "datasource": {
@@ -1217,7 +1201,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 43
+        "y": 39
       },
       "description": "Retry events grouped by payload_error_code (ProviderError constants). Data empty until Phase-B.",
       "datasource": {
@@ -1272,7 +1256,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 51
+        "y": 47
       },
       "description": "Time-to-first-token p95, grouped by model. Data empty until Phase-B.",
       "datasource": {
@@ -1327,7 +1311,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 51
+        "y": 47
       },
       "description": "Tail stall signal: max gap between consecutive token events during a stream. Data empty until Phase-B.",
       "datasource": {
@@ -1382,7 +1366,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 59
+        "y": 55
       },
       "collapsed": false,
       "panels": []
@@ -1395,7 +1379,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 60
+        "y": 56
       },
       "description": "Count of extension.respawn events per extension. Rising count signals instability. Data empty until Phase-B.",
       "datasource": {
@@ -1450,7 +1434,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 60
+        "y": 56
       },
       "description": "Extensions that exhausted their respawn strike budget and did not recover. Any nonzero value warrants investigation. Data empty until Phase-B.",
       "datasource": {
@@ -1520,7 +1504,7 @@
         "h": 8,
         "w": 18,
         "x": 6,
-        "y": 64
+        "y": 60
       },
       "description": "Time from extension process launch to ready state, p95. Persistent high values suggest startup bottlenecks. Data empty until Phase-B.",
       "datasource": {
@@ -1575,7 +1559,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 72
+        "y": 68
       },
       "description": "Cumulative dropped event count per queue. Zero is the only good number. Note: ack RTT is not measurable today (D3 §4e.5); this is a drop/saturation gauge only. Data empty until Phase-B.",
       "datasource": {
@@ -1643,7 +1627,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 72
+        "y": 68
       },
       "description": "Full respawn event table with preceding_operation, exit_signal, and outcome. Rows with outcome=budget_exceeded are terminal failures. Data empty until Phase-B.",
       "datasource": {

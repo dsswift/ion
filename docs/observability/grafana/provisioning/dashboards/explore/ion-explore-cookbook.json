@@ -10,22 +10,6 @@
   "links": [],
   "panels": [
     {
-      "id": 1,
-      "type": "text",
-      "title": "How to Use This Cookbook",
-      "gridPos": {
-        "x": 0,
-        "y": 0,
-        "w": 24,
-        "h": 4
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "## Ion Explore Cookbook\n\nThis dashboard contains ready-to-run LogQL recipes for ad-hoc investigation. **Use it as a launching pad into Explore**, not as a live monitoring dashboard.\n\n### How to use a recipe\n1. Set the dashboard variables above (Conversation ID, Session ID, Extension Name) to scope the queries.\n2. Click the **three-dot menu** (⋮) on any panel and select **Explore** to open that query in Grafana Explore.\n3. In Explore you can adjust the time range, modify the query, and use **split-view** to correlate logs with traces.\n\n### Key fields (structured metadata promoted by Alloy)\n| Field | Description |\n|---|---|\n| `context_conversation_id` | Durable conversation-file ID — join key across all event types |\n| `context_session_id` | Engine session key (tab UUID for desktop clients) |\n| `context_extension` | Hosting extension name (omit-when-absent for non-extension runs) |\n| `context_extension_version` | Extension manifest version (omit-when-absent) |\n| `trace_id` | 32-hex trace ID (the OTLP traceId) — click the Tempo correlation link to jump to the trace |\n| `span_id` | The span the event is about (the OTLP spanId) |\n| `service_instance_id` | The engine install that recorded the event |\n| `service_version` | The engine build that recorded the event |\n| `model` | LLM model name (on llm.call, run.complete) |\n| `run_cost_usd` | Per-run cost in USD (on run.complete) |\n\n### Provisioned correlations\nThe Loki datasource has three provisioned correlations: **conversation_id → all logs**, **session_id → telemetry**, **trace_id → Tempo trace**. In any Explore result, click the link button on a log line's field value to follow the correlation.\n"
-      },
-      "datasource": null
-    },
-    {
       "id": 2,
       "type": "row",
       "title": "Per-Conversation Recipes",
@@ -33,7 +17,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 4
+        "y": 0
       },
       "collapsed": false,
       "panels": []
@@ -44,7 +28,7 @@
       "title": "All logs for a conversation",
       "gridPos": {
         "x": 0,
-        "y": 5,
+        "y": 1,
         "w": 24,
         "h": 8
       },
@@ -77,7 +61,7 @@
       "title": "Telemetry events for a conversation",
       "gridPos": {
         "x": 0,
-        "y": 13,
+        "y": 9,
         "w": 24,
         "h": 8
       },
@@ -111,7 +95,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 17
       },
       "collapsed": false,
       "panels": []
@@ -122,7 +106,7 @@
       "title": "All telemetry for a session",
       "gridPos": {
         "x": 0,
-        "y": 22,
+        "y": 18,
         "w": 24,
         "h": 8
       },
@@ -156,7 +140,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 30
+        "y": 26
       },
       "collapsed": false,
       "panels": []
@@ -167,7 +151,7 @@
       "title": "All runs attributed to an extension",
       "gridPos": {
         "x": 0,
-        "y": 31,
+        "y": 27,
         "w": 24,
         "h": 8
       },
@@ -199,7 +183,7 @@
       "title": "Agent dispatches attributed to an extension",
       "gridPos": {
         "x": 0,
-        "y": 39,
+        "y": 35,
         "w": 24,
         "h": 8
       },
@@ -233,7 +217,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 47
+        "y": 43
       },
       "collapsed": false,
       "panels": []
@@ -244,7 +228,7 @@
       "title": "LLM calls with trace IDs",
       "gridPos": {
         "x": 0,
-        "y": 48,
+        "y": 44,
         "w": 24,
         "h": 8
       },
@@ -278,7 +262,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 56
+        "y": 52
       },
       "collapsed": false,
       "panels": []
@@ -289,7 +273,7 @@
       "title": "Engine errors",
       "gridPos": {
         "x": 0,
-        "y": 57,
+        "y": 53,
         "w": 24,
         "h": 8
       },
@@ -321,7 +305,7 @@
       "title": "Extension errors",
       "gridPos": {
         "x": 0,
-        "y": 65,
+        "y": 61,
         "w": 24,
         "h": 8
       },
@@ -355,7 +339,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 73
+        "y": 69
       },
       "collapsed": false,
       "panels": []
@@ -366,7 +350,7 @@
       "title": "Ingest freshness by component (min since last line)",
       "gridPos": {
         "x": 0,
-        "y": 74,
+        "y": 70,
         "w": 24,
         "h": 6
       },

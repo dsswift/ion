@@ -17,7 +17,7 @@
 // a quiet system. Its test now fails if a panel queries a field nothing emits.
 
 import type { Dashboard } from '../dashboard.ts';
-import { text, timeseries } from '../panels.ts';
+import { timeseries } from '../panels.ts';
 import { wireWindowStat, wireWindowRate, clientWindowStat } from '../queries-latency.ts';
 
 const line = (unit: string, fillOpacity = 10) => ({
@@ -29,18 +29,14 @@ const legend = () => ({
   legend: { displayMode: 'list', placement: 'bottom', showLegend: true },
 });
 
-const INTRO =
-  '## Ion Wire Latency\n\nHow long the Studio wire takes, per client. **Server panels** time a round trip on the server\'s own clock (`studio_ping`/`studio_pong`), so there is no clock skew between machines to correct, and they read the same for Studio, a browser and a phone, over a local socket, TCP or a relay.\n\n**Client panels** show what a person waits through: an action leaving the client and its result arriving back. A low server time beside a high client time is the wire, not the work.\n\niOS lines arrive through the diagnostic-log pull, so they may be up to ~30 s behind; server and desktop lines are current.';
-
 export function wireLatencyDashboard(): Dashboard {
   const panels = [
-    { ...text(1, { h: 4, w: 24, x: 0, y: 0 }, INTRO), datasource: undefined },
     timeseries({
       id: 2,
       title: 'Round trip to each client (p50 / p95)',
       description:
         'Server-timed `studio_ping` → `studio_pong`, per client kind. One clock, both readings — no skew correction. Source: server.jsonl tag=wire-latency msg="wire window" fields.rtt_p50_ms / rtt_p95_ms.',
-      gridPos: { h: 8, w: 12, x: 0, y: 4 },
+      gridPos: { h: 8, w: 12, x: 0, y: 0 },
       fieldConfig: line('ms'),
       options: legend(),
       targets: [
@@ -53,7 +49,7 @@ export function wireLatencyDashboard(): Dashboard {
       title: 'Probes lost per window',
       description:
         'Probes a client never answered within the timeout. A non-zero line is a client that is connected but not reading its socket. Source: server.jsonl fields.pings_lost.',
-      gridPos: { h: 8, w: 12, x: 12, y: 4 },
+      gridPos: { h: 8, w: 12, x: 12, y: 0 },
       fieldConfig: line('short', 20),
       options: legend(),
       targets: [{ e: wireWindowRate({ field: 'fields_pings_lost', window: '5m' }), legend: '{{fields_client_kind}}' }],
@@ -63,7 +59,7 @@ export function wireLatencyDashboard(): Dashboard {
       title: 'Outbound queue wait (p95)',
       description:
         'How long a frame sat between entering the send queue and leaving the socket. High wait means backpressure on this connection, not a slow network. Source: server.jsonl fields.dwell_p95_ms.',
-      gridPos: { h: 8, w: 12, x: 0, y: 12 },
+      gridPos: { h: 8, w: 12, x: 0, y: 8 },
       fieldConfig: line('ms'),
       options: legend(),
       targets: [{ e: wireWindowStat({ field: 'fields_dwell_p95_ms', window: '5m' }), legend: 'p95 {{fields_client_kind}}' }],
@@ -73,7 +69,7 @@ export function wireLatencyDashboard(): Dashboard {
       title: 'Peak send-queue depth',
       description:
         'The deepest the bounded send queue got in the window. A connection that crosses its cap is closed with slow_client, so this climbing is the warning before that. Source: server.jsonl fields.queue_max.',
-      gridPos: { h: 8, w: 12, x: 12, y: 12 },
+      gridPos: { h: 8, w: 12, x: 12, y: 8 },
       fieldConfig: line('bytes'),
       options: legend(),
       targets: [{ e: wireWindowStat({ field: 'fields_queue_max', window: '5m' }), legend: '{{fields_client_kind}}' }],
@@ -83,7 +79,7 @@ export function wireLatencyDashboard(): Dashboard {
       title: 'Bytes out per window',
       description:
         'Outbound volume per client kind. A phone on a relay paying for a snapshot shows up here. Source: server.jsonl fields.bytes_out.',
-      gridPos: { h: 8, w: 12, x: 0, y: 20 },
+      gridPos: { h: 8, w: 12, x: 0, y: 16 },
       fieldConfig: line('bytes'),
       options: legend(),
       targets: [{ e: wireWindowRate({ field: 'fields_bytes_out', window: '5m' }), legend: '{{fields_client_kind}}' }],
@@ -93,7 +89,7 @@ export function wireLatencyDashboard(): Dashboard {
       title: 'Server time per action (p95)',
       description:
         'The server\'s own work on one studio_action, receipt to result sent — the wire is not in this number. Compare against the client-felt panel below: the gap between them is the wire. Source: server.jsonl fields.action_p95_ms.',
-      gridPos: { h: 8, w: 12, x: 12, y: 20 },
+      gridPos: { h: 8, w: 12, x: 12, y: 16 },
       fieldConfig: line('ms'),
       options: legend(),
       targets: [{ e: wireWindowStat({ field: 'fields_action_p95_ms', window: '5m' }), legend: 'p95 {{fields_client_kind}}' }],
@@ -103,7 +99,7 @@ export function wireLatencyDashboard(): Dashboard {
       title: 'Client-felt action latency (p50 / p95)',
       description:
         'What a person waits through: an action leaving the client and its result arriving back, from each client\'s own window. desktop = Studio and Electron main; web = a browser tab (forwarded through POST /log); ios = the phone (through its diagnostic pull, so up to ~30 s behind). Source: each client\'s log, tag=wire-latency msg="client window".',
-      gridPos: { h: 8, w: 12, x: 0, y: 28 },
+      gridPos: { h: 8, w: 12, x: 0, y: 24 },
       fieldConfig: line('ms'),
       options: legend(),
       targets: [
@@ -116,7 +112,7 @@ export function wireLatencyDashboard(): Dashboard {
       title: 'Client action timeouts, and server decode errors',
       description:
         'Two ways the wire fails rather than slows. Timeouts are actions a client gave up on, counted separately from the percentiles so a 30 s wait does not read as merely sluggish. Decode errors are frames the server could not parse — a version skew between a client and this server. Sources: client windows fields.action_timeouts; server windows fields.decode_errors.',
-      gridPos: { h: 8, w: 12, x: 12, y: 28 },
+      gridPos: { h: 8, w: 12, x: 12, y: 24 },
       fieldConfig: {
         defaults: { unit: 'short', custom: { lineWidth: 2, fillOpacity: 20 } },
         overrides: [],

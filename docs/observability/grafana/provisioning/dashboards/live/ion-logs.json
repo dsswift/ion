@@ -37,22 +37,6 @@
   "links": [],
   "panels": [
     {
-      "id": 1,
-      "type": "text",
-      "title": "",
-      "gridPos": {
-        "h": 3,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "## What is Ion doing right now?\n\nThis dashboard shows live activity across all Ion surfaces. **Verdict row**: log volume and active extension count at a glance. **Evidence row**: volume by component over time. **Right now row**: context pressure per session, dispatches in flight, TTFT, and backpressure. **Drill-down**: live log tail and per-extension activity.\n\nUse this dashboard when Ion is running a long task and you want to watch it. The live log tail at the bottom auto-refreshes every 30s. Filter by component (engine, extension, desktop, ios) using LogQL in Explore for deeper drill-down.\n\n> **Right now panels empty?** The context-pressure, dispatch, TTFT, and backpressure gauges require the Phase-B engine rebuild. Queries are valid; data appears once that ships."
-      },
-      "datasource": null
-    },
-    {
       "id": 2,
       "type": "stat",
       "title": "Log lines",
@@ -60,7 +44,7 @@
         "h": 4,
         "w": 8,
         "x": 0,
-        "y": 3
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -115,7 +99,7 @@
         "h": 4,
         "w": 8,
         "x": 8,
-        "y": 3
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -182,7 +166,7 @@
         "h": 4,
         "w": 8,
         "x": 16,
-        "y": 3
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -237,7 +221,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 7
+        "y": 4
       },
       "collapsed": false,
       "panels": []
@@ -250,7 +234,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 8
+        "y": 5
       },
       "description": "Percent of context window used, latest value in the last 10 minutes per session. Green < 60%, amber 60-80%, red > 80% (compact trigger zone). Samples where payload_estimated=true are heuristic (no real token count available). Click a session value to open forensics. Data empty until Phase-B.",
       "datasource": {
@@ -326,7 +310,7 @@
         "h": 4,
         "w": 8,
         "x": 8,
-        "y": 8
+        "y": 5
       },
       "description": "Count of dispatch.agent span-end events in the last 5 minutes. These are recently completed dispatches, not true in-flight spans (span-end events are what land in Loki). For true in-flight view, use the Tempo panel in the forensics pack. Data empty until Phase-B.",
       "datasource": {
@@ -382,7 +366,7 @@
         "h": 4,
         "w": 8,
         "x": 8,
-        "y": 12
+        "y": 9
       },
       "description": "Maximum dropped event count across all client queues in the last 10 minutes. Zero is the only good number. Data empty until Phase-B.",
       "datasource": {
@@ -446,7 +430,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 8
+        "y": 5
       },
       "description": "Streaming time-to-first-token, p50 over the selected interval. A rising trend mid-session means providers are responding slower. Data empty until Phase-B.",
       "datasource": {
@@ -500,7 +484,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 13
       },
       "datasource": {
         "type": "loki",
@@ -554,7 +538,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 24
+        "y": 21
       },
       "datasource": {
         "type": "loki",
@@ -607,7 +591,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 24
+        "y": 21
       },
       "datasource": {
         "type": "loki",
@@ -661,7 +645,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 32
+        "y": 29
       },
       "datasource": {
         "type": "loki",
@@ -890,7 +874,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 41
       },
       "datasource": {
         "type": "loki",

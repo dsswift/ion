@@ -17,7 +17,7 @@
 // migration; see queries-cost.ts's note on the field split.
 
 import type { Dashboard } from '../dashboard.ts';
-import { text, stat, timeseries, logsTable, escapeHatch } from '../panels.ts';
+import { stat, timeseries, logsTable, escapeHatch } from '../panels.ts';
 import { stream } from '../queries.ts';
 import { runCount } from '../queries-cost.ts';
 import { levelCount, logRateByComponent, ingestFreshnessMinutes } from '../queries-logs.ts';
@@ -37,16 +37,12 @@ const statOptions = (colorMode: string) => ({
 const packLink = (title: string, url: string) => [{ title, url, targetBlank: false }];
 const PERM = telemetry('permission.decision');
 
-const INTRO =
-  '## Ion Observability Overview\n\nThe landing dashboard. **Verdict row**: headline signals over the dashboard time range, plus the count of critical alerts currently firing — click through for the list. **Signal row**: one live figure pulled from each granular pack. Green = healthy. Any orange, red, or a firing alert — click through to the relevant pack.\n\n| Pack | Question | Dashboard |\n|---|---|---|\n| Cost | What is it costing me? | [Ion Cost](/d/ion-cost) |\n| Reliability | Is Ion healthy? | [Ion Errors & Health](/d/ion-errors-health) |\n| Live | What is Ion doing right now? | [Ion Live Logs](/d/ion-logs) |\n| Fleet | Who is running Ion, where, on what version? | [Ion Fleet](/d/ion-fleet) |\n| Users | Who is using Ion and what is their footprint? | [Ion Users](/d/ion-users) |\n| Trust | Can you trust the autonomy dial? | [Ion Trust](/d/ion-trust) |\n| Quality | Is the agent actually doing good work? | [Ion Quality](/d/ion-quality) |\n| Extensions | What is extension spend and activity? | [Ion Extensions](/d/ion-extensions) |\n| Mobile | Which iOS devices are running Ion? | [Ion Mobile](/d/ion-mobile) |';
-
 export function overviewDashboard(): Dashboard {
   const panels = [
-    text(1, { h: 4, w: 24, x: 0, y: 0 }, INTRO),
     stat({
       id: 2,
       title: 'Errors',
-      gridPos: { h: 4, w: 4, x: 0, y: 4 },
+      gridPos: { h: 4, w: 4, x: 0, y: 0 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -67,7 +63,7 @@ export function overviewDashboard(): Dashboard {
     stat({
       id: 3,
       title: 'Warnings',
-      gridPos: { h: 4, w: 4, x: 4, y: 4 },
+      gridPos: { h: 4, w: 4, x: 4, y: 0 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -88,7 +84,7 @@ export function overviewDashboard(): Dashboard {
     stat({
       id: 5,
       title: 'Runs',
-      gridPos: { h: 4, w: 4, x: 8, y: 4 },
+      gridPos: { h: 4, w: 4, x: 8, y: 0 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -117,7 +113,7 @@ export function overviewDashboard(): Dashboard {
       type: 'alertlist',
       title: 'Critical alerts firing',
       description: 'Grafana alert rules (tag "ion") currently in the Alerting or Error state. See Alerting > Alert rules for the full list and history.',
-      gridPos: { h: 4, w: 4, x: 12, y: 4 },
+      gridPos: { h: 4, w: 4, x: 12, y: 0 },
       extra: {
         datasource: null,
         options: {
@@ -141,7 +137,7 @@ export function overviewDashboard(): Dashboard {
         'red beyond. A wedged tailer (one component stops flowing while the others advance — ' +
         'see README "Tailer wedge") turns its tile red within minutes. The [24h] lookback keeps ' +
         'a long-wedged component visible as a growing red value instead of dropping it.',
-      gridPos: { h: 4, w: 8, x: 16, y: 4 },
+      gridPos: { h: 4, w: 8, x: 16, y: 0 },
       fieldConfig: {
         defaults: {
           unit: 'm',
@@ -174,7 +170,7 @@ export function overviewDashboard(): Dashboard {
     stat({
       id: 11,
       title: 'Hosts reporting (Fleet)',
-      gridPos: { h: 4, w: 4, x: 0, y: 8 },
+      gridPos: { h: 4, w: 4, x: 0, y: 4 },
       fieldConfig: {
         defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [], links: packLink('Ion Fleet', '/d/ion-fleet'), noValue: 'telemetry off' },
         overrides: [],
@@ -186,7 +182,7 @@ export function overviewDashboard(): Dashboard {
       id: 12,
       title: 'Engine versions in fleet (Fleet)',
       description: 'Distinct engine version strings reporting in the window. More than one is version drift.',
-      gridPos: { h: 4, w: 4, x: 4, y: 8 },
+      gridPos: { h: 4, w: 4, x: 4, y: 4 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -207,7 +203,7 @@ export function overviewDashboard(): Dashboard {
     stat({
       id: 13,
       title: 'Active extensions (Extensions)',
-      gridPos: { h: 4, w: 4, x: 8, y: 8 },
+      gridPos: { h: 4, w: 4, x: 8, y: 4 },
       fieldConfig: {
         defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [], links: packLink('Ion Extensions', '/d/ion-extensions'), noValue: 'no active extensions' },
         overrides: [],
@@ -219,7 +215,7 @@ export function overviewDashboard(): Dashboard {
       id: 14,
       title: 'Active users (Users)',
       description: 'Distinct signed-in users seen in telemetry. Lines with no user (installs with no identity, machine-level metrics) are not counted; the Users dashboard shows them as "unassigned".',
-      gridPos: { h: 4, w: 4, x: 12, y: 8 },
+      gridPos: { h: 4, w: 4, x: 12, y: 4 },
       fieldConfig: {
         defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [], links: packLink('Ion Users', '/d/ion-users'), noValue: 'telemetry off' },
         overrides: [],
@@ -230,7 +226,7 @@ export function overviewDashboard(): Dashboard {
     stat({
       id: 15,
       title: 'iOS devices reporting (Mobile)',
-      gridPos: { h: 4, w: 4, x: 16, y: 8 },
+      gridPos: { h: 4, w: 4, x: 16, y: 4 },
       fieldConfig: {
         defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: fixed(), mappings: [], links: packLink('Ion Mobile', '/d/ion-mobile'), noValue: 'no iOS logs' },
         overrides: [],
@@ -245,7 +241,7 @@ export function overviewDashboard(): Dashboard {
         'Fraction of permission checks that resolved to allow. Binds to Phase-B telemetry ' +
         '(permission.decision) — reads "no data" until the engine ships that instrumentation; ' +
         'query is valid and activates automatically once it does.',
-      gridPos: { h: 4, w: 4, x: 20, y: 8 },
+      gridPos: { h: 4, w: 4, x: 20, y: 4 },
       fieldConfig: {
         defaults: {
           unit: 'percentunit',
@@ -269,7 +265,7 @@ export function overviewDashboard(): Dashboard {
     timeseries({
       id: 6,
       title: 'Log volume by component',
-      gridPos: { h: 5, w: 24, x: 0, y: 12 },
+      gridPos: { h: 5, w: 24, x: 0, y: 8 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -290,7 +286,7 @@ export function overviewDashboard(): Dashboard {
       id: 9,
       title: 'Recent activity',
       description: 'Every log line across all surfaces. Sort or filter any column; expand "payload" on a row for the full parsed body.',
-      gridPos: { h: 12, w: 24, x: 0, y: 17 },
+      gridPos: { h: 12, w: 24, x: 0, y: 13 },
       target: { e: stream('{service_name=~".+", event_name=""} | json') },
     }),
   ];

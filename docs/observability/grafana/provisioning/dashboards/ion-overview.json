@@ -10,22 +10,6 @@
   "links": [],
   "panels": [
     {
-      "id": 1,
-      "type": "text",
-      "title": "",
-      "gridPos": {
-        "h": 4,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "## Ion Observability Overview\n\nThe landing dashboard. **Verdict row**: headline signals over the dashboard time range, plus the count of critical alerts currently firing — click through for the list. **Signal row**: one live figure pulled from each granular pack. Green = healthy. Any orange, red, or a firing alert — click through to the relevant pack.\n\n| Pack | Question | Dashboard |\n|---|---|---|\n| Cost | What is it costing me? | [Ion Cost](/d/ion-cost) |\n| Reliability | Is Ion healthy? | [Ion Errors & Health](/d/ion-errors-health) |\n| Live | What is Ion doing right now? | [Ion Live Logs](/d/ion-logs) |\n| Fleet | Who is running Ion, where, on what version? | [Ion Fleet](/d/ion-fleet) |\n| Users | Who is using Ion and what is their footprint? | [Ion Users](/d/ion-users) |\n| Trust | Can you trust the autonomy dial? | [Ion Trust](/d/ion-trust) |\n| Quality | Is the agent actually doing good work? | [Ion Quality](/d/ion-quality) |\n| Extensions | What is extension spend and activity? | [Ion Extensions](/d/ion-extensions) |\n| Mobile | Which iOS devices are running Ion? | [Ion Mobile](/d/ion-mobile) |"
-      },
-      "datasource": null
-    },
-    {
       "id": 2,
       "type": "stat",
       "title": "Errors",
@@ -33,7 +17,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 4
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -107,7 +91,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 4
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -181,7 +165,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 4
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -244,7 +228,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 4
+        "y": 0
       },
       "description": "Grafana alert rules (tag \"ion\") currently in the Alerting or Error state. See Alerting > Alert rules for the full list and history.",
       "datasource": null,
@@ -276,7 +260,7 @@
         "h": 4,
         "w": 8,
         "x": 16,
-        "y": 4
+        "y": 0
       },
       "description": "Minutes since the most recent log line for each component. Green < 5m, orange < 30m, red beyond. A wedged tailer (one component stops flowing while the others advance — see README \"Tailer wedge\") turns its tile red within minutes. The [24h] lookback keeps a long-wedged component visible as a growing red value instead of dropping it.",
       "datasource": {
@@ -353,7 +337,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 8
+        "y": 4
       },
       "datasource": {
         "type": "loki",
@@ -416,7 +400,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 8
+        "y": 4
       },
       "description": "Distinct engine version strings reporting in the window. More than one is version drift.",
       "datasource": {
@@ -491,7 +475,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 8
+        "y": 4
       },
       "datasource": {
         "type": "loki",
@@ -554,7 +538,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 8
+        "y": 4
       },
       "description": "Distinct signed-in users seen in telemetry. Lines with no user (installs with no identity, machine-level metrics) are not counted; the Users dashboard shows them as \"unassigned\".",
       "datasource": {
@@ -618,7 +602,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 8
+        "y": 4
       },
       "datasource": {
         "type": "loki",
@@ -681,7 +665,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 8
+        "y": 4
       },
       "description": "Fraction of permission checks that resolved to allow. Binds to Phase-B telemetry (permission.decision) — reads \"no data\" until the engine ships that instrumentation; query is valid and activates automatically once it does.",
       "datasource": {
@@ -757,7 +741,7 @@
         "h": 5,
         "w": 24,
         "x": 0,
-        "y": 12
+        "y": 8
       },
       "datasource": {
         "type": "loki",
@@ -811,7 +795,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 13
       },
       "description": "Every log line across all surfaces. Sort or filter any column; expand \"payload\" on a row for the full parsed body.",
       "datasource": {

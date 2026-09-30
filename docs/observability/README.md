@@ -130,7 +130,7 @@ Dashboards are organized into packs, each answering one question. The Ion Overvi
 | Forensics | Ion Conversation Forensics | What happened in this specific conversation? | telemetry.jsonl + engine.jsonl |
 | Intelligence | Ion Product Intelligence | What does 30 days of usage say about the product? | telemetry.jsonl |
 
-Every dashboard opens with a text panel stating the question it answers and how to read it. The row structure is always verdict (stats) then evidence (timeseries/charts) then drill-down (logs/tables). Panels that bind to Phase-B telemetry events (noted in each dashboard's intro text) are provisioned with valid queries and stay data-empty until the instrumented engine ships.
+Dashboards carry no text panels: the first row is data. Each panel's description (the info icon on its title) says what it shows and how to read it. The row structure is always verdict (stats) then evidence (timeseries/charts) then drill-down (logs/tables). Panels that bind to Phase-B telemetry events are provisioned with valid queries and stay data-empty until the instrumented engine ships.
 
 ### Dashboards as code
 

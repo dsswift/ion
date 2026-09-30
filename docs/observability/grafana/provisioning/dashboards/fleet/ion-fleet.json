@@ -10,22 +10,6 @@
   "links": [],
   "panels": [
     {
-      "id": 1,
-      "type": "text",
-      "title": "",
-      "gridPos": {
-        "h": 4,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "## Who is running Ion, where, and on what version?\n\nThe installation and host view: how many machines are reporting, how many engine installs each carries (several headless instances can share one host), which engine and extension versions are deployed where, and what each host spends. All panels honor the dashboard time picker except **Host last-seen**, a liveness detector with a fixed 24h lookback so a quiet host stays visible.\n\n| Related | Dashboard |\n|---|---|\n| Landing | [Ion Overview](/d/ion-overview) |\n| Per-user view | [Ion Users](/d/ion-users) |\n| Cost detail | [Ion Cost](/d/ion-cost) |"
-      },
-      "datasource": null
-    },
-    {
       "id": 2,
       "type": "stat",
       "title": "Hosts reporting",
@@ -33,7 +17,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 4
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -89,7 +73,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 4
+        "y": 0
       },
       "description": "Distinct service_instance_id values — engine installations, which can outnumber hosts when headless instances share a machine.",
       "datasource": {
@@ -146,7 +130,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 4
+        "y": 0
       },
       "description": "Distinct engine version strings reporting in the window. More than one is version drift — see the drift table below for who is behind.",
       "datasource": {
@@ -214,7 +198,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 4
+        "y": 0
       },
       "datasource": {
         "type": "loki",
@@ -277,7 +261,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 4
+        "y": 0
       },
       "description": "Telemetry events carrying a non-empty payload_error. Operational ERROR lines per device are on Errors & Health, scoped with the Device filter.",
       "datasource": {
@@ -345,7 +329,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 4
+        "y": 0
       },
       "description": "Minutes since the most recent telemetry event per host. Fixed 24h lookback (liveness detector): a host whose engine stopped reporting climbs while the others stay near zero.",
       "datasource": {
@@ -415,7 +399,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 8
+        "y": 4
       },
       "collapsed": false,
       "panels": []
@@ -428,7 +412,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 9
+        "y": 5
       },
       "description": "Distinct service_instance_id count per host. More than one means several engine instances (e.g. headless daemons) share the machine.",
       "datasource": {
@@ -489,7 +473,7 @@
         "h": 8,
         "w": 16,
         "x": 8,
-        "y": 9
+        "y": 5
       },
       "description": "Every host / install / engine-version combination reporting in the window, with its event count. Two rows for one install means it upgraded mid-window.",
       "datasource": {
@@ -552,7 +536,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 17
+        "y": 13
       },
       "description": "Which extension versions are deployed where, from run.complete attribution. Runs without an extension are excluded.",
       "datasource": {
@@ -615,7 +599,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 17
+        "y": 13
       },
       "datasource": {
         "type": "loki",
@@ -660,7 +644,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 25
+        "y": 21
       },
       "collapsed": false,
       "panels": []
@@ -673,7 +657,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 26
+        "y": 22
       },
       "datasource": {
         "type": "loki",
@@ -727,7 +711,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 26
+        "y": 22
       },
       "datasource": {
         "type": "loki",
@@ -781,7 +765,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 34
+        "y": 30
       },
       "description": "All telemetry events per interval, grouped by host — the fleet utilization pulse.",
       "datasource": {
@@ -836,7 +820,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 34
+        "y": 30
       },
       "description": "Telemetry events with a non-empty payload_error, per interval and host.",
       "datasource": {

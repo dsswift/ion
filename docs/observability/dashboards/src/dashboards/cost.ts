@@ -6,7 +6,7 @@
 // the Tier-4 cache/sub-agent/fallback intelligence panels.
 
 import type { Dashboard } from '../dashboard.ts';
-import { row, text, stat, timeseries, piechart, logsTable, table } from '../panels.ts';
+import { row, stat, timeseries, piechart, logsTable, table } from '../panels.ts';
 import { instant, accumulation, telemetry } from '../queries.ts';
 import {
   totalSpendBare,
@@ -35,16 +35,12 @@ const statOptions = (colorMode = 'value') => ({
   graphMode: 'none',
 });
 
-const INTRO =
-  '## Where the money goes.\n\nEvery completed run reports its cost, tokens, and cache usage. The verdict row answers "what did the selected time range cost." The rows below answer the sharper questions: how many dollars caching saved (real rates when models.json carries them, an assumed 0.1x rate when it does not, and the panel legend tells you which), how much of the spend was sub-agent work dispatched under the hood, and what model fallbacks did to the bill. Click any session to open the full forensics view for that conversation.\n\n> **No data on cost panels?** Telemetry is not enabled. Add `"telemetry": {"enabled": true, "targets": ["file"], "filePath": "~/.ion/telemetry.jsonl"}` to `~/.ion/engine.json`, restart the engine, then run `docker compose restart alloy`. Tier-4 panels (cache savings, sub-agent tax, fallback routes) require the Phase-B engine rebuild; queries are valid and will populate once that ships.';
-
 export function costDashboard(): Dashboard {
   const panels = [
-    text(1, { h: 4, w: 24, x: 0, y: 0 }, INTRO),
     stat({
       id: 2,
       title: 'Spend',
-      gridPos: { h: 4, w: 6, x: 0, y: 4 },
+      gridPos: { h: 4, w: 6, x: 0, y: 0 },
       fieldConfig: blueStat('currencyUSD', 4),
       options: statOptions('value'),
       targets: [{ e: totalSpendBare(), legend: 'Per-run spend (excl sub-agents)' }],
@@ -52,7 +48,7 @@ export function costDashboard(): Dashboard {
     stat({
       id: 3,
       title: 'Runs',
-      gridPos: { h: 4, w: 6, x: 6, y: 4 },
+      gridPos: { h: 4, w: 6, x: 6, y: 0 },
       fieldConfig: blueStat('short'),
       options: statOptions('value'),
       targets: [{ e: runCount() }],
@@ -60,7 +56,7 @@ export function costDashboard(): Dashboard {
     stat({
       id: 4,
       title: 'Avg Cost / Run',
-      gridPos: { h: 4, w: 6, x: 12, y: 4 },
+      gridPos: { h: 4, w: 6, x: 12, y: 0 },
       fieldConfig: blueStat('currencyUSD', 4),
       options: statOptions('value'),
       targets: [
@@ -75,7 +71,7 @@ export function costDashboard(): Dashboard {
     stat({
       id: 5,
       title: 'Cache Hit Ratio',
-      gridPos: { h: 4, w: 6, x: 18, y: 4 },
+      gridPos: { h: 4, w: 6, x: 18, y: 0 },
       fieldConfig: {
         defaults: {
           unit: 'percentunit',
@@ -103,7 +99,7 @@ export function costDashboard(): Dashboard {
     timeseries({
       id: 6,
       title: 'Cost over time (per interval)',
-      gridPos: { h: 8, w: 16, x: 0, y: 8 },
+      gridPos: { h: 8, w: 16, x: 0, y: 4 },
       fieldConfig: {
         defaults: {
           unit: 'currencyUSD',
@@ -120,7 +116,7 @@ export function costDashboard(): Dashboard {
     piechart({
       id: 7,
       title: 'Cost by model',
-      gridPos: { h: 8, w: 8, x: 16, y: 8 },
+      gridPos: { h: 8, w: 8, x: 16, y: 4 },
       fieldConfig: { defaults: { unit: 'currencyUSD' }, overrides: [] },
       options: {
         pieType: 'pie',
@@ -132,7 +128,7 @@ export function costDashboard(): Dashboard {
     timeseries({
       id: 8,
       title: 'Tokens by type (per interval, stacked)',
-      gridPos: { h: 8, w: 12, x: 0, y: 16 },
+      gridPos: { h: 8, w: 12, x: 0, y: 12 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -153,7 +149,7 @@ export function costDashboard(): Dashboard {
     timeseries({
       id: 9,
       title: 'Runs per interval',
-      gridPos: { h: 8, w: 12, x: 12, y: 16 },
+      gridPos: { h: 8, w: 12, x: 12, y: 12 },
       fieldConfig: {
         defaults: {
           unit: 'short',
@@ -170,16 +166,16 @@ export function costDashboard(): Dashboard {
     logsTable({
       id: 10,
       title: 'Recent runs — full cost detail',
-      gridPos: { h: 10, w: 24, x: 0, y: 24 },
+      gridPos: { h: 10, w: 24, x: 0, y: 20 },
       target: { e: { expr: `${RUN} | json`, cls: 'instant', window: null } },
     }),
-    { ...row(11, 'Tier-4 cost intelligence', 34) },
+    { ...row(11, 'Tier-4 cost intelligence', 30) },
     stat({
       id: 12,
       title: 'Cache savings (USD)',
       description:
         'Total dollars saved by cache hits. Pricing source shown in D2 legend: models_json = billed rate from models.json; assumed_0.1x = estimated at 10% of input price.',
-      gridPos: { h: 4, w: 6, x: 0, y: 35 },
+      gridPos: { h: 4, w: 6, x: 0, y: 31 },
       fieldConfig: {
         defaults: {
           unit: 'currencyUSD',
@@ -199,7 +195,7 @@ export function costDashboard(): Dashboard {
       title: 'Cache savings over time, split by pricing source',
       description:
         'Legend: models_json = real billed rate from models.json. assumed_0.1x = 10% of input price assumed (models.json does not carry cache pricing for this model). Do not compare the two series as equivalent dollar values.',
-      gridPos: { h: 8, w: 18, x: 6, y: 35 },
+      gridPos: { h: 8, w: 18, x: 6, y: 31 },
       fieldConfig: {
         defaults: {
           unit: 'currencyUSD',
@@ -234,7 +230,7 @@ export function costDashboard(): Dashboard {
       title: 'Sub-agent spend vs total spend',
       description:
         'Sub-agent cost from dispatch.agent span-end events (context_session_id join key — both series now group by context_session_id for an apples-to-apples comparison). Total cost from run.complete. The gap is root-agent-only cost.',
-      gridPos: { h: 8, w: 12, x: 0, y: 43 },
+      gridPos: { h: 8, w: 12, x: 0, y: 39 },
       fieldConfig: {
         defaults: {
           unit: 'currencyUSD',
@@ -267,7 +263,7 @@ export function costDashboard(): Dashboard {
       title: 'Sub-agent tax by session (range)',
       description:
         'Sub-agent tax by session. dispatch.agent (a span) keys session under payload_session_id; run.complete keys it under context_session_id. The dispatch series is aliased to context_session_id so the join aligns. Ratio = sub-agent cost / total session cost.',
-      gridPos: { h: 8, w: 12, x: 12, y: 43 },
+      gridPos: { h: 8, w: 12, x: 12, y: 39 },
       mode: 'instant',
       fieldConfig: {
         defaults: { unit: 'currencyUSD', custom: { align: 'auto', displayMode: 'auto' } },
@@ -327,7 +323,7 @@ export function costDashboard(): Dashboard {
       title: 'Fallback cost routes (range)',
       description:
         'Count of fallback hops by requested model, fallback model, and reason. Dollar delta (counterfactual cost of the fallback path vs the requested model) is a Phase-C addition joining run.complete on run_id; the route count is the binding minimum today.',
-      gridPos: { h: 8, w: 24, x: 0, y: 51 },
+      gridPos: { h: 8, w: 24, x: 0, y: 47 },
       mode: 'instant',
       fieldConfig: {
         defaults: { unit: 'short', custom: { align: 'auto', displayMode: 'auto' } },

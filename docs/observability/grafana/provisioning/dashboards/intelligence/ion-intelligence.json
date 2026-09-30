@@ -10,22 +10,6 @@
   "links": [],
   "panels": [
     {
-      "id": 1,
-      "type": "text",
-      "title": "",
-      "gridPos": {
-        "h": 4,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "## What the usage says about the product\n\nThirty days of runs, aggregated. Which models earn their cost, whether the provider market is treating the engine well, which tools the agent actually reaches for, how autonomy trends as trust rules mature, and whether caching and compaction are pulling their economic weight. This is the dashboard you read before deciding what to build next, not the one you stare at during an incident.\n\n> **Default time range is 30 days.** Panels use the dashboard time range. Adjust the picker for shorter trend windows.\n> **No data on Tier-4 panels?** Panels marked with a Phase-B note bind to events not yet emitted. The model-market and tool-usage panels bind to shipped Tier-1 events and populate now."
-      },
-      "datasource": null
-    },
-    {
       "id": 10,
       "type": "row",
       "title": "Model market",
@@ -33,7 +17,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 4
+        "y": 0
       },
       "collapsed": false,
       "panels": []
@@ -46,7 +30,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 5
+        "y": 1
       },
       "description": "Which models are handling the most runs. Shipped structured metadata label; no parser required.",
       "datasource": {
@@ -92,7 +76,7 @@
         "h": 8,
         "w": 16,
         "x": 8,
-        "y": 5
+        "y": 1
       },
       "description": "Average cost per run, broken down by model, in weekly buckets. Rising cost-per-run for a model means sessions are getting longer or the model is being used for more expensive tasks.",
       "datasource": {
@@ -147,7 +131,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 13
+        "y": 9
       },
       "description": "One row per model: TTFT p50, stall count, retry count, fallback-out count. The 'should we reroute traffic' view. Phase-B events required for all columns except run count.",
       "datasource": {
@@ -255,7 +239,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 13
+        "y": 9
       },
       "description": "Fallback events grouped by reason. A rising fallback rate means provider reliability is degrading or capacity is saturated.",
       "datasource": {
@@ -309,7 +293,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 23
+        "y": 19
       },
       "collapsed": false,
       "panels": []
@@ -322,7 +306,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 24
+        "y": 20
       },
       "description": "Top 15 most-called tools over the dashboard time range. What the agent actually reaches for. Shipped Tier-1 structured metadata; no parser required.",
       "datasource": {
@@ -372,7 +356,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 24
+        "y": 20
       },
       "description": "The fraction of permission checks that resolve to allow, sampled per interval. Rising means the rule set is absorbing what used to need asking. A healthy trend is flat or rising. Phase-B event required.",
       "datasource": {
@@ -445,7 +429,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 34
+        "y": 30
       },
       "description": "Which sub-agents are being dispatched and how often. Rising dispatch counts signal that users are leaning into multi-agent workflows. Phase-B event required.",
       "datasource": {
@@ -499,7 +483,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 34
+        "y": 30
       },
       "description": "How deep the sub-agent dispatch trees go. Depth 1 is a direct dispatch; higher values are nested. A growing tail at depth 3+ may signal runaway recursion or unexpected orchestration patterns.",
       "datasource": {
@@ -553,7 +537,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 40
       },
       "collapsed": false,
       "panels": []
@@ -566,7 +550,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 45
+        "y": 41
       },
       "description": "Total dollars saved by prompt caching per week. A flat or declining line means caching is not being leveraged — look at session length and repeat-prefix patterns. Phase-B event required.",
       "datasource": {
@@ -622,7 +606,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 45
+        "y": 41
       },
       "description": "Tokens freed by context compaction per week, split by trigger type (automatic vs manual). This is the efficiency dividend of the compaction subsystem. Phase-B event required.",
       "datasource": {
@@ -676,7 +660,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 45
+        "y": 41
       },
       "description": "Tool failure rate: failures divided by total tool executions, per interval. The long-run quality health line. A rising trend means tooling reliability is degrading relative to usage.",
       "datasource": {

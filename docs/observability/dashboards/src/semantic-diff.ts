@@ -51,7 +51,6 @@ function collectPanels(panels: unknown[]): PanelShape[] {
       if (Array.isArray(p.panels) && p.panels.length) out.push(...collectPanels(p.panels));
       continue;
     }
-    if (p.type === 'text') continue; // prose, not semantic
     const targets = Array.isArray(p.targets) ? (p.targets as Record<string, unknown>[]) : [];
     out.push({
       title: String(p.title ?? ''),

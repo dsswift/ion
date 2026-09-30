@@ -50,22 +50,6 @@
   "links": [],
   "panels": [
     {
-      "id": 1,
-      "type": "text",
-      "title": "",
-      "gridPos": {
-        "h": 4,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "## One conversation, end to end\n\nPick a session from the leaderboard (it ranks recent conversations by failures, denials, provider trouble, context pressure, and cost) or arrive here from any other dashboard's session link. Everything below is filtered to that one conversation: how full its context window got and when compaction stepped in, which tools failed and why, what every turn cost in time, and the full sub-agent dispatch tree. Read it top to bottom and you can reconstruct the session without opening a debugger.\n\n> Set `$session` by clicking a row in the leaderboard or the most-recent-session panel below, or enter a session ID in the variable box above. The drill-down panels stay empty until a session is selected — session IDs live in log bodies, not indexed labels, so this dashboard cannot default the `$session` variable itself."
-      },
-      "datasource": null
-    },
-    {
       "id": 8,
       "type": "table",
       "title": "Most recent session",
@@ -73,7 +57,7 @@
         "h": 3,
         "w": 24,
         "x": 0,
-        "y": 4
+        "y": 0
       },
       "description": "The conversation with the most recent run.complete activity in the current time window — a useful landing entry point when no session has been picked yet. Click the conversation ID to open its drill-down below. Session IDs live in log bodies, not indexed labels, so this is computed from telemetry rather than defaulted onto the $session variable itself.",
       "datasource": {
@@ -151,7 +135,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 7
+        "y": 3
       },
       "description": "Recent conversations ranked by a weighted anomaly score: tool failures (3x), denials (2x), provider retries+stalls (2x), compactions (1x), context pressure (0.05x per point), cost (10x per USD). The spine is run.complete, so every conversation in the window appears — clean conversations (zero anomaly events) show score 0 via the outer join. Click a conversation ID to filter all panels below to that conversation.",
       "datasource": {
@@ -331,7 +315,7 @@
         "h": 8,
         "w": 16,
         "x": 0,
-        "y": 19
+        "y": 15
       },
       "description": "How full the context window was at each pressure sample. Compaction events are annotated on the timeline. The threshold marker is derived from payload_compact_limit when available.",
       "datasource": {
@@ -404,7 +388,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 19
+        "y": 15
       },
       "description": "Cost, turns, and tokens for the selected conversation. run.complete carries context.conversation_id in its telemetry context block — the durable conversation-file ID, consistent across all event types — so these totals are correctly filtered to $session.",
       "datasource": {
@@ -500,7 +484,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 27
+        "y": 23
       },
       "description": "LLM call durations for the selected conversation. llm.call events carry context_conversation_id — the durable conversation-file ID — so this panel is filtered to $session (a conversation_id value) consistently with all other panels in the dashboard.",
       "datasource": {
@@ -554,7 +538,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 27
+        "y": 23
       },
       "description": "Sub-agent dispatch spans for this session. The parent/child tree shows the full dispatch hierarchy. Uses Tempo TraceQL filtered to dispatch.agent spans with the session's trace ID.",
       "datasource": {
@@ -588,7 +572,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 35
+        "y": 31
       },
       "description": "All tool failures that occurred in the selected session, with category and error preview.",
       "datasource": {
@@ -637,7 +621,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 35
+        "y": 31
       },
       "description": "All permission checks in the selected session: allowed and denied, with the deciding layer and the engine's stated reason.",
       "datasource": {
@@ -686,7 +670,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 45
+        "y": 41
       },
       "description": "All engine/extension/desktop log lines in the time window that carry conversation_id, oldest first (a narrative, not a live tail). Engine log lines emit session_id = the client session key (UUID format for desktop clients) and conversation_id = the engine conversation-file ID ({millis}-{hex}). This panel filters on conversation_id to correlate engine log output with telemetry events for the selected session.",
       "datasource": {

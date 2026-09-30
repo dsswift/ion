@@ -136,17 +136,6 @@ export function row(id: number, title: string, y: number): Record<string, unknow
   };
 }
 
-export function text(id: number, gridPos: GridPos, content: string, title = ''): Record<string, unknown> {
-  return {
-    id,
-    type: 'text',
-    title,
-    gridPos,
-    options: { mode: 'markdown', content },
-    datasource: null,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Instant panels (force instant evaluation)
 // ---------------------------------------------------------------------------

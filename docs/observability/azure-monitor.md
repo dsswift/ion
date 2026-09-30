@@ -99,5 +99,6 @@ Loki hands them, so their `extractFields` transformations work unchanged.
   `IonSpans`; open a `TraceId` in Application Insights (Transaction search) for
   the tree. Application Insights is the trace investigation surface in Azure, keyed by `TraceId`.
 - **Explore correlations** (conversation id to logs, trace id to Tempo). These
-  are Loki data source settings, not dashboard content. The Explore Cookbook's
-  text says how to follow a trace in Azure instead.
+  are Loki data source settings, not dashboard content. In Azure, filter by
+  `conversation_id` or `session_id` with the dashboard variables, and search a
+  `TraceId` in Application Insights (Transaction search) for its trace tree.

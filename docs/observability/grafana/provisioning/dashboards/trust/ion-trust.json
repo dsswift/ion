@@ -24,22 +24,6 @@
   "links": [],
   "panels": [
     {
-      "id": 1,
-      "type": "text",
-      "title": "",
-      "gridPos": {
-        "h": 4,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "## Can you trust the autonomy dial?\n\nEvery tool call in ask or deny mode passes through one decision function, and every decision is recorded: what was asked, which layer decided (a static rule, a dangerous-command pattern, or the LLM classifier), how long the decision took, and the engine's own stated reason. Denials are not failures. A healthy system denies things. What you are watching for is drift: a rising denial rate, the classifier deciding things rules should have caught, or sandbox blocks and secret redactions trending up. Click any decision row to open the session it happened in.\n\n> **No data?** Panels bind to Phase-B telemetry events (`permission.decision`, `sandbox.block`, `secret.containment`). They will be data-empty until the engine emits those events. Query syntax is valid; panels activate automatically once the engine is rebuilt with Tier-4 instrumentation."
-      },
-      "datasource": null
-    },
-    {
       "id": 10,
       "type": "row",
       "title": "Verdict",
@@ -47,7 +31,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 4
+        "y": 0
       },
       "collapsed": false,
       "panels": []
@@ -60,7 +44,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 5
+        "y": 1
       },
       "description": "Fraction of permission checks that resolved to allow. Higher is more autonomous. Watch for sudden drops.",
       "datasource": {
@@ -135,7 +119,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 5
+        "y": 1
       },
       "description": "Count of denied permission checks in the dashboard time range. Denials are not failures — they are the safety mechanism working.",
       "datasource": {
@@ -197,7 +181,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 5
+        "y": 1
       },
       "description": "Dangerous commands blocked by the sandbox layer.",
       "datasource": {
@@ -271,7 +255,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 5
+        "y": 1
       },
       "description": "Total count of secret matches redacted before they left the engine. Each is one near-miss.",
       "datasource": {
@@ -345,7 +329,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 9
+        "y": 5
       },
       "collapsed": false,
       "panels": []
@@ -358,7 +342,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 10
+        "y": 6
       },
       "description": "Which layer is doing the denying: static rules, dangerous-command patterns, or the LLM classifier. Classifier denials are expensive; rules are cheap. Watch for classifier share growing as rules fail to keep up.",
       "datasource": {
@@ -412,7 +396,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 10
+        "y": 6
       },
       "description": "The gap between these two lines is the cost of asking a model instead of matching a rule. Classifier cache hits show as sub-millisecond outliers.",
       "datasource": {
@@ -477,7 +461,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 26
+        "y": 22
       },
       "collapsed": false,
       "panels": []
@@ -490,7 +474,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 18
+        "y": 14
       },
       "description": "Why the sandbox said no. Each slice is a distinct block reason from the dangerous-command pattern set.",
       "datasource": {
@@ -536,7 +520,7 @@
         "h": 8,
         "w": 16,
         "x": 8,
-        "y": 18
+        "y": 14
       },
       "description": "What kinds of secrets the engine caught and suppressed. The type field is the pattern category (api_key, token, password, etc.) — never the secret value itself.",
       "datasource": {
@@ -590,7 +574,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 27
+        "y": 23
       },
       "description": "The engine's own verbatim record of why each tool call was denied. The intent_reason column is the archaeology surface: what the engine understood the agent was trying to do when it said no.",
       "datasource": {
@@ -657,7 +641,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 33
       },
       "description": "Real-time tail for all trust-surface events: permission decisions, sandbox blocks, and secret containments.",
       "datasource": {

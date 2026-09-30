@@ -5,7 +5,7 @@
 // semantically-identical.
 
 import type { Dashboard } from '../dashboard.ts';
-import { text, timeseries, table, stat, traces, logsTable } from '../panels.ts';
+import { timeseries, table, stat, traces, logsTable } from '../panels.ts';
 import { instant, stream, telemetry } from '../queries.ts';
 import { quantile, latestMax } from '../queries-latency.ts';
 
@@ -15,21 +15,17 @@ const legendBottom = (multi = false) => ({
   tooltip: { mode: multi ? 'multi' : 'single' },
 });
 
-const INTRO =
-  '## One conversation, end to end\n\nPick a session from the leaderboard (it ranks recent conversations by failures, denials, provider trouble, context pressure, and cost) or arrive here from any other dashboard\'s session link. Everything below is filtered to that one conversation: how full its context window got and when compaction stepped in, which tools failed and why, what every turn cost in time, and the full sub-agent dispatch tree. Read it top to bottom and you can reconstruct the session without opening a debugger.\n\n> Set `$session` by clicking a row in the leaderboard or the most-recent-session panel below, or enter a session ID in the variable box above. The drill-down panels stay empty until a session is selected — session IDs live in log bodies, not indexed labels, so this dashboard cannot default the `$session` variable itself.';
-
 // Leaderboard scoring targets — instant grouped aggregations over $__range.
 const lb = (expr: string) => instant(expr, '$__range');
 
 export function forensicsDashboard(): Dashboard {
   const panels = [
-    text(1, { h: 4, w: 24, x: 0, y: 0 }, INTRO),
     table({
       id: 8,
       title: 'Most recent session',
       description:
         'The conversation with the most recent run.complete activity in the current time window — a useful landing entry point when no session has been picked yet. Click the conversation ID to open its drill-down below. Session IDs live in log bodies, not indexed labels, so this is computed from telemetry rather than defaulted onto the $session variable itself.',
-      gridPos: { h: 3, w: 24, x: 0, y: 4 },
+      gridPos: { h: 3, w: 24, x: 0, y: 0 },
       mode: 'instant',
       fieldConfig: {
         defaults: { unit: 'short' },
@@ -61,7 +57,7 @@ export function forensicsDashboard(): Dashboard {
       title: 'Session leaderboard (anomaly score)',
       description:
         'Recent conversations ranked by a weighted anomaly score: tool failures (3x), denials (2x), provider retries+stalls (2x), compactions (1x), context pressure (0.05x per point), cost (10x per USD). The spine is run.complete, so every conversation in the window appears — clean conversations (zero anomaly events) show score 0 via the outer join. Click a conversation ID to filter all panels below to that conversation.',
-      gridPos: { h: 12, w: 24, x: 0, y: 7 },
+      gridPos: { h: 12, w: 24, x: 0, y: 3 },
       mode: 'instant',
       fieldConfig: {
         defaults: { unit: 'short' },
@@ -109,7 +105,7 @@ export function forensicsDashboard(): Dashboard {
       title: 'Context pressure over turns',
       description:
         'How full the context window was at each pressure sample. Compaction events are annotated on the timeline. The threshold marker is derived from payload_compact_limit when available.',
-      gridPos: { h: 8, w: 16, x: 0, y: 19 },
+      gridPos: { h: 8, w: 16, x: 0, y: 15 },
       fieldConfig: {
         defaults: {
           unit: 'percentunit',
@@ -128,7 +124,7 @@ export function forensicsDashboard(): Dashboard {
       title: 'Session summary',
       description:
         'Cost, turns, and tokens for the selected conversation. run.complete carries context.conversation_id in its telemetry context block — the durable conversation-file ID, consistent across all event types — so these totals are correctly filtered to $session.',
-      gridPos: { h: 8, w: 8, x: 16, y: 19 },
+      gridPos: { h: 8, w: 8, x: 16, y: 15 },
       fieldConfig: {
         defaults: { unit: 'short', color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: { mode: 'absolute', steps: [] }, mappings: [] },
         overrides: [
@@ -147,7 +143,7 @@ export function forensicsDashboard(): Dashboard {
       title: 'Turn latency (llm.call durations)',
       description:
         'LLM call durations for the selected conversation. llm.call events carry context_conversation_id — the durable conversation-file ID — so this panel is filtered to $session (a conversation_id value) consistently with all other panels in the dashboard.',
-      gridPos: { h: 8, w: 12, x: 0, y: 27 },
+      gridPos: { h: 8, w: 12, x: 0, y: 23 },
       fieldConfig: { defaults: { unit: 'ms', custom: { drawStyle: 'line', fillOpacity: 10, lineWidth: 2, stacking: { mode: 'none' } } }, overrides: [] },
       options: legendBottom(false),
       targets: [{ e: quantile({ q: 0.5, kind: 'llm.call', field: 'payload_duration_ms', window: '$__interval', filter: ' | context_conversation_id="$session"' }), legend: 'llm.call p50' }],
@@ -157,7 +153,7 @@ export function forensicsDashboard(): Dashboard {
       title: 'Dispatch tree',
       description:
         "Sub-agent dispatch spans for this session. The parent/child tree shows the full dispatch hierarchy. Uses Tempo TraceQL filtered to dispatch.agent spans with the session's trace ID.",
-      gridPos: { h: 8, w: 12, x: 12, y: 27 },
+      gridPos: { h: 8, w: 12, x: 12, y: 23 },
       fieldConfig: { defaults: { unit: 'short' }, overrides: [] },
       query: '{ .session_id = "$session" && name = "dispatch.agent" }',
     }),
@@ -165,7 +161,7 @@ export function forensicsDashboard(): Dashboard {
       id: 6,
       title: 'Tool failures in this session',
       description: 'All tool failures that occurred in the selected session, with category and error preview.',
-      gridPos: { h: 10, w: 12, x: 0, y: 35 },
+      gridPos: { h: 10, w: 12, x: 0, y: 31 },
       mode: 'range',
       fieldConfig: { defaults: { unit: 'short' }, overrides: [] },
       options: { showHeader: true, footer: { show: false } },
@@ -176,7 +172,7 @@ export function forensicsDashboard(): Dashboard {
       id: 7,
       title: 'Permission decisions in this session',
       description: "All permission checks in the selected session: allowed and denied, with the deciding layer and the engine's stated reason.",
-      gridPos: { h: 10, w: 12, x: 12, y: 35 },
+      gridPos: { h: 10, w: 12, x: 12, y: 31 },
       mode: 'range',
       fieldConfig: { defaults: { unit: 'short' }, overrides: [] },
       options: { showHeader: true, footer: { show: false } },
@@ -188,7 +184,7 @@ export function forensicsDashboard(): Dashboard {
       title: 'Engine log for this session',
       description:
         'All engine/extension/desktop log lines in the time window that carry conversation_id, oldest first (a narrative, not a live tail). Engine log lines emit session_id = the client session key (UUID format for desktop clients) and conversation_id = the engine conversation-file ID ({millis}-{hex}). This panel filters on conversation_id to correlate engine log output with telemetry events for the selected session.',
-      gridPos: { h: 12, w: 24, x: 0, y: 45 },
+      gridPos: { h: 12, w: 24, x: 0, y: 41 },
       sortAscending: true,
       target: { e: stream('{service_name=~".+", event_name=""} | json | conversation_id="$session"') },
     }),

@@ -10,7 +10,6 @@ import { compileMetric, compileStream, ALL_VALUE, type CompileOptions, type Mode
 import { isStreamQuery, parseLogQuery, parseMetric } from './logql.ts';
 import { kqlString, VIEW, type Scope } from './fields.ts';
 import { withViews, type AzureTarget } from './target.ts';
-import { azureText, unusedSwaps } from './text.ts';
 
 type Json = Record<string, unknown>;
 
@@ -151,10 +150,6 @@ function tracesToTable(panel: Json, ctx: Ctx): Json {
 
 function convertPanel(panel: Json, ctx: Ctx): Json {
   if (panel.type === 'row') return { ...panel, panels: ((panel.panels as Json[]) ?? []).map((p) => convertPanel(p, ctx)) };
-  if (panel.type === 'text') {
-    const options = panel.options as Json;
-    return { ...panel, options: { ...options, content: azureText(ctx.uid, options.content as string) } };
-  }
   if (panel.type === 'traces') return tracesToTable(panel, ctx);
   if (!Array.isArray(panel.targets)) return { ...panel, datasource: ctx.target.datasource };
   const { targets, overrides } = convertTargets(panel, ctx);
@@ -205,20 +200,12 @@ function convertAnnotation(a: Json, ctx: Ctx): Json {
   };
 }
 
-function textContents(panels: readonly Json[]): string[] {
-  return panels.flatMap((p) =>
-    p.type === 'row' ? textContents((p.panels as Json[]) ?? []) : p.type === 'text' ? [(p.options as Json).content as string] : [],
-  );
-}
-
 /** Convert one built Loki dashboard into its Azure Monitor twin. */
 export function toAzure(loki: Json, target: AzureTarget): Json {
   const uid = loki.uid as string;
   const vars = ((loki.templating as Json).list as Json[]) ?? [];
   const multiVars = new Set(vars.filter((v) => v.type === 'query' && v.multi === true).map((v) => v.name as string));
   const ctx: Ctx = { target, multiVars, uid };
-  const stale = unusedSwaps(uid, textContents(loki.panels as Json[]));
-  if (stale.length) throw new Error(`${uid}: text swaps no longer match any panel: ${stale.join(' | ')}`);
   return {
     ...loki,
     annotations: { list: (((loki.annotations as Json).list as Json[]) ?? []).map((a) => convertAnnotation(a, ctx)) },

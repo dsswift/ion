@@ -7,7 +7,7 @@
 // times; here the config is defined once.
 
 import type { Dashboard } from '../dashboard.ts';
-import { text, stat, logsTable } from '../panels.ts';
+import { stat, logsTable } from '../panels.ts';
 import { instant, stream } from '../queries.ts';
 import { componentLamp, extensionLamps, toolLamps, kindCount } from '../queries-logs.ts';
 import type { Expr } from '../types.ts';
@@ -57,12 +57,8 @@ function lamp(
   });
 }
 
-const INTRO =
-  'Control room: lamps show activity in the last 5 minutes. Green = active, red = errors, dim grey = idle. Layout hand-maintained; 5s refresh.';
-
 export function controlRoomDashboard(): Dashboard {
   const panels = [
-    text(1, { h: 2, w: 24, x: 0, y: 0 }, INTRO),
     // Surface lamps, two rows.
     //
     // One row of nine does not fit: 24 columns across nine titles leaves every
@@ -70,33 +66,33 @@ export function controlRoomDashboard(): Dashboard {
     // an operator nothing. Adding `server` and `web` is what pushed it over,
     // so the surfaces take the first row and the extension lamps the second,
     // each wide enough for its label.
-    lamp(2, 'desktop', { h: 4, w: 4, x: 0, y: 2 }, componentLamp('desktop', '5m'), true),
+    lamp(2, 'desktop', { h: 4, w: 4, x: 0, y: 0 }, componentLamp('desktop', '5m'), true),
     // The server and the browser clients it logs for: their own components
     // since the split, and lampless until now.
-    lamp(19, 'server', { h: 4, w: 4, x: 4, y: 2 }, componentLamp('server', '5m'), true),
-    lamp(20, 'web', { h: 4, w: 4, x: 8, y: 2 }, componentLamp('web', '5m')),
-    lamp(3, 'ios', { h: 4, w: 4, x: 12, y: 2 }, componentLamp('ios', '5m')),
-    lamp(4, 'relay', { h: 4, w: 4, x: 16, y: 2 }, componentLamp('relay', '5m')),
-    lamp(5, 'engine', { h: 4, w: 4, x: 20, y: 2 }, componentLamp('engine', '5m'), true),
+    lamp(19, 'server', { h: 4, w: 4, x: 4, y: 0 }, componentLamp('server', '5m'), true),
+    lamp(20, 'web', { h: 4, w: 4, x: 8, y: 0 }, componentLamp('web', '5m')),
+    lamp(3, 'ios', { h: 4, w: 4, x: 12, y: 0 }, componentLamp('ios', '5m')),
+    lamp(4, 'relay', { h: 4, w: 4, x: 16, y: 0 }, componentLamp('relay', '5m')),
+    lamp(5, 'engine', { h: 4, w: 4, x: 20, y: 0 }, componentLamp('engine', '5m'), true),
     // Extension lamps (row y=6): one per extension that logged in the window.
     // The names come from the data, never from a fixed list, so every install
     // sees its own extensions.
-    lamp(6, 'Extensions active (5m)', { h: 4, w: 24, x: 0, y: 6 }, extensionLamps('5m'), false, { legend: '{{tag}}', noValue: 'no extension activity' }),
+    lamp(6, 'Extensions active (5m)', { h: 4, w: 24, x: 0, y: 4 }, extensionLamps('5m'), false, { legend: '{{tag}}', noValue: 'no extension activity' }),
     // Tool lamps (row y=10): the busiest tools in the window, whatever they
     // are (built-in, MCP, or extension).
-    lamp(9, 'Busiest tools (5m)', { h: 4, w: 19, x: 0, y: 10 }, toolLamps(8, '5m'), false, { legend: '{{tool}}', noValue: 'no tool calls' }),
-    lamp(15, 'LLM calls', { h: 4, w: 5, x: 19, y: 10 }, kindCount('llm.call', '5m')),
+    lamp(9, 'Busiest tools (5m)', { h: 4, w: 19, x: 0, y: 8 }, toolLamps(8, '5m'), false, { legend: '{{tool}}', noValue: 'no tool calls' }),
+    lamp(15, 'LLM calls', { h: 4, w: 5, x: 19, y: 8 }, kindCount('llm.call', '5m')),
     // Live tail + events/min (row y=14)
     logsTable({
       id: 16,
       title: 'Live log tail',
-      gridPos: { h: 8, w: 18, x: 0, y: 14 },
+      gridPos: { h: 8, w: 18, x: 0, y: 12 },
       target: { e: stream('{service_name=~".+", event_name=""} | json') },
     }),
     stat({
       id: 17,
       title: 'events/min all surfaces',
-      gridPos: { h: 8, w: 6, x: 18, y: 14 },
+      gridPos: { h: 8, w: 6, x: 18, y: 12 },
       fieldConfig: { defaults: { color: { mode: 'fixed', fixedColor: 'blue' }, thresholds: { mode: 'absolute', steps: [] }, mappings: [], unit: 'short' }, overrides: [] },
       options: { ...lampOptions, colorMode: 'value' },
       targets: [{ e: instant('sum(count_over_time({service_name=~".+", event_name=""}[1m]))', '1m'), legend: '' }],
