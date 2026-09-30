@@ -1,4 +1,4 @@
-.PHONY: merge-nodes sync-windows-vm default demo desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test shared-test server-test test test-all test-linux test-linux-engine test-linux-engine-run test-linux-engine-summary test-linux-desktop test-linux-desktop-run test-linux-server test-linux-server-run clean check-file-sizes check-contracts check-status-writers check-server-parity check-studio-wire check-logging check-admx check-windows-scripts check-swiftlint check-dashboards check-vocabulary check-issue-closure check-doc-links generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop log-level-debug
+.PHONY: land merge-nodes sync-windows-vm default demo desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test shared-test server-test test test-all test-linux test-linux-engine test-linux-engine-run test-linux-engine-summary test-linux-desktop test-linux-desktop-run test-linux-server test-linux-server-run clean check-file-sizes check-contracts check-status-writers check-server-parity check-studio-wire check-logging check-admx check-windows-scripts check-swiftlint check-dashboards check-vocabulary check-issue-closure check-doc-links generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop log-level-debug
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -686,11 +686,25 @@ hooks:
 	@echo "core.hooksPath -> .husky/_"
 
 # main keeps one merge node per piece of work. This makes a plain
-# `git merge <branch>` on main produce one; the pre-push hook refuses a push
-# that would move main to anything else (scripts/check-main-merge-node.sh).
+# `git merge <branch>` on main produce one, and a `git pull` on main replay
+# that merge instead of flattening it; the pre-push hook refuses a push that
+# would move main to anything else (scripts/check-main-merge-node.sh).
 merge-nodes:
 	@git config branch.main.mergeoptions --no-ff
-	@echo "branch.main.mergeoptions -> --no-ff"
+	@git config branch.main.rebase merges
+	@echo "branch.main.mergeoptions -> --no-ff, branch.main.rebase -> merges"
+
+# Land a branch on main as one merge node and push it, retrying on its own
+# when the pipeline's version commit moves main mid-push:
+#   make land <branch>
+# The word after `land` is the branch, not a make goal; the eval below makes
+# it a no-op goal so make does not try to build it.
+ifeq (land,$(firstword $(MAKECMDGOALS)))
+  LAND_BRANCH := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  $(eval $(LAND_BRANCH):;@:)
+endif
+land:
+	@bash scripts/land.sh $(LAND_BRANCH)
 
 # Local pipeline testing (requires: brew install act)
 test-pipeline-dry:

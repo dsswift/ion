@@ -86,6 +86,8 @@ jobs:
         run: bash scripts/husky-install.test.sh
       - name: Test the main merge-node rule
         run: bash scripts/check-main-merge-node.test.sh
+      - name: Test make land and the main-moved check
+        run: bash scripts/land.test.sh
       - name: Studio server installer test
         run: bash scripts/install-studio-server.test.sh
 
