@@ -81,8 +81,11 @@ enum PhoneAction: String, CaseIterable, Sendable {
     case providerLoginCancel = "provider.loginCancel"
     case providerLoginCode = "provider.loginCode"
     case providerLogout = "provider.logout"
+    case providerRefreshSubscription = "provider.refreshSubscription"
+    case providerSelectSubscription = "provider.selectSubscription"
     case providerSetDefault = "provider.setDefault"
     case providerStoreCredential = "provider.storeCredential"
+    case providerSubscription = "provider.subscription"
     case remoteDiscoverRelays = "remote.discoverRelays"
     case remoteGetDisplay = "remote.getDisplay"
     case remoteRelayAuthConfig = "remote.relayAuthConfig"
@@ -99,7 +102,7 @@ enum PhoneAction: String, CaseIterable, Sendable {
              .environmentFsBrowse, .fsReadFileData, .fsResolveLink, .environmentGitAuthorGet, .environmentGitHostKeys, .environmentHostToolchains,
              .environmentJobsList, .environmentProjectsAppraiseRemoval, .environmentProjectsList, .environmentServerInfo,
              .environmentSystemMetricsHistory, .environmentSystemMetricsLatest, .environmentSystemMetricsWatch, .mcpList, .modelList,
-             .modelListTiers, .planBashAllowlistGet, .policyGetFull, .providerGetDefault,
+             .modelListTiers, .planBashAllowlistGet, .policyGetFull, .providerGetDefault, .providerSubscription,
              .remoteGetDisplay, .settingsLoad, .settingsSave:
             return .conversationsRead
         case .automationDelete, .automationDuplicate, .automationSetProjectEnabled, .automationUpsert,
@@ -117,7 +120,8 @@ enum PhoneAction: String, CaseIterable, Sendable {
              .mcpLogout, .mcpRemove, .mcpUpdate, .modelRefresh, .modelRemoveTier,
              .modelSetTier, .oauthDeviceCode, .oauthDevicePoll, .oauthLogout, .oauthStart,
              .planBashAllowlistSet, .providerLogin, .providerLoginCancel, .providerLoginCode,
-             .providerLogout, .providerSetDefault, .providerStoreCredential, .remoteDiscoverRelays,
+             .providerLogout, .providerRefreshSubscription, .providerSelectSubscription, .providerSetDefault,
+             .providerStoreCredential, .remoteDiscoverRelays,
              .remoteRelayAuthConfig, .remoteStopDiscovery, .remoteTestRelay:
             return .admin
         }
