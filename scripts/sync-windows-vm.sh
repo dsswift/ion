@@ -40,7 +40,7 @@ VM_PATH="${ION_WIN_VM_PATH:-C:/dev/ion}"
 # resolver reads it. package.json and package-lock.json are the npm workspace
 # root: without them the VM installs the desktop as a standalone package and
 # never sees @ion/server or @ion/shared. .npmrc carries the install policy.
-ROOTS=(engine server packages sdk desktop scripts .github Makefile make.ps1 bootstrap.ps1 release-please-manifest.json package.json package-lock.json .npmrc)
+ROOTS=(engine server packages sdk desktop scripts .github .husky Makefile make.ps1 bootstrap.ps1 release-please-manifest.json package.json package-lock.json .npmrc)
 # Source-only folders the VM prunes to exactly the tracked set. A test or
 # source file deleted from git would otherwise stay on the VM and run there.
 PRUNE_ROOTS=(engine/cmd engine/internal engine/tests server/src desktop/src packages/shared/src packages/studio-sdk sdk/go scripts .github)
