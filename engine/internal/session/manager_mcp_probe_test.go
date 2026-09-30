@@ -5,6 +5,7 @@ package session
 // reconnects or the probe runs.
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -22,7 +23,7 @@ func TestProbeMcpServer_ClearsStaleErrorWhenTheServerAnswers(t *testing.T) {
 	mgr.recordMcpConnectError("probed", errors.New("HTTP 401 before sign-in"))
 	t.Cleanup(func() { mgr.clearMcpConnectError("probed") })
 
-	if err := mgr.ProbeMcpServer("probed", ""); err != nil {
+	if err := mgr.ProbeMcpServer(context.Background(), "probed", ""); err != nil {
 		t.Fatalf("ProbeMcpServer: %v", err)
 	}
 	if got := mcpConnectError("probed"); got != "" {
@@ -46,7 +47,7 @@ func TestProbeMcpServer_RecordsTheCurrentFailure(t *testing.T) {
 	mgr := NewManager(newMockBackend())
 	t.Cleanup(func() { mgr.clearMcpConnectError("refusing") })
 
-	if err := mgr.ProbeMcpServer("refusing", ""); err == nil {
+	if err := mgr.ProbeMcpServer(context.Background(), "refusing", ""); err == nil {
 		t.Fatal("expected the probe to fail against a server that refuses every request")
 	}
 	if mcpConnectError("refusing") == "" {
@@ -70,7 +71,7 @@ func TestReconnect_ClearsStaleConnectError(t *testing.T) {
 	mgr.recordMcpConnectError("live", errors.New("HTTP 401 before sign-in"))
 	t.Cleanup(func() { mgr.clearMcpConnectError("live") })
 
-	if reconnected := mgr.ReconnectMcpServer("live"); reconnected != 1 {
+	if reconnected := mgr.ReconnectMcpServer(context.Background(), "live"); reconnected != 1 {
 		t.Fatalf("reconnected = %d, want 1", reconnected)
 	}
 	if got := mcpConnectError("live"); got != "" {

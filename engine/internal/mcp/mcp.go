@@ -100,19 +100,34 @@ type Connection struct {
 
 // Connect establishes a dual-era MCP connection using default Ion behavior.
 func Connect(name string, config types.McpServerConfig) (*Connection, error) {
-	return ConnectWithOptions(name, config, ConnectionOptions{})
+	return ConnectContext(context.Background(), name, config, ConnectionOptions{})
 }
 
 // ConnectWithOptions establishes a connection and negotiates modern MCP or a
 // legacy handshake. The official SDK probes server/discover then falls back to
 // initialize for older peers.
 func ConnectWithOptions(name string, config types.McpServerConfig, opts ConnectionOptions) (*Connection, error) {
+	return ConnectContext(context.Background(), name, config, opts)
+}
+
+// ConnectContext is ConnectWithOptions bounded by ctx as well as
+// DefaultMetadataTimeout: cancelling ctx abandons the handshake.
+func ConnectContext(ctx context.Context, name string, config types.McpServerConfig, opts ConnectionOptions) (*Connection, error) {
 	transport, cleanup, err := newSDKTransport(name, config)
 	if err != nil {
 		return nil, fmt.Errorf("mcp connect %s: %w", name, err)
 	}
 	if cleanup == nil {
 		cleanup = func() error { return nil }
+	}
+	// The handshake's cancellation and the connection's Close can both reach
+	// cleanup; it runs once.
+	var cleanupOnce sync.Once
+	var cleanupErr error
+	transportCleanup := cleanup
+	cleanup = func() error {
+		cleanupOnce.Do(func() { cleanupErr = transportCleanup() })
+		return cleanupErr
 	}
 
 	clientOpts := &mcpgo.ClientOptions{
@@ -150,9 +165,16 @@ func ConnectWithOptions(name string, config types.McpServerConfig, opts Connecti
 	}
 
 	client := mcpgo.NewClient(&mcpgo.Implementation{Name: "ion-engine", Version: clientImplementationVersion}, clientOpts)
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultMetadataTimeout)
+	connectCtx, cancel := context.WithTimeout(ctx, DefaultMetadataTimeout)
 	defer cancel()
-	session, err := client.Connect(ctx, transport, nil)
+	// A cancelled or timed-out handshake ends the transport at once, so no
+	// request it opened waits on a server that does not answer.
+	abandonHandshake := context.AfterFunc(connectCtx, func() {
+		if err := cleanup(); err != nil {
+			utils.LogWithFields(utils.LevelInfo, "mcp", "transport close after abandoned handshake", map[string]any{"serverName": name, "error": err.Error()})
+		}
+	})
+	session, err := client.Connect(connectCtx, transport, nil)
 	if err != nil {
 		if closeErr := cleanup(); closeErr != nil {
 			utils.LogWithFields(utils.LevelInfo, "mcp", "transport close after connection failure", map[string]any{"serverName": name, "error": closeErr.Error()})
@@ -173,7 +195,7 @@ func ConnectWithOptions(name string, config types.McpServerConfig, opts Connecti
 		conn.protocolVersion = init.ProtocolVersion
 		conn.capabilities = capabilitiesMap(init.Capabilities)
 	}
-	if err := conn.refreshTools(ctx); err != nil {
+	if err := conn.refreshTools(connectCtx); err != nil {
 		if closeErr := session.Close(); closeErr != nil {
 			utils.LogWithFields(utils.LevelInfo, "mcp", "SDK session close after tool discovery failure", map[string]any{"serverName": name, "error": closeErr.Error()})
 		}
@@ -181,6 +203,13 @@ func ConnectWithOptions(name string, config types.McpServerConfig, opts Connecti
 			utils.LogWithFields(utils.LevelInfo, "mcp", "transport close after tool discovery failure", map[string]any{"serverName": name, "error": closeErr.Error()})
 		}
 		return nil, annotateAuthFailure(name, config, fmt.Errorf("mcp list tools %s: %w", name, err))
+	}
+	if !abandonHandshake() {
+		// The handshake was abandoned as it finished; the transport is gone.
+		if closeErr := session.Close(); closeErr != nil {
+			utils.LogWithFields(utils.LevelInfo, "mcp", "SDK session close after abandoned handshake", map[string]any{"serverName": name, "error": closeErr.Error()})
+		}
+		return nil, fmt.Errorf("mcp connect %s: %w", name, context.Cause(connectCtx))
 	}
 	utils.LogWithFields(utils.LevelInfo, "mcp", "server connected", map[string]any{
 		"serverName": name, "protocolVersion": conn.protocolVersion,

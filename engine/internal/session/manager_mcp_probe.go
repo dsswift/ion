@@ -4,6 +4,8 @@ package session
 // recorded connect error when no live session can.
 
 import (
+	"context"
+
 	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -18,7 +20,7 @@ import (
 // reconnect nothing would replace it: the server would keep reporting a failure
 // its new credentials or definition may have fixed. The probe replaces it with
 // the result of an attempt made now.
-func (m *Manager) ProbeMcpServer(name, projectDir string) error {
+func (m *Manager) ProbeMcpServer(ctx context.Context, name, projectDir string) error {
 	cfg, ok := ionconfig.ResolveMcpServers(projectDir)[name]
 	if !ok {
 		m.clearMcpConnectError(name)
@@ -27,7 +29,7 @@ func (m *Manager) ProbeMcpServer(name, projectDir string) error {
 		})
 		return nil
 	}
-	conn, err := mcp.Connect(name, cfg)
+	conn, err := mcp.ConnectContext(ctx, name, cfg, mcp.ConnectionOptions{})
 	if err != nil {
 		m.recordMcpConnectError(name, err)
 		utils.LogWithFields(utils.LevelInfo, "session", "mcp probe failed", map[string]any{

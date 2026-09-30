@@ -37,19 +37,22 @@ func newSDKTransport(name string, config types.McpServerConfig) (mcpgo.Transport
 		if config.URL == "" {
 			return nil, nil, fmt.Errorf("HTTP transport requires base URL")
 		}
+		lifetime := newConnLifetime()
 		return &mcpgo.StreamableClientTransport{
 			Endpoint:     config.URL,
-			HTTPClient:   ionMCPHTTPClient(name, config),
+			HTTPClient:   lifetime.bind(ionMCPHTTPClient(name, config)),
 			OAuthHandler: configuredSDKOAuthHandler(name, config),
 			// Modern servers have no standalone GET stream. The SDK receives
 			// request-scoped streams and opens subscriptions/listen itself.
 			DisableStandaloneSSE: true,
-		}, func() error { return nil }, nil
+		}, func() error { lifetime.end(); return nil }, nil
 	case "sse":
 		if config.URL == "" {
 			return nil, nil, fmt.Errorf("SSE transport requires URL")
 		}
-		return &mcpgo.SSEClientTransport{Endpoint: config.URL, HTTPClient: ionMCPHTTPClient(name, config)}, func() error { return nil }, nil
+		lifetime := newConnLifetime()
+		return &mcpgo.SSEClientTransport{Endpoint: config.URL, HTTPClient: lifetime.bind(ionMCPHTTPClient(name, config))},
+			func() error { lifetime.end(); return nil }, nil
 	case "ws", "websocket":
 		if config.URL == "" {
 			return nil, nil, fmt.Errorf("WebSocket transport requires URL")

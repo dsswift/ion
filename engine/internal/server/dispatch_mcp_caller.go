@@ -53,9 +53,9 @@ func (s *Server) dispatchMcpLoginComplete(conn net.Conn, cmd *protocol.ClientCom
 
 	if err := mcp.CompleteCallerLogin(cmd.McpName, cmd.McpCallbackURL); err != nil {
 		s.sendResult(conn, cmd, err, nil)
-		s.settleMcpLogin(cmd.McpName, cmd.Path, err)
+		s.settleMcpLogin(s.serveContext(), cmd.McpName, cmd.Path, err)
 		return
 	}
 	s.sendResult(conn, cmd, nil, map[string]any{"name": cmd.McpName})
-	s.settleMcpLogin(cmd.McpName, cmd.Path, nil)
+	s.settleMcpLogin(s.serveContext(), cmd.McpName, cmd.Path, nil)
 }

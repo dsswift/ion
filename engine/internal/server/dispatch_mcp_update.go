@@ -3,6 +3,7 @@ package server
 // dispatch_mcp_update.go — mcp_update: edit one configured MCP server in place.
 
 import (
+	"context"
 	"fmt"
 	"net"
 
@@ -61,15 +62,15 @@ func (s *Server) dispatchMcpUpdate(conn net.Conn, cmd *protocol.ClientCommand) {
 		// Reconnecting and probing dial the server, so they run off the
 		// dispatch; the snapshot is broadcast again with their outcome.
 		name, projectDir := cmd.McpName, cmd.Path
-		go func() {
-			reconnected := s.reconnectMcpAcrossSessions(name)
+		s.startMcpWork("update_reconnect", name, func(ctx context.Context) {
+			reconnected := s.reconnectMcpAcrossSessions(ctx, name)
 			// The recorded connect error described the old definition.
-			probed := reconnected == 0 && s.probeMcpServer(name, projectDir)
+			probed := reconnected == 0 && s.probeMcpServer(ctx, name, projectDir)
 			utils.LogWithFields(utils.LevelInfo, "server.mcp", "updated server reconnected", map[string]any{
 				"server": name, "sessions_reconnected": reconnected, "probed": probed,
 			})
 			s.broadcastMcpServers(projectDir)
-		}()
+		})
 	}
 }
 
