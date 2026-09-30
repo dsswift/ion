@@ -15,6 +15,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/mcp"
+	"github.com/dsswift/ion/engine/internal/subscription"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/telemetryformat"
 )
@@ -99,6 +100,11 @@ func Formats() []Format {
 			ID: "acp", Owner: OwnerEngine, Rule: RuleExternal,
 			Version: strconv.Itoa(acp.ProtocolVersion), Constant: "acp.ProtocolVersion",
 			Meaning: "ACP wire version the engine negotiates with agents",
+		},
+		{
+			ID: "subscription-lookup", Owner: OwnerEngine, Rule: RuleExternal,
+			Version: subscription.ContractVersion, Constant: "subscription.ContractVersion",
+			Meaning: "Provider Subscription lookup contract version the engine sends to the endpoint",
 		},
 	}
 }
