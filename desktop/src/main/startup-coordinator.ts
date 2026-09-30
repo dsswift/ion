@@ -7,7 +7,6 @@ import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import type { StudioFrame } from '@ion/shared/studio-wire/types'
 import { state } from './state'
 import { debug, log, warn } from './logger'
-import { createStartupWindow } from './startup-window'
 import { createTray } from './window-manager'
 import { registerStudioShortcuts } from './studio-shortcuts'
 import { openStudioWindow, revealStudioWindow } from './studio-window-manager'
@@ -54,31 +53,15 @@ function maybeReveal(): void {
   if (revealed || stateValue.mode === 'authentication' || stateValue.error) return
   if (!stateValue.studioReady || !stateValue.serverReady) return
   revealed = true
-  revealStudioWindow('startup complete')
+  const splash = state.splashWindow
+  const live = splash && !splash.isDestroyed() ? splash : null
+  // The splash is an ordinary window, so the user may have moved on to
+  // another app while Ion loaded; only take focus back if Ion still has it.
+  revealStudioWindow('startup complete', live ? live.isFocused() : true)
   registerStudioShortcuts()
   createTray()
-  const splash = state.splashWindow
-  if (splash && !splash.isDestroyed()) splash.destroy()
+  if (live) live.destroy()
   log('startup', 'startup target revealed')
-}
-
-export function startStartup(): void {
-  revealed = false
-  sourceSequence.main = -1
-  sourceSequence.studio = -1
-  sourceSequence.server = -1
-  stateValue = {
-    ...stateValue,
-    mode: 'loading',
-    authenticationBusy: false,
-    authenticationError: null,
-    appVersion: __ION_DESKTOP_VERSION__,
-    studioReady: false,
-    serverReady: false,
-    error: null,
-  }
-  createStartupWindow()
-  reportStartup({ source: 'main', sequence: 0, status: 'Preparing Ion…' })
 }
 
 export function reportStartup(report: StartupReport, sender?: WebContents): boolean {

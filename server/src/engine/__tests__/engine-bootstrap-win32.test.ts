@@ -222,4 +222,23 @@ describe('ensureEngineDaemon — win32 dispatch', () => {
     expect(execOrder.some((e) => e.cmd.includes('/Query'))).toBe(true)
     expect(execOrder.some((e) => e.cmd.includes('/Run'))).toBe(true)
   })
+
+  // The engine reads engine.json once at start. A config write this launch
+  // must recycle the daemon inside this one start: a separate restart after
+  // it stops the engine just brought up, and a desktop killed between that
+  // /End and its /Run leaves the task stopped.
+  it('on a config change: forces the start, so /End comes before the first /Run', async () => {
+    fakeFs[bundledBinaryWin32Path] = 'identical-bytes'
+    const destBinary = destBinaryWin32Path()
+    fakeFs[destBinary] = 'identical-bytes'
+    const rendered = fakeFs[taskTemplatePath].replaceAll('$ION_BIN', destBinary).replaceAll('$ION_HOME', ionHomePath())
+    fakeFs[taskXmlDestPath()] = rendered
+    registeredTaskXml = rendered
+
+    await ensureEngineDaemon(FAST, { configChanged: true })
+
+    const taskVerbs = execOrder.map((e) => e.cmd).filter((c) => c.includes('/End') || c.includes('/Run'))
+    expect(taskVerbs[0]).toContain('/End')
+    expect(taskVerbs[1]).toContain('/Run')
+  })
 })

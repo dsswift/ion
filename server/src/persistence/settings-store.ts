@@ -335,8 +335,8 @@ export function updateEngineConfig(
  * which the engine only applies under `backend: "hybrid"` — the engine's own
  * default stays `api` for external/headless consumers, so the desktop opts in
  * explicitly here (settings live with their owner, engine-grounding §6).
- * Returns true when the value changed (caller restarts the daemon so the
- * running engine re-reads the config).
+ * Returns true when the value changed (the caller forces the daemon start so
+ * a running engine re-reads the config).
  */
 export function ensureHybridBackendConfig(): boolean {
   return updateEngineConfig((cfg) => {

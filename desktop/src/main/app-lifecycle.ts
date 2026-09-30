@@ -20,7 +20,7 @@ import { focusState } from '@ion/server/git/focus-state'
 import {
   ensureHybridBackendConfig,
 } from '@ion/server/persistence/settings-store'
-import { ensureEngineDaemon, restartEngineDaemon } from '@ion/server/engine/engine-bootstrap'
+import { ensureEngineDaemon } from '@ion/server/engine/engine-bootstrap'
 import { migrateLegacySafeStorageSecrets } from '@ion/server/utils/secretStore'
 import { supervisorFor } from '@ion/server/engine/engine-supervisor'
 import { pruneOperationDirs } from '@ion/server/utils/temp-dir'
@@ -39,7 +39,7 @@ import { registerEnvironmentLabel } from './ipc/studio-bridge'
 import { createStartupWindow } from './startup-window'
 import { installQuitHandlers } from './app-lifecycle-quit'
 import { initEgressFromEngineConfig, initEgressFromSettingsConfig } from './app-lifecycle-egress'
-import { failStartup, isStartupRevealed, prepareStudioStartup, reportStartup, requireStartupAuthentication, startStartup } from './startup-coordinator'
+import { failStartup, isStartupRevealed, prepareStudioStartup, reportStartup, requireStartupAuthentication } from './startup-coordinator'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -185,9 +185,6 @@ export function setupAppLifecycle(): void {
   app.whenReady().then(async () => {
     createStartupWindow()
     reportStartup({ source: 'main', sequence: 0, status: 'Preparing Ion…' })
-    if (process.platform === 'darwin' && app.dock) {
-      app.dock.hide()
-    }
 
     // Before any other start-up step: a throw from one of them must land in
     // desktop.jsonl rather than only in Electron's dialog.
@@ -240,8 +237,8 @@ export function setupAppLifecycle(): void {
     // Opt into credential-based per-provider routing: the desktop writes
     // backend:"hybrid" into engine.json (the engine default stays api for
     // headless consumers). Stamped pre-daemon like the claims above so a
-    // fresh daemon start honors it; if the daemon was already running with
-    // the old value, recycle it below so routing flips without a full
+    // fresh daemon start honors it; a change forces the daemon start below,
+    // so one already running with the old value is recycled without a full
     // app relaunch. One-time transition per machine.
     const backendConfigChanged = ensureHybridBackendConfig()
 
@@ -251,15 +248,12 @@ export function setupAppLifecycle(): void {
     // Task on win32), copies the binary if content-mismatched, runs
     // install-assets, and starts the daemon. Logs a WARN and returns on a
     // platform with no supervisor mechanism.
-    await ensureEngineDaemon()
+    await ensureEngineDaemon({}, { configChanged: backendConfigChanged })
     reportStartup({
       source: 'main',
       sequence: 2,
       status: supervisorFor() ? 'Starting Ion engine…' : 'Connecting to Ion engine…',
     })
-    if (backendConfigChanged) {
-      await restartEngineDaemon()
-    }
 
     // Configure egress forwarder from engine.json before connecting — that
     // way the first engine events are captured even if egress is configured.
@@ -272,12 +266,11 @@ export function setupAppLifecycle(): void {
     initEgressFromSettingsConfig()
 
     // This process never connects to the engine: the Studio server child
-    // (spawned below) is the engine's one client, and this process reaches
+    // (started before whenReady) is the engine's one client, and this process reaches
     // it over the Studio wire.
 
     installContentSecurityPolicy()
 
-    startStartup()
     reportStartup({ source: 'main', sequence: 3, status: 'Checking identity…' })
 
     // Required operator identity gates session restoration. The Studio window

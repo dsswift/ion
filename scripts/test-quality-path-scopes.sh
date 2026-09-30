@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Regression coverage for `.github/quality-paths.yml` ownership. Keep CI scope
-# narrow for pull requests without letting a source path lose its required gate.
+# narrow for every push without letting a source path lose its gate, and keep
+# the security scans off the ship path.
 
 set -euo pipefail
 
@@ -37,7 +38,7 @@ cases = {
     "sdk": ("sdk/go/context.go", {"sdk", "logging"}),
     "engine-sdk": ("engine/extensions/sdk/ion-sdk/types.ts", {"engine", "sdk", "logging"}),
     "desktop-source": ("desktop/src/main/local-server.ts", {"desktop", "logging"}),
-    "desktop-dependency": ("package-lock.json", {"desktop_deps"}),
+    "desktop-dependency": ("package-lock.json", set()),
     "shared": ("packages/shared/src/types.ts", {"shared", "logging"}),
     "server": ("server/src/main.ts", {"server", "logging"}),
     "ios": ("ios/IonRemote/Models/RemoteTabState.swift", {"ios", "logging"}),
@@ -65,7 +66,6 @@ job_scopes = {
     "desktop-test": "desktop",
     "desktop-lint": "desktop",
     "desktop-build": "server",
-    "desktop-audit": "desktop_deps",
     "shared-test": "shared",
     "server-lint": "server",
     "server-typecheck": "server",
@@ -81,10 +81,19 @@ for job, scope in job_scopes.items():
 for scope in ("engine", "relay", "sdk"):
     needle = f"needs.changes.outputs.{scope} == 'true'"
     if workflow.count(needle) < 3:
-        raise SystemExit(f"{scope}: composite lint/vulnerability steps are not fully scoped")
+        raise SystemExit(f"{scope}: composite lint steps are not fully scoped")
 
-if "Report skipped engine matrix checks" not in workflow or "checks.create" not in workflow:
-    raise SystemExit("engine-test: missing no-op required-context reporter")
+# A guard that still consults the event name would run every scope on a push
+# to main, which is the slow path this file exists to prevent.
+if "github.event_name != 'pull_request' ||" in workflow:
+    raise SystemExit("quality.yml: a job guard still widens to every scope on push")
+
+# The scans read a daily-changing feed, so they never run on the ship path.
+for marker in ("npm audit", "govulncheck"):
+    if marker in workflow:
+        raise SystemExit(f"quality.yml: {marker} belongs in security.yml, off the ship path")
+    if marker not in Path(".github/workflows/security.yml").read_text(encoding="utf-8"):
+        raise SystemExit(f"security.yml: {marker} is missing")
 
 print(f"quality path scopes: {len(cases)} cases and {len(job_scopes)} job guards passed")
 PY

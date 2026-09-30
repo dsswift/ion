@@ -1,6 +1,6 @@
-# Shared changed-path scopes for Quality workflow and local regression checks.
-# Product jobs consume these only on pull requests; main, scheduled, and manual
-# Quality runs deliberately validate every scope.
+# Shared changed-path scopes for the Quality workflow and local regression
+# checks. Product jobs consume these on pull requests and on pushes to main;
+# scheduled and manual Quality runs deliberately validate every scope.
 engine:
   - 'engine/**'
 sdk:
@@ -14,9 +14,6 @@ desktop:
   - 'desktop/**'
   - 'scripts/check-status-writers.sh'
   - 'scripts/check-server-parity.sh'
-desktop_deps:
-  - 'desktop/package.json'
-  - 'package-lock.json'
 shared:
   - 'packages/shared/**'
   # The Studio SDK's TypeScript flavor and its contract are tested from here.
@@ -51,7 +48,6 @@ dashboards:
   - 'docs/observability/log-schema.md'
 workflows:
   - '.github/workflows/**'
-  - '.github/scripts/build-release-summary-context.sh'
-  - '.github/scripts/build-release-summary-context.test.sh'
+  - '.github/scripts/**'
   - '.github/quality-paths.yml'
   - 'scripts/test-quality-path-scopes.sh'
