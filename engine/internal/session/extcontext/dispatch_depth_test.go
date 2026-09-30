@@ -364,19 +364,19 @@ func TestRegistryCascadeRecall(t *testing.T) {
 	var cancelledParent, cancelledChild, cancelledGrandchild int
 	var mu sync.Mutex
 
-	r.RegisterWithID("parent-1", "orchestrator", func() {
+	r.RegisterWithID("parent-1", "orchestrator", func(string) {
 		mu.Lock()
 		cancelledParent++
 		mu.Unlock()
 	}, nil, "sess", "", 1)
 
-	r.RegisterWithID("child-1", "specialist", func() {
+	r.RegisterWithID("child-1", "specialist", func(string) {
 		mu.Lock()
 		cancelledChild++
 		mu.Unlock()
 	}, nil, "sess", "parent-1", 2)
 
-	r.RegisterWithID("grandchild-1", "sub-specialist", func() {
+	r.RegisterWithID("grandchild-1", "sub-specialist", func(string) {
 		mu.Lock()
 		cancelledGrandchild++
 		mu.Unlock()
@@ -410,13 +410,13 @@ func TestRegistryCascadeRecallByName(t *testing.T) {
 	var cancelledParent, cancelledChild int
 	var mu sync.Mutex
 
-	r.RegisterWithID("parent-2", "myagent", func() {
+	r.RegisterWithID("parent-2", "myagent", func(string) {
 		mu.Lock()
 		cancelledParent++
 		mu.Unlock()
 	}, nil, "sess", "", 1)
 
-	r.RegisterWithID("child-2", "sub", func() {
+	r.RegisterWithID("child-2", "sub", func(string) {
 		mu.Lock()
 		cancelledChild++
 		mu.Unlock()
@@ -444,7 +444,7 @@ func TestRegistryCascadeRecallByName(t *testing.T) {
 // the ParentID and Depth fields.
 func TestRegistryParentDepthFields(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("d-1", "agent", func() {}, nil, "sess", "parent-x", 2)
+	r.RegisterWithID("d-1", "agent", func(string) {}, nil, "sess", "parent-x", 2)
 
 	entry, ok := r.Get("d-1")
 	if !ok {

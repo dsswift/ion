@@ -42,7 +42,7 @@ func TestNestedDispatchRetention_Depth2SlotSurvivesAndTerminalUpdateLands(t *tes
 	// Depth-1 dev-lead: live dispatch + running agent-state slot. This is the
 	// only entry whose NAME is in the live-dispatch name set.
 	depth1ID := "dispatch-dev-lead-111-aaa"
-	registry.RegisterWithID(depth1ID, "dev-lead", func() {}, backend.NewApiBackend(), sessionKey, "", 1)
+	registry.RegisterWithID(depth1ID, "dev-lead", func(string) {}, backend.NewApiBackend(), sessionKey, "", 1)
 	store.AppendState(types.AgentStateUpdate{Name: "dev-lead", ID: depth1ID, Status: "running"})
 
 	// Depth-2 engine-dev: live dispatch (registered, so its ID is in
@@ -52,7 +52,7 @@ func TestNestedDispatchRetention_Depth2SlotSurvivesAndTerminalUpdateLands(t *tes
 	// that by building the name keep-set from the depth-1 dispatch only (below),
 	// the exact pre-fix failure surface.
 	depth2ID := "dispatch-engine-dev-222-bbb"
-	registry.RegisterWithID(depth2ID, "engine-dev", func() {}, backend.NewApiBackend(), sessionKey, depth1ID, 2)
+	registry.RegisterWithID(depth2ID, "engine-dev", func(string) {}, backend.NewApiBackend(), sessionKey, depth1ID, 2)
 	store.AppendState(types.AgentStateUpdate{Name: "engine-dev", ID: depth2ID, Status: "running"})
 
 	// Run the exact retention handleRunExit performs (event_translation.go):

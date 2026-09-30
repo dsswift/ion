@@ -14,7 +14,7 @@ func TestDispatchRegistry_SteerOwnedByName_Delivered(t *testing.T) {
 	r := NewDispatchRegistry()
 	child := &mockSteerableBackend{result: backend.SteerResultDelivered}
 
-	r.RegisterWithID("dispatch-reviewer-111", "code-reviewer", func() {}, child, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-reviewer-111", "code-reviewer", func(string) {}, child, "sess-1", "", 0)
 	r.SetChildRunID("dispatch-reviewer-111", "sess-1-dispatch-reviewer-111")
 
 	outcome := r.SteerOwnedByName("", "code-reviewer", "focus on error handling").Outcome
@@ -51,7 +51,7 @@ func TestDispatchRegistry_SteerOwnedByName_NotFoundAfterDeregister(t *testing.T)
 	r := NewDispatchRegistry()
 	// Use nil child so Deregister's invariant check (d.Child != nil guard)
 	// is skipped — this test is about name resolution, not child lifecycle.
-	r.RegisterWithID("dispatch-gone-aaa", "gone-agent", func() {}, nil, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-gone-aaa", "gone-agent", func(string) {}, nil, "sess-1", "", 0)
 	r.Deregister("dispatch-gone-aaa", DispatchOutcome{Status: DispatchStatusDone})
 
 	outcome := r.SteerOwnedByName("", "gone-agent", "too late").Outcome
@@ -69,9 +69,9 @@ func TestDispatchRegistry_SteerOwnedByName_MultipleSameNameIsAmbiguous(t *testin
 	childA := &mockSteerableBackend{result: backend.SteerResultDelivered}
 	childB := &mockSteerableBackend{result: backend.SteerResultDelivered}
 
-	r.RegisterWithID("dispatch-agent-bbb", "shared-agent", func() {}, childB, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-agent-bbb", "shared-agent", func(string) {}, childB, "sess-1", "", 0)
 	r.SetChildRunID("dispatch-agent-bbb", "run-bbb")
-	r.RegisterWithID("dispatch-agent-aaa", "shared-agent", func() {}, childA, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-agent-aaa", "shared-agent", func(string) {}, childA, "sess-1", "", 0)
 	r.SetChildRunID("dispatch-agent-aaa", "run-aaa")
 
 	res := r.SteerOwnedByName("", "shared-agent", "redirect")
@@ -92,10 +92,10 @@ func TestDispatchRegistry_SteerOwnedByName_MultipleSameNameIsAmbiguous(t *testin
 // match behaves as before: it delivers and carries no matching-ID list.
 func TestDispatchRegistry_SteerOwnedByName_UniqueMatchReturnsNoIDs(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("dispatch-solo", "solo", func() {}, &mockSteerableBackend{result: backend.SteerResultDelivered}, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-solo", "solo", func(string) {}, &mockSteerableBackend{result: backend.SteerResultDelivered}, "sess-1", "", 0)
 	r.SetChildRunID("dispatch-solo", "run-solo")
 	// A different name must not count toward the match set.
-	r.RegisterWithID("dispatch-other", "other", func() {}, &mockSteerableBackend{result: backend.SteerResultDelivered}, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-other", "other", func(string) {}, &mockSteerableBackend{result: backend.SteerResultDelivered}, "sess-1", "", 0)
 
 	res := r.SteerOwnedByName("", "solo", "go")
 	outcome, matching := res.Outcome, res.MatchingIDs
@@ -111,7 +111,7 @@ func TestDispatchRegistry_SteerOwnedByName_ChildRunNotYetActive(t *testing.T) {
 	r := NewDispatchRegistry()
 	child := &mockSteerableBackend{result: backend.SteerResultNoRun}
 
-	r.RegisterWithID("dispatch-pending-aaa", "pending-agent", func() {}, child, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-pending-aaa", "pending-agent", func(string) {}, child, "sess-1", "", 0)
 	r.SetChildRunID("dispatch-pending-aaa", "run-not-started-yet")
 
 	outcome := r.SteerOwnedByName("", "pending-agent", "early steer").Outcome
@@ -127,7 +127,7 @@ func TestDispatchRegistry_SteerOwnedByName_ChannelFull(t *testing.T) {
 	r := NewDispatchRegistry()
 	child := &mockSteerableBackend{result: backend.SteerResultChannelFull}
 
-	r.RegisterWithID("dispatch-full-aaa", "busy-agent", func() {}, child, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-full-aaa", "busy-agent", func(string) {}, child, "sess-1", "", 0)
 	r.SetChildRunID("dispatch-full-aaa", "run-full")
 
 	outcome := r.SteerOwnedByName("", "busy-agent", "overflow").Outcome

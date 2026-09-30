@@ -210,13 +210,13 @@ func nameInList(name string, list []string) bool {
 // this agent's own children -- so the eligibility guard resolves it from there
 // and the allowlist constrains this agent's NESTED dispatches, not the call
 // that spawned this agent. Shared by the foreground and background dispatch
-// paths so the three registry calls never drift between them. recall receives
+// paths so the three registry calls never drift between them. cancel receives
 // the reason the recaller gave, or "" when none was given. No-op when registry
 // is nil.
 func registerDispatch(
 	registry *DispatchRegistry,
 	agentID, name string,
-	recall func(reason string),
+	cancel func(reason string),
 	child backend.RunBackend,
 	sessionKey, parentDispatchID string,
 	childDepth int,
@@ -227,7 +227,7 @@ func registerDispatch(
 	if registry == nil {
 		return
 	}
-	registry.RegisterWithRecall(agentID, name, recall, child, sessionKey, parentDispatchID, childDepth)
+	registry.RegisterWithID(agentID, name, cancel, child, sessionKey, parentDispatchID, childDepth)
 	registry.SetChildRunID(agentID, childRunID)
 	registry.SetAllowedSubAgents(agentID, allowedSubAgents)
 	registry.SetSubAgentPolicy(agentID, subAgentPolicy)

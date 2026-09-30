@@ -19,7 +19,7 @@ func TestDispatchRegistry_RegisterDeregisterLifecycle(t *testing.T) {
 		t.Fatalf("Count on fresh registry = %d, want 0", got)
 	}
 
-	r.Register("agent-a", func() {}, nil, "sess-1")
+	r.Register("agent-a", func(string) {}, nil, "sess-1")
 	if got := r.Count(); got != 1 {
 		t.Fatalf("Count after Register = %d, want 1", got)
 	}
@@ -41,7 +41,7 @@ func TestDispatchRegistry_RegisterDeregisterLifecycle(t *testing.T) {
 func TestDispatchRegistry_Get(t *testing.T) {
 	r := NewDispatchRegistry()
 
-	r.Register("agent-b", func() {}, nil, "sess-2")
+	r.Register("agent-b", func(string) {}, nil, "sess-2")
 
 	d, ok := r.Get("agent-b")
 	if !ok {
@@ -74,7 +74,7 @@ func TestDispatchRegistry_Get(t *testing.T) {
 func TestDispatchRegistry_RecallByID(t *testing.T) {
 	r := NewDispatchRegistry()
 	var cancelled atomic.Int32
-	r.RegisterWithID("dispatch-agent-c", "agent-c", func() { cancelled.Add(1) }, nil, "sess-3", "", 1)
+	r.RegisterWithID("dispatch-agent-c", "agent-c", func(string) { cancelled.Add(1) }, nil, "sess-3", "", 1)
 	if !r.RecallByID("dispatch-agent-c", "test_reason") {
 		t.Fatal("RecallByID returned false")
 	}
@@ -95,9 +95,9 @@ func TestDispatchRegistry_RecallAll(t *testing.T) {
 	r := NewDispatchRegistry()
 
 	var cancelledA, cancelledB, cancelledC atomic.Int32
-	r.Register("agent-x", func() { cancelledA.Add(1) }, nil, "sess-a")
-	r.Register("agent-y", func() { cancelledB.Add(1) }, nil, "sess-b")
-	r.Register("agent-z", func() { cancelledC.Add(1) }, nil, "sess-c")
+	r.Register("agent-x", func(string) { cancelledA.Add(1) }, nil, "sess-a")
+	r.Register("agent-y", func(string) { cancelledB.Add(1) }, nil, "sess-b")
+	r.Register("agent-z", func(string) { cancelledC.Add(1) }, nil, "sess-c")
 
 	if r.Count() != 3 {
 		t.Fatalf("Count before RecallAll = %d, want 3", r.Count())
@@ -134,8 +134,8 @@ func TestDispatchRegistry_OverwriteWarning(t *testing.T) {
 	r := NewDispatchRegistry()
 
 	var firstCancelled, secondCancelled atomic.Int32
-	r.Register("dup", func() { firstCancelled.Add(1) }, nil, "sess-1")
-	r.Register("dup", func() { secondCancelled.Add(1) }, nil, "sess-2")
+	r.Register("dup", func(string) { firstCancelled.Add(1) }, nil, "sess-1")
+	r.Register("dup", func(string) { secondCancelled.Add(1) }, nil, "sess-2")
 
 	// Count should still be 1 — overwrite, not append.
 	if r.Count() != 1 {
@@ -175,7 +175,7 @@ func TestDispatchRegistry_ConcurrentAccess(t *testing.T) {
 		name := "agent-" + string(rune('A'+i%26))
 		go func() {
 			defer wg.Done()
-			r.Register(name, func() {}, nil, "sess")
+			r.Register(name, func(string) {}, nil, "sess")
 		}()
 		go func() {
 			defer wg.Done()
@@ -206,8 +206,8 @@ func TestDispatchRegistry_ActiveNames(t *testing.T) {
 	}
 
 	// Register two dispatches.
-	r.Register("agent-x", func() {}, nil, "sess-1")
-	r.Register("agent-y", func() {}, nil, "sess-1")
+	r.Register("agent-x", func(string) {}, nil, "sess-1")
+	r.Register("agent-y", func(string) {}, nil, "sess-1")
 
 	names = r.ActiveNames()
 	if len(names) != 2 {
@@ -246,8 +246,8 @@ func TestDispatchRegistry_ActiveIDs(t *testing.T) {
 	}
 
 	// Two same-name dispatches with distinct IDs.
-	r.RegisterWithID("dispatch-engine-dev-aaa", "engine-dev", func() {}, nil, "sess-1", "", 0)
-	r.RegisterWithID("dispatch-engine-dev-bbb", "engine-dev", func() {}, nil, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-engine-dev-aaa", "engine-dev", func(string) {}, nil, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-engine-dev-bbb", "engine-dev", func(string) {}, nil, "sess-1", "", 0)
 
 	ids := r.ActiveIDs()
 	if len(ids) != 2 {
@@ -288,8 +288,8 @@ func TestDispatchRegistry_ParallelSameNameKeepsBoth(t *testing.T) {
 	r := NewDispatchRegistry()
 
 	var cancelledA, cancelledB atomic.Int32
-	r.RegisterWithID("dispatch-agent-1-aaa", "agent", func() { cancelledA.Add(1) }, nil, "sess-1", "", 0)
-	r.RegisterWithID("dispatch-agent-1-bbb", "agent", func() { cancelledB.Add(1) }, nil, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-agent-1-aaa", "agent", func(string) { cancelledA.Add(1) }, nil, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-agent-1-bbb", "agent", func(string) { cancelledB.Add(1) }, nil, "sess-1", "", 0)
 
 	if got := r.Count(); got != 2 {
 		t.Fatalf("Count after two same-name registers = %d, want 2", got)
@@ -315,8 +315,8 @@ func TestDispatchRegistry_RecallByID_TargetsSpecificInstance(t *testing.T) {
 	r := NewDispatchRegistry()
 
 	var cancelledA, cancelledB atomic.Int32
-	r.RegisterWithID("dispatch-agent-1-aaa", "agent", func() { cancelledA.Add(1) }, nil, "sess-1", "", 0)
-	r.RegisterWithID("dispatch-agent-1-bbb", "agent", func() { cancelledB.Add(1) }, nil, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-agent-1-aaa", "agent", func(string) { cancelledA.Add(1) }, nil, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-agent-1-bbb", "agent", func(string) { cancelledB.Add(1) }, nil, "sess-1", "", 0)
 
 	// Recall only the first instance by ID.
 	ok := r.RecallByID("dispatch-agent-1-aaa", "test_targeted_recall")
@@ -355,8 +355,8 @@ func TestDispatchRegistry_RecallByID_TargetsSpecificInstance(t *testing.T) {
 func TestDispatchRegistry_DeregisterByID(t *testing.T) {
 	r := NewDispatchRegistry()
 
-	r.RegisterWithID("id-x", "agent", func() {}, nil, "sess-1", "", 0)
-	r.RegisterWithID("id-y", "agent", func() {}, nil, "sess-1", "", 0)
+	r.RegisterWithID("id-x", "agent", func(string) {}, nil, "sess-1", "", 0)
+	r.RegisterWithID("id-y", "agent", func(string) {}, nil, "sess-1", "", 0)
 
 	r.Deregister("id-x", DispatchOutcome{Status: DispatchStatusDone})
 	if got := r.Count(); got != 1 {
@@ -382,7 +382,7 @@ func TestDispatchRegistry_DeregisterByID(t *testing.T) {
 func TestDispatchRegistry_BackwardCompat_RegisterUsesNameAsID(t *testing.T) {
 	r := NewDispatchRegistry()
 
-	r.Register("agent-old", func() {}, nil, "sess-1")
+	r.Register("agent-old", func(string) {}, nil, "sess-1")
 
 	d, ok := r.Get("agent-old")
 	if !ok {
@@ -425,7 +425,7 @@ func TestDeregisterInvariantLogWhenChildLive(t *testing.T) {
 	r := NewDispatchRegistry()
 	child := &mockLiveBackend{running: true}
 
-	r.RegisterWithID("dispatch-live-aaa", "graphics-lead", func() {}, child, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-live-aaa", "graphics-lead", func(string) {}, child, "sess-1", "", 0)
 	r.SetChildRunID("dispatch-live-aaa", "sess-1-dispatch-live-aaa")
 
 	if got := r.Count(); got != 1 {
@@ -458,7 +458,7 @@ func TestDeregisterNoInvariantLogWhenChildIdle(t *testing.T) {
 	r := NewDispatchRegistry()
 	child := &mockLiveBackend{running: false}
 
-	r.RegisterWithID("dispatch-idle-bbb", "graphics-lead", func() {}, child, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-idle-bbb", "graphics-lead", func(string) {}, child, "sess-1", "", 0)
 	r.SetChildRunID("dispatch-idle-bbb", "sess-1-dispatch-idle-bbb")
 
 	r.Deregister("dispatch-idle-bbb", DispatchOutcome{Status: DispatchStatusDone})
@@ -478,7 +478,7 @@ func TestDeregisterNoInvariantLogWhenChildIdle(t *testing.T) {
 func TestDeregisterNilChildSkipsInvariantCheck(t *testing.T) {
 	r := NewDispatchRegistry()
 
-	r.Register("agent-nil-child", func() {}, nil, "sess-1")
+	r.Register("agent-nil-child", func(string) {}, nil, "sess-1")
 	r.Deregister("agent-nil-child", DispatchOutcome{Status: DispatchStatusDone})
 
 	if got := r.Count(); got != 0 {
@@ -529,7 +529,7 @@ func TestDispatchRegistry_SteerByID_Delivered(t *testing.T) {
 	r := NewDispatchRegistry()
 	child := &mockSteerableBackend{result: backend.SteerResultDelivered}
 
-	r.RegisterWithID("dispatch-abc", "agent", func() {}, child, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-abc", "agent", func(string) {}, child, "sess-1", "", 0)
 	r.SetChildRunID("dispatch-abc", "sess-1-dispatch-abc")
 
 	outcome := r.SteerByID("dispatch-abc", "redirect to tests")
@@ -553,7 +553,7 @@ func TestDispatchRegistry_SteerByID_ChannelFull(t *testing.T) {
 	r := NewDispatchRegistry()
 	child := &mockSteerableBackend{result: backend.SteerResultChannelFull}
 
-	r.RegisterWithID("dispatch-xyz", "agent", func() {}, child, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-xyz", "agent", func(string) {}, child, "sess-1", "", 0)
 	r.SetChildRunID("dispatch-xyz", "run-xyz")
 
 	outcome := r.SteerByID("dispatch-xyz", "overflow")
@@ -569,7 +569,7 @@ func TestDispatchRegistry_SteerByID_NoRun(t *testing.T) {
 	r := NewDispatchRegistry()
 	child := &mockSteerableBackend{result: backend.SteerResultNoRun}
 
-	r.RegisterWithID("dispatch-nnn", "agent", func() {}, child, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-nnn", "agent", func(string) {}, child, "sess-1", "", 0)
 	r.SetChildRunID("dispatch-nnn", "run-gone")
 
 	outcome := r.SteerByID("dispatch-nnn", "hello")
@@ -599,7 +599,7 @@ func TestDispatchRegistry_SetChildRunID(t *testing.T) {
 	// No-op for nonexistent entry (no panic).
 	r.SetChildRunID("nonexistent", "run-1")
 
-	r.RegisterWithID("dispatch-set", "agent", func() {}, nil, "sess-1", "", 0)
+	r.RegisterWithID("dispatch-set", "agent", func(string) {}, nil, "sess-1", "", 0)
 
 	d, ok := r.Get("dispatch-set")
 	if !ok {
@@ -622,8 +622,8 @@ func TestRecallByName_AmbiguousRecallsNothing(t *testing.T) {
 	r := NewDispatchRegistry()
 	firstCancelled := false
 	secondCancelled := false
-	r.RegisterWithID("second", "reviewer", func() { secondCancelled = true }, nil, "session", "", 1)
-	r.RegisterWithID("first", "reviewer", func() { firstCancelled = true }, nil, "session", "", 1)
+	r.RegisterWithID("second", "reviewer", func(string) { secondCancelled = true }, nil, "session", "", 1)
+	r.RegisterWithID("first", "reviewer", func(string) { firstCancelled = true }, nil, "session", "", 1)
 
 	res := r.RecallOwnedByName("", "reviewer", "compatibility")
 	outcome, matching := res.Outcome, res.MatchingIDs
@@ -650,8 +650,8 @@ func TestRecallByName_AmbiguousRecallsNothing(t *testing.T) {
 func TestRecallByName_UniqueMatchRecalls(t *testing.T) {
 	r := NewDispatchRegistry()
 	cancelled := false
-	r.RegisterWithID("only", "reviewer", func() { cancelled = true }, nil, "session", "", 1)
-	r.RegisterWithID("other", "writer", func() {}, nil, "session", "", 1)
+	r.RegisterWithID("only", "reviewer", func(string) { cancelled = true }, nil, "session", "", 1)
+	r.RegisterWithID("other", "writer", func(string) {}, nil, "session", "", 1)
 
 	res := r.RecallOwnedByName("", "reviewer", "operator stop")
 	outcome, matching := res.Outcome, res.MatchingIDs

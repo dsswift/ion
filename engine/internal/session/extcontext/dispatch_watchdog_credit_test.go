@@ -43,7 +43,7 @@ func (b *bumpProbeBackend) BumpRunProgress(requestID string) { b.bumped <- reque
 func TestDispatchRegistry_BumpProgressForID_ReachesParentRun(t *testing.T) {
 	probe := &bumpProbeBackend{bumped: make(chan string, 4)}
 	r := NewDispatchRegistry()
-	r.RegisterWithID("parent-disp", "lead", func() {}, probe, "sess", "", 1)
+	r.RegisterWithID("parent-disp", "lead", func(string) {}, probe, "sess", "", 1)
 	r.SetChildRunID("parent-disp", "sess-parent-run-id")
 
 	if !r.BumpProgressForID("parent-disp") {
@@ -68,7 +68,7 @@ func TestDispatchRegistry_BumpProgressForID_ReachesParentRun(t *testing.T) {
 		t.Error("BumpProgressForID returned true for a reservation with no backend")
 	}
 	// Registered but empty ChildRunID → false.
-	r.RegisterWithID("no-run-id", "y", func() {}, probe, "sess", "", 1)
+	r.RegisterWithID("no-run-id", "y", func(string) {}, probe, "sess", "", 1)
 	if r.BumpProgressForID("no-run-id") {
 		t.Error("BumpProgressForID returned true with an unset ChildRunID")
 	}

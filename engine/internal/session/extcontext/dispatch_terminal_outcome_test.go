@@ -235,7 +235,7 @@ func TestTerminalOutcome_PanicCarriesRecordedChildConversationID(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			registry := NewDispatchRegistry()
-			registry.RegisterWithID("panicking", "worker", func() {}, nil, "panic-outcome-session", "", 1)
+			registry.RegisterWithID("panicking", "worker", func(string) {}, nil, "panic-outcome-session", "", 1)
 			if tc.convID != "" {
 				registry.SetChildConvID("panicking", tc.convID)
 			}

@@ -4,13 +4,13 @@ import "testing"
 
 func ownershipRegistry() *DispatchRegistry {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("a", "parent-a", func() {}, nil, "s", "", 1)
-	r.RegisterWithID("a1", "child-a", func() {}, nil, "s", "a", 2)
-	r.RegisterWithID("a2", "grandchild-a", func() {}, nil, "s", "a1", 3)
-	r.RegisterWithID("b", "parent-b", func() {}, nil, "s", "", 1)
-	r.RegisterWithID("b1", "child-b", func() {}, nil, "s", "b", 2)
+	r.RegisterWithID("a", "parent-a", func(string) {}, nil, "s", "", 1)
+	r.RegisterWithID("a1", "child-a", func(string) {}, nil, "s", "a", 2)
+	r.RegisterWithID("a2", "grandchild-a", func(string) {}, nil, "s", "a1", 3)
+	r.RegisterWithID("b", "parent-b", func(string) {}, nil, "s", "", 1)
+	r.RegisterWithID("b1", "child-b", func(string) {}, nil, "s", "b", 2)
 	// Detached controls parking only. It remains A's child for emergency recall.
-	r.RegisterWithID("ad", "detached-a", func() {}, nil, "s", "a", 2)
+	r.RegisterWithID("ad", "detached-a", func(string) {}, nil, "s", "a", 2)
 	r.MarkDetached("ad")
 	return r
 }
@@ -64,7 +64,7 @@ func TestOwnedSnapshot_StrictDescendants(t *testing.T) {
 func TestRecallOwnedByID_ImmediateAndScoped(t *testing.T) {
 	r := ownershipRegistry()
 	cancelled := false
-	r.RegisterWithID("a3", "great-grandchild-a", func() { cancelled = true }, nil, "s", "a2", 4)
+	r.RegisterWithID("a3", "great-grandchild-a", func(string) { cancelled = true }, nil, "s", "a2", 4)
 
 	if got := r.RecallOwnedByID("a", "a2", "emergency"); got.Outcome != RecallOutcomeRecalled {
 		t.Fatalf("RecallOwnedByID = %+v, want recalled", got)
@@ -86,7 +86,7 @@ func TestRecallOwnedByID_ImmediateAndScoped(t *testing.T) {
 func TestRecallOwnedByID_RejectsSibling(t *testing.T) {
 	r := ownershipRegistry()
 	cancelled := false
-	r.RegisterWithID("b2", "grandchild-b", func() { cancelled = true }, nil, "s", "b1", 3)
+	r.RegisterWithID("b2", "grandchild-b", func(string) { cancelled = true }, nil, "s", "b1", 3)
 	if got := r.RecallOwnedByID("a", "b1", "unauthorized"); got.Outcome != RecallOutcomeUnauthorized {
 		t.Fatalf("RecallOwnedByID sibling = %+v, want unauthorized", got)
 	}
@@ -100,8 +100,8 @@ func TestRecallOwnedByID_RejectsSibling(t *testing.T) {
 
 func TestOwnedSnapshot_CarriesWaitingOn(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("a", "parent-a", func() {}, nil, "s", "", 1)
-	r.RegisterWithID("a1", "child-a", func() {}, nil, "s", "a", 2)
+	r.RegisterWithID("a", "parent-a", func(string) {}, nil, "s", "", 1)
+	r.RegisterWithID("a1", "child-a", func(string) {}, nil, "s", "a", 2)
 	if !r.SetSuspendedStateWithWaitingOn("a1", make(chan struct{}, 1), []string{"a2"}, []string{"bash-1"}, nil) {
 		t.Fatal("failed to suspend a1")
 	}
@@ -135,9 +135,9 @@ func TestOwnedSnapshot_CarriesWaitingOn(t *testing.T) {
 
 func TestOwnsDispatch_CycleFailsClosed(t *testing.T) {
 	r := NewDispatchRegistry()
-	r.RegisterWithID("a", "a", func() {}, nil, "s", "b", 1)
-	r.RegisterWithID("b", "b", func() {}, nil, "s", "a", 2)
-	r.RegisterWithID("c", "c", func() {}, nil, "s", "", 1)
+	r.RegisterWithID("a", "a", func(string) {}, nil, "s", "b", 1)
+	r.RegisterWithID("b", "b", func(string) {}, nil, "s", "a", 2)
+	r.RegisterWithID("c", "c", func(string) {}, nil, "s", "", 1)
 	owned, found := r.OwnsDispatch("c", "a")
 	if !found || owned {
 		t.Fatalf("cycle ownership = (%v, %v), want (false, true)", owned, found)

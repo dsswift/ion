@@ -83,7 +83,7 @@ func TestDispatchSlotLifetime_RegisterUpgradesReservation(t *testing.T) {
 		t.Fatal("reserved id is not active")
 	}
 
-	registry.RegisterWithID(id, "x", func() {}, backend.NewApiBackend(), "sess", "", 1)
+	registry.RegisterWithID(id, "x", func(string) {}, backend.NewApiBackend(), "sess", "", 1)
 
 	ids := registry.ActiveIDs()
 	if len(ids) != 1 || !ids[id] {
@@ -102,7 +102,7 @@ func TestDispatchSlotLifetime_TerminalBeforeDeregisterSurvivesSweep(t *testing.T
 	registry := NewDispatchRegistry()
 	const id = "dispatch-x-1-aaa"
 
-	registry.RegisterWithID(id, "x", func() {}, backend.NewApiBackend(), "sess", "", 1)
+	registry.RegisterWithID(id, "x", func(string) {}, backend.NewApiBackend(), "sess", "", 1)
 	store.AppendState(types.AgentStateUpdate{Name: "x", ID: id, Status: "running"})
 
 	// New order: terminal transition while still registered, then deregister.
@@ -124,7 +124,7 @@ func TestDispatchSlotLifetime_UpsertReMaterializesSweptTerminal(t *testing.T) {
 	registry := NewDispatchRegistry()
 	const id = "dispatch-x-1-aaa"
 
-	registry.RegisterWithID(id, "x", func() {}, backend.NewApiBackend(), "sess", "", 1)
+	registry.RegisterWithID(id, "x", func(string) {}, backend.NewApiBackend(), "sess", "", 1)
 	store.AppendState(types.AgentStateUpdate{Name: "x", ID: id, Status: "running"})
 
 	// Reproduce the death-gap window: deregister, then a sweep fires before the

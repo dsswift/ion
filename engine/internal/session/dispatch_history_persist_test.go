@@ -84,7 +84,7 @@ func TestDispatchControlMismatch_EmitsTelemetry(t *testing.T) {
 	s.telemetry = col
 
 	other := extcontext.NewDispatchRegistry()
-	other.RegisterWithID("held-elsewhere", "worker", func() {}, nil, "other-session", "", 1)
+	other.RegisterWithID("held-elsewhere", "worker", func(string) {}, nil, "other-session", "", 1)
 	t.Cleanup(func() { other.RecallAll("test cleanup") })
 
 	if got := s.dispatchRegistry.SteerOwnedByID("", "held-elsewhere", "msg").Outcome; got != extcontext.SteerOutcomeUnauthorized {

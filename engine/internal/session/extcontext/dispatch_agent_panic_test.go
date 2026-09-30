@@ -182,7 +182,7 @@ func TestRecoverBackgroundDispatchPanic_SynthesizesTerminalState(t *testing.T) {
 	// key matches the agentID that recoverBackgroundDispatchPanic will
 	// pass to Deregister.
 	registry.RegisterWithID("agent-id-xyz", "test-agent",
-		func() {},
+		func(string) {},
 		nil, // child backend not exercised on the panic path
 		"panic-test-session",
 		"", 0, // parentID, depth
@@ -316,7 +316,7 @@ func TestBackgroundDispatchAgentEndAlwaysFires(t *testing.T) {
 			sa := &panicTestAccessor{}
 			registry := NewDispatchRegistry()
 			agentID := "dispatch-id-" + tc.name
-			registry.RegisterWithID(agentID, "agent-"+tc.name, func() {}, nil, "k", "", 0)
+			registry.RegisterWithID(agentID, "agent-"+tc.name, func(string) {}, nil, "k", "", 0)
 
 			recoverBackgroundDispatchPanic(
 				sa, registry,
@@ -346,10 +346,10 @@ func (a *panicTestAccessor) DispatchRegistry() *DispatchRegistry { return nil }
 func TestRecoverBackgroundDispatchPanic_NotifiesParentAndCallback(t *testing.T) {
 	sa := &panicTestAccessor{}
 	registry := NewDispatchRegistry()
-	registry.RegisterWithID("parent", "lead", func() {}, nil, "panic-test-session", "", 1)
+	registry.RegisterWithID("parent", "lead", func(string) {}, nil, "panic-test-session", "", 1)
 	revive := make(chan struct{}, 1)
 	registry.SetSuspendedState("parent", revive, []string{"child"})
-	registry.RegisterWithID("child", "worker", func() {}, nil, "panic-test-session", "parent", 2)
+	registry.RegisterWithID("child", "worker", func(string) {}, nil, "panic-test-session", "parent", 2)
 
 	callback := make(chan extension.DispatchAgentResult, 1)
 	recoverBackgroundDispatchPanic(
