@@ -212,7 +212,7 @@ func DoProtectedOperation(ctx context.Context, params ProtectedOperationParams) 
 		result.Headers[name] = redact(resp.Header.Get(name))
 	}
 	utils.LogWithFields(utils.LevelInfo, "extension.protected_operation", "protected operation response", map[string]any{
-		"operation": params.Name, "subject": subject, "method": method, "host": target.Hostname(),
+		"operation": params.Name, "subject": subject, "method": method, "url_host": target.Hostname(),
 		"status": resp.StatusCode, "status_class": fmt.Sprintf("%dxx", resp.StatusCode/100),
 		"duration_ms": time.Since(started).Milliseconds(), "count": len(data), "redacted": result.Body != string(data),
 	})

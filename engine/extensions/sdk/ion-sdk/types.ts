@@ -1362,15 +1362,17 @@ export interface IonContext extends DispatchControlContext {
 
   /**
    * Run an operation the operator declared under `protectedOperations` in the
-   * engine's global engine.json. The declaration fixes the method,
+   * engine's global or enterprise config. The declaration fixes the method,
    * destination, secret reference, injection slot, and payload schema; the
    * extension supplies only the name and a payload. The engine injects the
    * secret at call time and strips it from the result, so the credential
    * never enters this process and the call cannot be redirected.
    *
-   * `payload` is sent as the JSON body after the engine validates it against
-   * the declared schema. Omit it to send no body. Rejects on an unknown name,
-   * a rejected payload, or an engine with no declared operations.
+   * The engine validates `payload` against the declared schema, fills any
+   * `{name}` placeholders in the declared path from its top-level fields,
+   * and sends it as the JSON body (never for GET or HEAD). Omit it to send
+   * no body. Rejects on an unknown name, a rejected payload, an unavailable
+   * secret, or an engine with no declared operations.
    *
    * @example
    * ```ts
