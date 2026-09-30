@@ -18,6 +18,12 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.87.1](https://github.com/dsswift/ion/compare/engine-v1.87.0...engine-v1.87.1) (2026-09-30)
+
+### Bug Fixes
+
+* **engine:** end background mcp work when the server stops ([cdf6f3b](https://github.com/dsswift/ion/commit/cdf6f3b12b63249bf15c0217e38aaef127b30e86))
+
 ## [1.87.0](https://github.com/dsswift/ion/compare/engine-v1.86.1...engine-v1.87.0) (2026-09-30)
 
 ### Features
