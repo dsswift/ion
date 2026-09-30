@@ -308,10 +308,16 @@ func (m *Manager) SessionKeys() []string {
 // Returns the number of sessions that ended up with a working connection.
 // Per-session failures are logged and skipped rather than aborting the sweep:
 // one wedged session must not deny every other session its refreshed tools.
-func (m *Manager) ReconnectMcpServer(name string) int {
+func (m *Manager) ReconnectMcpServer(ctx context.Context, name string) int {
 	reconnected := 0
 
 	for _, key := range m.SessionKeys() {
+		if ctx.Err() != nil {
+			utils.LogWithFields(utils.LevelInfo, "session", "mcp reconnect sweep cancelled", map[string]any{
+				"serverName": name, "reconnected": reconnected, "error": ctx.Err().Error(),
+			})
+			break
+		}
 		// Resolve per session: sessions can have different working directories,
 		// so the project config layer (and thus this server's definition) can
 		// legitimately differ between them.
@@ -353,7 +359,7 @@ func (m *Manager) ReconnectMcpServer(name string) int {
 		// Connect BEFORE dropping the old connection: if the new attempt fails,
 		// the session keeps the connection it had rather than being left with
 		// none, which would silently strip the server's tools mid-conversation.
-		conn, err := mcp.Connect(name, cfg)
+		conn, err := mcp.ConnectContext(ctx, name, cfg, mcp.ConnectionOptions{})
 		if err != nil {
 			m.recordMcpConnectError(name, err)
 			utils.LogWithFields(utils.LevelError, "session", "mcp reconnect failed; keeping existing connection", map[string]any{

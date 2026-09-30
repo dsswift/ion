@@ -89,6 +89,11 @@ type Server struct {
 	contextBreakdownActive  map[string]struct{}
 	contextBreakdownWorkers sync.WaitGroup
 
+	// mcpWorkMu admits MCP background work (see startMcpWork); Stop holds it
+	// while closing done and waits on mcpWorkers.
+	mcpWorkMu  sync.Mutex
+	mcpWorkers sync.WaitGroup
+
 	// probes caches the install/auth state of the delegated provider CLIs
 	// (claude/codex/grok/cursor). list_models reads it to populate each
 	// provider's cli status; it is refreshed asynchronously at startup and on
@@ -457,10 +462,12 @@ func isAddrInUse(err error) bool {
 func (s *Server) Stop() error {
 	s.stopOnce.Do(func() {
 		s.contextBreakdownMu.Lock()
+		s.mcpWorkMu.Lock()
 		close(s.done)
 		if s.shutdownCancel != nil {
 			s.shutdownCancel()
 		}
+		s.mcpWorkMu.Unlock()
 		s.contextBreakdownMu.Unlock()
 
 		if s.lanes != nil {
@@ -477,6 +484,7 @@ func (s *Server) Stop() error {
 			utils.LogWithFields(utils.LevelInfo, "server", "StopAll during shutdown returned error", map[string]any{"error": err.Error()})
 		}
 		s.contextBreakdownWorkers.Wait()
+		s.mcpWorkers.Wait()
 
 		s.mu.Lock()
 		remainingClients := len(s.clients)

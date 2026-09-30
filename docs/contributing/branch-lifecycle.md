@@ -36,6 +36,27 @@ The agent's job ends at the commit. Squashing, pushing, and whether to open a pu
 
 **Do not re-run `/squash` on a published branch**, including a branch that has a pull request open. Rebuilding history that has been pushed requires a force-push, which breaks review threads and severs the mapping between review comments and the code they describe. Fix commits land on top as ordinary conventional commits.
 
+## Landing through an integration branch
+
+The common shape is two tiers: a long-lived integration branch per operator, and a worktree per piece of work under it. Worktrees land on the integration branch (the Land verb, [worktrees and benches](../architecture/worktrees-and-benches.md)); the integration branch merges into `main`. Call the integration branch `<int>` here.
+
+1. On `<int>`, create the worktree. Do the work there.
+2. Before landing: on `<int>`, `git rebase main`. Everything on `<int>` is usually already in `main` through the last merge node, and `main` has one newer commit, the pipeline's version bump, so this is a fast-forward and nothing is rewritten. Only commits on `<int>` that never reached `main` are replayed; then push `<int>` with `--force-with-lease`, which is fine for a branch only you push to.
+3. In the worktree, rebase onto `<int>` and resolve conflicts there, where the work is.
+4. Land the worktree onto `<int>`.
+5. Merge into `main`, standing on `main`:
+
+   ```bash
+   git checkout main
+   git pull
+   git merge <int>      # --no-ff by default after make bootstrap: this is the merge node
+   git push             # the hook checks the tip is a merge, runs the static gates, pushes
+   ```
+
+6. Back on `<int>`, push it too. `origin/main` is what the pre-push hook scopes its gates against, and a current `origin/<int>` is where the next worktree starts.
+
+Step 5 is what a pull request used to be. The merge node carries the same fact: this work landed, from that branch.
+
 ## What runs automatically
 
 Git hooks, managed by husky. They install themselves: root `package.json` has `"prepare": "husky"`, so `npm install` (or `make bootstrap`, which wraps it) points `core.hooksPath` at `.husky/_`.

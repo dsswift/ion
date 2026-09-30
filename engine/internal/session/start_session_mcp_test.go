@@ -16,6 +16,7 @@ package session
 // with no daemon restart), and enterprise policy prunes before connect.
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -313,7 +314,7 @@ func TestReconnectSkipsNeverConnectedSessions(t *testing.T) {
 	t.Cleanup(func() { mgr.StopSession(key) }) //nolint:errcheck // best-effort test teardown
 
 	// A login completed elsewhere; the sweep runs.
-	reconnected := mgr.ReconnectMcpServer("srv")
+	reconnected := mgr.ReconnectMcpServer(context.Background(), "srv")
 
 	if reconnected != 0 {
 		t.Errorf("reconnected %d idle session(s), want 0", reconnected)

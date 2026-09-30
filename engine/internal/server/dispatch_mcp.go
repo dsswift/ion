@@ -15,6 +15,7 @@ package server
 // while the operator is in their browser.
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -175,17 +176,22 @@ func (s *Server) dispatchMcpLogin(conn net.Conn, cmd *protocol.ClientCommand) {
 
 	// Complete in the background; the engine never blocks a dispatch on user
 	// action. The flow carries its own 5-minute deadline (auth.StartPKCEFlow),
-	// so this goroutine cannot outlive it.
+	// and server shutdown cancels it sooner.
 	name := cmd.McpName
 	projectDir := cmd.Path
-	go func() {
+	started := s.startMcpWork("login", name, func(ctx context.Context) {
 		select {
 		case <-login.Done:
-			s.settleMcpLogin(name, projectDir, nil)
+			s.settleMcpLogin(ctx, name, projectDir, nil)
 		case loginErr := <-login.Err:
-			s.settleMcpLogin(name, projectDir, loginErr)
+			s.settleMcpLogin(ctx, name, projectDir, loginErr)
+		case <-ctx.Done():
+			login.Cancel()
 		}
-	}()
+	})
+	if !started {
+		login.Cancel()
+	}
 }
 
 // settleMcpLogin is where every login attempt ends, whichever redirect it
@@ -194,14 +200,14 @@ func (s *Server) dispatchMcpLogin(conn net.Conn, cmd *protocol.ClientCommand) {
 // the attempt left the server unauthorized. When no live session reconnected,
 // a probe refreshes the recorded connect error, which otherwise still reports
 // the failure from before the sign-in.
-func (s *Server) settleMcpLogin(name, projectDir string, loginErr error) {
+func (s *Server) settleMcpLogin(ctx context.Context, name, projectDir string, loginErr error) {
 	if loginErr != nil {
 		utils.LogWithFields(utils.LevelInfo, "server.mcp", "login did not complete", map[string]any{
 			"server": name, "error": loginErr.Error(),
 		})
 	} else {
-		reconnected := s.reconnectMcpAcrossSessions(name)
-		probed := reconnected == 0 && s.probeMcpServer(name, projectDir)
+		reconnected := s.reconnectMcpAcrossSessions(ctx, name)
+		probed := reconnected == 0 && s.probeMcpServer(ctx, name, projectDir)
 		utils.LogWithFields(utils.LevelInfo, "server.mcp", "login completed", map[string]any{
 			"server": name, "sessions_reconnected": reconnected, "probed": probed,
 		})
@@ -225,11 +231,11 @@ func (s *Server) dispatchMcpLogout(conn net.Conn, cmd *protocol.ClientCommand) {
 // reconnectMcpAcrossSessions asks the session manager to re-establish a server
 // on every live session. Guarded because a Server can exist without a manager
 // in tests.
-func (s *Server) reconnectMcpAcrossSessions(name string) int {
+func (s *Server) reconnectMcpAcrossSessions(ctx context.Context, name string) int {
 	if s.manager == nil {
 		return 0
 	}
-	return s.manager.ReconnectMcpServer(name)
+	return s.manager.ReconnectMcpServer(ctx, name)
 }
 
 // mcpConfigFromCommand builds a server config from an mcp_add command. The
@@ -254,12 +260,12 @@ func mcpConfigFromCommand(cmd *protocol.ClientCommand) (types.McpServerConfig, e
 // probeMcpServer refreshes a server's recorded connect error with a fresh
 // attempt. Returns whether a probe ran; a Server without a manager (tests) has
 // nothing to probe.
-func (s *Server) probeMcpServer(name, projectDir string) bool {
+func (s *Server) probeMcpServer(ctx context.Context, name, projectDir string) bool {
 	if s.manager == nil {
 		return false
 	}
 	//nolint:errcheck // the outcome is recorded as the server's connect error and logged by the probe
-	_ = s.manager.ProbeMcpServer(name, projectDir)
+	_ = s.manager.ProbeMcpServer(ctx, name, projectDir)
 	return true
 }
 
