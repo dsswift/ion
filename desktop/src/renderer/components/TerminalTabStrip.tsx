@@ -5,7 +5,7 @@ import { useSessionStore } from '@ion/server/store/sessionStore'
 import { Tooltip } from './git/Tooltip'
 import { contentRouter } from '../lib/file-open-router'
 import type { TerminalInstance } from '@ion/shared/types'
-import { rWarn } from '../rendererLogger'
+import { rDebug, rWarn } from '../rendererLogger'
 import { host } from '../host/host-instance'
 import { getTerminalEntry } from './TerminalInstance'
 import { addTerminalContext } from './composer/composer-context-sources'
@@ -69,6 +69,16 @@ export function TerminalTabStrip({ tabId }: Props) {
     setEditingId(null)
   }
 
+  const closeInstance = (instanceId: string) => {
+    void removeTerminalInstance(tabId, instanceId).catch((error) => {
+      rWarn('terminal', 'conversation terminal close failed', {
+        tab_id: tabId,
+        instance_id: instanceId,
+        error: String(error),
+      })
+    })
+  }
+
   const renderTab = (inst: TerminalInstance) => {
     const isActive = inst.id === activeId
     const activity = terminalActivities.get(`${tabId}:${inst.id}`)
@@ -79,6 +89,17 @@ export function TerminalTabStrip({ tabId }: Props) {
         data-terminal-tab-id={inst.id}
         onClick={() => selectTerminalInstance(tabId, inst.id)}
         onDoubleClick={() => startRename(inst)}
+        onAuxClick={(e) => {
+          // Middle-click close (button 1), the editor-tab convention. A locked
+          // (read-only) terminal ignores it.
+          if (e.button !== 1) return
+          e.preventDefault()
+          if (inst.readOnly) {
+            rDebug('terminal', 'middle-click close ignored: terminal locked', { tab_id: tabId, instance_id: inst.id })
+            return
+          }
+          closeInstance(inst.id)
+        }}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -157,13 +178,7 @@ export function TerminalTabStrip({ tabId }: Props) {
           data-ion-ui
           onClick={(e) => {
             e.stopPropagation()
-            void removeTerminalInstance(tabId, inst.id).catch((error) => {
-              rWarn('terminal', 'conversation terminal close failed', {
-                tab_id: tabId,
-                instance_id: inst.id,
-                error: String(error),
-              })
-            })
+            closeInstance(inst.id)
           }}
           style={{
             background: 'none',
