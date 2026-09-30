@@ -1266,6 +1266,7 @@ Complete Provider Subscription state: the provider key the engine resolved from 
 | `type` | `"engine_provider_subscription"` | Event type |
 | `providerSubscription.state` | string | `disabled` \| `awaiting_identity` \| `resolving` \| `applied` \| `selection_required` \| `none` \| `failed` |
 | `providerSubscription.provider` | string | Provider id the key applies to (optional) |
+| `providerSubscription.providerDisplayName` | string | The provider's configured `displayName`, so a consumer can name the provider the key configures (optional) |
 | `providerSubscription.selected` | object | `{ id, label }` of the applied subscription; present only when `applied` (optional) |
 | `providerSubscription.options` | object[] | `{ id, label }` of each subscription the last lookup returned, in response order (optional) |
 | `providerSubscription.source` | string | `lookup` \| `cache`: where the applied key came from (optional) |

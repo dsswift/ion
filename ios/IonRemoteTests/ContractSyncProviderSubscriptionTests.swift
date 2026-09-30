@@ -17,7 +17,7 @@ final class ContractSyncProviderSubscriptionTests: XCTestCase {
     }
 
     func testProviderSubscriptionStatusMatchesGo() throws {
-        let swiftFields: Set<String> = ["state", "provider", "selected", "options", "source", "resolvedAt", "error"]
+        let swiftFields: Set<String> = ["state", "provider", "providerDisplayName", "selected", "options", "source", "resolvedAt", "error"]
         XCTAssertEqual(Set(try XCTUnwrap(sharedTypes()["ProviderSubscriptionStatus"])), swiftFields)
     }
 

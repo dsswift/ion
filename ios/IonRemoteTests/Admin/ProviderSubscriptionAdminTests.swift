@@ -40,7 +40,10 @@ final class ProviderSubscriptionAdminTests: XCTestCase {
 
     func testNoSubscriptionIsExplained() throws {
         let none = try IntegrationsFixtures.json(#"{"state":"none","provider":"gateway"}"#).decoded(as: ProviderSubscriptionStatus.self)
-        XCTAssertEqual(ProviderSubscriptionRows.describe(none), "The account has no subscription for gateway. Contact your administrator for access.")
+        XCTAssertEqual(ProviderSubscriptionRows.providerName(none), "gateway")
+        let named = try IntegrationsFixtures.json(#"{"state":"none","provider":"gateway","providerDisplayName":"Corporate Gateway"}"#).decoded(as: ProviderSubscriptionStatus.self)
+        XCTAssertEqual(ProviderSubscriptionRows.providerName(named), "Corporate Gateway")
+        XCTAssertEqual(ProviderSubscriptionRows.describe(none), "The account has no subscription. Contact your administrator for access.")
     }
 
     func testTheModelFollowsTheSubscriptionChannel() async {

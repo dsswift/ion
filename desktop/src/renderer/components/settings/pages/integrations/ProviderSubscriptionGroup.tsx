@@ -16,20 +16,24 @@ import { useSettingsShell } from '../../settings-shell'
 import { Button, FormGroup, FormRow, Inline, Select } from '../../kit'
 import { rError, rInfo, rWarn } from '../../../../rendererLogger'
 
-/** What the row says for each state. */
+/** The provider the key configures, as the model picker names it. */
+export function providerName(status: ProviderSubscriptionStatus): string {
+  return status.providerDisplayName || status.provider || 'Provider'
+}
+
+/** What the row says for each state. The row's label names the provider. */
 function describeState(status: ProviderSubscriptionStatus): string {
-  const provider = status.provider ? ` for ${status.provider}` : ''
   switch (status.state) {
     case 'awaiting_identity':
-      return `Sign in above to look up your subscription key${provider}.`
+      return 'Sign in above to look up your subscription key.'
     case 'resolving':
       return 'Looking up your subscription…'
     case 'applied':
-      return `Using ${status.selected?.label ?? 'your subscription'}${provider}.`
+      return `Using ${status.selected?.label ?? 'your subscription'}.`
     case 'selection_required':
-      return `Your account has several subscriptions${provider}. Choose the one to use.`
+      return 'Your account has several subscriptions. Choose the one to use.'
     case 'none':
-      return `Your account has no subscription${provider}. Contact your administrator for access.`
+      return 'Your account has no subscription. Contact your administrator for access.'
     case 'failed':
       return 'The subscription lookup failed. Any key entered by hand is still in use.'
     case 'disabled':
@@ -97,7 +101,7 @@ export function ProviderSubscriptionGroup(): React.JSX.Element | null {
 
   return (
     <FormGroup title="Provider subscription" anchor="provider-subscription">
-      <FormRow label="Subscription key" description={describeState(status)} warning={warning}>
+      <FormRow label={`${providerName(status)} subscription`} description={describeState(status)} warning={warning}>
         <Inline>
           {canChoose && (
             <Select aria-label="Subscription" width={200} value={choice} disabled={busy} onChange={(e) => setChoice(e.target.value)}>

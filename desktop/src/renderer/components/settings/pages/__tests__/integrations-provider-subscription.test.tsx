@@ -38,12 +38,14 @@ describe('ProviderSubscriptionGroup', () => {
   })
 
   it('offers the subscriptions and applies the one chosen', async () => {
-    ion.providerSubscription.mockResolvedValue({ ok: true, subscription: { state: 'selection_required', provider: 'gateway', options } })
+    ion.providerSubscription.mockResolvedValue({ ok: true, subscription: { state: 'selection_required', provider: 'gateway', providerDisplayName: 'Corporate Gateway', options } })
     ion.selectProviderSubscription.mockResolvedValue({
       ok: true, subscription: { state: 'applied', provider: 'gateway', options, selected: options[1], source: 'lookup' },
     })
     await h.render(<ProviderSubscriptionGroup />)
     expect(text()).toContain('Choose the one to use')
+    // The row names the provider the key configures, by its display name.
+    expect(text()).toContain('Corporate Gateway subscription')
 
     const select = h.control('Subscription') as HTMLSelectElement
     await act(async () => {
@@ -53,14 +55,16 @@ describe('ProviderSubscriptionGroup', () => {
     })
     await h.click('Use subscription')
     expect(ion.selectProviderSubscription).toHaveBeenCalledWith({ id: 'prem' })
-    expect(text()).toContain('Using High quota for gateway')
+    expect(text()).toContain('Using High quota.')
   })
 
   it('explains an account with no subscription', async () => {
     ion.providerSubscription.mockResolvedValue({ ok: true, subscription: { state: 'none', provider: 'gateway' } })
     await h.render(<ProviderSubscriptionGroup />)
-    expect(text()).toContain('Your account has no subscription for gateway')
+    expect(text()).toContain('Your account has no subscription.')
     expect(h.maybeControl('Use subscription')).toBeUndefined()
+    // Without a display name the row falls back to the provider id.
+    expect(text()).toContain('gateway subscription')
   })
 
   it('shows a failed lookup and looks up again on request', async () => {
@@ -70,7 +74,7 @@ describe('ProviderSubscriptionGroup', () => {
     expect(text()).toContain('endpoint returned status 503')
     await h.click('Look up again')
     expect(ion.refreshProviderSubscription).toHaveBeenCalled()
-    expect(text()).toContain('Using Standard for gateway')
+    expect(text()).toContain('Using Standard.')
   })
 
   it('replaces its view with a pushed snapshot', async () => {
@@ -81,6 +85,6 @@ describe('ProviderSubscriptionGroup', () => {
       emitOnChannel('ion:provider-subscription-changed', { state: 'applied', provider: 'gateway', selected: options[0], source: 'lookup' })
       await flush()
     })
-    expect(text()).toContain('Using Standard for gateway')
+    expect(text()).toContain('Using Standard.')
   })
 })

@@ -71,6 +71,8 @@ export interface SubscriptionOption {
 export interface ProviderSubscriptionStatus {
   state: SubscriptionState;
   provider?: string;
+  /** The provider's configured display name; absent when none is set. */
+  providerDisplayName?: string;
   /** The subscription whose key is applied; present only when applied. */
   selected?: SubscriptionOption;
   /** The subscriptions the last lookup returned, in response order. */

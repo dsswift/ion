@@ -24,11 +24,13 @@ func startSubscriptionLookup(cfg *types.EngineRuntimeConfig, resolver *auth.Reso
 		utils.LogWithFields(utils.LevelError, "main", "subscription lookup config invalid; manual key entry only", map[string]any{"error": err.Error()})
 		return func() {}
 	}
-	if _, ok := cfg.Providers[lookup.Provider]; !ok {
+	providerCfg, ok := cfg.Providers[lookup.Provider]
+	if !ok {
 		utils.LogWithFields(utils.LevelWarn, "main", "subscription lookup names a provider with no providers entry", map[string]any{"provider": lookup.Provider})
 	}
 	keys := discoveringKeys{resolver: resolver, providerConfigs: cfg.Providers}
 	manager := subscription.NewManager(lookup, subscription.HTTPFetcher, subscription.NewFileStoreCache(), keys, srv.BroadcastProviderSubscription)
+	manager.SetProviderDisplayName(providerCfg.DisplayName)
 	srv.SetSubscriptionManager(manager)
 	manager.Start()
 	return manager.Stop

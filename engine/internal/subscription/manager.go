@@ -40,6 +40,9 @@ type Manager struct {
 	keys     KeyApplier
 	onChange func(types.ProviderSubscriptionStatus)
 	now      func() time.Time
+	// displayName is the provider's configured display name, stamped on
+	// every snapshot.
+	displayName string
 
 	root       context.Context
 	cancelRoot context.CancelFunc
@@ -85,6 +88,14 @@ func NewManager(cfg types.SubscriptionLookupConfig, fetch Fetcher, cache Cache, 
 	}
 }
 
+// SetProviderDisplayName names the provider on every snapshot. Call before
+// Start.
+func (m *Manager) SetProviderDisplayName(name string) {
+	m.mu.Lock()
+	m.displayName = name
+	m.mu.Unlock()
+}
+
 // Start follows identity transitions, then resolves for the identity already
 // present. Subscribing first means an identity published in between is never
 // lost; the same identity applied twice is a no-op.
@@ -126,7 +137,11 @@ func (m *Manager) Stop() {
 func (m *Manager) Status() types.ProviderSubscriptionStatus {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return cloneStatus(m.status)
+	out := cloneStatus(m.status)
+	if out.Provider != "" {
+		out.ProviderDisplayName = m.displayName
+	}
+	return out
 }
 
 func cloneStatus(status types.ProviderSubscriptionStatus) types.ProviderSubscriptionStatus {

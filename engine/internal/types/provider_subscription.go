@@ -88,6 +88,10 @@ type ProviderSubscriptionStatus struct {
 	State string `json:"state"`
 	// Provider is the provider id the key applies to. Empty when disabled.
 	Provider string `json:"provider,omitempty"`
+	// ProviderDisplayName is the provider's configured displayName
+	// (providers.<id>.displayName), so a consumer can name the provider the
+	// key configures the way its model picker does. Empty when none is set.
+	ProviderDisplayName string `json:"providerDisplayName,omitempty"`
 	// Selected is the subscription whose key is applied. Nil unless State is
 	// applied.
 	Selected *SubscriptionOption `json:"selected,omitempty"`

@@ -15,6 +15,8 @@ struct ProviderSubscriptionStatus: Codable, Equatable, Sendable {
     /// adds still decodes.
     let state: String
     let provider: String?
+    /// The provider's configured display name; absent when none is set.
+    let providerDisplayName: String?
     /// The subscription whose key is applied; present only when applied.
     let selected: SubscriptionOption?
     /// The subscriptions the last lookup returned, in response order.

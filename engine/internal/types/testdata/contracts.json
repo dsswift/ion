@@ -811,6 +811,7 @@
       "error",
       "options",
       "provider",
+      "providerDisplayName",
       "resolvedAt",
       "selected",
       "source",

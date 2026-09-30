@@ -28,7 +28,7 @@ struct ProviderSubscriptionRows: View {
     @ViewBuilder private func content(_ status: ProviderSubscriptionStatus) -> some View {
         let options = status.options ?? []
         VStack(alignment: .leading, spacing: IonSpace.hairlineGap) {
-            Text("Provider subscription")
+            Text("\(Self.providerName(status)) subscription")
             Text(Self.describe(status)).font(.caption).foregroundStyle(.secondary)
         }
         if options.count > 1,
@@ -59,20 +59,24 @@ struct ProviderSubscriptionRows: View {
         }
     }
 
-    /// What the row says for each state.
+    /// The provider the key configures, as the model picker names it.
+    static func providerName(_ status: ProviderSubscriptionStatus) -> String {
+        [status.providerDisplayName, status.provider].compactMap { $0 }.first { !$0.isEmpty } ?? "Provider"
+    }
+
+    /// What the row says for each state. The row's title names the provider.
     static func describe(_ status: ProviderSubscriptionStatus) -> String {
-        let provider = status.provider.map { " for \($0)" } ?? ""
         switch status.state {
         case ProviderSubscriptionStatus.State.awaitingIdentity:
-            return "Sign in to look up the subscription key\(provider)."
+            return "Sign in to look up the subscription key."
         case ProviderSubscriptionStatus.State.resolving:
             return "Looking up the subscription…"
         case ProviderSubscriptionStatus.State.applied:
-            return "Using \(status.selected?.label ?? "the subscription")\(provider)."
+            return "Using \(status.selected?.label ?? "the subscription")."
         case ProviderSubscriptionStatus.State.selectionRequired:
-            return "The account has several subscriptions\(provider). Choose the one to use."
+            return "The account has several subscriptions. Choose the one to use."
         case ProviderSubscriptionStatus.State.none:
-            return "The account has no subscription\(provider). Contact your administrator for access."
+            return "The account has no subscription. Contact your administrator for access."
         case ProviderSubscriptionStatus.State.failed:
             return "The subscription lookup failed. Any key entered by hand is still in use."
         default:

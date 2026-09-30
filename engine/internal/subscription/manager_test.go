@@ -155,8 +155,12 @@ var (
 
 func TestSingleSubscriptionAppliesAutomatically(t *testing.T) {
 	h := newHarness(t, types.SubscriptionLookupConfig{}, answer(standard))
+	h.m.SetProviderDisplayName("Corporate Gateway")
 	h.signIn("user-1")
 	status := h.waitFor(t, types.SubscriptionStateApplied)
+	if status.ProviderDisplayName != "Corporate Gateway" {
+		t.Fatalf("snapshot does not name the provider: %+v", status)
+	}
 	if status.Selected == nil || status.Selected.ID != "std" || status.Source != types.SubscriptionSourceLookup {
 		t.Fatalf("applied status = %+v", status)
 	}
