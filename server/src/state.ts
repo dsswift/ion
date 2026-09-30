@@ -149,27 +149,8 @@ export const modelCache = {
   lastFetched: 0,
 };
 
-/**
- * Enterprise policy cache (D-004), populated once at startup from the
- * engine's get_enterprise_policy blob. Read-only runtime constraint.
- * `allowedModels` filters the model cache above so the iOS snapshot
- * projection (availableModels) honors the same policy as every other client
- * (D-011 parity).
- */
-export const enterprisePolicyCache = {
-  policy: null as import("@ion/shared/types-engine").EnterprisePolicy | null,
-  /**
-   * The resolved new-conversation defaults policy (pre-D-004 single-policy
-   * key). Populated at startup alongside `policy` and refreshed on every
-   * sendSync fetch, so synchronous wire emitters can project it without an
-   * RPC.
-   */
-  newConversationDefaults: null as {
-    baseDirectory: string;
-    engineProfileId: string;
-    locked: boolean;
-  } | null,
-};
+import { enterprisePolicyCache } from './enterprise-policy-publish';
+export { enterprisePolicyCache };
 
 // The model resolver and the settings-files guard read this policy at call
 // time, so it is wired where the cache is made: before any conversation is

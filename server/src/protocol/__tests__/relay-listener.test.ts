@@ -67,6 +67,7 @@ import { setCurrentServerConfig, _resetCurrentServerConfigForTest } from '../../
 import { defaultServerConfig } from '../../config/server-config'
 import { warn as loggerWarn } from '../../logger'
 import { registerTabOwner, _resetPrincipalIndexForTest } from '../tabs-index'
+import { settleEnterprisePolicyUnread } from '../../enterprise-policy-publish'
 
 let dataDir: string
 let originalIonDataDir: string | undefined
@@ -74,6 +75,8 @@ let handle: RelayStudioListenersHandle | null = null
 const secret = Buffer.alloc(32, 9)
 
 beforeEach(() => {
+  // Welcomes wait for the first enterprise-policy read.
+  settleEnterprisePolicyUnread('test')
   originalIonDataDir = process.env.ION_DATA_DIR
   dataDir = mkdtempSync(join(tmpdir(), 'ion-relay-listener-'))
   process.env.ION_DATA_DIR = dataDir

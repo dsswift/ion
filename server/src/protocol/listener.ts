@@ -17,7 +17,9 @@ import { unsubscribeGitAll } from '../git/git-subscriptions'
 import { treeWatch } from '../files/tree-watch'
 import { decodeFrame } from '@ion/shared/studio-wire/codec'
 import type { StudioFrame } from '@ion/shared/studio-wire/types'
-import { getEngineHostInfo, getEnterprisePolicy } from '../engine/engine-bridge-fs'
+import { getEngineHostInfo } from '../engine/engine-bridge-fs'
+import { enterprisePolicyHash, onEnterprisePolicyChange, settledEnterprisePolicy } from '../enterprise-policy-publish'
+import { computeSettingsHiddenGroups } from './settings-visibility'
 import type { HealthHandle } from '../http/health'
 import { log as _log, warn as _warn, debug as _debug } from '../logger'
 import { Connection, connectionRegistry, type ConnectionTransport } from './connection'
@@ -68,14 +70,11 @@ export interface StudioListenersHandle {
 }
 
 /**
- * Best-effort engine version / enterprise-policy caches, refreshed on every
- * new connection's hello and read synchronously so `handleHello` never
- * blocks on an engine round trip. `cachedEngineVersion` starts `'unknown'`;
- * `cachedEnterprisePolicy` starts `null` (== "no policy") until the first
- * successful read.
+ * Best-effort engine version cache, refreshed on every new connection's hello
+ * and read synchronously so `handleHello` never blocks on an engine round
+ * trip. Starts `'unknown'`.
  */
 let cachedEngineVersion = 'unknown'
-let cachedEnterprisePolicy: Awaited<ReturnType<typeof getEnterprisePolicy>> = null
 
 function refreshEngineVersionCache(): void {
   getEngineHostInfo()
@@ -83,11 +82,6 @@ function refreshEngineVersionCache(): void {
       if (info.ok && info.data?.version) cachedEngineVersion = info.data.version
     })
     .catch((err: unknown) => warn('engine version refresh failed', { error: String(err) }))
-  getEnterprisePolicy()
-    .then((policy) => {
-      cachedEnterprisePolicy = policy
-    })
-    .catch((err: unknown) => warn('enterprise policy refresh failed', { error: String(err) }))
 }
 
 /**
@@ -133,7 +127,7 @@ function routeMessage(conn: Connection, ws: ConnectionSocket, raw: unknown, isBi
       serverVersion: opts.serverVersion,
       engineVersion: () => cachedEngineVersion,
       buildSnapshot: buildStudioSnapshot,
-      getEnterprisePolicy: () => cachedEnterprisePolicy,
+      getEnterprisePolicy: settledEnterprisePolicy,
       advertisedRelays: () => advertisedRelays(currentServerConfig()),
       directAddresses: () => loggedDirectAddresses(currentServerConfig().listen.tcp.port),
       allowUnsealedPaired: () => currentServerConfig().listen.tcp.allowUnsealedPaired,
@@ -374,6 +368,14 @@ export function startStudioListeners(health: HealthHandle, options: StudioListen
     warn('startStudioListeners called with neither a local nor a TCP server available')
   }
   installStudioCommandSenders(opts.environmentId)
+  const offPolicy = onEnterprisePolicyChange((policy) => {
+    const policyHash = enterprisePolicyHash(policy)
+    for (const conn of connectionRegistry.all()) {
+      if (conn.isClosed) continue
+      conn.send({ type: 'studio_environment_policy', enterprisePolicy: policy, settingsHiddenGroups: computeSettingsHiddenGroups(conn, policy), policyHash })
+    }
+    log('enterprise policy sent to live connections', { connection_count: connectionRegistry.all().length, policy_hash: policyHash })
+  })
   const heartbeat = setInterval(sweepConnectionLiveness, HEARTBEAT_INTERVAL_MS)
   // Never hold the process open on the heartbeat alone.
   heartbeat.unref()
@@ -382,6 +384,7 @@ export function startStudioListeners(health: HealthHandle, options: StudioListen
     wssList,
     close(): Promise<void> {
       clearInterval(heartbeat)
+      offPolicy()
       for (const conn of connectionRegistry.all()) conn.close('shutdown')
       return Promise.all(wssList.map((wss) => new Promise<void>((resolve) => wss.close(() => resolve())))).then(() => undefined)
     },

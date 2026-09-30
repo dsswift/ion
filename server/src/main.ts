@@ -4,6 +4,7 @@ import { join } from 'path'
 import { dataDir } from './paths'
 import { resolveLocalStudioTarget } from './local-studio-socket'
 import { log as _log, warn as _warn, error as _error, setLogLevel } from './logger'
+import { publishEnterprisePolicy, settleEnterprisePolicyUnread } from './enterprise-policy-publish'
 import { applyMachineIdentity, initServerEgress, installCrashHandlers } from './process-logging'
 import { installExitHandlers } from './process-exit'
 import { startWireLatency } from './protocol/wire-latency-probe'
@@ -167,6 +168,9 @@ function wireEngineReadiness(health: HealthHandle, minVersion: string): void {
     .then(startConversationCleanupOnce)
     .catch((err: unknown) => {
       warn('initial engine connect failed; background reconnect loop will retry', { error: String(err) })
+      // Welcomes wait for the first policy read; an unreachable engine must
+      // not hold them. The reconnect path reads and publishes it later.
+      settleEnterprisePolicyUnread('engine unreachable')
       health.setReadiness({ ready: false, reason: 'engine_unreachable', detail: String(err) })
     })
 
@@ -196,9 +200,10 @@ function wireEngineReadiness(health: HealthHandle, minVersion: string): void {
  */
 async function cacheEnterprisePolicy(): Promise<void> {
   try {
-    enterprisePolicyCache.policy = await getEnterprisePolicy()
+    publishEnterprisePolicy(await getEnterprisePolicy())
   } catch (err) {
     warn('enterprise policy fetch failed; proceeding unconstrained', { error: String(err) })
+    settleEnterprisePolicyUnread('fetch failed')
   }
   try {
     enterprisePolicyCache.newConversationDefaults = await getEnterprisePolicyNewConversationDefaults()
