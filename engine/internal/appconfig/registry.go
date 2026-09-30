@@ -11,10 +11,10 @@ import (
 // independently of the store so a consumer wired before configuration is
 // loaded still sees every transition once a store is installed.
 var (
-	registryMu      sync.RWMutex
-	installed       *Store
-	subscribers     = make(map[uint64]func(Snapshot))
-	nextSubscriber  uint64
+	registryMu     sync.RWMutex
+	installed      *Store
+	subscribers    = make(map[uint64]func(Snapshot))
+	nextSubscriber uint64
 )
 
 // Install makes store the process-wide application config store. Nil
