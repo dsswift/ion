@@ -276,7 +276,21 @@ The `found` field is `true` when a running asynchronous dispatch was found and r
 {"jsonrpc":"2.0","id":100002,"result":{"found":false,"outcome":"ambiguous","matchingDispatchIds":["dispatch-researcher-123","dispatch-researcher-456"]}}
 ```
 
-`ext/steer_dispatch_by_name` answers the same way: `{"delivered":false,"outcome":"ambiguous","matchingDispatchIds":[...]}`, and nothing is delivered. Retry with `ext/steer_dispatch` against one of the IDs.
+`ext/steer_dispatch_by_name` answers the same way: `{"delivered":false,"outcome":"ambiguous","matchingDispatchIds":[...]}`, and nothing is delivered. Retry with `ext/steer_dispatch` against one of the IDs. Name lookup searches only the dispatches the caller owns.
+
+**Ownership and finished targets.** Steer and recall act only on dispatches the caller owns: the root context owns every dispatch in its session, a dispatched agent only its own descendants. `ext/steer_dispatch` answers `"outcome":"unauthorized"` otherwise. `ext/recall_dispatch` answers a `-32000` error whose `data.outcome` is `"unauthorized"`:
+
+```json
+{"jsonrpc":"2.0","id":100003,"error":{"code":-32000,"message":"dispatch \"dispatch-researcher-123\" is not a descendant owned by the caller","data":{"outcome":"unauthorized"}}}
+```
+
+When the target already finished, both answer `"outcome":"completed"` with a `terminal` object shaped like an `ext/list_dispatch_history` entry, instead of `not_found`:
+
+```json
+{"jsonrpc":"2.0","id":100003,"result":{"found":false,"outcome":"completed","terminal":{"dispatchId":"dispatch-researcher-123","name":"researcher","status":"done","exitCode":0,"depth":1,"startedAt":"2026-09-29T14:00:00Z","completedAt":"2026-09-29T14:02:10Z","durationMs":130000,"toolCount":12}}}
+```
+
+`ext/recall_dispatch` results carry `outcome` too: `recalled`, `completed`, or `not_found`.
 
 **Listing ended dispatches:**
 
@@ -288,7 +302,7 @@ The `found` field is `true` when a running asynchronous dispatch was found and r
 {"jsonrpc":"2.0","id":100004,"result":{"dispatches":[{"dispatchId":"dispatch-researcher-123","name":"researcher","status":"cancelled","reason":"superseded","exitCode":2,"depth":1,"startedAt":"2026-09-29T14:00:00Z","completedAt":"2026-09-29T14:02:10Z","durationMs":130000,"toolCount":12}]}}
 ```
 
-`ext/list_dispatch_history` is the terminal peer of `ext/list_dispatch_state`, which lists only live dispatches. Entries are ordered oldest completion first. `status` is `done`, `error`, or `cancelled`. The caller sees the same set it would see live: the root context sees every entry, a dispatched agent only its descendants. Retention is bounded by `dispatchHistory` in `engine.json`.
+`ext/list_dispatch_history` is the terminal peer of `ext/list_dispatch_state`, which lists only live dispatches. Entries are ordered oldest completion first. `status` is `done`, `error`, `cancelled`, or `lost` (running when the engine process died). `exitCode` is absent when unknown. History survives a session or engine restart. The caller sees the same set it would see live: the root context sees every entry, a dispatched agent only its descendants. Retention is bounded by `dispatchHistory` in `engine.json`.
 
 ### ext/task_suspend
 

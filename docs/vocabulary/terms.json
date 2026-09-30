@@ -1309,7 +1309,7 @@
     {
       "id": "dispatch-history",
       "term": "Dispatch History",
-      "definition": "The bounded record of dispatches that have ended, kept by a session's dispatch registry. Each entry holds the dispatch's final status, terminal reason, completion time, identifier, name, parent, and depth, so a consumer can see work that started and ended between two of its polls and rebuild a finished dispatch tree. It is separate from the live dispatch listing, follows the same ownership rule, and is bounded by count and age in engine config.",
+      "definition": "The bounded record of dispatches that have ended, kept by a session's dispatch registry. Each entry holds the dispatch's final status, terminal reason, completion time, identifier, name, parent, and depth, so a consumer can see work that started and ended between two of its polls and rebuild a finished dispatch tree. It is separate from the live dispatch listing, follows the same ownership rule, is bounded by count and age in engine config, and is written to the conversation file so it survives a session or engine restart.",
       "domain": "engine",
       "kind": "runtime-mechanic",
       "status": "canonical",

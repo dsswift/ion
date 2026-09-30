@@ -41,7 +41,7 @@ func TestDispatchHistory_DeregisterRetainsTerminalEntry(t *testing.T) {
 	if e.DispatchID != "dispatch-child" || e.Name != "worker" || e.ParentDispatchID != "dispatch-parent" || e.Depth != 2 {
 		t.Errorf("lineage not preserved: %+v", e)
 	}
-	if e.Status != DispatchStatusError || e.Reason != "boom" || e.ExitCode != 1 {
+	if e.Status != DispatchStatusError || e.Reason != "boom" || e.ExitCode == nil || *e.ExitCode != 1 {
 		t.Errorf("outcome not preserved: %+v", e)
 	}
 	if e.CompletedAt.Before(before) || e.StartedAt.After(e.CompletedAt) {
@@ -126,7 +126,7 @@ func TestDispatchHistory_RecallCascadeRetainsCancelled(t *testing.T) {
 		t.Fatalf("history = %v, want parent and child", got)
 	}
 	for _, e := range history {
-		if e.Status != DispatchStatusCancelled || e.Reason != "timeout guard" || e.ExitCode != ExitCodeRecalled {
+		if e.Status != DispatchStatusCancelled || e.Reason != "timeout guard" || e.ExitCode == nil || *e.ExitCode != ExitCodeRecalled {
 			t.Errorf("entry %s = %+v, want cancelled with the recall reason", e.DispatchID, e)
 		}
 	}

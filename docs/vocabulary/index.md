@@ -503,7 +503,7 @@ A consumer-supplied identifier registered as an alternate name for a dispatch's 
 
 #### Dispatch History {#term-dispatch-history}
 
-The bounded record of dispatches that have ended, kept by a session's dispatch registry. Each entry holds the dispatch's final status, terminal reason, completion time, identifier, name, parent, and depth, so a consumer can see work that started and ended between two of its polls and rebuild a finished dispatch tree. It is separate from the live dispatch listing, follows the same ownership rule, and is bounded by count and age in engine config.
+The bounded record of dispatches that have ended, kept by a session's dispatch registry. Each entry holds the dispatch's final status, terminal reason, completion time, identifier, name, parent, and depth, so a consumer can see work that started and ended between two of its polls and rebuild a finished dispatch tree. It is separate from the live dispatch listing, follows the same ownership rule, is bounded by count and age in engine config, and is written to the conversation file so it survives a session or engine restart.
 
 - **ID:** `dispatch-history`
 - **Status:** `canonical`

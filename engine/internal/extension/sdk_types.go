@@ -202,8 +202,9 @@ type Context struct {
 	// with optional extension loading, system prompt injection, and event streaming.
 	DispatchAgent func(opts DispatchAgentOpts) (*DispatchAgentResult, error)
 
-	// RecallAgent is the name-addressed recall. It recalls only when exactly
-	// one live dispatch carries the name. When several do, nothing is recalled
+	// RecallAgent is the name-addressed recall. It searches the same scope
+	// RecallDispatch accepts and recalls only when exactly one live dispatch
+	// there carries the name. When several do, nothing is recalled
 	// and the result's Outcome is "ambiguous" with every matching dispatch ID,
 	// so the caller can retry with RecallDispatch against the one it means.
 	RecallAgent func(name string, opts RecallAgentOpts) (RecallAgentResult, error)
@@ -211,19 +212,21 @@ type Context struct {
 	// RecallDispatch terminates a running background dispatch identified by
 	// its dispatchId. A root context can recall every dispatch in its session;
 	// a dispatched context can recall only strict descendants of its own
-	// DispatchId. Recalling self, an ancestor, sibling, or another branch
-	// returns an authorization error. Descendants of the target cascade with it.
-	// Returns false without error only when target already completed.
-	//
-	// Agent names are intentionally NOT accepted: a name is not a dispatch
-	// identity, and concurrent same-name dispatches make every resolution rule
-	// unsafe.
-	RecallDispatch func(dispatchID string, opts RecallDispatchOpts) (bool, error)
+	// DispatchId. Descendants of the target cascade with it. The result's
+	// Outcome is "recalled", "completed" (the target had already finished;
+	// Terminal carries how), "unauthorized" (self, an ancestor, sibling,
+	// another branch, or another session's dispatch), or "not_found".
+	// ext/recall_dispatch answers "unauthorized" as a handler error carrying
+	// that outcome, so callers that treat it as an error keep working.
+	RecallDispatch func(dispatchID string, opts RecallDispatchOpts) (RecallDispatchResult, error)
 
 	// SteerDispatch delivers a steering message to a running background
 	// dispatch identified by its dispatchId. The message is injected into
 	// the child's conversation as a user message at the next run-loop
-	// checkpoint, reusing the existing steer channel mechanism. Returns a
+	// checkpoint, reusing the existing steer channel mechanism. A root context
+	// can steer every dispatch in its session; a dispatched context only its
+	// strict descendants ("unauthorized" otherwise). A dispatch that already
+	// finished answers "completed" with its terminal entry. Returns a
 	// SteerDispatchResult describing the delivery outcome.
 	SteerDispatch func(dispatchID, message string) (SteerDispatchResult, error)
 
@@ -231,11 +234,12 @@ type Context struct {
 	// dispatch identified by its agent name. This is the name-based peer of
 	// SteerDispatch: where SteerDispatch requires the full collision-safe
 	// dispatch ID returned by DispatchAgent, SteerDispatchByName resolves
-	// by the human-readable agent name (e.g. "code-reviewer"). It delivers only
-	// when exactly one live dispatch carries the name. When several do, nothing
-	// is delivered and the result's Outcome is "ambiguous" with every matching
-	// dispatch ID in MatchingDispatchIDs. Use SteerDispatch when the exact
-	// dispatch ID is available.
+	// by the human-readable agent name (e.g. "code-reviewer"). It searches the
+	// same scope SteerDispatch accepts and delivers only when exactly one live
+	// dispatch there carries the name. When several do, nothing is delivered
+	// and the result's Outcome is "ambiguous" with every matching dispatch ID
+	// in MatchingDispatchIDs. Use SteerDispatch when the exact dispatch ID is
+	// available.
 	SteerDispatchByName func(name, message string) (SteerDispatchResult, error)
 
 	// SteerSelf delivers a message to the run that OWNS this context, with the
@@ -595,13 +599,15 @@ type DispatchHistoryEntry struct {
 	DispatchID string `json:"dispatchId"`
 	// Name is the agent name (e.g. "code-reviewer").
 	Name string `json:"name"`
-	// Status is the final status: "done", "error", or "cancelled".
+	// Status is the final status: "done", "error", "cancelled", or "lost" (in
+	// flight when the engine process died).
 	Status string `json:"status"`
 	// Reason is the terminal reason: the error text for "error", the recall
 	// reason for "cancelled". Absent for a clean "done".
 	Reason string `json:"reason,omitempty"`
-	// ExitCode is the dispatch result's exit code.
-	ExitCode int `json:"exitCode"`
+	// ExitCode is the dispatch result's exit code. Absent when unknown: a lost
+	// dispatch, or one recorded before exit codes were kept.
+	ExitCode *int `json:"exitCode,omitempty"`
 	// ParentDispatchID is the parent dispatch's ID, empty for top-level
 	// dispatches whose parent is the depth-0 orchestrator.
 	ParentDispatchID string `json:"parentDispatchId,omitempty"`

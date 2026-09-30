@@ -28,6 +28,7 @@
     "RecallAgent",
     "RecallAgentByName",
     "RecallDispatch",
+    "RecallDispatchWithOutcome",
     "RegisterAgentSpec",
     "RegisterProcess",
     "RunOnce",

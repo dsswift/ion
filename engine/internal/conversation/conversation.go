@@ -284,6 +284,23 @@ type AgentDispatchData struct {
 	LostNoticeState string `json:"lostNoticeState,omitempty"`
 	// RecallIntent prevents recalled dispatches from being announced as restart losses.
 	RecallIntent bool `json:"recallIntent,omitempty"`
+	// Terminal records how the dispatch ended, written onto every record for
+	// the dispatch the moment the dispatch registry retires it. It is what
+	// lets a restarted session rebuild its dispatch history with the real
+	// reason and exit code. Absent while the dispatch is in flight and on
+	// records written before it was kept.
+	Terminal *DispatchTerminalRecord `json:"terminal,omitempty"`
+}
+
+// DispatchTerminalRecord is the durable form of a dispatch registry terminal
+// entry. Times are Unix milliseconds.
+type DispatchTerminalRecord struct {
+	Status      string `json:"status"`
+	Reason      string `json:"reason,omitempty"`
+	ExitCode    *int   `json:"exitCode,omitempty"`
+	StartedAt   int64  `json:"startedAt,omitempty"`
+	CompletedAt int64  `json:"completedAt"`
+	ToolCount   int    `json:"toolCount,omitempty"`
 }
 
 // SessionEntry is a single node in the conversation tree.

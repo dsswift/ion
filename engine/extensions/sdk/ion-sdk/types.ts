@@ -570,19 +570,23 @@ export interface SteerDispatchResult {
   delivered: boolean
   /**
    * Delivery verdict. `steerDispatch` returns one of 'delivered',
-   * 'channel_full', 'no_run', 'not_found'. `steerDispatchByName` returns the
-   * same set plus 'ambiguous' (several live dispatches carry the name; nothing
+   * 'channel_full', 'no_run', 'not_found', 'unauthorized' (the caller does
+   * not own the dispatch), or 'completed' (it had already finished; see
+   * `terminal`). `steerDispatchByName` returns the same set plus 'ambiguous'
+   * (several live dispatches in the caller's scope carry the name; nothing
    * was delivered). `steerSelf` returns 'steered' (injected onto a live owning
    * run) or 'sent' (owning run was idle, so the message was delivered as a
    * fresh prompt).
    */
-  outcome: 'delivered' | 'channel_full' | 'no_run' | 'not_found' | 'ambiguous' | 'steered' | 'sent'
+  outcome: 'delivered' | 'channel_full' | 'no_run' | 'not_found' | 'unauthorized' | 'completed' | 'ambiguous' | 'steered' | 'sent'
   /**
    * Set only when `outcome` is 'ambiguous': the dispatch ID of every live
-   * dispatch that carries the name. Retry with {@link IonContext.steerDispatch}
-   * against the one you mean.
+   * dispatch in the caller's scope that carries the name. Retry with
+   * {@link IonContext.steerDispatch} against the one you mean.
    */
   matchingDispatchIds?: string[]
+  /** Set only when `outcome` is 'completed': how the dispatch ended. */
+  terminal?: DispatchHistoryEntry
 }
 
 // --- Dispatch lifecycle callback payloads ---
@@ -842,10 +846,12 @@ export interface DispatchEntry {
  * It keeps the identity and lineage of the live entry, so a completed dispatch
  * tree can be rebuilt after it finished.
  *
- * - `status`: final status, `"done"`, `"error"`, or `"cancelled"`.
+ * - `status`: final status, `"done"`, `"error"`, `"cancelled"`, or `"lost"`
+ *   (in flight when the engine process died).
  * - `reason`: the error text for `"error"`, the recall reason for
  *   `"cancelled"`. Absent for a clean `"done"`.
- * - `exitCode`: the dispatch result's exit code.
+ * - `exitCode`: the dispatch result's exit code. Absent when unknown: a lost
+ *   dispatch, or one recorded before exit codes were kept.
  * - `startedAt` / `completedAt`: UTC ISO-8601 (RFC3339Nano) timestamps.
  * - `durationMs`: `completedAt` minus `startedAt`.
  * - `toolCount`: tool calls the dispatch had executed when it ended.
@@ -853,9 +859,9 @@ export interface DispatchEntry {
 export interface DispatchHistoryEntry {
   dispatchId: string
   name: string
-  status: 'done' | 'error' | 'cancelled'
+  status: 'done' | 'error' | 'cancelled' | 'lost'
   reason?: string
-  exitCode: number
+  exitCode?: number
   parentDispatchId?: string
   depth: number
   startedAt: string
@@ -1352,7 +1358,10 @@ export interface IonContext extends DispatchControlContext {
   /**
    * Deliver a steering message to a running asynchronous dispatch. The message
    * is injected into the child's conversation as a user message at the next
-   * run-loop checkpoint, reusing the existing steer channel mechanism.
+   * run-loop checkpoint, reusing the existing steer channel mechanism. The
+   * root context can steer every dispatch in its session; a dispatched agent
+   * only its own descendants (`'unauthorized'` otherwise). A dispatch that
+   * already finished answers `'completed'` with `terminal`.
    *
    * @param dispatchId - The dispatch ID returned by {@link IonContext.dispatchAgent}.
    * @param message - The steering message to inject.
@@ -1364,8 +1373,9 @@ export interface IonContext extends DispatchControlContext {
    * its agent **name**. This is the name-based peer of {@link steerDispatch}:
    * where `steerDispatch` requires the full collision-safe dispatch ID returned
    * by {@link dispatchAgent}, `steerDispatchByName` resolves by the
-   * human-readable agent name (e.g. `'code-reviewer'`). It delivers only when
-   * exactly one live dispatch carries the name. When several do, nothing is
+   * human-readable agent name (e.g. `'code-reviewer'`). It searches the same
+   * scope {@link steerDispatch} accepts and delivers only when exactly one live
+   * dispatch there carries the name. When several do, nothing is
    * delivered: `outcome` is `'ambiguous'` and `matchingDispatchIds` lists every
    * match, so you can retry with {@link steerDispatch}. Use
    * {@link steerDispatch} when the exact dispatch ID is available.

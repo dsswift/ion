@@ -2,8 +2,6 @@ package extcontext
 
 import (
 	"time"
-
-	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // OwnsDispatch reports whether ownerID has authority to recall targetID.
@@ -15,6 +13,11 @@ func (r *DispatchRegistry) OwnsDispatch(ownerID, targetID string) (owned, found 
 	return r.ownsDispatchLocked(ownerID, targetID)
 }
 
+// ownsDispatchLocked reports whether ownerID has authority over the live
+// dispatch targetID. found is false when targetID is not live, or when the
+// owner is neither live nor retained (an unknown caller proves nothing).
+// Lineage walks through finished ancestors (descendsFromLocked), so a parent
+// keeps authority over a grandchild whose own parent has already finished.
 func (r *DispatchRegistry) ownsDispatchLocked(ownerID, targetID string) (owned, found bool) {
 	target, found := r.dispatches[targetID]
 	if !found {
@@ -23,34 +26,10 @@ func (r *DispatchRegistry) ownsDispatchLocked(ownerID, targetID string) (owned, 
 	if ownerID == "" {
 		return true, true
 	}
-	if ownerID == targetID {
-		return false, true
-	}
-	if _, ownerExists := r.dispatches[ownerID]; !ownerExists {
+	if _, known := r.parentOfLocked(ownerID); !known {
 		return false, false
 	}
-
-	visited := map[string]bool{targetID: true}
-	parentID := target.ParentID
-	for parentID != "" {
-		if parentID == ownerID {
-			return true, true
-		}
-		if visited[parentID] {
-			utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "ownsdispatch: ancestry cycle", map[string]any{"owner_dispatch_id": ownerID, "dispatch_id": targetID, "cycle_id": parentID})
-			return false, true
-		}
-		visited[parentID] = true
-		parent, exists := r.dispatches[parentID]
-		if !exists {
-			// Parent may have completed/deregistered. It cannot prove live
-			// ownership, so fail closed rather than let an orphan cross branches.
-			utils.LogWithFields(utils.LevelWarn, "session.extcontext.dispatch_registry", "ownsdispatch: parent missing", map[string]any{"owner_dispatch_id": ownerID, "dispatch_id": targetID, "parent_dispatch_id": parentID})
-			return false, true
-		}
-		parentID = parent.ParentID
-	}
-	return false, true
+	return r.descendsFromLocked(targetID, target.ParentID, ownerID), true
 }
 
 // OwnedSnapshot returns live dispatches the caller owns. Root sees all; a

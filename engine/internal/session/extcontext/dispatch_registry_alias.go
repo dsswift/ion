@@ -1,6 +1,10 @@
 package extcontext
 
-import "github.com/dsswift/ion/engine/internal/utils"
+import (
+	"sort"
+
+	"github.com/dsswift/ion/engine/internal/utils"
+)
 
 // Consumer-supplied dispatch aliases. Split from dispatch_registry.go for the
 // file-size cap; same package, same lock.
@@ -33,6 +37,7 @@ func (r *DispatchRegistry) RegisterAlias(alias, canonicalID string) {
 		return
 	}
 	r.aliases[alias] = canonicalID
+	indexLive(alias, r)
 	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "registeralias: consumer dispatch id aliased to canonical id", map[string]any{
 		"alias": alias, "run_id": canonicalID, "max": len(r.aliases),
 	})
@@ -57,16 +62,32 @@ func (r *DispatchRegistry) resolveIDLocked(id string) (resolved string, viaAlias
 	return id, false, false
 }
 
+// aliasesForLocked returns every alias bound to canonicalID, sorted. Caller
+// must hold r.mu.
+func (r *DispatchRegistry) aliasesForLocked(canonicalID string) []string {
+	var out []string
+	for alias, target := range r.aliases {
+		if target == canonicalID {
+			out = append(out, alias)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // dropAliasesForLocked removes every alias bound to a canonical dispatch ID.
-// Called from Deregister so an alias never outlives the dispatch it names and
-// therefore can never resolve onto a later, unrelated dispatch that happens to
-// reuse the consumer's key.
+// Called when the dispatch leaves the live set (leaveLocked), so a live alias
+// never outlives the dispatch it names and can never resolve onto a later,
+// unrelated dispatch that reuses the consumer's key. The finished dispatch
+// keeps its aliases on its terminal entry, where they are consulted only
+// after live resolution has missed.
 //
 // Caller must hold r.mu.
 func (r *DispatchRegistry) dropAliasesForLocked(canonicalID string) {
 	for alias, target := range r.aliases {
 		if target == canonicalID {
 			delete(r.aliases, alias)
+			unindexLive(alias, r)
 			utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "deregister: dropped dispatch alias", map[string]any{
 				"alias": alias, "run_id": canonicalID,
 			})

@@ -55,6 +55,15 @@ var ErrClosed = errors.New("ion: connection closed")
 type RPCError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+	// Data carries the engine's structured error detail, when it sends any.
+	Data *RPCErrorData `json:"data,omitempty"`
+}
+
+// RPCErrorData is the structured detail on an engine error.
+type RPCErrorData struct {
+	// Outcome is the typed control outcome behind the error, e.g.
+	// "unauthorized" for an ext/recall_dispatch the caller may not perform.
+	Outcome string `json:"outcome,omitempty"`
 }
 
 func (e *RPCError) Error() string {

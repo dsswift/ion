@@ -144,7 +144,7 @@ type Host struct {
 	// backing ext/recall_dispatch when no hook/run context is active. Same
 	// rationale: the dispatch registry outlives runs, so a recall issued
 	// while the parent is idle must still reach it. Guarded by notifMu.
-	persistentRecallByID func(dispatchID, reason string) (bool, error)
+	persistentRecallByID func(dispatchID, reason string) (RecallDispatchResult, error)
 
 	// persistentSteer is a session-scoped fallback for ext/steer_dispatch when
 	// no hook/run context is active. Guarded by notifMu.
@@ -383,7 +383,7 @@ func (h *Host) SetPersistentAckDispatchLost(fn func(dispatchID string)) {
 // SetPersistentRecallByID sets the fallback ID-addressed recall function used
 // when no run context is active. Peer of SetPersistentRecall for the
 // deterministic, dispatch-ID-keyed recall path (ext/recall_dispatch).
-func (h *Host) SetPersistentRecallByID(fn func(dispatchID, reason string) (bool, error)) {
+func (h *Host) SetPersistentRecallByID(fn func(dispatchID, reason string) (RecallDispatchResult, error)) {
 	h.notifMu.Lock()
 	defer h.notifMu.Unlock()
 	h.persistentRecallByID = fn

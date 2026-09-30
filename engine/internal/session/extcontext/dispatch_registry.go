@@ -104,6 +104,19 @@ type DispatchRegistry struct {
 	totalRegistrations int // total lifetime RegisterWithID calls (audit/test)
 	recallObserver     func([]RecalledDispatch)
 
+	// seq identifies this registry instance in the process; generation counts
+	// its membership changes (a dispatch joining or leaving). Together they
+	// correlate a control-plane mismatch report (dispatch_registry_index.go).
+	seq        uint64
+	generation uint64
+
+	// terminalObserver receives every terminal entry as it is recorded,
+	// outside the lock, so the session can persist it for restart.
+	terminalObserver func([]DispatchTerminalEntry)
+	// mismatchObserver receives a report when a control request misses a
+	// dispatch that another registry holds live.
+	mismatchObserver func(ControlMismatch)
+
 	// aliases maps a consumer-supplied dispatch identifier to the engine's
 	// canonical dispatch ID. It exists because the engine is not the only
 	// party that mints an identifier for a dispatch: a harness commonly
@@ -300,6 +313,7 @@ func NewDispatchRegistry() *DispatchRegistry {
 		dispatches:   make(map[string]*activeDispatch),
 		settledTasks: make(map[string]TaskResultRecord),
 		aliases:      make(map[string]string),
+		seq:          registrySeq.Add(1),
 	}
 }
 
@@ -338,6 +352,7 @@ func (r *DispatchRegistry) Reserve(id, name, parentID string, depth int) {
 		StartedAt: time.Now(),
 		reserved:  true,
 	}
+	r.joinLocked(id)
 	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "reserve", map[string]any{"run_id": id, "model": name, "count": depth, "max": len(r.dispatches)})
 }
 
@@ -380,6 +395,9 @@ func (r *DispatchRegistry) RegisterWithID(id, name string, cancel func(), child 
 		entry.LastActivityAt = existing.LastActivityAt
 	}
 	r.dispatches[id] = entry
+	if !exists {
+		r.joinLocked(id)
+	}
 	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "register", map[string]any{"run_id": id, "model": name, "session_id": sessionID, "count": depth, "max": len(r.dispatches)})
 }
 
@@ -438,10 +456,9 @@ func (r *DispatchRegistry) AllowedSubAgentsForID(id string) ([]string, bool) {
 // desired.
 func (r *DispatchRegistry) Deregister(id string, outcome DispatchOutcome) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	d, exists := r.dispatches[id]
 	if !exists {
+		r.mu.Unlock()
 		utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "deregister not found", map[string]any{"run_id": id})
 		return
 	}
@@ -459,10 +476,14 @@ func (r *DispatchRegistry) Deregister(id string, outcome DispatchOutcome) {
 		})
 	}
 
-	delete(r.dispatches, id)
-	r.dropAliasesForLocked(id)
+	entry := r.recordTerminalLocked(d, outcome, time.Now())
+	r.leaveLocked(id)
+	observer := r.terminalObserver
 	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "deregister removed", map[string]any{"run_id": id, "count": len(r.dispatches), "status": outcome.Status})
-	r.recordTerminalLocked(d, outcome, time.Now())
+	r.mu.Unlock()
+	if observer != nil {
+		observer([]DispatchTerminalEntry{entry})
+	}
 }
 
 // Get retrieves the active dispatch for the given ID. The second return
@@ -561,13 +582,17 @@ func (r *DispatchRegistry) RecallAll(reason string) int {
 	for _, d := range r.dispatches {
 		snapshot = append(snapshot, d)
 	}
-	r.dispatches = make(map[string]*activeDispatch)
-	r.aliases = make(map[string]string)
 	now := time.Now()
+	terminals := make([]DispatchTerminalEntry, 0, len(snapshot))
 	for _, d := range snapshot {
-		r.recordTerminalLocked(d, DispatchOutcome{Status: DispatchStatusCancelled, Reason: reason, ExitCode: ExitCodeRecalled}, now)
+		terminals = append(terminals, r.recordTerminalLocked(d, DispatchOutcome{Status: DispatchStatusCancelled, Reason: reason, ExitCode: ExitCodeRecalled}, now))
+		r.leaveLocked(d.ID)
 	}
+	observer := r.terminalObserver
 	r.mu.Unlock()
+	if observer != nil && len(terminals) > 0 {
+		observer(terminals)
+	}
 
 	if len(snapshot) == 0 {
 		utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "recallall: no active dispatches", map[string]any{"reason": reason})

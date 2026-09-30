@@ -217,22 +217,22 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 		host.SetPersistentRecall(func(name, reason string) (extension.RecallAgentResult, error) {
 			reg := s.dispatchRegistry
 			if reg == nil {
-				return extcontext.RecallAgentResult(extcontext.RecallOutcomeNotFound, nil), fmt.Errorf("dispatch registry not available")
+				return extension.RecallAgentResult{Outcome: string(extcontext.RecallOutcomeNotFound)}, fmt.Errorf("dispatch registry not available")
 			}
-			return extcontext.RecallAgentResult(reg.Recall(name, reason)), nil
+			return extcontext.RecallAgentResult(reg.RecallOwnedByName("", name, reason)), nil
 		})
 
 		// Persistent ID-addressed recall for ext/recall_dispatch when the
 		// parent run is idle. Same rationale as the name-based recall above;
 		// this arm is what a consumer holding a dispatchId reaches.
-		host.SetPersistentRecallByID(func(dispatchID, reason string) (bool, error) {
+		host.SetPersistentRecallByID(func(dispatchID, reason string) (extension.RecallDispatchResult, error) {
 			reg := s.dispatchRegistry
 			if reg == nil {
-				return false, fmt.Errorf("dispatch registry not available")
+				return extension.RecallDispatchResult{Outcome: string(extcontext.RecallOutcomeNotFound)}, fmt.Errorf("dispatch registry not available")
 			}
-			found := reg.RecallByID(dispatchID, reason)
-			return found, nil
+			return extcontext.RecallDispatchResult(reg.RecallOwnedByID("", dispatchID, reason)), nil
 		})
+
 
 		// Persistent steer for ext/steer_dispatch when the parent run is idle.
 		host.SetPersistentSteer(func(dispatchID, message string) (extension.SteerDispatchResult, error) {
@@ -240,7 +240,7 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			if reg == nil {
 				return extension.SteerDispatchResult{Outcome: "not_found"}, fmt.Errorf("dispatch registry not available")
 			}
-			return extcontext.SteerResult(reg.SteerByID(dispatchID, message), nil), nil
+			return extcontext.SteerResult(reg.SteerOwnedByID("", dispatchID, message)), nil
 		})
 
 		// Persistent name-based steer for ext/steer_dispatch_by_name when the parent run is idle.
@@ -249,7 +249,7 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			if reg == nil {
 				return extension.SteerDispatchResult{Outcome: "not_found"}, fmt.Errorf("dispatch registry not available")
 			}
-			return extcontext.SteerResult(reg.SteerByName(name, message)), nil
+			return extcontext.SteerResult(reg.SteerOwnedByName("", name, message)), nil
 		})
 
 		// Persistent self-steer for ext/steer_self. This one carries the

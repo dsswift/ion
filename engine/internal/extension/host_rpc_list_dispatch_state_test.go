@@ -216,13 +216,14 @@ func TestExtListDispatchState_EmptyArrayWhenNoDispatches(t *testing.T) {
 // the terminal-history RPC: a { dispatches: [...] } envelope whose entries
 // carry status, reason, completion time, and lineage.
 func TestExtListDispatchHistory_ReturnsEnvelopeWithEntries(t *testing.T) {
+	exitCode := 1
 	h := NewHost()
 	ch := attachStdout(h)
 	h.ctxStack.Push(&Context{
 		Cwd: "/tmp",
 		ListDispatchHistory: func() ([]DispatchHistoryEntry, error) {
 			return []DispatchHistoryEntry{{
-				DispatchID: "d-1", Name: "worker", Status: "error", Reason: "boom", ExitCode: 1,
+				DispatchID: "d-1", Name: "worker", Status: "error", Reason: "boom", ExitCode: &exitCode,
 				ParentDispatchID: "d-0", Depth: 2, StartedAt: "2026-09-29T00:00:00Z",
 				CompletedAt: "2026-09-29T00:00:01Z", DurationMs: 1000,
 			}}, nil

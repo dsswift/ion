@@ -6,6 +6,7 @@ package ion
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -82,8 +83,10 @@ func (c *Context) RecallAgentByName(ctx context.Context, name, reason string) (R
 	return out, err
 }
 
-// RecallDispatch cancels one asynchronous dispatch by exact dispatch ID.
-// Names are never accepted because concurrent dispatches can share them.
+// RecallDispatch cancels one asynchronous dispatch by exact dispatch ID and
+// reports whether it did. A dispatch the caller does not own returns an
+// *RPCError. Use [Context.RecallDispatchWithOutcome] to tell a finished
+// dispatch from an unknown one.
 func (c *Context) RecallDispatch(ctx context.Context, dispatchID, reason string) (bool, error) {
 	var out struct {
 		Found bool `json:"found"`
@@ -92,8 +95,33 @@ func (c *Context) RecallDispatch(ctx context.Context, dispatchID, reason string)
 	return out.Found, err
 }
 
+// RecallDispatchWithOutcome is the exact-ID recall with the full outcome:
+// "recalled", "completed" (the dispatch had already finished; Terminal says
+// how), "unauthorized" (the caller does not own it), or "not_found". The
+// engine answers an unauthorized recall as an error carrying that outcome;
+// this method returns it as a result instead.
+func (c *Context) RecallDispatchWithOutcome(ctx context.Context, dispatchID, reason string) (RecallDispatchResult, error) {
+	var out RecallDispatchResult
+	err := c.sdk.call(ctx, "ext/recall_dispatch", map[string]string{"dispatchId": dispatchID, "reason": reason}, &out)
+	var rpcErr *RPCError
+	if errors.As(err, &rpcErr) && rpcErr.Data != nil && rpcErr.Data.Outcome == "unauthorized" {
+		return RecallDispatchResult{Outcome: "unauthorized"}, nil
+	}
+	if err == nil && out.Outcome == "" {
+		// An engine older than the outcome field answers only { found }.
+		out.Outcome = "not_found"
+		if out.Found {
+			out.Outcome = "recalled"
+		}
+	}
+	return out, err
+}
+
 // SteerDispatch delivers a message to a running child dispatch, addressed by
-// dispatch id.
+// dispatch id. The caller must own the dispatch (the root owns every one in
+// its session; a dispatched agent only its descendants), or the outcome is
+// "unauthorized". A dispatch that already finished answers "completed" with
+// Terminal set.
 func (c *Context) SteerDispatch(ctx context.Context, dispatchID, message string) (SteerDispatchResult, error) {
 	var out SteerDispatchResult
 	err := c.sdk.call(ctx, "ext/steer_dispatch",
@@ -102,8 +130,8 @@ func (c *Context) SteerDispatch(ctx context.Context, dispatchID, message string)
 }
 
 // SteerDispatchByName delivers a message to a running child dispatch,
-// addressed by agent name. It delivers only when exactly one live dispatch
-// carries the name; when several do, nothing is delivered and the result is
+// addressed by agent name. It searches the caller's own scope and delivers
+// only when exactly one live dispatch there carries the name; when several do, nothing is delivered and the result is
 // "ambiguous" with the matching IDs in MatchingDispatchIDs. Use
 // [Context.SteerDispatch] when the exact dispatch ID is known.
 func (c *Context) SteerDispatchByName(ctx context.Context, name, message string) (SteerDispatchResult, error) {

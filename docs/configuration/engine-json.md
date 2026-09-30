@@ -963,7 +963,7 @@ Bounds the record of ended dispatches each session keeps. When a dispatch ends, 
 | `maxEntries` | int | `200` | Most ended dispatches kept per session. The oldest completions are dropped first. `0` uses the default. A negative value turns the record off. |
 | `maxAgeMs` | int | `3600000` | Drop an entry this many milliseconds after its dispatch ended. `0` uses the default. A negative value removes the age limit, leaving only `maxEntries`. |
 
-A more specific config layer replaces the whole block. The record lives in engine memory and does not survive an engine restart.
+A more specific config layer replaces the whole block. Each ended dispatch is also written to the session's conversation file, so a restarted session rebuilds its record within these same limits. A dispatch that was running when the engine process died comes back with status `lost`.
 
 ```json
 {

@@ -43,6 +43,11 @@ const (
 	// Family 4b — Agent-loop / Dispatch-tree
 	DispatchAgent = "dispatch.agent"
 	ToolFailure   = "tool.failure"
+	// DispatchControlMismatch fires when a steer or recall misses a dispatch
+	// that another dispatch registry in the process holds live: the case where
+	// a list shows a dispatch running and a control request cannot reach it.
+	// Additive event name; the telemetry schema is unchanged.
+	DispatchControlMismatch = "dispatch.control_mismatch"
 
 	// Family 4c — Context Economy
 	ContextPressure = "context.pressure"

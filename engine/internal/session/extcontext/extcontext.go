@@ -274,10 +274,10 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 	// Wire steer support for background dispatches.
 	if registry != nil {
 		ctx.SteerDispatch = func(dispatchID, message string) (extension.SteerDispatchResult, error) {
-			return SteerResult(registry.SteerByID(dispatchID, message), nil), nil
+			return SteerResult(registry.SteerOwnedByID(dispatchId, dispatchID, message)), nil
 		}
 		ctx.SteerDispatchByName = func(name, message string) (extension.SteerDispatchResult, error) {
-			return SteerResult(registry.SteerByName(name, message)), nil
+			return SteerResult(registry.SteerOwnedByName(dispatchId, name, message)), nil
 		}
 
 		// Wire dispatch-state listing: exposes the live registry snapshot to

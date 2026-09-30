@@ -29,12 +29,13 @@ function nextTurn(): Promise<void> {
 type Frame = { id?: number; method?: string; params?: Record<string, unknown>; result?: unknown }
 
 // runTool starts the SDK, registers one tool whose body is `body`, invokes it,
-// and answers the first request for `method` with `response`. Resolves with
-// the tool's JSON-encoded content.
+// and answers the first request for `method` with `response` (or with a
+// JSON-RPC `error` when given). Resolves with the tool's JSON-encoded content.
 async function runTool(
   body: (ctx: import('../../../../engine/extensions/sdk/ion-sdk/types').IonContext) => Promise<unknown>,
   method: string,
   response: unknown,
+  error?: { code: number; message: string; data?: unknown },
 ): Promise<unknown> {
   const writes: string[] = []
   vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string) => {
@@ -59,7 +60,9 @@ async function runTool(
   const frames = (): Frame[] => writes.map((write) => JSON.parse(write) as Frame)
   const call = frames().find((frame) => frame.method === method)
   expect(call, `${method} was not sent`).toBeDefined()
-  line!(JSON.stringify({ jsonrpc: '2.0', id: call!.id, result: response }))
+  line!(JSON.stringify(error
+    ? { jsonrpc: '2.0', id: call!.id, error }
+    : { jsonrpc: '2.0', id: call!.id, result: response }))
   await nextTurn()
   await nextTurn()
 
@@ -109,5 +112,45 @@ describe('TypeScript SDK name resolution and dispatch history', () => {
       { dispatches: [entry] },
     )
     expect(result).toEqual([entry])
+  })
+
+  it('surfaces a steer that raced completion with its terminal entry', async () => {
+    const terminal = {
+      dispatchId: 'd-1', name: 'worker', status: 'done', exitCode: 0, depth: 1,
+      startedAt: '2026-01-01T00:00:00Z', completedAt: '2026-01-01T00:00:01Z', durationMs: 1000, toolCount: 2,
+    }
+    const result = await runTool(
+      (ctx) => ctx.steerDispatch('d-1', 'too late'),
+      'ext/steer_dispatch',
+      { delivered: false, outcome: 'completed', terminal },
+    )
+    expect(result).toEqual({ delivered: false, outcome: 'completed', terminal })
+  })
+
+  it('turns an unauthorized recall error into a typed outcome', async () => {
+    const result = await runTool(
+      (ctx) => ctx.recallDispatchWithOutcome('d-sibling', { reason: 'stop' }),
+      'ext/recall_dispatch',
+      undefined,
+      { code: -32000, message: 'not yours', data: { outcome: 'unauthorized' } },
+    )
+    expect(result).toEqual({ found: false, outcome: 'unauthorized' })
+  })
+
+  it('still rejects recallDispatch for an unauthorized target', async () => {
+    const result = await runTool(
+      async (ctx) => {
+        try {
+          await ctx.recallDispatch('d-sibling')
+          return 'resolved'
+        } catch (err) {
+          return `rejected: ${(err as Error).message}`
+        }
+      },
+      'ext/recall_dispatch',
+      undefined,
+      { code: -32000, message: 'not yours', data: { outcome: 'unauthorized' } },
+    )
+    expect(result).toBe('rejected: not yours')
   })
 })

@@ -42,6 +42,9 @@ type jsonrpcError struct {
 type jsonrpcErrData struct {
 	Stack string `json:"stack,omitempty"`
 	Type  string `json:"type,omitempty"`
+	// Outcome is the typed control outcome behind a handler error, e.g.
+	// "unauthorized" for an ext/recall_dispatch the caller may not perform.
+	Outcome string `json:"outcome,omitempty"`
 }
 
 func (e *jsonrpcError) Error() string {

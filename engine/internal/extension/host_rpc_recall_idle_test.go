@@ -108,3 +108,34 @@ func TestRecallAgentAmbiguousWireShape(t *testing.T) {
 		t.Fatalf("result = %#v, want {found:false, outcome:ambiguous, matchingDispatchIds:[d-1 d-2]}", result)
 	}
 }
+
+// TestRecallDispatchWireOutcomes pins ext/recall_dispatch: a completed race
+// answers a result with the terminal entry, and an unauthorized recall stays a
+// handler error that now carries the typed outcome in its data.
+func TestRecallDispatchWireOutcomes(t *testing.T) {
+	exitCode := 0
+	h := NewHost()
+	ch := attachStdout(h)
+	h.SetPersistentRecallByID(func(dispatchID, reason string) (RecallDispatchResult, error) {
+		if dispatchID == "finished" {
+			return RecallDispatchResult{Outcome: "completed", Terminal: &DispatchHistoryEntry{DispatchID: "finished", Status: "done", ExitCode: &exitCode}}, nil
+		}
+		return RecallDispatchResult{Outcome: "unauthorized"}, nil
+	})
+
+	h.handleExtRequest("ext/recall_dispatch", 1, []byte(`{"jsonrpc":"2.0","id":1,"method":"ext/recall_dispatch","params":{"dispatchId":"finished"}}`))
+	resp := readResponse(t, ch, time.Second)
+	result, ok := resp["result"].(map[string]interface{})
+	terminal, _ := result["terminal"].(map[string]interface{}) //nolint:errcheck // asserted below
+	if !ok || result["found"] != false || result["outcome"] != "completed" || terminal["status"] != "done" {
+		t.Fatalf("completed response = %#v", resp)
+	}
+
+	h.handleExtRequest("ext/recall_dispatch", 2, []byte(`{"jsonrpc":"2.0","id":2,"method":"ext/recall_dispatch","params":{"dispatchId":"sibling"}}`))
+	resp = readResponse(t, ch, time.Second)
+	rpcErr, ok := resp["error"].(map[string]interface{})
+	data, _ := rpcErr["data"].(map[string]interface{}) //nolint:errcheck // asserted below
+	if !ok || rpcErr["code"] != float64(-32000) || data["outcome"] != "unauthorized" {
+		t.Fatalf("unauthorized response = %#v, want -32000 error with data.outcome unauthorized", resp)
+	}
+}

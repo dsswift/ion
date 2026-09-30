@@ -498,3 +498,55 @@ func TestListDispatchHistoryDecodesTerminalEntries(t *testing.T) {
 		t.Errorf("entry = %+v, want the decoded terminal fields", e)
 	}
 }
+
+func TestRecallDispatchWithOutcomeReadsUnauthorizedError(t *testing.T) {
+	fe := newFakeEngine(t, WithName("recall-unauthorized-test"))
+	fe.start()
+	fe.doInit(ExtensionConfig{})
+
+	type outcome struct {
+		result RecallDispatchResult
+		err    error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		result, err := fe.sdk.newContext(nil).RecallDispatchWithOutcome(context.Background(), "d-sibling", "stop")
+		done <- outcome{result, err}
+	}()
+	frame := fe.awaitMethod("ext/recall_dispatch")
+	id, _ := frame["id"].(float64)
+	fe.send(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{
+		"code": -32000, "message": "not yours", "data": map[string]any{"outcome": "unauthorized"},
+	}})
+	got := <-done
+	if got.err != nil || got.result.Outcome != "unauthorized" || got.result.Found {
+		t.Fatalf("RecallDispatchWithOutcome = (%+v, %v), want unauthorized result", got.result, got.err)
+	}
+}
+
+func TestRecallDispatchWithOutcomeDecodesCompleted(t *testing.T) {
+	fe := newFakeEngine(t, WithName("recall-completed-test"))
+	fe.start()
+	fe.doInit(ExtensionConfig{})
+
+	type outcome struct {
+		result RecallDispatchResult
+		err    error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		result, err := fe.sdk.newContext(nil).RecallDispatchWithOutcome(context.Background(), "d-1", "stop")
+		done <- outcome{result, err}
+	}()
+	frame := fe.awaitMethod("ext/recall_dispatch")
+	id, _ := frame["id"].(float64)
+	fe.respond(id, map[string]any{"found": false, "outcome": "completed", "terminal": map[string]any{
+		"dispatchId": "d-1", "name": "worker", "status": "done", "exitCode": 0, "depth": 1,
+		"startedAt": "2026-01-01T00:00:00Z", "completedAt": "2026-01-01T00:00:01Z", "durationMs": 1000,
+	}})
+	got := <-done
+	if got.err != nil || got.result.Outcome != "completed" || got.result.Terminal == nil ||
+		got.result.Terminal.Status != "done" || got.result.Terminal.ExitCode == nil || *got.result.Terminal.ExitCode != 0 {
+		t.Fatalf("RecallDispatchWithOutcome = (%+v, %v), want completed with terminal", got.result, got.err)
+	}
+}

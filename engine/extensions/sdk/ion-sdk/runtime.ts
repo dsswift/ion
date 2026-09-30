@@ -68,7 +68,7 @@ import type {
   ToolContent,
   WalkContextFilesOpts,
 } from './types'
-import type { RecallAgentOpts, RecallAgentResult, RecallDispatchOpts } from './types-dispatch-control'
+import type { RecallAgentOpts, RecallAgentResult, RecallDispatchOpts, RecallDispatchResult } from './types-dispatch-control'
 
 // ---------------------------------------------------------------------------
 // Internal state
@@ -170,6 +170,20 @@ function request(method: string, params: any): Promise<any> {
   })
 }
 
+// IonRpcError is how an engine JSON-RPC error rejects a request. `data`
+// carries the engine's structured detail, e.g. `{ outcome: 'unauthorized' }`
+// on a refused ext/recall_dispatch.
+class IonRpcError extends Error {
+  constructor(
+    message: string,
+    readonly code?: number,
+    readonly data?: { outcome?: string },
+  ) {
+    super(message)
+    this.name = 'IonRpcError'
+  }
+}
+
 // recallAgentByName backs both ctx.recallAgentByName and the boolean
 // ctx.recallAgent, so the two cannot disagree about what "found" means.
 async function recallAgentByName(name: string, opts?: RecallAgentOpts): Promise<RecallAgentResult> {
@@ -177,9 +191,38 @@ async function recallAgentByName(name: string, opts?: RecallAgentOpts): Promise<
   const found = !!result?.found
   // An engine older than the outcome field answers only { found }.
   const outcome: RecallAgentResult['outcome'] = result?.outcome ?? (found ? 'recalled' : 'not_found')
-  return result?.matchingDispatchIds
-    ? { found, outcome, matchingDispatchIds: result.matchingDispatchIds }
-    : { found, outcome }
+  const out: RecallAgentResult = { found, outcome }
+  if (result?.matchingDispatchIds) out.matchingDispatchIds = result.matchingDispatchIds
+  if (result?.terminal) out.terminal = result.terminal
+  return out
+}
+
+// steerResult reads an ext/steer_* response, carrying the optional fields only
+// when the engine sent them.
+function steerResult(result: any): SteerDispatchResult {
+  const steer: SteerDispatchResult = { delivered: !!result?.delivered, outcome: result?.outcome ?? 'not_found' }
+  if (result?.matchingDispatchIds) steer.matchingDispatchIds = result.matchingDispatchIds
+  if (result?.terminal) steer.terminal = result.terminal
+  return steer
+}
+
+async function recallDispatchWithOutcome(dispatchId: string, opts?: RecallDispatchOpts): Promise<RecallDispatchResult> {
+  let result: any
+  try {
+    result = await request('ext/recall_dispatch', { dispatchId, reason: opts?.reason || '' })
+  } catch (err) {
+    // The engine answers an unauthorized recall as an error carrying the
+    // outcome, so older callers that expect a rejection keep one.
+    if (err instanceof IonRpcError && err.data?.outcome === 'unauthorized') {
+      return { found: false, outcome: 'unauthorized' }
+    }
+    throw err
+  }
+  const found = !!result?.found
+  // An engine older than the outcome field answers only { found }.
+  const out: RecallDispatchResult = { found, outcome: result?.outcome ?? (found ? 'recalled' : 'not_found') }
+  if (result?.terminal) out.terminal = result.terminal
+  return out
 }
 
 // requestWithId is request() that also surfaces the RPC id to the caller.
@@ -538,19 +581,16 @@ function buildContext(ctxData: any): IonContext {
       return (await recallAgentByName(name, opts)).found
     },
     recallAgentByName,
+    recallDispatchWithOutcome,
     async recallDispatch(dispatchId: string, opts?: RecallDispatchOpts): Promise<boolean> {
       const result = await request('ext/recall_dispatch', { dispatchId, reason: opts?.reason || '' })
       return !!result?.found
     },
     async steerDispatch(dispatchId: string, message: string): Promise<SteerDispatchResult> {
-      const result = await request('ext/steer_dispatch', { dispatchId, message })
-      return { delivered: !!result?.delivered, outcome: result?.outcome ?? 'not_found' }
+      return steerResult(await request('ext/steer_dispatch', { dispatchId, message }))
     },
     async steerDispatchByName(name: string, message: string): Promise<SteerDispatchResult> {
-      const result = await request('ext/steer_dispatch_by_name', { name, message })
-      const steer: SteerDispatchResult = { delivered: !!result?.delivered, outcome: result?.outcome ?? 'not_found' }
-      if (result?.matchingDispatchIds) steer.matchingDispatchIds = result.matchingDispatchIds
-      return steer
+      return steerResult(await request('ext/steer_dispatch_by_name', { name, message }))
     },
     async answerDispatchQuestion(dispatchId: string, requestId: string, answer: string | undefined, cancelled: boolean): Promise<void> {
       await request('ext/answer_dispatch_question', { dispatchId, requestId, answer, cancelled })
@@ -984,7 +1024,7 @@ function startListening(): void {
         if (pending) {
           pendingRequests.delete(msg.id)
           if (msg.error) {
-            pending.reject(new Error(msg.error.message || 'RPC error'))
+            pending.reject(new IonRpcError(msg.error.message || 'RPC error', msg.error.code, msg.error.data))
           } else {
             pending.resolve(msg.result)
           }

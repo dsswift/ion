@@ -64,8 +64,8 @@ func requireRecallDispatchIDs(t *testing.T, entries []map[string]any, want ...st
 	}
 }
 
-// TestDispatchRegistryRecallLogsCanonicalDispatchID pins dispatch_id on both
-// target and descendant recall logs. Logs are operational contract data, so a
+// TestDispatchRegistryRecallLogsCanonicalDispatchID pins dispatch_id on the
+// name-addressed recall's target and descendant logs. Logs are operational contract data, so a
 // misspelled field silently breaks correlation for every consumer.
 func TestDispatchRegistryRecallLogsCanonicalDispatchID(t *testing.T) {
 	snapshot := captureRecallLogFields(t)
@@ -73,15 +73,17 @@ func TestDispatchRegistryRecallLogsCanonicalDispatchID(t *testing.T) {
 	r.RegisterWithID("parent-id", "parent", func() {}, nil, "session", "", 1)
 	r.RegisterWithID("child-id", "child", func() {}, nil, "session", "parent-id", 2)
 
-	if !r.RecallByID("parent-id", "test") {
-		t.Fatal("Recall returned false")
+	if got := r.RecallOwnedByName("", "parent", "test"); got.Outcome != RecallOutcomeRecalled {
+		t.Fatalf("RecallOwnedByName = %+v, want recalled", got)
 	}
 
-	requireRecallDispatchIDs(t, snapshot(), "child-id", "parent-id")
+	// Name selection, authorization, descendant cascade, target cancel.
+	requireRecallDispatchIDs(t, snapshot(), "parent-id", "parent-id", "child-id", "parent-id")
 }
 
 // TestDispatchRegistryRecallByIDLogsCanonicalDispatchID pins the ID-targeted
-// recall path separately so it cannot drift from Recall's structured logs.
+// recall path separately so it cannot drift from the name path's structured
+// logs.
 func TestDispatchRegistryRecallByIDLogsCanonicalDispatchID(t *testing.T) {
 	snapshot := captureRecallLogFields(t)
 	r := NewDispatchRegistry()
@@ -92,5 +94,6 @@ func TestDispatchRegistryRecallByIDLogsCanonicalDispatchID(t *testing.T) {
 		t.Fatal("RecallByID returned false")
 	}
 
-	requireRecallDispatchIDs(t, snapshot(), "child-id", "parent-id")
+	// Authorization, descendant cascade, target cancel.
+	requireRecallDispatchIDs(t, snapshot(), "parent-id", "child-id", "parent-id")
 }

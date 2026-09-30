@@ -126,7 +126,7 @@ Version history: v2 introduced the unified contract; v3 added `event_id` and the
 
 Beyond the core three, the engine emits additive instrumentation families — trust/autonomy
 (`permission.decision`, `sandbox.block`, `secret.containment`), agent-loop (`dispatch.agent`,
-`tool.failure`), context economy (`context.pressure`, `compaction`, `cache.savings`), provider
+`dispatch.control_mismatch`, `tool.failure`), context economy (`context.pressure`, `compaction`, `cache.savings`), provider
 market (`provider.ttft`, `provider.stall`, `provider.stream_summary`, `provider.retry`,
 `provider.fallback`), and platform health (`extension.respawn`, `extension.coldstart`,
 `extension.hook_latency`, `client.backpressure`). Session and conversation lifecycle is covered by

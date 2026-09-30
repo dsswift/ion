@@ -138,6 +138,7 @@ interface IonContext {
   recallAgent(name: string, opts?: RecallAgentOpts): Promise<boolean>
   recallAgentByName(name: string, opts?: RecallAgentOpts): Promise<RecallAgentResult>
   recallDispatch(dispatchId: string, opts?: RecallDispatchOpts): Promise<boolean>
+  recallDispatchWithOutcome(dispatchId: string, opts?: RecallDispatchOpts): Promise<RecallDispatchResult>
   discoverAgents(opts?: DiscoverAgentsOpts): Promise<DiscoveredAgent[]>
 }
 ```
@@ -495,7 +496,7 @@ await ctx.dispatchAgent({
 
 **Dispatch wait metadata.** `await ctx.listDispatchState()` returns active entries. A suspended entry may carry `waitingOn`: `taskIds` names notifying background Bash tasks; `childDispatchIds` names dispatched children. Both arrays are exact current sets, sorted for stable snapshots. `pendingChildren` remains compatibility-only mirror of child IDs. Absent `waitingOn` means running, or a bare `suspend()` awaiting only a prompt.
 
-**Dispatch history.** `listDispatchState` lists only live work. `await ctx.listDispatchHistory()` returns the dispatches that have ended, oldest completion first. Each entry carries `status` (`done`, `error`, or `cancelled`), `reason` (the error text, or the recall reason), `exitCode`, `startedAt`, `completedAt`, `durationMs`, and the lineage fields `dispatchId`, `name`, `parentDispatchId`, and `depth`. A dispatch that starts and ends between two of your polls still shows up here. Ownership matches the live list: the root context sees every entry, a dispatched agent sees only its own descendants. The engine bounds how many entries it keeps and for how long with the `dispatchHistory` block in [`engine.json`](../configuration/engine-json.md#dispatchhistory).
+**Dispatch history.** `listDispatchState` lists only live work. `await ctx.listDispatchHistory()` returns the dispatches that have ended, oldest completion first. Each entry carries `status` (`done`, `error`, `cancelled`, or `lost` for a dispatch that was running when the engine process died), `reason` (the error text, or the recall reason), `exitCode` (absent when unknown), `startedAt`, `completedAt`, `durationMs`, and the lineage fields `dispatchId`, `name`, `parentDispatchId`, and `depth`. A dispatch that starts and ends between two of your polls still shows up here, and so does one that ended before a session or engine restart. Ownership matches the live list: the root context sees every entry, a dispatched agent sees only its own descendants, including grandchildren whose own parent already finished. The engine bounds how many entries it keeps and for how long with the `dispatchHistory` block in [`engine.json`](../configuration/engine-json.md#dispatchhistory).
 
 ```typescript
 await ctx.dispatchAgent({
@@ -530,7 +531,9 @@ await ctx.dispatchAgent({
 const found = await ctx.recallAgent('code-reviewer', { reason: 'user requested' })
 ```
 
-**`recallAgentByName(name, opts?)`** — the same recall with the full outcome: `{ found, outcome, matchingDispatchIds? }`. `outcome` is `'recalled'`, `'not_found'`, or `'ambiguous'`. On `'ambiguous'`, nothing was recalled and `matchingDispatchIds` lists every live dispatch with that name, so you can pick one and call `recallDispatch`.
+**`recallAgentByName(name, opts?)`** — the same recall with the full outcome: `{ found, outcome, matchingDispatchIds?, terminal? }`. `outcome` is `'recalled'`, `'not_found'`, `'ambiguous'`, or `'completed'` (the one match finished before it could be recalled; `terminal` says how). On `'ambiguous'`, nothing was recalled and `matchingDispatchIds` lists every live dispatch with that name, so you can pick one and call `recallDispatch`.
+
+Name lookup searches only what the caller owns: the root context searches every dispatch in its session, a dispatched agent only its own descendants. A same-name dispatch in another branch is invisible to it.
 
 ```typescript
 const result = await ctx.recallAgentByName('code-reviewer', { reason: 'superseded' })
@@ -550,7 +553,11 @@ ion.on('dispatch_lost', async (ctx, info) => {
 })
 ```
 
-**`recallDispatch(dispatchId, opts?)`** -- terminate a running background dispatch by its **dispatch ID**. Returns `true` if a live dispatch was found and recalled, `false` otherwise. Descendants of the recalled dispatch are cancelled with it, and its `onRecall` callback fires with the provided reason.
+**`recallDispatch(dispatchId, opts?)`** -- terminate a running background dispatch by its **dispatch ID**. Returns `true` if a live dispatch was found and recalled, `false` otherwise. Descendants of the recalled dispatch are cancelled with it, and its `onRecall` callback fires with the provided reason. The root context can recall every dispatch in its session; a dispatched agent only its own descendants. Recalling one the caller does not own rejects.
+
+**`recallDispatchWithOutcome(dispatchId, opts?)`** -- the same recall with the full outcome: `{ found, outcome, terminal? }`. `outcome` is `'recalled'`, `'completed'` (the dispatch had already finished; `terminal` is its history entry), `'unauthorized'` (the caller does not own it), or `'not_found'`. It never rejects for an unauthorized target.
+
+**Steer outcomes.** `steerDispatch` follows the same ownership rule. Its `outcome` is `'delivered'`, `'channel_full'`, `'no_run'`, `'unauthorized'`, `'completed'` (with `terminal`), or `'not_found'`. `'completed'` means you raced the dispatch's end; `'not_found'` means the engine has no record of that ID at all.
 
 This is the preferred exact-ID peer of `recallAgent`. Where `recallAgent` acts only on a unique agent name, `recallDispatch` targets exactly one instance and is safe when names collide. The relationship mirrors `steerDispatch` vs `steerDispatchByName`.
 

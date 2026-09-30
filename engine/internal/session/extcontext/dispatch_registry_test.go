@@ -625,7 +625,8 @@ func TestRecallByName_AmbiguousRecallsNothing(t *testing.T) {
 	r.RegisterWithID("second", "reviewer", func() { secondCancelled = true }, nil, "session", "", 1)
 	r.RegisterWithID("first", "reviewer", func() { firstCancelled = true }, nil, "session", "", 1)
 
-	outcome, matching := r.Recall("reviewer", "compatibility")
+	res := r.RecallOwnedByName("", "reviewer", "compatibility")
+	outcome, matching := res.Outcome, res.MatchingIDs
 	if outcome != RecallOutcomeAmbiguous {
 		t.Fatalf("Recall outcome = %q, want %q", outcome, RecallOutcomeAmbiguous)
 	}
@@ -652,7 +653,8 @@ func TestRecallByName_UniqueMatchRecalls(t *testing.T) {
 	r.RegisterWithID("only", "reviewer", func() { cancelled = true }, nil, "session", "", 1)
 	r.RegisterWithID("other", "writer", func() {}, nil, "session", "", 1)
 
-	outcome, matching := r.Recall("reviewer", "operator stop")
+	res := r.RecallOwnedByName("", "reviewer", "operator stop")
+	outcome, matching := res.Outcome, res.MatchingIDs
 	if outcome != RecallOutcomeRecalled || matching != nil {
 		t.Fatalf("Recall = (%q, %v), want (%q, nil)", outcome, matching, RecallOutcomeRecalled)
 	}
@@ -664,7 +666,7 @@ func TestRecallByName_UniqueMatchRecalls(t *testing.T) {
 		t.Fatalf("history = %+v, want one cancelled entry for \"only\" with the recall reason", history)
 	}
 
-	if outcome, _ := r.Recall("reviewer", "again"); outcome != RecallOutcomeNotFound {
+	if outcome := r.RecallOwnedByName("", "reviewer", "again").Outcome; outcome != RecallOutcomeNotFound {
 		t.Fatalf("second Recall outcome = %q, want %q", outcome, RecallOutcomeNotFound)
 	}
 }
