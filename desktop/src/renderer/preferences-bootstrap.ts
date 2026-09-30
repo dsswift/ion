@@ -12,7 +12,7 @@ import type { StoreApi, UseBoundStore } from 'zustand'
 import { applyTheme, onThemeRegistryChanged, registerCustomThemes } from './theme-tokens'
 import type { PreferencesState } from '@ion/server/preferences-types'
 import type { CustomThemeForRenderer } from '@ion/shared/theme-pack-types'
-import { deriveEnterpriseThemePolicy } from '@ion/shared/enterprise-theme-policy'
+import { deriveEnterpriseThemePolicy, resolveEffectiveThemeId } from '@ion/shared/enterprise-theme-policy'
 import type { EnvironmentTarget } from '@ion/shared/types-environments'
 import { loadPersistedSettings } from './preferences-persist'
 import { hasAppliedManagedDefault, markManagedDefaultApplied } from './managed-defaults'
@@ -30,8 +30,7 @@ type PreferencesStore = UseBoundStore<StoreApi<PreferencesState>>
  * the policy lifts.
  */
 function effectiveThemeId(store: PreferencesStore, userChoice: string): string {
-  const policy = deriveEnterpriseThemePolicy(store.getState().enterprisePolicy)
-  return policy?.locked ? policy.themeId : userChoice
+  return resolveEffectiveThemeId(store.getState().enterprisePolicy, userChoice)
 }
 
 /**
@@ -142,8 +141,10 @@ export function bootstrapPreferences(store: PreferencesStore, savedThemeId: stri
     })
     .then(() => shell.getEnterprisePolicyFull()).then((policy) => {
     store.getState().setEnterprisePolicy(policy)
-    // Enterprise theme policy: locked → the enforced theme renders now and
-    // the Settings theme picker disables (it reads the same derivation);
+    // Enterprise theme policy: locked → the enforced theme renders now: the
+    // CSS variables here, and every useColors()/getColors() consumer through
+    // the store's effective-theme selector, which setEnterprisePolicy above
+    // already re-rendered. The Settings theme picker disables;
     // unlocked → managed DEFAULT, honored only when this profile has never
     // picked a theme (a fresh install on a managed machine boots branded).
     const themePolicy = deriveEnterpriseThemePolicy(policy)

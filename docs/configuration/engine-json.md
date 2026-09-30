@@ -20,6 +20,7 @@ Ion ships with no default model. Before the engine can run a prompt, you must ei
 | `defaultModel` | string | `""` | Model identifier used when no `--model` override is passed. Required. The engine errors out if neither this field nor `--model` is set. |
 | `logLevel` | string | `""` | Log verbosity. One of `"debug"`, `"info"`, `"warn"`, `"error"`. Empty string uses the engine default. |
 | `slashModelTier` | object | omitted | Policy for command-owned model tiers after a conversation has history. See [slashModelTier](#slashmodeltier). |
+| `subscriptionLookup` | object | omitted | Resolve a provider's key from an endpoint with the signed-in identity. See [subscriptionLookup](#subscriptionlookup). |
 
 ## slashModelTier
 
@@ -441,6 +442,22 @@ Authentication and credential management.
 | `secureStore` | object | `null` | Credential storage backend configuration. |
 | `cacheTtlMs` | int64 | `0` | How long to cache resolved credentials (milliseconds). |
 | `refreshThresholdMs` | int64 | `0` | Refresh tokens this many milliseconds before expiry. |
+
+## subscriptionLookup
+
+Resolves a provider's subscription key from an endpoint you run, using the identity signed in through `auth.identityProvider`. One subscription is applied automatically, several are offered for a choice that is remembered, and none is reported as its own state. The key is cached per identity and outranks manual keys; a failed lookup leaves manual keys in use.
+
+```json
+{
+  "subscriptionLookup": {
+    "endpoint": "https://keys.example.org/subscriptions",
+    "provider": "gateway",
+    "scope": "api://keys/.default"
+  }
+}
+```
+
+Fields, behavior, and the published endpoint contract: [Subscription Lookup](subscription-lookup.md).
 
 ### Operator Context Identity migration
 
@@ -936,6 +953,26 @@ Enterprise policy can seal this on via `enterprise.thinking.disabled`. The seal
 is one way: an enterprise `disabled: true` cannot be re-enabled by a user or
 project layer, while an enterprise block with `disabled: false` is a ceiling
 rather than a mandate and leaves a locally-disabled install disabled.
+
+## dispatchHistory
+
+Bounds the record of ended dispatches each session keeps. When a dispatch ends, it leaves the live dispatch list and an entry with its final status, reason, completion time, and lineage is kept. Extensions read it with `ext/list_dispatch_history` (`ctx.listDispatchHistory()` in TypeScript, `ctx.ListDispatchHistory` in Go). This block keeps that record from growing without limit.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `maxEntries` | int | `200` | Most ended dispatches kept per session. The oldest completions are dropped first. `0` uses the default. A negative value turns the record off. |
+| `maxAgeMs` | int | `3600000` | Drop an entry this many milliseconds after its dispatch ended. `0` uses the default. A negative value removes the age limit, leaving only `maxEntries`. |
+
+A more specific config layer replaces the whole block. Each ended dispatch is also written to the session's conversation file, so a restarted session rebuilds its record within these same limits. A dispatch that was running when the engine process died comes back with status `lost`.
+
+```json
+{
+  "dispatchHistory": {
+    "maxEntries": 500,
+    "maxAgeMs": 86400000
+  }
+}
+```
 
 ## Full example
 

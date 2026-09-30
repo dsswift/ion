@@ -373,7 +373,7 @@ Every RPC-backed method takes a `context.Context` first. This is not decoration:
 | Identity (fields)   | `SessionKey`, `ConversationID`, `RunID`, `TraceID`, `Depth`, `DispatchID`, `Cwd`, `Model`, `Config`                                         |
 | Events and messages | `Emit`, `SendMessage`, `SendPrompt`                                                                                                    |
 | Tools               | `CallTool`, `SuppressTool`                                                                                                             |
-| Dispatch            | `DispatchAgent`, `RecallAgent`, `RecallDispatch`, `SteerDispatch`, `SteerDispatchByName`, `SteerSelf`, `ListDispatchState`, `AnswerDispatchQuestion`, `AckDispatchLost` |
+| Dispatch            | `DispatchAgent`, `RecallAgent`, `RecallAgentByName`, `RecallDispatch`, `RecallDispatchWithOutcome`, `SteerDispatch`, `SteerDispatchByName`, `SteerSelf`, `ListDispatchState`, `ListDispatchHistory`, `AnswerDispatchQuestion`, `AckDispatchLost` |
 | Agents              | `DiscoverAgents`, `RegisterAgentSpec`, `DeregisterAgentSpec`, `SetDispatchContextDefaults`                                             |
 | Session             | `Elicit`, `GetContextUsage`, `SearchHistory`, `GetSessionMemory`, `SetSessionMemory`, `SetRunRecovery`, `WalkContextFiles`, `Suspend`, `SuspendUntilAll` |
 | Plan mode           | `EnterPlanMode`, `ExitPlanMode`, `GetPlanMode`                                                                                         |
@@ -414,6 +414,12 @@ _, err := ctx.DispatchAgent(c, ion.DispatchAgentOpts{
 ```
 
 `ListDispatchState` entries expose `WaitingOn` for suspended dispatches. `TaskIDs` names notifying background Bash commands; `ChildDispatchIDs` names dispatched children. Both are exact current sets. `WaitingOn == nil` means no tracked asynchronous work is holding that dispatch parked.
+
+`ListDispatchState` lists only live dispatches. `ListDispatchHistory` returns the ones that have ended, oldest completion first, with `Status` (`done`, `error`, `cancelled`, or `lost` for one running when the engine died), `Reason`, `ExitCode` (nil when unknown), `CompletedAt`, `DurationMs`, and the lineage fields `DispatchID`, `Name`, `ParentDispatchID`, and `Depth`. It survives a session or engine restart. Ownership matches the live list.
+
+Steer and recall act only on dispatches the caller owns: the root context owns every dispatch in its session, a dispatched agent only its descendants. `SteerDispatch` returns outcome `unauthorized` otherwise, and `completed` with `Terminal` set when the target already finished. `RecallDispatch` returns an `*RPCError` for an unauthorized target, as before; `RecallDispatchWithOutcome` returns `recalled`, `completed`, `unauthorized`, or `not_found` as a result. The engine bounds retention with the `dispatchHistory` block in `engine.json`.
+
+Name addressing searches only the caller's own scope and acts only on a unique name there. `SteerDispatchByName` and `RecallAgentByName` return outcome `ambiguous` with `MatchingDispatchIDs` when several live dispatches share the name, and do nothing. `RecallAgent` returns `false` in that case. Retry with `SteerDispatch` or `RecallDispatch` against the ID you mean.
 
 `AckDispatchLost` confirms durable handling of a `dispatch_lost` hook notice. The engine re-emits an unacknowledged loss after every later restart; call it only after your handler has durably recorded, delivered, or intentionally ignored the loss. Repeated acknowledgements are safe.
 

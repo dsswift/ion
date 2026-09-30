@@ -129,18 +129,33 @@ func (s *Sampler) ClampInterval(ms int64) int64 {
 	return ms
 }
 
+// WatchAck answers a watch request. It runs before the watcher can receive
+// its first sample, with the interval in effect (0 when stopped) and the
+// number of watchers after the change.
+type WatchAck func(intervalMs int64, watchers int)
+
 // Watch starts (or updates) a watcher and returns the interval it will
-// receive samples at. intervalMs <= 0 stops watching and returns 0.
-func (s *Sampler) Watch(id string, intervalMs int64) int64 {
+// receive samples at. intervalMs <= 0 stops watching and returns 0. ack, when
+// not nil, runs before a new watcher's first sample is delivered, so a reply
+// written from it always reaches the watcher ahead of any sample.
+func (s *Sampler) Watch(id string, intervalMs int64, ack WatchAck) int64 {
 	if intervalMs <= 0 {
 		s.Unwatch(id)
+		if ack != nil {
+			ack(0, s.watchers.count())
+		}
 		return 0
 	}
 	eff := s.ClampInterval(intervalMs)
 	s.watchers.set(id, eff)
+	watchers := s.watchers.count()
 	utils.LogWithFields(utils.LevelInfo, "sysmetrics", "watcher set", map[string]any{
-		"connection_id": id, "interval_ms": eff, "requested_interval_ms": intervalMs, "watchers": s.watchers.count(),
+		"connection_id": id, "interval_ms": eff, "requested_interval_ms": intervalMs, "watchers": watchers,
 	})
+	if ack != nil {
+		ack(eff, watchers)
+	}
+	s.watchers.release(id)
 	s.poke()
 	return eff
 }

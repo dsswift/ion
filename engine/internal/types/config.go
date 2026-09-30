@@ -92,6 +92,10 @@ type EnterpriseConfig struct {
 	// restrictive, so a lower layer may also require identity but cannot disable
 	// an enterprise requirement.
 	Auth *AuthConfig `json:"auth,omitempty"`
+	// SubscriptionLookup, when set, replaces the user/project block whole, so
+	// the endpoint that issues provider keys is the enterprise's and a lower
+	// layer cannot point it elsewhere. Nil leaves the merged value standing.
+	SubscriptionLookup *SubscriptionLookupConfig `json:"subscriptionLookup,omitempty"`
 	// ExtensionAllowlist, when non-empty, restricts which extensions the engine
 	// will load (feature 0011 / D-020, issue #308). Each entry is an exact
 	// extension identifier (manifest name, else directory basename) with an
@@ -354,8 +358,12 @@ type EngineRuntimeConfig struct {
 	NewConversationDefaults *NewConversationDefaultsPolicy `json:"newConversationDefaults,omitempty"`
 	Permissions             *PermissionPolicy              `json:"permissions,omitempty"`
 	Auth                    *AuthConfig                    `json:"auth,omitempty"`
-	Network                 *NetworkConfig                 `json:"network,omitempty"`
-	Telemetry               *TelemetryConfig               `json:"telemetry,omitempty"`
+	// SubscriptionLookup resolves a provider's key from an endpoint using the
+	// signed-in identity. Nil leaves manual key entry as the only path.
+	// Enterprise policy replaces it whole (see EnforceEnterprise).
+	SubscriptionLookup *SubscriptionLookupConfig `json:"subscriptionLookup,omitempty"`
+	Network            *NetworkConfig            `json:"network,omitempty"`
+	Telemetry          *TelemetryConfig          `json:"telemetry,omitempty"`
 	// SystemMetrics configures the System Metrics sampler (host and process
 	// load). Nil means sampling is on with the compiled defaults.
 	SystemMetrics *SystemMetricsConfig `json:"systemMetrics,omitempty"`
@@ -486,6 +494,10 @@ type EngineRuntimeConfig struct {
 	// ctx.setDispatchContextDefaults() (level 3) or per-dispatch via
 	// DispatchAgentOpts.ContextPolicy (level 4).
 	DispatchContext *DispatchContextConfig `json:"dispatchContext,omitempty"`
+
+	// DispatchHistory bounds the terminal dispatch history each session
+	// retains. Nil means the compiled defaults. See DispatchHistoryConfig.
+	DispatchHistory *DispatchHistoryConfig `json:"dispatchHistory,omitempty"`
 
 	// ThinkingPolicy holds the engine-wide operator policy for extended
 	// thinking. It is distinct from Thinking, which configures default per-run
@@ -880,11 +892,14 @@ type McpServerConfig struct {
 	// remains supported permanently; setting either field enables forwarding.
 	ForwardIdentityToken bool `json:"forwardIdentityToken,omitempty"`
 	// IdentityTokenScope is the downstream scope for generic identity-token
-	// forwarding. When empty, UserTokenScope remains the compatibility alias.
+	// forwarding. It applies whenever ForwardIdentityToken is set, including
+	// an empty value selecting the grant's base scope; UserTokenScope is then
+	// ignored.
 	IdentityTokenScope string `json:"identityTokenScope,omitempty"`
 	// IdentityTokenAudience is the downstream audience/resource for generic
-	// identity-token forwarding. When empty, UserTokenAudience remains the
-	// compatibility alias.
+	// identity-token forwarding. It applies whenever ForwardIdentityToken is
+	// set, including an empty value selecting the provider's default
+	// audience; UserTokenAudience is then ignored.
 	IdentityTokenAudience string `json:"identityTokenAudience,omitempty"`
 	// ForwardUserToken makes the engine stamp the signed-in operator's
 	// OIDC bearer token on every outbound request to this server. Deprecated
@@ -893,13 +908,15 @@ type McpServerConfig struct {
 	ForwardUserToken bool `json:"forwardUserToken,omitempty"`
 	// UserTokenScope is the downstream resource scope the forwarded token
 	// is minted for (e.g. "api://<app-id>/Erm.Access"). Empty uses the
-	// operator grant's base scope. Only meaningful with ForwardUserToken.
+	// operator grant's base scope. Only meaningful with ForwardUserToken and
+	// ignored when ForwardIdentityToken is set.
 	UserTokenScope string `json:"userTokenScope,omitempty"`
 	// UserTokenAudience is the explicit audience/resource for the forwarded
 	// token, for identity providers that bind grants to one (Auth0,
 	// RFC 8707) instead of encoding the resource in the scope string.
 	// Empty uses the identity provider's configured default audience.
-	// Only meaningful with ForwardUserToken.
+	// Only meaningful with ForwardUserToken and ignored when
+	// ForwardIdentityToken is set.
 	UserTokenAudience string `json:"userTokenAudience,omitempty"`
 }
 

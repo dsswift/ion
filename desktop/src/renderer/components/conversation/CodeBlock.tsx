@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowsLeftRight, TextAlignLeft } from '@phosphor-icons/react'
 import type { BundledLanguage } from 'shiki'
 import { useColors } from '../../theme'
-import { usePreferencesStore } from '../../preferences'
+import { useEffectiveThemeId } from '../../preferences'
 import { getTheme, themeScheme } from '../../theme-tokens'
 import { getFileIcon } from '../FileExplorerIcons'
 import { CopyButton } from './CopyButton'
@@ -61,8 +61,8 @@ function diffLineKind(line: string): 'add' | 'remove' | 'hunk' | 'plain' {
  */
 export function CodeBlock({ code, fenceLang, fileName, onOpenFile, onOpenUrl }: CodeBlockProps) {
   const colors = useColors()
-  const selectedTheme = usePreferencesStore((s) => s.selectedTheme)
-  const scheme = themeScheme(getTheme(selectedTheme))
+  const themeId = useEffectiveThemeId()
+  const scheme = themeScheme(getTheme(themeId))
   const [wrap, setWrap] = useState(false)
 
   const trimmed = useMemo(() => code.replace(/\n$/, ''), [code])
@@ -76,7 +76,7 @@ export function CodeBlock({ code, fenceLang, fileName, onOpenFile, onOpenUrl }: 
     getCachedHighlight(trimmed, lang, colors) ?? plaintextTokens(trimmed))
   // Identity of the highlight request the current async task serves; a
   // resolution whose key no longer matches is stale and dropped.
-  const requestKey = `${lang ?? ''}\u0001${selectedTheme}\u0001${trimmed}`
+  const requestKey = `${lang ?? ''}\u0001${themeId}\u0001${trimmed}`
   const requestKeyRef = useRef(requestKey)
   requestKeyRef.current = requestKey
 

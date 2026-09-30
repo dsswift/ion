@@ -123,6 +123,12 @@ const (
 	// delivered to the requester of an oidc_identity command. Consumers
 	// replace their local identity view with the payload.
 	EventOidcIdentity = "engine_oidc_identity"
+	// EventProviderSubscription is a complete snapshot of the Provider
+	// Subscription state (the key a lookup endpoint resolved for the signed-in
+	// identity). Broadcast to all clients on every state change and delivered
+	// to the requester of a provider_subscription_* command. Consumers replace
+	// their local view with the payload.
+	EventProviderSubscription = "engine_provider_subscription"
 	// EventMcpLoginURL is delivered to the client that issued an mcp_login
 	// command. It carries the authorization URL that consumer must open in a
 	// browser, plus the server name it belongs to (a consumer may have several

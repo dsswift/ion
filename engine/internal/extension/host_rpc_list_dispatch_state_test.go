@@ -209,3 +209,63 @@ func TestExtListDispatchState_EmptyArrayWhenNoDispatches(t *testing.T) {
 		t.Errorf("dispatches len = %d, want 0", len(dispatches))
 	}
 }
+
+// ─── ext/list_dispatch_history ────────────────────────────────────────────────
+
+// TestExtListDispatchHistory_ReturnsEnvelopeWithEntries pins the wire shape of
+// the terminal-history RPC: a { dispatches: [...] } envelope whose entries
+// carry status, reason, completion time, and lineage.
+func TestExtListDispatchHistory_ReturnsEnvelopeWithEntries(t *testing.T) {
+	exitCode := 1
+	h := NewHost()
+	ch := attachStdout(h)
+	h.ctxStack.Push(&Context{
+		Cwd: "/tmp",
+		ListDispatchHistory: func() ([]DispatchHistoryEntry, error) {
+			return []DispatchHistoryEntry{{
+				DispatchID: "d-1", Name: "worker", Status: "error", Reason: "boom", ExitCode: &exitCode,
+				ParentDispatchID: "d-0", Depth: 2, StartedAt: "2026-09-29T00:00:00Z",
+				CompletedAt: "2026-09-29T00:00:01Z", DurationMs: 1000,
+			}}, nil
+		},
+	})
+	raw := []byte(`{"jsonrpc":"2.0","id":1,"method":"ext/list_dispatch_history","params":{}}`)
+	h.handleExtRequest("ext/list_dispatch_history", 1, raw)
+
+	resp := readResponse(t, ch, time.Second)
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected object result, got %#v", resp)
+	}
+	entries, ok := result["dispatches"].([]interface{})
+	if !ok || len(entries) != 1 {
+		t.Fatalf("dispatches = %#v, want one entry", result["dispatches"])
+	}
+	e, _ := entries[0].(map[string]interface{}) //nolint:errcheck // fields asserted below
+	for key, want := range map[string]interface{}{
+		"dispatchId": "d-1", "name": "worker", "status": "error", "reason": "boom",
+		"exitCode": float64(1), "parentDispatchId": "d-0", "depth": float64(2),
+		"completedAt": "2026-09-29T00:00:01Z", "durationMs": float64(1000),
+	} {
+		if e[key] != want {
+			t.Errorf("entry[%q] = %#v, want %#v", key, e[key], want)
+		}
+	}
+}
+
+// TestExtListDispatchHistory_EmptyWithoutGetter pins the degrade path: no
+// wired getter answers an empty array, never null or an error.
+func TestExtListDispatchHistory_EmptyWithoutGetter(t *testing.T) {
+	h := NewHost()
+	ch := attachStdout(h)
+	raw := []byte(`{"jsonrpc":"2.0","id":1,"method":"ext/list_dispatch_history","params":{}}`)
+	h.handleExtRequest("ext/list_dispatch_history", 1, raw)
+	resp := readResponse(t, ch, time.Second)
+	result, ok := resp["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected object result, got %#v", resp)
+	}
+	if entries, ok := result["dispatches"].([]interface{}); !ok || len(entries) != 0 {
+		t.Fatalf("dispatches = %#v, want []", result["dispatches"])
+	}
+}

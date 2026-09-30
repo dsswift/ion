@@ -2,7 +2,8 @@ import SwiftUI
 
 /// Enterprise sign-in on a server: the organization account its engine is
 /// signed in with, so shipped telemetry carries who ran it. Sign in from the
-/// phone uses a code entered at the provider's page.
+/// phone uses a code entered at the provider's page. Below it, the provider
+/// subscription the engine looks up with that sign-in, when one is configured.
 struct EntraAdminSection: View {
     let session: ServerAdminSession
 
@@ -47,6 +48,7 @@ struct EntraAdminSection: View {
         if let reason = session.denialReason(.entraSignIn) {
             Text(reason).font(.footnote).foregroundStyle(.secondary)
         }
+        ProviderSubscriptionRows(session: session)
     }
 
     @ViewBuilder private var stateRow: some View {

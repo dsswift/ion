@@ -66,9 +66,8 @@ func TestRecallOwnedByID_ImmediateAndScoped(t *testing.T) {
 	cancelled := false
 	r.RegisterWithID("a3", "great-grandchild-a", func() { cancelled = true }, nil, "s", "a2", 4)
 
-	found, err := r.RecallOwnedByID("a", "a2", "emergency")
-	if err != nil || !found {
-		t.Fatalf("RecallOwnedByID = (%v, %v), want (true, nil)", found, err)
+	if got := r.RecallOwnedByID("a", "a2", "emergency"); got.Outcome != RecallOutcomeRecalled {
+		t.Fatalf("RecallOwnedByID = %+v, want recalled", got)
 	}
 	// Cancel fires during recall, not after a steer/checkpoint.
 	if !cancelled {
@@ -88,9 +87,8 @@ func TestRecallOwnedByID_RejectsSibling(t *testing.T) {
 	r := ownershipRegistry()
 	cancelled := false
 	r.RegisterWithID("b2", "grandchild-b", func() { cancelled = true }, nil, "s", "b1", 3)
-	found, err := r.RecallOwnedByID("a", "b1", "unauthorized")
-	if found || err == nil {
-		t.Fatalf("RecallOwnedByID sibling = (%v, %v), want (false, authorization error)", found, err)
+	if got := r.RecallOwnedByID("a", "b1", "unauthorized"); got.Outcome != RecallOutcomeUnauthorized {
+		t.Fatalf("RecallOwnedByID sibling = %+v, want unauthorized", got)
 	}
 	if cancelled {
 		t.Fatal("unauthorized recall cancelled sibling descendant")

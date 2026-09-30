@@ -76,7 +76,7 @@ func TestTemporaryAutoPlanWaitsForBackgroundWorkThenProposes(t *testing.T) {
 		t.Fatal("workflow did not remember outstanding work")
 	}
 
-	registry.Deregister("agent-1")
+	registry.Deregister("agent-1", extcontext.DispatchOutcome{Status: extcontext.DispatchStatusDone})
 	continuationOpts := types.RunOptions{BackgroundWork: &types.BackgroundWorkInfo{
 		Kind:  string(types.InjectionKindAgentCompletion),
 		Items: []types.BackgroundWorkItem{{ID: "agent-1", Source: types.BackgroundWorkSourceAgent}},

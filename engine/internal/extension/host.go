@@ -135,7 +135,7 @@ type Host struct {
 	// no hook/run context is active (i.e. the parent run is idle). The registry
 	// outlives runs by design, so recall must work even when ctxStack is empty.
 	// Set by the session manager alongside persistentEmit. Guarded by notifMu.
-	persistentRecall func(name, reason string) (bool, error)
+	persistentRecall func(name, reason string) (RecallAgentResult, error)
 
 	// persistentAckDispatchLost persists consumer acknowledgement for an orphaned dispatch.
 	persistentAckDispatchLost func(dispatchID string)
@@ -144,7 +144,7 @@ type Host struct {
 	// backing ext/recall_dispatch when no hook/run context is active. Same
 	// rationale: the dispatch registry outlives runs, so a recall issued
 	// while the parent is idle must still reach it. Guarded by notifMu.
-	persistentRecallByID func(dispatchID, reason string) (bool, error)
+	persistentRecallByID func(dispatchID, reason string) (RecallDispatchResult, error)
 
 	// persistentSteer is a session-scoped fallback for ext/steer_dispatch when
 	// no hook/run context is active. Guarded by notifMu.
@@ -367,7 +367,7 @@ func (h *Host) SetPersistentScheduleControl(
 // context is active (parent session is idle between dispatch runs). The
 // dispatch registry outlives runs by design, so recall must succeed even when
 // ctxStack is empty.
-func (h *Host) SetPersistentRecall(fn func(name, reason string) (bool, error)) {
+func (h *Host) SetPersistentRecall(fn func(name, reason string) (RecallAgentResult, error)) {
 	h.notifMu.Lock()
 	defer h.notifMu.Unlock()
 	h.persistentRecall = fn
@@ -383,7 +383,7 @@ func (h *Host) SetPersistentAckDispatchLost(fn func(dispatchID string)) {
 // SetPersistentRecallByID sets the fallback ID-addressed recall function used
 // when no run context is active. Peer of SetPersistentRecall for the
 // deterministic, dispatch-ID-keyed recall path (ext/recall_dispatch).
-func (h *Host) SetPersistentRecallByID(fn func(dispatchID, reason string) (bool, error)) {
+func (h *Host) SetPersistentRecallByID(fn func(dispatchID, reason string) (RecallDispatchResult, error)) {
 	h.notifMu.Lock()
 	defer h.notifMu.Unlock()
 	h.persistentRecallByID = fn

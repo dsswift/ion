@@ -133,6 +133,12 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 		copy := *src.NewConversationDefaults
 		dst.NewConversationDefaults = &copy
 	}
+	// SubscriptionLookup is atomic: its endpoint, provider, and token shape
+	// only make sense together, so a more-specific layer replaces the block.
+	if src.SubscriptionLookup != nil {
+		copy := *src.SubscriptionLookup
+		dst.SubscriptionLookup = &copy
+	}
 
 	// Optional fields: override if set
 	if src.Permissions != nil {
@@ -190,7 +196,7 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if src.Scheduling != nil {
 		dst.Scheduling = src.Scheduling
 	}
-	// Background task and Poll policy blocks are engine-owned operational
+	// Background task, Poll, and dispatch history blocks are engine-owned operational
 	// configuration. A more-specific layer replaces the complete policy block,
 	// matching other bounded runtime mechanisms above. Without this carry,
 	// project and managed defaults decode successfully then silently disappear
@@ -200,6 +206,9 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	}
 	if src.Poll != nil {
 		dst.Poll = src.Poll
+	}
+	if src.DispatchHistory != nil {
+		dst.DispatchHistory = src.DispatchHistory
 	}
 
 	// LogLevel: a higher layer's value replaces a lower one.

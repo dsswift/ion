@@ -1,8 +1,6 @@
 package extcontext
 
 import (
-	"time"
-
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -13,8 +11,10 @@ import (
 // change.
 
 // SteerDispatchOutcome is a string-typed enum describing how a
-// SteerByID call was resolved. It mirrors the backend.SteerResult
-// values with an additional "not_found" for registry-level misses.
+// SteerByID or SteerByName call was resolved. It mirrors the
+// backend.SteerResult values with an additional "not_found" for
+// registry-level misses and "ambiguous" for a name that matches more than one
+// live dispatch.
 type SteerDispatchOutcome string
 
 const (
@@ -29,7 +29,27 @@ const (
 	SteerOutcomeNoRun SteerDispatchOutcome = "no_run"
 	// SteerOutcomeNotFound: no dispatch with that ID exists in the registry.
 	SteerOutcomeNotFound SteerDispatchOutcome = "not_found"
+	// SteerOutcomeAmbiguous: a name matched more than one live dispatch the
+	// caller owns. Nothing was delivered; the matching IDs come back with the
+	// outcome so the caller can retry against one by ID.
+	SteerOutcomeAmbiguous SteerDispatchOutcome = "ambiguous"
+	// SteerOutcomeUnauthorized: the dispatch exists but the caller does not
+	// own it (it is the caller itself, an ancestor, a sibling, another branch,
+	// or another session's dispatch).
+	SteerOutcomeUnauthorized SteerDispatchOutcome = "unauthorized"
+	// SteerOutcomeCompleted: the caller owns the dispatch but it had already
+	// finished. The terminal entry comes back with the outcome.
+	SteerOutcomeCompleted SteerDispatchOutcome = "completed"
 )
+
+// SteerControlResult is the full result of an owner-scoped steer.
+// MatchingIDs is set only for SteerOutcomeAmbiguous; Terminal only for
+// SteerOutcomeCompleted.
+type SteerControlResult struct {
+	Outcome     SteerDispatchOutcome
+	MatchingIDs []string
+	Terminal    *DispatchTerminalEntry
+}
 
 // Steerable is a narrow interface for backends that support in-process
 // steer delivery. Both *backend.ApiBackend and *backend.HybridBackend
@@ -42,7 +62,9 @@ type Steerable interface {
 }
 
 // SteerByID delivers a steering message to a running background dispatch
-// identified by its public dispatch ID. It looks up the registry entry,
+// identified by its public dispatch ID, with no ownership check. It is the
+// engine's internal delivery verb; extension-facing steers go through
+// SteerOwnedByID. It looks up the registry entry,
 // type-asserts the stored Child backend to the Steerable interface, and
 // calls SteerWithReason with the entry's ChildRunID. The backend's
 // SteerResult is mapped to a SteerDispatchOutcome so the caller gets a
@@ -115,52 +137,66 @@ func (r *DispatchRegistry) SteerByIDWithKind(dispatchID, message, kind string) S
 	return outcome
 }
 
-// SteerByName delivers a steering message to a running background dispatch
-// identified by its agent name. When several dispatches share a name it
-// selects the MOST RECENTLY STARTED one (StartedAt, with the dispatch ID as a
-// deterministic tiebreak for same-instant starts), then delegates to
-// SteerByID. Returns SteerOutcomeNotFound when no dispatch with that name
-// exists.
-//
-// Most-recent is the rule because it is the only one that matches how a
-// name-addressed steer is actually meant: the caller re-dispatched an agent and
-// is steering the dispatch it just created. Selection used to be the first
-// entry a Go map-range happened to yield, which is randomized per iteration by
-// the runtime — so with two live same-name dispatches the steer landed on a
-// coin flip, and the same call could reach a different agent each time with no
-// way for the caller to tell which. Ordering it makes the choice explainable
-// and repeatable.
-//
-// Name addressing remains inherently ambiguous, and SteerByID is still the
-// precise verb. This makes the ambiguity resolve predictably instead of
-// randomly; it does not make a name a dispatch identity.
-func (r *DispatchRegistry) SteerByName(name, message string) SteerDispatchOutcome {
+// SteerOwnedByID steers the dispatch identified by dispatchID (canonical ID or
+// consumer alias) on behalf of ownerID. The root context (empty ownerID) owns
+// every dispatch in the registry; a dispatched agent owns only its strict
+// descendants. A live owned dispatch gets the message through SteerByID; a
+// live dispatch the caller does not own is SteerOutcomeUnauthorized; a
+// finished one resolves through resolveMiss.
+func (r *DispatchRegistry) SteerOwnedByID(ownerID, dispatchID, message string) SteerControlResult {
 	r.mu.Lock()
-	var foundID string
-	var foundAt time.Time
-	candidates := 0
-	for id, d := range r.dispatches {
-		if d.Name != name {
-			continue
+	canonical, _, live := r.resolveIDLocked(dispatchID)
+	if live {
+		target := r.dispatches[canonical]
+		owned := r.descendsFromLocked(canonical, target.ParentID, ownerID)
+		r.mu.Unlock()
+		if !owned {
+			utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerownedbyid: caller does not own dispatch", map[string]any{
+				"owner_dispatch_id": ownerID, "dispatch_id": dispatchID, "run_id": canonical,
+			})
+			return SteerControlResult{Outcome: SteerOutcomeUnauthorized}
 		}
-		candidates++
-		// Strictly-later wins; on an exact StartedAt tie fall back to the
-		// larger ID so the choice is total and stable rather than
-		// map-order-dependent. Both dispatch IDs embed a millisecond
-		// timestamp, so the larger string is also the later dispatch.
-		if foundID == "" || d.StartedAt.After(foundAt) || (d.StartedAt.Equal(foundAt) && id > foundID) {
-			foundID, foundAt = id, d.StartedAt
+		if outcome := r.SteerByID(canonical, message); outcome != SteerOutcomeNotFound {
+			return SteerControlResult{Outcome: outcome}
 		}
+		// Finished between the ownership check and delivery.
+	} else {
+		r.mu.Unlock()
 	}
+	return steerMissResult(r.resolveMiss(ownerID, dispatchID, "steer", string(SteerOutcomeUnauthorized)))
+}
+
+func steerMissResult(kind missKind, terminal *DispatchTerminalEntry) SteerControlResult {
+	switch kind {
+	case missCompleted:
+		return SteerControlResult{Outcome: SteerOutcomeCompleted, Terminal: terminal}
+	case missUnauthorized:
+		return SteerControlResult{Outcome: SteerOutcomeUnauthorized}
+	default:
+		return SteerControlResult{Outcome: SteerOutcomeNotFound}
+	}
+}
+
+// SteerOwnedByName steers the one live dispatch ownerID owns that carries
+// name. It searches exactly the scope SteerOwnedByID would accept, so a name
+// never reaches a dispatch its ID could not. When several owned dispatches
+// carry the name it delivers nothing and returns SteerOutcomeAmbiguous with
+// every matching ID, sorted: choosing one would put the message in front of
+// an agent the caller may not have meant.
+func (r *DispatchRegistry) SteerOwnedByName(ownerID, name, message string) SteerControlResult {
+	r.mu.Lock()
+	matches := r.ownedLiveIDsByNameLocked(ownerID, name)
 	r.mu.Unlock()
 
-	if foundID == "" {
-		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerbyname: not found", map[string]any{"model": name, "count": len(message), "steer_outcome_not_found": SteerOutcomeNotFound})
-		return SteerOutcomeNotFound
+	switch len(matches) {
+	case 0:
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerbyname: not found", map[string]any{"model": name, "owner_dispatch_id": ownerID, "count": len(message)})
+		return SteerControlResult{Outcome: SteerOutcomeNotFound}
+	case 1:
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerbyname: resolved unique name match", map[string]any{"model": name, "owner_dispatch_id": ownerID, "run_id": matches[0]})
+		return r.SteerOwnedByID(ownerID, matches[0], message)
+	default:
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerbyname: ambiguous name, nothing delivered", map[string]any{"model": name, "owner_dispatch_id": ownerID, "max": len(matches), "dispatch_ids": matches})
+		return SteerControlResult{Outcome: SteerOutcomeAmbiguous, MatchingIDs: matches}
 	}
-
-	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerbyname: resolved to most recently started dispatch", map[string]any{
-		"model": name, "run_id": foundID, "max": candidates, "started_at": foundAt.UTC().Format(time.RFC3339Nano),
-	})
-	return r.SteerByID(foundID, message)
 }

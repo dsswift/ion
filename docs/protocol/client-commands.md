@@ -667,7 +667,7 @@ Start, change, or stop delivery of [`engine_system_metrics`](server-events.md#en
 
 While any connection watches, the engine samples at the smallest interval any watcher asked for; each watcher receives samples at its own interval. With no watchers it samples every `systemMetrics.backgroundIntervalMs` (default 30000). A watch ends when the connection sends `intervalMs: 0` or disconnects. A relay-dispatched command has no socket to deliver to and is refused.
 
-**Response:** `ServerResult` with `data: {intervalMs, watchers}`: the interval in effect for this connection (`0` when stopped) and how many connections now watch.
+**Response:** `ServerResult` with `data: {intervalMs, watchers}`: the interval in effect for this connection (`0` when stopped) and how many connections now watch. A new watch's result always arrives before its first `engine_system_metrics`.
 
 ```json
 {"cmd":"system_metrics_watch","requestId":"r42","intervalMs":1000}
@@ -1163,6 +1163,58 @@ After an issuer-side revocation, request one cache-bypassing refresh:
 ```
 
 **Response:** `ServerResult` with `data: { accessToken: string, expiresAt?: number }`. `expiresAt`, when supplied by the token provider, is Unix milliseconds. The token is bounded (30 s mint deadline) and returned only to the requesting connection.
+
+---
+
+### provider_subscription_status
+
+Read the Provider Subscription state: the provider key the engine resolved from `subscriptionLookup` for the signed-in identity. See [Subscription Lookup](../configuration/subscription-lookup.md).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"provider_subscription_status"` | yes | Command discriminator |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"provider_subscription_status","requestId":"r50"}
+```
+
+**Response:** an `engine_provider_subscription` event to the requester, then `ServerResult` with `data: { subscription: ProviderSubscriptionStatus }`. With no `subscriptionLookup` configured the state is `disabled` and the result is still `ok`.
+
+---
+
+### provider_subscription_select
+
+Apply one subscription the lookup offered and remember the choice for later launches. When the last lookup in memory did not offer `subscriptionId` (for example after a restart, when only the chosen key is cached), the engine looks up again first.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"provider_subscription_select"` | yes | Command discriminator |
+| `subscriptionId` | string | yes | An `id` from the snapshot's `options` |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"provider_subscription_select","subscriptionId":"sub-high-quota","requestId":"r51"}
+```
+
+**Response:** answered once the selection settles, on its own goroutine so the read loop never waits on the endpoint. An `engine_provider_subscription` event to the requester, then `ServerResult` with `data: { subscription }`. The result is an error when no lookup is configured, no identity is signed in, the lookup fails, or the id is not offered; `data.subscription` still carries the state the command left. Every state change is also broadcast.
+
+---
+
+### provider_subscription_refresh
+
+Look up the subscriptions again now, for example after a key rotated.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"provider_subscription_refresh"` | yes | Command discriminator |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"provider_subscription_refresh","requestId":"r52"}
+```
+
+**Response:** as `provider_subscription_select`: answered when the lookup settles, bounded by `subscriptionLookup.timeoutMs`, with the resulting snapshot in `data.subscription` whether or not it failed.
 
 ---
 

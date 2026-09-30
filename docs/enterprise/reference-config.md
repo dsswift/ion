@@ -25,7 +25,7 @@ but one engine process, one credential store and one set of conversations
 
 | Machine-wide, identical for every user | Per-user, never shared |
 |---|---|
-| Providers: gateway URL, auth header, display name | The API key each user authenticates with |
+| Providers: gateway URL, auth header, display name | The API key each user authenticates with, typed in or looked up |
 | Identity: tenant, client ID, scopes, PKCE | The user's own tokens and session |
 | Allowed models and providers | Conversations and history |
 | Telemetry endpoints and privacy level | Studio preferences: theme, layout, fonts |
@@ -68,6 +68,11 @@ themselves.
       "disableAutoUpdate": true
     }
   },
+  "subscriptionLookup": {
+    "endpoint": "https://keys.example.com/subscriptions",
+    "provider": "gateway",
+    "scope": "api://<application-client-id>/Subscriptions.Read"
+  },
   "auth": {
     "identityProvider": "entra",
     "requireOperatorIdentity": true,
@@ -108,6 +113,21 @@ definition for everyone, each user's own credential. Setting a non-empty
 
 A provider named here is implicitly allowed and need not repeat in
 `allowedProviders`.
+
+### `subscriptionLookup`
+
+Delivers each user's own gateway key without anyone typing it. After sign-in
+the engine calls `endpoint` with the user's token; the endpoint returns the
+subscriptions that user may use, and the engine applies the key to
+`provider`. One subscription is applied with no prompt; several are offered
+once and the choice is remembered; none is reported as its own state. The key
+is cached per user and outranks a key the user typed in, which still serves
+if a lookup fails.
+
+Set here, the block replaces any user or project `subscriptionLookup`, so the
+endpoint that issues keys cannot be redirected. Leave it out to keep manual
+key entry as the only path. The endpoint contract:
+[Subscription Lookup](../configuration/subscription-lookup.md).
 
 ### `allowedProviders`
 

@@ -149,6 +149,10 @@ type ClientCommand struct {
 	// capability retain their normal token behavior.
 	OidcForceRefresh bool `json:"oidcForceRefresh,omitempty"`
 
+	// provider_subscription_select: the id of the subscription to apply, as
+	// offered in engine_provider_subscription's options.
+	SubscriptionID string `json:"subscriptionId,omitempty"`
+
 	// mcp_add / mcp_update / mcp_remove / mcp_login / mcp_logout: which configured MCP
 	// server the command applies to. Matches the key under engine.json's
 	// mcpServers map.
@@ -607,6 +611,15 @@ var validCommands = map[string]bool{
 	// the engine keeps the refresh token; clients pull ephemeral access
 	// tokens on demand.
 	"oidc_token": true,
+	// provider_subscription_status / _select / _refresh: the Provider
+	// Subscription lookup (subscriptionLookup in engine.json). status answers
+	// the current snapshot; select applies one offered subscription
+	// (subscriptionId) and remembers it; refresh runs a fresh lookup. Each
+	// answers once its work settles, never blocking the read loop, and every
+	// state change broadcasts engine_provider_subscription to all clients.
+	"provider_subscription_status":  true,
+	"provider_subscription_select":  true,
+	"provider_subscription_refresh": true,
 	// mcp_list / mcp_add / mcp_update / mcp_remove / mcp_login / mcp_logout:
 	// MCP server administration. The engine owns the mechanism — engine.json
 	// CRUD, OAuth metadata discovery, dynamic client registration, the PKCE

@@ -170,6 +170,11 @@ export const EVENT_CHANNELS: readonly EventChannelSpec[] = [
   // configured on the engine, not on a tab. Both views: a phone administers
   // the same servers.
   { name: 'ion:mcp-servers-changed', scope: 'environment', views: ['mirror', 'thin'] },
+  // The engine's complete Provider Subscription state (the provider key a
+  // lookup endpoint resolved for the signed-in identity), republished on
+  // every change. Never carries the key. Both views: a phone chooses the
+  // subscription too.
+  { name: 'ion:provider-subscription-changed', scope: 'environment', views: ['mirror', 'thin'] },
   // The Graph View's live corpus (`graph-view/corpus-store.ts`) and resolved
   // configuration (`graph-view/config-store.ts`). Both are published as
   // `broadcast(channel, projectPath, payload)`; the client filters on the

@@ -163,6 +163,8 @@ func TestWatchSetCadence(t *testing.T) {
 	}
 	w.set("a", 1000)
 	w.set("b", 250)
+	w.release("a")
+	w.release("b")
 	if w.minInterval() != 250 {
 		t.Fatalf("min = %d, want 250", w.minInterval())
 	}
@@ -188,17 +190,17 @@ func TestWatchSetCadence(t *testing.T) {
 
 func TestSamplerWatchLifecycle(t *testing.T) {
 	s := New(Options{Config: &types.SystemMetricsConfig{BackgroundIntervalMs: 30_000, MinIntervalMs: 100}})
-	if got := s.Watch("c1", 10); got != 100 {
+	if got := s.Watch("c1", 10, nil); got != 100 {
 		t.Fatalf("clamped interval = %d, want 100", got)
 	}
-	if got := s.Watch("c2", 5*60_000); got != MaxIntervalMs {
+	if got := s.Watch("c2", 5*60_000, nil); got != MaxIntervalMs {
 		t.Fatalf("clamped interval = %d, want %d", got, MaxIntervalMs)
 	}
 	if s.currentInterval() != 100 {
 		t.Fatalf("interval with watchers = %d, want 100", s.currentInterval())
 	}
 	s.Unwatch("c1")
-	if got := s.Watch("c2", 0); got != 0 {
+	if got := s.Watch("c2", 0, nil); got != 0 {
 		t.Fatal("interval 0 must stop watching")
 	}
 	if s.Watchers() != 0 || s.currentInterval() != 30_000 {
@@ -213,7 +215,7 @@ func TestSamplerDeliversToWatchers(t *testing.T) {
 	s.Start()
 	t.Cleanup(s.Stop)
 	<-got // the immediate first sample
-	s.Watch("conn-1", 50)
+	s.Watch("conn-1", 50, nil)
 	deadline := time.After(5 * time.Second)
 	for {
 		select {
@@ -226,6 +228,38 @@ func TestSamplerDeliversToWatchers(t *testing.T) {
 		case <-deadline:
 			t.Fatal("a watcher never received a sample")
 		}
+	}
+}
+
+// TestSamplerWatchAckPrecedesFirstSample pins that a new watcher receives no
+// sample until its ack has run, so the watch reply always arrives first.
+func TestSamplerWatchAckPrecedesFirstSample(t *testing.T) {
+	s := New(Options{Config: &types.SystemMetricsConfig{BackgroundIntervalMs: 60_000, MinIntervalMs: 50}})
+	var dues [][]string
+	s.AddListener(func(_ types.SystemMetricsSample, due []string) { dues = append(dues, due) })
+
+	var ackInterval int64
+	var ackWatchers int
+	s.Watch("conn-1", 50, func(intervalMs int64, watchers int) {
+		ackInterval, ackWatchers = intervalMs, watchers
+		s.tick()
+	})
+	if ackInterval != 50 || ackWatchers != 1 {
+		t.Fatalf("ack = (%d, %d), want (50, 1)", ackInterval, ackWatchers)
+	}
+	if len(dues) != 1 || len(dues[0]) != 0 {
+		t.Fatalf("a sample taken before the ack finished reached the watcher: %v", dues)
+	}
+
+	s.tick()
+	if len(dues) != 2 || len(dues[1]) != 1 || dues[1][0] != "conn-1" {
+		t.Fatalf("the released watcher did not receive the next sample: %v", dues)
+	}
+
+	var stopInterval int64 = -1
+	s.Watch("conn-1", 0, func(intervalMs int64, watchers int) { stopInterval = intervalMs; ackWatchers = watchers })
+	if stopInterval != 0 || ackWatchers != 0 {
+		t.Fatalf("stop ack = (%d, %d), want (0, 0)", stopInterval, ackWatchers)
 	}
 }
 

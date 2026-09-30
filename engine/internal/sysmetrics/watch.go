@@ -12,13 +12,17 @@ type watchSet struct {
 type watcher struct {
 	intervalMs    int64
 	lastDeliverMs int64
+	// held keeps a new watcher out of delivery until release, so its caller
+	// can answer the watch request before the first sample goes out.
+	held bool
 }
 
 func newWatchSet() *watchSet {
 	return &watchSet{watchers: map[string]*watcher{}}
 }
 
-// set adds or updates a watcher. intervalMs must already be clamped.
+// set adds or updates a watcher. intervalMs must already be clamped. A new
+// watcher is added held; an existing one keeps receiving.
 func (w *watchSet) set(id string, intervalMs int64) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -26,7 +30,17 @@ func (w *watchSet) set(id string, intervalMs int64) {
 		cur.intervalMs = intervalMs
 		return
 	}
-	w.watchers[id] = &watcher{intervalMs: intervalMs}
+	w.watchers[id] = &watcher{intervalMs: intervalMs, held: true}
+}
+
+// release lets a held watcher receive samples. Safe for an id that is not
+// watching.
+func (w *watchSet) release(id string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if cur, ok := w.watchers[id]; ok {
+		cur.held = false
+	}
 }
 
 // remove drops a watcher. It reports whether the id was watching.
@@ -69,6 +83,9 @@ func (w *watchSet) due(nowMs, tickMs int64) []string {
 	defer w.mu.Unlock()
 	var out []string
 	for id, x := range w.watchers {
+		if x.held {
+			continue
+		}
 		if x.lastDeliverMs == 0 || nowMs-x.lastDeliverMs >= x.intervalMs-tickMs/2 {
 			x.lastDeliverMs = nowMs
 			out = append(out, id)

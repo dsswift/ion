@@ -21,6 +21,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/compat"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/session"
+	"github.com/dsswift/ion/engine/internal/subscription"
 	"github.com/dsswift/ion/engine/internal/sysmetrics"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -44,7 +45,10 @@ type Server struct {
 	authResolver *auth.Resolver
 	// identity is the engine-owned operator OIDC identity manager (nil when
 	// no auth.identityProvider is configured). See dispatch_oidc.go.
-	identity           *auth.IdentityManager
+	identity *auth.IdentityManager
+	// subscription is the Provider Subscription lookup (nil when no
+	// subscriptionLookup is configured). See dispatch_provider_subscription.go.
+	subscription       *subscription.Manager
 	broadcastListeners []*listenerHandle
 	done               chan struct{}
 	shutdownCtx        context.Context

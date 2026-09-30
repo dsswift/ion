@@ -3,6 +3,7 @@ package session
 import (
 	"fmt"
 	"path/filepath"
+	"time"
 
 	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -227,6 +228,12 @@ func (m *Manager) startSession(
 		resourceBroker:   resource.NewBroker(),
 		principal:        principal,
 	}
+	var dispatchHistory *types.DispatchHistoryConfig
+	if m.config != nil {
+		dispatchHistory = m.config.DispatchHistory
+	}
+	s.dispatchRegistry.SetHistoryLimits(dispatchHistory)
+	m.wireDispatchRegistryObservers(s, key)
 	m.watchWorkspaceProducers(key, s.resourceBroker)
 	if initial != nil {
 		s.planMode = initial.planMode
@@ -336,6 +343,9 @@ func (m *Manager) startSession(
 		// startup restores many tabs at once; a redundant second full load per
 		// tab (plus a partial header read) dominated startup parse time.
 		conv := m.rehydrateDispatchState(s, key)
+		// Rebuild the registry's terminal dispatch history from the same
+		// records, so a restarted session still answers what finished.
+		s.dispatchRegistry.SeedHistory(dispatchHistoryFromConversation(conv, time.Now()))
 
 		// Restore the persisted per-provider native-session cursors so a
 		// resumed conversation keeps its delegated-CLI continuity across the

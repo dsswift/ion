@@ -7,7 +7,7 @@ const tabs: SurfaceTab[] = [
   { kind: 'file', id: 'file:/repo/a.ts', filePath: '/repo/a.ts', dir: '/repo' },
   { kind: 'browser', id: 'browser:b1', instanceId: 'b1', url: 'https://example.org', title: 'Example', mode: 'browse', sessionMode: 'isolated' },
 ]
-const conversation: SurfaceConversationPersisted = { tabs, activeTabId: 'file:/repo/a.ts', visible: true, width: null, agentBrowserInstanceId: 'b1' }
+const conversation: SurfaceConversationPersisted = { tabs, activeTabId: 'file:/repo/a.ts', visible: true, width: null, agentBrowserInstanceId: 'b1', activeBrowserInstanceId: 'b1' }
 
 describe('surface persistence', () => {
   it('defaults Plan as the only global pin', () => {
@@ -83,7 +83,7 @@ describe('surface persistence', () => {
 
   it('round-trips project-scoped Scratch Documents and strips runtime errors', () => {
     const persisted = serializeSurface(['plan'], null, {
-      alpha: { tabs: [], activeTabId: 'scratch:s1', visible: true, width: null, agentBrowserInstanceId: null },
+      alpha: { tabs: [], activeTabId: 'scratch:s1', visible: true, width: null, agentBrowserInstanceId: null, activeBrowserInstanceId: null },
     }, {
       '/repo': { documents: [{ id: 's1', fileName: 'Untitled-1.md', content: 'notes', savedContent: '', isPreview: false, wordWrap: true, saveError: 'old failure' }] },
     })
@@ -152,7 +152,7 @@ describe('surface persistence', () => {
     // piece of genuine per-conversation state — browser tabs, terminals,
     // files, the open panel — is kept by the cases below.
     const persisted = serializeSurface(['plan'], null, {
-      alpha: { tabs: [], activeTabId: 'plan', visible: false, width: null, agentBrowserInstanceId: null },
+      alpha: { tabs: [], activeTabId: 'plan', visible: false, width: null, agentBrowserInstanceId: null, activeBrowserInstanceId: null },
     })
 
     expect(persisted.conversations.alpha).toBeUndefined()
@@ -195,7 +195,7 @@ describe('surface persistence', () => {
   it('round-trips a conversation dispatch preview', () => {
     const dispatch = { kind: 'dispatch' as const, id: 'dispatch-preview' as const, agentName: 'dev-lead', dispatchId: 'dispatch-1', title: 'Dev Lead' }
     const persisted = serializeSurface(['plan'], null, {
-      alpha: { tabs: [dispatch], activeTabId: dispatch.id, visible: true, width: null, agentBrowserInstanceId: null },
+      alpha: { tabs: [dispatch], activeTabId: dispatch.id, visible: true, width: null, agentBrowserInstanceId: null, activeBrowserInstanceId: null },
     })
 
     expect(parseSurfacePersisted(JSON.parse(JSON.stringify(persisted)))).toEqual(persisted)
@@ -203,7 +203,7 @@ describe('surface persistence', () => {
 
   it('preserves the global notification and excludes it from local records', () => {
     const notification = { kind: 'notification' as const, id: 'notification' as const, resourceKind: 'x', resourceId: 'y' }
-    const persisted = serializeSurface(['plan'], notification, { alpha: { tabs: [...tabs, notification, { kind: 'runtime-panel', id: 'runtime:x', title: 'X' }], activeTabId: 'notification', visible: false, width: null, agentBrowserInstanceId: 'b1' } })
+    const persisted = serializeSurface(['plan'], notification, { alpha: { tabs: [...tabs, notification, { kind: 'runtime-panel', id: 'runtime:x', title: 'X' }], activeTabId: 'notification', visible: false, width: null, agentBrowserInstanceId: 'b1', activeBrowserInstanceId: 'b1' } })
     expect(persisted.notification).toEqual(notification)
     expect(persisted.conversations.alpha?.tabs.map((tab) => tab.kind)).not.toContain('notification')
     expect(persisted.conversations.alpha?.tabs.map((tab) => tab.kind)).not.toContain('runtime-panel')

@@ -143,6 +143,10 @@ func buildManifest() contractManifest {
 		// independent — see the type comment).
 		"McpServerStatus": reflect.TypeOf(McpServerStatus{}),
 		"McpOAuthStatus":  reflect.TypeOf(McpOAuthStatus{}),
+		// Provider Subscription state. Carried by engine_provider_subscription
+		// as a complete snapshot; consumers render the state and options.
+		"ProviderSubscriptionStatus": reflect.TypeOf(ProviderSubscriptionStatus{}),
+		"SubscriptionOption":         reflect.TypeOf(SubscriptionOption{}),
 		// Slash-command registry. Emitted inside engine_command_registry events
 		// so consumers can populate a routing-hint cache without parsing
 		// engine internals. Snapshot semantics — see types.go comment.

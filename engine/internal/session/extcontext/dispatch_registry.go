@@ -12,9 +12,10 @@ import (
 
 // DispatchStateEntry is a point-in-time snapshot of a single active dispatch.
 // Returned by DispatchRegistry.Snapshot for the ext/list_dispatch_state RPC.
-// Only in-flight dispatches appear (terminal entries are deregistered), but
-// "in-flight" spans two states: actively running, and parked ("suspended")
-// waiting on children or a revive.
+// Only in-flight dispatches appear (terminal dispatches move to the retained
+// history, see dispatch_registry_history.go), but "in-flight" spans two
+// states: actively running, and parked ("suspended") waiting on children or a
+// revive.
 type DispatchStateEntry struct {
 	// DispatchID is the collision-safe unique ID for this dispatch instance.
 	DispatchID string `json:"dispatchId"`
@@ -22,8 +23,8 @@ type DispatchStateEntry struct {
 	Name string `json:"name"`
 	// Status is "running" for an active dispatch or "suspended" for a
 	// parked one (runChild blocked on ReviveCh — waiting on children or a
-	// revive message). Terminal states never appear; Deregister removes
-	// entries on completion.
+	// revive message). Terminal states never appear here; Deregister moves
+	// the entry to the retained history on completion.
 	Status string `json:"status"`
 	// ParentDispatchID is the dispatch ID of the parent that spawned this
 	// dispatch. Empty for top-level dispatches (depth 1 whose parent is the
@@ -80,14 +81,16 @@ type DispatchWaitingOn struct {
 //   - Recall: when the parent session needs to cancel a running background
 //     agent, RecallByID and RecallOwnedByID target one specific dispatch
 //     instance by its collision-safe ID, and RecallAll cancels everything
-//     (session teardown). There is no name-based recall — agent names are
-//     display metadata, not dispatch identities, and cannot safely select one
-//     instance among concurrent same-name dispatches.
+//     (session teardown). The name-addressed Recall acts only on a unique
+//     name match and reports ambiguity otherwise: an agent name is display
+//     metadata, not a dispatch identity.
 //
 //   - Background completion callbacks: when a background agent finishes, the
-//     callback uses Deregister to clean up the entry.
+//     callback uses Deregister to move the entry into the retained terminal
+//     history (dispatch_registry_history.go).
 //
 // All exported methods are safe for concurrent use.
+
 // RecalledDispatch identifies a recalled registry entry for durable lifecycle updates.
 type RecalledDispatch struct {
 	DispatchID string
@@ -100,6 +103,19 @@ type DispatchRegistry struct {
 	dispatches         map[string]*activeDispatch
 	totalRegistrations int // total lifetime RegisterWithID calls (audit/test)
 	recallObserver     func([]RecalledDispatch)
+
+	// seq identifies this registry instance in the process; generation counts
+	// its membership changes (a dispatch joining or leaving). Together they
+	// correlate a control-plane mismatch report (dispatch_registry_index.go).
+	seq        uint64
+	generation uint64
+
+	// terminalObserver receives every terminal entry as it is recorded,
+	// outside the lock, so the session can persist it for restart.
+	terminalObserver func([]DispatchTerminalEntry)
+	// mismatchObserver receives a report when a control request misses a
+	// dispatch that another registry holds live.
+	mismatchObserver func(ControlMismatch)
 
 	// aliases maps a consumer-supplied dispatch identifier to the engine's
 	// canonical dispatch ID. It exists because the engine is not the only
@@ -131,6 +147,10 @@ type DispatchRegistry struct {
 	// Bounded FIFO — see dispatch_task_revive.go.
 	settledTasks map[string]TaskResultRecord
 	settledOrder []string
+
+	// history retains terminal dispatches, bounded by count and age. See
+	// dispatch_registry_history.go.
+	history dispatchHistory
 }
 
 // activeDispatch holds the bookkeeping state for a single in-flight
@@ -293,75 +313,7 @@ func NewDispatchRegistry() *DispatchRegistry {
 		dispatches:   make(map[string]*activeDispatch),
 		settledTasks: make(map[string]TaskResultRecord),
 		aliases:      make(map[string]string),
-	}
-}
-
-// RegisterAlias records a consumer-supplied identifier as an alternate name for
-// a dispatch's canonical engine ID, so a steer/recall addressed with the
-// consumer's own key resolves to the real dispatch instead of missing it.
-//
-// Registering an alias is always additive and never rebinds: an alias that
-// already points somewhere is left alone (logged at WARN, since two dispatches
-// claiming one consumer key means the consumer's keys are not unique and the
-// engine must not silently pick a winner). An alias equal to the canonical ID
-// is a no-op — the direct lookup already covers it, and storing it would leave
-// a self-referential entry to reason about.
-func (r *DispatchRegistry) RegisterAlias(alias, canonicalID string) {
-	if alias == "" || canonicalID == "" || alias == canonicalID {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.aliases == nil {
-		r.aliases = make(map[string]string)
-	}
-	if existing, ok := r.aliases[alias]; ok {
-		if existing != canonicalID {
-			utils.LogWithFields(utils.LevelWarn, "session.extcontext.dispatch_registry", "registeralias: alias already bound to a different dispatch, keeping the original", map[string]any{
-				"alias": alias, "run_id": existing, "rejected_run_id": canonicalID,
-			})
-		}
-		return
-	}
-	r.aliases[alias] = canonicalID
-	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "registeralias: consumer dispatch id aliased to canonical id", map[string]any{
-		"alias": alias, "run_id": canonicalID, "max": len(r.aliases),
-	})
-}
-
-// resolveIDLocked maps any accepted dispatch identifier to a live canonical ID.
-// A direct hit always wins over an alias, so the engine's own ID space can
-// never be shadowed by a consumer key. Returns the resolved ID and whether it
-// names a live entry; the second return distinguishes "resolved through an
-// alias" so callers can log how a steer found its target.
-//
-// Caller must hold r.mu.
-func (r *DispatchRegistry) resolveIDLocked(id string) (resolved string, viaAlias bool, ok bool) {
-	if _, direct := r.dispatches[id]; direct {
-		return id, false, true
-	}
-	if canonical, aliased := r.aliases[id]; aliased {
-		if _, live := r.dispatches[canonical]; live {
-			return canonical, true, true
-		}
-	}
-	return id, false, false
-}
-
-// dropAliasesForLocked removes every alias bound to a canonical dispatch ID.
-// Called from Deregister so an alias never outlives the dispatch it names and
-// therefore can never resolve onto a later, unrelated dispatch that happens to
-// reuse the consumer's key.
-//
-// Caller must hold r.mu.
-func (r *DispatchRegistry) dropAliasesForLocked(canonicalID string) {
-	for alias, target := range r.aliases {
-		if target == canonicalID {
-			delete(r.aliases, alias)
-			utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "deregister: dropped dispatch alias", map[string]any{
-				"alias": alias, "run_id": canonicalID,
-			})
-		}
+		seq:          registrySeq.Add(1),
 	}
 }
 
@@ -400,6 +352,7 @@ func (r *DispatchRegistry) Reserve(id, name, parentID string, depth int) {
 		StartedAt: time.Now(),
 		reserved:  true,
 	}
+	r.joinLocked(id)
 	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "reserve", map[string]any{"run_id": id, "model": name, "count": depth, "max": len(r.dispatches)})
 }
 
@@ -442,6 +395,9 @@ func (r *DispatchRegistry) RegisterWithID(id, name string, cancel func(), child 
 		entry.LastActivityAt = existing.LastActivityAt
 	}
 	r.dispatches[id] = entry
+	if !exists {
+		r.joinLocked(id)
+	}
 	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "register", map[string]any{"run_id": id, "model": name, "session_id": sessionID, "count": depth, "max": len(r.dispatches)})
 }
 
@@ -492,16 +448,17 @@ func (r *DispatchRegistry) AllowedSubAgentsForID(id string) ([]string, bool) {
 	return d.AllowedSubAgents, true
 }
 
-// Deregister removes a dispatch entry by ID. It is safe to call with an
-// ID that does not exist (the call is a no-op). Deregister does NOT
-// invoke the dispatch's Cancel function, use Recall if cancellation is
+// Deregister removes a live dispatch entry by ID and retains it in the
+// terminal history with outcome. It is safe to call with an ID that does not
+// exist (the call is a no-op): a recalled dispatch was already moved to the
+// history, with its recall reason, when the recall took it. Deregister does
+// NOT invoke the dispatch's Cancel function; use Recall if cancellation is
 // desired.
-func (r *DispatchRegistry) Deregister(id string) {
+func (r *DispatchRegistry) Deregister(id string, outcome DispatchOutcome) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	d, exists := r.dispatches[id]
 	if !exists {
+		r.mu.Unlock()
 		utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "deregister not found", map[string]any{"run_id": id})
 		return
 	}
@@ -519,9 +476,14 @@ func (r *DispatchRegistry) Deregister(id string) {
 		})
 	}
 
-	delete(r.dispatches, id)
-	r.dropAliasesForLocked(id)
-	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "deregister removed", map[string]any{"run_id": id, "count": len(r.dispatches)})
+	entry := r.recordTerminalLocked(d, outcome, time.Now())
+	r.leaveLocked(id)
+	observer := r.terminalObserver
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "deregister removed", map[string]any{"run_id": id, "count": len(r.dispatches), "status": outcome.Status})
+	r.mu.Unlock()
+	if observer != nil {
+		observer([]DispatchTerminalEntry{entry})
+	}
 }
 
 // Get retrieves the active dispatch for the given ID. The second return
@@ -620,8 +582,17 @@ func (r *DispatchRegistry) RecallAll(reason string) int {
 	for _, d := range r.dispatches {
 		snapshot = append(snapshot, d)
 	}
-	r.dispatches = make(map[string]*activeDispatch)
+	now := time.Now()
+	terminals := make([]DispatchTerminalEntry, 0, len(snapshot))
+	for _, d := range snapshot {
+		terminals = append(terminals, r.recordTerminalLocked(d, DispatchOutcome{Status: DispatchStatusCancelled, Reason: reason, ExitCode: ExitCodeRecalled}, now))
+		r.leaveLocked(d.ID)
+	}
+	observer := r.terminalObserver
 	r.mu.Unlock()
+	if observer != nil && len(terminals) > 0 {
+		observer(terminals)
+	}
 
 	if len(snapshot) == 0 {
 		utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "recallall: no active dispatches", map[string]any{"reason": reason})
@@ -785,7 +756,7 @@ func snapshotEntryLocked(d *activeDispatch, now time.Time) DispatchStateEntry {
 // Snapshot returns a point-in-time copy of every currently in-flight dispatch
 // as a slice of DispatchStateEntry values. Status is "running" for active
 // entries and "suspended" for parked ones (see DispatchStateEntry.Status).
-// Terminal entries never appear (Deregister removes them on completion).
+// Terminal entries never appear here; History returns them.
 // Thread-safe; safe to call from any goroutine.
 func (r *DispatchRegistry) Snapshot() []DispatchStateEntry {
 	now := time.Now()

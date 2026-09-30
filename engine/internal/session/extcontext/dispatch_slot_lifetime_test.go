@@ -107,7 +107,7 @@ func TestDispatchSlotLifetime_TerminalBeforeDeregisterSurvivesSweep(t *testing.T
 
 	// New order: terminal transition while still registered, then deregister.
 	store.UpdateStateByID(id, func(s *types.AgentStateUpdate) { s.Status = "done" })
-	registry.Deregister(id)
+	registry.Deregister(id, DispatchOutcome{Status: DispatchStatusDone})
 	// A sweep after deregister: terminal slots are never swept.
 	store.ClearRunningStatesExceptIDsOrNames(registry.ActiveIDs(), map[string]bool{})
 
@@ -129,7 +129,7 @@ func TestDispatchSlotLifetime_UpsertReMaterializesSweptTerminal(t *testing.T) {
 
 	// Reproduce the death-gap window: deregister, then a sweep fires before the
 	// terminal update.
-	registry.Deregister(id)
+	registry.Deregister(id, DispatchOutcome{Status: DispatchStatusDone})
 	store.ClearRunningStatesExceptIDsOrNames(registry.ActiveIDs(), map[string]bool{})
 	if rawHasID(store, id) {
 		t.Fatal("precondition: the running slot must be swept in the old-order window")

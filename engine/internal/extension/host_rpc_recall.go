@@ -1,10 +1,15 @@
 package extension
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
 
-// handleRecallAgentRPC retains the published name-addressed ext/recall_agent
-// request. The exact-ID ext/recall_dispatch peer is preferred for new callers,
-// but existing extensions keep their original behavior.
+	"github.com/dsswift/ion/engine/internal/utils"
+)
+
+// handleRecallAgentRPC handles the name-addressed ext/recall_agent request.
+// The response keeps its original found field and adds outcome and, for an
+// ambiguous name, matchingDispatchIds.
 func (h *Host) handleRecallAgentRPC(ctx *Context, id int64, raw []byte) {
 	var req struct {
 		Params struct {
@@ -21,7 +26,7 @@ func (h *Host) handleRecallAgentRPC(ctx *Context, id int64, raw []byte) {
 		return
 	}
 
-	var recallFn func(name string, opts RecallAgentOpts) (bool, error)
+	var recallFn func(name string, opts RecallAgentOpts) (RecallAgentResult, error)
 	if ctx != nil && ctx.RecallAgent != nil {
 		recallFn = ctx.RecallAgent
 	} else {
@@ -29,7 +34,7 @@ func (h *Host) handleRecallAgentRPC(ctx *Context, id int64, raw []byte) {
 		persistentRecall := h.persistentRecall
 		h.notifMu.RUnlock()
 		if persistentRecall != nil {
-			recallFn = func(name string, opts RecallAgentOpts) (bool, error) {
+			recallFn = func(name string, opts RecallAgentOpts) (RecallAgentResult, error) {
 				reason := opts.Reason
 				if reason == "" {
 					reason = "recall_agent"
@@ -43,12 +48,13 @@ func (h *Host) handleRecallAgentRPC(ctx *Context, id int64, raw []byte) {
 		return
 	}
 
-	found, err := recallFn(req.Params.Name, RecallAgentOpts{Reason: req.Params.Reason})
+	result, err := recallFn(req.Params.Name, RecallAgentOpts{Reason: req.Params.Reason})
 	if err != nil {
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 		return
 	}
-	h.sendRecallFoundResponse(id, found)
+	data, _ := json.Marshal(result) //nolint:errcheck // marshal of a local RPC struct
+	h.sendResponse(id, json.RawMessage(data), nil)
 }
 
 // handleRecallDispatchRPC handles the exact-ID ext/recall_dispatch request.
@@ -70,7 +76,7 @@ func (h *Host) handleRecallDispatchRPC(ctx *Context, id int64, raw []byte) {
 		return
 	}
 
-	var recallFn func(dispatchID string, opts RecallDispatchOpts) (bool, error)
+	var recallFn func(dispatchID string, opts RecallDispatchOpts) (RecallDispatchResult, error)
 	if ctx != nil && ctx.RecallDispatch != nil {
 		recallFn = ctx.RecallDispatch
 	} else {
@@ -78,7 +84,7 @@ func (h *Host) handleRecallDispatchRPC(ctx *Context, id int64, raw []byte) {
 		persistentRecall := h.persistentRecallByID
 		h.notifMu.RUnlock()
 		if persistentRecall != nil {
-			recallFn = func(dispatchID string, opts RecallDispatchOpts) (bool, error) {
+			recallFn = func(dispatchID string, opts RecallDispatchOpts) (RecallDispatchResult, error) {
 				reason := opts.Reason
 				if reason == "" {
 					reason = "recall_dispatch"
@@ -92,17 +98,22 @@ func (h *Host) handleRecallDispatchRPC(ctx *Context, id int64, raw []byte) {
 		return
 	}
 
-	found, err := recallFn(req.Params.DispatchID, RecallDispatchOpts{Reason: req.Params.Reason})
+	result, err := recallFn(req.Params.DispatchID, RecallDispatchOpts{Reason: req.Params.Reason})
 	if err != nil {
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 		return
 	}
-	h.sendRecallFoundResponse(id, found)
-}
-
-func (h *Host) sendRecallFoundResponse(id int64, found bool) {
-	data, _ := json.Marshal(struct { //nolint:errcheck // local response cannot fail
-		Found bool `json:"found"`
-	}{Found: found})
+	if result.Outcome == "unauthorized" {
+		// An unauthorized recall has always been a handler error on this
+		// method. It stays one, and now carries the typed outcome.
+		utils.LogWithFields(utils.LevelWarn, "extension", "ext/recall_dispatch: caller does not own dispatch", map[string]any{"dispatch_id": req.Params.DispatchID})
+		h.sendResponse(id, nil, &jsonrpcError{
+			Code:    -32000,
+			Message: fmt.Sprintf("dispatch %q is not a descendant owned by the caller", req.Params.DispatchID),
+			Data:    &jsonrpcErrData{Outcome: "unauthorized"},
+		})
+		return
+	}
+	data, _ := json.Marshal(result) //nolint:errcheck // marshal of a local RPC struct
 	h.sendResponse(id, json.RawMessage(data), nil)
 }

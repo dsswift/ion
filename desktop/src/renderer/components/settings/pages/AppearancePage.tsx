@@ -8,7 +8,7 @@
  */
 import React, { useEffect, useState } from 'react'
 import { Minus, Plus } from '@phosphor-icons/react'
-import { deriveEnterpriseThemePolicy } from '@ion/shared/enterprise-theme-policy'
+import { deriveEnterpriseThemePolicy, resolveEffectiveThemeId } from '@ion/shared/enterprise-theme-policy'
 import { rDebug } from '../../../rendererLogger'
 import { getTheme } from '../../../theme-tokens'
 import { useAllThemes } from '../../../hooks/useThemeRegistry'
@@ -70,7 +70,7 @@ export function AppearancePage(): React.JSX.Element {
   const themePolicy = deriveEnterpriseThemePolicy(enterprisePolicy)
   const themeLocked = themePolicy?.locked === true
   // A lock shows the enforced theme; the saved pick is kept for when it lifts.
-  const displayedThemeId = themeLocked ? themePolicy.themeId : selectedTheme
+  const displayedThemeId = resolveEffectiveThemeId(enterprisePolicy, selectedTheme)
   const activeTheme = getTheme(displayedThemeId)
 
   const nativeFonts = host.capabilities().includes('nativeShell')

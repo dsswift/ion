@@ -298,12 +298,24 @@
       "scope": "admin"
     },
     {
+      "action": "provider.refreshSubscription",
+      "scope": "admin"
+    },
+    {
+      "action": "provider.selectSubscription",
+      "scope": "admin"
+    },
+    {
       "action": "provider.setDefault",
       "scope": "admin"
     },
     {
       "action": "provider.storeCredential",
       "scope": "admin"
+    },
+    {
+      "action": "provider.subscription",
+      "scope": "conversations:read"
     },
     {
       "action": "remote.discoverRelays",

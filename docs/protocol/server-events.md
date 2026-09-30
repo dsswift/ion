@@ -1257,6 +1257,24 @@ Broadcast to all clients on every state transition — `mcp_add`, `mcp_update`, 
 
 **`connected` and `authenticated` are independent — do not collapse them.** A server can be connected without authentication (it requires none), or authenticated but not connected, which means a stored token is being refused. That second combination is precisely the state an operator must act on, and a single derived "ok" indicator would hide it. `lastError` is what makes a failing server diagnosable from a client with no access to the engine host's log file.
 
+#### engine_provider_subscription
+
+Complete Provider Subscription state: the provider key the engine resolved from `subscriptionLookup` for the signed-in identity. **Snapshot-replace semantics:** consumers replace their view with the payload. Broadcast to all clients on every state change (sign-in, a lookup settling, a selection, sign-out) and delivered requester-scoped for each `provider_subscription_*` command. The snapshot never carries a key. See [Subscription Lookup](../configuration/subscription-lookup.md).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_provider_subscription"` | Event type |
+| `providerSubscription.state` | string | `disabled` \| `awaiting_identity` \| `resolving` \| `applied` \| `selection_required` \| `none` \| `failed` |
+| `providerSubscription.provider` | string | Provider id the key applies to (optional) |
+| `providerSubscription.providerDisplayName` | string | The provider's configured `displayName`, so a consumer can name the provider the key configures (optional) |
+| `providerSubscription.selected` | object | `{ id, label }` of the applied subscription; present only when `applied` (optional) |
+| `providerSubscription.options` | object[] | `{ id, label }` of each subscription the last lookup returned, in response order (optional) |
+| `providerSubscription.source` | string | `lookup` \| `cache`: where the applied key came from (optional) |
+| `providerSubscription.resolvedAt` | int | Unix milliseconds of the lookup behind the key or options (optional) |
+| `providerSubscription.error` | string | Most recent lookup failure. Can accompany `applied` when a refresh failed and the cached key stayed in effect (optional) |
+
+`none` and `failed` are different situations. `none` is a successful lookup that returned zero subscriptions for this identity. `failed` is a lookup that did not complete, with no cached key to fall back on; any manually configured key is still in use.
+
 #### engine_provider_login
 
 Delegated-CLI login lifecycle for a provider (e.g. `openai` via the `codex` CLI). **Incremental:** each emission is one stage transition. Delivered to the requesting client during an interactive `provider_login`, and broadcast on completion so every client refreshes. Not a snapshot — consumers track the stage sequence, not a replaced state.

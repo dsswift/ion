@@ -15,6 +15,7 @@ import React from 'react'
 import { useColors } from '../../theme'
 import { useSurfaceStore } from './surface-store'
 import { SurfaceTabStrip } from './SurfaceTabStrip'
+import { BrowserTabStrip } from './BrowserTabStrip'
 import { VisualizerSurface } from './tabs/VisualizerSurface'
 import { GraphSurface } from '../graph/GraphSurface'
 import { PlanSurface } from './tabs/PlanSurface'
@@ -191,6 +192,8 @@ export function BrowserBodies({ currentConversationId, activeTabId }: {
             mode={tab.mode}
             sessionMode={tab.sessionMode}
             emulation={tab.emulation ?? null}
+            zoomLevel={tab.zoomLevel}
+            faviconUrl={tab.faviconUrl}
           />
         </div>
       ))}
@@ -240,6 +243,10 @@ export function SurfacePanel({ onAgentClick }: { onAgentClick?: (tabId: string, 
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <SurfaceTabStrip />
+      {/* The documents inside the Browser slot. Rendered on both hosts: it
+          reads descriptors only, so the web build lists documents above its
+          unavailable body exactly as Electron does above the live one. */}
+      <BrowserTabStrip />
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
         <SurfaceFindHost bodyRef={bodyRef} activeTabId={activeTabId}>
           <div ref={bodyRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>

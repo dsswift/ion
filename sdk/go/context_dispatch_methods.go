@@ -6,6 +6,7 @@ package ion
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -62,19 +63,30 @@ func (c *Context) DispatchAgent(ctx context.Context, opts DispatchAgentOpts) (Di
 	return out, nil
 }
 
-// RecallAgent retains the published name-addressed dispatch recall API.
-// When several live dispatches share a name, the engine selects one match.
-// Prefer RecallDispatch when the caller has the exact dispatch ID.
+// RecallAgent recalls the one live dispatch that carries name and reports
+// whether it did. It returns false when no dispatch carries the name, and also
+// when several do: the engine recalls nothing on an ambiguous name. Use
+// [Context.RecallAgentByName] to get the matching dispatch IDs, or
+// [Context.RecallDispatch] when the exact dispatch ID is known.
 func (c *Context) RecallAgent(ctx context.Context, name, reason string) (bool, error) {
-	var out struct {
-		Found bool `json:"found"`
-	}
-	err := c.sdk.call(ctx, "ext/recall_agent", map[string]string{"name": name, "reason": reason}, &out)
+	out, err := c.RecallAgentByName(ctx, name, reason)
 	return out.Found, err
 }
 
-// RecallDispatch cancels one asynchronous dispatch by exact dispatch ID.
-// Names are never accepted because concurrent dispatches can share them.
+// RecallAgentByName is the name-addressed recall with the full outcome. When
+// several live dispatches share the name, nothing is recalled and the result
+// is "ambiguous" with every matching dispatch ID, so the caller can retry
+// with [Context.RecallDispatch] against the one it means.
+func (c *Context) RecallAgentByName(ctx context.Context, name, reason string) (RecallAgentResult, error) {
+	var out RecallAgentResult
+	err := c.sdk.call(ctx, "ext/recall_agent", map[string]string{"name": name, "reason": reason}, &out)
+	return out, err
+}
+
+// RecallDispatch cancels one asynchronous dispatch by exact dispatch ID and
+// reports whether it did. A dispatch the caller does not own returns an
+// *RPCError. Use [Context.RecallDispatchWithOutcome] to tell a finished
+// dispatch from an unknown one.
 func (c *Context) RecallDispatch(ctx context.Context, dispatchID, reason string) (bool, error) {
 	var out struct {
 		Found bool `json:"found"`
@@ -83,8 +95,33 @@ func (c *Context) RecallDispatch(ctx context.Context, dispatchID, reason string)
 	return out.Found, err
 }
 
+// RecallDispatchWithOutcome is the exact-ID recall with the full outcome:
+// "recalled", "completed" (the dispatch had already finished; Terminal says
+// how), "unauthorized" (the caller does not own it), or "not_found". The
+// engine answers an unauthorized recall as an error carrying that outcome;
+// this method returns it as a result instead.
+func (c *Context) RecallDispatchWithOutcome(ctx context.Context, dispatchID, reason string) (RecallDispatchResult, error) {
+	var out RecallDispatchResult
+	err := c.sdk.call(ctx, "ext/recall_dispatch", map[string]string{"dispatchId": dispatchID, "reason": reason}, &out)
+	var rpcErr *RPCError
+	if errors.As(err, &rpcErr) && rpcErr.Data != nil && rpcErr.Data.Outcome == "unauthorized" {
+		return RecallDispatchResult{Outcome: "unauthorized"}, nil
+	}
+	if err == nil && out.Outcome == "" {
+		// An engine older than the outcome field answers only { found }.
+		out.Outcome = "not_found"
+		if out.Found {
+			out.Outcome = "recalled"
+		}
+	}
+	return out, err
+}
+
 // SteerDispatch delivers a message to a running child dispatch, addressed by
-// dispatch id.
+// dispatch id. The caller must own the dispatch (the root owns every one in
+// its session; a dispatched agent only its descendants), or the outcome is
+// "unauthorized". A dispatch that already finished answers "completed" with
+// Terminal set.
 func (c *Context) SteerDispatch(ctx context.Context, dispatchID, message string) (SteerDispatchResult, error) {
 	var out SteerDispatchResult
 	err := c.sdk.call(ctx, "ext/steer_dispatch",
@@ -93,8 +130,10 @@ func (c *Context) SteerDispatch(ctx context.Context, dispatchID, message string)
 }
 
 // SteerDispatchByName delivers a message to a running child dispatch,
-// addressed by agent name. Use [Context.SteerDispatch] when several dispatches
-// may share the name.
+// addressed by agent name. It searches the caller's own scope and delivers
+// only when exactly one live dispatch there carries the name; when several do, nothing is delivered and the result is
+// "ambiguous" with the matching IDs in MatchingDispatchIDs. Use
+// [Context.SteerDispatch] when the exact dispatch ID is known.
 func (c *Context) SteerDispatchByName(ctx context.Context, name, message string) (SteerDispatchResult, error) {
 	var out SteerDispatchResult
 	err := c.sdk.call(ctx, "ext/steer_dispatch_by_name",
@@ -159,7 +198,9 @@ func (c *Context) AckDispatchLost(ctx context.Context, dispatchID string) error 
 }
 
 // ListDispatchState returns a snapshot of every in-flight dispatch in this
-// session. Returns an empty slice — never nil — when nothing is running.
+// session. Terminal dispatches are not listed; see
+// [Context.ListDispatchHistory]. Returns an empty slice — never nil — when
+// nothing is running.
 func (c *Context) ListDispatchState(ctx context.Context) ([]DispatchStateEntry, error) {
 	var out struct {
 		Dispatches []DispatchStateEntry `json:"dispatches"`
@@ -169,6 +210,23 @@ func (c *Context) ListDispatchState(ctx context.Context) ([]DispatchStateEntry, 
 	}
 	if out.Dispatches == nil {
 		return []DispatchStateEntry{}, nil
+	}
+	return out.Dispatches, nil
+}
+
+// ListDispatchHistory returns the retained terminal dispatches this context
+// owns, oldest completion first: the root context sees every one, a
+// dispatched agent only its strict descendants. The engine bounds retention
+// by its dispatchHistory config. Returns an empty slice, never nil.
+func (c *Context) ListDispatchHistory(ctx context.Context) ([]DispatchHistoryEntry, error) {
+	var out struct {
+		Dispatches []DispatchHistoryEntry `json:"dispatches"`
+	}
+	if err := c.sdk.call(ctx, "ext/list_dispatch_history", map[string]any{}, &out); err != nil {
+		return nil, err
+	}
+	if out.Dispatches == nil {
+		return []DispatchHistoryEntry{}, nil
 	}
 	return out.Dispatches, nil
 }

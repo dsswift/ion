@@ -411,6 +411,7 @@
 		AGDOT00000000000000001 /* AgentDotModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGDOT00000000000000002 /* AgentDotModel.swift */; };
 		A1B2C3D4E5F60001EF0006AA /* SessionViewModel+EngineWorkflowEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001EF0007AA /* SessionViewModel+EngineWorkflowEvents.swift */; };
 		A1B2C3D4E5F60001F00006AA /* ContractSyncEngineEventsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F00007AA /* ContractSyncEngineEventsTests.swift */; };
+		C858E7BD967A65861A74CEE4 /* ContractSyncProviderSubscriptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 371F995D1F093C31E9FA11D4 /* ContractSyncProviderSubscriptionTests.swift */; };
 		A1B2C3D4E5F60001F00012AB /* ThinkingEffortCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F00013AB /* ThinkingEffortCodecTests.swift */; };
 		A1B2C3D4E5F60001F00016AB /* ThinkingControlStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F00017AB /* ThinkingControlStateTests.swift */; };
 		A1B2C3D4E5F6ACDC0001AC03 /* AgentDispatchStopResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6ACDC0001AC04 /* AgentDispatchStopResolverTests.swift */; };
@@ -628,6 +629,7 @@
 		731DA7E07137978955517E4A /* DiscoveryAdminSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7024214F6723CABF86C0D02E /* DiscoveryAdminSection.swift */; };
 		9CEE8561518EEDAA4088BCCE /* EngineProfilesAdminSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1652EF686AE2A5D681ED620 /* EngineProfilesAdminSection.swift */; };
 		B03EFE26CA608CA443491F6B /* EntraAdminSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7FCBCBC8D6EB1D4A24F12D /* EntraAdminSection.swift */; };
+		F1C422F058651B81141A1499 /* ProviderSubscriptionRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63ED74314A3DE6F2E844DEA8 /* ProviderSubscriptionRows.swift */; };
 		27B3C9BB3CE5B4B7CC901E21 /* GitAccessAdminSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47C3967BC3EBA4A79D49D5C2 /* GitAccessAdminSection.swift */; };
 		29C69B83909CE1310BCF7EB6 /* GitWorkflowAdminSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEEB0FB33A3C4D129B161B27 /* GitWorkflowAdminSection.swift */; };
 		926C58ABE57BE98931923321 /* HealthAdminSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D82409A634320D62F4475B /* HealthAdminSection.swift */; };
@@ -790,6 +792,7 @@
 		3914D9A74999BCAD636F9E17 /* EntraIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = F16C7DEB955F46A8D7C5EEBD /* EntraIdentity.swift */; };
 		E210DB862020180ED243E468 /* GitHubDeviceCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20786D0095101E9CA42E4E9 /* GitHubDeviceCode.swift */; };
 		27C3E3F97EFDB9AD74029798 /* McpServerStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB78AA732324888A9281E0DE /* McpServerStatus.swift */; };
+		9BBE5E948076B6E8EBF8FD06 /* ProviderSubscriptionStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 117B0AF70A9799D0DD02BDD4 /* ProviderSubscriptionStatus.swift */; };
 		DFFC69DC59ADCC114F7302FA /* McpUpdateOutcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FB9AF9D3D4C4D816D7DAABF /* McpUpdateOutcome.swift */; };
 		9C2FDB687CB64159769B0F74 /* McpOAuthStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A4938D2F8B1DD667CD6F6A1 /* McpOAuthStatus.swift */; };
 		70F53809C7DAE1CDC0363547 /* McpSignInStart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DDAF55CC82B0397BB6534F0 /* McpSignInStart.swift */; };
@@ -841,6 +844,7 @@
 		8F05210396CE5CEC7A2278F4 /* AIWorkflowPromptEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1573DE273158552B7715AE79 /* AIWorkflowPromptEditor.swift */; };
 		95B2BD37CCB5E84E9AF59F5C /* ServerAdminClient+Automations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F044CD0D730B835FB4218D0 /* ServerAdminClient+Automations.swift */; };
 		DA99097FC4D0C2A82E76E2B6 /* ServerAdminClient+Entra.swift in Sources */ = {isa = PBXBuildFile; fileRef = D472C4F0F6235FA89437F89D /* ServerAdminClient+Entra.swift */; };
+		2A91A7AB071677A93D447ABC /* ServerAdminClient+ProviderSubscription.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3EACDF609F13DC7A15FFC00 /* ServerAdminClient+ProviderSubscription.swift */; };
 		FBE96EB2F13FF39DFA73ED41 /* ServerAdminClient+GitWorkflow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219E558E9140FDAE62E666EE /* ServerAdminClient+GitWorkflow.swift */; };
 		BBCCBCFB91C538E717CE66FA /* ServerAdminClient+Integrations.swift in Sources */ = {isa = PBXBuildFile; fileRef = F603E64383888E7AE3051696 /* ServerAdminClient+Integrations.swift */; };
 		58E61D635AF984806D327799 /* ServerAdminClient+Mcp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 397A2AC4E709E4CD9107DAEE /* ServerAdminClient+Mcp.swift */; };
@@ -865,6 +869,7 @@
 		3BA359EB7475F694E69E8638 /* AutomationValueControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCF4F96ACAF479C61496E2AA /* AutomationValueControl.swift */; };
 		FAE33D36A2603C5332EC0C66 /* AutomationsAdminModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D2EC1E0D0D19A407B86E834 /* AutomationsAdminModel.swift */; };
 		E7959CCCAA9969DE17D56380 /* EntraAdminModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AE273689CEC3591E8C4595D /* EntraAdminModel.swift */; };
+		3347869A0B50DA5783D1E910 /* ProviderSubscriptionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCC2CCCB6819DE5577DBF50A /* ProviderSubscriptionModel.swift */; };
 		F8A49C399A30F57FD50BB1D4 /* EntraDeviceCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F39E501D09CBE8181DFF855 /* EntraDeviceCodeView.swift */; };
 		A41B4B91DCF2B8A2BA0F363A /* BranchDefaultsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ABF7947E19B07EE13138BA6 /* BranchDefaultsModel.swift */; };
 		AA2159DF5B6C47E2CE6C162B /* BranchDefaultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 072562AF549063A7E52768A1 /* BranchDefaultsView.swift */; };
@@ -893,6 +898,7 @@
 		4712D316ED476468AC65201D /* IntegrationsFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7B12A42FF4E26D39108F62B /* IntegrationsFixtures.swift */; };
 		A0EBDCB3B3A3042FF32602B3 /* McpAdminTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C361512AD5C89D48D32BD18C /* McpAdminTests.swift */; };
 		11807241D262B388D90727AB /* EntraAdminTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45EE0C7AB31E0F619DC2EEB6 /* EntraAdminTests.swift */; };
+		2757EBAC3E22AAB2F6738125 /* ProviderSubscriptionAdminTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93651107CCA5D79525BFB1B9 /* ProviderSubscriptionAdminTests.swift */; };
 		C5E370A3DEADB3192EF27648 /* AutomationCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC321420EFC9C2E3006DF501 /* AutomationCatalogTests.swift */; };
 		B1FCC6679B59639DA3EC7984 /* AutomationDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A27D8E32F6EA1C3CCC2EB125 /* AutomationDraftTests.swift */; };
 		10487418C6B27540F4692D84 /* AutomationsAdminTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58839EBADDFB3B5CF850CAF1 /* AutomationsAdminTests.swift */; };
@@ -1322,6 +1328,7 @@
 		AGDOT00000000000000002 /* AgentDotModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDotModel.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001EF0007AA /* SessionViewModel+EngineWorkflowEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineWorkflowEvents.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001F00007AA /* ContractSyncEngineEventsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractSyncEngineEventsTests.swift; sourceTree = "<group>"; };
+		371F995D1F093C31E9FA11D4 /* ContractSyncProviderSubscriptionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractSyncProviderSubscriptionTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001F00013AB /* ThinkingEffortCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingEffortCodecTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001F00017AB /* ThinkingControlStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingControlStateTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6ACDC0001AC04 /* AgentDispatchStopResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDispatchStopResolverTests.swift; sourceTree = "<group>"; };
@@ -1558,6 +1565,7 @@
 		7024214F6723CABF86C0D02E /* DiscoveryAdminSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiscoveryAdminSection.swift"; sourceTree = "<group>"; };
 		D1652EF686AE2A5D681ED620 /* EngineProfilesAdminSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EngineProfilesAdminSection.swift"; sourceTree = "<group>"; };
 		FD7FCBCBC8D6EB1D4A24F12D /* EntraAdminSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EntraAdminSection.swift"; sourceTree = "<group>"; };
+		63ED74314A3DE6F2E844DEA8 /* ProviderSubscriptionRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ProviderSubscriptionRows.swift"; sourceTree = "<group>"; };
 		47C3967BC3EBA4A79D49D5C2 /* GitAccessAdminSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitAccessAdminSection.swift"; sourceTree = "<group>"; };
 		FEEB0FB33A3C4D129B161B27 /* GitWorkflowAdminSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitWorkflowAdminSection.swift"; sourceTree = "<group>"; };
 		C4D82409A634320D62F4475B /* HealthAdminSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HealthAdminSection.swift"; sourceTree = "<group>"; };
@@ -1720,6 +1728,7 @@
 		F16C7DEB955F46A8D7C5EEBD /* EntraIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EntraIdentity.swift"; sourceTree = "<group>"; };
 		D20786D0095101E9CA42E4E9 /* GitHubDeviceCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GitHubDeviceCode.swift"; sourceTree = "<group>"; };
 		DB78AA732324888A9281E0DE /* McpServerStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "McpServerStatus.swift"; sourceTree = "<group>"; };
+		117B0AF70A9799D0DD02BDD4 /* ProviderSubscriptionStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ProviderSubscriptionStatus.swift"; sourceTree = "<group>"; };
 		9FB9AF9D3D4C4D816D7DAABF /* McpUpdateOutcome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "McpUpdateOutcome.swift"; sourceTree = "<group>"; };
 		4A4938D2F8B1DD667CD6F6A1 /* McpOAuthStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "McpOAuthStatus.swift"; sourceTree = "<group>"; };
 		4DDAF55CC82B0397BB6534F0 /* McpSignInStart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "McpSignInStart.swift"; sourceTree = "<group>"; };
@@ -1771,6 +1780,7 @@
 		1573DE273158552B7715AE79 /* AIWorkflowPromptEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AIWorkflowPromptEditor.swift"; sourceTree = "<group>"; };
 		3F044CD0D730B835FB4218D0 /* ServerAdminClient+Automations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAdminClient+Automations.swift"; sourceTree = "<group>"; };
 		D472C4F0F6235FA89437F89D /* ServerAdminClient+Entra.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAdminClient+Entra.swift"; sourceTree = "<group>"; };
+		F3EACDF609F13DC7A15FFC00 /* ServerAdminClient+ProviderSubscription.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAdminClient+ProviderSubscription.swift"; sourceTree = "<group>"; };
 		219E558E9140FDAE62E666EE /* ServerAdminClient+GitWorkflow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAdminClient+GitWorkflow.swift"; sourceTree = "<group>"; };
 		F603E64383888E7AE3051696 /* ServerAdminClient+Integrations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAdminClient+Integrations.swift"; sourceTree = "<group>"; };
 		397A2AC4E709E4CD9107DAEE /* ServerAdminClient+Mcp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ServerAdminClient+Mcp.swift"; sourceTree = "<group>"; };
@@ -1795,6 +1805,7 @@
 		CCF4F96ACAF479C61496E2AA /* AutomationValueControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AutomationValueControl.swift"; sourceTree = "<group>"; };
 		0D2EC1E0D0D19A407B86E834 /* AutomationsAdminModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AutomationsAdminModel.swift"; sourceTree = "<group>"; };
 		5AE273689CEC3591E8C4595D /* EntraAdminModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EntraAdminModel.swift"; sourceTree = "<group>"; };
+		BCC2CCCB6819DE5577DBF50A /* ProviderSubscriptionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ProviderSubscriptionModel.swift"; sourceTree = "<group>"; };
 		8F39E501D09CBE8181DFF855 /* EntraDeviceCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EntraDeviceCodeView.swift"; sourceTree = "<group>"; };
 		7ABF7947E19B07EE13138BA6 /* BranchDefaultsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BranchDefaultsModel.swift"; sourceTree = "<group>"; };
 		072562AF549063A7E52768A1 /* BranchDefaultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BranchDefaultsView.swift"; sourceTree = "<group>"; };
@@ -1823,6 +1834,7 @@
 		F7B12A42FF4E26D39108F62B /* IntegrationsFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "IntegrationsFixtures.swift"; sourceTree = "<group>"; };
 		C361512AD5C89D48D32BD18C /* McpAdminTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "McpAdminTests.swift"; sourceTree = "<group>"; };
 		45EE0C7AB31E0F619DC2EEB6 /* EntraAdminTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EntraAdminTests.swift"; sourceTree = "<group>"; };
+		93651107CCA5D79525BFB1B9 /* ProviderSubscriptionAdminTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ProviderSubscriptionAdminTests.swift"; sourceTree = "<group>"; };
 		DC321420EFC9C2E3006DF501 /* AutomationCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AutomationCatalogTests.swift"; sourceTree = "<group>"; };
 		A27D8E32F6EA1C3CCC2EB125 /* AutomationDraftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AutomationDraftTests.swift"; sourceTree = "<group>"; };
 		58839EBADDFB3B5CF850CAF1 /* AutomationsAdminTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AutomationsAdminTests.swift"; sourceTree = "<group>"; };
@@ -2338,6 +2350,7 @@
 						ENVWIRETST0000000001 /* EnvironmentWireTests.swift */,
 				RLPRTEST00000000001 /* RelayPairingTests.swift */,
 				A1B2C3D4E5F60001F00007AA /* ContractSyncEngineEventsTests.swift */,
+				371F995D1F093C31E9FA11D4 /* ContractSyncProviderSubscriptionTests.swift */,
 				A1B2C3D4E5F60001F00015AA /* NormalizedEventNewEngineTypesTests.swift */,
 				B1B2C3D4E5F60001CC000016 /* EngineRewindCodecTests.swift */,
 				B1B2C3D4E5F60001CC000018 /* EngineMoveCodecTests.swift */,
@@ -2673,6 +2686,7 @@
 				A475A13CCC789A66AEE4A581 /* ServerAdminClient+AgentSettings.swift */,
 				3F044CD0D730B835FB4218D0 /* ServerAdminClient+Automations.swift */,
 				D472C4F0F6235FA89437F89D /* ServerAdminClient+Entra.swift */,
+				F3EACDF609F13DC7A15FFC00 /* ServerAdminClient+ProviderSubscription.swift */,
 				219E558E9140FDAE62E666EE /* ServerAdminClient+GitWorkflow.swift */,
 				F603E64383888E7AE3051696 /* ServerAdminClient+Integrations.swift */,
 				397A2AC4E709E4CD9107DAEE /* ServerAdminClient+Mcp.swift */,
@@ -2734,6 +2748,7 @@
 				7024214F6723CABF86C0D02E /* DiscoveryAdminSection.swift */,
 				D1652EF686AE2A5D681ED620 /* EngineProfilesAdminSection.swift */,
 				FD7FCBCBC8D6EB1D4A24F12D /* EntraAdminSection.swift */,
+				63ED74314A3DE6F2E844DEA8 /* ProviderSubscriptionRows.swift */,
 				47C3967BC3EBA4A79D49D5C2 /* GitAccessAdminSection.swift */,
 				FEEB0FB33A3C4D129B161B27 /* GitWorkflowAdminSection.swift */,
 				C4D82409A634320D62F4475B /* HealthAdminSection.swift */,
@@ -2810,6 +2825,7 @@
 				F16C7DEB955F46A8D7C5EEBD /* EntraIdentity.swift */,
 				D20786D0095101E9CA42E4E9 /* GitHubDeviceCode.swift */,
 				DB78AA732324888A9281E0DE /* McpServerStatus.swift */,
+				117B0AF70A9799D0DD02BDD4 /* ProviderSubscriptionStatus.swift */,
 				9FB9AF9D3D4C4D816D7DAABF /* McpUpdateOutcome.swift */,
 				4A4938D2F8B1DD667CD6F6A1 /* McpOAuthStatus.swift */,
 				4DDAF55CC82B0397BB6534F0 /* McpSignInStart.swift */,
@@ -3001,6 +3017,7 @@
 				F7B12A42FF4E26D39108F62B /* IntegrationsFixtures.swift */,
 				C361512AD5C89D48D32BD18C /* McpAdminTests.swift */,
 				45EE0C7AB31E0F619DC2EEB6 /* EntraAdminTests.swift */,
+				93651107CCA5D79525BFB1B9 /* ProviderSubscriptionAdminTests.swift */,
 				DC321420EFC9C2E3006DF501 /* AutomationCatalogTests.swift */,
 				A27D8E32F6EA1C3CCC2EB125 /* AutomationDraftTests.swift */,
 				58839EBADDFB3B5CF850CAF1 /* AutomationsAdminTests.swift */,
@@ -3090,6 +3107,7 @@
 			isa = PBXGroup;
 			children = (
 				5AE273689CEC3591E8C4595D /* EntraAdminModel.swift */,
+				BCC2CCCB6819DE5577DBF50A /* ProviderSubscriptionModel.swift */,
 				8F39E501D09CBE8181DFF855 /* EntraDeviceCodeView.swift */,
 			);
 			path = Entra;
@@ -3670,6 +3688,7 @@
 				731DA7E07137978955517E4A /* DiscoveryAdminSection.swift in Sources */,
 				9CEE8561518EEDAA4088BCCE /* EngineProfilesAdminSection.swift in Sources */,
 				B03EFE26CA608CA443491F6B /* EntraAdminSection.swift in Sources */,
+				F1C422F058651B81141A1499 /* ProviderSubscriptionRows.swift in Sources */,
 				27B3C9BB3CE5B4B7CC901E21 /* GitAccessAdminSection.swift in Sources */,
 				29C69B83909CE1310BCF7EB6 /* GitWorkflowAdminSection.swift in Sources */,
 				926C58ABE57BE98931923321 /* HealthAdminSection.swift in Sources */,
@@ -3832,6 +3851,7 @@
 				3914D9A74999BCAD636F9E17 /* EntraIdentity.swift in Sources */,
 				E210DB862020180ED243E468 /* GitHubDeviceCode.swift in Sources */,
 				27C3E3F97EFDB9AD74029798 /* McpServerStatus.swift in Sources */,
+				9BBE5E948076B6E8EBF8FD06 /* ProviderSubscriptionStatus.swift in Sources */,
 				DFFC69DC59ADCC114F7302FA /* McpUpdateOutcome.swift in Sources */,
 				9C2FDB687CB64159769B0F74 /* McpOAuthStatus.swift in Sources */,
 				70F53809C7DAE1CDC0363547 /* McpSignInStart.swift in Sources */,
@@ -3870,6 +3890,7 @@
 				8F05210396CE5CEC7A2278F4 /* AIWorkflowPromptEditor.swift in Sources */,
 				95B2BD37CCB5E84E9AF59F5C /* ServerAdminClient+Automations.swift in Sources */,
 				DA99097FC4D0C2A82E76E2B6 /* ServerAdminClient+Entra.swift in Sources */,
+				2A91A7AB071677A93D447ABC /* ServerAdminClient+ProviderSubscription.swift in Sources */,
 				FBE96EB2F13FF39DFA73ED41 /* ServerAdminClient+GitWorkflow.swift in Sources */,
 				BBCCBCFB91C538E717CE66FA /* ServerAdminClient+Integrations.swift in Sources */,
 				58E61D635AF984806D327799 /* ServerAdminClient+Mcp.swift in Sources */,
@@ -3894,6 +3915,7 @@
 				3BA359EB7475F694E69E8638 /* AutomationValueControl.swift in Sources */,
 				FAE33D36A2603C5332EC0C66 /* AutomationsAdminModel.swift in Sources */,
 				E7959CCCAA9969DE17D56380 /* EntraAdminModel.swift in Sources */,
+				3347869A0B50DA5783D1E910 /* ProviderSubscriptionModel.swift in Sources */,
 				F8A49C399A30F57FD50BB1D4 /* EntraDeviceCodeView.swift in Sources */,
 				A41B4B91DCF2B8A2BA0F363A /* BranchDefaultsModel.swift in Sources */,
 				AA2159DF5B6C47E2CE6C162B /* BranchDefaultsView.swift in Sources */,
@@ -4029,6 +4051,7 @@
 				ENVWIRETST0000000002 /* EnvironmentWireTests.swift in Sources */,
 				RLPRTEST00000000002 /* RelayPairingTests.swift in Sources */,
 				A1B2C3D4E5F60001F00006AA /* ContractSyncEngineEventsTests.swift in Sources */,
+				C858E7BD967A65861A74CEE4 /* ContractSyncProviderSubscriptionTests.swift in Sources */,
 				A1B2C3D4E5F60001F00014AA /* NormalizedEventNewEngineTypesTests.swift in Sources */,
 				B1B2C3D4E5F60001CC000015 /* EngineRewindCodecTests.swift in Sources */,
 				B1B2C3D4E5F60001CC000017 /* EngineMoveCodecTests.swift in Sources */,
@@ -4159,6 +4182,7 @@
 				4712D316ED476468AC65201D /* IntegrationsFixtures.swift in Sources */,
 				A0EBDCB3B3A3042FF32602B3 /* McpAdminTests.swift in Sources */,
 				11807241D262B388D90727AB /* EntraAdminTests.swift in Sources */,
+				2757EBAC3E22AAB2F6738125 /* ProviderSubscriptionAdminTests.swift in Sources */,
 				C5E370A3DEADB3192EF27648 /* AutomationCatalogTests.swift in Sources */,
 				B1FCC6679B59639DA3EC7984 /* AutomationDraftTests.swift in Sources */,
 				10487418C6B27540F4692D84 /* AutomationsAdminTests.swift in Sources */,

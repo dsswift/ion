@@ -27,7 +27,14 @@ import type {
   McpServerStatus,
   ProviderLoginUpdate,
 } from "./types-engine-event-model";
-export type { McpOAuthStatus, McpServerStatus, ProviderLoginUpdate } from "./types-engine-event-model";
+export type {
+  McpOAuthStatus,
+  McpServerStatus,
+  ProviderLoginUpdate,
+  ProviderSubscriptionStatus,
+  SubscriptionOption,
+  SubscriptionState,
+} from "./types-engine-event-model";
 export type EngineEvent =
   | { type: "engine_agent_state"; agents: AgentStateUpdate[] }
   | {

@@ -28,3 +28,16 @@ export function deriveEnterpriseThemePolicy(
   if (typeof raw.themeId !== 'string' || raw.themeId.length === 0) return null
   return { themeId: raw.themeId, locked: raw.locked === true }
 }
+
+/**
+ * The theme id that must render: the enforced id under a locked policy,
+ * otherwise the user's own choice. The user's choice is never replaced, so
+ * it resumes when the lock lifts.
+ */
+export function resolveEffectiveThemeId(
+  policy: EnterprisePolicy | null | undefined,
+  userChoice: string,
+): string {
+  const themePolicy = deriveEnterpriseThemePolicy(policy)
+  return themePolicy?.locked ? themePolicy.themeId : userChoice
+}

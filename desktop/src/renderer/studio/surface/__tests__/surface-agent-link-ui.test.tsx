@@ -117,3 +117,25 @@ describe('agent-linked browser indicator', () => {
     expect(linkIndicators()).toBe(0)
   })
 })
+
+describe('the Browser slot', () => {
+  function pills(): string[] {
+    return [...container.querySelectorAll<HTMLElement>('[aria-label^="Close "], [aria-label$=" browser documents"]')].map((el) => el.getAttribute('aria-label') ?? '')
+  }
+
+  it('collapses every browser document into one pill with a count and no close', () => {
+    seedBrowsers()
+    mount()
+    // Two documents, one slot: the count badge is present and the slot has no
+    // × of its own, so a click here can never drop several pages at once.
+    expect(pills()).toEqual(['2 browser documents'])
+    expect(linkIndicators()).toBe(1)
+  })
+
+  it('labels the slot with the shown document and keeps the close for a single document', () => {
+    const store = useSurfaceStore.getState()
+    store.openBrowserTab('https://only.test', 'browse')
+    mount()
+    expect(pills()).toEqual(['Close https://only.test'])
+  })
+})

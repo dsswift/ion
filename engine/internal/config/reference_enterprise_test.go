@@ -67,6 +67,9 @@ func TestReferenceEnterpriseConfigOverridesUser(t *testing.T) {
 	if got.Auth.OAuth["entra"].ClientID == "" {
 		t.Error("entra oauth client details did not survive")
 	}
+	if got.SubscriptionLookup == nil || got.SubscriptionLookup.Provider != "gateway" || got.SubscriptionLookup.Endpoint == "" {
+		t.Errorf("subscriptionLookup = %+v, want the enterprise lookup for the gateway", got.SubscriptionLookup)
+	}
 
 	// The desktop's own policy rides customFields["ion-desktop"], which the
 	// engine carries verbatim without interpreting. disableAutoUpdate is what

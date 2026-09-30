@@ -287,7 +287,7 @@ describe('panel visibility at boot', () => {
     useSurfaceStore.setState({
       hydrated: false,
       visible: false,
-      conversations: { 'tab-1': { tabs: [], activeTabId: 'plan', visible: true, width: null, agentBrowserInstanceId: null } },
+      conversations: { 'tab-1': { tabs: [], activeTabId: 'plan', visible: true, width: null, agentBrowserInstanceId: null, activeBrowserInstanceId: null } },
     })
 
     useSurfaceStore.getState().selectConversation('tab-1')
@@ -299,7 +299,7 @@ describe('panel visibility at boot', () => {
     useSurfaceStore.setState({
       hydrated: true,
       visible: false,
-      conversations: { 'tab-2': { tabs: [], activeTabId: 'plan', visible: true, width: null, agentBrowserInstanceId: null } },
+      conversations: { 'tab-2': { tabs: [], activeTabId: 'plan', visible: true, width: null, agentBrowserInstanceId: null, activeBrowserInstanceId: null } },
     })
 
     useSurfaceStore.getState().selectConversation('tab-2')

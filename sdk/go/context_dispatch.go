@@ -255,6 +255,58 @@ type RecallInfo struct {
 type SteerDispatchResult struct {
 	Delivered bool   `json:"delivered"`
 	Outcome   string `json:"outcome"`
+	// MatchingDispatchIDs is set only when a name-addressed steer was
+	// "ambiguous": every live dispatch in the caller's scope that carries the
+	// name. Retry against one with [Context.SteerDispatch].
+	MatchingDispatchIDs []string `json:"matchingDispatchIds,omitempty"`
+	// Terminal is set only when Outcome is "completed": the target had
+	// already finished, and this is how.
+	Terminal *DispatchHistoryEntry `json:"terminal,omitempty"`
+}
+
+// RecallAgentResult is the outcome of [Context.RecallAgentByName]. Found is
+// true only when a dispatch was recalled. Outcome is "recalled", "not_found",
+// "ambiguous", or "completed"; MatchingDispatchIDs is set only for
+// "ambiguous" and Terminal only for "completed".
+type RecallAgentResult struct {
+	Found               bool                  `json:"found"`
+	Outcome             string                `json:"outcome"`
+	MatchingDispatchIDs []string              `json:"matchingDispatchIds,omitempty"`
+	Terminal            *DispatchHistoryEntry `json:"terminal,omitempty"`
+}
+
+// RecallDispatchResult is the outcome of [Context.RecallDispatchWithOutcome].
+// Found is true only when a dispatch was recalled. Outcome is "recalled",
+// "completed", "unauthorized", or "not_found"; Terminal is set only for
+// "completed".
+type RecallDispatchResult struct {
+	Found    bool                  `json:"found"`
+	Outcome  string                `json:"outcome"`
+	Terminal *DispatchHistoryEntry `json:"terminal,omitempty"`
+}
+
+// DispatchHistoryEntry is one retained terminal dispatch from
+// [Context.ListDispatchHistory]. It keeps the identity and lineage of the
+// live entry, so a completed dispatch tree can be rebuilt after it finished.
+type DispatchHistoryEntry struct {
+	DispatchID string `json:"dispatchId"`
+	Name       string `json:"name"`
+	// Status is "done", "error", "cancelled", or "lost" (in flight when the
+	// engine process died).
+	Status string `json:"status"`
+	// Reason is the error text for "error" and the recall reason for
+	// "cancelled". Empty for a clean "done".
+	Reason string `json:"reason,omitempty"`
+	// ExitCode is nil when unknown: a lost dispatch, or one recorded before
+	// exit codes were kept.
+	ExitCode            *int   `json:"exitCode,omitempty"`
+	ParentDispatchID    string `json:"parentDispatchId,omitempty"`
+	Depth               int    `json:"depth"`
+	StartedAt           string `json:"startedAt"`
+	CompletedAt         string `json:"completedAt"`
+	DurationMs          int64  `json:"durationMs"`
+	ToolCount           int    `json:"toolCount"`
+	ChildConversationID string `json:"childConversationId,omitempty"`
 }
 
 // DispatchStateEntry is one in-flight dispatch from [Context.ListDispatchState].

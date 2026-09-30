@@ -534,6 +534,9 @@ func (s *Server) dispatchCommand(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "oidc_token":
 		s.dispatchOidcToken(conn, cmd)
 
+	case "provider_subscription_status", "provider_subscription_select", "provider_subscription_refresh":
+		s.dispatchProviderSubscription(conn, cmd)
+
 	case "mcp_list", "mcp_add", "mcp_update", "mcp_remove", "mcp_login", "mcp_login_complete", "mcp_logout":
 		s.dispatchMcp(conn, cmd)
 

@@ -47,9 +47,51 @@ export interface McpOAuthStatus {
   hasClientSecret?: boolean;
 }
 
+/** A Provider Subscription state. Each needs a different response from the operator. */
+export type SubscriptionState =
+  | "disabled"
+  | "awaiting_identity"
+  | "resolving"
+  | "applied"
+  | "selection_required"
+  | "none"
+  | "failed";
+
+/** One subscription a lookup offered, without its key. */
+export interface SubscriptionOption {
+  id: string;
+  label: string;
+}
+
+/**
+ * Provider Subscription state: the provider key a lookup endpoint resolved
+ * for the signed-in identity. A complete snapshot; consumers replace their
+ * view with it. The key itself never leaves the engine.
+ */
+export interface ProviderSubscriptionStatus {
+  state: SubscriptionState;
+  provider?: string;
+  /** The provider's configured display name; absent when none is set. */
+  providerDisplayName?: string;
+  /** The subscription whose key is applied; present only when applied. */
+  selected?: SubscriptionOption;
+  /** The subscriptions the last lookup returned, in response order. */
+  options?: SubscriptionOption[];
+  /** Where the applied key came from. */
+  source?: "lookup" | "cache";
+  /** When the lookup behind the key or options ran, Unix milliseconds. */
+  resolvedAt?: number;
+  /** The most recent lookup failure. Can accompany "applied" when a refresh failed. */
+  error?: string;
+}
+
 export type EngineEventModel =
   | { type: "engine_provider_login"; providerLogin?: ProviderLoginUpdate }
   | { type: "engine_mcp_servers"; mcpServers?: McpServerStatus[] }
+  // engine_provider_subscription — complete SNAPSHOT of the Provider
+  // Subscription state, broadcast on every change and answered to the
+  // provider_subscription_* commands. Consumers REPLACE their view with it.
+  | { type: "engine_provider_subscription"; providerSubscription: ProviderSubscriptionStatus }
   | {
       type: "engine_model_tiers";
       modelTiers: ModelTier[];

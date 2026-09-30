@@ -100,6 +100,14 @@ export interface BrowserTab {
    * responsive view — the guest fills the Surface area with no frame.
    */
   emulation?: BrowserEmulationState
+  /**
+   * The page zoom the operator set for this document, as a Chromium zoom
+   * level (0 is 100%). Absent means 100%. Persisted so a restored document
+   * comes back at the zoom it was left at.
+   */
+  zoomLevel?: number
+  /** The page's favicon, reported by the guest. Absent until the first page reports one. */
+  faviconUrl?: string
 }
 export interface TerminalTab { kind: 'terminal'; id: string; instanceId: string; cwd: string; title: string }
 
@@ -142,6 +150,16 @@ export interface SurfaceConversationPersisted {
    * of hijacking a page the operator prepared for themselves.
    */
   agentBrowserInstanceId: string | null
+  /**
+   * The browser document the Browser slot shows when the operator returns to
+   * it from another tab, or null when the conversation has no browser.
+   *
+   * A conversation's browser descriptors share one Surface slot; this is the
+   * one piece of state that grouping needs. Absent on records written before
+   * the slot existed and resolved by `resolveActiveBrowserInstance`, which is
+   * why it needs no version bump: every fallback is harmless.
+   */
+  activeBrowserInstanceId: string | null
 }
 
 /**

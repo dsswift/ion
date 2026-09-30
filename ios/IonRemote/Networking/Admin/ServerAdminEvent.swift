@@ -12,6 +12,8 @@ struct ServerAdminEvent: Equatable, Sendable {
 
     /// The server's MCP server list, republished on every change.
     static let mcpServersChanged = "ion:mcp-servers-changed"
+    /// The server's provider subscription state, republished on every change.
+    static let providerSubscriptionChanged = "ion:provider-subscription-changed"
     /// The paired clients changed.
     static let clientsChanged = "ion:clients-changed"
     /// Discovery status: `{mode, advertising, until}`.
@@ -31,7 +33,7 @@ struct ServerAdminEvent: Equatable, Sendable {
 
     /// Every channel routed to admin screens rather than to the thin event path.
     static let channels: Set<String> = [
-        mcpServersChanged, clientsChanged, discovery, providerLoginEvent,
+        mcpServersChanged, providerSubscriptionChanged, clientsChanged, discovery, providerLoginEvent,
         projectsChanged, projectJob, remoteRelaysChanged,
         modelTiersUpdated, defaultProviderUpdated,
     ]

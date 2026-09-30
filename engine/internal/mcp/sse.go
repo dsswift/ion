@@ -37,7 +37,7 @@ type sseTransport struct {
 	closeOnce sync.Once
 	wg        sync.WaitGroup
 	// userToken mirrors httpTransport.userToken: per-request operator
-	// bearer resolution when config.forwardUserToken is set. Each message
+	// bearer resolution when identity-token forwarding is set. Each message
 	// POST re-resolves so a long-lived stream doesn't pin an expiring
 	// token on the send path; the stream GET carries the token minted at
 	// stream open.

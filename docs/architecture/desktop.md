@@ -104,7 +104,7 @@ Surface tabs (`desktop/src/renderer/studio/surface/`) live in a window-local Zus
 
 ## Studio Browser Surface
 
-The [Studio Browser Surface](../vocabulary/index.md#term-studio-browser-surface) is a Studio-only surface tab. It keeps a browser document mounted for each conversation so its history and session state survive conversation switches. Browser descriptors persist the URL, content mode, and session mode. Preview documents use the network shield by default. The main process owns partition policy and browser automation. See [ADR-030](adr/030-embedded-browser-surface.md).
+The [Studio Browser Surface](../vocabulary/index.md#term-studio-browser-surface) is a Studio-only surface tab. It keeps a browser document alive for each conversation so its history and session state survive conversation switches. Browser descriptors persist the URL, content mode, session mode, zoom, and favicon. A conversation's browser descriptors share one slot in the Surface tab bar; the [Studio Browser Tab Strip](../vocabulary/index.md#term-studio-browser-tab-strip) inside it lists and switches the documents. Preview documents use the network shield by default. The main process owns partition policy, deny-by-default page permissions, HTTP auth and certificate prompts, keyboard shortcuts, the context menu, and browser automation. See [ADR-030](adr/030-embedded-browser-surface.md).
 
 ## Data flow: prompt to response
 

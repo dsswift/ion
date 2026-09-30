@@ -96,6 +96,7 @@ export const themes: ThemeDefinition[] = [
 // and via the ion:themes-changed push). Module-level so the registry stays
 // a leaf — the store subscribes through onThemeRegistryChanged.
 let customThemes: ThemeDefinition[] = []
+let registryVersion = 0
 const registryListeners = new Set<() => void>()
 
 /** Resolve one pack payload into a full ThemeDefinition: the base built-in
@@ -128,7 +129,14 @@ export function resolveCustomThemeDefinition(t: CustomThemeForRenderer): ThemeDe
  * subscribers so pickers re-render and the active theme re-applies. */
 export function registerCustomThemes(payloads: CustomThemeForRenderer[]): void {
   customThemes = payloads.map(resolveCustomThemeDefinition)
+  registryVersion += 1
   for (const listener of registryListeners) listener()
+}
+
+/** Bumped on every registry replacement: the snapshot for hooks that must
+ * re-resolve a palette when a custom pack arrives after first paint. */
+export function getThemeRegistryVersion(): number {
+  return registryVersion
 }
 
 /** Built-ins followed by installed custom themes (picker order). */

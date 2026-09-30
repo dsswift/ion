@@ -88,6 +88,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Dialog](#term-dialog)
 - [Dispatch](#term-dispatch)
 - [Dispatch Alias](#term-dispatch-alias)
+- [Dispatch History](#term-dispatch-history)
 - [Dispatch Split Pane](#term-dispatch-split-pane)
 - [Drawer](#term-drawer)
 - [Editor Anchor](#term-editor-anchor)
@@ -159,6 +160,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Project Workspace](#term-project-workspace)
 - [Prompt trace](#term-prompt-trace)
 - [Provider](#term-provider)
+- [Provider Subscription](#term-provider-subscription)
 - [Push address](#term-push-address)
 - [Questions Wizard](#term-questions-wizard)
 - [Quick Tool](#term-quick-tool)
@@ -185,6 +187,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Steer Stream Interrupt](#term-steer-stream-interrupt)
 - [Studio](#term-studio-shell)
 - [Studio Browser Surface](#term-studio-browser-surface)
+- [Studio Browser Tab Strip](#term-studio-browser-tab-strip)
 - [Studio Center](#term-studio-center)
 - [Studio Left Dock](#term-studio-left-dock)
 - [Studio Resource Traffic](#term-studio-resource-traffic)
@@ -495,8 +498,22 @@ A consumer-supplied identifier registered as an alternate name for a dispatch's 
 - **Legacy names:** None
 - **Contract:** `public-sdk`
 - **Implementations:**
-  - `engine` / `code` / `go`: `func (r *DispatchRegistry) RegisterAlias` in `engine/internal/session/extcontext/dispatch_registry.go`
+  - `engine` / `code` / `go`: `func (r *DispatchRegistry) RegisterAlias` in `engine/internal/session/extcontext/dispatch_registry_alias.go`
   - `sdk` / `code` / `go`: `ClientDispatchID string` in `sdk/go/context_dispatch.go`
+
+#### Dispatch History {#term-dispatch-history}
+
+The bounded record of dispatches that have ended, kept by a session's dispatch registry. Each entry holds the dispatch's final status, terminal reason, completion time, identifier, name, parent, and depth, so a consumer can see work that started and ended between two of its polls and rebuild a finished dispatch tree. It is separate from the live dispatch listing, follows the same ownership rule, is bounded by count and age in engine config, and is written to the conversation file so it survives a session or engine restart.
+
+- **ID:** `dispatch-history`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `terminal dispatch history`
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func (r *DispatchRegistry) OwnedHistory` in `engine/internal/session/extcontext/dispatch_registry_history.go`
+  - `sdk` / `code` / `go`: `func (c *Context) ListDispatchHistory` in `sdk/go/context_dispatch_methods.go`
 
 #### Engine server {#term-engine-server}
 
@@ -628,6 +645,24 @@ The LLM vendor integration that streams a model response. The engine calls each 
 - **Implementations:**
   - `engine` / `code` / `go`: `type LlmProvider interface` in `engine/internal/providers/provider.go`
 - **Notes:** Name providers by name. Never pin a provider count in prose.
+
+#### Provider Subscription {#term-provider-subscription}
+
+The provider key the engine resolves from a configured subscription lookup endpoint for the signed-in identity. One returned subscription is applied automatically, several wait for a remembered choice, and none is its own state. The key is cached per identity, outranks manually configured keys, and never leaves the engine.
+
+- **ID:** `provider-subscription`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `subscription lookup`, `subscription key lookup`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `wire` / `go`: `type ProviderSubscriptionStatus struct` in `engine/internal/types/provider_subscription.go`
+  - `engine` / `code` / `go`: `type Manager struct` in `engine/internal/subscription/manager.go`
+  - `server` / `code` / `typescript`: `wireProviderSubscriptionEvents` in `server/src/engine/provider-subscription-api.ts`
+  - `desktop` / `wire` / `typescript`: `export interface ProviderSubscriptionStatus` in `packages/shared/src/types-engine-event-model.ts`
+  - `studio` / `ui` / `typescript`: `ProviderSubscriptionGroup` in `desktop/src/renderer/components/settings/pages/integrations/ProviderSubscriptionGroup.tsx`
+  - `ios` / `wire` / `swift`: `struct ProviderSubscriptionStatus` in `ios/IonRemote/Models/Admin/ProviderSubscriptionStatus.swift`
 
 #### Schedule {#term-schedule}
 
@@ -1992,7 +2027,7 @@ The region that opens beside a conversation to show its full status detail: the 
 
 #### Studio Browser Surface {#term-studio-browser-surface}
 
-The Studio Surface tab that renders one browser document. Each descriptor belongs to one conversation and records its URL, content mode, and browser session mode. The renderer keeps every conversation's browser document mounted so its history and session stay available when the user changes conversations.
+The Studio Surface tab that renders one browser document. Each descriptor belongs to one conversation and records its URL, content mode, browser session mode, zoom, and favicon. A conversation's browser descriptors share one slot in the Surface tab bar; the Studio Browser Tab Strip switches between them. The main process keeps every conversation's browser document alive so its history and session stay available when the user changes conversations.
 
 - **ID:** `studio-browser-surface`
 - **Status:** `canonical`
@@ -2003,6 +2038,20 @@ The Studio Surface tab that renders one browser document. Each descriptor belong
 - **Implementations:**
   - `studio` / `ui` / `typescript`: `export function BrowserSurface` in `desktop/src/renderer/studio/surface/tabs/BrowserSurface.tsx`
   - `desktop` / `code` / `typescript`: `export interface BrowserTab` in `packages/shared/src/studio-surface-types.ts`
+
+#### Studio Browser Tab Strip {#term-studio-browser-tab-strip}
+
+The strip inside the Browser slot that lists a conversation's browser documents. It switches, closes, and opens documents through Surface store actions only, so it renders on the Electron and web hosts alike. The Agent-linked document is listed first.
+
+- **ID:** `studio-browser-tab-strip`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `browser strip`, `Browser slot`
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `studio` / `ui` / `typescript`: `export function BrowserTabStrip` in `desktop/src/renderer/studio/surface/BrowserTabStrip.tsx`
+  - `desktop` / `code` / `typescript`: `export function browserGroup` in `packages/shared/src/studio-browser-group.ts`
 
 #### Studio Center {#term-studio-center}
 
@@ -2924,6 +2973,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Project Trust | `setupCheck`, `cloneFixes` | `setupCheck`, `cloneFixes` | `setupCheck`, `cloneFixes` | None | iOS |
 | Project Workspace | `resolveProjectDir`, `orderedWorkspaceRoots` | `resolveProjectDir`, `orderedWorkspaceRoots` | `resolveProjectDir`, `orderedWorkspaceRoots` | None | iOS |
 | Prompt trace | None | `export function submitWithTrace` | None | `final class PromptTraceBook` | Overlay |
+| Provider Subscription | `export interface ProviderSubscriptionStatus` | `export interface ProviderSubscriptionStatus`, `ProviderSubscriptionGroup` | `export interface ProviderSubscriptionStatus` | `struct ProviderSubscriptionStatus` | None |
 | Push address | None | None | None | `func registerPushAddress()` | Desktop, Studio, Overlay |
 | Questions Wizard | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | None | iOS |
 | Quick Tool | `export interface QuickTool` | `export interface QuickTool`, `export function ComposerQuickToolsButton` | `export interface QuickTool` | None | iOS |
@@ -2938,6 +2988,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | SSH Door | `addEnvironmentOverSsh`, `useSshDoor` | `addEnvironmentOverSsh`, `useSshDoor` | `addEnvironmentOverSsh`, `useSshDoor` | None | iOS |
 | Status Drawer | `StatusDrawer` | `StatusDrawer` | `StatusDrawer` | `struct StatusDrawerView` | None |
 | Studio Browser Surface | `export interface BrowserTab` | `export function BrowserSurface`, `export interface BrowserTab` | `export interface BrowserTab` | None | iOS |
+| Studio Browser Tab Strip | `export function browserGroup` | `export function BrowserTabStrip`, `export function browserGroup` | `export function browserGroup` | None | iOS |
 | Studio Center | None | `StudioCenter` | None | None | Overlay, iOS |
 | Studio Left Dock | None | `StudioLeftSidebar` | None | None | Overlay, iOS |
 | Studio Resource Traffic | None | `export function isStudioTrafficKind` | None | `static func isStudioTraffic` | Overlay |
@@ -2975,6 +3026,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `APNs token` → [Push address](#term-push-address)
 - Legacy name: `ATV` → [Studio](#term-studio-shell)
 - Legacy name: `Agent Team Visualizer` → [Studio](#term-studio-shell)
+- Alias: `Browser slot` → [Studio Browser Tab Strip](#term-studio-browser-tab-strip)
 - Alias: `Ion Desktop` → [Desktop](#term-desktop-client)
 - Alias: `Ion Relay` → [Relay](#term-relay)
 - Alias: `Ion Remote` → [iOS](#term-ios-client)
@@ -2995,6 +3047,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `automation rules` → [Desktop Automation](#term-desktop-automation)
 - Alias: `bench` → [Integration bench](#term-integration-bench)
 - Alias: `bottom terminal tray` → [Conversation Terminal Panel](#term-conversation-terminal-panel)
+- Alias: `browser strip` → [Studio Browser Tab Strip](#term-studio-browser-tab-strip)
 - Alias: `browser surface` → [Studio Browser Surface](#term-studio-browser-surface)
 - Alias: `canonical event` → [Normalized event](#term-normalized-event)
 - Alias: `center pane` → [Studio Center](#term-studio-center)
@@ -3089,10 +3142,13 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `steer message` → [Steer](#term-steer)
 - Alias: `stream interrupt` → [Steer Stream Interrupt](#term-steer-stream-interrupt)
 - Alias: `sub-agent` → [Agent](#term-agent)
+- Alias: `subscription key lookup` → [Provider Subscription](#term-provider-subscription)
+- Alias: `subscription lookup` → [Provider Subscription](#term-provider-subscription)
 - Alias: `surface pane` → [Studio Surface](#term-studio-surface)
 - Alias: `surface tab` → [Surface](#term-surface)
 - Legacy name: `tab list` → [Inbox](#term-inbox)
 - Alias: `term registry` → [Vocabulary registry](#term-vocabulary-registry)
+- Alias: `terminal dispatch history` → [Dispatch History](#term-dispatch-history)
 - Alias: `terminal panel` → [Conversation Terminal Panel](#term-conversation-terminal-panel)
 - Alias: `thin client view` → [Thin View](#term-thin-view)
 - Alias: `thin connection` → [Thin View](#term-thin-view)

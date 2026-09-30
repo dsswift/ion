@@ -181,6 +181,8 @@ const RESOLVED_ELSEWHERE = {
       'studioBrowserViewEnsure', 'studioBrowserViewNavigate', 'studioBrowserViewAction',
       'studioBrowserViewBounds', 'studioBrowserViewClose', 'onStudioBrowserViewState',
       'studioBrowserSetNetworkShield', 'studioBrowserSetSessionMode', 'studioPreviewAllowNetwork',
+      'studioBrowserFind', 'onStudioBrowserFindResult', 'studioBrowserSetZoom', 'onStudioBrowserShortcut',
+      'onStudioBrowserPrompt', 'studioBrowserPromptAnswer',
     ],
     anchors: [
       ['desktop/src/renderer/studio/surface/SurfacePanel.tsx', "includes('browser')"],

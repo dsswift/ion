@@ -703,6 +703,7 @@
     "ext/get_session_memory",
     "ext/http_request",
     "ext/intercept",
+    "ext/list_dispatch_history",
     "ext/list_dispatch_state",
     "ext/list_processes",
     "ext/list_sessions",

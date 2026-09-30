@@ -16,7 +16,7 @@
  *   - navigation scheme-gated, not just window.open
  *   - preview partitions held offline until an explicit per-tab confirm
  */
-import { app, session, shell, type Session, type WebContents } from 'electron'
+import { session, shell, type Session, type WebContents } from 'electron'
 import { log as _log, warn as _warn } from './logger'
 import { requestStudioBrowserTab } from './studio-browser-tab-request'
 import { PREVIEW_PARTITION_PREFIX, previewPartitionFor } from '@ion/shared/studio-browser-partitions'
@@ -154,7 +154,6 @@ export function installGuestPolicy(guest: WebContents, partition: string): void 
   })
 }
 
-/** Wire the attach-time policy onto a window's webContents. */
 /** Test hook: reset unlocked partitions. */
 export function _resetPreviewUnlocks(): void {
   unlockedPreviewPartitions.clear()
@@ -164,7 +163,3 @@ export function _resetPreviewUnlocks(): void {
 export function _schemeAllowed(url: string): boolean {
   return schemeAllowed(url)
 }
-
-// app import is used indirectly by session.fromPartition consumers; keep the
-// module main-process-only by construction.
-void app

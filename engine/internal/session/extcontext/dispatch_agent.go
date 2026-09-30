@@ -1523,7 +1523,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			// swept, so no run-exit clear can orphan it and the terminal update
 			// above always landed on a real slot.
 			if registry != nil {
-				registry.Deregister(agentID)
+				registry.Deregister(agentID, dispatchExitOutcome(recalled.Load(), recallReason, childErr, exitCode))
 				// Re-emit engine_status with the updated BackgroundAgents count so
 				// the parent session clears its "waiting on background agent" state.
 				// handleRunExit sampled bgCount BEFORE Deregister ran; nothing

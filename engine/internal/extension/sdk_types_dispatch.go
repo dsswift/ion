@@ -435,6 +435,29 @@ type RecallAgentOpts struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+// RecallAgentResult is the outcome of a name-addressed RecallAgent call.
+// Found is true only when a dispatch was recalled. Outcome is "recalled",
+// "not_found", "ambiguous", or "completed" (the one match finished before it
+// could be recalled). MatchingDispatchIDs is set only for "ambiguous" and
+// lists every live dispatch in the caller's scope that carries the name;
+// Terminal is set only for "completed".
+type RecallAgentResult struct {
+	Found               bool                  `json:"found"`
+	Outcome             string                `json:"outcome"`
+	MatchingDispatchIDs []string              `json:"matchingDispatchIds,omitempty"`
+	Terminal            *DispatchHistoryEntry `json:"terminal,omitempty"`
+}
+
+// RecallDispatchResult is the outcome of an exact-ID RecallDispatch call.
+// Found is true only when a dispatch was recalled. Outcome is "recalled",
+// "completed", "unauthorized", or "not_found"; Terminal is set only for
+// "completed".
+type RecallDispatchResult struct {
+	Found    bool                  `json:"found"`
+	Outcome  string                `json:"outcome"`
+	Terminal *DispatchHistoryEntry `json:"terminal,omitempty"`
+}
+
 // RecallDispatchOpts configures an exact-ID recall operation.
 type RecallDispatchOpts struct {
 	Reason string `json:"reason,omitempty"`
@@ -462,11 +485,17 @@ type ContextPolicy struct {
 
 // SteerDispatchResult is the typed outcome of a SteerDispatch call.
 // Delivered is true when the message was buffered on the child's steer
-// channel. Outcome carries the four-value verdict string so the caller
-// can react precisely (retry on channel_full, redispatch on no_run, etc.).
+// channel. Outcome carries the verdict string so the caller can react
+// precisely (retry on channel_full, redispatch on no_run, pick an ID on
+// ambiguous, read Terminal on completed, etc.). MatchingDispatchIDs is set
+// only when a name-addressed steer was "ambiguous" and lists every live
+// dispatch in the caller's scope that carries the name. Terminal is set only
+// when the outcome is "completed": the target had already finished.
 type SteerDispatchResult struct {
-	Delivered bool   `json:"delivered"`
-	Outcome   string `json:"outcome"`
+	Delivered           bool                  `json:"delivered"`
+	Outcome             string                `json:"outcome"`
+	MatchingDispatchIDs []string              `json:"matchingDispatchIds,omitempty"`
+	Terminal            *DispatchHistoryEntry `json:"terminal,omitempty"`
 }
 
 // --- Phase 2: Lifecycle event callback payloads ---

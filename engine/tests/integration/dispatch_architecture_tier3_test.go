@@ -36,7 +36,8 @@ import (
 //     structured depth-cap result and emits no dispatch_start event
 //   - Parallel isolation: two parallel 3rd-tier dispatches have isolated
 //     output, each retrievable by dispatchId
-//   - Steer-to-finished: steer to a completed dispatch returns not_found
+//   - Steer-to-finished: steer to a completed dispatch returns completed with
+//     its terminal entry, never not_found
 //   - Steer vs follow-up are distinct mechanisms
 func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 	providers.ResetRegistries()
@@ -392,12 +393,12 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		}
 
 		// Recall the 3rd-tier agent by its exact dispatch ID.
-		found, err := tier2Ctx.RecallDispatch(stub.DispatchID, extension.RecallDispatchOpts{Reason: "test-recall"})
+		recalled, err := tier2Ctx.RecallDispatch(stub.DispatchID, extension.RecallDispatchOpts{Reason: "test-recall"})
 		if err != nil {
 			t.Fatalf("RecallDispatch(tier3-doom): %v", err)
 		}
-		if !found {
-			t.Error("RecallDispatch(tier3-doom) returned false")
+		if !recalled.Found {
+			t.Errorf("RecallDispatch(tier3-doom) = %+v, want found", recalled)
 		}
 
 		select {
@@ -804,8 +805,8 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		}
 	})
 
-	// ── Section 8: Steer to finished dispatch returns not_found ──
-	t.Run("steer_to_finished_returns_not_found", func(t *testing.T) {
+	// ── Section 8: Steer to finished dispatch returns completed ──
+	t.Run("steer_to_finished_returns_completed", func(t *testing.T) {
 		providers.ResetRegistries()
 		mp8 := helpers.NewMockProvider("mock")
 		providers.RegisterProvider(mp8)
@@ -849,8 +850,8 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 			t.Fatal("timeout waiting for tier3-fin")
 		}
 
-		// Steer the finished dispatch. Registry deregistered it on completion,
-		// so SteerByID should return not_found.
+		// Steer the finished dispatch. The registry retired it into its
+		// terminal history, so the steer reports the race, with how it ended.
 		sRes, err := tier2Ctx.SteerDispatch(finID, "steer-after-done")
 		if err != nil {
 			t.Fatalf("SteerDispatch to finished: %v", err)
@@ -858,8 +859,8 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		if sRes.Delivered {
 			t.Error("steer to finished dispatch should not be delivered")
 		}
-		if sRes.Outcome != "not_found" {
-			t.Errorf("steer outcome=%q want not_found", sRes.Outcome)
+		if sRes.Outcome != "completed" || sRes.Terminal == nil || sRes.Terminal.DispatchID != finID || sRes.Terminal.Status != "done" {
+			t.Errorf("steer to finished = %+v, want completed with a done terminal entry for %s", sRes, finID)
 		}
 	})
 
@@ -869,13 +870,13 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 		// channel, consumed by drainSteer). Follow-up continues a SESSION
 		// (new run on an existing conversation). They cannot be confused:
 		//   - Steer requires the dispatch to be in the registry (running);
-		//     after completion, steer returns not_found.
+		//     after completion, steer returns completed.
 		//   - Follow-up requires the SessionID from a completed dispatch;
 		//     it works after the dispatch has finished.
 		//
 		// We already proved both above:
 		//   - Section 4 proved steer on a running dispatch (delivered)
-		//   - Section 8 proved steer on a finished dispatch (not_found)
+		//   - Section 8 proved steer on a finished dispatch (completed)
 		//   - Section 2 proved follow-up on a completed 3rd-tier
 		//   - Section 5 proved follow-up on a completed 2nd-tier
 		//

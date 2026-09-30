@@ -533,6 +533,16 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		result.NewConversationDefaults = &copy
 	}
 
+	// Subscription lookup is a sealed block: the enterprise names the
+	// endpoint that issues keys, and no lower layer can redirect it.
+	if enterprise.SubscriptionLookup != nil {
+		copy := *enterprise.SubscriptionLookup
+		result.SubscriptionLookup = &copy
+		utils.LogWithFields(utils.LevelInfo, "ConfigMerge", "enterprise: subscription lookup sealed", map[string]any{
+			"url": copy.Endpoint, "provider": copy.Provider,
+		})
+	}
+
 	// Store enterprise config for runtime access
 	result.Enterprise = enterprise
 
