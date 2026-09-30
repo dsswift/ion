@@ -11,6 +11,8 @@ body,
 }
 
 .splash-card {
+  /* Frameless, so the card itself is the handle for moving the window. */
+  -webkit-app-region: drag;
   position: relative;
   box-sizing: border-box;
   width: 100%;
@@ -229,4 +231,13 @@ body,
 @media (prefers-reduced-motion: reduce) {
   .splash-indicator { animation: none; transform: translateX(95%); }
   .splash-hero { transform: none; }
+}
+
+/* Controls inside the draggable card must still take clicks, and an error
+   must stay selectable so it can be copied into a report. */
+.splash-card button,
+.splash-card a,
+.splash-error,
+.splash-auth-error {
+  -webkit-app-region: no-drag;
 }

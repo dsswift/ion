@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import type { WebContents } from 'electron'
 
-const splash = { isDestroyed: () => false, destroy: vi.fn(), webContents: { id: 99 } }
+const splash = { isDestroyed: () => false, isFocused: vi.fn(() => true), destroy: vi.fn(), webContents: { id: 99 } }
 const studioWindow = { webContents: { id: 7 } }
 const mockState = { splashWindow: splash as any, mainWindow: null as any, studioWindow: studioWindow as any }
 
@@ -82,7 +82,7 @@ describe('startup coordinator', () => {
     expect(c.getStartupState().studioReady).toBe(true)
     expect(c.getStartupState().serverReady).toBe(true)
     expect(c.isStartupRevealed()).toBe(true)
-    expect(revealStudioWindow).toHaveBeenCalledWith('startup complete')
+    expect(revealStudioWindow).toHaveBeenCalledWith('startup complete', true)
     expect(registerStudioShortcuts).toHaveBeenCalled()
     expect(createTray).toHaveBeenCalled()
     expect(splash.destroy).toHaveBeenCalled()
@@ -109,7 +109,7 @@ describe('startup coordinator', () => {
 
     expect(serverReady(c, 5)).toBe(true)
     expect(c.isStartupRevealed()).toBe(true)
-    expect(revealStudioWindow).toHaveBeenCalledWith('startup complete')
+    expect(revealStudioWindow).toHaveBeenCalledWith('startup complete', true)
     expect(splash.destroy).toHaveBeenCalled()
   })
 
@@ -142,6 +142,18 @@ describe('startup coordinator', () => {
     c.reportStartup({ source: 'studio', sequence: 4, status: 'Ion Studio is ready', ready: true }, studio)
 
     expect(c.isStartupRevealed()).toBe(true)
+    expect(splash.destroy).toHaveBeenCalled()
+  })
+
+  // The splash is an ordinary window the user may leave behind. Finishing
+  // startup must not pull someone back from the app they switched to.
+  it('reveals without taking focus when the user has moved to another app', async () => {
+    const c = await freshCoordinator()
+    splash.isFocused.mockReturnValueOnce(false)
+    serverReady(c)
+    c.reportStartup({ source: 'studio', sequence: 1, status: 'Ion Studio is ready', ready: true }, studio)
+
+    expect(revealStudioWindow).toHaveBeenCalledWith('startup complete', false)
     expect(splash.destroy).toHaveBeenCalled()
   })
 

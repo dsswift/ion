@@ -185,9 +185,6 @@ export function setupAppLifecycle(): void {
   app.whenReady().then(async () => {
     createStartupWindow()
     reportStartup({ source: 'main', sequence: 0, status: 'Preparing Ion…' })
-    if (process.platform === 'darwin' && app.dock) {
-      app.dock.hide()
-    }
 
     // Before any other start-up step: a throw from one of them must land in
     // desktop.jsonl rather than only in Electron's dialog.

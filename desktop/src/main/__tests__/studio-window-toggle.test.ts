@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
     minimize: vi.fn(),
     restore: vi.fn(),
     show: vi.fn(),
+    showInactive: vi.fn(),
     focus: vi.fn(),
     maximize: vi.fn(),
     on: vi.fn((event: string, callback: (...args: unknown[]) => void) => {
@@ -70,7 +71,7 @@ vi.mock('../renderer-crash-guard', () => ({ attemptRendererRecovery: vi.fn(), re
 vi.mock('../webview-policy', () => ({ installWebviewPolicy: vi.fn() }))
 
 import { state } from '../state'
-import { openStudioWindow, toggleStudioWindow } from '../studio-window-manager'
+import { openStudioWindow, revealStudioWindow, toggleStudioWindow } from '../studio-window-manager'
 
 function fire(event: string): void {
   for (const callback of mocks.events.get(event) ?? []) callback()
@@ -151,5 +152,27 @@ describe('Studio shortcut window lifecycle', () => {
       studioTheme: 'ion-works',
       studioBounds: { bounds: mocks.normalBounds, maximized: true },
     })
+  })
+})
+
+describe('Studio reveal after the startup splash', () => {
+  it('brings Ion forward when the user stayed on the splash', () => {
+    revealStudioWindow('startup complete', true)
+
+    expect(mocks.appFocus).toHaveBeenCalledWith({ steal: true })
+    expect(mocks.window.show).toHaveBeenCalledTimes(1)
+    expect(mocks.window.focus).toHaveBeenCalledTimes(1)
+    expect(mocks.window.showInactive).not.toHaveBeenCalled()
+  })
+
+  // Startup can finish while the user works in another app; the window takes
+  // the splash's place behind that app instead of stealing focus.
+  it('shows the window without activating Ion when the user moved to another app', () => {
+    revealStudioWindow('startup complete', false)
+
+    expect(mocks.window.showInactive).toHaveBeenCalledTimes(1)
+    expect(mocks.appFocus).not.toHaveBeenCalled()
+    expect(mocks.window.show).not.toHaveBeenCalled()
+    expect(mocks.window.focus).not.toHaveBeenCalled()
   })
 })

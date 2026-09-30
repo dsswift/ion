@@ -179,18 +179,28 @@ export function focusStudioWindow(source: string): void {
   log(wasMinimized ? "studio_window: restored and focused" : "studio_window: focused", { source });
 }
 
-export function revealStudioWindow(source: string): void {
+/**
+ * Show the Studio window that loaded behind the startup splash. `activate` is
+ * whether Ion still held focus when startup finished: a user who switched to
+ * another app while Ion loaded gets the window in the splash's place, behind
+ * the app they are using, rather than pulled back to Ion.
+ */
+export function revealStudioWindow(source: string, activate: boolean): void {
   const win = state.studioWindow;
   if (!win || win.isDestroyed()) return;
   applyStudioActivationPolicy(true);
-  app.focus({ steal: true });
-  win.show();
+  if (activate) {
+    app.focus({ steal: true });
+    win.show();
+  } else {
+    win.showInactive();
+  }
   if (maximizeOnReveal.get(win)) {
     maximizeOnReveal.delete(win);
     win.maximize();
   }
-  win.focus();
-  log("studio_window: revealed", { source });
+  if (activate) win.focus();
+  log("studio_window: revealed", { source, activated: activate });
 }
 
 /**

@@ -53,11 +53,14 @@ function maybeReveal(): void {
   if (revealed || stateValue.mode === 'authentication' || stateValue.error) return
   if (!stateValue.studioReady || !stateValue.serverReady) return
   revealed = true
-  revealStudioWindow('startup complete')
+  const splash = state.splashWindow
+  const live = splash && !splash.isDestroyed() ? splash : null
+  // The splash is an ordinary window, so the user may have moved on to
+  // another app while Ion loaded; only take focus back if Ion still has it.
+  revealStudioWindow('startup complete', live ? live.isFocused() : true)
   registerStudioShortcuts()
   createTray()
-  const splash = state.splashWindow
-  if (splash && !splash.isDestroyed()) splash.destroy()
+  if (live) live.destroy()
   log('startup', 'startup target revealed')
 }
 
