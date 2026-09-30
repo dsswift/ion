@@ -127,8 +127,9 @@ func (s *Server) dispatchSystemMetricsWatch(conn net.Conn, cmd *protocol.ClientC
 		s.sendResult(conn, cmd, fmt.Errorf("system_metrics_watch needs a socket connection"), nil)
 		return
 	}
-	eff := sampler.Watch(id, cmd.IntervalMs)
-	s.sendResult(conn, cmd, nil, map[string]any{"intervalMs": eff, "watchers": sampler.Watchers()})
+	sampler.Watch(id, cmd.IntervalMs, func(eff int64, watchers int) {
+		s.sendResult(conn, cmd, nil, map[string]any{"intervalMs": eff, "watchers": watchers})
+	})
 }
 
 // unwatchSystemMetrics ends a disconnecting connection's watch.

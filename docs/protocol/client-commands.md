@@ -667,7 +667,7 @@ Start, change, or stop delivery of [`engine_system_metrics`](server-events.md#en
 
 While any connection watches, the engine samples at the smallest interval any watcher asked for; each watcher receives samples at its own interval. With no watchers it samples every `systemMetrics.backgroundIntervalMs` (default 30000). A watch ends when the connection sends `intervalMs: 0` or disconnects. A relay-dispatched command has no socket to deliver to and is refused.
 
-**Response:** `ServerResult` with `data: {intervalMs, watchers}`: the interval in effect for this connection (`0` when stopped) and how many connections now watch.
+**Response:** `ServerResult` with `data: {intervalMs, watchers}`: the interval in effect for this connection (`0` when stopped) and how many connections now watch. A new watch's result always arrives before its first `engine_system_metrics`.
 
 ```json
 {"cmd":"system_metrics_watch","requestId":"r42","intervalMs":1000}
