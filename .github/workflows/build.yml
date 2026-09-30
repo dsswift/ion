@@ -1,17 +1,41 @@
 name: Build
 
+# A dry run builds and verifies everything a release would (signing, the
+# Windows smoke test, bundle checks) from any ref, and publishes nothing: no
+# release upload, no image push, no checksums. It is how a release-only
+# failure gets reproduced from a branch before merge. The versions in the
+# release report must name releases that already exist (a server bundle
+# downloads its engine from one).
 on:
   workflow_call:
     inputs:
       release_report:
         required: true
         type: string
+      ref:
+        required: false
+        type: string
+        default: main
+      dry_run:
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       release_report:
         description: 'Release report JSON (from release-damnit or .act/release-report.json)'
         required: true
         type: string
+      ref:
+        description: 'Branch, tag, or commit to build'
+        required: false
+        type: string
+        default: main
+      dry_run:
+        description: 'Build and verify only; publish nothing'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -56,7 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ inputs.ref || 'main' }}
 
       - name: Setup Go
         uses: actions/setup-go@v7
@@ -162,6 +186,7 @@ jobs:
           security delete-keychain build.keychain-db 2>/dev/null || true
 
       - name: Upload to release
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         working-directory: engine
@@ -171,6 +196,7 @@ jobs:
           gh release upload "$TAG" "${ASSET}" --clobber
 
   engine-checksums:
+    if: ${{ !inputs.dry_run }}
     needs: build-engine
     runs-on: ubuntu-latest
     steps:
@@ -196,6 +222,7 @@ jobs:
           cat checksums.txt
 
       - name: Upload checksums
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -208,7 +235,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ inputs.ref || 'main' }}
 
       - name: Get version
         id: version
@@ -232,7 +259,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: engine
-          push: true
+          push: ${{ !inputs.dry_run }}
           platforms: linux/amd64
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
@@ -275,7 +302,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ inputs.ref || 'main' }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -312,6 +339,7 @@ jobs:
         run: bash scripts/package-studio-server.test.sh build/deploy/ion-studio-server-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
 
       - name: Upload to release
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -323,13 +351,13 @@ jobs:
   studio-server-checksums:
     # build-studio-server runs even when build-engine is skipped (the engine
     # binary comes from its release); without this, that skip skips here too.
-    if: always() && needs.build-studio-server.result == 'success'
+    if: always() && needs.build-studio-server.result == 'success' && !inputs.dry_run
     needs: build-studio-server
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ inputs.ref || 'main' }}
 
       - name: Get version
         id: version
@@ -342,6 +370,7 @@ jobs:
       # Once, here: every bundle job uploading it with --clobber raced, one
       # job's delete landing mid-upload of another's (HTTP 404).
       - name: Upload the installer script
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -364,6 +393,7 @@ jobs:
           cat checksums.txt
 
       - name: Upload checksums
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -376,7 +406,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ inputs.ref || 'main' }}
 
       - name: Get version
         id: version
@@ -400,7 +430,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: relay
-          push: true
+          push: ${{ !inputs.dry_run }}
           platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -414,7 +444,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ inputs.ref || 'main' }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -584,6 +614,7 @@ jobs:
           node scripts/check-release-version.js "${{ steps.version.outputs.version }}" "$APP" "$PKG"
 
       - name: Upload to release
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         working-directory: desktop
@@ -624,7 +655,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ inputs.ref || 'main' }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -801,6 +832,7 @@ jobs:
             -DetectScriptPath "desktop/release/intune/Detect-Ion.ps1"
 
       - name: Upload the installer to the release
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
@@ -817,7 +849,7 @@ jobs:
       # last as the update feed for every Windows user. x64 is the supported
       # target, so x64 owns the feed.
       - name: Upload the update feed and management assets
-        if: matrix.arch == 'x64'
+        if: matrix.arch == 'x64' && !inputs.dry_run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
@@ -848,7 +880,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ inputs.ref || 'main' }}
 
       - name: Get version
         id: version
@@ -877,7 +909,7 @@ jobs:
         with:
           context: .
           file: server/Dockerfile
-          push: true
+          push: ${{ !inputs.dry_run }}
           platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max

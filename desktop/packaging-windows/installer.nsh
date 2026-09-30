@@ -306,8 +306,8 @@ ionAclDirOk:
 ;
 ; The removal itself lives in Remove-IonEngineTasks.ps1 so that the same code
 ; an uninstall runs is the code an administrator runs to finish the job when an
-; uninstall lacked the rights. It is invoked from %ProgramData%\Ion because
-; $INSTDIR has already been deleted by the time this macro runs.
+; uninstall lacked the rights. It is invoked from %ProgramData%\Ion, where it
+; survives the uninstall for an administrator to re-run.
 ;
 ; A task is removed only when its NAME is one Ion registers AND its registered
 ; action proves it launches Ion from an installed Ion directory. $INSTDIR is
@@ -315,12 +315,17 @@ ionAclDirOk:
 ; the script cannot rediscover: the directory is already deleted and its
 ; uninstall registration goes with it, so on a device installed somewhere other
 ; than %ProgramFiles%\Ion the caller is the only remaining source of the truth.
+; (Each account's engine itself runs from that account's %USERPROFILE%\.ion\bin,
+; which the script accepts for the task named with that account's SID.)
 ; Without it such a device's task would fail verification and be skipped --
 ; which is safe, and is not the same as removed.
 ;
 ; A failure never blocks the uninstall: the application still has to come off
 ; the machine. It is logged with the remediation command, and the standalone
 ; script remains in place to run it.
+;
+; electron-builder runs this before it removes $INSTDIR, so the folder still
+; exists here.
 !macro customUnInstall
   ; Policy files under %ProgramData%\Ion are administrator-owned
   ; configuration, not application state -- never removed by uninstall.
@@ -360,4 +365,32 @@ ionAclDirOk:
       !insertmacro ionLog "uninstall: WARNING -- at least one Ion Engine task remains. Run as an administrator: powershell -ExecutionPolicy Bypass -File $\"$1\Ion\Remove-IonEngineTasks.ps1$\""
     ${EndIf}
   ${EndIf}
+!macroend
+
+; Before the running-app check, on install and uninstall: end every Ion
+; Engine task, which stops its engine. Each account's engine runs from its own
+; %USERPROFILE%\.ion\bin under a scheduled task, and while it ran a silent
+; uninstall left every file in place and still exited 0. The tasks stay
+; registered (-Stop deletes nothing); customUnInstall removes them, and an
+; upgrade's next launch starts them again. A first install has no script yet
+; and nothing to stop.
+; Defining customCheckAppRunning makes allowOnlyOneInstallerInstance.nsh skip
+; the getProcessInfo include and `Var pid` it guards with !ifmacrondef, and
+; the stock check below needs both. This file is included before that one.
+!include "getProcessInfo.nsh"
+Var pid
+!macro customCheckAppRunning
+  ExpandEnvStrings $1 "%ProgramData%"
+  ${If} ${FileExists} "$1\Ion\Remove-IonEngineTasks.ps1"
+    StrCpy $2 "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+    ${IfNot} ${FileExists} "$2"
+      StrCpy $2 "$WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
+    ${EndIf}
+    !insertmacro ionLog "check: stopping Ion engines before the running-app check"
+    nsExec::ExecToLog /TIMEOUT=120000 '"$2" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$1\Ion\Remove-IonEngineTasks.ps1" -Stop -InstallRoot "$INSTDIR"'
+    Pop $0
+    !insertmacro ionLog "check: Remove-IonEngineTasks.ps1 -Stop exit code $0"
+  ${EndIf}
+  !insertmacro IS_POWERSHELL_AVAILABLE
+  !insertmacro _CHECK_APP_RUNNING
 !macroend

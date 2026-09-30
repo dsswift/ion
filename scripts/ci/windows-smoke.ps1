@@ -246,7 +246,12 @@ Assert $sawKillSwitch 'desktop logged the auto-update kill switch within 30s'
 
 # --- 8. Quitting the desktop must not stop the engine -----------------------
 Step 'quitting the desktop'
-Get-Process -Name 'Ion' -ErrorAction SilentlyContinue | Stop-Process -Force
+# Process names ignore case, so -Name 'Ion' also matches the engine
+# (resources\engine\ion.exe). Stop only the desktop's own executable: the
+# window, its helpers, and the Studio server child all run as $AppExe.
+$desktopProcs = @(Get-Process -Name 'Ion' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $AppExe })
+$desktopProcs | Stop-Process -Force
+Write-Host "  stopped $($desktopProcs.Count) desktop process(es)"
 Start-Sleep -Seconds 5
 $stateAfterQuit = Wait-TaskStatus 'Running' 30
 Assert ("$stateAfterQuit" -match 'Running') "task still Running after the desktop quits (got: $stateAfterQuit)"
@@ -261,6 +266,16 @@ Assert ($uninstProc.ExitCode -eq 0) "uninstaller exit code is 0 (got $($uninstPr
 # The NSIS uninstaller returns before it has finished removing the directory.
 $goneBy = (Get-Date).AddSeconds(30)
 while ((Test-Path -LiteralPath $InstallDir) -and (Get-Date) -lt $goneBy) { Start-Sleep -Seconds 2 }
+if (Test-Path -LiteralPath $InstallDir) {
+  # What survived, and what still runs from it, so the failure explains itself.
+  Write-Host "  --- left in $InstallDir"
+  Get-ChildItem -LiteralPath $InstallDir -Recurse -File -ErrorAction SilentlyContinue |
+    Select-Object -First 25 | ForEach-Object { Write-Host "    $($_.FullName)" }
+  Write-Host "  --- processes running from $InstallDir"
+  Get-Process -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -and $_.Path.StartsWith($InstallDir, [System.StringComparison]::OrdinalIgnoreCase) } |
+    ForEach-Object { Write-Host "    $($_.Id) $($_.Path)" }
+}
 Assert (-not (Test-Path -LiteralPath $InstallDir)) "$InstallDir removed"
 
 # --- 10. Uninstall left nothing pointing at the removed binary --------------

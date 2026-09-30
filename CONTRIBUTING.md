@@ -220,7 +220,7 @@ Open issues at https://github.com/dsswift/ion/issues. Include:
 ## Reference
 
 - `.github/workflows/release.yml` — release detection and tagging.
-- `.github/workflows/build.yml` — artifact build and upload.
+- `.github/workflows/build.yml` — artifact build and upload. Dispatch it with `dry_run` and a `ref` to build and verify a branch (signing, the Windows smoke test) without publishing anything.
 - `release-please-config.json` — component definitions.
 - `release-please-manifest.json` — current version of each component (read-only for contributors).
 - https://github.com/dsswift/release-damnit — the release-detection tool used by `release.yml`.
