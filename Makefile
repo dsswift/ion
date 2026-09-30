@@ -60,6 +60,12 @@ desktop-pkg:
 sync-windows-vm:
 	@bash scripts/sync-windows-vm.sh
 
+# The Windows release smoke test on the local Windows VM, from a clean machine
+# (scripts/windows/Reset-IonTestState.ps1). Publishes nothing.
+.PHONY: smoke-windows-vm
+smoke-windows-vm:
+	@bash scripts/smoke-windows-vm.sh
+
 # Build the Windows NSIS installer for local testing (windows-mvp program).
 # Produces desktop/release/Ion-Setup-<version>-x64.exe. Windows-only —
 # electron-builder's NSIS target requires the win32 host toolchain.
