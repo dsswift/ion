@@ -121,11 +121,18 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 	// extension never runs npm install or launches a subprocess. Every load
 	// path (initial, daemon-restart re-registration, respawn) funnels through
 	// spawnAndInit, so this single check covers hot-reload.
+	// A pass against a non-empty allowlist makes the identifier trusted:
+	// per-extension application config is scoped to it.
+	trustedID := ""
 	if config != nil {
 		if err := checkExtensionAllowlist(h.name_(), extensionPath, config.ExtensionAllowlist); err != nil {
 			return err
 		}
+		if len(config.ExtensionAllowlist) > 0 {
+			trustedID = h.name_()
+		}
 	}
+	h.setTrustedID(trustedID)
 
 	// Run `npm install` if the extension declares dependencies. Idempotent:
 	// skips when node_modules is up to date with package.json.

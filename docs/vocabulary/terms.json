@@ -157,6 +157,38 @@
       ]
     },
     {
+      "id": "application-config",
+      "term": "Application Config",
+      "definition": "Configuration scoped to the verified principal. The engine resolves it after that principal becomes available, holds one in-memory snapshot per engine process, and gives each extension the common section plus its own allowlist-keyed section. Secret values stay in the engine. Every read carries a lifecycle state, so not ready is distinct from not found.",
+      "domain": "harness-sdk",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Snapshot struct",
+          "path": "engine/internal/appconfig/snapshot.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface ApplicationConfigSnapshot",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type ApplicationConfigSnapshot struct",
+          "path": "sdk/go/application_config.go"
+        }
+      ]
+    },
+    {
       "id": "async-delivery",
       "term": "Async delivery",
       "definition": "The path that carries a schedule firing or an inbound webhook into an extension handler. The engine owns the timing and the routing. The extension owns the action.",
@@ -3319,6 +3351,31 @@
         }
       ],
       "notes": "Span record shapes and the hop chain: docs/observability/log-schema.md § Spans."
+    },
+    {
+      "id": "protected-operation",
+      "term": "Protected operation",
+      "definition": "An outbound HTTP call the operator declares by name in the global engine.json or enterprise config. The declaration fixes the method, destination, path template, secret reference, injection slot, and payload schema. An extension supplies only the name and a payload, and the engine injects the secret, so the credential never enters the extension and cannot be sent elsewhere.",
+      "domain": "harness-sdk",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func DoProtectedOperation",
+          "path": "engine/internal/extension/protected_operation.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "protectedOperation(name: string, payload?: unknown): Promise<IonProtectedOperationResult>",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        }
+      ]
     },
     {
       "id": "provider",

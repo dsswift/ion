@@ -28,19 +28,22 @@ import (
 const (
 	// Lifecycle.
 	HookNameIdentityChanged = "identity_changed"
-	HookNameSessionStart    = "session_start"
-	HookNameSessionEnd      = "session_end"
-	HookNameBeforePrompt    = "before_prompt"
-	HookNameTurnStart       = "turn_start"
-	HookNameTurnEnd         = "turn_end"
-	HookNameMessageStart    = "message_start"
-	HookNameMessageEnd      = "message_end"
-	HookNameToolStart       = "tool_start"
-	HookNameToolEnd         = "tool_end"
-	HookNameToolCall        = "tool_call"
-	HookNameOnError         = "on_error"
-	HookNameAgentStart      = "agent_start"
-	HookNameAgentEnd        = "agent_end"
+	// HookNameApplicationConfigChanged fires on every application config
+	// transition.
+	HookNameApplicationConfigChanged = "application_config_changed"
+	HookNameSessionStart             = "session_start"
+	HookNameSessionEnd               = "session_end"
+	HookNameBeforePrompt             = "before_prompt"
+	HookNameTurnStart                = "turn_start"
+	HookNameTurnEnd                  = "turn_end"
+	HookNameMessageStart             = "message_start"
+	HookNameMessageEnd               = "message_end"
+	HookNameToolStart                = "tool_start"
+	HookNameToolEnd                  = "tool_end"
+	HookNameToolCall                 = "tool_call"
+	HookNameOnError                  = "on_error"
+	HookNameAgentStart               = "agent_start"
+	HookNameAgentEnd                 = "agent_end"
 
 	// Session management.
 	HookNameSessionBeforeCompact  = "session_before_compact"

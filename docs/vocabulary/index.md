@@ -50,6 +50,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Account Setting](#term-account-setting)
 - [Agent](#term-agent)
 - [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
+- [Application Config](#term-application-config)
 - [Async delivery](#term-async-delivery)
 - [Attachment](#term-attachment)
 - [Automation Editor](#term-automation-editor)
@@ -159,6 +160,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Project Trust](#term-project-trust)
 - [Project Workspace](#term-project-workspace)
 - [Prompt trace](#term-prompt-trace)
+- [Protected operation](#term-protected-operation)
 - [Provider](#term-provider)
 - [Provider Subscription](#term-provider-subscription)
 - [Push address](#term-push-address)
@@ -1064,7 +1066,36 @@ The path that carries a schedule firing or an inbound webhook into an extension 
   - `sdk` / `code` / `typescript`: `export async function dispatchFireAsync` in `engine/extensions/sdk/ion-sdk/runtime-async.ts`
   - `engine` / `wire` / `go`: `DeliveryId` in `engine/internal/protocol/protocol.go`
 
+#### Protected operation {#term-protected-operation}
+
+An outbound HTTP call the operator declares by name in the global engine.json or enterprise config. The declaration fixes the method, destination, path template, secret reference, injection slot, and payload schema. An extension supplies only the name and a payload, and the engine injects the secret, so the credential never enters the extension and cannot be sent elsewhere.
+
+- **ID:** `protected-operation`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func DoProtectedOperation` in `engine/internal/extension/protected_operation.go`
+  - `sdk` / `code` / `typescript`: `protectedOperation(name: string, payload?: unknown): Promise<IonProtectedOperationResult>` in `engine/extensions/sdk/ion-sdk/types.ts`
+
 ### public-contract
+
+#### Application Config {#term-application-config}
+
+Configuration scoped to the verified principal. The engine resolves it after that principal becomes available, holds one in-memory snapshot per engine process, and gives each extension the common section plus its own allowlist-keyed section. Secret values stay in the engine. Every read carries a lifecycle state, so not ready is distinct from not found.
+
+- **ID:** `application-config`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type Snapshot struct` in `engine/internal/appconfig/snapshot.go`
+  - `sdk` / `code` / `typescript`: `export interface ApplicationConfigSnapshot` in `engine/extensions/sdk/ion-sdk/types.ts`
+  - `sdk` / `code` / `go`: `type ApplicationConfigSnapshot struct` in `sdk/go/application_config.go`
 
 #### Context Identity {#term-context-identity}
 

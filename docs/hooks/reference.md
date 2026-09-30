@@ -13,6 +13,7 @@ All hooks grouped by category. For each hook: when it fires, what payload it rec
 | Hook | When | Payload | Return | Effect |
 |------|------|---------|--------|--------|
 | `identity_changed` | Verified Context Identity changes, or a session's stamped principal is set/changed | `IdentityChangedInfo{Identity, Reason, SessionKey}` | ignored | Complete snapshot. Tool changes commit as one transaction. `SessionKey` is empty for the process-level operator-identity firing (the historical behavior) and non-empty when a specific session's own principal (manifest C1/C2, `start_session.principal`) is what changed. |
+| `application_config_changed` | Every [Application Config](../vocabulary/index.md#application-config) transition | `ApplicationConfigSnapshot{State, Revision, Subject, Provider, Values, SecretKeys, Error, FetchedAt}` | ignored | Complete view scoped to the session's principal and the receiving extension. Replace, never merge. |
 | `session_start` | Session initialized | `nil` | ignored | Observe only |
 | `session_end` | Session teardown | `nil` | ignored | Observe only |
 | `before_prompt` | Before prompt sent to LLM | `string` (prompt) | `BeforePromptResult{Prompt, SystemPrompt}` or `string` | Last non-nil wins. String = prompt rewrite. Struct can set both prompt and system prompt addition. `ctx.model` carries the selected model (ID + context window) for model-aware rewriting. |
@@ -64,6 +65,12 @@ A separate, per-session firing (`Reason: "session_principal"`, `SessionKey` set 
 `ContextIdentity.StorageRoot` (ADR-034, additive field, `json:"storageRoot,omitempty"`) is the absolute directory this identity's conversations live under, mirroring `start_session`'s own `StorageRoot` result field. It is populated **only** on a `session_principal` firing (a process-level `identity_changed` has no session to derive a partition from) and only when `engine.json`'s `security.principalPartitioning.enabled` is `true` and the principal's `Subject` is non-empty. **`StorageRoot` is authoritative when present; absent means unchanged behavior** — a harness that reads it to relocate its own data root should fall back to its historical env-based or hardcoded location whenever this field is empty, exactly as it would on an engine that predates this field entirely. See [Conversation storage's partition layout](../architecture/conversation-storage.md#partition-layout) for the directory shape, and the cos2 harness's `journalroot.go`/`storageroot.go` for a worked example of this fallback rule.
 
 During this hook, `ctx.identity` equals payload `Identity` as a deep copy. Tool changes are transactional. The SDK returns the complete tool snapshot with the hook result and the engine swaps the registry only after handler success. A failed, timed-out, malformed, or stale snapshot keeps the host pending: it contributes no new-run tools and denies live tool calls until it receives the transition again.
+
+### `application_config_changed`
+
+`application_config_changed` carries a complete [Application Config](../vocabulary/index.md#application-config) snapshot each time the engine's snapshot changes state: `deferred` to `fetching` when a principal signs in, `fetching` to `ready` or `failed`, `ready` to `refreshing` and back to `ready` on each refresh (with the new values, or the same ones when the source is unchanged or the refresh failed), and back to `deferred` when the principal signs out or loses verification. `Revision` increases by one on every transition. Replace extension-local state with each payload and keep the highest `Revision`.
+
+The payload is scoped to the session and to the extension. A session whose own stamped principal is not the principal the snapshot was resolved for receives `State: "deferred"` with no values. Each extension receives the `common` section merged with the section keyed by its enterprise extension allowlist entry, and the names of its secrets in `SecretKeys`; secret values are never in the payload. The hook fires only for transitions; read the current view with `ctx.applicationConfig` (TypeScript) or `Context.ApplicationConfig()` (Go) on `session_start`.
 
 ### Context identifiers (every hook)
 

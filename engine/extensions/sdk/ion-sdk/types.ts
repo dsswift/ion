@@ -1050,6 +1050,88 @@ export interface IonHttpResponse {
   body: string
 }
 
+/**
+ * Result of a protected operation (see {@link IonContext.protectedOperation}).
+ * Wherever the response reflected the injected secret, it reads `[redacted]`.
+ */
+export interface IonProtectedOperationResult {
+  status: number
+  headers: Record<string, string>
+  body: string
+}
+
+/**
+ * Lifecycle of the authenticated application config (see
+ * {@link IonContext.applicationConfig}). `disabled`: the engine has no
+ * `applicationConfig` source. `deferred`: no principal is available for this
+ * reader yet. `fetching`: the first resolution is in flight. `ready`: values
+ * are available. `refreshing`: a refresh is in flight and the previous values
+ * stay available. `failed`: resolution failed; `error` says why.
+ */
+export type ApplicationConfigState = 'disabled' | 'deferred' | 'fetching' | 'ready' | 'refreshing' | 'failed'
+
+/**
+ * One complete view of the application config. Also the
+ * `application_config_changed` payload: replace your view with it, and keep
+ * the highest `revision` if two arrive out of order.
+ */
+export interface ApplicationConfigSnapshot {
+  state: ApplicationConfigState
+  revision: number
+  /** The principal the values belong to. Absent while deferred. */
+  subject?: string
+  provider?: string
+  /** The common section merged with this extension's own section. Present
+   *  only when `ready` or `refreshing`. */
+  values?: Record<string, unknown>
+  /** Names of the secrets the engine holds for this extension. Their values
+   *  never reach extension code. */
+  secretKeys?: string[]
+  /** Failure reason. Present only when failed. */
+  error?: string
+  /** RFC 3339 resolution time. Present only when `ready` or `refreshing`. */
+  fetchedAt?: string
+}
+
+/** One keyed read of the application config. */
+export interface ApplicationConfigValue {
+  state: ApplicationConfigState
+  revision: number
+  error?: string
+  key: string
+  /** Meaningful only when `state` is `ready` or `refreshing`: false then
+   *  means the key is not a readable value. */
+  found: boolean
+  value?: unknown
+  /** True when `key` names a secret the engine holds. Its value is never
+   *  returned. */
+  secret: boolean
+}
+
+/** Result of {@link IonApplicationConfig.await}. */
+export interface ApplicationConfigAwaitResult extends ApplicationConfigSnapshot {
+  /** True when the view had not settled before the timeout. */
+  timedOut: boolean
+}
+
+/**
+ * Authenticated, deferred application config: values scoped to the signed-in
+ * principal, resolved once by the engine after sign-in and shared by every
+ * extension. Each extension sees the common section plus its own section,
+ * keyed by its enterprise extension allowlist entry. Every read carries
+ * `state`, so "still loading" is never confused with "the key does not exist". Subscribe to transitions with the
+ * `application_config_changed` hook instead of polling.
+ */
+export interface IonApplicationConfig {
+  /** The current view, without waiting. */
+  snapshot(): Promise<ApplicationConfigSnapshot>
+  /** One key, without waiting. */
+  get(key: string): Promise<ApplicationConfigValue>
+  /** Wait until the view has values or failed, or `timeoutMs` passes (engine
+   *  default 30 000). Always resolves with the latest view. */
+  await(opts?: { timeoutMs?: number }): Promise<ApplicationConfigAwaitResult>
+}
+
 /** Pre-authenticated HTTP surface (see {@link IonContext.http}). */
 export interface IonHttp {
   request(method: string, url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
@@ -1277,6 +1359,40 @@ export interface IonContext extends DispatchControlContext {
    * ```
    */
   http: IonHttp
+
+  /**
+   * Run an operation the operator declared under `protectedOperations` in the
+   * engine's global or enterprise config. The declaration fixes the method,
+   * destination, secret reference, injection slot, and payload schema; the
+   * extension supplies only the name and a payload. The engine injects the
+   * secret at call time and strips it from the result, so the credential
+   * never enters this process and the call cannot be redirected.
+   *
+   * The engine validates `payload` against the declared schema, fills any
+   * `{name}` placeholders in the declared path from its top-level fields,
+   * and sends it as the JSON body (never for GET or HEAD). Omit it to send
+   * no body. Rejects on an unknown name, a rejected payload, an unavailable
+   * secret, or an engine with no declared operations.
+   *
+   * @example
+   * ```ts
+   * const res = await ctx.protectedOperation('publish-metric', { value: 42 })
+   * if (res.status !== 202) ctx.sendMessage(`metric rejected: ${res.status}`)
+   * ```
+   */
+  protectedOperation(name: string, payload?: unknown): Promise<IonProtectedOperationResult>
+
+  /**
+   * Authenticated application config resolved for the signed-in principal.
+   * See {@link IonApplicationConfig}.
+   *
+   * @example
+   * ```ts
+   * const endpoint = await ctx.applicationConfig.get('storageEndpoint')
+   * if (endpoint.found) useEndpoint(endpoint.value)
+   * ```
+   */
+  applicationConfig: IonApplicationConfig
 
   /**
    * Queue a fresh prompt on this session's agent loop. Returns once the
@@ -2787,6 +2903,7 @@ export interface IdentityChangedInfo {
 
 export interface HookPayloadMap {
   identity_changed: IdentityChangedInfo
+  application_config_changed: ApplicationConfigSnapshot
   // Lifecycle
   session_start: void
   session_end: void

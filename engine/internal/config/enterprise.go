@@ -201,6 +201,10 @@ func mergeEnterprisePartial(base, overlay *types.EnterpriseConfig) *types.Enterp
 	if overlay.SystemMetrics != nil {
 		result.SystemMetrics = overlay.SystemMetrics
 	}
+	if overlay.ApplicationConfig != nil {
+		result.ApplicationConfig = overlay.ApplicationConfig
+	}
+	result.ProtectedOperations = unionProtectedOperations(result.ProtectedOperations, overlay.ProtectedOperations)
 	if overlay.Network != nil {
 		result.Network = overlay.Network
 	}

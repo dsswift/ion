@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/dsswift/ion/engine/internal/secretref"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -48,7 +49,30 @@ func NormalizeMcpServerConfig(cfg *types.McpServerConfig) error {
 		return fmt.Errorf("unsupported MCP transport %q (want http, sse, ws, or stdio)", cfg.Type)
 	}
 
+	if err := validateMcpSecretHeaders(cfg); err != nil {
+		return err
+	}
 	return validateMcpOAuth(cfg.OAuth)
+}
+
+// validateMcpSecretHeaders checks each secret header's reference. A stdio
+// server sends no HTTP headers, so it may not declare any.
+func validateMcpSecretHeaders(cfg *types.McpServerConfig) error {
+	if len(cfg.SecretHeaders) == 0 {
+		return nil
+	}
+	if cfg.Type == "stdio" {
+		return fmt.Errorf("secretHeaders need a network transport, not stdio")
+	}
+	for name, header := range cfg.SecretHeaders {
+		if name == "" {
+			return fmt.Errorf("secretHeaders has an empty header name")
+		}
+		if err := secretref.Validate(header.SecretReference); err != nil {
+			return fmt.Errorf("secretHeaders[%s]: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // validateMcpOAuth checks an explicit oauth block. Every field is optional:

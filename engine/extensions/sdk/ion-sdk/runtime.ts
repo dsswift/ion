@@ -26,6 +26,7 @@ import {
   RESOURCE_TRANSFER_METHODS,
   registerResourceRpcBridge,
 } from './runtime-resources'
+import { buildApplicationConfigAPI } from './runtime-application-config'
 import { doRegisterAgentTools } from './runtime-agents'
 import { emitLog as sharedEmitLog, type LogLevel as SharedLogLevel } from './runtime-log'
 import { createToolRegistry } from './runtime-tools'
@@ -49,6 +50,7 @@ import type {
   IonContext,
   IonHttpRequestOptions,
   IonHttpResponse,
+  IonProtectedOperationResult,
   InterceptOpts,
   IonSDK,
   LLMCallOpts,
@@ -396,6 +398,7 @@ function buildContext(ctxData: any): IonContext {
         ...(contentItems && contentItems.length > 0 ? { contentItems } : {}),
       }
     },
+    applicationConfig: buildApplicationConfigAPI(request),
     // Pre-authenticated outbound HTTP. Each verb funnels into the single
     // ext/http_request RPC; the engine applies bearer or SigV4 authentication.
     // Raw credentials never reach this process.
@@ -433,6 +436,16 @@ function buildContext(ctxData: any): IonContext {
         delete: (url: string, opts?: IonHttpRequestOptions) => doRequest('DELETE', url, opts),
       }
     })(),
+    // Config-declared operation with an engine-injected secret. Only the name
+    // and payload cross the wire; the secret never reaches this process.
+    async protectedOperation(name: string, payload?: unknown): Promise<IonProtectedOperationResult> {
+      const result = await request('ext/protected_operation', payload === undefined ? { name } : { name, payload })
+      return {
+        status: typeof result?.status === 'number' ? result.status : 0,
+        headers: (result?.headers as Record<string, string>) || {},
+        body: typeof result?.body === 'string' ? result.body : '',
+      }
+    },
     async sendPrompt(text: string, opts?: SendPromptOpts): Promise<void> {
       // Forward per-prompt, run-scoped plan-mode bash-allowlist additions only
       // when present so the omitempty contract on the engine side holds (an

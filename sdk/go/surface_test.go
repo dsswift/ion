@@ -71,16 +71,17 @@ func buildSurfaceManifest() surfaceManifest {
 	// rather than discovered, so adding one is a deliberate act that shows up
 	// in the golden diff.
 	namespaces := map[string]reflect.Type{
-		"HTTPAPI":         reflect.TypeOf(&HTTPAPI{}),
-		"SessionsAPI":     reflect.TypeOf(&SessionsAPI{}),
-		"WebhooksAPI":     reflect.TypeOf(&WebhooksAPI{}),
-		"ScheduleAPI":     reflect.TypeOf(&ScheduleAPI{}),
-		"ResourcesAPI":    reflect.TypeOf(&ResourcesAPI{}),
-		"Logger":          reflect.TypeOf(&Logger{}),
-		"WebhookHandle":   reflect.TypeOf(WebhookHandle{}),
-		"ScheduleHandle":  reflect.TypeOf(ScheduleHandle{}),
-		"ScheduleControl": reflect.TypeOf(ScheduleControl{}),
-		"ResourceHandle":  reflect.TypeOf(ResourceHandle{}),
+		"HTTPAPI":              reflect.TypeOf(&HTTPAPI{}),
+		"ApplicationConfigAPI": reflect.TypeOf(&ApplicationConfigAPI{}),
+		"SessionsAPI":          reflect.TypeOf(&SessionsAPI{}),
+		"WebhooksAPI":          reflect.TypeOf(&WebhooksAPI{}),
+		"ScheduleAPI":          reflect.TypeOf(&ScheduleAPI{}),
+		"ResourcesAPI":         reflect.TypeOf(&ResourcesAPI{}),
+		"Logger":               reflect.TypeOf(&Logger{}),
+		"WebhookHandle":        reflect.TypeOf(WebhookHandle{}),
+		"ScheduleHandle":       reflect.TypeOf(ScheduleHandle{}),
+		"ScheduleControl":      reflect.TypeOf(ScheduleControl{}),
+		"ResourceHandle":       reflect.TypeOf(ResourceHandle{}),
 	}
 	for name, rt := range namespaces {
 		m.Namespaces[name] = exportedMethods(rt)

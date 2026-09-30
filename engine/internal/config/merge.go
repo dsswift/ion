@@ -290,6 +290,15 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		result.SystemMetrics = &sealed
 	}
 
+	// ApplicationConfig: an enterprise block replaces the user's whole, so
+	// the organization owns which service resolves per-principal config.
+	if enterprise.ApplicationConfig != nil {
+		sealed := *enterprise.ApplicationConfig
+		result.ApplicationConfig = &sealed
+	}
+
+	sealProtectedOperations(&result, enterprise)
+
 	// ConversationEvents: same one-way seal pattern as Telemetry above,
 	// applied to the fully independent conversation.* config block (issue
 	// #378). This is a separate seal from Telemetry's — an enterprise can

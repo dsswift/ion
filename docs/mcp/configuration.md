@@ -18,6 +18,7 @@ MCP servers are configured in the `mcpServers` map of your engine config. Each k
 | `url` | `string` | network transports | Remote server URL (`http`, `sse`, `ws`) |
 | `env` | `map[string]string` | No | Environment variables passed to the server process (stdio) or included in requests (network transports) |
 | `headers` | `map[string]string` | No | Static HTTP headers for network transports |
+| `secretHeaders` | `map[string]object` | No | Headers whose value is a secret the engine reads on every request. See [Secret headers](#secret-headers). |
 | `oauth` | `McpOAuthConfig` | No | Explicit OAuth 2.0 client configuration. Omit it for a server that supports discovery — see [OAuth and authorization](#oauth-and-authorization). |
 | `timeoutSeconds` | `int` | No | Per-server tool-call timeout. Unset uses the engine default. |
 | `forwardIdentityToken` | `bool` | No | Stamp the configured operator or machine OAuth token on every request. Preferred identity-neutral field. |
@@ -90,6 +91,33 @@ Custom headers are included on every request the transport makes — the SSE
 connection request and its subsequent POSTs, each StreamableHTTP request, or the
 WebSocket upgrade. Use them for API keys, pre-shared bearer tokens, and routing
 metadata. A server using OAuth needs none of them.
+
+### Secret headers
+
+`secretHeaders` puts a secret in a request header without writing it into `engine.json`. Each key is a header name. Each value names the secret:
+
+```json
+{
+  "mcpServers": {
+    "erm": {
+      "type": "http",
+      "url": "https://gateway.example.com/erm/mcp",
+      "forwardIdentityToken": true,
+      "secretHeaders": {
+        "Ocp-Apim-Subscription-Key": { "secretRef": "gatewayKey", "secretSource": "applicationConfig" }
+      }
+    }
+  }
+}
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `secretRef` | required | Credential-store entry name, or application config secret key. |
+| `secretSource` | `"credentialStore"` | `"credentialStore"` (the store `store_credential` writes) or `"applicationConfig"` (the `common` section's `secrets` of the [application config document](../configuration/engine-json.md#application-config-document)). |
+| `prefix` | `""` | Text placed before the secret, for example `"Bearer "`. |
+
+The engine reads the secret on every request, so a rotated value is sent on the next one. If the secret cannot be read (not stored, or application config not yet loaded), the request fails instead of going out without the header. The value is never logged. WebSocket applies headers once at dial time, so a rotated secret reaches a WebSocket server on reconnect. A `stdio` server takes no headers and cannot declare any.
 
 ### Network considerations
 

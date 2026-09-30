@@ -142,6 +142,13 @@ type Context struct {
 	// status/headers/body. TypeScript SDK exposes same ext/http_request path.
 	HTTPRequest func(params OperatorHTTPRequestParams) (*OperatorHTTPResponse, error)
 
+	// ProtectedOperation runs an operation declared under protectedOperations
+	// in the global engine.json. The caller supplies only the name and a
+	// payload; the engine injects the declared secret, and every encoding of
+	// it is stripped from the result. TypeScript SDK exposes the same
+	// ext/protected_operation path.
+	ProtectedOperation func(params ProtectedOperationParams) (*ProtectedOperationResult, error)
+
 	// SendPrompt queues a fresh prompt on this session's agent loop. The
 	// call returns once the engine has accepted (or rejected) the prompt;
 	// it does NOT wait for the LLM to finish. `model` is an optional

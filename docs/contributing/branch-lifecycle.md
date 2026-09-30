@@ -17,7 +17,7 @@ It is written for two audiences. **Operators** use it as a refresher on the expe
 | Feature work | Operator asks; agent implements | Code, tests, docs. Committed at clean scope seams — one commit per scope per feature. | No |
 | `/align` | Operator | Reviews the work against Ion's quality gates and architectural principles, then authors a fix plan. In plan mode it audits the plan instead. | No |
 | `/squash` | Operator | Rebuilds the branch from a soft reset into one commit per scope per feature. Creates a backup branch first. | No |
-| Merge and push | Operator | On `main`: `git merge <branch>` (always `--no-ff` after `make bootstrap`), then `git push`. The `pre-push` hook refuses a non-merge tip and runs the static gates (about a minute); the delivery pipeline takes it from there. | Yes |
+| Land | Operator | `make land <branch>`: merges the branch into `main` as one merge node and pushes, retrying on its own if the pipeline's version commit moves `main` mid-push. The `pre-push` hook runs the static gates (about a minute); the delivery pipeline takes it from there. | Yes |
 | `/create-pr` | Operator, optionally | Runs the Linux parity gate, pushes the branch, opens a pull request for review or preview. Its checks are advisory; nothing requires a PR. | Yes |
 
 The agent's job ends at the commit. Squashing, pushing, and whether to open a pull request belong to the operator — see root `AGENTS.md` § "Operator gitops are not yours to narrate or prescribe". An agent should commit verified work and report what is ready, not narrate or prescribe what the operator does next.
@@ -44,16 +44,9 @@ The common shape is two tiers: a long-lived integration branch per operator, and
 2. Before landing: on `<int>`, `git rebase main`. Everything on `<int>` is usually already in `main` through the last merge node, and `main` has one newer commit, the pipeline's version bump, so this is a fast-forward and nothing is rewritten. Only commits on `<int>` that never reached `main` are replayed; then push `<int>` with `--force-with-lease`, which is fine for a branch only you push to.
 3. In the worktree, rebase onto `<int>` and resolve conflicts there, where the work is.
 4. Land the worktree onto `<int>`.
-5. Merge into `main`, standing on `main`:
+5. Land it: `make land <int>`. This fetches `main`, merges `<int>` as one merge node, runs the hook, and pushes. If the pipeline's version commit for an earlier landing moved `main` meanwhile, it merges again on top and pushes again, without being asked. It leaves you on the branch you started from.
 
-   ```bash
-   git checkout main
-   git pull
-   git merge <int>      # --no-ff by default after make bootstrap: this is the merge node
-   git push             # the hook checks the tip is a merge, runs the static gates, pushes
-   ```
-
-6. Back on `<int>`, push it too. `origin/main` is what the pre-push hook scopes its gates against, and a current `origin/<int>` is where the next worktree starts.
+6. Push `<int>` too. `origin/main` is what the pre-push hook scopes its gates against, and a current `origin/<int>` is where the next worktree starts.
 
 Step 5 is what a pull request used to be. The merge node carries the same fact: this work landed, from that branch.
 

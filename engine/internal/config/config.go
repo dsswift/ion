@@ -100,8 +100,11 @@ func mergeConfigLayers(projectDir string) *types.EngineRuntimeConfig {
 		projectConfig = loadJSONConfig(filepath.Join(projectDir, ".ion", "engine.json"))
 	}
 
+	projectLayer := fromMap(projectConfig)
+	dropProjectProtectedOperations(projectLayer, projectDir)
+
 	// Merge: defaults < global < project
-	merged := MergeConfigs(nil, defaults, fromMap(globalConfig), fromMap(projectConfig))
+	merged := MergeConfigs(nil, defaults, fromMap(globalConfig), projectLayer)
 
 	// Load and enforce enterprise config
 	enterprise := LoadEnterpriseConfig()

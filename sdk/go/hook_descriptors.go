@@ -26,6 +26,11 @@ import "encoding/json"
 // HookIdentityChanged fires when verified identity changes.
 var HookIdentityChanged = Hook[IdentityChangedInfo, NoResult]{Name: HookNameIdentityChanged}
 
+// HookApplicationConfigChanged fires on every application config transition
+// with the complete snapshot scoped to the session. Handlers replace their
+// view with it.
+var HookApplicationConfigChanged = Hook[ApplicationConfigSnapshot, NoResult]{Name: HookNameApplicationConfigChanged}
+
 // HookSessionStart fires when a session begins.
 var HookSessionStart = Hook[NoPayload, NoResult]{Name: HookNameSessionStart}
 
@@ -341,7 +346,8 @@ var HookSessionMessage = Hook[SessionMessageInfo, NoResult]{Name: HookNameSessio
 // A descriptor added above and not here fails TestDescriptorTableIsComplete.
 func allHookDescriptors() []descriptorInfo {
 	return []descriptorInfo{
-		descriptorOf(HookIdentityChanged), descriptorOf(HookSessionStart), descriptorOf(HookSessionEnd),
+		descriptorOf(HookIdentityChanged), descriptorOf(HookApplicationConfigChanged),
+		descriptorOf(HookSessionStart), descriptorOf(HookSessionEnd),
 		descriptorOf(HookBeforePrompt), descriptorOf(HookTurnStart),
 		descriptorOf(HookTurnEnd), descriptorOf(HookMessageStart),
 		descriptorOf(HookMessageEnd), descriptorOf(HookToolStart),

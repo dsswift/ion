@@ -54,9 +54,13 @@ Dependency advisories and vulnerability scans read a feed that changes every day
 
 ## `main` is made of merge nodes
 
-Every push to `main` moves it to a merge commit: one node per piece of work, carrying the branch it came from. `release-damnit` reads the commit graph through those nodes. The flow is, on `main`, `git merge <branch>` then `git push`. `make bootstrap` sets `branch.main.mergeoptions --no-ff`, so that merge always produces a node even when a fast-forward was possible.
+Every push to `main` moves it to a merge commit: one node per piece of work, carrying the branch it came from. `release-damnit` reads the commit graph through those nodes.
 
-The hook enforces it: `scripts/check-main-merge-node.sh` reads the refs being pushed and refuses any that would move `main` to a non-merge tip. A fast-forward of a branch and a commit made straight on `main` are both refused. The pipeline's own version-bump commit is not affected; it is pushed from CI, where no local hook runs.
+**Land with `make land <branch>`.** It fetches `main`, sets local `main` to it, merges the branch with `--no-ff`, and pushes. The pipeline pushes a version-bump commit to `main` after every landing, so a second landing within a minute or two can find `main` moved mid-push; the remote refuses that push, and `make land` merges again on top of the new commit and pushes again, on its own. It refuses rather than resets when local `main` holds a commit that is neither on the remote nor a copy of one on the branch, stops on a merge conflict (rebase the branch onto `main`, resolve there, land again), and always returns to the branch it started on. Script: `scripts/land.sh`.
+
+By hand it is `git merge <branch>` then `git push`, standing on `main`. `make bootstrap` sets two things so that stays safe: `branch.main.mergeoptions --no-ff`, so the merge always makes a node, and `branch.main.rebase merges`, so a `git pull` after a lost race replays the merge instead of flattening it.
+
+The hook enforces the shape before any gate runs. `scripts/check-main-merge-node.sh` refuses a push that would move `main` to a non-merge tip: a fast-forward of a branch and a commit made straight on `main` are both refused. `scripts/check-main-current.sh` asks the remote where `main` is and refuses, in a second, a push built on an older `main`, instead of letting it run the gates and then be rejected. The pipeline's own version-bump commit is not affected; it is pushed from CI, where no local hook runs.
 
 ## The gate in front of `main`
 

@@ -345,6 +345,17 @@ interface IonHttpResponse {
 }
 ```
 
+**`protectedOperation(name, payload?)`** -- run an operation the operator declared under [`protectedOperations`](../configuration/engine-json.md#protectedoperations) in the global `engine.json` or enterprise config. `ctx.http` covers calls made as the signed-in identity. This covers calls that need a service credential, such as an API key. The declaration fixes the method, destination, secret, and injection slot; your code supplies only the name and a payload, so it never holds the key and cannot send it anywhere else.
+
+```typescript
+const res = await ctx.protectedOperation('publish-metric', { value: 42 })
+if (res.status !== 202) {
+  ctx.sendMessage(`metric rejected: ${res.status}`)
+}
+```
+
+The engine validates `payload` against the declared schema before it sends anything. Top-level fields also fill any `{name}` placeholders in the declared path. The promise resolves with `{ status, headers, body }`, where any reflected copy of the secret reads `[redacted]`. It rejects on an unknown name, a rejected payload, a missing secret, or an engine with no declared operations.
+
 ### Tracing and correlation
 
 Every hook context carries the identifiers Ion uses to correlate its own records. Reading them lets
@@ -1474,3 +1485,36 @@ The hook runs as a tool-registry transaction. `ctx.identity` and `info.identity`
 The SDK sends full snapshots, never add/remove deltas. A snapshot has a monotonic `revision`; init uses revision `0`. `syncTools()` resolves to the accepted revision. A successful `identity_changed` response includes the same full snapshot and commits it atomically. A failed, malformed, or stale snapshot activates no partial registry.
 
 A changed snapshot is visible when the engine builds the next run's tool list. Each tool call resolves the live registry again. A call to a removed tool is denied, even if a running model still has an old definition.
+
+## Application config
+
+`ctx.applicationConfig` reads [Application Config](../vocabulary/index.md#application-config): values the engine resolves for the signed-in principal after sign-in, from the `applicationConfig` source in [engine.json](../configuration/engine-json.md#applicationconfig). The engine fetches once per identity and shares the snapshot with every extension. Nothing is written to disk. Your extension sees the `common` section plus its own section, keyed by its enterprise extension allowlist entry; see [the application config document](../configuration/engine-json.md#application-config-document).
+
+Every read returns `state` beside the values, so "still loading" is never confused with "the key does not exist":
+
+| `state` | Meaning |
+|---------|---------|
+| `disabled` | The engine has no `applicationConfig` source. |
+| `deferred` | No principal is available for this reader yet. |
+| `fetching` | The first resolution is in flight. |
+| `ready` | Values are available. |
+| `refreshing` | A refresh is in flight. The previous values stay readable. |
+| `failed` | Resolution failed; `error` says why. The engine retries on the refresh interval. |
+
+Secret values never reach your extension. `secretKeys` lists the secret names, and `get()` on a secret returns `found: false, secret: true`.
+
+```typescript
+const endpoint = await ctx.applicationConfig.get('storageEndpoint')
+if (endpoint.found) useEndpoint(endpoint.value)
+
+// Wait for readiness instead of polling. Always resolves with the latest view.
+const view = await ctx.applicationConfig.await({ timeoutMs: 10_000 })
+if (view.values) configure(view.values)
+
+// React to every transition, including the purge on sign-out.
+ion.on('application_config_changed', (ctx, snapshot) => {
+  current = snapshot // replace, never merge
+})
+```
+
+`snapshot()` returns the whole view. `get(key)` returns one key with `found`. `await()` waits until the view is `ready`, `refreshing`, or `failed`. A session acting as a different principal than the one the snapshot was resolved for reads `deferred`, never another principal's values.

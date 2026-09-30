@@ -11,6 +11,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/secretref"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -210,6 +211,17 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 				subject = p.Subject
 			}
 			return extension.DoOperatorHTTPRequest(auth.WithSubject(context.Background(), subject), params)
+		},
+		// Protected operations read the secret as the acting principal and,
+		// for an application config secret, the calling extension's own
+		// section (params.ExtensionID, stamped by the host).
+		ProtectedOperation: func(params extension.ProtectedOperationParams) (*extension.ProtectedOperationResult, error) {
+			subject := ""
+			if p := sa.Principal(); p != nil {
+				subject = p.Subject
+			}
+			reader := secretref.Reader{Principal: subject, ExtensionID: params.ExtensionID}
+			return extension.DoProtectedOperation(secretref.WithReader(context.Background(), reader), params)
 		},
 		SendPrompt: func(text string, model string, bashAllowlistAdditions []string) error {
 			return sa.SendPrompt(text, model, bashAllowlistAdditions)

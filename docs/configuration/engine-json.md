@@ -21,6 +21,7 @@ Ion ships with no default model. Before the engine can run a prompt, you must ei
 | `logLevel` | string | `""` | Log verbosity. One of `"debug"`, `"info"`, `"warn"`, `"error"`. Empty string uses the engine default. |
 | `slashModelTier` | object | omitted | Policy for command-owned model tiers after a conversation has history. See [slashModelTier](#slashmodeltier). |
 | `subscriptionLookup` | object | omitted | Resolve a provider's key from an endpoint with the signed-in identity. See [subscriptionLookup](#subscriptionlookup). |
+| `protectedOperations` | object | omitted | Named outbound calls whose secret the engine injects. Global file and enterprise config only. See [protectedOperations](#protectedoperations). |
 
 ## slashModelTier
 
@@ -691,6 +692,55 @@ An enterprise `systemMetrics` block replaces the user's whole block.
 }
 ```
 
+## applicationConfig
+
+The authenticated, deferred [Application Config](../vocabulary/index.md#application-config) source. The engine resolves it after a verified principal becomes available (an operator sign-in, a grant reconciled at startup, or a workload identity), never at process start. It GETs `endpoint` with that identity's bearer token and reads the response as an application config document (below). One fetch serves every extension; the result stays in memory and is never written to a configuration file. Sign-out or verification loss purges it. Omit the block and the subsystem is inert: extensions read `disabled` and nothing else changes.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `endpoint` | string | `""` | Absolute http(s) URL that answers with an application config document. |
+| `refreshSeconds` | int | `900` | Refresh interval for the same identity. A failed first resolution retries on the same interval. Values below `30` are raised to `30`. |
+| `scope` | string | `""` | Token scope to mint. Empty uses the identity's base grant. |
+| `audience` | string | `""` | Token audience, for providers that bind a grant to a resource. |
+| `timeoutMs` | int | `30000` | Bound on one fetch. |
+
+A refresh moves the state to `refreshing` and keeps the previous values readable until the next document replaces them whole. Readers see the previous snapshot or the next one, never a mix. A refresh sends the last response's `ETag` as `If-None-Match` and its `Last-Modified` as `If-Modified-Since`; a `304 Not Modified` keeps the current document without downloading it again. A failed refresh keeps the previous snapshot. An enterprise `applicationConfig` block replaces the user's whole block. Requires `auth.identityProvider`.
+
+```json
+{
+  "applicationConfig": {
+    "endpoint": "https://config.example.invalid/v1/me",
+    "refreshSeconds": 900,
+    "scope": "api://config/.default"
+  }
+}
+```
+
+### Application config document
+
+The endpoint answers with one document for the signed-in principal:
+
+```json
+{
+  "common": {
+    "values": { "region": "east" },
+    "secrets": { "gatewayKey": "..." }
+  },
+  "extensions": {
+    "storage-sync": { "values": { "storageEndpoint": "https://storage.example.invalid" } }
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `common` | The section every extension reads. |
+| `extensions` | One section per extension, keyed by the extension's `id` in the enterprise [`extensionAllowlist`](../enterprise/sealed-config.md#extension-allowlist). |
+| `<section>.values` | Plain configuration an extension may read. Any JSON values. |
+| `<section>.secrets` | String secrets. The engine keeps them in memory and never returns them to extension code; an extension sees only their names. The engine uses them for [protected operations](#protectedoperations) and MCP [secret headers](../mcp/configuration.md#secret-headers) with `"secretSource": "applicationConfig"`. |
+
+An extension sees `common` merged with its own section. Its own section wins when both name a key, and a key it declares as a secret replaces a common value of the same name. It never sees another extension's section. The key into `extensions` is the allowlist entry the extension passed at load, not the name the extension reports about itself. With no enterprise extension allowlist, every extension sees `common` only. A key may not be both a value and a secret in one section, and unknown top-level fields are rejected; either fails resolution.
+
 ## compaction
 
 Context window compaction controls how the engine manages conversation length. The proactive limit reserves the active model's declared output capacity and summary headroom. API-backed conversations that resume at or above that limit are admitted so the run loop can compact them before the next provider request. The engine uses token-budget-based truncation with a four-tier summary fallback (session memory → LLM → extension hook → regex). See [Compaction](../sessions/compaction.md) for the full flow and rationale.
@@ -974,6 +1024,60 @@ A more specific config layer replaces the whole block. Each ended dispatch is al
 }
 ```
 
+## protectedOperations
+
+Named outbound HTTP operations whose credential the engine injects at call time. An extension calls one by name with a payload (`ctx.protectedOperation` in TypeScript, `Context.ProtectedOperation` in Go). It never supplies the URL, the method, the injection slot, or the secret reference, so it never holds the secret and cannot send it anywhere else.
+
+Only the global `~/.ion/engine.json` and enterprise config declare operations. A project `.ion/engine.json` block is ignored and logged (`project protected operations ignored`), because a checked-out repository must not decide where your secrets go. An enterprise operation replaces a user operation of the same name whole; user operations under other names remain. The engine reads the block fresh on every call, so adding or changing an operation needs no restart. With no block, every call fails with `protected operations are not configured`.
+
+```json
+{
+  "protectedOperations": {
+    "publish-metric": {
+      "method": "POST",
+      "url": "https://metrics.example.com/v1/metrics",
+      "secretRef": "metrics-api-key",
+      "injectAs": { "header": "X-Api-Key" },
+      "bodySchema": {
+        "type": "object",
+        "required": ["value"],
+        "properties": { "value": { "type": "number" } }
+      }
+    }
+  }
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `method` | string | required | HTTP method. |
+| `url` | string | required | Absolute `http` or `https` destination. The path may hold `{name}` placeholders, filled from the payload. See below. |
+| `secretRef` | string | required | Name of the secret: a credential-store entry, or an application config secret key. |
+| `secretSource` | string | `"credentialStore"` | Where `secretRef` is read: `"credentialStore"` or `"applicationConfig"`. |
+| `injectAs.header` | string | | Request header that carries the secret. Set exactly one of `header` or `query`. |
+| `injectAs.query` | string | | Query parameter that carries the secret. |
+| `injectAs.prefix` | string | `""` | Text placed before the secret, for example `"Bearer "`. |
+| `bodySchema` | object | required | JSON Schema the payload must satisfy before the call is made. `{}` accepts any payload. |
+| `headers` | object | omitted | Fixed headers sent on every call. The injected header wins over one with the same name. |
+| `timeoutMs` | number | `30000` | Request deadline. |
+| `maxBytes` | number | 5 MB | Response size cap. |
+| `allowPrivateNetwork` | bool | `false` | Allows a private or reserved destination address. |
+
+**Where the secret comes from.** The engine reads the secret on every call, so a rotated value is used on the next call with no extension change.
+
+- `"credentialStore"` (the default) reads the engine's encrypted credential store, the store the `store_credential` command writes (`{"cmd":"store_credential","provider":"metrics-api-key","credential":"..."}`). A call made inside an attributed session reads that principal's own entry only. A call with no principal (a schedule or webhook) reads the shared entry.
+- `"applicationConfig"` reads a key from the `secrets` of the [application config document](#application-config-document), held in memory only and never on disk. The calling extension's own section wins over `common`, exactly as its reads do, so an extension-owned secret is used only when that extension makes the call. A key that is a plain `values` entry is refused. Before sign-in, or while the document is still loading, the call fails with the state it is in.
+
+**Path templates.** A `{name}` placeholder in the URL path is filled from the payload's top-level field `name`, so one operation covers `/v1/items/{id}`. The value must be a non-empty string or a number. It is URL-encoded, so a `/` stays inside its segment, and `.` or `..` is refused. Placeholders are only allowed in the path; one in the host, query, or fragment makes the declaration invalid. Give the schema a `required` entry for each placeholder.
+
+**What the engine guarantees.**
+
+- The payload is validated against `bodySchema` before any secret is read or any request is sent. A payload that fails is rejected.
+- The payload is sent as the JSON body with `Content-Type: application/json` unless `headers` sets one. `GET` and `HEAD` send no body; their payload only fills the path. A missing or `null` payload sends no body, if the schema allows it.
+- Redirects are never followed, so the injected secret cannot be carried to a second destination.
+- The result is `{ status, headers, body }`. Every appearance of the secret in the response body or headers, raw or URL-encoded, is replaced with `[redacted]`.
+- The secret never appears in a log line, an error message, or an event. Errors from the transport are redacted the same way.
+- An unknown operation name is an error. There is no fallback to a caller-built request.
 ## Full example
 
 A multi-provider configuration mixing a local Ollama model with a hosted OpenAI fallback. Pick whichever model fits the task and let the engine route to the right provider.

@@ -123,6 +123,14 @@ type EnterpriseConfig struct {
 	// whole: an enterprise can fix the sampling cadence, the telemetry
 	// interval, or turn sampling off (see EnforceEnterprise).
 	SystemMetrics *SystemMetricsConfig `json:"systemMetrics,omitempty"`
+	// ApplicationConfig, when set, replaces the user's application config
+	// source whole, so an organization points every engine at its own
+	// per-principal configuration service (see EnforceEnterprise).
+	ApplicationConfig *ApplicationConfigSource `json:"applicationConfig,omitempty"`
+	// ProtectedOperations declares organization-owned protected operations.
+	// Each entry replaces a user operation of the same name; user
+	// operations with other names remain (see EnforceEnterprise).
+	ProtectedOperations map[string]ProtectedOperationConfig `json:"protectedOperations,omitempty"`
 	// ConversationEvents seals the standalone conversation.* telemetry family
 	// on, independent of Telemetry's own seal (see EnforceEnterprise).
 	ConversationEvents *ConversationEventsConfig `json:"conversationEvents,omitempty"`
@@ -367,6 +375,9 @@ type EngineRuntimeConfig struct {
 	// SystemMetrics configures the System Metrics sampler (host and process
 	// load). Nil means sampling is on with the compiled defaults.
 	SystemMetrics *SystemMetricsConfig `json:"systemMetrics,omitempty"`
+	// ApplicationConfig declares the authenticated, deferred application
+	// configuration source. Nil leaves the subsystem inert.
+	ApplicationConfig *ApplicationConfigSource `json:"applicationConfig,omitempty"`
 	// ConversationEvents is a sibling of Telemetry, not nested under it — see
 	// ConversationEventsConfig's doc comment for why (issue #378).
 	ConversationEvents *ConversationEventsConfig `json:"conversationEvents,omitempty"`
@@ -503,6 +514,14 @@ type EngineRuntimeConfig struct {
 	// thinking. It is distinct from Thinking, which configures default per-run
 	// behavior. See ThinkingPolicyConfig.
 	ThinkingPolicy *ThinkingPolicyConfig `json:"thinkingPolicy,omitempty"`
+
+	// ProtectedOperations declares named outbound operations whose secret
+	// the engine injects at call time, keyed by operation name. Only the
+	// global ~/.ion/engine.json and enterprise config declare them: a
+	// project layer's block is dropped at merge, so a checked-out repository
+	// cannot aim a secret at a destination of its choosing. Nil leaves the
+	// surface unavailable.
+	ProtectedOperations map[string]ProtectedOperationConfig `json:"protectedOperations,omitempty"`
 }
 
 // ThinkingPolicyConfig is the engine-wide operator kill switch for extended
@@ -878,14 +897,19 @@ type LimitsConfig struct {
 
 // McpServerConfig defines an MCP server connection.
 type McpServerConfig struct {
-	Type           string            `json:"type"`
-	Command        string            `json:"command,omitempty"`
-	Args           []string          `json:"args,omitempty"`
-	URL            string            `json:"url,omitempty"`
-	Env            map[string]string `json:"env,omitempty"`
-	Headers        map[string]string `json:"headers,omitempty"`
-	OAuth          *McpOAuthConfig   `json:"oauth,omitempty"`
-	TimeoutSeconds int               `json:"timeoutSeconds,omitempty"`
+	Type    string            `json:"type"`
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	URL     string            `json:"url,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+	// SecretHeaders names request headers whose value is a secret the
+	// engine resolves on every request, keyed by header name. The value is
+	// never written to config, logged, or shown to an extension; a rotated
+	// secret takes effect on the next request.
+	SecretHeaders  map[string]McpSecretHeader `json:"secretHeaders,omitempty"`
+	OAuth          *McpOAuthConfig            `json:"oauth,omitempty"`
+	TimeoutSeconds int                        `json:"timeoutSeconds,omitempty"`
 	// ForwardIdentityToken makes the engine stamp the configured operator or
 	// machine identity's OAuth bearer token on every outbound request. This is
 	// the identity-neutral replacement for ForwardUserToken. The legacy field

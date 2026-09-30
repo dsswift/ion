@@ -508,6 +508,45 @@ Permission `deny` decisions resolve with `{ content, isError: true }` describing
 
 The per-tool hooks (`bash_tool_call`, etc.) and `permission_request` are **not** fired on these calls. Both would re-enter the calling extension and create surprising recursion. Audit log entries from the permission engine still fire.
 
+### `ext/protected_operation`
+
+Run an operation declared under [`protectedOperations`](../configuration/engine-json.md#protectedoperations) in the global `engine.json` or enterprise config. The engine injects the declared secret; the extension sends only the name and a payload.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 100008,
+  "method": "ext/protected_operation",
+  "params": {
+    "name": "publish-metric",
+    "payload": { "value": 42 }
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 100008,
+  "result": {
+    "status": 202,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"accepted\":true}"
+  }
+}
+```
+
+`name` is required. `payload` is optional; when present it must satisfy the operation's `bodySchema`, fills any `{name}` placeholders in the declared path, and is sent as the JSON body (never for `GET` or `HEAD`). Any appearance of the secret in the response reads `[redacted]`.
+
+| Code | Cause |
+|------|-------|
+| `-32602` | Malformed params. |
+| `-32000` | No operations are configured, the name is unknown, the declaration is invalid, the payload was rejected, the secret is unavailable, or the request failed. The message never contains the secret. |
+
+A call made inside a hook reads a credential-store secret from the acting principal's partition; a call with no hook context (schedules, webhooks) reads the shared partition. An application config secret is read as the calling extension: its own section wins over `common`. The engine takes the extension's identity from its enterprise allowlist entry, never from the request.
+
 ### `ext/dispatch_agent`
 
 Dispatch an engine-native agent. Creates a child session with optional extension loading, system prompt injection, and event streaming. **Asynchronous by default** -- returns a stub with `dispatchId` immediately; terminal result delivered via notification.
@@ -610,6 +649,28 @@ When `planMode` is true, the child runs in plan mode with a restricted tool set;
 An asynchronous declined dispatch arrives as `dispatch_error` because its exit code is non-zero; read `exitCode` to tell `3` (declined — ran correctly, produced nothing) from `1` (the run broke). `message` carries the engine's verdict followed by the child's own final text.
 
 See [SDK Raw > Dispatch lifecycle notifications](sdk-raw.md#dispatch-lifecycle-notifications) for the full notification set including observational lifecycle events (`dispatch_tool_start`, `dispatch_usage`, etc.).
+
+### `ext/get_application_config`
+
+Reads [Application Config](../vocabulary/index.md#application-config) without waiting.
+
+```json
+{"jsonrpc": "2.0", "id": 100010, "method": "ext/get_application_config", "params": {"key": "storageEndpoint"}}
+```
+
+`key` is optional. Without it the result is the whole view: `{state, revision, subject?, provider?, values?, secretKeys?, error?, fetchedAt?, found: false}`. With it, `values` and `secretKeys` are omitted and the result carries `key`, `found`, `value`, and `secret` for that key alone. `state` is one of `disabled`, `deferred`, `fetching`, `ready`, `refreshing`, `failed`. `values` is present and `found` is meaningful only when `state` is `ready` or `refreshing`. `secret: true` means the key names a secret the engine holds; its value is never returned.
+
+The view is scoped twice. To the invocation's principal: a different principal reads `deferred`. To the extension: it sees the document's `common` section merged with the section keyed by its enterprise extension allowlist entry, and no other section. See [the application config document](../configuration/engine-json.md#application-config-document).
+
+### `ext/await_application_config`
+
+Waits until the view is `ready`, `refreshing`, or `failed`, or `timeoutMs` passes (default 30 000, capped at 10 minutes). `disabled` answers at once.
+
+```json
+{"jsonrpc": "2.0", "id": 100011, "method": "ext/await_application_config", "params": {"timeoutMs": 10000}}
+```
+
+The result is the latest view in the same shape as `ext/get_application_config`, plus `timedOut: true` when the view had not settled in time. `key` is accepted with the same meaning.
 
 ## Event buffering during hooks
 
