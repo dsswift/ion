@@ -436,12 +436,20 @@ Assert-Equal $true ($nshUn -match 'Quit') `
 Assert-Equal $true ($nshUn -match 'IfErrors') `
   'a launch failure of the previous uninstaller is still detected'
 
-# customCheckAppRunning must NOT be defined. Defining it makes
-# allowOnlyOneInstallerInstance.nsh skip its getProcessInfo include and its
-# Var pid -- both guarded by !ifmacrondef -- so the stock app-running check
-# no longer compiles. Two builds died on exactly this.
-Assert-Equal $false ($nsh -match '!macro customCheckAppRunning') `
-  'the app-running check is left to electron-builder'
+# customCheckAppRunning stops Ion's engines, then runs the stock check.
+# Defining it makes allowOnlyOneInstallerInstance.nsh skip its getProcessInfo
+# include and its Var pid -- both guarded by !ifmacrondef -- so installer.nsh
+# has to supply them or the stock check no longer compiles. Two builds died
+# on exactly this before installer.nsh supplied them.
+$nshCheck = [regex]::Match($nsh, '(?s)!macro customCheckAppRunning\b.*?!macroend').Value
+Assert-Equal $true ($nsh -match '!include "getProcessInfo\.nsh"') `
+  'installer.nsh includes getProcessInfo.nsh for the stock check'
+Assert-Equal $true ($nsh -match '(?m)^Var pid\s*$') `
+  'installer.nsh declares the pid the stock check reads'
+Assert-Equal $true ($nshCheck -match 'Remove-IonEngineTasks\.ps1" -Stop') `
+  'the check stops Ion engines first'
+Assert-Equal $true ($nshCheck -match '!insertmacro _CHECK_APP_RUNNING') `
+  'the check still runs the stock app-running check'
 
 # customPageAfterChangeDir does not work either: assistedInstaller.nsh builds
 # its page list before our file is parsed, so the page is silently dropped and

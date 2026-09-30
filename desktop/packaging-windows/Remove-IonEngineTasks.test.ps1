@@ -138,6 +138,36 @@ $split = Get-IonTaskCandidate -Paths @('\Ion Engine')
 Assert-Equal 0 $split.Verified.Count 'a name-matching task with a foreign action is not verified'
 Assert-Equal 1 $split.Skipped.Count 'a name-matching task with a foreign action is reported as skipped'
 
+# -- The owner's own %USERPROFILE%\.ion\bin ---------------------------------
+# The desktop installs each account's engine into that account's .ion\bin and
+# registers the task there, so an uninstall that accepted only the install
+# directory skipped every real task and left the engine running. Only the
+# account the task is named for counts: another account's .ion\bin never does.
+
+Assert-Equal 'S-1-5-21-99-1001' (Get-IonTaskOwnerSid '\Ion Engine (S-1-5-21-99-1001)') 'the owner SID comes from the task name'
+Assert-Equal '' (Get-IonTaskOwnerSid '\Ion Engine') 'the legacy shared name has no owner'
+Assert-Equal '' (Get-IonTaskOwnerSid '\Ion Engine (S-1-5-21-99-1001) copy') 'a name that only starts like Ion''s has no owner'
+
+function Get-IonProfileEngineRoot {
+  param([string] $Sid)
+  if ($Sid -eq 'S-1-5-21-99-1001') { return 'C:\Users\alice\.ion\bin' }
+  if ($Sid -eq 'S-1-5-21-99-1002') { return 'C:\Users\bob\.ion\bin' }
+  return ''
+}
+function Get-IonTaskAction {
+  param([string] $TaskPath)
+  return [pscustomobject]@{
+    Command   = 'C:\Users\alice\.ion\bin\ion-engine-host.exe'
+    Arguments = '"C:\Users\alice\.ion\bin\ion.exe" serve --supervised'
+  }
+}
+$split = Get-IonTaskCandidate -Paths @('\Ion Engine (S-1-5-21-99-1001)')
+Assert-Equal 1 $split.Verified.Count "a task launching its owner's own .ion\bin engine is verified"
+$split = Get-IonTaskCandidate -Paths @('\Ion Engine (S-1-5-21-99-1002)')
+Assert-Equal 0 $split.Verified.Count "a task launching another account's .ion\bin engine is not verified"
+$split = Get-IonTaskCandidate -Paths @('\Ion Engine')
+Assert-Equal 0 $split.Verified.Count 'the legacy shared task gets no profile root'
+
 # -- Agreement with the server -----------------------------------------------
 # The server chooses the names and the action; this script has to recognise
 # both. They are in different languages in different directories, so nothing

@@ -27,7 +27,10 @@
        ^Ion Engine \(S-1-[0-9-]+\)$ -- a real SID suffix, not a prefix.
     2. Its registered Exec action proves it launches Ion: the command is
        ion-engine-host.exe or ion.exe, resolved inside an accepted installed
-       Ion root, with `serve --supervised` semantics.
+       Ion root or inside the task owner's own %USERPROFILE%\.ion\bin (where
+       the desktop installs each account's engine), with
+       `serve --supervised` semantics. The owner is the SID in the task's
+       name; its profile directory comes from the machine's ProfileList.
 
   Anything that fails gate 2 -- an unreadable action, a malformed task, an
   action pointing somewhere else -- is skipped and logged. It is never
@@ -53,6 +56,12 @@
   Report what is present and exit without removing anything. Exits 0 when no
   verified Ion task remains and 1 when at least one does, so it can be used
   directly as an Intune detection or remediation-detection script.
+
+.PARAMETER Stop
+  End every verified Ion task, which stops its engine, and delete nothing.
+  The installer runs this before its running-app check, on install and
+  uninstall alike: a running engine made a silent uninstall leave every file
+  in place and still exit 0.
 
 .PARAMETER WhatIf
   List the tasks that would be removed, remove nothing, and exit 0.
@@ -80,6 +89,7 @@
 [CmdletBinding()]
 param(
   [switch] $Detect,
+  [switch] $Stop,
   [switch] $WhatIf,
   [string] $LogPath,
   [string] $InstallRoot
@@ -354,6 +364,32 @@ function Get-IonTaskPath {
   reported by the caller: silence about a task that looks like Ion's and
   cannot be proved to be would be the worst of both answers.
 #>
+<#
+.SYNOPSIS
+  The account SID a per-user task name carries, or '' for the legacy name.
+#>
+function Get-IonTaskOwnerSid {
+  param([Parameter(Mandatory = $true)] [AllowEmptyString()] [string] $TaskPath)
+  $leaf = ($TaskPath -split '\\')[-1]
+  $m = [regex]::Match($leaf, '^Ion Engine \((?<sid>S-1-[0-9]+(-[0-9]+)*)\)$')
+  if ($m.Success) { return $m.Groups['sid'].Value }
+  return ''
+}
+
+<#
+.SYNOPSIS
+  <profile>\.ion\bin for an account SID, or '' when the machine has no
+  profile for it. Read from ProfileList, never guessed from a user name.
+#>
+function Get-IonProfileEngineRoot {
+  param([AllowEmptyString()] [string] $Sid)
+  if (-not $Sid) { return '' }
+  $key = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$Sid"
+  $profilePath = (Get-ItemProperty -Path $key -ErrorAction SilentlyContinue).ProfileImagePath
+  if (-not $profilePath) { return '' }
+  return (Join-Path ([System.Environment]::ExpandEnvironmentVariables([string] $profilePath)) '.ion\bin')
+}
+
 function Get-IonTaskCandidate {
   param(
     [Parameter(Mandatory = $true)] [AllowEmptyCollection()] [string[]] $Paths,
@@ -368,12 +404,14 @@ function Get-IonTaskCandidate {
       $skipped += [pscustomobject]@{ Path = $path; Reason = 'its registered action could not be read' }
       continue
     }
-    if (Test-IonTaskAction -Command $action.Command -Arguments $action.Arguments -Roots $roots) {
+    # Only the account the task is named for: its own engine, never another's.
+    $taskRoots = @($roots) + @(Get-IonProfileEngineRoot (Get-IonTaskOwnerSid $path) | Where-Object { $_ })
+    if (Test-IonTaskAction -Command $action.Command -Arguments $action.Arguments -Roots $taskRoots) {
       $verified += $path
     } else {
       $skipped += [pscustomobject]@{
         Path   = $path
-        Reason = "its action does not launch Ion from an installed Ion directory (command: $($action.Command))"
+        Reason = "its action does not launch Ion from an installed Ion directory or its owner's .ion\bin (command: $($action.Command))"
       }
     }
   }
@@ -415,6 +453,14 @@ if ($Detect) {
 
 if ($WhatIf) {
   Write-IonLog "-WhatIf: $($found.Count) task(s) would be removed, none were"
+  exit 0
+}
+
+if ($Stop) {
+  foreach ($path in $found) {
+    & schtasks.exe /End /TN $path 2>$null | Out-Null
+    Write-IonLog "stopped $path (schtasks exit $LASTEXITCODE)"
+  }
   exit 0
 }
 
