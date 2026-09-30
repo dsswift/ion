@@ -880,11 +880,14 @@ type McpServerConfig struct {
 	// remains supported permanently; setting either field enables forwarding.
 	ForwardIdentityToken bool `json:"forwardIdentityToken,omitempty"`
 	// IdentityTokenScope is the downstream scope for generic identity-token
-	// forwarding. When empty, UserTokenScope remains the compatibility alias.
+	// forwarding. It applies whenever ForwardIdentityToken is set, including
+	// an empty value selecting the grant's base scope; UserTokenScope is then
+	// ignored.
 	IdentityTokenScope string `json:"identityTokenScope,omitempty"`
 	// IdentityTokenAudience is the downstream audience/resource for generic
-	// identity-token forwarding. When empty, UserTokenAudience remains the
-	// compatibility alias.
+	// identity-token forwarding. It applies whenever ForwardIdentityToken is
+	// set, including an empty value selecting the provider's default
+	// audience; UserTokenAudience is then ignored.
 	IdentityTokenAudience string `json:"identityTokenAudience,omitempty"`
 	// ForwardUserToken makes the engine stamp the signed-in operator's
 	// OIDC bearer token on every outbound request to this server. Deprecated
@@ -893,13 +896,15 @@ type McpServerConfig struct {
 	ForwardUserToken bool `json:"forwardUserToken,omitempty"`
 	// UserTokenScope is the downstream resource scope the forwarded token
 	// is minted for (e.g. "api://<app-id>/Erm.Access"). Empty uses the
-	// operator grant's base scope. Only meaningful with ForwardUserToken.
+	// operator grant's base scope. Only meaningful with ForwardUserToken and
+	// ignored when ForwardIdentityToken is set.
 	UserTokenScope string `json:"userTokenScope,omitempty"`
 	// UserTokenAudience is the explicit audience/resource for the forwarded
 	// token, for identity providers that bind grants to one (Auth0,
 	// RFC 8707) instead of encoding the resource in the scope string.
 	// Empty uses the identity provider's configured default audience.
-	// Only meaningful with ForwardUserToken.
+	// Only meaningful with ForwardUserToken and ignored when
+	// ForwardIdentityToken is set.
 	UserTokenAudience string `json:"userTokenAudience,omitempty"`
 }
 

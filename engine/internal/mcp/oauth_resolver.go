@@ -9,7 +9,7 @@ package mcp
 // stored refresh token was never used, because the header was resolved once at
 // Connect and then frozen into the transport.
 //
-// The operator-token path (config.forwardUserToken) already got this right — it
+// The identity-token path (forwardIdentityToken) already got this right — it
 // resolves on EVERY request specifically because "a connect-time token would
 // expire mid-session". This file gives the OAuth path the same property, so the
 // two behave consistently instead of one silently degrading after an hour.

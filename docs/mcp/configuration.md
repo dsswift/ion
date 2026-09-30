@@ -24,8 +24,8 @@ MCP servers are configured in the `mcpServers` map of your engine config. Each k
 | `identityTokenScope` | `string` | No | Scope for `forwardIdentityToken`. |
 | `identityTokenAudience` | `string` | No | Audience/resource for `forwardIdentityToken`. |
 | `forwardUserToken` | `bool` | No | Compatibility alias for `forwardIdentityToken`; existing configs remain supported. |
-| `userTokenScope` | `string` | No | Downstream resource scope the forwarded token is minted for. Only meaningful with `forwardUserToken`. |
-| `userTokenAudience` | `string` | No | Explicit audience/resource for the forwarded token, for identity providers that bind grants to one (Auth0, RFC 8707) instead of encoding the resource in the scope. Only meaningful with `forwardUserToken`. |
+| `userTokenScope` | `string` | No | Downstream resource scope the forwarded token is minted for. Only meaningful with `forwardUserToken`; ignored when `forwardIdentityToken` is true. |
+| `userTokenAudience` | `string` | No | Explicit audience/resource for the forwarded token, for identity providers that bind grants to one (Auth0, RFC 8707) instead of encoding the resource in the scope. Only meaningful with `forwardUserToken`; ignored when `forwardIdentityToken` is true. |
 
 `http` is Streamable HTTP. It negotiates the current stateless MCP protocol and falls back to a legacy initialize handshake when the endpoint reports a legacy peer. `sse` is the explicitly selected deprecated HTTP+SSE transport for servers that expose no Streamable HTTP endpoint. `ws` is custom MCP-over-WebSocket support for servers that require it; static and forwarded-token headers apply at dial time, so a changed credential reconnects before it can take effect.
 

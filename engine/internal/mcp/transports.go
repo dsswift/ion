@@ -101,16 +101,36 @@ func configuredTokenResolver(serverName string, config types.McpServerConfig) *t
 	return newTokenResolver(serverName, oauthCfg)
 }
 
+// configuredUserToken returns the per-request identity-token resolver for a
+// server that opts into forwarding through either ForwardIdentityToken or its
+// legacy alias ForwardUserToken, or nil when neither is set.
 func configuredUserToken(config types.McpServerConfig) func() (string, error) {
-	if !config.ForwardUserToken {
+	scope, audience, ok := identityTokenRequest(config)
+	if !ok {
 		return nil
 	}
 	return func() (string, error) {
 		op := auth.Operator()
 		if op == nil {
-			return "", fmt.Errorf("forwardUserToken configured but no operator identity is available (set auth.identityProvider in engine.json and sign in)")
+			return "", fmt.Errorf("identity-token forwarding configured but no identity is available (set auth.identityProvider in engine.json and sign in)")
 		}
-		return op.GetTokenWithAudience(context.Background(), config.UserTokenScope, config.UserTokenAudience)
+		return op.GetTokenWithAudience(context.Background(), scope, audience)
+	}
+}
+
+// identityTokenRequest resolves whether a server forwards the identity token
+// and the scope and audience it is minted for. ForwardIdentityToken selects
+// the generic IdentityTokenScope and IdentityTokenAudience, empty values
+// included, so an operator can pick provider defaults; otherwise the legacy
+// UserTokenScope and UserTokenAudience apply.
+func identityTokenRequest(config types.McpServerConfig) (scope, audience string, ok bool) {
+	switch {
+	case config.ForwardIdentityToken:
+		return config.IdentityTokenScope, config.IdentityTokenAudience, true
+	case config.ForwardUserToken:
+		return config.UserTokenScope, config.UserTokenAudience, true
+	default:
+		return "", "", false
 	}
 }
 

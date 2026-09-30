@@ -25,7 +25,7 @@ type httpTransport struct {
 	closed    atomic.Bool
 	closeOnce sync.Once
 	// userToken, when non-nil, resolves the configured identity's bearer
-	// token (config.forwardUserToken). Resolved on EVERY request -- the
+	// token (forwardIdentityToken or forwardUserToken). Resolved on EVERY request -- the
 	// connection is long-lived, so a connect-time token would expire
 	// mid-session; per-request resolution rides the identity manager's
 	// cache + silent refresh instead.
