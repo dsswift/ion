@@ -7,10 +7,11 @@
 //
 // The extension names an operation and supplies a payload. Everything that
 // decides where the secret goes (method, destination, injection slot, secret
-// reference) comes from the operator's global engine.json. The engine
-// resolves the secret from its credential store, injects it, performs the
-// call without following redirects, and strips every encoding of the secret
-// from the result and from any error before either leaves this function.
+// reference) comes from the operator's global or enterprise config. The
+// engine resolves the secret at call time (secretref), injects it, performs
+// the call without following redirects, and strips every encoding of the
+// secret from the result and from any error before either leaves this
+// function.
 package extension
 
 import (
@@ -29,6 +30,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/network"
+	"github.com/dsswift/ion/engine/internal/secretref"
 	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -47,10 +49,7 @@ var ErrProtectedOperationsUnavailable = errors.New("protected operations are not
 var protectedOperationsSource = config.ResolveProtectedOperations
 
 // protectedSecretSource resolves a secret reference for the acting subject.
-// An attributed subject reads only its own credential-store partition.
-var protectedSecretSource = func(subject, ref string) (string, error) {
-	return auth.NewFileStore().GetKeyFor(subject, ref)
-}
+var protectedSecretSource = secretref.Resolve
 
 // ProtectedOperationParams is an extension's invocation: a name and a payload,
 // nothing that could steer the request.
@@ -103,14 +102,15 @@ func DoProtectedOperation(ctx context.Context, params ProtectedOperationParams) 
 		return nil, fmt.Errorf("protected operation %q payload rejected: %w", params.Name, err)
 	}
 
-	secret, err := protectedSecretSource(subject, op.SecretRef)
-	if err != nil || secret == "" {
-		fields := map[string]any{"operation": params.Name, "subject": subject, "secret_ref": op.SecretRef}
-		if err != nil {
-			fields["error"] = err.Error()
-		}
-		utils.LogWithFields(utils.LevelError, "extension.protected_operation", "protected operation refused: secret unavailable", fields)
-		return nil, fmt.Errorf("protected operation %q: secret %q is not available", params.Name, op.SecretRef)
+	secret, err := protectedSecretSource(subject, op.SecretReference)
+	if err == nil && secret == "" {
+		err = fmt.Errorf("secret %q is empty", op.SecretRef)
+	}
+	if err != nil {
+		utils.LogWithFields(utils.LevelError, "extension.protected_operation", "protected operation refused: secret unavailable", map[string]any{
+			"operation": params.Name, "subject": subject, "secret_ref": op.SecretRef, "source": secretref.Source(op.SecretReference), "error": err.Error(),
+		})
+		return nil, fmt.Errorf("protected operation %q: %w", params.Name, err)
 	}
 	redact := protectedSecretRedactor(secret)
 
@@ -217,8 +217,8 @@ func validateProtectedOperation(op types.ProtectedOperationConfig) (*url.URL, er
 	if op.URL == "" {
 		return nil, fmt.Errorf("url is required")
 	}
-	if op.SecretRef == "" {
-		return nil, fmt.Errorf("secretRef is required")
+	if err := secretref.Validate(op.SecretReference); err != nil {
+		return nil, err
 	}
 	if op.BodySchema == nil {
 		return nil, fmt.Errorf("bodySchema is required")

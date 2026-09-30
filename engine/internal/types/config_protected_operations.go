@@ -10,9 +10,8 @@ type ProtectedOperationConfig struct {
 	Method string `json:"method"`
 	// URL is the absolute http(s) destination. Required.
 	URL string `json:"url"`
-	// SecretRef names the credential-store entry holding the secret, the same
-	// store the store_credential command writes. Required.
-	SecretRef string `json:"secretRef"`
+	// SecretReference names the secret and where the engine reads it.
+	SecretReference
 	// InjectAs is the request slot that receives the secret. Required.
 	InjectAs ProtectedOperationInjection `json:"injectAs"`
 	// BodySchema is the JSON Schema the extension's payload must satisfy
@@ -38,4 +37,26 @@ type ProtectedOperationInjection struct {
 	Query string `json:"query,omitempty"`
 	// Prefix is prepended to the secret in the slot (e.g. "Bearer ").
 	Prefix string `json:"prefix,omitempty"`
+}
+
+// Secret sources a SecretReference may name.
+const (
+	// SecretSourceCredentialStore reads the engine's encrypted credential
+	// store, the store the store_credential command writes. The default.
+	SecretSourceCredentialStore = "credentialStore"
+	// SecretSourceApplicationConfig reads a key declared in
+	// applicationConfig.secretKeys from the in-memory application config.
+	SecretSourceApplicationConfig = "applicationConfig"
+)
+
+// SecretReference names a secret by reference, never by value. The engine
+// resolves it at the moment of use, so a rotated value takes effect on the
+// next call.
+type SecretReference struct {
+	// SecretRef is the credential-store entry name or application config
+	// key. Required.
+	SecretRef string `json:"secretRef"`
+	// SecretSource selects where SecretRef is read: "credentialStore"
+	// (default) or "applicationConfig".
+	SecretSource string `json:"secretSource,omitempty"`
 }

@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -41,17 +42,17 @@ func assertNoSecret(t *testing.T, surface, s string) {
 	}
 }
 
-// useProtectedOperations declares ops and a credential store holding secrets
-// keyed by "<subject>|<ref>".
+// useProtectedOperations declares ops and a secret source holding secrets
+// keyed by "<subject>|<secretSource>|<secretRef>".
 func useProtectedOperations(t *testing.T, ops map[string]types.ProtectedOperationConfig, secrets map[string]string) {
 	t.Helper()
 	prevOps, prevSecret := protectedOperationsSource, protectedSecretSource
 	protectedOperationsSource = func() map[string]types.ProtectedOperationConfig { return ops }
-	protectedSecretSource = func(subject, ref string) (string, error) {
-		if v, ok := secrets[subject+"|"+ref]; ok {
+	protectedSecretSource = func(subject string, ref types.SecretReference) (string, error) {
+		if v, ok := secrets[subject+"|"+ref.SecretSource+"|"+ref.SecretRef]; ok {
 			return v, nil
 		}
-		return "", auth.ErrKeyNotFound
+		return "", fmt.Errorf("secret %q is not available: %w", ref.SecretRef, auth.ErrKeyNotFound)
 	}
 	t.Cleanup(func() { protectedOperationsSource, protectedSecretSource = prevOps, prevSecret })
 }
@@ -110,7 +111,7 @@ func echoServer(t *testing.T, hits *atomic.Int32) *httptest.Server {
 
 func headerOp(target string) types.ProtectedOperationConfig {
 	return types.ProtectedOperationConfig{
-		Method: "POST", URL: target, SecretRef: "metrics-api-key",
+		Method: "POST", URL: target, SecretReference: types.SecretReference{SecretRef: "metrics-api-key"},
 		InjectAs:            types.ProtectedOperationInjection{Header: "X-Api-Key"},
 		BodySchema:          map[string]any{"type": "object", "required": []any{"value"}, "properties": map[string]any{"value": map[string]any{"type": "number"}}},
 		Headers:             map[string]string{"X-Fixed": "declared"},
@@ -123,7 +124,7 @@ func TestProtectedOperation_InjectsHeaderAndStripsReflection(t *testing.T) {
 	var hits atomic.Int32
 	srv := echoServer(t, &hits)
 	useProtectedOperations(t, map[string]types.ProtectedOperationConfig{"publish-metric": headerOp(srv.URL + "/v1/metrics")},
-		map[string]string{"|metrics-api-key": testProtectedSecret})
+		map[string]string{"||metrics-api-key": testProtectedSecret})
 
 	res, err := DoProtectedOperation(context.Background(), ProtectedOperationParams{Name: "publish-metric", Payload: json.RawMessage(`{"value":42}`)})
 	if err != nil {
@@ -157,7 +158,7 @@ func TestProtectedOperation_InjectsQueryWithPrefix(t *testing.T) {
 	op := headerOp(srv.URL + "/v1/metrics?region=us")
 	op.InjectAs = types.ProtectedOperationInjection{Query: "key", Prefix: "Token "}
 	useProtectedOperations(t, map[string]types.ProtectedOperationConfig{"publish-metric": op},
-		map[string]string{"|metrics-api-key": testProtectedSecret})
+		map[string]string{"||metrics-api-key": testProtectedSecret})
 
 	res, err := DoProtectedOperation(context.Background(), ProtectedOperationParams{Name: "publish-metric", Payload: json.RawMessage(`{"value":1}`)})
 	if err != nil {
@@ -177,7 +178,7 @@ func TestProtectedOperation_SchemaRejectionNeverDispatches(t *testing.T) {
 	var hits atomic.Int32
 	srv := echoServer(t, &hits)
 	useProtectedOperations(t, map[string]types.ProtectedOperationConfig{"publish-metric": headerOp(srv.URL)},
-		map[string]string{"|metrics-api-key": testProtectedSecret})
+		map[string]string{"||metrics-api-key": testProtectedSecret})
 
 	for _, payload := range []string{`{"value":"not a number"}`, `{}`, `[1,2]`, ``, `not json`} {
 		_, err := DoProtectedOperation(context.Background(), ProtectedOperationParams{Name: "publish-metric", Payload: json.RawMessage(payload)})
@@ -194,7 +195,7 @@ func TestProtectedOperation_UnknownNameAndAbsentConfig(t *testing.T) {
 	var hits atomic.Int32
 	srv := echoServer(t, &hits)
 	useProtectedOperations(t, map[string]types.ProtectedOperationConfig{"publish-metric": headerOp(srv.URL)},
-		map[string]string{"|metrics-api-key": testProtectedSecret})
+		map[string]string{"||metrics-api-key": testProtectedSecret})
 	if _, err := DoProtectedOperation(context.Background(), ProtectedOperationParams{Name: "other", Payload: json.RawMessage(`{"value":1}`)}); err == nil || !strings.Contains(err.Error(), `unknown protected operation "other"`) {
 		t.Fatalf("unknown name: got %v", err)
 	}
@@ -212,7 +213,7 @@ func TestProtectedOperation_SecretComesFromActingPrincipalPartition(t *testing.T
 	var hits atomic.Int32
 	srv := echoServer(t, &hits)
 	useProtectedOperations(t, map[string]types.ProtectedOperationConfig{"publish-metric": headerOp(srv.URL)},
-		map[string]string{"|metrics-api-key": "shared-secret-value"})
+		map[string]string{"||metrics-api-key": "shared-secret-value"})
 
 	ctx := auth.WithSubject(context.Background(), "user-a")
 	_, err := DoProtectedOperation(ctx, ProtectedOperationParams{Name: "publish-metric", Payload: json.RawMessage(`{"value":1}`)})
@@ -232,7 +233,7 @@ func TestProtectedOperation_DoesNotFollowRedirects(t *testing.T) {
 	}))
 	t.Cleanup(redirector.Close)
 	useProtectedOperations(t, map[string]types.ProtectedOperationConfig{"publish-metric": headerOp(redirector.URL)},
-		map[string]string{"|metrics-api-key": testProtectedSecret})
+		map[string]string{"||metrics-api-key": testProtectedSecret})
 
 	res, err := DoProtectedOperation(context.Background(), ProtectedOperationParams{Name: "publish-metric", Payload: json.RawMessage(`{"value":1}`)})
 	if err != nil {
@@ -256,7 +257,7 @@ func TestProtectedOperation_TransportErrorIsRedacted(t *testing.T) {
 	op := headerOp(closedURL)
 	op.InjectAs = types.ProtectedOperationInjection{Query: "key"}
 	useProtectedOperations(t, map[string]types.ProtectedOperationConfig{"publish-metric": op},
-		map[string]string{"|metrics-api-key": testProtectedSecret})
+		map[string]string{"||metrics-api-key": testProtectedSecret})
 
 	_, err = DoProtectedOperation(context.Background(), ProtectedOperationParams{Name: "publish-metric", Payload: json.RawMessage(`{"value":1}`)})
 	if err == nil || !strings.Contains(err.Error(), "request failed") {
@@ -269,11 +270,12 @@ func TestProtectedOperation_TransportErrorIsRedacted(t *testing.T) {
 func TestProtectedOperation_RejectsInvalidDeclarations(t *testing.T) {
 	base := headerOp("https://example.invalid/v1")
 	cases := map[string]func(*types.ProtectedOperationConfig){
-		"missing schema":     func(op *types.ProtectedOperationConfig) { op.BodySchema = nil },
-		"both slots":         func(op *types.ProtectedOperationConfig) { op.InjectAs.Query = "key" },
-		"no slot":            func(op *types.ProtectedOperationConfig) { op.InjectAs.Header = "" },
-		"missing secret ref": func(op *types.ProtectedOperationConfig) { op.SecretRef = "" },
-		"non-http scheme":    func(op *types.ProtectedOperationConfig) { op.URL = "file:///etc/passwd" },
+		"missing schema":        func(op *types.ProtectedOperationConfig) { op.BodySchema = nil },
+		"both slots":            func(op *types.ProtectedOperationConfig) { op.InjectAs.Query = "key" },
+		"no slot":               func(op *types.ProtectedOperationConfig) { op.InjectAs.Header = "" },
+		"missing secret ref":    func(op *types.ProtectedOperationConfig) { op.SecretRef = "" },
+		"unknown secret source": func(op *types.ProtectedOperationConfig) { op.SecretSource = "vault" },
+		"non-http scheme":       func(op *types.ProtectedOperationConfig) { op.URL = "file:///etc/passwd" },
 		"private without optin": func(op *types.ProtectedOperationConfig) {
 			op.URL = "http://127.0.0.1/v1"
 			op.AllowPrivateNetwork = false
@@ -282,9 +284,29 @@ func TestProtectedOperation_RejectsInvalidDeclarations(t *testing.T) {
 	for name, mutate := range cases {
 		op := base
 		mutate(&op)
-		useProtectedOperations(t, map[string]types.ProtectedOperationConfig{"op": op}, map[string]string{"|metrics-api-key": testProtectedSecret})
+		useProtectedOperations(t, map[string]types.ProtectedOperationConfig{"op": op}, map[string]string{"||metrics-api-key": testProtectedSecret})
 		if _, err := DoProtectedOperation(context.Background(), ProtectedOperationParams{Name: "op", Payload: json.RawMessage(`{"value":1}`)}); err == nil || !strings.Contains(err.Error(), "misconfigured") {
 			t.Fatalf("%s: want misconfiguration error, got %v", name, err)
 		}
+	}
+}
+
+func TestProtectedOperation_ReadsTheDeclaredSecretSource(t *testing.T) {
+	var hits atomic.Int32
+	srv := echoServer(t, &hits)
+	op := headerOp(srv.URL)
+	op.SecretReference = types.SecretReference{SecretRef: "gatewayKey", SecretSource: types.SecretSourceApplicationConfig}
+	useProtectedOperations(t, map[string]types.ProtectedOperationConfig{"gateway": op}, map[string]string{
+		"||gatewayKey": "credential-store-value", "|applicationConfig|gatewayKey": testProtectedSecret,
+	})
+
+	res, err := DoProtectedOperation(context.Background(), ProtectedOperationParams{Name: "gateway", Payload: json.RawMessage(`{"value":1}`)})
+	if err != nil {
+		t.Fatalf("DoProtectedOperation: %v", err)
+	}
+	// Only the application-config value is redacted, so seeing the
+	// redaction proves that value, not the credential-store one, was sent.
+	if res.Headers["X-Echo-Key"] != protectedOperationRedaction {
+		t.Fatalf("declared source not used: %q", res.Headers["X-Echo-Key"])
 	}
 }
