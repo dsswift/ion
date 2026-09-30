@@ -2,8 +2,8 @@
  * policy-store — one enterprise policy snapshot per environment (spec 14):
  * `set`/`clear`/`devicePolicy`/`environmentPolicy`. Written from
  * `studio_welcome.enterprisePolicy` (every environment, on every
- * (re)connect) and `studio_environment_policy` (a future policy hot-reload
- * push, wired here even though nothing produces it yet); cleared when an
+ * (re)connect) and `studio_environment_policy` (the server's push when the
+ * policy changes after the welcome, such as after an engine reconnect); cleared when an
  * environment goes `offline` or `blocked` so a stale policy never survives a
  * connection loss.
  *

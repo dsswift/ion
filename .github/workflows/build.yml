@@ -321,6 +321,9 @@ jobs:
   # checksums.txt for the server-v release: what install-studio-server.sh
   # and `ion studio update` verify the bundle against.
   studio-server-checksums:
+    # build-studio-server runs even when build-engine is skipped (the engine
+    # binary comes from its release); without this, that skip skips here too.
+    if: always() && needs.build-studio-server.result == 'success'
     needs: build-studio-server
     runs-on: ubuntu-latest
     steps:

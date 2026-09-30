@@ -14,6 +14,16 @@ const bridge = vi.hoisted(() => ({
   request: vi.fn(() => Promise.resolve({ ok: true, data: { home: '/tmp', username: 'test', hostname: 'test-host', os: 'darwin', pathSep: '/' } })),
   on: vi.fn(),
 }))
+// The booted server's engine reads gate every welcome (readiness, then the
+// first enterprise-policy read);
+// engine-bridge-fs resolves the real bridge through the state import cycle
+// (see __tests__/boot.test.ts), so its reads are mocked at the module seam.
+vi.mock('../../engine/engine-bridge-fs', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../engine/engine-bridge-fs')>()),
+  getEngineHostInfo: vi.fn(async () => ({ ok: true, data: { version: '9.9.9', home: '/tmp', username: 'test', hostname: 'test-host', os: 'darwin', pathSep: '/' } })),
+  getEnterprisePolicy: vi.fn(async () => null),
+  getEnterprisePolicyNewConversationDefaults: vi.fn(async () => null),
+}))
 vi.mock('../../state', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../state')>()
   return { ...actual, engineBridge: bridge }

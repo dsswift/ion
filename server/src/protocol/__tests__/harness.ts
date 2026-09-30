@@ -15,6 +15,7 @@ import WebSocket from 'ws'
 import type { HealthHandle, ReadinessState } from '../../http/health'
 import { startStudioListeners, type StudioListenersHandle, type StudioListenersOptions } from '../listener'
 import { connectionRegistry } from '../connection'
+import { settleEnterprisePolicyUnread } from '../../enterprise-policy-publish'
 import type { StudioFrame } from '@ion/shared/studio-wire/types'
 import { PROTOCOL_VERSION } from '@ion/shared/studio-wire/version'
 
@@ -42,8 +43,14 @@ export interface Harness {
   close(): Promise<void>
 }
 
-/** Start both a TCP and a local-socket Studio listener pair for one test. */
-export async function startHarness(options: Partial<StudioListenersOptions> = {}): Promise<Harness> {
+/**
+ * Start both a TCP and a local-socket Studio listener pair for one test.
+ * Welcomes wait for the server's first enterprise-policy read; the harness
+ * settles it (with no policy) unless `policy: 'pending'` asks to drive it.
+ */
+export async function startHarness(options: Partial<StudioListenersOptions> & { policy?: 'settled' | 'pending' } = {}): Promise<Harness> {
+  const { policy = 'settled', ...listenerOptions } = options
+  if (policy === 'settled') settleEnterprisePolicyUnread('test harness')
   const tmpDir = mkdtempSync(join(tmpdir(), 'ion-studio-wire-test-'))
   // Windows cannot listen on a filesystem path; its local sockets are pipes.
   const socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\${basename(tmpDir)}` : join(tmpDir, 'studio.sock')
@@ -62,7 +69,7 @@ export async function startHarness(options: Partial<StudioListenersOptions> = {}
     environmentId: 'env-test',
     label: 'Test Environment',
     serverVersion: '0.0.0-test',
-    ...options,
+    ...listenerOptions,
   })
 
   return {
