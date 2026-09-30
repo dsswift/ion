@@ -18,6 +18,26 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.88.0](https://github.com/dsswift/ion/compare/engine-v1.87.1...engine-v1.88.0) (2026-09-30)
+
+### Features
+
+* **engine:** add protected operations with injected secrets (#383) ([4ca46a1](https://github.com/dsswift/ion/commit/4ca46a155d0585aa38ec5b9b364dd2093ac23c11))
+* **engine:** resolve application config after sign-in (#382) ([7e72827](https://github.com/dsswift/ion/commit/7e728274c9052749608b6966d977f077bd00997f))
+* **engine:** withhold secret application config keys (#383) ([1e842e0](https://github.com/dsswift/ion/commit/1e842e02874bdd4071d7597abb878c5328d7473b))
+* **engine:** choose each protected operation's secret source (#383) ([433020a](https://github.com/dsswift/ion/commit/433020a823cabbc91fa6a4d0b56c2a3c4b235262))
+* **engine:** let enterprise config declare protected ops (#383) ([263ac7c](https://github.com/dsswift/ion/commit/263ac7ca9f92640031973b1f168ce92cfd313a64))
+* **engine:** fill protected op path templates from payload (#383) ([6eea7e9](https://github.com/dsswift/ion/commit/6eea7e95d3a6b2d7daea0eb9ab51b7e3797c2e12))
+* **engine:** scope application config per extension (#382) ([4cc79ad](https://github.com/dsswift/ion/commit/4cc79addb2729c85a3a74f28a266421c602f8ea7))
+* **engine:** read protected op secrets from scoped config (#383) ([4590b07](https://github.com/dsswift/ion/commit/4590b0768d3c3bc5dc6c9faaba7139e178a2f463))
+* **engine:** inject secret headers on mcp connections (#383) ([443c22f](https://github.com/dsswift/ion/commit/443c22fe57d2c3eaab2eceaa844857c81a9e64ff))
+
+### Bug Fixes
+
+* **engine:** log latency and status class for protected ops (#383) ([2d25731](https://github.com/dsswift/ion/commit/2d2573127699f9d64081a8ca44782938933e3c8a))
+* **engine:** describe the application config secret source ([b0b143a](https://github.com/dsswift/ion/commit/b0b143a066e5b630445e3471f49e71f3022c92b8))
+* **engine:** use url_host in protected op logs, update sdk docs ([21ce9d1](https://github.com/dsswift/ion/commit/21ce9d1632df60ae720ab92a08b808f07dbad656))
+
 ## [1.87.1](https://github.com/dsswift/ion/compare/engine-v1.87.0...engine-v1.87.1) (2026-09-30)
 
 ### Bug Fixes

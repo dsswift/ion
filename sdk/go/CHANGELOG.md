@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.15](https://github.com/dsswift/ion/compare/sdk/go-v0.1.14...sdk/go-v0.1.15) (2026-09-30)
+
+### Features
+
+* **sdk:** add protected operations to the go sdk (#383) ([3faebf8](https://github.com/dsswift/ion/commit/3faebf833070e1f6cad5be1ec611e978b15e5aa8))
+* **sdk:** read application config from go extensions (#382) ([d635373](https://github.com/dsswift/ion/commit/d63537394ce03c6747e38d514b8ae8f2930b8f1e))
+* **sdk:** read scoped application config in go (#382) ([cb83922](https://github.com/dsswift/ion/commit/cb83922b01f486fc82765d4afb7d261d9dd37893))
+
 ## [0.1.14](https://github.com/dsswift/ion/compare/sdk/go-v0.1.13...sdk/go-v0.1.14) (2026-09-30)
 
 ### Features
