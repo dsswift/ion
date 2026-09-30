@@ -22,6 +22,17 @@ if ($LASTEXITCODE -ne 0) { throw "stamping the detection script failed (exit $LA
 & pwsh -NoProfile -File scripts\ci\windows-smoke.ps1 -InstallerPath $installer.FullName -DetectScriptPath desktop\release\intune\Detect-Ion.ps1
 $smokeExit = $LASTEXITCODE
 
+# The reset deletes %USERPROFILE%\.ion, and with it the only record of why a
+# run failed. Keep the logs first.
+$logDir = Join-Path $repo 'desktop\release\smoke-logs'
+Remove-Item -LiteralPath $logDir -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+foreach ($name in 'engine.jsonl', 'desktop.jsonl', 'server.jsonl') {
+  $src = Join-Path $env:USERPROFILE ".ion\$name"
+  if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination $logDir }
+}
+Write-Host "vm-smoke: logs kept in $logDir"
+
 & (Join-Path $PSScriptRoot 'Reset-IonTestState.ps1')
 Write-Host "vm-smoke: smoke exit $smokeExit"
 exit $smokeExit
