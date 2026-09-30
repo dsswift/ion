@@ -84,6 +84,9 @@ func sdkClaimedMethods() map[string]string {
 		"ext/llm_call":     "Context.LLMCall",
 		"ext/http_request": "HTTPAPI.Request",
 
+		// Protected operations.
+		"ext/protected_operation": "Context.ProtectedOperation",
+
 		// Sandboxing.
 		"ext/sandbox_wrap": "Context.SandboxWrap",
 

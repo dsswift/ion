@@ -25,6 +25,7 @@
     "ListProcesses",
     "Log",
     "Notify",
+    "ProtectedOperation",
     "RecallAgent",
     "RecallAgentByName",
     "RecallDispatch",
