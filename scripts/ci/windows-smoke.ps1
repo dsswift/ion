@@ -254,6 +254,20 @@ $desktopProcs | Stop-Process -Force
 Write-Host "  stopped $($desktopProcs.Count) desktop process(es)"
 Start-Sleep -Seconds 5
 $stateAfterQuit = Wait-TaskStatus 'Running' 30
+if ("$stateAfterQuit" -notmatch 'Running') {
+  # Who stopped the engine, and whether it exited on its own, so a failure
+  # here is diagnosable from the job log alone.
+  $pattern = 'engine_bootstrap|restartEngineDaemon|stopEngineDaemon|schtasks|engine-host|engine exited|shutdown'
+  foreach ($log in @($desktopLog, (Join-Path $IonHome 'engine.jsonl'), (Join-Path $IonHome 'engine-stderr.log'))) {
+    Write-Host "  --- $log (engine start and stop lines)"
+    if (Test-Path -LiteralPath $log) {
+      Get-Content -LiteralPath $log -ErrorAction SilentlyContinue |
+        Where-Object { $_ -match $pattern } | Select-Object -Last 40 | ForEach-Object { Write-Host "    $_" }
+    } else {
+      Write-Host '    (missing)'
+    }
+  }
+}
 Assert ("$stateAfterQuit" -match 'Running') "task still Running after the desktop quits (got: $stateAfterQuit)"
 
 # --- 9. Silent uninstall ----------------------------------------------------
