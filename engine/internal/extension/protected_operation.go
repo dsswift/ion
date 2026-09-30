@@ -161,17 +161,18 @@ func DoProtectedOperation(ctx context.Context, params ProtectedOperationParams) 
 			return http.ErrUseLastResponse
 		},
 	}
+	started := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
 		if reqCtx.Err() != nil {
 			utils.LogWithFields(utils.LevelError, "extension.protected_operation", "protected operation timed out", map[string]any{
-				"operation": params.Name, "timeout_ms": timeout.Milliseconds(),
+				"operation": params.Name, "timeout_ms": timeout.Milliseconds(), "duration_ms": time.Since(started).Milliseconds(),
 			})
 			return nil, fmt.Errorf("protected operation %q timed out after %s", params.Name, timeout)
 		}
 		message := redact(err.Error())
 		utils.LogWithFields(utils.LevelError, "extension.protected_operation", "protected operation request failed", map[string]any{
-			"operation": params.Name, "error": message,
+			"operation": params.Name, "error": message, "duration_ms": time.Since(started).Milliseconds(),
 		})
 		return nil, fmt.Errorf("protected operation %q request failed: %s", params.Name, message)
 	}
@@ -200,8 +201,9 @@ func DoProtectedOperation(ctx context.Context, params ProtectedOperationParams) 
 		result.Headers[name] = redact(resp.Header.Get(name))
 	}
 	utils.LogWithFields(utils.LevelInfo, "extension.protected_operation", "protected operation response", map[string]any{
-		"operation": params.Name, "subject": subject, "status": resp.StatusCode, "count": len(data),
-		"redacted": result.Body != string(data),
+		"operation": params.Name, "subject": subject, "method": method, "host": target.Hostname(),
+		"status": resp.StatusCode, "status_class": fmt.Sprintf("%dxx", resp.StatusCode/100),
+		"duration_ms": time.Since(started).Milliseconds(), "count": len(data), "redacted": result.Body != string(data),
 	})
 	return result, nil
 }
