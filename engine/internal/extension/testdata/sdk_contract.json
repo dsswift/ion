@@ -28,6 +28,19 @@
       "payloadKind": "none",
       "result": "none"
     },
+    "application_config_changed": {
+      "payloadKind": "object",
+      "payloadFields": [
+        "error",
+        "fetchedAt",
+        "provider",
+        "revision",
+        "state",
+        "subject",
+        "values"
+      ],
+      "result": "none"
+    },
     "background_task_completed": {
       "payloadKind": "object",
       "payloadFields": [
@@ -686,6 +699,7 @@
   "extRequests": [
     "ext/ack_dispatch_lost",
     "ext/answer_dispatch_question",
+    "ext/await_application_config",
     "ext/call_tool",
     "ext/clean_stale_processes",
     "ext/declare_resource",
@@ -697,6 +711,7 @@
     "ext/dispatch_agent",
     "ext/elicit",
     "ext/fire_schedule",
+    "ext/get_application_config",
     "ext/get_context_usage",
     "ext/get_plan_mode",
     "ext/get_schedule_status",

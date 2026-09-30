@@ -10,7 +10,7 @@ import (
 func (h *Host) registerHookForwarders() {
 	// No-op hooks: fire and forget, ignore result.
 	noOpHooks := []string{
-		HookIdentityChanged, HookSessionStart, HookSessionEnd,
+		HookIdentityChanged, HookApplicationConfigChanged, HookSessionStart, HookSessionEnd,
 		HookTurnStart, HookTurnEnd,
 		HookMessageStart, HookMessageEnd,
 		HookToolStart, HookToolEnd,

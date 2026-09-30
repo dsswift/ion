@@ -96,6 +96,10 @@ var extRequestHandlers = map[string]extRequestHandler{
 	// Protected operations: config-declared calls with an engine-injected secret.
 	"ext/protected_operation": (*Host).rpcProtectedOperation,
 
+	// Authenticated application config.
+	"ext/get_application_config":   (*Host).rpcGetApplicationConfig,
+	"ext/await_application_config": (*Host).rpcAwaitApplicationConfig,
+
 	// Sandboxing.
 	"ext/sandbox_wrap": (*Host).rpcSandboxWrap,
 }

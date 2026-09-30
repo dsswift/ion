@@ -1060,6 +1060,69 @@ export interface IonProtectedOperationResult {
   body: string
 }
 
+/**
+ * Lifecycle of the authenticated application config (see
+ * {@link IonContext.applicationConfig}). `disabled`: the engine has no
+ * `applicationConfig` source. `deferred`: no principal is available for this
+ * reader yet. `fetching`: the first resolution is in flight. `ready`: values
+ * are available. `failed`: resolution failed; `error` says why.
+ */
+export type ApplicationConfigState = 'disabled' | 'deferred' | 'fetching' | 'ready' | 'failed'
+
+/**
+ * One complete view of the application config. Also the
+ * `application_config_changed` payload: replace your view with it, and keep
+ * the highest `revision` if two arrive out of order.
+ */
+export interface ApplicationConfigSnapshot {
+  state: ApplicationConfigState
+  revision: number
+  /** The principal the values belong to. Absent while deferred. */
+  subject?: string
+  provider?: string
+  /** The resolved configuration object. Present only when ready. */
+  values?: Record<string, unknown>
+  /** Failure reason. Present only when failed. */
+  error?: string
+  /** RFC 3339 resolution time. Present only when ready. */
+  fetchedAt?: string
+}
+
+/** One keyed read of the application config. */
+export interface ApplicationConfigValue {
+  state: ApplicationConfigState
+  revision: number
+  error?: string
+  key: string
+  /** Meaningful only when `state` is `ready`: false then means the key does
+   *  not exist in the resolved configuration. */
+  found: boolean
+  value?: unknown
+}
+
+/** Result of {@link IonApplicationConfig.await}. */
+export interface ApplicationConfigAwaitResult extends ApplicationConfigSnapshot {
+  /** True when the view had not settled before the timeout. */
+  timedOut: boolean
+}
+
+/**
+ * Authenticated, deferred application config: values scoped to the signed-in
+ * principal, resolved once by the engine after sign-in and shared by every
+ * extension. Every read carries `state`, so "still loading" is never confused
+ * with "the key does not exist". Subscribe to transitions with the
+ * `application_config_changed` hook instead of polling.
+ */
+export interface IonApplicationConfig {
+  /** The current view, without waiting. */
+  snapshot(): Promise<ApplicationConfigSnapshot>
+  /** One key, without waiting. */
+  get(key: string): Promise<ApplicationConfigValue>
+  /** Wait until the view is ready or failed, or `timeoutMs` passes (engine
+   *  default 30 000). Always resolves with the latest view. */
+  await(opts?: { timeoutMs?: number }): Promise<ApplicationConfigAwaitResult>
+}
+
 /** Pre-authenticated HTTP surface (see {@link IonContext.http}). */
 export interface IonHttp {
   request(method: string, url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
@@ -1307,6 +1370,18 @@ export interface IonContext extends DispatchControlContext {
    * ```
    */
   protectedOperation(name: string, payload?: unknown): Promise<IonProtectedOperationResult>
+
+  /**
+   * Authenticated application config resolved for the signed-in principal.
+   * See {@link IonApplicationConfig}.
+   *
+   * @example
+   * ```ts
+   * const endpoint = await ctx.applicationConfig.get('storageEndpoint')
+   * if (endpoint.state === 'ready' && endpoint.found) useEndpoint(endpoint.value)
+   * ```
+   */
+  applicationConfig: IonApplicationConfig
 
   /**
    * Queue a fresh prompt on this session's agent loop. Returns once the
@@ -2817,6 +2892,7 @@ export interface IdentityChangedInfo {
 
 export interface HookPayloadMap {
   identity_changed: IdentityChangedInfo
+  application_config_changed: ApplicationConfigSnapshot
   // Lifecycle
   session_start: void
   session_end: void

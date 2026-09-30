@@ -26,6 +26,7 @@ import {
   RESOURCE_TRANSFER_METHODS,
   registerResourceRpcBridge,
 } from './runtime-resources'
+import { buildApplicationConfigAPI } from './runtime-application-config'
 import { doRegisterAgentTools } from './runtime-agents'
 import { emitLog as sharedEmitLog, type LogLevel as SharedLogLevel } from './runtime-log'
 import { createToolRegistry } from './runtime-tools'
@@ -397,6 +398,7 @@ function buildContext(ctxData: any): IonContext {
         ...(contentItems && contentItems.length > 0 ? { contentItems } : {}),
       }
     },
+    applicationConfig: buildApplicationConfigAPI(request),
     // Pre-authenticated outbound HTTP. Each verb funnels into the single
     // ext/http_request RPC; the engine applies bearer or SigV4 authentication.
     // Raw credentials never reach this process.

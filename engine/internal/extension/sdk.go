@@ -14,19 +14,22 @@ import (
 const (
 	// Lifecycle hooks
 	HookIdentityChanged = "identity_changed"
-	HookSessionStart    = "session_start"
-	HookSessionEnd      = "session_end"
-	HookBeforePrompt    = "before_prompt"
-	HookTurnStart       = "turn_start"
-	HookTurnEnd         = "turn_end"
-	HookMessageStart    = "message_start"
-	HookMessageEnd      = "message_end"
-	HookToolStart       = "tool_start"
-	HookToolEnd         = "tool_end"
-	HookToolCall        = "tool_call"
-	HookOnError         = "on_error"
-	HookAgentStart      = "agent_start"
-	HookAgentEnd        = "agent_end"
+	// HookApplicationConfigChanged fires on every application config
+	// transition with the complete snapshot scoped to the session.
+	HookApplicationConfigChanged = "application_config_changed"
+	HookSessionStart             = "session_start"
+	HookSessionEnd               = "session_end"
+	HookBeforePrompt             = "before_prompt"
+	HookTurnStart                = "turn_start"
+	HookTurnEnd                  = "turn_end"
+	HookMessageStart             = "message_start"
+	HookMessageEnd               = "message_end"
+	HookToolStart                = "tool_start"
+	HookToolEnd                  = "tool_end"
+	HookToolCall                 = "tool_call"
+	HookOnError                  = "on_error"
+	HookAgentStart               = "agent_start"
+	HookAgentEnd                 = "agent_end"
 
 	// Session management hooks
 	HookSessionBeforeCompact = "session_before_compact"

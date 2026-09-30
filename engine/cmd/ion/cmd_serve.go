@@ -350,6 +350,9 @@ func cmdServe(flags map[string]string) {
 	// The Provider Subscription lookup resolves per verified identity, so it
 	// starts only once identity readiness has run.
 	stopSubscriptionLookup := startSubscriptionLookup(cfg, resolver, srv)
+	// Application config resolves per verified identity, so it starts only
+	// once identity readiness has run.
+	stopApplicationConfig := startApplicationConfig(cfg, srv.SessionManager())
 
 	// Authenticated log egress and OTLP export: every flush or export mints a
 	// fresh bearer token from the identity provider or the machine identity
@@ -554,6 +557,7 @@ func cmdServe(flags map[string]string) {
 	// Flush the last OTLP metrics export before the process exits.
 	stopSystemMetricsExport()
 	stopSubscriptionLookup()
+	stopApplicationConfig()
 
 	if relay != nil {
 		if err := relay.Close(); err != nil {

@@ -156,6 +156,9 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if src.SystemMetrics != nil {
 		dst.SystemMetrics = src.SystemMetrics
 	}
+	if src.ApplicationConfig != nil {
+		dst.ApplicationConfig = src.ApplicationConfig
+	}
 	if src.ConversationEvents != nil {
 		dst.ConversationEvents = src.ConversationEvents
 	}

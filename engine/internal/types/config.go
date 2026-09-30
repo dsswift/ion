@@ -123,6 +123,10 @@ type EnterpriseConfig struct {
 	// whole: an enterprise can fix the sampling cadence, the telemetry
 	// interval, or turn sampling off (see EnforceEnterprise).
 	SystemMetrics *SystemMetricsConfig `json:"systemMetrics,omitempty"`
+	// ApplicationConfig, when set, replaces the user's application config
+	// source whole, so an organization points every engine at its own
+	// per-principal configuration service (see EnforceEnterprise).
+	ApplicationConfig *ApplicationConfigSource `json:"applicationConfig,omitempty"`
 	// ConversationEvents seals the standalone conversation.* telemetry family
 	// on, independent of Telemetry's own seal (see EnforceEnterprise).
 	ConversationEvents *ConversationEventsConfig `json:"conversationEvents,omitempty"`
@@ -367,6 +371,9 @@ type EngineRuntimeConfig struct {
 	// SystemMetrics configures the System Metrics sampler (host and process
 	// load). Nil means sampling is on with the compiled defaults.
 	SystemMetrics *SystemMetricsConfig `json:"systemMetrics,omitempty"`
+	// ApplicationConfig declares the authenticated, deferred application
+	// configuration source. Nil leaves the subsystem inert.
+	ApplicationConfig *ApplicationConfigSource `json:"applicationConfig,omitempty"`
 	// ConversationEvents is a sibling of Telemetry, not nested under it — see
 	// ConversationEventsConfig's doc comment for why (issue #378).
 	ConversationEvents *ConversationEventsConfig `json:"conversationEvents,omitempty"`
