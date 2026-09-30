@@ -1,6 +1,6 @@
 ---
 title: Quality Gates
-description: Development-time gates, heavy PR-time gates, and why the Linux parity gate exists.
+description: Development-time gates, the heavy gates CI runs on main, and why the Linux parity gate exists.
 sidebar_position: 9
 ---
 
@@ -28,7 +28,7 @@ A successful `npm run typecheck`, lint, package test, or file-size check is reus
 | Status-writer check | `make check-status-writers` — run when touching code that writes `tab.status` or `statusFields` (the server store, the session plane, or a client) |
 | Logging standards | `make check-logging` — enforces ADR-019: no interpolated `msg`, no `console.*` in renderer, no non-canonical field keys. |
 | Engine lint | `cd engine && golangci-lint run` (scope to touched packages while iterating: `golangci-lint run ./internal/<pkg>/...`) |
-| Engine tests (scoped) | `cd engine && go test ./internal/<touched-pkg>/...` — run the packages you changed, with `-race` when concurrency is involved. Do **not** routinely run the full `go test ./...` sweep while iterating. **Package scoping is not always enough:** some packages are internally slow because their tests wait on real timers (`internal/server` runs ~150s wall-clock — socket lifecycle, reap/heartbeat waits). In a known-slow package, scope further with `-run <TestPrefix>` to the arms your change touches; the package's full run happens once at PR time, not in the dev loop. |
+| Engine tests (scoped) | `cd engine && go test ./internal/<touched-pkg>/...` — run the packages you changed, with `-race` when concurrency is involved. Do **not** routinely run the full `go test ./...` sweep while iterating. **Package scoping is not always enough:** some packages are internally slow because their tests wait on real timers (`internal/server` runs ~150s wall-clock — socket lifecycle, reap/heartbeat waits). In a known-slow package, scope further with `-run <TestPrefix>` to the arms your change touches; the package's full run happens once in CI, not in the dev loop. |
 | Server parity | `make check-server-parity` — run when touching `desktop/src/main` |
 | Studio wire | `make check-studio-wire` — run when a fixture under `packages/shared/src/studio-wire/__fixtures__` changes |
 | Server typecheck and lint | `npm -w server run typecheck`, `npm -w server run lint` |
@@ -37,11 +37,11 @@ A successful `npm run typecheck`, lint, package test, or file-size check is reus
 | Desktop typecheck | `cd desktop && npm run typecheck` |
 | Desktop tests (scoped) | `cd desktop && npm test -- <pattern>` for the area you touched. The full `npm test` run belongs to the pre-PR sweep. |
 
-CI: `.github/workflows/build.yml` (release), `.github/workflows/quality.yml` (per-PR).
+CI: `.github/workflows/quality.yml` is the test lane on every push to `main` (and on pull requests); `.github/workflows/build.yml` builds and publishes releases. How they relate: [Delivery pipeline](delivery-pipeline.md).
 
 ## Heavy gates — never run during development
 
-The following gates are **slow** — Docker container spin-up, full-network vulnerability scan, full multi-package race runs, full iOS build. **Never run them during normal development.** Re-running them mid-session burns wall-clock and tokens for no added safety, because they run once, authoritatively, at PR time.
+The following gates are **slow** — Docker container spin-up, full-network vulnerability scan, full multi-package race runs, full iOS build. **Never run them during normal development.** Re-running them mid-session burns wall-clock and tokens for no added safety, because CI runs them once, authoritatively, on every push to `main`.
 
 | Heavy gate | Command |
 |------------|---------|
@@ -55,9 +55,9 @@ The following gates are **slow** — Docker container spin-up, full-network vuln
 | Server integration | `npm -w server run test:integration` |
 | iOS build | `make ios-check` |
 
-**The heavy gates run at PR time, not during development.** CI (`quality.yml`) is the authoritative gate: it runs the full set above — race suites, integration, `govulncheck`, `npm audit`, iOS build — on **every PR**, on `ubuntu-latest`. Locally, `/create-pr` runs the **Linux parity** subset (`make test-linux`, which executes the engine unit + integration race suites and the desktop lint, typecheck, and test steps inside Linux containers) **once**, right before pushing, to catch Linux-only failures before they burn Actions minutes on a red build. The only times the agent runs a heavy gate are (a) when `/create-pr` explicitly instructs it to, or (b) when the user explicitly asks for it (e.g. to reproduce a known Linux-only failure). Outside those two cases, the heavy gates are off-limits during development — CI is what proves them green on the PR.
+**The heavy gates run in CI, not during development.** The test lane (`quality.yml`) runs the race suites, integration, and the iOS build on **every push to `main`**, scoped to the paths the push touched, and files a failure as an issue; it never holds a release. `govulncheck` and `npm audit` run nightly in `security.yml`, off the ship path. Locally, `/create-pr` runs the **Linux parity** subset (`make test-linux`, which executes the engine unit + integration race suites and the desktop lint, typecheck, and test steps inside Linux containers) **once**, right before pushing, to catch Linux-only failures before they burn Actions minutes on a red build. The only times the agent runs a heavy gate are (a) when `/create-pr` explicitly instructs it to, or (b) when the user explicitly asks for it (e.g. to reproduce a known Linux-only failure). Outside those two cases, the heavy gates are off-limits during development — CI is what proves them green.
 
-> **Why `/create-pr` runs `make test-linux`.** Local validation runs on macOS; the blocking CI gates run on `ubuntu-latest`. `go test -race ./...` plus `go test -race -tags integration ./tests/integration/...` (the `engine-test` job), `npm run lint` (the `desktop-lint` job), and `npm test` (the `desktop-test` job) all run on Linux in CI, so a macOS-only pass is **not** sufficient — OS-sensitive failures (path semantics, file-watcher timing, locale, goroutine starvation under the Linux race detector, eager `require('electron')` under `npm ci --ignore-scripts`) slip through. `make test-linux` runs the same commands CI runs, in Linux containers, so those failures surface before the PR instead of after burning Actions minutes on a red build. `/create-pr` runs this gate automatically before pushing and pauses if Docker isn't running — the common path needs no manual step.
+> **Why `/create-pr` runs `make test-linux`.** Local validation runs on macOS; the CI test lane runs on `ubuntu-latest`. `go test -race ./...` plus `go test -race -tags integration ./tests/integration/...` (the `engine-test` job), `npm run lint` (the `desktop-lint` job), and `npm test` (the `desktop-test` job) all run on Linux in CI, so a macOS-only pass is **not** sufficient — OS-sensitive failures (path semantics, file-watcher timing, locale, goroutine starvation under the Linux race detector, eager `require('electron')` under `npm ci --ignore-scripts`) slip through. `make test-linux` runs the same commands CI runs, in Linux containers, so those failures surface before the PR instead of after burning Actions minutes on a red build. `/create-pr` runs this gate automatically before pushing and pauses if Docker isn't running — the common path needs no manual step.
 >
 > **When a CI job that runs engine, desktop, or server tests is added to `quality.yml`, mirror it into `make test-linux`.** The gate's value is that it is a faithful subset; a gate that claims CI parity while skipping a job green-lights the exact failures it exists to catch. Two concrete traps: integration tests are behind the `integration` build tag, so `go test ./...` silently skips them rather than failing, and `npm run typecheck` does not catch unused imports or react-hooks violations — those are ESLint rules that CI runs as a separate blocking job.
 

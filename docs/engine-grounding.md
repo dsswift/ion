@@ -71,7 +71,7 @@ When the engine has a signal, it emits one typed `NormalizedEvent` variant and s
 
 ### Cross-language sync
 
-Go is the source of truth. `engine/internal/types/contract_test.go` writes JSON field names to `engine/internal/types/testdata/contracts.json`; TS and Swift validate against it. Steps: root [`AGENTS.md`](../AGENTS.md) § "Cross-language contract sync". Verify with `make check-contracts` and the scoped contract tests; the full suites run at PR time.
+Go is the source of truth. `engine/internal/types/contract_test.go` writes JSON field names to `engine/internal/types/testdata/contracts.json`; TS and Swift validate against it. Steps: root [`AGENTS.md`](../AGENTS.md) § "Cross-language contract sync". Verify with `make check-contracts` and the scoped contract tests; the full suites run in CI's test lane on every push to `main`.
 
 ## 4. Event semantics: the snapshot contract
 

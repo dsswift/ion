@@ -90,4 +90,4 @@ Co-located `__tests__/` per domain. A new test of a server module goes there.
 
 Many tests of server modules still live under `desktop/src/main/__tests__/`, importing `@ion/server/...`. After a server change, run `cd desktop && npm test -- <pattern>` as well as `npm -w server run test -- <pattern>`.
 
-`server/tests/integration/` (`vitest.integration.config.ts`) builds the real engine and boots it beside the server. Integration and the Docker Compose smoke test run at PR time.
+`server/tests/integration/` (`vitest.integration.config.ts`) builds the real engine and boots it beside the server. Integration and the Docker Compose smoke test run in CI's test lane on every push that touches the server.

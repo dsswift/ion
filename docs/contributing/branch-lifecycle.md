@@ -1,12 +1,12 @@
 ---
 title: Branch Lifecycle
-description: The expected flow from feature work to merged pull request, the commands at each stage, and the automation that runs without being asked.
+description: The expected flow from feature work to a push on main, the commands at each stage, and the automation that runs without being asked.
 sidebar_position: 5
 ---
 
 # Branch Lifecycle
 
-This page describes how work moves from a feature branch to a merged pull request in this repository: which commands run at which stage, who initiates each one, and what happens automatically in the background.
+This page describes how work moves from a branch to `main` in this repository: which commands run at which stage, who initiates each one, and what happens automatically in the background. What happens after the push, from version to published release, is the [delivery pipeline](delivery-pipeline.md).
 
 It is written for two audiences. **Operators** use it as a refresher on the expected sequence. **Agents** use it to understand where their responsibility ends and the operator's begins.
 
@@ -17,31 +17,24 @@ It is written for two audiences. **Operators** use it as a refresher on the expe
 | Feature work | Operator asks; agent implements | Code, tests, docs. Committed at clean scope seams — one commit per scope per feature. | No |
 | `/align` | Operator | Reviews the work against Ion's quality gates and architectural principles, then authors a fix plan. In plan mode it audits the plan instead. | No |
 | `/squash` | Operator | Rebuilds the branch from a soft reset into one commit per scope per feature. Creates a backup branch first. | No |
-| `/create-pr` | Operator | Runs the Linux parity gate, pushes the branch, opens the PR with a description derived from the commits. | Yes — the only command that pushes |
+| Push to `main` | Operator | `git push` on `main`. The `pre-push` hook runs the static gates (about a minute); the delivery pipeline takes it from there. | Yes |
+| `/create-pr` | Operator, optionally | Runs the Linux parity gate, pushes the branch, opens a pull request for review or preview. Its checks are advisory; nothing requires a PR. | Yes |
 
-The agent's job ends at the commit. Squashing, PR creation, merge strategy, and CI lane choice belong to the operator — see root `AGENTS.md` § "Operator gitops are not yours to narrate or prescribe". An agent should commit verified work and report what is ready, not narrate or prescribe what the operator does next.
+The agent's job ends at the commit. Squashing, pushing, and whether to open a pull request belong to the operator — see root `AGENTS.md` § "Operator gitops are not yours to narrate or prescribe". An agent should commit verified work and report what is ready, not narrate or prescribe what the operator does next.
 
-## The sequence runs once, before the PR exists
+## The sequence runs once, before the push
 
-`/align` → `/squash` → `/create-pr` is a **pre-publication** flow.
+`/align` → `/squash` → push is a **pre-publication** flow.
 
 `/squash` rewrites local history: it soft-resets to `main` and carves the (already correct) working tree into clean commits moving forward. That is safe precisely because nothing has been pushed yet. It never runs `git push` — it reports that the branch is ready and stops.
 
-## After the PR exists, history is append-only
+## After the push, history is append-only
 
-This is the part that trips people up, so it is worth stating directly.
+`main` refuses force-pushes (its ruleset), and the version-bump commit the pipeline pushes lands on top of yours. So a fix after a push is an ordinary conventional commit pushed on top, which gets its own version and its own release. There is nothing to re-squash.
 
-**CI failed on my PR. Do I re-align and re-squash?** No.
+**A test failed on `main`. Do I re-align and re-squash?** No. Read the issue the test lane filed, fix forward, push. The release for the failing push already shipped; the fix ships as the next one.
 
-Fix commits land on top as ordinary conventional commits, and you push again. CI re-runs. That is the whole procedure.
-
-**Do not re-run `/squash` on a published branch.** Rebuilding history that has been pushed requires a force-push, which:
-
-- breaks review threads, because the commits they were anchored to no longer exist
-- invalidates approvals
-- severs the mapping between review comments and the code they describe
-
-A branch that reads "four squashed commits, then two fix commits" is honest history. The fixes happened after review began, and the log should say so. `/align` already encodes this rule for its own PR mode — published history is only ever appended to — and it applies equally to the operator's own flow.
+**Do not re-run `/squash` on a published branch**, including a branch that has a pull request open. Rebuilding history that has been pushed requires a force-push, which breaks review threads and severs the mapping between review comments and the code they describe. Fix commits land on top as ordinary conventional commits.
 
 ## What runs automatically
 
@@ -51,13 +44,13 @@ Git hooks, managed by husky. They install themselves: root `package.json` has `"
 |------|------|------|
 | `pre-commit` | Every commit | `actionlint` on workflow files, when any are staged |
 | `commit-msg` | Every commit | `commitlint` — enforces `type(scope): subject` against the allowed scope list |
-| `pre-push` | Every push | File-size cap, dashboards drift audit, and change-scoped lint / build / typecheck / tests. Husky runs hooks with `sh -e`, so `.husky/pre-push` is a dash-safe delegator that execs bash on `scripts/pre-push.sh` — the gate body needs bash, and the shebang is not consulted |
+| `pre-push` | Every push | The one gate in front of `main`: file-size cap, drift audits, and change-scoped lint / typecheck / build / cross-build. No test suite; tests run in CI's test lane after the push. Husky runs hooks with `sh -e`, so `.husky/pre-push` is a dash-safe delegator that execs bash on `scripts/pre-push.sh` — the gate body needs bash, and the shebang is not consulted |
 | `post-commit` | Commits touching code | Rebuilds the graphify knowledge graph incrementally (AST-only, detached) |
 | `post-checkout` | Branch switches | Same graph rebuild |
 | `post-merge` | `git pull` / merge | Graph refresh via `scripts/graphify-rebuild.sh` — a fast-forward moves the branch pointer without a checkout, so `post-checkout` never fires |
 | `post-rewrite` | `git rebase` / amend | Same refresh; `post-commit` and `post-checkout` both bail during a rebase, so this is their counterpart |
 
-`pre-push` is the gate that catches most problems locally. Bypass with `git push --no-verify` only when you mean it.
+`pre-push` is the gate that catches compile and lint problems before they reach `main`. Bypass with `git push --no-verify` only when you mean it.
 
 ## The graph is a local cache (and optional)
 

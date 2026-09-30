@@ -1,57 +1,78 @@
 ---
-title: Branch Protection
-description: GitHub branch protection settings for the Ion repository.
+title: Delivery Pipeline
+description: How a push to main becomes versioned, built, published releases, and where tests and scans fit so they never hold a release.
 sidebar_position: 7
 ---
 
-# Branch Protection
+# Delivery Pipeline
 
-The `main` branch is protected via a GitHub repository ruleset. These settings live in the GitHub UI (Settings → Rules → Rulesets), not in code. This document records the configuration so it is reproducible and discoverable.
+Code lands on `main` by direct push. Every push is versioned, built, and published without waiting on a review, a test run, or a scan. Tests and scans still run; their findings arrive as issues, not as blocked releases.
 
-## Ruleset: main
+The rule in one line: **if it is on `main`, every service that changed gets a version and a binary.**
 
-**Target:** `main` branch
+## What happens on a push
 
-### Required status checks
+Three lanes start at once. None waits for another.
 
-All Quality workflow jobs must pass before a PR can merge:
+| Lane | Workflow | Starts | Finishes | Blocks a release? |
+|------|----------|--------|----------|-------------------|
+| Version | `release.yml` (job `release`) | On push | Under a minute | It *is* the release |
+| Build and publish | `build.yml` (called by `release.yml`) | After the version lane | Engine ~5 min, desktop ~10 min | Only its own service |
+| Test | `quality.yml` | On push | Depends on scope | Never |
 
-| Check name | Workflow |
-|------------|----------|
-| `engine-test (macos-14)` | `quality.yml` |
-| `engine-test (ubuntu-latest)` | `quality.yml` |
-| `Quality / engine-lint` | `quality.yml` |
-| `Quality / engine-vuln` | `quality.yml` |
-| `Quality / relay-test` | `quality.yml` |
-| `Quality / desktop-test` | `quality.yml` |
-| `Quality / desktop-audit` | `quality.yml` |
-| `Quality / file-size` | `quality.yml` |
-| `Quality / ios-build` | `quality.yml` |
-| `Quality / actionlint` | `quality.yml` |
-| `Quality / docker-build` | `quality.yml` |
+### The version lane
 
-### Path-scoped pull-request checks
+`release-damnit` reads the conventional commits since each service's last release. The commit scope (`engine`, `desktop`, `server`, ...) picks the service; the type (`feat`, `fix`, `feat!`) picks the bump. It writes `VERSION`, `CHANGELOG.md`, and `release-please-manifest.json`, pushes them as `chore: release versions [skip ci]`, and creates one GitHub release per service that changed. The scope map is `.commit.json`; the per-service release config is `release-please-config.json`.
 
-Quality keeps stable required-check names. On a pull request, `changes` classifies the PR diff and product jobs outside that scope are marked **skipped** rather than omitted. GitHub treats those skipped contexts as successful, while avoiding unrelated runners and package scans. The required engine matrix contexts are special: when `engine/**` is untouched, `changes` publishes completed no-op check runs with the existing macOS and Ubuntu names, so branch protection receives success instead of leaving those contexts indefinitely expected.
+Nothing is manual. A commit with a `docs` scope, or under a path `release.yml` does not list, releases nothing.
 
-Examples: a docs-only PR runs the universal file-size gate, not engine/desktop/relay tests, package vulnerability scans, Docker, or iOS compilation; a root `package-lock.json` update runs the desktop audit; an iOS change runs SwiftLint and the device build. Workflow YAML changes run actionlint. The classifier mapping is pinned by `scripts/test-quality-path-scopes.sh`.
+Two pushes close together do not race: `release.yml` runs under a concurrency group that queues the second run until the first has pushed its version commit.
 
-Pushes to `main`, scheduled runs, and manual dispatches intentionally run every product scope. This preserves full post-merge and scheduled coverage even though pull requests get change-scoped feedback.
+### The build lane
 
-### Require branches to be up to date
+A release is created **as a draft**. `.github/scripts/hold-built-releases.sh` runs right after `release-damnit` and holds every release that has a build job (`engine`, `server`, `desktop`, `relay`) as a draft. A draft is invisible to the desktop auto-updater, to `/releases/latest`, and to `ion studio update`. Releases with nothing to build (`ios`, `sdk/go`) are published on the spot.
 
-Enabled. A PR's branch must be up to date with `main` before merging. This prevents cross-PR regressions where two independently-clean PRs produce lint or build failures when combined.
+`build.yml` then builds only the services in the release report. Each service has a `publish-<service>` job that flips its draft public once every job that attaches one of its assets has succeeded. The engine's publish job also marks it `latest`, because the README install command resolves through `/releases/latest`.
 
-### Linear history
+So a failure in one service's build leaves that service's draft in place and publishes every other service. The draft has all the assets that did upload; rerun the failed jobs from the run page and the publish job runs again. A release is never public with files missing.
 
-**Not enabled.** Merge commits are required — release-damnit parses conventional commit messages from merge nodes to generate changelogs and determine version bumps.
+The Windows install smoke test (`scripts/ci/windows-smoke.ps1`) is the one runtime check inside the build lane. Its failure is a product bug found after the installer was built: the installer still uploads, the desktop still publishes, and an issue is filed. A `dry_run` of `build.yml` is the exception: there, a smoke failure fails the job, because surfacing it is what a dry run is for.
 
-## Release pipeline bypass
+### The test lane
 
-The release workflow (`release.yml`) pushes version-bump commits (VERSION, CHANGELOG, manifest files) directly to `main` using a GitHub App token. The GitHub App must be added to the ruleset's **bypass list** so these automated commits are not blocked by the status check requirement.
+`quality.yml` runs every test, lint, and drift check, scoped to the paths the push touched. An iOS-only push runs no Windows job; an engine push runs the engine matrix on all three operating systems and nothing for the desktop. The scope map is `.github/quality-paths.yml`, pinned by `scripts/test-quality-path-scopes.sh`. Scheduled and manual runs validate every scope.
 
-If the App is not in the bypass list, release-damnit's `git push` to `main` will be rejected by branch protection.
+The lane ends in a `report` job that reads every job's result and files an issue per failure, labelled `ci-failure`, titled `Tests failed on main: <job>`. A repeat of the same failure comments on the open issue instead of opening another. Pull requests, when you open one, get their checks inline and file nothing.
 
-## Lint strategy
+**Flaky tests are filed, not tolerated.** When a run is rerun and a job that failed on the earlier attempt passes on this one, the commit did not change, so the test is flaky. The `report` job files it under the `flaky` label. That issue is fixed the day it appears.
 
-On pull requests, the `engine-lint` context runs only when engine, relay, or Go SDK paths changed, and lints only changed package scopes. Pushes to `main`, scheduled runs, and manual dispatches run every package lint. This keeps PR feedback scoped without letting lint debt accumulate after merge.
+The engine tests reuse Go's test cache between runs (`actions/cache` keyed on the run id, restored by prefix), so a package the push did not touch is reported from cache in milliseconds.
+
+### The security lane
+
+Dependency advisories and vulnerability scans read a feed that changes every day, so their result is not a property of the commit. `security.yml` runs `govulncheck` and `npm audit` nightly and on demand, never on a push, and files each finding under the `security` label. A new advisory never turns a push red and never holds a release.
+
+## The gate in front of `main`
+
+There is one: the local `pre-push` hook (`scripts/pre-push.sh`). It runs only what is static or a compile, scoped to the components the branch touched, so a push waits about a minute: file-size caps, tracked-binary check, toolchain alignment, vocabulary drift, engine lint and build plus the Windows cross-build, relay lint, desktop typecheck, server typecheck and lint, the renderer bundle, and SwiftLint. No test suite runs in the hook.
+
+`git push --no-verify` bypasses it. Use that when you mean it.
+
+## Pull requests are optional
+
+The `main` ruleset (Settings → Rules → Rulesets → `default`) keeps two rules: no deletion, no force-push. It requires no pull request and no status check. The GitHub App that pushes version commits stays in the bypass list.
+
+Open a pull request when you want a review or a preview. Its checks run inline and are advisory. `/create-pr` still works for that.
+
+## Rerunning and rebuilding
+
+| Need | Do |
+|------|----|
+| A build job failed and the draft is waiting | Re-run failed jobs on the run page. Passed jobs are kept; the publish job runs when the failed ones pass. |
+| Rebuild the Windows installer for the current desktop version, no new release | Run the **Rebuild Windows Desktop** workflow (`rebuild-windows.yml`). |
+| Reproduce a release-only failure from a branch | Run **Build** by hand with `dry_run: true`, the branch as `ref`, and a release report naming versions that already exist. |
+| Re-send the release summary | Run **Release Summary** by hand with the release report from the run. |
+
+## What this trades
+
+`main` can carry a broken build for the minutes it takes to fix forward, and a test failure ships with an issue attached. That is the chosen trade: integration is never blocked, a version exists for every change, and a bug is a bug with a link, not a stalled branch.

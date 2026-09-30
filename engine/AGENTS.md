@@ -18,7 +18,7 @@ golangci-lint run ./internal/<pkg>/...                    # scoped lint (dev loo
 go test -tags e2e -v ./tests/e2e/...                      # e2e (needs API keys)
 ```
 
-The full `go test -race ./...`, `go test -race -tags integration ./tests/integration/...`, and `govulncheck ./...` are heavy gates. They run at PR time only (root `AGENTS.md` § "Heavy gates — never run during development").
+The full `go test -race ./...`, `go test -race -tags integration ./tests/integration/...`, and `govulncheck ./...` are heavy gates. CI runs them on every push to `main`; `govulncheck` runs nightly (root `AGENTS.md` § "Heavy gates — never run during development").
 
 E2E config: `tests/e2e/testconfig.json` is gitignored. Copy `testconfig.example.json`. `apiKey` wins over `apiKeyEnv`. Tests skip with no key.
 
