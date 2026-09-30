@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -74,10 +75,16 @@ type StoredCredential struct {
 	Source   string // "keychain", "filestore", or "credentials.json"
 }
 
-// Resolver implements 5-level API key resolution for LLM providers.
+// Resolver implements 5-level API key resolution for LLM providers, above
+// which sits the key a Provider Subscription lookup applied (Level 0).
 type Resolver struct {
 	config       *types.AuthConfig
 	programmatic map[string]string // provider ID -> API key (Level 1)
+
+	// subscription holds looked-up keys (Level 0). It changes at runtime
+	// as identities sign in and out, so it has its own lock.
+	subscriptionMu sync.RWMutex
+	subscription   map[string]string
 }
 
 // NewResolver creates a resolver with the given auth configuration.
@@ -89,6 +96,7 @@ func NewResolver(config *types.AuthConfig) *Resolver {
 	return &Resolver{
 		config:       config,
 		programmatic: make(map[string]string),
+		subscription: make(map[string]string),
 	}
 }
 
@@ -136,6 +144,12 @@ func (r *Resolver) HasKeyForSubject(subject, provider string) (bool, string) {
 	}
 
 	utils.LogWithFields(utils.LevelDebug, "auth", "has key checking", map[string]any{"subject": subject, "provider": provider})
+
+	// Level 0: Provider Subscription lookup
+	if r.subscriptionKey(provider) != "" {
+		utils.LogWithFields(utils.LevelDebug, "auth", "has key found", map[string]any{"provider": provider, "reason": SourceSubscription})
+		return true, SourceSubscription
+	}
 
 	// Level 1: Programmatic
 	if key, ok := r.programmatic[provider]; ok && key != "" {
@@ -207,7 +221,8 @@ func (r *Resolver) ResolveProviderValues(provider string) (*ProviderEnvValues, b
 	return ResolveProviderEnv(provider)
 }
 
-// ResolveKey resolves an API key for the given provider using a 5-level chain:
+// ResolveKey resolves an API key for the given provider using a 5-level chain,
+// after the key a Provider Subscription lookup applied (Level 0):
 //  1. Programmatic (keys set via SetProgrammatic)
 //  2. Environment variables (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
 //  3. Keychain (macOS: security find-generic-password)
@@ -216,6 +231,12 @@ func (r *Resolver) ResolveProviderValues(provider string) (*ProviderEnvValues, b
 func (r *Resolver) ResolveKey(provider string) (string, error) {
 	provider = strings.ToLower(provider)
 	utils.LogWithFields(utils.LevelDebug, "auth", "resolve key", map[string]any{"provider": provider})
+
+	// Level 0: Provider Subscription lookup (outranks the manual levels)
+	if key := r.subscriptionKey(provider); key != "" {
+		utils.LogWithFields(utils.LevelInfo, "auth", "resolve key resolved via subscription", map[string]any{"provider": provider, "count": len(key)})
+		return key, nil
+	}
 
 	// Level 1: Programmatic (in-process override, highest priority)
 	utils.LogWithFields(utils.LevelDebug, "auth", "resolve key trying programmatic", map[string]any{"provider": provider})
@@ -430,8 +451,9 @@ func (r *Resolver) ListStoredFor(subject string) []StoredCredential {
 	fs := NewFileStore()
 	if names, err := fs.ListFor(subject); err == nil {
 		for _, name := range names {
-			// Skip internal oauth token entries; expose only plain provider keys.
-			if strings.HasPrefix(name, "oauth:") {
+			// Skip internal oauth token and subscription cache entries;
+			// expose only plain provider keys.
+			if strings.HasPrefix(name, "oauth:") || strings.HasPrefix(name, SubscriptionCachePrefix) {
 				continue
 			}
 			out = append(out, StoredCredential{Provider: name, Source: "filestore"})

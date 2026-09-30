@@ -216,6 +216,9 @@ func mergeEnterprisePartial(base, overlay *types.EnterpriseConfig) *types.Enterp
 	if overlay.NewConversationDefaults != nil {
 		result.NewConversationDefaults = overlay.NewConversationDefaults
 	}
+	if overlay.SubscriptionLookup != nil {
+		result.SubscriptionLookup = overlay.SubscriptionLookup
+	}
 	if overlay.Logging != nil {
 		result.Logging = overlay.Logging
 	}

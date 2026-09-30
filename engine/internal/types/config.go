@@ -92,6 +92,10 @@ type EnterpriseConfig struct {
 	// restrictive, so a lower layer may also require identity but cannot disable
 	// an enterprise requirement.
 	Auth *AuthConfig `json:"auth,omitempty"`
+	// SubscriptionLookup, when set, replaces the user/project block whole, so
+	// the endpoint that issues provider keys is the enterprise's and a lower
+	// layer cannot point it elsewhere. Nil leaves the merged value standing.
+	SubscriptionLookup *SubscriptionLookupConfig `json:"subscriptionLookup,omitempty"`
 	// ExtensionAllowlist, when non-empty, restricts which extensions the engine
 	// will load (feature 0011 / D-020, issue #308). Each entry is an exact
 	// extension identifier (manifest name, else directory basename) with an
@@ -354,8 +358,12 @@ type EngineRuntimeConfig struct {
 	NewConversationDefaults *NewConversationDefaultsPolicy `json:"newConversationDefaults,omitempty"`
 	Permissions             *PermissionPolicy              `json:"permissions,omitempty"`
 	Auth                    *AuthConfig                    `json:"auth,omitempty"`
-	Network                 *NetworkConfig                 `json:"network,omitempty"`
-	Telemetry               *TelemetryConfig               `json:"telemetry,omitempty"`
+	// SubscriptionLookup resolves a provider's key from an endpoint using the
+	// signed-in identity. Nil leaves manual key entry as the only path.
+	// Enterprise policy replaces it whole (see EnforceEnterprise).
+	SubscriptionLookup *SubscriptionLookupConfig `json:"subscriptionLookup,omitempty"`
+	Network            *NetworkConfig            `json:"network,omitempty"`
+	Telemetry          *TelemetryConfig          `json:"telemetry,omitempty"`
 	// SystemMetrics configures the System Metrics sampler (host and process
 	// load). Nil means sampling is on with the compiled defaults.
 	SystemMetrics *SystemMetricsConfig `json:"systemMetrics,omitempty"`

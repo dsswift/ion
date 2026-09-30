@@ -133,6 +133,12 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 		copy := *src.NewConversationDefaults
 		dst.NewConversationDefaults = &copy
 	}
+	// SubscriptionLookup is atomic: its endpoint, provider, and token shape
+	// only make sense together, so a more-specific layer replaces the block.
+	if src.SubscriptionLookup != nil {
+		copy := *src.SubscriptionLookup
+		dst.SubscriptionLookup = &copy
+	}
 
 	// Optional fields: override if set
 	if src.Permissions != nil {

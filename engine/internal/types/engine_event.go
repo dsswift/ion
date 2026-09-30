@@ -518,6 +518,11 @@ type EngineEvent struct {
 	OidcUsername    string `json:"oidcUsername,omitempty"`
 	OidcDisplayName string `json:"oidcDisplayName,omitempty"`
 
+	// engine_provider_subscription — complete snapshot of the Provider
+	// Subscription state. Consumers replace their local view with it. It
+	// never carries a key. Nil on every other event.
+	ProviderSubscription *ProviderSubscriptionStatus `json:"providerSubscription,omitempty"`
+
 	// engine_mcp_login_url — delivered to the client that issued mcp_login.
 	// McpAuthorizationURL is what the consumer opens in a browser;
 	// McpServerName identifies which server it authorizes, since a consumer

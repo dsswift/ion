@@ -502,6 +502,7 @@
     "pollStarted",
     "pollTerminal",
     "providerLogin",
+    "providerSubscription",
     "push",
     "pushBody",
     "pushTitle",
@@ -806,6 +807,15 @@
       "userCode",
       "verificationUrl"
     ],
+    "ProviderSubscriptionStatus": [
+      "error",
+      "options",
+      "provider",
+      "resolvedAt",
+      "selected",
+      "source",
+      "state"
+    ],
     "ResourceFilter": [
       "conversationId",
       "id",
@@ -939,6 +949,10 @@
       "sessionId",
       "state",
       "team"
+    ],
+    "SubscriptionOption": [
+      "id",
+      "label"
     ],
     "SystemMetricsHost": [
       "containerLimited",
