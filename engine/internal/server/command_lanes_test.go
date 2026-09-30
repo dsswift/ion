@@ -506,26 +506,43 @@ func TestSessionLaneIdleCleanup(t *testing.T) {
 	sessionLaneIdleTime = 50 * time.Millisecond
 	defer func() { sessionLaneIdleTime = origIdle }()
 
-	cl := newCommandLanes(func(_ net.Conn, _ *protocol.ClientCommand) {})
+	// Hold the command in flight so the lane's presence is checked while its
+	// idle timer is stopped, not raced against a wall-clock sleep.
+	started := make(chan struct{})
+	release := make(chan struct{})
+	cl := newCommandLanes(func(_ net.Conn, _ *protocol.ClientCommand) {
+		close(started)
+		<-release
+	})
 	defer cl.stop()
 
 	cl.submit(nil, &protocol.ClientCommand{Cmd: "send_prompt", Key: "idle-s", RequestID: "a"})
-	time.Sleep(30 * time.Millisecond)
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("session command was never dispatched")
+	}
 
 	cl.mu.Lock()
 	_, exists := cl.sessions["idle-s"]
 	cl.mu.Unlock()
 	if !exists {
-		t.Fatal("session lane should exist shortly after submit")
+		t.Fatal("session lane should exist while its command is in flight")
 	}
 
-	time.Sleep(150 * time.Millisecond)
-
-	cl.mu.Lock()
-	_, exists = cl.sessions["idle-s"]
-	cl.mu.Unlock()
-	if exists {
-		t.Fatal("session lane should have been idle-evicted")
+	close(release)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		cl.mu.Lock()
+		_, exists = cl.sessions["idle-s"]
+		cl.mu.Unlock()
+		if !exists {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("session lane should have been idle-evicted")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
