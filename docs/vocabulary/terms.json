@@ -3315,6 +3315,63 @@
       "notes": "Name providers by name. Never pin a provider count in prose."
     },
     {
+      "id": "provider-subscription",
+      "term": "Provider Subscription",
+      "definition": "The provider key the engine resolves from a configured subscription lookup endpoint for the signed-in identity. One returned subscription is applied automatically, several wait for a remembered choice, and none is its own state. The key is cached per identity, outranks manually configured keys, and never leaves the engine.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "subscription lookup",
+        "subscription key lookup"
+      ],
+      "contract": "public-wire",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "wire",
+          "language": "go",
+          "symbol": "type ProviderSubscriptionStatus struct",
+          "path": "engine/internal/types/provider_subscription.go"
+        },
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Manager struct",
+          "path": "engine/internal/subscription/manager.go"
+        },
+        {
+          "platform": "server",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "wireProviderSubscriptionEvents",
+          "path": "server/src/engine/provider-subscription-api.ts"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "wire",
+          "language": "typescript",
+          "symbol": "export interface ProviderSubscriptionStatus",
+          "path": "packages/shared/src/types-engine-event-model.ts"
+        },
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "ProviderSubscriptionGroup",
+          "path": "desktop/src/renderer/components/settings/pages/integrations/ProviderSubscriptionGroup.tsx"
+        },
+        {
+          "platform": "ios",
+          "presentation": "wire",
+          "language": "swift",
+          "symbol": "struct ProviderSubscriptionStatus",
+          "path": "ios/IonRemote/Models/Admin/ProviderSubscriptionStatus.swift"
+        }
+      ]
+    },
+    {
       "id": "push-address",
       "term": "Push address",
       "definition": "Where a paired phone receives push notifications: its APNs device token and the APNs environment that issued it. The phone registers it with each server it is paired to; the server keeps it on the pairing record and sends it with every push. The relay only delivers and keeps none.",

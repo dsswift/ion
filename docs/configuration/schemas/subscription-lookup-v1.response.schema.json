@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ion:subscription-lookup:v1:response",
+  "title": "Ion subscription lookup response, version 1",
+  "description": "The body a subscriptionLookup endpoint returns with HTTP 200 to a request carrying Ion-Subscription-Lookup-Version: 1. An empty array means the caller has no subscription.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "label", "key"],
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Stable identifier. Ion remembers the operator's choice by this value, so it must not change when the key rotates. Unique within one response."
+      },
+      "label": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Display name shown when the operator chooses between subscriptions."
+      },
+      "key": {
+        "type": "string",
+        "minLength": 1,
+        "description": "The subscription key Ion applies to the configured provider."
+      }
+    },
+    "additionalProperties": true
+  },
+  "examples": [
+    [
+      { "id": "sub-standard", "label": "Standard", "key": "0123456789abcdef" }
+    ],
+    [
+      { "id": "sub-standard", "label": "Standard", "key": "0123456789abcdef" },
+      { "id": "sub-high-quota", "label": "High quota", "key": "fedcba9876543210", "tier": "optional fields are ignored" }
+    ],
+    []
+  ]
+}

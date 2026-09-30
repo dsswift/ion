@@ -20,6 +20,7 @@ Ion ships with no default model. Before the engine can run a prompt, you must ei
 | `defaultModel` | string | `""` | Model identifier used when no `--model` override is passed. Required. The engine errors out if neither this field nor `--model` is set. |
 | `logLevel` | string | `""` | Log verbosity. One of `"debug"`, `"info"`, `"warn"`, `"error"`. Empty string uses the engine default. |
 | `slashModelTier` | object | omitted | Policy for command-owned model tiers after a conversation has history. See [slashModelTier](#slashmodeltier). |
+| `subscriptionLookup` | object | omitted | Resolve a provider's key from an endpoint with the signed-in identity. See [subscriptionLookup](#subscriptionlookup). |
 
 ## slashModelTier
 
@@ -441,6 +442,22 @@ Authentication and credential management.
 | `secureStore` | object | `null` | Credential storage backend configuration. |
 | `cacheTtlMs` | int64 | `0` | How long to cache resolved credentials (milliseconds). |
 | `refreshThresholdMs` | int64 | `0` | Refresh tokens this many milliseconds before expiry. |
+
+## subscriptionLookup
+
+Resolves a provider's subscription key from an endpoint you run, using the identity signed in through `auth.identityProvider`. One subscription is applied automatically, several are offered for a choice that is remembered, and none is reported as its own state. The key is cached per identity and outranks manual keys; a failed lookup leaves manual keys in use.
+
+```json
+{
+  "subscriptionLookup": {
+    "endpoint": "https://keys.example.org/subscriptions",
+    "provider": "gateway",
+    "scope": "api://keys/.default"
+  }
+}
+```
+
+Fields, behavior, and the published endpoint contract: [Subscription Lookup](subscription-lookup.md).
 
 ### Operator Context Identity migration
 

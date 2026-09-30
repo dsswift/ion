@@ -159,6 +159,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Project Workspace](#term-project-workspace)
 - [Prompt trace](#term-prompt-trace)
 - [Provider](#term-provider)
+- [Provider Subscription](#term-provider-subscription)
 - [Push address](#term-push-address)
 - [Questions Wizard](#term-questions-wizard)
 - [Quick Tool](#term-quick-tool)
@@ -629,6 +630,24 @@ The LLM vendor integration that streams a model response. The engine calls each 
 - **Implementations:**
   - `engine` / `code` / `go`: `type LlmProvider interface` in `engine/internal/providers/provider.go`
 - **Notes:** Name providers by name. Never pin a provider count in prose.
+
+#### Provider Subscription {#term-provider-subscription}
+
+The provider key the engine resolves from a configured subscription lookup endpoint for the signed-in identity. One returned subscription is applied automatically, several wait for a remembered choice, and none is its own state. The key is cached per identity, outranks manually configured keys, and never leaves the engine.
+
+- **ID:** `provider-subscription`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `subscription lookup`, `subscription key lookup`
+- **Legacy names:** None
+- **Contract:** `public-wire`
+- **Implementations:**
+  - `engine` / `wire` / `go`: `type ProviderSubscriptionStatus struct` in `engine/internal/types/provider_subscription.go`
+  - `engine` / `code` / `go`: `type Manager struct` in `engine/internal/subscription/manager.go`
+  - `server` / `code` / `typescript`: `wireProviderSubscriptionEvents` in `server/src/engine/provider-subscription-api.ts`
+  - `desktop` / `wire` / `typescript`: `export interface ProviderSubscriptionStatus` in `packages/shared/src/types-engine-event-model.ts`
+  - `studio` / `ui` / `typescript`: `ProviderSubscriptionGroup` in `desktop/src/renderer/components/settings/pages/integrations/ProviderSubscriptionGroup.tsx`
+  - `ios` / `wire` / `swift`: `struct ProviderSubscriptionStatus` in `ios/IonRemote/Models/Admin/ProviderSubscriptionStatus.swift`
 
 #### Schedule {#term-schedule}
 
@@ -2939,6 +2958,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | Project Trust | `setupCheck`, `cloneFixes` | `setupCheck`, `cloneFixes` | `setupCheck`, `cloneFixes` | None | iOS |
 | Project Workspace | `resolveProjectDir`, `orderedWorkspaceRoots` | `resolveProjectDir`, `orderedWorkspaceRoots` | `resolveProjectDir`, `orderedWorkspaceRoots` | None | iOS |
 | Prompt trace | None | `export function submitWithTrace` | None | `final class PromptTraceBook` | Overlay |
+| Provider Subscription | `export interface ProviderSubscriptionStatus` | `export interface ProviderSubscriptionStatus`, `ProviderSubscriptionGroup` | `export interface ProviderSubscriptionStatus` | `struct ProviderSubscriptionStatus` | None |
 | Push address | None | None | None | `func registerPushAddress()` | Desktop, Studio, Overlay |
 | Questions Wizard | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | `export function QuestionsWizard`, `export function QuestionsSurface` | None | iOS |
 | Quick Tool | `export interface QuickTool` | `export interface QuickTool`, `export function ComposerQuickToolsButton` | `export interface QuickTool` | None | iOS |
@@ -3107,6 +3127,8 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `steer message` → [Steer](#term-steer)
 - Alias: `stream interrupt` → [Steer Stream Interrupt](#term-steer-stream-interrupt)
 - Alias: `sub-agent` → [Agent](#term-agent)
+- Alias: `subscription key lookup` → [Provider Subscription](#term-provider-subscription)
+- Alias: `subscription lookup` → [Provider Subscription](#term-provider-subscription)
 - Alias: `surface pane` → [Studio Surface](#term-studio-surface)
 - Alias: `surface tab` → [Surface](#term-surface)
 - Legacy name: `tab list` → [Inbox](#term-inbox)

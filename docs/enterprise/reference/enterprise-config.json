@@ -9,6 +9,11 @@
       "authHeader": "x-api-key"
     }
   },
+  "subscriptionLookup": {
+    "endpoint": "https://keys.example.com/subscriptions",
+    "provider": "gateway",
+    "scope": "api://<application-client-id>/Subscriptions.Read"
+  },
   "auth": {
     "identityProvider": "entra",
     "requireOperatorIdentity": true,

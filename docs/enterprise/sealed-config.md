@@ -52,6 +52,7 @@ These fields, when set at the enterprise level, replace any value from lower lay
 | `telemetry` | Enterprise telemetry config replaces lower layers. If `enabled: true`, it cannot be disabled. |
 | `requiredHooks` | These hooks must be active. Extensions cannot deregister them. |
 | `newConversationDefaults` | When non-null, replaces the base value. A null overlay preserves the base value. When `locked: true`, clients skip the profile and directory pickers for new conversations and use the mandated values. |
+| `subscriptionLookup` | When set, replaces the user and project block whole, so the endpoint that issues provider keys cannot be redirected by a lower layer. See [Subscription Lookup](../configuration/subscription-lookup.md). |
 | `git.machine` | When set, replaces the user-layer `git.identity.machine` fallback wholesale — the enterprise-mandated author identity, used whenever `fromPrincipal` is false or a principal's own name/email can't be resolved. |
 
 ### Per-principal fields (`toolRestrictions.principals`)
