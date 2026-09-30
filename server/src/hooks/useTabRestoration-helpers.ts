@@ -1,6 +1,7 @@
 import type { ConversationPane, StatusFields } from '@ion/shared/types-engine'
 import type { PersistedTab, PersistedConversationInstance } from '@ion/shared/types-persistence'
 import { migrateTabToUnified } from '@ion/shared/tab-migration-unify'
+import { pendingUserCardDenial } from '@ion/shared/pending-card'
 import { activeInstance, needsHistoryHydration } from '../store/conversation-instance'
 import { isPersistedSettled } from '@ion/shared/tab-predicates'
 import { SESSION_ATTACH_BATCH_SIZE } from '@ion/shared/session-attach-policy'
@@ -105,6 +106,29 @@ export function readMainInstance(tab: PersistedTab): PersistedConversationInstan
   const pane = tab.conversationPane
   if (!pane || pane.instances.length === 0) return null
   return pane.instances.find((i) => i.id === 'main') ?? pane.instances[0]
+}
+
+/**
+ * The persisted pending card for an instance, narrowed to the entries that
+ * still await the user. A file written before `permissionDenied` was limited
+ * to plan and question cards can hold a refused tool with no card; restoring
+ * it would show an approval nobody can answer, on every client.
+ */
+export function restoredPendingCard(
+  inst: Pick<PersistedConversationInstance, 'permissionDenied'> | null | undefined,
+  tabId: string,
+): NonNullable<PersistedConversationInstance['permissionDenied']> | null {
+  const persisted = inst?.permissionDenied
+  const card = pendingUserCardDenial(persisted)
+  const persistedCount = persisted?.tools?.length ?? 0
+  if (persistedCount > (card?.tools.length ?? 0)) {
+    rInfo('restore', 'persisted denials without a user card dropped', {
+      tab_id: tabId.slice(0, 8),
+      persisted: (persisted?.tools ?? []).map((t) => t.toolName).join(','),
+      kept: (card?.tools ?? []).map((t) => t.toolName).join(','),
+    })
+  }
+  return card
 }
 
 /**

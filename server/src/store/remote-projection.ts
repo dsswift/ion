@@ -159,27 +159,22 @@ function projectTab(t: TabState, s: ProjectionStoreState, resolvedModels: Record
   // not silently parked on a mobile client.
   const elicitQueue = (activeInst?.elicitationQueue ?? []).slice()
 
-  // Promote the active instance's non-interactive denials into the queue so
-  // the iOS card path (which keys off the tab-level queue) works uniformly
-  // for every tab. An extension-hosted tab stamps the promoted entry with
-  // instanceId so iOS can scope the card to the owning sub-conversation; a
-  // plain conversation's single main instance carries the denial and omits
-  // the scope (so the iOS active-instance filter passes). The per-instance
-  // waitingState (set below on conversationInstances[i]) drives the iOS
-  // sub-tab pill; the parent pill glows because the denial is in the queue.
-  // TAB-TYPE-AGNOSTIC for idle/completed: a plain conversation can run
-  // background sub-agents whose denials must still reach iOS after the run
-  // finishes — do NOT weaken the idle/completed promotion path.
+  // Promote the active instance's pending plan / question card into the
+  // queue so the iOS card path (which keys off the tab-level queue) works
+  // uniformly for every tab. permissionDenied holds only those two cards
+  // (pendingUserCardDenial, shared/pending-card.ts), so every promoted entry
+  // is one the phone can answer. An extension-hosted tab stamps the promoted
+  // entry with instanceId so iOS can scope the card to the owning
+  // sub-conversation; a plain conversation's single main instance carries the
+  // denial and omits the scope (so the iOS active-instance filter passes). The
+  // per-instance waitingState (set below on conversationInstances[i]) drives
+  // the iOS sub-tab pill; the parent pill glows because the denial is in the
+  // queue. TAB-TYPE-AGNOSTIC for idle/completed: a card left by a finished
+  // run, plain or extension-hosted, must still reach iOS.
   if (activeInst && !isDenialPromotionSuppressed(t.status)) {
     const pdTools = activeInst.permissionDenied?.tools
     if (pdTools && pdTools.length > 0) {
       for (const pd of pdTools) {
-        // TAB-TYPE-AGNOSTIC: every outstanding denial surfaces to the iOS
-        // card queue, plain or extension-hosted. A plain conversation can run
-        // background sub-agents that produce non-plan tool denials, so a
-        // completed plain conversation's denials must reach iOS too. (A prior
-        // filter dropped all but ExitPlanMode / AskUserQuestion denials for
-        // completed plain conversations — fixed.)
         const pdEntryOut: ProjectedPermissionEntry = {
           questionId: 'denied-' + pd.toolUseId,
           toolName: pd.toolName,

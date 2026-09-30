@@ -121,10 +121,11 @@ describe('task_complete.permissionDenials → active instance.permissionDenied',
     expect(getPermissionDenied(state, 'tab1')?.tools[0].toolName).toBe('ExitPlanMode')
   })
 
-  it('task_complete with non-interactive tool denials (Read, Bash) DOES set permissionDenied (no filtering in normalized path)', () => {
-    // WI-001 change: the normalized path does NOT filter tool names.
-    // The engine only emits interactive-tool denials in practice, so filtering
-    // is not needed at the desktop layer.
+  it('task_complete with only refused tools (Read, Bash) sets no card', () => {
+    // permissionDenials records every tool call refused during the run. The
+    // claude-code backend reports each one the provider CLI refused, including
+    // tools the engine gate rejected mid-run. None of these is a question the
+    // user can answer, so none may become a card.
     const { state, slice } = buildHarness()
 
     slice.handleNormalizedEvent('tab1', {
@@ -139,9 +140,30 @@ describe('task_complete.permissionDenials → active instance.permissionDenied',
       ],
     } as any)
 
-    // The normalized path does not filter: both denials are stored.
-    expect(getPermissionDenied(state, 'tab1')).not.toBeNull()
-    expect(getPermissionDenied(state, 'tab1')!.tools).toHaveLength(2)
+    expect(getPermissionDenied(state, 'tab1')).toBeNull()
+  })
+
+  it('task_complete with a plan card and a refused tool keeps only the plan card', () => {
+    // The reported case: a gated Monitor call early in the run rode the final
+    // task_complete beside nothing else; here it rides beside a real plan so
+    // the narrowing, not the empty-list branch, is what is pinned.
+    const { state, slice } = buildHarness()
+
+    slice.handleNormalizedEvent('tab1', {
+      type: 'task_complete',
+      sessionId: 'sess-1',
+      costUsd: 0,
+      durationMs: 0,
+      numTurns: 1,
+      permissionDenials: [
+        { toolName: 'Monitor', toolUseId: 'tu-5', toolInput: { command: 'kubectl get pods' } },
+        { toolName: 'ExitPlanMode', toolUseId: 'tu-6', toolInput: { planFilePath: '/p.md' } },
+      ],
+    } as any)
+
+    const entry = getPermissionDenied(state, 'tab1')
+    expect(entry).not.toBeNull()
+    expect(entry!.tools.map((t) => t.toolName)).toEqual(['ExitPlanMode'])
   })
 
   it('task_complete without denials PRESERVES an unanswered user card, and CLEARS run-scoped residue', () => {

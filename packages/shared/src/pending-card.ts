@@ -113,9 +113,25 @@ export interface PendingCardDenial {
  * genuinely different proposal may retire it.
  */
 export function isPendingUserCardDenial(denial: PendingCardDenial | null | undefined): boolean {
-  const tools = denial?.tools
-  if (!tools || tools.length === 0) return false
-  return tools.some((t) => (PENDING_CARD_TOOLS as readonly string[]).includes(t.toolName))
+  return pendingUserCardDenial(denial) !== null
+}
+
+/**
+ * Narrow a denial list to the entries that still await the user, or null when
+ * none do. This is the only shape `permissionDenied` may hold.
+ *
+ * The engine's `permissionDenials` is a record of every tool call refused
+ * during a run. A backend can report refusals the user never saw and cannot
+ * act on — a tool the engine's gate rejected, a tool the provider CLI denied
+ * — and the run has already moved past each one. Only an AskUserQuestion or
+ * ExitPlanMode entry is an open question with a card to answer it. Storing
+ * any other entry makes every client show an approval that has no controls.
+ */
+export function pendingUserCardDenial<T extends { toolName: string }>(
+  denial: { tools?: ReadonlyArray<T> } | null | undefined,
+): { tools: T[] } | null {
+  const tools = (denial?.tools ?? []).filter((t) => (PENDING_CARD_TOOLS as readonly string[]).includes(t.toolName))
+  return tools.length > 0 ? { tools } : null
 }
 
 /**

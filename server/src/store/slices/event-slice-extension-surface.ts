@@ -15,7 +15,7 @@ import type { NormalizedEvent } from '@ion/shared/types-events'
 import { nextMsgId } from '../session-store-helpers'
 import { rInfo, rTrace, rWarn } from '../rendererLogger'
 import { logTabStatusPatch } from './tab-status-transition'
-import { isPendingUserCardDenial } from '@ion/shared/pending-card'
+import { isPendingUserCardDenial, pendingUserCardDenial } from '@ion/shared/pending-card'
 import { formatDispatchLostDivider } from '@ion/shared/clear-divider'
 
 /**
@@ -117,11 +117,12 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
         const retained = event.fields.permissionDenials
         const held =
           'permissionDenied' in ctx.instPatch ? ctx.instPatch.permissionDenied : ctx.inst0?.permissionDenied
-        if (isPendingUserCardDenial({ tools: retained }) && !isPendingUserCardDenial(held)) {
-          ctx.instPatch.permissionDenied = { tools: retained! }
+        const retainedCard = pendingUserCardDenial({ tools: retained })
+        if (retainedCard && !isPendingUserCardDenial(held)) {
+          ctx.instPatch.permissionDenied = retainedCard
           rInfo('event.status', 'restored pending user card from retained denials', {
             tab_id: tabId,
-            tools: (retained ?? []).map((t) => t.toolName).join(','),
+            tools: retainedCard.tools.map((t) => t.toolName).join(','),
           })
         }
       }

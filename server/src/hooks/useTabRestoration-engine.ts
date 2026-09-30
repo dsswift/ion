@@ -5,7 +5,7 @@
 import { restoredConversationPreferences } from '../conversation-preferences'
 import type { Message, AgentStateUpdate, ConversationInstance, ConversationRef } from '@ion/shared/types'
 import { restoredInboxTabFields } from './tab-inbox-restore'
-import { resolvedInputLock } from './useTabRestoration-helpers'
+import { resolvedInputLock, restoredPendingCard } from './useTabRestoration-helpers'
 import type { PersistedTab, PersistedConversationInstance } from '@ion/shared/types-persistence'
 import { useSessionStore } from '../store/sessionStore'
 import { usePreferencesStore } from '../persistence/preferences'
@@ -566,14 +566,15 @@ export function buildPopulatedInstance(
 
   // Resolve denied permission: authoritative from instance, then synthesize.
   let denied: { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null = null
-  if (inst.permissionDenied?.tools && inst.permissionDenied.tools.length > 0 && persistedPlanCardIsStale(inst.messages)) {
+  const persistedCard = restoredPendingCard(inst, tabId)
+  if (persistedCard && persistedPlanCardIsStale(inst.messages)) {
     // The persisted card's plan was already implemented (and nothing newer is
     // pending). Trusting it would resurrect a Plan Ready card on a completed,
     // auto-mode conversation — the desktop side of the reported stale-card bug.
     rDebug('restore', 'engine denial dropped: plan already implemented', { tab_id: tabId.slice(0, 8), inst_id: inst.id.slice(0, 8) })
-  } else if (inst.permissionDenied?.tools && inst.permissionDenied.tools.length > 0) {
-    denied = { tools: inst.permissionDenied.tools }
-    rDebug('restore', 'engine denial', { tab_id: tabId.slice(0, 8), inst_id: inst.id.slice(0, 8), tools: inst.permissionDenied.tools.map((t) => t.toolName).join(',') })
+  } else if (persistedCard) {
+    denied = persistedCard
+    rDebug('restore', 'engine denial', { tab_id: tabId.slice(0, 8), inst_id: inst.id.slice(0, 8), tools: persistedCard.tools.map((t) => t.toolName).join(',') })
   } else {
     // Synthesize from message history (the engine reconcile only re-emits
     // from in-memory state; on restart that's empty).
