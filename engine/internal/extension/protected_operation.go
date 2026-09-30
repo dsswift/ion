@@ -94,7 +94,10 @@ func DoProtectedOperation(ctx context.Context, params ProtectedOperationParams) 
 		})
 		return nil, fmt.Errorf("protected operation %q is misconfigured: %w", params.Name, err)
 	}
-	body, err := validateProtectedPayload(op.BodySchema, params.Payload)
+	body, instance, err := validateProtectedPayload(op.BodySchema, params.Payload)
+	if err == nil {
+		target, err = expandProtectedPath(op.URL, target, instance)
+	}
 	if err != nil {
 		utils.LogWithFields(utils.LevelInfo, "extension.protected_operation", "protected operation refused: payload rejected", map[string]any{
 			"operation": params.Name, "subject": subject, "error": err.Error(),
@@ -115,6 +118,10 @@ func DoProtectedOperation(ctx context.Context, params ProtectedOperationParams) 
 	redact := protectedSecretRedactor(secret)
 
 	method := strings.ToUpper(op.Method)
+	if method == http.MethodGet || method == http.MethodHead {
+		// These methods carry no body; the payload only fills the path.
+		body = nil
+	}
 	timeout := operatorHTTPDefaultTimeout
 	if op.TimeoutMs > 0 {
 		timeout = time.Duration(op.TimeoutMs) * time.Millisecond
@@ -150,7 +157,7 @@ func DoProtectedOperation(ctx context.Context, params ProtectedOperationParams) 
 	}
 
 	utils.LogWithFields(utils.LevelInfo, "extension.protected_operation", "protected operation request", map[string]any{
-		"operation": params.Name, "subject": subject, "method": method, "url": op.URL, "bytes": len(body),
+		"operation": params.Name, "subject": subject, "method": method, "url": op.URL, "path": target.Path, "bytes": len(body),
 	})
 
 	client := &http.Client{
@@ -233,6 +240,9 @@ func validateProtectedOperation(op types.ProtectedOperationConfig) (*url.URL, er
 	if target.Scheme != "http" && target.Scheme != "https" {
 		return nil, fmt.Errorf("only http/https destinations are allowed, got %q", target.Scheme)
 	}
+	if err := validateProtectedPathTemplate(target); err != nil {
+		return nil, err
+	}
 	if !op.AllowPrivateNetwork && tools.IsBlockedHost(target.Hostname()) {
 		return nil, fmt.Errorf("private/reserved address %q (set allowPrivateNetwork to reach intranet APIs)", target.Hostname())
 	}
@@ -240,34 +250,35 @@ func validateProtectedOperation(op types.ProtectedOperationConfig) (*url.URL, er
 }
 
 // validateProtectedPayload checks payload against schema and returns the body
-// to send, or nil for an absent or null payload that the schema accepts.
-func validateProtectedPayload(schemaMap map[string]any, payload json.RawMessage) ([]byte, error) {
+// to send (nil for an absent or null payload the schema accepts) and the
+// decoded payload.
+func validateProtectedPayload(schemaMap map[string]any, payload json.RawMessage) ([]byte, any, error) {
 	schemaJSON, err := json.Marshal(schemaMap)
 	if err != nil {
-		return nil, fmt.Errorf("encode bodySchema: %w", err)
+		return nil, nil, fmt.Errorf("encode bodySchema: %w", err)
 	}
 	var schema jsonschema.Schema
 	if err := json.Unmarshal(schemaJSON, &schema); err != nil {
-		return nil, fmt.Errorf("decode bodySchema: %w", err)
+		return nil, nil, fmt.Errorf("decode bodySchema: %w", err)
 	}
 	resolved, err := schema.Resolve(nil)
 	if err != nil {
-		return nil, fmt.Errorf("resolve bodySchema: %w", err)
+		return nil, nil, fmt.Errorf("resolve bodySchema: %w", err)
 	}
 	var instance any
 	trimmed := strings.TrimSpace(string(payload))
 	if trimmed != "" {
 		if err := json.Unmarshal([]byte(trimmed), &instance); err != nil {
-			return nil, fmt.Errorf("payload is not valid JSON: %w", err)
+			return nil, nil, fmt.Errorf("payload is not valid JSON: %w", err)
 		}
 	}
 	if err := resolved.Validate(instance); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if instance == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
-	return []byte(trimmed), nil
+	return []byte(trimmed), instance, nil
 }
 
 // protectedSecretRedactor returns a function that replaces the secret and its

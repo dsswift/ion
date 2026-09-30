@@ -99,7 +99,7 @@ func echoServer(t *testing.T, hits *atomic.Int32) *httptest.Server {
 		w.Header().Set("X-Echo-Key", r.Header.Get("X-Api-Key"))
 		w.Header().Set("Content-Type", "application/json")
 		out, _ := json.Marshal(map[string]any{ //nolint:errcheck // test echo
-			"method": r.Method, "key": r.Header.Get("X-Api-Key"), "query": r.URL.RawQuery,
+			"method": r.Method, "key": r.Header.Get("X-Api-Key"), "query": r.URL.RawQuery, "path": r.URL.EscapedPath(),
 			"contentType": r.Header.Get("Content-Type"), "fixed": r.Header.Get("X-Fixed"), "body": string(body),
 		})
 		w.WriteHeader(http.StatusAccepted)
@@ -280,6 +280,8 @@ func TestProtectedOperation_RejectsInvalidDeclarations(t *testing.T) {
 			op.URL = "http://127.0.0.1/v1"
 			op.AllowPrivateNetwork = false
 		},
+		"param in host":  func(op *types.ProtectedOperationConfig) { op.URL = "https://{tenant}.example.com/v1" },
+		"param in query": func(op *types.ProtectedOperationConfig) { op.URL = "https://example.invalid/v1?to={dest}" },
 	}
 	for name, mutate := range cases {
 		op := base
@@ -308,5 +310,49 @@ func TestProtectedOperation_ReadsTheDeclaredSecretSource(t *testing.T) {
 	// redaction proves that value, not the credential-store one, was sent.
 	if res.Headers["X-Echo-Key"] != protectedOperationRedaction {
 		t.Fatalf("declared source not used: %q", res.Headers["X-Echo-Key"])
+	}
+}
+
+func pathOp(target string) types.ProtectedOperationConfig {
+	op := headerOp(target)
+	op.Method = "GET"
+	op.BodySchema = map[string]any{"type": "object", "required": []any{"id"}}
+	return op
+}
+
+func TestProtectedOperation_FillsPathTemplate(t *testing.T) {
+	var hits atomic.Int32
+	srv := echoServer(t, &hits)
+	useProtectedOperations(t, map[string]types.ProtectedOperationConfig{"get-item": pathOp(srv.URL + "/v1/items/{id}/v{version}")},
+		map[string]string{"||metrics-api-key": testProtectedSecret})
+
+	res, err := DoProtectedOperation(context.Background(), ProtectedOperationParams{Name: "get-item", Payload: json.RawMessage(`{"id":"a/b c","version":7}`)})
+	if err != nil {
+		t.Fatalf("DoProtectedOperation: %v", err)
+	}
+	var echoed map[string]string
+	if err := json.Unmarshal([]byte(res.Body), &echoed); err != nil {
+		t.Fatalf("decode echo: %v", err)
+	}
+	// A slash in a value stays inside its segment, and GET carries no body.
+	if echoed["path"] != "/v1/items/a%2Fb%20c/v7" || echoed["method"] != "GET" || echoed["body"] != "" {
+		t.Fatalf("template not filled safely: %+v", echoed)
+	}
+}
+
+func TestProtectedOperation_RejectsBadPathValuesBeforeDispatch(t *testing.T) {
+	var hits atomic.Int32
+	srv := echoServer(t, &hits)
+	useProtectedOperations(t, map[string]types.ProtectedOperationConfig{"get-item": pathOp(srv.URL + "/v1/items/{id}")},
+		map[string]string{"||metrics-api-key": testProtectedSecret})
+
+	for _, payload := range []string{`{"id":".."}`, `{"id":"."}`, `{"id":""}`, `{"id":true}`, `{"id":{"x":1}}`, `{"other":1,"id":null}`} {
+		_, err := DoProtectedOperation(context.Background(), ProtectedOperationParams{Name: "get-item", Payload: json.RawMessage(payload)})
+		if err == nil || !strings.Contains(err.Error(), "payload rejected") {
+			t.Fatalf("payload %s: want rejection, got %v", payload, err)
+		}
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("rejected path values reached the destination %d times", hits.Load())
 	}
 }
