@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.0.2](https://github.com/dsswift/ion/compare/desktop-v2.0.1...desktop-v2.0.2) (2026-09-30)
+
+### Bug Fixes
+
+* **server:** welcome clients with the loaded enterprise policy ([9c6f5b1](https://github.com/dsswift/ion/commit/9c6f5b11cfbee0ffd75854665f81bc4b858b5b7f))
+
 ## [2.0.1](https://github.com/dsswift/ion/compare/desktop-v2.0.0...desktop-v2.0.1) (2026-09-29)
 
 ### Bug Fixes
