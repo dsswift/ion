@@ -202,10 +202,11 @@ type Context struct {
 	// with optional extension loading, system prompt injection, and event streaming.
 	DispatchAgent func(opts DispatchAgentOpts) (*DispatchAgentResult, error)
 
-	// RecallAgent retains the published name-addressed recall surface. When
-	// several dispatches share a name, one matching live dispatch is recalled.
-	// Prefer RecallDispatch when the caller has an exact dispatch identity.
-	RecallAgent func(name string, opts RecallAgentOpts) (bool, error)
+	// RecallAgent is the name-addressed recall. It recalls only when exactly
+	// one live dispatch carries the name. When several do, nothing is recalled
+	// and the result's Outcome is "ambiguous" with every matching dispatch ID,
+	// so the caller can retry with RecallDispatch against the one it means.
+	RecallAgent func(name string, opts RecallAgentOpts) (RecallAgentResult, error)
 
 	// RecallDispatch terminates a running background dispatch identified by
 	// its dispatchId. A root context can recall every dispatch in its session;
@@ -230,10 +231,11 @@ type Context struct {
 	// dispatch identified by its agent name. This is the name-based peer of
 	// SteerDispatch: where SteerDispatch requires the full collision-safe
 	// dispatch ID returned by DispatchAgent, SteerDispatchByName resolves
-	// by the human-readable agent name (e.g. "code-reviewer"). When multiple
-	// dispatches share a name, the first one found is steered (matching
-	// SteerDispatchByName's non-deterministic name-based semantics). Use SteerDispatch
-	// when the exact dispatch ID is available for precise targeting.
+	// by the human-readable agent name (e.g. "code-reviewer"). It delivers only
+	// when exactly one live dispatch carries the name. When several do, nothing
+	// is delivered and the result's Outcome is "ambiguous" with every matching
+	// dispatch ID in MatchingDispatchIDs. Use SteerDispatch when the exact
+	// dispatch ID is available.
 	SteerDispatchByName func(name, message string) (SteerDispatchResult, error)
 
 	// SteerSelf delivers a message to the run that OWNS this context, with the
@@ -287,13 +289,19 @@ type Context struct {
 	// recover details from earlier in the conversation.
 	SearchHistory func(query string, maxResults int) ([]HistoryMatch, error)
 
-	// ListDispatchState returns a point-in-time snapshot of every dispatch
-	// currently active in this session's DispatchRegistry. All returned
-	// entries carry Status="running" because the registry only tracks
-	// in-flight dispatches — terminal entries are deregistered on completion.
-	// Returns nil when dispatch support is not wired (e.g. a child session
-	// whose context was built without a registry).
+	// ListDispatchState returns a point-in-time snapshot of every in-flight
+	// dispatch this context owns in the session's DispatchRegistry. Entries
+	// are "running" or "suspended"; terminal dispatches are never listed here
+	// (ListDispatchHistory returns them). Nil when dispatch support is not
+	// wired (e.g. a child session whose context was built without a registry).
 	ListDispatchState func() ([]DispatchStateEntry, error)
+
+	// ListDispatchHistory returns the retained terminal dispatches this
+	// context owns, oldest completion first: the root context sees every
+	// one, a dispatched agent only its strict descendants. Retention is
+	// bounded by the engine config's dispatchHistory block. Nil when dispatch
+	// support is not wired.
+	ListDispatchHistory func() ([]DispatchHistoryEntry, error)
 
 	// GetSessionMemory returns the current session memory content for this
 	// session. Returns empty string when session memory is not active or
@@ -577,6 +585,38 @@ type DispatchStateEntry struct {
 	// complete task-and-child wait metadata for parked dispatches.
 	PendingChildren []string           `json:"pendingChildren,omitempty"`
 	WaitingOn       *DispatchWaitingOn `json:"waitingOn,omitempty"`
+}
+
+// DispatchHistoryEntry is one retained terminal dispatch, returned by
+// Context.ListDispatchHistory. It keeps the identity and lineage of the live
+// entry, so a completed dispatch tree can be rebuilt after it finished.
+type DispatchHistoryEntry struct {
+	// DispatchID is the collision-safe unique ID of the dispatch instance.
+	DispatchID string `json:"dispatchId"`
+	// Name is the agent name (e.g. "code-reviewer").
+	Name string `json:"name"`
+	// Status is the final status: "done", "error", or "cancelled".
+	Status string `json:"status"`
+	// Reason is the terminal reason: the error text for "error", the recall
+	// reason for "cancelled". Absent for a clean "done".
+	Reason string `json:"reason,omitempty"`
+	// ExitCode is the dispatch result's exit code.
+	ExitCode int `json:"exitCode"`
+	// ParentDispatchID is the parent dispatch's ID, empty for top-level
+	// dispatches whose parent is the depth-0 orchestrator.
+	ParentDispatchID string `json:"parentDispatchId,omitempty"`
+	// Depth is the nesting depth: 1 = direct child of the orchestrator.
+	Depth int `json:"depth"`
+	// StartedAt is the UTC RFC3339Nano time the dispatch was registered.
+	StartedAt string `json:"startedAt"`
+	// CompletedAt is the UTC RFC3339Nano time the dispatch became terminal.
+	CompletedAt string `json:"completedAt"`
+	// DurationMs is CompletedAt minus StartedAt in milliseconds.
+	DurationMs int64 `json:"durationMs"`
+	// ToolCount is the tool calls the dispatch had executed when it ended.
+	ToolCount int `json:"toolCount"`
+	// ChildConversationID is the child session's conversation ID, when known.
+	ChildConversationID string `json:"childConversationId,omitempty"`
 }
 
 // DispatchWaitingOn identifies work holding a dispatch parked.

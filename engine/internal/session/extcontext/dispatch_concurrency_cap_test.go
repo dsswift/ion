@@ -100,7 +100,7 @@ func TestCountLiveByNameUnderParent_DropsOnDeregister(t *testing.T) {
 	if got := r.CountLiveByNameUnderParent("secret-service", ""); got != 1 {
 		t.Fatalf("pre-deregister count = %d, want 1", got)
 	}
-	r.Deregister("d-1")
+	r.Deregister("d-1", DispatchOutcome{Status: DispatchStatusDone})
 	if got := r.CountLiveByNameUnderParent("secret-service", ""); got != 0 {
 		t.Errorf("post-deregister count = %d, want 0; the slot must free when the dispatch ends", got)
 	}

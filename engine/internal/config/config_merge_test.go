@@ -402,6 +402,7 @@ func TestMergeConfigs_OptionalPointerBlocksSurvive(t *testing.T) {
 		Scheduling:      &types.SchedulingConfig{DefaultTz: "America/Chicago"},
 		BackgroundTasks: &types.BackgroundTasksConfig{MaxOutstandingPerSession: 9},
 		Poll:            &types.PollConfig{MaxAttempts: 2},
+		DispatchHistory: &types.DispatchHistoryConfig{MaxEntries: 7},
 		ThinkingPolicy:  &types.ThinkingPolicyConfig{Disabled: true},
 	}
 	result := MergeConfigs(nil, base, overlay)
@@ -429,6 +430,9 @@ func TestMergeConfigs_OptionalPointerBlocksSurvive(t *testing.T) {
 	}
 	if result.Poll == nil || result.Poll.MaxAttempts != 2 {
 		t.Error("Poll block dropped by merge")
+	}
+	if result.DispatchHistory == nil || result.DispatchHistory.MaxEntries != 7 {
+		t.Error("DispatchHistory block dropped by merge")
 	}
 	if result.ThinkingPolicy == nil || !result.ThinkingPolicy.Disabled {
 		t.Error("ThinkingPolicy block dropped by merge")

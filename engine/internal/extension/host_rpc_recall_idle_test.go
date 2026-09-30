@@ -47,9 +47,9 @@ func TestRecallAgentWorksWhenParentIdle(t *testing.T) {
 	h := NewHost()
 	ch := attachStdout(h)
 	var gotName, gotReason string
-	h.SetPersistentRecall(func(name, reason string) (bool, error) {
+	h.SetPersistentRecall(func(name, reason string) (RecallAgentResult, error) {
 		gotName, gotReason = name, reason
-		return true, nil
+		return RecallAgentResult{Found: true, Outcome: "recalled"}, nil
 	})
 	raw := []byte(`{"jsonrpc":"2.0","id":1,"method":"ext/recall_agent","params":{"name":"watchdog-agent","reason":"timeout"}}`)
 	h.handleExtRequest("ext/recall_agent", 1, raw)
@@ -84,5 +84,27 @@ func TestRecallMethodsRejectUnavailableAndMissingIdentity(t *testing.T) {
 				t.Fatalf("response = %#v, want error", response)
 			}
 		})
+	}
+}
+
+// TestRecallAgentAmbiguousWireShape pins the ext/recall_agent response for an
+// ambiguous name: found stays false, outcome is "ambiguous", and the matching
+// dispatch IDs ride along so the caller can retry by ID.
+func TestRecallAgentAmbiguousWireShape(t *testing.T) {
+	h := NewHost()
+	ch := attachStdout(h)
+	h.SetPersistentRecall(func(name, reason string) (RecallAgentResult, error) {
+		return RecallAgentResult{Outcome: "ambiguous", MatchingDispatchIDs: []string{"d-1", "d-2"}}, nil
+	})
+	raw := []byte(`{"jsonrpc":"2.0","id":1,"method":"ext/recall_agent","params":{"name":"worker"}}`)
+	h.handleExtRequest("ext/recall_agent", 1, raw)
+	response := readResponse(t, ch, time.Second)
+	result, ok := response["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("response = %#v, want a result", response)
+	}
+	ids, _ := result["matchingDispatchIds"].([]interface{}) //nolint:errcheck // shape asserted below
+	if result["found"] != false || result["outcome"] != "ambiguous" || len(ids) != 2 || ids[0] != "d-1" || ids[1] != "d-2" {
+		t.Fatalf("result = %#v, want {found:false, outcome:ambiguous, matchingDispatchIds:[d-1 d-2]}", result)
 	}
 }

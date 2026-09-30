@@ -1,8 +1,6 @@
 package extcontext
 
 import (
-	"time"
-
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -13,8 +11,10 @@ import (
 // change.
 
 // SteerDispatchOutcome is a string-typed enum describing how a
-// SteerByID call was resolved. It mirrors the backend.SteerResult
-// values with an additional "not_found" for registry-level misses.
+// SteerByID or SteerByName call was resolved. It mirrors the
+// backend.SteerResult values with an additional "not_found" for
+// registry-level misses and "ambiguous" for a name that matches more than one
+// live dispatch.
 type SteerDispatchOutcome string
 
 const (
@@ -29,6 +29,10 @@ const (
 	SteerOutcomeNoRun SteerDispatchOutcome = "no_run"
 	// SteerOutcomeNotFound: no dispatch with that ID exists in the registry.
 	SteerOutcomeNotFound SteerDispatchOutcome = "not_found"
+	// SteerOutcomeAmbiguous: SteerByName matched more than one live dispatch.
+	// Nothing was delivered; the matching IDs come back with the outcome so
+	// the caller can retry against one with SteerByID.
+	SteerOutcomeAmbiguous SteerDispatchOutcome = "ambiguous"
 )
 
 // Steerable is a narrow interface for backends that support in-process
@@ -116,51 +120,27 @@ func (r *DispatchRegistry) SteerByIDWithKind(dispatchID, message, kind string) S
 }
 
 // SteerByName delivers a steering message to a running background dispatch
-// identified by its agent name. When several dispatches share a name it
-// selects the MOST RECENTLY STARTED one (StartedAt, with the dispatch ID as a
-// deterministic tiebreak for same-instant starts), then delegates to
-// SteerByID. Returns SteerOutcomeNotFound when no dispatch with that name
-// exists.
-//
-// Most-recent is the rule because it is the only one that matches how a
-// name-addressed steer is actually meant: the caller re-dispatched an agent and
-// is steering the dispatch it just created. Selection used to be the first
-// entry a Go map-range happened to yield, which is randomized per iteration by
-// the runtime — so with two live same-name dispatches the steer landed on a
-// coin flip, and the same call could reach a different agent each time with no
-// way for the caller to tell which. Ordering it makes the choice explainable
-// and repeatable.
-//
-// Name addressing remains inherently ambiguous, and SteerByID is still the
-// precise verb. This makes the ambiguity resolve predictably instead of
-// randomly; it does not make a name a dispatch identity.
-func (r *DispatchRegistry) SteerByName(name, message string) SteerDispatchOutcome {
+// identified by its agent name. It delivers only when exactly one live
+// dispatch carries the name, delegating to SteerByID. When several do, it
+// delivers nothing and returns SteerOutcomeAmbiguous with every matching
+// dispatch ID, sorted: choosing one would put the message in front of an
+// agent the caller may not have meant, and the caller would be told it
+// succeeded. Returns SteerOutcomeNotFound when no dispatch carries the name.
+// The returned IDs are nil unless the outcome is ambiguous.
+func (r *DispatchRegistry) SteerByName(name, message string) (SteerDispatchOutcome, []string) {
 	r.mu.Lock()
-	var foundID string
-	var foundAt time.Time
-	candidates := 0
-	for id, d := range r.dispatches {
-		if d.Name != name {
-			continue
-		}
-		candidates++
-		// Strictly-later wins; on an exact StartedAt tie fall back to the
-		// larger ID so the choice is total and stable rather than
-		// map-order-dependent. Both dispatch IDs embed a millisecond
-		// timestamp, so the larger string is also the later dispatch.
-		if foundID == "" || d.StartedAt.After(foundAt) || (d.StartedAt.Equal(foundAt) && id > foundID) {
-			foundID, foundAt = id, d.StartedAt
-		}
-	}
+	matches := r.liveIDsByNameLocked(name)
 	r.mu.Unlock()
 
-	if foundID == "" {
+	switch len(matches) {
+	case 0:
 		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerbyname: not found", map[string]any{"model": name, "count": len(message), "steer_outcome_not_found": SteerOutcomeNotFound})
-		return SteerOutcomeNotFound
+		return SteerOutcomeNotFound, nil
+	case 1:
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerbyname: resolved unique name match", map[string]any{"model": name, "run_id": matches[0]})
+		return r.SteerByID(matches[0], message), nil
+	default:
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerbyname: ambiguous name, nothing delivered", map[string]any{"model": name, "max": len(matches), "dispatch_ids": matches})
+		return SteerOutcomeAmbiguous, matches
 	}
-
-	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerbyname: resolved to most recently started dispatch", map[string]any{
-		"model": name, "run_id": foundID, "max": candidates, "started_at": foundAt.UTC().Format(time.RFC3339Nano),
-	})
-	return r.SteerByID(foundID, message)
 }

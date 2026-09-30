@@ -954,6 +954,26 @@ is one way: an enterprise `disabled: true` cannot be re-enabled by a user or
 project layer, while an enterprise block with `disabled: false` is a ceiling
 rather than a mandate and leaves a locally-disabled install disabled.
 
+## dispatchHistory
+
+Bounds the record of ended dispatches each session keeps. When a dispatch ends, it leaves the live dispatch list and an entry with its final status, reason, completion time, and lineage is kept. Extensions read it with `ext/list_dispatch_history` (`ctx.listDispatchHistory()` in TypeScript, `ctx.ListDispatchHistory` in Go). This block keeps that record from growing without limit.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `maxEntries` | int | `200` | Most ended dispatches kept per session. The oldest completions are dropped first. `0` uses the default. A negative value turns the record off. |
+| `maxAgeMs` | int | `3600000` | Drop an entry this many milliseconds after its dispatch ended. `0` uses the default. A negative value removes the age limit, leaving only `maxEntries`. |
+
+A more specific config layer replaces the whole block. The record lives in engine memory and does not survive an engine restart.
+
+```json
+{
+  "dispatchHistory": {
+    "maxEntries": 500,
+    "maxAgeMs": 86400000
+  }
+}
+```
+
 ## Full example
 
 A multi-provider configuration mixing a local Ollama model with a hosted OpenAI fallback. Pick whichever model fits the task and let the engine route to the right provider.

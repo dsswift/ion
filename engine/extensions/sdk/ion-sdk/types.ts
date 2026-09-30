@@ -570,11 +570,19 @@ export interface SteerDispatchResult {
   delivered: boolean
   /**
    * Delivery verdict. `steerDispatch` returns one of 'delivered',
-   * 'channel_full', 'no_run', 'not_found'. `steerSelf` returns 'steered'
-   * (injected onto a live owning run) or 'sent' (owning run was idle, so the
-   * message was delivered as a fresh prompt).
+   * 'channel_full', 'no_run', 'not_found'. `steerDispatchByName` returns the
+   * same set plus 'ambiguous' (several live dispatches carry the name; nothing
+   * was delivered). `steerSelf` returns 'steered' (injected onto a live owning
+   * run) or 'sent' (owning run was idle, so the message was delivered as a
+   * fresh prompt).
    */
-  outcome: 'delivered' | 'channel_full' | 'no_run' | 'not_found' | 'steered' | 'sent'
+  outcome: 'delivered' | 'channel_full' | 'no_run' | 'not_found' | 'ambiguous' | 'steered' | 'sent'
+  /**
+   * Set only when `outcome` is 'ambiguous': the dispatch ID of every live
+   * dispatch that carries the name. Retry with {@link IonContext.steerDispatch}
+   * against the one you mean.
+   */
+  matchingDispatchIds?: string[]
 }
 
 // --- Dispatch lifecycle callback payloads ---
@@ -789,8 +797,8 @@ export interface HistoryMatch {
  * - `name`: the agent name (e.g. `"code-reviewer"`).
  * - `status`: `"running"` for an actively working dispatch, `"suspended"` for
  *   a parked one (waiting on child dispatches or a revive message — alive,
- *   not terminal). Terminal entries are deregistered on completion and absent
- *   from the snapshot.
+ *   not terminal). Terminal dispatches are absent from this snapshot;
+ *   {@link IonContext.listDispatchHistory} returns them.
  * - `parentDispatchId`: the dispatch ID of the parent that spawned this dispatch.
  *   Empty for top-level dispatches (depth 1) whose parent is the depth-0
  *   orchestrator (which has no dispatch ID).
@@ -827,6 +835,34 @@ export interface DispatchEntry {
   childConversationId?: string
   pendingChildren?: string[]
   waitingOn?: DispatchWaitingOn
+}
+
+/**
+ * A retained terminal dispatch returned by {@link IonContext.listDispatchHistory}.
+ * It keeps the identity and lineage of the live entry, so a completed dispatch
+ * tree can be rebuilt after it finished.
+ *
+ * - `status`: final status, `"done"`, `"error"`, or `"cancelled"`.
+ * - `reason`: the error text for `"error"`, the recall reason for
+ *   `"cancelled"`. Absent for a clean `"done"`.
+ * - `exitCode`: the dispatch result's exit code.
+ * - `startedAt` / `completedAt`: UTC ISO-8601 (RFC3339Nano) timestamps.
+ * - `durationMs`: `completedAt` minus `startedAt`.
+ * - `toolCount`: tool calls the dispatch had executed when it ended.
+ */
+export interface DispatchHistoryEntry {
+  dispatchId: string
+  name: string
+  status: 'done' | 'error' | 'cancelled'
+  reason?: string
+  exitCode: number
+  parentDispatchId?: string
+  depth: number
+  startedAt: string
+  completedAt: string
+  durationMs: number
+  toolCount: number
+  childConversationId?: string
 }
 
 /** Complete task and child wait metadata for a parked dispatch. */
@@ -1328,11 +1364,11 @@ export interface IonContext extends DispatchControlContext {
    * its agent **name**. This is the name-based peer of {@link steerDispatch}:
    * where `steerDispatch` requires the full collision-safe dispatch ID returned
    * by {@link dispatchAgent}, `steerDispatchByName` resolves by the
-   * human-readable agent name (e.g. `'code-reviewer'`). When multiple
-   * dispatches share a name, the first one found is steered (non-deterministic
-   * order, matching {@link recallDispatch}'s name-based semantics). Use
-   * {@link steerDispatch} when the exact dispatch ID is available for precise
-   * targeting.
+   * human-readable agent name (e.g. `'code-reviewer'`). It delivers only when
+   * exactly one live dispatch carries the name. When several do, nothing is
+   * delivered: `outcome` is `'ambiguous'` and `matchingDispatchIds` lists every
+   * match, so you can retry with {@link steerDispatch}. Use
+   * {@link steerDispatch} when the exact dispatch ID is available.
    *
    * @param name    - The agent name as registered (e.g. `'code-reviewer'`).
    * @param message - The steering message to inject.
@@ -1541,8 +1577,8 @@ export interface IonContext extends DispatchControlContext {
   /**
    * Returns a point-in-time snapshot of every dispatch currently active in
    * this session's engine registry. Entries carry `status: "running"` while
-   * actively working and `status: "suspended"` while parked. Terminal entries
-   * are deregistered on completion and absent from the snapshot.
+   * actively working and `status: "suspended"` while parked. Terminal
+   * dispatches are absent; {@link IonContext.listDispatchHistory} returns them.
    *
    * Use this to enumerate running asynchronous agents and their nesting
    * relationships without subscribing to `engine_agent_state` events.
@@ -1554,6 +1590,19 @@ export interface IonContext extends DispatchControlContext {
    * does not support this RPC (older engine builds).
    */
   listDispatchState(): Promise<DispatchEntry[]>
+
+  /**
+   * Returns the retained terminal dispatches this context owns, oldest
+   * completion first: the root context sees every one, a dispatched agent only
+   * its strict descendants. Each entry carries its final status, reason,
+   * completion time, and lineage, so dispatches that started and ended between
+   * two polls are still visible. The engine bounds retention by its
+   * `dispatchHistory` config.
+   *
+   * Returns an empty array when nothing is retained or when the engine does
+   * not support this RPC (older engine builds).
+   */
+  listDispatchHistory(): Promise<DispatchHistoryEntry[]>
 
   /**
    * One-shot lightweight inference call. Fires a single round-trip to

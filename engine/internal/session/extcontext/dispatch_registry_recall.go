@@ -2,36 +2,69 @@ package extcontext
 
 import (
 	"fmt"
+	"sort"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// Recall retains the original name-addressed compatibility surface. When
-// several live dispatches share a name, it selects one registry entry as the
-// published API always did. New callers should use RecallByID for exact
-// instance control. Both paths share the same atomic teardown machinery.
-func (r *DispatchRegistry) Recall(name, reason string) bool {
-	r.mu.Lock()
-	var id string
-	for candidateID, dispatch := range r.dispatches {
-		if dispatch.Name == name {
-			id = candidateID
-			break
+// RecallOutcome is how a name-addressed Recall was resolved.
+type RecallOutcome string
+
+const (
+	// RecallOutcomeRecalled: exactly one live dispatch carried the name, and it
+	// (with its descendants) was recalled.
+	RecallOutcomeRecalled RecallOutcome = "recalled"
+	// RecallOutcomeNotFound: no live dispatch carries the name.
+	RecallOutcomeNotFound RecallOutcome = "not_found"
+	// RecallOutcomeAmbiguous: more than one live dispatch carries the name.
+	// Nothing was recalled; the matching IDs are returned so the caller can
+	// retry against one with RecallByID.
+	RecallOutcomeAmbiguous RecallOutcome = "ambiguous"
+)
+
+// liveIDsByNameLocked returns the IDs of every live dispatch (reserved
+// placeholders included) whose name is exactly name, sorted. Caller must hold
+// r.mu.
+func (r *DispatchRegistry) liveIDsByNameLocked(name string) []string {
+	var ids []string
+	for id, d := range r.dispatches {
+		if d.Name == name {
+			ids = append(ids, id)
 		}
 	}
-	if id == "" {
+	sort.Strings(ids)
+	return ids
+}
+
+// Recall is the name-addressed recall. It acts only when exactly one live
+// dispatch carries the name. When several do, it recalls nothing and returns
+// RecallOutcomeAmbiguous with every matching dispatch ID: choosing one would
+// cancel a dispatch the caller may not have meant, and nothing would report
+// it. The returned IDs are nil unless the outcome is ambiguous.
+func (r *DispatchRegistry) Recall(name, reason string) (RecallOutcome, []string) {
+	r.mu.Lock()
+	matches := r.liveIDsByNameLocked(name)
+	switch len(matches) {
+	case 0:
 		r.mu.Unlock()
 		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recall: not found", map[string]any{"agent_name": name, "reason": reason})
-		return false
+		return RecallOutcomeNotFound, nil
+	case 1:
+	default:
+		r.mu.Unlock()
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recall: ambiguous name, nothing recalled", map[string]any{"agent_name": name, "reason": reason, "count": len(matches), "dispatch_ids": matches})
+		return RecallOutcomeAmbiguous, matches
 	}
-	recall := r.takeRecallLocked(id)
+	id := matches[0]
+	recall := r.takeRecallLocked(id, reason)
 	r.mu.Unlock()
 	if recall == nil {
-		return false
+		return RecallOutcomeNotFound, nil
 	}
-	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recall: selected name match", map[string]any{"agent_name": name, "dispatch_id": id, "reason": reason})
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recall: selected unique name match", map[string]any{"agent_name": name, "dispatch_id": id, "reason": reason})
 	r.executeRecall(recall, reason)
-	return true
+	return RecallOutcomeRecalled, nil
 }
 
 // RecallByID cancels one active dispatch by its collision-safe dispatch ID.
@@ -40,7 +73,7 @@ func (r *DispatchRegistry) Recall(name, reason string) bool {
 // concurrent dispatch instance.
 func (r *DispatchRegistry) RecallByID(id, reason string) bool {
 	r.mu.Lock()
-	recall := r.takeRecallLocked(id)
+	recall := r.takeRecallLocked(id, reason)
 	r.mu.Unlock()
 	if recall == nil {
 		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: not found", map[string]any{"dispatch_id": id, "reason": reason})
@@ -50,8 +83,9 @@ func (r *DispatchRegistry) RecallByID(id, reason string) bool {
 	return true
 }
 
-// takeRecallLocked atomically removes target plus descendants and returns their
-// live handles for teardown. Caller holds r.mu. A nil return means target was
+// takeRecallLocked atomically removes target plus descendants, retains each in
+// the terminal history as cancelled with reason, and returns their live
+// handles for teardown. Caller holds r.mu. A nil return means target was
 // already terminal/deregistered.
 //
 // The target is resolved through resolveIDLocked, so a consumer-supplied
@@ -60,7 +94,7 @@ func (r *DispatchRegistry) RecallByID(id, reason string) bool {
 // that can steer a dispatch but cannot recall it — or worse, one whose recall
 // silently misses and leaves the dispatch running — is the asymmetry that makes
 // a timeout guard useless.
-func (r *DispatchRegistry) takeRecallLocked(id string) *recallSet {
+func (r *DispatchRegistry) takeRecallLocked(id, reason string) *recallSet {
 	canonicalID, viaAlias, found := r.resolveIDLocked(id)
 	if !found {
 		return nil
@@ -99,6 +133,12 @@ func (r *DispatchRegistry) takeRecallLocked(id string) *recallSet {
 	for _, childID := range descendantIDs {
 		delete(r.dispatches, childID)
 		r.dropAliasesForLocked(childID)
+	}
+	now := time.Now()
+	cancelled := DispatchOutcome{Status: DispatchStatusCancelled, Reason: reason, ExitCode: ExitCodeRecalled}
+	r.recordTerminalLocked(target, cancelled, now)
+	for _, descendant := range descendants {
+		r.recordTerminalLocked(descendant, cancelled, now)
 	}
 	return &recallSet{
 		targetID: id, target: target,
@@ -165,7 +205,7 @@ func (r *DispatchRegistry) RecallOwnedByID(ownerID, targetID, reason string) (bo
 		utils.LogWithFields(utils.LevelWarn, "session.extcontext.dispatch_registry", "recallownedbyid: ownership denied", map[string]any{"owner_dispatch_id": ownerID, "dispatch_id": targetID, "reason": reason})
 		return false, err
 	}
-	recall := r.takeRecallLocked(targetID)
+	recall := r.takeRecallLocked(targetID, reason)
 	r.mu.Unlock()
 	if recall == nil {
 		return false, nil

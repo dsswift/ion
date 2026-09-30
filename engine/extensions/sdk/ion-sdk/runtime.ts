@@ -40,6 +40,7 @@ import type {
   DispatchAgentOpts,
   DispatchAgentResult,
   DispatchEntry,
+  DispatchHistoryEntry,
   ElicitOptions,
   ElicitResult,
   EngineEvent,
@@ -67,7 +68,7 @@ import type {
   ToolContent,
   WalkContextFilesOpts,
 } from './types'
-import type { RecallAgentOpts, RecallDispatchOpts } from './types-dispatch-control'
+import type { RecallAgentOpts, RecallAgentResult, RecallDispatchOpts } from './types-dispatch-control'
 
 // ---------------------------------------------------------------------------
 // Internal state
@@ -167,6 +168,18 @@ function request(method: string, params: any): Promise<any> {
       JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n',
     )
   })
+}
+
+// recallAgentByName backs both ctx.recallAgentByName and the boolean
+// ctx.recallAgent, so the two cannot disagree about what "found" means.
+async function recallAgentByName(name: string, opts?: RecallAgentOpts): Promise<RecallAgentResult> {
+  const result = await request('ext/recall_agent', { name, reason: opts?.reason || '' })
+  const found = !!result?.found
+  // An engine older than the outcome field answers only { found }.
+  const outcome: RecallAgentResult['outcome'] = result?.outcome ?? (found ? 'recalled' : 'not_found')
+  return result?.matchingDispatchIds
+    ? { found, outcome, matchingDispatchIds: result.matchingDispatchIds }
+    : { found, outcome }
 }
 
 // requestWithId is request() that also surfaces the RPC id to the caller.
@@ -522,9 +535,9 @@ function buildContext(ctxData: any): IonContext {
       finally { cleanupForeground() }
     },
     async recallAgent(name: string, opts?: RecallAgentOpts): Promise<boolean> {
-      const result = await request('ext/recall_agent', { name, reason: opts?.reason || '' })
-      return !!result?.found
+      return (await recallAgentByName(name, opts)).found
     },
+    recallAgentByName,
     async recallDispatch(dispatchId: string, opts?: RecallDispatchOpts): Promise<boolean> {
       const result = await request('ext/recall_dispatch', { dispatchId, reason: opts?.reason || '' })
       return !!result?.found
@@ -535,7 +548,9 @@ function buildContext(ctxData: any): IonContext {
     },
     async steerDispatchByName(name: string, message: string): Promise<SteerDispatchResult> {
       const result = await request('ext/steer_dispatch_by_name', { name, message })
-      return { delivered: !!result?.delivered, outcome: result?.outcome ?? 'not_found' }
+      const steer: SteerDispatchResult = { delivered: !!result?.delivered, outcome: result?.outcome ?? 'not_found' }
+      if (result?.matchingDispatchIds) steer.matchingDispatchIds = result.matchingDispatchIds
+      return steer
     },
     async answerDispatchQuestion(dispatchId: string, requestId: string, answer: string | undefined, cancelled: boolean): Promise<void> {
       await request('ext/answer_dispatch_question', { dispatchId, requestId, answer, cancelled })
@@ -574,6 +589,17 @@ function buildContext(ctxData: any): IonContext {
         const result = await request('ext/list_dispatch_state', {})
         return result?.dispatches ?? []
       } catch {
+        return []
+      }
+    },
+    async listDispatchHistory(): Promise<DispatchHistoryEntry[]> {
+      // Terminal peer of listDispatchState. An engine without
+      // ext/list_dispatch_history answers -32601; that degrades to [].
+      try {
+        const result = await request('ext/list_dispatch_history', {})
+        return result?.dispatches ?? []
+      } catch {
+        // silent-ok: an engine without ext/list_dispatch_history has no history to return
         return []
       }
     },

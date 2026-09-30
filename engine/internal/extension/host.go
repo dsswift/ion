@@ -135,7 +135,7 @@ type Host struct {
 	// no hook/run context is active (i.e. the parent run is idle). The registry
 	// outlives runs by design, so recall must work even when ctxStack is empty.
 	// Set by the session manager alongside persistentEmit. Guarded by notifMu.
-	persistentRecall func(name, reason string) (bool, error)
+	persistentRecall func(name, reason string) (RecallAgentResult, error)
 
 	// persistentAckDispatchLost persists consumer acknowledgement for an orphaned dispatch.
 	persistentAckDispatchLost func(dispatchID string)
@@ -367,7 +367,7 @@ func (h *Host) SetPersistentScheduleControl(
 // context is active (parent session is idle between dispatch runs). The
 // dispatch registry outlives runs by design, so recall must succeed even when
 // ctxStack is empty.
-func (h *Host) SetPersistentRecall(fn func(name, reason string) (bool, error)) {
+func (h *Host) SetPersistentRecall(fn func(name, reason string) (RecallAgentResult, error)) {
 	h.notifMu.Lock()
 	defer h.notifMu.Unlock()
 	h.persistentRecall = fn

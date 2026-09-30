@@ -136,6 +136,7 @@ interface IonContext {
   sendPrompt(text: string, opts?: SendPromptOpts): Promise<void>
   dispatchAgent(opts: DispatchAgentOpts): Promise<DispatchAgentResult>
   recallAgent(name: string, opts?: RecallAgentOpts): Promise<boolean>
+  recallAgentByName(name: string, opts?: RecallAgentOpts): Promise<RecallAgentResult>
   recallDispatch(dispatchId: string, opts?: RecallDispatchOpts): Promise<boolean>
   discoverAgents(opts?: DiscoverAgentsOpts): Promise<DiscoveredAgent[]>
 }
@@ -494,6 +495,8 @@ await ctx.dispatchAgent({
 
 **Dispatch wait metadata.** `await ctx.listDispatchState()` returns active entries. A suspended entry may carry `waitingOn`: `taskIds` names notifying background Bash tasks; `childDispatchIds` names dispatched children. Both arrays are exact current sets, sorted for stable snapshots. `pendingChildren` remains compatibility-only mirror of child IDs. Absent `waitingOn` means running, or a bare `suspend()` awaiting only a prompt.
 
+**Dispatch history.** `listDispatchState` lists only live work. `await ctx.listDispatchHistory()` returns the dispatches that have ended, oldest completion first. Each entry carries `status` (`done`, `error`, or `cancelled`), `reason` (the error text, or the recall reason), `exitCode`, `startedAt`, `completedAt`, `durationMs`, and the lineage fields `dispatchId`, `name`, `parentDispatchId`, and `depth`. A dispatch that starts and ends between two of your polls still shows up here. Ownership matches the live list: the root context sees every entry, a dispatched agent sees only its own descendants. The engine bounds how many entries it keeps and for how long with the `dispatchHistory` block in [`engine.json`](../configuration/engine-json.md#dispatchhistory).
+
 ```typescript
 await ctx.dispatchAgent({
   name: 'ios-dev',            // a leaf specialist
@@ -521,11 +524,22 @@ await ctx.dispatchAgent({
 })
 ```
 
-**`recallAgent(name, opts?)`** — retained compatibility API that terminates one running asynchronous dispatch resolved by agent name. When several dispatches share a name, the engine selects one live match. Prefer `recallDispatch` when the dispatch ID is available.
+**`recallAgent(name, opts?)`** — terminates the one running asynchronous dispatch that carries `name` and resolves `true` when it did. It resolves `false` when no dispatch carries the name, and also when several do: the engine recalls nothing on an ambiguous name. Prefer `recallDispatch` when the dispatch ID is available.
 
 ```typescript
 const found = await ctx.recallAgent('code-reviewer', { reason: 'user requested' })
 ```
+
+**`recallAgentByName(name, opts?)`** — the same recall with the full outcome: `{ found, outcome, matchingDispatchIds? }`. `outcome` is `'recalled'`, `'not_found'`, or `'ambiguous'`. On `'ambiguous'`, nothing was recalled and `matchingDispatchIds` lists every live dispatch with that name, so you can pick one and call `recallDispatch`.
+
+```typescript
+const result = await ctx.recallAgentByName('code-reviewer', { reason: 'superseded' })
+if (result.outcome === 'ambiguous') {
+  await ctx.recallDispatch(result.matchingDispatchIds![0], { reason: 'superseded' })
+}
+```
+
+`steerDispatchByName` follows the same rule. It delivers only when exactly one live dispatch carries the name. When several do, it delivers nothing and returns `outcome: 'ambiguous'` with `matchingDispatchIds`; retry with `steerDispatch`.
 
 **`ackDispatchLost(dispatchId)`** -- acknowledge durable handling of a `dispatch_lost` notice. The engine re-emits a loss after each engine restart until its consumer acknowledges it, so call this only after your handler has durably handled, delivered, or intentionally ignored the loss. Repeated acknowledgements succeed, making retry safe.
 
@@ -538,7 +552,7 @@ ion.on('dispatch_lost', async (ctx, info) => {
 
 **`recallDispatch(dispatchId, opts?)`** -- terminate a running background dispatch by its **dispatch ID**. Returns `true` if a live dispatch was found and recalled, `false` otherwise. Descendants of the recalled dispatch are cancelled with it, and its `onRecall` callback fires with the provided reason.
 
-This is the preferred exact-ID peer of `recallAgent`. Where `recallAgent` resolves one live dispatch by agent name, `recallDispatch` targets exactly one instance and is safe when names collide. The relationship mirrors `steerDispatch` vs `steerDispatchByName`.
+This is the preferred exact-ID peer of `recallAgent`. Where `recallAgent` acts only on a unique agent name, `recallDispatch` targets exactly one instance and is safe when names collide. The relationship mirrors `steerDispatch` vs `steerDispatchByName`.
 
 ```typescript
 const { dispatchId } = await ctx.dispatchAgent({

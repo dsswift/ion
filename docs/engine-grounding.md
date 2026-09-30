@@ -82,7 +82,7 @@ Go is the source of truth. `engine/internal/types/contract_test.go` writes JSON 
 - Every path that ends an agent's run either transitions it to a terminal status (`done` / `error` / `cancelled`) and emits a follow-up snapshot, or drops it from the next snapshot. There is no third option.
 - `engine/internal/session/manager_agent_lifecycle_test.go` pins this per path. A new termination path extends it.
 - Reconnecting clients receive the current snapshot unconditionally, even when empty, via `ReconcileState`.
-- A "past dispatches" history is built from conversation history by the consumer, not from retained agent-state entries.
+- A "past dispatches" history is built from conversation history by the consumer, not from retained agent-state entries. The dispatch registry's own bounded record of ended dispatches (`ext/list_dispatch_history`) is a separate pull query for extensions; it never feeds `engine_agent_state`.
 
 A new event decides up front whether it is a snapshot or an incremental update. The choice is part of the contract.
 

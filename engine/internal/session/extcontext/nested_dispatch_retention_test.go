@@ -75,7 +75,7 @@ func TestNestedDispatchRetention_Depth2SlotSurvivesAndTerminalUpdateLands(t *tes
 	// Deregister the dispatch first (the child finished), then apply the
 	// terminal transition — this mirrors runChild's deregister + terminal
 	// UpdateAgentStateByID ordering (dispatch_agent.go).
-	registry.Deregister(depth2ID)
+	registry.Deregister(depth2ID, DispatchOutcome{Status: DispatchStatusDone})
 	landed := false
 	store.UpdateStateByID(depth2ID, func(s *types.AgentStateUpdate) {
 		s.Status = "done"

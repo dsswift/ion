@@ -33,7 +33,7 @@ func sdkClaimedMethods() map[string]string {
 		"ext/register_agent_spec":           "Context.RegisterAgentSpec",
 		"ext/deregister_agent_spec":         "Context.DeregisterAgentSpec",
 		"ext/dispatch_agent":                "Context.DispatchAgent",
-		"ext/recall_agent":                  "Context.RecallAgent",
+		"ext/recall_agent":                  "Context.RecallAgent / Context.RecallAgentByName",
 		"ext/recall_dispatch":               "Context.RecallDispatch",
 		"ext/steer_dispatch":                "Context.SteerDispatch",
 		"ext/steer_dispatch_by_name":        "Context.SteerDispatchByName",
@@ -41,6 +41,7 @@ func sdkClaimedMethods() map[string]string {
 		"ext/answer_dispatch_question":      "Context.AnswerDispatchQuestion",
 		"ext/ack_dispatch_lost":             "Context.AckDispatchLost",
 		"ext/list_dispatch_state":           "Context.ListDispatchState",
+		"ext/list_dispatch_history":         "Context.ListDispatchHistory",
 		"ext/set_dispatch_context_defaults": "Context.SetDispatchContextDefaults",
 
 		// Dynamic tools.

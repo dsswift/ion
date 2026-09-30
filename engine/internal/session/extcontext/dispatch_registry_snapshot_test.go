@@ -40,7 +40,7 @@ func TestAgentStatusGetterMapsCompleteActiveSnapshot(t *testing.T) {
 		t.Fatalf("AgentStatusGetter waiting set = %#v", child.WaitingOn)
 	}
 
-	r.Deregister("dispatch-child")
+	r.Deregister("dispatch-child", DispatchOutcome{Status: DispatchStatusDone})
 	for _, entry := range AgentStatusGetter(r)() {
 		if entry.DispatchID == "dispatch-child" {
 			t.Fatal("AgentStatusGetter retained terminal dispatch after deregistration")
@@ -168,7 +168,7 @@ func TestDispatchRegistry_Snapshot_ReturnsActiveEntries(t *testing.T) {
 	}
 
 	// Deregister one entry; snapshot must shrink to 1.
-	r.Deregister("dispatch-alpha-1000-aaa")
+	r.Deregister("dispatch-alpha-1000-aaa", DispatchOutcome{Status: DispatchStatusDone})
 	snap = r.Snapshot()
 	if len(snap) != 1 {
 		t.Fatalf("Snapshot after Deregister: expected 1 entry, got %d", len(snap))

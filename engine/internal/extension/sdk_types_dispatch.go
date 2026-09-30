@@ -435,6 +435,16 @@ type RecallAgentOpts struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+// RecallAgentResult is the outcome of a name-addressed RecallAgent call.
+// Found is true only when a dispatch was recalled. Outcome is "recalled",
+// "not_found", or "ambiguous"; MatchingDispatchIDs is set only for
+// "ambiguous" and lists every live dispatch that carries the name.
+type RecallAgentResult struct {
+	Found               bool     `json:"found"`
+	Outcome             string   `json:"outcome"`
+	MatchingDispatchIDs []string `json:"matchingDispatchIds,omitempty"`
+}
+
 // RecallDispatchOpts configures an exact-ID recall operation.
 type RecallDispatchOpts struct {
 	Reason string `json:"reason,omitempty"`
@@ -462,11 +472,14 @@ type ContextPolicy struct {
 
 // SteerDispatchResult is the typed outcome of a SteerDispatch call.
 // Delivered is true when the message was buffered on the child's steer
-// channel. Outcome carries the four-value verdict string so the caller
-// can react precisely (retry on channel_full, redispatch on no_run, etc.).
+// channel. Outcome carries the verdict string so the caller can react
+// precisely (retry on channel_full, redispatch on no_run, pick an ID on
+// ambiguous, etc.). MatchingDispatchIDs is set only when a name-addressed
+// steer was "ambiguous" and lists every live dispatch that carries the name.
 type SteerDispatchResult struct {
-	Delivered bool   `json:"delivered"`
-	Outcome   string `json:"outcome"`
+	Delivered           bool     `json:"delivered"`
+	Outcome             string   `json:"outcome"`
+	MatchingDispatchIDs []string `json:"matchingDispatchIds,omitempty"`
 }
 
 // --- Phase 2: Lifecycle event callback payloads ---

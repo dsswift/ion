@@ -274,18 +274,10 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 	// Wire steer support for background dispatches.
 	if registry != nil {
 		ctx.SteerDispatch = func(dispatchID, message string) (extension.SteerDispatchResult, error) {
-			outcome := registry.SteerByID(dispatchID, message)
-			return extension.SteerDispatchResult{
-				Delivered: outcome == SteerOutcomeDelivered,
-				Outcome:   string(outcome),
-			}, nil
+			return SteerResult(registry.SteerByID(dispatchID, message), nil), nil
 		}
 		ctx.SteerDispatchByName = func(name, message string) (extension.SteerDispatchResult, error) {
-			outcome := registry.SteerByName(name, message)
-			return extension.SteerDispatchResult{
-				Delivered: outcome == SteerOutcomeDelivered,
-				Outcome:   string(outcome),
-			}, nil
+			return SteerResult(registry.SteerByName(name, message)), nil
 		}
 
 		// Wire dispatch-state listing: exposes the live registry snapshot to
@@ -313,6 +305,11 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 				}
 			}
 			return entries, nil
+		}
+
+		// Terminal peer of ListDispatchState, under the same ownership rule.
+		ctx.ListDispatchHistory = func() ([]extension.DispatchHistoryEntry, error) {
+			return DispatchHistoryEntries(registry.OwnedHistory(dispatchId)), nil
 		}
 	}
 

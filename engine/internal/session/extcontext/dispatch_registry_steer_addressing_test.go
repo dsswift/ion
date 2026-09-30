@@ -2,7 +2,6 @@ package extcontext
 
 import (
 	"testing"
-	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 )
@@ -71,7 +70,7 @@ func TestDispatchRegistry_Alias_DroppedOnDeregister(t *testing.T) {
 		t.Fatalf("pre-deregister steer = %q, want %q", got, SteerOutcomeDelivered)
 	}
 
-	r.Deregister("dispatch-a")
+	r.Deregister("dispatch-a", DispatchOutcome{Status: DispatchStatusDone})
 
 	if got := r.SteerByID("local-1", "second"); got != SteerOutcomeNotFound {
 		t.Fatalf("post-deregister steer via stale alias = %q, want %q", got, SteerOutcomeNotFound)
@@ -208,87 +207,5 @@ func TestDispatchRegistry_RecallByID_UnknownIDStillReportsNotFound(t *testing.T)
 	r := NewDispatchRegistry()
 	if r.RecallByID("no-such-dispatch", "timeout") {
 		t.Error("RecallByID reported success for an unknown dispatch id")
-	}
-}
-
-// --- Deterministic same-name resolution ---
-
-// TestDispatchRegistry_SteerByName_PicksMostRecentlyStarted is the regression
-// test for the coin-flip bug. Selection used to be the first entry a Go
-// map-range yielded, and the runtime randomizes that order per iteration — so
-// with two live same-name dispatches the steer landed on an arbitrary one and
-// the same call could reach a different agent each time.
-//
-// The loop is what makes this a real test: a single call passes the broken code
-// about half the time, so one iteration proves nothing. Across many iterations
-// the randomized map order is overwhelmingly likely to yield the older entry at
-// least once, which the pre-fix code would then steer.
-func TestDispatchRegistry_SteerByName_PicksMostRecentlyStarted(t *testing.T) {
-	for i := 0; i < 64; i++ {
-		r := NewDispatchRegistry()
-		older := &mockSteerableBackend{result: backend.SteerResultDelivered}
-		newer := &mockSteerableBackend{result: backend.SteerResultDelivered}
-
-		r.RegisterWithID("dispatch-old", "dev-lead", func() {}, older, "sess-1", "", 1)
-		r.SetChildRunID("dispatch-old", "run-old")
-		// Force a strictly later StartedAt so "most recent" is unambiguous
-		// rather than dependent on clock granularity.
-		if d, ok := r.Get("dispatch-old"); ok {
-			d.StartedAt = time.Now().Add(-time.Minute)
-		}
-		r.RegisterWithID("dispatch-new", "dev-lead", func() {}, newer, "sess-1", "", 1)
-		r.SetChildRunID("dispatch-new", "run-new")
-
-		if got := r.SteerByName("dev-lead", "redirect"); got != SteerOutcomeDelivered {
-			t.Fatalf("iteration %d: SteerByName = %q, want %q", i, got, SteerOutcomeDelivered)
-		}
-		if older.called {
-			t.Fatalf("iteration %d: steer reached the OLDER same-name dispatch", i)
-		}
-		if !newer.called {
-			t.Fatalf("iteration %d: steer did not reach the most recently started dispatch", i)
-		}
-	}
-}
-
-// TestDispatchRegistry_SteerByName_TieBreakIsStable pins that dispatches
-// sharing an exact StartedAt still resolve to one repeatable winner. Without a
-// tiebreak the ordering comparison alone leaves map order deciding, which is
-// the same nondeterminism in a narrower window.
-func TestDispatchRegistry_SteerByName_TieBreakIsStable(t *testing.T) {
-	var winners []string
-	for i := 0; i < 32; i++ {
-		r := NewDispatchRegistry()
-		a := &mockSteerableBackend{result: backend.SteerResultDelivered}
-		b := &mockSteerableBackend{result: backend.SteerResultDelivered}
-
-		shared := time.Now()
-		r.RegisterWithID("dispatch-aaa", "agent", func() {}, a, "sess-1", "", 1)
-		r.SetChildRunID("dispatch-aaa", "run-a")
-		r.RegisterWithID("dispatch-bbb", "agent", func() {}, b, "sess-1", "", 1)
-		r.SetChildRunID("dispatch-bbb", "run-b")
-		if d, ok := r.Get("dispatch-aaa"); ok {
-			d.StartedAt = shared
-		}
-		if d, ok := r.Get("dispatch-bbb"); ok {
-			d.StartedAt = shared
-		}
-
-		if got := r.SteerByName("agent", "msg"); got != SteerOutcomeDelivered {
-			t.Fatalf("iteration %d: SteerByName = %q", i, got)
-		}
-		switch {
-		case a.called && !b.called:
-			winners = append(winners, "aaa")
-		case b.called && !a.called:
-			winners = append(winners, "bbb")
-		default:
-			t.Fatalf("iteration %d: expected exactly one recipient", i)
-		}
-	}
-	for _, w := range winners {
-		if w != winners[0] {
-			t.Fatalf("tie-break is not stable: got both %q and %q across runs", winners[0], w)
-		}
 	}
 }

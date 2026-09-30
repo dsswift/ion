@@ -227,6 +227,11 @@ func (m *Manager) startSession(
 		resourceBroker:   resource.NewBroker(),
 		principal:        principal,
 	}
+	var dispatchHistory *types.DispatchHistoryConfig
+	if m.config != nil {
+		dispatchHistory = m.config.DispatchHistory
+	}
+	s.dispatchRegistry.SetHistoryLimits(dispatchHistory)
 	m.watchWorkspaceProducers(key, s.resourceBroker)
 	if initial != nil {
 		s.planMode = initial.planMode

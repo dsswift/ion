@@ -88,6 +88,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Dialog](#term-dialog)
 - [Dispatch](#term-dispatch)
 - [Dispatch Alias](#term-dispatch-alias)
+- [Dispatch History](#term-dispatch-history)
 - [Dispatch Split Pane](#term-dispatch-split-pane)
 - [Drawer](#term-drawer)
 - [Editor Anchor](#term-editor-anchor)
@@ -497,8 +498,22 @@ A consumer-supplied identifier registered as an alternate name for a dispatch's 
 - **Legacy names:** None
 - **Contract:** `public-sdk`
 - **Implementations:**
-  - `engine` / `code` / `go`: `func (r *DispatchRegistry) RegisterAlias` in `engine/internal/session/extcontext/dispatch_registry.go`
+  - `engine` / `code` / `go`: `func (r *DispatchRegistry) RegisterAlias` in `engine/internal/session/extcontext/dispatch_registry_alias.go`
   - `sdk` / `code` / `go`: `ClientDispatchID string` in `sdk/go/context_dispatch.go`
+
+#### Dispatch History {#term-dispatch-history}
+
+The bounded record of dispatches that have ended, kept by a session's dispatch registry. Each entry holds the dispatch's final status, terminal reason, completion time, identifier, name, parent, and depth, so a consumer can see work that started and ended between two of its polls and rebuild a finished dispatch tree. It is separate from the live dispatch listing, follows the same ownership rule, and is bounded by count and age in engine config.
+
+- **ID:** `dispatch-history`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `terminal dispatch history`
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `func (r *DispatchRegistry) OwnedHistory` in `engine/internal/session/extcontext/dispatch_registry_history.go`
+  - `sdk` / `code` / `go`: `func (c *Context) ListDispatchHistory` in `sdk/go/context_dispatch_methods.go`
 
 #### Engine server {#term-engine-server}
 
@@ -3133,6 +3148,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `surface tab` → [Surface](#term-surface)
 - Legacy name: `tab list` → [Inbox](#term-inbox)
 - Alias: `term registry` → [Vocabulary registry](#term-vocabulary-registry)
+- Alias: `terminal dispatch history` → [Dispatch History](#term-dispatch-history)
 - Alias: `terminal panel` → [Conversation Terminal Panel](#term-conversation-terminal-panel)
 - Alias: `thin client view` → [Thin View](#term-thin-view)
 - Alias: `thin connection` → [Thin View](#term-thin-view)

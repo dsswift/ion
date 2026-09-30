@@ -1295,7 +1295,7 @@
           "presentation": "code",
           "language": "go",
           "symbol": "func (r *DispatchRegistry) RegisterAlias",
-          "path": "engine/internal/session/extcontext/dispatch_registry.go"
+          "path": "engine/internal/session/extcontext/dispatch_registry_alias.go"
         },
         {
           "platform": "sdk",
@@ -1303,6 +1303,34 @@
           "language": "go",
           "symbol": "ClientDispatchID string",
           "path": "sdk/go/context_dispatch.go"
+        }
+      ]
+    },
+    {
+      "id": "dispatch-history",
+      "term": "Dispatch History",
+      "definition": "The bounded record of dispatches that have ended, kept by a session's dispatch registry. Each entry holds the dispatch's final status, terminal reason, completion time, identifier, name, parent, and depth, so a consumer can see work that started and ended between two of its polls and rebuild a finished dispatch tree. It is separate from the live dispatch listing, follows the same ownership rule, and is bounded by count and age in engine config.",
+      "domain": "engine",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "aliases": [
+        "terminal dispatch history"
+      ],
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (r *DispatchRegistry) OwnedHistory",
+          "path": "engine/internal/session/extcontext/dispatch_registry_history.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func (c *Context) ListDispatchHistory",
+          "path": "sdk/go/context_dispatch_methods.go"
         }
       ]
     },

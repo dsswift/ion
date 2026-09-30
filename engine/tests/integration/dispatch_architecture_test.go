@@ -601,12 +601,12 @@ func TestDispatchArchitecture_RecallOneSibling(t *testing.T) {
 	}
 
 	// Phase 3: Recall doomed. Its context cancels, unblocking the provider.
-	found, err := ctx.RecallAgent("doomed", extension.RecallAgentOpts{Reason: "test"})
+	recalled, err := ctx.RecallAgent("doomed", extension.RecallAgentOpts{Reason: "test"})
 	if err != nil {
 		t.Fatalf("RecallAgent(doomed): %v", err)
 	}
-	if !found {
-		t.Error("RecallAgent(doomed) returned false")
+	if !recalled.Found {
+		t.Errorf("RecallAgent(doomed) = %+v, want found", recalled)
 	}
 
 	// Wait for doomed's outcome.

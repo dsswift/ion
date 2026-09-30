@@ -212,14 +212,14 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 		s.dispatchRegistry.SetDispatchLossRecallObserver(m.persistRecallIntents)
 
 		// Persistent name-addressed recall for ext/recall_agent when the
-		// parent run is idle. This retains the published extension API; callers
-		// with a dispatch ID use the exact path below.
-		host.SetPersistentRecall(func(name, reason string) (bool, error) {
+		// parent run is idle. Callers with a dispatch ID use the exact path
+		// below.
+		host.SetPersistentRecall(func(name, reason string) (extension.RecallAgentResult, error) {
 			reg := s.dispatchRegistry
 			if reg == nil {
-				return false, fmt.Errorf("dispatch registry not available")
+				return extcontext.RecallAgentResult(extcontext.RecallOutcomeNotFound, nil), fmt.Errorf("dispatch registry not available")
 			}
-			return reg.Recall(name, reason), nil
+			return extcontext.RecallAgentResult(reg.Recall(name, reason)), nil
 		})
 
 		// Persistent ID-addressed recall for ext/recall_dispatch when the
@@ -240,11 +240,7 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			if reg == nil {
 				return extension.SteerDispatchResult{Outcome: "not_found"}, fmt.Errorf("dispatch registry not available")
 			}
-			outcome := reg.SteerByID(dispatchID, message)
-			return extension.SteerDispatchResult{
-				Delivered: outcome == extcontext.SteerOutcomeDelivered,
-				Outcome:   string(outcome),
-			}, nil
+			return extcontext.SteerResult(reg.SteerByID(dispatchID, message), nil), nil
 		})
 
 		// Persistent name-based steer for ext/steer_dispatch_by_name when the parent run is idle.
@@ -253,11 +249,7 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			if reg == nil {
 				return extension.SteerDispatchResult{Outcome: "not_found"}, fmt.Errorf("dispatch registry not available")
 			}
-			outcome := reg.SteerByName(name, message)
-			return extension.SteerDispatchResult{
-				Delivered: outcome == extcontext.SteerOutcomeDelivered,
-				Outcome:   string(outcome),
-			}, nil
+			return extcontext.SteerResult(reg.SteerByName(name, message)), nil
 		})
 
 		// Persistent self-steer for ext/steer_self. This one carries the

@@ -1,6 +1,7 @@
 package extcontext
 
 import (
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -23,13 +24,13 @@ func TestDispatchRegistry_RegisterDeregisterLifecycle(t *testing.T) {
 		t.Fatalf("Count after Register = %d, want 1", got)
 	}
 
-	r.Deregister("agent-a")
+	r.Deregister("agent-a", DispatchOutcome{Status: DispatchStatusDone})
 	if got := r.Count(); got != 0 {
 		t.Fatalf("Count after Deregister = %d, want 0", got)
 	}
 
 	// Deregister of a nonexistent name is a safe no-op.
-	r.Deregister("no-such-agent")
+	r.Deregister("no-such-agent", DispatchOutcome{Status: DispatchStatusDone})
 	if got := r.Count(); got != 0 {
 		t.Fatalf("Count after no-op Deregister = %d, want 0", got)
 	}
@@ -56,7 +57,7 @@ func TestDispatchRegistry_Get(t *testing.T) {
 		t.Errorf("dispatch.SessionID = %q, want %q", d.SessionID, "sess-2")
 	}
 
-	r.Deregister("agent-b")
+	r.Deregister("agent-b", DispatchOutcome{Status: DispatchStatusDone})
 
 	d2, ok2 := r.Get("agent-b")
 	if ok2 {
@@ -182,7 +183,7 @@ func TestDispatchRegistry_ConcurrentAccess(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			r.Deregister(name)
+			r.Deregister(name, DispatchOutcome{Status: DispatchStatusDone})
 		}()
 	}
 
@@ -217,7 +218,7 @@ func TestDispatchRegistry_ActiveNames(t *testing.T) {
 	}
 
 	// Deregister one — ActiveNames should reflect the removal.
-	r.Deregister("agent-x")
+	r.Deregister("agent-x", DispatchOutcome{Status: DispatchStatusDone})
 	names = r.ActiveNames()
 	if len(names) != 1 {
 		t.Fatalf("ActiveNames after deregister = %d, want 1", len(names))
@@ -262,7 +263,7 @@ func TestDispatchRegistry_ActiveIDs(t *testing.T) {
 	}
 
 	// Deregister one ID — ActiveIDs reflects the removal precisely.
-	r.Deregister("dispatch-engine-dev-aaa")
+	r.Deregister("dispatch-engine-dev-aaa", DispatchOutcome{Status: DispatchStatusDone})
 	ids = r.ActiveIDs()
 	if len(ids) != 1 {
 		t.Fatalf("ActiveIDs after deregister = %d, want 1", len(ids))
@@ -357,7 +358,7 @@ func TestDispatchRegistry_DeregisterByID(t *testing.T) {
 	r.RegisterWithID("id-x", "agent", func() {}, nil, "sess-1", "", 0)
 	r.RegisterWithID("id-y", "agent", func() {}, nil, "sess-1", "", 0)
 
-	r.Deregister("id-x")
+	r.Deregister("id-x", DispatchOutcome{Status: DispatchStatusDone})
 	if got := r.Count(); got != 1 {
 		t.Fatalf("Count after Deregister(id-x) = %d, want 1", got)
 	}
@@ -369,7 +370,7 @@ func TestDispatchRegistry_DeregisterByID(t *testing.T) {
 	}
 
 	// Deregistering by name does nothing (key is id, not name).
-	r.Deregister("agent")
+	r.Deregister("agent", DispatchOutcome{Status: DispatchStatusDone})
 	if got := r.Count(); got != 1 {
 		t.Fatalf("Count after Deregister(agent) = %d, want 1 (name is not the key)", got)
 	}
@@ -433,7 +434,7 @@ func TestDeregisterInvariantLogWhenChildLive(t *testing.T) {
 
 	// Deregister while the child reports running: must not panic, must remove
 	// the entry, and must consult IsRunning with the stored ChildRunID.
-	r.Deregister("dispatch-live-aaa")
+	r.Deregister("dispatch-live-aaa", DispatchOutcome{Status: DispatchStatusDone})
 
 	if got := r.Count(); got != 0 {
 		t.Fatalf("Count after Deregister = %d, want 0 (entry must be removed even with live child)", got)
@@ -460,7 +461,7 @@ func TestDeregisterNoInvariantLogWhenChildIdle(t *testing.T) {
 	r.RegisterWithID("dispatch-idle-bbb", "graphics-lead", func() {}, child, "sess-1", "", 0)
 	r.SetChildRunID("dispatch-idle-bbb", "sess-1-dispatch-idle-bbb")
 
-	r.Deregister("dispatch-idle-bbb")
+	r.Deregister("dispatch-idle-bbb", DispatchOutcome{Status: DispatchStatusDone})
 
 	if got := r.Count(); got != 0 {
 		t.Fatalf("Count after Deregister = %d, want 0", got)
@@ -478,7 +479,7 @@ func TestDeregisterNilChildSkipsInvariantCheck(t *testing.T) {
 	r := NewDispatchRegistry()
 
 	r.Register("agent-nil-child", func() {}, nil, "sess-1")
-	r.Deregister("agent-nil-child")
+	r.Deregister("agent-nil-child", DispatchOutcome{Status: DispatchStatusDone})
 
 	if got := r.Count(); got != 0 {
 		t.Fatalf("Count after Deregister with nil child = %d, want 0", got)
@@ -615,20 +616,55 @@ func TestDispatchRegistry_SetChildRunID(t *testing.T) {
 	}
 }
 
-func TestRecallByNameCompatibilityCancelsOneMatchingDispatch(t *testing.T) {
+// TestRecallByName_AmbiguousRecallsNothing pins that a name shared by several
+// live dispatches recalls none of them and returns every matching ID, sorted.
+func TestRecallByName_AmbiguousRecallsNothing(t *testing.T) {
 	r := NewDispatchRegistry()
 	firstCancelled := false
 	secondCancelled := false
-	r.RegisterWithID("first", "reviewer", func() { firstCancelled = true }, nil, "session", "", 1)
 	r.RegisterWithID("second", "reviewer", func() { secondCancelled = true }, nil, "session", "", 1)
+	r.RegisterWithID("first", "reviewer", func() { firstCancelled = true }, nil, "session", "", 1)
 
-	if !r.Recall("reviewer", "compatibility") {
-		t.Fatal("Recall returned false for a live named dispatch")
+	outcome, matching := r.Recall("reviewer", "compatibility")
+	if outcome != RecallOutcomeAmbiguous {
+		t.Fatalf("Recall outcome = %q, want %q", outcome, RecallOutcomeAmbiguous)
 	}
-	if firstCancelled == secondCancelled {
-		t.Fatalf("name recall must cancel exactly one match, got first=%t second=%t", firstCancelled, secondCancelled)
+	if want := []string{"first", "second"}; !slices.Equal(matching, want) {
+		t.Fatalf("matching IDs = %v, want %v", matching, want)
 	}
-	if len(r.ActiveIDs()) != 1 {
-		t.Fatalf("active dispatches = %d, want one remaining name collision", len(r.ActiveIDs()))
+	if firstCancelled || secondCancelled {
+		t.Fatalf("ambiguous recall cancelled a dispatch: first=%t second=%t", firstCancelled, secondCancelled)
+	}
+	if len(r.ActiveIDs()) != 2 {
+		t.Fatalf("active dispatches = %d, want both still live", len(r.ActiveIDs()))
+	}
+	if len(r.History()) != 0 {
+		t.Fatalf("ambiguous recall retained terminal entries: %+v", r.History())
+	}
+}
+
+// TestRecallByName_UniqueMatchRecalls pins the single-match path: the one
+// dispatch is cancelled, no IDs are returned, and it lands in history as
+// cancelled with the recall reason.
+func TestRecallByName_UniqueMatchRecalls(t *testing.T) {
+	r := NewDispatchRegistry()
+	cancelled := false
+	r.RegisterWithID("only", "reviewer", func() { cancelled = true }, nil, "session", "", 1)
+	r.RegisterWithID("other", "writer", func() {}, nil, "session", "", 1)
+
+	outcome, matching := r.Recall("reviewer", "operator stop")
+	if outcome != RecallOutcomeRecalled || matching != nil {
+		t.Fatalf("Recall = (%q, %v), want (%q, nil)", outcome, matching, RecallOutcomeRecalled)
+	}
+	if !cancelled {
+		t.Fatal("unique name match was not cancelled")
+	}
+	history := r.History()
+	if len(history) != 1 || history[0].DispatchID != "only" || history[0].Status != DispatchStatusCancelled || history[0].Reason != "operator stop" {
+		t.Fatalf("history = %+v, want one cancelled entry for \"only\" with the recall reason", history)
+	}
+
+	if outcome, _ := r.Recall("reviewer", "again"); outcome != RecallOutcomeNotFound {
+		t.Fatalf("second Recall outcome = %q, want %q", outcome, RecallOutcomeNotFound)
 	}
 }

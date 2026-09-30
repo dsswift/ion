@@ -495,6 +495,10 @@ type EngineRuntimeConfig struct {
 	// DispatchAgentOpts.ContextPolicy (level 4).
 	DispatchContext *DispatchContextConfig `json:"dispatchContext,omitempty"`
 
+	// DispatchHistory bounds the terminal dispatch history each session
+	// retains. Nil means the compiled defaults. See DispatchHistoryConfig.
+	DispatchHistory *DispatchHistoryConfig `json:"dispatchHistory,omitempty"`
+
 	// ThinkingPolicy holds the engine-wide operator policy for extended
 	// thinking. It is distinct from Thinking, which configures default per-run
 	// behavior. See ThinkingPolicyConfig.

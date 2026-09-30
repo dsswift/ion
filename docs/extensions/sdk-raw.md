@@ -258,7 +258,7 @@ Read the response from stdin:
 {"jsonrpc":"2.0","id":100002,"method":"ext/recall_agent","params":{"name":"researcher","reason":"no longer needed"}}
 ```
 
-`ext/recall_agent` is retained for name-addressed compatibility. Prefer exact-ID `ext/recall_dispatch` when the dispatch ID is available:
+`ext/recall_agent` addresses a dispatch by agent name and acts only when exactly one live dispatch carries it. Prefer exact-ID `ext/recall_dispatch` when the dispatch ID is available:
 
 ```json
 {"jsonrpc":"2.0","id":100003,"method":"ext/recall_dispatch","params":{"dispatchId":"dispatch-researcher-123","reason":"superseded"}}
@@ -267,10 +267,28 @@ Read the response from stdin:
 Response:
 
 ```json
-{"jsonrpc":"2.0","id":100002,"result":{"found":true}}
+{"jsonrpc":"2.0","id":100002,"result":{"found":true,"outcome":"recalled"}}
 ```
 
-The `found` field is `true` when a running asynchronous dispatch was found and recalled, `false` otherwise.
+The `found` field is `true` when a running asynchronous dispatch was found and recalled, `false` otherwise. `ext/recall_agent` also carries `outcome`: `recalled`, `not_found`, or `ambiguous`. When several live dispatches share the name, nothing is recalled and the response lists them:
+
+```json
+{"jsonrpc":"2.0","id":100002,"result":{"found":false,"outcome":"ambiguous","matchingDispatchIds":["dispatch-researcher-123","dispatch-researcher-456"]}}
+```
+
+`ext/steer_dispatch_by_name` answers the same way: `{"delivered":false,"outcome":"ambiguous","matchingDispatchIds":[...]}`, and nothing is delivered. Retry with `ext/steer_dispatch` against one of the IDs.
+
+**Listing ended dispatches:**
+
+```json
+{"jsonrpc":"2.0","id":100004,"method":"ext/list_dispatch_history","params":{}}
+```
+
+```json
+{"jsonrpc":"2.0","id":100004,"result":{"dispatches":[{"dispatchId":"dispatch-researcher-123","name":"researcher","status":"cancelled","reason":"superseded","exitCode":2,"depth":1,"startedAt":"2026-09-29T14:00:00Z","completedAt":"2026-09-29T14:02:10Z","durationMs":130000,"toolCount":12}]}}
+```
+
+`ext/list_dispatch_history` is the terminal peer of `ext/list_dispatch_state`, which lists only live dispatches. Entries are ordered oldest completion first. `status` is `done`, `error`, or `cancelled`. The caller sees the same set it would see live: the root context sees every entry, a dispatched agent only its descendants. Retention is bounded by `dispatchHistory` in `engine.json`.
 
 ### ext/task_suspend
 

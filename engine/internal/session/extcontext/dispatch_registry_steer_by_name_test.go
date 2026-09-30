@@ -1,6 +1,7 @@
 package extcontext
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -16,7 +17,7 @@ func TestDispatchRegistry_SteerByName_Delivered(t *testing.T) {
 	r.RegisterWithID("dispatch-reviewer-111", "code-reviewer", func() {}, child, "sess-1", "", 0)
 	r.SetChildRunID("dispatch-reviewer-111", "sess-1-dispatch-reviewer-111")
 
-	outcome := r.SteerByName("code-reviewer", "focus on error handling")
+	outcome, _ := r.SteerByName("code-reviewer", "focus on error handling")
 
 	if outcome != SteerOutcomeDelivered {
 		t.Fatalf("SteerByName outcome = %q, want %q", outcome, SteerOutcomeDelivered)
@@ -37,7 +38,7 @@ func TestDispatchRegistry_SteerByName_Delivered(t *testing.T) {
 func TestDispatchRegistry_SteerByName_NotFound(t *testing.T) {
 	r := NewDispatchRegistry()
 
-	outcome := r.SteerByName("nonexistent-agent", "hello")
+	outcome, _ := r.SteerByName("nonexistent-agent", "hello")
 
 	if outcome != SteerOutcomeNotFound {
 		t.Fatalf("SteerByName outcome = %q, want %q", outcome, SteerOutcomeNotFound)
@@ -51,45 +52,53 @@ func TestDispatchRegistry_SteerByName_NotFoundAfterDeregister(t *testing.T) {
 	// Use nil child so Deregister's invariant check (d.Child != nil guard)
 	// is skipped — this test is about name resolution, not child lifecycle.
 	r.RegisterWithID("dispatch-gone-aaa", "gone-agent", func() {}, nil, "sess-1", "", 0)
-	r.Deregister("dispatch-gone-aaa")
+	r.Deregister("dispatch-gone-aaa", DispatchOutcome{Status: DispatchStatusDone})
 
-	outcome := r.SteerByName("gone-agent", "too late")
+	outcome, _ := r.SteerByName("gone-agent", "too late")
 
 	if outcome != SteerOutcomeNotFound {
 		t.Fatalf("SteerByName after deregister = %q, want %q", outcome, SteerOutcomeNotFound)
 	}
 }
 
-// TestDispatchRegistry_SteerByName_MultipleSameNameSteersFirst verifies that
-// when multiple dispatches share a name, SteerByName delivers to one of them
-// (non-deterministic). The assertion is that the outcome is delivered and
-// exactly one of the two children received the steer.
-func TestDispatchRegistry_SteerByName_MultipleSameNameSteersFirst(t *testing.T) {
+// TestDispatchRegistry_SteerByName_MultipleSameNameIsAmbiguous pins that when
+// several live dispatches share a name, SteerByName delivers to none of them
+// and returns the ambiguous outcome with every matching ID, sorted.
+func TestDispatchRegistry_SteerByName_MultipleSameNameIsAmbiguous(t *testing.T) {
 	r := NewDispatchRegistry()
 	childA := &mockSteerableBackend{result: backend.SteerResultDelivered}
 	childB := &mockSteerableBackend{result: backend.SteerResultDelivered}
 
-	r.RegisterWithID("dispatch-agent-aaa", "shared-agent", func() {}, childA, "sess-1", "", 0)
-	r.SetChildRunID("dispatch-agent-aaa", "run-aaa")
 	r.RegisterWithID("dispatch-agent-bbb", "shared-agent", func() {}, childB, "sess-1", "", 0)
 	r.SetChildRunID("dispatch-agent-bbb", "run-bbb")
+	r.RegisterWithID("dispatch-agent-aaa", "shared-agent", func() {}, childA, "sess-1", "", 0)
+	r.SetChildRunID("dispatch-agent-aaa", "run-aaa")
 
-	outcome := r.SteerByName("shared-agent", "redirect")
+	outcome, matching := r.SteerByName("shared-agent", "redirect")
 
-	if outcome != SteerOutcomeDelivered {
-		t.Fatalf("SteerByName outcome = %q, want %q", outcome, SteerOutcomeDelivered)
+	if outcome != SteerOutcomeAmbiguous {
+		t.Fatalf("SteerByName outcome = %q, want %q", outcome, SteerOutcomeAmbiguous)
 	}
-	// Exactly one of the two children must have been steered.
-	calledCount := 0
-	if childA.called {
-		calledCount++
+	if want := []string{"dispatch-agent-aaa", "dispatch-agent-bbb"}; !slices.Equal(matching, want) {
+		t.Errorf("matching IDs = %v, want %v", matching, want)
 	}
-	if childB.called {
-		calledCount++
+	if childA.called || childB.called {
+		t.Errorf("an ambiguous steer reached a child (childA.called=%v, childB.called=%v)", childA.called, childB.called)
 	}
-	if calledCount != 1 {
-		t.Errorf("expected exactly 1 child steered, got %d (childA.called=%v, childB.called=%v)",
-			calledCount, childA.called, childB.called)
+}
+
+// TestDispatchRegistry_SteerByName_UniqueMatchReturnsNoIDs pins that a single
+// match behaves as before: it delivers and carries no matching-ID list.
+func TestDispatchRegistry_SteerByName_UniqueMatchReturnsNoIDs(t *testing.T) {
+	r := NewDispatchRegistry()
+	r.RegisterWithID("dispatch-solo", "solo", func() {}, &mockSteerableBackend{result: backend.SteerResultDelivered}, "sess-1", "", 0)
+	r.SetChildRunID("dispatch-solo", "run-solo")
+	// A different name must not count toward the match set.
+	r.RegisterWithID("dispatch-other", "other", func() {}, &mockSteerableBackend{result: backend.SteerResultDelivered}, "sess-1", "", 0)
+
+	outcome, matching := r.SteerByName("solo", "go")
+	if outcome != SteerOutcomeDelivered || matching != nil {
+		t.Fatalf("SteerByName = (%q, %v), want (%q, nil)", outcome, matching, SteerOutcomeDelivered)
 	}
 }
 
@@ -103,7 +112,7 @@ func TestDispatchRegistry_SteerByName_ChildRunNotYetActive(t *testing.T) {
 	r.RegisterWithID("dispatch-pending-aaa", "pending-agent", func() {}, child, "sess-1", "", 0)
 	r.SetChildRunID("dispatch-pending-aaa", "run-not-started-yet")
 
-	outcome := r.SteerByName("pending-agent", "early steer")
+	outcome, _ := r.SteerByName("pending-agent", "early steer")
 
 	if outcome != SteerOutcomeNoRun {
 		t.Fatalf("SteerByName (no active run) = %q, want %q", outcome, SteerOutcomeNoRun)
@@ -119,7 +128,7 @@ func TestDispatchRegistry_SteerByName_ChannelFull(t *testing.T) {
 	r.RegisterWithID("dispatch-full-aaa", "busy-agent", func() {}, child, "sess-1", "", 0)
 	r.SetChildRunID("dispatch-full-aaa", "run-full")
 
-	outcome := r.SteerByName("busy-agent", "overflow")
+	outcome, _ := r.SteerByName("busy-agent", "overflow")
 
 	if outcome != SteerOutcomeChannelFull {
 		t.Fatalf("SteerByName (channel full) = %q, want %q", outcome, SteerOutcomeChannelFull)
