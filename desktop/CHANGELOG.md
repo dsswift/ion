@@ -10,6 +10,18 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.2.0](https://github.com/dsswift/ion/compare/desktop-v2.1.0...desktop-v2.2.0) (2026-09-30)
+
+### Features
+
+* **desktop:** close unlocked terminal tabs on middle-click ([e63a474](https://github.com/dsswift/ion/commit/e63a47417b8debaf3d0f2671376c492fbb40d4e5))
+
+### Bug Fixes
+
+* **desktop:** keep an early server ready across startup ([d5dff84](https://github.com/dsswift/ion/commit/d5dff84b8d1cced12303d8efec634b268594d272))
+* **desktop:** let the startup splash behave as a normal window ([1530b2f](https://github.com/dsswift/ion/commit/1530b2f9d9cd638a2bf2af09ea2c7bb616b5ab67))
+* **server:** recycle the engine inside the one startup start ([462feb6](https://github.com/dsswift/ion/commit/462feb6357537a7ee457c88d76065d4dcb815d14))
+
 ## [2.1.0](https://github.com/dsswift/ion/compare/desktop-v2.0.3...desktop-v2.1.0) (2026-09-30)
 
 ### Features
