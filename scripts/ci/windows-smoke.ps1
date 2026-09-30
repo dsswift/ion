@@ -228,6 +228,20 @@ while ((Get-Date) -lt $logDeadline) {
   Start-Sleep -Seconds 1
 }
 Assert (Test-Path -LiteralPath $desktopLog) "desktop log at $desktopLog"
+if (-not $sawKillSwitch) {
+  # The log lines that say when the policy arrived and what it carried, so a
+  # failure here is diagnosable from the job log alone.
+  $pattern = 'enterprise policy|policy received|policy arrived|auto-update|updater|studio_welcome|environment-connect|connection (opened|closed)|engine (connect|reconnect)'
+  foreach ($log in @($desktopLog, (Join-Path $IonHome 'server.jsonl'))) {
+    Write-Host "  --- $log (policy, connection, and updater lines)"
+    if (Test-Path -LiteralPath $log) {
+      Get-Content -LiteralPath $log -ErrorAction SilentlyContinue |
+        Where-Object { $_ -match $pattern } | Select-Object -Last 40 | ForEach-Object { Write-Host "    $_" }
+    } else {
+      Write-Host '    (missing)'
+    }
+  }
+}
 Assert $sawKillSwitch 'desktop logged the auto-update kill switch within 30s'
 
 # --- 8. Quitting the desktop must not stop the engine -----------------------
