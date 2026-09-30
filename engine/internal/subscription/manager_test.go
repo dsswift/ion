@@ -73,15 +73,17 @@ type scriptedFetch struct {
 
 func (f *scriptedFetch) fetch(context.Context, types.SubscriptionLookupConfig) ([]Subscription, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.calls++
 	if len(f.responses) == 0 {
+		f.mu.Unlock()
 		return nil, errors.New("no scripted response")
 	}
 	next := f.responses[0]
 	if len(f.responses) > 1 {
 		f.responses = f.responses[1:]
 	}
+	f.mu.Unlock()
+	// A response may block; running it unlocked lets a later lookup proceed.
 	return next()
 }
 
@@ -279,13 +281,16 @@ func TestFreshCacheSkipsLookup(t *testing.T) {
 }
 
 func TestSignOutRemovesKeyAndSwitchDropsStaleLookup(t *testing.T) {
+	started := make(chan struct{})
 	release := make(chan struct{})
 	h := newHarness(t, types.SubscriptionLookupConfig{},
-		func() ([]Subscription, error) { <-release; return []Subscription{standard}, nil },
+		func() ([]Subscription, error) { close(started); <-release; return []Subscription{standard}, nil },
 		answer(premium))
 	h.signIn("user-1")
 	h.waitFor(t, types.SubscriptionStateResolving)
-	// A second identity signs in while the first lookup is in flight.
+	// The first identity's lookup must hold the blocking response before the
+	// second identity signs in; responses are handed out in call order.
+	<-started
 	h.signIn("user-2")
 	close(release)
 	status := h.waitFor(t, types.SubscriptionStateApplied)
