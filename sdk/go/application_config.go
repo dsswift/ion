@@ -2,8 +2,11 @@
 //
 // The engine resolves configuration scoped to the verified principal after
 // that principal signs in, holds it in memory, and shares one snapshot with
-// every extension. Every read carries the lifecycle state beside the values,
-// so "still loading" is never confused with "the key does not exist".
+// every extension. Each extension sees the common section plus its own
+// section, keyed by its enterprise allowlist entry. Secret values stay in the
+// engine; an extension sees only their names. Every read carries the
+// lifecycle state beside the values, so "still loading" is never confused
+// with "the key does not exist".
 package ion
 
 import (
@@ -25,9 +28,18 @@ const (
 	ApplicationConfigFetching ApplicationConfigState = "fetching"
 	// ApplicationConfigReady means values are available.
 	ApplicationConfigReady ApplicationConfigState = "ready"
+	// ApplicationConfigRefreshing means a refresh is in flight. The
+	// previous values stay available until the refresh replaces them.
+	ApplicationConfigRefreshing ApplicationConfigState = "refreshing"
 	// ApplicationConfigFailed means resolution failed; Error holds why.
 	ApplicationConfigFailed ApplicationConfigState = "failed"
 )
+
+// HasValues reports whether a view in this state carries values: ready, or
+// refreshing on top of a previous ready view.
+func (s ApplicationConfigState) HasValues() bool {
+	return s == ApplicationConfigReady || s == ApplicationConfigRefreshing
+}
 
 // ApplicationConfigSnapshot is one complete view of the application config.
 // It is also the application_config_changed payload.
@@ -38,11 +50,14 @@ type ApplicationConfigSnapshot struct {
 	// Subject and Provider name the principal the values belong to.
 	Subject  string `json:"subject,omitempty"`
 	Provider string `json:"provider,omitempty"`
-	// Values holds the resolved configuration when State is ready.
+	// Values holds the resolved configuration when State.HasValues().
 	Values map[string]any `json:"values,omitempty"`
+	// SecretKeys names the secrets the engine holds for this extension.
+	// Their values never reach extension code.
+	SecretKeys []string `json:"secretKeys,omitempty"`
 	// Error is the failure reason when State is failed.
 	Error string `json:"error,omitempty"`
-	// FetchedAt is the RFC 3339 resolution time when State is ready.
+	// FetchedAt is the RFC 3339 resolution time when State.HasValues().
 	FetchedAt string `json:"fetchedAt,omitempty"`
 }
 
@@ -52,10 +67,13 @@ type ApplicationConfigValue struct {
 	Revision uint64                 `json:"revision"`
 	Error    string                 `json:"error,omitempty"`
 	Key      string                 `json:"key"`
-	// Found is meaningful only when State is ready: false then means the
-	// key does not exist in the resolved configuration.
+	// Found is meaningful only when State.HasValues(): false then means
+	// the key is not a readable value.
 	Found bool `json:"found"`
 	Value any  `json:"value,omitempty"`
+	// Secret reports that Key names a secret the engine holds. Its value is
+	// never returned.
+	Secret bool `json:"secret,omitempty"`
 }
 
 // ApplicationConfigAPI is the application config surface, reached via
@@ -85,7 +103,7 @@ func (a *ApplicationConfigAPI) Get(ctx context.Context, key string) (Application
 	return out, nil
 }
 
-// Await waits until the view is ready or failed, or timeout passes, and
+// Await waits until the view has values or failed, or timeout passes, and
 // returns the latest view either way. timedOut reports that the view had
 // not settled. Zero timeout uses the engine default.
 func (a *ApplicationConfigAPI) Await(ctx context.Context, timeout time.Duration) (snapshot ApplicationConfigSnapshot, timedOut bool, err error) {

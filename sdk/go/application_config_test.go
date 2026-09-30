@@ -23,6 +23,8 @@ func TestApplicationConfigGetDistinguishesNotReadyFromMissing(t *testing.T) {
 			ApplicationConfigValue{State: ApplicationConfigReady, Revision: 2, Key: "region"}},
 		{"found", map[string]any{"state": "ready", "revision": 2, "key": "region", "found": true, "value": "east"},
 			ApplicationConfigValue{State: ApplicationConfigReady, Revision: 2, Key: "region", Found: true, Value: "east"}},
+		{"secret", map[string]any{"state": "refreshing", "revision": 3, "key": "region", "found": false, "secret": true},
+			ApplicationConfigValue{State: ApplicationConfigRefreshing, Revision: 3, Key: "region", Secret: true}},
 	} {
 		got := make(chan ApplicationConfigValue, 1)
 		go func() {
@@ -74,5 +76,28 @@ func TestApplicationConfigAwaitSendsTimeoutAndReportsTimedOut(t *testing.T) {
 	r := <-got
 	if r.snapshot.State != ApplicationConfigDeferred || !r.timedOut {
 		t.Fatalf("await = %+v", r)
+	}
+}
+
+func TestApplicationConfigSnapshotDecodesSecretKeys(t *testing.T) {
+	fe := newFakeEngine(t, WithName("application-config-snapshot"))
+	fe.start()
+	fe.doInit(ExtensionConfig{})
+	ctx := fe.sdk.newContext(nil)
+	got := make(chan ApplicationConfigSnapshot, 1)
+	go func() {
+		snapshot, err := ctx.ApplicationConfig().Snapshot(context.Background())
+		if err != nil {
+			t.Errorf("snapshot: %v", err)
+		}
+		got <- snapshot
+	}()
+	frame := fe.awaitMethod("ext/get_application_config")
+	fe.respond(frame["id"].(float64), map[string]any{ //nolint:errcheck // fake engine ids are float64
+		"state": "refreshing", "revision": 5, "values": map[string]any{"region": "east"}, "secretKeys": []any{"gatewayKey"},
+	})
+	snapshot := <-got
+	if !snapshot.State.HasValues() || snapshot.Values["region"] != "east" || len(snapshot.SecretKeys) != 1 || snapshot.SecretKeys[0] != "gatewayKey" {
+		t.Fatalf("snapshot = %+v", snapshot)
 	}
 }
