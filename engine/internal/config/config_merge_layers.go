@@ -196,6 +196,7 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if src.Scheduling != nil {
 		dst.Scheduling = src.Scheduling
 	}
+	mergeProtectedOperations(dst, src)
 	// Background task, Poll, and dispatch history blocks are engine-owned operational
 	// configuration. A more-specific layer replaces the complete policy block,
 	// matching other bounded runtime mechanisms above. Without this carry,

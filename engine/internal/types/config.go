@@ -503,6 +503,14 @@ type EngineRuntimeConfig struct {
 	// thinking. It is distinct from Thinking, which configures default per-run
 	// behavior. See ThinkingPolicyConfig.
 	ThinkingPolicy *ThinkingPolicyConfig `json:"thinkingPolicy,omitempty"`
+
+	// ProtectedOperations declares named outbound operations whose secret
+	// the engine injects at call time, keyed by operation name. Only the
+	// global ~/.ion/engine.json declares them: a project layer's block is
+	// dropped at merge, so a checked-out repository cannot aim a stored
+	// secret at a destination of its choosing. Nil leaves the surface
+	// unavailable.
+	ProtectedOperations map[string]ProtectedOperationConfig `json:"protectedOperations,omitempty"`
 }
 
 // ThinkingPolicyConfig is the engine-wide operator kill switch for extended

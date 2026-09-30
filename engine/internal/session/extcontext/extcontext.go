@@ -211,6 +211,15 @@ func NewExtContext(sa SessionAccessor, registry *DispatchRegistry, opts ...ExtCo
 			}
 			return extension.DoOperatorHTTPRequest(auth.WithSubject(context.Background(), subject), params)
 		},
+		// Protected operations read the secret from the acting principal's
+		// own credential-store partition, carried the same way as HTTPRequest.
+		ProtectedOperation: func(params extension.ProtectedOperationParams) (*extension.ProtectedOperationResult, error) {
+			subject := ""
+			if p := sa.Principal(); p != nil {
+				subject = p.Subject
+			}
+			return extension.DoProtectedOperation(auth.WithSubject(context.Background(), subject), params)
+		},
 		SendPrompt: func(text string, model string, bashAllowlistAdditions []string) error {
 			return sa.SendPrompt(text, model, bashAllowlistAdditions)
 		},

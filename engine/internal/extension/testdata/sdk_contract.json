@@ -709,6 +709,7 @@
     "ext/list_sessions",
     "ext/llm_call",
     "ext/notify",
+    "ext/protected_operation",
     "ext/publish_resource",
     "ext/recall_agent",
     "ext/recall_dispatch",

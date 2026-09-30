@@ -93,6 +93,9 @@ var extRequestHandlers = map[string]extRequestHandler{
 	"ext/llm_call":     (*Host).rpcLlmCall,
 	"ext/http_request": (*Host).rpcHTTPRequest,
 
+	// Protected operations: config-declared calls with an engine-injected secret.
+	"ext/protected_operation": (*Host).rpcProtectedOperation,
+
 	// Sandboxing.
 	"ext/sandbox_wrap": (*Host).rpcSandboxWrap,
 }

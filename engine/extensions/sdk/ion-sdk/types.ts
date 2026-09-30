@@ -1050,6 +1050,16 @@ export interface IonHttpResponse {
   body: string
 }
 
+/**
+ * Result of a protected operation (see {@link IonContext.protectedOperation}).
+ * Wherever the response reflected the injected secret, it reads `[redacted]`.
+ */
+export interface IonProtectedOperationResult {
+  status: number
+  headers: Record<string, string>
+  body: string
+}
+
 /** Pre-authenticated HTTP surface (see {@link IonContext.http}). */
 export interface IonHttp {
   request(method: string, url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
@@ -1277,6 +1287,26 @@ export interface IonContext extends DispatchControlContext {
    * ```
    */
   http: IonHttp
+
+  /**
+   * Run an operation the operator declared under `protectedOperations` in the
+   * engine's global engine.json. The declaration fixes the method,
+   * destination, secret reference, injection slot, and payload schema; the
+   * extension supplies only the name and a payload. The engine injects the
+   * secret at call time and strips it from the result, so the credential
+   * never enters this process and the call cannot be redirected.
+   *
+   * `payload` is sent as the JSON body after the engine validates it against
+   * the declared schema. Omit it to send no body. Rejects on an unknown name,
+   * a rejected payload, or an engine with no declared operations.
+   *
+   * @example
+   * ```ts
+   * const res = await ctx.protectedOperation('publish-metric', { value: 42 })
+   * if (res.status !== 202) ctx.sendMessage(`metric rejected: ${res.status}`)
+   * ```
+   */
+  protectedOperation(name: string, payload?: unknown): Promise<IonProtectedOperationResult>
 
   /**
    * Queue a fresh prompt on this session's agent loop. Returns once the
