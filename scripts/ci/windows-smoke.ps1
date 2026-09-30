@@ -266,6 +266,16 @@ Assert ($uninstProc.ExitCode -eq 0) "uninstaller exit code is 0 (got $($uninstPr
 # The NSIS uninstaller returns before it has finished removing the directory.
 $goneBy = (Get-Date).AddSeconds(30)
 while ((Test-Path -LiteralPath $InstallDir) -and (Get-Date) -lt $goneBy) { Start-Sleep -Seconds 2 }
+if (Test-Path -LiteralPath $InstallDir) {
+  # What survived, and what still runs from it, so the failure explains itself.
+  Write-Host "  --- left in $InstallDir"
+  Get-ChildItem -LiteralPath $InstallDir -Recurse -File -ErrorAction SilentlyContinue |
+    Select-Object -First 25 | ForEach-Object { Write-Host "    $($_.FullName)" }
+  Write-Host "  --- processes running from $InstallDir"
+  Get-Process -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -and $_.Path.StartsWith($InstallDir, [System.StringComparison]::OrdinalIgnoreCase) } |
+    ForEach-Object { Write-Host "    $($_.Id) $($_.Path)" }
+}
 Assert (-not (Test-Path -LiteralPath $InstallDir)) "$InstallDir removed"
 
 # --- 10. Uninstall left nothing pointing at the removed binary --------------
