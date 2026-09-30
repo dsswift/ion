@@ -3321,6 +3321,31 @@
       "notes": "Span record shapes and the hop chain: docs/observability/log-schema.md § Spans."
     },
     {
+      "id": "protected-operation",
+      "term": "Protected operation",
+      "definition": "An outbound HTTP call the operator declares by name in the global engine.json. The declaration fixes the method, destination, secret reference, injection slot, and payload schema. An extension supplies only the name and a payload, and the engine injects the secret, so the credential never enters the extension and cannot be sent elsewhere.",
+      "domain": "harness-sdk",
+      "kind": "runtime-mechanic",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "func DoProtectedOperation",
+          "path": "engine/internal/extension/protected_operation.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "protectedOperation(name: string, payload?: unknown): Promise<IonProtectedOperationResult>",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        }
+      ]
+    },
+    {
       "id": "provider",
       "term": "Provider",
       "definition": "The LLM vendor integration that streams a model response. The engine calls each provider over raw HTTP.",

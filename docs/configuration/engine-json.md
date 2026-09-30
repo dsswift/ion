@@ -21,6 +21,7 @@ Ion ships with no default model. Before the engine can run a prompt, you must ei
 | `logLevel` | string | `""` | Log verbosity. One of `"debug"`, `"info"`, `"warn"`, `"error"`. Empty string uses the engine default. |
 | `slashModelTier` | object | omitted | Policy for command-owned model tiers after a conversation has history. See [slashModelTier](#slashmodeltier). |
 | `subscriptionLookup` | object | omitted | Resolve a provider's key from an endpoint with the signed-in identity. See [subscriptionLookup](#subscriptionlookup). |
+| `protectedOperations` | object | omitted | Named outbound calls whose secret the engine injects. Global file only. See [protectedOperations](#protectedoperations). |
 
 ## slashModelTier
 
@@ -974,6 +975,54 @@ A more specific config layer replaces the whole block. Each ended dispatch is al
 }
 ```
 
+## protectedOperations
+
+Named outbound HTTP operations whose credential the engine injects at call time. An extension calls one by name with a payload (`ctx.protectedOperation` in TypeScript, `Context.ProtectedOperation` in Go). It never supplies the URL, the method, the injection slot, or the secret reference, so it never holds the secret and cannot send it anywhere else.
+
+Only the global `~/.ion/engine.json` declares operations. A project `.ion/engine.json` block is ignored and logged (`project protected operations ignored`), because a checked-out repository must not decide where your secrets go. The engine reads the block fresh on every call, so adding or changing an operation needs no restart. With no block, every call fails with `protected operations are not configured`.
+
+```json
+{
+  "protectedOperations": {
+    "publish-metric": {
+      "method": "POST",
+      "url": "https://metrics.example.com/v1/metrics",
+      "secretRef": "metrics-api-key",
+      "injectAs": { "header": "X-Api-Key" },
+      "bodySchema": {
+        "type": "object",
+        "required": ["value"],
+        "properties": { "value": { "type": "number" } }
+      }
+    }
+  }
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `method` | string | required | HTTP method. |
+| `url` | string | required | Absolute `http` or `https` destination. |
+| `secretRef` | string | required | Name of the credential-store entry that holds the secret. |
+| `injectAs.header` | string | | Request header that carries the secret. Set exactly one of `header` or `query`. |
+| `injectAs.query` | string | | Query parameter that carries the secret. |
+| `injectAs.prefix` | string | `""` | Text placed before the secret, for example `"Bearer "`. |
+| `bodySchema` | object | required | JSON Schema the payload must satisfy before the call is made. `{}` accepts any payload. |
+| `headers` | object | omitted | Fixed headers sent on every call. The injected header wins over one with the same name. |
+| `timeoutMs` | number | `30000` | Request deadline. |
+| `maxBytes` | number | 5 MB | Response size cap. |
+| `allowPrivateNetwork` | bool | `false` | Allows a private or reserved destination address. |
+
+**Storing the secret.** `secretRef` names an entry in the engine's encrypted credential store, the same store the `store_credential` command writes (`{"cmd":"store_credential","provider":"metrics-api-key","credential":"..."}`). A call made inside an attributed session reads that principal's own entry only. A call with no principal (a schedule or webhook) reads the shared entry. Rotating the secret is another `store_credential`; no extension changes.
+
+**What the engine guarantees.**
+
+- The payload is validated against `bodySchema` before any secret is read or any request is sent. A payload that fails is rejected.
+- The payload is sent as the JSON body with `Content-Type: application/json` unless `headers` sets one. A missing or `null` payload sends no body, if the schema allows it.
+- Redirects are never followed, so the injected secret cannot be carried to a second destination.
+- The result is `{ status, headers, body }`. Every appearance of the secret in the response body or headers, raw or URL-encoded, is replaced with `[redacted]`.
+- The secret never appears in a log line, an error message, or an event. Errors from the transport are redacted the same way.
+- An unknown operation name is an error. There is no fallback to a caller-built request.
 ## Full example
 
 A multi-provider configuration mixing a local Ollama model with a hosted OpenAI fallback. Pick whichever model fits the task and let the engine route to the right provider.

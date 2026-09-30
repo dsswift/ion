@@ -380,7 +380,13 @@ Every RPC-backed method takes a `context.Context` first. This is not decoration:
 | Cross-session       | `Sessions().List`, `Sessions().Send`, `Intercept`                                                                                      |
 | Schedules           | `FireSchedule`, `GetScheduleStatus`                                                                                                    |
 | Processes           | `RegisterProcess`, `DeregisterProcess`, `ListProcesses`, `TerminateProcess`, `CleanStaleProcesses`                                     |
-| Other               | `HTTP()`, `LLMCall`, `Notify`, `RunOnce`, `SandboxWrap`, `Log()`                                                                       |
+| Other               | `HTTP()`, `ProtectedOperation`, `LLMCall`, `Notify`, `RunOnce`, `SandboxWrap`, `Log()`                                                 |
+
+`ProtectedOperation` runs an operation the operator declared under [`protectedOperations`](../configuration/engine-json.md#protectedoperations) in the global `engine.json`. You pass the name and a payload; the engine injects the declared secret, and any reflected copy of it in the result reads `[redacted]`. Use it for calls that need a service credential. `HTTP()` covers calls made as the signed-in identity.
+
+```go
+res, err := ctx.ProtectedOperation(c, "publish-metric", map[string]any{"value": 42})
+```
 
 `DispatchAgent` is asynchronous by default: it returns a stub with `DispatchID`, and the engine routes terminal results to the owner. Set `WaitForCompletion: true` only when explicit blocking terminal output is required.
 

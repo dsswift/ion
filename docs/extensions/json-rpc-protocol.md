@@ -508,6 +508,45 @@ Permission `deny` decisions resolve with `{ content, isError: true }` describing
 
 The per-tool hooks (`bash_tool_call`, etc.) and `permission_request` are **not** fired on these calls. Both would re-enter the calling extension and create surprising recursion. Audit log entries from the permission engine still fire.
 
+### `ext/protected_operation`
+
+Run an operation declared under [`protectedOperations`](../configuration/engine-json.md#protectedoperations) in the global `engine.json`. The engine injects the declared secret; the extension sends only the name and a payload.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 100008,
+  "method": "ext/protected_operation",
+  "params": {
+    "name": "publish-metric",
+    "payload": { "value": 42 }
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 100008,
+  "result": {
+    "status": 202,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"accepted\":true}"
+  }
+}
+```
+
+`name` is required. `payload` is optional; when present it must satisfy the operation's `bodySchema` and is sent as the JSON body. Any appearance of the secret in the response reads `[redacted]`.
+
+| Code | Cause |
+|------|-------|
+| `-32602` | Malformed params. |
+| `-32000` | No operations are configured, the name is unknown, the declaration is invalid, the payload was rejected, the secret is not in the credential store, or the request failed. The message never contains the secret. |
+
+A call made inside a hook reads the secret from the acting principal's credential-store partition. A call with no hook context (schedules, webhooks) reads the shared partition.
+
 ### `ext/dispatch_agent`
 
 Dispatch an engine-native agent. Creates a child session with optional extension loading, system prompt injection, and event streaming. **Asynchronous by default** -- returns a stub with `dispatchId` immediately; terminal result delivered via notification.
