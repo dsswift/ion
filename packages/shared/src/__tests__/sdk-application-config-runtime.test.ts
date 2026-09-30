@@ -63,20 +63,28 @@ describe('TypeScript SDK applicationConfig', () => {
     const notReady = await runRead((ctx) => ctx.applicationConfig.get('region'), 'ext/get_application_config',
       { state: 'fetching', revision: 1, key: 'region', found: false })
     expect(notReady.params).toEqual({ key: 'region' })
-    expect(notReady.result).toEqual({ state: 'fetching', revision: 1, key: 'region', found: false })
+    expect(notReady.result).toEqual({ state: 'fetching', revision: 1, key: 'region', found: false, secret: false })
 
     vi.resetModules()
     lineHandlers.length = 0
     const missing = await runRead((ctx) => ctx.applicationConfig.get('region'), 'ext/get_application_config',
       { state: 'ready', revision: 2, key: 'region', found: false })
-    expect(missing.result).toEqual({ state: 'ready', revision: 2, key: 'region', found: false })
+    expect(missing.result).toEqual({ state: 'ready', revision: 2, key: 'region', found: false, secret: false })
+  })
+
+  it('reports a withheld secret apart from a missing key', async () => {
+    const { result } = await runRead((ctx) => ctx.applicationConfig.get('gatewayKey'), 'ext/get_application_config',
+      { state: 'refreshing', revision: 4, key: 'gatewayKey', found: false, secret: true })
+    expect(result).toEqual({ state: 'refreshing', revision: 4, key: 'gatewayKey', found: false, secret: true })
   })
 
   it('returns the whole snapshot', async () => {
     const { params, result } = await runRead((ctx) => ctx.applicationConfig.snapshot(), 'ext/get_application_config',
-      { state: 'ready', revision: 3, subject: 'subject-a', values: { region: 'east' }, fetchedAt: '2026-09-29T00:00:00Z' })
+      { state: 'ready', revision: 3, subject: 'subject-a', values: { region: 'east' }, secretKeys: ['gatewayKey'], fetchedAt: '2026-09-29T00:00:00Z' })
     expect(params).toEqual({})
-    expect(result).toEqual({ state: 'ready', revision: 3, subject: 'subject-a', values: { region: 'east' }, fetchedAt: '2026-09-29T00:00:00Z' })
+    expect(result).toEqual({
+      state: 'ready', revision: 3, subject: 'subject-a', values: { region: 'east' }, secretKeys: ['gatewayKey'], fetchedAt: '2026-09-29T00:00:00Z',
+    })
   })
 
   it('awaits with a timeout and reports timedOut', async () => {

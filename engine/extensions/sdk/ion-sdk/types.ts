@@ -1065,9 +1065,10 @@ export interface IonProtectedOperationResult {
  * {@link IonContext.applicationConfig}). `disabled`: the engine has no
  * `applicationConfig` source. `deferred`: no principal is available for this
  * reader yet. `fetching`: the first resolution is in flight. `ready`: values
- * are available. `failed`: resolution failed; `error` says why.
+ * are available. `refreshing`: a refresh is in flight and the previous values
+ * stay available. `failed`: resolution failed; `error` says why.
  */
-export type ApplicationConfigState = 'disabled' | 'deferred' | 'fetching' | 'ready' | 'failed'
+export type ApplicationConfigState = 'disabled' | 'deferred' | 'fetching' | 'ready' | 'refreshing' | 'failed'
 
 /**
  * One complete view of the application config. Also the
@@ -1080,11 +1081,15 @@ export interface ApplicationConfigSnapshot {
   /** The principal the values belong to. Absent while deferred. */
   subject?: string
   provider?: string
-  /** The resolved configuration object. Present only when ready. */
+  /** The common section merged with this extension's own section. Present
+   *  only when `ready` or `refreshing`. */
   values?: Record<string, unknown>
+  /** Names of the secrets the engine holds for this extension. Their values
+   *  never reach extension code. */
+  secretKeys?: string[]
   /** Failure reason. Present only when failed. */
   error?: string
-  /** RFC 3339 resolution time. Present only when ready. */
+  /** RFC 3339 resolution time. Present only when `ready` or `refreshing`. */
   fetchedAt?: string
 }
 
@@ -1094,10 +1099,13 @@ export interface ApplicationConfigValue {
   revision: number
   error?: string
   key: string
-  /** Meaningful only when `state` is `ready`: false then means the key does
-   *  not exist in the resolved configuration. */
+  /** Meaningful only when `state` is `ready` or `refreshing`: false then
+   *  means the key is not a readable value. */
   found: boolean
   value?: unknown
+  /** True when `key` names a secret the engine holds. Its value is never
+   *  returned. */
+  secret: boolean
 }
 
 /** Result of {@link IonApplicationConfig.await}. */
@@ -1109,8 +1117,9 @@ export interface ApplicationConfigAwaitResult extends ApplicationConfigSnapshot 
 /**
  * Authenticated, deferred application config: values scoped to the signed-in
  * principal, resolved once by the engine after sign-in and shared by every
- * extension. Every read carries `state`, so "still loading" is never confused
- * with "the key does not exist". Subscribe to transitions with the
+ * extension. Each extension sees the common section plus its own section,
+ * keyed by its enterprise extension allowlist entry. Every read carries
+ * `state`, so "still loading" is never confused with "the key does not exist". Subscribe to transitions with the
  * `application_config_changed` hook instead of polling.
  */
 export interface IonApplicationConfig {
@@ -1118,7 +1127,7 @@ export interface IonApplicationConfig {
   snapshot(): Promise<ApplicationConfigSnapshot>
   /** One key, without waiting. */
   get(key: string): Promise<ApplicationConfigValue>
-  /** Wait until the view is ready or failed, or `timeoutMs` passes (engine
+  /** Wait until the view has values or failed, or `timeoutMs` passes (engine
    *  default 30 000). Always resolves with the latest view. */
   await(opts?: { timeoutMs?: number }): Promise<ApplicationConfigAwaitResult>
 }
@@ -1378,7 +1387,7 @@ export interface IonContext extends DispatchControlContext {
    * @example
    * ```ts
    * const endpoint = await ctx.applicationConfig.get('storageEndpoint')
-   * if (endpoint.state === 'ready' && endpoint.found) useEndpoint(endpoint.value)
+   * if (endpoint.found) useEndpoint(endpoint.value)
    * ```
    */
   applicationConfig: IonApplicationConfig

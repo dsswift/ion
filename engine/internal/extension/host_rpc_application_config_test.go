@@ -3,6 +3,7 @@ package extension
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,12 +16,21 @@ type fixedIdentityProvider struct{ identity *auth.ContextIdentity }
 
 func (p fixedIdentityProvider) ContextIdentity() *auth.ContextIdentity { return p.identity }
 
-// installReadyStore installs a store resolved for subject-a with values.
+// installReadyStore installs a store resolved for subject-a with values in
+// the common section.
 func installReadyStore(t *testing.T, values map[string]any) {
+	t.Helper()
+	installReadyDocument(t, &appconfig.Document{Common: appconfig.Section{Values: values}})
+}
+
+// installReadyDocument installs a store resolved for subject-a with document.
+func installReadyDocument(t *testing.T, document *appconfig.Document) {
 	t.Helper()
 	auth.SetContextIdentityProvider(fixedIdentityProvider{&auth.ContextIdentity{Kind: "operator", Provider: "entra", Subject: "subject-a"}})
 	store := appconfig.NewStore(types.ApplicationConfigSource{Endpoint: "https://config.example.invalid"},
-		func(context.Context, types.ApplicationConfigSource) (map[string]any, error) { return values, nil })
+		func(context.Context, types.ApplicationConfigSource, appconfig.Validators) (appconfig.FetchResult, error) {
+			return appconfig.FetchResult{Document: document}, nil
+		})
 	appconfig.Install(store)
 	t.Cleanup(func() {
 		store.Stop()
@@ -105,5 +115,49 @@ func TestAwaitApplicationConfig(t *testing.T) {
 	waited := applicationConfigRequest(t, h, "ext/await_application_config", map[string]any{"timeoutMs": 20})
 	if waited.State != appconfig.StateDeferred || !waited.TimedOut {
 		t.Fatalf("await for a principal with no snapshot must time out deferred: %+v", waited)
+	}
+}
+
+func TestGetApplicationConfigScopedToTrustedExtension(t *testing.T) {
+	installReadyDocument(t, &appconfig.Document{
+		Common: appconfig.Section{
+			Values:  map[string]any{"region": "east"},
+			Secrets: map[string]string{"gatewayKey": "gateway-secret-value"},
+		},
+		Extensions: map[string]appconfig.Section{
+			"ext-a": {Values: map[string]any{"storage": "a-bucket"}},
+			"ext-b": {Values: map[string]any{"storage": "b-bucket"}},
+		},
+	})
+	a := NewHost()
+	a.setTrustedID("ext-a")
+	whole := applicationConfigRequest(t, a, "ext/get_application_config", map[string]any{})
+	if whole.Values["region"] != "east" || whole.Values["storage"] != "a-bucket" {
+		t.Fatalf("a trusted extension must see common plus its own section: %+v", whole.Values)
+	}
+	if len(whole.SecretKeys) != 1 || whole.SecretKeys[0] != "gatewayKey" {
+		t.Fatalf("secret names = %v", whole.SecretKeys)
+	}
+
+	// The handshake name is self-reported; only the trusted id scopes.
+	impostor := NewHost()
+	impostor.setName("ext-b")
+	if got := applicationConfigRequest(t, impostor, "ext/get_application_config", map[string]any{"key": "storage"}); got.Found {
+		t.Fatalf("an extension with no trusted id must not read an extension section: %+v", got)
+	}
+
+	secret := applicationConfigRequest(t, a, "ext/get_application_config", map[string]any{"key": "gatewayKey"})
+	if secret.State != appconfig.StateReady || secret.Found || !secret.Secret || secret.Value != nil {
+		t.Fatalf("a secret key must read as withheld: %+v", secret)
+	}
+	ch := attachStdout(a)
+	a.handleExtRequest("ext/get_application_config", 9, []byte(`{"params":{}}`))
+	resp := readResponse(t, ch, 2*time.Second)
+	encoded, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "gateway-secret-value") {
+		t.Fatalf("a secret value must never cross the wire: %s", encoded)
 	}
 }

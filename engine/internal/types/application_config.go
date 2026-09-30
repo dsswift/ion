@@ -6,8 +6,9 @@ package types
 // only. Nil (the block absent from engine.json) leaves the subsystem inert.
 type ApplicationConfigSource struct {
 	// Endpoint is the absolute http(s) URL the engine GETs with the
-	// identity's bearer token. The response body must be a JSON object; its
-	// top-level keys are the values extensions read.
+	// identity's bearer token. The response is an application config
+	// document: a common section every extension reads, one section per
+	// enterprise-allowlisted extension, and secrets that stay in the engine.
 	Endpoint string `json:"endpoint"`
 	// RefreshSeconds is the interval between refreshes for the same
 	// identity. A failed first resolution also retries on this interval.
@@ -22,11 +23,6 @@ type ApplicationConfigSource struct {
 	// TimeoutMs bounds one fetch. Zero or negative selects
 	// DefaultApplicationConfigTimeoutMs.
 	TimeoutMs int `json:"timeoutMs,omitempty"`
-	// SecretKeys names top-level keys whose values are secrets. The engine
-	// withholds them from every extension read and hook payload; only
-	// engine-internal consumers (protected operations, MCP secret headers)
-	// read them.
-	SecretKeys []string `json:"secretKeys,omitempty"`
 }
 
 const (

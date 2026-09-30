@@ -37,12 +37,16 @@ func (m *Manager) handleApplicationConfigChange(snapshot appconfig.Snapshot) {
 			ctx := m.newExtContext(t.session, t.key)
 			// A session acting as its own principal sees only that
 			// principal's view; every other session sees the process view.
+			// Each extension sees the common section plus its own.
 			subject := ""
 			if ctx.Identity != nil {
 				subject = ctx.Identity.Subject
 			}
-			view := snapshot.For(subject)
-			fields := map[string]any{"session_id": t.key, "extension": host.Name(), "state": view.State, "revision": view.Revision}
+			view := snapshot.View(subject, host.TrustedID())
+			fields := map[string]any{
+				"session_id": t.key, "extension": host.Name(), "trusted_id": host.TrustedID(),
+				"state": view.State, "revision": view.Revision,
+			}
 			if err := host.FireApplicationConfigChanged(ctx, view); err != nil {
 				fields["error"] = err.Error()
 				utils.LogWithFields(utils.LevelWarn, "session.appconfig", "application config hook failed", fields)

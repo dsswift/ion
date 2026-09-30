@@ -33,31 +33,33 @@ func Current() *Store {
 	return installed
 }
 
-// Read returns the view subject may see. With no store installed it
-// returns the disabled state, so an unconfigured engine is distinguishable
-// from one still waiting for a principal.
-func Read(subject string) Snapshot {
+// Read returns the view the extension trusted as extensionID may see while
+// acting as subject. With no store installed it returns the disabled state,
+// so an unconfigured engine is distinguishable from one still waiting for a
+// principal.
+func Read(subject, extensionID string) View {
 	store := Current()
 	if store == nil {
-		return Snapshot{State: StateDisabled}
+		return View{State: StateDisabled}
 	}
-	return store.Snapshot().For(subject)
+	return store.Snapshot().View(subject, extensionID)
 }
 
-// Await waits for subject's view to settle. With no store installed it
-// returns the disabled state at once.
-func Await(ctx context.Context, subject string) (Snapshot, error) {
+// Await waits for subject's view to settle and returns what extensionID may
+// see of it. With no store installed it returns the disabled state at once.
+func Await(ctx context.Context, subject, extensionID string) (View, error) {
 	store := Current()
 	if store == nil {
-		return Snapshot{State: StateDisabled}, nil
+		return View{State: StateDisabled}, nil
 	}
-	return store.Await(ctx, subject)
+	snapshot, err := store.Await(ctx, subject)
+	return snapshot.View(subject, extensionID), err
 }
 
 // Subscribe receives every transition of the installed store, in order, as
 // a complete process-level snapshot. Callbacks run on the store's delivery
 // goroutine, never under a store lock; a consumer scopes a snapshot to a
-// reader with Snapshot.For.
+// reader with Snapshot.View and must not mutate it.
 func Subscribe(fn func(Snapshot)) (unsubscribe func()) {
 	registryMu.Lock()
 	id := nextSubscriber
@@ -79,7 +81,7 @@ func deliver(snapshot Snapshot) {
 	}
 	registryMu.RUnlock()
 	for _, callback := range callbacks {
-		callback(snapshot.clone())
+		callback(snapshot)
 	}
 }
 

@@ -69,6 +69,14 @@ type Host struct {
 	nameMu sync.RWMutex
 	name   string
 
+	// trustedID is the enterprise extension allowlist entry this extension
+	// matched at load. Empty when no allowlist is configured. It is the
+	// identity the engine scopes per-extension data to, because an
+	// extension cannot choose it: the handshake name is self-reported,
+	// while this one passed the allowlist and its optional hash pin.
+	// Guarded by nameMu.
+	trustedID string
+
 	// version is the extension version read from extension.json at load time.
 	// Empty when the manifest is absent or carries no version field.
 	// Not updated after load; manifest version is a build-time constant.
@@ -445,6 +453,20 @@ func (h *Host) Name() string {
 	return h.name_()
 }
 
+// TrustedID returns the enterprise extension allowlist entry this extension
+// matched at load, or "" when no allowlist is configured.
+func (h *Host) TrustedID() string {
+	h.nameMu.RLock()
+	defer h.nameMu.RUnlock()
+	return h.trustedID
+}
+
+func (h *Host) setTrustedID(id string) {
+	h.nameMu.Lock()
+	h.trustedID = id
+	h.nameMu.Unlock()
+}
+
 // name_ reads the extension name under the lock. Named with a trailing
 // underscore because the field it guards is called name; every internal read
 // goes through here rather than touching the field, so a notification arriving
@@ -497,6 +519,12 @@ func (h *Host) EngineBuildIdentity() string {
 // specific names for grouping/coordination testing.
 func (h *Host) SetNameForTest(name string) {
 	h.setName(name)
+}
+
+// SetTrustedIDForTest sets the allowlist identity without loading an
+// extension, for tests in other packages that scope per-extension data.
+func (h *Host) SetTrustedIDForTest(id string) {
+	h.setTrustedID(id)
 }
 
 // SetVersionForTest sets the host's version without loading an extension.

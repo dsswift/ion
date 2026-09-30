@@ -26,7 +26,7 @@ func TestStoreFollowsOperatorSignInAndSignOut(t *testing.T) {
 	auth.SetOperator(manager)
 	t.Cleanup(func() { auth.SetOperator(nil) })
 
-	fetcher := &scriptedFetcher{results: []fetchResult{{values: map[string]any{"k": "v"}}}}
+	fetcher := &scriptedFetcher{results: []fetchResult{commonDoc(map[string]any{"k": "v"})}}
 	store := newTestStore(t, fetcher, time.Hour)
 	store.Start()
 	snap := awaitState(t, store, "", StateReady)

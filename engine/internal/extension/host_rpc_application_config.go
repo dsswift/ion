@@ -4,9 +4,11 @@
 //
 // Every answer carries the lifecycle state beside the values, so a reader
 // can tell "still loading" (deferred, fetching) from "the key does not
-// exist" (ready, found=false). The view is scoped to the reader: a session
-// acting as a principal other than the one the snapshot was resolved for
-// reads deferred, never another principal's values.
+// exist" (ready, found=false). The view is scoped twice: to the reader's
+// principal, so a session acting as another principal reads deferred; and
+// to the extension's trusted allowlist identity, so an extension sees the
+// common section plus its own and never another extension's. Secret values
+// never leave the engine; a read of a secret key reports secret=true.
 package extension
 
 import (
@@ -28,19 +30,23 @@ const (
 )
 
 // ApplicationConfigChangedInfo is the application_config_changed payload: a
-// complete snapshot scoped to the receiving session's principal. Handlers
-// replace their view with it.
-type ApplicationConfigChangedInfo = appconfig.Snapshot
+// complete view scoped to the receiving session's principal and the
+// receiving extension. Handlers replace their view with it.
+type ApplicationConfigChangedInfo = appconfig.View
 
 // ApplicationConfigRead answers ext/get_application_config and
 // ext/await_application_config.
 type ApplicationConfigRead struct {
-	appconfig.Snapshot
-	// Key echoes the requested key. When set, Values is omitted and the
-	// answer carries Found and Value for that key alone.
+	appconfig.View
+	// Key echoes the requested key. When set, Values and SecretKeys are
+	// omitted and the answer carries Found, Value, and Secret for that key
+	// alone.
 	Key   string `json:"key,omitempty"`
 	Found bool   `json:"found"`
 	Value any    `json:"value,omitempty"`
+	// Secret reports that Key names a secret the engine holds for this
+	// extension. Its value is never returned.
+	Secret bool `json:"secret,omitempty"`
 	// TimedOut is set by await when the view had not settled in time.
 	TimedOut bool `json:"timedOut,omitempty"`
 }
@@ -54,11 +60,12 @@ func readerSubject(ctx *Context) string {
 	return ctx.Identity.Subject
 }
 
-func applicationConfigAnswer(snapshot appconfig.Snapshot, key string) ApplicationConfigRead {
-	answer := ApplicationConfigRead{Snapshot: snapshot, Key: key}
+func applicationConfigAnswer(view appconfig.View, key string) ApplicationConfigRead {
+	answer := ApplicationConfigRead{View: view, Key: key}
 	if key != "" {
-		answer.Value, answer.Found = snapshot.Lookup(key)
+		answer.Value, answer.Found, answer.Secret = view.Lookup(key)
 		answer.Values = nil
+		answer.SecretKeys = nil
 	}
 	return answer
 }
@@ -74,9 +81,11 @@ func (h *Host) rpcGetApplicationConfig(ctx *Context, id int64, raw []byte) {
 		return
 	}
 	subject := readerSubject(ctx)
-	answer := applicationConfigAnswer(appconfig.Read(subject), req.Params.Key)
+	trustedID := h.TrustedID()
+	answer := applicationConfigAnswer(appconfig.Read(subject, trustedID), req.Params.Key)
 	utils.LogWithFields(utils.LevelDebug, "extension", "ext/get_application_config answered", map[string]any{
-		"extension": h.Name(), "subject": subject, "state": answer.State, "revision": answer.Revision, "key": answer.Key, "found": answer.Found,
+		"extension": h.Name(), "trusted_id": trustedID, "subject": subject, "state": answer.State, "revision": answer.Revision,
+		"key": answer.Key, "found": answer.Found, "secret": answer.Secret,
 	})
 	data, _ := json.Marshal(answer) //nolint:errcheck // marshal of a local RPC struct
 	h.sendResponse(id, json.RawMessage(data), nil)
@@ -98,14 +107,15 @@ func (h *Host) rpcAwaitApplicationConfig(ctx *Context, id int64, raw []byte) {
 		timeout = min(time.Duration(req.Params.TimeoutMs)*time.Millisecond, applicationConfigAwaitMax)
 	}
 	subject := readerSubject(ctx)
+	trustedID := h.TrustedID()
 	go func() {
 		waitCtx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
-		snapshot, err := appconfig.Await(waitCtx, subject)
-		answer := applicationConfigAnswer(snapshot, req.Params.Key)
+		view, err := appconfig.Await(waitCtx, subject, trustedID)
+		answer := applicationConfigAnswer(view, req.Params.Key)
 		answer.TimedOut = errors.Is(err, context.DeadlineExceeded)
 		utils.LogWithFields(utils.LevelInfo, "extension", "ext/await_application_config answered", map[string]any{
-			"extension": h.Name(), "subject": subject, "state": answer.State, "revision": answer.Revision, "timed_out": answer.TimedOut,
+			"extension": h.Name(), "trusted_id": trustedID, "subject": subject, "state": answer.State, "revision": answer.Revision, "timed_out": answer.TimedOut,
 		})
 		data, _ := json.Marshal(answer) //nolint:errcheck // marshal of a local RPC struct
 		h.sendResponse(id, json.RawMessage(data), nil)

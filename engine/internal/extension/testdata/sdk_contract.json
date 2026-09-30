@@ -35,6 +35,7 @@
         "fetchedAt",
         "provider",
         "revision",
+        "secretKeys",
         "state",
         "subject",
         "values"
