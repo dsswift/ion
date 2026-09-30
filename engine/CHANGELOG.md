@@ -18,6 +18,22 @@ command blocking, permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.87.0](https://github.com/dsswift/ion/compare/engine-v1.86.1...engine-v1.87.0) (2026-09-30)
+
+### Features
+
+* **engine:** resolve provider keys from a subscription lookup (#384) ([3745977](https://github.com/dsswift/ion/commit/37459775f88b1291187b00e81bb30e46cdd73f9a))
+* **engine:** name the provider a looked-up key configures (#384) ([a243a0c](https://github.com/dsswift/ion/commit/a243a0c5c356b10b3a3a813d7eac4bcab3b25602))
+* **engine:** keep dispatch history, flag ambiguous names (#388) ([ac074ed](https://github.com/dsswift/ion/commit/ac074ed871d2f7935bb4df180377d90b03725237))
+* **engine:** scope dispatch control and persist history (#388) ([0906e2e](https://github.com/dsswift/ion/commit/0906e2e762326d376164de819d6ad921a947df92))
+
+### Bug Fixes
+
+* **engine:** honor forwardIdentityToken in mcp transports (#381) ([01e9f5d](https://github.com/dsswift/ion/commit/01e9f5df999230f2f78cc359a44813e3b6be1726))
+* **engine:** register subscription lookup contract version ([0c43cae](https://github.com/dsswift/ion/commit/0c43caed927d1f1a507b10b5558694c2c16a705d))
+* **engine:** answer a metrics watch before its first sample ([acced71](https://github.com/dsswift/ion/commit/acced7165b05679c46e10b489ba8ccd8f5216929))
+* **engine:** order the stale subscription lookup test ([802ce69](https://github.com/dsswift/ion/commit/802ce6933fbe5beccb5bb03c051ee27e1e978e35))
+
 ## [1.86.1](https://github.com/dsswift/ion/compare/engine-v1.86.0...engine-v1.86.1) (2026-09-29)
 
 ### Bug Fixes

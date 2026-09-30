@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.14](https://github.com/dsswift/ion/compare/sdk/go-v0.1.13...sdk/go-v0.1.14) (2026-09-30)
+
+### Features
+
+* **engine:** keep dispatch history, flag ambiguous names (#388) ([ac074ed](https://github.com/dsswift/ion/commit/ac074ed871d2f7935bb4df180377d90b03725237))
+* **engine:** scope dispatch control and persist history (#388) ([0906e2e](https://github.com/dsswift/ion/commit/0906e2e762326d376164de819d6ad921a947df92))
+
 ## [0.1.13](https://github.com/dsswift/ion/compare/sdk/go-v0.1.12...sdk/go-v0.1.13) (2026-09-29)
 
 ### Features

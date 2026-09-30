@@ -10,6 +10,18 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.1.0](https://github.com/dsswift/ion/compare/desktop-v2.0.3...desktop-v2.1.0) (2026-09-30)
+
+### Features
+
+* **desktop:** build the studio browser into a full embedded browser ([3a03898](https://github.com/dsswift/ion/commit/3a038984c5d9053bfaf8597b57d8b3609c495245))
+* **desktop:** choose the provider subscription in settings (#384) ([3fe95e7](https://github.com/dsswift/ion/commit/3fe95e7ddb44c1a56843638e17a819bd8064a65d))
+* **engine:** name the provider a looked-up key configures (#384) ([a243a0c](https://github.com/dsswift/ion/commit/a243a0c5c356b10b3a3a813d7eac4bcab3b25602))
+
+### Bug Fixes
+
+* **desktop:** honour locked theme policy in useColors (#446) ([9394a38](https://github.com/dsswift/ion/commit/9394a38f4290b2386101ebe000dbafeb531fe6a2))
+
 ## [2.0.3](https://github.com/dsswift/ion/compare/desktop-v2.0.2...desktop-v2.0.3) (2026-09-30)
 
 ### Bug Fixes
