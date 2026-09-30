@@ -233,7 +233,6 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			return extcontext.RecallDispatchResult(reg.RecallOwnedByID("", dispatchID, reason)), nil
 		})
 
-
 		// Persistent steer for ext/steer_dispatch when the parent run is idle.
 		host.SetPersistentSteer(func(dispatchID, message string) (extension.SteerDispatchResult, error) {
 			reg := s.dispatchRegistry
