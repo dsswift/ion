@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [2.0.3](https://github.com/dsswift/ion/compare/desktop-v2.0.2...desktop-v2.0.3) (2026-09-30)
+
+### Bug Fixes
+
+* **desktop:** stop ion engines so a silent uninstall completes ([4899435](https://github.com/dsswift/ion/commit/4899435dd9ba5814693fd9e38e7e48d24d08daf4))
+
 ## [2.0.2](https://github.com/dsswift/ion/compare/desktop-v2.0.1...desktop-v2.0.2) (2026-09-30)
 
 ### Bug Fixes
