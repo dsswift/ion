@@ -1,4 +1,4 @@
-.PHONY: sync-windows-vm default demo desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test shared-test server-test test test-all test-linux test-linux-engine test-linux-engine-run test-linux-engine-summary test-linux-desktop test-linux-desktop-run test-linux-server test-linux-server-run clean check-file-sizes check-contracts check-status-writers check-server-parity check-studio-wire check-logging check-admx check-windows-scripts check-swiftlint check-dashboards check-vocabulary check-issue-closure check-doc-links generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop log-level-debug
+.PHONY: merge-nodes sync-windows-vm default demo desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test sdk-test shared-test server-test test test-all test-linux test-linux-engine test-linux-engine-run test-linux-engine-summary test-linux-desktop test-linux-desktop-run test-linux-server test-linux-server-run clean check-file-sizes check-contracts check-status-writers check-server-parity check-studio-wire check-logging check-admx check-windows-scripts check-swiftlint check-dashboards check-vocabulary check-issue-closure check-doc-links generate-vocabulary claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop log-level-debug
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -527,6 +527,7 @@ claude-symlinks:
 bootstrap:
 	@echo "▶ npm install (husky hooks)"
 	@npm install --silent
+	@$(MAKE) --no-print-directory merge-nodes
 	@$(MAKE) --no-print-directory claude-symlinks
 	@$(MAKE) --no-print-directory log-level-debug
 	@$(MAKE) --no-print-directory graph-ensure
@@ -683,6 +684,13 @@ graph:
 hooks:
 	@git config core.hooksPath .husky/_
 	@echo "core.hooksPath -> .husky/_"
+
+# main keeps one merge node per piece of work. This makes a plain
+# `git merge <branch>` on main produce one; the pre-push hook refuses a push
+# that would move main to anything else (scripts/check-main-merge-node.sh).
+merge-nodes:
+	@git config branch.main.mergeoptions --no-ff
+	@echo "branch.main.mergeoptions -> --no-ff"
 
 # Local pipeline testing (requires: brew install act)
 test-pipeline-dry:

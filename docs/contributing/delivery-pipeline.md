@@ -52,6 +52,12 @@ The engine tests reuse Go's test cache between runs (`actions/cache` keyed on th
 
 Dependency advisories and vulnerability scans read a feed that changes every day, so their result is not a property of the commit. `security.yml` runs `govulncheck` and `npm audit` nightly and on demand, never on a push, and files each finding under the `security` label. A new advisory never turns a push red and never holds a release.
 
+## `main` is made of merge nodes
+
+Every push to `main` moves it to a merge commit: one node per piece of work, carrying the branch it came from. `release-damnit` reads the commit graph through those nodes. The flow is, on `main`, `git merge <branch>` then `git push`. `make bootstrap` sets `branch.main.mergeoptions --no-ff`, so that merge always produces a node even when a fast-forward was possible.
+
+The hook enforces it: `scripts/check-main-merge-node.sh` reads the refs being pushed and refuses any that would move `main` to a non-merge tip. A fast-forward of a branch and a commit made straight on `main` are both refused. The pipeline's own version-bump commit is not affected; it is pushed from CI, where no local hook runs.
+
 ## The gate in front of `main`
 
 There is one: the local `pre-push` hook (`scripts/pre-push.sh`). It runs only what is static or a compile, scoped to the components the branch touched, so a push waits about a minute: file-size caps, tracked-binary check, toolchain alignment, vocabulary drift, engine lint and build plus the Windows cross-build, relay lint, desktop typecheck, server typecheck and lint, the renderer bundle, and SwiftLint. No test suite runs in the hook.

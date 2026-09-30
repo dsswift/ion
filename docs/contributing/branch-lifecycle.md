@@ -17,7 +17,7 @@ It is written for two audiences. **Operators** use it as a refresher on the expe
 | Feature work | Operator asks; agent implements | Code, tests, docs. Committed at clean scope seams — one commit per scope per feature. | No |
 | `/align` | Operator | Reviews the work against Ion's quality gates and architectural principles, then authors a fix plan. In plan mode it audits the plan instead. | No |
 | `/squash` | Operator | Rebuilds the branch from a soft reset into one commit per scope per feature. Creates a backup branch first. | No |
-| Push to `main` | Operator | `git push` on `main`. The `pre-push` hook runs the static gates (about a minute); the delivery pipeline takes it from there. | Yes |
+| Merge and push | Operator | On `main`: `git merge <branch>` (always `--no-ff` after `make bootstrap`), then `git push`. The `pre-push` hook refuses a non-merge tip and runs the static gates (about a minute); the delivery pipeline takes it from there. | Yes |
 | `/create-pr` | Operator, optionally | Runs the Linux parity gate, pushes the branch, opens a pull request for review or preview. Its checks are advisory; nothing requires a PR. | Yes |
 
 The agent's job ends at the commit. Squashing, pushing, and whether to open a pull request belong to the operator — see root `AGENTS.md` § "Operator gitops are not yours to narrate or prescribe". An agent should commit verified work and report what is ready, not narrate or prescribe what the operator does next.

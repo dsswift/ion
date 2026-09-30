@@ -33,6 +33,13 @@ set -uo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)" || exit 1
 cd "$REPO_ROOT" || exit 1
 
+# Git hands the refs being pushed on stdin. main only ever moves to a merge
+# commit (scripts/check-main-merge-node.sh); that is checked first, before
+# any gate runs, so a push that is wrong in shape is refused in a second.
+if ! bash scripts/check-main-merge-node.sh; then
+  exit 1
+fi
+
 # Resolve the merge-base against origin/main so we only run checks for the
 # components actually touched on this branch.
 BASE_REF="origin/main"
@@ -90,6 +97,7 @@ run "no tracked binaries" bash scripts/check-no-binaries.sh
 run "Go toolchain alignment" bash scripts/check-go-toolchains.sh
 run "Go toolchain regression checks" bash scripts/check-go-toolchains.test.sh
 run "Linux parity gate receipt semantics" bash scripts/gate-cache.test.sh
+run "main merge-node rule" bash scripts/check-main-merge-node.test.sh
 
 # Vocabulary uses Node built-ins with zero install and always runs because registry path and symbol references can be invalidated by any tree change.
 run "vocabulary registry + drift" make check-vocabulary
