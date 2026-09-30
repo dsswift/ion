@@ -2,6 +2,7 @@
   "context": [
     "AckDispatchLost",
     "AnswerDispatchQuestion",
+    "ApplicationConfig",
     "CallTool",
     "CleanStaleProcesses",
     "DeregisterAgentSpec",
@@ -79,6 +80,11 @@
     "Webhooks"
   ],
   "namespaces": {
+    "ApplicationConfigAPI": [
+      "Await",
+      "Get",
+      "Snapshot"
+    ],
     "HTTPAPI": [
       "Delete",
       "Get",
@@ -133,6 +139,7 @@
     "agent_start",
     "agent_tool_call",
     "agent_tool_result",
+    "application_config_changed",
     "background_task_completed",
     "bash_tool_call",
     "bash_tool_result",
