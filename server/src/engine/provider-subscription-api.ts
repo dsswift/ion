@@ -14,6 +14,7 @@
  * REPLACES its view with the payload.
  */
 import type { EngineEvent, ProviderSubscriptionStatus } from '@ion/shared/types-engine-event'
+import type { ProviderSubscriptionResult } from '@ion/shared/provider-subscription'
 import { engineBridge } from '../state'
 import { log as _log, warn as _warn } from '../logger'
 
@@ -40,12 +41,6 @@ export function wireProviderSubscriptionEvents(
     })
     emit(PROVIDER_SUBSCRIPTION_CHANGED_CHANNEL, subscription)
   })
-}
-
-export interface ProviderSubscriptionResult {
-  ok: boolean
-  error?: string
-  subscription: ProviderSubscriptionStatus
 }
 
 /** The snapshot a failed request leaves when the engine sent none. */

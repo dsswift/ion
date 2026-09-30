@@ -7,6 +7,7 @@
  */
 import type { FsEntry } from "@ion/shared/types";
 import type { ModelTier } from "@ion/shared/types-model-tiers";
+import type { ProviderSubscriptionResult } from "@ion/shared/provider-subscription";
 
 export interface BridgedEngineShell {
   // ─── Filesystem operations ───
@@ -178,6 +179,10 @@ export interface BridgedEngineShell {
       oid: string;
     } | null;
   }>;
+  // ─── Provider Subscription (the key a lookup resolved for the signed-in identity) ───
+  providerSubscription(): Promise<ProviderSubscriptionResult>;
+  selectProviderSubscription(payload: { id: string }): Promise<ProviderSubscriptionResult>;
+  refreshProviderSubscription(): Promise<ProviderSubscriptionResult>;
   // ─── Remote control ───
   remoteGetMessages(tabId: string): Promise<any[]>;
   remoteDiscoverRelays(): Promise<

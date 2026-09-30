@@ -2,13 +2,16 @@
  * EntraSection — Microsoft Entra (OIDC) sign-in on the picked server. It lets
  * the person authenticate so the egress forwarder can attach a Bearer token,
  * and so user attribution, to shipped telemetry records. Not account
- * management: one row, its state, and Sign in or Sign out.
+ * management: one row, its state, and Sign in or Sign out. Below it, the
+ * provider subscription the engine looks up with that sign-in, when the
+ * server configures a lookup.
  */
 import React, { useCallback, useEffect, useState } from 'react'
 import { SignIn, SignOut } from '@phosphor-icons/react'
 import { useSettingsShell } from '../../settings-shell'
 import { Button, FormGroup, FormRow } from '../../kit'
 import { rError, rInfo, rWarn } from '../../../../rendererLogger'
+import { ProviderSubscriptionGroup } from './ProviderSubscriptionGroup'
 
 interface EntraIdentity {
   user: string
@@ -79,15 +82,18 @@ export function EntraSection(): React.JSX.Element {
   const signedIn = signInState === 'signed-in' && identity !== null
 
   return (
-    <FormGroup title="Enterprise sign-in" anchor="entra">
-      <FormRow label="Microsoft Entra (OIDC)" description={description} warning={signInState === 'error' ? errorMsg ?? undefined : undefined}>
-        {signedIn && (
-          <Button icon={SignOut} onClick={() => { void handleSignOut().catch((err: unknown) => rError('settings', 'entra sign-out failed', { error: String(err) })) }}>Sign out</Button>
-        )}
-        {(signInState === 'signed-out' || signInState === 'error') && (
-          <Button variant="primary" icon={SignIn} onClick={() => { void handleSignIn().catch((err: unknown) => rError('settings', 'entra sign-in failed', { error: String(err) })) }}>Sign in with Microsoft</Button>
-        )}
-      </FormRow>
-    </FormGroup>
+    <>
+      <FormGroup title="Enterprise sign-in" anchor="entra">
+        <FormRow label="Microsoft Entra (OIDC)" description={description} warning={signInState === 'error' ? errorMsg ?? undefined : undefined}>
+          {signedIn && (
+            <Button icon={SignOut} onClick={() => { void handleSignOut().catch((err: unknown) => rError('settings', 'entra sign-out failed', { error: String(err) })) }}>Sign out</Button>
+          )}
+          {(signInState === 'signed-out' || signInState === 'error') && (
+            <Button variant="primary" icon={SignIn} onClick={() => { void handleSignIn().catch((err: unknown) => rError('settings', 'entra sign-in failed', { error: String(err) })) }}>Sign in with Microsoft</Button>
+          )}
+        </FormRow>
+      </FormGroup>
+      <ProviderSubscriptionGroup />
+    </>
   )
 }

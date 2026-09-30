@@ -179,6 +179,7 @@ const SECTION_UI: Record<SettingsSectionId, SectionUi> = {
   ] },
   entra: { component: P.EntraSection, items: [
     item('entra', 'Enterprise sign-in', 'microsoft entra oidc telemetry authentication sign in'),
+    item('provider-subscription', 'Provider subscription', 'subscription key lookup gateway provider api key choose select'),
   ] },
   git: { component: P.GitWorkflowSection, items: [
     item('gitops-mode', 'GitOps mode', 'gitops mode manual worktree branch isolate', ['gitOpsMode']),
