@@ -1,16 +1,19 @@
 // host_rpc_protected_operation.go — ext/protected_operation RPC handler.
 //
 // Bridges the TypeScript SDK's ctx.protectedOperation to DoProtectedOperation
-// (protected_operation.go). A call made inside a hook runs through that
-// context's ProtectedOperation, which carries the acting principal. A call
-// with no hook context (schedules, webhooks) uses the unattributed
-// credential-store partition.
+// (protected_operation.go). The host stamps its own enterprise-allowlist
+// identity on every call, so an extension-owned application config secret is
+// read only on that extension's behalf. A call made inside a hook runs
+// through that context's ProtectedOperation, which carries the acting
+// principal. A call with no hook context (schedules, webhooks) reads the
+// shared credential-store partition.
 package extension
 
 import (
 	"context"
 	"encoding/json"
 
+	"github.com/dsswift/ion/engine/internal/secretref"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -25,8 +28,9 @@ func (h *Host) rpcProtectedOperation(ctx *Context, id int64, raw []byte) {
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
 		return
 	}
+	req.Params.ExtensionID = h.TrustedID()
 	run := func(params ProtectedOperationParams) (*ProtectedOperationResult, error) {
-		return DoProtectedOperation(context.Background(), params)
+		return DoProtectedOperation(secretref.WithReader(context.Background(), secretref.Reader{ExtensionID: params.ExtensionID}), params)
 	}
 	if ctx != nil && ctx.ProtectedOperation != nil {
 		run = ctx.ProtectedOperation

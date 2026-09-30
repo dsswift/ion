@@ -27,7 +27,6 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 
-	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/secretref"
@@ -59,6 +58,9 @@ type ProtectedOperationParams struct {
 	// Payload is the JSON request body, validated against the operation's
 	// bodySchema. Absent or null sends no body.
 	Payload json.RawMessage `json:"payload,omitempty"`
+	// ExtensionID is the calling extension's enterprise-allowlist identity.
+	// The host sets it; it never decodes from the caller's request.
+	ExtensionID string `json:"-"`
 }
 
 // ProtectedOperationResult is what the extension receives. Every encoding of
@@ -69,10 +71,11 @@ type ProtectedOperationResult struct {
 	Body    string            `json:"body"`
 }
 
-// DoProtectedOperation runs one declared operation. The acting principal rides
-// on ctx (auth.WithSubject) and selects the credential-store partition.
+// DoProtectedOperation runs one declared operation. The reader on ctx
+// (secretref.WithReader) selects whose secret is read.
 func DoProtectedOperation(ctx context.Context, params ProtectedOperationParams) (*ProtectedOperationResult, error) {
-	subject := auth.SubjectFromContext(ctx)
+	reader := secretref.ReaderFromContext(ctx)
+	subject := reader.Principal
 	ops := protectedOperationsSource()
 	if len(ops) == 0 {
 		utils.LogWithFields(utils.LevelInfo, "extension.protected_operation", "protected operation refused: none configured", map[string]any{
@@ -105,13 +108,14 @@ func DoProtectedOperation(ctx context.Context, params ProtectedOperationParams) 
 		return nil, fmt.Errorf("protected operation %q payload rejected: %w", params.Name, err)
 	}
 
-	secret, err := protectedSecretSource(subject, op.SecretReference)
+	secret, err := protectedSecretSource(reader, op.SecretReference)
 	if err == nil && secret == "" {
 		err = fmt.Errorf("secret %q is empty", op.SecretRef)
 	}
 	if err != nil {
 		utils.LogWithFields(utils.LevelError, "extension.protected_operation", "protected operation refused: secret unavailable", map[string]any{
-			"operation": params.Name, "subject": subject, "secret_ref": op.SecretRef, "source": secretref.Source(op.SecretReference), "error": err.Error(),
+			"operation": params.Name, "subject": subject, "trusted_id": reader.ExtensionID, "secret_ref": op.SecretRef,
+			"source": secretref.Source(op.SecretReference), "error": err.Error(),
 		})
 		return nil, fmt.Errorf("protected operation %q: %w", params.Name, err)
 	}

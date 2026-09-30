@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/auth"
+	"github.com/dsswift/ion/engine/internal/secretref"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -48,8 +49,8 @@ func useProtectedOperations(t *testing.T, ops map[string]types.ProtectedOperatio
 	t.Helper()
 	prevOps, prevSecret := protectedOperationsSource, protectedSecretSource
 	protectedOperationsSource = func() map[string]types.ProtectedOperationConfig { return ops }
-	protectedSecretSource = func(subject string, ref types.SecretReference) (string, error) {
-		if v, ok := secrets[subject+"|"+ref.SecretSource+"|"+ref.SecretRef]; ok {
+	protectedSecretSource = func(reader secretref.Reader, ref types.SecretReference) (string, error) {
+		if v, ok := secrets[reader.Principal+"|"+ref.SecretSource+"|"+ref.SecretRef]; ok {
 			return v, nil
 		}
 		return "", fmt.Errorf("secret %q is not available: %w", ref.SecretRef, auth.ErrKeyNotFound)
@@ -215,7 +216,7 @@ func TestProtectedOperation_SecretComesFromActingPrincipalPartition(t *testing.T
 	useProtectedOperations(t, map[string]types.ProtectedOperationConfig{"publish-metric": headerOp(srv.URL)},
 		map[string]string{"||metrics-api-key": "shared-secret-value"})
 
-	ctx := auth.WithSubject(context.Background(), "user-a")
+	ctx := secretref.WithReader(context.Background(), secretref.Reader{Principal: "user-a"})
 	_, err := DoProtectedOperation(ctx, ProtectedOperationParams{Name: "publish-metric", Payload: json.RawMessage(`{"value":1}`)})
 	if err == nil || !strings.Contains(err.Error(), `secret "metrics-api-key" is not available`) {
 		t.Fatalf("attributed caller must not read the shared partition: got %v", err)
