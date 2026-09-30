@@ -955,7 +955,7 @@ interface DispatchError {
 interface RecallInfo {
   name: string       // agent name
   dispatchId?: string // the dispatch that was recalled
-  reason: string     // recall reason
+  reason: string     // the recaller's reason; "recall_agent" when none was given
   elapsed: number    // wall time in seconds
   toolCount: number  // tools completed before recall
   childConversationId?: string // durable child conversation, when one existed
