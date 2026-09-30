@@ -26,7 +26,9 @@ A browser descriptor contains its URL, content mode, and session mode:
 - `isolated` uses one private session for the browser descriptor.
 - `shared` uses one persistent session for the browser descriptor. This is the default for a new browse tab and for a legacy descriptor that has no session mode.
 
-The renderer mounts browser documents for all conversations. It hides inactive documents with `display: none`. This keeps webview history and browser session data alive while the operator changes conversations.
+The main process keeps a browser document alive for every conversation. An inactive document is hidden and parked off-screen, not destroyed. This keeps its history and session data alive while the operator changes conversations.
+
+The browser needs Electron. The web build of Studio shows each browser document's tab but renders an unavailable state in place of the page.
 
 The main process owns session partitions, network policy, and browser automation registration. The renderer can request a session-mode or shield change only through the typed preload bridge. The main process validates and applies the request before the renderer changes the descriptor.
 
@@ -82,6 +84,110 @@ guest hardening is shared with the `<webview>` path, so the two cannot drift.
 `desktop/scripts/verify-browser-cdp.mjs` checks a running app and fails if any
 browser guest is a `webview` target. Unit tests cannot catch this class of
 defect, because the seam that breaks is the one they mock.
+
+## The Browser slot and the tab strip
+
+A conversation's browser descriptors share one slot in the Surface tab bar.
+The slot sits where the first browser descriptor sits and is labelled with the
+document it shows. The [Studio Browser Tab
+Strip](../../vocabulary/index.md#term-studio-browser-tab-strip) above the body
+lists every document, with the Agent-linked one first, and switches, closes,
+and opens them.
+
+Documents are not nested inside one descriptor. Each stays its own descriptor
+with its own `instanceId`. Nesting was considered and rejected: it would bump
+the persisted Surface version, change what the agent pointer names, rekey the
+view map, and rewrite the browser-tool paths, to express what the current
+shape already expresses.
+
+One field was added for this: `activeBrowserInstanceId` on the conversation
+record, the document the slot shows when the operator returns to it from a
+file or terminal tab. It needs no version bump. An absent value resolves to the
+active tab when that is a browser, else to the first browser. Every fallback is
+harmless, unlike the agent pointer, where absent and null had to differ so an
+unlinked tab was not re-linked.
+
+Closing the shown document lands on its neighbour in the strip, as a browser
+does, not on whatever tab follows it in the outer bar.
+
+The strip reads descriptors and calls store actions only, so the web build of
+Studio shows it above its unavailable body.
+
+## Operator chrome lives in main
+
+The page holds keyboard focus and is not in the Studio document. A renderer
+`keydown` never sees a key pressed in a page, and there is no element to ask
+for a favicon. Every browser ergonomic is therefore a main-process listener on
+the guest, pushed to the chrome over IPC:
+
+- Shortcuts come from `before-input-event`. The modifier is the command key on
+  macOS and the control key on Windows, as an explicit branch. Reload,
+  history, and zoom are applied in main. Focus-the-URL-bar and find open the
+  chrome, so main focuses the Studio window and sends them to the renderer.
+- The context menu is a native `Menu.popup()`. A DOM menu would render behind
+  the page, because the page is a view composited above the document.
+- Favicon and loading state ride the view-state push with the URL and title.
+- Zoom is Chromium's, keyed by origin within a session as a browser does. The
+  level is stored on the descriptor and re-applied when a document is restored.
+
+The find bar and the prompt bars are DOM rows above the body hole. Opening one
+shrinks the hole and the view follows on the next measurement. Nothing is
+layered over the page.
+
+## The browser presents as Chrome
+
+Electron's default user agent is Chrome's with the app's name tag appended:
+`... Chrome/134.0.0.0 Safari/537.36 Ion/1.82.0 Electron/35.7.5`. Google's and
+Microsoft's sign-in pages refuse an "embedded browser framework", and that
+tag is how they recognise one. The engine underneath is real Chromium on the
+same version line as Chrome, and the shared browse partition is already a
+persistent, Ion-owned profile. The only thing that said "not Chrome" was the
+tag.
+
+Every browser partition therefore sends the plain Chrome identity: the
+fallback with its trailing `Name/version` tokens removed. Nothing is invented;
+the Chrome version and platform tokens are what this build's Chromium reports.
+The identity is set on the session, so subresources and service workers agree
+with the document.
+
+Ion does not pass Chromium's automation flag, so `navigator.webdriver` is
+false in a guest. A separate Chrome process was considered and rejected: on
+macOS one application cannot paint another's window inside its own, so a real
+Chrome could not live in the Studio panel, and driving it over CDP would
+present exactly the same automation surface as driving Ion's own Chromium.
+
+`desktop/scripts/verify-browser-identity.mjs` asks a running app what a page
+sees and fails if any guest still presents as embedded or automated.
+
+## Page permissions, HTTP auth, and certificate errors
+
+With no permission handler, a Chromium session grants what a page asks for.
+Ion installs both handlers on every browser partition: the request handler
+answers a page that asks, and the check handler answers
+`navigator.permissions.query`, which without one reports granted for
+permissions nobody granted. The default is deny. A promptable permission
+(location, notifications, camera and microphone, MIDI, clipboard read, screen
+share, idle detection, pointer and keyboard lock) raises a prompt bar in the
+chrome; full screen is granted without asking; everything else is refused and
+logged.
+
+An HTTP login is answered through the guest's own `login` event, never the
+app-level one, so a login the engine or an OAuth window raises is not
+intercepted. A certificate error on the main frame raises an interstitial bar
+with "Back to safety" as the default; a subresource error is refused quietly.
+The underlying callback runs exactly once on every path, because a missed call
+leaves the request hanging.
+
+Decisions are held in memory for the session, keyed by partition, origin, and
+permission, and are never written to disk. A persisted grant is a durable
+security decision, and there is no settings surface to review or revoke one;
+a grant the operator cannot see or undo is worse than being asked again after
+a restart. Certificate trust is scoped further, to one host and one
+certificate.
+
+A prompt names its document. A page in a background conversation waits until
+the operator opens that document; main re-sends any open prompt when the
+document's chrome mounts. A guest that goes away refuses its open prompts.
 
 ## Browser automation
 
@@ -242,7 +348,7 @@ logins, emulation state, and recorded diagnostics stay as they are.
 
 ## Consequences
 
-Browser state is durable at the descriptor level and live at the webview level. A restored browser retains its URL and session mode. A mounted browser retains its current history until it is closed.
+Browser state is durable at the descriptor level and live at the view level. A restored browser retains its URL, session mode, zoom, and favicon. A mounted browser retains its current history until it is closed. Permission and certificate decisions last for the session only.
 
 The browser is a Studio-only surface. It does not project to iOS.
 

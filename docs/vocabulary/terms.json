@@ -3973,7 +3973,7 @@
     {
       "id": "studio-browser-surface",
       "term": "Studio Browser Surface",
-      "definition": "The Studio Surface tab that renders one browser document. Each descriptor belongs to one conversation and records its URL, content mode, and browser session mode. The renderer keeps every conversation's browser document mounted so its history and session stay available when the user changes conversations.",
+      "definition": "The Studio Surface tab that renders one browser document. Each descriptor belongs to one conversation and records its URL, content mode, browser session mode, zoom, and favicon. A conversation's browser descriptors share one slot in the Surface tab bar; the Studio Browser Tab Strip switches between them. The main process keeps every conversation's browser document alive so its history and session stay available when the user changes conversations.",
       "domain": "clients",
       "kind": "ui-component",
       "status": "canonical",
@@ -3996,6 +3996,35 @@
           "language": "typescript",
           "symbol": "export interface BrowserTab",
           "path": "packages/shared/src/studio-surface-types.ts"
+        }
+      ]
+    },
+    {
+      "id": "studio-browser-tab-strip",
+      "term": "Studio Browser Tab Strip",
+      "definition": "The strip inside the Browser slot that lists a conversation's browser documents. It switches, closes, and opens documents through Surface store actions only, so it renders on the Electron and web hosts alike. The Agent-linked document is listed first.",
+      "domain": "clients",
+      "kind": "ui-component",
+      "status": "canonical",
+      "aliases": [
+        "browser strip",
+        "Browser slot"
+      ],
+      "contract": "none",
+      "implementations": [
+        {
+          "platform": "studio",
+          "presentation": "ui",
+          "language": "typescript",
+          "symbol": "export function BrowserTabStrip",
+          "path": "desktop/src/renderer/studio/surface/BrowserTabStrip.tsx"
+        },
+        {
+          "platform": "desktop",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export function browserGroup",
+          "path": "packages/shared/src/studio-browser-group.ts"
         }
       ]
     },

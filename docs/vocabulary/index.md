@@ -185,6 +185,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Steer Stream Interrupt](#term-steer-stream-interrupt)
 - [Studio](#term-studio-shell)
 - [Studio Browser Surface](#term-studio-browser-surface)
+- [Studio Browser Tab Strip](#term-studio-browser-tab-strip)
 - [Studio Center](#term-studio-center)
 - [Studio Left Dock](#term-studio-left-dock)
 - [Studio Resource Traffic](#term-studio-resource-traffic)
@@ -1992,7 +1993,7 @@ The region that opens beside a conversation to show its full status detail: the 
 
 #### Studio Browser Surface {#term-studio-browser-surface}
 
-The Studio Surface tab that renders one browser document. Each descriptor belongs to one conversation and records its URL, content mode, and browser session mode. The renderer keeps every conversation's browser document mounted so its history and session stay available when the user changes conversations.
+The Studio Surface tab that renders one browser document. Each descriptor belongs to one conversation and records its URL, content mode, browser session mode, zoom, and favicon. A conversation's browser descriptors share one slot in the Surface tab bar; the Studio Browser Tab Strip switches between them. The main process keeps every conversation's browser document alive so its history and session stay available when the user changes conversations.
 
 - **ID:** `studio-browser-surface`
 - **Status:** `canonical`
@@ -2003,6 +2004,20 @@ The Studio Surface tab that renders one browser document. Each descriptor belong
 - **Implementations:**
   - `studio` / `ui` / `typescript`: `export function BrowserSurface` in `desktop/src/renderer/studio/surface/tabs/BrowserSurface.tsx`
   - `desktop` / `code` / `typescript`: `export interface BrowserTab` in `packages/shared/src/studio-surface-types.ts`
+
+#### Studio Browser Tab Strip {#term-studio-browser-tab-strip}
+
+The strip inside the Browser slot that lists a conversation's browser documents. It switches, closes, and opens documents through Surface store actions only, so it renders on the Electron and web hosts alike. The Agent-linked document is listed first.
+
+- **ID:** `studio-browser-tab-strip`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** `browser strip`, `Browser slot`
+- **Legacy names:** None
+- **Contract:** `none`
+- **Implementations:**
+  - `studio` / `ui` / `typescript`: `export function BrowserTabStrip` in `desktop/src/renderer/studio/surface/BrowserTabStrip.tsx`
+  - `desktop` / `code` / `typescript`: `export function browserGroup` in `packages/shared/src/studio-browser-group.ts`
 
 #### Studio Center {#term-studio-center}
 
@@ -2938,6 +2953,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 | SSH Door | `addEnvironmentOverSsh`, `useSshDoor` | `addEnvironmentOverSsh`, `useSshDoor` | `addEnvironmentOverSsh`, `useSshDoor` | None | iOS |
 | Status Drawer | `StatusDrawer` | `StatusDrawer` | `StatusDrawer` | `struct StatusDrawerView` | None |
 | Studio Browser Surface | `export interface BrowserTab` | `export function BrowserSurface`, `export interface BrowserTab` | `export interface BrowserTab` | None | iOS |
+| Studio Browser Tab Strip | `export function browserGroup` | `export function BrowserTabStrip`, `export function browserGroup` | `export function browserGroup` | None | iOS |
 | Studio Center | None | `StudioCenter` | None | None | Overlay, iOS |
 | Studio Left Dock | None | `StudioLeftSidebar` | None | None | Overlay, iOS |
 | Studio Resource Traffic | None | `export function isStudioTrafficKind` | None | `static func isStudioTraffic` | Overlay |
@@ -2975,6 +2991,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `APNs token` → [Push address](#term-push-address)
 - Legacy name: `ATV` → [Studio](#term-studio-shell)
 - Legacy name: `Agent Team Visualizer` → [Studio](#term-studio-shell)
+- Alias: `Browser slot` → [Studio Browser Tab Strip](#term-studio-browser-tab-strip)
 - Alias: `Ion Desktop` → [Desktop](#term-desktop-client)
 - Alias: `Ion Relay` → [Relay](#term-relay)
 - Alias: `Ion Remote` → [iOS](#term-ios-client)
@@ -2995,6 +3012,7 @@ The Desktop client has two presentations, Studio and Overlay. An implementation 
 - Alias: `automation rules` → [Desktop Automation](#term-desktop-automation)
 - Alias: `bench` → [Integration bench](#term-integration-bench)
 - Alias: `bottom terminal tray` → [Conversation Terminal Panel](#term-conversation-terminal-panel)
+- Alias: `browser strip` → [Studio Browser Tab Strip](#term-studio-browser-tab-strip)
 - Alias: `browser surface` → [Studio Browser Surface](#term-studio-browser-surface)
 - Alias: `canonical event` → [Normalized event](#term-normalized-event)
 - Alias: `center pane` → [Studio Center](#term-studio-center)
