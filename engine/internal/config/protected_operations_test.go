@@ -73,3 +73,34 @@ func operationURLs(ops map[string]types.ProtectedOperationConfig) map[string]str
 	}
 	return out
 }
+
+// TestEnterpriseProtectedOperations pins that an enterprise operation replaces
+// a user operation of the same name whole and leaves others in place, and
+// that enterprise sources union by name.
+func TestEnterpriseProtectedOperations(t *testing.T) {
+	user := &types.EngineRuntimeConfig{ProtectedOperations: map[string]types.ProtectedOperationConfig{
+		"gateway":        {URL: "https://user-choice.example.com", Headers: map[string]string{"X-User": "1"}},
+		"publish-metric": {URL: "https://metrics.example.com"},
+	}}
+	enterprise := &types.EnterpriseConfig{ProtectedOperations: map[string]types.ProtectedOperationConfig{
+		"gateway": {URL: "https://gateway.example.com"},
+	}}
+	sealed := EnforceEnterprise(user, enterprise)
+	if got := operationURLs(sealed.ProtectedOperations); len(got) != 2 || got["gateway"] != "https://gateway.example.com" || got["publish-metric"] != "https://metrics.example.com" {
+		t.Fatalf("sealed operations: %v", got)
+	}
+	if sealed.ProtectedOperations["gateway"].Headers != nil {
+		t.Fatal("an enterprise operation must replace the user's whole, not merge fields")
+	}
+	if user.ProtectedOperations["gateway"].URL != "https://user-choice.example.com" {
+		t.Fatal("enforcement must not mutate its input")
+	}
+
+	merged := mergeEnterprisePartial(
+		&types.EnterpriseConfig{ProtectedOperations: map[string]types.ProtectedOperationConfig{"a": {URL: "https://a.example.com"}, "b": {URL: "https://machine.example.com"}}},
+		&types.EnterpriseConfig{ProtectedOperations: map[string]types.ProtectedOperationConfig{"b": {URL: "https://user-policy.example.com"}}},
+	)
+	if got := operationURLs(merged.ProtectedOperations); len(got) != 2 || got["b"] != "https://user-policy.example.com" {
+		t.Fatalf("enterprise sources must union by name with the overlay winning: %v", got)
+	}
+}

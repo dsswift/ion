@@ -127,6 +127,10 @@ type EnterpriseConfig struct {
 	// source whole, so an organization points every engine at its own
 	// per-principal configuration service (see EnforceEnterprise).
 	ApplicationConfig *ApplicationConfigSource `json:"applicationConfig,omitempty"`
+	// ProtectedOperations declares organization-owned protected operations.
+	// Each entry replaces a user operation of the same name; user
+	// operations with other names remain (see EnforceEnterprise).
+	ProtectedOperations map[string]ProtectedOperationConfig `json:"protectedOperations,omitempty"`
 	// ConversationEvents seals the standalone conversation.* telemetry family
 	// on, independent of Telemetry's own seal (see EnforceEnterprise).
 	ConversationEvents *ConversationEventsConfig `json:"conversationEvents,omitempty"`
@@ -513,10 +517,10 @@ type EngineRuntimeConfig struct {
 
 	// ProtectedOperations declares named outbound operations whose secret
 	// the engine injects at call time, keyed by operation name. Only the
-	// global ~/.ion/engine.json declares them: a project layer's block is
-	// dropped at merge, so a checked-out repository cannot aim a stored
-	// secret at a destination of its choosing. Nil leaves the surface
-	// unavailable.
+	// global ~/.ion/engine.json and enterprise config declare them: a
+	// project layer's block is dropped at merge, so a checked-out repository
+	// cannot aim a secret at a destination of its choosing. Nil leaves the
+	// surface unavailable.
 	ProtectedOperations map[string]ProtectedOperationConfig `json:"protectedOperations,omitempty"`
 }
 

@@ -297,6 +297,8 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		result.ApplicationConfig = &sealed
 	}
 
+	sealProtectedOperations(&result, enterprise)
+
 	// ConversationEvents: same one-way seal pattern as Telemetry above,
 	// applied to the fully independent conversation.* config block (issue
 	// #378). This is a separate seal from Telemetry's — an enterprise can
