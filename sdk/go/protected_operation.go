@@ -2,7 +2,7 @@
 // secret.
 //
 // The operator declares each operation under protectedOperations in the
-// engine's global engine.json: method, destination, secret reference,
+// engine's global or enterprise config: method, destination, secret reference,
 // injection slot, and payload schema. The extension names the operation and
 // supplies a payload, nothing else. The engine injects the secret and strips
 // every encoding of it from the result, so the credential never enters the
@@ -31,10 +31,12 @@ func (r ProtectedOperationResult) JSON(v any) error {
 	return json.Unmarshal([]byte(r.Body), v)
 }
 
-// ProtectedOperation runs the declared operation name with payload as its
-// JSON body. A nil payload sends no body. The engine validates the payload
-// against the operation's schema before dispatch; an unknown name, a
-// rejected payload, or an engine with no declared operations is an error.
+// ProtectedOperation runs the declared operation name. The engine validates
+// payload against the operation's schema, fills any {name} placeholders in
+// the declared path from its top-level fields, and sends it as the JSON body
+// (never for GET or HEAD). A nil payload sends no body. An unknown name, a
+// rejected payload, an unavailable secret, or an engine with no declared
+// operations is an error.
 func (c *Context) ProtectedOperation(ctx context.Context, name string, payload any) (ProtectedOperationResult, error) {
 	if name == "" {
 		return ProtectedOperationResult{}, fmt.Errorf("ion: protected operation requires a name")
