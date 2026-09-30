@@ -247,3 +247,121 @@ export function parseBrowserCommandResult(raw: unknown): StudioBrowserCommandRes
   }
   return result
 }
+
+// ─── Operator chrome: view state, find, zoom, shortcuts ──────────────────────
+
+/**
+ * What the guest tells the chrome about itself.
+ *
+ * The body is a main-process view, so the URL bar, history buttons, favicon,
+ * and loading state have no element to read and learn everything from here.
+ */
+export interface StudioBrowserViewState {
+  conversationId: string
+  instanceId: string
+  url: string
+  title: string
+  canGoBack: boolean
+  canGoForward: boolean
+  /** The page's favicon, or empty until a page reports one. */
+  faviconUrl: string
+  loading: boolean
+  /** Chromium zoom level (0 is 100%). */
+  zoomLevel: number
+}
+
+/** A find-in-page request. `stop` ends the search and clears the highlight. */
+export type StudioBrowserFindRequest =
+  | { text: string; forward: boolean; findNext: boolean }
+  | { stop: true }
+
+export interface StudioBrowserFindResult {
+  conversationId: string
+  instanceId: string
+  /** 1-based ordinal of the highlighted match; 0 when there is none. */
+  activeMatchOrdinal: number
+  matches: number
+}
+
+/** A zoom request: a step, a reset, or an explicit level (applied on restore). */
+export type StudioBrowserZoomRequest = 'in' | 'out' | 'reset' | { level: number }
+
+/** The shortcuts the guest cannot act on alone: they change the chrome. */
+export type StudioBrowserChromeShortcut = 'focus-url-bar' | 'open-find' | 'close-find'
+
+export interface StudioBrowserShortcutEvent {
+  conversationId: string
+  instanceId: string
+  action: StudioBrowserChromeShortcut
+}
+
+const MAX_FIND_TEXT = 1024
+
+export function parseBrowserFindRequest(raw: unknown): StudioBrowserFindRequest | null {
+  if (!raw || typeof raw !== 'object') return null
+  const v = raw as Record<string, unknown>
+  if (v.stop === true) return { stop: true }
+  if (typeof v.text !== 'string' || v.text.length === 0 || v.text.length > MAX_FIND_TEXT) return null
+  return { text: v.text, forward: v.forward !== false, findNext: v.findNext === true }
+}
+
+export function parseBrowserZoomRequest(raw: unknown): StudioBrowserZoomRequest | null {
+  if (raw === 'in' || raw === 'out' || raw === 'reset') return raw
+  if (raw && typeof raw === 'object' && typeof (raw as { level?: unknown }).level === 'number' && Number.isFinite((raw as { level: number }).level)) {
+    return { level: (raw as { level: number }).level }
+  }
+  return null
+}
+
+// ─── Operator prompts: permissions, HTTP auth, certificate errors ────────────
+
+/** The page permissions a Studio browser may ask the operator about. */
+export type BrowserPermission =
+  | 'geolocation'
+  | 'notifications'
+  | 'media'
+  | 'midi'
+  | 'midiSysex'
+  | 'clipboard-read'
+  | 'display-capture'
+  | 'idle-detection'
+  | 'pointerLock'
+  | 'keyboardLock'
+
+/**
+ * A request a page made that only the operator can answer.
+ *
+ * Main holds the underlying callback until an answer arrives for `promptId`.
+ * A prompt names its document, so a page in a background conversation waits
+ * until the operator opens that document rather than interrupting another.
+ */
+export type StudioBrowserPromptBody =
+  | { kind: 'permission'; origin: string; permission: BrowserPermission; mediaTypes: Array<'video' | 'audio'> }
+  | { kind: 'auth'; host: string; realm: string; isProxy: boolean }
+  | { kind: 'certificate'; host: string; error: string; issuer: string; fingerprint: string }
+
+export type StudioBrowserPrompt = { promptId: string; conversationId: string; instanceId: string } & StudioBrowserPromptBody
+
+export type StudioBrowserPromptAnswer =
+  | { promptId: string; kind: 'permission'; granted: boolean }
+  | { promptId: string; kind: 'auth'; username: string; password: string }
+  | { promptId: string; kind: 'auth'; cancel: true }
+  | { promptId: string; kind: 'certificate'; proceed: boolean }
+
+const MAX_CREDENTIAL = 4096
+
+export function parseBrowserPromptAnswer(raw: unknown): StudioBrowserPromptAnswer | null {
+  if (!raw || typeof raw !== 'object') return null
+  const v = raw as Record<string, unknown>
+  if (typeof v.promptId !== 'string' || !v.promptId) return null
+  const promptId = v.promptId
+  if (v.kind === 'permission' && typeof v.granted === 'boolean') return { promptId, kind: 'permission', granted: v.granted }
+  if (v.kind === 'certificate' && typeof v.proceed === 'boolean') return { promptId, kind: 'certificate', proceed: v.proceed }
+  if (v.kind === 'auth') {
+    if (v.cancel === true) return { promptId, kind: 'auth', cancel: true }
+    if (typeof v.username === 'string' && typeof v.password === 'string' && v.username.length <= MAX_CREDENTIAL && v.password.length <= MAX_CREDENTIAL) {
+      return { promptId, kind: 'auth', username: v.username, password: v.password }
+    }
+  }
+  return null
+}

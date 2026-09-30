@@ -14,6 +14,7 @@ import {
 } from './studio-surface-types'
 import { parseBrowserEmulation } from './studio-browser-types'
 import { normalizeTabs } from './studio-surface-ordering'
+import { resolveActiveBrowserInstance } from './studio-browser-group'
 import { STUDIO_LAYOUT_BOUNDS } from './types-studio'
 
 const SINGLETONS = new Set<string>(SINGLETON_ORDER)
@@ -27,6 +28,17 @@ function parseSurfaceWidth(raw: unknown): number | null {
 }
 
 type ParsedSurface = SurfacePersisted | LegacySurfacePersisted
+
+/** Chromium zoom levels are finite and bounded; anything else is dropped. */
+/**
+ * Chromium's zoom presets run from 25% to 500%, which is level -7.6 to 8.8
+ * (factor = 1.2 ^ level). Anything outside is a corrupt record, not a zoom.
+ */
+export const BROWSER_ZOOM_LEVEL_BOUNDS = { min: -7.6, max: 8.8 } as const
+function parseZoomLevel(raw: unknown): number | null {
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw === 0) return null
+  return Math.min(BROWSER_ZOOM_LEVEL_BOUNDS.max, Math.max(BROWSER_ZOOM_LEVEL_BOUNDS.min, raw))
+}
 
 function parseTab(raw: unknown): SurfaceTab | null {
   if (!raw || typeof raw !== 'object') return null
@@ -47,6 +59,7 @@ function parseTab(raw: unknown): SurfaceTab | null {
     // usable responsively. Losing a viewport override is recoverable; losing
     // the whole tab (and its place in the pointer) is not.
     const emulation = parseBrowserEmulation(v.emulation)
+    const zoomLevel = parseZoomLevel(v.zoomLevel)
     return {
       kind: 'browser',
       id: `browser:${v.instanceId}`,
@@ -56,6 +69,8 @@ function parseTab(raw: unknown): SurfaceTab | null {
       mode: v.mode === 'preview' ? 'preview' : 'browse',
       sessionMode: v.sessionMode === 'isolated' ? 'isolated' : 'shared',
       ...(emulation ? { emulation } : {}),
+      ...(zoomLevel !== null ? { zoomLevel } : {}),
+      ...(typeof v.faviconUrl === 'string' && v.faviconUrl ? { faviconUrl: v.faviconUrl } : {}),
     }
   }
   if (v.kind === 'terminal') {
@@ -117,7 +132,8 @@ function parseConversation(
   const activeTabId = typeof v.activeTabId === 'string' && selectableIds.has(v.activeTabId)
     ? v.activeTabId
     : (pinnedTabs[0] ?? tabs[0]?.id ?? notification?.id ?? null)
-  return { tabs, activeTabId, visible: v.visible, width: parseSurfaceWidth(v.width), agentBrowserInstanceId }
+  const activeBrowserInstanceId = resolveActiveBrowserInstance(tabs, activeTabId, typeof v.activeBrowserInstanceId === 'string' ? v.activeBrowserInstanceId : null)
+  return { tabs, activeTabId, visible: v.visible, width: parseSurfaceWidth(v.width), agentBrowserInstanceId, activeBrowserInstanceId }
 }
 
 function parseScratchDocument(raw: unknown): ScratchDocument | null {
@@ -251,7 +267,14 @@ export function serializeSurface(
     const width = parseSurfaceWidth(state.width)
     const worthKeeping = tabs.length > 0 || state.visible || agentBrowserInstanceId !== null || pointsAtOwnTab || width !== null
     if (!worthKeeping) continue
-    serialized[tabId] = { tabs, activeTabId, visible: state.visible, width, agentBrowserInstanceId }
+    serialized[tabId] = {
+      tabs,
+      activeTabId,
+      visible: state.visible,
+      width,
+      agentBrowserInstanceId,
+      activeBrowserInstanceId: resolveActiveBrowserInstance(tabs, activeTabId, state.activeBrowserInstanceId),
+    }
   }
   const persistedScratchProjects: Record<string, ScratchProject> = {}
   for (const [projectKey, project] of Object.entries(scratchProjects)) {
