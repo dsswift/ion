@@ -924,6 +924,7 @@ interface DispatchAgentResult {
   remainingDepthBudget?: number // child levels still available from caller
   dispatchId?: string // immediate asynchronous-stub identifier; steer/recall target
   sessionId?: string  // child session ID (for resume)
+  childConversationId?: string // durable child conversation; absent on the stub
   depth?: number      // this agent's depth in the dispatch tree
   parentDispatchId?: string // the dispatch that spawned this one; empty at top level
   planFilePath?: string // plan file written by child (when planMode was true)
@@ -940,9 +941,11 @@ interface DispatchAgentResult {
 ```typescript
 interface DispatchError {
   name: string       // agent name
+  dispatchId?: string // the dispatch that failed
   message: string    // error description
   exitCode: number   // non-zero
   elapsed: number    // wall time in seconds
+  childConversationId?: string // durable child conversation, when one existed
 }
 ```
 
@@ -951,11 +954,15 @@ interface DispatchError {
 ```typescript
 interface RecallInfo {
   name: string       // agent name
+  dispatchId?: string // the dispatch that was recalled
   reason: string     // recall reason
   elapsed: number    // wall time in seconds
   toolCount: number  // tools completed before recall
+  childConversationId?: string // durable child conversation, when one existed
 }
 ```
+
+**`childConversationId` on terminal outcomes.** `DispatchAgentResult`, `DispatchError`, and `RecallInfo` each carry the ID of the conversation the child wrote to disk. It is the same value the live dispatch entry exposes, and it is set before the callback runs. It covers completion, failure, a recall by any cause (including a timeout or engine shutdown), and a recovered panic. Use it to read what a failed or recalled child did before it stopped. The field is absent when the dispatch ended before its child conversation existed; treat that as "no transcript", not as a malformed outcome.
 
 ## AgentInfo budget
 
