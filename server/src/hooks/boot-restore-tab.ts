@@ -24,6 +24,7 @@ import { resolveRegisteredWorktree } from '../store/worktree-registration'
 import { restoreConversationTab } from './useTabRestoration-engine'
 import {
   readMainInstance,
+  restoredPendingCard,
   restoredModelSelection,
   seedContextStatusFields,
   reassertRestoredPlanMode,
@@ -174,6 +175,7 @@ async function restoreActiveNormalTab(
   // in the same set, rather than written to the tab object.
   useSessionStore.setState((s) => {
     const main = readMainInstance(st)
+    const persistedCard = restoredPendingCard(main, tabId)
     // permissionMode: prefer instance-persisted value; fall back to legacy
     // tab-level field for tabs saved before WI-002.
     const restoredMode: 'auto' | 'plan' = main?.permissionMode ?? (st as unknown as { permissionMode?: 'auto' | 'plan' }).permissionMode ?? 'auto'
@@ -185,7 +187,7 @@ async function restoreActiveNormalTab(
       // Absent means 'off' — the serializer omits the default.
       thinkingEffort: main?.thinkingEffort ?? 'off',
       // Persisted permissionDenied is authoritative over resumeSession reconstruction.
-      ...(main?.permissionDenied ? { permissionDenied: main.permissionDenied } : {}),
+      ...(persistedCard ? { permissionDenied: persistedCard } : {}),
       ...(main?.planFilePath ? { planFilePath: main.planFilePath } : {}),
       ...seedContextStatusFields(inst, main),
     }))
@@ -319,7 +321,7 @@ async function restoreSkeletonNormalTab(
     messageCount: main?.messageCount ?? 0,
     ...restoredModelSelection(main),
     draftInput: main?.draftInput ?? '',
-    permissionDenied: main?.permissionDenied ?? null,
+    permissionDenied: restoredPendingCard(main, tabId),
     planFilePath: main?.planFilePath ?? null,
     permissionMode: skeletonMode,
     thinkingEffort: main?.thinkingEffort ?? 'off',

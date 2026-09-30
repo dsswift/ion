@@ -150,12 +150,11 @@ describe('task_complete with permissionDenials — pipeline convergence (WI-001)
     vi.useRealTimers()
   })
 
-  it('non-special denials (generic tool Write) ALSO set permissionDenied in the normalized path', () => {
-    // WI-001 change: the normalized task_complete path does NOT filter by tool name.
-    // Any denial in permissionDenials sets instance.permissionDenied. The old
-    // handleEngineStatusEvent filtered non-interactive tools (Read, Bash, etc.) before
-    // building the denial card; that filtering is not present in the normalized path
-    // since the engine only emits interactive tool denials anyway.
+  it('a refused generic tool (Write) sets no card in the normalized path', () => {
+    // permissionDenials is a record of refused tool calls, not a list of open
+    // questions. Only an ExitPlanMode / AskUserQuestion entry has a card that
+    // can answer it; storing a refused Write shows an approval with no
+    // controls on every client.
     const { state, slice } = buildHarness()
 
     slice.handleNormalizedEvent('tab1', {
@@ -169,11 +168,6 @@ describe('task_complete with permissionDenials — pipeline convergence (WI-001)
       ],
     } as any)
 
-    expect(state.tabs[0].status).toBe('completed')
-    // The engine normally only puts interactive tool denials here, but the normalized
-    // path does NOT filter — the raw permission list is stored.
-    const entry = getPermissionDenied(state, 'tab1')
-    expect(entry).not.toBeNull()
-    expect(entry!.tools[0].toolName).toBe('Write')
+    expect(getPermissionDenied(state, 'tab1')).toBeNull()
   })
 })

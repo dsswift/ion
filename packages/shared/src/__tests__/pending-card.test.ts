@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pendingCardOutcome, lastPendingCardTool, isPendingUserCardDenial } from '../pending-card'
+import { pendingCardOutcome, lastPendingCardTool, isPendingUserCardDenial, pendingUserCardDenial } from '../pending-card'
 import { formatClearDivider } from '../clear-divider'
 
 describe('pending-card', () => {
@@ -92,5 +92,26 @@ describe('isPendingUserCardDenial', () => {
     expect(isPendingUserCardDenial({ tools: [] })).toBe(false)
     expect(isPendingUserCardDenial(null)).toBe(false)
     expect(isPendingUserCardDenial(undefined)).toBe(false)
+  })
+})
+
+describe('pendingUserCardDenial', () => {
+  it('keeps only the plan and question entries', () => {
+    const monitor = { toolName: 'Monitor', toolUseId: 'm' }
+    const plan = { toolName: 'ExitPlanMode', toolUseId: 'p' }
+    const ask = { toolName: 'AskUserQuestion', toolUseId: 'a' }
+    expect(pendingUserCardDenial({ tools: [monitor, plan, ask] })).toEqual({ tools: [plan, ask] })
+  })
+
+  it('returns null when every entry is a refused tool with no card', () => {
+    expect(pendingUserCardDenial({ tools: [{ toolName: 'Monitor' }, { toolName: 'Bash' }] })).toBeNull()
+    // The guided-questions park is owned by the questions wizard, not a card.
+    expect(pendingUserCardDenial({ tools: [{ toolName: 'AskUserQuestions' }] })).toBeNull()
+  })
+
+  it('returns null for an empty or absent list', () => {
+    expect(pendingUserCardDenial({ tools: [] })).toBeNull()
+    expect(pendingUserCardDenial(null)).toBeNull()
+    expect(pendingUserCardDenial(undefined)).toBeNull()
   })
 })

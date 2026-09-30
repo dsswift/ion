@@ -16,7 +16,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 
-import { resolveBootActiveTabId, hydrateBootActiveTab, hydrateBootWorkspace, restoredModelSelection } from '../useTabRestoration-helpers'
+import { resolveBootActiveTabId, hydrateBootActiveTab, hydrateBootWorkspace, restoredModelSelection, restoredPendingCard } from '../useTabRestoration-helpers'
 import { makeMainPane } from '../../store/conversation-instance'
 import type { ConversationPane } from '@ion/shared/types-engine'
 
@@ -183,5 +183,25 @@ describe('restoredModelSelection', () => {
     expect(restoredModelSelection({ modelOverride: null, modelOverrideSource: 'user' })).toEqual({
       modelOverride: null, modelOverrideSource: null, modelOverrideProviderId: null,
     })
+  })
+})
+
+describe('restoredPendingCard', () => {
+  it('drops a saved refused tool that has no card to answer it', () => {
+    // A file saved before the card rule held a gated Monitor call; restoring
+    // it showed an approval on the phone with no buttons.
+    const inst = { permissionDenied: { tools: [{ toolName: 'Monitor', toolUseId: 'toolu_m' }] } }
+    expect(restoredPendingCard(inst, 'tab-1')).toBeNull()
+  })
+
+  it('keeps a saved plan card', () => {
+    const plan = { toolName: 'ExitPlanMode', toolUseId: 'toolu_p', toolInput: { planFilePath: '/p.md' } }
+    const inst = { permissionDenied: { tools: [{ toolName: 'Bash', toolUseId: 'toolu_b' }, plan] } }
+    expect(restoredPendingCard(inst, 'tab-1')).toEqual({ tools: [plan] })
+  })
+
+  it('returns null when nothing was saved', () => {
+    expect(restoredPendingCard(null, 'tab-1')).toBeNull()
+    expect(restoredPendingCard({}, 'tab-1')).toBeNull()
   })
 })

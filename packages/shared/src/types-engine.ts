@@ -338,7 +338,7 @@ export interface ConversationInstance {
   permissionMode: 'auto' | 'plan'
   /** Per-instance extended-thinking effort (engine subtab). Default 'off'. Applied live on the next prompt. */
   thinkingEffort?: import('./types-session').ThinkingEffort
-  /** Pending permission-denied tools (null = no pending denial) */
+  /** Pending plan-ready or AskUserQuestion card (null = none). Holds only the entries `pendingUserCardDenial` keeps; a refused tool with no card never lands here. */
   permissionDenied: { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null
   /**
    * Live interactive permission requests awaiting a user click for this

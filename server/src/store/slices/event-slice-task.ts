@@ -11,7 +11,7 @@ import type { State, StoreGet } from '../session-store-types'
 import { nextMsgId, playNotificationIfHidden } from '../session-store-helpers'
 import { rInfo, rWarn } from '../rendererLogger'
 import { logTabStatusPatch } from './tab-status-transition'
-import { isPendingUserCardDenial } from '@ion/shared/pending-card'
+import { isPendingUserCardDenial, pendingUserCardDenial } from '@ion/shared/pending-card'
 
 /**
  * Mutable context shared with the parent reducer for one task-lifecycle event.
@@ -184,13 +184,20 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
       // new information until the user enters the conversation after this
       // timestamp; merely leaving it open while work runs is not a review.
       //
-      // AskUserQuestions denials are the guided-questions PARK signal: main's
-      // QuestionsCoordinator owns that surface (the wizard card), so they are
-      // filtered out of the generic denial card here — rendering both would
-      // put two competing answer surfaces on one question.
-      const cardDenials = (event.permissionDenials ?? []).filter(
-        (d: { toolName: string }) => d.toolName !== 'AskUserQuestions',
-      )
+      // permissionDenials records every tool call refused during the run;
+      // only the plan and question entries are still waiting on the user.
+      // A refusal the run already moved past (a gated tool, a CLI-denied
+      // tool) is history in the transcript, not a card. AskUserQuestions
+      // denials are the guided-questions PARK signal owned by the
+      // QuestionsCoordinator's wizard, so they never become a card either.
+      const allDenials: NonNullable<ConversationInstance['permissionDenied']>['tools'] = event.permissionDenials ?? []
+      const cardDenials = pendingUserCardDenial({ tools: allDenials })?.tools ?? []
+      if (cardDenials.length < allDenials.length) {
+        rInfo('event.task', 'run denials without a user card not kept', {
+          tab_id: tabId.slice(0, 8),
+          tools: allDenials.filter((d) => !cardDenials.includes(d)).map((d) => d.toolName).join(','),
+        })
+      }
       if (cardDenials.length > 0) {
         // The engine no longer emits PlanModeChangedEvent{Enabled:false}
         // on the ExitPlanMode tool call, so the previous race that
@@ -201,9 +208,9 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
         // card renders cleanly from the unfiltered denials.
         ctx.instPatch.permissionDenied = { tools: cardDenials }
         ctx.instTouched = true
-        rInfo('event.task', 'permission denied set', { tab_id: tabId.slice(0, 8), tools: cardDenials.map((t: { toolName: string }) => t.toolName), perm_mode: ctx.instPatch.permissionMode ?? ctx.inst0?.permissionMode ?? 'auto' })
+        rInfo('event.task', 'permission denied set', { tab_id: tabId.slice(0, 8), tools: cardDenials.map((t) => t.toolName), perm_mode: ctx.instPatch.permissionMode ?? ctx.inst0?.permissionMode ?? 'auto' })
       } else {
-        // task_complete carries no denials. Normally that means "clear the
+        // task_complete carries no card denials. Normally that means "clear the
         // approval card." But a pending user-facing card is a workflow signal
         // task_complete does NOT own: some backends (codex, grok's ACP)
         // capture the plan via a native plan item and emit
@@ -224,12 +231,12 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
         // in event-slice.ts cannot drift apart.
         const isPendingPlanProposal = isPendingUserCardDenial(existingDenied)
         if (isPendingPlanProposal) {
-          rInfo('event.task', 'no denials but preserving pending user card', {
+          rInfo('event.task', 'no card denials but preserving pending user card', {
             tab_id: tabId.slice(0, 8),
             tools: (existingDenied?.tools ?? []).map((t) => t.toolName).join(','),
           })
         } else {
-          rInfo('event.task', 'no denials, clearing card', { tab_id: tabId.slice(0, 8), had_denial: existingDenied != null })
+          rInfo('event.task', 'no card denials, clearing card', { tab_id: tabId.slice(0, 8), had_denial: existingDenied != null })
           ctx.instPatch.permissionDenied = null
           ctx.instTouched = true
         }
