@@ -110,7 +110,7 @@ vi.mock('../startup-window', () => ({ createStartupWindow: vi.fn() }))
 vi.mock('../app-lifecycle-quit', () => ({ installQuitHandlers: vi.fn() }))
 vi.mock('../startup-coordinator', () => ({
   failStartup: vi.fn(), isStartupRevealed: vi.fn(() => false), reportStartup: vi.fn(),
-  requireStartupAuthentication: vi.fn(() => Promise.resolve(true)), startStartup: vi.fn(),
+  requireStartupAuthentication: vi.fn(() => Promise.resolve(true)),
 }))
 
 import { setupAppLifecycle } from '../app-lifecycle'

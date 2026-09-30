@@ -39,7 +39,7 @@ import { registerEnvironmentLabel } from './ipc/studio-bridge'
 import { createStartupWindow } from './startup-window'
 import { installQuitHandlers } from './app-lifecycle-quit'
 import { initEgressFromEngineConfig, initEgressFromSettingsConfig } from './app-lifecycle-egress'
-import { failStartup, isStartupRevealed, prepareStudioStartup, reportStartup, requireStartupAuthentication, startStartup } from './startup-coordinator'
+import { failStartup, isStartupRevealed, prepareStudioStartup, reportStartup, requireStartupAuthentication } from './startup-coordinator'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -272,12 +272,11 @@ export function setupAppLifecycle(): void {
     initEgressFromSettingsConfig()
 
     // This process never connects to the engine: the Studio server child
-    // (spawned below) is the engine's one client, and this process reaches
+    // (started before whenReady) is the engine's one client, and this process reaches
     // it over the Studio wire.
 
     installContentSecurityPolicy()
 
-    startStartup()
     reportStartup({ source: 'main', sequence: 3, status: 'Checking identity…' })
 
     // Required operator identity gates session restoration. The Studio window

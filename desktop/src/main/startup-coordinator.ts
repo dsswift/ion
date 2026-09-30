@@ -7,7 +7,6 @@ import { LOCAL_ENVIRONMENT_ID } from '@ion/shared/types-environments'
 import type { StudioFrame } from '@ion/shared/studio-wire/types'
 import { state } from './state'
 import { debug, log, warn } from './logger'
-import { createStartupWindow } from './startup-window'
 import { createTray } from './window-manager'
 import { registerStudioShortcuts } from './studio-shortcuts'
 import { openStudioWindow, revealStudioWindow } from './studio-window-manager'
@@ -60,25 +59,6 @@ function maybeReveal(): void {
   const splash = state.splashWindow
   if (splash && !splash.isDestroyed()) splash.destroy()
   log('startup', 'startup target revealed')
-}
-
-export function startStartup(): void {
-  revealed = false
-  sourceSequence.main = -1
-  sourceSequence.studio = -1
-  sourceSequence.server = -1
-  stateValue = {
-    ...stateValue,
-    mode: 'loading',
-    authenticationBusy: false,
-    authenticationError: null,
-    appVersion: __ION_DESKTOP_VERSION__,
-    studioReady: false,
-    serverReady: false,
-    error: null,
-  }
-  createStartupWindow()
-  reportStartup({ source: 'main', sequence: 0, status: 'Preparing Ion…' })
 }
 
 export function reportStartup(report: StartupReport, sender?: WebContents): boolean {
