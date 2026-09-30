@@ -650,6 +650,26 @@ An asynchronous declined dispatch arrives as `dispatch_error` because its exit c
 
 See [SDK Raw > Dispatch lifecycle notifications](sdk-raw.md#dispatch-lifecycle-notifications) for the full notification set including observational lifecycle events (`dispatch_tool_start`, `dispatch_usage`, etc.).
 
+### `ext/get_application_config`
+
+Reads [Application Config](../vocabulary/index.md#application-config) without waiting.
+
+```json
+{"jsonrpc": "2.0", "id": 100010, "method": "ext/get_application_config", "params": {"key": "storageEndpoint"}}
+```
+
+`key` is optional. Without it the result is the whole snapshot: `{state, revision, subject?, provider?, values?, error?, fetchedAt?, found: false}`. With it, `values` is omitted and the result carries `key`, `found`, and `value` for that key alone. `state` is one of `disabled`, `deferred`, `fetching`, `ready`, `failed`. `found` is meaningful only when `state` is `ready`. The view is scoped to the invocation's principal: a different principal reads `deferred`.
+
+### `ext/await_application_config`
+
+Waits until the view is `ready` or `failed`, or `timeoutMs` passes (default 30 000, capped at 10 minutes). `disabled` answers at once.
+
+```json
+{"jsonrpc": "2.0", "id": 100011, "method": "ext/await_application_config", "params": {"timeoutMs": 10000}}
+```
+
+The result is the latest view in the same shape as `ext/get_application_config`, plus `timedOut: true` when the view had not settled in time. `key` is accepted with the same meaning.
+
 ## Event buffering during hooks
 
 When a hook handler calls `ctx.emit()`, events are **not** sent as notifications immediately. Instead, they are buffered and returned alongside the hook result in the response:

@@ -558,3 +558,27 @@ The hook is a tool-registry transaction. `ctx.Identity` and `info.Identity` are 
 The SDK sends complete snapshots, not add/remove deltas. A snapshot carries a monotonic revision. Init uses revision zero. `SyncTools` returns the accepted revision. A successful `identity_changed` response carries the same full snapshot and commits it atomically. A failed, malformed, or stale snapshot activates no partial registry.
 
 A changed snapshot is visible when the engine builds the next run's tool list. Each call resolves the live registry again. A call to a removed tool is denied even when a running model has an old definition.
+
+## Application config
+
+`Context.ApplicationConfig()` reads [Application Config](../vocabulary/index.md#application-config): values the engine resolves for the signed-in principal after sign-in, from the `applicationConfig` source in [engine.json](../configuration/engine-json.md#applicationconfig). The engine fetches once per identity and shares the snapshot with every extension. Nothing is written to disk.
+
+Every read returns `State` beside the values, so "still loading" is never confused with "the key does not exist". The states are `ApplicationConfigDisabled` (no source configured), `ApplicationConfigDeferred` (no principal for this reader yet), `ApplicationConfigFetching`, `ApplicationConfigReady`, and `ApplicationConfigFailed` (`Error` says why; the engine retries on the refresh interval).
+
+```go
+v, err := ctx.ApplicationConfig().Get(c, "storageEndpoint")
+if err == nil && v.State == ion.ApplicationConfigReady && v.Found {
+    useEndpoint(v.Value)
+}
+
+// Wait for readiness instead of polling. Always returns the latest view.
+snap, timedOut, err := ctx.ApplicationConfig().Await(c, 10*time.Second)
+
+// React to every transition, including the purge on sign-out.
+ion.OnHook(sdk, ion.HookApplicationConfigChanged, func(ctx *ion.Context, s ion.ApplicationConfigSnapshot) error {
+    current = s // replace, never merge
+    return nil
+})
+```
+
+`Snapshot` returns the whole view. `Get` returns one key with `Found`. `Await` waits until the view is ready or failed. A session acting as a different principal than the one the snapshot was resolved for reads deferred, never another principal's values.

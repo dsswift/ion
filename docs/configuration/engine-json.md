@@ -692,6 +692,30 @@ An enterprise `systemMetrics` block replaces the user's whole block.
 }
 ```
 
+## applicationConfig
+
+The authenticated, deferred [Application Config](../vocabulary/index.md#application-config) source. The engine resolves it after a verified principal becomes available (an operator sign-in, a grant reconciled at startup, or a workload identity), never at process start. It GETs `endpoint` with that identity's bearer token and reads the response as a JSON object. One fetch serves every extension; the result stays in memory and is never written to a configuration file. Sign-out or verification loss purges it. Omit the block and the subsystem is inert: extensions read `disabled` and nothing else changes.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `endpoint` | string | `""` | Absolute http(s) URL. The body must be a JSON object; its top-level keys are what extensions read. |
+| `refreshSeconds` | int | `900` | Refresh interval for the same identity. A failed first resolution retries on the same interval. Values below `30` are raised to `30`. |
+| `scope` | string | `""` | Token scope to mint. Empty uses the identity's base grant. |
+| `audience` | string | `""` | Token audience, for providers that bind a grant to a resource. |
+| `timeoutMs` | int | `30000` | Bound on one fetch. |
+
+A refresh replaces the snapshot whole. Readers see the previous snapshot or the next one, never a mix. A failed refresh keeps the previous snapshot. An enterprise `applicationConfig` block replaces the user's whole block. Requires `auth.identityProvider`.
+
+```json
+{
+  "applicationConfig": {
+    "endpoint": "https://config.example.invalid/v1/me",
+    "refreshSeconds": 900,
+    "scope": "api://config/.default"
+  }
+}
+```
+
 ## compaction
 
 Context window compaction controls how the engine manages conversation length. The proactive limit reserves the active model's declared output capacity and summary headroom. API-backed conversations that resume at or above that limit are admitted so the run loop can compact them before the next provider request. The engine uses token-budget-based truncation with a four-tier summary fallback (session memory → LLM → extension hook → regex). See [Compaction](../sessions/compaction.md) for the full flow and rationale.

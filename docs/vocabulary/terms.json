@@ -157,6 +157,38 @@
       ]
     },
     {
+      "id": "application-config",
+      "term": "Application Config",
+      "definition": "Configuration scoped to the verified principal. The engine resolves it after that principal becomes available, holds one in-memory snapshot per engine process, and shares it with every extension. Every read carries a lifecycle state, so not ready is distinct from not found.",
+      "domain": "harness-sdk",
+      "kind": "public-contract",
+      "status": "canonical",
+      "contract": "public-sdk",
+      "implementations": [
+        {
+          "platform": "engine",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type Snapshot struct",
+          "path": "engine/internal/appconfig/snapshot.go"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "typescript",
+          "symbol": "export interface ApplicationConfigSnapshot",
+          "path": "engine/extensions/sdk/ion-sdk/types.ts"
+        },
+        {
+          "platform": "sdk",
+          "presentation": "code",
+          "language": "go",
+          "symbol": "type ApplicationConfigSnapshot struct",
+          "path": "sdk/go/application_config.go"
+        }
+      ]
+    },
+    {
       "id": "async-delivery",
       "term": "Async delivery",
       "definition": "The path that carries a schedule firing or an inbound webhook into an extension handler. The engine owns the timing and the routing. The extension owns the action.",

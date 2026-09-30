@@ -50,6 +50,7 @@ Use each canonical term exactly as listed. A qualifier may precede or follow a c
 - [Account Setting](#term-account-setting)
 - [Agent](#term-agent)
 - [Agent-linked Browser Tab](#term-agent-linked-browser-tab)
+- [Application Config](#term-application-config)
 - [Async delivery](#term-async-delivery)
 - [Attachment](#term-attachment)
 - [Automation Editor](#term-automation-editor)
@@ -1080,6 +1081,21 @@ An outbound HTTP call the operator declares by name in the global engine.json. T
   - `sdk` / `code` / `typescript`: `protectedOperation(name: string, payload?: unknown): Promise<IonProtectedOperationResult>` in `engine/extensions/sdk/ion-sdk/types.ts`
 
 ### public-contract
+
+#### Application Config {#term-application-config}
+
+Configuration scoped to the verified principal. The engine resolves it after that principal becomes available, holds one in-memory snapshot per engine process, and shares it with every extension. Every read carries a lifecycle state, so not ready is distinct from not found.
+
+- **ID:** `application-config`
+- **Status:** `canonical`
+- **Qualifiers:** None
+- **Aliases:** None
+- **Legacy names:** None
+- **Contract:** `public-sdk`
+- **Implementations:**
+  - `engine` / `code` / `go`: `type Snapshot struct` in `engine/internal/appconfig/snapshot.go`
+  - `sdk` / `code` / `typescript`: `export interface ApplicationConfigSnapshot` in `engine/extensions/sdk/ion-sdk/types.ts`
+  - `sdk` / `code` / `go`: `type ApplicationConfigSnapshot struct` in `sdk/go/application_config.go`
 
 #### Context Identity {#term-context-identity}
 
