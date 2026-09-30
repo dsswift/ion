@@ -1,10 +1,11 @@
+import { useSyncExternalStore } from 'react'
 import { create, type StateCreator } from 'zustand'
-import { applyTheme, resolveColors, type ColorPalette } from './theme-tokens'
+import { applyTheme, getThemeRegistryVersion, onThemeRegistryChanged, resolveColors, type ColorPalette } from './theme-tokens'
 import type { PreferencesState } from '@ion/server/preferences-types'
 import { saveSettings, saveSettingsFor, persist, INITIAL_SAVED } from './preferences-persist'
 import { bootstrapPreferences } from './preferences-bootstrap'
 import { createKeyboardShortcutActions } from './preferences-shortcuts'
-import { deriveEnterpriseThemePolicy } from '@ion/shared/enterprise-theme-policy'
+import { deriveEnterpriseThemePolicy, resolveEffectiveThemeId } from '@ion/shared/enterprise-theme-policy'
 import { normalizePreferencesModels } from './preferences-model-normalization'
 import { rInfo, rWarn } from './rendererLogger'
 import { isEphemeralWorkspaceDirectory } from '@ion/shared/recent-directories'
@@ -284,13 +285,26 @@ export const usePreferencesStore = create<PreferencesState>(createPreferencesSta
 // preferences-bootstrap.ts — extracted at the 600-line cap split.
 bootstrapPreferences(usePreferencesStore, _savedThemeId)
 
-/** Reactive hook — returns the active color palette */
+/** The theme id that renders: the enforced id under a locked enterprise
+ * themePolicy, otherwise the user's saved `selectedTheme` (left untouched). */
+export function selectEffectiveThemeId(s: PreferencesState): string {
+  return resolveEffectiveThemeId(s.enterprisePolicy, s.selectedTheme)
+}
+
+/** Reactive hook — returns the theme id that renders. */
+export function useEffectiveThemeId(): string {
+  return usePreferencesStore(selectEffectiveThemeId)
+}
+
+/** Reactive hook — returns the active color palette. Re-resolves when the
+ * effective theme id changes or the custom-theme registry is replaced. */
 export function useColors(): ColorPalette {
-  const selectedTheme = usePreferencesStore((s) => s.selectedTheme)
-  return resolveColors(selectedTheme)
+  const themeId = useEffectiveThemeId()
+  useSyncExternalStore(onThemeRegistryChanged, getThemeRegistryVersion)
+  return resolveColors(themeId)
 }
 
 /** Non-reactive getter — use outside React components */
 export function getColors(): ColorPalette {
-  return resolveColors(usePreferencesStore.getState().selectedTheme)
+  return resolveColors(selectEffectiveThemeId(usePreferencesStore.getState()))
 }
