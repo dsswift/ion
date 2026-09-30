@@ -99,6 +99,14 @@ only.
 
 When the VM is a host in your [fleet](../deployment/fleet.md), `ion fleet deploy <vm> --source .` does the sync, the build, and the install: it ships this checkout as it is in the working tree (new files included) with the same sync stamp, builds with `make.ps1 installer` in the host's `buildDir` (a folder Defender excludes, such as one under `C:\dev\ion`) on the VM, fetches the installer back to `~/.ion/fleet/artifacts/`, and installs it silently for every user. The grep above still applies, against the installed `C:\Program Files\Ion\resources\engine\ion.exe`.
 
+## Running the release smoke test on the VM
+
+`make smoke-windows-vm` runs `scripts/ci/windows-smoke.ps1`, the smoke test the release build runs, on the VM against this checkout. It syncs, builds the installer there, stamps the Intune detection script, and runs the smoke test. Before and after, `scripts/windows/Reset-IonTestState.ps1` returns the machine to "Ion was never installed", so every run is a true first launch. When a run fails, the engine, desktop, and server logs come back to `build/windows-smoke-logs/`. It publishes nothing.
+
+The VM runs with UAC off (`EnableLUA=0`), as the GitHub-hosted runners do. With UAC on, the elevated SSH session launches Ion elevated, the unelevated engine task cannot open the elevated desktop to verify it, and the engine rejects every connection, which CI never sees.
+
+To reproduce a release-only failure in CI instead, dispatch the Build workflow with `dry_run` and the branch as `ref`.
+
 ## Reporting a result
 
 Before you call a VM fix done, confirm the built binary carries your change
