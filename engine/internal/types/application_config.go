@@ -22,6 +22,11 @@ type ApplicationConfigSource struct {
 	// TimeoutMs bounds one fetch. Zero or negative selects
 	// DefaultApplicationConfigTimeoutMs.
 	TimeoutMs int `json:"timeoutMs,omitempty"`
+	// SecretKeys names top-level keys whose values are secrets. The engine
+	// withholds them from every extension read and hook payload; only
+	// engine-internal consumers (protected operations, MCP secret headers)
+	// read them.
+	SecretKeys []string `json:"secretKeys,omitempty"`
 }
 
 const (

@@ -20,6 +20,7 @@ type Fetcher func(ctx context.Context, source types.ApplicationConfigSource) (ma
 // principal's resolution begins.
 type Store struct {
 	source  types.ApplicationConfigSource
+	secrets map[string]struct{}
 	fetch   Fetcher
 	refresh time.Duration
 	timeout time.Duration
@@ -37,8 +38,13 @@ type Store struct {
 
 // NewStore builds a store for source. It stays deferred until Start.
 func NewStore(source types.ApplicationConfigSource, fetch Fetcher) *Store {
+	secrets := make(map[string]struct{}, len(source.SecretKeys))
+	for _, key := range source.SecretKeys {
+		secrets[key] = struct{}{}
+	}
 	return &Store{
 		source:  source,
+		secrets: secrets,
 		fetch:   fetch,
 		refresh: time.Duration(source.RefreshInterval()) * time.Second,
 		timeout: time.Duration(source.FetchTimeoutMs()) * time.Millisecond,
@@ -92,11 +98,11 @@ func (s *Store) Stop() {
 	utils.LogWithFields(utils.LevelInfo, "appconfig", "application config store stopped", nil)
 }
 
-// Snapshot returns the current process view.
+// Snapshot returns the current process view, with secret keys withheld.
 func (s *Store) Snapshot() Snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.current.clone()
+	return s.current.withoutKeys(s.secrets)
 }
 
 // Await blocks until the view for subject is settled (ready or failed) or
@@ -105,7 +111,7 @@ func (s *Store) Snapshot() Snapshot {
 func (s *Store) Await(ctx context.Context, subject string) (Snapshot, error) {
 	for {
 		s.mu.Lock()
-		view := s.current.For(subject)
+		view := s.current.For(subject).withoutKeys(s.secrets)
 		changed := s.changed
 		s.mu.Unlock()
 		if view.State.Settled() {
@@ -232,5 +238,5 @@ func (s *Store) transitionLocked(next Snapshot) {
 	s.current = next
 	close(s.changed)
 	s.changed = make(chan struct{})
-	s.notify.enqueue(next.clone())
+	s.notify.enqueue(next.withoutKeys(s.secrets))
 }
