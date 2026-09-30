@@ -694,17 +694,17 @@ An enterprise `systemMetrics` block replaces the user's whole block.
 
 ## applicationConfig
 
-The authenticated, deferred [Application Config](../vocabulary/index.md#application-config) source. The engine resolves it after a verified principal becomes available (an operator sign-in, a grant reconciled at startup, or a workload identity), never at process start. It GETs `endpoint` with that identity's bearer token and reads the response as a JSON object. One fetch serves every extension; the result stays in memory and is never written to a configuration file. Sign-out or verification loss purges it. Omit the block and the subsystem is inert: extensions read `disabled` and nothing else changes.
+The authenticated, deferred [Application Config](../vocabulary/index.md#application-config) source. The engine resolves it after a verified principal becomes available (an operator sign-in, a grant reconciled at startup, or a workload identity), never at process start. It GETs `endpoint` with that identity's bearer token and reads the response as an application config document (below). One fetch serves every extension; the result stays in memory and is never written to a configuration file. Sign-out or verification loss purges it. Omit the block and the subsystem is inert: extensions read `disabled` and nothing else changes.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `endpoint` | string | `""` | Absolute http(s) URL. The body must be a JSON object; its top-level keys are what extensions read. |
+| `endpoint` | string | `""` | Absolute http(s) URL that answers with an application config document. |
 | `refreshSeconds` | int | `900` | Refresh interval for the same identity. A failed first resolution retries on the same interval. Values below `30` are raised to `30`. |
 | `scope` | string | `""` | Token scope to mint. Empty uses the identity's base grant. |
 | `audience` | string | `""` | Token audience, for providers that bind a grant to a resource. |
 | `timeoutMs` | int | `30000` | Bound on one fetch. |
 
-A refresh replaces the snapshot whole. Readers see the previous snapshot or the next one, never a mix. A failed refresh keeps the previous snapshot. An enterprise `applicationConfig` block replaces the user's whole block. Requires `auth.identityProvider`.
+A refresh moves the state to `refreshing` and keeps the previous values readable until the next document replaces them whole. Readers see the previous snapshot or the next one, never a mix. A refresh sends the last response's `ETag` as `If-None-Match` and its `Last-Modified` as `If-Modified-Since`; a `304 Not Modified` keeps the current document without downloading it again. A failed refresh keeps the previous snapshot. An enterprise `applicationConfig` block replaces the user's whole block. Requires `auth.identityProvider`.
 
 ```json
 {
@@ -715,6 +715,31 @@ A refresh replaces the snapshot whole. Readers see the previous snapshot or the 
   }
 }
 ```
+
+### Application config document
+
+The endpoint answers with one document for the signed-in principal:
+
+```json
+{
+  "common": {
+    "values": { "region": "east" },
+    "secrets": { "gatewayKey": "..." }
+  },
+  "extensions": {
+    "storage-sync": { "values": { "storageEndpoint": "https://storage.example.invalid" } }
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `common` | The section every extension reads. |
+| `extensions` | One section per extension, keyed by the extension's `id` in the enterprise [`extensionAllowlist`](../enterprise/sealed-config.md#extension-allowlist). |
+| `<section>.values` | Plain configuration an extension may read. Any JSON values. |
+| `<section>.secrets` | String secrets. The engine keeps them in memory and never returns them to extension code; an extension sees only their names. |
+
+An extension sees `common` merged with its own section. Its own section wins when both name a key, and a key it declares as a secret replaces a common value of the same name. It never sees another extension's section. The key into `extensions` is the allowlist entry the extension passed at load, not the name the extension reports about itself. With no enterprise extension allowlist, every extension sees `common` only. A key may not be both a value and a secret in one section, and unknown top-level fields are rejected; either fails resolution.
 
 ## compaction
 

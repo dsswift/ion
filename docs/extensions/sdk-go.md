@@ -561,13 +561,15 @@ A changed snapshot is visible when the engine builds the next run's tool list. E
 
 ## Application config
 
-`Context.ApplicationConfig()` reads [Application Config](../vocabulary/index.md#application-config): values the engine resolves for the signed-in principal after sign-in, from the `applicationConfig` source in [engine.json](../configuration/engine-json.md#applicationconfig). The engine fetches once per identity and shares the snapshot with every extension. Nothing is written to disk.
+`Context.ApplicationConfig()` reads [Application Config](../vocabulary/index.md#application-config): values the engine resolves for the signed-in principal after sign-in, from the `applicationConfig` source in [engine.json](../configuration/engine-json.md#applicationconfig). The engine fetches once per identity and shares the snapshot with every extension. Nothing is written to disk. Your extension sees the `common` section plus its own section, keyed by its enterprise extension allowlist entry; see [the application config document](../configuration/engine-json.md#application-config-document).
 
-Every read returns `State` beside the values, so "still loading" is never confused with "the key does not exist". The states are `ApplicationConfigDisabled` (no source configured), `ApplicationConfigDeferred` (no principal for this reader yet), `ApplicationConfigFetching`, `ApplicationConfigReady`, and `ApplicationConfigFailed` (`Error` says why; the engine retries on the refresh interval).
+Every read returns `State` beside the values, so "still loading" is never confused with "the key does not exist". The states are `ApplicationConfigDisabled` (no source configured), `ApplicationConfigDeferred` (no principal for this reader yet), `ApplicationConfigFetching`, `ApplicationConfigReady`, `ApplicationConfigRefreshing` (a refresh is in flight; the previous values stay readable), and `ApplicationConfigFailed` (`Error` says why; the engine retries on the refresh interval). `State.HasValues()` is true for ready and refreshing.
+
+Secret values never reach your extension. `SecretKeys` lists the secret names, and `Get` on a secret returns `Found: false, Secret: true`.
 
 ```go
 v, err := ctx.ApplicationConfig().Get(c, "storageEndpoint")
-if err == nil && v.State == ion.ApplicationConfigReady && v.Found {
+if err == nil && v.Found {
     useEndpoint(v.Value)
 }
 
@@ -581,4 +583,4 @@ ion.OnHook(sdk, ion.HookApplicationConfigChanged, func(ctx *ion.Context, s ion.A
 })
 ```
 
-`Snapshot` returns the whole view. `Get` returns one key with `Found`. `Await` waits until the view is ready or failed. A session acting as a different principal than the one the snapshot was resolved for reads deferred, never another principal's values.
+`Snapshot` returns the whole view. `Get` returns one key with `Found`. `Await` waits until the view has values or failed. A session acting as a different principal than the one the snapshot was resolved for reads deferred, never another principal's values.

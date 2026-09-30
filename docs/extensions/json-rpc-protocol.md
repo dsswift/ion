@@ -658,11 +658,13 @@ Reads [Application Config](../vocabulary/index.md#application-config) without wa
 {"jsonrpc": "2.0", "id": 100010, "method": "ext/get_application_config", "params": {"key": "storageEndpoint"}}
 ```
 
-`key` is optional. Without it the result is the whole snapshot: `{state, revision, subject?, provider?, values?, error?, fetchedAt?, found: false}`. With it, `values` is omitted and the result carries `key`, `found`, and `value` for that key alone. `state` is one of `disabled`, `deferred`, `fetching`, `ready`, `failed`. `found` is meaningful only when `state` is `ready`. The view is scoped to the invocation's principal: a different principal reads `deferred`.
+`key` is optional. Without it the result is the whole view: `{state, revision, subject?, provider?, values?, secretKeys?, error?, fetchedAt?, found: false}`. With it, `values` and `secretKeys` are omitted and the result carries `key`, `found`, `value`, and `secret` for that key alone. `state` is one of `disabled`, `deferred`, `fetching`, `ready`, `refreshing`, `failed`. `values` is present and `found` is meaningful only when `state` is `ready` or `refreshing`. `secret: true` means the key names a secret the engine holds; its value is never returned.
+
+The view is scoped twice. To the invocation's principal: a different principal reads `deferred`. To the extension: it sees the document's `common` section merged with the section keyed by its enterprise extension allowlist entry, and no other section. See [the application config document](../configuration/engine-json.md#application-config-document).
 
 ### `ext/await_application_config`
 
-Waits until the view is `ready` or `failed`, or `timeoutMs` passes (default 30 000, capped at 10 minutes). `disabled` answers at once.
+Waits until the view is `ready`, `refreshing`, or `failed`, or `timeoutMs` passes (default 30 000, capped at 10 minutes). `disabled` answers at once.
 
 ```json
 {"jsonrpc": "2.0", "id": 100011, "method": "ext/await_application_config", "params": {"timeoutMs": 10000}}

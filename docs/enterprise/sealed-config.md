@@ -227,6 +227,28 @@ An explicit empty list (`[]`) is a real policy meaning "no Bash in plan mode, ev
 
 Every stripped entry is recorded as a `plan_mode_bash_pruned` enforcement action, with the rejected command as the subject and the reason. Without this an operator whose project config had no effect would have no way to discover why. Enforcement actions are drained at serve startup and on each enterprise config reload; see [Compliance](compliance.md).
 
+## Extension allowlist
+
+`extensionAllowlist` limits which extensions the engine loads. Each entry names one extension:
+
+```json
+{
+  "extensionAllowlist": [
+    { "id": "storage-sync", "sha256": "9f2c..." },
+    { "id": "review-helper" }
+  ]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `id` | The extension identifier: the `name` in its `extension.json`, else its directory name. |
+| `sha256` | Optional. The hex SHA-256 of the extension's entry-point file. A mismatch blocks the load even when `id` matches. |
+
+An empty or absent list loads every extension. A non-empty list blocks every extension it does not name, before the extension runs. A blocked load surfaces as an `engine_error` with `errorCode: "extension_blocked"` and records an `enforcement.extension_blocked` telemetry event.
+
+The `id` an extension matched is its trusted identity. The engine keys each extension's section of [application config](../configuration/engine-json.md#application-config-document) on it. The name an extension reports about itself at startup does not change it.
+
 ## Custom fields
 
 The `customFields` map is a pass-through for organization-specific metadata. The engine does not interpret these values. Extensions can read them from the config context for custom enterprise logic.

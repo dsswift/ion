@@ -1488,7 +1488,7 @@ A changed snapshot is visible when the engine builds the next run's tool list. E
 
 ## Application config
 
-`ctx.applicationConfig` reads [Application Config](../vocabulary/index.md#application-config): values the engine resolves for the signed-in principal after sign-in, from the `applicationConfig` source in [engine.json](../configuration/engine-json.md#applicationconfig). The engine fetches once per identity and shares the snapshot with every extension. Nothing is written to disk.
+`ctx.applicationConfig` reads [Application Config](../vocabulary/index.md#application-config): values the engine resolves for the signed-in principal after sign-in, from the `applicationConfig` source in [engine.json](../configuration/engine-json.md#applicationconfig). The engine fetches once per identity and shares the snapshot with every extension. Nothing is written to disk. Your extension sees the `common` section plus its own section, keyed by its enterprise extension allowlist entry; see [the application config document](../configuration/engine-json.md#application-config-document).
 
 Every read returns `state` beside the values, so "still loading" is never confused with "the key does not exist":
 
@@ -1498,15 +1498,18 @@ Every read returns `state` beside the values, so "still loading" is never confus
 | `deferred` | No principal is available for this reader yet. |
 | `fetching` | The first resolution is in flight. |
 | `ready` | Values are available. |
+| `refreshing` | A refresh is in flight. The previous values stay readable. |
 | `failed` | Resolution failed; `error` says why. The engine retries on the refresh interval. |
+
+Secret values never reach your extension. `secretKeys` lists the secret names, and `get()` on a secret returns `found: false, secret: true`.
 
 ```typescript
 const endpoint = await ctx.applicationConfig.get('storageEndpoint')
-if (endpoint.state === 'ready' && endpoint.found) useEndpoint(endpoint.value)
+if (endpoint.found) useEndpoint(endpoint.value)
 
 // Wait for readiness instead of polling. Always resolves with the latest view.
 const view = await ctx.applicationConfig.await({ timeoutMs: 10_000 })
-if (view.state === 'ready') configure(view.values)
+if (view.values) configure(view.values)
 
 // React to every transition, including the purge on sign-out.
 ion.on('application_config_changed', (ctx, snapshot) => {
@@ -1514,4 +1517,4 @@ ion.on('application_config_changed', (ctx, snapshot) => {
 })
 ```
 
-`snapshot()` returns the whole view. `get(key)` returns one key with `found`. `await()` waits until the view is `ready` or `failed`. A session acting as a different principal than the one the snapshot was resolved for reads `deferred`, never another principal's values.
+`snapshot()` returns the whole view. `get(key)` returns one key with `found`. `await()` waits until the view is `ready`, `refreshing`, or `failed`. A session acting as a different principal than the one the snapshot was resolved for reads `deferred`, never another principal's values.

@@ -1084,7 +1084,7 @@ An outbound HTTP call the operator declares by name in the global engine.json. T
 
 #### Application Config {#term-application-config}
 
-Configuration scoped to the verified principal. The engine resolves it after that principal becomes available, holds one in-memory snapshot per engine process, and shares it with every extension. Every read carries a lifecycle state, so not ready is distinct from not found.
+Configuration scoped to the verified principal. The engine resolves it after that principal becomes available, holds one in-memory snapshot per engine process, and gives each extension the common section plus its own allowlist-keyed section. Secret values stay in the engine. Every read carries a lifecycle state, so not ready is distinct from not found.
 
 - **ID:** `application-config`
 - **Status:** `canonical`
