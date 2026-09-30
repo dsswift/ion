@@ -407,12 +407,9 @@ func TestDispatchArchitecture_ThirdTierAndSteering(t *testing.T) {
 			t.Fatal("timeout waiting for tier3-doom recall")
 		}
 
-		// The dispatch Cancel callback hardcodes "recall_agent" as the reason
-		// (set at registration time in dispatch_agent.go). The reason from
-		// RecallDispatchOpts is logged by the registry but not forwarded through
-		// the cancel closure. This is by design: Cancel is a simple func().
-		if recallInfo.Reason != "recall_agent" {
-			t.Errorf("recall reason=%q want recall_agent", recallInfo.Reason)
+		// The reason given to RecallDispatch reaches the parent's RecallInfo.
+		if recallInfo.Reason != "test-recall" {
+			t.Errorf("recall reason=%q want test-recall", recallInfo.Reason)
 		}
 
 		// Recreate: unblock provider and dispatch a fresh 3rd-tier.

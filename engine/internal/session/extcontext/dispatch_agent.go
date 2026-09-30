@@ -1589,8 +1589,8 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			}
 			// Register in the dispatch registry for recall support, child-run
 			// steering, and the carry-forward allowlist. See registerDispatch.
-			registerDispatch(registry, agentID, opts.Name, func() {
-				recallReason = "recall_agent"
+			registerDispatch(registry, agentID, opts.Name, func(reason string) {
+				recallReason = recallReasonOrDefault(reason)
 				cancelFn()
 			}, child, key, currentDispatchId, childDepth, childReqID, opts.AllowedSubAgents, opts.SubAgentPolicy)
 
@@ -1697,8 +1697,8 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// Foreground (synchronous) dispatch.
 		// Register in the dispatch registry so foreground dispatches are
 		// recallable, counted, and steerable, matching background behavior.
-		registerDispatch(registry, agentID, opts.Name, func() {
-			recallReason = "recall_agent"
+		registerDispatch(registry, agentID, opts.Name, func(reason string) {
+			recallReason = recallReasonOrDefault(reason)
 			cancelFn()
 		}, child, key, currentDispatchId, childDepth, childReqID, opts.AllowedSubAgents, opts.SubAgentPolicy)
 

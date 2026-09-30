@@ -169,6 +169,12 @@ type activeDispatch struct {
 	// cancelled dispatch is a no-op (the function must be idempotent).
 	Cancel func()
 
+	// Recall, when set, replaces Cancel on the recall paths and receives the
+	// recaller's reason. Set at registration (RegisterWithRecall), never
+	// after, so the recall paths read it without the lock like Cancel.
+	// Same idempotence rule.
+	Recall func(reason string)
+
 	// Child is the RunBackend that owns the background agent's run loop.
 	// Callers may inspect Child.IsRunning or attach additional event
 	// handlers before the dispatch completes.
@@ -361,6 +367,10 @@ func (r *DispatchRegistry) Reserve(id, name, parentID string, depth int) {
 // dispatches where each instance has a collision-safe agentID.
 // parentID and depth record the dispatch's position in the nesting tree.
 func (r *DispatchRegistry) RegisterWithID(id, name string, cancel func(), child backend.RunBackend, sessionID string, parentID string, depth int) {
+	r.register(id, name, cancel, nil, child, sessionID, parentID, depth)
+}
+
+func (r *DispatchRegistry) register(id, name string, cancel func(), recall func(reason string), child backend.RunBackend, sessionID string, parentID string, depth int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -378,6 +388,7 @@ func (r *DispatchRegistry) RegisterWithID(id, name string, cancel func(), child 
 		ID:        id,
 		Name:      name,
 		Cancel:    cancel,
+		Recall:    recall,
 		Child:     child,
 		SessionID: sessionID,
 		ParentID:  parentID,
@@ -603,9 +614,7 @@ func (r *DispatchRegistry) RecallAll(reason string) int {
 
 	for _, d := range snapshot {
 		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallall: cancelling", map[string]any{"run_id": d.ID, "model": d.Name, "session_id": d.SessionID, "reason": reason})
-		if d.Cancel != nil {
-			d.Cancel()
-		} else {
+		if !d.cancelWithReason(reason) {
 			utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "recallall: has nil cancel func, dispatch leaked", map[string]any{"run_id": d.ID, "model": d.Name})
 		}
 	}

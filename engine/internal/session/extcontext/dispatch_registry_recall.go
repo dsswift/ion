@@ -4,6 +4,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -210,17 +211,46 @@ func (r *DispatchRegistry) executeRecall(recall *recallSet, reason string) {
 	for index := len(recall.descendants) - 1; index >= 0; index-- {
 		descendant := recall.descendants[index]
 		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: cascade cancelling descendant", map[string]any{"dispatch_id": recall.descendantIDs[index], "model": descendant.Name, "reason": reason})
-		if descendant.Cancel != nil {
-			descendant.Cancel()
-		} else {
+		if !descendant.cancelWithReason(reason) {
 			utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "recallbyid: descendant has nil cancel func", map[string]any{"dispatch_id": recall.descendantIDs[index], "model": descendant.Name})
 		}
 	}
 
 	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: cancelling", map[string]any{"dispatch_id": recall.targetID, "agent_name": recall.target.Name, "session_id": recall.target.SessionID, "reason": reason, "descendant_count": len(recall.descendants), "registry_count": recall.remaining})
-	if recall.target.Cancel != nil {
-		recall.target.Cancel()
-	} else {
+	if !recall.target.cancelWithReason(reason) {
 		utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "recallbyid: has nil cancel func, dispatch leaked", map[string]any{"dispatch_id": recall.targetID, "model": recall.target.Name})
 	}
+}
+
+// RegisterWithRecall is RegisterWithID for a dispatch that wants the
+// recaller's reason. recall is installed as Recall, and Cancel calls it with
+// an empty reason for any caller that cancels without one.
+func (r *DispatchRegistry) RegisterWithRecall(id, name string, recall func(reason string), child backend.RunBackend, sessionID string, parentID string, depth int) {
+	r.register(id, name, func() { recall("") }, recall, child, sessionID, parentID, depth)
+}
+
+// cancelWithReason stops the dispatch, handing reason to its Recall function
+// when one is installed and falling back to Cancel otherwise. Returns false
+// when the entry has neither, so the caller can log the leak.
+func (d *activeDispatch) cancelWithReason(reason string) bool {
+	switch {
+	case d.Recall != nil:
+		d.Recall(reason)
+	case d.Cancel != nil:
+		d.Cancel()
+	default:
+		return false
+	}
+	return true
+}
+
+// defaultRecallReason names a recall whose recaller gave no reason.
+const defaultRecallReason = "recall_agent"
+
+// recallReasonOrDefault returns reason, or defaultRecallReason when it is empty.
+func recallReasonOrDefault(reason string) string {
+	if reason == "" {
+		return defaultRecallReason
+	}
+	return reason
 }

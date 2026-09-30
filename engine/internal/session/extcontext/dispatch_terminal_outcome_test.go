@@ -168,17 +168,22 @@ func TestTerminalOutcome_ErrorBeforeConversationOmitsID(t *testing.T) {
 
 // TestTerminalOutcome_RecallCarriesLiveChildConversationID pins both recall
 // triggers: a targeted recall (what a caller's timeout or explicit recall
-// issues) and RecallAll (session abort and shutdown).
+// issues) and RecallAll (session abort and shutdown). Each also pins that the
+// recaller's reason reaches RecallInfo.Reason, with recall_agent standing in
+// only when no reason was given.
 //
-// Revert-red: build the RecallInfo without ChildConversationID and both
-// subtests read "".
+// Revert-red: build the RecallInfo without ChildConversationID and every
+// subtest reads ""; register the dispatch with a plain cancel that ignores the
+// reason and the reason assertions read recall_agent.
 func TestTerminalOutcome_RecallCarriesLiveChildConversationID(t *testing.T) {
 	cases := []struct {
-		name   string
-		recall func(r *DispatchRegistry, id string)
+		name       string
+		recall     func(r *DispatchRegistry, id string)
+		wantReason string
 	}{
-		{"targeted recall", func(r *DispatchRegistry, id string) { r.RecallByID(id, "timeout") }},
-		{"shutdown recall", func(r *DispatchRegistry, _ string) { r.RecallAll("engine shutdown") }},
+		{"targeted recall", func(r *DispatchRegistry, id string) { r.RecallByID(id, "timeout") }, "timeout"},
+		{"targeted recall without reason", func(r *DispatchRegistry, id string) { r.RecallByID(id, "") }, "recall_agent"},
+		{"shutdown recall", func(r *DispatchRegistry, _ string) { r.RecallAll("engine shutdown") }, "engine shutdown"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -206,6 +211,9 @@ func TestTerminalOutcome_RecallCarriesLiveChildConversationID(t *testing.T) {
 			got := awaitOutcome(t, recalled, "OnRecall")
 			if got.ChildConversationID != live {
 				t.Errorf("OnRecall ChildConversationID = %q, want the live entry's %q", got.ChildConversationID, live)
+			}
+			if got.Reason != tc.wantReason {
+				t.Errorf("OnRecall Reason = %q, want %q", got.Reason, tc.wantReason)
 			}
 		})
 	}
