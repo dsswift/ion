@@ -106,13 +106,25 @@ export async function waitForEngineSocket(opts: Required<DaemonReadinessOpts>): 
   }
 }
 
+/** What the caller changed on disk before asking for the daemon. */
+export interface EnsureDaemonOpts {
+  /** engine.json was written this launch. The engine reads it once at start,
+   *  so a daemon already running must be recycled to see the change. */
+  configChanged?: boolean
+}
+
 /**
  * Ensure the engine daemon is installed and current under its platform
  * supervisor. Called once at desktop startup, before the bridge connects.
  *
+ * Every reason to recycle the daemon folds into the one start below. A
+ * second, separate restart after it would stop an engine this call just
+ * brought up, and a desktop that dies between that stop and its start leaves
+ * the daemon down until the next launch.
+ *
  * Exported for testing. In production, call from app-lifecycle.ts.
  */
-export async function ensureEngineDaemon(readiness: DaemonReadinessOpts = {}): Promise<void> {
+export async function ensureEngineDaemon(readiness: DaemonReadinessOpts = {}, ensure: EnsureDaemonOpts = {}): Promise<void> {
   const sup = supervisorFor()
   if (!sup) {
     warn('unsupported platform for engine supervision', { platform: process.platform })
@@ -213,8 +225,11 @@ export async function ensureEngineDaemon(readiness: DaemonReadinessOpts = {}): P
   }
 
   const defChanged = await sup.install(destBinary, supOpts)
-  const forceRestart = binaryUpdated || defChanged
-  log('engine_bootstrap: starting daemon', { supervisor: sup.name, force_restart: forceRestart, binary_updated: binaryUpdated, definition_changed: defChanged })
+  const configChanged = ensure.configChanged === true
+  const forceRestart = binaryUpdated || defChanged || configChanged
+  log('engine_bootstrap: starting daemon', {
+    supervisor: sup.name, force_restart: forceRestart, binary_updated: binaryUpdated, definition_changed: defChanged, config_changed: configChanged,
+  })
   await sup.start(forceRestart, supOpts)
 
   // Verify the daemon actually came up — the supervisor command succeeding
