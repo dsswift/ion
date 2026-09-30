@@ -246,7 +246,12 @@ Assert $sawKillSwitch 'desktop logged the auto-update kill switch within 30s'
 
 # --- 8. Quitting the desktop must not stop the engine -----------------------
 Step 'quitting the desktop'
-Get-Process -Name 'Ion' -ErrorAction SilentlyContinue | Stop-Process -Force
+# Process names ignore case, so -Name 'Ion' also matches the engine
+# (resources\engine\ion.exe). Stop only the desktop's own executable: the
+# window, its helpers, and the Studio server child all run as $AppExe.
+$desktopProcs = @(Get-Process -Name 'Ion' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $AppExe })
+$desktopProcs | Stop-Process -Force
+Write-Host "  stopped $($desktopProcs.Count) desktop process(es)"
 Start-Sleep -Seconds 5
 $stateAfterQuit = Wait-TaskStatus 'Running' 30
 Assert ("$stateAfterQuit" -match 'Running') "task still Running after the desktop quits (got: $stateAfterQuit)"
